@@ -874,7 +874,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // rejoined the hub 2026-10-26: its Combine renders the STYLED keyframe and
       // the video seeds from it via resume.keyframeUrl). Gated to a real presenter
       // + not-service so a stray value can never ride a service clip; no product → none.
-      const composedFrameUrl = !!avatarId && !service
+      // No-product Combine produces an INTENTIONAL presenter-in-scene frame that
+      // must seed the video, even though no-product rides on service=1. Allow the
+      // frame when the no-product flag is set (a plain service clip stays blocked).
+      const composedFrameUrl = !!avatarId && (!service || ((form.get("noProductCombine") as string) || "") === "1")
         ? (((form.get("composedFrameUrl") as string) || "").trim() || undefined)
         : undefined;
       // The engine picker drives an IMAGE-TO-VIDEO render. A presenter ad does
@@ -1094,7 +1097,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // best-effort style note. Empty = the presenter's own backdrop (the default).
       const combineScene = ((form.get("combineScene") as string) || "").trim().slice(0, 200) || undefined;
       if (!avatarId) return json({ error: tr(lang, "Pick a presenter first.") });
-      if (!productImageUrl) return json({ error: tr(lang, "Add a product photo — the presenter needs something to hold.") });
+      // No-product Combine composes the presenter IN the scene + style (no
+      // product at all), so a product photo isn't required — the worker runs the
+      // presenter-only compose path (noProductCompose) instead of presenter-hold.
+      const noProductCombine = ((form.get("noProductCombine") as string) || "") === "1";
+      if (!productImageUrl && !noProductCombine) return json({ error: tr(lang, "Add a product photo — the presenter needs something to hold.") });
       // The product NAME is for the video script, not the combine — the combine
       // identifies the product from its PHOTO (and reads scale from the photo),
       // so a name is NOT required here. Default it only so the compose prompt
@@ -1106,7 +1113,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const combineJobId = await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
         section: genSection,
         freshShot: true,
-        productTitle: productTitle || "product", productImageUrl, productUrl,
+        productTitle: productTitle || "product", ...(noProductCombine ? {} : { productImageUrl }), productUrl,
         styleMode: "backdrop",
         scene: combineScene,
         avatarId, avatarVariant,
@@ -1119,6 +1126,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // Presenter-holding frame or nothing — a product-only still is not what
         // Combine asked for, so a miss FAILS (and refunds) instead of charging.
         presenterOnly: true,
+        // No-product: compose the presenter alone in the scene+style (no product
+        // image, no product-in-hand gate) — the worker's presenter-only path.
+        ...(noProductCombine ? { noProductCompose: true } : {}),
         // CARTOON combine → the frame the merchant approves must BE the cartoon
         // look, so run the cartoon keyframe (compose → cartoonize in the chosen
         // style → product-in-hand gate) instead of the photoreal compose; the
@@ -2732,6 +2742,15 @@ export default function WebStudio() {
     if (over?.scene != null) fd.set("combineScene", over.scene);
     // Inject the state-held file in case the input was remounted empty.
     if (prodSource === "upload" && uploadFile) fd.set("productPhoto", uploadFile);
+    // No-product Combine: run the presenter-only compose (no product). Send the
+    // REAL style — the form's contentType is overridden to "talkinghead" for the
+    // video SCRIPT, but the combine needs "avatar"/"cartoon" to pick realistic vs
+    // cartoon — and drop any product photo so none rides along.
+    if (noProduct) {
+      fd.set("noProductCombine", "1");
+      fd.set("contentType", contentType === "cartoon" ? "cartoon" : "avatar");
+      fd.delete("productPhoto");
+    }
     combineStartRef.current = Date.now();
     setCombineErr(null);
     setCombineUrl(null);
@@ -3841,8 +3860,7 @@ export default function WebStudio() {
                     unless an Edit overrides. Empty (Auto) = the presenter's own backdrop. */}
                 <input type="hidden" name="combineScene" value={combineScene} />
                 {/* The big output — the payoff, right under the inputs. Tap to enlarge.
-                    Hidden in no-product mode — nothing to compose (it's a talking head). */}
-                {!noProduct && (
+                    Shown in both modes: no-product composes the presenter in the scene. */}
                 <div className={`ws-combine-stage${combineUrl ? " has" : ""}`}>
                   {combineUrl ? (
                     <div className="ws-combine-frame">
@@ -3854,17 +3872,16 @@ export default function WebStudio() {
                     </div>
                   ) : combining ? (
                     <div className="ws-combine-loading">
-                      <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
+                      <span className="ws-combine-loadtxt">{noProduct ? t("Setting the scene with your presenter…") : t("Placing your product in their hands…")}</span>
                       <span className="ws-combine-loadsub">{t("This usually takes up to a minute — hang tight.")}</span>
                     </div>
                   ) : (
                     <div className="ws-combine-empty">
                       <Ico n="sparkle" size={30} />
-                      <span>{hasMarketingProduct ? t("Tap Combine — your presenter holding your product shows up here") : t("Add your presenter and product above")}</span>
+                      <span>{noProduct ? t("Tap Combine — your presenter in the scene shows up here") : hasMarketingProduct ? t("Tap Combine — your presenter holding your product shows up here") : t("Add your presenter and product above")}</span>
                     </div>
                   )}
                 </div>
-                )}
                 {combineErr && <p className="ws-note ws-err" style={{ marginTop: 8 }}>{combineErr}</p>}
                 {combineUrl ? (
                   <>
@@ -3913,13 +3930,13 @@ export default function WebStudio() {
                     )}
                     <input type="hidden" name="composedFrameUrl" value={combineUrl} />
                   </>
-                ) : noProduct ? null : (
+                ) : (
                   <>
                     <button type="button" className="wb-btn ws-combine-btn" disabled={combining || busy}
                       onClick={() => {
                         const miss: string[] = [];
                         if (!styleSet) miss.push(t("pick a style"));
-                        if (!hasMarketingProduct) miss.push(t("add a product"));
+                        if (!hasMarketingProduct && !noProduct) miss.push(t("add a product"));
                         if (!avatarId) miss.push(t("pick a presenter"));
                         if (miss.length) { setCombineErr(t("Before combining: ") + miss.join(t(", ")) + "."); return; }
                         doCombine();
@@ -4294,7 +4311,7 @@ export default function WebStudio() {
                     </div>
                   ) : combining ? (
                     <div className="ws-combine-loading">
-                      <span className="ws-combine-loadtxt">{t("Placing your product in their hands…")}</span>
+                      <span className="ws-combine-loadtxt">{noProduct ? t("Setting the scene with your presenter…") : t("Placing your product in their hands…")}</span>
                       <span className="ws-combine-loadsub">{t("This usually takes up to a minute — hang tight.")}</span>
                     </div>
                   ) : (
@@ -4824,6 +4841,9 @@ export default function WebStudio() {
             <input type="hidden" name="direction" value={finalDirection} />
             {finalScene ? <input type="hidden" name="scene" value={finalScene} /> : null}
             {(serviceOn || noProduct) ? <input type="hidden" name="service" value="1" /> : null}
+            {/* No-product Combine flag — lets the video accept the intentional
+                presenter-in-scene frame as its seed even though no-product rides service=1. */}
+            {noProduct ? <input type="hidden" name="noProductCombine" value="1" /> : null}
             {showWear && wear ? <input type="hidden" name="wear" value="1" /> : null}
             {avatarRides && <input ref={variantRef} type="hidden" name="avatarVariant" defaultValue="0" />}
 

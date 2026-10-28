@@ -2437,6 +2437,12 @@ export async function runPresenterHold(opts: {
    *  what the combine's fixed token price is sized against. Auto-shipped ads
    *  (presenterOnly false) still get the retry. */
   presenterOnly?: boolean;
+  /** NO-PRODUCT Combine: compose the presenter ALONE in the chosen setting,
+   *  with nothing in their hands. There is no product to reproduce, so skip
+   *  planShot and ALL product QA / paste / overlay / retry and return the clean
+   *  presenter-in-scene frame straight from the "blank" compose. productImageUrl
+   *  is not required (and is not sent to the composer) in this mode. */
+  noProduct?: boolean;
 }): Promise<PresenterHoldResult> {
   // LAYOUT. A hand-sized item gets held; anything bigger gets set down in
   // front of the presenter, which is how creators actually shoot it and the
@@ -2451,6 +2457,34 @@ export async function runPresenterHold(opts: {
   const showcase = presenterLayout(opts.sizeClass, opts.wear) === "showcase";
 
   const { submitCompose, pollCompose } = await import("./fal-image.server");
+
+  // ── NO-PRODUCT COMBINE ──────────────────────────────────────────────────
+  // The merchant toggled "No product": compose the presenter ALONE in the
+  // chosen setting (the "blank" mode is now a product-free presenter-in-scene
+  // prompt) and return that frame directly. There is no product, so skip
+  // planShot and the entire product QA / paste / overlay / retry machinery
+  // below — none of it has anything to check. One compose, like a reviewed
+  // Combine: the merchant is the gate and can Re-roll.
+  if (opts.noProduct) {
+    const q = await submitCompose(opts.portraitUrl, "", opts.productTitle || "", 1, "blank", opts.scene, undefined, undefined, undefined, opts.continuity);
+    let frame: string | undefined;
+    for (let i = 0; i < 90; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const p = await pollCompose(q.statusUrl, q.responseUrl);
+      if (p.done) { frame = p.urls?.[0]; break; }
+    }
+    return {
+      url: frame || null,
+      pass: !!frame,
+      reason: frame ? "" : "compose returned nothing",
+      retried: false,
+      composited: false,
+      via: "drawn",
+      failed: [],
+      wrongProduct: false,
+    };
+  }
+
   // The plan is per-product and cached; a failure degrades to the generic
   // prompt, so this can sit on the hot path.
   const plan = opts.wear ? null : await planShot(opts.productImageUrl, opts.productTitle, opts.scalePhrase, opts.cm);
@@ -4644,7 +4678,12 @@ export async function generateImageAd(
    *  bare product render. For when the user asked for a "product-only / cinematic
    *  / plain" shot, not an ad — the invented headline + "SHOP NOW" button is the
    *  wrong deliverable there. Mirrors the PRESENTER_AD_TEXT skip for presenters. */
-  noCopy?: boolean
+  noCopy?: boolean,
+  /** NO-PRODUCT Combine: the merchant toggled "No product", so compose the
+   *  presenter ALONE in the chosen setting (no product in hand) and seed the
+   *  video from that. Requires an avatar but NOT a productImageUrl; skips the
+   *  product QA. Only meaningful alongside presenterOnly (the Combine step). */
+  noProductCompose?: boolean
 ): Promise<string> {
   // Generate copy in the shop's content language (web toggle / store locale).
   const contentLang = (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
@@ -4663,11 +4702,85 @@ export async function generateImageAd(
   // way to tell a failure from the normal result — so they paid again for the
   // same silent outcome. Carried into the asset below instead.
   let presenterMiss: string | null = null;
-  if (!serviceMode && avatarId && productImageUrl && /^https?:\/\//.test(productImageUrl)) {
+  // NO-PRODUCT Combine enters this block on the avatar alone — there is no
+  // productImageUrl to require. The product path's guard is otherwise unchanged.
+  if (!serviceMode && avatarId && ((productImageUrl && /^https?:\/\//.test(productImageUrl)) || noProductCompose)) {
     presenterMiss = "the presenter compose did not complete";
     try {
       const { falImageEnabled } = await import("./fal-image.server");
       if (falImageEnabled()) {
+        // ── NO-PRODUCT COMBINE ──────────────────────────────────────────────
+        // Presenter alone in the chosen setting, nothing in hand. Compose once
+        // (merchant-reviewed), persist, and ship — none of the product scale /
+        // shot-library / QA plumbing below applies, so this returns before it.
+        if (noProductCompose) {
+          const { resolvePresenter } = await import("./custom-avatars.server");
+          const presenter = await resolvePresenter(shopId, avatarId, avatarVariant || 0);
+          const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+          const portraitUrl = `${base}${presenter.portraitPublicPath}`;
+          const held = await runPresenterHold({
+            portraitUrl,
+            productImageUrl: "",
+            productTitle,
+            // the merchant's typed "Describe it" direction arrives as stylePrompt
+            scene: scene || stylePrompt,
+            continuity: presenter.avatar.continuity,
+            presenterOnly,
+            noProduct: true,
+          });
+          if (!held.pass) artLog("image-ad", `presenter-in-scene (no product): ${held.reason}`);
+          const composed = held.url || undefined;
+          if (composed) {
+            // Same fal-URL-expiry guard as the product path: the delivery URL
+            // dies in ~an hour and the healer can't re-forge it, so persist a
+            // durable copy or mint nothing.
+            let fresh: Buffer | null = null;
+            let res: Response | null = null;
+            for (let i = 0; i < 3 && !fresh && !res?.ok; i++) {
+              if (i) await new Promise((r) => setTimeout(r, 1500));
+              res = await fetch(composed).catch(() => null);
+            }
+            if (res?.ok) {
+              const b = Buffer.from(await res.arrayBuffer());
+              if (b.length > 5_000) fresh = b;
+            }
+            if (fresh) {
+              const dir = path.join(process.cwd(), "data", "renders");
+              fs.mkdirSync(dir, { recursive: true });
+              const fileName = `img-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.jpg`;
+              fs.writeFileSync(path.join(dir, fileName), fresh);
+              try { await mirrorRender(fileName, fresh); } catch { /* non-fatal */ }
+              const localUrl = `/renders/${fileName}`;
+              const sceneLabel = (scene || stylePrompt || "").trim().slice(0, 80);
+              const asset = await db.asset.create({
+                data: {
+                  shopId, type: "IMAGE_AD", status: "PENDING",
+                  title: sceneLabel ? `${productTitle} — presenter in ${sceneLabel}` : `${productTitle} — presenter in scene`,
+                  bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: composed, prompt: `presenter in scene${sceneLabel ? `: ${sceneLabel}` : ""}`, method: "presenter", avatarId, noProduct: true }),
+                  metaJson: JSON.stringify({
+                    campaignGoal: plan.campaignGoal, productTitle, avatarId,
+                    avatarVariant: avatarVariant ?? 0,
+                    productImageUrl: null,
+                    direction: stylePrompt || null,
+                    noProduct: true,
+                  }),
+                },
+              });
+              return asset.id;
+            }
+          }
+          // No durable frame → record why and let the Combine failure gate below
+          // refund (it no longer requires productImageUrl in no-product mode).
+          presenterMiss = held.reason || "presenter-in-scene compose did not complete";
+          throw new Error(presenterMiss);
+        }
+        // Past the no-product branch this is the PRODUCT path: control only
+        // reaches here when noProductCompose is false, which means the guard's
+        // productImageUrl arm is what admitted us — so it is a defined URL.
+        // Re-narrow for the type-checker, which the `|| noProductCompose` arm
+        // on the outer guard widened back to `string | undefined`. (Unreachable
+        // at runtime; the no-product branch above always returns or throws.)
+        if (!productImageUrl) throw new Error("[image-ad] product image required for presenter hold");
         // resolvePresenter, not resolvePortraitFile: the latter only looks in
         // public/avatars, so a shop's own forged presenter ("cav…") threw and
         // was swallowed by the catch below — the ad quietly shipped as a plain
@@ -4876,6 +4989,15 @@ export async function generateImageAd(
       console.error("[image-ad] presenter compose failed, falling back to product still:", presenterMiss);
     }
     // fall through to a normal product still if compose is unavailable/failed
+  }
+
+  // COMBINE NO-PRODUCT — reached here only if the presenter-in-scene compose
+  // above produced no durable frame. There is no product still to fall back to
+  // (that is the whole point of "No product"), so FAIL so the prePaid charge
+  // refunds, outside the try/catch so it stays terminal. Checked FIRST because
+  // the product-mode gate below requires a productImageUrl this mode lacks.
+  if (presenterOnly && noProductCompose && !serviceMode && avatarId) {
+    throw new Error(`[NO-RETRY] presenter-in-scene frame unavailable for Combine: ${presenterMiss || "compose did not complete"}`);
   }
 
   // COMBINE (presenterOnly) wants a presenter HOLDING the product or nothing.

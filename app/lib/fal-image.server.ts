@@ -35,7 +35,10 @@ export async function composeHoldingFrames(
   productImageUrl: string,
   productTitle: string,
   numImages = 1,
-  mode: "hold" | "wear" = "hold",
+  // "blank" (presenter-in-scene, no product) joins the set so the cartoon
+  // no-product Combine can reuse this worker-context wrapper; the value flows
+  // straight through to submitCompose, which already handles all four modes.
+  mode: "hold" | "wear" | "blank" | "showcase" = "hold",
   scene?: string,
   scaleHint?: string,
   continuity?: string
@@ -219,29 +222,24 @@ export async function submitCompose(
   // Apparel → the presenter WEARS the garment (models it); everything else is
   // held up to camera. "wear" drops the "same outfit" lock so the item replaces
   // their top instead of being clutched on a hanger.
-  // BLANK STAND-IN. Four attempts from one reference photo produced four
-  // different objects — a 12-count display case came back as a single box, a
-  // four-box strip, and a red metal lunchbox with clasps. Asking harder is
-  // what produced the robot hands, so stop asking: have the model draw a
-  // featureless box, which is the one thing it renders reliably, and paste
-  // the merchant's actual photograph onto it afterwards. Nothing to
-  // reinvent, nothing to misspell, and one unambiguous outline to paste onto.
-  // A vague shape word got a squat box for a near-square product, and the
-  // pasted photograph then had nowhere to go. Give the ratio as a number.
-  const shape = !aspect
-    ? "roughly square, about as wide as it is tall"
-    : aspect >= 1.15
-      ? `about ${aspect.toFixed(1)} times as WIDE as it is tall — a wide, letterbox-shaped front face`
-      : aspect <= 0.87
-        ? `about ${(1 / aspect).toFixed(1)} times as TALL as it is wide — an upright, portrait-shaped front face`
-        : "square — the front face is as wide as it is tall";
+  // BLANK = PRESENTER-IN-SCENE, NO PRODUCT (the Combine "No product" toggle).
+  //
+  // Repurposed 2026-10-27. This mode used to draw a presenter holding an
+  // unmarked grey box, a stand-in the paste pipeline then covered with the
+  // real product photo — but production dropped the blank-box path entirely
+  // ("NO BLANK BOX ANYWHERE" in runPresenterHold), so nothing passed "blank"
+  // any more. It now serves the opposite purpose: compose the presenter ALONE
+  // in the chosen SETTING, no product and no stand-in object, giving a clean
+  // candid portrait-in-scene that seeds the video.
+  //
+  // Reuses the SAME scene/person/camera clauses the product modes build above,
+  // so "Setting: {scene}..." (the `bg` clause) relocates the shot exactly as it
+  // does for a hold; with no scene the presenter keeps their own backdrop.
+  // No product reference is sent (image_urls is just [portraitUrl] below), so
+  // there is nothing in their hands to describe — hands stay free and natural.
   const blankPrompt =
-    `The exact person from the first image holding a PLAIN UNMARKED BOX up to the camera at chest height. ` +
-    `The box is a simple matte light-grey cardboard box whose front face is ${shape}, with completely blank faces — no printing, no text, no logo, no label, no artwork, no tape, no barcode, no branding of any kind. Smooth even surfaces and clean straight edges. ` +
-    `Its front face is square-on to the camera and entirely unobstructed: no fingers, thumbs or hair cross in front of it, and nothing overlaps it. ` +
-    `They are actually holding it — fingers gripping the left and right EDGES of the box, thumbs on the front edge only at the far left and far right corners, its weight resting in both hands. Only the presenter's own two hands are in the picture. ` +
-    `Frame the shot from the top of the head down to the hips, with the head in the TOP THIRD of the picture. The box is held low, at the bottom of the ribcage, so the whole middle of the chest is visible empty between the chin and the top of the box. The presenter's face is entirely unobstructed — eyes, nose, mouth and chin all clearly visible with space to spare. ` +
-    `Exactly ONE box in the whole image.${sizing} ` +
+    `A candid photo of the exact person from the first image, alone, with empty hands and holding nothing — no product, no box, no object of any kind in their hands or in the frame. ` +
+    `Frame the shot from the top of the head down to roughly the hips, head in the TOP THIRD of the picture, their whole face clearly visible and unobstructed — eyes, nose, mouth and chin all in view. Their hands and arms are relaxed and natural at their sides or lightly gesturing, nothing held. ` +
     `${samePerson}${persona} ${bg} ` +
     `${camera} ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;

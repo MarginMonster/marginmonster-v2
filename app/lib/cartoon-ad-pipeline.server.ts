@@ -349,6 +349,10 @@ interface CartoonAdParams {
    *  return its id early. The video run then re-animates the approved frame
    *  (passed back in as resume.keyframeUrl), skipping its own keyframe gen. */
   keyframeOnly?: boolean;
+  /** NO-PRODUCT Combine: the merchant toggled "No product", so compose the
+   *  presenter ALONE in the setting (submitCompose "blank") and cartoonize that,
+   *  SKIPPING the product-in-hand compose + cartoonHoldOk gate entirely. */
+  noProductCompose?: boolean;
   resume?: {
     script?: string;
     keyframeUrl?: string;
@@ -622,7 +626,9 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       // tries never land it, draw character-only (clean) and let the real-
       // product endcard carry it — so a blob/empty-handed frame NEVER ships.
       // Non-presenter / service frames have nothing to hold → render once.
-      const wantsHeldProduct = !!params.avatarId && !params.serviceMode && !!params.productImageUrl;
+      // NO-PRODUCT Combine likewise has nothing to hold: compose the presenter
+      // alone in the setting and cartoonize that, skipping the hold gate.
+      const wantsHeldProduct = !!params.avatarId && !params.serviceMode && !!params.productImageUrl && !params.noProductCompose;
       if (wantsHeldProduct) {
         let passed = false;
         let tries = 0;
@@ -698,7 +704,29 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         // fixes any cartoonized-label garble. No product (casual video /
         // service) → the portrait set just above is stylized alone. Compose
         // failure is NON-FATAL: fall back to the plain portrait, never lose the ad.
-        if (!skipCompose && !params.serviceMode && params.productImageUrl) {
+        // NO-PRODUCT Combine: compose the presenter ALONE in the setting
+        // ("blank" mode sends only the portrait, no product) and cartoonize
+        // THAT, so the chosen scene survives into the cartoon. Non-fatal: a
+        // compose miss falls back to the plain portrait like the product path.
+        if (!skipCompose && params.noProductCompose) {
+          composeDbg = "noproduct:reached";
+          try {
+            const { composeHoldingFrames } = await import("./fal-image.server");
+            let frames: string[] = [];
+            let lastErr: unknown;
+            for (let attempt = 1; attempt <= 2 && !frames[0]; attempt++) {
+              try {
+                frames = await composeHoldingFrames(portraitUrl, "", params.productTitle, 1, "blank", params.direction, undefined, presenter.avatar.continuity);
+              } catch (e) { lastErr = e; }
+            }
+            if (!frames[0] && lastErr) throw lastErr;
+            composeDbg = `noproduct:frames=${frames.length} first=${frames[0] ? "y" : "n"}`;
+            if (frames[0]) sourcePhotoUrl = frames[0];
+          } catch (e) {
+            composeDbg = "noproduct:ERR:" + (e instanceof Error ? e.message : String(e)).slice(0, 170);
+            console.error(`[cartoon] no-product compose failed (stylizing plain portrait): ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
+          }
+        } else if (!skipCompose && !params.serviceMode && params.productImageUrl) {
           composeDbg = "reached";
           try {
             const { composeHoldingFrames } = await import("./fal-image.server");
