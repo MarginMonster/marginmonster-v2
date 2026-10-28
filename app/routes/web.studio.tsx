@@ -11,7 +11,7 @@ import { trimToWord } from "../lib/text-trim";
 import { Form, Link, useActionData, useFetcher, useLoaderData, useNavigation, useOutletContext, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { LangToggle } from "../components/LangToggle";
 import { normalizeContentLang, CONTENT_LANG_NATIVE } from "../lib/content-lang";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -2079,6 +2079,15 @@ export default function WebStudio() {
   // Which SETTING preset is active (drives combineScene + the chip selection).
   // The Edit box can still override the scene with free text.
   const [settingKey, setSettingKey] = useState("auto");
+  const setStripRef = useRef<HTMLDivElement | null>(null);
+  const [setMore, setSetMore] = useState(0);
+  const recomputeSetMore = useCallback(() => {
+    const el = setStripRef.current;
+    if (!el) { setSetMore(0); return; }
+    const right = el.getBoundingClientRect().right;
+    const hidden = [...el.querySelectorAll(".ws-setcard")].filter((c) => c.getBoundingClientRect().left >= right - 12).length;
+    setSetMore(hidden);
+  }, []);
   // Has the user EXPLICITLY picked a style yet (Realistic or a cartoon style)?
   // Starts false so the style card reads "Pick a style" with a needs-selection
   // glow — a required field, enforced at combine + generate.
@@ -2927,6 +2936,7 @@ export default function WebStudio() {
   useEffect(() => {
     if (!avatarVideoHub) { setHubPick(null); setNoProduct(false); }
   }, [avatarVideoHub]);
+  useEffect(() => { if (hubPick === "setting") { const id = window.setTimeout(recomputeSetMore, 60); return () => window.clearTimeout(id); } }, [hubPick, recomputeSetMore]);
   // Realistic is the ONLY avatar style, so pre-select it on entering the avatar
   // video hub — no red "Pick a style" wall for a one-option choice. Scoped to
   // contentType "avatar" so cartoon still prompts for a style pick.
@@ -3799,27 +3809,37 @@ export default function WebStudio() {
                 {(contentType === "avatar" || contentType === "cartoon") && hubPick === "setting" && (
                   <div className="ws-hub-reveal open">
                     <div className="ws-lbl"><span>{t("Where this takes place")}</span> <span className="ws-opt">{t("swipe for more")}</span></div>
-                    <div className="ws-setcards">
+                    <div className="ws-setstrip-wrap">
+                    <div className="ws-setcards" ref={setStripRef} onScroll={recomputeSetMore}>
                       {COMBINE_SETTINGS.map((s) => (
-                        <button type="button" key={s.key} className={`ws-setcard${settingKey === s.key ? " sel" : ""}`}
-                          onClick={() => { if (settingKey !== s.key) clearCombineFrame(); setSettingKey(s.key); setCombineScene(s.scene); setHubPick(null); }}>
-                          <span className="ws-setcard-img" style={{ backgroundColor: s.tint, backgroundImage: s.key !== "auto" ? `url(/style-tiles/${s.key}.jpg?v=1)` : undefined }}>
-                            {s.key === "auto" && <span className="ws-setcard-emoji">{s.emoji}</span>}
-                            {settingKey === s.key && <span className="ws-chk">✓</span>}
-                          </span>
-                          <b>{t(s.name)}</b>
-                        </button>
+                        <Fragment key={s.key}>
+                          <button type="button" className={`ws-setcard${settingKey === s.key ? " sel" : ""}`}
+                            onClick={() => { if (settingKey !== s.key) clearCombineFrame(); setSettingKey(s.key); setCombineScene(s.scene); setHubPick(null); }}>
+                            <span className="ws-setcard-img" style={{ backgroundColor: s.tint, backgroundImage: s.key !== "auto" ? `url(/style-tiles/${s.key}.jpg?v=1)` : undefined }}>
+                              {s.key === "auto" && <span className="ws-setcard-emoji">{s.emoji}</span>}
+                              {settingKey === s.key && <span className="ws-chk">✓</span>}
+                            </span>
+                            <b>{t(s.name)}</b>
+                          </button>
+                          {s.key === "auto" && (
+                            <button type="button" className={`ws-setcard${settingKey === "custom" ? " sel" : ""}`}
+                              onClick={() => { if (settingKey !== "custom") clearCombineFrame(); setSettingKey("custom"); }}>
+                              <span className="ws-setcard-img" style={{ backgroundColor: "#EAF6EF" }}>
+                                <span className="ws-setcard-emoji">✏️</span>
+                                {settingKey === "custom" && <span className="ws-chk">✓</span>}
+                              </span>
+                              <b>{t("Custom Background")}</b>
+                            </button>
+                          )}
+                        </Fragment>
                       ))}
-                      {/* Custom background — its own card; selecting it glows green
-                          like the presets and reveals the describe box below. */}
-                      <button type="button" className={`ws-setcard${settingKey === "custom" ? " sel" : ""}`}
-                        onClick={() => { if (settingKey !== "custom") clearCombineFrame(); setSettingKey("custom"); }}>
-                        <span className="ws-setcard-img" style={{ backgroundColor: "#EAF6EF" }}>
-                          <span className="ws-setcard-emoji">✏️</span>
-                          {settingKey === "custom" && <span className="ws-chk">✓</span>}
-                        </span>
-                        <b>{t("Custom Background")}</b>
+                    </div>
+                    {setMore > 0 && (
+                      <button type="button" className="ws-setmore" aria-label={t("Scroll for more settings")}
+                        onClick={() => { const el = setStripRef.current; if (el) el.scrollBy({ left: Math.round(el.clientWidth * 0.7), behavior: "smooth" }); }}>
+                        +{setMore}
                       </button>
+                    )}
                     </div>
                     {settingKey === "custom" && (
                       <input className="wb-in ws-setcustom" type="text" maxLength={140} autoFocus
@@ -5957,6 +5977,8 @@ const WS_STYLE = `
    flex+overflow-x feel as .ws-stylestrip / .ws-cast. Was a 4-wide grid. */
 .ws-setcards{display:flex;gap:9px;margin:0 0 6px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 10px;scrollbar-gutter:stable;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
 .ws-setcustom{margin:2px 2px 2px;font-size:13px}
+.ws-setstrip-wrap{position:relative}
+.ws-setmore{position:absolute;right:4px;top:38%;transform:translateY(-50%);z-index:3;display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:26px;padding:0 8px;border:none;border-radius:999px;background:var(--green,#0C7A46);color:#fff;font-size:12px;font-weight:800;box-shadow:0 2px 8px rgba(20,32,26,.32);cursor:pointer}
 .ws-setcard{flex:0 0 auto;width:116px;scroll-snap-align:start;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:6px 6px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:stretch;gap:6px;transition:border-color .14s,background .14s,transform .14s,box-shadow .14s}
 .ws-setcard:hover{border-color:#9CCBB1;transform:translateY(-2px);box-shadow:0 8px 18px -10px rgba(20,32,26,.3)}
 .ws-setcard.sel{border-color:var(--green,#0C7A46);background:#EAF6EF}
