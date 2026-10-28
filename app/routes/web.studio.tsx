@@ -1479,7 +1479,7 @@ function ArtistTip({ tips, variant }: { tips: string[]; variant?: string }) {
     if (tips.length <= 1) return;
     const id = window.setInterval(() => setPage((p) => (p + 1) % tips.length), 8000);
     return () => window.clearInterval(id);
-  }, [tips.length]);
+  }, [tips.length, page]);
   const go = (d: number) => setPage((p) => (p + d + tips.length) % tips.length);
   return (
     <div className="ws-artip">
@@ -3707,16 +3707,12 @@ export default function WebStudio() {
                   </div>
                   <div className="ws-prodslot">
                     {noProduct ? (
-                      /* No-product mode: the slot becomes the TOPIC input itself — the
-                         presenter talks to camera about whatever's typed here. The server
-                         prepends the talking-head template (videoDirection = presetDir +
-                         direction, line ~848), so a short topic is all that's needed.
-                         Self-contained so it never depends on another box rendering. */
-                      <div className={`ws-hubtile ws-topictile${direction.trim() ? " set ws-isgood" : " ws-needsel"}`}>
-                        <div className="ws-topic-head"><span aria-hidden="true">🎙</span> {t("What do they talk about?")}</div>
-                        <textarea className="ws-topic-ta" value={direction} maxLength={300} rows={3}
-                          onChange={(e) => setDirection(e.target.value)}
-                          placeholder={t("a quick tip · your story · why you started…")} />
+                      <div className="ws-hubtile ws-topictile set ws-isgood" aria-label={t("Presenter only — no product")}>
+                        <span className="ws-hubtile-img prod" style={{ background: "#F3F9F4", borderStyle: "dashed", display: "grid", placeItems: "center" }}>
+                          <span aria-hidden="true" style={{ fontSize: "30px" }}>🎙</span>
+                        </span>
+                        <b>{t("No product")}</b>
+                        <span>{t("Presenter only")}</span>
                       </div>
                     ) : (
                       <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set ws-isgood" : " ws-needsel"}`}
@@ -3757,13 +3753,15 @@ export default function WebStudio() {
                       <span className="ws-stylecombo-plus" aria-hidden="true">+</span>
                       {/* SETTING hero — the picked scene, directly under the style. */}
                       {(() => {
-                        const cur = COMBINE_SETTINGS.find((s) => s.key === settingKey) || COMBINE_SETTINGS[0];
+                        const cur = settingKey === "custom"
+                          ? { key: "custom", name: combineScene.trim() ? (combineScene.trim().length > 16 ? combineScene.trim().slice(0, 15) + "…" : combineScene.trim()) : t("Custom"), scene: combineScene, emoji: "📍", tint: "#EAF6EF" }
+                          : (COMBINE_SETTINGS.find((s) => s.key === settingKey) || COMBINE_SETTINGS[0]);
                         return (
                           <button type="button" className={`ws-stylecard ws-isgood${hubPick === "setting" ? " open" : ""}`}
                             aria-expanded={hubPick === "setting"} aria-label={t("Change the setting")}
                             onClick={() => setHubPick((p) => (p === "setting" ? null : "setting"))}>
-                            <span className="ws-stylecard-img" style={{ backgroundColor: cur.tint, backgroundImage: cur.key !== "auto" ? `url(/style-tiles/${cur.key}.jpg?v=1)` : undefined }}>
-                              {cur.key === "auto" && <span className="ws-setemoji" aria-hidden="true">{cur.emoji}</span>}
+                            <span className="ws-stylecard-img" style={{ backgroundColor: cur.tint, backgroundImage: cur.key !== "auto" && cur.key !== "custom" ? `url(/style-tiles/${cur.key}.jpg?v=1)` : undefined }}>
+                              {(cur.key === "auto" || cur.key === "custom") && <span className="ws-setemoji" aria-hidden="true">{cur.emoji}</span>}
                               <span className="ws-stylecard-badge" aria-hidden="true">✎</span>
                             </span>
                             <b>{t(cur.name)}</b>
@@ -3802,7 +3800,7 @@ export default function WebStudio() {
                     "Where this takes place" scene cards. */}
                 {(contentType === "avatar" || contentType === "cartoon") && hubPick === "setting" && (
                   <div className="ws-hub-reveal open">
-                    <div className="ws-lbl"><span>{t("Where this takes place")}</span></div>
+                    <div className="ws-lbl"><span>{t("Where this takes place")}</span> <span className="ws-opt">{t("swipe for more")}</span></div>
                     <div className="ws-setcards">
                       {COMBINE_SETTINGS.map((s) => (
                         <button type="button" key={s.key} className={`ws-setcard${settingKey === s.key ? " sel" : ""}`}
@@ -3815,6 +3813,10 @@ export default function WebStudio() {
                         </button>
                       ))}
                     </div>
+                    <input className="wb-in ws-setcustom" type="text" maxLength={140}
+                      placeholder={t("Or describe where they are — e.g. a sunny rooftop café")}
+                      value={settingKey === "custom" ? combineScene : ""}
+                      onChange={(e) => { if (settingKey !== "custom") clearCombineFrame(); setSettingKey("custom"); setCombineScene(e.target.value); }} />
                   </div>
                 )}
                 {/* Presenter picker reveal — picking selects + plays the intro in
@@ -4356,11 +4358,17 @@ export default function WebStudio() {
                 combine already identifies the product from its photo, so a name
                 isn't needed to combine — only to generate the video. */}
             {avatarVideoHub && (noProduct ? (
-              /* No product: there's no product to name. But the server requires a
-                 productTitle for a video intent (and interpolates it into the
-                 script), so send the TOPIC as the title — sensible for a talking
-                 head, and never an unrelated product. No visible field. */
-              <input type="hidden" name="productTitle" value={direction.slice(0, 60)} />
+              <>
+                {/* No product: there's no product to name — send the topic as the
+                    hidden productTitle (server requires one for video). The visible
+                    topic box IS the video script. */}
+                <input type="hidden" name="productTitle" value={direction.slice(0, 60)} />
+                <div className="ws-lbl"><span>{t("What do they say?")}</span> <span className="ws-req">{t("required")}</span></div>
+                <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={300} rows={3}
+                  onChange={(e) => setDirection(e.target.value)}
+                  placeholder={t("a quick tip · your story · why you started…")} />
+                <CharCount value={direction} max={300} />
+              </>
             ) : (
               <>
                 <div className="ws-lbl"><span>{t("Product name")}</span>
@@ -5937,7 +5945,8 @@ const WS_STYLE = `
 /* Setting = visual cards (emoji in a tinted square + name), "Where this takes
    place" — ONE sideways-scroll strip (owner: match the style picker), same
    flex+overflow-x feel as .ws-stylestrip / .ws-cast. Was a 4-wide grid. */
-.ws-setcards{display:flex;gap:9px;margin:0 0 6px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 10px;scrollbar-gutter:stable;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.ws-setcards{display:flex;gap:9px;margin:0 0 6px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 10px;scrollbar-gutter:stable;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
+.ws-setcustom{margin:2px 2px 2px;font-size:13px}
 .ws-setcard{flex:0 0 auto;width:116px;scroll-snap-align:start;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:6px 6px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:stretch;gap:6px;transition:border-color .14s,background .14s,transform .14s,box-shadow .14s}
 .ws-setcard:hover{border-color:#9CCBB1;transform:translateY(-2px);box-shadow:0 8px 18px -10px rgba(20,32,26,.3)}
 .ws-setcard.sel{border-color:var(--green,#0C7A46);background:#EAF6EF}
