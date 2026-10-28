@@ -3707,12 +3707,10 @@ export default function WebStudio() {
                   </div>
                   <div className="ws-prodslot">
                     {noProduct ? (
-                      <div className="ws-hubtile ws-topictile set ws-isgood" aria-label={t("Presenter only — no product")}>
-                        <span className="ws-hubtile-img prod" style={{ background: "#F3F9F4", borderStyle: "dashed", display: "grid", placeItems: "center" }}>
-                          <span aria-hidden="true" style={{ fontSize: "30px" }}>🎙</span>
+                      <div className="ws-hubtile ws-topictile set ws-isgood" aria-label={t("No product — avatar only")}>
+                        <span className="ws-hubtile-img prod" style={{ background: "#F3F9F4", borderStyle: "dashed", display: "grid", placeItems: "center", padding: "14px", textAlign: "center", aspectRatio: "auto", flex: 1 }}>
+                          <span aria-hidden="true" style={{ fontSize: "15px", fontWeight: 800, lineHeight: 1.4, color: "#5A6B61" }}>{t("No Product · Avatar Only")}</span>
                         </span>
-                        <b>{t("No product")}</b>
-                        <span>{t("Presenter only")}</span>
                       </div>
                     ) : (
                       <button type="button" className={`ws-hubtile${hubPick === "product" ? " open" : ""}${hasMarketingProduct ? " set ws-isgood" : " ws-needsel"}`}
@@ -3812,11 +3810,23 @@ export default function WebStudio() {
                           <b>{t(s.name)}</b>
                         </button>
                       ))}
+                      {/* Custom background — its own card; selecting it glows green
+                          like the presets and reveals the describe box below. */}
+                      <button type="button" className={`ws-setcard${settingKey === "custom" ? " sel" : ""}`}
+                        onClick={() => { if (settingKey !== "custom") clearCombineFrame(); setSettingKey("custom"); }}>
+                        <span className="ws-setcard-img" style={{ backgroundColor: "#EAF6EF" }}>
+                          <span className="ws-setcard-emoji">✏️</span>
+                          {settingKey === "custom" && <span className="ws-chk">✓</span>}
+                        </span>
+                        <b>{t("Custom Background")}</b>
+                      </button>
                     </div>
-                    <input className="wb-in ws-setcustom" type="text" maxLength={140}
-                      placeholder={t("Or describe where they are — e.g. a sunny rooftop café")}
-                      value={settingKey === "custom" ? combineScene : ""}
-                      onChange={(e) => { if (settingKey !== "custom") clearCombineFrame(); setSettingKey("custom"); setCombineScene(e.target.value); }} />
+                    {settingKey === "custom" && (
+                      <input className="wb-in ws-setcustom" type="text" maxLength={140} autoFocus
+                        placeholder={t("Describe the background — e.g. a sunny rooftop café")}
+                        value={combineScene}
+                        onChange={(e) => setCombineScene(e.target.value)} />
+                    )}
                   </div>
                 )}
                 {/* Presenter picker reveal — picking selects + plays the intro in
