@@ -2443,6 +2443,11 @@ export async function runPresenterHold(opts: {
    *  presenter-in-scene frame straight from the "blank" compose. productImageUrl
    *  is not required (and is not sent to the composer) in this mode. */
   noProduct?: boolean;
+  /** NO-PRODUCT Combine with an uploaded BACKDROP photo: a public image URL of a
+   *  real place (the merchant's storefront) to drop the presenter into. When set
+   *  the no-product compose runs the "backdrop" mode (presenter + this place as
+   *  the second image) instead of the text-only "blank" scene. noProduct only. */
+  bgImageUrl?: string;
 }): Promise<PresenterHoldResult> {
   // LAYOUT. A hand-sized item gets held; anything bigger gets set down in
   // front of the presenter, which is how creators actually shoot it and the
@@ -2466,7 +2471,12 @@ export async function runPresenterHold(opts: {
   // below — none of it has anything to check. One compose, like a reviewed
   // Combine: the merchant is the gate and can Re-roll.
   if (opts.noProduct) {
-    const q = await submitCompose(opts.portraitUrl, "", opts.productTitle || "", 1, "blank", opts.scene, undefined, undefined, undefined, opts.continuity);
+    // Uploaded backdrop → "backdrop" mode (presenter dropped INTO the merchant's
+    // place photo, passed as the second image); otherwise the text-only "blank"
+    // scene. Everything downstream (poll, return shape) is identical either way.
+    const q = opts.bgImageUrl
+      ? await submitCompose(opts.portraitUrl, opts.bgImageUrl, opts.productTitle || "", 1, "backdrop", opts.scene, undefined, undefined, undefined, opts.continuity)
+      : await submitCompose(opts.portraitUrl, "", opts.productTitle || "", 1, "blank", opts.scene, undefined, undefined, undefined, opts.continuity);
     let frame: string | undefined;
     for (let i = 0; i < 90; i++) {
       await new Promise((r) => setTimeout(r, 2000));
@@ -4683,7 +4693,11 @@ export async function generateImageAd(
    *  presenter ALONE in the chosen setting (no product in hand) and seed the
    *  video from that. Requires an avatar but NOT a productImageUrl; skips the
    *  product QA. Only meaningful alongside presenterOnly (the Combine step). */
-  noProductCompose?: boolean
+  noProductCompose?: boolean,
+  /** NO-PRODUCT Combine, Custom Background "Upload a photo": a public image URL
+   *  of a real place to drop the presenter into (the "backdrop" compose). Only
+   *  meaningful with noProductCompose. Absent → the text-only scene. */
+  noProductBgUrl?: string
 ): Promise<string> {
   // Generate copy in the shop's content language (web toggle / store locale).
   const contentLang = (await db.shop.findUnique({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
@@ -4727,6 +4741,8 @@ export async function generateImageAd(
             continuity: presenter.avatar.continuity,
             presenterOnly,
             noProduct: true,
+            // Uploaded backdrop photo → compose the presenter in front of it.
+            ...(noProductBgUrl && /^https?:\/\//.test(noProductBgUrl) ? { bgImageUrl: noProductBgUrl } : {}),
           });
           if (!held.pass) artLog("image-ad", `presenter-in-scene (no product): ${held.reason}`);
           const composed = held.url || undefined;
@@ -4751,18 +4767,20 @@ export async function generateImageAd(
               fs.writeFileSync(path.join(dir, fileName), fresh);
               try { await mirrorRender(fileName, fresh); } catch { /* non-fatal */ }
               const localUrl = `/renders/${fileName}`;
-              const sceneLabel = (scene || stylePrompt || "").trim().slice(0, 80);
+              const usedBackdrop = !!(noProductBgUrl && /^https?:\/\//.test(noProductBgUrl));
+              const sceneLabel = (scene || stylePrompt || "").trim().slice(0, 80) || (usedBackdrop ? "your backdrop" : "");
               const asset = await db.asset.create({
                 data: {
                   shopId, type: "IMAGE_AD", status: "PENDING",
                   title: sceneLabel ? `${productTitle} — presenter in ${sceneLabel}` : `${productTitle} — presenter in scene`,
-                  bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: composed, prompt: `presenter in scene${sceneLabel ? `: ${sceneLabel}` : ""}`, method: "presenter", avatarId, noProduct: true }),
+                  bodyJson: JSON.stringify({ imageUrl: localUrl, sourceUrl: composed, prompt: `presenter in scene${sceneLabel ? `: ${sceneLabel}` : ""}`, method: usedBackdrop ? "presenter-backdrop" : "presenter", avatarId, noProduct: true, backdrop: usedBackdrop || undefined }),
                   metaJson: JSON.stringify({
                     campaignGoal: plan.campaignGoal, productTitle, avatarId,
                     avatarVariant: avatarVariant ?? 0,
                     productImageUrl: null,
                     direction: stylePrompt || null,
                     noProduct: true,
+                    backdrop: usedBackdrop || undefined,
                   }),
                 },
               });

@@ -548,6 +548,9 @@ async function runJob(
           // "No product" toggle → compose the presenter ALONE in the setting
           // and cartoonize that (no product-in-hand gate).
           noProductCompose: payload.noProductCompose === true,
+          // Custom Background upload → drop the presenter into the merchant's
+          // place photo before cartoonizing (backdrop compose).
+          noProductBgUrl: typeof payload.noProductBgUrl === "string" ? payload.noProductBgUrl : undefined,
         });
         // Marketing-tag the intermediate frame so it never clutters the creator
         // gallery (same as the photoreal Combine presenter image).
@@ -577,7 +580,8 @@ async function runJob(
         payload.freshShot === true,
         payload.presenterOnly === true,
         payload.noCopy === true,
-        payload.noProductCompose === true
+        payload.noProductCompose === true,
+        typeof payload.noProductBgUrl === "string" ? payload.noProductBgUrl : undefined
       );
       // The Studio deliberately puts productUrl on the image payload so the
       // caption can deep-link the buy page, and stampProductUrl was called

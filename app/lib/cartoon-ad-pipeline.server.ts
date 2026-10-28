@@ -353,6 +353,10 @@ interface CartoonAdParams {
    *  presenter ALONE in the setting (submitCompose "blank") and cartoonize that,
    *  SKIPPING the product-in-hand compose + cartoonHoldOk gate entirely. */
   noProductCompose?: boolean;
+  /** NO-PRODUCT Combine, Custom Background "Upload a photo": a public image URL
+   *  of a real place to drop the presenter into ("backdrop" compose) BEFORE the
+   *  cartoonize, so the uploaded location carries into the cartoon. noProduct only. */
+  noProductBgUrl?: string;
   resume?: {
     script?: string;
     keyframeUrl?: string;
@@ -712,11 +716,16 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
           composeDbg = "noproduct:reached";
           try {
             const { composeHoldingFrames } = await import("./fal-image.server");
+            // Uploaded backdrop photo → "backdrop" compose (presenter dropped into
+            // the merchant's place as the second image); else the text-only "blank".
+            const bgUrl = params.noProductBgUrl && /^https?:\/\//.test(params.noProductBgUrl) ? params.noProductBgUrl : "";
             let frames: string[] = [];
             let lastErr: unknown;
             for (let attempt = 1; attempt <= 2 && !frames[0]; attempt++) {
               try {
-                frames = await composeHoldingFrames(portraitUrl, "", params.productTitle, 1, "blank", params.direction, undefined, presenter.avatar.continuity);
+                frames = bgUrl
+                  ? await composeHoldingFrames(portraitUrl, bgUrl, params.productTitle, 1, "backdrop", params.direction, undefined, presenter.avatar.continuity)
+                  : await composeHoldingFrames(portraitUrl, "", params.productTitle, 1, "blank", params.direction, undefined, presenter.avatar.continuity);
               } catch (e) { lastErr = e; }
             }
             if (!frames[0] && lastErr) throw lastErr;

@@ -1102,6 +1102,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // presenter-only compose path (noProductCompose) instead of presenter-hold.
       const noProductCombine = ((form.get("noProductCombine") as string) || "") === "1";
       if (!productImageUrl && !noProductCombine) return json({ error: tr(lang, "Add a product photo — the presenter needs something to hold.") });
+      // CUSTOM BACKGROUND — UPLOADED PLACE PHOTO (no-product only). The merchant
+      // photographs a real location (their storefront) and the presenter is
+      // composed standing in front of it. Same upload discipline as every other
+      // photo: image-only, 8 MB cap, served publicly at /uploads/* so the worker
+      // can fetch it. Not productPhoto, so the top-of-action resolver never saw it.
+      let backgroundImageUrl: string | undefined;
+      if (noProductCombine) {
+        const bgPhoto = form.get("backgroundPhoto");
+        if (bgPhoto && typeof bgPhoto !== "string" && bgPhoto.size > 0) {
+          if (!/^image\//.test(bgPhoto.type)) return json({ error: tr(lang, "That backdrop file isn't an image — use a JPG, PNG or WebP.") });
+          if (bgPhoto.size > 8 * 1024 * 1024) return json({ error: tr(lang, "Backdrop image too large — keep it under 8 MB.") });
+          const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
+          const extB = bgPhoto.type === "image/png" ? "png" : bgPhoto.type === "image/webp" ? "webp" : "jpg";
+          const dirB = pathMod.join(process.cwd(), "data", "renders", "uploads");
+          fsMod.mkdirSync(dirB, { recursive: true });
+          const nameB = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), extB as UploadExt);
+          fsMod.writeFileSync(pathMod.join(dirB, nameB), Buffer.from(await bgPhoto.arrayBuffer()));
+          const baseB = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+          if (!baseB) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet — describe the background instead.") });
+          backgroundImageUrl = `${baseB}/uploads/${nameB}`;
+        }
+      }
       // The product NAME is for the video script, not the combine — the combine
       // identifies the product from its PHOTO (and reads scale from the photo),
       // so a name is NOT required here. Default it only so the compose prompt
@@ -1129,6 +1151,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // No-product: compose the presenter alone in the scene+style (no product
         // image, no product-in-hand gate) — the worker's presenter-only path.
         ...(noProductCombine ? { noProductCompose: true } : {}),
+        // Custom Background upload → drop the presenter into this uploaded place
+        // photo (the "backdrop" compose) instead of the text-only scene.
+        ...(noProductCombine && backgroundImageUrl ? { noProductBgUrl: backgroundImageUrl } : {}),
         // CARTOON combine → the frame the merchant approves must BE the cartoon
         // look, so run the cartoon keyframe (compose → cartoonize in the chosen
         // style → product-in-hand gate) instead of the photoreal compose; the
@@ -2088,6 +2113,25 @@ export default function WebStudio() {
     const hidden = [...el.querySelectorAll(".ws-setcard")].filter((c) => c.getBoundingClientRect().left >= right - 12).length;
     setSetMore(hidden);
   }, []);
+  // CUSTOM BACKGROUND — UPLOADED BACKDROP PHOTO. A store owner photographs their
+  // storefront and the presenter is composed in front of it. Lives only in the
+  // "custom" setting; the File rides into the combine submit as backgroundPhoto.
+  const bgUploadRef = useRef<HTMLInputElement | null>(null);
+  const [bgFile, setBgFile] = useState<File | null>(null);
+  const [bgPreview, setBgPreview] = useState<string | null>(null);
+  const takeBgUpload = (file?: File | null) => {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { setCombineErr(t("That file isn't an image — use a JPG, PNG or WebP.")); return; }
+    if (file.size > 8 * 1024 * 1024) { setCombineErr(t("Image too large — keep it under 8 MB.")); return; }
+    setBgPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
+    setBgFile(file);
+    setCombineErr(null);
+  };
+  const clearBgUpload = () => {
+    setBgPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+    setBgFile(null);
+    if (bgUploadRef.current) bgUploadRef.current.value = "";
+  };
   // Has the user EXPLICITLY picked a style yet (Realistic or a cartoon style)?
   // Starts false so the style card reads "Pick a style" with a needs-selection
   // glow — a required field, enforced at combine + generate.
@@ -2759,6 +2803,9 @@ export default function WebStudio() {
       fd.set("noProductCombine", "1");
       fd.set("contentType", contentType === "cartoon" ? "cartoon" : "avatar");
       fd.delete("productPhoto");
+      // Custom Background photo upload → the presenter is composed in front of
+      // this uploaded place. State-held File (the input may remount empty).
+      if (settingKey === "custom" && bgFile) fd.set("backgroundPhoto", bgFile);
     }
     combineStartRef.current = Date.now();
     setCombineErr(null);
@@ -2827,7 +2874,7 @@ export default function WebStudio() {
   // Clear the current frame (the ✕ on the photo) — back to the empty state to
   // combine, upload or reuse a different one. The edit context goes with it.
   const clearCombineFrame = () => {
-    setCombineUrl(null); setCombineGenerated(false); setCombineScene(""); setCombineEdit(""); setCombineErr(null); setSettingKey("auto");
+    setCombineUrl(null); setCombineGenerated(false); setCombineScene(""); setCombineEdit(""); setCombineErr(null); setSettingKey("auto"); clearBgUpload();
   };
   // The uploaded frame came back — use it as the seed, or surface an error.
   useEffect(() => {
@@ -3842,10 +3889,30 @@ export default function WebStudio() {
                     )}
                     </div>
                     {settingKey === "custom" && (
-                      <input className="wb-in ws-setcustom" type="text" maxLength={140} autoFocus
-                        placeholder={t("Describe the background — e.g. a sunny rooftop café")}
-                        value={combineScene}
-                        onChange={(e) => setCombineScene(e.target.value)} />
+                      <div className="ws-custombg">
+                        <input className="wb-in ws-setcustom" type="text" maxLength={140}
+                          placeholder={t("Describe the background — e.g. a sunny rooftop café")}
+                          value={combineScene}
+                          onChange={(e) => setCombineScene(e.target.value)} />
+                        <div className="ws-custombg-or"><span>{t("or")}</span></div>
+                        {bgPreview ? (
+                          <div className="ws-bgpreview">
+                            <img src={bgPreview} alt={t("Your backdrop photo")} />
+                            <div className="ws-bgpreview-cap">{t("Your backdrop — the presenter will stand in front of this")}</div>
+                            <button type="button" className="ws-bgpreview-x" aria-label={t("Remove backdrop photo")} onClick={clearBgUpload}>✕</button>
+                          </div>
+                        ) : (
+                          <button type="button" className="ws-bgupload" onClick={() => bgUploadRef.current?.click()}>
+                            <span className="ws-bgupload-ico" aria-hidden="true">📷</span>
+                            <span className="ws-bgupload-txt">
+                              <b>{t("Upload a photo of the place")}</b>
+                              <small>{t("e.g. your storefront — the presenter speaks in front of it")}</small>
+                            </span>
+                          </button>
+                        )}
+                        <input ref={bgUploadRef} type="file" accept="image/jpeg,image/png,image/webp" hidden
+                          onChange={(e) => takeBgUpload(e.currentTarget.files?.[0])} />
+                      </div>
                     )}
                   </div>
                 )}
@@ -5977,6 +6044,22 @@ const WS_STYLE = `
    flex+overflow-x feel as .ws-stylestrip / .ws-cast. Was a 4-wide grid. */
 .ws-setcards{display:flex;gap:9px;margin:0 0 6px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 10px;scrollbar-gutter:stable;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
 .ws-setcustom{margin:2px 2px 2px;font-size:13px}
+/* Custom Background: describe-text OR upload a real place photo (storefront). */
+.ws-custombg{margin:2px;display:flex;flex-direction:column;gap:8px}
+.ws-custombg .ws-setcustom{margin:0;width:100%}
+.ws-custombg-or{display:flex;align-items:center;gap:8px;color:#8A978F;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em}
+.ws-custombg-or::before,.ws-custombg-or::after{content:"";flex:1;height:1px;background:var(--line,#E4DFCF)}
+.ws-bgupload{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:11px 12px;border:1.5px dashed #9CCBB1;background:#F3F9F4;border-radius:12px;cursor:pointer;transition:border-color .14s,background .14s}
+.ws-bgupload:hover{border-color:var(--green,#0C7A46);background:#EAF6EF}
+.ws-bgupload-ico{font-size:20px;line-height:1;flex:0 0 auto}
+.ws-bgupload-txt{display:flex;flex-direction:column;gap:1px;min-width:0}
+.ws-bgupload-txt b{font-size:13px;color:var(--ink,#14201A);font-weight:800}
+.ws-bgupload-txt small{font-size:11px;color:#6B7A71;line-height:1.3}
+.ws-bgpreview{position:relative;display:flex;align-items:center;gap:10px;padding:8px;border:1.5px solid var(--green,#0C7A46);background:#EAF6EF;border-radius:12px}
+.ws-bgpreview img{width:72px;height:72px;object-fit:cover;border-radius:8px;flex:0 0 auto}
+.ws-bgpreview-cap{font-size:12px;color:#2E4A3A;font-weight:600;line-height:1.35;flex:1;min-width:0;padding-right:20px}
+.ws-bgpreview-x{position:absolute;top:6px;right:6px;width:24px;height:24px;border:none;border-radius:999px;background:rgba(20,32,26,.55);color:#fff;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.ws-bgpreview-x:hover{background:rgba(20,32,26,.78)}
 .ws-setstrip-wrap{position:relative}
 .ws-setmore{position:absolute;right:4px;top:38%;transform:translateY(-50%);z-index:3;display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:26px;padding:0 8px;border:none;border-radius:999px;background:var(--green,#0C7A46);color:#fff;font-size:12px;font-weight:800;box-shadow:0 2px 8px rgba(20,32,26,.32);cursor:pointer}
 .ws-setcard{flex:0 0 auto;width:116px;scroll-snap-align:start;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:6px 6px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:stretch;gap:6px;transition:border-color .14s,background .14s,transform .14s,box-shadow .14s}

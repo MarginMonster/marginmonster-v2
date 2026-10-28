@@ -38,7 +38,9 @@ export async function composeHoldingFrames(
   // "blank" (presenter-in-scene, no product) joins the set so the cartoon
   // no-product Combine can reuse this worker-context wrapper; the value flows
   // straight through to submitCompose, which already handles all four modes.
-  mode: "hold" | "wear" | "blank" | "showcase" = "hold",
+  // "backdrop" = the same presenter-in-scene, but the SECOND image is a real
+  // photo of a place (a merchant's storefront) the presenter is dropped into.
+  mode: "hold" | "wear" | "blank" | "showcase" | "backdrop" = "hold",
   scene?: string,
   scaleHint?: string,
   continuity?: string
@@ -71,7 +73,7 @@ export async function submitCompose(
   productImageUrl: string,
   productTitle: string,
   numImages = 2,
-  mode: "hold" | "wear" | "blank" | "showcase" = "hold",
+  mode: "hold" | "wear" | "blank" | "showcase" | "backdrop" = "hold",
   scene?: string,
   /** Concrete physical size brief (product-scale.server). "True real-world
    *  size" is an instruction a model can't follow off a white-background
@@ -244,6 +246,22 @@ export async function submitCompose(
     `${camera} ` +
     `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
 
+  // BACKDROP = PRESENTER IN FRONT OF AN UPLOADED PLACE (the Custom Background
+  // "Upload a photo" path). The merchant photographs a real location — their
+  // storefront, their counter, a room — and the presenter is dropped into it so
+  // they appear to be speaking from that exact place. The SECOND image is the
+  // location (passed in the productImageUrl slot), used for its scene + light
+  // ONLY: no people, products, logos or burned-in text are carried over from it
+  // (the same marketing-text trap as a product pack-shot). Any typed scene note
+  // (`raw`) rides along as a refinement — "in front of the shop at golden hour".
+  const backdropPrompt =
+    `A candid photo of the exact person from the first image, placed into the real location shown in the SECOND image — standing naturally in that place as if they are really there, talking to the camera. ` +
+    `Use the second image ONLY as the background and location behind and around them: match its lighting direction, colour temperature and perspective so the person looks genuinely present in the place, lit by it, never a cut-out pasted on top. Do NOT copy any people, products, logos, signage lettering or watermark text from the second image — take only the physical place itself. ` +
+    `Frame the shot from the top of the head down to roughly the hips, head in the TOP THIRD of the picture, their whole face clearly visible and unobstructed — eyes, nose, mouth and chin all in view. Their hands and arms are relaxed and natural at their sides or lightly gesturing, holding nothing — no product or object of any kind. ` +
+    `${samePerson}${persona}${raw ? ` ${raw}.` : ""} ` +
+    `${camera} ` +
+    `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
+
   // SHOWCASE — the shot creators actually post for anything bigger than a
   // hand. Nobody holds a twelve-count display case up to their own face; they
   // set it on the counter, stand behind it, and talk over the top of it.
@@ -278,6 +296,8 @@ export async function submitCompose(
   const prompt =
     mode === "showcase"
       ? showcasePrompt
+      : mode === "backdrop"
+      ? backdropPrompt
       : mode === "blank"
       ? blankPrompt
       : mode === "wear"
@@ -314,8 +334,10 @@ export async function submitCompose(
     headers: { ...auth(), "Content-Type": "application/json" },
     body: JSON.stringify({
       prompt,
-      // Only blank mode withholds the product photo now. Showcase hands it
-      // over on purpose: the drawn approximation is the paste's camouflage.
+      // Only blank mode withholds the second image. Showcase hands over the
+      // product on purpose (the drawn approximation is the paste's camouflage);
+      // backdrop hands over the merchant's UPLOADED PLACE photo as that second
+      // image — so both ride the same [portrait, second] slot.
       image_urls: mode === "blank" ? [portraitUrl] : [portraitUrl, productImageUrl],
       image_size: "portrait_4_3",
       // Fine-print experiment: more output pixels = more room for small
