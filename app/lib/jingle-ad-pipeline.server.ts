@@ -45,6 +45,7 @@ import { capScript } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
 import { CLAIMS_GUARDRAIL, dropOrgEndorsementPossessive } from "./ad-claims";
 import { reconcileEngineSurcharge } from "./engine-reconcile.server";
+import { createWhisperx, wordsFromWhisperx, groupCaptions } from "./faceless-video.server";
 
 // EVERY Anthem lands at the same ad length, singer or not — and the cut ends
 // on a between-line gap in the vocal (found via silencedetect), never mid-word.
@@ -725,6 +726,39 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     const sungLines = allLines.slice(0, Math.max(1, Math.round(allLines.length * sungShare)));
     const captionFeed = sungLines.join(" ");
 
+    // CAPTION TIMING — the anthem is SUNG, so distributing the lyric evenly over
+    // the song (the captionFeed above) drifts the words off the singer's lips.
+    // WhisperX aligns each word to the real audio; groupCaptions turns that into
+    // short karaoke cards carrying true start/end times, which assemble burns at
+    // their own windows. PURELY ADDITIVE + bulletproof: captions-off, a whisper
+    // failure, or an empty transcript all leave captionCaps = [] and assemble
+    // falls straight back to the even-split captionFeed — the paid render never
+    // depends on the aligner and is never re-billed for it (cached per job).
+    // English only: the aligner transcribes in English, so on a non-English
+    // anthem it would burn garbled words. There, today's even-split of the REAL
+    // lyric lines (correct words, approximate timing) is the better trade.
+    const alignable = !contentLang || /^en/i.test(contentLang);
+    let captionCaps: { text: string; t0: number; t1: number }[] = [];
+    if (params.captions !== false && alignable) {
+      const cached = ck.ckCaptionCaps as unknown as { text: string; t0: number; t1: number }[] | undefined;
+      if (Array.isArray(cached) && cached.length) {
+        captionCaps = cached;
+      } else {
+        try {
+          const alignId = await createWhisperx(songUrl);
+          const raw = await repPoll(alignId, 5 * 60_000, "anthem-align");
+          // caps carry ABSOLUTE song times; the burned audio is the song trimmed
+          // to [0, cap] (same 0 origin), so keep only cues that start before the
+          // cut — a straddling cue's tail past `cap` is harmless (video ends).
+          captionCaps = groupCaptions(wordsFromWhisperx(raw)).filter((c) => c.t0 < cap);
+          if (captionCaps.length) await ckpt({ ckCaptionCaps: captionCaps });
+        } catch (e) {
+          console.error("[anthem] caption alignment failed — using even-split captions:", e instanceof Error ? e.message.slice(0, 140) : e);
+          captionCaps = [];
+        }
+      }
+    }
+
     // Product b-roll. When the singer ISN'T holding it, this cutaway is how the
     // viewer first sees the product, so it lands mid-song. When they ARE, it
     // reveals nothing and interrupting the performance for it reads cheap —
@@ -749,7 +783,10 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       audioPath: songPath,
       productImagePath,
       // "" = no burned captions (merchant turned the captions toggle off).
-      script: params.captions === false ? "" : captionFeed, // karaoke-style captions — only the sung lines
+      script: params.captions === false ? "" : captionFeed, // even-split fallback if alignment missed
+      // Word-synced timings when WhisperX succeeded; [] → assemble uses the
+      // even split above. Either way the SAME lyric lines are shown.
+      captionCaps,
       outPath,
       lipSynced: !!talkingUrl, // omni bakes the sung audio in; kling loops under the song
       productCutAt: heldProduct ? "end" : "mid",

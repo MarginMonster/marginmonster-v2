@@ -75,7 +75,7 @@ function captionSafe(s: string): string {
 }
 
 /** Start a WhisperX prediction by version; returns the prediction id. */
-async function createWhisperx(audioUrl: string): Promise<string> {
+export async function createWhisperx(audioUrl: string): Promise<string> {
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) throw new Error("REPLICATE_API_TOKEN not set");
   const res = await fetch("https://api.replicate.com/v1/predictions", {
@@ -87,9 +87,9 @@ async function createWhisperx(audioUrl: string): Promise<string> {
   return ((await res.json()) as { id: string }).id;
 }
 
-type WordT = { word: string; start: number; end: number };
+export type WordT = { word: string; start: number; end: number };
 /** Pull per-word timings out of a WhisperX result (segments[].words[]). */
-function wordsFromWhisperx(raw: unknown): WordT[] {
+export function wordsFromWhisperx(raw: unknown): WordT[] {
   const r = raw as { segments?: Array<{ words?: Array<{ word?: string; start?: number; end?: number }> }> } | null;
   const out: WordT[] = [];
   for (const seg of r?.segments || []) {
@@ -102,10 +102,10 @@ function wordsFromWhisperx(raw: unknown): WordT[] {
   return out;
 }
 
-type Cap = { text: string; t0: number; t1: number };
+export type Cap = { text: string; t0: number; t1: number };
 /** Group words into short caption cards (~3 words / ~18 chars), carrying real
  *  start/end times — the word-synced look. */
-function groupCaptions(words: WordT[]): Cap[] {
+export function groupCaptions(words: WordT[]): Cap[] {
   const caps: Cap[] = [];
   let cur: WordT[] = [];
   const flush = () => {

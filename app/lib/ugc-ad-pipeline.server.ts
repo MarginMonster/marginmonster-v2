@@ -671,6 +671,28 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
   });
 }
 
+/** drawtext filters from PRE-TIMED caption cards — real per-word timings from
+ *  an aligner (WhisperX on a SUNG jingle), not a length-weighted guess, so the
+ *  words land on the beat / the lips. Identical look to buildCaptionFilters
+ *  (white, heavy border, lower third); only the enable window changes — each
+ *  cue uses its OWN start/end. captionSafe strips every char it can't draw and
+ *  is idempotent, so re-cleaning cards a grouper already cleaned is harmless. */
+function buildTimedCaptionFilters(caps: { text: string; t0: number; t1: number }[], fontFile: string): string[] {
+  const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
+  return caps
+    .map((c) => {
+      const text = captionSafe(c.text);
+      if (!text || !(c.t1 > c.t0)) return "";
+      const glyph = hasCJK(text) ? 1.05 : 0.62;
+      const size = Math.max(30, Math.min(50, Math.floor((720 * 0.94) / (text.length * glyph))));
+      return (
+        `drawtext=fontfile='${font}':text='${text}':fontsize=${size}:fontcolor=white:` +
+        `borderw=7:bordercolor=black:x=(w-text_w)/2:y=h-330:enable='gte(t,${c.t0.toFixed(2)})*lt(t,${c.t1.toFixed(2)})'`
+      );
+    })
+    .filter(Boolean);
+}
+
 /** Hard ceiling for one encode. A wedged ffmpeg (bad input stream, stalled
  *  filter graph) never emits "close", so the promise never settles: the job
  *  sits IN_PROGRESS and the SERIAL drain loop stops draining for every merchant
@@ -747,6 +769,14 @@ export async function assemble(opts: {
    *  Beating between rungs makes the row's age mean what the reaper thinks it
    *  means — time since anything actually happened. */
   jobId?: string;
+  /** Pre-timed caption cards from a word aligner (WhisperX). When present AND
+   *  captions are on (script non-empty), each cue burns at its OWN start/end
+   *  instead of the length-weighted even split — this is what keeps a SUNG
+   *  jingle's captions on the lips. Empty/absent → falls straight back to
+   *  buildCaptionFilters(script). Never required: an aligner failure yields []
+   *  upstream and the even split still ships, so a paid render never depends on
+   *  it. Only the jingle pipeline passes this today; UGC leaves it unset. */
+  captionCaps?: { text: string; t0: number; t1: number }[];
 }): Promise<void> {
   // Non-fatal by construction: checkpointJob swallows its own errors, and a
   // missed beat costs at worst a wrongly-reclaimed job, never the render.
@@ -861,7 +891,15 @@ export async function assemble(opts: {
       vLabel = "[v1]";
     }
 
-    const captions = buildCaptionFilters(captionText, duration, fontFile);
+    // captionText === "" is the recovery pass (no captions at all). Otherwise:
+    // real aligner timings when we have them (sung jingle), else the
+    // length-weighted even split. The empty-caps fallback means a whisper miss
+    // degrades to EXACTLY today's behaviour, never a broken or caption-less ad.
+    const captions = captionText
+      ? (opts.captionCaps && opts.captionCaps.length
+          ? buildTimedCaptionFilters(opts.captionCaps, fontFile)
+          : buildCaptionFilters(captionText, duration, fontFile))
+      : [];
     if (captions.length) {
       filters.push(`${vLabel}${captions.join(",")}[vf]`);
       vLabel = "[vf]";
