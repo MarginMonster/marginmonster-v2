@@ -937,6 +937,56 @@ export function resolvePortraitFile(id: string, variant: number): string {
   throw new Error(`[ugc] no portrait on disk for presenter "${id}"`);
 }
 
+// Shared UGC-script prompt — one source of truth for the gen below and the free
+// step-2 "preview the script" step (previewUgcScript). Pure string builder.
+type UgcScriptInputs = { serviceMode?: boolean; productDescription?: string; direction?: string };
+function ugcScriptPrompt(p: UgcScriptInputs, productRef: string, debranded: boolean, avatarName: string, avatarDesc: string, voiceTone: string | undefined, contentLang: string | null | undefined): string {
+  return [
+    `You write spoken scripts for short-form UGC video ads (TikTok/Reels/Shorts).${langDirective(contentLang)}`,
+    `Presenter: ${avatarName}, ${avatarDesc}.`,
+    p.serviceMode
+      ? `This is a SERVICE / offer (not a physical product): "${productRef}". The presenter is a spokesperson talking to camera — they do NOT hold a product. Sell the RESULT the customer gets, the pain it removes, and why it's worth it.`
+      : `Product: "${productRef}".`,
+    debranded ? `Talk about what the item IS and what owning it feels like. Do not name any brand, franchise or character.` : "",
+    p.productDescription ? `${p.serviceMode ? "What it does / the outcome" : "Product details"}: ${p.productDescription.slice(0, 300)}` : "",
+    voiceTone ? `Brand voice/tone: ${voiceTone}.` : "",
+    p.direction ? `The merchant asked for this — you MUST honor it and work what they want into what the presenter actually SAYS out loud (if they gave specific words or points, use them): "${p.direction}"` : "",
+    ``,
+    `Rules: Open with a strong, ORIGINAL hook that stops the scroll in the first second — a surprising fact, a bold claim, a vivid problem, or a question. Do NOT literally say "stop scrolling" (or "wait", "don't scroll", or any variation) — it's an overused cliché; grab attention with the actual content instead. Use PAS or AIDA.`,
+    `26 to 32 words TOTAL (about 12 seconds spoken) — a punchy hook plus ONE clear point. Do NOT exceed 32 words. Conversational, first person,`,
+    `like recommending to a friend. End with a short call to action.`,
+    `ENERGY (the voice performs the words you write — flat words = flat read): write it with genuine, infectious enthusiasm, like you can't WAIT to share this. Use vivid, punchy wording and natural emphasis. An exclamation point or two is good where excitement lands. Never corporate, monotone, or robotic.`,
+    `SPEECH PACING (critical — a voice model reads this aloud): put a comma wherever a person naturally breathes, and a period OR exclamation point at the END of every sentence, so it paces naturally and NEVER runs words together. Use short, varied, complete sentences — no run-ons, no missing punctuation.`,
+    `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
+    p.productDescription
+      ? `Every concrete claim, spec, material, size or result must come ONLY from the product details above — never invent a feature or outcome the merchant did not state.`
+      : `You have ONLY the product name — state no specific spec, material, size, count, ingredient, price or result; sell the feeling and the category, and invent no feature the merchant did not give.`,
+    CLAIMS_GUARDRAIL,
+    `The final sentence must be a COMPLETE call to action — finish it; never stop mid-phrase.`,
+  ].filter(Boolean).join("\n");
+}
+
+/** Generate the spoken UGC script as TEXT for the step-2 preview (approve/randomize
+ *  before paying). Free — rides back into generateUgcAd via resume.script. */
+export async function previewUgcScript(params: { shopId: string; brandProfile: { voiceJson: string }; avatarId: string | null; avatarVariant?: number; productTitle: string; productDescription?: string; direction?: string; serviceMode?: boolean }): Promise<{ script: string }> {
+  const { resolvePresenter } = await import("./custom-avatars.server");
+  const variant = Math.max(0, Math.min(OUTFITS.length - 1, params.avatarVariant ?? 0));
+  // The caller (previewAdText) already refuses a missing presenter; resolvePresenter
+  // throws a clean "unknown presenter" on an empty id, so the coercion is safe.
+  const { avatar } = await resolvePresenter(params.shopId, params.avatarId || "", variant);
+  const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
+  const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
+  let script = await withBrandFallback(async (productRef, debranded) => {
+    const raw = ((await anthropicText(ugcScriptPrompt(params, productRef, debranded, avatar.name, avatar.desc, voiceJson.tone, contentLang), { model: "claude-sonnet-5", maxTokens: 200 })) || "")
+      .replace(/["“”\n]+/g, " ").replace(/\s+/g, " ").trim();
+    return scriptTooShort(raw) ? "" : raw;
+  }, stripPromoTag(params.productTitle), "ugc:script", params.productDescription);
+  script = capScript(script, 36);
+  script = endStop(script);
+  script = dropOrgEndorsementPossessive(script);
+  return { script };
+}
+
 export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   // resolvePresenter covers the public cast AND this shop's private/custom
   // presenters ("cav..." ids) — the avatar-maker seam.
@@ -958,41 +1008,10 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
 
   // 1) SCRIPT — hook-first, ~13s spoken. Services sell the OUTCOME, not an
-  // object the presenter holds up.
-  const buildScriptPrompt = (productRef: string, debranded: boolean) => [
-    `You write spoken scripts for short-form UGC video ads (TikTok/Reels/Shorts).${langDirective(contentLang)}`,
-    `Presenter: ${avatar.name}, ${avatar.desc}.`,
-    params.serviceMode
-      ? `This is a SERVICE / offer (not a physical product): "${productRef}". The presenter is a spokesperson talking to camera — they do NOT hold a product. Sell the RESULT the customer gets, the pain it removes, and why it's worth it.`
-      : `Product: "${productRef}".`,
-    debranded ? `Talk about what the item IS and what owning it feels like. Do not name any brand, franchise or character.` : "",
-    params.productDescription ? `${params.serviceMode ? "What it does / the outcome" : "Product details"}: ${params.productDescription.slice(0, 300)}` : "",
-    voiceJson.tone ? `Brand voice/tone: ${voiceJson.tone}.` : "",
-    params.direction ? `The merchant asked for this — you MUST honor it and work what they want into what the presenter actually SAYS out loud (if they gave specific words or points, use them): "${params.direction}"` : "",
-    ``,
-    `Rules: Open with a strong, ORIGINAL hook that stops the scroll in the first second — a surprising fact, a bold claim, a vivid problem, or a question. Do NOT literally say "stop scrolling" (or "wait", "don't scroll", or any variation) — it's an overused cliché; grab attention with the actual content instead. Use PAS or AIDA.`,
-    `26 to 32 words TOTAL (about 12 seconds spoken) — a punchy hook plus ONE clear point. Do NOT exceed 32 words. Conversational, first person,`,
-    `like recommending to a friend. End with a short call to action.`,
-    `ENERGY (the voice performs the words you write — flat words = flat read): write it with genuine, infectious enthusiasm, like you can't WAIT to share this. Use vivid, punchy wording and natural emphasis. An exclamation point or two is good where excitement lands. Never corporate, monotone, or robotic.`,
-    `SPEECH PACING (critical — a voice model reads this aloud): put a comma wherever a person naturally breathes, and a period OR exclamation point at the END of every sentence, so it paces naturally and NEVER runs words together. Use short, varied, complete sentences — no run-ons, no missing punctuation.`,
-    `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
-    // Grounding anchor is UNCONDITIONAL (parity with the commercial pipeline):
-    // with a description, claims must come from it; WITHOUT one, a title-only
-    // generation must not soft-invent specs/results from the bare name — it was
-    // previously silent in the no-description case, leaving only CLAIMS_GUARDRAIL.
-    params.productDescription
-      ? `Every concrete claim, spec, material, size or result must come ONLY from the product details above — never invent a feature or outcome the merchant did not state.`
-      : `You have ONLY the product name — state no specific spec, material, size, count, ingredient, price or result; sell the feeling and the category, and invent no feature the merchant did not give.`,
-    // A spoken ad carries the same claim liability as a printed one: no invented
-    // endorsement, authenticity or scarcity built on the real brand/tag names.
-    CLAIMS_GUARDRAIL,
-    // The last line is the call to action and it must land whole — a capped
-    // script once ended "...grab the set before it's" (see capScript). Keep the
-    // final sentence a COMPLETE call to action; never trail off mid-phrase.
-    `The final sentence must be a COMPLETE call to action — finish it; never stop mid-phrase.`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  // object the presenter holds up. Prompt lives in the module-level
+  // ugcScriptPrompt (shared with the step-2 previewUgcScript).
+  const buildScriptPrompt = (productRef: string, debranded: boolean) =>
+    ugcScriptPrompt(params, productRef, debranded, avatar.name, avatar.desc, voiceJson.tone, contentLang);
 
   const resume = params.resume || {};
   const ckpt = (patch: Record<string, unknown>) =>

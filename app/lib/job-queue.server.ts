@@ -804,7 +804,10 @@ async function runJob(
           origin,
           jobId: payload.__jobId as string | undefined,
           resume: {
-            plan: payload.ckCommercialPlan as string | undefined,
+            // Merchant-approved shot-plan from the step-2 preview wins on the
+            // first run (checkpoint wins on resume) → no regeneration, the words
+            // the merchant read are the words that render.
+            plan: (payload.ckCommercialPlan as string | undefined) ?? (payload.approvedPlan as string | undefined),
             keyframeUrls: payload.ckCommercialKeyframes as string | undefined,
             clipUrls: payload.ckCommercialClips as string | undefined,
             clipModels: payload.ckCommercialClipModels as string | undefined,
@@ -834,7 +837,9 @@ async function runJob(
           origin,
           jobId: payload.__jobId as string | undefined,
           resume: {
-            lyrics: payload.ckLyrics as string | undefined,
+            // Merchant-approved jingle lyrics from the step-2 preview (checkpoint
+            // wins on resume) — sung verbatim, no re-write.
+            lyrics: (payload.ckLyrics as string | undefined) ?? (payload.approvedLyrics as string | undefined),
             songUrl: payload.ckSongUrl as string | undefined,
             engine: payload.ckEngine as string | undefined,
             styledUrl: payload.ckStyledUrl as string | undefined,
@@ -874,7 +879,9 @@ async function runJob(
           // palm-sized. A control the merchant sets has to arrive.
           productSize: payload.productSize as string | undefined,
           resume: {
-            script: payload.ckScript as string | undefined,
+            // Merchant-approved spoken script from the step-2 preview (checkpoint
+            // wins on resume) — performed verbatim, no re-write.
+            script: (payload.ckScript as string | undefined) ?? (payload.approvedScript as string | undefined),
             audioUrl: payload.ckAudioUrl as string | undefined,
             composedUrl: payload.ckComposedUrl as string | undefined,
             omniPredictionId: payload.ckOmniId as string | undefined,

@@ -690,6 +690,15 @@ async function livePrefix(urls: string[]): Promise<string[]> {
   return out;
 }
 
+/** Generate the commercial's shot-plan (5 beats + tagline) as TEXT for the
+ *  step-2 preview — the merchant reads the narration lines before paying the
+ *  150 tokens. Free (anthropicText only, no keyframes/clips/TTS). The approved
+ *  plan rides back into generateCommercialAd via resume.plan verbatim. */
+export async function previewCommercialPlan(params: { shopId: string; productTitle: string; productDescription?: string; direction?: string; serviceMode?: boolean }): Promise<CommercialPlan> {
+  const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
+  return planCommercial(params.productTitle, params.productDescription, params.direction, params.serviceMode === true, contentLang);
+}
+
 export async function generateCommercialAd(params: CommercialAdParams): Promise<string> {
   const serviceMode = params.serviceMode === true;
   // Every sibling pipeline reads the shop's content language. This one never

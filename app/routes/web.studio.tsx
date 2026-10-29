@@ -428,6 +428,53 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       : json({ error: r.error });
   }
 
+  // STEP-2 "preview the words" — write the jingle lyrics / spoken script /
+  // commercial shot-plan as TEXT so the merchant can read, edit or randomize
+  // the copy BEFORE paying 150 tokens for the video. FREE: anthropicText only
+  // (billed to our Anthropic account, never the merchant's token wallet) and no
+  // media is rendered. The approved text rides back into the matching generator
+  // verbatim via the `video` intent's approvedLyrics/Script/Plan.
+  if (intent === "previewAdText") {
+    const videoStyle = ((form.get("videoStyle") as string) || "").trim();
+    if (!["anthem", "talking", "commercial"].includes(videoStyle)) return json({ error: tr(lang, "Pick a video style first.") });
+    const productTitle = trimToWord((form.get("productTitle") as string) || "", 120) || "";
+    const serviceMode = form.get("service") === "1";
+    if (!productTitle) return json({ error: tr(lang, serviceMode ? "Tell us what the offer is about first." : "Give the product a name.") });
+    const direction = trimToWord((form.get("direction") as string) || "", 500) || undefined;
+    // Ground the previewed words in the merchant's REAL catalogue copy, exactly
+    // as the paid render will (job-queue's groundedDescription) — so what they
+    // read here is what they'll get. Never throws on a paid-free preview: any
+    // miss falls back to the merchant's typed direction.
+    const productDescription =
+      ((await (async () => {
+        try {
+          const row = await db.catalogProduct.findFirst({ where: { shopId: shop.id, title: productTitle }, select: { description: true } });
+          return (row?.description || "").trim() || null;
+        } catch { return null; }
+      })()) ?? direction) || undefined;
+    const brandProfile = { voiceJson: shop.brandProfile?.voiceJson || "{}" };
+    try {
+      if (videoStyle === "anthem") {
+        const { previewJingleLyrics } = await import("../lib/jingle-ad-pipeline.server");
+        const { lyrics } = await previewJingleLyrics({ shopId: shop.id, brandProfile, productTitle, productDescription, direction, serviceMode });
+        return json({ previewStyle: "anthem", lyrics });
+      }
+      if (videoStyle === "talking") {
+        const avatarId = ((form.get("avatarId") as string) || "").trim() || null;
+        if (!avatarId) return json({ error: tr(lang, "Pick a presenter first.") });
+        const avatarVariant = Math.max(0, Math.min(3, parseInt((form.get("avatarVariant") as string) || "0", 10) || 0));
+        const { previewUgcScript } = await import("../lib/ugc-ad-pipeline.server");
+        const { script } = await previewUgcScript({ shopId: shop.id, brandProfile, avatarId, avatarVariant, productTitle, productDescription, direction, serviceMode });
+        return json({ previewStyle: "talking", script });
+      }
+      const { previewCommercialPlan } = await import("../lib/commercial-ad-pipeline.server");
+      const plan = await previewCommercialPlan({ shopId: shop.id, productTitle, productDescription, direction, serviceMode });
+      return json({ previewStyle: "commercial", plan });
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : tr(lang, "Couldn't write that just now — try again.") });
+    }
+  }
+
   // Mirror the merchant's whole storefront so they can pick from a grid instead
   // of pasting a link every time. Queued, never inline: a sitemap-crawled store
   // is hundreds of fetches against their own server.
@@ -900,20 +947,37 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Highlight even if a stale client submits them. The picker already hides
       // them in casual; this is the server guard.
       if (casualMode && (contentType === "commercial" || contentType === "review")) contentType = "highlight";
+      // STEP-2 REBUILD (Avatar AI hub): after Combine the merchant picks the
+      // OUTPUT STYLE from their one combined frame — Anthem (sung jingle),
+      // Traditional Talking (spoken UGC) or Cinematic Commercial — which
+      // OVERRIDES the step-1 content-type pick. The approved words ride in via
+      // approvedLyrics/Script/Plan (previewed free first), so NO preset direction
+      // is prepended — the merchant-approved copy carries the content.
+      const videoStyle = ((form.get("videoStyle") as string) || "").trim();
+      const STYLE_TO_CT: Record<string, string> = { anthem: "jingle", talking: "avatar", commercial: "commercial" };
+      const styleCt = videoStyle && STYLE_TO_CT[videoStyle] ? STYLE_TO_CT[videoStyle] : undefined;
       // Preset translation: the picker key becomes its base pipeline type and
-      // its baked-in direction rides ahead of whatever the merchant typed.
-      const preset = contentType ? CT_PRESETS[contentType] : undefined;
+      // its baked-in direction rides ahead of whatever the merchant typed. Skipped
+      // when a videoStyle is chosen (that path routes by style, not preset).
+      const preset = !styleCt && contentType ? CT_PRESETS[contentType] : undefined;
       // Talking Head builds its direction from the merchant's WHERE + pose picks
       // instead of the fixed "at home" preset, so the setting actually steers it.
       let presetDir = preset?.direction || "";
-      if (contentType === "talkinghead") {
+      if (!styleCt && contentType === "talkinghead") {
         const setKey = ((form.get("thSetting") as string) || "home").trim();
         const pose = (form.get("thPose") as string) === "seated" ? "seated" : "standing";
         const thSet = TALKINGHEAD_SETTINGS.find((s) => s.key === setKey) || TALKINGHEAD_SETTINGS[0];
         presetDir = `Shot like an authentic selfie-style TikTok: the creator films themselves at arm's length (or with the phone propped up), ${thSet.prompt}, ${pose === "seated" ? "SEATED" : "STANDING"}, talking directly to camera — casual, warm and real, like organic UGC, not a polished studio ad. Natural handheld energy, genuine to-camera delivery. NO product is shown, held, or worn — this is a pure talking-head about the topic.`;
       }
       const videoDirection = [presetDir, direction].filter(Boolean).join(" ") || direction;
-      if (preset) contentType = preset.base;
+      if (styleCt) contentType = styleCt;
+      else if (preset) contentType = preset.base;
+      // Approved words from the step-2 preview (free Anthropic text gen, no token
+      // spend) — forwarded verbatim to the matching generator's resume so it
+      // skips regeneration and renders exactly what the merchant read & approved.
+      const approvedLyrics = videoStyle === "anthem" ? (((form.get("approvedLyrics") as string) || "").trim() || undefined) : undefined;
+      const approvedScript = videoStyle === "talking" ? (((form.get("approvedScript") as string) || "").trim() || undefined) : undefined;
+      const approvedPlan = videoStyle === "commercial" ? (((form.get("approvedPlan") as string) || "").trim() || undefined) : undefined;
       // Creator has NO presenter picker — casual video is always the cheap
       // no-presenter path. Forcing avatarId off in casual also CLOSES an exploit:
       // a crafted casual request carrying avatarId would otherwise run the
@@ -1005,6 +1069,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           productSize: ((form.get("productSize") as string) || "").trim() || undefined,
           wearProduct: !!avatarId && wear && !service,
           serviceMode: service, scene,
+          // Step-2 approved copy (only the chosen style's field is set) → the
+          // generator renders these words verbatim instead of writing its own.
+          approvedLyrics, approvedScript, approvedPlan,
           videoEngine: effectiveEngine, videoAspect, videoDurationSec, commercial, breakout, chargedTokens: each, chargedFromExtra: perPieceFromExtra + (i < rem ? 1 : 0), prePaid: true, initiator: "web",
         }, burstRunAt(i));
         backed(each, perPieceFromExtra + (i < rem ? 1 : 0));
@@ -2325,6 +2392,61 @@ export default function WebStudio() {
   // edited again, instead of flipping to the re-compose path.
   const frameEditModeRef = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
+
+  // ── STEP 2 (after Combine): pick the VIDEO STYLE, preview the words free ──
+  // The merchant's one combined frame can become any of three videos. They pick
+  // a style, write the words as TEXT (free — our Anthropic account, not their
+  // token wallet), read/edit/Randomize, THEN pay 150 tokens to render. The
+  // approved words ride into the matching generator verbatim (no 150-token
+  // surprise, no regeneration). anthem=sung lyrics · talking=spoken script ·
+  // commercial=a 5-beat shot plan with per-scene narration + a tagline.
+  type CommPlan = { beats: { scene: string; motion: string; narration: string }[]; tagline: string };
+  const [videoStyle, setVideoStyle] = useState<"anthem" | "talking" | "commercial" | null>(null);
+  const [wordsDraft, setWordsDraft] = useState("");            // editable lyrics OR script
+  const [planDraft, setPlanDraft] = useState<CommPlan | null>(null); // editable commercial plan
+  const [wordsReady, setWordsReady] = useState(false);          // words written → Generate unlocks
+  const previewFetcher = useFetcher<{ previewStyle?: "anthem" | "talking" | "commercial"; lyrics?: string; script?: string; plan?: CommPlan; error?: string }>();
+  const previewBusy = previewFetcher.state !== "idle";
+  // Picking a style wipes any words from another format (lyrics ≠ script ≠ plan).
+  const pickVideoStyle = (s: "anthem" | "talking" | "commercial") => {
+    if (s === videoStyle) return;
+    setVideoStyle(s);
+    setWordsDraft(""); setPlanDraft(null); setWordsReady(false); setCombineErr(null);
+  };
+  // "✨ Write" / "↻ Randomize" — generate the words for the chosen style. Re-firing
+  // re-rolls (model temperature gives a fresh take), which is what Randomize is.
+  const writeWords = () => {
+    if (!videoStyle) return;
+    const titleForPreview = noProduct ? direction.trim().slice(0, 60) : productTitle.trim();
+    if (!titleForPreview) { setCombineErr(noProduct ? t("Tell me what they talk about first.") : t("Add the product name first.")); return; }
+    const fd = new FormData();
+    fd.set("intent", "previewAdText");
+    fd.set("videoStyle", videoStyle);
+    fd.set("productTitle", titleForPreview);
+    if (direction.trim()) fd.set("direction", direction.trim());
+    if (serviceOn || noProduct) fd.set("service", "1");
+    if (avatarId) fd.set("avatarId", avatarId);
+    fd.set("avatarVariant", "0");
+    setCombineErr(null);
+    previewFetcher.submit(fd, { method: "post" });
+  };
+
+  // ── #36: the newly combined frame shows in the bottom reuse strip right away ──
+  // Seeded from the loader (newest-first), prepended on each combine completion,
+  // and merged with loader additions on revalidation (dedupe by media URL) — the
+  // same durable pattern the saved backdrops use, so a fresh shot is reusable &
+  // scrollable without a reload.
+  type FrameChoice = { id: string; media: string; avatarId: string | null; productTitle: string | null; presenter: boolean };
+  const [recentFrames, setRecentFrames] = useState<FrameChoice[]>((d.frameChoices as FrameChoice[]) ?? []);
+  useEffect(() => {
+    const loaderFrames = (d.frameChoices as FrameChoice[]) ?? [];
+    setRecentFrames((prev) => {
+      const seen = new Set(prev.map((f) => f.media));
+      const added = loaderFrames.filter((f) => !seen.has(f.media));
+      return added.length ? [...prev, ...added] : prev;
+    });
+  }, [d.frameChoices]);
+
   const takePhoto = (f: File | null | undefined) => {
     if (!f || !/^image\//.test(f.type)) return;
     try {
@@ -3160,6 +3282,13 @@ export default function WebStudio() {
     if (!r || r.jobId !== combineJobId) return;
     if (r.media) {
       setCombineUrl(r.media);
+      // #36: show it in the bottom reuse strip immediately (prepend, dedupe by
+      // URL) so the fresh shot is a reusable, scrollable placeholder preview
+      // without waiting for a reload.
+      const freshMedia = r.media;
+      setRecentFrames((prev) => prev.some((f) => f.media === freshMedia)
+        ? prev
+        : [{ id: r.jobId || freshMedia, media: freshMedia, avatarId: avatarId || null, productTitle: noProduct ? null : (productTitle.trim() || null), presenter: !!avatarId }, ...prev]);
       // A frame edit stays a "your own shot" (so it keeps the true-edit path);
       // a real combine/retry becomes a generated frame (the re-compose path).
       if (frameEditModeRef.current) frameEditModeRef.current = false;
@@ -3177,6 +3306,19 @@ export default function WebStudio() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFetcher.data, combining, combineJobId]);
+  // The previewed words (lyrics / script / commercial plan) came back — show them
+  // for the merchant to read, edit or Randomize. Ignore a stale result for a style
+  // they've since switched away from.
+  useEffect(() => {
+    const r = previewFetcher.data;
+    if (!r) return;
+    if (r.error) { setCombineErr(r.error); return; }
+    if (r.previewStyle && r.previewStyle !== videoStyle) return;
+    if (r.previewStyle === "commercial" && r.plan) { setPlanDraft(r.plan); setWordsReady(true); }
+    else if (typeof r.lyrics === "string") { setWordsDraft(r.lyrics); setWordsReady(true); }
+    else if (typeof r.script === "string") { setWordsDraft(r.script); setWordsReady(true); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewFetcher.data]);
   const avatarThumb = d.cast.find((c) => c.id === avatarId)?.img || "";
   const productThumb = uploadPreview || imageUrl || "";
   // A marketing product is really present only when the source whose input is
@@ -3220,7 +3362,7 @@ export default function WebStudio() {
   // return — defeating collapse-by-default. Keyed on avatarVideoHub so it only
   // fires on the true→false leave, never mid-pick (the old slam-shut bug).
   useEffect(() => {
-    if (!avatarVideoHub) { setHubPick(null); setNoProduct(false); }
+    if (!avatarVideoHub) { setHubPick(null); setNoProduct(false); setVideoStyle(null); setWordsDraft(""); setPlanDraft(null); setWordsReady(false); }
   }, [avatarVideoHub]);
   useEffect(() => { if (hubPick === "setting") { const id = window.setTimeout(recomputeSetMore, 60); return () => window.clearTimeout(id); } }, [hubPick, recomputeSetMore]);
   // Realistic is the ONLY avatar style, so pre-select it on entering the avatar
@@ -3490,7 +3632,7 @@ export default function WebStudio() {
   const casualVideoMake = casualVideo && !isVideoEdit;
   // A Captions edit needs text to burn in; trim/speed validate ranges server-side.
   const videoEditReady = isVideoEdit && (videoEditOp !== "caption" || !!videoCaption.trim());
-  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !noProduct && !productTitle.trim()) || (noProduct && !direction.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !noProduct && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !noProduct && !productTitle.trim()) || (noProduct && !direction.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !noProduct && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || (avatarVideoHub && (!videoStyle || !wordsReady)) || shortBy > 0;
   // The three casual "make" flows with a Pro/Ultra quality choice show TWO generate
   // CTAs (one per model) at the bottom instead of a buried toggle + one button.
   const showTwoCta = isCreate || isFaceless || (casualVideoMake && engineApplies);
@@ -3721,6 +3863,14 @@ export default function WebStudio() {
             {/* Real content type always rides along — the pipelines route on it
                 and videoCapabilityFor() gates avatar/highlight as plain "video". */}
             <input type="hidden" name="contentType" value={noProduct ? "talkinghead" : contentType} />
+            {/* STEP-2 video STYLE + the merchant-approved words — the server maps
+                videoStyle → the pipeline (anthem=jingle · talking=avatar ·
+                commercial=commercial), OVERRIDING the step-1 contentType, and
+                feeds the approved copy to that generator verbatim (no re-write). */}
+            {avatarVideoHub && videoStyle && <input type="hidden" name="videoStyle" value={videoStyle} />}
+            {avatarVideoHub && videoStyle === "anthem" && <input type="hidden" name="approvedLyrics" value={wordsDraft} />}
+            {avatarVideoHub && videoStyle === "talking" && <input type="hidden" name="approvedScript" value={wordsDraft} />}
+            {avatarVideoHub && videoStyle === "commercial" && planDraft && <input type="hidden" name="approvedPlan" value={JSON.stringify(planDraft)} />}
             {contentType === "jingle" && (
               <p className="ws-note"><Ico n="music" /> <b>Anthem</b>{t(" — we write your product an earworm: the iconic, stuck-in-your-head jingle of a 2000s commercial, and your presenter ")}<i>{t("sings it on camera")}</i>{t(", lipsynced. Pick your singer first — photoreal, or redrawn in a cartoon style below. No singer = the song plays over a cinematic product shot.")}</p>
             )}
@@ -4349,18 +4499,18 @@ export default function WebStudio() {
                     <button type="button" className="ws-reuse-upload" onClick={() => frameUploadRef.current?.click()} disabled={busy || frameUploading}>
                       <Ico n="upload" size={19} /> {frameUploading ? t("Uploading…") : t("Upload a photo")}
                     </button>
-                    {d.frameChoices.length > 0 && (
+                    {recentFrames.length > 0 && (
                       <div className="ws-reuse-nav">
-                        {d.frameChoices.length > 6 && <button type="button" className="ws-reuse-arrow" onClick={() => scrollReuse(-1)} aria-label={t("Scroll left")}>‹</button>}
+                        {recentFrames.length > 6 && <button type="button" className="ws-reuse-arrow" onClick={() => scrollReuse(-1)} aria-label={t("Scroll left")}>‹</button>}
                         <div className="ws-reuse-strip" ref={reuseStripRef} aria-label={t("Reuse a past shot")}>
-                          {d.frameChoices.map((f) => (
+                          {recentFrames.map((f) => (
                             <button type="button" key={f.id} className={`ws-reuse-thumb${combineUrl === f.media ? " sel" : ""}`} title={f.presenter ? t("Reuse this shot") : t("Use this image")} onClick={() => useFrame(f)} disabled={busy || frameUploading}>
                               {/* A 404'd past shot would show a broken tile — hide the whole thumb instead. */}
                               <img src={f.media} alt="" loading="lazy" onError={(e) => { const b = e.currentTarget.closest(".ws-reuse-thumb") as HTMLElement | null; if (b) b.style.display = "none"; }} />
                             </button>
                           ))}
                         </div>
-                        {d.frameChoices.length > 6 && <button type="button" className="ws-reuse-arrow" onClick={() => scrollReuse(1)} aria-label={t("Scroll right")}>›</button>}
+                        {recentFrames.length > 6 && <button type="button" className="ws-reuse-arrow" onClick={() => scrollReuse(1)} aria-label={t("Scroll right")}>›</button>}
                       </div>
                     )}
                   </div>
@@ -4740,7 +4890,7 @@ export default function WebStudio() {
                 label below already names the box, and dropping it lifts the
                 box to sit right under the Stage. */}
             {!(((isCreate || isEdit) && casual) || isMusic || isFaceless || (casual && tab === "video")) && (
-              <StepHead n={avatarVideoHub ? 2 : 3} title={isFaceless ? t("Your video") : isCreate || isMusic ? t("Describe it") : t("Direction & {verb}", { verb: t(verb).toLowerCase() })} hint={isFaceless ? t("what's it about?") : isCreate || isMusic ? t("the more detail, the better") : t("leave it to EasyMode, or steer it")} />
+              <StepHead n={avatarVideoHub ? 2 : 3} title={avatarVideoHub ? t("Make your video") : isFaceless ? t("Your video") : isCreate || isMusic ? t("Describe it") : t("Direction & {verb}", { verb: t(verb).toLowerCase() })} hint={avatarVideoHub ? t("pick a style — preview the words free before you spend") : isFaceless ? t("what's it about?") : isCreate || isMusic ? t("the more detail, the better") : t("leave it to EasyMode, or steer it")} />
             )}
             {/* Product NAME — for an avatar video it lives HERE (with the video),
                 because it drives the SCRIPT, not the combine (owner-noted). The
@@ -4915,6 +5065,93 @@ export default function WebStudio() {
                     </>
                   )}
                 </>
+              ) : avatarVideoHub ? (
+              <>
+                {/* ── STEP 2 — one combined shot → choose the video it becomes ──
+                    Three outputs, each previewed as WORDS (free) before the
+                    150-token render. Matches the step-1 hero-card quality. */}
+                <div className="ws-vstyle">
+                  {/* "Your shot" — the combine that feeds every style (tap to enlarge). */}
+                  <button type="button" className="ws-vstyle-shot" disabled={!combineUrl}
+                    aria-label={combineUrl ? t("Your combined shot — tap to enlarge") : t("Combine a shot above first")}
+                    onClick={() => { if (combineUrl) setExpandImg(combineUrl); }}>
+                    <span className="ws-vstyle-shotimg" style={combineUrl ? { backgroundImage: `url(${combineUrl})` } : undefined}>
+                      {!combineUrl && <span className="ws-vstyle-shotph" aria-hidden="true"><Ico n="sparkle" size={20} /></span>}
+                    </span>
+                    <b>{t("Your shot")}</b>
+                    <span>{combineUrl ? t("Ready to roll") : t("Combine above")}</span>
+                  </button>
+                  <span className="ws-vstyle-arrow" aria-hidden="true">→</span>
+                  <div className="ws-vstyle-cards">
+                    {([
+                      { key: "anthem", name: t("Anthem"), sub: t("A sung jingle"), icon: "music", grad: "linear-gradient(150deg,#F7C6E0,#C9477E)" },
+                      { key: "talking", name: t("Talking"), sub: t("Speaks to camera"), icon: "mic", grad: "linear-gradient(150deg,#13A95E,#0A5F38)" },
+                      { key: "commercial", name: t("Commercial"), sub: t("A cinematic story"), icon: "film", grad: "linear-gradient(150deg,#6EA8FF,#274B8F)" },
+                    ] as { key: "anthem" | "talking" | "commercial"; name: string; sub: string; icon: string; grad: string }[]).map((s) => (
+                      <button type="button" key={s.key} className={`ws-stylecard ws-vcard${videoStyle === s.key ? " open ws-isgood" : ""}`}
+                        aria-pressed={videoStyle === s.key} onClick={() => pickVideoStyle(s.key)}>
+                        <span className="ws-stylecard-img" style={{ background: s.grad, border: 0 }}>
+                          <span className="ws-vcard-ico" aria-hidden="true"><Ico n={s.icon} size={24} /></span>
+                          {videoStyle === s.key && <span className="ws-stylecard-badge" aria-hidden="true">✓</span>}
+                        </span>
+                        <b>{s.name}</b>
+                        <span>{s.sub}</span>
+                        <span className="ws-vcard-cost">{t("{n} tok", { n: cost })}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Setup for the chosen style — optional prompt → Write (free) →
+                    read / edit / Randomize → Generate (shared bar below, 150 tok). */}
+                {videoStyle && (
+                  <div className="ws-vsetup">
+                    {/* No-product already has its "What do they say?" topic box above
+                        (same `direction` state) — don't ask twice. With a product,
+                        this per-style prompt is the only direction input. */}
+                    {!noProduct && (
+                      <>
+                        <div className="ws-lbl">
+                          <span>{videoStyle === "anthem" ? t("What's the jingle about?") : videoStyle === "talking" ? t("What do they talk about?") : t("Any direction for the story?")}</span>
+                          <span className="ws-opt">{t("optional")}</span>
+                        </div>
+                        <input className="wb-in" value={direction} maxLength={300}
+                          placeholder={videoStyle === "anthem" ? t("a catchy hook, the vibe, a line to sing…") : videoStyle === "talking" ? t("your service · a special offer · your website…") : t("the mood, a story beat, who it's for…")}
+                          onChange={(e) => setDirection(e.target.value)} />
+                      </>
+                    )}
+                    <div className="ws-vsetup-row">
+                      <button type="button" className="ws-vwrite" disabled={previewBusy} onClick={writeWords}>
+                        {previewBusy ? <>… {t("Writing")}</> : wordsReady ? <>↻ {t("Randomize")}</> : <>✨ {t("Write it — free")}</>}
+                      </button>
+                      {wordsReady && <span className="ws-vsetup-free">{t("Free — read it before you spend")}</span>}
+                    </div>
+                    {wordsReady && videoStyle !== "commercial" && (
+                      <>
+                        <div className="ws-lbl" style={{ marginTop: 10 }}><span>{videoStyle === "anthem" ? t("The lyrics") : t("The script")}</span> <span className="ws-opt">{t("edit freely")}</span></div>
+                        <textarea className="wb-in ws-ta ws-vwords" value={wordsDraft} maxLength={videoStyle === "anthem" ? 400 : 300} rows={videoStyle === "anthem" ? 6 : 4} onChange={(e) => setWordsDraft(e.target.value)} />
+                        <p className="ws-vwords-note">{videoStyle === "anthem" ? t("These exact words get sung.") : t("This is what your presenter says, word for word.")}</p>
+                      </>
+                    )}
+                    {wordsReady && videoStyle === "commercial" && planDraft && (
+                      <div className="ws-vplan">
+                        <div className="ws-lbl" style={{ marginTop: 10 }}><span>{t("The voiceover")}</span> <span className="ws-opt">{t("one line per scene — edit freely")}</span></div>
+                        {planDraft.beats.map((b, i) => (
+                          <div className="ws-vplan-beat" key={i}>
+                            <span className="ws-vplan-n" aria-hidden="true">{i + 1}</span>
+                            <input className="wb-in" value={b.narration} maxLength={140}
+                              onChange={(e) => setPlanDraft((p) => (p ? { ...p, beats: p.beats.map((x, j) => (j === i ? { ...x, narration: e.target.value } : x)) } : p))} />
+                          </div>
+                        ))}
+                        <div className="ws-lbl" style={{ marginTop: 8 }}><span>{t("Closing tagline")}</span></div>
+                        <input className="wb-in" value={planDraft.tagline} maxLength={60}
+                          onChange={(e) => setPlanDraft((p) => (p ? { ...p, tagline: e.target.value } : p))} />
+                        <p className="ws-vwords-note">{t("Spoken over each cinematic scene.")}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
               ) : noProduct ? null : (
               <>
                 <div className="ws-lbl"><span>{t("Prompting")}</span>
@@ -5971,6 +6208,39 @@ const WS_STYLE = `
 /* the equation "+" under the card: presenter + product -> combined output */
 .ws-stylecombo-plus{width:30px;height:30px;border-radius:50%;background:var(--gold-deep,#B08526);color:#fff;font-size:21px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 4px 12px rgba(20,32,26,.3)}
 @media(max-width:420px){.ws-stylecard{width:84px}}
+/* STEP-2 video-STYLE picker: "Your shot" hero → three output cards → setup. */
+.ws-vstyle{display:flex;align-items:center;gap:10px;margin:2px 0 4px}
+.ws-vstyle-shot{flex:0 0 auto;width:96px;display:flex;flex-direction:column;align-items:stretch;gap:6px;text-align:center;padding:7px 7px 9px;border-radius:14px;border:1.5px solid #9CCBB1;background:var(--card,#FDFCF7);box-shadow:0 6px 16px rgba(20,32,26,.16);cursor:zoom-in;font:inherit}
+.ws-vstyle-shot:disabled{cursor:default;opacity:.65;box-shadow:none}
+.ws-vstyle-shotimg{position:relative;width:100%;aspect-ratio:1/1;border-radius:11px;background:#EAF6EF center/cover no-repeat;border:1.5px solid #9CCBB1;display:grid;place-items:center}
+.ws-vstyle-shotph{color:#9CCBB1}
+.ws-vstyle-shot b{font-size:12px;font-weight:800;color:var(--ink,#14201A);line-height:1.1}
+.ws-vstyle-shot>span:last-child{font-size:10px;color:var(--ink2,#4A554E);line-height:1.2}
+.ws-vstyle-arrow{flex:0 0 auto;color:#9CCBB1;font-size:22px;font-weight:800;line-height:1}
+.ws-vstyle-cards{flex:1 1 auto;min-width:0;display:flex;gap:9px}
+.ws-vstyle-cards .ws-stylecard{width:auto;flex:1 1 0;min-width:0;padding:7px 7px 9px}
+.ws-vcard .ws-stylecard-img{aspect-ratio:1/1}
+.ws-vcard-ico{color:#fff;filter:drop-shadow(0 1px 3px rgba(0,0,0,.3))}
+.ws-vcard-cost{display:inline-block;margin:1px auto 0;font-size:10px;font-weight:800;color:var(--green,#0C7A46);background:#EAF6EF;border-radius:999px;padding:1px 9px}
+.ws-vcard.open .ws-vcard-cost{background:#fff}
+@media(max-width:560px){
+  .ws-vstyle{flex-wrap:wrap;gap:8px}
+  .ws-vstyle-arrow{display:none}
+  .ws-vstyle-shot{width:100%;flex-direction:row;align-items:center;text-align:left;gap:10px}
+  .ws-vstyle-shot .ws-vstyle-shotimg{width:48px;height:48px;flex:0 0 auto}
+  .ws-vstyle-cards{width:100%;gap:7px}
+}
+.ws-vsetup{margin-top:13px}
+.ws-vsetup-row{display:flex;align-items:center;gap:11px;margin-top:9px;flex-wrap:wrap}
+.ws-vwrite{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:11px;padding:10px 17px;font:inherit;font-weight:800;font-size:13px;cursor:pointer;background:linear-gradient(158deg,#F0D98A,#D3A63A);color:#3A2C06;box-shadow:0 3px 9px rgba(20,32,26,.16);transition:filter .12s,transform .12s}
+.ws-vwrite:hover:not(:disabled){filter:brightness(1.04);transform:translateY(-1px)}
+.ws-vwrite:disabled{opacity:.6;cursor:default}
+.ws-vsetup-free{font-size:11.5px;color:var(--ink2,#4A554E)}
+.ws-vwords{min-height:84px}
+.ws-vwords-note{margin:5px 2px 0;font-size:11px;color:var(--ink2,#4A554E)}
+.ws-vplan-beat{display:flex;align-items:center;gap:8px;margin-top:6px}
+.ws-vplan-n{flex:0 0 auto;width:20px;height:20px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center}
+.ws-vplan-beat .wb-in{flex:1 1 auto;min-width:0}
 /* min-width:0 is load-bearing: a grid item defaults to min-width:auto, so the
    nowrap <b> product name sets a large min-content width and 1fr can't shrink →
    horizontal overflow + the ellipsis never engages. min-width:0 lets it clip. */

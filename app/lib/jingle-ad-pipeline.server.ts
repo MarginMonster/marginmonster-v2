@@ -243,6 +243,49 @@ async function padToVertical(srcUrl: string): Promise<string | null> {
   }
 }
 
+// Shared jingle-lyrics prompt — one source of truth for both the gen below and
+// the free "preview the lyrics" step (previewJingleLyrics). Pure string builder.
+type JingleLyricInputs = { serviceMode?: boolean; productDescription?: string; direction?: string };
+function jingleLyricsPrompt(p: JingleLyricInputs, productRef: string, debranded: boolean, voiceTone: string | undefined, contentLang: string | null | undefined): string {
+  return [
+    `You write short advertising JINGLES — early-2000s TV-commercial energy, the kind that gets stuck in your head.${langDirective(contentLang)}`,
+    p.serviceMode
+      ? `The offer (a service, not a physical product): "${productRef}". Sing the RESULT the customer gets.`
+      : `The product: "${productRef}".`,
+    debranded ? `Sing about what the item IS and how owning it feels. Do not name any brand, franchise or character.` : "",
+    p.productDescription ? `Context: ${p.productDescription.slice(0, 250)}` : "",
+    voiceTone ? `Brand voice/tone: ${voiceTone}.` : "",
+    p.direction ? `Merchant direction (follow it): ${p.direction}` : "",
+    ``,
+    `Rules: 5 or 6 SHORT lines, 45 words maximum total. Simple rhymes, a`,
+    `bouncy singable rhythm, and the product name sung at least twice. The`,
+    `last line is a tagline that lands like a hook. No emoji, no hashtags,`,
+    `no quotes, no stage directions — output ONLY the lyric lines, one per line.`,
+    ``,
+    `Name it the way a customer would say it out loud — a short natural name`,
+    `for what it IS. Never sing a fragment of the listing title, a SKU, a size`,
+    `or count, or a region/language tag ("S-Chinese", "2-Pack", "OEM", "V2").`,
+    `If the title has no sayable name in it, sing the plain product category.`,
+    ``,
+    CLAIMS_GUARDRAIL,
+  ].filter(Boolean).join("\n");
+}
+
+/** Generate jingle lyrics as TEXT for the step-2 preview (approve/randomize before
+ *  paying for the video). Free — the merchant's token wallet is NOT charged; the
+ *  approved lyrics ride back into generateJingleAd via resume.lyrics. */
+export async function previewJingleLyrics(params: { shopId: string; brandProfile: { voiceJson: string }; productTitle: string; productDescription?: string; direction?: string; serviceMode?: boolean }): Promise<{ lyrics: string }> {
+  const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
+  const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
+  let lyrics = await withBrandFallback(async (productRef, debranded) =>
+    ((await anthropicText(jingleLyricsPrompt(params, productRef, debranded, voiceJson.tone, contentLang), { model: "claude-sonnet-5", maxTokens: 250 })) || "")
+      .replace(/["“”]+/g, "").split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 6).join("\n").trim(),
+    params.productTitle, "jingle:lyrics", params.productDescription);
+  lyrics = capScript(lyrics, 48);
+  lyrics = dropOrgEndorsementPossessive(lyrics);
+  return { lyrics };
+}
+
 export async function generateJingleAd(params: JingleAdParams): Promise<string> {
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
   const resume = params.resume || {};
@@ -258,42 +301,11 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   let lyrics = resume.lyrics || "";
   const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
   if (!lyrics) {
-    const buildLyricsPrompt = (productRef: string, debranded: boolean) => [
-      `You write short advertising JINGLES — early-2000s TV-commercial energy, the kind that gets stuck in your head.${langDirective(contentLang)}`,
-      params.serviceMode
-        ? `The offer (a service, not a physical product): "${productRef}". Sing the RESULT the customer gets.`
-        : `The product: "${productRef}".`,
-      debranded ? `Sing about what the item IS and how owning it feels. Do not name any brand, franchise or character.` : "",
-      params.productDescription ? `Context: ${params.productDescription.slice(0, 250)}` : "",
-      voiceJson.tone ? `Brand voice/tone: ${voiceJson.tone}.` : "",
-      params.direction ? `Merchant direction (follow it): ${params.direction}` : "",
-      ``,
-      `Rules: 5 or 6 SHORT lines, 45 words maximum total. Simple rhymes, a`,
-      `bouncy singable rhythm, and the product name sung at least twice. The`,
-      `last line is a tagline that lands like a hook. No emoji, no hashtags,`,
-      `no quotes, no stage directions — output ONLY the lyric lines, one per line.`,
-      ``,
-      // Listing titles are stuffed with SKUs, pack sizes and region tags, and a
-      // jingle that chants one of those fragments sounds broken ("GROW,
-      // S-CHINESE"). Sing what a person would actually call the thing.
-      `Name it the way a customer would say it out loud — a short natural name`,
-      `for what it IS. Never sing a fragment of the listing title, a SKU, a size`,
-      `or count, or a region/language tag ("S-Chinese", "2-Pack", "OEM", "V2").`,
-      `If the title has no sayable name in it, sing the plain product category.`,
-      // FTC (16 CFR 465): a jingle is sung AND burned as on-screen karaoke
-      // captions — public ad copy the merchant is liable for. The same grounding
-      // guardrail the UGC/commercial/cartoon scripts carry; jingle was the lone
-      // generator missing it. A sung lyric has no room to invent a review, a
-      // rating, scarcity, an endorsement or a guarantee any more than a headline.
-      ``,
-      CLAIMS_GUARDRAIL,
-    ]
-      .filter(Boolean)
-      .join("\n");
-    // A branded title can be refused outright — retry, then drop the brand and
-    // sing the category. See ad-copy-retry.server.ts.
+    // Prompt lives in the module-level jingleLyricsPrompt (shared with the step-2
+    // previewJingleLyrics). A branded title can be refused outright — retry, then
+    // drop the brand and sing the category. See ad-copy-retry.server.ts.
     lyrics = await withBrandFallback(async (productRef, debranded) =>
-      ((await anthropicText(buildLyricsPrompt(productRef, debranded), { model: "claude-sonnet-5", maxTokens: 250 })) || "")
+      ((await anthropicText(jingleLyricsPrompt(params, productRef, debranded, voiceJson.tone, contentLang), { model: "claude-sonnet-5", maxTokens: 250 })) || "")
         .replace(/["“”]+/g, "")
         .split("\n")
         .map((l) => l.trim())
