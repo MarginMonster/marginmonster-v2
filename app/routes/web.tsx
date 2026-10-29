@@ -1568,7 +1568,10 @@ const CSS = `
  * doesn't go ragged. Cooking tiles and posters below match it exactly. */
 .wb-asset video,.wb-asset img{width:100%;aspect-ratio:4/5;height:auto;object-fit:cover;display:block;background:#0b0f0d;}
 /* Cooking tiles — live render placeholders with shimmer + ETA. */
-.wb-cookimg{position:relative;aspect-ratio:4/5;height:auto;background-color:#101612;background-size:cover;background-position:center;display:grid;place-items:center;overflow:hidden;}
+/* No product photo → the card is the EasyMode green canvas (gold rosette over
+ * green, on-brand) rather than a flat near-black tile. A product photo still
+ * overrides background-image inline (with its own dark legibility overlay). */
+.wb-cookimg{position:relative;aspect-ratio:4/5;height:auto;background-color:#0A5F38;background-image:linear-gradient(160deg,#0E8A4F,#0A5F38 55%,#084A2C);background-size:cover;background-position:center;display:grid;place-items:center;overflow:hidden;}
 .wb-cookimg::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 32%,rgba(255,255,255,.13) 50%,transparent 68%);animation:wbShimmer 1.7s linear infinite;}
 @keyframes wbShimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 .wb-bufwrap{position:relative;z-index:1;display:grid;place-items:center;gap:9px;}
@@ -1578,7 +1581,7 @@ const CSS = `
  * is built from overlapping petal loops, and that's what gives it the guilloche
  * shimmer. Nothing approximates it, so we reuse the real curve. */
 .wb-bufwrap::before{content:"";position:absolute;width:210px;height:210px;border-radius:50%;pointer-events:none;
-  background:radial-gradient(circle,rgba(6,10,8,.88),rgba(6,10,8,.66) 34%,rgba(6,10,8,.3) 54%,transparent 72%);}
+  background:radial-gradient(circle,rgba(6,42,24,.6),rgba(6,42,24,.34) 36%,rgba(6,42,24,.15) 56%,transparent 74%);}
 .wb-spin{position:relative;z-index:1;width:104px;height:104px;display:block;
   background:url(/gstyle-rosette.svg) center / contain no-repeat;
   animation:wbRot 13s linear infinite;
