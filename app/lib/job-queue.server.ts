@@ -509,7 +509,7 @@ async function runJob(
           const { assertCapability } = await import("./capabilities.server");
           assertCapability(shop?.activePlan, "image");
         }
-        await createImage({
+        const createdAssetId = await createImage({
           shopId,
           prompt: payload.createPrompt as string,
           style: typeof payload.createStyle === "string" ? payload.createStyle : undefined,
@@ -517,6 +517,28 @@ async function runJob(
           aspectRatio: typeof payload.createAspect === "string" ? payload.createAspect : undefined,
           permissive: payload.createPermissive === true,
         });
+        // "Create a background": remember the generated scene as a reusable
+        // Backdrop (shows as a "Created" card, feeds the backdrop-compose combine).
+        // Non-fatal — the image still generated even if the bookkeeping fails.
+        if (payload.saveAsBackdrop && typeof createdAssetId === "string") {
+          try {
+            const a = await db.asset.findUnique({ where: { id: createdAssetId }, select: { bodyJson: true } });
+            let u = "";
+            try { const b = JSON.parse(a?.bodyJson || "{}") as { imageUrl?: string; url?: string }; u = b.imageUrl || b.url || ""; } catch { /* */ }
+            const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+            const abs = u.startsWith("/") && base ? base + u : u;
+            if (/^https?:\/\//.test(abs)) {
+              await db.backdrop.create({ data: { shopId, url: abs, label: "Created" } });
+              const extra = await db.backdrop.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, skip: 12, select: { id: true } });
+              if (extra.length) await db.backdrop.deleteMany({ where: { id: { in: extra.map((e) => e.id) } } });
+            }
+            // Keep the raw scene out of the creator gallery — it's a backdrop, not
+            // a deliverable the merchant asked to post.
+            await tagAssetSection(createdAssetId, "backdrop");
+          } catch (e) {
+            console.error("[createBackdrop] backdrop save failed (non-fatal):", e instanceof Error ? e.message : String(e));
+          }
+        }
         break;
       }
       // CARTOON COMBINE → the styled "presenter holding product" keyframe. Runs

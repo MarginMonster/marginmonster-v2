@@ -808,7 +808,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // combine, they identify the subject from the photo/clip, NOT a typed name
   // (that's collected later, for the video script). Excluding them fixes the
   // "give the product a name" wall the OG avatar flow hit on upload-then-edit.
-  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "music" && intent !== "faceless" && intent !== "combine" && intent !== "frameEdit" && intent !== "videoedit" && !(casualMode && intent === "video")) return json({ error: tr(lang, "Give the product a name.") });
+  if (!productTitle && intent !== "edit" && intent !== "create" && intent !== "createBackdrop" && intent !== "music" && intent !== "faceless" && intent !== "combine" && intent !== "frameEdit" && intent !== "videoedit" && !(casualMode && intent === "video")) return json({ error: tr(lang, "Give the product a name.") });
   if (urlField && !/^https?:\/\//.test(urlField)) return json({ error: tr(lang, "The product image must be a full https:// URL.") });
 
   // Uploaded photo beats the URL field — not everyone has a hosted image.
@@ -1366,6 +1366,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
       backed(createEach, createFromExtra);
       return json({ ok: true, queued: "image", count: 1 });
+    }
+    if (intent === "createBackdrop") {
+      // "Create a background" (no-product Combine): text-to-image a real-world
+      // PLACE with nobody in it, saved as a reusable Backdrop so the merchant
+      // sees + confirms the scene BEFORE the combine. Cheap createImage path +
+      // the same spend/refund discipline; the worker (saveAsBackdrop) records the
+      // Backdrop + hides the raw scene from the creator gallery when the gen lands.
+      assertCapability(shop.activePlan, "image");
+      const desc = trimToWord((form.get("createPrompt") as string) || (direction || ""), 300);
+      if (!desc) return json({ backdropError: tr(lang, "Describe the background you want to create.") });
+      const bgModel = normalizeCreateModelKey("");
+      const bgPrompt = `A photorealistic empty real-world location with nobody in it: ${desc}. Wide establishing shot, natural lighting, no people, no readable text, with open space in the foreground for a person to stand.`;
+      const bgEach = TOKEN_COST.createImage + createModelSurcharge(bgModel);
+      const bgFromExtra = (await spendTokens(shop.id, bgEach)).fromExtra;
+      charged(bgEach, bgFromExtra);
+      const bgJobId = await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
+        createImage: true, saveAsBackdrop: true,
+        createPrompt: bgPrompt, createModel: bgModel, createAspect: "9:16",
+        productTitle: desc.slice(0, 60),
+        prePaid: true, chargedTokens: bgEach, chargedFromExtra: bgFromExtra,
+      });
+      backed(bgEach, bgFromExtra);
+      return json({ ok: true, bgJobId });
     }
     if (intent === "music") {
       // Creator "Make music" — text-to-song. No product, no photo.
@@ -2203,6 +2226,25 @@ export default function WebStudio() {
     fd.set("backgroundPhoto", file);
     backdropFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
   };
+  // "Create a background": generate a place from a description, saved as a reusable
+  // Backdrop, auto-selected once it lands — a card the merchant confirms BEFORE the
+  // combine. The worker records the Backdrop (saveAsBackdrop); poll the loader for it.
+  const bgRev = useRevalidator();
+  const [bgGenerating, setBgGenerating] = useState(false);
+  const bgGenStartRef = useRef(0);
+  const bgKnownIdsRef = useRef<Set<string>>(new Set());
+  const createBackground = () => {
+    const desc = (combineScene || "").trim();
+    if (!desc) { setCombineErr(t("Describe the background you want to create first.")); return; }
+    bgKnownIdsRef.current = new Set(backdrops.map((b) => b.id));
+    bgGenStartRef.current = Date.now();
+    setBgGenerating(true);
+    setCombineErr(null);
+    const fd = new FormData();
+    fd.set("intent", "createBackdrop");
+    fd.set("createPrompt", desc);
+    backdropFetcher.submit(fd, { method: "post" });
+  };
   // Has the user EXPLICITLY picked a style yet (Realistic or a cartoon style)?
   // Starts false so the style card reads "Pick a style" with a needs-selection
   // glow — a required field, enforced at combine + generate.
@@ -2985,8 +3027,43 @@ export default function WebStudio() {
     } else if (bd.backdropError) {
       setCombineErr(bd.backdropError);
       setBgUploading(false);
+      setBgGenerating(false);
     }
   }, [backdropFetcher.data]);
+  // While a background is generating, poll the loader for the new Backdrop the
+  // worker saves on completion. Times out so the spinner can't hang forever.
+  useEffect(() => {
+    if (!bgGenerating) return;
+    const iv = window.setInterval(() => {
+      if (Date.now() - bgGenStartRef.current > 120000) {
+        setBgGenerating(false);
+        setCombineErr(t("That background is taking a while — check back in a moment, or try again."));
+        window.clearInterval(iv);
+        return;
+      }
+      if (bgRev.state === "idle") bgRev.revalidate();
+    }, 3500);
+    return () => window.clearInterval(iv);
+  }, [bgGenerating, bgRev, t]);
+  // Keep local backdrops in sync with the loader (newest additions merge in), and
+  // when a generated background lands, auto-select it so it shows for confirmation.
+  useEffect(() => {
+    const loaderBds = d.backdrops ?? [];
+    setBackdrops((prev) => {
+      const ids = new Set(prev.map((b) => b.id));
+      const added = loaderBds.filter((b) => !ids.has(b.id));
+      return added.length ? [...added, ...prev] : prev;
+    });
+    if (bgGenerating) {
+      const fresh = loaderBds.find((b) => !bgKnownIdsRef.current.has(b.id));
+      if (fresh) {
+        setBgGenerating(false);
+        setSettingKey(`bg:${fresh.id}`);
+        setCombineScene("");
+        setHubPick("setting");
+      }
+    }
+  }, [d.backdrops, bgGenerating]);
   // The uploaded frame came back — use it as the seed, or surface an error.
   useEffect(() => {
     const data = frameFetcher.data;
@@ -3923,7 +4000,7 @@ export default function WebStudio() {
                         const cur = selBd
                           ? { key: settingKey, name: selBd.label || t("Uploaded"), img: selBd.url as string | null, tint: "#EAF6EF", emoji: "" }
                           : settingKey === "custom"
-                          ? { key: "custom", name: combineScene.trim() ? (combineScene.trim().length > 16 ? combineScene.trim().slice(0, 15) + "…" : combineScene.trim()) : t("Custom"), img: (bgPreview as string | null), tint: "#EAF6EF", emoji: "📍" }
+                          ? { key: "custom", name: combineScene.trim() ? (combineScene.trim().length > 16 ? combineScene.trim().slice(0, 15) + "…" : combineScene.trim()) : t("Create a background"), img: (bgPreview as string | null), tint: "#EAF6EF", emoji: "🎨" }
                           : (() => { const s = COMBINE_SETTINGS.find((x) => x.key === settingKey) || COMBINE_SETTINGS[0]; return { key: s.key, name: s.name, img: (s.key !== "auto" ? `/style-tiles/${s.key}.jpg?v=1` : null) as string | null, tint: s.tint, emoji: s.emoji }; })();
                         return (
                           <button type="button" className={`ws-stylecard ws-isgood${hubPick === "setting" ? " open" : ""}`}
@@ -3984,16 +4061,36 @@ export default function WebStudio() {
                           </button>
                           {s.key === "auto" && (
                             <>
+                              {/* Create a background — describe a place, generate it,
+                                  confirm the card, then combine. */}
                               <button type="button" className={`ws-setcard${settingKey === "custom" ? " sel" : ""}`}
                                 onClick={() => { if (settingKey !== "custom") clearCombineFrame(); setSettingKey("custom"); }}>
                                 <span className="ws-setcard-img" style={{ backgroundColor: "#EAF6EF" }}>
-                                  <span className="ws-setcard-emoji">✏️</span>
+                                  <span className="ws-setcard-emoji">🎨</span>
                                   {settingKey === "custom" && <span className="ws-chk">✓</span>}
                                 </span>
-                                <b>{t("Custom Background")}</b>
+                                <b>{t("Create a background")}</b>
                               </button>
-                              {/* SAVED backdrops — uploaded once, reusable. A div (not a
-                                  button) so the ✕ delete can nest without invalid markup. */}
+                              {/* Upload a photo — a direct file picker (no dropdown),
+                                  saved as a reusable card. */}
+                              <button type="button" className="ws-setcard" onClick={() => bgUploadRef.current?.click()}>
+                                <span className="ws-setcard-img" style={{ backgroundColor: "#EAF6EF" }}>
+                                  <span className="ws-setcard-emoji">📷</span>
+                                </span>
+                                <b>{t("Upload a photo")}</b>
+                              </button>
+                              {/* Generating / uploading — a loading card that becomes the
+                                  backdrop card once it lands. */}
+                              {(bgGenerating || bgUploading) && (
+                                <div className="ws-setcard ws-setcard-saved" aria-label={bgGenerating ? t("Creating your background…") : t("Uploading your photo…")}>
+                                  <span className="ws-setcard-img" style={{ backgroundColor: "#EAF6EF", display: "grid", placeItems: "center" }}>
+                                    <span className="ws-setcard-spin" aria-hidden="true" />
+                                  </span>
+                                  <b>{bgGenerating ? t("Creating…") : t("Uploading…")}</b>
+                                </div>
+                              )}
+                              {/* SAVED backdrops — uploaded or created once, reusable. A div
+                                  (not a button) so the ✕ delete can nest without invalid markup. */}
                               {backdrops.map((bd) => (
                                 <div key={bd.id} role="button" tabIndex={0}
                                   className={`ws-setcard ws-setcard-saved${settingKey === `bg:${bd.id}` ? " sel" : ""}`}
@@ -4026,25 +4123,19 @@ export default function WebStudio() {
                           placeholder={t("Describe the background — e.g. a sunny rooftop café")}
                           value={combineScene}
                           onChange={(e) => setCombineScene(e.target.value)} />
-                        <div className="ws-custombg-or"><span>{t("or")}</span></div>
-                        {bgUploading ? (
-                          <div className="ws-bgpreview">
-                            {bgPreview && <img src={bgPreview} alt={t("Your backdrop photo")} />}
-                            <div className="ws-bgpreview-cap">{t("Uploading your photo…")}</div>
-                          </div>
-                        ) : (
-                          <button type="button" className="ws-bgupload" onClick={() => bgUploadRef.current?.click()}>
-                            <span className="ws-bgupload-ico" aria-hidden="true">📷</span>
-                            <span className="ws-bgupload-txt">
-                              <b>{t("Upload a photo of the place")}</b>
-                              <small>{t("e.g. your storefront — saved so you can reuse it")}</small>
-                            </span>
-                          </button>
-                        )}
-                        <input ref={bgUploadRef} type="file" accept="image/jpeg,image/png,image/webp" hidden
-                          onChange={(e) => takeBgUpload(e.currentTarget.files?.[0])} />
+                        <button type="button" className="ws-bgcreate" disabled={bgGenerating || !combineScene.trim()}
+                          onClick={createBackground}>
+                          {bgGenerating
+                            ? t("Creating your background…")
+                            : t("✨ Create background · {n} tok", { n: d.costs.createImage })}
+                        </button>
+                        <div className="ws-bgcreate-hint">{t("We’ll make the scene so you can see it before you combine.")}</div>
                       </div>
                     )}
+                    {/* Mounted whenever the picker is open so the Upload card's file
+                        picker fires regardless of which sub-mode is showing. */}
+                    <input ref={bgUploadRef} type="file" accept="image/jpeg,image/png,image/webp" hidden
+                      onChange={(e) => takeBgUpload(e.currentTarget.files?.[0])} />
                   </div>
                 )}
                 {/* Presenter picker reveal — picking selects + plays the intro in
@@ -6203,6 +6294,12 @@ const WS_STYLE = `
 .ws-setcard-saved:focus-visible{border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.25)}
 .ws-setcard-x{position:absolute;top:6px;left:6px;width:22px;height:22px;border:none;border-radius:999px;background:rgba(20,32,26,.55);color:#fff;font-size:11px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
 .ws-setcard-x:hover{background:rgba(20,32,26,.8)}
+.ws-setcard-spin{width:26px;height:26px;border-radius:50%;border:3px solid #CDE7D8;border-top-color:var(--green,#0C7A46);animation:ws-bgspin .8s linear infinite}
+@keyframes ws-bgspin{to{transform:rotate(360deg)}}
+.ws-bgcreate{margin:2px;width:100%;padding:11px 12px;border:none;border-radius:12px;background:var(--green,#0C7A46);color:#fff;font-weight:800;font-size:13px;cursor:pointer;transition:background .14s,opacity .14s}
+.ws-bgcreate:hover:not(:disabled){background:#0a6b3d}
+.ws-bgcreate:disabled{opacity:.5;cursor:default}
+.ws-bgcreate-hint{margin:2px 2px 0;font-size:11px;color:#6B7A71;line-height:1.35}
 .ws-setcard b{font-size:12px;font-weight:700;color:var(--ink,#14201A);line-height:1.1;text-align:center}
 @media(max-width:620px){.ws-setcard{width:104px}}
 /* In the Creator Easel the content-type grid lives in a ~300px rail, so the
