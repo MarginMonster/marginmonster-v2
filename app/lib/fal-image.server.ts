@@ -43,12 +43,15 @@ export async function composeHoldingFrames(
   mode: "hold" | "wear" | "blank" | "showcase" | "backdrop" = "hold",
   scene?: string,
   scaleHint?: string,
-  continuity?: string
+  continuity?: string,
+  // Product modes (hold/showcase/wear): a real-place image to composite the
+  // presenter-holding-product IN FRONT of (the cartoon path's product+backdrop).
+  bgImageUrl?: string
 ): Promise<string[]> {
   if (!falImageEnabled()) throw new Error("FAL_KEY not set");
 
   // Worker-context path (campaign drips): no request deadline, poll up to 2 min.
-  const q = await submitCompose(portraitUrl, productImageUrl, productTitle, numImages, mode, scene, scaleHint, undefined, undefined, continuity);
+  const q = await submitCompose(portraitUrl, productImageUrl, productTitle, numImages, mode, scene, scaleHint, undefined, undefined, continuity, bgImageUrl);
   for (let i = 0; i < 48; i++) {
     await new Promise((r) => setTimeout(r, 2500));
     const p = await pollCompose(q.statusUrl, q.responseUrl);

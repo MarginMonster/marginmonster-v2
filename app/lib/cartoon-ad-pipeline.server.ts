@@ -752,15 +752,19 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
             // hint produced frames the cartoonize then dropped). Let the composer
             // place the product naturally; the vision gate + redraw handles any
             // miss. Retry once on an intermittent fal failure.
+            // Selected Custom Background → compose the presenter HOLDING the product
+            // in front of that real place (3rd image), then cartoonize the whole
+            // frame so the scene stylises with it. Else the presenter's own backdrop.
+            const prodBgUrl = params.noProductBgUrl && /^https?:\/\//.test(params.noProductBgUrl) ? params.noProductBgUrl : undefined;
             let frames: string[] = [];
             let lastErr: unknown;
             for (let attempt = 1; attempt <= 2 && !frames[0]; attempt++) {
               try {
-                frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, undefined, presenter.avatar.continuity);
+                frames = await composeHoldingFrames(portraitUrl, params.productImageUrl, params.productTitle, 1, "hold", params.direction, undefined, presenter.avatar.continuity, prodBgUrl);
               } catch (e) { lastErr = e; }
             }
             if (!frames[0] && lastErr) throw lastErr;
-            composeDbg = `frames=${frames.length} first=${frames[0] ? "y" : "n"}`;
+            composeDbg = `frames=${frames.length} first=${frames[0] ? "y" : "n"}${prodBgUrl ? " +bg" : ""}`;
             if (frames[0]) sourcePhotoUrl = frames[0];
           } catch (e) {
             composeDbg = "ERR:" + (e instanceof Error ? e.message : String(e)).slice(0, 180);
