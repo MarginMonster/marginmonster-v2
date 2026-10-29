@@ -212,6 +212,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     .filter((c) => c.status === "ready")
     .map((c) => ({ id: c.id, name: c.name, img: c.img, voiceId: c.voiceId || "", gender: c.gender }));
   const brandFaceId = shop.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
+  // Saved Custom Background photos (no-product Combine) — a real place uploaded
+  // once (a storefront) and reusable as "Uploaded" cards in the setting picker,
+  // newest first. The files live on the durable /uploads disk; these rows just
+  // remember the public URL + label.
+  const backdrops = await db.backdrop.findMany({
+    where: { shopId: shop.id },
+    orderBy: { createdAt: "desc" },
+    take: 12,
+    select: { id: true, url: true, label: true },
+  });
   // The merchant's own catalogue, mirrored by the importer. Present = the
   // Studio can offer a picker instead of asking for a link every single time.
   const [catalog, catalogCount, syncing, recentRows] = await Promise.all([
@@ -377,6 +387,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     caps: [...capabilitiesFor(shop.activePlan)] as string[],
     cast,
     brandFaceId,
+    backdrops,
     forgingAvatars,
     myPresenters,
     templates: AD_TEMPLATES.map((t) => ({ key: t.key, name: t.name, emoji: t.emoji, blurb: t.blurb, kind: t.kind })),
@@ -648,6 +659,47 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const voiceId = safeVoiceId((form.get("avatarVoice") as string) || "", row.gender === "f" ? "f" : "m");
     await db.customAvatar.update({ where: { id: row.id }, data: { voiceId } });
     return json({ avatarVoiceSet: row.name });
+  }
+
+  // Save an uploaded Custom Background photo (no-product Combine) so it becomes a
+  // reusable "Uploaded" card in the setting picker — uploaded ONCE, reused. Same
+  // upload discipline as every photo (image-only, 8 MB, served at /uploads/*).
+  // Lightweight + shop-scoped; runs before the brand-voice guard (saving a place
+  // photo needs no brand profile). Returns the row so the client shows+selects it.
+  if (intent === "saveBackdrop") {
+    const bgPhoto = form.get("backgroundPhoto");
+    if (!bgPhoto || typeof bgPhoto === "string" || bgPhoto.size === 0) return json({ backdropError: tr(lang, "Pick a photo of the place to upload.") });
+    if (!/^image\//.test(bgPhoto.type)) return json({ backdropError: tr(lang, "That file isn't an image — use a JPG, PNG or WebP.") });
+    if (bgPhoto.size > 8 * 1024 * 1024) return json({ backdropError: tr(lang, "Image too large — keep it under 8 MB.") });
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    if (!base) return json({ backdropError: tr(lang, "Photo uploads aren't configured on this server yet — describe the background instead.") });
+    const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
+    const ext = bgPhoto.type === "image/png" ? "png" : bgPhoto.type === "image/webp" ? "webp" : "jpg";
+    const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
+    fsMod.mkdirSync(dir, { recursive: true });
+    const name = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext as UploadExt);
+    fsMod.writeFileSync(pathMod.join(dir, name), Buffer.from(await bgPhoto.arrayBuffer()));
+    const url = `${base}/uploads/${name}`;
+    const row = await db.backdrop.create({ data: { shopId: shop.id, url, label: ((form.get("label") as string) || "").trim().slice(0, 24) || "Uploaded" } });
+    // Cap the saved set — keep the newest 12, delete older rows + their files.
+    const extra = await db.backdrop.findMany({ where: { shopId: shop.id }, orderBy: { createdAt: "desc" }, skip: 12, select: { id: true, url: true } });
+    if (extra.length) {
+      await db.backdrop.deleteMany({ where: { id: { in: extra.map((e) => e.id) } } });
+      for (const e of extra) { const f = e.url.split("/uploads/")[1]; if (f) { try { fsMod.unlinkSync(pathMod.join(dir, f)); } catch { /* non-fatal */ } } }
+    }
+    return json({ backdropSaved: { id: row.id, url: row.url, label: row.label } });
+  }
+
+  // Remove a saved backdrop (the ✕ on an Uploaded card) — the row + its file.
+  if (intent === "deleteBackdrop") {
+    const id = ((form.get("backdropId") as string) || "").trim();
+    const row = await db.backdrop.findFirst({ where: { id, shopId: shop.id } });
+    if (!row) return json({ backdropDeleted: id });
+    await db.backdrop.delete({ where: { id: row.id } });
+    const [fsMod, pathMod] = await Promise.all([import("node:fs"), import("node:path")]);
+    const f = row.url.split("/uploads/")[1];
+    if (f) { try { fsMod.unlinkSync(pathMod.join(process.cwd(), "data", "renders", "uploads", f)); } catch { /* non-fatal */ } }
+    return json({ backdropDeleted: row.id });
   }
 
   // The Creator section (casual mode) is its own entitlement — gate it here.
@@ -1109,19 +1161,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // can fetch it. Not productPhoto, so the top-of-action resolver never saw it.
       let backgroundImageUrl: string | undefined;
       if (noProductCombine) {
-        const bgPhoto = form.get("backgroundPhoto");
-        if (bgPhoto && typeof bgPhoto !== "string" && bgPhoto.size > 0) {
-          if (!/^image\//.test(bgPhoto.type)) return json({ error: tr(lang, "That backdrop file isn't an image — use a JPG, PNG or WebP.") });
-          if (bgPhoto.size > 8 * 1024 * 1024) return json({ error: tr(lang, "Backdrop image too large — keep it under 8 MB.") });
-          const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
-          const extB = bgPhoto.type === "image/png" ? "png" : bgPhoto.type === "image/webp" ? "webp" : "jpg";
-          const dirB = pathMod.join(process.cwd(), "data", "renders", "uploads");
-          fsMod.mkdirSync(dirB, { recursive: true });
-          const nameB = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), extB as UploadExt);
-          fsMod.writeFileSync(pathMod.join(dirB, nameB), Buffer.from(await bgPhoto.arrayBuffer()));
-          const baseB = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-          if (!baseB) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet — describe the background instead.") });
-          backgroundImageUrl = `${baseB}/uploads/${nameB}`;
+        const baseB = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+        // A SELECTED saved backdrop (an "Uploaded" card) is already persisted —
+        // reuse its URL, no re-upload. SSRF guard: only OUR OWN /uploads URLs may
+        // ride through to the worker's fetch, never an arbitrary host.
+        const picked = ((form.get("backdropUrl") as string) || "").trim();
+        if (picked && baseB && picked.startsWith(`${baseB}/uploads/`) && !picked.includes("..")) {
+          backgroundImageUrl = picked;
+        } else {
+          // Fresh file upload (fallback — the primary path saves via saveBackdrop).
+          const bgPhoto = form.get("backgroundPhoto");
+          if (bgPhoto && typeof bgPhoto !== "string" && bgPhoto.size > 0) {
+            if (!/^image\//.test(bgPhoto.type)) return json({ error: tr(lang, "That backdrop file isn't an image — use a JPG, PNG or WebP.") });
+            if (bgPhoto.size > 8 * 1024 * 1024) return json({ error: tr(lang, "Backdrop image too large — keep it under 8 MB.") });
+            const [fsMod, pathMod, crypto] = await Promise.all([import("node:fs"), import("node:path"), import("node:crypto")]);
+            const extB = bgPhoto.type === "image/png" ? "png" : bgPhoto.type === "image/webp" ? "webp" : "jpg";
+            const dirB = pathMod.join(process.cwd(), "data", "renders", "uploads");
+            fsMod.mkdirSync(dirB, { recursive: true });
+            const nameB = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), extB as UploadExt);
+            fsMod.writeFileSync(pathMod.join(dirB, nameB), Buffer.from(await bgPhoto.arrayBuffer()));
+            if (!baseB) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet — describe the background instead.") });
+            backgroundImageUrl = `${baseB}/uploads/${nameB}`;
+          }
         }
       }
       // The product NAME is for the video script, not the combine — the combine
@@ -2113,12 +2174,22 @@ export default function WebStudio() {
     const hidden = [...el.querySelectorAll(".ws-setcard")].filter((c) => c.getBoundingClientRect().left >= right - 12).length;
     setSetMore(hidden);
   }, []);
-  // CUSTOM BACKGROUND — UPLOADED BACKDROP PHOTO. A store owner photographs their
-  // storefront and the presenter is composed in front of it. Lives only in the
-  // "custom" setting; the File rides into the combine submit as backgroundPhoto.
+  // CUSTOM BACKGROUND — a real place the presenter is composed in front of. The
+  // merchant can DESCRIBE it, or UPLOAD a photo (their storefront) which is SAVED
+  // (saveBackdrop) and becomes a reusable "Uploaded" card — uploaded once, reused.
   const bgUploadRef = useRef<HTMLInputElement | null>(null);
   const [bgFile, setBgFile] = useState<File | null>(null);
   const [bgPreview, setBgPreview] = useState<string | null>(null);
+  const [bgUploading, setBgUploading] = useState(false);
+  // Saved backdrops (newest first) — seeded from the loader, grows as they upload.
+  const [backdrops, setBackdrops] = useState<Array<{ id: string; url: string; label: string }>>(d.backdrops ?? []);
+  const backdropFetcher = useFetcher<{ backdropSaved?: { id: string; url: string; label: string }; backdropError?: string; backdropDeleted?: string }>();
+  const clearBgUpload = () => {
+    setBgPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+    setBgFile(null);
+    if (bgUploadRef.current) bgUploadRef.current.value = "";
+  };
+  // Pick a place photo → upload + SAVE it right away, so it persists as a card.
   const takeBgUpload = (file?: File | null) => {
     if (!file) return;
     if (!/^image\//.test(file.type)) { setCombineErr(t("That file isn't an image — use a JPG, PNG or WebP.")); return; }
@@ -2126,11 +2197,11 @@ export default function WebStudio() {
     setBgPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
     setBgFile(file);
     setCombineErr(null);
-  };
-  const clearBgUpload = () => {
-    setBgPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
-    setBgFile(null);
-    if (bgUploadRef.current) bgUploadRef.current.value = "";
+    setBgUploading(true);
+    const fd = new FormData();
+    fd.set("intent", "saveBackdrop");
+    fd.set("backgroundPhoto", file);
+    backdropFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
   };
   // Has the user EXPLICITLY picked a style yet (Realistic or a cartoon style)?
   // Starts false so the style card reads "Pick a style" with a needs-selection
@@ -2803,9 +2874,14 @@ export default function WebStudio() {
       fd.set("noProductCombine", "1");
       fd.set("contentType", contentType === "cartoon" ? "cartoon" : "avatar");
       fd.delete("productPhoto");
-      // Custom Background photo upload → the presenter is composed in front of
-      // this uploaded place. State-held File (the input may remount empty).
-      if (settingKey === "custom" && bgFile) fd.set("backgroundPhoto", bgFile);
+      // Custom Background: a SELECTED saved backdrop reuses its URL (no re-upload);
+      // a fresh in-flight File is the fallback before saveBackdrop returns.
+      if (settingKey.startsWith("bg:")) {
+        const bd = backdrops.find((b) => `bg:${b.id}` === settingKey);
+        if (bd) fd.set("backdropUrl", bd.url);
+      } else if (settingKey === "custom" && bgFile) {
+        fd.set("backgroundPhoto", bgFile);
+      }
     }
     combineStartRef.current = Date.now();
     setCombineErr(null);
@@ -2876,6 +2952,41 @@ export default function WebStudio() {
   const clearCombineFrame = () => {
     setCombineUrl(null); setCombineGenerated(false); setCombineScene(""); setCombineEdit(""); setCombineErr(null); setSettingKey("auto"); clearBgUpload();
   };
+  // Select a SAVED backdrop as the setting (reuse — no re-upload). settingKey
+  // becomes "bg:<id>"; the combine sends its URL as backdropUrl.
+  const selectBackdrop = (id: string) => {
+    if (settingKey !== `bg:${id}`) clearCombineFrame();
+    setSettingKey(`bg:${id}`);
+    setCombineScene("");
+    setHubPick(null);
+  };
+  // Remove a saved backdrop (the ✕). Optimistic locally + tell the server.
+  const removeBackdrop = (id: string) => {
+    setBackdrops((prev) => prev.filter((b) => b.id !== id));
+    setSettingKey((k) => (k === `bg:${id}` ? "auto" : k));
+    const fd = new FormData();
+    fd.set("intent", "deleteBackdrop");
+    fd.set("backdropId", id);
+    backdropFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
+  };
+  // Saved backdrop came back → add the "Uploaded" card and auto-select it, so
+  // the uploaded photo appears as a reusable thumbnail (no re-upload next time).
+  useEffect(() => {
+    const bd = backdropFetcher.data;
+    if (!bd) return;
+    if (bd.backdropSaved) {
+      const saved = bd.backdropSaved;
+      setBackdrops((prev) => [saved, ...prev.filter((b) => b.id !== saved.id)]);
+      setSettingKey(`bg:${saved.id}`);
+      setCombineScene("");
+      clearBgUpload();
+      setBgUploading(false);
+      setHubPick("setting");
+    } else if (bd.backdropError) {
+      setCombineErr(bd.backdropError);
+      setBgUploading(false);
+    }
+  }, [backdropFetcher.data]);
   // The uploaded frame came back — use it as the seed, or surface an error.
   useEffect(() => {
     const data = frameFetcher.data;
@@ -3808,15 +3919,18 @@ export default function WebStudio() {
                       <span className="ws-stylecombo-plus" aria-hidden="true">+</span>
                       {/* SETTING hero — the picked scene, directly under the style. */}
                       {(() => {
-                        const cur = settingKey === "custom"
-                          ? { key: "custom", name: combineScene.trim() ? (combineScene.trim().length > 16 ? combineScene.trim().slice(0, 15) + "…" : combineScene.trim()) : t("Custom"), scene: combineScene, emoji: "📍", tint: "#EAF6EF" }
-                          : (COMBINE_SETTINGS.find((s) => s.key === settingKey) || COMBINE_SETTINGS[0]);
+                        const selBd = settingKey.startsWith("bg:") ? backdrops.find((b) => `bg:${b.id}` === settingKey) : null;
+                        const cur = selBd
+                          ? { key: settingKey, name: selBd.label || t("Uploaded"), img: selBd.url as string | null, tint: "#EAF6EF", emoji: "" }
+                          : settingKey === "custom"
+                          ? { key: "custom", name: combineScene.trim() ? (combineScene.trim().length > 16 ? combineScene.trim().slice(0, 15) + "…" : combineScene.trim()) : t("Custom"), img: (bgPreview as string | null), tint: "#EAF6EF", emoji: "📍" }
+                          : (() => { const s = COMBINE_SETTINGS.find((x) => x.key === settingKey) || COMBINE_SETTINGS[0]; return { key: s.key, name: s.name, img: (s.key !== "auto" ? `/style-tiles/${s.key}.jpg?v=1` : null) as string | null, tint: s.tint, emoji: s.emoji }; })();
                         return (
                           <button type="button" className={`ws-stylecard ws-isgood${hubPick === "setting" ? " open" : ""}`}
                             aria-expanded={hubPick === "setting"} aria-label={t("Change the setting")}
                             onClick={() => setHubPick((p) => (p === "setting" ? null : "setting"))}>
-                            <span className="ws-stylecard-img" style={{ backgroundColor: cur.tint, backgroundImage: cur.key !== "auto" && cur.key !== "custom" ? `url(/style-tiles/${cur.key}.jpg?v=1)` : undefined }}>
-                              {(cur.key === "auto" || cur.key === "custom") && <span className="ws-setemoji" aria-hidden="true">{cur.emoji}</span>}
+                            <span className="ws-stylecard-img" style={{ backgroundColor: cur.tint, backgroundImage: cur.img ? `url(${cur.img})` : undefined }}>
+                              {!cur.img && (cur.key === "auto" || cur.key === "custom") && <span className="ws-setemoji" aria-hidden="true">{cur.emoji}</span>}
                               <span className="ws-stylecard-badge" aria-hidden="true">✎</span>
                             </span>
                             <b>{t(cur.name)}</b>
@@ -3869,14 +3983,32 @@ export default function WebStudio() {
                             <b>{t(s.name)}</b>
                           </button>
                           {s.key === "auto" && (
-                            <button type="button" className={`ws-setcard${settingKey === "custom" ? " sel" : ""}`}
-                              onClick={() => { if (settingKey !== "custom") clearCombineFrame(); setSettingKey("custom"); }}>
-                              <span className="ws-setcard-img" style={{ backgroundColor: "#EAF6EF" }}>
-                                <span className="ws-setcard-emoji">✏️</span>
-                                {settingKey === "custom" && <span className="ws-chk">✓</span>}
-                              </span>
-                              <b>{t("Custom Background")}</b>
-                            </button>
+                            <>
+                              <button type="button" className={`ws-setcard${settingKey === "custom" ? " sel" : ""}`}
+                                onClick={() => { if (settingKey !== "custom") clearCombineFrame(); setSettingKey("custom"); }}>
+                                <span className="ws-setcard-img" style={{ backgroundColor: "#EAF6EF" }}>
+                                  <span className="ws-setcard-emoji">✏️</span>
+                                  {settingKey === "custom" && <span className="ws-chk">✓</span>}
+                                </span>
+                                <b>{t("Custom Background")}</b>
+                              </button>
+                              {/* SAVED backdrops — uploaded once, reusable. A div (not a
+                                  button) so the ✕ delete can nest without invalid markup. */}
+                              {backdrops.map((bd) => (
+                                <div key={bd.id} role="button" tabIndex={0}
+                                  className={`ws-setcard ws-setcard-saved${settingKey === `bg:${bd.id}` ? " sel" : ""}`}
+                                  aria-label={bd.label || t("Uploaded")}
+                                  onClick={() => selectBackdrop(bd.id)}
+                                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectBackdrop(bd.id); } }}>
+                                  <span className="ws-setcard-img" style={{ backgroundColor: "#EAF6EF", backgroundImage: `url(${bd.url})` }}>
+                                    {settingKey === `bg:${bd.id}` && <span className="ws-chk">✓</span>}
+                                    <button type="button" className="ws-setcard-x" aria-label={t("Remove this backdrop")}
+                                      onClick={(e) => { e.stopPropagation(); removeBackdrop(bd.id); }}>✕</button>
+                                  </span>
+                                  <b>{bd.label || t("Uploaded")}</b>
+                                </div>
+                              ))}
+                            </>
                           )}
                         </Fragment>
                       ))}
@@ -3895,18 +4027,17 @@ export default function WebStudio() {
                           value={combineScene}
                           onChange={(e) => setCombineScene(e.target.value)} />
                         <div className="ws-custombg-or"><span>{t("or")}</span></div>
-                        {bgPreview ? (
+                        {bgUploading ? (
                           <div className="ws-bgpreview">
-                            <img src={bgPreview} alt={t("Your backdrop photo")} />
-                            <div className="ws-bgpreview-cap">{t("Your backdrop — the presenter will stand in front of this")}</div>
-                            <button type="button" className="ws-bgpreview-x" aria-label={t("Remove backdrop photo")} onClick={clearBgUpload}>✕</button>
+                            {bgPreview && <img src={bgPreview} alt={t("Your backdrop photo")} />}
+                            <div className="ws-bgpreview-cap">{t("Uploading your photo…")}</div>
                           </div>
                         ) : (
                           <button type="button" className="ws-bgupload" onClick={() => bgUploadRef.current?.click()}>
                             <span className="ws-bgupload-ico" aria-hidden="true">📷</span>
                             <span className="ws-bgupload-txt">
                               <b>{t("Upload a photo of the place")}</b>
-                              <small>{t("e.g. your storefront — the presenter speaks in front of it")}</small>
+                              <small>{t("e.g. your storefront — saved so you can reuse it")}</small>
                             </span>
                           </button>
                         )}
@@ -6067,6 +6198,11 @@ const WS_STYLE = `
 .ws-setcard.sel{border-color:var(--green,#0C7A46);background:#EAF6EF}
 .ws-setcard-img{position:relative;width:100%;aspect-ratio:1/1;border-radius:10px;background-size:cover;background-position:center;display:grid;place-items:center}
 .ws-setcard-emoji{font-size:26px;line-height:1}
+/* Saved "Uploaded" backdrop cards — div acting as a card so the ✕ can nest. */
+.ws-setcard-saved{outline:none}
+.ws-setcard-saved:focus-visible{border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.25)}
+.ws-setcard-x{position:absolute;top:6px;left:6px;width:22px;height:22px;border:none;border-radius:999px;background:rgba(20,32,26,.55);color:#fff;font-size:11px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.ws-setcard-x:hover{background:rgba(20,32,26,.8)}
 .ws-setcard b{font-size:12px;font-weight:700;color:var(--ink,#14201A);line-height:1.1;text-align:center}
 @media(max-width:620px){.ws-setcard{width:104px}}
 /* In the Creator Easel the content-type grid lives in a ~300px rail, so the

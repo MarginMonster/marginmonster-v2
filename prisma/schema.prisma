@@ -169,6 +169,23 @@ model Shop {
   buddyMessages      BuddyMessage[]
   buddyFacts         BuddyFact[]
   buddyThreads       BuddyThread[]
+  backdrops          Backdrop[]
+}
+
+/// A merchant's saved CUSTOM BACKGROUND photo — a real place (their storefront,
+/// counter, a room) uploaded in the no-product Combine so the presenter can be
+/// composed standing in front of it. Saved per shop so it is uploaded ONCE and
+/// reused as an "Uploaded" card in the setting picker. The file itself lives on
+/// the durable /uploads disk; this row just remembers the public URL + a label.
+model Backdrop {
+  id        String   @id @default(cuid())
+  shopId    String
+  url       String // public /uploads/... URL on the SHOPIFY_APP_URL host
+  label     String   @default("Uploaded")
+  createdAt DateTime @default(now())
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, createdAt])
 }
 
 /// Helpurr conversation memory — one row per message so the chat survives
