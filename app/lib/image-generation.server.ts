@@ -2503,7 +2503,7 @@ export async function runPresenterHold(opts: {
     mode: "hold" | "wear" | "blank" | "showcase" = opts.wear ? "wear" : "hold",
     aspect?: number
   ): Promise<string | undefined> => {
-    const q = await submitCompose(opts.portraitUrl, opts.productImageUrl, opts.productTitle, 1, mode, opts.scene, hint, aspect, plan || undefined, opts.continuity);
+    const q = await submitCompose(opts.portraitUrl, opts.productImageUrl, opts.productTitle, 1, mode, opts.scene, hint, aspect, plan || undefined, opts.continuity, opts.bgImageUrl);
     // 3 minutes, not 90 seconds: a 4K compose regularly outlives the old
     // window, and an expired poll reads as "compose returned nothing" — the
     // render finishes anyway, billed, and thrown away.
@@ -4856,6 +4856,9 @@ export async function generateImageAd(
             // Combine frames are merchant-reviewed → skip the redundant retry so
             // the compose stays one call, matching TOKEN_COST.combine's sizing.
             presenterOnly,
+            // Selected Custom Background → the presenter holds the product IN FRONT
+            // of this real place (a 3rd compose image), instead of a text scene.
+            ...(noProductBgUrl && /^https?:\/\//.test(noProductBgUrl) ? { bgImageUrl: noProductBgUrl } : {}),
           });
           if (!held.pass) artLog("image-ad", `presenter hold: ${held.reason}${held.retried ? " (after a retry)" : ""}`);
           // A presenter holding something that merely RESEMBLES the product is

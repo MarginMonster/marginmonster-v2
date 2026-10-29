@@ -91,7 +91,12 @@ export async function submitCompose(
    *  needs and not enough for a character — a golden-green ogre came back
    *  holding products with ordinary human hands, because nothing said his skin
    *  continues past his chin. Empty for the human cast. */
-  continuity?: string
+  continuity?: string,
+  /** Product modes (hold/showcase/wear) only: a real-place image the presenter
+   *  (holding the product) is composited IN FRONT of — sent as a 3rd reference
+   *  and kept unchanged. The no-product "backdrop" mode passes the place in the
+   *  productImageUrl slot instead, so this stays undefined there. */
+  bgImageUrl?: string
 ): Promise<{ statusUrl: string; responseUrl: string }> {
   if (!falImageEnabled()) throw new Error("FAL_KEY not set");
   // Product-integrity guard — the #1 compose failure is the product getting
@@ -157,7 +162,15 @@ export async function submitCompose(
   };
   const s = looksLikeScene(raw) ? raw : "";
   const styleNote = !s && raw ? ` Overall look the merchant asked for: ${raw}.` : "";
-  const bg = s ? `Setting: ${s}, with natural matching lighting.` : `Keep the same background and lighting as the first image.${styleNote}`;
+  // PRODUCT modes (hold/showcase/wear) with a selected Custom Background IMAGE:
+  // the presenter holds the product IN FRONT of that real place, sent as the THIRD
+  // reference. Override the text-scene clause with "keep the 3rd image unchanged"
+  // (same faithfulness rule as the no-product "backdrop" mode). Normal product ads
+  // (no bg image) and the no-product modes keep the text-scene behaviour below.
+  const useBgImage = !!bgImageUrl && (mode === "hold" || mode === "wear" || mode === "showcase");
+  const bg = useBgImage
+    ? `Place them in front of the real location shown in the THIRD image. KEEP THAT BACKGROUND PHOTO COMPLETELY UNCHANGED — do not redraw, repaint, restyle or regenerate it; preserve every detail — and match the lighting of the person and the ${productTitle || "product"} to it so they look genuinely photographed there.`
+    : s ? `Setting: ${s}, with natural matching lighting.` : `Keep the same background and lighting as the first image.${styleNote}`;
   // OUTFIT: locked to the portrait by default, but a described change ("green
   // shirt", "put them in a blazer") can't land if the outfit is nailed shut —
   // so when the merchant gives ANY direction, relax it to a SOFT lock that keeps
@@ -344,7 +357,11 @@ export async function submitCompose(
       // product on purpose (the drawn approximation is the paste's camouflage);
       // backdrop hands over the merchant's UPLOADED PLACE photo as that second
       // image — so both ride the same [portrait, second] slot.
-      image_urls: mode === "blank" ? [portraitUrl] : [portraitUrl, productImageUrl],
+      image_urls: mode === "blank"
+        ? [portraitUrl]
+        : (useBgImage && bgImageUrl)
+        ? [portraitUrl, productImageUrl, bgImageUrl]
+        : [portraitUrl, productImageUrl],
       image_size: "portrait_4_3",
       // Fine-print experiment: more output pixels = more room for small
       // lettering to resolve instead of scramble. Opt-in per environment

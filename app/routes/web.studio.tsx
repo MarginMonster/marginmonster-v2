@@ -1169,8 +1169,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // composed standing in front of it. Same upload discipline as every other
       // photo: image-only, 8 MB cap, served publicly at /uploads/* so the worker
       // can fetch it. Not productPhoto, so the top-of-action resolver never saw it.
+      // Resolve the selected Custom Background in BOTH modes — with a product the
+      // presenter holds it IN FRONT of the scene, without one they talk to camera
+      // in it. (Was gated to no-product, so a product combine silently lost the
+      // scene and rendered on the presenter's plain backdrop.)
       let backgroundImageUrl: string | undefined;
-      if (noProductCombine) {
+      {
         const baseB = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
         // A SELECTED saved backdrop is already persisted — reuse its URL, no
         // re-upload. SSRF guard: only OUR OWN hosted images may ride through to
@@ -1226,7 +1230,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(noProductCombine ? { noProductCompose: true } : {}),
         // Custom Background upload → drop the presenter into this uploaded place
         // photo (the "backdrop" compose) instead of the text-only scene.
-        ...(noProductCombine && backgroundImageUrl ? { noProductBgUrl: backgroundImageUrl } : {}),
+        ...(backgroundImageUrl ? { noProductBgUrl: backgroundImageUrl } : {}),
         // CARTOON combine → the frame the merchant approves must BE the cartoon
         // look, so run the cartoon keyframe (compose → cartoonize in the chosen
         // style → product-in-hand gate) instead of the photoreal compose; the
@@ -2940,18 +2944,20 @@ export default function WebStudio() {
     // REAL style — the form's contentType is overridden to "talkinghead" for the
     // video SCRIPT, but the combine needs "avatar"/"cartoon" to pick realistic vs
     // cartoon — and drop any product photo so none rides along.
+    // Custom Background: a SELECTED saved backdrop reuses its URL (no re-upload);
+    // a fresh in-flight File is the fallback before saveBackdrop returns. Applies
+    // in BOTH modes — with a product the presenter holds it IN FRONT of the scene,
+    // without one they talk to camera in it.
+    if (settingKey.startsWith("bg:")) {
+      const bd = backdrops.find((b) => `bg:${b.id}` === settingKey);
+      if (bd) fd.set("backdropUrl", bd.url);
+    } else if (settingKey === "custom" && bgFile) {
+      fd.set("backgroundPhoto", bgFile);
+    }
     if (noProduct) {
       fd.set("noProductCombine", "1");
       fd.set("contentType", contentType === "cartoon" ? "cartoon" : "avatar");
       fd.delete("productPhoto");
-      // Custom Background: a SELECTED saved backdrop reuses its URL (no re-upload);
-      // a fresh in-flight File is the fallback before saveBackdrop returns.
-      if (settingKey.startsWith("bg:")) {
-        const bd = backdrops.find((b) => `bg:${b.id}` === settingKey);
-        if (bd) fd.set("backdropUrl", bd.url);
-      } else if (settingKey === "custom" && bgFile) {
-        fd.set("backgroundPhoto", bgFile);
-      }
     }
     combineStartRef.current = Date.now();
     setCombineErr(null);
