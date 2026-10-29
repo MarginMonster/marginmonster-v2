@@ -2226,6 +2226,15 @@ export default function WebStudio() {
   // Inline rename of a saved backdrop card (the ✎).
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  // Arm-to-confirm delete: first ✕ tap arms (slides out a red "Delete"), second
+  // confirms — no accidental perma-deletes. Auto-disarms after a few seconds.
+  const [armedDeleteId, setArmedDeleteId] = useState<string | null>(null);
+  const disarmTimerRef = useRef<number | null>(null);
+  const armDelete = (id: string) => {
+    setArmedDeleteId(id);
+    if (disarmTimerRef.current) window.clearTimeout(disarmTimerRef.current);
+    disarmTimerRef.current = window.setTimeout(() => setArmedDeleteId(null), 3500);
+  };
   const startRename = (bd: { id: string; label: string }) => { setRenamingId(bd.id); setRenameDraft(bd.label || ""); };
   const commitRename = () => {
     const id = renamingId;
@@ -3031,6 +3040,7 @@ export default function WebStudio() {
   // Select a SAVED backdrop as the setting (reuse — no re-upload). settingKey
   // becomes "bg:<id>"; the combine sends its URL as backdropUrl.
   const selectBackdrop = (id: string) => {
+    setArmedDeleteId(null);
     if (settingKey !== `bg:${id}`) clearCombineFrame();
     setSettingKey(`bg:${id}`);
     setCombineScene("");
@@ -4133,8 +4143,11 @@ export default function WebStudio() {
                                   onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && renamingId !== bd.id) { e.preventDefault(); selectBackdrop(bd.id); } }}>
                                   <span className="ws-setcard-img" style={{ backgroundColor: "#EAF6EF", backgroundImage: `url(${bd.url})` }}>
                                     {settingKey === `bg:${bd.id}` && <span className="ws-chk">✓</span>}
-                                    <button type="button" className="ws-setcard-x" aria-label={t("Remove this backdrop")}
-                                      onClick={(e) => { e.stopPropagation(); removeBackdrop(bd.id); }}>✕</button>
+                                    <button type="button" className={`ws-setcard-x${armedDeleteId === bd.id ? " armed" : ""}`}
+                                      aria-label={armedDeleteId === bd.id ? t("Confirm delete") : t("Remove this backdrop")}
+                                      onClick={(e) => { e.stopPropagation(); if (armedDeleteId === bd.id) { removeBackdrop(bd.id); setArmedDeleteId(null); } else { armDelete(bd.id); } }}>
+                                      {armedDeleteId === bd.id ? t("Delete") : "✕"}
+                                    </button>
                                   </span>
                                   {renamingId === bd.id ? (
                                     <input className="ws-setcard-rename" autoFocus value={renameDraft} maxLength={24}
@@ -6343,8 +6356,11 @@ const WS_STYLE = `
 /* Saved "Uploaded" backdrop cards — div acting as a card so the ✕ can nest. */
 .ws-setcard-saved{outline:none}
 .ws-setcard-saved:focus-visible{border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.25)}
-.ws-setcard-x{position:absolute;top:6px;left:6px;width:22px;height:22px;border:none;border-radius:999px;background:rgba(20,32,26,.55);color:#fff;font-size:11px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
+/* Arm-to-confirm delete: the ✕ slides out to a red "Delete" on first tap. */
+.ws-setcard-x{position:absolute;top:6px;left:6px;width:22px;height:22px;border:none;border-radius:999px;background:rgba(20,32,26,.55);color:#fff;font-size:11px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;overflow:hidden;white-space:nowrap;transition:width .17s ease,background .14s}
 .ws-setcard-x:hover{background:rgba(20,32,26,.8)}
+.ws-setcard-x.armed{width:58px;background:var(--danger,#D4553A);font-size:10px;font-weight:800;letter-spacing:.02em}
+.ws-setcard-x.armed:hover{background:#c0462d}
 /* Rename a saved backdrop — a small ✎ at the thumbnail's bottom-right. */
 /* Rename lives BY THE NAME now (owner), not on the thumbnail — a subtle inline ✎. */
 .ws-setcard-namerow{display:flex;align-items:center;justify-content:center;gap:4px}
@@ -6353,9 +6369,10 @@ const WS_STYLE = `
 .ws-setcard-ren:hover{color:var(--green,#0C7A46);background:rgba(12,122,70,.1)}
 .ws-setcard-rename{width:100%;margin-top:2px;padding:3px 6px;border:1.5px solid var(--green,#0C7A46);border-radius:7px;font-size:12px;font-weight:700;color:var(--ink,#14201A);text-align:center;font-family:inherit}
 /* Loading = the brand rosette, spinning (matches the Make/Combine buffers). */
-/* Loading = the app-standard ring (matches .ws-forge-spin) — the rosette mask
-   rendered as a blurry blob at this size. Clean green ring on the card. */
-.ws-setcard-spin{width:28px;height:28px;border-radius:50%;border:3px solid rgba(18,168,94,.25);border-top-color:var(--green2,#12A85E);animation:wsforgespin .85s linear infinite}
+/* Loading = the brand green ROSETTE, spinning — big enough to read as the rosette
+   (the small solid MASK was a blurry blob; the generic ring read too plain). Uses
+   the real green-cut SVG as a crisp image, filling most of the card thumbnail. */
+.ws-setcard-spin{width:62px;height:62px;background:url(/gstyle-rosette-green.svg) center/contain no-repeat;animation:wsrosespin 2.8s linear infinite}
 /* Create-a-background CTA: a compact "send"-style pill to the RIGHT of the
    describe box, carrying the spinning gold rosette — the brand's CTA signature. */
 .ws-custombg-row{display:flex;gap:8px;align-items:stretch}
