@@ -347,12 +347,21 @@ export async function submitCompose(
         `${integrity}${relight}${noSourceText}${textRule} ${samePerson} ${bg}` +
         `${camera.trim()} ` +
         `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
+  // When a Custom Background IMAGE is the 3rd reference, LEAD the whole prompt with
+  // a hard "keep that photo unchanged" lock (same strength as the no-product
+  // backdrop mode). Buried mid-prompt behind the product clauses it was ignored and
+  // the model repainted the merchant's scene; up front it carries real weight.
+  const bgLockLead = (useBgImage && bgImageUrl)
+    ? `CRITICAL — the THIRD image is the real background photograph: keep it COMPLETELY UNCHANGED. Do NOT redraw, repaint, restyle, reimagine or regenerate the background; preserve its exact composition, every object, surface, sign, colour, texture and its real lighting, pixel-for-pixel behind the subject. Composite the person (holding the product) into THAT exact photograph, standing in its foreground, relit only so they sit in it naturally. ` +
+      `Now, the shot: `
+    : "";
+  const finalPrompt = bgLockLead + prompt;
   const composeRes = composeResolution();
   const submit = await fetch(`https://queue.fal.run/${composeModel()}`, {
     method: "POST",
     headers: { ...auth(), "Content-Type": "application/json" },
     body: JSON.stringify({
-      prompt,
+      prompt: finalPrompt,
       // Only blank mode withholds the second image. Showcase hands over the
       // product on purpose (the drawn approximation is the paste's camouflage);
       // backdrop hands over the merchant's UPLOADED PLACE photo as that second
