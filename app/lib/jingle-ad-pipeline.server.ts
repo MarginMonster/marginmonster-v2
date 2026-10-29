@@ -97,6 +97,7 @@ interface JingleAdParams {
   chargedFromExtra?: number;
   direction?: string; // merchant's custom prompt
   serviceMode?: boolean;
+  captions?: boolean; // burn the sung lyrics on-screen (default true)
   origin?: string;
   jobId?: string;
   resume?: {
@@ -741,7 +742,8 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       talkingPath: animPath,
       audioPath: songPath,
       productImagePath,
-      script: captionFeed, // karaoke-style captions — only the sung lines
+      // "" = no burned captions (merchant turned the captions toggle off).
+      script: params.captions === false ? "" : captionFeed, // karaoke-style captions — only the sung lines
       outPath,
       lipSynced: !!talkingUrl, // omni bakes the sung audio in; kling loops under the song
       productCutAt: heldProduct ? "end" : "mid",

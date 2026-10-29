@@ -978,6 +978,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const approvedLyrics = videoStyle === "anthem" ? (((form.get("approvedLyrics") as string) || "").trim() || undefined) : undefined;
       const approvedScript = videoStyle === "talking" ? (((form.get("approvedScript") as string) || "").trim() || undefined) : undefined;
       const approvedPlan = videoStyle === "commercial" ? (((form.get("approvedPlan") as string) || "").trim() || undefined) : undefined;
+      // Captions toggle — default ON; only "0" turns the burned-in captions off.
+      const captions = form.get("captions") !== "0";
       // Creator has NO presenter picker — casual video is always the cheap
       // no-presenter path. Forcing avatarId off in casual also CLOSES an exploit:
       // a crafted casual request carrying avatarId would otherwise run the
@@ -1071,7 +1073,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           serviceMode: service, scene,
           // Step-2 approved copy (only the chosen style's field is set) → the
           // generator renders these words verbatim instead of writing its own.
-          approvedLyrics, approvedScript, approvedPlan,
+          approvedLyrics, approvedScript, approvedPlan, captions,
           videoEngine: effectiveEngine, videoAspect, videoDurationSec, commercial, breakout, chargedTokens: each, chargedFromExtra: perPieceFromExtra + (i < rem ? 1 : 0), prePaid: true, initiator: "web",
         }, burstRunAt(i));
         backed(each, perPieceFromExtra + (i < rem ? 1 : 0));
@@ -2405,6 +2407,7 @@ export default function WebStudio() {
   const [wordsDraft, setWordsDraft] = useState("");            // editable lyrics OR script
   const [planDraft, setPlanDraft] = useState<CommPlan | null>(null); // editable commercial plan
   const [wordsReady, setWordsReady] = useState(false);          // words written → Generate unlocks
+  const [captionsOn, setCaptionsOn] = useState(true);           // burn on-screen captions into the video
   const previewFetcher = useFetcher<{ previewStyle?: "anthem" | "talking" | "commercial"; lyrics?: string; script?: string; plan?: CommPlan; error?: string }>();
   const previewBusy = previewFetcher.state !== "idle";
   // Picking a style wipes any words from another format (lyrics ≠ script ≠ plan).
@@ -3868,6 +3871,7 @@ export default function WebStudio() {
                 commercial=commercial), OVERRIDING the step-1 contentType, and
                 feeds the approved copy to that generator verbatim (no re-write). */}
             {avatarVideoHub && videoStyle && <input type="hidden" name="videoStyle" value={videoStyle} />}
+            {avatarVideoHub && <input type="hidden" name="captions" value={captionsOn ? "1" : "0"} />}
             {avatarVideoHub && videoStyle === "anthem" && <input type="hidden" name="approvedLyrics" value={wordsDraft} />}
             {avatarVideoHub && videoStyle === "talking" && <input type="hidden" name="approvedScript" value={wordsDraft} />}
             {avatarVideoHub && videoStyle === "commercial" && planDraft && <input type="hidden" name="approvedPlan" value={JSON.stringify(planDraft)} />}
@@ -5106,52 +5110,78 @@ export default function WebStudio() {
                   </div>
                 </div>
 
-                {/* Setup for the chosen style — optional prompt → Write (free) →
-                    read / edit / Randomize → Generate (shared bar below, 150 tok). */}
+                {/* Setup for the chosen style. Two clean states so the optional
+                    THEME box and the GENERATED words never show at once (that was
+                    the "do I paste the lyrics back up?" confusion): first you
+                    (optionally) steer + Write; then you only see the editable
+                    result + Rewrite / Change-the-theme. */}
                 {videoStyle && (
                   <div className="ws-vsetup">
-                    {/* No-product already has its "What do they say?" topic box above
-                        (same `direction` state) — don't ask twice. With a product,
-                        this per-style prompt is the only direction input. */}
-                    {!noProduct && (
+                    {!wordsReady ? (
+                      /* ── STEER (optional) → WRITE ── */
                       <>
-                        <div className="ws-lbl">
-                          <span>{videoStyle === "anthem" ? t("What's the jingle about?") : videoStyle === "talking" ? t("What do they talk about?") : t("Any direction for the story?")}</span>
-                          <span className="ws-opt">{t("optional")}</span>
+                        {/* No-product already has its "What do they say?" topic box
+                            above (same `direction`) — don't ask twice. */}
+                        {!noProduct && (
+                          <>
+                            <div className="ws-lbl">
+                              <span>{videoStyle === "anthem" ? t("Want it to mention anything?") : videoStyle === "talking" ? t("Anything specific to say?") : t("Any direction for the story?")}</span>
+                              <span className="ws-opt">{t("optional")}</span>
+                            </div>
+                            <input className="wb-in" value={direction} maxLength={300}
+                              placeholder={videoStyle === "anthem" ? t("a line, a theme, an offer… or leave blank and we'll write it") : videoStyle === "talking" ? t("a special, your website… or leave blank and we'll write it") : t("the mood, who it's for… or leave blank and we'll write it")}
+                              onChange={(e) => setDirection(e.target.value)} />
+                          </>
+                        )}
+                        <div className="ws-vsetup-row">
+                          <button type="button" className="ws-vwrite" disabled={previewBusy} onClick={writeWords}>
+                            {previewBusy ? <>… {t("Writing")}</> : videoStyle === "anthem" ? <>✨ {t("Write the jingle — free")}</> : videoStyle === "talking" ? <>✨ {t("Write the script — free")}</> : <>✨ {t("Write the commercial — free")}</>}
+                          </button>
+                          <span className="ws-vsetup-free">{t("Free — read it before you spend a token")}</span>
                         </div>
-                        <input className="wb-in" value={direction} maxLength={300}
-                          placeholder={videoStyle === "anthem" ? t("a catchy hook, the vibe, a line to sing…") : videoStyle === "talking" ? t("your service · a special offer · your website…") : t("the mood, a story beat, who it's for…")}
-                          onChange={(e) => setDirection(e.target.value)} />
                       </>
-                    )}
-                    <div className="ws-vsetup-row">
-                      <button type="button" className="ws-vwrite" disabled={previewBusy} onClick={writeWords}>
-                        {previewBusy ? <>… {t("Writing")}</> : wordsReady ? <>↻ {t("Randomize")}</> : <>✨ {t("Write it — free")}</>}
-                      </button>
-                      {wordsReady && <span className="ws-vsetup-free">{t("Free — read it before you spend")}</span>}
-                    </div>
-                    {wordsReady && videoStyle !== "commercial" && (
+                    ) : (
+                      /* ── RESULT — the editable words ARE what renders. ── */
                       <>
-                        <div className="ws-lbl" style={{ marginTop: 10 }}><span>{videoStyle === "anthem" ? t("The lyrics") : t("The script")}</span> <span className="ws-opt">{t("edit freely")}</span></div>
-                        <textarea className="wb-in ws-ta ws-vwords" value={wordsDraft} maxLength={videoStyle === "anthem" ? 400 : 300} rows={videoStyle === "anthem" ? 6 : 4} onChange={(e) => setWordsDraft(e.target.value)} />
-                        <p className="ws-vwords-note">{videoStyle === "anthem" ? t("These exact words get sung.") : t("This is what your presenter says, word for word.")}</p>
+                        {videoStyle !== "commercial" ? (
+                          <>
+                            <div className="ws-lbl"><span>{videoStyle === "anthem" ? t("Your jingle") : t("Your script")}</span> <span className="ws-opt">{t("edit anything")}</span></div>
+                            <textarea className="wb-in ws-ta ws-vwords" value={wordsDraft} maxLength={videoStyle === "anthem" ? 400 : 300} rows={videoStyle === "anthem" ? 6 : 4} onChange={(e) => setWordsDraft(e.target.value)} />
+                            <p className="ws-vwords-note">{videoStyle === "anthem" ? t("✓ These exact words get sung.") : t("✓ This is exactly what your presenter says.")}</p>
+                          </>
+                        ) : planDraft ? (
+                          <div className="ws-vplan">
+                            <div className="ws-lbl"><span>{t("Your commercial")}</span> <span className="ws-opt">{t("one line per scene — edit freely")}</span></div>
+                            {planDraft.beats.map((b, i) => (
+                              <div className="ws-vplan-beat" key={i}>
+                                <span className="ws-vplan-n" aria-hidden="true">{i + 1}</span>
+                                <input className="wb-in" value={b.narration} maxLength={140}
+                                  onChange={(e) => setPlanDraft((p) => (p ? { ...p, beats: p.beats.map((x, j) => (j === i ? { ...x, narration: e.target.value } : x)) } : p))} />
+                              </div>
+                            ))}
+                            <div className="ws-lbl" style={{ marginTop: 8 }}><span>{t("Closing tagline")}</span></div>
+                            <input className="wb-in" value={planDraft.tagline} maxLength={60}
+                              onChange={(e) => setPlanDraft((p) => (p ? { ...p, tagline: e.target.value } : p))} />
+                            <p className="ws-vwords-note">{t("✓ Spoken over each cinematic scene.")}</p>
+                          </div>
+                        ) : null}
+                        <div className="ws-vsetup-row">
+                          <button type="button" className="ws-vwrite ws-vwrite-sm" disabled={previewBusy} onClick={writeWords}>
+                            {previewBusy ? <>… {t("Writing")}</> : <>↻ {t("Rewrite")}</>}
+                          </button>
+                          {!noProduct && (
+                            <button type="button" className="ws-vtheme" onClick={() => setWordsReady(false)}>✎ {t("Change the theme")}</button>
+                          )}
+                          <span className="ws-vsetup-free">{t("Free")}</span>
+                        </div>
                       </>
                     )}
-                    {wordsReady && videoStyle === "commercial" && planDraft && (
-                      <div className="ws-vplan">
-                        <div className="ws-lbl" style={{ marginTop: 10 }}><span>{t("The voiceover")}</span> <span className="ws-opt">{t("one line per scene — edit freely")}</span></div>
-                        {planDraft.beats.map((b, i) => (
-                          <div className="ws-vplan-beat" key={i}>
-                            <span className="ws-vplan-n" aria-hidden="true">{i + 1}</span>
-                            <input className="wb-in" value={b.narration} maxLength={140}
-                              onChange={(e) => setPlanDraft((p) => (p ? { ...p, beats: p.beats.map((x, j) => (j === i ? { ...x, narration: e.target.value } : x)) } : p))} />
-                          </div>
-                        ))}
-                        <div className="ws-lbl" style={{ marginTop: 8 }}><span>{t("Closing tagline")}</span></div>
-                        <input className="wb-in" value={planDraft.tagline} maxLength={60}
-                          onChange={(e) => setPlanDraft((p) => (p ? { ...p, tagline: e.target.value } : p))} />
-                        <p className="ws-vwords-note">{t("Spoken over each cinematic scene.")}</p>
-                      </div>
+                    {/* Captions toggle — burn the words onto the video (anthem + talking). */}
+                    {videoStyle !== "commercial" && (
+                      <label className="ws-captoggle">
+                        <input type="checkbox" checked={captionsOn} onChange={(e) => setCaptionsOn(e.target.checked)} />
+                        <span className="ws-captoggle-txt"><b>{t("Captions")}</b>{captionsOn ? t(" · words on screen") : t(" · off")}</span>
+                      </label>
                     )}
                   </div>
                 )}
@@ -5506,7 +5536,7 @@ export default function WebStudio() {
                 has options to post or test, not "pick one, bin the rest" (every
                 take should be good). Blog has no burst: nobody wants five near
                 identical articles, and each one is a page not a thumbnail. */}
-            {tab !== "blog" && !isEdit && !isCreate && !isMusic && !isFaceless && !isVideoEdit && !(casual && tab === "video") && (
+            {tab !== "blog" && !isEdit && !isCreate && !isMusic && !isFaceless && !isVideoEdit && !avatarVideoHub && !(casual && tab === "video") && (
               <div className="ws-burst">
                 <span className="ws-burst-lbl">{t("How many")}</span>
                 <div className="ws-burst-steps">
@@ -6251,6 +6281,13 @@ const WS_STYLE = `
 .ws-vplan-beat{display:flex;align-items:center;gap:8px;margin-top:6px}
 .ws-vplan-n{flex:0 0 auto;width:20px;height:20px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center}
 .ws-vplan-beat .wb-in{flex:1 1 auto;min-width:0}
+.ws-vwrite-sm{padding:8px 15px;font-size:12.5px}
+.ws-vtheme{border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);border-radius:11px;padding:8px 15px;font:inherit;font-weight:700;font-size:12.5px;cursor:pointer}
+.ws-vtheme:hover{background:#F3F9F4}
+.ws-captoggle{display:flex;align-items:center;gap:10px;margin-top:13px;padding:11px 13px;border-radius:12px;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF);cursor:pointer;font:inherit}
+.ws-captoggle input{width:19px;height:19px;accent-color:var(--green,#0C7A46);cursor:pointer;flex:0 0 auto;margin:0}
+.ws-captoggle-txt{font-size:12.5px;color:var(--ink2,#4A554E)}
+.ws-captoggle-txt b{color:var(--ink,#14201A);font-weight:800}
 /* min-width:0 is load-bearing: a grid item defaults to min-width:auto, so the
    nowrap <b> product name sets a large min-content width and 1fr can't shrink →
    horizontal overflow + the ellipsis never engages. min-width:0 lets it clip. */
