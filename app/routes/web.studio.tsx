@@ -3653,6 +3653,18 @@ export default function WebStudio() {
   // A Captions edit needs text to burn in; trim/speed validate ranges server-side.
   const videoEditReady = isVideoEdit && (videoEditOp !== "caption" || !!videoCaption.trim());
   const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !noProduct && !productTitle.trim()) || (noProduct && !direction.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !noProduct && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || (avatarVideoHub && (!videoStyle || !wordsReady)) || shortBy > 0;
+  // When the avatar-video Generate is disabled, SAY WHY — otherwise the merchant
+  // taps a dead button with no clue (the step-1 "Your scene" setup is above and
+  // easy to miss once you're down in the style/words step). Ordered by fix-first;
+  // the wallet note already handles plan/tokens, so those stay null here.
+  const avatarHubBlock: string | null = !avatarVideoHub || !d.hasPlan || shortBy > 0
+    ? null
+    : !avatarId ? t("Pick a presenter up in “Your scene” first.")
+    : (!noProduct && needsPhoto) ? t("Add your product photo up in “Your scene” first.")
+    : (!noProduct && !productTitle.trim()) ? t("Add a product name up in “Your scene”.")
+    : !videoStyle ? t("Pick a style above.")
+    : !wordsReady ? (videoStyle === "anthem" ? t("Tap “Write the jingle” above to make the words first.") : videoStyle === "talking" ? t("Tap “Write the script” above first.") : t("Tap “Write the commercial” above first."))
+    : null;
   // The three casual "make" flows with a Pro/Ultra quality choice show TWO generate
   // CTAs (one per model) at the bottom instead of a buried toggle + one button.
   const showTwoCta = isCreate || isFaceless || (casualVideoMake && engineApplies);
@@ -5635,6 +5647,11 @@ export default function WebStudio() {
                     ];
                 return <div className="ws-cta2">{pair}</div>;
               })()}
+              {/* Avatar-video: when Generate is disabled, say WHAT'S MISSING so the
+                  merchant isn't staring at a dead button (usually step-1 setup). */}
+              {avatarVideoHub && avatarHubBlock && !showTwoCta && (
+                <p className="ws-hubblock" role="status">{avatarHubBlock}</p>
+              )}
               {/* The single button stays (hidden when the two CTAs show) so "↻ Make
                   another" can re-fire it via makeBtnRef with the last-used model. */}
               <button ref={makeBtnRef} className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled} style={showTwoCta ? { display: "none" } : undefined}>
@@ -6319,6 +6336,7 @@ const WS_STYLE = `
 .ws-captoggle input{width:19px;height:19px;accent-color:var(--green,#0C7A46);cursor:pointer;flex:0 0 auto;margin:0}
 .ws-captoggle-txt{font-size:12.5px;color:var(--ink2,#4A554E)}
 .ws-captoggle-txt b{color:var(--ink,#14201A);font-weight:800}
+.ws-hubblock{margin:0 0 9px;padding:10px 13px;border-radius:11px;background:#FBF3DF;border:1px solid #E7D7A8;color:#6B5618;font-size:12.5px;font-weight:700;text-align:center;line-height:1.35}
 /* min-width:0 is load-bearing: a grid item defaults to min-width:auto, so the
    nowrap <b> product name sets a large min-content width and 1fr can't shrink →
    horizontal overflow + the ellipsis never engages. min-width:0 lets it clip. */
