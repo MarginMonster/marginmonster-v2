@@ -41,7 +41,12 @@ export const meta = () => [{ title: "Studio · EasyMode" }];
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
   { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },
-  { key: "talkinghead", name: "Talking Head", cover: "/ad-templates/ctcover-talkinghead.jpg?v=4", sub: "Straight to camera, selfie-style — no product", cap: "video", tier: "Studio", price: 39 },
+  // "Talking Head" card RETIRED 2026-10-28 (owner: obsolete) — the Avatar AI "No
+  // product" toggle now does the same thing (presenter talks straight to camera in
+  // a scene, no product). The "talkinghead" content type itself LIVES ON: that
+  // toggle still submits contentType="talkinghead" (see the hidden input), and the
+  // CT_PRESETS direction + CType union below keep it valid — it's just not a
+  // separately-pickable card any more.
   { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 39 },
   { key: "cartoon", name: "Cartoon Avatar", cover: "/ad-templates/ctcover-cartoon.jpg?v=2", sub: "Cartoon hook, then your real product", cap: "cartoon", tier: "Studio", price: 39 },
   { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head 2000s theme song", cap: "anthem", tier: "Studio", price: 39 },
@@ -1489,7 +1494,9 @@ type Tab = "video" | "image" | "music" | "faceless" | "blog" | "import";
 // "review" (Creator Demo) is retired from the picker but stays a valid content
 // type: its CT_PRESETS entry + the note/presenter-field handling keep any
 // already-made Creator Demo asset remixing correctly.
-type CType = (typeof CONTENT_TYPES)[number]["key"] | "review" | "asmr";
+// "talkinghead" kept in the union though its CARD was retired — the no-product
+// Avatar AI toggle still submits it, and the handlers below switch on it.
+type CType = (typeof CONTENT_TYPES)[number]["key"] | "talkinghead" | "review" | "asmr";
 type CastItem = { id: string; name: string; img: string; designed: boolean };
 
 /* Module-level on purpose: defined inside the page component, React would
