@@ -929,7 +929,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // "describe anything, no photo" — not a factual product ad, so a photoless
   // render is the intended path (minimax text-to-video / cartoon text keyframe),
   // and the claims guardrail already governs any spoken/on-screen copy.
-  if ((intent === "video" || intent === "image") && !service && !productImageUrl && !(casualMode && intent === "video")) {
+  // EXCEPTION: a selected "Your shot" frame (composedFrameUrl — combined OR
+  // uploaded) IS the seed the video animates; it already holds the scene, so a
+  // separate product photo is redundant. Only the avatar-video hub submits it.
+  const hasComposedSeed = intent === "video" && !!((form.get("composedFrameUrl") as string) || "").trim();
+  if ((intent === "video" || intent === "image") && !service && !productImageUrl && !(casualMode && intent === "video") && !hasComposedSeed) {
     return json({ error: tr(lang, "Add a product photo — upload one or paste an image URL. Without it we'd be inventing a product from the name. Promoting a service? Switch to “Service / offer”.") });
   }
 
@@ -1013,7 +1017,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Pre-charge validation: a presenter has to have something to hold —
       // fail BEFORE tokens are spent, not in the pipeline.
       const presenterVideo = !!avatarId && contentType !== "cartoon" && contentType !== "jingle";
-      if (presenterVideo && !productImageUrl && !service) {
+      // A selected "Your shot" frame already IS the presenter-in-scene — the
+      // video animates it, so there's nothing left to "hold"; skip this gate.
+      if (presenterVideo && !productImageUrl && !service && !hasComposedSeed) {
         return json({ error: tr(lang, "Add a product photo — the presenter needs something to hold. (Promoting a service? Flip to Service / offer.)") });
       }
       // A Studio-approved "presenter holding the product" frame (the Combine
@@ -3633,6 +3639,9 @@ export default function WebStudio() {
   // generator, so a photo is optional there too (add one to feature a real
   // product; without one we create the whole thing from the words).
   const needsPhoto = tab !== "blog" && tab !== "music" && tab !== "faceless" && !serviceOn && !noProduct && !isCreate && !(casual && tab === "video")
+    // A selected "Your shot" frame (avatar-video hub, combined OR uploaded) is the
+    // seed the video animates, so no separate product photo is needed.
+    && !(avatarVideoHub && !!combineUrl)
     // Casual uses its own photo flow (no source chooser); marketing must have a
     // product that actually matches its mounted source input.
     && (casual ? (!hasFile && !imageUrl.trim()) : !hasMarketingProduct);
