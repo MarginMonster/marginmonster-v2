@@ -4135,8 +4135,6 @@ export default function WebStudio() {
                                     {settingKey === `bg:${bd.id}` && <span className="ws-chk">✓</span>}
                                     <button type="button" className="ws-setcard-x" aria-label={t("Remove this backdrop")}
                                       onClick={(e) => { e.stopPropagation(); removeBackdrop(bd.id); }}>✕</button>
-                                    <button type="button" className="ws-setcard-ren" aria-label={t("Rename this backdrop")}
-                                      onClick={(e) => { e.stopPropagation(); startRename(bd); }}>✎</button>
                                   </span>
                                   {renamingId === bd.id ? (
                                     <input className="ws-setcard-rename" autoFocus value={renameDraft} maxLength={24}
@@ -4145,7 +4143,11 @@ export default function WebStudio() {
                                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitRename(); } else if (e.key === "Escape") { setRenamingId(null); } }}
                                       onBlur={commitRename} />
                                   ) : (
-                                    <b>{bd.label || t("Uploaded")}</b>
+                                    <span className="ws-setcard-namerow">
+                                      <b>{bd.label || t("Uploaded")}</b>
+                                      <button type="button" className="ws-setcard-ren" aria-label={t("Rename this backdrop")}
+                                        onClick={(e) => { e.stopPropagation(); startRename(bd); }}>✎</button>
+                                    </span>
                                   )}
                                 </div>
                               ))}
@@ -4301,50 +4303,49 @@ export default function WebStudio() {
                     <input type="hidden" name="composedFrameUrl" value={combineUrl} />
                   </>
                 ) : (
-                  <>
-                    <button type="button" className="wb-btn ws-combine-btn" disabled={combining || busy}
-                      onClick={() => {
-                        const miss: string[] = [];
-                        if (!styleSet) miss.push(t("pick a style"));
-                        if (!hasMarketingProduct && !noProduct) miss.push(t("add a product"));
-                        if (!avatarId) miss.push(t("pick a presenter"));
-                        if (miss.length) { setCombineErr(t("Before combining: ") + miss.join(t(", ")) + "."); return; }
-                        doCombine();
-                      }}>
-                      {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
+                  <button type="button" className="wb-btn ws-combine-btn" disabled={combining || busy}
+                    onClick={() => {
+                      const miss: string[] = [];
+                      if (!styleSet) miss.push(t("pick a style"));
+                      if (!hasMarketingProduct && !noProduct) miss.push(t("add a product"));
+                      if (!avatarId) miss.push(t("pick a presenter"));
+                      if (miss.length) { setCombineErr(t("Before combining: ") + miss.join(t(", ")) + "."); return; }
+                      doCombine();
+                    }}>
+                    {combining ? <span className="ws-combine-btntxt">{t("Combining…")}</span> : t("Combine — {n} tokens", { n: combineCost })}
+                  </button>
+                )}
+                {/* RECENT COMPOSES / reuse — now shown WITH a result too (owner: the
+                    past shots should stay so you can one-click switch to a previous
+                    one without ✕-ing the current frame first; the ✕ still works).
+                    Hidden ONLY while a combine is generating, and reappears when the
+                    frame loads back in. Reuse + Upload are FREE (great for "another
+                    video from the same shot"). */}
+                {!combining && (
+                  <div className="ws-combine-reuse">
+                    <span className="ws-combine-reuse-lbl">{combineUrl ? t("Or pick a different shot — free, no combine:") : t("Already have a shot? Use it free — no combine:")}</span>
+                    {/* Upload is the HERO alternative — a big, obvious upload button,
+                        not a pill. Reused past shots scroll sideways below. */}
+                    <button type="button" className="ws-reuse-upload" onClick={() => frameUploadRef.current?.click()} disabled={busy || frameUploading}>
+                      <Ico n="upload" size={19} /> {frameUploading ? t("Uploading…") : t("Upload a photo")}
                     </button>
-                    {/* ALREADY HAVE A FRAME? Skip the generate. Upload your own
-                        presenter-holding-product shot, or reuse a past creation —
-                        both become the video seed, FREE (great for "another video
-                        from the same shot"). */}
-                    {!combining && (
-                      <div className="ws-combine-reuse">
-                        <span className="ws-combine-reuse-lbl">{t("Already have a shot? Use it free — no combine:")}</span>
-                        {/* Upload is the HERO alternative — a big, obvious upload
-                            button, not a pill. Reused past shots scroll sideways
-                            below so they never add height. */}
-                        <button type="button" className="ws-reuse-upload" onClick={() => frameUploadRef.current?.click()} disabled={busy || frameUploading}>
-                          <Ico n="upload" size={19} /> {frameUploading ? t("Uploading…") : t("Upload a photo")}
-                        </button>
-                        {d.frameChoices.length > 0 && (
-                          <div className="ws-reuse-nav">
-                            {d.frameChoices.length > 6 && <button type="button" className="ws-reuse-arrow" onClick={() => scrollReuse(-1)} aria-label={t("Scroll left")}>‹</button>}
-                            <div className="ws-reuse-strip" ref={reuseStripRef} aria-label={t("Reuse a past shot")}>
-                              {d.frameChoices.map((f) => (
-                                <button type="button" key={f.id} className="ws-reuse-thumb" title={f.presenter ? t("Reuse this shot") : t("Use this image")} onClick={() => useFrame(f)} disabled={busy || frameUploading}>
-                                  {/* A 404'd past shot would show a broken tile — hide the whole thumb instead. */}
-                                  <img src={f.media} alt="" loading="lazy" onError={(e) => { const b = e.currentTarget.closest(".ws-reuse-thumb") as HTMLElement | null; if (b) b.style.display = "none"; }} />
-                                </button>
-                              ))}
-                            </div>
-                            {d.frameChoices.length > 6 && <button type="button" className="ws-reuse-arrow" onClick={() => scrollReuse(1)} aria-label={t("Scroll right")}>›</button>}
-                          </div>
-                        )}
+                    {d.frameChoices.length > 0 && (
+                      <div className="ws-reuse-nav">
+                        {d.frameChoices.length > 6 && <button type="button" className="ws-reuse-arrow" onClick={() => scrollReuse(-1)} aria-label={t("Scroll left")}>‹</button>}
+                        <div className="ws-reuse-strip" ref={reuseStripRef} aria-label={t("Reuse a past shot")}>
+                          {d.frameChoices.map((f) => (
+                            <button type="button" key={f.id} className={`ws-reuse-thumb${combineUrl === f.media ? " sel" : ""}`} title={f.presenter ? t("Reuse this shot") : t("Use this image")} onClick={() => useFrame(f)} disabled={busy || frameUploading}>
+                              {/* A 404'd past shot would show a broken tile — hide the whole thumb instead. */}
+                              <img src={f.media} alt="" loading="lazy" onError={(e) => { const b = e.currentTarget.closest(".ws-reuse-thumb") as HTMLElement | null; if (b) b.style.display = "none"; }} />
+                            </button>
+                          ))}
+                        </div>
+                        {d.frameChoices.length > 6 && <button type="button" className="ws-reuse-arrow" onClick={() => scrollReuse(1)} aria-label={t("Scroll right")}>›</button>}
                       </div>
                     )}
-                    <input ref={frameUploadRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => doFrameUpload(e.currentTarget.files?.[0])} />
-                  </>
+                  </div>
                 )}
+                <input ref={frameUploadRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => doFrameUpload(e.currentTarget.files?.[0])} />
                 {needsPhoto && (
                   <p className="ws-note ws-warn" style={{ marginTop: 8 }}>
                     {prodSource === null
@@ -6021,6 +6022,7 @@ const WS_STYLE = `
 .ws-reuse-thumb{width:64px;height:64px;border-radius:11px;overflow:hidden;border:1px solid var(--line,#E1DECD);padding:0;cursor:pointer;background:#f3f1e4;flex:0 0 auto}
 .ws-reuse-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .ws-reuse-thumb:hover:not([disabled]){border-color:var(--green,#12A85E);box-shadow:0 0 0 2px rgba(18,168,94,.2)}
+.ws-reuse-thumb.sel{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2px var(--green,#0C7A46)}
 .ws-reuse-thumb[disabled]{opacity:.5;cursor:not-allowed}
 .ws-reuse-change{border:0;background:none;color:var(--green,#0C7A46);font-weight:700;font-size:11.5px;text-decoration:underline;cursor:pointer;padding:0;margin-left:6px}
 .ws-reuse-change:hover{color:var(--green2,#12A85E)}
@@ -6344,11 +6346,16 @@ const WS_STYLE = `
 .ws-setcard-x{position:absolute;top:6px;left:6px;width:22px;height:22px;border:none;border-radius:999px;background:rgba(20,32,26,.55);color:#fff;font-size:11px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
 .ws-setcard-x:hover{background:rgba(20,32,26,.8)}
 /* Rename a saved backdrop — a small ✎ at the thumbnail's bottom-right. */
-.ws-setcard-ren{position:absolute;bottom:6px;right:6px;width:22px;height:22px;border:none;border-radius:999px;background:rgba(20,32,26,.55);color:#fff;font-size:11px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
-.ws-setcard-ren:hover{background:var(--green,#0C7A46)}
+/* Rename lives BY THE NAME now (owner), not on the thumbnail — a subtle inline ✎. */
+.ws-setcard-namerow{display:flex;align-items:center;justify-content:center;gap:4px}
+.ws-setcard-namerow b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-setcard-ren{flex:0 0 auto;border:none;background:none;color:#9AA79F;font-size:12px;line-height:1;cursor:pointer;padding:2px;border-radius:5px}
+.ws-setcard-ren:hover{color:var(--green,#0C7A46);background:rgba(12,122,70,.1)}
 .ws-setcard-rename{width:100%;margin-top:2px;padding:3px 6px;border:1.5px solid var(--green,#0C7A46);border-radius:7px;font-size:12px;font-weight:700;color:var(--ink,#14201A);text-align:center;font-family:inherit}
 /* Loading = the brand rosette, spinning (matches the Make/Combine buffers). */
-.ws-setcard-spin{width:34px;height:34px;background:var(--green,#0C7A46);-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;animation:wsrosespin 2.2s linear infinite}
+/* Loading = the app-standard ring (matches .ws-forge-spin) — the rosette mask
+   rendered as a blurry blob at this size. Clean green ring on the card. */
+.ws-setcard-spin{width:28px;height:28px;border-radius:50%;border:3px solid rgba(18,168,94,.25);border-top-color:var(--green2,#12A85E);animation:wsforgespin .85s linear infinite}
 /* Create-a-background CTA: a compact "send"-style pill to the RIGHT of the
    describe box, carrying the spinning gold rosette — the brand's CTA signature. */
 .ws-custombg-row{display:flex;gap:8px;align-items:stretch}
@@ -6358,7 +6365,7 @@ const WS_STYLE = `
 .ws-bgcreate:hover:not(:disabled){background:#0a6b3d}
 .ws-bgcreate:disabled{opacity:.45;cursor:default}
 .ws-bgcreate.gen{min-width:52px}
-.ws-bgcreate-rose{width:22px;height:22px;background:#fff;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;animation:wsrosespin 2s linear infinite}
+.ws-bgcreate-rose{width:17px;height:17px;border-radius:50%;border:2.5px solid rgba(255,255,255,.45);border-top-color:#fff;animation:wsforgespin .85s linear infinite}
 .ws-bgcreate-hint{margin:2px 2px 0;font-size:11px;color:#6B7A71;line-height:1.35}
 .ws-setcard b{font-size:12px;font-weight:700;color:var(--ink,#14201A);line-height:1.1;text-align:center}
 @media(max-width:620px){.ws-setcard{width:104px}}
