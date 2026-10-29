@@ -97,6 +97,7 @@ interface JingleAdParams {
   chargedFromExtra?: number;
   direction?: string; // merchant's custom prompt
   serviceMode?: boolean;
+  jingleStyle?: string; // musical genre/style for the song ("R&B", "country", "2000s TV jingle"…)
   captions?: boolean; // burn the sung lyrics on-screen (default true)
   origin?: string;
   jobId?: string;
@@ -161,7 +162,9 @@ async function singJingle(
   // The song is the priciest un-idempotent stage in this pipeline and it is
   // BILLED at create: a restart mid-poll must re-attach to the prediction that
   // is already running, never buy a second one.
-  resume?: { priorId?: string; priorEngine?: string; save?: (id: string, engine: string) => Promise<void> }
+  resume?: { priorId?: string; priorEngine?: string; save?: (id: string, engine: string) => Promise<void> },
+  // Merchant-chosen musical style/genre ("R&B", "country", "2000s TV jingle"…).
+  styleDirection?: string
 ): Promise<{ url: string; engine: string }> {
   const errors: string[] = [];
   if (resume?.priorId) {
@@ -176,7 +179,10 @@ async function singJingle(
     }
   }
   const vocalist = singerGender === "m" ? "a clear energetic MALE vocalist (male voice)" : singerGender === "f" ? "a clear energetic FEMALE vocalist (female voice)" : "bright cheerful vocals";
-  const style = `upbeat catchy retro TV-commercial jingle, early 2000s advertising energy, sung by ${vocalist}, short and punchy`;
+  const genre = (styleDirection || "").trim();
+  const style = genre
+    ? `${genre}, a catchy advertising jingle sung by ${vocalist}, short and punchy, clear lyrics`
+    : `upbeat catchy retro TV-commercial jingle, early 2000s advertising energy, sung by ${vocalist}, short and punchy`;
   const attempts: { model: string; input: Record<string, unknown>; engine: string }[] = [
     { model: "minimax/music-1.5", input: { lyrics, prompt: style }, engine: "minimax-music-1.5" },
     { model: "minimax/music-1.5", input: { lyrics }, engine: "minimax-music-1.5" },
@@ -366,7 +372,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       priorId: ck.ckMusicId,
       priorEngine: ck.ckMusicEngine,
       save: (id, eng) => ckpt({ ckMusicId: id, ckMusicEngine: eng }),
-    });
+    }, params.jingleStyle);
     songUrl = sung.url;
     engine = sung.engine;
     await ckpt({ ckSongUrl: songUrl, ckEngine: engine });
@@ -676,7 +682,7 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       console.error(`[anthem] song file implausibly small (${songBytes}B) — re-singing`);
       const resung = await singJingle(lyrics, singer?.gender, {
         save: (id, eng) => ckpt({ ckMusicId: id, ckMusicEngine: eng }),
-      });
+      }, params.jingleStyle);
       songUrl = resung.url;
       engine = resung.engine;
       await ckpt({ ckSongUrl: songUrl, ckEngine: engine });

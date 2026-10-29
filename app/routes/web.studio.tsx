@@ -113,6 +113,20 @@ const EDIT_QUICK_ACTIONS: [string, string][] = [
  * action that charges. */
 const MAX_BURST = { image: 10, video: 3 } as const;
 const BURST_STEPS = { image: [1, 3, 5, 10], video: [1, 2, 3] } as const;
+// Musical styles for the Anthem jingle — the `prompt` steers the song model
+// (minimax music). Optional: none = our default upbeat retro-jingle vibe.
+const JINGLE_STYLES = [
+  { key: "jingle2000s", label: "2000s jingle", prompt: "upbeat early-2000s TV-commercial jingle, catchy advertising energy" },
+  { key: "pop", label: "Pop", prompt: "bright modern pop with a catchy hook" },
+  { key: "rnb", label: "R&B", prompt: "smooth soulful R&B groove" },
+  { key: "country", label: "Country", prompt: "cheerful country with acoustic guitar and warm twang" },
+  { key: "hiphop", label: "Hip-hop", prompt: "fun upbeat hip-hop with a catchy beat" },
+  { key: "rock", label: "Rock", prompt: "energetic pop-rock with driving guitars" },
+  { key: "lofi", label: "Lo-fi", prompt: "chill lo-fi with a relaxed mellow groove" },
+  { key: "epic", label: "Epic", prompt: "epic cinematic anthem, big and triumphant" },
+  { key: "acoustic", label: "Acoustic", prompt: "warm acoustic singer-songwriter vibe" },
+  { key: "funk", label: "Funk", prompt: "funky retro disco-funk groove" },
+] as const;
 /** Stagger a burst across the queue instead of dropping ten jobs in at once.
  *  Every item is a full pipeline making several provider calls, and ten of
  *  them starting together is how a compose gets rate-limited into falling
@@ -980,6 +994,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const approvedPlan = videoStyle === "commercial" ? (((form.get("approvedPlan") as string) || "").trim() || undefined) : undefined;
       // Captions toggle — default ON; only "0" turns the burned-in captions off.
       const captions = form.get("captions") !== "0";
+      // Anthem music style/genre (the descriptive prompt the chip carries).
+      const jingleStyle = videoStyle === "anthem" ? (((form.get("jingleStyle") as string) || "").trim() || undefined) : undefined;
       // Creator has NO presenter picker — casual video is always the cheap
       // no-presenter path. Forcing avatarId off in casual also CLOSES an exploit:
       // a crafted casual request carrying avatarId would otherwise run the
@@ -1073,7 +1089,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           serviceMode: service, scene,
           // Step-2 approved copy (only the chosen style's field is set) → the
           // generator renders these words verbatim instead of writing its own.
-          approvedLyrics, approvedScript, approvedPlan, captions,
+          approvedLyrics, approvedScript, approvedPlan, captions, jingleStyle,
           videoEngine: effectiveEngine, videoAspect, videoDurationSec, commercial, breakout, chargedTokens: each, chargedFromExtra: perPieceFromExtra + (i < rem ? 1 : 0), prePaid: true, initiator: "web",
         }, burstRunAt(i));
         backed(each, perPieceFromExtra + (i < rem ? 1 : 0));
@@ -2408,6 +2424,7 @@ export default function WebStudio() {
   const [planDraft, setPlanDraft] = useState<CommPlan | null>(null); // editable commercial plan
   const [wordsReady, setWordsReady] = useState(false);          // words written → Generate unlocks
   const [captionsOn, setCaptionsOn] = useState(true);           // burn on-screen captions into the video
+  const [jingleStyle, setJingleStyle] = useState<string | null>(null); // Anthem music genre (JINGLE_STYLES key); null = default
   const previewFetcher = useFetcher<{ previewStyle?: "anthem" | "talking" | "commercial"; lyrics?: string; script?: string; plan?: CommPlan; error?: string }>();
   const previewBusy = previewFetcher.state !== "idle";
   // Picking a style wipes any words from another format (lyrics ≠ script ≠ plan).
@@ -3872,6 +3889,7 @@ export default function WebStudio() {
                 feeds the approved copy to that generator verbatim (no re-write). */}
             {avatarVideoHub && videoStyle && <input type="hidden" name="videoStyle" value={videoStyle} />}
             {avatarVideoHub && <input type="hidden" name="captions" value={captionsOn ? "1" : "0"} />}
+            {avatarVideoHub && videoStyle === "anthem" && jingleStyle && <input type="hidden" name="jingleStyle" value={JINGLE_STYLES.find((s) => s.key === jingleStyle)?.prompt || ""} />}
             {avatarVideoHub && videoStyle === "anthem" && <input type="hidden" name="approvedLyrics" value={wordsDraft} />}
             {avatarVideoHub && videoStyle === "talking" && <input type="hidden" name="approvedScript" value={wordsDraft} />}
             {avatarVideoHub && videoStyle === "commercial" && planDraft && <input type="hidden" name="approvedPlan" value={JSON.stringify(planDraft)} />}
@@ -5117,6 +5135,19 @@ export default function WebStudio() {
                     result + Rewrite / Change-the-theme. */}
                 {videoStyle && (
                   <div className="ws-vsetup">
+                    {/* Anthem music STYLE — steers the song model (R&B, country,
+                        2000s jingle…). Optional; blank = our default jingle vibe. */}
+                    {videoStyle === "anthem" && (
+                      <div style={{ marginBottom: 13 }}>
+                        <div className="ws-lbl"><span>{t("Music style")}</span> <span className="ws-opt">{t("optional")}</span></div>
+                        <div className="ws-chips">
+                          {JINGLE_STYLES.map((s) => (
+                            <button type="button" key={s.key} className={`ws-chip${jingleStyle === s.key ? " sel" : ""}`}
+                              onClick={() => setJingleStyle(jingleStyle === s.key ? null : s.key)}>{t(s.label)}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {!wordsReady ? (
                       /* ── STEER (optional) → WRITE ── */
                       <>

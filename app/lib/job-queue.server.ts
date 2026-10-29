@@ -832,6 +832,7 @@ async function runJob(
           cartoonStyle: payload.cartoonStyle as string | undefined,
           direction: payload.customPrompt as string | undefined,
           serviceMode: payload.serviceMode === true,
+          jingleStyle: (payload.jingleStyle as string | undefined) || undefined, // step-2 musical-style pick
           captions: payload.captions !== false, // step-2 captions toggle (default on)
           videoEngine: payload.videoEngine as string | undefined,
           chargedFromExtra: typeof payload.chargedFromExtra === "number" ? payload.chargedFromExtra : undefined,
