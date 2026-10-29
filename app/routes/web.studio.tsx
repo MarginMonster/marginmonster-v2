@@ -702,6 +702,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ backdropDeleted: row.id });
   }
 
+  // Rename a saved backdrop (the ✎ on a card) — just the label. Shop-scoped.
+  if (intent === "renameBackdrop") {
+    const id = ((form.get("backdropId") as string) || "").trim();
+    const label = ((form.get("label") as string) || "").trim().slice(0, 24) || "Backdrop";
+    const row = await db.backdrop.findFirst({ where: { id, shopId: shop.id } });
+    if (!row) return json({ backdropRenamed: { id, label } });
+    await db.backdrop.update({ where: { id: row.id }, data: { label } });
+    return json({ backdropRenamed: { id: row.id, label } });
+  }
+
   // The Creator section (casual mode) is its own entitlement — gate it here.
   const casualMode = form.get("mode") === "casual";
   // Creators don't need a brand voice (that's a marketing concept); only
@@ -2206,7 +2216,23 @@ export default function WebStudio() {
   const [bgUploading, setBgUploading] = useState(false);
   // Saved backdrops (newest first) — seeded from the loader, grows as they upload.
   const [backdrops, setBackdrops] = useState<Array<{ id: string; url: string; label: string }>>(d.backdrops ?? []);
-  const backdropFetcher = useFetcher<{ backdropSaved?: { id: string; url: string; label: string }; backdropError?: string; backdropDeleted?: string }>();
+  const backdropFetcher = useFetcher<{ backdropSaved?: { id: string; url: string; label: string }; backdropError?: string; backdropDeleted?: string; backdropRenamed?: { id: string; label: string } }>();
+  // Inline rename of a saved backdrop card (the ✎).
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const startRename = (bd: { id: string; label: string }) => { setRenamingId(bd.id); setRenameDraft(bd.label || ""); };
+  const commitRename = () => {
+    const id = renamingId;
+    if (!id) return;
+    const label = (renameDraft || "").trim().slice(0, 24) || "Backdrop";
+    setBackdrops((prev) => prev.map((b) => (b.id === id ? { ...b, label } : b)));
+    setRenamingId(null);
+    const fd = new FormData();
+    fd.set("intent", "renameBackdrop");
+    fd.set("backdropId", id);
+    fd.set("label", label);
+    backdropFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
+  };
   const clearBgUpload = () => {
     setBgPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setBgFile(null);
@@ -4095,14 +4121,24 @@ export default function WebStudio() {
                                 <div key={bd.id} role="button" tabIndex={0}
                                   className={`ws-setcard ws-setcard-saved${settingKey === `bg:${bd.id}` ? " sel" : ""}`}
                                   aria-label={bd.label || t("Uploaded")}
-                                  onClick={() => selectBackdrop(bd.id)}
-                                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectBackdrop(bd.id); } }}>
+                                  onClick={() => { if (renamingId !== bd.id) selectBackdrop(bd.id); }}
+                                  onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && renamingId !== bd.id) { e.preventDefault(); selectBackdrop(bd.id); } }}>
                                   <span className="ws-setcard-img" style={{ backgroundColor: "#EAF6EF", backgroundImage: `url(${bd.url})` }}>
                                     {settingKey === `bg:${bd.id}` && <span className="ws-chk">✓</span>}
                                     <button type="button" className="ws-setcard-x" aria-label={t("Remove this backdrop")}
                                       onClick={(e) => { e.stopPropagation(); removeBackdrop(bd.id); }}>✕</button>
+                                    <button type="button" className="ws-setcard-ren" aria-label={t("Rename this backdrop")}
+                                      onClick={(e) => { e.stopPropagation(); startRename(bd); }}>✎</button>
                                   </span>
-                                  <b>{bd.label || t("Uploaded")}</b>
+                                  {renamingId === bd.id ? (
+                                    <input className="ws-setcard-rename" autoFocus value={renameDraft} maxLength={24}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => setRenameDraft(e.target.value)}
+                                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitRename(); } else if (e.key === "Escape") { setRenamingId(null); } }}
+                                      onBlur={commitRename} />
+                                  ) : (
+                                    <b>{bd.label || t("Uploaded")}</b>
+                                  )}
                                 </div>
                               ))}
                             </>
@@ -4119,17 +4155,22 @@ export default function WebStudio() {
                     </div>
                     {settingKey === "custom" && (
                       <div className="ws-custombg">
-                        <input className="wb-in ws-setcustom" type="text" maxLength={140}
-                          placeholder={t("Describe the background — e.g. a sunny rooftop café")}
-                          value={combineScene}
-                          onChange={(e) => setCombineScene(e.target.value)} />
-                        <button type="button" className="ws-bgcreate" disabled={bgGenerating || !combineScene.trim()}
-                          onClick={createBackground}>
-                          {bgGenerating
-                            ? t("Creating your background…")
-                            : t("✨ Create background · {n} tok", { n: d.costs.createImage })}
-                        </button>
-                        <div className="ws-bgcreate-hint">{t("We’ll make the scene so you can see it before you combine.")}</div>
+                        <div className="ws-custombg-row">
+                          <input className="wb-in ws-setcustom" type="text" maxLength={140}
+                            placeholder={t("Describe the background — e.g. a sunny rooftop café")}
+                            value={combineScene}
+                            onChange={(e) => setCombineScene(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter" && combineScene.trim() && !bgGenerating) { e.preventDefault(); createBackground(); } }} />
+                          <button type="button" className={`ws-bgcreate${bgGenerating ? " gen" : ""}`}
+                            disabled={bgGenerating || !combineScene.trim()}
+                            onClick={createBackground} aria-label={t("Create background")}
+                            title={t("Create background · {n} tok", { n: d.costs.createImage })}>
+                            {bgGenerating
+                              ? <span className="ws-bgcreate-rose" aria-hidden="true" />
+                              : <><span aria-hidden="true">✨</span> {t("Create")}</>}
+                          </button>
+                        </div>
+                        <div className="ws-bgcreate-hint">{t("We’ll make the scene ({n} tok) so you can see it before you combine.", { n: d.costs.createImage })}</div>
                       </div>
                     )}
                     {/* Mounted whenever the picker is open so the Upload card's file
@@ -6294,11 +6335,22 @@ const WS_STYLE = `
 .ws-setcard-saved:focus-visible{border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.25)}
 .ws-setcard-x{position:absolute;top:6px;left:6px;width:22px;height:22px;border:none;border-radius:999px;background:rgba(20,32,26,.55);color:#fff;font-size:11px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
 .ws-setcard-x:hover{background:rgba(20,32,26,.8)}
-.ws-setcard-spin{width:26px;height:26px;border-radius:50%;border:3px solid #CDE7D8;border-top-color:var(--green,#0C7A46);animation:ws-bgspin .8s linear infinite}
-@keyframes ws-bgspin{to{transform:rotate(360deg)}}
-.ws-bgcreate{margin:2px;width:100%;padding:11px 12px;border:none;border-radius:12px;background:var(--green,#0C7A46);color:#fff;font-weight:800;font-size:13px;cursor:pointer;transition:background .14s,opacity .14s}
+/* Rename a saved backdrop — a small ✎ at the thumbnail's bottom-right. */
+.ws-setcard-ren{position:absolute;bottom:6px;right:6px;width:22px;height:22px;border:none;border-radius:999px;background:rgba(20,32,26,.55);color:#fff;font-size:11px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.ws-setcard-ren:hover{background:var(--green,#0C7A46)}
+.ws-setcard-rename{width:100%;margin-top:2px;padding:3px 6px;border:1.5px solid var(--green,#0C7A46);border-radius:7px;font-size:12px;font-weight:700;color:var(--ink,#14201A);text-align:center;font-family:inherit}
+/* Loading = the brand rosette, spinning (matches the Make/Combine buffers). */
+.ws-setcard-spin{width:34px;height:34px;background:var(--green,#0C7A46);-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;animation:wsrosespin 2.2s linear infinite}
+/* Create-a-background CTA: a compact "send"-style pill to the RIGHT of the
+   describe box, carrying the spinning gold rosette — the brand's CTA signature. */
+.ws-custombg-row{display:flex;gap:8px;align-items:stretch}
+.ws-custombg-row .ws-setcustom{flex:1;margin:0}
+.ws-bgcreate{position:relative;overflow:hidden;flex:0 0 auto;align-self:stretch;min-width:104px;padding:0 16px;border:none;border-radius:11px;background:var(--green,#0C7A46);color:#fff;font-weight:800;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;transition:background .14s,opacity .14s}
+.ws-bgcreate::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:74px;height:74px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.16;animation:ws-ctaspin 90s linear infinite;pointer-events:none}
 .ws-bgcreate:hover:not(:disabled){background:#0a6b3d}
-.ws-bgcreate:disabled{opacity:.5;cursor:default}
+.ws-bgcreate:disabled{opacity:.45;cursor:default}
+.ws-bgcreate.gen{min-width:52px}
+.ws-bgcreate-rose{width:22px;height:22px;background:#fff;-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;animation:wsrosespin 2s linear infinite}
 .ws-bgcreate-hint{margin:2px 2px 0;font-size:11px;color:#6B7A71;line-height:1.35}
 .ws-setcard b{font-size:12px;font-weight:700;color:var(--ink,#14201A);line-height:1.1;text-align:center}
 @media(max-width:620px){.ws-setcard{width:104px}}

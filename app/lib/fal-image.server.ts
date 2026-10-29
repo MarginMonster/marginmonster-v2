@@ -255,12 +255,18 @@ export async function submitCompose(
   // (the same marketing-text trap as a product pack-shot). Any typed scene note
   // (`raw`) rides along as a refinement — "in front of the shop at golden hour".
   const backdropPrompt =
-    `A candid photo of the exact person from the first image, placed into the real location shown in the SECOND image — standing naturally in that place as if they are really there, talking to the camera. ` +
-    `Use the second image ONLY as the background and location behind and around them: match its lighting direction, colour temperature and perspective so the person looks genuinely present in the place, lit by it, never a cut-out pasted on top. Do NOT copy any people, products, logos, signage lettering or watermark text from the second image — take only the physical place itself. ` +
-    `Frame the shot from the top of the head down to roughly the hips, head in the TOP THIRD of the picture, their whole face clearly visible and unobstructed — eyes, nose, mouth and chin all in view. Their hands and arms are relaxed and natural at their sides or lightly gesturing, holding nothing — no product or object of any kind. ` +
+    `Composite the exact person from the FIRST image into the real photograph shown in the SECOND image. ` +
+    // THE #1 DEFECT IS THE MODEL REPAINTING THE BACKGROUND. A merchant uploads a
+    // photo of THEIR storefront; the composite must keep that exact photo and only
+    // add the person — not reinterpret the place into a generic/stylised version.
+    // So the loudest instruction here is "do not redraw the background", stated
+    // several ways, before anything about the person.
+    `KEEP THE SECOND IMAGE AS THE BACKGROUND, COMPLETELY UNCHANGED: do not redraw, repaint, restyle, reimagine, stylise or regenerate it. Preserve its exact composition, every object, surface and sign, its real colours and textures, and its real lighting — it must remain the same real photograph, pixel-for-pixel behind the person. ` +
+    `Add the person standing in the FOREGROUND of that scene, sized and positioned naturally for the space, and relight ONLY the person so their light direction, colour temperature and shadows match the background — so they look genuinely photographed standing there, not a cut-out pasted on. ` +
+    `Frame from the top of the head down to roughly the hips, head in the TOP THIRD of the picture, their whole face clearly visible and unobstructed — eyes, nose, mouth and chin all in view. Their hands and arms are relaxed and natural at their sides or lightly gesturing, holding nothing — no product or object of any kind. ` +
     `${samePerson}${persona}${raw ? ` ${raw}.` : ""} ` +
     `${camera} ` +
-    `Candid smartphone UGC style, vertical portrait, photorealistic, natural skin texture.`;
+    `One consistent photorealistic photograph, natural skin texture — the background identical to the second image, only the person added.`;
 
   // SHOWCASE — the shot creators actually post for anything bigger than a
   // hand. Nobody holds a twelve-count display case up to their own face; they
