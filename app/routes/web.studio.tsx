@@ -5144,18 +5144,19 @@ export default function WebStudio() {
                   </button>
                   <span className="ws-vstyle-arrow" aria-hidden="true">→</span>
                   <div className="ws-vstyle-cards">
-                    {/* Clean cards (gradient + icon). The looping demo clips were
-                        pulled 10-29 — generic AI clips with no product don't
-                        represent the real presenter+product output; awaiting real
-                        renders to drop in (see owner decision). */}
+                    {/* A style with a `demo` plays a muted autoplay loop of a REAL
+                        app render over the gradient+icon; styles without one stay the
+                        clean gradient card. Anthem = an actual rendered jingle
+                        (lip-synced + burned captions). Talking/Commercial await theirs. */}
                     {([
-                      { key: "anthem", name: t("Anthem"), sub: t("A sung jingle"), icon: "music", grad: "linear-gradient(150deg,#F7C6E0,#C9477E)" },
+                      { key: "anthem", name: t("Anthem"), sub: t("A sung jingle"), icon: "music", grad: "linear-gradient(150deg,#F7C6E0,#C9477E)", demo: "/showcase/demo-anthem.mp4?v=3", poster: "/showcase/demo-anthem.jpg?v=3" },
                       { key: "talking", name: t("Talking"), sub: t("Speaks to camera"), icon: "mic", grad: "linear-gradient(150deg,#13A95E,#0A5F38)" },
                       { key: "commercial", name: t("Commercial"), sub: t("A cinematic story"), icon: "film", grad: "linear-gradient(150deg,#6EA8FF,#274B8F)" },
-                    ] as { key: "anthem" | "talking" | "commercial"; name: string; sub: string; icon: string; grad: string }[]).map((s) => (
+                    ] as { key: "anthem" | "talking" | "commercial"; name: string; sub: string; icon: string; grad: string; demo?: string; poster?: string }[]).map((s) => (
                       <button type="button" key={s.key} className={`ws-stylecard ws-vcard${videoStyle === s.key ? " open ws-isgood" : ""}`}
                         aria-pressed={videoStyle === s.key} onClick={() => pickVideoStyle(s.key)}>
-                        <span className="ws-stylecard-img" style={{ background: s.grad, border: 0 }}>
+                        <span className={`ws-stylecard-img${s.demo ? " ws-vcard-img" : ""}`} style={{ background: s.grad, border: 0 }}>
+                          {s.demo && <video className="ws-vcard-vid" src={s.demo} poster={s.poster} autoPlay muted loop playsInline preload="metadata" tabIndex={-1} />}
                           <span className="ws-vcard-ico" aria-hidden="true"><Ico n={s.icon} size={24} /></span>
                           {videoStyle === s.key && <span className="ws-stylecard-badge" aria-hidden="true">✓</span>}
                         </span>
