@@ -1172,11 +1172,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       let backgroundImageUrl: string | undefined;
       if (noProductCombine) {
         const baseB = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-        // A SELECTED saved backdrop (an "Uploaded" card) is already persisted —
-        // reuse its URL, no re-upload. SSRF guard: only OUR OWN /uploads URLs may
-        // ride through to the worker's fetch, never an arbitrary host.
+        // A SELECTED saved backdrop is already persisted — reuse its URL, no
+        // re-upload. SSRF guard: only OUR OWN hosted images may ride through to
+        // the worker's fetch, never an arbitrary host. Two legit prefixes:
+        // /uploads/ (an "Uploaded" photo) AND /renders/ (a "Created" AI scene —
+        // these were being REJECTED, so created backdrops combined with no scene).
         const picked = ((form.get("backdropUrl") as string) || "").trim();
-        if (picked && baseB && picked.startsWith(`${baseB}/uploads/`) && !picked.includes("..")) {
+        if (picked && baseB && (picked.startsWith(`${baseB}/uploads/`) || picked.startsWith(`${baseB}/renders/`)) && !picked.includes("..")) {
           backgroundImageUrl = picked;
         } else {
           // Fresh file upload (fallback — the primary path saves via saveBackdrop).
