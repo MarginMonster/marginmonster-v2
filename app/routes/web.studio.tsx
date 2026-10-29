@@ -2437,7 +2437,11 @@ export default function WebStudio() {
   // re-rolls (model temperature gives a fresh take), which is what Randomize is.
   const writeWords = () => {
     if (!videoStyle) return;
-    const titleForPreview = noProduct ? direction.trim().slice(0, 60) : productTitle.trim();
+    // Anthem's subject (product name / topic) is OPTIONAL — a blank jingle still
+    // writes as a general brand jingle; the other styles need their topic/name.
+    const titleForPreview = noProduct
+      ? (direction.trim() || (videoStyle === "anthem" ? "our brand" : "")).slice(0, 60)
+      : productTitle.trim();
     if (!titleForPreview) { setCombineErr(noProduct ? t("Tell me what they talk about first.") : t("Add the product name first.")); return; }
     const fd = new FormData();
     fd.set("intent", "previewAdText");
@@ -3652,7 +3656,7 @@ export default function WebStudio() {
   const casualVideoMake = casualVideo && !isVideoEdit;
   // A Captions edit needs text to burn in; trim/speed validate ranges server-side.
   const videoEditReady = isVideoEdit && (videoEditOp !== "caption" || !!videoCaption.trim());
-  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !noProduct && !productTitle.trim()) || (noProduct && !direction.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !noProduct && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || (avatarVideoHub && (!videoStyle || !wordsReady)) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !noProduct && !productTitle.trim()) || (noProduct && videoStyle !== "anthem" && !direction.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !noProduct && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || (avatarVideoHub && (!videoStyle || !wordsReady)) || shortBy > 0;
   // When the avatar-video Generate is disabled, SAY WHY — otherwise the merchant
   // taps a dead button with no clue (the step-1 "Your scene" setup is above and
   // easy to miss once you're down in the style/words step). Ordered by fix-first;
@@ -4931,17 +4935,31 @@ export default function WebStudio() {
                 combine already identifies the product from its photo, so a name
                 isn't needed to combine — only to generate the video. */}
             {avatarVideoHub && (noProduct ? (
-              <>
-                {/* No product: there's no product to name — send the topic as the
-                    hidden productTitle (server requires one for video). The visible
-                    topic box IS the video script. */}
-                <input type="hidden" name="productTitle" value={direction.slice(0, 60)} />
-                <div className="ws-lbl"><span>{t("What do they say?")}</span> <span className="ws-req">{t("required")}</span></div>
-                <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={300} rows={3}
-                  onChange={(e) => setDirection(e.target.value)}
-                  placeholder={t("a quick tip · your story · why you started…")} />
-                <CharCount value={direction} max={300} />
-              </>
+              videoStyle === "anthem" ? (
+                <>
+                  {/* Anthem gets a SUNG JINGLE — there's no spoken "what they say".
+                      Give the jingle an OPTIONAL subject (a product name or topic)
+                      to steer the lyrics; blank = a general brand jingle. The
+                      server-required productTitle falls back so it never dead-ends. */}
+                  <input type="hidden" name="productTitle" value={(direction.trim() || "our brand").slice(0, 60)} />
+                  <div className="ws-lbl"><span>{t("Product name or topic")}</span> <span className="ws-opt">{t("optional — helps the jingle")}</span></div>
+                  <input className="wb-in" value={direction} maxLength={120}
+                    onChange={(e) => setDirection(e.target.value)}
+                    placeholder={t("a product, a special, or a topic for the jingle… or leave blank")} />
+                </>
+              ) : (
+                <>
+                  {/* No product: there's no product to name — send the topic as the
+                      hidden productTitle (server requires one for video). The visible
+                      topic box IS the video script. */}
+                  <input type="hidden" name="productTitle" value={direction.slice(0, 60)} />
+                  <div className="ws-lbl"><span>{t("What do they say?")}</span> <span className="ws-req">{t("required")}</span></div>
+                  <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={300} rows={3}
+                    onChange={(e) => setDirection(e.target.value)}
+                    placeholder={t("a quick tip · your story · why you started…")} />
+                  <CharCount value={direction} max={300} />
+                </>
+              )
             ) : (
               <>
                 <div className="ws-lbl"><span>{t("Product name")}</span>
