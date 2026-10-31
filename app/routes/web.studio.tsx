@@ -40,17 +40,17 @@ export const meta = () => [{ title: "Studio · EasyMode" }];
 
 // Mirrors the embedded Studio's pickers (same keys, names, live art routes).
 const CONTENT_TYPES = [
-  { key: "avatar", name: "Avatar AI", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },
+  { key: "avatar", name: "Avatar AI", cover: "/heroes/avatar.jpg?v=1", sub: "A real-looking presenter talks it up", cap: "video", tier: "Studio", price: 39 },
   // "Talking Head" card RETIRED 2026-10-28 (owner: obsolete) — the Avatar AI "No
   // product" toggle now does the same thing (presenter talks straight to camera in
   // a scene, no product). The "talkinghead" content type itself LIVES ON: that
   // toggle still submits contentType="talkinghead" (see the hidden input), and the
   // CT_PRESETS direction + CType union below keep it valid — it's just not a
   // separately-pickable card any more.
-  { key: "highlight", name: "Product Highlight", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 39 },
+  { key: "highlight", name: "Product Highlight", cover: "/heroes/product.jpg?v=1", sub: "Cinematic motion, no presenter", cap: "video", tier: "Studio", price: 39 },
   { key: "cartoon", name: "Cartoon Avatar", cover: "/ad-templates/ctcover-cartoon.jpg?v=2", sub: "Cartoon hook, then your real product", cap: "cartoon", tier: "Studio", price: 39 },
   { key: "jingle", name: "Anthem", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head 2000s theme song", cap: "anthem", tier: "Studio", price: 39 },
-  { key: "commercial", name: "Commercial", cover: "/ad-templates/ctcover-commercial.jpg?v=1", sub: "A cinematic, big-budget story ad", cap: "video", tier: "Studio", price: 39 },
+  { key: "commercial", name: "Commercial", cover: "/heroes/commercial.jpg?v=1", sub: "A cinematic, big-budget story ad", cap: "video", tier: "Studio", price: 39 },
   // Creator Demo (review) retired from the picker 2026-10-21 — it was the SAME
   // presenter+product UGC pipeline as Avatar AI (base:"avatar"), just with a
   // casual phone-shot direction, so it read as a duplicate card. CT_PRESETS.review
@@ -3848,10 +3848,13 @@ export default function WebStudio() {
                 // which lives in the Music tab; commercial = an ad). Keep the
                 // ones a creator makes from an idea or a photo: a cartoon, a
                 // cinematic showcase, and satisfying macro loops.
-                // Cartoon removed from the Social Marketing picker — it now lives
-                // inside the Avatar AI hub's style card (Realistic ↔ cartoon), so a
-                // separate card is redundant. (Creator keeps its cartoon tile.)
-                ? ct.key !== "cartoon"
+                // Cartoon AND Anthem removed from the Social Marketing picker —
+                // both now live inside the Avatar AI hub (cartoon = the Realistic↔
+                // cartoon style toggle; Anthem = a step-2 style chosen after
+                // Combine), so separate step-1 cards are redundant. The jingle
+                // contentType + CT_PRESETS stay intact for that step-2 path.
+                // (Creator keeps its cartoon tile via the casual branch.)
+                ? ct.key !== "cartoon" && ct.key !== "jingle"
                 : (ct.key === "cartoon" || ct.key === "highlight"))
                 // Flagships lead so they fill the top row (they span 2 columns).
                 .sort((a, b) => (casual ? 0 : (FLAGSHIP_KEYS.has(b.key) ? 1 : 0) - (FLAGSHIP_KEYS.has(a.key) ? 1 : 0)))
@@ -4030,7 +4033,7 @@ export default function WebStudio() {
                   selling a product) — never in casual, where there's no product to hold. */}
               {!casual && (
                 <button type="button" className="ws-tile" onClick={() => setImageMode("presenter")}>
-                  <span className="ws-tile-img" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=4)" }} />
+                  <span className="ws-tile-img" style={{ backgroundImage: "url(/heroes/avatar.jpg?v=1)" }} />
                   <b>{t("With presenter")}</b><span className="ws-tile-sub">{t("A presenter holds it, poster copy on top")}</span>
                 </button>
               )}
@@ -4233,7 +4236,7 @@ export default function WebStudio() {
                       <button type="button" className={`ws-stylecard${hubPick === "style" ? " open" : ""}${styleSet ? " ws-isgood" : " ws-needsel"}`}
                         aria-expanded={hubPick === "style"} aria-label={styleSet ? t("Change the style") : t("Pick a style")}
                         onClick={() => setHubPick((p) => (p === "style" ? null : "style"))}>
-                        <span className="ws-stylecard-img" style={styleSet ? { backgroundImage: `url(${contentType === "avatar" ? "/style-tiles/avatarcover.jpg?v=4" : styleCover(cartoonStyle || "dreamanime")})` } : undefined}>
+                        <span className="ws-stylecard-img" style={styleSet ? { backgroundImage: `url(${contentType === "avatar" ? "/heroes/avatar.jpg?v=1" : styleCover(cartoonStyle || "dreamanime")})` } : undefined}>
                           {!styleSet && <span className="ws-stylecard-ph" aria-hidden="true"><Ico n="palette" size={22} /></span>}
                           <span className="ws-stylecard-badge" aria-hidden="true">{styleSet ? "✎" : "＋"}</span>
                         </span>
@@ -4276,7 +4279,7 @@ export default function WebStudio() {
                           combined frame so a cartoon frame never seeds a realistic video. */}
                       <button type="button" className={`ws-tile small${contentType === "avatar" ? " sel" : ""}`}
                         onClick={() => { if (contentType !== "avatar") clearCombineFrame(); setContentType("avatar"); setCartoonStyle(null); setStyleSet(true); setHubPick(null); }}>
-                        <span className="ws-tile-img" style={{ backgroundImage: `url(/style-tiles/avatarcover.jpg?v=4)`, backgroundPosition: "center 22%" }}>{contentType === "avatar" && <span className="ws-chk">✓</span>}</span>
+                        <span className="ws-tile-img" style={{ backgroundImage: `url(/heroes/avatar.jpg?v=1)`, backgroundPosition: "center 22%" }}>{contentType === "avatar" && <span className="ws-chk">✓</span>}</span>
                         <b><Ico n="camera" /> {t("Realistic AI")}</b>
                       </button>
                       {CARTOON_STYLES.map((cs) => (
