@@ -5163,7 +5163,7 @@ export default function WebStudio() {
                         </span>
                         <b>{s.name}</b>
                         <span>{s.sub}</span>
-                        <span className="ws-vcard-cost">{t("{n} tok", { n: cost })}</span>
+                        <span className="ws-vcard-cost">{t("{n} tokens", { n: cost })}</span>
                       </button>
                     ))}
                   </div>
