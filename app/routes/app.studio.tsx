@@ -41,8 +41,8 @@ const baseOf = (ct: string | null | undefined) => (ct && CT_PRESETS[ct] ? CT_PRE
 // Covers carry ?v= so replacing the art actually reaches browsers that
 // cached the old file under the same name.
 const CONTENT_TYPES: { key: CType; name: string; icon: string; cover: string; sub: string; live: boolean }[] = [
-  { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/style-tiles/avatarcover.jpg?v=4", sub: "A real-looking presenter talks it up", live: true },
-  { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/ad-templates/phcover.jpg?v=1", sub: "Cinematic motion, no presenter", live: true },
+  { key: "avatar", name: "Avatar AI", icon: "🧑‍💼", cover: "/heroes/avatar.jpg?v=2", sub: "A real-looking presenter talks it up", live: true },
+  { key: "highlight", name: "Product Highlight", icon: "🎬", cover: "/heroes/product.jpg?v=2", sub: "Cinematic motion, no presenter", live: true },
   { key: "cartoon", name: "Cartoon Avatar", icon: "🎨", cover: "/style-tiles/cover.jpg?v=4", sub: "Your presenter & product, redrawn viral-style", live: true },
   { key: "jingle", name: "Anthem", icon: "🎵", cover: "/style-tiles/anthemcover.jpg?v=4", sub: "A stuck-in-your-head theme song — iconic 2000s commercial energy", live: true },
   { key: "commercial", name: "Commercial", icon: "🎥", cover: "/showcase/commercial-cover.jpg?v=2", sub: "A cinematic multi-scene story ad with a big-budget commercial feel", live: true },
@@ -744,7 +744,7 @@ export default function Studio() {
                   <span className="ca-sub">Your product as the hero — pick a template scene</span>
                 </button>
                 <button type="button" className="cast cs-ctype" onClick={() => setImageMode("presenter")}>
-                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/style-tiles/avatarcover.jpg?v=4)" }} />
+                  <span className="ca-img cs-ctimg" style={{ backgroundImage: "url(/heroes/avatar.jpg?v=2)" }} />
                   <span className="ca-nm">🤳 Presenter holding it</span>
                   <span className="ca-sub">A real-looking presenter holds your product</span>
                 </button>

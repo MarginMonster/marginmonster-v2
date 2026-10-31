@@ -423,11 +423,11 @@ export default function Index() {
               <figcaption><b>Faceless video</b><span>From a prompt — script, voice &amp; word-synced captions. No store needed.</span></figcaption>
             </figure>
             {[
-              "/style-tiles/avatarcover.jpg?v=4",
+              "/heroes/avatar.jpg?v=2",
               "/style-tiles/cover.jpg?v=4",
               "/style-tiles/anthemcover.jpg?v=4",
               "/ad-templates/format-magazine.jpg?v=1",
-              "/ad-templates/phcover.jpg?v=1",
+              "/heroes/product.jpg?v=2",
               "/ad-templates/format-review.jpg?v=1",
               "/ad-templates/format-tweet.jpg?v=1",
             ].map((src, i) => (
