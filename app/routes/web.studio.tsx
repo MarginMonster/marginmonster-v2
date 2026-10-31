@@ -6320,16 +6320,16 @@ const WS_STYLE = `
 .ws-stylecombo-plus{width:30px;height:30px;border-radius:50%;background:var(--gold-deep,#B08526);color:#fff;font-size:21px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 4px 12px rgba(20,32,26,.3)}
 @media(max-width:420px){.ws-stylecard{width:84px}}
 /* STEP-2 video-STYLE picker: "Your shot" hero → three output cards → setup. */
-.ws-vstyle{display:flex;align-items:center;gap:10px;margin:2px 0 4px}
-.ws-vstyle-shot{flex:0 0 auto;width:96px;display:flex;flex-direction:column;align-items:stretch;gap:6px;text-align:center;padding:7px 7px 9px;border-radius:14px;border:1.5px solid #9CCBB1;background:var(--card,#FDFCF7);box-shadow:0 6px 16px rgba(20,32,26,.16);cursor:zoom-in;font:inherit}
+.ws-vstyle{display:flex;align-items:center;justify-content:center;gap:12px;margin:2px 0 4px}
+.ws-vstyle-shot{flex:0 0 auto;width:120px;display:flex;flex-direction:column;align-items:stretch;gap:6px;text-align:center;padding:7px 7px 9px;border-radius:14px;border:1.5px solid #9CCBB1;background:var(--card,#FDFCF7);box-shadow:0 6px 16px rgba(20,32,26,.16);cursor:zoom-in;font:inherit}
 .ws-vstyle-shot:disabled{cursor:default;opacity:.65;box-shadow:none}
 .ws-vstyle-shotimg{position:relative;width:100%;aspect-ratio:1/1;border-radius:11px;background:#EAF6EF center/cover no-repeat;border:1.5px solid #9CCBB1;display:grid;place-items:center}
 .ws-vstyle-shotph{color:#9CCBB1}
 .ws-vstyle-shot b{font-size:12px;font-weight:800;color:var(--ink,#14201A);line-height:1.1}
 .ws-vstyle-shot>span:last-child{font-size:10px;color:var(--ink2,#4A554E);line-height:1.2}
 .ws-vstyle-arrow{flex:0 0 auto;color:#9CCBB1;font-size:22px;font-weight:800;line-height:1}
-.ws-vstyle-cards{flex:1 1 auto;min-width:0;display:flex;gap:9px}
-.ws-vstyle-cards .ws-stylecard{width:auto;flex:1 1 0;min-width:0;max-width:150px;padding:7px 7px 9px}
+.ws-vstyle-cards{flex:0 1 auto;min-width:0;display:flex;gap:12px}
+.ws-vstyle-cards .ws-stylecard{flex:0 0 auto;width:220px;min-width:0;padding:8px 8px 10px}
 .ws-vcard .ws-stylecard-img{aspect-ratio:1/1}
 .ws-vcard-img{overflow:hidden}
 /* The muted looping output-demo clip fills the card over the gradient+icon. */
@@ -6345,8 +6345,8 @@ const WS_STYLE = `
   .ws-vstyle-arrow{display:none}
   .ws-vstyle-shot{width:100%;flex-direction:row;align-items:center;text-align:left;gap:10px}
   .ws-vstyle-shot .ws-vstyle-shotimg{width:48px;height:48px;flex:0 0 auto}
-  .ws-vstyle-cards{width:100%;gap:9px}
-  .ws-vstyle-cards .ws-stylecard{max-width:none}
+  .ws-vstyle-cards{width:100%;gap:9px;flex:1 1 auto}
+  .ws-vstyle-cards .ws-stylecard{flex:1 1 0;width:auto;max-width:none}
 }
 .ws-vsetup{margin-top:13px}
 .ws-vsetup-row{display:flex;align-items:center;gap:11px;margin-top:9px;flex-wrap:wrap}
