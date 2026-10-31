@@ -46,6 +46,7 @@ import { withBrandFallback } from "./ad-copy-retry.server";
 import { CLAIMS_GUARDRAIL, dropOrgEndorsementPossessive } from "./ad-claims";
 import { reconcileEngineSurcharge } from "./engine-reconcile.server";
 import { createWhisperx, wordsFromWhisperx, groupCaptions } from "./faceless-video.server";
+import { falEnabled, submitAvatar, pollAvatar, falQueueHandleFor, FalRenderFailed } from "./fal-video.server";
 
 // EVERY Anthem lands at the same ad length, singer or not — and the cut ends
 // on a between-line gap in the vocal (found via silencedetect), never mid-word.
@@ -536,20 +537,60 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       const audioFile = trim.status === 0 && fs.existsSync(singPath) ? singPath : rawSong;
       const audioDataUri = "data:audio/mpeg;base64," + fs.readFileSync(audioFile).toString("base64");
 
-      if (resume.omniPredictionId && ck.ckOmniId) {
+      // PRIMARY: HeyGen Avatar 4 (fal) — the same premium Avatar-IV engine the
+      // Talking path uses. It is built for SINGING (not just speech), renders
+      // more natural motion than omni-human AND costs less, so the anthem no
+      // longer runs on talking's fallback engine. fal needs HOSTED urls (not the
+      // data URIs omni takes), so host the trimmed song under /renders and pass
+      // the already-hosted singer frame. ANY failure (no key, no host, a dead
+      // render) falls straight through to omni-human below, so the anthem always
+      // performs — worst case is exactly today's engine.
+      const appBase = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      let audioHostedUrl = "";
+      if (appBase) {
+        try {
+          const rdir = path.join(process.cwd(), "data", "renders");
+          fs.mkdirSync(rdir, { recursive: true });
+          const an = `anthem-sing-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp3`;
+          fs.copyFileSync(audioFile, path.join(rdir, an));
+          audioHostedUrl = `${appBase}/renders/${an}`;
+        } catch (e) { console.error("[anthem] couldn't host singing audio for HeyGen — using omni:", e instanceof Error ? e.message.slice(0, 120) : e); }
+      }
+      const singerFrameHostedUrl = heldUrl || frameUrl || params.composedFrameUrl || portraitPublicUrl || "";
+      // Re-attach to an in-flight HeyGen render after a restart (never re-buy it).
+      if (!talkingUrl && typeof ck.ckAnthemFalReqId === "string" && ck.ckAnthemFalReqId) {
+        try { const t = await pollAvatar(falQueueHandleFor(ck.ckAnthemFalReqId)); if (t) { talkingUrl = t; singEngine = "heygen-fal"; } }
+        catch { /* dead handle — fresh render below */ }
+      }
+      if (!talkingUrl && falEnabled() && !ck.ckAnthemFalError && singerFrameHostedUrl && audioHostedUrl) {
+        try {
+          const h = await submitAvatar(singerFrameHostedUrl, audioHostedUrl);
+          await ckpt({ ckAnthemFalReqId: h.requestId });
+          talkingUrl = await pollAvatar(h);
+          singEngine = "heygen-fal";
+        } catch (e) {
+          const msg = e instanceof Error ? e.message.slice(0, 160) : String(e);
+          console.error("[anthem] fal HeyGen failed — falling back to omni-human:", msg);
+          if (e instanceof FalRenderFailed) await ckpt({ ckAnthemFalError: msg });
+        }
+      }
+
+      // FALLBACK: omni-human (data URIs). Resume an in-flight omni first.
+      if (!talkingUrl && resume.omniPredictionId && ck.ckOmniId) {
         try {
           const resumed = await repPoll(resume.omniPredictionId, 12 * 60_000, "anthem-omni(resumed)");
           // An hours-old prediction hands back an already-dead delivery url —
           // re-buying the lipsync beats shipping a video that won't download.
           talkingUrl = (await checkpointUrlAlive(resumed)) ? resumed : "";
+          if (talkingUrl) singEngine = "omni-human";
         } catch { /* fresh run below */ }
       }
       if (!talkingUrl) {
         const omniId = await repCreate("bytedance/omni-human", { image: frameDataUri, audio: audioDataUri });
         await ckpt({ ckOmniId: omniId });
         talkingUrl = await repPoll(omniId, 12 * 60_000, "anthem-omni");
+        singEngine = "omni-human";
       }
-      singEngine = "omni-human";
       await ckpt({ ckTalkingUrl: talkingUrl, ckSingEngine: singEngine });
     } catch (e) {
       console.error("[anthem] singing performance failed — product visual instead:", e instanceof Error ? e.message.slice(0, 180) : e);
