@@ -5147,19 +5147,18 @@ export default function WebStudio() {
                   </button>
                   <span className="ws-vstyle-arrow" aria-hidden="true">→</span>
                   <div className="ws-vstyle-cards">
-                    {/* A style with a `demo` plays a muted autoplay loop over the
-                        gradient+icon. Anthem + Talking both carry realistic presenter
-                        demo clips (seedance i2v from an R2-realism seed, frosted green
-                        bottle). Commercial retired from this picker — different flow. */}
+                    {/* A style with a `still` shows a clean realistic preview image
+                        (a frame from its demo clip) over the gradient — stills, not
+                        autoplay video, so the picker reads as a calm selection.
+                        Anthem + Talking only; Commercial retired here (different flow). */}
                     {([
-                      { key: "anthem", name: t("Anthem"), sub: t("A sung jingle"), icon: "music", grad: "linear-gradient(150deg,#F7C6E0,#C9477E)", demo: "/showcase/demo-anthem.mp4?v=4", poster: "/showcase/demo-anthem.jpg?v=4" },
-                      { key: "talking", name: t("Talking"), sub: t("Speaks to camera"), icon: "mic", grad: "linear-gradient(150deg,#13A95E,#0A5F38)", demo: "/showcase/demo-talking.mp4?v=1", poster: "/showcase/demo-talking.jpg?v=1" },
-                    ] as { key: "anthem" | "talking" | "commercial"; name: string; sub: string; icon: string; grad: string; demo?: string; poster?: string }[]).map((s) => (
+                      { key: "anthem", name: t("Anthem"), sub: t("A sung jingle"), icon: "music", grad: "linear-gradient(150deg,#F7C6E0,#C9477E)", still: "/showcase/still-anthem.jpg?v=1" },
+                      { key: "talking", name: t("Talking"), sub: t("Speaks to camera"), icon: "mic", grad: "linear-gradient(150deg,#13A95E,#0A5F38)", still: "/showcase/still-talking.jpg?v=1" },
+                    ] as { key: "anthem" | "talking" | "commercial"; name: string; sub: string; icon: string; grad: string; still?: string }[]).map((s) => (
                       <button type="button" key={s.key} className={`ws-stylecard ws-vcard${videoStyle === s.key ? " open ws-isgood" : ""}`}
                         aria-pressed={videoStyle === s.key} onClick={() => pickVideoStyle(s.key)}>
-                        <span className={`ws-stylecard-img${s.demo ? " ws-vcard-img" : ""}`} style={{ background: s.grad, border: 0 }}>
-                          {s.demo && <video className="ws-vcard-vid" src={s.demo} poster={s.poster} autoPlay muted loop playsInline preload="metadata" tabIndex={-1} />}
-                          <span className="ws-vcard-ico" aria-hidden="true"><Ico n={s.icon} size={24} /></span>
+                        <span className={`ws-stylecard-img${s.still ? " ws-vcard-img" : ""}`} style={s.still ? { backgroundImage: `url(${s.still})`, border: 0 } : { background: s.grad, border: 0 }}>
+                          {!s.still && <span className="ws-vcard-ico" aria-hidden="true"><Ico n={s.icon} size={24} /></span>}
                           {videoStyle === s.key && <span className="ws-stylecard-badge" aria-hidden="true">✓</span>}
                         </span>
                         <b>{s.name}</b>
@@ -6330,7 +6329,7 @@ const WS_STYLE = `
 .ws-vstyle-shot>span:last-child{font-size:10px;color:var(--ink2,#4A554E);line-height:1.2}
 .ws-vstyle-arrow{flex:0 0 auto;color:#9CCBB1;font-size:22px;font-weight:800;line-height:1}
 .ws-vstyle-cards{flex:1 1 auto;min-width:0;display:flex;gap:9px}
-.ws-vstyle-cards .ws-stylecard{width:auto;flex:1 1 0;min-width:0;padding:7px 7px 9px}
+.ws-vstyle-cards .ws-stylecard{width:auto;flex:1 1 0;min-width:0;max-width:150px;padding:7px 7px 9px}
 .ws-vcard .ws-stylecard-img{aspect-ratio:1/1}
 .ws-vcard-img{overflow:hidden}
 /* The muted looping output-demo clip fills the card over the gradient+icon. */
