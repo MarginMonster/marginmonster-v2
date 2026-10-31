@@ -2072,10 +2072,10 @@ function CatalogSync({ startedAt }: { startedAt: string | null }) {
  * into three obvious moves — look, product, direction — so the form is scanned
  * rather than waded through. Purely presentational: no state, no wrapping, so
  * every field stays exactly where the multipart submit expects it. */
-function StepHead({ n, title, hint }: { n: number; title: string; hint?: string }) {
+function StepHead({ n, title, hint }: { n?: number; title: string; hint?: string }) {
   return (
     <div className="ws-stephead">
-      <span className="ws-stepn" aria-hidden="true">{n}</span>
+      {n != null && <span className="ws-stepn" aria-hidden="true">{n}</span>}
       <b>{title}</b>
       {hint ? <span className="ws-stephint">{hint}</span> : null}
     </div>
@@ -4153,7 +4153,7 @@ export default function WebStudio() {
             {/* "Make an image" and "Make music" generate from text — they need
                 no subject/photo, so the whole step-2 block is skipped for them. */}
             {!isCreate && !isMusic && !isFaceless && !(isEdit && casual) && !(casual && tab === "video") && (<>
-            <StepHead n={avatarVideoHub ? 1 : 2} title={avatarVideoHub ? t("Your scene") : casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={avatarVideoHub ? (noProduct ? t("who · what they say · the look · the scene") : t("your presenter, holding your product")) : casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
+            <StepHead n={avatarVideoHub ? undefined : 2} title={avatarVideoHub ? t("Your scene") : casual ? (tab === "video" ? t("Describe your video") : t("Your subject")) : t("Your product")} hint={avatarVideoHub ? (noProduct ? t("who · what they say · the look · the scene") : t("your presenter, holding your product")) : casual ? (tab === "video" ? t("anything you like — no photo needed") : t("what this is about")) : t("what we're actually selling")} />
 
             {/* ======================================================================
                 AVATAR-VIDEO COMBINE PANEL — ONE immersive flow (owner-requested).
@@ -4939,7 +4939,11 @@ export default function WebStudio() {
             {/* Casual create skips this header — the "Describe your image"
                 label below already names the box, and dropping it lifts the
                 box to sit right under the Stage. */}
-            {!(((isCreate || isEdit) && casual) || isMusic || isFaceless || (casual && tab === "video")) && (
+            {/* For the avatar-video hub this header is GONE on purpose: the
+                combine output above IS the video's preview, and the style pick
+                flows straight under it (one seamless flow, no second viewport /
+                no step break). Every other mode keeps its numbered step. */}
+            {!avatarVideoHub && !(((isCreate || isEdit) && casual) || isMusic || isFaceless || (casual && tab === "video")) && (
               <StepHead n={avatarVideoHub ? 2 : 3} title={avatarVideoHub ? t("Make your video") : isFaceless ? t("Your video") : isCreate || isMusic ? t("Describe it") : t("Direction & {verb}", { verb: t(verb).toLowerCase() })} hint={avatarVideoHub ? t("pick a style — preview the words free before you spend") : isFaceless ? t("what's it about?") : isCreate || isMusic ? t("the more detail, the better") : t("leave it to EasyMode, or steer it")} />
             )}
             {/* Product NAME — for an avatar video it lives HERE (with the video),
@@ -5131,23 +5135,14 @@ export default function WebStudio() {
                 </>
               ) : avatarVideoHub ? (
               <>
-                {/* ── STEP 2 — one combined shot → choose the video it becomes ──
-                    Three outputs, each previewed as WORDS (free) before the
-                    150-token render. Matches the step-1 hero-card quality. */}
-                <div className="ws-vstyle">
-                  {/* Picture preview of the combined shot (the video input) — set it
-                      up in the Combine step above; tap to enlarge. The video style
-                      selection sits directly below it, seamless. */}
-                  <button type="button" className="ws-vstyle-shot" disabled={!combineUrl}
-                    aria-label={combineUrl ? t("Your shot — tap to enlarge") : t("Combine a shot above first")}
-                    onClick={() => { if (combineUrl) setExpandImg(combineUrl); }}>
-                    <span className="ws-vstyle-shotimg" style={combineUrl ? { backgroundImage: `url(${combineUrl})` } : undefined}>
-                      {!combineUrl && <span className="ws-vstyle-shotph" aria-hidden="true"><Ico n="sparkle" size={30} /></span>}
-                    </span>
-                    <b>{t("Your shot")}</b>
-                    <span>{combineUrl ? t("Ready to roll") : t("Combine above")}</span>
-                  </button>
-                  <div className="ws-vstyle-cards">
+                {/* ── Choose the video your one combined shot becomes ──
+                    Merged into the scene flow (no separate step / no second
+                    preview): the combined shot in the panel ABOVE is the video's
+                    preview, and the style pick flows straight under it. Each
+                    output is previewed as WORDS (free) before the 150-token
+                    render. This slim lead-in is the only seam. */}
+                <p className="ws-vlead">{combineUrl ? t("Your shot's set above ✓ — now pick the video it becomes. Preview the words free before you spend.") : t("Pick the video your shot becomes — preview the words free, then combine above and generate.")}</p>
+                <div className="ws-vstyle-cards">
                     {/* A style with a `still` shows a clean realistic preview image
                         (a frame from its demo clip) over the gradient — stills, not
                         autoplay video, so the picker reads as a calm selection.
@@ -5168,7 +5163,6 @@ export default function WebStudio() {
                       </button>
                     ))}
                   </div>
-                </div>
 
                 {/* Setup for the chosen style. Two clean states so the optional
                     THEME box and the GENERATED words never show at once (that was
@@ -6320,17 +6314,9 @@ const WS_STYLE = `
 /* the equation "+" under the card: presenter + product -> combined output */
 .ws-stylecombo-plus{width:30px;height:30px;border-radius:50%;background:var(--gold-deep,#B08526);color:#fff;font-size:21px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 4px 12px rgba(20,32,26,.3)}
 @media(max-width:420px){.ws-stylecard{width:84px}}
-/* STEP-2 video-STYLE picker: "Your shot" hero → three output cards → setup. */
-.ws-vstyle{display:flex;flex-direction:column;align-items:center;gap:14px;margin:4px 0 6px}
-.ws-vstyle-shot{width:240px;max-width:100%;display:flex;flex-direction:column;align-items:stretch;gap:6px;text-align:center;padding:8px 8px 10px;border-radius:14px;border:1.5px solid #9CCBB1;background:var(--card,#FDFCF7);box-shadow:0 6px 16px rgba(20,32,26,.16);cursor:zoom-in;font:inherit}
-.ws-vstyle-upload{padding:9px 12px;font-size:12.5px;border-radius:11px}
-.ws-vstyle-reuse{max-width:260px}
-.ws-vstyle-shot:disabled{cursor:default;opacity:.65;box-shadow:none}
-.ws-vstyle-shotimg{position:relative;width:100%;aspect-ratio:1/1;border-radius:11px;background:#EAF6EF center/cover no-repeat;border:1.5px solid #9CCBB1;display:grid;place-items:center}
-.ws-vstyle-shotph{color:#9CCBB1}
-.ws-vstyle-shot b{font-size:12px;font-weight:800;color:var(--ink,#14201A);line-height:1.1}
-.ws-vstyle-shot>span:last-child{font-size:10px;color:var(--ink2,#4A554E);line-height:1.2}
-.ws-vstyle-arrow{flex:0 0 auto;color:#9CCBB1;font-size:22px;font-weight:800;line-height:1;margin-top:112px}
+/* STEP-2 video-STYLE picker: the combined shot (scene panel above) is the
+   preview; a slim lead-in, then the output cards + setup. */
+.ws-vlead{margin:12px auto 11px;max-width:460px;text-align:center;font-size:12.5px;font-weight:600;line-height:1.45;color:var(--ink2,#4A554E)}
 .ws-vstyle-cards{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;max-width:100%}
 .ws-vstyle-cards .ws-stylecard{flex:0 0 auto;width:220px;min-width:0;padding:8px 8px 10px}
 .ws-vcard .ws-stylecard-img{aspect-ratio:1/1}
@@ -6344,8 +6330,6 @@ const WS_STYLE = `
 .ws-vcard-cost{display:inline-block;margin:1px auto 0;font-size:10px;font-weight:800;color:var(--green,#0C7A46);background:#EAF6EF;border-radius:999px;padding:1px 9px}
 .ws-vcard.open .ws-vcard-cost{background:#fff}
 @media(max-width:560px){
-  .ws-vstyle{gap:11px}
-  .ws-vstyle-shot{width:210px}
   .ws-vstyle-cards{width:100%;gap:9px}
   .ws-vstyle-cards .ws-stylecard{flex:1 1 0;width:auto;max-width:none}
 }
