@@ -5147,14 +5147,13 @@ export default function WebStudio() {
                   </button>
                   <span className="ws-vstyle-arrow" aria-hidden="true">→</span>
                   <div className="ws-vstyle-cards">
-                    {/* A style with a `demo` plays a muted autoplay loop of a REAL
-                        app render over the gradient+icon; styles without one stay the
-                        clean gradient card. Anthem = an actual rendered jingle
-                        (lip-synced + burned captions). Talking/Commercial await theirs. */}
+                    {/* A style with a `demo` plays a muted autoplay loop over the
+                        gradient+icon. Anthem + Talking both carry realistic presenter
+                        demo clips (seedance i2v from an R2-realism seed, frosted green
+                        bottle). Commercial retired from this picker — different flow. */}
                     {([
-                      { key: "anthem", name: t("Anthem"), sub: t("A sung jingle"), icon: "music", grad: "linear-gradient(150deg,#F7C6E0,#C9477E)", demo: "/showcase/demo-anthem.mp4?v=3", poster: "/showcase/demo-anthem.jpg?v=3" },
-                      { key: "talking", name: t("Talking"), sub: t("Speaks to camera"), icon: "mic", grad: "linear-gradient(150deg,#13A95E,#0A5F38)" },
-                      { key: "commercial", name: t("Commercial"), sub: t("A cinematic story"), icon: "film", grad: "linear-gradient(150deg,#6EA8FF,#274B8F)" },
+                      { key: "anthem", name: t("Anthem"), sub: t("A sung jingle"), icon: "music", grad: "linear-gradient(150deg,#F7C6E0,#C9477E)", demo: "/showcase/demo-anthem.mp4?v=4", poster: "/showcase/demo-anthem.jpg?v=4" },
+                      { key: "talking", name: t("Talking"), sub: t("Speaks to camera"), icon: "mic", grad: "linear-gradient(150deg,#13A95E,#0A5F38)", demo: "/showcase/demo-talking.mp4?v=1", poster: "/showcase/demo-talking.jpg?v=1" },
                     ] as { key: "anthem" | "talking" | "commercial"; name: string; sub: string; icon: string; grad: string; demo?: string; poster?: string }[]).map((s) => (
                       <button type="button" key={s.key} className={`ws-stylecard ws-vcard${videoStyle === s.key ? " open ws-isgood" : ""}`}
                         aria-pressed={videoStyle === s.key} onClick={() => pickVideoStyle(s.key)}>
