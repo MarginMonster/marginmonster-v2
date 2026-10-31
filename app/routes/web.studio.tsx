@@ -3665,14 +3665,14 @@ export default function WebStudio() {
   const casualVideoMake = casualVideo && !isVideoEdit;
   // A Captions edit needs text to burn in; trim/speed validate ranges server-side.
   const videoEditReady = isVideoEdit && (videoEditOp !== "caption" || !!videoCaption.trim());
-  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !noProduct && !productTitle.trim()) || (noProduct && videoStyle !== "anthem" && !direction.trim()) || needsPhoto || (needsPresenter && !avatarId) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !noProduct && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || (avatarVideoHub && (!videoStyle || !wordsReady)) || shortBy > 0;
+  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !noProduct && !productTitle.trim()) || (noProduct && videoStyle !== "anthem" && !direction.trim()) || needsPhoto || (needsPresenter && !avatarId && !(avatarVideoHub && !!combineUrl)) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !noProduct && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || (avatarVideoHub && (!videoStyle || !wordsReady)) || shortBy > 0;
   // When the avatar-video Generate is disabled, SAY WHY — otherwise the merchant
   // taps a dead button with no clue (the step-1 "Your scene" setup is above and
   // easy to miss once you're down in the style/words step). Ordered by fix-first;
   // the wallet note already handles plan/tokens, so those stay null here.
   const avatarHubBlock: string | null = !avatarVideoHub || !d.hasPlan || shortBy > 0
     ? null
-    : !avatarId ? t("Pick a presenter up in “Your scene” first.")
+    : (!avatarId && !combineUrl) ? t("Pick a presenter up in “Your scene” first.")
     : (!noProduct && needsPhoto) ? t("Add your product photo up in “Your scene” first.")
     : (!noProduct && !productTitle.trim()) ? t("Add a product name up in “Your scene”.")
     : !videoStyle ? t("Pick a style above.")
