@@ -576,20 +576,28 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     await ckpt({ ckKeyframeUrl: "", ckJingleKeyId: "" });
   }
   if (!talkingUrl && !keyframeUrl) {
-    if (!params.serviceMode && params.productImageUrl) {
-      // THE REAL PHOTO IS THE KEYFRAME — BUT NOT AT ITS OWN ASPECT.
+    // PREFER THE COMBINED FRAME. When the merchant combined (or uploaded) a
+    // presenter+product shot, THAT approved frame is the ad's hero — not the
+    // bare product. This no-singer path used to seed ONLY from productImageUrl,
+    // so an Anthem built on a combined shot animated the product alone and
+    // discarded the presenter the merchant put in the frame. composedFrameUrl
+    // wins (it can be presenter+product OR, in no-product mode, presenter-only);
+    // the raw product photo is the fallback when there is no combined frame.
+    const keySeed = params.composedFrameUrl
+      || (!params.serviceMode && params.productImageUrl ? params.productImageUrl : "");
+    if (keySeed) {
+      // THE REAL FRAME IS THE KEYFRAME — BUT NOT AT ITS OWN ASPECT.
       //
-      // Handing a merchant's raw product photo to the animator gives back a
-      // clip at that photo's shape, and assembly then cover-crops it to 9:16.
-      // A square Shopify photo loses about 44% of its width and a 4:3 landscape
-      // about 58% — so a bottle at the left of frame, or a name printed across
-      // the width, is simply sliced off. For the no-singer Anthem this is the
-      // whole ad, not a cutaway.
+      // Handing a raw photo to the animator gives back a clip at that photo's
+      // shape, and assembly then cover-crops it to 9:16. A square photo loses
+      // about 44% of its width and a 4:3 landscape about 58% — so a subject at
+      // the edge of frame, or a name printed across the width, is simply sliced
+      // off. For the no-singer Anthem this is the whole ad, not a cutaway.
       //
       // Padded locally with ffmpeg rather than composed by a model: it costs
-      // nothing, it is deterministic, and it cannot redraw the product. The
+      // nothing, it is deterministic, and it cannot redraw the frame. The
       // blurred fill is the same treatment the video path already uses.
-      keyframeUrl = (await padToVertical(params.productImageUrl)) || params.productImageUrl;
+      keyframeUrl = (await padToVertical(keySeed)) || keySeed;
     } else {
       const prompt =
         `Bright joyful retro TV-commercial scene for "${params.productTitle}"` +
