@@ -5152,8 +5152,8 @@ export default function WebStudio() {
                         autoplay video, so the picker reads as a calm selection.
                         Anthem + Talking only; Commercial retired here (different flow). */}
                     {([
-                      { key: "anthem", name: t("Anthem"), sub: t("A sung jingle"), icon: "music", grad: "linear-gradient(150deg,#F7C6E0,#C9477E)", still: "/showcase/still-anthem.jpg?v=1" },
                       { key: "talking", name: t("Talking"), sub: t("Speaks to camera"), icon: "mic", grad: "linear-gradient(150deg,#13A95E,#0A5F38)", still: "/showcase/still-talking.jpg?v=1" },
+                      { key: "anthem", name: t("Anthem"), sub: t("Catchy song, lip-synced"), icon: "music", grad: "linear-gradient(150deg,#F7C6E0,#C9477E)", still: "/showcase/still-anthem.jpg?v=1" },
                     ] as { key: "anthem" | "talking" | "commercial"; name: string; sub: string; icon: string; grad: string; still?: string }[]).map((s) => (
                       <button type="button" key={s.key} className={`ws-stylecard ws-vcard${videoStyle === s.key ? " open ws-isgood" : ""}`}
                         aria-pressed={videoStyle === s.key} onClick={() => pickVideoStyle(s.key)}>
@@ -6345,7 +6345,8 @@ const WS_STYLE = `
   .ws-vstyle-arrow{display:none}
   .ws-vstyle-shot{width:100%;flex-direction:row;align-items:center;text-align:left;gap:10px}
   .ws-vstyle-shot .ws-vstyle-shotimg{width:48px;height:48px;flex:0 0 auto}
-  .ws-vstyle-cards{width:100%;gap:7px}
+  .ws-vstyle-cards{width:100%;gap:9px}
+  .ws-vstyle-cards .ws-stylecard{max-width:none}
 }
 .ws-vsetup{margin-top:13px}
 .ws-vsetup-row{display:flex;align-items:center;gap:11px;margin-top:9px;flex-wrap:wrap}
