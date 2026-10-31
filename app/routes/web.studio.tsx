@@ -5135,16 +5135,33 @@ export default function WebStudio() {
                     Three outputs, each previewed as WORDS (free) before the
                     150-token render. Matches the step-1 hero-card quality. */}
                 <div className="ws-vstyle">
-                  {/* "Your shot" — the combine that feeds every style (tap to enlarge). */}
-                  <button type="button" className="ws-vstyle-shot" disabled={!combineUrl}
-                    aria-label={combineUrl ? t("Your combined shot — tap to enlarge") : t("Combine a shot above first")}
-                    onClick={() => { if (combineUrl) setExpandImg(combineUrl); }}>
-                    <span className="ws-vstyle-shotimg" style={combineUrl ? { backgroundImage: `url(${combineUrl})` } : undefined}>
-                      {!combineUrl && <span className="ws-vstyle-shotph" aria-hidden="true"><Ico n="sparkle" size={20} /></span>}
-                    </span>
-                    <b>{t("Your shot")}</b>
-                    <span>{combineUrl ? t("Ready to roll") : t("Combine above")}</span>
-                  </button>
+                  {/* "Your shot" — set it RIGHT HERE: show the combined frame, or
+                      upload / reuse a photo (same controls as the Combine step in
+                      step 1), then pick a style. The full presenter+product combine
+                      still lives in step 1 above. */}
+                  <div className="ws-vstyle-shotcol">
+                    <button type="button" className="ws-vstyle-shot" disabled={!combineUrl}
+                      aria-label={combineUrl ? t("Your shot — tap to enlarge") : t("No shot yet — upload one below, or combine in step 1")}
+                      onClick={() => { if (combineUrl) setExpandImg(combineUrl); }}>
+                      <span className="ws-vstyle-shotimg" style={combineUrl ? { backgroundImage: `url(${combineUrl})` } : undefined}>
+                        {!combineUrl && <span className="ws-vstyle-shotph" aria-hidden="true"><Ico n="sparkle" size={28} /></span>}
+                      </span>
+                      <b>{t("Your shot")}</b>
+                      <span>{combineUrl ? t("Ready to roll") : t("Upload below, or combine ↑")}</span>
+                    </button>
+                    <button type="button" className="ws-reuse-upload ws-vstyle-upload" onClick={() => frameUploadRef.current?.click()} disabled={busy || frameUploading}>
+                      <Ico n="upload" size={16} /> {frameUploading ? t("Uploading…") : t("Upload a photo")}
+                    </button>
+                    {recentFrames.length > 0 && (
+                      <div className="ws-reuse-strip ws-vstyle-reuse" aria-label={t("Reuse a past shot")}>
+                        {recentFrames.slice(0, 12).map((f) => (
+                          <button type="button" key={f.id} className={`ws-reuse-thumb${combineUrl === f.media ? " sel" : ""}`} title={f.presenter ? t("Reuse this shot") : t("Use this image")} onClick={() => useFrame(f)} disabled={busy || frameUploading}>
+                            <img src={f.media} alt="" loading="lazy" onError={(e) => { const b = e.currentTarget.closest(".ws-reuse-thumb") as HTMLElement | null; if (b) b.style.display = "none"; }} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <span className="ws-vstyle-arrow" aria-hidden="true">→</span>
                   <div className="ws-vstyle-cards">
                     {/* A style with a `still` shows a clean realistic preview image
@@ -6320,14 +6337,17 @@ const WS_STYLE = `
 .ws-stylecombo-plus{width:30px;height:30px;border-radius:50%;background:var(--gold-deep,#B08526);color:#fff;font-size:21px;font-weight:800;line-height:1;display:grid;place-items:center;box-shadow:0 4px 12px rgba(20,32,26,.3)}
 @media(max-width:420px){.ws-stylecard{width:84px}}
 /* STEP-2 video-STYLE picker: "Your shot" hero → three output cards → setup. */
-.ws-vstyle{display:flex;align-items:center;justify-content:center;gap:12px;margin:2px 0 4px}
-.ws-vstyle-shot{flex:0 0 auto;width:120px;display:flex;flex-direction:column;align-items:stretch;gap:6px;text-align:center;padding:7px 7px 9px;border-radius:14px;border:1.5px solid #9CCBB1;background:var(--card,#FDFCF7);box-shadow:0 6px 16px rgba(20,32,26,.16);cursor:zoom-in;font:inherit}
+.ws-vstyle{display:flex;align-items:flex-start;justify-content:center;gap:12px;margin:2px 0 4px}
+.ws-vstyle-shotcol{flex:0 0 auto;width:190px;display:flex;flex-direction:column;gap:7px}
+.ws-vstyle-shot{width:100%;display:flex;flex-direction:column;align-items:stretch;gap:6px;text-align:center;padding:8px 8px 10px;border-radius:14px;border:1.5px solid #9CCBB1;background:var(--card,#FDFCF7);box-shadow:0 6px 16px rgba(20,32,26,.16);cursor:zoom-in;font:inherit}
+.ws-vstyle-upload{padding:9px 12px;font-size:12.5px;border-radius:11px}
+.ws-vstyle-reuse{max-width:190px}
 .ws-vstyle-shot:disabled{cursor:default;opacity:.65;box-shadow:none}
 .ws-vstyle-shotimg{position:relative;width:100%;aspect-ratio:1/1;border-radius:11px;background:#EAF6EF center/cover no-repeat;border:1.5px solid #9CCBB1;display:grid;place-items:center}
 .ws-vstyle-shotph{color:#9CCBB1}
 .ws-vstyle-shot b{font-size:12px;font-weight:800;color:var(--ink,#14201A);line-height:1.1}
 .ws-vstyle-shot>span:last-child{font-size:10px;color:var(--ink2,#4A554E);line-height:1.2}
-.ws-vstyle-arrow{flex:0 0 auto;color:#9CCBB1;font-size:22px;font-weight:800;line-height:1}
+.ws-vstyle-arrow{flex:0 0 auto;color:#9CCBB1;font-size:22px;font-weight:800;line-height:1;margin-top:84px}
 .ws-vstyle-cards{flex:0 1 auto;min-width:0;display:flex;gap:12px}
 .ws-vstyle-cards .ws-stylecard{flex:0 0 auto;width:220px;min-width:0;padding:8px 8px 10px}
 .ws-vcard .ws-stylecard-img{aspect-ratio:1/1}
@@ -6343,6 +6363,8 @@ const WS_STYLE = `
 @media(max-width:560px){
   .ws-vstyle{flex-wrap:wrap;gap:8px}
   .ws-vstyle-arrow{display:none}
+  .ws-vstyle-shotcol{width:100%}
+  .ws-vstyle-reuse{max-width:none}
   .ws-vstyle-shot{width:100%;flex-direction:row;align-items:center;text-align:left;gap:10px}
   .ws-vstyle-shot .ws-vstyle-shotimg{width:48px;height:48px;flex:0 0 auto}
   .ws-vstyle-cards{width:100%;gap:9px;flex:1 1 auto}
