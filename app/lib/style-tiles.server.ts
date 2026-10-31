@@ -220,3 +220,40 @@ export function ensureNextCharacterTiles(characters: string[]): void {
     }
   }
 }
+
+// Each cartoon style tile in the PICKER gallery shows a DIFFERENT cast member,
+// so the row reads as a varied showcase instead of the same default face in
+// every style. A character-PREFIXED url (e.g. mei-dreamanime.jpg) still previews
+// that specific presenter — this only steers the bare-key gallery tiles.
+const STYLE_TILE_CHARACTER: Record<string, string> = {
+  dreamanime: "maya",
+  pixar: "tunde",
+  retroanime: "hiro",
+  vintagetoon: "grace",
+  clay: "diego",
+  plushie: "nia",
+  // hidden-from-picker styles keep an assignment too, for if they're re-enabled
+  toyfigure: "kai",
+  papercut: "amara",
+  puppet: "finn",
+};
+/** The cast member a bare-key gallery tile uses. Falls back to the default when
+ *  the assigned character has no portrait on disk. */
+export function tileCharacterFor(key: string): string {
+  const c = STYLE_TILE_CHARACTER[key];
+  return c && portraitFile(c) ? c : DEFAULT_TILE_CHARACTER;
+}
+
+/** Warm the bare-key picker gallery — each style under its assigned character.
+ *  One tile per call (same rate-limit discipline as ensureAllStyleTiles). */
+export function ensurePickerGallery(): void {
+  void (async () => {
+    if (await merchantBusy()) return;
+    for (const k of PICKER_KEYS) {
+      const c = tileCharacterFor(k);
+      if (currentTileExists(c, k)) continue;
+      ensureStyleTile(c, k);
+      return; // one character×style per cycle
+    }
+  })();
+}

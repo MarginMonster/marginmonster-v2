@@ -2702,7 +2702,7 @@ export default function WebStudio() {
   // switched presenters, which read as confusing (owner). These are the SAME
   // generic tiles the Shopify app uses. (styleChar still backs the jingle
   // "Photoreal" tile below, which shows the actual chosen singer.)
-  const styleCover = (key: string) => `/style-tiles/${key}.jpg?v=5`;
+  const styleCover = (key: string) => `/style-tiles/${key}.jpg?v=6`;
 
   // Mirror the server: no presenter → the engine renders the video and its
   // surcharge is real. With a presenter the lipsync engine does the work, so

@@ -8,7 +8,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import fs from "node:fs";
 import { merchantBusy } from "../lib/art-throttle.server";
-import { DEFAULT_TILE_CHARACTER, ensureAllStyleTiles, ensureStyleTile, isPickerKey, isSceneKey, portraitFile, styleTilePath } from "../lib/style-tiles.server";
+import { DEFAULT_TILE_CHARACTER, ensureAllStyleTiles, ensurePickerGallery, ensureStyleTile, isPickerKey, isSceneKey, portraitFile, styleTilePath, tileCharacterFor } from "../lib/style-tiles.server";
 
 function serveFile(p: string, cache: string): Response {
   return new Response(new Uint8Array(fs.readFileSync(p)), {
@@ -19,8 +19,11 @@ function serveFile(p: string, cache: string): Response {
 export const loader = async ({ params }: LoaderFunctionArgs) => {
   const file = params.file || "";
   const m = file.match(/^(?:([a-z]+)-)?([a-z]+)\.jpg$/);
-  let character = m?.[1] || DEFAULT_TILE_CHARACTER;
+  const explicitChar = m?.[1];
   const key = m?.[2] || "";
+  // Bare-key gallery tile → its assigned (varied) character; an explicit
+  // {character}-{style} url previews that specific presenter instead.
+  let character = explicitChar || tileCharacterFor(key);
 
   // The Cartoon Avatar cover — the default character in Pixar style; also
   // kicks the default set.
@@ -52,7 +55,7 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
   // fallback would show a face where a place belongs, so 404 until it's rendered
   // (the setting card shows its tint/emoji meanwhile).
   if (isSceneKey(key)) return new Response("Generating", { status: 404, headers: { "Cache-Control": "no-store" } });
-  ensureAllStyleTiles(character);
+  if (explicitChar) ensureAllStyleTiles(character); else ensurePickerGallery();
   const fb = portraitFile(character);
   return fb ? serveFile(fb, "no-store") : new Response("Not ready", { status: 404 });
 };
