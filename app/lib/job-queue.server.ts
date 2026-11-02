@@ -689,6 +689,46 @@ async function runJob(
         }
         break;
       }
+      // FILM (Creator) — premium long-form: music video / kids cartoon / short
+      // film. Handled before the marketing plumbing, gated at the cheap
+      // "creatorvideo" cap (available on all plans, metered by scene count in the
+      // route). Its engine generalizes faceless with real i2v CLIPS, not stills.
+      if (payload.contentType === "film") {
+        if (!shop?.activePlan) throw new Error("Shop missing active plan");
+        {
+          const { assertCapability } = await import("./capabilities.server");
+          assertCapability(shop.activePlan, "creatorvideo");
+        }
+        const { generateFilm } = await import("./film-engine.server");
+        const filmAssetId = await generateFilm({
+          shopId,
+          template: payload.filmTemplate as string | undefined,
+          topic: (payload.filmTopic as string) || (payload.topic as string) || "",
+          sceneCount: typeof payload.filmScenes === "number" ? payload.filmScenes : undefined,
+          section: (payload.section as string) || "creator",
+          jobId: payload.__jobId as string | undefined,
+          resume: {
+            // Merchant-approved treatment from the free preview wins on the first
+            // run (checkpoint wins on resume) — rendered verbatim, no re-write.
+            ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
+            ckClips: payload.ckClips as string[] | undefined,
+            ckMusic: payload.ckMusic as string | undefined,
+          },
+        });
+        await tagAssetSection(filmAssetId, payload.section as string | undefined);
+        try {
+          await unlockAchievement(shopId, "FACELESS_FIRST");
+          const takes = await db.asset.count({ where: { shopId, type: "VIDEO_AD" } });
+          if (takes >= 1) await unlockAchievement(shopId, "FIRST_TAKE");
+          if (takes >= 10) await unlockAchievement(shopId, "SHOW_RUNNER");
+          await checkCreationAchievements(shopId);
+        } catch { /* non-fatal */ }
+        if (payload.prePaid) {
+          try { await maybeTickQuestline(payload, shopId, true, filmAssetId); }
+          catch (e) { console.error("[job] film accounting failed (non-fatal):", e); }
+        }
+        break;
+      }
       if (!shop?.activePlan) throw new Error("Shop missing active plan");
       // Marketing video needs a brand voice; creator-section video does NOT — a
       // standalone Creator plan has no brand profile. (Faceless was handled

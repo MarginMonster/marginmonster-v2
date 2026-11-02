@@ -139,6 +139,9 @@ export default function WebLayout() {
                   cards (Create anything / Grow on social). */}
               <Link className={tab("/web")} to="/web">{t("Dashboard")}</Link>
               <Link className={tab("/web/studio")} to="/web/studio">{t("Create")}</Link>
+              {/* Film Studio = the premium long-form tier (music videos now;
+                  kids cartoons + short films next). Metered by scene count. */}
+              <Link className={tab("/web/film")} to="/web/film">{t("Film")}</Link>
               {/* Presenters = the dedicated cast hub: browse the full pro cast +
                   the "be the face of your brand" forge. */}
               <Link className={tab("/web/presenters")} to="/web/presenters">{t("Presenters")}</Link>

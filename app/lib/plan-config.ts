@@ -351,6 +351,37 @@ export const CREATOR_SURCHARGE_MULT = 3;
 // the route never charges this when the Ultra/Veo engine is picked.
 export const DURATION_SURCHARGE_10S = 15;
 
+// ---- Film engine (premium long-form video: music video, kids cartoon, short
+// film) — METERED BY SCENE COUNT. Each scene = one AI seed still + one i2v CLIP
+// (the "serious filmmaker" upgrade over faceless's cheap Ken-Burns stills), so
+// cost scales with length. The film tier is available on ALL plans via the
+// "creatorvideo" capability (owner: keep premium available, meter it, top up),
+// so the BINDING floor is the standalone Creator plan's $0.0140/token — the
+// per-scene rate is sized for THAT floor at a pessimistic ~$0.35-0.40 clip COGS
+// so even a $6.99 user clears ≥30%; Studio+ wallets just buy more of them.
+//
+//   FILM_PER_SCENE 40 ≈ a Studio-floor-safe ~15 scaled ×~2.7 for the Creator
+//   floor (the same shape as faceless's ×CREATOR_SURCHARGE_MULT surcharge).
+//   40 × $0.0140 = $0.56/scene gross → ≥30% even at $0.39 COGS.
+//   FILM_BASE 15 covers the song (musicgen ~$0.10) + assembly compute.
+//
+// ⚠ PROVISIONAL — set conservatively HIGH on purpose: the FIRST live render
+// measures the real fal/Replicate per-clip bill, and this rate is then tuned
+// DOWN to the true ≥30% number (lowering a price is the margin-safe direction;
+// under-pricing the first real render is not). This is the one lever to change.
+export const FILM_BASE = 15;
+export const FILM_PER_SCENE = 40;
+export const FILM_MIN_SCENES = 1;
+export const FILM_MAX_SCENES = 40;
+
+/** Metered film price in tokens. The SAME pure function is used to DISPLAY the
+ *  estimate before Generate and to CHARGE on Generate, so the quote and the
+ *  debit can never drift. scenes is clamped to the engine's bounds. */
+export function estimateFilmTokens(scenes: number): number {
+  const n = Math.max(FILM_MIN_SCENES, Math.min(FILM_MAX_SCENES, Math.round(scenes || 0)));
+  return FILM_BASE + FILM_PER_SCENE * n;
+}
+
 export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   description: "Product description",
   adCopy: "Ad copy",
