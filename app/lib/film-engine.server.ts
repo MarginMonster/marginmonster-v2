@@ -4,26 +4,26 @@
 // STILLS, each scene is a real AI i2v CLIP (the quality upgrade the owner asked
 // for — "high budget, not cheap"). One engine, many TEMPLATES:
 //   musicvideo — sung/instrumental track + beat-synced visual scenes   (SHIPPED)
+//   kidstv     — CoComelon-style bright cartoon, recurring characters  (SHIPPED)
 //   skit       — 1-3 funny scenes, product in the gag                  (planned)
-//   kidstv     — CoComelon-style bright cartoon, recurring characters  (planned)
 //   movie      — Dhar Mann-style scripted drama + payoff               (planned)
 //   youtube    — long-form narrative                                   (planned)
+//
+// Recurring-character templates (kidstv) solve consistency with a one-time CAST
+// reference image that every scene seed is conditioned on (renderStyledSeed),
+// plus a fixed cast "bible" injected into every seed + motion prompt.
 //
 // PRICING is METERED by scene count (plan-config: estimateFilmTokens) — the
 // SAME pure function drives the estimate shown before Generate and the amount
 // charged, so they can never drift. Charged up front in the route; the queue's
 // refundPrepaidOnce returns it on terminal failure.
-//
-// ~90% reuses the shipped stack: renderCreativeSeed (image-generation) for
-// scene stills, animateCreate/animatePoll (ugc pipeline) for the i2v clips,
-// musicBedToDisk (music-generation) for the track, and runFfmpeg for assembly.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { animateCreate, animatePoll, checkpointJob, download, ffprobeDuration, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
-import { renderCreativeSeed } from "./image-generation.server";
+import { renderCreativeSeed, renderStyledSeed } from "./image-generation.server";
 import { musicBedToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
@@ -40,7 +40,7 @@ export interface FilmTemplate {
   name: string;
   /** How the treatment writer is briefed. */
   brief: string;
-  /** Per-scene visual hint appended to the writer's instruction. */
+  /** Per-scene visual hint appended to the writer's instruction + the seed/motion prompts. */
   sceneHint: string;
   /** Music mood the track generator falls back to. */
   musicHint: string;
@@ -49,6 +49,12 @@ export interface FilmTemplate {
   maxScenes: number;
   /** Burn the per-scene caption line over its clip (lyrics / on-screen text). */
   captions: boolean;
+  /** Recurring-character template: the treatment yields a CAST bible and… */
+  castBible?: boolean;
+  /** …each scene seed is conditioned on a one-time cast reference image. */
+  referenceSeed?: boolean;
+  /** Enforce wholesome, G-rated content in the treatment + seed/motion prompts. */
+  childSafe?: boolean;
   /** Whether this template is wired end-to-end yet (route only offers these). */
   live: boolean;
 }
@@ -66,13 +72,27 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     captions: true,
     live: true,
   },
+  kidstv: {
+    key: "kidstv",
+    name: "Kids Cartoon",
+    brief: "a bright, wholesome kids cartoon episode (CoComelon-style) with a small recurring cast and a sing-along — a simple, happy little story a toddler would love",
+    sceneHint: "bright glossy 3D-animated cartoon, rounded friendly character designs, big expressive eyes, soft candy colors, simple cheerful backgrounds, wholesome and child-safe (G-rated), like a modern preschool cartoon",
+    musicHint: "cheerful bouncy nursery-rhyme sing-along, upbeat and sweet",
+    defaultScenes: 6,
+    minScenes: 4,
+    maxScenes: 16,
+    captions: true,
+    castBible: true,
+    referenceSeed: true,
+    childSafe: true,
+    live: true,
+  },
   // Planned templates — the engine already drives them generically; they stay
   // OUT of the route picker (live:false) until their specifics land (skit =
-  // product-in-scene compositing; kidstv = cartoon style-lock + recurring
-  // characters; movie = scripted dialogue, the talking-cast engine fork).
+  // product-in-scene compositing; movie = scripted dialogue, the talking-cast
+  // engine fork).
   skit: { key: "skit", name: "Skit", brief: "a funny short commercial skit with a tiny cast and the product inside the gag", sceneHint: "a funny cinematic scene", musicHint: "playful, comedic background music", defaultScenes: 3, minScenes: 1, maxScenes: 5, captions: true, live: false },
-  kidstv: { key: "kidstv", name: "Kids Cartoon", brief: "a bright, wholesome kids cartoon episode in a CoComelon-style 3D look with simple recurring characters and a sing-along", sceneHint: "a bright friendly 3D-cartoon scene, child-safe, colorful", musicHint: "cheerful nursery-rhyme sing-along", defaultScenes: 8, minScenes: 4, maxScenes: 24, captions: true, live: false },
-  movie: { key: "movie", name: "Short Film", brief: "a short scripted dramatic film with a cast and a meaningful payoff (Dhar Mann style)", sceneHint: "a cinematic dramatic scene", musicHint: "emotional cinematic score", defaultScenes: 12, minScenes: 6, maxScenes: 40, captions: false, live: false },
+  movie: { key: "movie", name: "Short Film", brief: "a short scripted dramatic film with a cast and a meaningful payoff (Dhar Mann style)", sceneHint: "a cinematic dramatic scene", musicHint: "emotional cinematic score", defaultScenes: 12, minScenes: 6, maxScenes: 40, captions: false, castBible: true, referenceSeed: true, live: false },
   youtube: { key: "youtube", name: "YouTube Video", brief: "a long-form narrative YouTube video with a hook, body and payoff", sceneHint: "a clear, engaging cinematic scene", musicHint: "upbeat background music", defaultScenes: 10, minScenes: 6, maxScenes: 40, captions: true, live: false },
 };
 
@@ -84,13 +104,14 @@ export const LIVE_FILM_TEMPLATES = Object.values(FILM_TEMPLATES).filter((t) => t
 
 // ---- Treatment (the free, pre-paid script preview) --------------------------
 export interface FilmScene { visual: string; caption?: string }
-export interface FilmTreatment { title?: string; scenes: FilmScene[]; musicMood: string }
+export interface FilmTreatment { title?: string; scenes: FilmScene[]; musicMood: string; cast?: string[] }
 
 const TREATMENT_SCHEMA = {
   type: "object",
   properties: {
     title: { type: "string" },
     musicMood: { type: "string" },
+    cast: { type: "array", items: { type: "string" } },
     scenes: {
       type: "array",
       items: {
@@ -113,8 +134,9 @@ function captionSafe(s: string): string {
 }
 
 /** Write (or re-write, on Randomize) the treatment as free Anthropic TEXT — no
- *  token spend, our account. Returns scenes + a music mood. The caller shows it
- *  for approval/edit; the approved object rides into generateFilm.resume. */
+ *  token spend, our account. Returns scenes + a music mood (+ a recurring cast
+ *  for character-locked templates). The caller shows it for approval/edit; the
+ *  approved object rides into generateFilm.resume. */
 export async function previewFilmTreatment(opts: {
   shopId: string;
   template?: string;
@@ -126,15 +148,22 @@ export async function previewFilmTreatment(opts: {
   const scenes = clampScenes(tmpl, opts.sceneCount ?? tmpl.defaultScenes);
   const topic = (opts.topic || "").trim();
   const langLine = opts.contentLang && opts.contentLang !== "en" ? `\nWrite all captions in this language code: ${opts.contentLang}.` : "";
+  const castLine = tmpl.castBible
+    ? `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"). Every scene's VISUAL must feature these same named characters, described the same way.`
+    : "";
+  const safetyLine = tmpl.childSafe
+    ? `SAFETY: this is for very young children — keep it 100% wholesome and G-rated: happy, gentle and safe. NOTHING scary, sad, violent, adult or unsafe; no real named people or brands; invent no claims.`
+    : `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe.`;
   const prompt =
     `Write ${tmpl.brief}.\n` +
     (topic ? `THEME / what it's about: "${topic.slice(0, 300)}".\n` : `Pick a fun, broadly-appealing theme.\n`) +
-    `Return EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a short CAPTION (one punchy on-screen line, <=8 words; the sung/spoken hook for that beat).\n` +
+    castLine +
+    `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a short CAPTION (one punchy on-screen line, <=8 words; the sung/spoken hook for that beat).\n` +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
-    `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe.`;
+    safetyLine;
   const raw = await anthropicText(prompt, {
     model: "claude-sonnet-5",
-    maxTokens: 1400,
+    maxTokens: 1500,
     jsonSchema: { name: "film_treatment", schema: TREATMENT_SCHEMA as unknown as Record<string, unknown> },
   });
   const parsed = JSON.parse(raw) as FilmTreatment;
@@ -143,7 +172,8 @@ export async function previewFilmTreatment(opts: {
   // possessive from a third-party trademark the writer may have slipped in.
   list = list.map((s) => ({ visual: s.visual, caption: s.caption ? dropOrgEndorsementPossessive(s.caption) : undefined }));
   if (list.length < 1) throw new Error("[film] treatment came back empty");
-  return { title: (parsed.title || topic || tmpl.name).slice(0, 80), scenes: list, musicMood: parsed.musicMood || tmpl.musicHint };
+  const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 4) : undefined;
+  return { title: (parsed.title || topic || tmpl.name).slice(0, 80), scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast };
 }
 
 // ---- Assembly ---------------------------------------------------------------
@@ -254,7 +284,7 @@ export async function generateFilm(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckClips?: string[]; ckMusic?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckMusic?: string };
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template);
   const jobId = opts.jobId;
@@ -270,18 +300,43 @@ export async function generateFilm(opts: {
   treatment.scenes = treatment.scenes.slice(0, clampScenes(tmpl, opts.sceneCount ?? treatment.scenes.length));
   await ckpt({ ckTreatment: JSON.stringify(treatment) });
 
-  // 2) PER-SCENE CLIPS — seed still (renderCreativeSeed) → i2v clip (default
-  //    engine). Banked contiguously so a restart keeps finished clips.
+  // Cast bible + child-safe phrase woven into every seed + motion prompt so the
+  // characters and tone stay consistent across the whole film.
+  const castBible = treatment.cast && treatment.cast.length ? `Recurring cast, keep EVERY character identical in every scene: ${treatment.cast.join("; ")}.` : "";
+  const safePhrase = tmpl.childSafe ? "Wholesome, child-safe, G-rated, bright and friendly. " : "";
+
+  // CAST REFERENCE (character-locked templates): render ONE cast sheet up front,
+  // then condition every scene's seed on it so the characters keep the same look.
+  // Checkpointed so a restart never re-bills it; fail-open to text-only seeds.
+  let castRefAbs: string | undefined;
+  if (tmpl.referenceSeed && castBible) {
+    let castRef: string | null = resume.ckCastRef && resume.ckCastRef.trim() ? resume.ckCastRef : null;
+    if (!castRef) {
+      try { castRef = await renderCreativeSeed(`${safePhrase}Character reference sheet: ${castBible} ${tmpl.sceneHint}. All characters together, full body, clean neutral bright background, character-design sheet.`, "9:16"); }
+      catch { castRef = null; }
+      if (castRef) await ckpt({ ckCastRef: castRef });
+    }
+    if (castRef) castRefAbs = castRef.startsWith("http") ? castRef : `${base}${castRef}`;
+  }
+
+  // 2) PER-SCENE CLIPS — seed still → i2v clip (default engine). Banked
+  //    contiguously so a restart keeps finished clips.
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     const outPath = path.join(RENDERS(), `film-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
+    const seedPrompt = `${safePhrase}${scene.visual}. ${castBible} ${tmpl.sceneHint}. Richly detailed, high quality.`;
 
-    // Scene SEED still (/renders URL). Absolutize for the i2v provider fetch.
+    // Scene SEED still (/renders URL). Reference-conditioned when we have a cast
+    // sheet (keeps characters consistent); else text-to-image. Absolutize for the
+    // i2v provider fetch.
     let seedUrl: string | null = null;
     for (let a = 0; a < 2 && !seedUrl; a++) {
-      try { seedUrl = await renderCreativeSeed(`${scene.visual}. ${tmpl.sceneHint}. Cinematic, richly detailed, high quality.`, "9:16"); }
-      catch { /* retry once */ }
+      try {
+        seedUrl = castRefAbs
+          ? ((await renderStyledSeed(seedPrompt, castRefAbs, "9:16")) || (await renderCreativeSeed(seedPrompt, "9:16")))
+          : await renderCreativeSeed(seedPrompt, "9:16");
+      } catch { /* retry once */ }
     }
     const seedAbs = seedUrl ? (seedUrl.startsWith("http") ? seedUrl : `${base}${seedUrl}`) : undefined;
 
@@ -289,7 +344,7 @@ export async function generateFilm(opts: {
     // so a flaky i2v tick never drops a scene the merchant paid for.
     let made = false;
     if (seedAbs) {
-      const motion = `${scene.visual}. ${tmpl.sceneHint}. Smooth, confident cinematic camera motion, vertical 9:16. Add no text, caption, logo or watermark of your own.`;
+      const motion = `${safePhrase}${scene.visual}. ${castBible} ${tmpl.sceneHint}. Smooth, confident cinematic camera motion, vertical 9:16. Add no text, caption, logo or watermark of your own.`;
       for (let a = 0; a < 2 && !made; a++) {
         try {
           const created = await animateCreate(undefined, { startImage: seedAbs, prompt: motion, durationSec: CLIP_SECONDS });

@@ -711,6 +711,7 @@ async function runJob(
             // Merchant-approved treatment from the free preview wins on the first
             // run (checkpoint wins on resume) — rendered verbatim, no re-write.
             ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
+            ckCastRef: payload.ckCastRef as string | undefined,
             ckClips: payload.ckClips as string[] | undefined,
             ckMusic: payload.ckMusic as string | undefined,
           },

@@ -4646,6 +4646,28 @@ export async function renderCreativeSeed(prompt: string, aspect = "9:16"): Promi
   }
 }
 
+/** A scene seed CONDITIONED on a reference image (e.g. a cartoon CAST SHEET), so
+ *  recurring characters keep the same look across a film's scenes — the fix for
+ *  the consistency problem in kids-cartoon / scripted templates. nano-banana is
+ *  natively multi-image (image_input), so the reference + the scene text compose
+ *  into a new still that reuses the characters. No flux fallback (wholesome kids
+ *  content rarely trips safety); the caller falls back to the text-only
+ *  renderCreativeSeed if this returns null. Durable /renders URL, or null. */
+export async function renderStyledSeed(prompt: string, refImageUrl: string, aspect = "9:16"): Promise<string | null> {
+  try {
+    if (!process.env.REPLICATE_API_TOKEN || !refImageUrl) return null;
+    const ar = CREATE_ASPECT_VALUES.includes(aspect) ? aspect : "9:16";
+    const full = `${(prompt || "").trim().slice(0, 500)}. No watermark, no signature.`;
+    const url = await repRun("google/nano-banana", { prompt: full, image_input: [refImageUrl], aspect_ratio: ar, output_format: "jpg" });
+    const durable = await persistRemote(url, "jpg");
+    artLog("image-ad", `styled seed rendered (${ar})`);
+    return durable;
+  } catch (e) {
+    artLog("image-ad", `styled seed failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return null;
+  }
+}
+
 export async function generateImageAd(
   shopId: string,
   brandProfile: BrandProfile,
