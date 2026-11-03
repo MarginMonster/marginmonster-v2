@@ -170,8 +170,8 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     brief: "a SHORT FILM SCENE with real CHARACTER DIALOGUE — a tiny cast talking to each other with tension and a turn, in ONE continuous location (the experiment: characters actually SPEAK, and the shots chain together so it flows)",
     sceneHint: "a cinematic, photorealistic live-action film scene — natural lighting, filmic composition, real-looking people",
     musicHint: "subtle cinematic underscore",
-    defaultScenes: 3,
-    minScenes: 2,
+    defaultScenes: 2,
+    minScenes: 1,
     maxScenes: 6,
     captions: true,
     castBible: true,
@@ -263,7 +263,7 @@ export async function previewFilmTreatment(opts: {
   // Narrated templates want each caption to BE the narrator's spoken line for
   // that beat (a flowing voiceover); others want a short on-screen hook.
   const captionLine = tmpl.dialogue
-    ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive beats in ONE continuous location (so the shots flow together). Each beat = a VISUAL (${tmpl.sceneHint}; what we SEE — continuous action in the same place) and a CAPTION formatted EXACTLY as "NAME: the line they say out loud" — one natural spoken line (<=16 words). Across the beats the dialogue is a real back-and-forth with rising tension and a turn at the end; use the cast's names as the speakers.\n`
+    ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS, all in ONE continuous location (so they flow together). Each shot = a VISUAL (${tmpl.sceneHint}; what we SEE — a TWO-SHOT that frames BOTH characters together in the same place) and a CAPTION that is a SHORT BACK-AND-FORTH EXCHANGE for that shot: 2 to 3 lines, EACH on its OWN line, formatted EXACTLY as "NAME: the line they say out loud" (each a natural spoken line, <=14 words, alternating speakers). Across the shots the whole conversation builds rising tension with a clear turn at the end; use the cast's names as the speakers.\n`
     : tmpl.sung
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes/flows with the others; read in order the captions ARE the song's lyrics.\n`
     : tmpl.narrated

@@ -28,20 +28,29 @@ import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
-const VEO_POLL_MS = 8 * 60_000;
-const FAL_VEO = "fal-ai/veo3.1/fast/image-to-video";
-const REP_VEO = "google/veo-3-fast";
+const VEO_POLL_MS = 10 * 60_000;
+// FULL Veo-3 (not the "fast" tier) for the Test Movie: better multi-speaker
+// dialogue, lip-sync and VOICE consistency. Film is free during build, so we
+// trade cost/time for quality here. fal veo3.1 → Replicate google/veo-3 fallback.
+const FAL_VEO = "fal-ai/veo3.1/image-to-video";
+const REP_VEO = "google/veo-3";
 
-/** "NAME: the line" → { speaker, line }. */
-function splitDialogue(caption: string): { speaker: string; line: string } {
-  const c = (caption || "").trim();
-  const m = c.match(/^([^:]{1,40}):\s*(.+)$/s);
-  if (m) return { speaker: m[1].trim(), line: m[2].trim() };
-  return { speaker: "", line: c };
+/** A shot's caption holds a short multi-line EXCHANGE (2-3 turns), each line
+ *  "NAME: the line". Parse it into ordered { speaker, line } turns so one Veo clip
+ *  can carry the whole back-and-forth (fills the ~8s clip instead of one line +
+ *  dead air, and keeps both voices consistent within the shot). */
+function splitExchange(caption: string): Array<{ speaker: string; line: string }> {
+  const lines = (caption || "").split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const turns: Array<{ speaker: string; line: string }> = [];
+  for (const l of lines) {
+    const m = l.match(/^([^:]{1,40}):\s*(.+)$/s);
+    turns.push(m ? { speaker: m[1].trim(), line: m[2].trim() } : { speaker: "", line: l });
+  }
+  return turns.length ? turns : [{ speaker: "", line: (caption || "").trim() }];
 }
 
-/** A Veo clip where the character SPEAKS the line (audio on). fal veo3.1-fast →
- *  Replicate google/veo-3-fast fallback. Returns the clip URL. */
+/** A Veo clip where the characters SPEAK an exchange (audio on). FULL Veo-3:
+ *  fal veo3.1 → Replicate google/veo-3 fallback. Returns the clip URL. */
 async function veoDialogueClip(seedAbs: string, prompt: string, stage: string): Promise<string> {
   if (falEnabled()) {
     try {
@@ -161,21 +170,24 @@ export async function generateTestMovie(opts: {
   //    FINAL positions carry forward. Crucially we do NOT feed that frame straight
   //    into Veo: on a speaker switch a blurry frame of the WRONG character made Veo
   //    mangle the new speaker's audio (the gibberish). Instead the last frame
-  //    conditions a CLEAN reverse-angle still on the current speaker → flow AND a
-  //    clear subject for Veo to voice. The first scene seeds from the cast ref.
+  //    conditions a CLEAN two-shot of both characters → flow AND a clear stage for
+  //    the exchange. Each clip carries a full 2-3 line exchange (one continuous
+  //    take, little dead air). The first scene seeds from the cast ref.
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
   let prevStillAbs: string | undefined = abs(resume.ckLastStill);
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
-    const { speaker, line } = splitDialogue(scene.caption || "");
+    const turns = splitExchange(scene.caption || "");
+    const speakers = Array.from(new Set(turns.map((t) => t.speaker).filter(Boolean)));
 
-    // SEED: a CLEAN still, framing the current SPEAKER, that CONTINUES the prior
-    // shot (reuse the last image) for set + character continuity. Reference = the
-    // previous clip's last frame; the first scene uses the cast reference instead.
+    // SEED: a clean TWO-SHOT framing BOTH characters in the location (so the clip
+    // can show them talk back-and-forth), CONTINUING the prior shot (reuse the last
+    // frame) for set + character continuity. Reference = the previous clip's last
+    // frame; the first scene uses the cast reference instead.
     const refForSeed = prevStillAbs || castRefAbs;
     const framed = (prevStillAbs
-      ? `${scene.visual}. ${tmpl.sceneHint}. CONTINUOUS same scene as the reference image: identical room, lighting, wardrobe and the same two characters' faces. Reverse angle so ${speaker || "the speaker"} is the clear foreground subject, facing the other character.`
-      : `${scene.visual}. ${tmpl.sceneHint}. ${speaker ? `${speaker} is the clear foreground subject, facing the other character.` : ""} ${castBible}`
+      ? `${scene.visual}. ${tmpl.sceneHint}. CONTINUOUS same scene as the reference image: identical room, lighting, wardrobe and the same characters' faces. A two-shot that frames both characters together so we can see them speak.`
+      : `${scene.visual}. ${tmpl.sceneHint}. A two-shot that frames both characters together so we can see them speak. ${castBible}`
     ).replace(/\s+/g, " ").trim();
     let seedUrl: string | null = null;
     try { seedUrl = refForSeed ? ((await renderStyledSeed(framed, refForSeed, "9:16")) || (await renderCreativeSeed(framed, "9:16"))) : await renderCreativeSeed(framed, "9:16"); }
@@ -183,14 +195,19 @@ export async function generateTestMovie(opts: {
     const seedAbs = abs(seedUrl);
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
 
-    // Veo prompt: ONE speaker talks (the other listens in silence), lines clear,
-    // and NO AI gibberish text on props/signs/screens.
+    // Veo prompt: ONE continuous take of the whole short EXCHANGE — the characters
+    // speak in turn with clear lip-sync, the camera favoring whoever is speaking, so
+    // the ~8s clip is FULL (not one line + dead air). Voices pinned distinct +
+    // consistent (fixes voice drift), and NO AI gibberish text on props/signs.
+    const exchange = turns.map((t) => (t.speaker ? `${t.speaker}: "${t.line}"` : `"${t.line}"`)).join("\n");
+    const voiceLine = speakers.length >= 2
+      ? `Give ${speakers.join(" and ")} each a distinct, natural speaking voice, and keep each character's voice IDENTICAL throughout — never swap, change or re-pitch a character's voice.`
+      : `Keep the speaking voice natural and consistent.`;
     const prompt =
       `${scene.visual}. ${tmpl.sceneHint}. ` +
-      (speaker
-        ? `ONLY ${speaker} speaks — clearly, lips in sync, enunciating: "${line}". The other character listens in silence, not speaking or moving their lips.`
-        : `One character speaks clearly, lips in sync: "${line}". The other listens silently.`) +
-      ` Photorealistic live-action film, clean natural spoken-dialogue audio, shallow depth of field. No readable text, captions, signage or screen text anywhere in frame.`;
+      `One continuous take — the characters speak this exchange in turn, each with clear lip-sync and natural pacing, little dead air, the camera favoring whoever is speaking:\n${exchange}\n` +
+      `${voiceLine} ${castBible} ` +
+      `Photorealistic live-action film, clean natural spoken-dialogue audio, shallow depth of field. No readable text, captions, signage or screen text anywhere in frame.`;
 
     const clipUrl = await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
     const outPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
