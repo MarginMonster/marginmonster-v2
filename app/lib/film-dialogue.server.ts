@@ -52,22 +52,6 @@ async function veoDialogueClip(seedAbs: string, prompt: string, stage: string): 
   return await repPoll(id, VEO_POLL_MS, stage);
 }
 
-/** Grab a clean frame near the END of a clip → a durable /renders still, to seed
- *  the NEXT clip (the chain). Returns the /renders URL, or null. */
-async function extractLastFrame(clipPath: string): Promise<string | null> {
-  try {
-    const name = `tmframe-${Date.now()}-${crypto.randomBytes(5).toString("hex")}.jpg`;
-    const out = path.join(RENDERS(), name);
-    // -sseof seeks from the end; grab the last available frame.
-    const r = await runFfmpeg(["-y", "-sseof", "-0.6", "-i", clipPath, "-update", "1", "-frames:v", "1", "-q:v", "3", out]);
-    if (r.status === 0 && fs.existsSync(out) && fs.statSync(out).size > 512) {
-      try { await mirrorRender(name, fs.readFileSync(out)); } catch { /* non-fatal */ }
-      return `/renders/${name}`;
-    }
-  } catch { /* fall through */ }
-  return null;
-}
-
 /** Concatenate the Veo clips, KEEPING their dialogue audio (unlike the main
  *  engine, which strips clip audio for a narrator/music bed). Degrade ladder:
  *  with audio → silent, so a clip that came back without an audio stream can't
@@ -156,27 +140,31 @@ export async function generateTestMovie(opts: {
   // 3) CHAINED Veo DIALOGUE clips (sequential — each seeds from the previous
   //    clip's last frame for continuity).
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
-  let lastFrameAbs = abs(resume.ckLastFrame);
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     const { speaker, line } = splitDialogue(scene.caption || "");
 
-    // Seed: chain from the previous clip's last frame; scene 1 (no chain) seeds
-    // from the cast reference (or a fresh photoreal still).
-    let seedAbs = lastFrameAbs;
-    if (!seedAbs) {
-      let seedUrl: string | null = null;
-      const sp = `${scene.visual}. ${tmpl.sceneHint}. ${castBible}`;
-      try { seedUrl = castRefAbs ? ((await renderStyledSeed(sp, castRefAbs, "9:16")) || (await renderCreativeSeed(sp, "9:16"))) : await renderCreativeSeed(sp, "9:16"); }
-      catch { seedUrl = null; }
-      seedAbs = abs(seedUrl);
-    }
+    // SEED: a CLEAN still per beat, framing the SPEAKER, conditioned on the cast
+    // reference for character + set consistency (shot/reverse-shot — how real
+    // dialogue is shot). We deliberately do NOT seed from the previous clip's
+    // video frame: that was the gibberish culprit — a motion-blurred frame of the
+    // OTHER character made Veo mangle the new speaker's lip-sync/audio. A clean
+    // still of the right speaker gives Veo a clear subject to voice.
+    const framed = `${scene.visual}. ${tmpl.sceneHint}. ${speaker ? `${speaker} is the clear foreground subject, facing the other character.` : ""} ${castBible}`.replace(/\s+/g, " ").trim();
+    let seedUrl: string | null = null;
+    try { seedUrl = castRefAbs ? ((await renderStyledSeed(framed, castRefAbs, "9:16")) || (await renderCreativeSeed(framed, "9:16"))) : await renderCreativeSeed(framed, "9:16"); }
+    catch { seedUrl = null; }
+    const seedAbs = abs(seedUrl);
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
 
+    // Veo prompt: ONE speaker talks (the other listens in silence), lines clear,
+    // and NO AI gibberish text on props/signs/screens.
     const prompt =
       `${scene.visual}. ${tmpl.sceneHint}. ` +
-      (speaker ? `${speaker} speaks to camera/to the other character, lips moving in sync, saying clearly: "${line}".` : `A character says, lips in sync: "${line}".`) +
-      ` Photorealistic live-action film, natural spoken dialogue audio, shallow depth of field, continuous scene.`;
+      (speaker
+        ? `ONLY ${speaker} speaks — clearly, lips in sync, enunciating: "${line}". The other character listens in silence, not speaking or moving their lips.`
+        : `One character speaks clearly, lips in sync: "${line}". The other listens silently.`) +
+      ` Photorealistic live-action film, clean natural spoken-dialogue audio, shallow depth of field. No readable text, captions, signage or screen text anywhere in frame.`;
 
     const clipUrl = await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
     const outPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
@@ -184,10 +172,6 @@ export async function generateTestMovie(opts: {
     if (!(fs.existsSync(outPath) && ffprobeDuration(outPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
     clips.push(outPath);
     await ckpt({ ckClips: clips });
-
-    // Chain: this clip's last frame seeds the next scene.
-    const lf = await extractLastFrame(outPath);
-    if (lf) { lastFrameAbs = abs(lf); await ckpt({ ckLastFrame: lf }); }
   }
   if (!clips.length) throw new Error("[testmovie] no clips rendered");
 
