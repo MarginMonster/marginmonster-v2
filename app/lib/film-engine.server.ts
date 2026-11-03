@@ -340,6 +340,7 @@ async function assembleFilm(opts: {
     if (useCaptions) {
       const draws: string[] = [];
       opts.captions.forEach((cap, i) => {
+        if (i >= opts.clips.length) return; // a dropped scene left fewer clips than captions — skip the orphan line
         const text = captionSafe(cap || "");
         if (!text) return;
         const size = Math.max(30, Math.min(48, Math.floor((720 * 0.92) / (Math.max(1, text.length) * 0.60))));
@@ -524,7 +525,17 @@ export async function generateFilm(opts: {
     const todo: number[] = [];
     for (let i = 0; i < treatment.scenes.length; i++) if (!results[i]) todo.push(i);
     let next = 0;
-    const worker = async () => { while (next < todo.length) { const idx = todo[next++]; results[idx] = await renderScene(idx); } };
+    const worker = async () => {
+      while (next < todo.length) {
+        const idx = todo[next++];
+        // Resilient: a single scene that can't render (a refused horror seed, a
+        // rate-limit, a provider hiccup) is DROPPED, not fatal — the film
+        // assembles from the scenes that DID make it. Only an all-scenes-failed
+        // render throws (→ refund). One bad clip no longer sinks the whole video.
+        try { results[idx] = await renderScene(idx); }
+        catch (e) { console.error(`[film] scene ${idx + 1} failed — dropping it:`, e instanceof Error ? e.message.slice(0, 160) : e); }
+      }
+    };
     await Promise.all(Array.from({ length: Math.min(CLIP_CONCURRENCY, todo.length) }, () => worker()));
     clips.length = 0;
     for (let i = 0; i < treatment.scenes.length; i++) { const c = results[i]; if (c) clips.push(c); }

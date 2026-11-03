@@ -214,7 +214,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const KIND: Record<string, "video" | "image" | "music" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_SONG: "music", GENERATE_BLOG_POST: "blog" };
   const cookingCards: { jobId: string; kind: "video" | "image" | "music" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number }[] = [];
   for (const j of jobs) {
-    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string } = {};
+    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string; contentType?: string; filmScenes?: number } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
     // Unified archive: every cooking tile shows, whichever section started it.
     const due = !j.runAt || j.runAt.getTime() <= nowMs;
@@ -234,7 +234,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // expired estimate, and the honest thing is to stop counting and say the
     // render is taking longer than usual.
     const elapsedSec = Math.round((nowMs - startMs) / 1000);
-    const etaSec = generating ? Math.round(TYPICAL[j.type] - elapsedSec) : 0;
+    // A film runs FAR longer than a normal 180s video (one AI clip per scene),
+    // so estimate from its scene count — otherwise the card falsely reads
+    // "taking longer than usual" within a few minutes of a perfectly healthy run.
+    const typical = (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film")
+      ? Math.max(600, (typeof p.filmScenes === "number" ? p.filmScenes : 8) * 60)
+      : TYPICAL[j.type];
+    const etaSec = generating ? Math.round(typical - elapsedSec) : 0;
     const pl = p as { chargedTokens?: number };
     const curCost = currentRetryCost(j.type, p as Record<string, unknown>);
     const storedCost = typeof pl.chargedTokens === "number" && pl.chargedTokens > 0 ? pl.chargedTokens : curCost;
