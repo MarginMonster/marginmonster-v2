@@ -7,10 +7,13 @@
 //   1. DIALOGUE — each scene is a Veo clip where the character speaks their line,
 //      with Veo's native audio/lip-sync (generate_audio). The script writes real
 //      character dialogue, not narration.
-//   2. CHAINING (the owner's seamlessness idea) — the LAST FRAME of each clip
-//      becomes the SEED for the next, so scene N continues scene N-1: same cast,
-//      same room, continuous action. Sequential by necessity (so no parallel
-//      speed-up here), which is the price of real flow.
+//   2. CONTINUITY (the owner's seamlessness idea) — each scene's seed is built
+//      from the PREVIOUS CLIP'S ACTUAL LAST FRAME, so scene N reuses scene N-1's
+//      end image: same cast, same room, same light, final positions carried
+//      forward, re-composed onto the new speaker. The last frame conditions a
+//      CLEAN reverse-angle still; we don't feed it straight into Veo (that seeded
+//      the WRONG character and made it speak gibberish). Sequential by necessity
+//      (so no parallel speed-up here), which is the price of real flow.
 //
 // This is a TEST: short (2-6 beats), one continuous scene, fully chained. Cuts
 // between beats + the full movie pipeline come after it proves out.
@@ -50,6 +53,21 @@ async function veoDialogueClip(seedAbs: string, prompt: string, stage: string): 
   }
   const id = await repCreate(REP_VEO, { prompt, image: seedAbs, aspect_ratio: "9:16", generate_audio: true });
   return await repPoll(id, VEO_POLL_MS, stage);
+}
+
+/** Grab the ACTUAL last frame of a rendered clip as a clean still (served from
+ *  /renders). Used as the continuity REFERENCE for the next scene's seed — so the
+ *  room and everyone's FINAL positions carry forward (the owner's "reuse the last
+ *  frame" idea) — without feeding the blurry frame straight into Veo (which, on a
+ *  speaker switch, made the audio gibberish). Returns a relative /renders URL. */
+async function extractLastFrame(videoPath: string): Promise<string | null> {
+  try {
+    const name = `tmf-${Date.now()}-${crypto.randomBytes(5).toString("hex")}.jpg`;
+    const out = path.join(RENDERS(), name);
+    const r = await runFfmpeg(["-y", "-sseof", "-0.2", "-i", videoPath, "-frames:v", "1", "-q:v", "2", out]);
+    if (r.status === 0 && fs.existsSync(out)) return `/renders/${name}`;
+  } catch { /* fall through — chain falls back to the scene's own seed still */ }
+  return null;
 }
 
 /** Concatenate the Veo clips, KEEPING their dialogue audio (unlike the main
@@ -107,7 +125,7 @@ export async function generateTestMovie(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastFrame?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string };
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
   const jobId = opts.jobId;
@@ -137,22 +155,30 @@ export async function generateTestMovie(opts: {
     } catch { /* fall through to text seeds */ }
   }
 
-  // 3) CHAINED Veo DIALOGUE clips (sequential — each seeds from the previous
-  //    clip's last frame for continuity).
+  // 3) Veo DIALOGUE clips (sequential). CONTINUITY = we reuse the PREVIOUS CLIP'S
+  //    ACTUAL LAST FRAME (the owner's "use the last frame" idea) as the reference
+  //    the next scene's seed is built from — so the room, lighting and everyone's
+  //    FINAL positions carry forward. Crucially we do NOT feed that frame straight
+  //    into Veo: on a speaker switch a blurry frame of the WRONG character made Veo
+  //    mangle the new speaker's audio (the gibberish). Instead the last frame
+  //    conditions a CLEAN reverse-angle still on the current speaker → flow AND a
+  //    clear subject for Veo to voice. The first scene seeds from the cast ref.
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
+  let prevStillAbs: string | undefined = abs(resume.ckLastStill);
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     const { speaker, line } = splitDialogue(scene.caption || "");
 
-    // SEED: a CLEAN still per beat, framing the SPEAKER, conditioned on the cast
-    // reference for character + set consistency (shot/reverse-shot — how real
-    // dialogue is shot). We deliberately do NOT seed from the previous clip's
-    // video frame: that was the gibberish culprit — a motion-blurred frame of the
-    // OTHER character made Veo mangle the new speaker's lip-sync/audio. A clean
-    // still of the right speaker gives Veo a clear subject to voice.
-    const framed = `${scene.visual}. ${tmpl.sceneHint}. ${speaker ? `${speaker} is the clear foreground subject, facing the other character.` : ""} ${castBible}`.replace(/\s+/g, " ").trim();
+    // SEED: a CLEAN still, framing the current SPEAKER, that CONTINUES the prior
+    // shot (reuse the last image) for set + character continuity. Reference = the
+    // previous clip's last frame; the first scene uses the cast reference instead.
+    const refForSeed = prevStillAbs || castRefAbs;
+    const framed = (prevStillAbs
+      ? `${scene.visual}. ${tmpl.sceneHint}. CONTINUOUS same scene as the reference image: identical room, lighting, wardrobe and the same two characters' faces. Reverse angle so ${speaker || "the speaker"} is the clear foreground subject, facing the other character.`
+      : `${scene.visual}. ${tmpl.sceneHint}. ${speaker ? `${speaker} is the clear foreground subject, facing the other character.` : ""} ${castBible}`
+    ).replace(/\s+/g, " ").trim();
     let seedUrl: string | null = null;
-    try { seedUrl = castRefAbs ? ((await renderStyledSeed(framed, castRefAbs, "9:16")) || (await renderCreativeSeed(framed, "9:16"))) : await renderCreativeSeed(framed, "9:16"); }
+    try { seedUrl = refForSeed ? ((await renderStyledSeed(framed, refForSeed, "9:16")) || (await renderCreativeSeed(framed, "9:16"))) : await renderCreativeSeed(framed, "9:16"); }
     catch { seedUrl = null; }
     const seedAbs = abs(seedUrl);
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
@@ -171,7 +197,11 @@ export async function generateTestMovie(opts: {
     await download(clipUrl, outPath);
     if (!(fs.existsSync(outPath) && ffprobeDuration(outPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
     clips.push(outPath);
-    await ckpt({ ckClips: clips });
+    // Advance the chain using the clip's ACTUAL last frame (reuse the last image →
+    // the real end-state carries forward); fall back to this scene's seed still.
+    const lastFrameUrl = await extractLastFrame(outPath);
+    prevStillAbs = abs(lastFrameUrl) || seedAbs;
+    await ckpt({ ckClips: clips, ckLastStill: (lastFrameUrl || seedUrl) || undefined });
   }
   if (!clips.length) throw new Error("[testmovie] no clips rendered");
 

@@ -714,7 +714,7 @@ async function runJob(
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
               ckCastRef: payload.ckCastRef as string | undefined,
               ckClips: payload.ckClips as string[] | undefined,
-              ckLastFrame: payload.ckLastFrame as string | undefined,
+              ckLastStill: payload.ckLastStill as string | undefined,
             },
           });
         } else {
