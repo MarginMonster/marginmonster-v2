@@ -27,7 +27,7 @@ import crypto from "node:crypto";
 import { db } from "../db.server";
 import { renderCreativeSeed } from "./image-generation.server";
 import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pipeline.server";
-import { animateOmniHuman, falEnabled, falTts } from "./fal-video.server";
+import { animateAvatar, animateOmniHuman, falEnabled, falTts } from "./fal-video.server";
 import { AVATAR_VOICES } from "./avatar-voice-catalog";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
@@ -218,14 +218,22 @@ export async function generateAvatarDialogue(opts: {
     const maskRel = speakerRight ? (speaker === speakerLeft ? masks.left : masks.right) : undefined;
     const maskUrl = maskRel ? abs(maskRel) : undefined;
     const audioUrl = await falTts(line || "…", voiceId, 1, { lang: null, emotion: "neutral" });
-    const clipUrl = await animateOmniHuman({
-      imageUrl: stageAbs,
-      audioUrl,
-      maskUrl,
-      prompt: "The speaking person talks naturally with accurate lip-sync; the other person listens quietly without speaking. Cinematic, photorealistic, no on-screen text.",
-      resolution: "720p",
-      turbo: true, // build-phase: faster iteration, slight quality trade-off
-    });
+    let clipUrl: string;
+    try {
+      clipUrl = await animateOmniHuman({
+        imageUrl: stageAbs,
+        audioUrl,
+        maskUrl,
+        prompt: "The speaking person talks naturally with accurate lip-sync; the other person listens quietly without speaking. Cinematic, photorealistic, no on-screen text.",
+        resolution: "720p",
+      });
+    } catch (e) {
+      // OmniHuman has been failing; NEVER let it kill the whole render. Fall back to
+      // HeyGen on the SAME shared two-shot so a clip still comes out (it animates the
+      // most prominent face — less precise than the mask, but it renders reliably).
+      console.error(`[avatardialogue] omnihuman failed, HeyGen fallback: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
+      clipUrl = await animateAvatar(stageAbs, audioUrl);
+    }
     const outClip = path.join(RENDERS(), `ad-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, outClip);
     if (!(fs.existsSync(outClip) && ffprobeDuration(outClip) > 0.5)) throw new Error(`[avatardialogue] scene ${i + 1}: clip did not download`);

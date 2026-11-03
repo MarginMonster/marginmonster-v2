@@ -11,7 +11,7 @@ import { Ico } from "../lib/icons";
 export const meta = () => [{ title: "Start free · EasyMode" }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  if (await getWebIdentity(request)) throw redirect("/web/home");
+  if (await getWebIdentity(request)) throw redirect("/web");
   // Seed the display language from the uiLang cookie SERVER-SIDE so the first
   // paint is already localized — no English-then-swap flash (and no Urdu
   // LTR→RTL flip) on a visitor who picked a language on the landing page.
