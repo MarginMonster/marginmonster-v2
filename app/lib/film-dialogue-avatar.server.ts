@@ -224,6 +224,7 @@ export async function generateAvatarDialogue(opts: {
       maskUrl,
       prompt: "The speaking person talks naturally with accurate lip-sync; the other person listens quietly without speaking. Cinematic, photorealistic, no on-screen text.",
       resolution: "720p",
+      turbo: true, // build-phase: faster iteration, slight quality trade-off
     });
     const outClip = path.join(RENDERS(), `ad-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, outClip);

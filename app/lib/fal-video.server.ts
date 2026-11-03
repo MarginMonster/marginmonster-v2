@@ -264,12 +264,14 @@ export async function animateOmniHuman(opts: {
   maskUrl?: string;
   prompt?: string;
   resolution?: "720p" | "1080p";
+  turbo?: boolean;
 }): Promise<string> {
   if (!falEnabled()) throw new Error("FAL_KEY not set");
   const body: Record<string, unknown> = {
     image_url: opts.imageUrl,
     audio_url: opts.audioUrl,
     resolution: opts.resolution || "720p",
+    ...(opts.turbo ? { turbo_mode: true } : {}),
     ...(opts.prompt ? { prompt: opts.prompt } : {}),
     ...(opts.maskUrl ? { mask_url: opts.maskUrl } : {}),
   };
