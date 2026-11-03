@@ -289,13 +289,13 @@ export default function FilmStudio() {
           {tmpl?.needsProduct && <input type="hidden" name="filmProductDescription" value={prodDesc} />}
           {treatment && <input type="hidden" name="approvedTreatment" value={JSON.stringify(treatment)} />}
           <button type="submit" className="fs-go" disabled={!canGo}>
-            {generating ? <>… {t("Starting your film")}</> : <><Ico n="film" size={16} /> {t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost })}</>}
+            {generating ? <>… {t("Starting your film")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost }) : t("Generate {name} · Free", { name: t(tmpl?.name || "Film") })}</>}
           </button>
         </Form>
         <p className="fs-cost">
-          {t("{base} + {per}/scene × {n} = {cost} Tokens", { base: d.base, per: d.perScene, n: scenes, cost })}
-          {" · "}
-          <span className={affordable ? "fs-bal" : "fs-bal low"}>{t("you have {n}", { n: d.tokens })}</span>
+          {cost > 0
+            ? <>{t("{base} + {per}/scene × {n} = {cost} Tokens", { base: d.base, per: d.perScene, n: scenes, cost })}{" · "}<span className={affordable ? "fs-bal" : "fs-bal low"}>{t("you have {n}", { n: d.tokens })}</span></>
+            : t("Free while we get this section dialed in — pricing comes later")}
         </p>
         {!treatment && <p className="fs-hint">{t("Tip: write the treatment above first so you see exactly what renders — but you can Generate straight away and we'll script it for you.")}</p>}
         {!d.hasPlan && <p className="fs-err">{t("Pick a plan on the Dashboard first — film runs on tokens.")}</p>}

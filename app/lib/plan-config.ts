@@ -365,14 +365,14 @@ export const DURATION_SURCHARGE_10S = 15;
 //   40 × $0.0140 = $0.56/scene gross → ≥30% even at $0.39 COGS.
 //   FILM_BASE 15 covers the song (musicgen ~$0.10) + assembly compute.
 //
-// ⚠ TEST PRICE (owner 11-01): dropped to a deliberately LOW level so the owner
-// can actually test the pipeline on a small token balance (~40). These are BELOW
-// margin — RAISE to the real ≥30% rate once the first render measures the real
-// per-clip COGS. (Was 15 + 40/scene → a 6-scene film cost 255, unaffordable for
-// testing on 40 tokens.) 4 + 4/scene → a 4-scene film = 20, so a ~40-token
-// balance covers two short test renders. This is the one lever to change.
-export const FILM_BASE = 4;
-export const FILM_PER_SCENE = 4;
+// ⚠ FREE WHILE WE BUILD (owner 11-01): Film is priced at ZERO until the whole
+// section works + is verified. The plan is to charge DOLLARS per video
+// (segregated from the token wallet) once real per-render COGS is measured — at
+// that point these go to real numbers OR are retired for the dollar charge.
+// FREE means anyone with the creatorvideo capability renders films at our COGS,
+// so this is a BUILD-PHASE setting, NOT a launch one — restore a price before launch.
+export const FILM_BASE = 0;
+export const FILM_PER_SCENE = 0;
 export const FILM_MIN_SCENES = 1;
 export const FILM_MAX_SCENES = 40;
 
