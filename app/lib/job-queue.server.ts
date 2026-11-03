@@ -717,6 +717,23 @@ async function runJob(
               ckLastStill: payload.ckLastStill as string | undefined,
             },
           });
+        } else if ((payload.filmTemplate as string | undefined) === "avatardialogue") {
+          // ISOLATED audio-driven pipeline — locked actors + fixed voices (HeyGen).
+          const { generateAvatarDialogue } = await import("./film-dialogue-avatar.server");
+          filmAssetId = await generateAvatarDialogue({
+            shopId,
+            template: "avatardialogue",
+            topic: (payload.filmTopic as string) || (payload.topic as string) || "",
+            sceneCount: typeof payload.filmScenes === "number" ? payload.filmScenes : undefined,
+            section: (payload.section as string) || "creator",
+            jobId: payload.__jobId as string | undefined,
+            resume: {
+              ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
+              ckVoices: payload.ckVoices as string | undefined,
+              ckPortraits: payload.ckPortraits as string | undefined,
+              ckClips: payload.ckClips as string[] | undefined,
+            },
+          });
         } else {
           const { generateFilm } = await import("./film-engine.server");
           filmAssetId = await generateFilm({
