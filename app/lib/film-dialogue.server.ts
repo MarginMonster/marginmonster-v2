@@ -35,18 +35,28 @@ const VEO_POLL_MS = 10 * 60_000;
 const FAL_VEO = "fal-ai/veo3.1/image-to-video";
 const REP_VEO = "google/veo-3";
 
-/** A shot's caption holds a short multi-line EXCHANGE (2-3 turns), each line
- *  "NAME: the line". Parse it into ordered { speaker, line } turns so one Veo clip
- *  can carry the whole back-and-forth (fills the ~8s clip instead of one line +
- *  dead air, and keeps both voices consistent within the shot). */
+/** A shot's caption holds a short multi-turn EXCHANGE (2-3 turns), each "NAME: the
+ *  line". The editable field is a single-line <input> that STRIPS newlines, so the
+ *  turns arrive run-together ("MARA: ...I know it.ELI: Careful..."). Split on the
+ *  speaker LABELS themselves (a capitalized name immediately followed by a colon),
+ *  not on newlines — so one Veo clip can carry the whole back-and-forth (fills the
+ *  ~8s clip instead of one line + dead air, keeps voices consistent within it). */
 function splitExchange(caption: string): Array<{ speaker: string; line: string }> {
-  const lines = (caption || "").split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const c = (caption || "").replace(/\s+/g, " ").trim();
+  if (!c) return [{ speaker: "", line: "" }];
+  // A speaker label = one capitalized word (any script) + colon. Single-word +
+  // uppercase-start avoids matching dialogue clauses (which have spaces/no colon).
+  const re = /(\p{Lu}[\p{L}'’-]{1,20}):/gu;
+  const marks: Array<{ name: string; idx: number; end: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(c)) !== null) marks.push({ name: m[1], idx: m.index, end: re.lastIndex });
+  if (!marks.length) return [{ speaker: "", line: c }];
   const turns: Array<{ speaker: string; line: string }> = [];
-  for (const l of lines) {
-    const m = l.match(/^([^:]{1,40}):\s*(.+)$/s);
-    turns.push(m ? { speaker: m[1].trim(), line: m[2].trim() } : { speaker: "", line: l });
+  for (let k = 0; k < marks.length; k++) {
+    const line = c.slice(marks[k].end, k + 1 < marks.length ? marks[k + 1].idx : c.length).trim();
+    if (line) turns.push({ speaker: marks[k].name.trim(), line });
   }
-  return turns.length ? turns : [{ speaker: "", line: (caption || "").trim() }];
+  return turns.length ? turns : [{ speaker: "", line: c }];
 }
 
 /** A Veo clip where the characters SPEAK an exchange (audio on). FULL Veo-3:
