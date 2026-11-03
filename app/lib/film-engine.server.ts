@@ -29,7 +29,7 @@ import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { animateCreate, animatePoll, checkpointJob, download, downloadBuffer, ffprobeDuration, repCreate, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { renderCreativeSeed, renderStyledSeed } from "./image-generation.server";
-import { musicBedToDisk } from "./music-generation.server";
+import { musicBedToDisk, singToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
 
@@ -76,6 +76,9 @@ export interface FilmTemplate {
   /** Narrated template (Dhar Mann short film): a narrator voiceover reads the
    *  per-scene narration lines; VO is the primary audio, music ducked under. */
   narrated?: boolean;
+  /** Musical template (music video, kids cartoon): generate a SUNG song from the
+   *  scene lyric lines (reuses the Anthem singing engine) and use it as the audio. */
+  sung?: boolean;
   /** Whether this template is wired end-to-end on the FILM TAB (route offers
    *  these). Skit lives in the marketing flow instead, so it is false here. */
   live: boolean;
@@ -87,11 +90,12 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     name: "Music Video",
     brief: "a short MUSIC VIDEO: a catchy sung-style hook broken into beat-synced visual scenes that tell a loose vibe/story",
     sceneHint: "a vivid, cinematic, music-video visual (dynamic, stylized, full of energy) — NO text, words, logos or real named people in the image",
-    musicHint: "an original catchy upbeat instrumental, music-video energy",
+    musicHint: "an original catchy upbeat pop song with clear sung vocals, music-video energy",
     defaultScenes: 6,
     minScenes: 4,
     maxScenes: 24,
     captions: true,
+    sung: true,
     live: true,
   },
   kidstv: {
@@ -107,14 +111,45 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     castBible: true,
     referenceSeed: true,
     childSafe: true,
+    sung: true,
     live: true,
   },
-  movie: {
-    key: "movie",
-    name: "Short Film",
-    brief: "a short SCRIPTED DRAMATIC FILM (Dhar Mann style): a relatable moral situation with a small recurring cast, building to a clear, uplifting life-lesson payoff — told by a narrator",
+  moral: {
+    key: "moral",
+    name: "Moral Story",
+    brief: "a short SCRIPTED MORAL STORY (Dhar Mann style): a relatable everyday situation with a small recurring cast, building to a clear, uplifting life-lesson payoff — told by a narrator",
     sceneHint: "a cinematic, emotionally-expressive dramatic scene, photoreal, real-world setting, natural lighting",
-    musicHint: "emotional, heartfelt cinematic score",
+    musicHint: "warm, heartfelt, uplifting cinematic score",
+    defaultScenes: 8,
+    minScenes: 5,
+    maxScenes: 24,
+    captions: true,
+    castBible: true,
+    referenceSeed: true,
+    narrated: true,
+    live: true,
+  },
+  horror: {
+    key: "horror",
+    name: "Horror Story",
+    brief: "a short SUSPENSEFUL HORROR STORY: a creepy, atmospheric tale with a small recurring cast and a chilling twist — told by a narrator; unsettling and spooky, NOT gory or graphically violent",
+    sceneHint: "a dark, moody, cinematic horror scene — deep shadows, eerie atmosphere, cold desaturated color grade, suspenseful; unsettling but not graphically gory",
+    musicHint: "tense, eerie, suspenseful horror score — low drones, uneasy strings",
+    defaultScenes: 8,
+    minScenes: 5,
+    maxScenes: 24,
+    captions: true,
+    castBible: true,
+    referenceSeed: true,
+    narrated: true,
+    live: true,
+  },
+  shortfilm: {
+    key: "shortfilm",
+    name: "Short Film",
+    brief: "a short cinematic SCRIPTED STORY on the given theme, with a small recurring cast, a clear beginning-middle-end and a satisfying ending — told by a narrator",
+    sceneHint: "a cinematic, filmic dramatic scene, photoreal, strong composition and lighting",
+    musicHint: "a cinematic score matched to the story's mood",
     defaultScenes: 8,
     minScenes: 5,
     maxScenes: 24,
@@ -208,11 +243,15 @@ export async function previewFilmTreatment(opts: {
     : "";
   // Narrated templates want each caption to BE the narrator's spoken line for
   // that beat (a flowing voiceover); others want a short on-screen hook.
-  const captionLine = tmpl.narrated
-    ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the NARRATOR'S spoken line for that beat — ONE natural sentence, <=14 words, moving the story forward; read in order the captions are a continuous, emotive voiceover that tells the whole story and lands the moral at the end.\n`
-    : `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a short CAPTION (one punchy on-screen line, <=8 words; the sung/spoken hook or the joke's line for that beat).\n`;
+  const captionLine = tmpl.sung
+    ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes/flows with the others; read in order the captions ARE the song's lyrics.\n`
+    : tmpl.narrated
+    ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the NARRATOR'S spoken line for that beat — ONE natural sentence, <=14 words, moving the story forward; read in order the captions are a continuous, emotive voiceover that tells the whole story and lands the ending.\n`
+    : `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a short CAPTION (one punchy on-screen line, <=8 words; the hook or the joke's line for that beat).\n`;
   const safetyLine = tmpl.childSafe
     ? `SAFETY: this is for very young children — keep it 100% wholesome and G-rated: happy, gentle and safe. NOTHING scary, sad, violent, adult or unsafe; no real named people or brands; invent no claims.`
+    : tmpl.key === "horror"
+    ? `TONE: make it genuinely creepy and suspenseful (atmosphere, dread, a chilling twist) — but keep it PG-13: NO graphic gore, torture, sexual content or real named people, and nothing that encourages real-world harm. Spooky, not sickening.`
     : `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe.`;
   const prompt =
     `Write ${tmpl.brief}.\n` +
@@ -245,7 +284,7 @@ export async function previewFilmTreatment(opts: {
  *  independently-valid graph, so a drawtext/mix hiccup falls back instead of
  *  killing a paid render. */
 async function assembleFilm(opts: {
-  clips: string[]; captions: (string | undefined)[]; musicPath: string | null; voPath?: string | null; fontFile: string; outPath: string; jobId?: string;
+  clips: string[]; captions: (string | undefined)[]; musicPath: string | null; musicIsSung?: boolean; voPath?: string | null; fontFile: string; outPath: string; jobId?: string;
 }): Promise<void> {
   const beat = async () => { if (opts.jobId) await checkpointJob(opts.jobId, { ckBeat: Date.now() }); };
   const N = opts.clips.length;
@@ -307,7 +346,10 @@ async function assembleFilm(opts: {
       graph.push(`[${voIdx}:a]atrim=0:${total.toFixed(2)},volume=1.0[aout]`);
       aMap = "[aout]";
     } else if (musicOn) {
-      graph.push(`[${musicIdx}:a]atrim=0:${total.toFixed(2)},volume=0.7,afade=t=out:st=${fadeAt}:d=1.5[aout]`);
+      // A sung song IS the track (vocals + music) → play it loud; an instrumental
+      // bed sits quieter under the visuals.
+      const mvol = opts.musicIsSung ? "0.95" : "0.7";
+      graph.push(`[${musicIdx}:a]atrim=0:${total.toFixed(2)},volume=${mvol},afade=t=out:st=${fadeAt}:d=1.5[aout]`);
       aMap = "[aout]";
     }
 
@@ -472,8 +514,18 @@ export async function generateFilm(opts: {
   }
   if (!clips.length) throw new Error("[film] no scenes rendered");
 
-  // 3) MUSIC TRACK (best-effort — ships silent rather than failing).
+  // 3) AUDIO TRACK. Sung templates (music video, kids cartoon) get a real SUNG
+  //    song from the scene lyric lines (the Anthem singing engine); everything
+  //    else gets an instrumental bed. Best-effort — ships silent rather than fail.
   let musicPath: string | null = resume.ckMusic && fs.existsSync(resume.ckMusic) ? resume.ckMusic : null;
+  let musicIsSung = !!(tmpl.sung && musicPath); // a resumed sung track
+  if (!musicPath && tmpl.sung) {
+    const lyrics = treatment.scenes.map((s) => (s.caption || "").trim()).filter(Boolean).join("\n");
+    if (lyrics) {
+      try { musicPath = await singToDisk(lyrics, `${treatment.musicMood || tmpl.musicHint}, clear vocals`); musicIsSung = true; await ckpt({ ckMusic: musicPath }); }
+      catch (e) { console.error("[film] singing failed (falling back to instrumental):", (e as Error).message); }
+    }
+  }
   if (!musicPath) {
     try { musicPath = await musicBedToDisk(`${treatment.musicMood || tmpl.musicHint}, instrumental, loopable`); await ckpt({ ckMusic: musicPath }); }
     catch (e) { console.error("[film] music failed (continuing silent):", (e as Error).message); musicPath = null; }
@@ -512,7 +564,7 @@ export async function generateFilm(opts: {
   await assembleFilm({
     clips,
     captions: tmpl.captions ? treatment.scenes.map((s) => s.caption) : treatment.scenes.map(() => undefined),
-    musicPath, voPath, fontFile, outPath, jobId,
+    musicPath, musicIsSung, voPath, fontFile, outPath, jobId,
   });
   const outBuf = fs.readFileSync(outPath);
   try { await mirrorRender(outName, outBuf); } catch { /* non-fatal */ }

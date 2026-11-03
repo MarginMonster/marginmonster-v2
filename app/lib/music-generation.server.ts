@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
-import { repPoll } from "./ugc-ad-pipeline.server";
+import { repCreate, repPoll } from "./ugc-ad-pipeline.server";
 import { persistRemoteAudio } from "./image-generation.server";
 
 // meta/musicgen is a VERSIONED community model — it 404s on the versionless
@@ -104,6 +104,38 @@ export async function musicBedToDisk(prompt: string): Promise<string> {
   const dir = path.join(process.cwd(), "data", "renders");
   fs.mkdirSync(dir, { recursive: true });
   const fileName = `mbed-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp3`;
+  const filePath = path.join(dir, fileName);
+  fs.writeFileSync(filePath, buf);
+  return filePath;
+}
+
+/** Generate a SUNG song (vocals + music) from lyrics via minimax/music-1.5 — the
+ *  SAME engine the Anthem uses to sing — and return its ABSOLUTE disk path. For
+ *  the Film engine's musical templates (music video, kids cartoon): a real sung
+ *  track, not an instrumental bed. Falls back to music-01. Throws on total
+ *  failure so the caller can fall back to musicBedToDisk. */
+export async function singToDisk(lyrics: string, stylePrompt: string): Promise<string> {
+  const clean = (lyrics || "").trim().slice(0, 600);
+  if (!clean) throw new Error("[sing] no lyrics");
+  const attempts: Array<{ model: string; input: Record<string, unknown> }> = [
+    { model: "minimax/music-1.5", input: { lyrics: clean, prompt: stylePrompt || "catchy upbeat song with clear vocals" } },
+    { model: "minimax/music-1.5", input: { lyrics: clean } },
+    { model: "minimax/music-01", input: { lyrics: clean } },
+  ];
+  let url = "";
+  const errors: string[] = [];
+  for (const a of attempts) {
+    try { url = audioUrlOf(await repPoll(await repCreate(a.model, a.input), 5 * 60_000, "sing"), a.model); if (url) break; }
+    catch (e) { errors.push((e as Error).message.slice(0, 160)); }
+  }
+  if (!url) throw new Error(`[sing] every engine failed: ${errors.join(" | ")}`);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`[sing] fetch ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length < 2_000) throw new Error("[sing] came back empty");
+  const dir = path.join(process.cwd(), "data", "renders");
+  fs.mkdirSync(dir, { recursive: true });
+  const fileName = `sing-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp3`;
   const filePath = path.join(dir, fileName);
   fs.writeFileSync(filePath, buf);
   return filePath;

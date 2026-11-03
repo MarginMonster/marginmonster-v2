@@ -207,8 +207,8 @@ export default function FilmStudio() {
         ))}
         <div className="fs-tmpl soon" aria-hidden="true">
           <span className="fs-tmpl-ico"><Ico n="wand" size={20} /></span>
-          <b>{t("Short Film · YouTube")}</b>
-          <span className="fs-tmpl-sub">{t("Coming next — scripted, dialogue")}</span>
+          <b>{t("TV Shows · Episodes")}</b>
+          <span className="fs-tmpl-sub">{t("Coming next — talking characters + a recurring cast across episodes")}</span>
         </div>
       </div>
 
