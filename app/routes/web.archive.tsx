@@ -162,19 +162,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const lang = readUiLang(request);
 
-  // SEPARATE ARCHIVES per section. Creator (casual) pieces carry
-  // metaJson.section === "creator"; everything else — marketing content and all
-  // legacy assets made before the split — is the Marketing archive. Filtered on
-  // the stringified metaJson (no schema migration): JSON.stringify writes the
-  // key with no spaces, so this substring is stable.
+  // ONE unified archive (owner 11-01): the Creator/Marketing toggle was far too
+  // confusing — it hid a still-rendering film in the "other" section. Everything
+  // the shop has made now shows in a single list. The section TAG stays on each
+  // asset + job (it still drives pricing, remix routing and capability gates);
+  // only the archive VIEW split is gone. `section` is kept for link back-compat.
   const section = new URL(request.url).searchParams.get("section") === "creator" ? "creator" : "marketing";
-  const CREATOR_TAG = '"section":"creator"';
-  // metaJson is a non-nullable column (always at least "{}"), so a plain NOT is
-  // safe — no null rows to drop. Marketing = everything NOT tagged creator
-  // (which includes all legacy assets made before the section split).
-  const sectionWhere = section === "creator"
-    ? { metaJson: { contains: CREATOR_TAG } }
-    : { NOT: { metaJson: { contains: CREATOR_TAG } } };
 
   // How many to render. This USED to be a hard `take: 60` with no pagination
   // and no total — which quietly hid everything older than the newest 60. That
@@ -192,7 +185,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // counting the truncated page and therefore under-reported the library.
   const totalsRaw = await db.asset.groupBy({
     by: ["type"],
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, ...sectionWhere },
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] } },
     _count: { _all: true },
   });
   const totals = { video: 0, image: 0, music: 0, blog: 0 };
@@ -205,7 +198,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const totalAll = totals.video + totals.image + totals.music + totals.blog;
 
   const assets = await db.asset.findMany({
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, ...sectionWhere },
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] } },
     orderBy: { createdAt: "desc" },
     take: show,
   });
@@ -223,9 +216,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   for (const j of jobs) {
     let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
-    // Cooking tiles belong to the section they were started in.
-    const jobSection = p.section === "creator" ? "creator" : "marketing";
-    if (jobSection !== section) continue;
+    // Unified archive: every cooking tile shows, whichever section started it.
     const due = !j.runAt || j.runAt.getTime() <= nowMs;
     const failed = j.status === "FAILED";
     const generating = j.status === "IN_PROGRESS" || (j.status === "PENDING" && due);
@@ -1229,16 +1220,11 @@ export default function WebArchive() {
   return (
     <div className={isCreator ? "wa-creator" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WA_CSS }} />
-      <h1 className="wb-h1">{isCreator ? t("Creator Archive") : t("Social Marketing Archive")}</h1>
-      {/* Section toggle — the two stores stay SEPARATE (by design) but read as
-          parallel places you can hop between, instead of a Gallery/Archive name
-          mismatch. Pure ?section= links; no mode coupling. */}
-      <div className="wa-sections" role="tablist" aria-label={t("Which section")}>
-        <Link to="/web/archive?section=creator" role="tab" aria-selected={isCreator} className={`wa-sectab${isCreator ? " on" : ""}`} preventScrollReset>{t("Creator")}</Link>
-        <Link to="/web/archive" role="tab" aria-selected={!isCreator} className={`wa-sectab${!isCreator ? " on" : ""}`} preventScrollReset>{t("Social Marketing")}</Link>
-      </div>
+      <h1 className="wb-h1">{t("Your Archive")}</h1>
+      {/* ONE unified archive (owner 11-01) — the Creator/Marketing toggle was
+          removed; everything the shop has made lives in a single list. */}
       <p className="wb-sub">
-        {isCreator ? t("Everything you've made in Creator") : t("Everything you've made")} — {t("tap a piece to watch it big, keep it, download it")}{canPost ? (isCreator ? (linkedCount > 1 ? t(", or share it to your {n} linked accounts", { n: linkedCount }) : t(", or share it to your {n} linked account", { n: linkedCount })) : (linkedCount > 1 ? t(", or post it to your {n} linked accounts", { n: linkedCount }) : t(", or post it to your {n} linked account", { n: linkedCount }))) : ""}.
+        {t("Everything you've made")} — {t("tap a piece to watch it big, keep it, download it")}{canPost ? (linkedCount > 1 ? t(", or post it to your {n} linked accounts", { n: linkedCount }) : t(", or post it to your {n} linked account", { n: linkedCount })) : ""}.
         {cooking > 0 && <> · <b>{cooking > 1 ? t("{n} pieces cooking below", { n: cooking }) : t("{n} piece cooking below", { n: cooking })}</b> — {t("this page updates itself.")}</>}
       </p>
       {!canPost && <p className="wb-note" style={{ marginTop: -14, marginBottom: 18 }}>{t("Want one-tap posting?")} <Link to="/web/connect">{t("Link your socials")}</Link>.</p>}
