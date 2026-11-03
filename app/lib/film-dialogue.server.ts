@@ -3,20 +3,22 @@
 // never at risk. Owner's spec: characters that actually SPEAK plot dialogue +
 // scenes that FLOW, instead of a narrator talking over disconnected clips.
 //
-// Two ideas combined:
-//   1. DIALOGUE — each scene is a Veo clip where the character speaks their line,
-//      with Veo's native audio/lip-sync (generate_audio). The script writes real
-//      character dialogue, not narration.
-//   2. CONTINUITY (the owner's seamlessness idea) — each scene's seed is built
-//      from the PREVIOUS CLIP'S ACTUAL LAST FRAME, so scene N reuses scene N-1's
-//      end image: same cast, same room, same light, final positions carried
-//      forward, re-composed onto the new speaker. The last frame conditions a
-//      CLEAN reverse-angle still; we don't feed it straight into Veo (that seeded
-//      the WRONG character and made it speak gibberish). Sequential by necessity
-//      (so no parallel speed-up here), which is the price of real flow.
+// Design (tuned from owner feedback on real renders):
+//   1. ONE SPEAKER PER CLIP — each Veo clip is a TWO-SHOT (both characters in
+//      frame) where ONE character speaks a full 1-2 sentence beat and the other
+//      listens/reacts; the speaker ALTERNATES clip to clip. Veo's single-voice
+//      output is clean, but it DISTORTS when asked to voice two characters inside
+//      one clip — so we keep it to one voice per clip and pin that voice.
+//   2. SEAMLESS CUTS — clip N>0 is seeded DIRECTLY from clip N-1's ACTUAL last
+//      frame (the owner's "use the last frame" idea), so positions carry over
+//      exactly instead of teleporting. Safe now because it's a two-shot: the next
+//      speaker is already in frame, so Veo voices them without wrong-speaker
+//      gibberish. Clip 0 seeds from the cast reference.
+//   3. NO ON-SCREEN TEXT — Veo hallucinates garbled "captions"/documents, so both
+//      the seed and Veo prompts hard-ban text and we keep the set clean; trailing
+//      silence is trimmed so clips end on the last word (no dead-air pause).
 //
-// This is a TEST: short (2-6 beats), one continuous scene, fully chained. Cuts
-// between beats + the full movie pipeline come after it proves out.
+// Sequential by necessity (each clip seeds from the last) — the price of flow.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -35,12 +37,12 @@ const VEO_POLL_MS = 10 * 60_000;
 const FAL_VEO = "fal-ai/veo3.1/image-to-video";
 const REP_VEO = "google/veo-3";
 
-/** A shot's caption holds a short multi-turn EXCHANGE (2-3 turns), each "NAME: the
- *  line". The editable field is a single-line <input> that STRIPS newlines, so the
- *  turns arrive run-together ("MARA: ...I know it.ELI: Careful..."). Split on the
- *  speaker LABELS themselves (a capitalized name immediately followed by a colon),
- *  not on newlines — so one Veo clip can carry the whole back-and-forth (fills the
- *  ~8s clip instead of one line + dead air, keeps voices consistent within it). */
+/** Parse a caption into ordered { speaker, line } turns. A shot is normally ONE
+ *  speaker ("NAME: the line"), but this stays robust if the writer runs extra
+ *  turns together ("MARA: ...I know it.ELI: Careful...") — the editable field is a
+ *  single-line <input> that strips newlines, so we split on the speaker LABELS (a
+ *  capitalized name + colon), not on newlines. The caller takes the first speaker
+ *  and joins the lines, so a clip always voices a single character. */
 function splitExchange(caption: string): Array<{ speaker: string; line: string }> {
   const c = (caption || "").replace(/\s+/g, " ").trim();
   if (!c) return [{ speaker: "", line: "" }];
@@ -87,6 +89,32 @@ async function extractLastFrame(videoPath: string): Promise<string | null> {
     if (r.status === 0 && fs.existsSync(out)) return `/renders/${name}`;
   } catch { /* fall through — chain falls back to the scene's own seed still */ }
   return null;
+}
+
+/** Trim the trailing silence (dead air after the last spoken word) so a clip ends
+ *  on the line, not on a long pause before the cut. Detects the final silence run
+ *  with ffmpeg silencedetect and cuts there (+ a short tail), re-encoding for a
+ *  frame-accurate cut. Returns a NEW path, or the original if nothing to trim. */
+async function trimTrailingSilence(inPath: string): Promise<string> {
+  try {
+    const dur = ffprobeDuration(inPath);
+    if (!(dur > 2)) return inPath;
+    const probe = await runFfmpeg(["-i", inPath, "-af", "silencedetect=noise=-33dB:d=0.6", "-f", "null", "-"]);
+    const err = probe.stderr || "";
+    const starts = [...err.matchAll(/silence_start:\s*(-?[\d.]+)/g)].map((m) => parseFloat(m[1]));
+    const ends = [...err.matchAll(/silence_end:\s*([\d.]+)/g)].map((m) => parseFloat(m[1]));
+    const lastStart = starts.length ? starts[starts.length - 1] : NaN;
+    const lastEnd = ends.length ? ends[ends.length - 1] : NaN;
+    // Trailing silence = a silence_start that runs to EOF (no later silence_end).
+    const trailing = !Number.isNaN(lastStart) && (Number.isNaN(lastEnd) || lastEnd < lastStart);
+    if (trailing && lastStart > 1.2 && lastStart < dur - 0.5) {
+      const end = Math.min(dur, lastStart + 0.45);
+      const out = inPath.replace(/\.mp4$/i, "-trim.mp4");
+      const r = await runFfmpeg(["-y", "-i", inPath, "-t", end.toFixed(2), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out]);
+      if (r.status === 0 && fs.existsSync(out) && ffprobeDuration(out) > 0.8) return out;
+    }
+  } catch { /* keep the original clip */ }
+  return inPath;
 }
 
 /** Concatenate the Veo clips, KEEPING their dialogue audio (unlike the main
@@ -174,61 +202,51 @@ export async function generateTestMovie(opts: {
     } catch { /* fall through to text seeds */ }
   }
 
-  // 3) Veo DIALOGUE clips (sequential). CONTINUITY = we reuse the PREVIOUS CLIP'S
-  //    ACTUAL LAST FRAME (the owner's "use the last frame" idea) as the reference
-  //    the next scene's seed is built from — so the room, lighting and everyone's
-  //    FINAL positions carry forward. Crucially we do NOT feed that frame straight
-  //    into Veo: on a speaker switch a blurry frame of the WRONG character made Veo
-  //    mangle the new speaker's audio (the gibberish). Instead the last frame
-  //    conditions a CLEAN two-shot of both characters → flow AND a clear stage for
-  //    the exchange. Each clip carries a full 2-3 line exchange (one continuous
-  //    take, little dead air). The first scene seeds from the cast ref.
+  // 3) Veo DIALOGUE clips (sequential) — see the design notes atop this file: one
+  //    speaker per clip, seamless cuts from the prior clip's real last frame, no
+  //    on-screen text, trailing silence trimmed.
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
-  let prevStillAbs: string | undefined = abs(resume.ckLastStill);
+  let prevFrameUrl: string | undefined = resume.ckLastStill; // prior clip's last frame (relative /renders URL)
+  const NO_TEXT = "Absolutely NO on-screen text of any kind: no subtitles, no captions, no titles, and no readable writing on any paper, document, folder, bulletin board, whiteboard, sign, poster or screen anywhere in the frame — keep every surface clean and text-free.";
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     const turns = splitExchange(scene.caption || "");
-    const speakers = Array.from(new Set(turns.map((t) => t.speaker).filter(Boolean)));
+    const speaker = turns.find((t) => t.speaker)?.speaker || "";
+    const line = turns.map((t) => t.line).join(" ").replace(/\s+/g, " ").trim();
 
-    // SEED: a clean TWO-SHOT framing BOTH characters in the location (so the clip
-    // can show them talk back-and-forth), CONTINUING the prior shot (reuse the last
-    // frame) for set + character continuity. Reference = the previous clip's last
-    // frame; the first scene uses the cast reference instead.
-    const refForSeed = prevStillAbs || castRefAbs;
-    const framed = (prevStillAbs
-      ? `${scene.visual}. ${tmpl.sceneHint}. CONTINUOUS same scene as the reference image: identical room, lighting, wardrobe and the same characters' faces. A two-shot that frames both characters together so we can see them speak.`
-      : `${scene.visual}. ${tmpl.sceneHint}. A two-shot that frames both characters together so we can see them speak. ${castBible}`
-    ).replace(/\s+/g, " ").trim();
-    let seedUrl: string | null = null;
-    try { seedUrl = refForSeed ? ((await renderStyledSeed(framed, refForSeed, "9:16")) || (await renderCreativeSeed(framed, "9:16"))) : await renderCreativeSeed(framed, "9:16"); }
-    catch { seedUrl = null; }
-    const seedAbs = abs(seedUrl);
+    // SEED. Clip N>0: the previous clip's EXACT last frame, fed straight to Veo, so
+    // the cut is seamless (positions carried over — the two-shot keeps the next
+    // speaker in frame, so no wrong-speaker gibberish). Clip 0 / fallback: a clean
+    // two-shot generated from the cast reference.
+    let seedAbs = abs(prevFrameUrl);
+    if (!seedAbs) {
+      const framed = `${scene.visual}. ${tmpl.sceneHint}. A two-shot that frames BOTH characters together in the room so we can see them talk. ${castBible} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
+      let seedUrl: string | null = null;
+      try { seedUrl = castRefAbs ? ((await renderStyledSeed(framed, castRefAbs, "9:16")) || (await renderCreativeSeed(framed, "9:16"))) : await renderCreativeSeed(framed, "9:16"); }
+      catch { seedUrl = null; }
+      seedAbs = abs(seedUrl);
+    }
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
 
-    // Veo prompt: ONE continuous take of the whole short EXCHANGE — the characters
-    // speak in turn with clear lip-sync, the camera favoring whoever is speaking, so
-    // the ~8s clip is FULL (not one line + dead air). Voices pinned distinct +
-    // consistent (fixes voice drift), and NO AI gibberish text on props/signs.
-    const exchange = turns.map((t) => (t.speaker ? `${t.speaker}: "${t.line}"` : `"${t.line}"`)).join("\n");
-    const voiceLine = speakers.length >= 2
-      ? `Give ${speakers.join(" and ")} each a distinct, natural speaking voice, and keep each character's voice IDENTICAL throughout — never swap, change or re-pitch a character's voice.`
-      : `Keep the speaking voice natural and consistent.`;
+    // Veo prompt: ONE speaker talks a full beat (clean single voice), the other
+    // present and reacting; two-shot; voice pinned consistent; NO on-screen text.
+    const voiceLine = speaker
+      ? `ONLY ${speaker} speaks — a clear, natural, unhurried delivery with accurate lip-sync: "${line}". The other character stays silent, listening and reacting, not moving their lips. Keep ${speaker}'s voice natural and the SAME as in every other shot of the film.`
+      : `One character speaks clearly and unhurried, lips in sync: "${line}". The other listens in silence.`;
     const prompt =
-      `${scene.visual}. ${tmpl.sceneHint}. ` +
-      `One continuous take — the characters speak this exchange in turn, each with clear lip-sync and natural pacing, little dead air, the camera favoring whoever is speaking:\n${exchange}\n` +
+      `${scene.visual}. ${tmpl.sceneHint}. A two-shot of both characters in the room. ` +
       `${voiceLine} ${castBible} ` +
-      `Photorealistic live-action film, clean natural spoken-dialogue audio, shallow depth of field. No readable text, captions, signage or screen text anywhere in frame.`;
+      `Photorealistic live-action film, cinematic lighting, shallow depth of field, clean natural spoken-dialogue audio. ${NO_TEXT}`;
 
     const clipUrl = await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
-    const outPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
-    await download(clipUrl, outPath);
-    if (!(fs.existsSync(outPath) && ffprobeDuration(outPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
+    const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
+    await download(clipUrl, rawPath);
+    if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
+    const outPath = await trimTrailingSilence(rawPath); // cut the dead air after the last word
     clips.push(outPath);
-    // Advance the chain using the clip's ACTUAL last frame (reuse the last image →
-    // the real end-state carries forward); fall back to this scene's seed still.
-    const lastFrameUrl = await extractLastFrame(outPath);
-    prevStillAbs = abs(lastFrameUrl) || seedAbs;
-    await ckpt({ ckClips: clips, ckLastStill: (lastFrameUrl || seedUrl) || undefined });
+    // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.
+    prevFrameUrl = (await extractLastFrame(outPath)) || undefined;
+    await ckpt({ ckClips: clips, ckLastStill: prevFrameUrl });
   }
   if (!clips.length) throw new Error("[testmovie] no clips rendered");
 
