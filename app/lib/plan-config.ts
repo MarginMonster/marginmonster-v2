@@ -365,12 +365,14 @@ export const DURATION_SURCHARGE_10S = 15;
 //   40 × $0.0140 = $0.56/scene gross → ≥30% even at $0.39 COGS.
 //   FILM_BASE 15 covers the song (musicgen ~$0.10) + assembly compute.
 //
-// ⚠ PROVISIONAL — set conservatively HIGH on purpose: the FIRST live render
-// measures the real fal/Replicate per-clip bill, and this rate is then tuned
-// DOWN to the true ≥30% number (lowering a price is the margin-safe direction;
-// under-pricing the first real render is not). This is the one lever to change.
-export const FILM_BASE = 15;
-export const FILM_PER_SCENE = 40;
+// ⚠ TEST PRICE (owner 11-01): dropped to a deliberately LOW level so the owner
+// can actually test the pipeline on a small token balance (~40). These are BELOW
+// margin — RAISE to the real ≥30% rate once the first render measures the real
+// per-clip COGS. (Was 15 + 40/scene → a 6-scene film cost 255, unaffordable for
+// testing on 40 tokens.) 4 + 4/scene → a 4-scene film = 20, so a ~40-token
+// balance covers two short test renders. This is the one lever to change.
+export const FILM_BASE = 4;
+export const FILM_PER_SCENE = 4;
 export const FILM_MIN_SCENES = 1;
 export const FILM_MAX_SCENES = 40;
 
