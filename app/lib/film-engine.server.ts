@@ -251,7 +251,7 @@ export async function previewFilmTreatment(opts: {
   const safetyLine = tmpl.childSafe
     ? `SAFETY: this is for very young children — keep it 100% wholesome and G-rated: happy, gentle and safe. NOTHING scary, sad, violent, adult or unsafe; no real named people or brands; invent no claims.`
     : tmpl.key === "horror"
-    ? `This is FICTIONAL entertainment horror (a scary-story video — think a horror short, a creepypasta, or a Goosebumps/Twilight-Zone episode). Write a genuinely CREEPY, SUSPENSEFUL story: take the premise and tell it as a STORY — a character, a situation, rising tension, a chilling TWIST. Convey threat, danger and fear through SUGGESTION, ATMOSPHERE and DREAD — never by depicting graphic gore, torture, injury or suffering. Keep it PG-13 and cinematic (scary, not a slasher); no real named people, no instructions for real-world harm.`
+    ? `This is FICTIONAL horror for an entertainment video (a horror-short / scary-story channel). Write a GENUINELY SCARY, intense, DARK horror story — real menace, dread, danger, frightening imagery and a chilling twist; a horror-FILM feel, NOT a watered-down kids' version. Violence, death, blood and disturbing imagery are fine when they serve the scare, portrayed with cinematic intent. The ONLY limit: no gratuitous, lingering torture or graphic mutilation purely for shock, and no real named people. Take the premise and make it as frightening as you can within that.`
     : `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe.`;
   const prompt =
     `Write ${tmpl.brief}.\n` +
@@ -269,17 +269,22 @@ export async function previewFilmTreatment(opts: {
     });
     return JSON.parse(raw) as FilmTreatment;
   };
-  let parsed: FilmTreatment;
-  try {
-    parsed = await write(prompt);
-  } catch {
-    // A dark/edgy premise (common in Horror) can trip a first-pass refusal or a
-    // non-JSON reply. Retry ONCE, reframing hard as tasteful, non-graphic fiction
-    // — Claude writes suspenseful horror readily when it's clearly a STORY, not
-    // a depiction of harm.
-    const softer = `${prompt}\nREMEMBER: this is FICTION for entertainment — keep it tasteful and non-graphic. Build fear through suspense, dread and atmosphere; NEVER depict gore, torture, injury or real harm; focus on the STORY. Return ONLY the JSON treatment.`;
-    parsed = await write(softer);
+  // NEVER hard-fail on an edgy premise: try it as-is (Horror runs intense), then
+  // step the framing DOWN behind the scenes until it writes — the user always
+  // gets a story, dialed to whatever the writer will produce. Horror keeps as
+  // much bite as it can; the last rung is clearly safe so nothing dead-ends.
+  const rungs = tmpl.key === "horror"
+    ? ["",
+       "\nKeep it scary and dark, but render the worst moments through SUSPENSE and IMPLICATION rather than explicit graphic detail. Return ONLY the JSON treatment.",
+       "\nReframe as a PG-13 spooky suspense story — eerie atmosphere and a chilling twist, no graphic content. Return ONLY the JSON treatment."]
+    : ["",
+       "\nREMEMBER: this is fiction — keep it tasteful and non-graphic. Return ONLY the JSON treatment."];
+  let parsed: FilmTreatment | null = null;
+  let lastErr: unknown;
+  for (const extra of rungs) {
+    try { parsed = await write(prompt + extra); break; } catch (e) { lastErr = e; }
   }
+  if (!parsed) throw lastErr instanceof Error ? lastErr : new Error("[film] treatment writer refused");
   let list = (parsed.scenes || []).filter((s) => s && s.visual).slice(0, scenes);
   // FTC backstop (captions are burned on screen): strip an endorsement
   // possessive from a third-party trademark the writer may have slipped in.
