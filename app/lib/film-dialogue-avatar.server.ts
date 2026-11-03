@@ -2,35 +2,39 @@
 // engine (film-dialogue.server.ts) and the main Film engine, so none of them can
 // break each other.
 //
-// Why it exists: Veo generates each clip independently, so faces, wardrobe, hair and
-// voices DRIFT and MORPH across cuts. This pipeline SOLVES that by building each
-// character as a LOCKED "actor": ONE consistent portrait + ONE fixed voice. For each
-// line we TTS the voice (same voice every time → zero drift) and lip-sync that actor's
-// portrait with HeyGen Avatar 4 (purpose-built talking head → clean sync, no morph).
-// Lines intercut shot/reverse-shot (Mara's portrait talks, then Eli's). HeyGen clips
-// run exactly as long as the audio, so there is no dead air to trim.
+// Owner's requirement: BOTH characters present in a CONTINUOUS scene, each talking
+// in turn with their own voice, and NO noticeable cut — the scene must carry.
 //
-// Reuses proven, integrated engines behind a clean seam (VOICE / PORTRAIT / LIPSYNC):
+// How it works:
+//   • ONE consistent TWO-SHOT image (both characters, A on the LEFT, B on the RIGHT)
+//     is generated once and REUSED for every line. The framing never changes, so
+//     there is no scene cut to notice — continuity is carried by construction.
+//   • For each line we TTS the speaker's FIXED voice (zero drift) and animate the
+//     shared two-shot with OmniHuman 1.5, passing a MASK whose white area covers the
+//     SPEAKER — so only that person's mouth moves, with the correct voice. (HeyGen,
+//     a single-face model, animated the wrong/both faces on a two-shot, which made
+//     the woman appear to speak in the man's voice and both seem to talk at once.)
+//   • Clips are stitched with a short crossfade; because every clip is the SAME
+//     frame, the joins are invisible.
+//
+// Seams (swap a backend without a structural rewrite):
 //   VOICE   = falTts (fal MiniMax speech-02-hd, a fixed voice id per character)
-//   PORTRAIT= renderCreativeSeed (nano-banana photoreal portrait, generated once)
-//   LIPSYNC = animateAvatar (fal HeyGen Avatar 4, 9:16 1080p)
-// Research may name a better backend (InfiniteTalk, ElevenLabs, …) — swapping it is a
-// one-function change at each seam, no structural rewrite.
+//   STAGE   = renderCreativeSeed (nano-banana two-shot) + ffmpeg speaker masks
+//   LIPSYNC = animateOmniHuman (fal OmniHuman 1.5, mask-driven)
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
 import { renderCreativeSeed } from "./image-generation.server";
 import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pipeline.server";
-import { animateAvatar, falEnabled, falTts } from "./fal-video.server";
+import { animateOmniHuman, falEnabled, falTts } from "./fal-video.server";
 import { AVATAR_VOICES } from "./avatar-voice-catalog";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 
-/** "NAME: line" (robust to run-together turns) → the FIRST turn's speaker + line.
- *  One speaker per shot, so the first turn is the whole line. */
+/** "NAME: line" (robust to run-together turns) → the FIRST turn's speaker + line. */
 function firstTurn(caption: string): { speaker: string; line: string } {
   const c = (caption || "").replace(/\s+/g, " ").trim();
   if (!c) return { speaker: "", line: "" };
@@ -65,8 +69,23 @@ function assignVoices(cast: string[], speakers: string[]): Record<string, string
   return out;
 }
 
-/** Concat the talking clips with a short crossfade at each cut (same approach as the
- *  Veo pipeline). Degrade ladder: xfade+audio → concat+audio → concat+silent. */
+/** A black 9:16 image with the SPEAKER's half painted white. OmniHuman animates only
+ *  the person under the white area; the mask is resized onto the input image, so a
+ *  proportional half works regardless of the image's exact pixels. */
+async function makeHalfMask(side: "left" | "right"): Promise<string | null> {
+  try {
+    const W = 720, H = 1280, half = 360;
+    const x = side === "left" ? 0 : half;
+    const name = `mask-${side}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.png`;
+    const out = path.join(RENDERS(), name);
+    const r = await runFfmpeg(["-y", "-f", "lavfi", "-i", `color=c=black:s=${W}x${H}`, "-vf", `drawbox=x=${x}:y=0:w=${half}:h=${H}:color=white:t=fill`, "-frames:v", "1", out]);
+    if (r.status === 0 && fs.existsSync(out)) return `/renders/${name}`;
+  } catch { /* no mask → OmniHuman animates the most prominent face */ }
+  return null;
+}
+
+/** Concat the clips with a short crossfade. Every clip is the SAME two-shot, so the
+ *  joins are invisible. Degrade ladder: xfade+audio → concat+audio → concat+silent. */
 async function assembleAvatarDialogue(clips: string[], outPath: string, jobId?: string): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[avatardialogue] no clips");
@@ -77,7 +96,7 @@ async function assembleAvatarDialogue(clips: string[], outPath: string, jobId?: 
 
   const buildXfade = (): string[] | null => {
     if (N < 2) return null;
-    const FADE = 0.2;
+    const FADE = 0.25;
     const durs = clips.map((c) => { try { return ffprobeDuration(c); } catch { return 0; } });
     if (durs.some((d) => !(d > FADE + 0.3))) return null;
     const a: string[] = ["-y"];
@@ -128,7 +147,7 @@ export async function generateAvatarDialogue(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckVoices?: string; ckPortraits?: string; ckClips?: string[] };
+  resume?: { ckTreatment?: string; ckVoices?: string; ckImage?: string; ckMasks?: string; ckClips?: string[] };
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "avatardialogue"
   if (!falEnabled()) throw new Error("[avatardialogue] FAL_KEY not set");
@@ -150,43 +169,62 @@ export async function generateAvatarDialogue(opts: {
   const cast = treatment.cast || [];
   const beats = treatment.scenes.map((s) => firstTurn(s.caption || ""));
   const speakers = Array.from(new Set(beats.map((b) => b.speaker).filter(Boolean)));
-  const location = (treatment.scenes[0]?.visual || opts.topic || "a cinematic interior").slice(0, 220);
+  const bibleFor = (sp: string) => cast.find((c) => sp && c.toLowerCase().includes(sp.toLowerCase())) || `${sp || "a character"}, a person`;
+  const speakerLeft = speakers[0] || "";
+  const speakerRight = speakers[1] || "";
+
+  // Character-FREE setting (the full scene visual names BOTH characters). Used as the
+  // backdrop of the shared two-shot. Take only the environment clause.
+  const setting = ((treatment.scenes[0]?.visual || opts.topic || "").split(/[.;]/)[0] || "")
+    .replace(/\b(two[- ]?shot|wide shot|close[- ]?up|medium shot|shot)\b/gi, "")
+    .replace(/^\s*across\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160) || "a moody cinematic interior at night";
 
   // 2) VOICES — a fixed, distinct voice per character (zero drift).
   const voices: Record<string, string> = resume.ckVoices ? JSON.parse(resume.ckVoices) : assignVoices(cast, speakers);
   await ckpt({ ckVoices: JSON.stringify(voices) });
 
-  // 3) PORTRAITS — one LOCKED photoreal actor per character, with shot/reverse-shot
-  //    eyelines (first speaker looks right, next looks left) so intercutting reads as
-  //    a conversation. Generated once, reused for every line → identical face, no morph.
-  const portraits: Record<string, string> = resume.ckPortraits ? JSON.parse(resume.ckPortraits) : {};
-  for (let s = 0; s < speakers.length; s++) {
-    const sp = speakers[s];
-    if (portraits[sp]) continue;
-    const bible = cast.find((c) => sp && c.toLowerCase().includes(sp.toLowerCase())) || `${sp || "a character"}, a person`;
-    const side = s % 2 === 0 ? "to their right" : "to their left";
-    const pPrompt =
-      `Photorealistic cinematic PORTRAIT of ${bible}. Head-and-shoulders, set in this location: ${location}. ` +
-      `Three-quarter angle, looking slightly ${side} as if speaking to someone just off camera (NOT straight at the viewer). ` +
-      `Natural film lighting, shallow depth of field, filmic and real. Absolutely no text, letters, captions, signage or screens anywhere. Vertical 9:16 framing.`;
-    let url: string | null = null;
-    try { url = await renderCreativeSeed(pPrompt, "9:16"); } catch { url = null; }
-    if (!url) throw new Error(`[avatardialogue] no portrait for ${sp || "speaker"}`);
-    portraits[sp] = url;
-    await ckpt({ ckPortraits: JSON.stringify(portraits) });
+  // 3) ONE shared TWO-SHOT image (both characters) — generated ONCE, reused for every
+  //    line, so the framing never changes and the scene carries continuously.
+  let stageImage = resume.ckImage || "";
+  if (!stageImage) {
+    const prompt = speakerRight
+      ? `Photorealistic cinematic TWO-SHOT, both people fully in frame and in sharp focus: on the LEFT, ${bibleFor(speakerLeft)}; on the RIGHT, ${bibleFor(speakerRight)}. They face each other in a tense conversation in ${setting}. Natural film lighting, shallow depth of field, filmic and real. No text, letters, captions, signage or screens anywhere in frame. Vertical 9:16.`
+      : `Photorealistic cinematic close-up of ${bibleFor(speakerLeft)} in ${setting}. Head and shoulders, natural film lighting, shallow depth of field. No text anywhere. Vertical 9:16.`;
+    const url = await renderCreativeSeed(prompt, "9:16");
+    if (!url) throw new Error("[avatardialogue] no stage image");
+    stageImage = url;
+    await ckpt({ ckImage: stageImage });
   }
-  const firstPortrait = Object.values(portraits)[0];
+  const stageAbs = abs(stageImage);
+  if (!stageAbs) throw new Error("[avatardialogue] no stage image");
 
-  // 4) Per beat: TTS the line in that character's FIXED voice → HeyGen lip-syncs the
-  //    character's locked portrait. HeyGen clip length == audio length, so no dead air.
+  // Per-speaker masks so OmniHuman animates only the one who is talking (left vs right).
+  const masks: { left?: string; right?: string } = resume.ckMasks ? JSON.parse(resume.ckMasks) : {};
+  if (speakerRight && (!masks.left || !masks.right)) {
+    if (!masks.left) masks.left = (await makeHalfMask("left")) || "";
+    if (!masks.right) masks.right = (await makeHalfMask("right")) || "";
+    await ckpt({ ckMasks: JSON.stringify(masks) });
+  }
+
+  // 4) Per line: TTS the speaker's fixed voice → OmniHuman animates the SHARED two-shot
+  //    with the SPEAKER's mask, so only they talk. Same image every time = no visible cut.
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
   for (let i = clips.length; i < beats.length; i++) {
     const { speaker, line } = beats[i];
     const voiceId = voices[speaker] || AVATAR_VOICES[0].id;
-    const portraitAbs = abs(portraits[speaker]) || abs(firstPortrait);
-    if (!portraitAbs) throw new Error(`[avatardialogue] scene ${i + 1}: no portrait`);
+    const maskRel = speakerRight ? (speaker === speakerLeft ? masks.left : masks.right) : undefined;
+    const maskUrl = maskRel ? abs(maskRel) : undefined;
     const audioUrl = await falTts(line || "…", voiceId, 1, { lang: null, emotion: "neutral" });
-    const clipUrl = await animateAvatar(portraitAbs, audioUrl);
+    const clipUrl = await animateOmniHuman({
+      imageUrl: stageAbs,
+      audioUrl,
+      maskUrl,
+      prompt: "The speaking person talks naturally with accurate lip-sync; the other person listens quietly without speaking. Cinematic, photorealistic, no on-screen text.",
+      resolution: "720p",
+    });
     const outClip = path.join(RENDERS(), `ad-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, outClip);
     if (!(fs.existsSync(outClip) && ffprobeDuration(outClip) > 0.5)) throw new Error(`[avatardialogue] scene ${i + 1}: clip did not download`);
@@ -195,7 +233,7 @@ export async function generateAvatarDialogue(opts: {
   }
   if (!clips.length) throw new Error("[avatardialogue] no clips rendered");
 
-  // 5) ASSEMBLE — intercut the talking clips with a short crossfade, keep the dialogue audio.
+  // 5) ASSEMBLE — stitch the (identically-framed) clips with a soft crossfade.
   const outName = `ad-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
   await assembleAvatarDialogue(clips, outPath, jobId);

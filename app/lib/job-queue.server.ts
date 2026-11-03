@@ -730,7 +730,8 @@ async function runJob(
             resume: {
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
               ckVoices: payload.ckVoices as string | undefined,
-              ckPortraits: payload.ckPortraits as string | undefined,
+              ckImage: payload.ckImage as string | undefined,
+              ckMasks: payload.ckMasks as string | undefined,
               ckClips: payload.ckClips as string[] | undefined,
             },
           });

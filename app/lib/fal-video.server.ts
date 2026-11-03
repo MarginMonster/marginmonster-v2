@@ -251,6 +251,35 @@ export async function animateAvatar(
   return pollAvatar(h);
 }
 
+/* ---- OmniHuman 1.5 talking-head (image + audio, with optional speaker mask) ----
+ * Unlike HeyGen (single face, near-static head), OmniHuman animates a chosen person
+ * in a MULTI-person image: pass a mask_url whose WHITE area covers the speaker, and
+ * only they talk. That lets a SHARED two-shot be animated one speaker at a time, so
+ * the scene never changes framing between lines. 720p is faster + higher quality and
+ * allows up to ~60s of audio (1080p caps ~30s). Returns the output video url. */
+const OMNIHUMAN = "fal-ai/bytedance/omnihuman/v1.5";
+export async function animateOmniHuman(opts: {
+  imageUrl: string;
+  audioUrl: string;
+  maskUrl?: string;
+  prompt?: string;
+  resolution?: "720p" | "1080p";
+}): Promise<string> {
+  if (!falEnabled()) throw new Error("FAL_KEY not set");
+  const body: Record<string, unknown> = {
+    image_url: opts.imageUrl,
+    audio_url: opts.audioUrl,
+    resolution: opts.resolution || "720p",
+    ...(opts.prompt ? { prompt: opts.prompt } : {}),
+    ...(opts.maskUrl ? { mask_url: opts.maskUrl } : {}),
+  };
+  const submit = await fetch(`https://queue.fal.run/${OMNIHUMAN}`, { method: "POST", headers: headers(), body: JSON.stringify(body) });
+  if (!submit.ok) throw new Error(`fal omnihuman submit ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
+  const q = (await submit.json()) as { status_url?: string; response_url?: string; request_id?: string };
+  if (!q.status_url || !q.response_url) throw new Error("fal omnihuman: no queue urls");
+  return pollAvatar({ requestId: q.request_id || "", statusUrl: q.status_url, responseUrl: q.response_url });
+}
+
 /* ---- Generic fal image-to-video ------------------------------------------
  * Kling's current tiers (2.6 pro especially) are published on fal but not on
  * Replicate, and a same-keyframe bake-off across eight engines put 2.6 pro
