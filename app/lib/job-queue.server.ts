@@ -699,25 +699,45 @@ async function runJob(
           const { assertCapability } = await import("./capabilities.server");
           assertCapability(shop.activePlan, "creatorvideo");
         }
-        const { generateFilm } = await import("./film-engine.server");
-        const filmAssetId = await generateFilm({
-          shopId,
-          template: payload.filmTemplate as string | undefined,
-          topic: (payload.filmTopic as string) || (payload.topic as string) || "",
-          sceneCount: typeof payload.filmScenes === "number" ? payload.filmScenes : undefined,
-          // Skit: the real product kept pin-sharp in every scene.
-          product: payload.filmProductImageUrl ? { title: payload.filmProductTitle as string | undefined, imageUrl: payload.filmProductImageUrl as string, description: payload.filmProductDescription as string | undefined } : undefined,
-          section: (payload.section as string) || "creator",
-          jobId: payload.__jobId as string | undefined,
-          resume: {
-            // Merchant-approved treatment from the free preview wins on the first
-            // run (checkpoint wins on resume) — rendered verbatim, no re-write.
-            ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
-            ckCastRef: payload.ckCastRef as string | undefined,
-            ckClips: payload.ckClips as string[] | undefined,
-            ckMusic: payload.ckMusic as string | undefined,
-          },
-        });
+        let filmAssetId: string;
+        if ((payload.filmTemplate as string | undefined) === "testmovie") {
+          // ISOLATED dialogue experiment — its own engine; generateFilm untouched.
+          const { generateTestMovie } = await import("./film-dialogue.server");
+          filmAssetId = await generateTestMovie({
+            shopId,
+            template: "testmovie",
+            topic: (payload.filmTopic as string) || (payload.topic as string) || "",
+            sceneCount: typeof payload.filmScenes === "number" ? payload.filmScenes : undefined,
+            section: (payload.section as string) || "creator",
+            jobId: payload.__jobId as string | undefined,
+            resume: {
+              ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
+              ckCastRef: payload.ckCastRef as string | undefined,
+              ckClips: payload.ckClips as string[] | undefined,
+              ckLastFrame: payload.ckLastFrame as string | undefined,
+            },
+          });
+        } else {
+          const { generateFilm } = await import("./film-engine.server");
+          filmAssetId = await generateFilm({
+            shopId,
+            template: payload.filmTemplate as string | undefined,
+            topic: (payload.filmTopic as string) || (payload.topic as string) || "",
+            sceneCount: typeof payload.filmScenes === "number" ? payload.filmScenes : undefined,
+            // Skit: the real product kept pin-sharp in every scene.
+            product: payload.filmProductImageUrl ? { title: payload.filmProductTitle as string | undefined, imageUrl: payload.filmProductImageUrl as string, description: payload.filmProductDescription as string | undefined } : undefined,
+            section: (payload.section as string) || "creator",
+            jobId: payload.__jobId as string | undefined,
+            resume: {
+              // Merchant-approved treatment from the free preview wins on the first
+              // run (checkpoint wins on resume) — rendered verbatim, no re-write.
+              ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
+              ckCastRef: payload.ckCastRef as string | undefined,
+              ckClips: payload.ckClips as string[] | undefined,
+              ckMusic: payload.ckMusic as string | undefined,
+            },
+          });
+        }
         await tagAssetSection(filmAssetId, payload.section as string | undefined);
         try {
           await unlockAchievement(shopId, "FACELESS_FIRST");

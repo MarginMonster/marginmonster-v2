@@ -262,11 +262,13 @@ export async function animateAvatar(
  *  falVideoPoll(model, id). */
 export async function falVideoSubmit(
   model: string,
-  opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number }
+  opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; generateAudio?: boolean }
 ): Promise<string> {
   if (!falEnabled()) throw new Error("FAL_KEY not set");
   const body: Record<string, unknown> = /veo/.test(model)
-    ? { prompt: opts.prompt, image_url: opts.startImage, aspect_ratio: "9:16" }
+    // generate_audio is added ONLY when asked (the Test Movie dialogue path) —
+    // omitting it keeps every existing veo caller byte-for-byte unchanged.
+    ? { prompt: opts.prompt, image_url: opts.startImage, aspect_ratio: "9:16", ...(opts.generateAudio ? { generate_audio: true } : {}) }
     : /seedance/.test(model)
     // Seedance 2.5's schema is prompt + image_url + resolution + duration — it
     // takes NEITHER a negative_prompt NOR an aspect flag (sending them 422s).

@@ -79,6 +79,11 @@ export interface FilmTemplate {
   /** Musical template (music video, kids cartoon): generate a SUNG song from the
    *  scene lyric lines (reuses the Anthem singing engine) and use it as the audio. */
   sung?: boolean;
+  /** Dialogue template (Test Movie): the script writes CHARACTER DIALOGUE and each
+   *  scene is a Veo clip where the character SPEAKS it, chained last-frame to next.
+   *  Routed to a SEPARATE engine (generateTestMovie) — generateFilm never sees it,
+   *  so the main pipeline is untouched. */
+  dialogue?: boolean;
   /** Whether this template is wired end-to-end on the FILM TAB (route offers
    *  these). Skit lives in the marketing flow instead, so it is false here. */
   live: boolean;
@@ -157,6 +162,20 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     castBible: true,
     referenceSeed: true,
     narrated: true,
+    live: true,
+  },
+  testmovie: {
+    key: "testmovie",
+    name: "Test Movie",
+    brief: "a SHORT FILM SCENE with real CHARACTER DIALOGUE — a tiny cast talking to each other with tension and a turn, in ONE continuous location (the experiment: characters actually SPEAK, and the shots chain together so it flows)",
+    sceneHint: "a cinematic, photorealistic live-action film scene — natural lighting, filmic composition, real-looking people",
+    musicHint: "subtle cinematic underscore",
+    defaultScenes: 3,
+    minScenes: 2,
+    maxScenes: 6,
+    captions: true,
+    castBible: true,
+    dialogue: true,
     live: true,
   },
   skit: {
@@ -243,7 +262,9 @@ export async function previewFilmTreatment(opts: {
     : "";
   // Narrated templates want each caption to BE the narrator's spoken line for
   // that beat (a flowing voiceover); others want a short on-screen hook.
-  const captionLine = tmpl.sung
+  const captionLine = tmpl.dialogue
+    ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive beats in ONE continuous location (so the shots flow together). Each beat = a VISUAL (${tmpl.sceneHint}; what we SEE — continuous action in the same place) and a CAPTION formatted EXACTLY as "NAME: the line they say out loud" — one natural spoken line (<=16 words). Across the beats the dialogue is a real back-and-forth with rising tension and a turn at the end; use the cast's names as the speakers.\n`
+    : tmpl.sung
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes/flows with the others; read in order the captions ARE the song's lyrics.\n`
     : tmpl.narrated
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the NARRATOR'S spoken line for that beat — ONE natural sentence, <=14 words, moving the story forward; read in order the captions are a continuous, emotive voiceover that tells the whole story and lands the ending.\n`
