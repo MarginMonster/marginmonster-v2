@@ -1,8 +1,9 @@
-/* Film Studio — EasyMode's premium long-form tier. Tonight: the Music Video
- * maker (the first member of the shared Film engine). Flow: pick a vibe → write
- * the treatment FREE (no tokens) → read/edit/Randomize → see the live per-scene
- * cost → Generate. Metered by scene count (plan-config.estimateFilmTokens — the
- * SAME function quotes and charges). Gated at "creatorvideo" (all plans). */
+/* Film Studio — EasyMode's premium long-form tier. Music Video + Kids Cartoon +
+ * Skit (members of the shared Film engine). Flow: pick a template → (Skit: pick
+ * your product) → write the treatment FREE (no tokens) → read/edit/Randomize →
+ * see the live per-scene cost → Generate. Metered by scene count (plan-config.
+ * estimateFilmTokens — the SAME function quotes and charges). Gated at
+ * "creatorvideo" (all plans). */
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { Form, useActionData, useFetcher, useLoaderData, useNavigation } from "@remix-run/react";
@@ -12,6 +13,7 @@ import { useT } from "../lib/ui-lang";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { normalizeContentLang } from "../lib/content-lang";
+import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
@@ -23,8 +25,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const { LIVE_FILM_TEMPLATES } = await import("../lib/film-engine.server");
   const templates = LIVE_FILM_TEMPLATES.map((t) => ({
-    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes,
+    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct,
   }));
+  // The merchant's own catalogue — only products WITH a photo can seed a skit.
+  const products = (await db.catalogProduct.findMany({
+    where: { shopId: shop.id, imageUrl: { not: null } },
+    orderBy: { position: "asc" },
+    take: 80,
+    select: { title: true, imageUrl: true, description: true },
+  })).map((p) => ({ title: p.title, imageUrl: p.imageUrl as string, description: (p.description || "").slice(0, 300) }));
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
     hasPlan: !!shop.activePlan?.active,
@@ -32,6 +41,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     canFilm: capabilitiesFor(shop.activePlan).has("creatorvideo"),
     outputLang: normalizeContentLang(shop.contentLang),
     templates,
+    products,
     perScene: FILM_PER_SCENE,
     base: FILM_BASE,
   });
@@ -53,11 +63,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const topic = ((form.get("filmTopic") as string) || "").trim().slice(0, 300);
   const clampScenes = (n: number) => Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, Math.round(n || tmpl.defaultScenes)));
 
+  // Product (skit): title + photo required for product templates.
+  const productTitle = ((form.get("filmProductTitle") as string) || "").trim().slice(0, 120);
+  const productImageUrl = ((form.get("filmProductImageUrl") as string) || "").trim().slice(0, 2000);
+  const productDescription = ((form.get("filmProductDescription") as string) || "").trim().slice(0, 500);
+  if (tmpl.needsProduct && !productImageUrl) {
+    return json({ error: tr(lang, "Add your product first — pick one from your store or paste a product image URL.") });
+  }
+
   // FREE — write/re-write the treatment as plain text (no token spend).
   if (intent === "previewFilmTreatment") {
     const scenes = clampScenes(parseInt((form.get("filmScenes") as string) || "", 10) || tmpl.defaultScenes);
     try {
-      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang });
+      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, productTitle, productDescription });
       return json({ treatment });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't write the treatment — try again in a moment."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
@@ -89,7 +107,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         section: "creator", contentType: "film",
         filmTemplate: tmpl.key, filmTopic: topic, filmScenes: scenes,
         approvedTreatment,
-        productTitle: (topic || tmpl.name).slice(0, 60),
+        ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
+        productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
         prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
       });
       unbacked = 0;
@@ -123,6 +142,10 @@ export default function FilmStudio() {
   const [topic, setTopic] = useState("");
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
+  // Product (skit): title + photo + (catalog) description.
+  const [prodTitle, setProdTitle] = useState("");
+  const [prodImage, setProdImage] = useState("");
+  const [prodDesc, setProdDesc] = useState("");
 
   // When a fresh treatment arrives, adopt it (and lock the scene count to it).
   useEffect(() => {
@@ -134,21 +157,33 @@ export default function FilmStudio() {
   const generating = nav.state !== "idle" && nav.formData?.get("intent") === "film";
   const cost = estimateFilmTokens(scenes);
   const affordable = d.tokens >= cost;
-  const canGo = d.hasPlan && d.canFilm && affordable && !generating;
+  const productReady = !tmpl?.needsProduct || !!prodImage.trim();
+  const canGo = d.hasPlan && d.canFilm && affordable && productReady && !generating;
 
   const bump = (delta: number) => {
     const n = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, scenes + delta));
     setScenes(n);
-    // Changing length invalidates an approved treatment (different scene count).
     if (treatment && treatment.scenes.length !== n) setTreatment(null);
   };
+  const switchTemplate = (key: string) => {
+    const nt = d.templates.find((x) => x.key === key);
+    setTemplate(key); setScenes(nt?.defaultScenes || 6); setTreatment(null);
+  };
+  const pickCatalog = (idx: number) => {
+    const p = d.products[idx];
+    if (!p) return;
+    setProdTitle(p.title || ""); setProdImage(p.imageUrl || ""); setProdDesc(p.description || "");
+    setTreatment(null);
+  };
   const writeTreatment = () => {
-    treatmentFetcher.submit({ intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes) }, { method: "post" });
+    treatmentFetcher.submit(
+      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc },
+      { method: "post" }
+    );
   };
   const editCaption = (i: number, v: string) => {
     if (!treatment) return;
-    const next = { ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, caption: v } : s)) };
-    setTreatment(next);
+    setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, caption: v } : s)) });
   };
 
   return (
@@ -157,14 +192,14 @@ export default function FilmStudio() {
 
       <div className="fs-head">
         <b>{t("Film Studio")} <span className="fs-beta">{t("new")}</span></b>
-        <span>{t("Premium long-form video — made from a prompt. Pick a vibe, we write the treatment free, then you spend only when you hit Generate.")}</span>
+        <span>{t("Premium long-form video — made from a prompt. Pick a format, we write the treatment free, then you spend only when you hit Generate.")}</span>
       </div>
 
-      {/* Template row — Music Video leads; the rest arrive as they're wired. */}
+      {/* Template row */}
       <div className="fs-tmpls">
         {d.templates.map((x) => (
           <button type="button" key={x.key} className={`fs-tmpl${template === x.key ? " on" : ""}`}
-            aria-pressed={template === x.key} onClick={() => { setTemplate(x.key); setScenes(x.defaultScenes); setTreatment(null); }}>
+            aria-pressed={template === x.key} onClick={() => switchTemplate(x.key)}>
             <span className="fs-tmpl-ico" aria-hidden="true"><Ico n="film" size={20} /></span>
             <b>{t(x.name)}</b>
             <span className="fs-tmpl-sub">{t(x.brief)}</span>
@@ -173,15 +208,36 @@ export default function FilmStudio() {
         <div className="fs-tmpl soon" aria-hidden="true">
           <span className="fs-tmpl-ico"><Ico n="wand" size={20} /></span>
           <b>{t("Short Film · YouTube")}</b>
-          <span className="fs-tmpl-sub">{t("Coming next — same engine, scripted scenes")}</span>
+          <span className="fs-tmpl-sub">{t("Coming next — scripted, dialogue")}</span>
         </div>
       </div>
 
+      {/* Skit only — your product (kept pin-sharp in every scene) */}
+      {tmpl?.needsProduct && (
+        <div className="fs-card">
+          <div className="fs-lbl"><Ico n="camera" size={16} /> {t("Your product")} <span className="fs-free">{t("stays pin-sharp")}</span></div>
+          <p className="fs-hint">{t("The real product is the hero of the gag — it's composited into every scene and kept exactly as photographed.")}</p>
+          {d.products.length > 0 && (
+            <select className="fs-sel" defaultValue="" onChange={(e) => { if (e.target.value !== "") pickCatalog(Number(e.target.value)); }}>
+              <option value="">{t("Pick from your store…")}</option>
+              {d.products.map((p, i) => <option key={i} value={i}>{p.title}</option>)}
+            </select>
+          )}
+          <div className="fs-prow">
+            {prodImage ? <span className="fs-pthumb" style={{ backgroundImage: `url(${prodImage})` }} role="img" aria-label={prodTitle || "product"} /> : <span className="fs-pthumb empty"><Ico n="camera" size={18} /></span>}
+            <div className="fs-pfields">
+              <input className="fs-in" value={prodTitle} onChange={(e) => setProdTitle(e.target.value)} placeholder={t("Product name")} maxLength={120} />
+              <input className="fs-in" value={prodImage} onChange={(e) => { setProdImage(e.target.value); setProdDesc(""); setTreatment(null); }} placeholder={t("or paste a product image URL")} maxLength={2000} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Step 1 — the vibe + length */}
       <div className="fs-card">
-        <div className="fs-lbl"><span className="fs-n">1</span> {t("What's it about?")}</div>
+        <div className="fs-lbl"><span className="fs-n">1</span> {tmpl?.needsProduct ? t("What's the gag?") : t("What's it about?")}</div>
         <textarea className="fs-ta" rows={3} value={topic} onChange={(e) => setTopic(e.target.value)}
-          placeholder={t("a theme, a story, a mood, your product… or leave blank and we'll surprise you")} maxLength={300} />
+          placeholder={tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={300} />
         <div className="fs-len">
           <span>{t("Scenes")}</span>
           <div className="fs-stepper">
@@ -197,9 +253,10 @@ export default function FilmStudio() {
       <div className="fs-card">
         <div className="fs-lbl"><span className="fs-n">2</span> {t("Write the treatment")} <span className="fs-free">{t("free")}</span></div>
         <p className="fs-hint">{t("We draft every scene + the hook. Read it, tweak the lines, re-roll — no tokens spent until you Generate.")}</p>
-        <button type="button" className="fs-write" onClick={writeTreatment} disabled={writing}>
+        <button type="button" className="fs-write" onClick={writeTreatment} disabled={writing || !productReady}>
           {writing ? <>… {t("Writing")}</> : treatment ? <><Ico n="refresh" size={14} /> {t("Randomize")}</> : <><Ico n="wand" size={14} /> {t("Write the treatment — free")}</>}
         </button>
+        {tmpl?.needsProduct && !productReady && <p className="fs-hint">{t("Add your product above first.")}</p>}
         {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
 
         {treatment && (
@@ -227,6 +284,9 @@ export default function FilmStudio() {
           <input type="hidden" name="template" value={template} />
           <input type="hidden" name="filmTopic" value={topic} />
           <input type="hidden" name="filmScenes" value={String(scenes)} />
+          {tmpl?.needsProduct && <input type="hidden" name="filmProductTitle" value={prodTitle} />}
+          {tmpl?.needsProduct && <input type="hidden" name="filmProductImageUrl" value={prodImage} />}
+          {tmpl?.needsProduct && <input type="hidden" name="filmProductDescription" value={prodDesc} />}
           {treatment && <input type="hidden" name="approvedTreatment" value={JSON.stringify(treatment)} />}
           <button type="submit" className="fs-go" disabled={!canGo}>
             {generating ? <>… {t("Starting your film")}</> : <><Ico n="film" size={16} /> {t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost })}</>}
@@ -240,6 +300,7 @@ export default function FilmStudio() {
         {!treatment && <p className="fs-hint">{t("Tip: write the treatment above first so you see exactly what renders — but you can Generate straight away and we'll script it for you.")}</p>}
         {!d.hasPlan && <p className="fs-err">{t("Pick a plan on the Dashboard first — film runs on tokens.")}</p>}
         {d.hasPlan && !affordable && <p className="fs-err">{t("Not enough tokens for this length — shorten it, or top up on the Plans page.")}</p>}
+        {d.hasPlan && tmpl?.needsProduct && !productReady && <p className="fs-err">{t("Add your product above to generate a skit.")}</p>}
         {actionData?.error && <p className="fs-err">{actionData.error}</p>}
         {actionData?.ok && (
           <p className="fs-ok"><Ico n="check" size={14} /> {t("Rolling! Your film is rendering — it'll land in your Gallery in a few minutes. You can keep working.")}</p>
@@ -255,7 +316,7 @@ const FS_STYLE = `
 .fs-beta{font-size:11px;font-weight:800;color:#fff;background:var(--green,#0C7A46);border-radius:999px;padding:2px 9px;text-transform:uppercase;letter-spacing:.04em;}
 .fs-head>span{display:block;font-size:13px;color:var(--ink2,#4A554E);margin-top:5px;max-width:560px;line-height:1.5;}
 .fs-tmpls{display:flex;gap:12px;flex-wrap:wrap;margin:18px 0 6px;}
-.fs-tmpl{flex:1 1 220px;min-width:0;text-align:left;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:16px;padding:14px 16px;cursor:pointer;transition:transform .12s,box-shadow .12s,border-color .12s;display:block;}
+.fs-tmpl{flex:1 1 200px;min-width:0;text-align:left;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:16px;padding:14px 16px;cursor:pointer;transition:transform .12s,box-shadow .12s,border-color .12s;display:block;}
 .fs-tmpl:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(20,32,26,.12);border-color:var(--green2,#1FA463);}
 .fs-tmpl.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46);}
 .fs-tmpl.soon{opacity:.55;cursor:default;}
@@ -269,7 +330,13 @@ const FS_STYLE = `
 .fs-n{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:999px;background:var(--green,#0C7A46);color:#fff;font-size:13px;}
 .fs-free{font-size:11px;font-weight:800;color:var(--green,#0C7A46);background:var(--mint,#EAF6EF);border-radius:999px;padding:2px 9px;text-transform:uppercase;letter-spacing:.03em;}
 .fs-ta{width:100%;box-sizing:border-box;border:1.5px solid var(--line,#E4DFCF);border-radius:12px;padding:11px 13px;font-size:14px;font-family:inherit;color:var(--ink,#14201A);resize:vertical;line-height:1.45;}
-.fs-ta:focus{outline:none;border-color:var(--green,#0C7A46);}
+.fs-ta:focus,.fs-in:focus,.fs-sel:focus{outline:none;border-color:var(--green,#0C7A46);}
+.fs-sel{width:100%;box-sizing:border-box;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;padding:10px 12px;font-size:13.5px;font-family:inherit;color:var(--ink,#14201A);background:#fff;margin-bottom:10px;}
+.fs-prow{display:flex;gap:12px;align-items:stretch;}
+.fs-pthumb{flex:0 0 auto;width:66px;height:66px;border-radius:12px;background-size:cover;background-position:center;background-color:var(--mint,#EAF6EF);border:1.5px solid var(--line,#E4DFCF);}
+.fs-pthumb.empty{display:grid;place-items:center;color:var(--green,#0C7A46);}
+.fs-pfields{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:8px;}
+.fs-in{width:100%;box-sizing:border-box;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;padding:9px 12px;font-size:13.5px;font-family:inherit;color:var(--ink,#14201A);}
 .fs-len{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap;}
 .fs-len>span:first-child{font-weight:700;font-size:13px;color:var(--ink,#14201A);}
 .fs-stepper{display:inline-flex;align-items:center;gap:0;border:1.5px solid var(--line,#E4DFCF);border-radius:999px;overflow:hidden;}

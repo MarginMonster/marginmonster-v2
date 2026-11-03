@@ -5,13 +5,16 @@
 // for — "high budget, not cheap"). One engine, many TEMPLATES:
 //   musicvideo — sung/instrumental track + beat-synced visual scenes   (SHIPPED)
 //   kidstv     — CoComelon-style bright cartoon, recurring characters  (SHIPPED)
-//   skit       — 1-3 funny scenes, product in the gag                  (planned)
+//   skit       — funny product skit: real product, pin-sharp, in-scene (SHIPPED)
 //   movie      — Dhar Mann-style scripted drama + payoff               (planned)
 //   youtube    — long-form narrative                                   (planned)
 //
-// Recurring-character templates (kidstv) solve consistency with a one-time CAST
-// reference image that every scene seed is conditioned on (renderStyledSeed),
-// plus a fixed cast "bible" injected into every seed + motion prompt.
+// Consistency is handled per template:
+//   • recurring-character templates (kidstv) → a one-time CAST reference image
+//     every scene seed is conditioned on (renderStyledSeed) + a cast "bible".
+//   • product templates (skit) → the real PRODUCT photo takes the image-
+//     conditioning slot so it stays pin-sharp (fidelity wins over cast drift on
+//     a short skit), plus a product-truth clause in the seed + motion prompts.
 //
 // PRICING is METERED by scene count (plan-config: estimateFilmTokens) — the
 // SAME pure function drives the estimate shown before Generate and the amount
@@ -34,6 +37,14 @@ const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const CLIP_POLL_MS = 8 * 60_000;
 const CLIP_SECONDS = 5; // the default i2v clip length; total video ≈ scenes × this
 
+// Product-fidelity clause (mirrors video-generation's productTruth) — woven into
+// the seed + motion prompts for product templates so an i2v model can't melt a
+// label or morph the product as the scene animates.
+const PRODUCT_TRUTH =
+  " The product must stay EXACTLY as in the reference photo — same shape, proportions," +
+  " colours, materials, logos and every printed word and number, unchanged and legible." +
+  " Never redraw, relabel, recolour or resize it; invent no on-product text of your own.";
+
 // ---- Templates --------------------------------------------------------------
 export interface FilmTemplate {
   key: string;
@@ -55,6 +66,9 @@ export interface FilmTemplate {
   referenceSeed?: boolean;
   /** Enforce wholesome, G-rated content in the treatment + seed/motion prompts. */
   childSafe?: boolean;
+  /** Requires a real product (title + photo); scenes are conditioned on the
+   *  product photo so it stays pin-sharp (product-fidelity compositing). */
+  needsProduct?: boolean;
   /** Whether this template is wired end-to-end yet (route only offers these). */
   live: boolean;
 }
@@ -87,11 +101,23 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     childSafe: true,
     live: true,
   },
+  skit: {
+    key: "skit",
+    name: "Skit",
+    brief: "a FUNNY short commercial skit: a tiny cast acts out a comedic bit where the product is the hero of the joke — a quick setup, then a punchline payoff",
+    sceneHint: "a funny, characterful cinematic scene that features the product, expressive comedic acting, clear bright lighting, photoreal",
+    musicHint: "playful, bouncy, comedic background music",
+    defaultScenes: 3,
+    minScenes: 1,
+    maxScenes: 5,
+    captions: true,
+    castBible: true,
+    needsProduct: true,
+    live: true,
+  },
   // Planned templates — the engine already drives them generically; they stay
-  // OUT of the route picker (live:false) until their specifics land (skit =
-  // product-in-scene compositing; movie = scripted dialogue, the talking-cast
-  // engine fork).
-  skit: { key: "skit", name: "Skit", brief: "a funny short commercial skit with a tiny cast and the product inside the gag", sceneHint: "a funny cinematic scene", musicHint: "playful, comedic background music", defaultScenes: 3, minScenes: 1, maxScenes: 5, captions: true, live: false },
+  // OUT of the route picker (live:false) until their specifics land (movie =
+  // scripted talking-cast DIALOGUE, the scene-audio engine fork).
   movie: { key: "movie", name: "Short Film", brief: "a short scripted dramatic film with a cast and a meaningful payoff (Dhar Mann style)", sceneHint: "a cinematic dramatic scene", musicHint: "emotional cinematic score", defaultScenes: 12, minScenes: 6, maxScenes: 40, captions: false, castBible: true, referenceSeed: true, live: false },
   youtube: { key: "youtube", name: "YouTube Video", brief: "a long-form narrative YouTube video with a hook, body and payoff", sceneHint: "a clear, engaging cinematic scene", musicHint: "upbeat background music", defaultScenes: 10, minScenes: 6, maxScenes: 40, captions: true, live: false },
 };
@@ -143,6 +169,8 @@ export async function previewFilmTreatment(opts: {
   topic?: string;
   sceneCount?: number;
   contentLang?: string | null;
+  productTitle?: string;
+  productDescription?: string;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const scenes = clampScenes(tmpl, opts.sceneCount ?? tmpl.defaultScenes);
@@ -151,6 +179,9 @@ export async function previewFilmTreatment(opts: {
   const castLine = tmpl.castBible
     ? `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"). Every scene's VISUAL must feature these same named characters, described the same way.`
     : "";
+  const prodLine = tmpl.needsProduct && opts.productTitle
+    ? `\nTHE PRODUCT being advertised: "${opts.productTitle.slice(0, 80)}"${opts.productDescription ? ` — ${opts.productDescription.slice(0, 300)}` : ""}. Make it the HERO of the gag — the funny payoff features or revolves around this exact product. Say ONLY what is true of it; invent no claims, specs, prices or reviews.`
+    : "";
   const safetyLine = tmpl.childSafe
     ? `SAFETY: this is for very young children — keep it 100% wholesome and G-rated: happy, gentle and safe. NOTHING scary, sad, violent, adult or unsafe; no real named people or brands; invent no claims.`
     : `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe.`;
@@ -158,7 +189,8 @@ export async function previewFilmTreatment(opts: {
     `Write ${tmpl.brief}.\n` +
     (topic ? `THEME / what it's about: "${topic.slice(0, 300)}".\n` : `Pick a fun, broadly-appealing theme.\n`) +
     castLine +
-    `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a short CAPTION (one punchy on-screen line, <=8 words; the sung/spoken hook for that beat).\n` +
+    prodLine +
+    `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a short CAPTION (one punchy on-screen line, <=8 words; the sung/spoken hook or the joke's line for that beat).\n` +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
     safetyLine;
   const raw = await anthropicText(prompt, {
@@ -282,6 +314,8 @@ export async function generateFilm(opts: {
    *  re-write), exactly like the avatar step-2 approved-words flow. */
   treatment?: FilmTreatment;
   sceneCount?: number;
+  /** Product templates (skit): the real product to keep pin-sharp in every scene. */
+  product?: { title?: string; imageUrl?: string; description?: string };
   section?: string;
   jobId?: string;
   resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckMusic?: string };
@@ -296,7 +330,7 @@ export async function generateFilm(opts: {
   let treatment: FilmTreatment;
   if (resume.ckTreatment) treatment = JSON.parse(resume.ckTreatment);
   else if (opts.treatment && opts.treatment.scenes?.length) treatment = opts.treatment;
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, productTitle: opts.product?.title, productDescription: opts.product?.description });
   treatment.scenes = treatment.scenes.slice(0, clampScenes(tmpl, opts.sceneCount ?? treatment.scenes.length));
   await ckpt({ ckTreatment: JSON.stringify(treatment) });
 
@@ -305,11 +339,18 @@ export async function generateFilm(opts: {
   const castBible = treatment.cast && treatment.cast.length ? `Recurring cast, keep EVERY character identical in every scene: ${treatment.cast.join("; ")}.` : "";
   const safePhrase = tmpl.childSafe ? "Wholesome, child-safe, G-rated, bright and friendly. " : "";
 
-  // CAST REFERENCE (character-locked templates): render ONE cast sheet up front,
-  // then condition every scene's seed on it so the characters keep the same look.
-  // Checkpointed so a restart never re-bills it; fail-open to text-only seeds.
+  // PRODUCT (skit): the real product photo takes the image-conditioning slot so
+  // it stays pin-sharp. External store URL is used as-is; a /renders URL is
+  // absolutized for the provider fetch.
+  const product = opts.product && opts.product.imageUrl ? opts.product : undefined;
+  const productAbs = product?.imageUrl ? (product.imageUrl.startsWith("http") ? product.imageUrl : `${base}${product.imageUrl}`) : undefined;
+  const productLine = productAbs && product ? ` The scene features this exact product: ${(product.title || "the product").slice(0, 80)}.${PRODUCT_TRUTH}` : "";
+
+  // CAST REFERENCE (character-locked templates WITHOUT a product — the product
+  // owns the conditioning slot when present): render ONE cast sheet up front and
+  // condition every scene on it. Checkpointed; fail-open to text-only seeds.
   let castRefAbs: string | undefined;
-  if (tmpl.referenceSeed && castBible) {
+  if (tmpl.referenceSeed && castBible && !productAbs) {
     let castRef: string | null = resume.ckCastRef && resume.ckCastRef.trim() ? resume.ckCastRef : null;
     if (!castRef) {
       try { castRef = await renderCreativeSeed(`${safePhrase}Character reference sheet: ${castBible} ${tmpl.sceneHint}. All characters together, full body, clean neutral bright background, character-design sheet.`, "9:16"); }
@@ -321,20 +362,21 @@ export async function generateFilm(opts: {
 
   // 2) PER-SCENE CLIPS — seed still → i2v clip (default engine). Banked
   //    contiguously so a restart keeps finished clips.
+  const refAbs = productAbs || castRefAbs; // product fidelity wins the conditioning slot
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     const outPath = path.join(RENDERS(), `film-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
-    const seedPrompt = `${safePhrase}${scene.visual}. ${castBible} ${tmpl.sceneHint}. Richly detailed, high quality.`;
+    const seedPrompt = `${safePhrase}${scene.visual}. ${castBible}${productLine} ${tmpl.sceneHint}. Richly detailed, high quality.`;
 
-    // Scene SEED still (/renders URL). Reference-conditioned when we have a cast
-    // sheet (keeps characters consistent); else text-to-image. Absolutize for the
-    // i2v provider fetch.
+    // Scene SEED still (/renders URL). Reference-conditioned when we have a
+    // product photo or cast sheet; else text-to-image. Absolutize for the i2v
+    // provider fetch.
     let seedUrl: string | null = null;
     for (let a = 0; a < 2 && !seedUrl; a++) {
       try {
-        seedUrl = castRefAbs
-          ? ((await renderStyledSeed(seedPrompt, castRefAbs, "9:16")) || (await renderCreativeSeed(seedPrompt, "9:16")))
+        seedUrl = refAbs
+          ? ((await renderStyledSeed(seedPrompt, refAbs, "9:16")) || (await renderCreativeSeed(seedPrompt, "9:16")))
           : await renderCreativeSeed(seedPrompt, "9:16");
       } catch { /* retry once */ }
     }
@@ -344,7 +386,7 @@ export async function generateFilm(opts: {
     // so a flaky i2v tick never drops a scene the merchant paid for.
     let made = false;
     if (seedAbs) {
-      const motion = `${safePhrase}${scene.visual}. ${castBible} ${tmpl.sceneHint}. Smooth, confident cinematic camera motion, vertical 9:16. Add no text, caption, logo or watermark of your own.`;
+      const motion = `${safePhrase}${scene.visual}. ${castBible}${productLine} ${tmpl.sceneHint}. Smooth, confident cinematic camera motion, vertical 9:16. Add no text, caption, logo or watermark of your own.`;
       for (let a = 0; a < 2 && !made; a++) {
         try {
           const created = await animateCreate(undefined, { startImage: seedAbs, prompt: motion, durationSec: CLIP_SECONDS });
@@ -401,9 +443,9 @@ export async function generateFilm(opts: {
       shopId: opts.shopId,
       type: "VIDEO_AD",
       status: "PENDING",
-      title: `${tmpl.name} — ${(treatment.title || opts.topic || "").slice(0, 60)}`,
+      title: `${tmpl.name} — ${(treatment.title || opts.topic || product?.title || "").slice(0, 60)}`,
       bodyJson: JSON.stringify({ style: "FILM", videoUrl: storedUrl, prompt: opts.topic || "", treatment }),
-      metaJson: JSON.stringify({ kind: "film", template: tmpl.key, section: opts.section || "creator", scenes: clips.length, aspect: "vertical" }),
+      metaJson: JSON.stringify({ kind: "film", template: tmpl.key, section: opts.section || "creator", scenes: clips.length, aspect: "vertical", ...(product ? { product: product.title } : {}) }),
     },
   });
   return asset.id;

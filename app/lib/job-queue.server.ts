@@ -705,6 +705,8 @@ async function runJob(
           template: payload.filmTemplate as string | undefined,
           topic: (payload.filmTopic as string) || (payload.topic as string) || "",
           sceneCount: typeof payload.filmScenes === "number" ? payload.filmScenes : undefined,
+          // Skit: the real product kept pin-sharp in every scene.
+          product: payload.filmProductImageUrl ? { title: payload.filmProductTitle as string | undefined, imageUrl: payload.filmProductImageUrl as string, description: payload.filmProductDescription as string | undefined } : undefined,
           section: (payload.section as string) || "creator",
           jobId: payload.__jobId as string | undefined,
           resume: {
