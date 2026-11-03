@@ -125,38 +125,60 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
   const N = clips.length;
   if (!N) throw new Error("[testmovie] no clips");
   const beat = async () => { if (jobId) await checkpointJob(jobId, { ckBeat: Date.now() }); };
+  const produced = (): boolean => { try { return fs.existsSync(outPath) && ffprobeDuration(outPath) > 1; } catch { return false; } };
+  const SCALE = "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30";
+  const TAIL = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outPath];
 
-  const buildArgs = (useAudio: boolean): string[] => {
+  // PREFERRED: a short CROSSFADE at each cut (video xfade + audio acrossfade) so the
+  // clip change reads as a smooth dissolve, not a clunky hard jump. Because clip N is
+  // seeded from clip N-1's last frame, the two frames are nearly identical, so the
+  // dissolve is almost invisible — it just softens the re-animation hitch. Needs each
+  // clip's duration for the offsets; if anything is off we fall back to concat below.
+  const buildXfade = (): string[] | null => {
+    if (N < 2) return null;
+    const FADE = 0.18;
+    const durs = clips.map((c) => { try { return ffprobeDuration(c); } catch { return 0; } });
+    if (durs.some((d) => !(d > FADE + 0.3))) return null;
     const a: string[] = ["-y"];
     clips.forEach((c) => a.push("-i", c));
     const f: string[] = [];
     clips.forEach((_, i) => {
-      f.push(`[${i}:v]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30,setpts=PTS-STARTPTS[v${i}]`);
+      f.push(`[${i}:v]${SCALE},setpts=PTS-STARTPTS[v${i}]`);
+      f.push(`[${i}:a]aresample=44100,asetpts=PTS-STARTPTS[a${i}]`);
+    });
+    let vPrev = "v0", aPrev = "a0", running = durs[0];
+    for (let i = 1; i < N; i++) {
+      const vOut = i === N - 1 ? "vc" : `vx${i}`;
+      const aOut = i === N - 1 ? "ac" : `ax${i}`;
+      f.push(`[${vPrev}][v${i}]xfade=transition=fade:duration=${FADE}:offset=${Math.max(0, running - FADE).toFixed(3)}[${vOut}]`);
+      f.push(`[${aPrev}][a${i}]acrossfade=d=${FADE}[${aOut}]`);
+      vPrev = vOut; aPrev = aOut; running = running + durs[i] - FADE;
+    }
+    return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", "-map", "[ac]", ...TAIL];
+  };
+
+  // FALLBACK: plain hard-cut concat. Degrade ladder: with audio → silent.
+  const buildConcat = (useAudio: boolean): string[] => {
+    const a: string[] = ["-y"];
+    clips.forEach((c) => a.push("-i", c));
+    const f: string[] = [];
+    clips.forEach((_, i) => {
+      f.push(`[${i}:v]${SCALE},setpts=PTS-STARTPTS[v${i}]`);
       if (useAudio) f.push(`[${i}:a]aresample=44100,asetpts=PTS-STARTPTS[a${i}]`);
     });
     if (useAudio) {
-      const inter = clips.map((_, i) => `[v${i}][a${i}]`).join("");
-      f.push(`${inter}concat=n=${N}:v=1:a=1[vc][ac]`);
-      a.push("-filter_complex", f.join(";"), "-map", "[vc]", "-map", "[ac]");
-    } else {
-      const vlabels = clips.map((_, i) => `[v${i}]`).join("");
-      f.push(`${vlabels}concat=n=${N}:v=1:a=0[vc]`);
-      a.push("-filter_complex", f.join(";"), "-map", "[vc]");
+      f.push(`${clips.map((_, i) => `[v${i}][a${i}]`).join("")}concat=n=${N}:v=1:a=1[vc][ac]`);
+      return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", "-map", "[ac]", ...TAIL];
     }
-    a.push(
-      "-threads", "2", "-filter_complex_threads", "2",
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
-      "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart",
-      outPath,
-    );
-    return a;
+    f.push(`${clips.map((_, i) => `[v${i}]`).join("")}concat=n=${N}:v=1:a=0[vc]`);
+    return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", ...TAIL];
   };
 
-  const produced = (): boolean => { try { return fs.existsSync(outPath) && ffprobeDuration(outPath) > 1; } catch { return false; } };
   await beat();
   let lastErr = "";
-  for (const useAudio of [true, false]) {
-    const run = await runFfmpeg(buildArgs(useAudio));
+  for (const args of [buildXfade(), buildConcat(true), buildConcat(false)]) {
+    if (!args) continue;
+    const run = await runFfmpeg(args);
     if (run.status === 0 && produced()) return;
     lastErr = (run.stderr || "").slice(-240);
     await beat();
@@ -208,6 +230,7 @@ export async function generateTestMovie(opts: {
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
   let prevFrameUrl: string | undefined = resume.ckLastStill; // prior clip's last frame (relative /renders URL)
   const NO_TEXT = "Absolutely NO on-screen text of any kind: no subtitles, no captions, no titles, and no readable writing on any paper, document, folder, bulletin board, whiteboard, sign, poster or screen anywhere in the frame — keep every surface clean and text-free.";
+  const HOLD_STILL = "The characters STAY in their positions — no standing up, sitting down, walking or crossing the room, only natural small gestures, head turns and talking. Keep every character's face, hair, hairstyle, clothing and wardrobe EXACTLY the same the whole time — no morphing, melting or changing of anyone's appearance.";
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     const turns = splitExchange(scene.caption || "");
@@ -235,7 +258,7 @@ export async function generateTestMovie(opts: {
       : `One character speaks clearly and unhurried, lips in sync: "${line}". The other listens in silence.`;
     const prompt =
       `${scene.visual}. ${tmpl.sceneHint}. A two-shot of both characters in the room. ` +
-      `${voiceLine} ${castBible} ` +
+      `${voiceLine} ${castBible} ${HOLD_STILL} ` +
       `Photorealistic live-action film, cinematic lighting, shallow depth of field, clean natural spoken-dialogue audio. ${NO_TEXT}`;
 
     const clipUrl = await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
