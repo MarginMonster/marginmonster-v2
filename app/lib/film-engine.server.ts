@@ -251,7 +251,7 @@ export async function previewFilmTreatment(opts: {
   const safetyLine = tmpl.childSafe
     ? `SAFETY: this is for very young children — keep it 100% wholesome and G-rated: happy, gentle and safe. NOTHING scary, sad, violent, adult or unsafe; no real named people or brands; invent no claims.`
     : tmpl.key === "horror"
-    ? `TONE: make it genuinely creepy and suspenseful (atmosphere, dread, a chilling twist) — but keep it PG-13: NO graphic gore, torture, sexual content or real named people, and nothing that encourages real-world harm. Spooky, not sickening.`
+    ? `This is FICTIONAL entertainment horror (a scary-story video — think a horror short, a creepypasta, or a Goosebumps/Twilight-Zone episode). Write a genuinely CREEPY, SUSPENSEFUL story: take the premise and tell it as a STORY — a character, a situation, rising tension, a chilling TWIST. Convey threat, danger and fear through SUGGESTION, ATMOSPHERE and DREAD — never by depicting graphic gore, torture, injury or suffering. Keep it PG-13 and cinematic (scary, not a slasher); no real named people, no instructions for real-world harm.`
     : `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe.`;
   const prompt =
     `Write ${tmpl.brief}.\n` +
@@ -261,12 +261,25 @@ export async function previewFilmTreatment(opts: {
     captionLine +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
     safetyLine;
-  const raw = await anthropicText(prompt, {
-    model: "claude-sonnet-5",
-    maxTokens: 1500,
-    jsonSchema: { name: "film_treatment", schema: TREATMENT_SCHEMA as unknown as Record<string, unknown> },
-  });
-  const parsed = JSON.parse(raw) as FilmTreatment;
+  const write = async (p: string): Promise<FilmTreatment> => {
+    const raw = await anthropicText(p, {
+      model: "claude-sonnet-5",
+      maxTokens: 1500,
+      jsonSchema: { name: "film_treatment", schema: TREATMENT_SCHEMA as unknown as Record<string, unknown> },
+    });
+    return JSON.parse(raw) as FilmTreatment;
+  };
+  let parsed: FilmTreatment;
+  try {
+    parsed = await write(prompt);
+  } catch {
+    // A dark/edgy premise (common in Horror) can trip a first-pass refusal or a
+    // non-JSON reply. Retry ONCE, reframing hard as tasteful, non-graphic fiction
+    // — Claude writes suspenseful horror readily when it's clearly a STORY, not
+    // a depiction of harm.
+    const softer = `${prompt}\nREMEMBER: this is FICTION for entertainment — keep it tasteful and non-graphic. Build fear through suspense, dread and atmosphere; NEVER depict gore, torture, injury or real harm; focus on the STORY. Return ONLY the JSON treatment.`;
+    parsed = await write(softer);
+  }
   let list = (parsed.scenes || []).filter((s) => s && s.visual).slice(0, scenes);
   // FTC backstop (captions are burned on screen): strip an endorsement
   // possessive from a third-party trademark the writer may have slipped in.

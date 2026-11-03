@@ -78,7 +78,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, productTitle, productDescription });
       return json({ treatment });
     } catch (e) {
-      return json({ error: tr(lang, "Couldn't write the treatment — try again in a moment."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+      return json({ error: tr(lang, "Couldn't write that treatment — give it another go, or tweak the premise a little (for Horror, a spookier / less-graphic angle writes more reliably)."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
     }
   }
 
