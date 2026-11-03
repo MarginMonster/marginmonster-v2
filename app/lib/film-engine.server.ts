@@ -343,13 +343,26 @@ async function assembleFilm(opts: {
         if (i >= opts.clips.length) return; // a dropped scene left fewer clips than captions — skip the orphan line
         const text = captionSafe(cap || "");
         if (!text) return;
-        const size = Math.max(30, Math.min(48, Math.floor((720 * 0.92) / (Math.max(1, text.length) * 0.60))));
+        // Word-wrap so a long narration/lyric line never runs off both frame
+        // edges (the old single-line sizing overflowed on anything long).
+        const MAXCH = 22, FS = 40, LINE_H = 52;
+        const lines: string[] = [];
+        let cur = "";
+        for (const w of text.split(" ")) {
+          if (cur && (cur.length + 1 + w.length) > MAXCH) { lines.push(cur); cur = w; }
+          else cur = cur ? `${cur} ${w}` : w;
+        }
+        if (cur) lines.push(cur);
         const t0 = starts[i].toFixed(2);
         const t1 = (starts[i] + durs[i]).toFixed(2);
-        draws.push(
-          `drawtext=fontfile='${font}':text='${text}':fontsize=${size}:fontcolor=white:` +
-          `borderw=7:bordercolor=black:x=(w-text_w)/2:y=h-360:enable='gte(t,${t0})*lt(t,${t1})'`
-        );
+        // Stack the wrapped lines, bottom-anchored above the lower third.
+        lines.forEach((ln, li) => {
+          const y = `h-300-${(lines.length - 1 - li) * LINE_H}`;
+          draws.push(
+            `drawtext=fontfile='${font}':text='${ln}':fontsize=${FS}:fontcolor=white:` +
+            `borderw=7:bordercolor=black:x=(w-text_w)/2:y=${y}:enable='gte(t,${t0})*lt(t,${t1})'`
+          );
+        });
       });
       if (draws.length) { f.push(`[vcat]${draws.join(",")}[vf]`); vLabel = "[vf]"; }
     }
@@ -456,7 +469,12 @@ export async function generateFilm(opts: {
   if (tmpl.referenceSeed && castBible && !productAbs) {
     let castRef: string | null = resume.ckCastRef && resume.ckCastRef.trim() ? resume.ckCastRef : null;
     if (!castRef) {
-      try { castRef = await renderCreativeSeed(`${safePhrase}Character reference sheet: ${castBible} ${tmpl.sceneHint}. All characters together, full body, clean neutral background, character-design sheet.`, "9:16"); }
+      // The reference must be in the TEMPLATE'S style (photoreal for stories,
+      // 3D-cartoon for kids) — the old "character-design sheet" wording made
+      // nano-banana draw a flat illustration, so scenes built on it came out
+      // cartoonish while the text-fallback scenes came out photoreal → one video,
+      // two clashing looks. Lead with the scene style and lock it.
+      try { castRef = await renderCreativeSeed(`${safePhrase}${tmpl.sceneHint}. A group portrait of the recurring cast standing together — full body, clear consistent faces, plain neutral background, IN THE EXACT SAME ART STYLE as the rest of the film. The cast: ${castBible}`, "9:16"); }
       catch { castRef = null; }
       if (castRef) await ckpt({ ckCastRef: castRef });
     }
