@@ -80,7 +80,26 @@ async function makeHalfMask(side: "left" | "right"): Promise<string | null> {
     const out = path.join(RENDERS(), name);
     const r = await runFfmpeg(["-y", "-f", "lavfi", "-i", `color=c=black:s=${W}x${H}`, "-vf", `drawbox=x=${x}:y=0:w=${half}:h=${H}:color=white:t=fill`, "-frames:v", "1", out]);
     if (r.status === 0 && fs.existsSync(out)) return `/renders/${name}`;
-  } catch { /* no mask → OmniHuman animates the most prominent face */ }
+  } catch { /* no mask → caller falls back to a single-face crop, never the two-shot */ }
+  return null;
+}
+
+const AVATAR_TALK_PROMPT =
+  "The speaking person talks naturally with accurate lip-sync; the other person listens quietly without speaking. Cinematic, photorealistic, no on-screen text.";
+
+/** Crop ONE side (the speaker's half) out of the shared two-shot, giving a SINGLE-FACE
+ *  image. A single-face lip-sync model fed one face can ONLY animate that one face — the
+ *  safe way to render a turn when the masked two-shot animation is unavailable, with no
+ *  risk of both mouths moving to one voice. Proportional (iw/2), so any image size works. */
+async function cropHalf(localImage: string, side: "left" | "right"): Promise<string | null> {
+  try {
+    if (!fs.existsSync(localImage)) return null;
+    const name = `half-${side}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.png`;
+    const out = path.join(RENDERS(), name);
+    const x = side === "left" ? "0" : "iw/2";
+    const r = await runFfmpeg(["-y", "-i", localImage, "-vf", `crop=iw/2:ih:${x}:0`, "-frames:v", "1", out]);
+    if (r.status === 0 && fs.existsSync(out)) return `/renders/${name}`;
+  } catch { /* fall through to null */ }
   return null;
 }
 
@@ -209,30 +228,58 @@ export async function generateAvatarDialogue(opts: {
     await ckpt({ ckMasks: JSON.stringify(masks) });
   }
 
-  // 4) Per line: TTS the speaker's fixed voice → OmniHuman animates the SHARED two-shot
-  //    with the SPEAKER's mask, so only they talk. Same image every time = no visible cut.
+  // 4) Per line: TTS the speaker's fixed voice → animate the SHARED two-shot so ONLY the
+  //    speaker talks. Same image every time = no visible cut.
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
+  // A LOCAL copy of the two-shot, so a single-face fallback can crop one speaker out of it.
+  // (The stage is usually a /renders/ file already; download it if it's a remote URL.)
+  let stageLocal = stageImage.startsWith("/renders/") ? path.join(RENDERS(), path.basename(stageImage)) : "";
+  if (speakerRight && (!stageLocal || !fs.existsSync(stageLocal))) {
+    try {
+      const tmp = path.join(RENDERS(), `stage-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.png`);
+      await download(stageAbs, tmp);
+      stageLocal = fs.existsSync(tmp) ? tmp : "";
+    } catch { stageLocal = ""; }
+  }
   for (let i = clips.length; i < beats.length; i++) {
     const { speaker, line } = beats[i];
     const voiceId = voices[speaker] || AVATAR_VOICES[0].id;
-    const maskRel = speakerRight ? (speaker === speakerLeft ? masks.left : masks.right) : undefined;
+    const onLeft = !speakerRight || speaker === speakerLeft;
+    const maskRel = speakerRight ? (onLeft ? masks.left : masks.right) : undefined;
     const maskUrl = maskRel ? abs(maskRel) : undefined;
     const audioUrl = await falTts(line || "…", voiceId, 1, { lang: null, emotion: "neutral" });
-    let clipUrl: string;
-    try {
-      clipUrl = await animateOmniHuman({
-        imageUrl: stageAbs,
-        audioUrl,
-        maskUrl,
-        prompt: "The speaking person talks naturally with accurate lip-sync; the other person listens quietly without speaking. Cinematic, photorealistic, no on-screen text.",
-        resolution: "720p",
-      });
-    } catch (e) {
-      // OmniHuman has been failing; NEVER let it kill the whole render. Fall back to
-      // HeyGen on the SAME shared two-shot so a clip still comes out (it animates the
-      // most prominent face — less precise than the mask, but it renders reliably).
-      console.error(`[avatardialogue] omnihuman failed, HeyGen fallback: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
-      clipUrl = await animateAvatar(stageAbs, audioUrl);
+
+    let clipUrl: string | null = null;
+    // PRIMARY — OmniHuman animates the two-shot masked to the speaker, so only they move.
+    // One retry: now that renders run one at a time (no memory contention), a clip that
+    // used to time out and fall through should finish on a second try. A two-shot with NO
+    // mask is never sent to OmniHuman — without a mask it animates both faces, so that goes
+    // straight to the single-face crop below.
+    const tries = speakerRight ? 2 : 1;
+    for (let attempt = 0; attempt < tries && !clipUrl; attempt++) {
+      if (speakerRight && !maskUrl) break;
+      try {
+        clipUrl = await animateOmniHuman({ imageUrl: stageAbs, audioUrl, maskUrl, prompt: AVATAR_TALK_PROMPT, resolution: "720p" });
+      } catch (e) {
+        console.error(`[avatardialogue] omnihuman attempt ${attempt + 1}/${tries} failed on scene ${i + 1}: ${e instanceof Error ? e.message.slice(0, 180) : e}`);
+      }
+    }
+    // FALLBACK that CANNOT both-talk. The old code fell back to HeyGen on the WHOLE
+    // two-shot — HeyGen is single-face, so it lip-synced the wrong/both faces to one
+    // voice: exactly the "both talking at once" bug. Instead, give the single-face model
+    // ONE face — crop the speaker's half out of the two-shot and animate that alone. A
+    // solo close-up for this line is a visible tell that OmniHuman failed, but it is never
+    // two mouths moving to one voice. If we can't get a single face, we REFUSE the clip
+    // rather than emit the bug.
+    if (!clipUrl) {
+      if (speakerRight) {
+        const crop = stageLocal ? await cropHalf(stageLocal, onLeft ? "left" : "right") : null;
+        if (!crop) throw new Error(`[avatardialogue] scene ${i + 1}: omnihuman failed and a single-face crop was unavailable — refusing to lip-sync both faces`);
+        clipUrl = await animateAvatar(abs(crop)!, audioUrl);
+      } else {
+        // Single-character scene: the stage is already one face, so HeyGen is safe.
+        clipUrl = await animateAvatar(stageAbs, audioUrl);
+      }
     }
     const outClip = path.join(RENDERS(), `ad-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, outClip);
