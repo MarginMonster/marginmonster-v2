@@ -128,6 +128,7 @@ export default function WebLayout() {
     <>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="wb">
+        {loc.pathname !== "/web/home" && (
         <header className="wb-nav">
           <Link to="/" className="wb-brand">
             <Crest size={30} />
@@ -183,8 +184,9 @@ export default function WebLayout() {
                 : <Link to="/web/login" className="wb-login">{t("Log in")}</Link>}
           </div>
         </header>
+        )}
 
-        <main className="wb-main">
+        <main className={loc.pathname === "/web/home" ? "wb-main wb-main-bare" : "wb-main"}>
           <Outlet context={{ mode, setMode: chooseMode }} />
         </main>
         <Buddy hud={hud} authed={authed} mode={mode} />
@@ -1393,6 +1395,7 @@ const CSS = `
 .wb-menu-link.danger{color:#A23A2A;justify-content:flex-start;}
 .wb-menu-link.danger:hover{background:rgba(162,58,42,.08);}
 .wb-main{max-width:1080px;margin:0 auto;padding:10px 24px 70px;}
+.wb-main.wb-main-bare{max-width:none;padding:0;}
 
 /* ---- Status HUD — the app's level/wallet status bar, GStyle for the web shell ---- */
 .wb-hud{width:min(1080px,100% - 48px);margin:0 auto 6px;padding:13px 16px;border-radius:16px;position:relative;overflow:hidden;isolation:isolate;

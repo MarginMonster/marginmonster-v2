@@ -176,7 +176,7 @@ function pwFingerprintMatches(passwordHash: string | null, pwv: string): boolean
  *  so the cookie can record which password it was minted under. */
 export async function webSessionRedirect(
   account: { id: string; passwordHash: string | null },
-  to = "/web"
+  to = "/web/home"
 ): Promise<Response> {
   const session = await storage.getSession();
   session.set("accountId", account.id);
