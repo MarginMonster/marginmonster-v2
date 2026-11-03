@@ -26,10 +26,15 @@ const BOOT_GRACE_MS = 2 * 60_000;
 
 let lastTileKick = 0;
 
-// A tick that has been running this long is not slow, it is wedged. The
-// legitimate worst case is a full drain of 20 jobs, and each job carries its
-// own failure paths; nothing here should legitimately take a third of an hour.
-const TICK_DEADLINE_MS = 20 * 60_000;
+// A tick that has been running this long is not slow, it is wedged. A single
+// avatar-dialogue render legitimately runs long — up to 8 sequential clips,
+// each up to an 18-min provider poll, plus TTS/masks/assembly (~65 min worst
+// case) — so the old 20-min ceiling flagged a perfectly healthy render as
+// wedged and let a fresh tick overlap it, which is exactly how two renders
+// ended up running at once. Matches RENDER_SLOT_MS, the process-wide
+// one-render-at-a-time lock in the queue, so the tick never deems a live render
+// wedged before that lock would have freed its slot anyway.
+const TICK_DEADLINE_MS = 70 * 60_000;
 
 // setInterval fires every 8s but a tick awaits FULL renders, so ticks used to
 // stack: several overlapping drains all racing for the same PENDING rows. The

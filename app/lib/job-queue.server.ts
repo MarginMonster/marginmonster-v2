@@ -20,6 +20,35 @@ import { runDecisioningPass } from "./decisioning-engine.server";
 
 const MAX_ATTEMPTS = 3;
 
+// A restart (deploy or OOM) that kills a render is NOT a genuine failure, so it
+// must not consume the MAX_ATTEMPTS budget — reclaimOrphanJobs decrements the
+// attempt it burned. But a job that can never finish must still terminate, so
+// restart-reclaims are counted separately in the payload and capped here. A
+// render legitimately spans a couple of deploys; six is well past that.
+const MAX_RECLAIMS = 6;
+
+// ONE heavy render at a time, PROCESS-WIDE. setInterval fires tick() every 8s
+// and a tick awaits a full render, so past the tick deadline a *second* tick
+// starts while the first is still rendering — and it used to claim the NEXT
+// queued video and run two ffmpeg+model renders at once. That concurrent spike
+// is what exceeded Render's memory limit and OOM-restarted the instance
+// (killing BOTH renders). This lock makes an overlapping tick skip claiming
+// instead. It is a TIMESTAMP, not a bool, so a render that somehow never
+// settles still frees the slot to a fresh tick after the ceiling — a permanent
+// block would be worse than a rare overlap. Every provider poll is already
+// timeout-bounded (≤18 min), so a real render settles long before this.
+// 70, not 40: the ceiling must sit ABOVE the longest legitimate render, and a
+// max-length 8-scene avatar-dialogue is 8 sequential clips (~8 min each) ≈ 65
+// min. Too low and a healthy long render expires the slot and re-opens the
+// overlap this exists to prevent. Normal renders release early (finally), so a
+// generous ceiling costs nothing; it only bounds a never-settling render.
+const RENDER_SLOT_MS = 70 * 60_000;
+let renderSlotUntil = 0;
+// Which reservation currently owns the slot. A render that overran the ceiling
+// and is finally settling must not clear a NEWER tick's reservation — only the
+// current owner releases, exactly like the worker tick's generation guard.
+let renderSlotToken = 0;
+
 // Pre-paid generations (tokens spent at enqueue — Studio pieces AND questline
 // drops, which are charged per-piece on accept) get their tokens BACK if the
 // job burns through every retry — a server-side failure is never the
@@ -212,18 +241,36 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
   });
   let reclaimed = 0;
   for (const j of stuck) {
-    const dead = j.attempts >= MAX_ATTEMPTS;
-    // CONDITIONAL write: the row is only ours if it's STILL IN_PROGRESS. The
-    // scan above is a snapshot — a render that finished a second later would
-    // otherwise be flipped to FAILED *and refunded* while its asset shipped
-    // (free video), or flipped back to PENDING and re-rendered on our dime.
+    // Count restart-reclaims in the payload, SEPARATELY from attempts. A deploy
+    // or OOM restart is not a genuine render failure and must not eat the
+    // MAX_ATTEMPTS budget — three deploys during one render used to mark it
+    // FAILED with the work checkpointed and perfectly fine. A job that truly
+    // can never finish still terminates, via the reclaim cap.
+    let reclaims = 0;
+    let bumpedPayload = j.payload;
+    try {
+      const p = JSON.parse(j.payload);
+      reclaims = typeof p.__reclaims === "number" ? p.__reclaims : 0;
+      p.__reclaims = reclaims + 1;
+      bumpedPayload = JSON.stringify(p);
+    } catch { /* payload isn't JSON — leave it, reclaims stays 0 */ }
+    const dead = j.attempts >= MAX_ATTEMPTS || reclaims >= MAX_RECLAIMS;
+    // CONDITIONAL write, pinned to the SNAPSHOT updatedAt: the row is only ours
+    // if it's STILL IN_PROGRESS *and* nothing has written since the scan. The
+    // scan is a snapshot — a render that checkpointed (its heartbeat) or
+    // finished a second later would otherwise be flipped to FAILED *and
+    // refunded* while its asset shipped (free video), or bounced to PENDING and
+    // re-rendered on our dime. A moved updatedAt means it's alive — hands off.
+    // On a reclaim-to-PENDING we also hand back the attempt the dead process's
+    // claim burned, so the resume doesn't count against the budget, and persist
+    // the bumped reclaim counter.
     const claimed = await db.job.updateMany({
-      where: { id: j.id, status: "IN_PROGRESS" },
+      where: { id: j.id, status: "IN_PROGRESS", updatedAt: j.updatedAt },
       data: dead
         ? { status: "FAILED", lastError: "Interrupted by a server restart — hit ROLL CAMERA to try again." }
-        : { status: "PENDING" },
+        : { status: "PENDING", attempts: Math.max(0, j.attempts - 1), payload: bumpedPayload },
     });
-    if (claimed.count !== 1) continue; // it completed (or another instance took it) — hands off
+    if (claimed.count !== 1) continue; // completed, checkpointed, or taken by another instance — hands off
     reclaimed++;
     // Terminal death via orphan-reclaim refunds exactly like a terminal
     // failure inside processNextJob — the merchant never pays for a
@@ -264,6 +311,27 @@ export async function enqueueJob(
 
 
 export async function processNextJob(): Promise<boolean> {
+  // ONE heavy render at a time, PROCESS-WIDE. The tick deadline can start a
+  // second tick while a render is still going; without this guard that tick
+  // claimed the NEXT queued video and ran two ffmpeg+model renders at once —
+  // the memory spike that exceeded Render's limit and OOM-restarted the whole
+  // instance. Reserve the slot SYNCHRONOUSLY, before the first await below, so
+  // two ticks interleaving on that await cannot both pass this check. The slot
+  // is time-bounded (see RENDER_SLOT_MS), so even a render that never settles
+  // frees it to a fresh tick rather than wedging the worker forever.
+  if (Date.now() < renderSlotUntil) return false;
+  const myToken = ++renderSlotToken;
+  renderSlotUntil = Date.now() + RENDER_SLOT_MS;
+  try {
+    return await claimAndRunOneJob();
+  } finally {
+    // Release only if we still own the slot — a newer tick may have taken it
+    // after ours expired, and clearing it then would let a third render overlap.
+    if (renderSlotToken === myToken) renderSlotUntil = 0;
+  }
+}
+
+async function claimAndRunOneJob(): Promise<boolean> {
   // Candidates only — the read is NOT the claim. Two overlapping worker ticks
   // (or two instances mid-deploy) both selected the same PENDING row here and
   // both ran it: the same paid video rendered TWICE and created two assets.
