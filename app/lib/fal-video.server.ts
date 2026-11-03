@@ -279,7 +279,9 @@ export async function animateOmniHuman(opts: {
   if (!submit.ok) throw new Error(`fal omnihuman submit ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
   const q = (await submit.json()) as { status_url?: string; response_url?: string; request_id?: string };
   if (!q.status_url || !q.response_url) throw new Error("fal omnihuman: no queue urls");
-  return pollAvatar({ requestId: q.request_id || "", statusUrl: q.status_url, responseUrl: q.response_url });
+  // OmniHuman is slow (several min/clip); the 10-min default ceiling times out and
+  // kills the job. Wait up to 18 min so a slow clip finishes instead of failing.
+  return pollAvatar({ requestId: q.request_id || "", statusUrl: q.status_url, responseUrl: q.response_url }, 18 * 60_000);
 }
 
 /* ---- Generic fal image-to-video ------------------------------------------
