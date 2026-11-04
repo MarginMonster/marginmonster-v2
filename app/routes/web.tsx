@@ -128,9 +128,9 @@ export default function WebLayout() {
     <>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="wb">
-        {loc.pathname !== "/web/home" && (
+        {!["/web", "/web/home"].includes(loc.pathname) && (
         <header className="wb-nav">
-          <Link to={authed ? "/web/home" : "/"} className="wb-brand">
+          <Link to={authed ? "/web" : "/"} className="wb-brand">
             <Crest size={30} />
             <span>Easy<b>Mode</b></span>
           </Link>
@@ -173,7 +173,7 @@ export default function WebLayout() {
         </header>
         )}
 
-        <main className={loc.pathname === "/web/home" ? "wb-main wb-main-bare" : "wb-main"}>
+        <main className={["/web", "/web/home"].includes(loc.pathname) ? "wb-main wb-main-bare" : "wb-main"}>
           <Outlet context={{ mode, setMode: chooseMode }} />
         </main>
         {/* Phone navigation — a FLOATING bottom tab bar (Facebook-style pill).
@@ -181,7 +181,7 @@ export default function WebLayout() {
             Dashboard (/web) is the green center anchor; make-tools sit left,
             distribute/manage right. The bar is skipped on /web/home, the
             immersive launcher (reached via the brand logo top-left). */}
-        {authed && loc.pathname !== "/web/home" && (
+        {authed && !["/web", "/web/home"].includes(loc.pathname) && (
           <nav className="wb-bottom" aria-label={t("Primary")}>
             <Link to="/web/studio" className={`wb-bt${loc.pathname === "/web/studio" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="palette" size={22} /></span><span>{t("Creator")}</span></Link>
             <Link to="/web/film" className={`wb-bt${loc.pathname === "/web/film" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="filmreel" size={22} /></span><span>{t("Movie Maker")}</span></Link>
