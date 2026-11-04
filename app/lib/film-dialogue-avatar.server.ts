@@ -47,25 +47,38 @@ function firstTurn(caption: string): { speaker: string; line: string } {
   return { speaker: marks[0].name.trim(), line: c.slice(marks[0].end, end1).trim() || c };
 }
 
-/** Best-effort gender from a character's cast-bible description. */
-function inferGender(bible: string, fallback: "f" | "m"): "f" | "m" {
-  if (/\b(woman|female|girl|she|her|hers|lady|mother|daughter|sister|wife|queen|mrs|ms|actress|waitress)\b/i.test(bible)) return "f";
-  if (/\b(man|male|boy|he|his|him|guy|father|son|brother|husband|king|mr|sir|gentleman|waiter)\b/i.test(bible)) return "m";
-  return fallback;
+/** Best-effort gender from text (a speaker name and/or its cast-bible). Returns null when
+ *  nothing in the text indicates gender, so the caller can resolve it smartly rather than
+ *  coin-flip. The name alone often tells us ("Mother", "Dad"); the keyword lists are broad
+ *  so a bible that describes the character catches too. */
+function inferGender(text: string): "f" | "m" | null {
+  if (/\b(woman|women|female|girl|she|her|hers|lady|ladies|mother|mom|mum|mama|mommy|grandma|grandmother|granny|nana|nonna|aunt|auntie|niece|daughter|sister|wife|queen|princess|witch|nurse|waitress|actress|mrs|miss|madam|bride|widow|girlfriend)\b/i.test(text)) return "f";
+  if (/\b(man|men|male|boy|he|his|him|guy|gentleman|father|dad|daddy|papa|grandpa|grandfather|uncle|nephew|son|brother|husband|king|prince|wizard|waiter|mr|sir|mister|groom|lad|bloke|boyfriend)\b/i.test(text)) return "m";
+  return null;
 }
 
-/** Give each speaker a DISTINCT, fixed voice (consistent across the whole film). */
+/** Give each speaker a DISTINCT, fixed voice whose GENDER matches the character. The old
+ *  version inferred gender from the bible only, then fell back to alternating f/m by turn
+ *  order — which is how a "mother" who spoke second drew a MALE voice. Now: read the name
+ *  AND the bible, and in a two-hander give an unknown speaker the OPPOSITE of the known one
+ *  (mixed-gender is the overwhelming default) instead of a coin-flip. */
 function assignVoices(cast: string[], speakers: string[]): Record<string, string> {
   const females = AVATAR_VOICES.filter((v) => v.gender === "f").map((v) => v.id);
   const males = AVATAR_VOICES.filter((v) => v.gender === "m").map((v) => v.id);
+  const bibleOf = (sp: string) => (cast || []).find((c) => sp && c.toLowerCase().includes(sp.toLowerCase())) || "";
+  // 1) Detect what we can from name + bible.
+  const detected = speakers.map((sp) => inferGender(`${sp} ${bibleOf(sp)}`));
+  // 2) Resolve the unknowns. In a 2-hander opposite a known speaker, take the OTHER gender.
+  const known = detected.find((g): g is "f" | "m" => g != null);
+  const genders: ("f" | "m")[] = detected.map((g, i) =>
+    g ? g : speakers.length === 2 && known ? (known === "f" ? "m" : "f") : i % 2 === 0 ? "f" : "m"
+  );
+  // 3) Fixed, distinct voice per speaker (guard against an empty gender pool in the catalog).
+  let fi = 0, mi = 0;
+  const pickF = () => (females.length ? females[fi++ % females.length] : males[mi++ % Math.max(1, males.length)]);
+  const pickM = () => (males.length ? males[mi++ % males.length] : females[fi++ % Math.max(1, females.length)]);
   const out: Record<string, string> = {};
-  let fi = 0, mi = 0, k = 0;
-  for (const sp of speakers) {
-    const bible = (cast || []).find((c) => sp && c.toLowerCase().includes(sp.toLowerCase())) || "";
-    const g = inferGender(bible, k % 2 === 0 ? "f" : "m");
-    out[sp] = g === "f" ? females[fi++ % females.length] : males[mi++ % males.length];
-    k++;
-  }
+  speakers.forEach((sp, i) => { out[sp] = genders[i] === "f" ? pickF() : pickM(); });
   return out;
 }
 
