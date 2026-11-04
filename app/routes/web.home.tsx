@@ -100,7 +100,7 @@ export default function WebHome() {
             <b>EASY<span>MODE</span></b>
           </div>
           <div className="lx-tr">
-            <span className="lx-chip"><span className="lx-dot" /><b>{tokens.toLocaleString()}</b>&nbsp;tokens</span>
+            <span className="lx-chip"><span className="lx-dot" /><b>{tokens.toLocaleString("en-US")}</b>&nbsp;tokens</span>
           </div>
         </header>
 
