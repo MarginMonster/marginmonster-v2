@@ -176,6 +176,18 @@ export default function WebLayout() {
         <main className={loc.pathname === "/web/home" ? "wb-main wb-main-bare" : "wb-main"}>
           <Outlet context={{ mode, setMode: chooseMode }} />
         </main>
+        {/* Phone navigation — a bottom tab bar (app-native feel). Mirrors the home
+            launcher's studios; CSS shows it only on phones, where the top tab row
+            is hidden. Home (/web/home) is the hub itself, so the bar is skipped there. */}
+        {authed && loc.pathname !== "/web/home" && (
+          <nav className="wb-bottom" aria-label={t("Primary")}>
+            <Link to="/web/home" className="wb-bt"><Ico n="grid" size={22} /><span>{t("Home")}</span></Link>
+            <Link to="/web/studio" className={`wb-bt${loc.pathname === "/web/studio" ? " on" : ""}`}><Ico n="palette" size={22} /><span>{t("Create")}</span></Link>
+            <Link to="/web/film" className={`wb-bt${loc.pathname === "/web/film" ? " on" : ""}`}><Ico n="film" size={22} /><span>{t("Film")}</span></Link>
+            <Link to="/web/product-channels" className={`wb-bt${["/web/product-channels", "/web/channels", "/web/campaigns", "/web/connect"].includes(loc.pathname) ? " on" : ""}`}><Ico n="trend" size={22} /><span>{t("Social")}</span></Link>
+            <Link to="/web/archive" className={`wb-bt${loc.pathname === "/web/archive" ? " on" : ""}`}><Ico n="box" size={22} /><span>{t("Archive")}</span></Link>
+          </nav>
+        )}
         <Buddy hud={hud} authed={authed} mode={mode} />
       </div>
     </>
@@ -1273,6 +1285,7 @@ const CSS = `
 .wb-tab-helpurr{color:var(--brand,#0C7A46);} .wb-tab-helpurr:hover{color:#0A5C35;}
 .wb-tab.on{background:var(--card);border:1px solid var(--line);color:var(--ink);box-shadow:0 2px 6px rgba(20,32,26,.06);}
 .wb-me{order:3;margin-left:auto;display:flex;align-items:center;gap:12px;}
+.wb-bottom{display:none;}
 .wb-out{font-size:13px;color:var(--ink2);text-decoration:none;font-weight:600;padding:8px 12px;border-radius:10px;}
 /* Discreet owner-only link to /admin/dashboard — muted, small, only rendered
    when the logged-in email is on ADMIN_EMAILS. */
@@ -1470,7 +1483,13 @@ const CSS = `
   .wb-chip{padding:4px 9px 4px 5px;gap:6px;}
   .wb-chip-lvl{display:none;}
   .wb-chip-ava{width:27px;height:27px;}
-  .wb-main{padding:10px 16px 70px;}
+  .wb-main{padding:10px 16px calc(74px + env(safe-area-inset-bottom,0px));}
+  /* Phone nav = a bottom tab bar (app-native). Hide the top tab row; show the bar. */
+  .wb-tabs{display:none;}
+  .wb-bottom{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid var(--line);padding:7px 4px calc(6px + env(safe-area-inset-bottom,0px));box-shadow:0 -3px 14px rgba(20,32,26,.08);}
+  .wb-bt{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:3px;text-decoration:none;color:var(--ink2);font-size:10.5px;font-weight:700;padding:3px 2px;min-width:0;border-radius:10px;}
+  .wb-bt svg{width:23px;height:23px;stroke-width:1.9;}
+  .wb-bt.on{color:var(--green);}
 }
 .wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:14px 0 6px;overflow-wrap:anywhere;}
 .wb-sub{color:var(--ink2);font-size:14.5px;line-height:1.55;margin:0 0 24px;max-width:60ch;}
@@ -2123,7 +2142,7 @@ video.mm-media-item{width:176px;height:234px;object-fit:cover;}
 .mm-attach-x{position:absolute;top:-7px;right:-7px;width:20px;height:20px;min-width:0;min-height:0;border:0;border-radius:50%;background:#4A554E;color:#fff;font-size:12px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .mm-attach-x:hover{background:#2f3833;}
 .mm-attach-up{font-size:12px;color:var(--ink2);font-style:italic;}
-@media(max-width:620px){.mm-fab{bottom:30px;right:16px;width:56px;height:56px}.mm-panel{bottom:92px;right:16px;height:72vh}
+@media(max-width:620px){.mm-fab{bottom:calc(78px + env(safe-area-inset-bottom,0px));right:16px;width:56px;height:56px}.mm-panel{bottom:calc(138px + env(safe-area-inset-bottom,0px));right:16px;height:62vh}
   .mm-panel.mm-max{top:0;left:0;right:0;bottom:0;margin:0;width:100vw;height:100vh;height:100dvh;border-radius:0}
   .mm-panel.mm-max .mm-list,.mm-panel.mm-max .mm-input{padding-left:14px;padding-right:14px}}
 /* ── 44px tap-target floor (mobile touch). Appended so source order wins over
