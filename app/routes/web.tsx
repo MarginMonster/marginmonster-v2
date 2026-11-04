@@ -142,8 +142,8 @@ export default function WebLayout() {
                   orb, bottom-right, so it's dropped from the nav. */}
               <Link className={tab("/web")} to="/web">{t("Dashboard")}</Link>
               <Link className={tab("/web/studio")} to="/web/studio">{t("Create")}</Link>
-              <Link className={tab("/web/film")} to="/web/film">{t("Film")}</Link>
-              <Link className={`${tab("/web/product-channels")}${loc.pathname === "/web/channels" || loc.pathname === "/web/campaigns" || loc.pathname === "/web/connect" ? " on" : ""}`} to="/web/product-channels">{t("Social")}</Link>
+              <Link className={tab("/web/film")} to="/web/film">{t("Movies")}</Link>
+              <Link className={`${tab("/web/product-channels")}${loc.pathname === "/web/channels" || loc.pathname === "/web/campaigns" || loc.pathname === "/web/connect" ? " on" : ""}`} to="/web/product-channels">{t("Promote")}</Link>
               <Link className={tab("/web/presenters")} to="/web/presenters">{t("Presenters")}</Link>
               <Link className={tab("/web/archive")} to="/web/archive">{t("Archive")}</Link>
             </nav>
@@ -176,16 +176,18 @@ export default function WebLayout() {
         <main className={loc.pathname === "/web/home" ? "wb-main wb-main-bare" : "wb-main"}>
           <Outlet context={{ mode, setMode: chooseMode }} />
         </main>
-        {/* Phone navigation — a bottom tab bar (app-native feel). Mirrors the home
-            launcher's studios; CSS shows it only on phones, where the top tab row
-            is hidden. Home (/web/home) is the hub itself, so the bar is skipped there. */}
+        {/* Phone navigation — a FLOATING bottom tab bar (Facebook-style pill).
+            CSS shows it only on phones, where the top tab row is hidden. The
+            Dashboard (/web) is the green center anchor; make-tools sit left,
+            distribute/manage right. The bar is skipped on /web/home, the
+            immersive launcher (reached via the brand logo top-left). */}
         {authed && loc.pathname !== "/web/home" && (
           <nav className="wb-bottom" aria-label={t("Primary")}>
-            <Link to="/web/home" className="wb-bt"><Ico n="grid" size={22} /><span>{t("Home")}</span></Link>
-            <Link to="/web/studio" className={`wb-bt${loc.pathname === "/web/studio" ? " on" : ""}`}><Ico n="palette" size={22} /><span>{t("Create")}</span></Link>
-            <Link to="/web/film" className={`wb-bt${loc.pathname === "/web/film" ? " on" : ""}`}><Ico n="film" size={22} /><span>{t("Film")}</span></Link>
-            <Link to="/web/product-channels" className={`wb-bt${["/web/product-channels", "/web/channels", "/web/campaigns", "/web/connect"].includes(loc.pathname) ? " on" : ""}`}><Ico n="trend" size={22} /><span>{t("Social")}</span></Link>
-            <Link to="/web/archive" className={`wb-bt${loc.pathname === "/web/archive" ? " on" : ""}`}><Ico n="box" size={22} /><span>{t("Archive")}</span></Link>
+            <Link to="/web/studio" className={`wb-bt${loc.pathname === "/web/studio" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="palette" size={22} /></span><span>{t("Create")}</span></Link>
+            <Link to="/web/film" className={`wb-bt${loc.pathname === "/web/film" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="film" size={22} /></span><span>{t("Movies")}</span></Link>
+            <Link to="/web" className={`wb-bt wb-bt-mid${loc.pathname === "/web" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="grid" size={22} /></span><span>{t("Dashboard")}</span></Link>
+            <Link to="/web/product-channels" className={`wb-bt${["/web/product-channels", "/web/channels", "/web/campaigns", "/web/connect"].includes(loc.pathname) ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="trend" size={22} /></span><span>{t("Promote")}</span></Link>
+            <Link to="/web/archive" className={`wb-bt${loc.pathname === "/web/archive" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="box" size={22} /></span><span>{t("Archive")}</span></Link>
           </nav>
         )}
         <Buddy hud={hud} authed={authed} mode={mode} />
@@ -1483,13 +1485,18 @@ const CSS = `
   .wb-chip{padding:4px 9px 4px 5px;gap:6px;}
   .wb-chip-lvl{display:none;}
   .wb-chip-ava{width:27px;height:27px;}
-  .wb-main{padding:10px 16px calc(74px + env(safe-area-inset-bottom,0px));}
-  /* Phone nav = a bottom tab bar (app-native). Hide the top tab row; show the bar. */
+  .wb-main{padding:10px 16px calc(98px + env(safe-area-inset-bottom,0px));}
+  /* Phone nav = a FLOATING bottom tab bar (Facebook-style pill). Hide the top tab row. */
   .wb-tabs{display:none;}
-  .wb-bottom{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid var(--line);padding:7px 4px calc(6px + env(safe-area-inset-bottom,0px));box-shadow:0 -3px 14px rgba(20,32,26,.08);}
-  .wb-bt{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:3px;text-decoration:none;color:var(--ink2);font-size:10.5px;font-weight:700;padding:3px 2px;min-width:0;border-radius:10px;}
-  .wb-bt svg{width:23px;height:23px;stroke-width:1.9;}
+  .wb-bottom{display:flex;align-items:stretch;gap:2px;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:50;background:#fff;border:1px solid var(--line);border-radius:26px;padding:8px 8px 9px;box-shadow:0 12px 30px rgba(20,32,26,.18),0 3px 10px rgba(20,32,26,.10);}
+  .wb-bt{flex:1 1 0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;text-decoration:none;color:var(--ink2);font-size:10px;font-weight:700;min-width:0;}
+  .wb-bt-ic{display:flex;align-items:center;justify-content:center;width:46px;height:32px;border-radius:13px;transition:background .14s;}
+  .wb-bt svg{width:22px;height:22px;stroke-width:1.9;}
   .wb-bt.on{color:var(--green);}
+  .wb-bt.on .wb-bt-ic{background:rgba(12,122,70,.12);}
+  .wb-bt-mid{color:var(--green);}
+  .wb-bt-mid .wb-bt-ic{width:40px;height:40px;border-radius:50%;background:var(--green);color:#fff;box-shadow:0 4px 12px rgba(12,122,70,.35);}
+  .wb-bt-mid.on .wb-bt-ic{background:var(--green);}
 }
 .wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:14px 0 6px;overflow-wrap:anywhere;}
 .wb-sub{color:var(--ink2);font-size:14.5px;line-height:1.55;margin:0 0 24px;max-width:60ch;}
@@ -2142,7 +2149,7 @@ video.mm-media-item{width:176px;height:234px;object-fit:cover;}
 .mm-attach-x{position:absolute;top:-7px;right:-7px;width:20px;height:20px;min-width:0;min-height:0;border:0;border-radius:50%;background:#4A554E;color:#fff;font-size:12px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .mm-attach-x:hover{background:#2f3833;}
 .mm-attach-up{font-size:12px;color:var(--ink2);font-style:italic;}
-@media(max-width:620px){.mm-fab{bottom:calc(78px + env(safe-area-inset-bottom,0px));right:16px;width:56px;height:56px}.mm-panel{bottom:calc(138px + env(safe-area-inset-bottom,0px));right:16px;height:62vh}
+@media(max-width:620px){.mm-fab{bottom:calc(97px + env(safe-area-inset-bottom,0px));right:16px;width:56px;height:56px}.mm-panel{bottom:calc(157px + env(safe-area-inset-bottom,0px));right:16px;height:62vh}
   .mm-panel.mm-max{top:0;left:0;right:0;bottom:0;margin:0;width:100vw;height:100vh;height:100dvh;border-radius:0}
   .mm-panel.mm-max .mm-list,.mm-panel.mm-max .mm-input{padding-left:14px;padding-right:14px}}
 /* ── 44px tap-target floor (mobile touch). Appended so source order wins over
