@@ -231,6 +231,11 @@ export async function generateTestMovie(opts: {
   let prevFrameUrl: string | undefined = resume.ckLastStill; // prior clip's last frame (relative /renders URL)
   const NO_TEXT = "Absolutely NO on-screen text of any kind: no subtitles, no captions, no titles, and no readable writing on any paper, document, folder, bulletin board, whiteboard, sign, poster or screen anywhere in the frame — keep every surface clean and text-free.";
   const HOLD_STILL = "The characters STAY in their positions — no standing up, sitting down, walking or crossing the room, only natural small gestures, head turns and talking. Keep every character's face, hair, hairstyle, clothing and wardrobe EXACTLY the same the whole time — no morphing, melting or changing of anyone's appearance.";
+  // Keep both faces in the shot (continuity) WITHOUT forcing them into the same
+  // space — the old "two-shot in the room" line overrode scenes that place the
+  // characters apart (e.g. one inside, one outside a window), collapsing them
+  // onto the same side. Honour the scene's own staging instead.
+  const STAGING = "Frame it as a TWO-SHOT that keeps BOTH characters visible in the shot, but place each one EXACTLY where the scene describes: if they are apart — one indoors and one outdoors, on opposite sides of a window, door, wall or other barrier, or separated by glass — KEEP that separation with the barrier clearly between them; never merge them into the same space or onto the same side.";
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     const turns = splitExchange(scene.caption || "");
@@ -243,7 +248,7 @@ export async function generateTestMovie(opts: {
     // two-shot generated from the cast reference.
     let seedAbs = abs(prevFrameUrl);
     if (!seedAbs) {
-      const framed = `${scene.visual}. ${tmpl.sceneHint}. A two-shot that frames BOTH characters together in the room so we can see them talk. ${castBible} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
+      const framed = `${scene.visual}. ${tmpl.sceneHint}. ${STAGING} ${castBible} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
       let seedUrl: string | null = null;
       try { seedUrl = castRefAbs ? ((await renderStyledSeed(framed, castRefAbs, "9:16")) || (await renderCreativeSeed(framed, "9:16"))) : await renderCreativeSeed(framed, "9:16"); }
       catch { seedUrl = null; }
@@ -257,7 +262,7 @@ export async function generateTestMovie(opts: {
       ? `ONLY ${speaker} speaks — a clear, natural, unhurried delivery with accurate lip-sync: "${line}". The other character stays silent, listening and reacting, not moving their lips. Keep ${speaker}'s voice natural and the SAME as in every other shot of the film.`
       : `One character speaks clearly and unhurried, lips in sync: "${line}". The other listens in silence.`;
     const prompt =
-      `${scene.visual}. ${tmpl.sceneHint}. A two-shot of both characters in the room. ` +
+      `${scene.visual}. ${tmpl.sceneHint}. ${STAGING} ` +
       `${voiceLine} ${castBible} ${HOLD_STILL} ` +
       `Photorealistic live-action film, cinematic lighting, shallow depth of field, clean natural spoken-dialogue audio. ${NO_TEXT}`;
 
