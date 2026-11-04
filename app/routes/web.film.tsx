@@ -246,6 +246,12 @@ export default function FilmStudio() {
       { method: "post" }
     );
   };
+  // Use an image the merchant already made (e.g. in Creator) as this scene's frame.
+  const useFrameUrl = (i: number, url: string) => {
+    const u = url.trim();
+    if (u !== "" && !/^(https?:\/\/|\/)/.test(u)) return; // wait for a plausible URL
+    setFrames((prev) => { const next = prev.slice(); next[i] = u || null; return next; });
+  };
 
   return (
     <div className="fs-wrap">
@@ -358,6 +364,9 @@ export default function FilmStudio() {
                   <button type="button" className="fs-bgen" disabled={framingIndex !== null} onClick={() => makeFrame(i)}>
                     {framingIndex === i ? <>… {t("Rendering")}</> : frames[i] ? <><Ico n="refresh" size={13} /> {t("Re-roll")}</> : <><Ico n="camera" size={13} /> {t("Make this frame")}</>}
                   </button>
+                  <input className="fs-buse" type="url" maxLength={2000} defaultValue=""
+                    placeholder={t("…or paste an image URL you made in Creator")}
+                    onChange={(e) => useFrameUrl(i, e.target.value)} />
                 </div>
               </div>
             ))}
@@ -471,5 +480,7 @@ const FS_STYLE = `
 .fs-bvis:focus{outline:none;border-color:var(--green,#0C7A46);}
 .fs-bgen{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;background:var(--mint,#EAF6EF);color:var(--green,#0C7A46);border:1.5px solid var(--green,#0C7A46);border-radius:999px;padding:7px 15px;font-weight:800;font-size:12.5px;cursor:pointer;}
 .fs-bgen:disabled{opacity:.55;cursor:default;}
+.fs-buse{width:100%;box-sizing:border-box;margin-top:2px;border:1.5px dashed var(--line,#E4DFCF);border-radius:9px;padding:7px 11px;font-size:12px;font-family:inherit;color:var(--ink,#14201A);}
+.fs-buse:focus{outline:none;border-color:var(--green,#0C7A46);border-style:solid;}
 @media(max-width:640px){.fs-tmpl{flex:1 1 100%;}}
 `;
