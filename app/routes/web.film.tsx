@@ -82,6 +82,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
+  // FREE — render ONE scene's storyboard photo so the merchant can approve / steer
+  // the composition before spending on the video. Uses the SAME prompt the render uses.
+  if (intent === "previewFilmFrame") {
+    const sceneVisual = ((form.get("sceneVisual") as string) || "").trim().slice(0, 1500);
+    const castText = ((form.get("castText") as string) || "").trim().slice(0, 800);
+    const styleRefUrl = ((form.get("styleRefUrl") as string) || "").trim().slice(0, 2000) || null;
+    const sceneIndex = parseInt((form.get("sceneIndex") as string) || "0", 10) || 0;
+    if (!sceneVisual) return json({ error: tr(lang, "Describe the shot first."), sceneIndex });
+    try {
+      const { previewFilmSceneFrame } = await import("../lib/film-dialogue.server");
+      const frameUrl = await previewFilmSceneFrame({ template: tmpl.key, sceneVisual, castText, styleRefUrl });
+      if (!frameUrl) return json({ error: tr(lang, "Couldn't render that frame — tweak the shot and try again."), sceneIndex });
+      return json({ frameUrl, sceneIndex });
+    } catch (e) {
+      return json({ error: tr(lang, "Couldn't render that frame — try again."), sceneIndex, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+    }
+  }
+
   // PAID — enqueue the render. Charge by the ACTUAL scene count (the approved
   // treatment's length if one was approved, else the slider), so the quote the
   // merchant saw == the debit. The queue's refundPrepaidOnce returns chargedTokens
@@ -97,6 +115,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (n > 0) { approvedTreatment = approvedRaw; scenes = clampScenes(n); }
       } catch { /* malformed — fall back to the slider count + engine-written treatment */ }
     }
+    // Per-scene APPROVED storyboard frames (Test Movie) — index-aligned with scenes;
+    // an entry overrides that scene's auto-seed so it lands as the merchant staged it.
+    let approvedFrames: (string | null)[] | undefined;
+    const framesRaw = ((form.get("approvedFrames") as string) || "").trim();
+    if (framesRaw) {
+      try { const f = JSON.parse(framesRaw); if (Array.isArray(f)) approvedFrames = f.map((x) => (typeof x === "string" && x ? x : null)); } catch { /* ignore malformed */ }
+    }
     const cost = estimateFilmTokens(scenes);
 
     let unbacked = 0, unbackedFromExtra = 0;
@@ -107,6 +132,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         section: "creator", contentType: "film",
         filmTemplate: tmpl.key, filmTopic: topic, filmScenes: scenes,
         approvedTreatment,
+        ...(approvedFrames ? { approvedFrames } : {}),
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
         productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
         prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
@@ -128,7 +154,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 type Scene = { visual: string; caption?: string };
-type Treatment = { title?: string; scenes: Scene[]; musicMood: string };
+type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: string[] };
 
 export default function FilmStudio() {
   const d = useLoaderData<typeof loader>();
@@ -136,9 +162,15 @@ export default function FilmStudio() {
   const nav = useNavigation();
   const actionData = useActionData<typeof action>() as { ok?: boolean; queued?: string; cost?: number; error?: string } | undefined;
   const treatmentFetcher = useFetcher<{ treatment?: Treatment; error?: string }>();
+  // Storyboard (dialogue): per-scene approved frames + which scene is rendering now.
+  const previewFrameFetcher = useFetcher<{ frameUrl?: string; sceneIndex?: number; error?: string }>();
+  const [frames, setFrames] = useState<(string | null)[]>([]);
+  const [framingIndex, setFramingIndex] = useState<number | null>(null);
 
   const [template, setTemplate] = useState(d.templates[0]?.key || "musicvideo");
   const tmpl = d.templates.find((x) => x.key === template) || d.templates[0];
+  // The Veo dialogue pipeline supports the per-scene storyboard (approve each frame).
+  const isStoryboard = template === "testmovie";
   const [topic, setTopic] = useState("");
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
@@ -150,8 +182,19 @@ export default function FilmStudio() {
   // When a fresh treatment arrives, adopt it (and lock the scene count to it).
   useEffect(() => {
     const tr2 = treatmentFetcher.data?.treatment;
-    if (tr2 && tr2.scenes?.length) { setTreatment(tr2); setScenes(tr2.scenes.length); }
+    if (tr2 && tr2.scenes?.length) { setTreatment(tr2); setScenes(tr2.scenes.length); setFrames([]); }
   }, [treatmentFetcher.data]);
+
+  // Store each storyboard frame as it arrives; clear the busy flag.
+  useEffect(() => {
+    if (previewFrameFetcher.state !== "idle") return;
+    const data = previewFrameFetcher.data;
+    if (data && data.frameUrl && typeof data.sceneIndex === "number") {
+      const idx = data.sceneIndex, url = data.frameUrl;
+      setFrames((prev) => { const next = prev.slice(); next[idx] = url; return next; });
+    }
+    setFramingIndex(null);
+  }, [previewFrameFetcher.state, previewFrameFetcher.data]);
 
   const writing = treatmentFetcher.state !== "idle";
   const generating = nav.state !== "idle" && nav.formData?.get("intent") === "film";
@@ -163,17 +206,17 @@ export default function FilmStudio() {
   const bump = (delta: number) => {
     const n = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, scenes + delta));
     setScenes(n);
-    if (treatment && treatment.scenes.length !== n) setTreatment(null);
+    if (treatment && treatment.scenes.length !== n) { setTreatment(null); setFrames([]); }
   };
   const switchTemplate = (key: string) => {
     const nt = d.templates.find((x) => x.key === key);
-    setTemplate(key); setScenes(nt?.defaultScenes || 6); setTreatment(null);
+    setTemplate(key); setScenes(nt?.defaultScenes || 6); setTreatment(null); setFrames([]);
   };
   const pickCatalog = (idx: number) => {
     const p = d.products[idx];
     if (!p) return;
     setProdTitle(p.title || ""); setProdImage(p.imageUrl || ""); setProdDesc(p.description || "");
-    setTreatment(null);
+    setTreatment(null); setFrames([]);
   };
   const writeTreatment = () => {
     treatmentFetcher.submit(
@@ -184,6 +227,24 @@ export default function FilmStudio() {
   const editCaption = (i: number, v: string) => {
     if (!treatment) return;
     setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, caption: v } : s)) });
+  };
+  const editVisual = (i: number, v: string) => {
+    if (!treatment) return;
+    setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, visual: v } : s)) });
+  };
+  // Render (or re-roll) one scene's storyboard photo. Reuses a prior approved frame
+  // as the style reference so faces + wardrobe stay consistent across shots.
+  const makeFrame = (i: number) => {
+    if (!treatment || framingIndex !== null) return;
+    const s = treatment.scenes[i];
+    if (!s?.visual.trim()) return;
+    const castText = (treatment.cast || []).join("; ");
+    const styleRef = frames.slice(0, i).reverse().find(Boolean) || "";
+    setFramingIndex(i);
+    previewFrameFetcher.submit(
+      { intent: "previewFilmFrame", template, sceneVisual: s.visual, castText, styleRefUrl: styleRef, sceneIndex: String(i) },
+      { method: "post" }
+    );
   };
 
   return (
@@ -276,6 +337,36 @@ export default function FilmStudio() {
         )}
       </div>
 
+      {/* Step 2.5 — storyboard: approve a photo per scene before paying (dialogue only) */}
+      {treatment && isStoryboard && (
+        <div className="fs-card">
+          <div className="fs-lbl"><span className="fs-n"><Ico n="camera" size={13} /></span> {t("Storyboard — set each shot")} <span className="fs-free">{t("free")}</span></div>
+          <p className="fs-hint">{t("Make the photo for each scene and get it right — tweak the shot or re-roll — before you spend on the video. Each scene animates from the frame you approve.")}</p>
+          <div className="fs-board">
+            {treatment.scenes.map((s, i) => (
+              <div className="fs-brow" key={i}>
+                <div className={`fs-bframe${frames[i] ? " done" : ""}`}>
+                  {frames[i]
+                    ? <img src={frames[i] as string} alt={t("Shot {n} frame", { n: i + 1 })} loading="lazy" />
+                    : <span className="fs-bempty"><Ico n="camera" size={22} /></span>}
+                  {framingIndex === i && <span className="fs-bspin" aria-hidden="true" />}
+                </div>
+                <div className="fs-bbody">
+                  <div className="fs-bnum">{t("Shot {n}", { n: i + 1 })}{frames[i] && <span className="fs-bok"><Ico n="check" size={11} /> {t("set")}</span>}</div>
+                  <textarea className="fs-bvis" rows={3} value={s.visual} onChange={(e) => editVisual(i, e.target.value)} maxLength={1500}
+                    placeholder={t("Describe the shot — camera position, who is where (e.g. camera inside the room, her in the foreground, the figure at the window outside behind her)…")} />
+                  <button type="button" className="fs-bgen" disabled={framingIndex !== null} onClick={() => makeFrame(i)}>
+                    {framingIndex === i ? <>… {t("Rendering")}</> : frames[i] ? <><Ico n="refresh" size={13} /> {t("Re-roll")}</> : <><Ico n="camera" size={13} /> {t("Make this frame")}</>}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {previewFrameFetcher.data?.error && <p className="fs-err">{previewFrameFetcher.data.error}</p>}
+          <p className="fs-hint" style={{ margin: "10px 0 0" }}>{t("Scenes you don't set here auto-generate — just lock the shots that matter.")}</p>
+        </div>
+      )}
+
       {/* Step 3 — generate (the only paid step) */}
       <div className="fs-card fs-go-card">
         <div className="fs-lbl"><span className="fs-n">3</span> {t("Generate")}</div>
@@ -288,6 +379,7 @@ export default function FilmStudio() {
           {tmpl?.needsProduct && <input type="hidden" name="filmProductImageUrl" value={prodImage} />}
           {tmpl?.needsProduct && <input type="hidden" name="filmProductDescription" value={prodDesc} />}
           {treatment && <input type="hidden" name="approvedTreatment" value={JSON.stringify(treatment)} />}
+          {isStoryboard && frames.some(Boolean) && <input type="hidden" name="approvedFrames" value={JSON.stringify(frames)} />}
           <button type="submit" className="fs-go" disabled={!canGo}>
             {generating ? <>… {t("Starting your film")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost }) : t("Generate {name} · Free", { name: t(tmpl?.name || "Film") })}</>}
           </button>
@@ -363,5 +455,21 @@ const FS_STYLE = `
 .fs-bal.low{color:#B3421E;}
 .fs-err{font-size:12.5px;color:#B3421E;margin:8px 0 0;font-weight:600;}
 .fs-ok{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--green,#0C7A46);font-weight:700;margin:10px 0 0;}
+.fs-board{display:flex;flex-direction:column;gap:12px;margin-top:6px;}
+.fs-brow{display:flex;gap:12px;align-items:stretch;}
+.fs-bframe{position:relative;flex:0 0 auto;width:92px;aspect-ratio:9/16;border-radius:11px;overflow:hidden;background:var(--mint,#EAF6EF);border:1.5px solid var(--line,#E4DFCF);display:grid;place-items:center;}
+.fs-bframe.done{border-color:var(--green,#0C7A46);}
+.fs-bframe img{width:100%;height:100%;object-fit:cover;display:block;}
+.fs-bempty{color:var(--green,#0C7A46);opacity:.55;}
+.fs-bspin{position:absolute;inset:0;background:rgba(251,246,230,.62);}
+.fs-bspin::after{content:"";position:absolute;top:50%;left:50%;width:22px;height:22px;margin:-11px 0 0 -11px;border:2.5px solid var(--green,#0C7A46);border-top-color:transparent;border-radius:50%;animation:fsspin .7s linear infinite;}
+@keyframes fsspin{to{transform:rotate(360deg);}}
+.fs-bbody{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:7px;}
+.fs-bnum{font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:var(--ink,#14201A);display:flex;align-items:center;gap:8px;}
+.fs-bok{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:800;color:var(--green,#0C7A46);background:var(--mint,#EAF6EF);border-radius:999px;padding:1px 8px;text-transform:uppercase;letter-spacing:.03em;}
+.fs-bvis{width:100%;box-sizing:border-box;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;padding:8px 11px;font-size:12.5px;font-family:inherit;color:var(--ink,#14201A);resize:vertical;line-height:1.45;}
+.fs-bvis:focus{outline:none;border-color:var(--green,#0C7A46);}
+.fs-bgen{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;background:var(--mint,#EAF6EF);color:var(--green,#0C7A46);border:1.5px solid var(--green,#0C7A46);border-radius:999px;padding:7px 15px;font-weight:800;font-size:12.5px;cursor:pointer;}
+.fs-bgen:disabled{opacity:.55;cursor:default;}
 @media(max-width:640px){.fs-tmpl{flex:1 1 100%;}}
 `;

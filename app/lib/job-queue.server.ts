@@ -784,6 +784,8 @@ async function runJob(
               ckClips: payload.ckClips as string[] | undefined,
               ckLastStill: payload.ckLastStill as string | undefined,
             },
+            // Per-scene storyboard frames the merchant generated + approved in the UI.
+            approvedFrames: payload.approvedFrames as (string | null)[] | undefined,
           });
         } else if ((payload.filmTemplate as string | undefined) === "avatardialogue") {
           // ISOLATED audio-driven pipeline — locked actors + fixed voices (HeyGen).

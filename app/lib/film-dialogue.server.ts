@@ -186,6 +186,36 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
   throw new Error(`[testmovie] ffmpeg failed: ${lastErr}`);
 }
 
+// Shared prompt fragments for the dialogue seed frames + Veo clips. Module-scope
+// so the web "preview frame" action renders a WYSIWYG storyboard frame with the
+// SAME prompt the render uses.
+const NO_TEXT = "Absolutely NO on-screen text of any kind: no subtitles, no captions, no titles, and no readable writing on any paper, document, folder, bulletin board, whiteboard, sign, poster or screen anywhere in the frame — keep every surface clean and text-free.";
+const HOLD_STILL = "The characters STAY in their positions — no standing up, sitting down, walking or crossing the room, only natural small gestures, head turns and talking. Keep every character's face, hair, hairstyle, clothing and wardrobe EXACTLY the same the whole time — no morphing, melting or changing of anyone's appearance.";
+// Keep both faces in the shot (continuity) WITHOUT forcing them into the same
+// space — "two-shot in the room" overrode scenes that place the characters apart
+// (one inside, one outside a window), collapsing them onto the same side. Honour
+// the scene's own staging instead.
+const STAGING = "Frame it as a TWO-SHOT that keeps BOTH characters visible in the shot, but place each one EXACTLY where the scene describes: if they are apart — one indoors and one outdoors, on opposite sides of a window, door, wall or other barrier, or separated by glass — KEEP that separation with the barrier clearly between them; never merge them into the same space or onto the same side.";
+
+/** Build + render ONE scene's photo seed (the storyboard frame). Shared by the
+ *  render loop and the web "preview frame" action so the preview is WYSIWYG.
+ *  Returns a relative /renders URL, or null on failure (caller decides fallback). */
+export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null }): Promise<string | null> {
+  const framed = `${opts.sceneVisual}. ${opts.sceneHint}. ${STAGING} ${opts.castText || ""} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
+  try {
+    return opts.styleRefUrl
+      ? ((await renderStyledSeed(framed, opts.styleRefUrl, "9:16")) || (await renderCreativeSeed(framed, "9:16")))
+      : await renderCreativeSeed(framed, "9:16");
+  } catch { return null; }
+}
+
+/** Template-resolving wrapper for the web action (which has the template key, not
+ *  the sceneHint). */
+export async function previewFilmSceneFrame(opts: { template?: string; sceneVisual: string; castText?: string; styleRefUrl?: string | null }): Promise<string | null> {
+  const tmpl = filmTemplate(opts.template);
+  return renderSceneFrame({ sceneVisual: opts.sceneVisual, sceneHint: tmpl.sceneHint, castText: opts.castText, styleRefUrl: opts.styleRefUrl });
+}
+
 export async function generateTestMovie(opts: {
   shopId: string;
   template?: string;
@@ -195,10 +225,15 @@ export async function generateTestMovie(opts: {
   section?: string;
   jobId?: string;
   resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string };
+  /** Per-scene APPROVED storyboard frames (relative /renders URLs), index-aligned
+   *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
+   *  that scene so it lands exactly as the merchant staged it. */
+  approvedFrames?: (string | null)[];
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
   const jobId = opts.jobId;
   const resume = opts.resume || {};
+  const approvedFrames = opts.approvedFrames || [];
   const ckpt = async (patch: Record<string, unknown>) => { if (jobId) await checkpointJob(jobId, patch); };
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   const abs = (u: string | null | undefined): string | undefined => (u ? (u.startsWith("http") ? u : `${base}${u}`) : undefined);
@@ -229,13 +264,6 @@ export async function generateTestMovie(opts: {
   //    on-screen text, trailing silence trimmed.
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
   let prevFrameUrl: string | undefined = resume.ckLastStill; // prior clip's last frame (relative /renders URL)
-  const NO_TEXT = "Absolutely NO on-screen text of any kind: no subtitles, no captions, no titles, and no readable writing on any paper, document, folder, bulletin board, whiteboard, sign, poster or screen anywhere in the frame — keep every surface clean and text-free.";
-  const HOLD_STILL = "The characters STAY in their positions — no standing up, sitting down, walking or crossing the room, only natural small gestures, head turns and talking. Keep every character's face, hair, hairstyle, clothing and wardrobe EXACTLY the same the whole time — no morphing, melting or changing of anyone's appearance.";
-  // Keep both faces in the shot (continuity) WITHOUT forcing them into the same
-  // space — the old "two-shot in the room" line overrode scenes that place the
-  // characters apart (e.g. one inside, one outside a window), collapsing them
-  // onto the same side. Honour the scene's own staging instead.
-  const STAGING = "Frame it as a TWO-SHOT that keeps BOTH characters visible in the shot, but place each one EXACTLY where the scene describes: if they are apart — one indoors and one outdoors, on opposite sides of a window, door, wall or other barrier, or separated by glass — KEEP that separation with the barrier clearly between them; never merge them into the same space or onto the same side.";
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     const turns = splitExchange(scene.caption || "");
@@ -246,12 +274,13 @@ export async function generateTestMovie(opts: {
     // the cut is seamless (positions carried over — the two-shot keeps the next
     // speaker in frame, so no wrong-speaker gibberish). Clip 0 / fallback: a clean
     // two-shot generated from the cast reference.
-    let seedAbs = abs(prevFrameUrl);
+    // Seed priority: the merchant's APPROVED storyboard frame for this scene →
+    // else chain from the prior clip's real last frame (continuity within a set) →
+    // else auto-render a fresh frame. An approved frame overrides the chain, so a
+    // set change lands exactly as the merchant staged it.
+    let seedAbs = abs(approvedFrames[i]) || abs(prevFrameUrl);
     if (!seedAbs) {
-      const framed = `${scene.visual}. ${tmpl.sceneHint}. ${STAGING} ${castBible} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
-      let seedUrl: string | null = null;
-      try { seedUrl = castRefAbs ? ((await renderStyledSeed(framed, castRefAbs, "9:16")) || (await renderCreativeSeed(framed, "9:16"))) : await renderCreativeSeed(framed, "9:16"); }
-      catch { seedUrl = null; }
+      const seedUrl = await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: castRefAbs });
       seedAbs = abs(seedUrl);
     }
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
