@@ -141,9 +141,9 @@ export default function WebLayout() {
                   (they cross-link inside the Social surface); Helpurr is the floating
                   orb, bottom-right, so it's dropped from the nav. */}
               <Link className={tab("/web")} to="/web">{t("Dashboard")}</Link>
-              <Link className={tab("/web/studio")} to="/web/studio">{t("Create")}</Link>
-              <Link className={tab("/web/film")} to="/web/film">{t("Movies")}</Link>
-              <Link className={`${tab("/web/product-channels")}${loc.pathname === "/web/channels" || loc.pathname === "/web/campaigns" || loc.pathname === "/web/connect" ? " on" : ""}`} to="/web/product-channels">{t("Promote")}</Link>
+              <Link className={tab("/web/studio")} to="/web/studio">{t("Creator")}</Link>
+              <Link className={tab("/web/film")} to="/web/film">{t("Movie Maker")}</Link>
+              <Link className={`${tab("/web/product-channels")}${loc.pathname === "/web/channels" || loc.pathname === "/web/campaigns" || loc.pathname === "/web/connect" ? " on" : ""}`} to="/web/product-channels">{t("Ad Maker")}</Link>
               <Link className={tab("/web/presenters")} to="/web/presenters">{t("Presenters")}</Link>
               <Link className={tab("/web/archive")} to="/web/archive">{t("Archive")}</Link>
             </nav>
@@ -183,11 +183,11 @@ export default function WebLayout() {
             immersive launcher (reached via the brand logo top-left). */}
         {authed && loc.pathname !== "/web/home" && (
           <nav className="wb-bottom" aria-label={t("Primary")}>
-            <Link to="/web/studio" className={`wb-bt${loc.pathname === "/web/studio" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="palette" size={22} /></span><span>{t("Create")}</span></Link>
-            <Link to="/web/film" className={`wb-bt${loc.pathname === "/web/film" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="film" size={22} /></span><span>{t("Movies")}</span></Link>
+            <Link to="/web/studio" className={`wb-bt${loc.pathname === "/web/studio" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="palette" size={22} /></span><span>{t("Creator")}</span></Link>
+            <Link to="/web/film" className={`wb-bt${loc.pathname === "/web/film" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="filmreel" size={22} /></span><span>{t("Movie Maker")}</span></Link>
             <Link to="/web" className={`wb-bt wb-bt-mid${loc.pathname === "/web" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="grid" size={22} /></span><span>{t("Dashboard")}</span></Link>
-            <Link to="/web/product-channels" className={`wb-bt${["/web/product-channels", "/web/channels", "/web/campaigns", "/web/connect"].includes(loc.pathname) ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="trend" size={22} /></span><span>{t("Promote")}</span></Link>
-            <Link to="/web/archive" className={`wb-bt${loc.pathname === "/web/archive" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="box" size={22} /></span><span>{t("Archive")}</span></Link>
+            <Link to="/web/product-channels" className={`wb-bt${["/web/product-channels", "/web/channels", "/web/campaigns", "/web/connect"].includes(loc.pathname) ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="megaphone" size={22} /></span><span>{t("Ad Maker")}</span></Link>
+            <Link to="/web/archive" className={`wb-bt${loc.pathname === "/web/archive" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="bookcase" size={22} /></span><span>{t("Archive")}</span></Link>
           </nav>
         )}
         <Buddy hud={hud} authed={authed} mode={mode} />
@@ -1489,7 +1489,7 @@ const CSS = `
   /* Phone nav = a FLOATING bottom tab bar (Facebook-style pill). Hide the top tab row. */
   .wb-tabs{display:none;}
   .wb-bottom{display:flex;align-items:stretch;gap:2px;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:50;background:#fff;border:1px solid var(--line);border-radius:26px;padding:8px 8px 9px;box-shadow:0 12px 30px rgba(20,32,26,.18),0 3px 10px rgba(20,32,26,.10);}
-  .wb-bt{flex:1 1 0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;text-decoration:none;color:var(--ink2);font-size:10px;font-weight:700;min-width:0;}
+  .wb-bt{flex:1 1 0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;text-decoration:none;color:var(--ink2);font-size:9.5px;font-weight:700;min-width:0;white-space:nowrap;}
   .wb-bt-ic{display:flex;align-items:center;justify-content:center;width:46px;height:32px;border-radius:13px;transition:background .14s;}
   .wb-bt svg{width:22px;height:22px;stroke-width:1.9;}
   .wb-bt.on{color:var(--green);}
