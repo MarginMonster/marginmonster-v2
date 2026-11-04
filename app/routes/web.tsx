@@ -1131,11 +1131,11 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
         className={`wb-chip${open ? " on" : ""}`}
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu" aria-expanded={open}
-        aria-label={t("Account menu — level {lvl}, {tokens} tokens", { lvl: hud.level, tokens: hud.tokens.toLocaleString() })}
+        aria-label={t("Account menu — level {lvl}, {tokens} tokens", { lvl: hud.level, tokens: hud.tokens.toLocaleString("en-US") })}
       >
         <span className={`wb-chip-ava${avatar ? " photo" : " mono"}`}>{avatar ? <img src={avatar} alt="" /> : <span className="wb-ava-mono">{initial}</span>}</span>
-        <span className="wb-chip-lvl" title={t("Level {lvl} — {n} XP to the next reward", { lvl: hud.level, n: toNext.toLocaleString() })}>LVL {hud.level}</span>
-        <span className="wb-chip-tok" title={t("{n} tokens left", { n: hud.tokens.toLocaleString() })}><Ico n="coin" /> {hud.tokens.toLocaleString()}</span>
+        <span className="wb-chip-lvl" title={t("Level {lvl} — {n} XP to the next reward", { lvl: hud.level, n: toNext.toLocaleString("en-US") })}>LVL {hud.level}</span>
+        <span className="wb-chip-tok" title={t("{n} tokens left", { n: hud.tokens.toLocaleString("en-US") })}><Ico n="coin" /> {hud.tokens.toLocaleString("en-US")}</span>
         <span className="wb-chip-caret" aria-hidden="true">▾</span>
       </button>
 
@@ -1160,7 +1160,7 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
           <div className="wb-menu-sec">
             <div className="wb-menu-barlabel">
               <span>{t("XP · Level {n}", { n: hud.level })}</span>
-              <span>{t("{left} to LVL {next}", { left: toNext.toLocaleString(), next: hud.level + 1 })}</span>
+              <span>{t("{left} to LVL {next}", { left: toNext.toLocaleString("en-US"), next: hud.level + 1 })}</span>
             </div>
             <div className="wb-menu-xp" title={t("{pct}% of the way to level {next}", { pct: hud.xpPct, next: hud.level + 1 })}><i style={{ width: `${hud.xpPct}%` }} /></div>
             <div className="wb-menu-hint"><Ico n="gift" /> {t("Every level pays out free tokens.")}</div>
@@ -1196,18 +1196,18 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
 
           {/* Token wallet + value meter */}
           <div className="wb-menu-sec">
-            <div className="wb-menu-barlabel"><span>{t("Token reserve")}</span><span>{hud.tokens.toLocaleString()} / {hud.tokensMax.toLocaleString()}</span></div>
+            <div className="wb-menu-barlabel"><span>{t("Token reserve")}</span><span>{hud.tokens.toLocaleString("en-US")} / {hud.tokensMax.toLocaleString("en-US")}</span></div>
             <div className="wb-menu-hp" title={t("{pct}% of your wallet remaining", { pct: hud.tokensPct })}><i style={{ width: `${hud.tokensPct}%` }} /></div>
             {hud.planActive && (
               <div className="wb-menu-meter">
                 {hud.trialing
-                  ? t("Trial · {monthly}/mo unlocks when your plan starts", { monthly: hud.monthly.toLocaleString() })
-                  : t("{monthly} tokens included monthly · {used} used", { monthly: hud.monthly.toLocaleString(), used: hud.used.toLocaleString() })}
+                  ? t("Trial · {monthly}/mo unlocks when your plan starts", { monthly: hud.monthly.toLocaleString("en-US") })
+                  : t("{monthly} tokens included monthly · {used} used", { monthly: hud.monthly.toLocaleString("en-US"), used: hud.used.toLocaleString("en-US") })}
                 {hud.planActive && !hud.trialing && hud.resetShort && <span className="wb-menu-meter-r"> · {t("↻ refills {date}", { date: hud.resetShort })}</span>}
               </div>
             )}
             {hud.planActive && !hud.trialing && hud.extra > 0 && (
-              <div className="wb-menu-extra"><Ico n="coin" /> {t("+{extra} top-up tokens · never expire", { extra: hud.extra.toLocaleString() })}</div>
+              <div className="wb-menu-extra"><Ico n="coin" /> {t("+{extra} top-up tokens · never expire", { extra: hud.extra.toLocaleString("en-US") })}</div>
             )}
             <div className="wb-menu-affords">
               <span><Ico n="video" /> {hud.videos === 1 ? t("{n} video’s worth", { n: hud.videos }) : t("{n} videos’ worth", { n: hud.videos })}</span>
