@@ -57,6 +57,8 @@ const I: Record<string, Paths> = {
   bookcase: <><rect x="4" y="4.4" width="16" height="15.2" rx="0.6" /><path d="M4 8.4h16M4 15.6h16" /><path d="M7 8.4v7.2M10 8.4v7.2M13 8.4v7.2M16 8.4v7.2" /></>,
   // Megaphone — the Ad Maker tab. Horn + handle + a sound arc.
   megaphone: <><path d="M3.6 10.2v3.6a1 1 0 0 0 1 1h2.1L15 18.8V5.2L6.7 9.2H4.6a1 1 0 0 0-1 1z" /><path d="M7.7 15.5v2.9a1.5 1.5 0 0 0 2.9.5l.4-1.1" /><path d="M18 9.4a3.3 3.3 0 0 1 0 5.2" /></>,
+  // Head + shoulders — the Presenters tab (your AI cast).
+  presenter: <><circle cx="12" cy="8.2" r="3.4" /><path d="M5.8 19.4a6.2 6.2 0 0 1 12.4 0" /></>,
 
   /* ── cartoon styles ─────────────────────────────────────────────── */
   leaf: <><path d="M20 4.4C10.6 4 4.6 8.2 4.6 14.4a5 5 0 0 0 5 5c6 0 10.2-6 10.4-15z" /><path d="M17.4 7.2C12.6 9.2 9 13 7.4 18" /></>,

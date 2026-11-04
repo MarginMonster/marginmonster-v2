@@ -507,6 +507,27 @@ export default function WebDashboard() {
             </button>
           </div>
         </div>
+        <div className="wd-hero-nav">
+          <span className="wd-hero-paths-h">{t("Jump into a studio")}</span>
+          <div className="wd-hero-nav-row">
+            <button type="button" className="wd-path wd-navtile" onClick={() => navigate("/web/film")}>
+              <span className="wd-path-ic"><Ico n="filmreel" size={19} /></span>
+              <span className="wd-path-tx"><b>{t("Movie Maker")}</b><i>{t("Episodes & dialogue")}</i></span>
+            </button>
+            <button type="button" className="wd-path wd-navtile" onClick={() => { setMode("marketing"); navigate("/web/studio"); }}>
+              <span className="wd-path-ic"><Ico n="megaphone" size={19} /></span>
+              <span className="wd-path-tx"><b>{t("Ad Maker")}</b><i>{t("Product ads from a photo")}</i></span>
+            </button>
+            <button type="button" className="wd-path wd-navtile" onClick={() => navigate("/web/presenters")}>
+              <span className="wd-path-ic"><Ico n="presenter" size={19} /></span>
+              <span className="wd-path-tx"><b>{t("Presenters")}</b><i>{t("Your AI cast")}</i></span>
+            </button>
+            <button type="button" className="wd-path wd-navtile" onClick={() => navigate("/web/archive")}>
+              <span className="wd-path-ic"><Ico n="bookcase" size={19} /></span>
+              <span className="wd-path-tx"><b>{t("Archive")}</b><i>{t("Everything you've made")}</i></span>
+            </button>
+          </div>
+        </div>
       </section>
       <p className="wb-sub wd-plan-line">
         {d.tierName
@@ -928,6 +949,10 @@ const DASH_CSS = `
 .wd-path-img:first-child .wd-path-dot{box-shadow:0 0 0 3px rgba(176,133,38,.16);}
 .wd-path-studio{width:100%;margin-top:10px;}
 .wd-plan-line{text-align:center;margin:0 0 20px;}
+/* Launcher-style section navigator — the quick-jump tiles from the old /web/home
+   console, brought home into the cream dashboard (reuses .wd-path's tile look). */
+.wd-hero-nav{width:min(620px,100%);margin-top:16px;}
+.wd-hero-nav-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
 @media(max-width:680px){.wd-hero-paths-row{grid-template-columns:1fr;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
 /* launch tracker */
 .wd-launch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin:0 0 22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
