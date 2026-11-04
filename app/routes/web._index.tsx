@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { Ico } from "../lib/icons";
+import { Familiar } from "../components/Familiar";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import {
@@ -466,91 +467,47 @@ export default function WebDashboard() {
   const allDone = doneCount === steps.length;
   const nextKey = steps.find((s) => !s.done)?.key;
 
-  // ── Studios console — the launcher concept merged into the hub (owner 11-04).
-  //    Hover/focus a tile to preview it up top; the button opens it. A studio
-  //    flips the app mode (casual = Creator, marketing = Ad Maker) exactly like
-  //    the old "drive it yourself" path cards did.
-  const STUDIOS = [
-    { id: "creator", name: t("Creator"), kicker: t("Make anything"), sub: t("Images, video & music"), title: t("Creator Studio"),
-      blurb: t("Describe it and it's made — product shots, scenes, short videos and music, right in the chat."),
-      cta: t("Open Creator"), ico: "palette", accent: "#2cc67f", go: () => { setMode("casual"); navigate("/web/studio"); } },
-    { id: "admaker", name: t("Ad Maker"), kicker: t("Marketing studio"), sub: t("Product ads that sell"), title: t("Ad Maker"),
-      blurb: t("Turn a product into a scroll-stopping ad — image or video, built on famous ad formats, in about a minute."),
-      cta: t("Open Ad Maker"), ico: "megaphone", accent: "#f2dca0", go: () => { setMode("marketing"); navigate("/web/studio"); } },
-    { id: "movie", name: t("Movie Maker"), kicker: t("Entertainment engine"), sub: t("Episodes · dialogue"), title: t("Movie Maker"),
-      blurb: t("Movies, kids episodes, music videos and real character dialogue — built to post, not just ads."),
-      cta: t("Open Movie Maker"), ico: "filmreel", accent: "#f2dca0", go: () => navigate("/web/film") },
-    { id: "social", name: t("Social"), kicker: t("Marketing on autopilot"), sub: t("Campaigns · posting"), title: t("Social"),
-      blurb: t("Your marketing runs itself — campaigns, trending topics and auto-posting to every account."),
-      cta: t("Open Social"), ico: "trend", accent: "#34c9c0", go: () => navigate("/web/product-channels") },
-    { id: "presenters", name: t("Presenters"), kicker: t("Your AI cast"), sub: t("Avatars that sell"), title: t("Presenters"),
-      blurb: t("A cast of AI presenters — pick one to front your videos, or forge a custom face with its own voice."),
-      cta: t("Open Presenters"), ico: "figure", accent: "#c48cf0", go: () => navigate("/web/presenters") },
-    { id: "archive", name: t("Archive"), kicker: t("Everything you've made"), sub: t("Watch · keep · post"), title: t("Archive"),
-      blurb: t("Every image and video you've made in one place — watch it big, keep the good ones or push them live."),
-      cta: t("Open Archive"), ico: "bookcase", accent: "#b7c0a0", go: () => navigate("/web/archive") },
-  ];
-  const [studioSel, setStudioSel] = useState(0);
-  const sct = STUDIOS[studioSel];
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key === "ArrowRight") setStudioSel((i) => Math.min(STUDIOS.length - 1, i + 1));
-      if (e.key === "ArrowLeft") setStudioSel((i) => Math.max(0, i - 1));
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [STUDIOS.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
   return (
-    <div className="wd-dark">
+    <div>
       <style dangerouslySetInnerHTML={{ __html: DASH_CSS }} />
-      {/* The shell nav is hidden on /web (web.tsx), so the hub carries its own
-          compact header — mirrors the launcher this merged in. */}
-      <header className="wd-hd">
-        <span className="wd-hd-brand"><b>EASY<span>MODE</span></b></span>
-        <span className="wd-hd-tok"><span className="wd-hd-dot" aria-hidden="true" /><b>{d.tokens.toLocaleString("en-US")}</b> {t("tokens")}</span>
-      </header>
-      <div className="wd-console">
-        {/* Helpurr Google-style opener — the front door the owner asked to keep. */}
-        <section className="wd-opener">
-          <h1>{firstName ? t("Hey {name} — what are we making today?", { name: firstName }) : t("What are we making today?")}</h1>
-          <form className="wd-ask" onSubmit={(e) => { e.preventDefault(); askHelpurr(); }}>
-            <span className="wd-ask-spark" aria-hidden="true"><Ico n="sparkle" size={17} /></span>
-            <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder={t("Ask Helpurr anything — or tell it what to make…")} aria-label={t("Ask Helpurr")} />
-            <button type="submit" className="wd-ask-send" aria-label={t("Ask Helpurr")}><Ico n="bolt" size={18} /></button>
-          </form>
-          <div className="wd-chips">
-            {heroChips.map((c) => <button key={c} type="button" onClick={() => openHelpurr(c)}>{c}</button>)}
-          </div>
-        </section>
-        {/* Studios hero — previews the selected studio. */}
-        <section className="lx-hero" style={{ ["--hero-accent" as string]: sct.accent }}>
-          <div className="lx-herobg" key={sct.id} style={{ background: `linear-gradient(120deg, color-mix(in srgb, ${sct.accent} 22%, #0b1510), #0b1510)` }} />
-          <div className="lx-heroinner">
-            <span className="lx-eyebrow"><Ico n={sct.ico} size={16} /> {sct.kicker}</span>
-            <h2>{sct.title}</h2>
-            <p>{sct.blurb}</p>
-            <div className="lx-actions">
-              <button className="lx-btn lx-primary" type="button" onClick={sct.go}>{sct.cta} <Ico n="arrow" size={15} /></button>
-              <button className="lx-btn lx-ghost" type="button" onClick={() => openHelpurr()}>{t("Ask Helpurr")}</button>
-            </div>
-          </div>
-        </section>
-        <div className="lx-railhead"><h3>{t("Your studios")}</h3><span className="lx-hint">{t("Pick a studio — or ← → to browse")}</span></div>
-        <div className="lx-rail" role="listbox" aria-label={t("Studios")}>
-          {STUDIOS.map((st, i) => (
-            <button key={st.id} type="button" className="lx-tile" role="option" aria-selected={i === studioSel}
-              style={{ ["--t-accent" as string]: st.accent }}
-              onMouseEnter={() => setStudioSel(i)} onFocus={() => setStudioSel(i)} onClick={st.go}>
-              <span className="lx-ticon"><Ico n={st.ico} size={21} /></span>
-              <span className="lx-tx"><span className="lx-th">{st.name}</span><span className="lx-tsub">{st.sub}</span></span>
-            </button>
-          ))}
+      {/* ── Helpurr landing hero — the Google-style front door: ask Helpurr to
+           drive it, or take the Creator / Social / Studio path yourself. ── */}
+      <section className="wd-hero">
+        <span className="wd-hero-crest"><Familiar /></span>
+        <h1 className="wd-hero-word">Easy<b>Mode</b></h1>
+        <p className="wd-hero-sub">{firstName ? t("Hey {name} — what are we making today?", { name: firstName }) : t("What are we making today?")}</p>
+        <form className="wd-hero-ask" onSubmit={(e) => { e.preventDefault(); askHelpurr(); }}>
+          <span className="wd-hero-spark" aria-hidden="true"><Ico n="sparkle" size={17} /></span>
+          <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder={t("Ask Helpurr anything — or tell it what to make…")} aria-label={t("Ask Helpurr")} />
+          <button type="submit" className="wd-hero-send" aria-label={t("Ask Helpurr")}><Ico n="bolt" size={18} /></button>
+        </form>
+        <div className="wd-hero-chips">
+          {heroChips.map((c) => <button key={c} type="button" onClick={() => openHelpurr(c)}>{c}</button>)}
         </div>
-      </div>
-      <div className="wd-wrap">
+        <div className="wd-hero-paths">
+          <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
+          <div className="wd-hero-paths-row">
+            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("casual"); navigate("/web/studio"); }}>
+              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg?v=2)" }} aria-hidden="true" />
+              <span className="wd-path-body">
+                <span className="wd-path-eyebrow">{t("Free roam")}</span>
+                <b>{t("Create anything")}</b>
+                <i>{t("Images, video & music")}</i>
+                <span className="wd-path-cue">{t("Open Create")} <Ico n="arrow" size={15} /></span>
+              </span>
+            </button>
+            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/studio"); }}>
+              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
+              <span className="wd-path-body">
+                <span className="wd-path-eyebrow">{t("Social Marketing")}</span>
+                <b>{t("Grow on social")}</b>
+                <i>{t("Product ads & auto-posting")}</i>
+                <span className="wd-path-cue">{t("Open Social Marketing")} <Ico n="arrow" size={15} /></span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </section>
       <p className="wb-sub wd-plan-line">
         {d.tierName
           ? <>{t("You're on")} <b>{d.tierName}</b>{d.trialing ? ` ${t("(free trial)")}` : ""} {t("with")} <b>{d.tokens.toLocaleString("en-US")}</b> {t("tokens ready.")}</>
@@ -907,7 +864,6 @@ export default function WebDashboard() {
       <p className="wb-note" style={{ marginTop: 26 }}>
         {t("Ready to create?")} <Link to="/web/studio">{t("Open the Studio")} →</Link>
       </p>
-      </div>
     </div>
   );
 }
@@ -1092,84 +1048,4 @@ const DASH_CSS = `
   .wdl-x{min-width:44px;min-height:44px;display:grid;place-items:center;padding:0}
   .wd-toggle button{min-height:44px}
 }
-/* ═══ DARK CONSOLE HUB — owner 11-04: the launcher concept merged into the
-   Dashboard (reskin dark, keep the content + the Helpurr opener, seamless).
-   REVERTABLE: drop the wd-dark/wd-console/wd-wrap wrappers + the console JSX +
-   this block, and un-gate /web in web.tsx + restore web.home.tsx. ═══ */
-.wd-dark{--paper:#0a120e;--card:#131f18;--ink:#f1eee2;--ink2:#9db0a4;--line:#223429;--line2:#2a3f33;--green:#2cc67f;--green2:#34d98a;--gold:#f2dca0;--gold-deep:#ecd49e;--line-hi:#2e4638;--surface-hi:#17271e;
-  --fdisp:"Bricolage Grotesque",Poppins,ui-sans-serif,system-ui,sans-serif;
-  color:var(--ink);min-height:100vh;margin:0;padding:0;
-  background:radial-gradient(120% 80% at 84% -12%,rgba(44,198,127,.16),transparent 58%),radial-gradient(90% 70% at 4% 2%,rgba(242,220,160,.06),transparent 52%),var(--paper);}
-.wd-hd{max-width:1140px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px max(16px,env(safe-area-inset-left,0px)) 4px;}
-.wd-hd-brand b{font-family:var(--fdisp);font-weight:800;font-size:19px;letter-spacing:.4px;color:var(--ink);}
-.wd-hd-brand b span{color:var(--green);}
-.wd-hd-tok{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:999px;background:var(--card);border:1px solid var(--line);font-size:13px;color:var(--ink2);white-space:nowrap;}
-.wd-hd-tok b{color:var(--ink);font-variant-numeric:tabular-nums;}
-.wd-hd-dot{width:6px;height:6px;border-radius:50%;background:var(--green);}
-.wd-console{max-width:1140px;margin:0 auto;padding:6px max(16px,env(safe-area-inset-left,0px)) 0;}
-.wd-opener{text-align:center;padding:8px 0 2px;}
-.wd-opener h1{font-family:var(--fdisp);font-weight:800;font-size:clamp(21px,3.4vw,32px);letter-spacing:-.4px;margin:4px 0 14px;color:var(--ink);text-wrap:balance;}
-.wd-ask{display:flex;align-items:center;gap:8px;width:min(640px,100%);margin:0 auto;background:var(--card);border:1.5px solid var(--line);border-radius:999px;padding:7px 8px 7px 16px;box-shadow:0 12px 30px rgba(0,0,0,.4);transition:border-color .14s;}
-.wd-ask:focus-within{border-color:var(--green);}
-.wd-ask-spark{flex:0 0 auto;display:grid;place-items:center;color:var(--gold);}
-.wd-ask input{flex:1;border:0;background:none;outline:none;font:inherit;font-size:16px;color:var(--ink);min-width:0;}
-.wd-ask input::placeholder{color:#6f8176;}
-.wd-ask-send{flex:0 0 auto;width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;color:#06130c;display:grid;place-items:center;background:linear-gradient(135deg,#34d98a,#2cc67f);box-shadow:0 3px 10px rgba(44,198,127,.4);transition:filter .12s,transform .12s;}
-.wd-ask-send:hover{filter:brightness(1.07);transform:translateY(-1px);}
-.wd-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:13px;}
-.wd-chips button{border:1px solid var(--line);background:var(--card);color:var(--ink2);font:inherit;font-weight:700;font-size:12.5px;cursor:pointer;padding:7px 14px;border-radius:999px;transition:border-color .14s,color .14s;min-height:38px;}
-.wd-chips button:hover{border-color:var(--green);color:var(--ink);}
-.lx-hero{position:relative;margin-top:20px;border-radius:22px;overflow:hidden;border:1px solid var(--line);background:var(--card);min-height:200px;display:flex;isolation:isolate;}
-.lx-herobg{position:absolute;inset:0;z-index:0;animation:lxfade .5s ease;}
-.lx-herobg::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,15,12,.88),rgba(8,15,12,.45) 58%,rgba(8,15,12,.08));}
-@keyframes lxfade{from{opacity:0}to{opacity:1}}
-.lx-heroinner{position:relative;z-index:2;padding:30px 34px;display:flex;flex-direction:column;justify-content:center;gap:11px;max-width:560px;}
-.lx-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--hero-accent,var(--green));}
-.lx-heroinner h2{font-family:var(--fdisp);font-weight:800;font-size:clamp(25px,3.4vw,38px);line-height:1.03;margin:0;letter-spacing:-.6px;color:var(--ink);text-wrap:balance;}
-.lx-heroinner p{margin:0;color:var(--ink);opacity:.82;font-size:14.5px;line-height:1.5;max-width:44ch;}
-.lx-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;}
-.lx-btn{font-family:Poppins,sans-serif;font-weight:700;font-size:13.5px;padding:11px 18px;border-radius:12px;border:1px solid transparent;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:transform .12s,filter .15s;}
-.lx-btn:active{transform:translateY(1px);}
-.lx-primary{background:linear-gradient(150deg,var(--hero-accent,var(--green)),color-mix(in srgb,var(--hero-accent,var(--green)) 64%,#000));color:#06130c;}
-.lx-primary:hover{filter:brightness(1.07);}
-.lx-ghost{background:rgba(241,238,226,.06);border-color:var(--line-hi);color:var(--ink);}
-.lx-ghost:hover{background:rgba(241,238,226,.11);}
-.lx-railhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 2px 11px;}
-.lx-railhead h3{font-family:var(--fdisp);font-weight:700;font-size:14px;letter-spacing:.3px;margin:0;color:var(--ink);}
-.lx-hint{font-size:12px;color:var(--ink2);}
-.lx-rail{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
-.lx-tile{position:relative;text-align:left;cursor:pointer;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:15px;padding:14px;display:flex;align-items:center;gap:12px;transition:transform .15s,border-color .15s,background .15s;font-family:Poppins,sans-serif;}
-.lx-tile:hover{transform:translateY(-3px);border-color:var(--line-hi);}
-.lx-ticon{width:38px;height:38px;flex:none;border-radius:11px;display:grid;place-items:center;background:color-mix(in srgb,var(--t-accent,var(--green)) 15%,transparent);border:1px solid color-mix(in srgb,var(--t-accent,var(--green)) 32%,transparent);color:var(--t-accent,var(--green));}
-.lx-tx{min-width:0;display:flex;flex-direction:column;}
-.lx-th{font-family:var(--fdisp);font-weight:700;font-size:14.5px;letter-spacing:-.2px;}
-.lx-tsub{font-size:11px;color:var(--ink2);line-height:1.3;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.lx-tile[aria-selected="true"]{background:var(--surface-hi);border-color:var(--t-accent,var(--green));box-shadow:0 10px 26px rgba(0,0,0,.4);}
-.lx-tile[aria-selected="true"] .lx-ticon{background:var(--t-accent,var(--green));border-color:var(--t-accent,var(--green));color:#06130c;}
-.lx-tile:focus-visible{outline:2px solid var(--green);outline-offset:3px;}
-.wd-wrap{max-width:1140px;margin:28px auto 0;padding:0 max(16px,env(safe-area-inset-left,0px)) 56px;}
-@media(max-width:860px){.lx-rail{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:520px){.lx-heroinner{padding:24px 20px;}.lx-hero{min-height:176px;}}
-/* ── dark overrides: flip the hardcoded-light surfaces the vars don't reach ── */
-.wd-dark .wb-card{background:linear-gradient(178deg,#17271e,#111d16);border-color:var(--line);}
-.wd-dark .wb-in,.wd-dark .wb-sel,.wd-dark .wb-ta{background:#0e1a13;color:var(--ink);border-color:var(--line);}
-.wd-dark .wb-in::placeholder,.wd-dark .wb-ta::placeholder{color:#6f8176;}
-.wd-dark .wb-btn.ghost{background:rgba(241,238,226,.05);border-color:var(--line-hi);color:var(--ink);}
-.wd-dark .wb-err{background:rgba(214,88,64,.16);border-color:rgba(214,88,64,.42);color:#f0b4a8;}
-.wd-dark .wb-ok{background:rgba(44,198,127,.15);border-color:rgba(44,198,127,.42);color:#8fe7b8;}
-.wd-dark .wdl-bar{background:#0e1a13;}
-.wd-dark .wdl-step{background:#0e1a13;border-color:var(--line);color:var(--ink);}
-.wd-dark .wdl-step.next:hover{background:#15271d;}
-.wd-dark .wdl-tick{background:#0e1a13;border-color:var(--line);}
-.wd-dark .wdw-st,.wd-dark .wdw-tile{background:#0e1a13;border-color:var(--line);}
-.wd-dark .wd-next{background:linear-gradient(165deg,#17271e,#111d16);border-color:rgba(44,198,127,.4);color:var(--ink);}
-.wd-dark .wdn-kind{background:#0e1a13;border-color:var(--line);}
-.wd-dark .wd-toggle{background:#0e1a13;border-color:var(--line);}
-.wd-dark .wdv-chip{background:#0e1a13;border-color:var(--line);}
-.wd-dark .wdv-chip.tone{background:rgba(44,198,127,.14);color:#8fe7b8;border-color:rgba(44,198,127,.3);}
-.wd-dark .wdg-item{background:#0e1a13;border-color:var(--line);}
-.wd-dark .wd-solo{background:linear-gradient(135deg,#17271e,#111d16);}
-.wd-dark .wdr-code{background:rgba(242,220,160,.12);border-color:rgba(242,220,160,.4);color:var(--gold-deep);}
-.wd-dark .wdn-tag{background:rgba(242,220,160,.14);border-color:rgba(242,220,160,.3);color:var(--gold-deep);}
-.wd-dark .wb-note a,.wd-dark .wd-plan-line a{color:var(--green2);}
 `;
