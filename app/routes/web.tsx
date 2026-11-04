@@ -130,35 +130,22 @@ export default function WebLayout() {
       <div className="wb">
         {loc.pathname !== "/web/home" && (
         <header className="wb-nav">
-          <Link to="/" className="wb-brand">
+          <Link to={authed ? "/web/home" : "/"} className="wb-brand">
             <Crest size={30} />
             <span>Easy<b>Mode</b></span>
           </Link>
           {authed && (
             <nav className="wb-tabs">
-              {/* Dashboard = the unified home — the Helpurr hero + the two intent
-                  cards (Create anything / Grow on social). */}
+              {/* Mirrors the /web/home launcher's six studios — one clean nav across
+                  the whole app. "Social" folds in Channels + Campaigns + Auto-posting
+                  (they cross-link inside the Social surface); Helpurr is the floating
+                  orb, bottom-right, so it's dropped from the nav. */}
               <Link className={tab("/web")} to="/web">{t("Dashboard")}</Link>
               <Link className={tab("/web/studio")} to="/web/studio">{t("Create")}</Link>
-              {/* Film Studio = the premium long-form tier (music videos now;
-                  kids cartoons + short films next). Metered by scene count. */}
               <Link className={tab("/web/film")} to="/web/film">{t("Film")}</Link>
-              {/* Presenters = the dedicated cast hub: browse the full pro cast +
-                  the "be the face of your brand" forge. */}
+              <Link className={`${tab("/web/product-channels")}${loc.pathname === "/web/channels" || loc.pathname === "/web/campaigns" || loc.pathname === "/web/connect" ? " on" : ""}`} to="/web/product-channels">{t("Social")}</Link>
               <Link className={tab("/web/presenters")} to="/web/presenters">{t("Presenters")}</Link>
-              {/* Helpurr as a dedicated section: opens the chat maximized (full
-                  surface), not just the floating bubble. Works in both modes. */}
-              {authed && <button type="button" className="wb-tab wb-tab-btn wb-tab-helpurr" onClick={() => window.dispatchEvent(new CustomEvent("helpurr:open", { detail: { max: true } }))}>{t("Helpurr")}</button>}
-              {/* Campaigns — scheduled ad runs, the selling surface. */}
-              <Link className={tab("/web/campaigns")} to="/web/campaigns">{t("Campaigns")}</Link>
-              {/* Channels = the social autopilot. One nav entry; the page carries a
-                  source switch (My products ↔ Trending topics) that cross-links
-                  /web/product-channels and /web/channels. */}
-              <Link className={`${tab("/web/product-channels")}${loc.pathname === "/web/channels" ? " on" : ""}`} to="/web/product-channels">{t("Channels")}</Link>
-              {/* Archive holds both stores (Creator + Social) under one name; the
-                  page itself carries the section toggle. */}
               <Link className={tab("/web/archive")} to="/web/archive">{t("Archive")}</Link>
-              <Link className={tab("/web/connect")} to="/web/connect">{t("Auto-posting")}</Link>
             </nav>
           )}
           <div className="wb-me">
@@ -1279,12 +1266,13 @@ const CSS = `
 .wb-nav{position:relative;z-index:30;display:flex;align-items:center;gap:14px 18px;max-width:1080px;margin:0 auto;padding:18px 24px;flex-wrap:wrap;}
 .wb-brand{order:1;display:flex;align-items:center;gap:8px;font-family:Poppins,sans-serif;font-weight:800;font-size:18px;color:var(--ink);text-decoration:none;}
 .wb-brand b{color:var(--gold)}
-.wb-tabs{order:3;flex-basis:100%;display:flex;gap:6px;margin-top:2px;}
-.wb-tab{padding:8px 16px;border-radius:11px;text-decoration:none;font-weight:700;font-size:13.5px;color:var(--ink2);}
+.wb-tabs{order:2;display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
+.wb-tab{padding:9px 15px;border-radius:11px;text-decoration:none;font-weight:700;font-size:13.5px;color:var(--ink2);transition:color .12s,background .12s;}
+.wb-tab:hover:not(.on){color:var(--ink);background:rgba(12,122,70,.06);}
 .wb-tab-btn{background:none;border:0;cursor:pointer;font-family:inherit;}
 .wb-tab-helpurr{color:var(--brand,#0C7A46);} .wb-tab-helpurr:hover{color:#0A5C35;}
 .wb-tab.on{background:var(--card);border:1px solid var(--line);color:var(--ink);box-shadow:0 2px 6px rgba(20,32,26,.06);}
-.wb-me{order:2;margin-left:auto;display:flex;align-items:center;gap:12px;}
+.wb-me{order:3;margin-left:auto;display:flex;align-items:center;gap:12px;}
 .wb-out{font-size:13px;color:var(--ink2);text-decoration:none;font-weight:600;padding:8px 12px;border-radius:10px;}
 /* Discreet owner-only link to /admin/dashboard — muted, small, only rendered
    when the logged-in email is on ADMIN_EMAILS. */
@@ -1475,7 +1463,7 @@ const CSS = `
      present (admin on a phone) lang + mode + admin + chip overran ~30px at
      375px. Wrapping + right-align keeps everything on-screen; non-admin users
      (no .wb-admin) stay on one line unchanged. */
-  .wb-me{margin-left:auto;gap:7px;flex-wrap:wrap;justify-content:flex-end;}
+  .wb-me{order:2;margin-left:auto;gap:7px;flex-wrap:wrap;justify-content:flex-end;}
   .wb-login{padding:8px 15px;font-size:12.5px;}
   /* Compact chip on phones: drop the LVL pill, keep avatar + balance + caret so
      the top row stays next to the brand without overflowing. */
