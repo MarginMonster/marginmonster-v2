@@ -6926,7 +6926,7 @@ const WS_STYLE = `
    light rosettes, with a mode-aware still + the artist Helpurr. Scoped so it never
    restyles the shared wb-h1/wb-sub outside this band. */
 .ws-cinehead{position:relative;z-index:2;border-radius:22px;padding:24px 26px;margin:0 0 16px;min-height:152px;display:flex;align-items:center}
-.ws-cinehead-bg{position:absolute;inset:0;z-index:0;border-radius:22px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#234735 0%,#14241A 46%,#0A130E 100%);box-shadow:0 22px 54px rgba(11,20,15,.42),inset 0 1px 0 rgba(255,255,255,.08)}
+.ws-cinehead-bg{position:absolute;inset:0;z-index:0;border-radius:22px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 22px 54px rgba(11,20,15,.36),inset 0 1px 0 rgba(255,255,255,.1)}
 .ws-cinehead-rose{position:absolute;background:center/contain no-repeat;mix-blend-mode:screen;pointer-events:none;will-change:transform}
 .ws-cinehead-rose.a{right:-120px;top:-150px;width:400px;height:400px;background-image:url(/gstyle-rosette.svg);opacity:.34;animation:wsspinA 80s linear infinite}
 .ws-cinehead-rose.b{left:-140px;bottom:-180px;width:360px;height:360px;background-image:url(/gstyle-rosette.svg);opacity:.32;animation:wsspinB 115s linear infinite}
