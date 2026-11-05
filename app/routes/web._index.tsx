@@ -955,7 +955,7 @@ const DASH_CSS = `
 .wd-path-img:hover .wd-path-vid,.wd-path-img:focus-visible .wd-path-vid{opacity:1;}
 .wd-path-img:hover,.wd-path-img:focus-visible{transform:translateY(-5px);border-color:var(--green);box-shadow:0 16px 34px rgba(12,122,70,.18);}
 @media(prefers-reduced-motion:reduce){.wd-path-vid{transition:none;}.wd-path-img:hover{transform:none;}}
-@media(max-width:680px){.wd-hero-paths-row,.wd-hero-paths-trio{grid-template-columns:1fr;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
+@media(max-width:680px){.wd-hero-paths-trio{grid-template-columns:repeat(2,minmax(0,1fr));}.wd-hero-paths-trio>:last-child{grid-column:1/-1;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
 /* launch tracker */
 .wd-launch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin:0 0 22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
 .wdl-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
