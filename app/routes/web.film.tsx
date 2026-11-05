@@ -7,7 +7,7 @@
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { Form, useActionData, useFetcher, useLoaderData, useNavigation } from "@remix-run/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -387,6 +387,17 @@ export default function FilmStudio() {
   const setCastVoice = (i: number, voiceId: string) => {
     setCast((prev) => prev.map((c, j) => (j === i ? { ...c, voiceId: voiceId || null } : c)));
   };
+  // Hear an actor's voice — the real MiniMax sample (public/voice-samples/<id>.mp3).
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const playVoice = (voiceId: string | null) => {
+    if (!voiceId) return;
+    try {
+      if (voiceAudioRef.current) { voiceAudioRef.current.pause(); }
+      const a = new Audio(`/voice-samples/${voiceId}.mp3`);
+      voiceAudioRef.current = a;
+      a.play().catch(() => { /* autoplay / missing sample — fine */ });
+    } catch { /* no Audio — fine */ }
+  };
   // Edit the current frame in place (Creator's photo-edit engine) — refine without leaving.
   const applyEdit = (i: number) => {
     if (framingIndex !== null) return;
@@ -490,61 +501,74 @@ export default function FilmStudio() {
       </div>
 
       {/* Step 2.5 — storyboard: approve a photo per scene before paying (dialogue only) */}
-      {treatment && isStoryboard && cast.length > 0 && (
-        <div className="fs-card">
-          <div className="fs-lbl"><span className="fs-n"><Ico n="presenter" size={13} /></span> {t("Cast")} <span className="fs-free">{t("free")}</span></div>
-          <p className="fs-hint">{t("Lock a face and a voice for each character once — every shot reuses the same actors, so nobody morphs between shots. This is the consistency the pros get from reference sheets.")}</p>
+      {treatment && isStoryboard && cast.length > 0 && (() => {
+        const castCount = cast.filter((c) => c.faceUrl).length;
+        const allCast = castCount === cast.length;
+        return (
+        <div className="fs-card fs-caststage">
+          <div className="fs-cast-head">
+            <div className="fs-lbl"><span className="fs-n"><Ico n="film" size={13} /></span> {t("Cast your movie")} <span className="fs-free">{t("free")}</span></div>
+            <span className={`fs-cast-prog${allCast ? " done" : ""}`}>
+              {allCast ? <><Ico n="check" size={13} /> {t("Cast locked")}</> : t("{done}/{total} cast", { done: castCount, total: cast.length })}
+            </span>
+          </div>
+          <p className="fs-hint">{allCast ? t("Every shot now stars the same faces — nobody morphs. Roll camera. 🎬") : t("Give each character a face and a voice once — every shot reuses them. Tap a frame to cast it.")}</p>
           <div className="fs-cast">
             {cast.map((c, i) => {
               const cbusy = castingIndex === i;
               return (
                 <div className={`fs-actor${c.faceUrl ? " set" : ""}`} key={i}>
-                  <div className="fs-actor-face">
-                    {c.faceUrl
-                      ? <img src={c.faceUrl} alt={c.name} loading="lazy" />
-                      : <span className="fs-actor-empty"><Ico n="presenter" size={22} />{t("No face yet")}</span>}
-                    {cbusy && <span className="fs-shot-spin" aria-hidden="true" />}
-                  </div>
+                  {c.faceUrl ? (
+                    <div className="fs-actor-face">
+                      <img src={c.faceUrl} alt={c.name} loading="lazy" />
+                      {cbusy && <span className="fs-shot-spin" aria-hidden="true" />}
+                      {!cbusy && <span className="fs-actor-badge" aria-hidden="true"><Ico n="check" size={13} /></span>}
+                    </div>
+                  ) : (
+                    <button type="button" className="fs-actor-face fs-actor-cast" disabled={castingIndex !== null} onClick={() => makePortrait(i)} aria-label={t("Cast {name}", { name: c.name })}>
+                      <span className="fs-actor-empty"><Ico n="camera" size={22} /><b>{cbusy ? t("Casting…") : t("Cast a face")}</b></span>
+                      {cbusy && <span className="fs-shot-spin" aria-hidden="true" />}
+                    </button>
+                  )}
                   <div className="fs-actor-main">
                     <b className="fs-actor-name">{c.name}</b>
                     <span className="fs-actor-desc">{c.desc}</span>
-                    <div className="fs-actor-row">
-                      <button type="button" className="fs-actor-make" disabled={castingIndex !== null} onClick={() => makePortrait(i)}>
-                        {cbusy ? <>… {t("Casting")}</> : <><Ico n="camera" size={13} /> {c.faceUrl ? t("Re-cast") : t("Cast a face")}</>}
-                      </button>
-                      <span className="fs-actor-voice">
-                        <select aria-label={t("Voice for {name}", { name: c.name })} value={c.voiceId || ""} disabled={castingIndex !== null} onChange={(e) => setCastVoice(i, e.target.value)}>
-                          <option value="">{t("Pick a voice")}</option>
-                          {d.voices.map((v) => <option key={v.id} value={v.id}>{v.label} · {v.blurb}</option>)}
-                        </select>
-                      </span>
+                    <div className="fs-actor-voice">
+                      <select aria-label={t("Voice for {name}", { name: c.name })} value={c.voiceId || ""} disabled={castingIndex !== null} onChange={(e) => setCastVoice(i, e.target.value)}>
+                        <option value="">{t("Pick a voice")}</option>
+                        {d.voices.map((v) => <option key={v.id} value={v.id}>{v.label} · {v.blurb}</option>)}
+                      </select>
+                      <button type="button" className="fs-voice-play" disabled={!c.voiceId} onClick={() => playVoice(c.voiceId)} aria-label={t("Hear this voice")} title={t("Hear this voice")}><Ico n="sound" size={14} /></button>
                     </div>
-                    <details className="fs-shot-own">
-                      <summary>{t("Use an image I already made")}</summary>
-                      {d.gallery.length > 0 ? (
-                        <div className="fs-shot-gallery" role="list" aria-label={t("Your images")}>
-                          {d.gallery.map((g) => (
-                            <button type="button" role="listitem" key={g.id} className={`fs-gthumb${c.faceUrl === g.url ? " on" : ""}`}
-                              disabled={castingIndex !== null} title={g.title || t("Use this image")} onClick={() => useCastFace(i, g.url)}>
-                              <img src={g.url} alt={g.title || t("Your image")} loading="lazy" />
-                              {c.faceUrl === g.url && <span className="fs-gthumb-chk" aria-hidden="true"><Ico n="check" size={12} /></span>}
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="fs-gempty">{t("Images you make in Creator show up here to pick from.")}</p>
-                      )}
-                      <input className="fs-shot-url" type="url" maxLength={2000} defaultValue="" placeholder={t("…or paste an image URL")} onChange={(e) => useCastFace(i, e.target.value)} />
-                    </details>
+                    <div className="fs-actor-opts">
+                      {c.faceUrl && <button type="button" className="fs-actor-recast" disabled={castingIndex !== null} onClick={() => makePortrait(i)}><Ico n="refresh" size={11} /> {t("Re-cast")}</button>}
+                      <details className="fs-shot-own fs-actor-own">
+                        <summary>{t("Use my own photo")}</summary>
+                        {d.gallery.length > 0 ? (
+                          <div className="fs-shot-gallery" role="list" aria-label={t("Your images")}>
+                            {d.gallery.map((g) => (
+                              <button type="button" role="listitem" key={g.id} className={`fs-gthumb${c.faceUrl === g.url ? " on" : ""}`}
+                                disabled={castingIndex !== null} title={g.title || t("Use this image")} onClick={() => useCastFace(i, g.url)}>
+                                <img src={g.url} alt={g.title || t("Your image")} loading="lazy" />
+                                {c.faceUrl === g.url && <span className="fs-gthumb-chk" aria-hidden="true"><Ico n="check" size={12} /></span>}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="fs-gempty">{t("Images you make in Creator show up here to pick from.")}</p>
+                        )}
+                        <input className="fs-shot-url" type="url" maxLength={2000} defaultValue="" placeholder={t("…or paste an image URL")} onChange={(e) => useCastFace(i, e.target.value)} />
+                      </details>
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
           {portraitFetcher.data?.error && <p className="fs-err">{portraitFetcher.data.error}</p>}
-          <p className="fs-hint" style={{ margin: "12px 0 0" }}>{t("Faces are optional — any character you cast locks in; the rest stay auto-generated.")}</p>
         </div>
-      )}
+        );
+      })()}
 
       {treatment && isStoryboard && (
         <div className="fs-card">
@@ -739,22 +763,34 @@ const FS_STYLE = `
 .fs-gthumb:disabled{opacity:.5;cursor:default;}
 .fs-gthumb-chk{position:absolute;right:3px;top:3px;width:18px;height:18px;border-radius:50%;background:var(--green2,#1FA463);color:#fff;display:grid;place-items:center;box-shadow:0 1px 3px rgba(20,32,26,.3);}
 .fs-gempty{font-size:11.5px;color:var(--ink2,#4A554E);opacity:.85;margin:8px 0 0;}
-/* Cast panel — one locked actor (face + voice) per character, reused every shot. */
-.fs-cast{display:flex;flex-direction:column;gap:12px;margin-top:8px;}
-.fs-actor{display:flex;gap:14px;align-items:flex-start;padding:12px;border:1.5px solid var(--line,#E4DFCF);border-radius:14px;background:var(--cream,#FBF6E6);transition:border-color .15s,box-shadow .15s;}
-.fs-actor.set{border-color:var(--green2,#1FA463);background:#fff;box-shadow:0 4px 14px rgba(20,32,26,.06);}
-.fs-actor-face{position:relative;flex:0 0 auto;width:84px;aspect-ratio:3/4;border-radius:11px;overflow:hidden;background:#fff;border:1px solid var(--line,#E4DFCF);display:grid;place-items:center;}
+/* Cast panel — "cast your movie": one locked actor (face + voice) per character. */
+.fs-cast-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.fs-cast-prog{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:800;color:var(--ink2,#4A554E);background:var(--cream,#FBF6E6);border:1.5px solid var(--line,#E4DFCF);border-radius:999px;padding:4px 12px;letter-spacing:.01em;transition:background .2s,color .2s,border-color .2s;}
+.fs-cast-prog.done{color:#fff;background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);}
+.fs-cast{display:flex;flex-direction:column;gap:12px;margin-top:10px;}
+.fs-actor{display:flex;gap:14px;align-items:flex-start;padding:12px;border:1.5px solid var(--line,#E4DFCF);border-radius:16px;background:var(--cream,#FBF6E6);transition:border-color .18s,box-shadow .18s;}
+.fs-actor.set{border-color:var(--green2,#1FA463);background:#fff;box-shadow:0 6px 18px rgba(20,32,26,.07);}
+.fs-actor-face{position:relative;flex:0 0 auto;width:98px;aspect-ratio:3/4;border-radius:13px;overflow:hidden;background:#fff;border:1px solid var(--line,#E4DFCF);display:grid;place-items:center;padding:0;}
 .fs-actor-face img{width:100%;height:100%;object-fit:cover;display:block;}
-.fs-actor-empty{display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--green,#0C7A46);opacity:.5;font-size:10px;font-weight:600;text-align:center;padding:0 6px;}
-.fs-actor-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:7px;}
-.fs-actor-name{font-size:14px;color:var(--ink,#14201A);}
+.fs-actor-cast{cursor:pointer;border:2px dashed var(--green,#0C7A46);background:rgba(12,122,70,.05);font-family:inherit;transition:background .15s,transform .15s,box-shadow .15s;}
+.fs-actor-cast:hover:not(:disabled){background:rgba(12,122,70,.1);transform:translateY(-2px);box-shadow:0 8px 18px rgba(12,122,70,.16);}
+.fs-actor-cast:disabled{opacity:.55;cursor:default;}
+.fs-actor-empty{display:flex;flex-direction:column;align-items:center;gap:7px;color:var(--green,#0C7A46);font-size:11px;font-weight:800;text-align:center;padding:0 6px;line-height:1.2;}
+.fs-actor-badge{position:absolute;right:6px;top:6px;width:22px;height:22px;border-radius:50%;background:var(--green2,#1FA463);color:#fff;display:grid;place-items:center;box-shadow:0 2px 6px rgba(20,32,26,.25);}
+.fs-actor-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:8px;}
+.fs-actor-name{font-size:15px;color:var(--ink,#14201A);letter-spacing:-.01em;}
 .fs-actor-desc{font-size:12px;line-height:1.45;color:var(--ink2,#4A554E);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-.fs-actor-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-.fs-actor-make{display:inline-flex;align-items:center;gap:6px;background:var(--green,#0C7A46);color:#fff;border:0;border-radius:10px;padding:8px 15px;font-weight:800;font-size:12.5px;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(10,95,56,.2);}
-.fs-actor-make:disabled{opacity:.5;cursor:default;box-shadow:none;}
-.fs-actor-voice{flex:1 1 150px;min-width:140px;display:inline-flex;}
-.fs-actor-voice select{width:100%;box-sizing:border-box;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;padding:8px 11px;font-size:12.5px;font-family:inherit;color:var(--ink,#14201A);background:#fff;cursor:pointer;}
+.fs-actor-voice{display:flex;gap:7px;align-items:stretch;}
+.fs-actor-voice select{flex:1 1 auto;min-width:0;box-sizing:border-box;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;padding:8px 11px;font-size:12.5px;font-family:inherit;color:var(--ink,#14201A);background:#fff;cursor:pointer;}
 .fs-actor-voice select:focus{outline:none;border-color:var(--green,#0C7A46);}
 .fs-actor-voice select:disabled{opacity:.6;}
+.fs-voice-play{flex:0 0 auto;width:38px;display:grid;place-items:center;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;background:#fff;color:var(--green,#0C7A46);cursor:pointer;transition:background .12s,border-color .12s;}
+.fs-voice-play:hover:not(:disabled){background:rgba(12,122,70,.08);border-color:var(--green,#0C7A46);}
+.fs-voice-play:disabled{opacity:.4;cursor:default;}
+.fs-actor-opts{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+.fs-actor-recast{display:inline-flex;align-items:center;gap:4px;background:none;border:0;color:var(--ink2,#4A554E);font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;padding:0;}
+.fs-actor-recast:hover:not(:disabled){color:var(--green,#0C7A46);}
+.fs-actor-recast:disabled{opacity:.5;cursor:default;}
+.fs-actor-own{margin:0;}
 @media(max-width:640px){.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
 `;
