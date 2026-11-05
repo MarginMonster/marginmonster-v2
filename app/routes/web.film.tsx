@@ -696,7 +696,7 @@ const FS_STYLE = `
    it belongs with the airy rest of the app. Holds a film still + the film Helpurr. */
 .fs-head{position:relative;z-index:2;border-radius:22px;padding:24px 26px;margin-bottom:14px;min-height:152px;display:flex;align-items:center;}
 /* dark bg + spinning rosettes + the bleeding still all clip to the rounded band */
-.fs-head-bg{position:absolute;inset:0;z-index:0;border-radius:22px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#234735 0%,#14241A 46%,#0A130E 100%);box-shadow:0 22px 54px rgba(11,20,15,.42),inset 0 1px 0 rgba(255,255,255,.08);}
+.fs-head-bg{position:absolute;inset:0;z-index:0;border-radius:22px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#3E3728 0%,#2A2317 46%,#17130B 100%);box-shadow:0 22px 54px rgba(20,15,6,.4),inset 0 1px 0 rgba(255,255,255,.08);}
 .fs-head-rose{position:absolute;background:center/contain no-repeat;mix-blend-mode:screen;pointer-events:none;will-change:transform;}
 .fs-head-rose.a{right:-120px;top:-150px;width:400px;height:400px;background-image:url(/gstyle-rosette.svg);opacity:.34;animation:fsspinA 80s linear infinite;}
 .fs-head-rose.b{left:-140px;bottom:-180px;width:360px;height:360px;background-image:url(/gstyle-rosette.svg);opacity:.32;animation:fsspinB 115s linear infinite;}
