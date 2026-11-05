@@ -427,11 +427,14 @@ export default function FilmStudio() {
       <div className="fs-head">
         <div className="fs-head-copy">
           <span className="fs-head-eyebrow"><Ico n="film" size={13} /> {t("Film Studio")} <span className="fs-beta">{t("new")}</span></span>
-          <b>{tmpl?.name || t("Film Studio")}</b>
+          <b key={tmpl?.key}>{tmpl?.name || t("Film Studio")}</b>
           <span>{t("Pick a format — we write it free, you only spend to render.")}</span>
         </div>
         <div className="fs-head-stage" aria-hidden="true">
-          <span className="fs-head-still" style={{ backgroundImage: `url(/landing/film-hero.jpg?v=5)` }} />
+          <span className="fs-head-still">
+            <img key={tmpl?.key} className="fs-head-img" src={`/landing/film-still-${tmpl?.key || "shortfilm"}.jpg?v=1`} alt=""
+              onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
+          </span>
           <img className="fs-head-cat" src="/helpurr-film.png" alt="" loading="lazy" />
         </div>
       </div>
@@ -696,11 +699,15 @@ const FS_STYLE = `
 .fs-head::after{content:"";position:absolute;left:-90px;bottom:-120px;width:270px;height:270px;background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.17;mix-blend-mode:screen;pointer-events:none;}
 .fs-head-copy{position:relative;z-index:1;flex:1 1 auto;min-width:0;}
 .fs-head-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:var(--fs-gold-lt,#E7C879);text-transform:uppercase;letter-spacing:.08em;}
-.fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:27px;letter-spacing:-.02em;color:#fff;margin-top:8px;line-height:1.1;}
+.fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:27px;letter-spacing:-.02em;color:#fff;margin-top:8px;line-height:1.1;animation:fsFadeUp .45s cubic-bezier(.2,.7,.2,1);}
+@keyframes fsFadeUp{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:translateY(0);}}
 .fs-head-copy>span{display:block;font-size:13px;color:rgba(255,255,255,.72);margin-top:8px;max-width:360px;line-height:1.5;}
 .fs-beta{font-size:9.5px;font-weight:800;color:#2A1C00;background:linear-gradient(135deg,var(--fs-gold-lt),var(--fs-gold));border-radius:999px;padding:2px 8px;text-transform:uppercase;letter-spacing:.06em;box-shadow:0 2px 10px rgba(199,154,58,.4);}
 .fs-head-stage{position:relative;z-index:1;flex:0 0 auto;width:210px;}
-.fs-head-still{display:block;width:210px;aspect-ratio:16/10;border-radius:14px;background-size:cover;background-position:center;background-color:#0b140f;box-shadow:0 16px 36px rgba(0,0,0,.42);border:4px solid rgba(255,255,255,.92);}
+.fs-head-still{position:relative;display:block;width:210px;aspect-ratio:16/10;border-radius:14px;overflow:hidden;background:#0b140f;box-shadow:0 18px 40px rgba(0,0,0,.45);border:4px solid rgba(255,255,255,.94);}
+.fs-head-still::after{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(155deg,rgba(255,255,255,.2),transparent 42%),radial-gradient(130% 100% at 50% 125%,rgba(0,0,0,.34),transparent 55%);}
+.fs-head-img{position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:cover;display:block;animation:fsstill .55s cubic-bezier(.2,.7,.2,1);}
+@keyframes fsstill{from{opacity:0;transform:scale(1.07);}to{opacity:1;transform:scale(1);}}
 .fs-head-cat{position:absolute;right:-10px;bottom:-12px;width:80px;height:auto;filter:drop-shadow(0 8px 14px rgba(0,0,0,.5));pointer-events:none;}
 .fs-tmpls{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0 6px;}
 .fs-tmpl{flex:1 1 200px;min-width:0;text-align:left;border:1px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#fff,#FCFAF3);border-radius:18px;padding:15px 16px 14px;cursor:pointer;transition:transform .18s cubic-bezier(.2,.7,.2,1),box-shadow .18s,border-color .18s;display:block;box-shadow:0 1px 2px rgba(20,32,26,.04);}
@@ -828,6 +835,6 @@ const FS_STYLE = `
 .fs-actor-recast:hover:not(:disabled){color:var(--green,#0C7A46);}
 .fs-actor-recast:disabled{opacity:.5;cursor:default;}
 .fs-actor-own{margin:0;}
-@media(prefers-reduced-motion:reduce){.fs-go::after{display:none;}.fs-tmpl,.fs-shot-make,.fs-write,.fs-go,.fs-actor-cast{transition:none;}}
+@media(prefers-reduced-motion:reduce){.fs-go::after{display:none;}.fs-tmpl,.fs-shot-make,.fs-write,.fs-go,.fs-actor-cast{transition:none;}.fs-head-img,.fs-head-copy b{animation:none;}}
 @media(max-width:640px){.fs-head{flex-direction:column;align-items:flex-start;padding:20px;gap:18px;}.fs-head-copy b{font-size:23px;}.fs-head-stage{width:100%;max-width:280px;align-self:center;}.fs-head-still{width:100%;}.fs-head-cat{width:72px;right:0;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
 `;
