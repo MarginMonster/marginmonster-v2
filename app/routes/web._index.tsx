@@ -873,7 +873,7 @@ function PathImg({ img, v, eyebrow, title, sub, cue, onClick }: { img: string; v
     <button type="button" className="wd-path wd-path-img" onClick={onClick} onMouseEnter={play} onMouseLeave={stop} onFocus={play} onBlur={stop}>
       <span className="wd-path-hero" style={{ backgroundImage: `url(/landing/${img}-hero.jpg?v=${v})` }} aria-hidden="true">
         <video className="wd-path-vid" muted loop playsInline preload="none" poster={`/landing/${img}-hero.jpg?v=${v}`} aria-hidden="true">
-          <source src={`/landing/${img}-hero.mp4?v=2`} type="video/mp4" />
+          <source src={`/landing/${img}-hero.mp4?v=3`} type="video/mp4" />
         </video>
       </span>
       <span className="wd-path-body">
