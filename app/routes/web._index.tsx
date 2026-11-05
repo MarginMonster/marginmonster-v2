@@ -486,11 +486,9 @@ export default function WebDashboard() {
         </div>
         <div className="wd-hero-paths">
           <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
-          <div className="wd-hero-paths-row">
+          <div className="wd-hero-cards">
             <PathImg img="creator" v={3} eyebrow={t("Free roam")} title={t("Create anything")} sub={t("Generate images, video & music from a prompt")} cue={t("Open Create")} onClick={() => { setMode("casual"); navigate("/web/studio"); }} />
             <PathImg img="marketing" v={2} eyebrow={t("Product ads")} title={t("Ad Maker")} sub={t("Turn your product into a ready-to-post ad")} cue={t("Open Ad Maker")} onClick={() => { setMode("marketing"); navigate("/web/studio"); }} />
-          </div>
-          <div className="wd-hero-paths-trio">
             <PathImg img="film" v={3} eyebrow={t("Entertainment")} title={t("Movie Maker")} sub={t("Films, cartoons, music videos & episodes")} cue={t("Open Movie Maker")} onClick={() => navigate("/web/film")} />
             <PathImg img="presenter" v={3} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Craft avatars, costumes & wardrobes")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />
             <PathImg img="archive" v={4} eyebrow={t("Your library")} title={t("Archive")} sub={t("Every piece you've made, ready to post")} cue={t("Open Archive")} onClick={() => navigate("/web/archive")} />
@@ -911,7 +909,9 @@ const DASH_CSS = `
 .wd-hero-chips button:hover{border-color:var(--green);color:var(--ink);}
 .wd-hero-paths{width:min(820px,100%);margin-top:22px;}
 .wd-hero-paths-h{display:block;font-weight:800;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2);margin-bottom:9px;}
-.wd-hero-paths-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.wd-hero-cards{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;}
+.wd-hero-cards>:nth-child(-n+2){grid-column:span 3;}
+.wd-hero-cards>:nth-child(n+3){grid-column:span 2;}
 .wd-path{display:flex;align-items:center;gap:9px;min-width:0;text-align:left;cursor:pointer;
   background:var(--card);border:1px solid var(--line2,#D7DCCB);border-radius:15px;padding:11px 12px;transition:border-color .14s,transform .12s,box-shadow .14s;}
 .wd-path:hover{border-color:var(--green);transform:translateY(-2px);box-shadow:0 8px 18px rgba(12,122,70,.12);}
@@ -929,7 +929,7 @@ const DASH_CSS = `
 .wd-path-eyebrow{font-weight:800;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--green);margin-bottom:1px;}
 /* Creator card keeps its gold identity (its art is warm/gold); --gold-deep passes
    AA at 9.5px where --gold would not. Social stays green. */
-.wd-hero-paths-row .wd-path-img:first-child .wd-path-eyebrow{color:var(--gold-deep,#7E5E13);}
+.wd-hero-cards .wd-path-img:first-child .wd-path-eyebrow{color:var(--gold-deep,#7E5E13);}
 .wd-path-body b{font-weight:800;font-size:16px;line-height:1.2;color:var(--ink);font-family:Poppins,sans-serif;}
 .wd-path-body i{font-style:normal;font-size:12.5px;color:var(--ink2);line-height:1.4;}
 .wd-path-cost{font-size:11.5px;font-weight:700;color:var(--ink);margin-top:2px;}
@@ -955,7 +955,7 @@ const DASH_CSS = `
 .wd-path-img:hover .wd-path-vid,.wd-path-img:focus-visible .wd-path-vid{opacity:1;}
 .wd-path-img:hover,.wd-path-img:focus-visible{transform:translateY(-5px);border-color:var(--green);box-shadow:0 16px 34px rgba(12,122,70,.18);}
 @media(prefers-reduced-motion:reduce){.wd-path-vid{transition:none;}.wd-path-img:hover{transform:none;}}
-@media(max-width:680px){.wd-hero-paths-trio{grid-template-columns:repeat(2,minmax(0,1fr));}.wd-hero-paths-trio>:last-child{grid-column:1/-1;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
+@media(max-width:680px){.wd-hero-cards{display:flex;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;padding-bottom:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}.wd-hero-cards::-webkit-scrollbar{display:none;}.wd-hero-cards>*{flex:0 0 82%;scroll-snap-align:start;grid-column:auto;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
 /* launch tracker */
 .wd-launch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin:0 0 22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
 .wdl-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
