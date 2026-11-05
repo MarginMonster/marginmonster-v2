@@ -4679,7 +4679,9 @@ export async function renderStyledSeedMulti(prompt: string, refImageUrls: (strin
     const refs = (refImageUrls || []).filter((u): u is string => !!u).slice(0, 3);
     if (!refs.length) return null;
     const ar = CREATE_ASPECT_VALUES.includes(aspect) ? aspect : "9:16";
-    const full = `${(prompt || "").trim().slice(0, 500)}. Use the exact same people shown in the reference images — same faces, hair and wardrobe. No watermark, no signature.`;
+    // Hard identity lock — close-up / emotional prompts otherwise drift the faces
+    // younger and more generic, dropping the reference likeness. Pin it explicitly.
+    const full = `${(prompt || "").trim().slice(0, 460)}. CRITICAL: the people in this image must be the EXACT same individuals as in the reference images — identical faces, same age, same skin, same hair, same wardrobe. Do NOT make them younger, do NOT beautify, restyle or swap them for different people. Match the reference faces precisely. No watermark, no signature.`;
     const url = await repRun("google/nano-banana", { prompt: full, image_input: refs, aspect_ratio: ar, output_format: "jpg" });
     const durable = await persistRemote(url, "jpg");
     artLog("image-ad", `styled seed rendered (cast x${refs.length}, ${ar})`);
