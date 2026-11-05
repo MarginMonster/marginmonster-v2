@@ -110,9 +110,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const styleRefUrl = ((form.get("styleRefUrl") as string) || "").trim().slice(0, 2000) || null;
     const sceneIndex = parseInt((form.get("sceneIndex") as string) || "0", 10) || 0;
     // Locked cast faces for the characters in this shot (compose the frame from them).
+    // Must be ABSOLUTE — Replicate can't fetch a relative /renders URL, and portrait
+    // faces come back relative (persistRemote), so absolutize each one here.
     let castRefUrls: string[] | undefined;
     const castRefsRaw = ((form.get("castRefs") as string) || "").trim();
-    if (castRefsRaw) { try { const a = JSON.parse(castRefsRaw); if (Array.isArray(a)) castRefUrls = a.filter((x) => typeof x === "string" && x).slice(0, 3); } catch { /* ignore */ } }
+    if (castRefsRaw) {
+      try {
+        const a = JSON.parse(castRefsRaw);
+        if (Array.isArray(a)) castRefUrls = a
+          .filter((x) => typeof x === "string" && x)
+          .slice(0, 3)
+          .map((u: string) => (/^https?:\/\//i.test(u) ? u : `${externalOrigin(request)}${u.startsWith("/") ? "" : "/"}${u}`));
+      } catch { /* ignore */ }
+    }
     if (!sceneVisual) return json({ error: tr(lang, "Describe the shot first."), sceneIndex });
     try {
       const { previewFilmSceneFrame } = await import("../lib/film-dialogue.server");
