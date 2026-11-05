@@ -692,26 +692,22 @@ export default function FilmStudio() {
 const FS_STYLE = `
 .fs-wrap{max-width:760px;margin:0 auto;--fs-gold:#C79A3A;--fs-gold-lt:#E7C879;}
 /* Cinematic hero — a dark "movie theatre" band with a gold spotlight + underline. */
-/* Cinematic DARK hero, broken up + "leveled" with the app's own light rosettes so
-   it belongs with the airy rest of the app. Holds a film still + the film Helpurr. */
-.fs-head{position:relative;z-index:2;border-radius:22px;padding:24px 26px;margin-bottom:14px;min-height:152px;display:flex;align-items:center;}
-/* dark bg + spinning rosettes + the bleeding still all clip to the rounded band */
-.fs-head-bg{position:absolute;inset:0;z-index:0;border-radius:22px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 22px 54px rgba(11,20,15,.36),inset 0 1px 0 rgba(255,255,255,.1);}
-.fs-head-rose{position:absolute;background:center/contain no-repeat;mix-blend-mode:screen;pointer-events:none;will-change:transform;}
-.fs-head-rose.a{right:-120px;top:-150px;width:400px;height:400px;background-image:url(/gstyle-rosette.svg);opacity:.34;animation:fsspinA 80s linear infinite;}
-.fs-head-rose.b{left:-140px;bottom:-180px;width:360px;height:360px;background-image:url(/gstyle-rosette.svg);opacity:.32;animation:fsspinB 115s linear infinite;}
-@keyframes fsspinA{to{transform:rotate(360deg);}}
+/* A LIGHT hero card that belongs with the airy page — soft card shadow, a faint
+   gold rosette, dark text, and the format still as a clean floating preview. */
+.fs-head{position:relative;z-index:1;border-radius:20px;padding:22px 24px;margin-bottom:14px;min-height:150px;display:flex;align-items:center;}
+.fs-head-bg{position:absolute;inset:0;z-index:0;border-radius:20px;overflow:hidden;background:linear-gradient(135deg,#FFFFFF 0%,#FBF6E8 100%);border:1px solid var(--line,#E4DFCF);box-shadow:0 10px 30px rgba(20,32,26,.06);}
+.fs-head-rose{position:absolute;background:center/contain no-repeat;pointer-events:none;will-change:transform;}
+.fs-head-rose.b{left:-120px;bottom:-160px;width:340px;height:340px;background-image:url(/gstyle-rosette.svg);opacity:.16;animation:fsspinB 120s linear infinite;}
 @keyframes fsspinB{to{transform:rotate(-360deg);}}
-/* the still bleeds in from the right and fades into the dark — woven in, not pasted */
-.fs-head-media{position:absolute;right:0;top:0;bottom:0;width:56%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 44%);mask-image:linear-gradient(90deg,transparent,#000 44%);}
+.fs-head-media{position:absolute;z-index:1;right:22px;top:50%;transform:translateY(-50%);width:208px;aspect-ratio:16/10;border-radius:13px;overflow:hidden;box-shadow:0 10px 24px rgba(20,32,26,.16);}
 .fs-head-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;animation:fsstill .55s cubic-bezier(.2,.7,.2,1);}
 @keyframes fsstill{from{opacity:0;transform:scale(1.06);}to{opacity:1;transform:scale(1);}}
-.fs-head-copy{position:relative;z-index:1;flex:1 1 auto;min-width:0;max-width:52%;}
-.fs-head-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:var(--fs-gold-lt,#E7C879);text-transform:uppercase;letter-spacing:.08em;}
-.fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:27px;letter-spacing:-.02em;color:#fff;margin-top:8px;line-height:1.1;animation:fsFadeUp .45s cubic-bezier(.2,.7,.2,1);}
+.fs-head-copy{position:relative;z-index:1;flex:1 1 auto;min-width:0;max-width:56%;}
+.fs-head-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:var(--green,#0C7A46);text-transform:uppercase;letter-spacing:.08em;}
+.fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:27px;letter-spacing:-.02em;color:var(--ink,#14201A);margin-top:8px;line-height:1.1;animation:fsFadeUp .45s cubic-bezier(.2,.7,.2,1);}
 @keyframes fsFadeUp{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:translateY(0);}}
-.fs-head-copy>span{display:block;font-size:13px;color:rgba(255,255,255,.74);margin-top:8px;max-width:320px;line-height:1.5;}
-.fs-beta{font-size:9.5px;font-weight:800;color:#2A1C00;background:linear-gradient(135deg,var(--fs-gold-lt),var(--fs-gold));border-radius:999px;padding:2px 8px;text-transform:uppercase;letter-spacing:.06em;box-shadow:0 2px 10px rgba(199,154,58,.4);}
+.fs-head-copy>span{display:block;font-size:13px;color:var(--ink2,#4A554E);margin-top:8px;max-width:340px;line-height:1.5;}
+.fs-beta{font-size:9.5px;font-weight:800;color:#5A3B00;background:linear-gradient(135deg,var(--fs-gold-lt),var(--fs-gold));border-radius:999px;padding:2px 8px;text-transform:uppercase;letter-spacing:.06em;box-shadow:0 2px 8px rgba(199,154,58,.3);}
 .fs-head-cat{position:absolute;z-index:3;right:16px;bottom:-22px;width:98px;height:auto;filter:drop-shadow(0 12px 18px rgba(0,0,0,.48));pointer-events:none;}
 .fs-tmpls{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0 6px;}
 .fs-tmpl{flex:1 1 200px;min-width:0;text-align:left;border:1px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#fff,#FCFAF3);border-radius:18px;padding:15px 16px 14px;cursor:pointer;transition:transform .18s cubic-bezier(.2,.7,.2,1),box-shadow .18s,border-color .18s;display:block;box-shadow:0 1px 2px rgba(20,32,26,.04);}
@@ -840,5 +836,5 @@ const FS_STYLE = `
 .fs-actor-recast:disabled{opacity:.5;cursor:default;}
 .fs-actor-own{margin:0;}
 @media(prefers-reduced-motion:reduce){.fs-go::after{display:none;}.fs-tmpl,.fs-shot-make,.fs-write,.fs-go,.fs-actor-cast{transition:none;}.fs-head-img,.fs-head-copy b,.fs-head-rose{animation:none;}}
-@media(max-width:640px){.fs-head{padding:20px;min-height:140px;}.fs-head-copy{max-width:64%;}.fs-head-copy b{font-size:22px;}.fs-head-media{width:50%;}.fs-head-cat{width:78px;right:8px;bottom:-16px;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
+@media(max-width:640px){.fs-head{padding:18px;min-height:132px;}.fs-head-copy{max-width:58%;}.fs-head-copy b{font-size:21px;}.fs-head-media{width:36%;right:14px;border-radius:11px;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
 `;
