@@ -3686,6 +3686,13 @@ export default function WebStudio() {
     <div className={casual ? "ws-casual" : "ws-mkt"}>
       <style dangerouslySetInnerHTML={{ __html: WS_STYLE }} />
       <div className="ws-cinehead">
+        <span className="ws-cinehead-bg" aria-hidden="true">
+          <span className="ws-cinehead-rose a" />
+          <span className="ws-cinehead-rose b" />
+          <span className="ws-cinehead-media">
+            <img key={casual ? "c" : "m"} className="ws-cinehead-img" src={`/landing/${casual ? "creator" : "marketing"}-hero.jpg?v=5`} alt="" />
+          </span>
+        </span>
         <div className="ws-cinehead-copy">
           <span className="ws-cinehead-eyebrow"><Ico n={casual ? "palette" : "trend"} size={13} /> {t("EasyMode Studio")}</span>
           <h1 className="wb-h1">{casual ? t("Create") : t("Social Marketing")}</h1>
@@ -3695,12 +3702,7 @@ export default function WebStudio() {
               : <>{t("Make one piece by hand, in your voice — it lands in your ")}<Link to="/web/archive">{t("Archive")}</Link>.</>}
           </p>
         </div>
-        <div className="ws-cinehead-stage" aria-hidden="true">
-          <span className="ws-cinehead-still">
-            <img key={casual ? "c" : "m"} className="ws-cinehead-img" src={`/landing/${casual ? "creator" : "marketing"}-hero.jpg?v=5`} alt="" />
-          </span>
-          <img className="ws-cinehead-cat" src="/helpurr-artist.png" alt="" loading="lazy" />
-        </div>
+        <img className="ws-cinehead-cat" src="/helpurr-artist.png" alt="" loading="lazy" />
       </div>
       {/* Create ↔ Social switch — the in-Studio mode toggle (replaces the retired
           global header toggle). "Social media" flips the Studio to the marketing
@@ -6925,20 +6927,22 @@ const WS_STYLE = `
 /* Cinematic Studio hero — matches Film Studio: dark, broken up with the app's own
    light rosettes, with a mode-aware still + the artist Helpurr. Scoped so it never
    restyles the shared wb-h1/wb-sub outside this band. */
-.ws-cinehead{position:relative;overflow:hidden;border-radius:22px;padding:22px 24px;margin:0 0 16px;background:radial-gradient(135% 130% at 10% -20%,#20402F 0%,#13231A 48%,#0B140F 100%);box-shadow:0 22px 54px rgba(11,20,15,.4),inset 0 1px 0 rgba(255,255,255,.07);display:flex;align-items:center;gap:20px}
-.ws-cinehead::before{content:"";position:absolute;right:-70px;top:-95px;width:320px;height:320px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.14;mix-blend-mode:screen;pointer-events:none}
-.ws-cinehead::after{content:"";position:absolute;left:-90px;bottom:-120px;width:270px;height:270px;background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.17;mix-blend-mode:screen;pointer-events:none}
-.ws-cinehead-copy{position:relative;z-index:1;flex:1 1 auto;min-width:0}
+.ws-cinehead{position:relative;z-index:2;border-radius:22px;padding:24px 26px;margin:0 0 16px;min-height:152px;display:flex;align-items:center}
+.ws-cinehead-bg{position:absolute;inset:0;z-index:0;border-radius:22px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#234735 0%,#14241A 46%,#0A130E 100%);box-shadow:0 22px 54px rgba(11,20,15,.42),inset 0 1px 0 rgba(255,255,255,.08)}
+.ws-cinehead-rose{position:absolute;background:center/contain no-repeat;mix-blend-mode:screen;pointer-events:none;will-change:transform}
+.ws-cinehead-rose.a{right:-120px;top:-150px;width:400px;height:400px;background-image:url(/gstyle-rosette.svg);opacity:.34;animation:wsspinA 80s linear infinite}
+.ws-cinehead-rose.b{left:-140px;bottom:-180px;width:360px;height:360px;background-image:url(/gstyle-rosette-green.svg);opacity:.4;animation:wsspinB 115s linear infinite}
+@keyframes wsspinA{to{transform:rotate(360deg)}}
+@keyframes wsspinB{to{transform:rotate(-360deg)}}
+.ws-cinehead-media{position:absolute;right:0;top:0;bottom:0;width:56%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 44%);mask-image:linear-gradient(90deg,transparent,#000 44%)}
+.ws-cinehead-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;animation:wscine .55s cubic-bezier(.2,.7,.2,1)}
+@keyframes wscine{from{opacity:0;transform:scale(1.06)}to{opacity:1;transform:scale(1)}}
+.ws-cinehead-copy{position:relative;z-index:1;flex:1 1 auto;min-width:0;max-width:52%}
 .ws-cinehead-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:#E7C879;text-transform:uppercase;letter-spacing:.08em}
 .ws-cinehead .wb-h1{color:#fff;text-align:left;margin:7px 0 0;font-size:28px}
-.ws-cinehead .wb-sub{color:rgba(255,255,255,.72);text-align:left;margin:8px 0 0;max-width:380px}
+.ws-cinehead .wb-sub{color:rgba(255,255,255,.74);text-align:left;margin:8px 0 0;max-width:320px}
 .ws-cinehead .wb-sub a{color:#E7C879;text-decoration:underline}
-.ws-cinehead-stage{position:relative;z-index:1;flex:0 0 auto;width:210px}
-.ws-cinehead-still{position:relative;display:block;width:210px;aspect-ratio:16/10;border-radius:14px;overflow:hidden;background:#0b140f;box-shadow:0 18px 40px rgba(0,0,0,.45);border:4px solid rgba(255,255,255,.94)}
-.ws-cinehead-still::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(155deg,rgba(255,255,255,.2),transparent 42%),radial-gradient(130% 100% at 50% 125%,rgba(0,0,0,.34),transparent 55%)}
-.ws-cinehead-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;animation:wscine .5s cubic-bezier(.2,.7,.2,1)}
-@keyframes wscine{from{opacity:0;transform:scale(1.06)}to{opacity:1;transform:scale(1)}}
-.ws-cinehead-cat{position:absolute;right:-10px;bottom:-12px;width:80px;height:auto;filter:drop-shadow(0 8px 14px rgba(0,0,0,.5));pointer-events:none}
-@media(max-width:640px){.ws-cinehead{flex-direction:column;align-items:flex-start;padding:20px;gap:16px}.ws-cinehead .wb-h1{font-size:23px}.ws-cinehead-stage{width:100%;max-width:280px;align-self:center}.ws-cinehead-still{width:100%}.ws-cinehead-cat{width:72px;right:0}}
-@media(prefers-reduced-motion:reduce){.ws-cinehead-img{animation:none}}
+.ws-cinehead-cat{position:absolute;z-index:3;right:16px;bottom:-22px;width:98px;height:auto;filter:drop-shadow(0 12px 18px rgba(0,0,0,.48));pointer-events:none}
+@media(max-width:640px){.ws-cinehead{padding:20px;min-height:140px}.ws-cinehead .wb-h1{font-size:22px}.ws-cinehead-copy{max-width:64%}.ws-cinehead-media{width:50%}.ws-cinehead-cat{width:78px;right:8px;bottom:-16px}}
+@media(prefers-reduced-motion:reduce){.ws-cinehead-img,.ws-cinehead-rose{animation:none}}
 `;
