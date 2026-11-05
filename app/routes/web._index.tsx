@@ -488,12 +488,12 @@ export default function WebDashboard() {
           <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
           <div className="wd-hero-paths-row">
             <PathImg img="creator" v={3} eyebrow={t("Free roam")} title={t("Create anything")} sub={t("Images, video & music")} cue={t("Open Create")} onClick={() => { setMode("casual"); navigate("/web/studio"); }} />
-            <PathImg img="marketing" v={1} eyebrow={t("Product ads")} title={t("Ad Maker")} sub={t("Turn a product into an ad")} cue={t("Open Ad Maker")} onClick={() => { setMode("marketing"); navigate("/web/studio"); }} />
+            <PathImg img="marketing" v={2} eyebrow={t("Product ads")} title={t("Ad Maker")} sub={t("Turn a product into an ad")} cue={t("Open Ad Maker")} onClick={() => { setMode("marketing"); navigate("/web/studio"); }} />
           </div>
           <div className="wd-hero-paths-trio">
             <PathImg img="film" v={3} eyebrow={t("Entertainment")} title={t("Movie Maker")} sub={t("Episodes, music videos & dialogue")} cue={t("Open Movie Maker")} onClick={() => navigate("/web/film")} />
-            <PathImg img="presenter" v={2} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Avatars that sell")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />
-            <PathImg img="archive" v={3} eyebrow={t("Your library")} title={t("Archive")} sub={t("Everything you've made")} cue={t("Open Archive")} onClick={() => navigate("/web/archive")} />
+            <PathImg img="presenter" v={3} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Avatars that sell")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />
+            <PathImg img="archive" v={4} eyebrow={t("Your library")} title={t("Archive")} sub={t("Everything you've made")} cue={t("Open Archive")} onClick={() => navigate("/web/archive")} />
           </div>
         </div>
       </section>
@@ -873,7 +873,7 @@ function PathImg({ img, v, eyebrow, title, sub, cue, onClick }: { img: string; v
     <button type="button" className="wd-path wd-path-img" onClick={onClick} onMouseEnter={play} onMouseLeave={stop} onFocus={play} onBlur={stop}>
       <span className="wd-path-hero" style={{ backgroundImage: `url(/landing/${img}-hero.jpg?v=${v})` }} aria-hidden="true">
         <video className="wd-path-vid" muted loop playsInline preload="none" poster={`/landing/${img}-hero.jpg?v=${v}`} aria-hidden="true">
-          <source src={`/landing/${img}-hero.mp4?v=3`} type="video/mp4" />
+          <source src={`/landing/${img}-hero.mp4?v=4`} type="video/mp4" />
         </video>
       </span>
       <span className="wd-path-body">
