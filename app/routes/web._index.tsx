@@ -488,7 +488,7 @@ export default function WebDashboard() {
           <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
           <div className="wd-hero-paths-row">
             <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("casual"); navigate("/web/studio"); }}>
-              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg?v=2)" }} aria-hidden="true" />
+              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg?v=3)" }} aria-hidden="true" />
               <span className="wd-path-body">
                 <span className="wd-path-eyebrow">{t("Free roam")}</span>
                 <b>{t("Create anything")}</b>
@@ -508,7 +508,7 @@ export default function WebDashboard() {
           </div>
           <div className="wd-hero-paths-trio">
             <button type="button" className="wd-path wd-path-img" onClick={() => navigate("/web/film")}>
-              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/film-hero.jpg)" }} aria-hidden="true" />
+              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/film-hero.jpg?v=2)" }} aria-hidden="true" />
               <span className="wd-path-body">
                 <span className="wd-path-eyebrow">{t("Entertainment")}</span>
                 <b>{t("Movie Maker")}</b>
@@ -517,7 +517,7 @@ export default function WebDashboard() {
               </span>
             </button>
             <button type="button" className="wd-path wd-path-img" onClick={() => navigate("/web/presenters")}>
-              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/presenter-hero.jpg)" }} aria-hidden="true" />
+              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/presenter-hero.jpg?v=2)" }} aria-hidden="true" />
               <span className="wd-path-body">
                 <span className="wd-path-eyebrow">{t("Your AI cast")}</span>
                 <b>{t("Presenters")}</b>
@@ -526,7 +526,7 @@ export default function WebDashboard() {
               </span>
             </button>
             <button type="button" className="wd-path wd-path-img" onClick={() => navigate("/web/archive")}>
-              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/archive-hero.jpg)" }} aria-hidden="true" />
+              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/archive-hero.jpg?v=2)" }} aria-hidden="true" />
               <span className="wd-path-body">
                 <span className="wd-path-eyebrow">{t("Your library")}</span>
                 <b>{t("Archive")}</b>
@@ -960,6 +960,16 @@ const DASH_CSS = `
 /* All five studios as full-bleed image cards — 2 primary on top, 3 below — so
    Movie Maker / Presenters / Archive read as rich as Create / Ad Maker. */
 .wd-hero-paths-trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px;}
+/* Alive on hover — a slow Ken-Burns zoom on the photo, a light sheen sweeping
+   across it, and a lift. Honors reduced-motion. */
+.wd-path-img{position:relative;}
+.wd-path-img .wd-path-hero{transition:transform .7s cubic-bezier(.2,.65,.2,1);transform-origin:center;}
+.wd-path-img:hover .wd-path-hero,.wd-path-img:focus-visible .wd-path-hero{transform:scale(1.1);}
+.wd-path-img::after{content:"";position:absolute;top:0;left:0;right:0;height:112px;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.45) 50%,transparent 65%);background-size:260% 100%;background-position:150% 0;opacity:0;}
+.wd-path-img:hover::after{opacity:1;animation:wdSheen .85s cubic-bezier(.3,.5,.3,1);}
+@keyframes wdSheen{from{background-position:150% 0;}to{background-position:-120% 0;}}
+.wd-path-img:hover,.wd-path-img:focus-visible{transform:translateY(-5px);border-color:var(--green);box-shadow:0 16px 34px rgba(12,122,70,.18);}
+@media(prefers-reduced-motion:reduce){.wd-path-img .wd-path-hero,.wd-path-img:hover .wd-path-hero{transition:none;transform:none;}.wd-path-img:hover::after{animation:none;opacity:0;}.wd-path-img:hover{transform:none;}}
 @media(max-width:680px){.wd-hero-paths-row,.wd-hero-paths-trio{grid-template-columns:1fr;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
 /* launch tracker */
 .wd-launch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin:0 0 22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
