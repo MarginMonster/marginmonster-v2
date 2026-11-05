@@ -438,7 +438,6 @@ export default function FilmStudio() {
           <b key={tmpl?.key}>{tmpl?.name || t("Film Studio")}</b>
           <span>{t("Pick a format — we write it free, you only spend to render.")}</span>
         </div>
-        <img className="fs-head-cat" src="/helpurr-film.png" alt="" loading="lazy" />
       </div>
 
       {/* Template row */}

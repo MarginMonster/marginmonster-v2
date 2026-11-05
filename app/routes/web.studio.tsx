@@ -3702,7 +3702,6 @@ export default function WebStudio() {
               : <>{t("Make one piece by hand, in your voice — it lands in your ")}<Link to="/web/archive">{t("Archive")}</Link>.</>}
           </p>
         </div>
-        <img className="ws-cinehead-cat" src="/helpurr-artist.png" alt="" loading="lazy" />
       </div>
       {/* Create ↔ Social switch — the in-Studio mode toggle (replaces the retired
           global header toggle). "Social media" flips the Studio to the marketing
