@@ -701,7 +701,7 @@ const FS_STYLE = `
 .fs-head-bg{position:absolute;inset:0;z-index:0;border-radius:22px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#234735 0%,#14241A 46%,#0A130E 100%);box-shadow:0 22px 54px rgba(11,20,15,.42),inset 0 1px 0 rgba(255,255,255,.08);}
 .fs-head-rose{position:absolute;background:center/contain no-repeat;mix-blend-mode:screen;pointer-events:none;will-change:transform;}
 .fs-head-rose.a{right:-120px;top:-150px;width:400px;height:400px;background-image:url(/gstyle-rosette.svg);opacity:.34;animation:fsspinA 80s linear infinite;}
-.fs-head-rose.b{left:-140px;bottom:-180px;width:360px;height:360px;background-image:url(/gstyle-rosette-green.svg);opacity:.4;animation:fsspinB 115s linear infinite;}
+.fs-head-rose.b{left:-140px;bottom:-180px;width:360px;height:360px;background-image:url(/gstyle-rosette.svg);opacity:.32;animation:fsspinB 115s linear infinite;}
 @keyframes fsspinA{to{transform:rotate(360deg);}}
 @keyframes fsspinB{to{transform:rotate(-360deg);}}
 /* the still bleeds in from the right and fades into the dark — woven in, not pasted */
