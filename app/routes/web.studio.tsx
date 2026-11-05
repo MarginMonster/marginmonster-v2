@@ -3702,28 +3702,9 @@ export default function WebStudio() {
           </p>
         </div>
       </div>
-      {/* Create ↔ Social switch — the in-Studio mode toggle (replaces the retired
-          global header toggle). "Social media" flips the Studio to the marketing
-          creation tools; it's gated on a marketing plan (autopost = Starter+), so
-          Creator ($6.99) / free users see it locked with an upgrade prompt. */}
-      <div className="ws-modeswitch" role="group" aria-label={t("What are you making?")}>
-        <button type="button" className={`ws-ms-opt${casual ? " on" : ""}`} aria-pressed={casual}
-          onClick={() => { setMode("casual"); setContentType(null); setImageMode(null); setUpsell(null); setSocialLockOpen(false); }}>
-          <Ico n="palette" size={15} />{t("Create")}
-        </button>
-        <button type="button" className={`ws-ms-opt${!casual ? " on" : ""}${socialUnlocked ? "" : " locked"}`} aria-pressed={!casual}
-          onClick={() => (socialUnlocked ? (setMode("marketing"), setContentType(null), setImageMode(null), setUpsell(null), setSocialLockOpen(false)) : setSocialLockOpen(true))}
-          title={socialUnlocked ? t("Make for social — product ads, spokesperson videos & auto-posting") : t("A Starter feature — upgrade to switch into Social Marketing mode")}>
-          <Ico n={socialUnlocked ? "trend" : "lock"} size={15} />{t("Social Marketing")}
-          {!socialUnlocked && <span className="ws-ms-badge">{t("Starter")}</span>}
-        </button>
-      </div>
-      {/* Plain-English guidance for the Create vs Social choice — always visible
-          (the only explanation used to be a hover-only title tooltip) and it names
-          the cost gap, which was invisible until the make step. */}
-      <p className="ws-ms-hint">
-        <b>{t("Create")}</b>{t(" — images, video & music just for you. ")}<b>{t("Social Marketing")}</b>{t(" — product ads that auto-post to TikTok, IG & FB.")}
-      </p>
+      {/* Create ↔ Social mode is switched from the top nav (Creator / Ad Maker);
+          the in-Studio toggle + hint were removed as redundant. The locked-state
+          upsell still shows if a gated user lands in Social Marketing. */}
       {socialLockOpen && !socialUnlocked && (
         <div className="ws-upsell ws-ms-upsell">
           <b><Ico n="lock" size={15} /> {t("Social Marketing is a Starter feature")}</b>
@@ -3741,18 +3722,6 @@ export default function WebStudio() {
       {/* THE EASEL (casual) — a left instrument rail + controls beside a Stage,
           with a creations shelf below. Marketing is untouched: its wrappers are
           display:contents (.ws-flow), so tabs + Form render in the old flow. */}
-      {/* Persistent "you are here" — mode + what you're making. Sticky so it
-          never scrolls away mid-config (the title + mode toggle do), which is
-          exactly how a tester ended up deep in Social Marketing not knowing it. */}
-      <div className="ws-crumb" aria-label={t("Where you are")}>
-        <span className={`ws-crumb-mode${casual ? "" : " mk"}`}><Ico n={casual ? "palette" : "trend"} size={13} /> {casual ? t("Create") : t("Social Marketing")}</span>
-        {(() => {
-          const what = tab === "music" ? t("Music") : tab === "faceless" ? t("Faceless video") : tab === "import" ? t("Your store")
-            : tab === "image" ? (casual ? (imageMode === "product" ? t("Edit a photo") : t("Make an image")) : (imageMode === "presenter" ? t("With a presenter") : imageMode === "product" ? t("Product ad") : imageMode === "create" ? t("Make an image") : null))
-            : (casual ? t("Video") : (contentType ? t(CONTENT_TYPES.find((c) => c.key === baseOf(contentType))?.name || "Video") : null));
-          return what ? <><span className="ws-crumb-sep" aria-hidden="true">›</span><span className="ws-crumb-what">{what}</span></> : null;
-        })()}
-      </div>
       <div className={casual ? "ws-easel" : "ws-flow"}>
        <div className={casual ? "ws-easel-left" : "ws-flow"}>
       <div className="ws-tabs">
