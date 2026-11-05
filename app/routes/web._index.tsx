@@ -487,53 +487,13 @@ export default function WebDashboard() {
         <div className="wd-hero-paths">
           <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
           <div className="wd-hero-paths-row">
-            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("casual"); navigate("/web/studio"); }}>
-              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/creator-hero.jpg?v=3)" }} aria-hidden="true" />
-              <span className="wd-path-body">
-                <span className="wd-path-eyebrow">{t("Free roam")}</span>
-                <b>{t("Create anything")}</b>
-                <i>{t("Images, video & music")}</i>
-                <span className="wd-path-cue">{t("Open Create")} <Ico n="arrow" size={15} /></span>
-              </span>
-            </button>
-            <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/studio"); }}>
-              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
-              <span className="wd-path-body">
-                <span className="wd-path-eyebrow">{t("Product ads")}</span>
-                <b>{t("Ad Maker")}</b>
-                <i>{t("Turn a product into an ad")}</i>
-                <span className="wd-path-cue">{t("Open Ad Maker")} <Ico n="arrow" size={15} /></span>
-              </span>
-            </button>
+            <PathImg img="creator" v={3} eyebrow={t("Free roam")} title={t("Create anything")} sub={t("Images, video & music")} cue={t("Open Create")} onClick={() => { setMode("casual"); navigate("/web/studio"); }} />
+            <PathImg img="marketing" v={1} eyebrow={t("Product ads")} title={t("Ad Maker")} sub={t("Turn a product into an ad")} cue={t("Open Ad Maker")} onClick={() => { setMode("marketing"); navigate("/web/studio"); }} />
           </div>
           <div className="wd-hero-paths-trio">
-            <button type="button" className="wd-path wd-path-img" onClick={() => navigate("/web/film")}>
-              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/film-hero.jpg?v=2)" }} aria-hidden="true" />
-              <span className="wd-path-body">
-                <span className="wd-path-eyebrow">{t("Entertainment")}</span>
-                <b>{t("Movie Maker")}</b>
-                <i>{t("Episodes, music videos & dialogue")}</i>
-                <span className="wd-path-cue">{t("Open Movie Maker")} <Ico n="arrow" size={15} /></span>
-              </span>
-            </button>
-            <button type="button" className="wd-path wd-path-img" onClick={() => navigate("/web/presenters")}>
-              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/presenter-hero.jpg?v=2)" }} aria-hidden="true" />
-              <span className="wd-path-body">
-                <span className="wd-path-eyebrow">{t("Your AI cast")}</span>
-                <b>{t("Presenters")}</b>
-                <i>{t("Avatars that sell")}</i>
-                <span className="wd-path-cue">{t("Open Presenters")} <Ico n="arrow" size={15} /></span>
-              </span>
-            </button>
-            <button type="button" className="wd-path wd-path-img" onClick={() => navigate("/web/archive")}>
-              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/archive-hero.jpg?v=2)" }} aria-hidden="true" />
-              <span className="wd-path-body">
-                <span className="wd-path-eyebrow">{t("Your library")}</span>
-                <b>{t("Archive")}</b>
-                <i>{t("Everything you've made")}</i>
-                <span className="wd-path-cue">{t("Open Archive")} <Ico n="arrow" size={15} /></span>
-              </span>
-            </button>
+            <PathImg img="film" v={3} eyebrow={t("Entertainment")} title={t("Movie Maker")} sub={t("Episodes, music videos & dialogue")} cue={t("Open Movie Maker")} onClick={() => navigate("/web/film")} />
+            <PathImg img="presenter" v={2} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Avatars that sell")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />
+            <PathImg img="archive" v={3} eyebrow={t("Your library")} title={t("Archive")} sub={t("Everything you've made")} cue={t("Open Archive")} onClick={() => navigate("/web/archive")} />
           </div>
         </div>
       </section>
@@ -899,6 +859,33 @@ export default function WebDashboard() {
 
 /* Route-local dashboard styles — GStyle palette (paper #F4F1E6, card #FDFCF7,
  * ink #14201A, green #12A85E, gold #B08526/#E7C879). */
+function PathImg({ img, v, eyebrow, title, sub, cue, onClick }: { img: string; v: number; eyebrow: string; title: string; sub: string; cue: string; onClick: () => void }) {
+  const play = (e: { currentTarget: HTMLElement }) => {
+    try { if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return; } catch { /* ignore */ }
+    const el = e.currentTarget.querySelector("video");
+    if (el) el.play().catch(() => { /* autoplay may be blocked; fine */ });
+  };
+  const stop = (e: { currentTarget: HTMLElement }) => {
+    const el = e.currentTarget.querySelector("video");
+    if (el) el.pause();
+  };
+  return (
+    <button type="button" className="wd-path wd-path-img" onClick={onClick} onMouseEnter={play} onMouseLeave={stop} onFocus={play} onBlur={stop}>
+      <span className="wd-path-hero" style={{ backgroundImage: `url(/landing/${img}-hero.jpg?v=${v})` }} aria-hidden="true">
+        <video className="wd-path-vid" muted loop playsInline preload="none" poster={`/landing/${img}-hero.jpg?v=${v}`} aria-hidden="true">
+          <source src={`/landing/${img}-hero.mp4?v=1`} type="video/mp4" />
+        </video>
+      </span>
+      <span className="wd-path-body">
+        <span className="wd-path-eyebrow">{eyebrow}</span>
+        <b>{title}</b>
+        <i>{sub}</i>
+        <span className="wd-path-cue">{cue} <Ico n="arrow" size={15} /></span>
+      </span>
+    </button>
+  );
+}
+
 const DASH_CSS = `
 /* Helpurr landing hero — the Google-style front door at the top of the home. */
 .wd-hero{display:flex;flex-direction:column;align-items:center;text-align:center;
@@ -960,16 +947,17 @@ const DASH_CSS = `
 /* All five studios as full-bleed image cards — 2 primary on top, 3 below — so
    Movie Maker / Presenters / Archive read as rich as Create / Ad Maker. */
 .wd-hero-paths-trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px;}
-/* Alive on hover — a slow Ken-Burns zoom on the photo, a light sheen sweeping
-   across it, and a lift. Honors reduced-motion. */
+/* Alive on hover — the hero photo becomes a looping video, a light sheen sweeps
+   across it, and the card lifts. preload=none so clips load only on hover. */
 .wd-path-img{position:relative;}
-.wd-path-img .wd-path-hero{transition:transform .7s cubic-bezier(.2,.65,.2,1);transform-origin:center;}
-.wd-path-img:hover .wd-path-hero,.wd-path-img:focus-visible .wd-path-hero{transform:scale(1.1);}
-.wd-path-img::after{content:"";position:absolute;top:0;left:0;right:0;height:112px;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.45) 50%,transparent 65%);background-size:260% 100%;background-position:150% 0;opacity:0;}
-.wd-path-img:hover::after{opacity:1;animation:wdSheen .85s cubic-bezier(.3,.5,.3,1);}
+.wd-path-img .wd-path-hero{position:relative;}
+.wd-path-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease;pointer-events:none;}
+.wd-path-img:hover .wd-path-vid,.wd-path-img:focus-visible .wd-path-vid{opacity:1;}
+.wd-path-img::after{content:"";position:absolute;top:0;left:0;right:0;height:112px;z-index:2;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.4) 50%,transparent 65%);background-size:260% 100%;background-position:150% 0;opacity:0;}
+.wd-path-img:hover::after{opacity:1;animation:wdSheen .9s cubic-bezier(.3,.5,.3,1);}
 @keyframes wdSheen{from{background-position:150% 0;}to{background-position:-120% 0;}}
 .wd-path-img:hover,.wd-path-img:focus-visible{transform:translateY(-5px);border-color:var(--green);box-shadow:0 16px 34px rgba(12,122,70,.18);}
-@media(prefers-reduced-motion:reduce){.wd-path-img .wd-path-hero,.wd-path-img:hover .wd-path-hero{transition:none;transform:none;}.wd-path-img:hover::after{animation:none;opacity:0;}.wd-path-img:hover{transform:none;}}
+@media(prefers-reduced-motion:reduce){.wd-path-vid{transition:none;}.wd-path-img:hover::after{animation:none;opacity:0;}.wd-path-img:hover{transform:none;}}
 @media(max-width:680px){.wd-hero-paths-row,.wd-hero-paths-trio{grid-template-columns:1fr;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
 /* launch tracker */
 .wd-launch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin:0 0 22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
