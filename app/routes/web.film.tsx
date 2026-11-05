@@ -692,14 +692,6 @@ export default function FilmStudio() {
 
 const FS_STYLE = `
 .fs-wrap{max-width:760px;margin:0 auto;--fs-gold:#C79A3A;--fs-gold-lt:#E7C879;}
-/* ── EXPERIMENT (scoped to /web/film only): dark page canvas + lighter gold
-      ambient rosettes. Reverts the moment you leave the Film page. ── */
-.wb{background:radial-gradient(72% 52% at 50% -8%,rgba(18,168,94,.16),transparent 62%),radial-gradient(54% 40% at 98% 64%,rgba(199,154,58,.12),transparent 68%),#0B140F !important;}
-.wb::before{opacity:.22 !important;mix-blend-mode:screen;background-image:url(/gstyle-rosette.svg) !important;}
-.wb::after{opacity:.16 !important;mix-blend-mode:screen;background-image:url(/gstyle-rosette.svg) !important;}
-.wb-brand{color:#EBF2EC !important;}
-.wb-tab{color:#AEBBB2 !important;}
-.wb-tab:hover:not(.on){color:#fff !important;background:rgba(255,255,255,.07) !important;}
 /* Cinematic hero — a dark "movie theatre" band with a gold spotlight + underline. */
 /* Cinematic DARK hero, broken up + "leveled" with the app's own light rosettes so
    it belongs with the airy rest of the app. Holds a film still + the film Helpurr. */
