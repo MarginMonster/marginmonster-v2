@@ -19,6 +19,7 @@ import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { estimateFilmTokens, FILM_PER_SCENE, FILM_BASE } from "../lib/plan-config";
 import { externalOrigin } from "../lib/origin.server";
+import { AVATAR_VOICES } from "../lib/avatar-voice-catalog";
 
 export const meta: MetaFunction = () => [{ title: "Film Studio · EASYMODE" }];
 
@@ -60,6 +61,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     templates,
     products,
     gallery,
+    voices: AVATAR_VOICES.map((v) => ({ id: v.id, label: v.label, blurb: v.blurb, gender: v.gender })),
     perScene: FILM_PER_SCENE,
     base: FILM_BASE,
   });
@@ -107,14 +109,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const castText = ((form.get("castText") as string) || "").trim().slice(0, 800);
     const styleRefUrl = ((form.get("styleRefUrl") as string) || "").trim().slice(0, 2000) || null;
     const sceneIndex = parseInt((form.get("sceneIndex") as string) || "0", 10) || 0;
+    // Locked cast faces for the characters in this shot (compose the frame from them).
+    let castRefUrls: string[] | undefined;
+    const castRefsRaw = ((form.get("castRefs") as string) || "").trim();
+    if (castRefsRaw) { try { const a = JSON.parse(castRefsRaw); if (Array.isArray(a)) castRefUrls = a.filter((x) => typeof x === "string" && x).slice(0, 3); } catch { /* ignore */ } }
     if (!sceneVisual) return json({ error: tr(lang, "Describe the shot first."), sceneIndex });
     try {
       const { previewFilmSceneFrame } = await import("../lib/film-dialogue.server");
-      const frameUrl = await previewFilmSceneFrame({ template: tmpl.key, sceneVisual, castText, styleRefUrl });
+      const frameUrl = await previewFilmSceneFrame({ template: tmpl.key, sceneVisual, castText, styleRefUrl, castRefUrls });
       if (!frameUrl) return json({ error: tr(lang, "Couldn't render that frame — tweak the shot and try again."), sceneIndex });
       return json({ frameUrl, sceneIndex });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't render that frame — try again."), sceneIndex, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+    }
+  }
+
+  // FREE — cast an actor: render a clean, reusable casting portrait for one
+  // character, which then locks their face across every shot (the "cast member"
+  // primitive). Same free, no-token path as the storyboard frames.
+  if (intent === "previewFilmPortrait") {
+    const castDesc = ((form.get("castDesc") as string) || "").trim().slice(0, 600);
+    const castIndex = parseInt((form.get("castIndex") as string) || "0", 10) || 0;
+    if (!castDesc) return json({ error: tr(lang, "Describe the character first."), castIndex });
+    try {
+      const { renderActorPortrait } = await import("../lib/film-dialogue.server");
+      const portraitUrl = await renderActorPortrait(castDesc);
+      if (!portraitUrl) return json({ error: tr(lang, "Couldn't cast that actor — tweak the description and try again."), castIndex });
+      return json({ portraitUrl, castIndex });
+    } catch (e) {
+      return json({ error: tr(lang, "Couldn't cast that actor — try again."), castIndex, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
     }
   }
 
@@ -158,6 +181,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (framesRaw) {
       try { const f = JSON.parse(framesRaw); if (Array.isArray(f)) approvedFrames = f.map((x) => (typeof x === "string" && x ? x : null)); } catch { /* ignore malformed */ }
     }
+    // Locked cast (name + face + voice per character) the merchant cast in the UI —
+    // drives per-shot identity conditioning and the voice pin in the render.
+    let cast: Array<{ name: string; faceUrl: string | null; voiceId: string | null }> | undefined;
+    const castRaw = ((form.get("cast") as string) || "").trim();
+    if (castRaw) {
+      try {
+        const c = JSON.parse(castRaw);
+        if (Array.isArray(c)) {
+          const mapped = c
+            .filter((x) => x && typeof x.name === "string" && x.name.trim())
+            .map((x) => ({ name: String(x.name).slice(0, 80), faceUrl: x.faceUrl ? String(x.faceUrl).slice(0, 2000) : null, voiceId: x.voiceId ? String(x.voiceId).slice(0, 80) : null }))
+            .slice(0, 8);
+          if (mapped.length) cast = mapped;
+        }
+      } catch { /* ignore malformed */ }
+    }
     const cost = estimateFilmTokens(scenes);
 
     let unbacked = 0, unbackedFromExtra = 0;
@@ -169,6 +208,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         filmTemplate: tmpl.key, filmTopic: topic, filmScenes: scenes,
         approvedTreatment,
         ...(approvedFrames ? { approvedFrames } : {}),
+        ...(cast ? { cast } : {}),
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
         productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
         prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
@@ -191,6 +231,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 type Scene = { visual: string; caption?: string };
 type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: string[] };
+// A locked "actor": one character's reusable face + pinned voice, cast once and
+// reused as the identity reference for every shot they appear in.
+type CastMember = { name: string; desc: string; faceUrl: string | null; voiceId: string | null };
 
 export default function FilmStudio() {
   const d = useLoaderData<typeof loader>();
@@ -203,6 +246,22 @@ export default function FilmStudio() {
   const [frames, setFrames] = useState<(string | null)[]>([]);
   const [framingIndex, setFramingIndex] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<Record<number, string>>({});
+  // Cast (dialogue): the locked actors + which one is being cast right now.
+  const portraitFetcher = useFetcher<{ portraitUrl?: string; castIndex?: number; error?: string }>();
+  const [cast, setCast] = useState<CastMember[]>([]);
+  const [castingIndex, setCastingIndex] = useState<number | null>(null);
+  // Build the cast from the treatment's character list: parse a name, keep the
+  // description, and auto-pick a gender-appropriate voice the merchant can change.
+  const deriveCast = (tr2: Treatment): CastMember[] =>
+    (Array.isArray(tr2.cast) ? tr2.cast : []).slice(0, 8).map((entry) => {
+      const name = ((entry.split(/[,:—–-]/)[0] || entry).trim() || entry).slice(0, 60);
+      const low = entry.toLowerCase();
+      const fem = /\b(she|her|hers|woman|women|girl|mother|mom|mum|daughter|sister|lady|businesswoman|actress|queen|wife|aunt|grandmother|female)\b/.test(low);
+      const masc = /\b(he|him|his|man|men|boy|father|dad|son|brother|guy|businessman|actor|king|husband|uncle|grandfather|male)\b/.test(low);
+      const g = fem && !masc ? "f" : masc && !fem ? "m" : null;
+      const v = g ? d.voices.find((x) => x.gender === g) : null;
+      return { name, desc: entry.trim().slice(0, 300), faceUrl: null, voiceId: v ? v.id : null };
+    });
 
   const [template, setTemplate] = useState(d.templates[0]?.key || "musicvideo");
   const tmpl = d.templates.find((x) => x.key === template) || d.templates[0];
@@ -216,11 +275,22 @@ export default function FilmStudio() {
   const [prodImage, setProdImage] = useState("");
   const [prodDesc, setProdDesc] = useState("");
 
-  // When a fresh treatment arrives, adopt it (and lock the scene count to it).
+  // When a fresh treatment arrives, adopt it (and lock the scene count to it) + cast.
   useEffect(() => {
     const tr2 = treatmentFetcher.data?.treatment;
-    if (tr2 && tr2.scenes?.length) { setTreatment(tr2); setScenes(tr2.scenes.length); setFrames([]); }
-  }, [treatmentFetcher.data]);
+    if (tr2 && tr2.scenes?.length) { setTreatment(tr2); setScenes(tr2.scenes.length); setFrames([]); setCast(deriveCast(tr2)); }
+  }, [treatmentFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Store each actor's portrait as it's cast; clear the busy flag.
+  useEffect(() => {
+    if (portraitFetcher.state !== "idle") return;
+    const data = portraitFetcher.data;
+    if (data && data.portraitUrl && typeof data.castIndex === "number") {
+      const idx = data.castIndex, url = data.portraitUrl;
+      setCast((prev) => prev.map((c, j) => (j === idx ? { ...c, faceUrl: url } : c)));
+    }
+    setCastingIndex(null);
+  }, [portraitFetcher.state, portraitFetcher.data]);
 
   // Store each storyboard frame as it arrives; clear the busy flag.
   useEffect(() => {
@@ -243,17 +313,17 @@ export default function FilmStudio() {
   const bump = (delta: number) => {
     const n = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, scenes + delta));
     setScenes(n);
-    if (treatment && treatment.scenes.length !== n) { setTreatment(null); setFrames([]); }
+    if (treatment && treatment.scenes.length !== n) { setTreatment(null); setFrames([]); setCast([]); }
   };
   const switchTemplate = (key: string) => {
     const nt = d.templates.find((x) => x.key === key);
-    setTemplate(key); setScenes(nt?.defaultScenes || 6); setTreatment(null); setFrames([]);
+    setTemplate(key); setScenes(nt?.defaultScenes || 6); setTreatment(null); setFrames([]); setCast([]);
   };
   const pickCatalog = (idx: number) => {
     const p = d.products[idx];
     if (!p) return;
     setProdTitle(p.title || ""); setProdImage(p.imageUrl || ""); setProdDesc(p.description || "");
-    setTreatment(null); setFrames([]);
+    setTreatment(null); setFrames([]); setCast([]);
   };
   const writeTreatment = () => {
     treatmentFetcher.submit(
@@ -271,6 +341,15 @@ export default function FilmStudio() {
   };
   // Render (or re-roll) one scene's storyboard photo. Reuses a prior approved frame
   // as the style reference so faces + wardrobe stay consistent across shots.
+  // The locked cast faces for the characters whose name appears in a shot — so the
+  // frame is composed from the exact same actors every time (the consistency lever).
+  const shotCastRefs = (s: Scene): string[] => {
+    const hay = `${s.visual} ${s.caption || ""}`.toLowerCase();
+    return cast
+      .filter((c) => c.faceUrl && c.name && hay.includes(c.name.toLowerCase().split(/[\s,]/)[0]))
+      .map((c) => c.faceUrl as string)
+      .slice(0, 3);
+  };
   const makeFrame = (i: number) => {
     if (!treatment || framingIndex !== null) return;
     const s = treatment.scenes[i];
@@ -279,7 +358,7 @@ export default function FilmStudio() {
     const styleRef = frames.slice(0, i).reverse().find(Boolean) || "";
     setFramingIndex(i);
     previewFrameFetcher.submit(
-      { intent: "previewFilmFrame", template, sceneVisual: s.visual, castText, styleRefUrl: styleRef, sceneIndex: String(i) },
+      { intent: "previewFilmFrame", template, sceneVisual: s.visual, castText, styleRefUrl: styleRef, sceneIndex: String(i), castRefs: JSON.stringify(shotCastRefs(s)) },
       { method: "post" }
     );
   };
@@ -288,6 +367,25 @@ export default function FilmStudio() {
     const u = url.trim();
     if (u !== "" && !/^(https?:\/\/|\/)/.test(u)) return; // wait for a plausible URL
     setFrames((prev) => { const next = prev.slice(); next[i] = u || null; return next; });
+  };
+  // ── Cast handlers: lock a face (render a portrait / pick a made image), pick a voice.
+  const makePortrait = (i: number) => {
+    if (castingIndex !== null) return;
+    const c = cast[i];
+    if (!c || !c.desc.trim()) return;
+    setCastingIndex(i);
+    portraitFetcher.submit(
+      { intent: "previewFilmPortrait", castDesc: c.desc, castIndex: String(i) },
+      { method: "post" }
+    );
+  };
+  const useCastFace = (i: number, url: string) => {
+    const u = url.trim();
+    if (u !== "" && !/^(https?:\/\/|\/)/.test(u)) return;
+    setCast((prev) => prev.map((c, j) => (j === i ? { ...c, faceUrl: u || null } : c)));
+  };
+  const setCastVoice = (i: number, voiceId: string) => {
+    setCast((prev) => prev.map((c, j) => (j === i ? { ...c, voiceId: voiceId || null } : c)));
   };
   // Edit the current frame in place (Creator's photo-edit engine) — refine without leaving.
   const applyEdit = (i: number) => {
@@ -392,6 +490,62 @@ export default function FilmStudio() {
       </div>
 
       {/* Step 2.5 — storyboard: approve a photo per scene before paying (dialogue only) */}
+      {treatment && isStoryboard && cast.length > 0 && (
+        <div className="fs-card">
+          <div className="fs-lbl"><span className="fs-n"><Ico n="presenter" size={13} /></span> {t("Cast")} <span className="fs-free">{t("free")}</span></div>
+          <p className="fs-hint">{t("Lock a face and a voice for each character once — every shot reuses the same actors, so nobody morphs between shots. This is the consistency the pros get from reference sheets.")}</p>
+          <div className="fs-cast">
+            {cast.map((c, i) => {
+              const cbusy = castingIndex === i;
+              return (
+                <div className={`fs-actor${c.faceUrl ? " set" : ""}`} key={i}>
+                  <div className="fs-actor-face">
+                    {c.faceUrl
+                      ? <img src={c.faceUrl} alt={c.name} loading="lazy" />
+                      : <span className="fs-actor-empty"><Ico n="presenter" size={22} />{t("No face yet")}</span>}
+                    {cbusy && <span className="fs-shot-spin" aria-hidden="true" />}
+                  </div>
+                  <div className="fs-actor-main">
+                    <b className="fs-actor-name">{c.name}</b>
+                    <span className="fs-actor-desc">{c.desc}</span>
+                    <div className="fs-actor-row">
+                      <button type="button" className="fs-actor-make" disabled={castingIndex !== null} onClick={() => makePortrait(i)}>
+                        {cbusy ? <>… {t("Casting")}</> : <><Ico n="camera" size={13} /> {c.faceUrl ? t("Re-cast") : t("Cast a face")}</>}
+                      </button>
+                      <span className="fs-actor-voice">
+                        <select aria-label={t("Voice for {name}", { name: c.name })} value={c.voiceId || ""} disabled={castingIndex !== null} onChange={(e) => setCastVoice(i, e.target.value)}>
+                          <option value="">{t("Pick a voice")}</option>
+                          {d.voices.map((v) => <option key={v.id} value={v.id}>{v.label} · {v.blurb}</option>)}
+                        </select>
+                      </span>
+                    </div>
+                    <details className="fs-shot-own">
+                      <summary>{t("Use an image I already made")}</summary>
+                      {d.gallery.length > 0 ? (
+                        <div className="fs-shot-gallery" role="list" aria-label={t("Your images")}>
+                          {d.gallery.map((g) => (
+                            <button type="button" role="listitem" key={g.id} className={`fs-gthumb${c.faceUrl === g.url ? " on" : ""}`}
+                              disabled={castingIndex !== null} title={g.title || t("Use this image")} onClick={() => useCastFace(i, g.url)}>
+                              <img src={g.url} alt={g.title || t("Your image")} loading="lazy" />
+                              {c.faceUrl === g.url && <span className="fs-gthumb-chk" aria-hidden="true"><Ico n="check" size={12} /></span>}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="fs-gempty">{t("Images you make in Creator show up here to pick from.")}</p>
+                      )}
+                      <input className="fs-shot-url" type="url" maxLength={2000} defaultValue="" placeholder={t("…or paste an image URL")} onChange={(e) => useCastFace(i, e.target.value)} />
+                    </details>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {portraitFetcher.data?.error && <p className="fs-err">{portraitFetcher.data.error}</p>}
+          <p className="fs-hint" style={{ margin: "12px 0 0" }}>{t("Faces are optional — any character you cast locks in; the rest stay auto-generated.")}</p>
+        </div>
+      )}
+
       {treatment && isStoryboard && (
         <div className="fs-card">
           <div className="fs-lbl"><span className="fs-n"><Ico n="camera" size={13} /></span> {t("Storyboard")} <span className="fs-free">{t("free")}</span></div>
@@ -468,6 +622,7 @@ export default function FilmStudio() {
           {tmpl?.needsProduct && <input type="hidden" name="filmProductDescription" value={prodDesc} />}
           {treatment && <input type="hidden" name="approvedTreatment" value={JSON.stringify(treatment)} />}
           {isStoryboard && frames.some(Boolean) && <input type="hidden" name="approvedFrames" value={JSON.stringify(frames)} />}
+          {isStoryboard && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId })))} />}
           <button type="submit" className="fs-go" disabled={!canGo}>
             {generating ? <>… {t("Starting your film")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost }) : t("Generate {name} · Free", { name: t(tmpl?.name || "Film") })}</>}
           </button>
@@ -584,5 +739,22 @@ const FS_STYLE = `
 .fs-gthumb:disabled{opacity:.5;cursor:default;}
 .fs-gthumb-chk{position:absolute;right:3px;top:3px;width:18px;height:18px;border-radius:50%;background:var(--green2,#1FA463);color:#fff;display:grid;place-items:center;box-shadow:0 1px 3px rgba(20,32,26,.3);}
 .fs-gempty{font-size:11.5px;color:var(--ink2,#4A554E);opacity:.85;margin:8px 0 0;}
+/* Cast panel — one locked actor (face + voice) per character, reused every shot. */
+.fs-cast{display:flex;flex-direction:column;gap:12px;margin-top:8px;}
+.fs-actor{display:flex;gap:14px;align-items:flex-start;padding:12px;border:1.5px solid var(--line,#E4DFCF);border-radius:14px;background:var(--cream,#FBF6E6);transition:border-color .15s,box-shadow .15s;}
+.fs-actor.set{border-color:var(--green2,#1FA463);background:#fff;box-shadow:0 4px 14px rgba(20,32,26,.06);}
+.fs-actor-face{position:relative;flex:0 0 auto;width:84px;aspect-ratio:3/4;border-radius:11px;overflow:hidden;background:#fff;border:1px solid var(--line,#E4DFCF);display:grid;place-items:center;}
+.fs-actor-face img{width:100%;height:100%;object-fit:cover;display:block;}
+.fs-actor-empty{display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--green,#0C7A46);opacity:.5;font-size:10px;font-weight:600;text-align:center;padding:0 6px;}
+.fs-actor-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:7px;}
+.fs-actor-name{font-size:14px;color:var(--ink,#14201A);}
+.fs-actor-desc{font-size:12px;line-height:1.45;color:var(--ink2,#4A554E);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.fs-actor-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.fs-actor-make{display:inline-flex;align-items:center;gap:6px;background:var(--green,#0C7A46);color:#fff;border:0;border-radius:10px;padding:8px 15px;font-weight:800;font-size:12.5px;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(10,95,56,.2);}
+.fs-actor-make:disabled{opacity:.5;cursor:default;box-shadow:none;}
+.fs-actor-voice{flex:1 1 150px;min-width:140px;display:inline-flex;}
+.fs-actor-voice select{width:100%;box-sizing:border-box;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;padding:8px 11px;font-size:12.5px;font-family:inherit;color:var(--ink,#14201A);background:#fff;cursor:pointer;}
+.fs-actor-voice select:focus{outline:none;border-color:var(--green,#0C7A46);}
+.fs-actor-voice select:disabled{opacity:.6;}
 @media(max-width:640px){.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
 `;

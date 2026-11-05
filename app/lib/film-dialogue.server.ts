@@ -23,7 +23,8 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
-import { renderCreativeSeed, renderStyledSeed } from "./image-generation.server";
+import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti } from "./image-generation.server";
+import { AVATAR_VOICES } from "./avatar-voice-catalog";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
@@ -200,9 +201,16 @@ const STAGING = "Frame it as a TWO-SHOT that keeps BOTH characters visible in th
 /** Build + render ONE scene's photo seed (the storyboard frame). Shared by the
  *  render loop and the web "preview frame" action so the preview is WYSIWYG.
  *  Returns a relative /renders URL, or null on failure (caller decides fallback). */
-export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null }): Promise<string | null> {
+export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[] }): Promise<string | null> {
   const framed = `${opts.sceneVisual}. ${opts.sceneHint}. ${STAGING} ${opts.castText || ""} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
   try {
+    // CAST path first: when the shot's actors are locked, compose the frame from
+    // their faces so identity holds shot-to-shot (the frontier consistency method).
+    const castRefs = (opts.castRefUrls || []).filter((u): u is string => !!u);
+    if (castRefs.length) {
+      const multi = await renderStyledSeedMulti(framed, castRefs, "9:16");
+      if (multi) return multi;
+    }
     return opts.styleRefUrl
       ? ((await renderStyledSeed(framed, opts.styleRefUrl, "9:16")) || (await renderCreativeSeed(framed, "9:16")))
       : await renderCreativeSeed(framed, "9:16");
@@ -211,9 +219,25 @@ export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: s
 
 /** Template-resolving wrapper for the web action (which has the template key, not
  *  the sceneHint). */
-export async function previewFilmSceneFrame(opts: { template?: string; sceneVisual: string; castText?: string; styleRefUrl?: string | null }): Promise<string | null> {
+export async function previewFilmSceneFrame(opts: { template?: string; sceneVisual: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[] }): Promise<string | null> {
   const tmpl = filmTemplate(opts.template);
-  return renderSceneFrame({ sceneVisual: opts.sceneVisual, sceneHint: tmpl.sceneHint, castText: opts.castText, styleRefUrl: opts.styleRefUrl });
+  return renderSceneFrame({ sceneVisual: opts.sceneVisual, sceneHint: tmpl.sceneHint, castText: opts.castText, styleRefUrl: opts.styleRefUrl, castRefUrls: opts.castRefUrls });
+}
+
+/** Cast an actor: a clean, reusable casting PORTRAIT of one character, locked once
+ *  and reused as the face reference for every shot they appear in. This is the
+ *  "cast member" primitive — the same move as a Runway Reference / Kling Element. */
+export async function renderActorPortrait(description: string): Promise<string | null> {
+  const desc = (description || "").trim().slice(0, 400);
+  const prompt = `A clean, photorealistic 3/4 casting-portrait headshot of ${desc}. One person only, natural soft studio lighting, plain neutral background, sharp focus on the face, looking just off camera, cinematic, photoreal. No readable text.`;
+  return renderCreativeSeed(prompt, "9:16");
+}
+
+/** The cast members whose name appears in a scene (speaker always counts). Used to
+ *  condition each shot's seed frame on the right locked faces. */
+function actorsInScene(cast: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }>, scene: { visual?: string; caption?: string }): Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }> {
+  const hay = `${scene.visual || ""} ${scene.caption || ""}`.toLowerCase();
+  return cast.filter((c) => { const key = (c.name || "").toLowerCase().split(/[\s,]/)[0]; return key && hay.includes(key); });
 }
 
 export async function generateTestMovie(opts: {
@@ -229,6 +253,11 @@ export async function generateTestMovie(opts: {
    *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
    *  that scene so it lands exactly as the merchant staged it. */
   approvedFrames?: (string | null)[];
+  /** Cast the merchant locked in the UI: each character's name + face reference +
+   *  pinned voice id. Every shot's auto-seed is composed from the faces of the cast
+   *  present in it (locked identity), and the speaker's voice timbre is pinned into
+   *  the Veo prompt so the voice stays consistent across shots. */
+  cast?: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }>;
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
   const jobId = opts.jobId;
@@ -248,6 +277,9 @@ export async function generateTestMovie(opts: {
   await ckpt({ ckTreatment: JSON.stringify(treatment) });
 
   const castBible = treatment.cast && treatment.cast.length ? `The recurring cast (keep them identical in every shot): ${treatment.cast.join("; ")}.` : "";
+  // Locked cast (faces + voices) the merchant cast in the UI — drives per-shot
+  // identity conditioning and the Veo voice pin.
+  const castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
 
   // 2) CAST REFERENCE still (photoreal) — establishes the characters' look; the
   //    first scene seeds from it, then the chain carries continuity.
@@ -280,15 +312,27 @@ export async function generateTestMovie(opts: {
     // set change lands exactly as the merchant staged it.
     let seedAbs = abs(approvedFrames[i]) || abs(prevFrameUrl);
     if (!seedAbs) {
-      const seedUrl = await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: castRefAbs });
+      // Compose the auto-seed from the locked faces of the cast in THIS shot, so the
+      // actors look identical from shot to shot (falls back to the group cast ref).
+      const shotCastRefs = actorsInScene(castActors, scene).map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
+      const seedUrl = await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: castRefAbs, castRefUrls: shotCastRefs });
       seedAbs = abs(seedUrl);
     }
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
 
     // Veo prompt: ONE speaker talks a full beat (clean single voice), the other
     // present and reacting; two-shot; voice pinned consistent; NO on-screen text.
+    // Pin the speaker's voice to the timbre the merchant cast (Veo has no voice
+    // reference, so a concrete described timbre is the lever that holds it steady).
+    const speakerVoiceDesc = (() => {
+      if (!speaker) return "";
+      const key = speaker.toLowerCase().split(/[\s,]/)[0];
+      const a = castActors.find((c) => (c.name || "").toLowerCase().split(/[\s,]/)[0] === key);
+      const v = a && a.voiceId ? AVATAR_VOICES.find((x) => x.id === a.voiceId) : undefined;
+      return v ? ` ${speaker}'s voice is ${v.blurb.toLowerCase()} (a ${v.label.toLowerCase()} ${v.gender === "f" ? "female" : "male"} voice); keep this exact voice in every shot.` : "";
+    })();
     const voiceLine = speaker
-      ? `ONLY ${speaker} speaks — a clear, natural, unhurried delivery with accurate lip-sync: "${line}". The other character stays silent, listening and reacting, not moving their lips. Keep ${speaker}'s voice natural and the SAME as in every other shot of the film.`
+      ? `ONLY ${speaker} speaks — a clear, natural, unhurried delivery with accurate lip-sync: "${line}". The other character stays silent, listening and reacting, not moving their lips. Keep ${speaker}'s voice natural and the SAME as in every other shot of the film.${speakerVoiceDesc}`
       : `One character speaks clearly and unhurried, lips in sync: "${line}". The other listens in silence.`;
     const prompt =
       `${scene.visual}. ${tmpl.sceneHint}. ${STAGING} ` +

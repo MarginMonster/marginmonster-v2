@@ -786,6 +786,8 @@ async function runJob(
             },
             // Per-scene storyboard frames the merchant generated + approved in the UI.
             approvedFrames: payload.approvedFrames as (string | null)[] | undefined,
+            // Locked cast (face + voice per character) the merchant cast in the UI.
+            cast: payload.cast as Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }> | undefined,
           });
         } else if ((payload.filmTemplate as string | undefined) === "avatardialogue") {
           // ISOLATED audio-driven pipeline — locked actors + fixed voices (HeyGen).

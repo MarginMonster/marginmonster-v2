@@ -4668,6 +4668,28 @@ export async function renderStyledSeed(prompt: string, refImageUrl: string, aspe
   }
 }
 
+/** Like renderStyledSeed but conditioned on SEVERAL reference images at once — the
+ *  "cast" path: pass each locked actor's face so a shot keeps the SAME people. This
+ *  is how Runway References / Flow Ingredients / Kling Elements lock identity; here
+ *  nano-banana's native multi-image input composes the shot from the supplied faces.
+ *  Up to 3 refs (nano-banana's sweet spot). Durable /renders URL, or null. */
+export async function renderStyledSeedMulti(prompt: string, refImageUrls: (string | null | undefined)[], aspect = "9:16"): Promise<string | null> {
+  try {
+    if (!process.env.REPLICATE_API_TOKEN) return null;
+    const refs = (refImageUrls || []).filter((u): u is string => !!u).slice(0, 3);
+    if (!refs.length) return null;
+    const ar = CREATE_ASPECT_VALUES.includes(aspect) ? aspect : "9:16";
+    const full = `${(prompt || "").trim().slice(0, 500)}. Use the exact same people shown in the reference images — same faces, hair and wardrobe. No watermark, no signature.`;
+    const url = await repRun("google/nano-banana", { prompt: full, image_input: refs, aspect_ratio: ar, output_format: "jpg" });
+    const durable = await persistRemote(url, "jpg");
+    artLog("image-ad", `styled seed rendered (cast x${refs.length}, ${ar})`);
+    return durable;
+  } catch (e) {
+    artLog("image-ad", `styled seed (cast) failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return null;
+  }
+}
+
 export async function generateImageAd(
   shopId: string,
   brandProfile: BrandProfile,
