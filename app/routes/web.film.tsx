@@ -35,6 +35,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     take: 80,
     select: { title: true, imageUrl: true, description: true },
   })).map((p) => ({ title: p.title, imageUrl: p.imageUrl as string, description: (p.description || "").slice(0, 300) }));
+  // The merchant's own Creator-made images — any one can seed a storyboard shot.
+  // (The breakthrough path: animating a frame you already made keeps the staging
+  // locked in and sidesteps text-to-image refusals on tricky content.)
+  const origin = externalOrigin(request);
+  const gallery = (await db.asset.findMany({
+    where: { shopId: shop.id, type: "IMAGE_AD", status: { not: "FAILED" } },
+    orderBy: { createdAt: "desc" },
+    take: 24,
+    select: { id: true, title: true, bodyJson: true },
+  })).map((a) => {
+    let url = "";
+    try { const b = JSON.parse(a.bodyJson || "{}") as { imageUrl?: string; url?: string }; url = b.imageUrl || b.url || ""; } catch { /* ignore */ }
+    if (!url) return null;
+    const abs = /^https?:\/\//.test(url) ? url : origin + (url.startsWith("/") ? url : "/" + url);
+    return { id: a.id, title: (a.title || "").slice(0, 80), url: abs };
+  }).filter((x): x is { id: string; title: string; url: string } => !!x).slice(0, 18);
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
     hasPlan: !!shop.activePlan?.active,
@@ -43,6 +59,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     outputLang: normalizeContentLang(shop.contentLang),
     templates,
     products,
+    gallery,
     perScene: FILM_PER_SCENE,
     base: FILM_BASE,
   });
@@ -412,8 +429,21 @@ export default function FilmStudio() {
                     </>
                   )}
                   <details className="fs-shot-own">
-                    <summary>{t("Use an image I already have")}</summary>
-                    <input className="fs-shot-url" type="url" maxLength={2000} defaultValue="" placeholder={t("Paste an image URL")} onChange={(e) => useFrameUrl(i, e.target.value)} />
+                    <summary>{t("Use an image I already made")}</summary>
+                    {d.gallery.length > 0 ? (
+                      <div className="fs-shot-gallery" role="list" aria-label={t("Your images")}>
+                        {d.gallery.map((g) => (
+                          <button type="button" role="listitem" key={g.id} className={`fs-gthumb${frames[i] === g.url ? " on" : ""}`}
+                            disabled={framingIndex !== null} title={g.title || t("Use this image")} onClick={() => useFrameUrl(i, g.url)}>
+                            <img src={g.url} alt={g.title || t("Your image")} loading="lazy" />
+                            {frames[i] === g.url && <span className="fs-gthumb-chk" aria-hidden="true"><Ico n="check" size={12} /></span>}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="fs-gempty">{t("Images you make in Creator show up here to pick from.")}</p>
+                    )}
+                    <input className="fs-shot-url" type="url" maxLength={2000} defaultValue="" placeholder={t("…or paste an image URL")} onChange={(e) => useFrameUrl(i, e.target.value)} />
                   </details>
                 </div>
               </div>
@@ -544,5 +574,15 @@ const FS_STYLE = `
 .fs-shot-own[open] summary::before{content:"–";}
 .fs-shot-url{width:100%;box-sizing:border-box;margin-top:7px;border:1.5px dashed var(--line,#E4DFCF);border-radius:9px;padding:8px 11px;font-size:12px;font-family:inherit;color:var(--ink,#14201A);}
 .fs-shot-url:focus{outline:none;border-color:var(--green,#0C7A46);border-style:solid;}
+/* Pick a Creator-made image as this shot's seed frame (the breakthrough path). */
+.fs-shot-gallery{display:flex;gap:7px;overflow-x:auto;padding:8px 1px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.fs-shot-gallery::-webkit-scrollbar{display:none;}
+.fs-gthumb{position:relative;flex:0 0 auto;width:52px;aspect-ratio:9/16;border-radius:8px;overflow:hidden;border:1.5px solid var(--line,#E4DFCF);background:#fff;padding:0;cursor:pointer;transition:border-color .12s,box-shadow .12s;}
+.fs-gthumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.fs-gthumb:hover:not(:disabled){border-color:var(--green,#0C7A46);}
+.fs-gthumb.on{border-color:var(--green2,#1FA463);box-shadow:0 0 0 2px rgba(31,164,99,.3);}
+.fs-gthumb:disabled{opacity:.5;cursor:default;}
+.fs-gthumb-chk{position:absolute;right:3px;top:3px;width:18px;height:18px;border-radius:50%;background:var(--green2,#1FA463);color:#fff;display:grid;place-items:center;box-shadow:0 1px 3px rgba(20,32,26,.3);}
+.fs-gempty{font-size:11.5px;color:var(--ink2,#4A554E);opacity:.85;margin:8px 0 0;}
 @media(max-width:640px){.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
 `;
