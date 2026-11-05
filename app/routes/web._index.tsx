@@ -411,13 +411,29 @@ export default function WebDashboard() {
       const b = el.children[1] as HTMLElement | undefined;
       return (a && b ? b.offsetLeft - a.offsetLeft : el.clientWidth) * 5;
     };
+    let reduceMo = false;
+    try { reduceMo = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch { /* ignore */ }
     const floatCentre = () => {
-      if (!isCar()) { for (const c of kids()) c.classList.remove("is-float"); return; }
+      if (!isCar()) {
+        for (const c of kids()) { c.classList.remove("is-float"); const v = c.querySelector("video"); if (v && !v.paused) v.pause(); }
+        return;
+      }
       const mid = el.scrollLeft + el.clientWidth / 2;
       let best: HTMLElement | null = null;
       let bestD = Infinity;
       for (const c of kids()) { const d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid); if (d < bestD) { bestD = d; best = c; } }
-      for (const c of kids()) c.classList.toggle("is-float", c === best);
+      for (const c of kids()) {
+        const on = c === best;
+        c.classList.toggle("is-float", on);
+        // Front card plays its clip automatically (touch has no hover); the rest rest.
+        // Guard on paused-state so we never interrupt a play() with a pause() (and so a
+        // stray blur that paused the front card self-heals on the next scroll frame).
+        const v = c.querySelector("video");
+        if (v) {
+          if (on && !reduceMo) { if (v.paused) v.play().catch(() => { /* autoplay blocked; fine */ }); }
+          else if (!v.paused) v.pause();
+        }
+      }
     };
     const onScroll = () => {
       if (!isCar()) return;
@@ -540,11 +556,11 @@ export default function WebDashboard() {
           <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
           <div className="wd-hero-cards" ref={cardsRef}>
             {[0, 1, 2].flatMap((set) => [
-              <PathImg key={`${set}-creator`} img="creator" v={3} eyebrow={t("Free roam")} title={t("Create anything")} sub={t("Generate images, video & music from a prompt")} cue={t("Open Create")} onClick={() => { setMode("casual"); navigate("/web/studio"); }} />,
-              <PathImg key={`${set}-marketing`} img="marketing" v={2} eyebrow={t("Product ads")} title={t("Ad Maker")} sub={t("Turn your product into a ready-to-post ad")} cue={t("Open Ad Maker")} onClick={() => { setMode("marketing"); navigate("/web/studio"); }} />,
-              <PathImg key={`${set}-film`} img="film" v={3} eyebrow={t("Entertainment")} title={t("Movie Maker")} sub={t("Films, cartoons, music videos & episodes")} cue={t("Open Movie Maker")} onClick={() => navigate("/web/film")} />,
-              <PathImg key={`${set}-presenter`} img="presenter" v={3} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Craft avatars, costumes & wardrobes")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />,
-              <PathImg key={`${set}-archive`} img="archive" v={4} eyebrow={t("Your library")} title={t("Archive")} sub={t("Every piece you've made, ready to post")} cue={t("Open Archive")} onClick={() => navigate("/web/archive")} />,
+              <PathImg key={`${set}-creator`} idx={1} img="creator" v={3} eyebrow={t("Free roam")} title={t("Create anything")} sub={t("Generate images, video & music from a prompt")} cue={t("Open Create")} onClick={() => { setMode("casual"); navigate("/web/studio"); }} />,
+              <PathImg key={`${set}-marketing`} idx={2} img="marketing" v={2} eyebrow={t("Product ads")} title={t("Ad Maker")} sub={t("Turn your product into a ready-to-post ad")} cue={t("Open Ad Maker")} onClick={() => { setMode("marketing"); navigate("/web/studio"); }} />,
+              <PathImg key={`${set}-film`} idx={3} img="film" v={3} eyebrow={t("Entertainment")} title={t("Movie Maker")} sub={t("Films, cartoons, music videos & episodes")} cue={t("Open Movie Maker")} onClick={() => navigate("/web/film")} />,
+              <PathImg key={`${set}-presenter`} idx={4} img="presenter" v={3} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Craft avatars, costumes & wardrobes")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />,
+              <PathImg key={`${set}-archive`} idx={5} img="archive" v={4} eyebrow={t("Your library")} title={t("Archive")} sub={t("Every piece you've made, ready to post")} cue={t("Open Archive")} onClick={() => navigate("/web/archive")} />,
             ])}
           </div>
         </div>
@@ -911,7 +927,7 @@ export default function WebDashboard() {
 
 /* Route-local dashboard styles — GStyle palette (paper #F4F1E6, card #FDFCF7,
  * ink #14201A, green #12A85E, gold #B08526/#E7C879). */
-function PathImg({ img, v, eyebrow, title, sub, cue, onClick }: { img: string; v: number; eyebrow: string; title: string; sub: string; cue: string; onClick: () => void }) {
+function PathImg({ img, v, eyebrow, title, sub, cue, idx, onClick }: { img: string; v: number; eyebrow: string; title: string; sub: string; cue: string; idx: number; onClick: () => void }) {
   const play = (e: { currentTarget: HTMLElement }) => {
     try { if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return; } catch { /* ignore */ }
     const el = e.currentTarget.querySelector("video");
@@ -923,6 +939,7 @@ function PathImg({ img, v, eyebrow, title, sub, cue, onClick }: { img: string; v
   };
   return (
     <button type="button" className="wd-path wd-path-img" onClick={onClick} onMouseEnter={play} onMouseLeave={stop} onFocus={play} onBlur={stop}>
+      <span className="wd-path-count" aria-hidden="true">{idx}/5</span>
       <span className="wd-path-hero" style={{ backgroundImage: `url(/landing/${img}-hero.jpg?v=${v})` }} aria-hidden="true">
         <video className="wd-path-vid" muted loop playsInline preload="none" poster={`/landing/${img}-hero.jpg?v=${v}`} aria-hidden="true">
           <source src={`/landing/${img}-hero.mp4?v=5`} type="video/mp4" />
@@ -1006,12 +1023,17 @@ const DASH_CSS = `
    and a lift. preload=none so clips load only on hover. */
 .wd-path-img{position:relative;}
 .wd-path-img .wd-path-hero{position:relative;}
+/* Position chip (e.g. "2/5") — only shown on the front card of the mobile carousel. */
+.wd-path-count{display:none;position:absolute;top:10px;left:10px;z-index:4;padding:3px 9px;border-radius:999px;background:rgba(20,32,26,.62);color:#fff;font-size:12px;font-weight:700;line-height:1;letter-spacing:.02em;align-items:center;font-variant-numeric:tabular-nums;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);pointer-events:none;}
 .wd-path-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease;pointer-events:none;}
 .wd-path-img:hover .wd-path-vid,.wd-path-img:focus-visible .wd-path-vid{opacity:1;}
 .wd-path-img:hover,.wd-path-img:focus-visible{transform:translateY(-5px);border-color:var(--green);box-shadow:0 16px 34px rgba(12,122,70,.18);}
 @media(prefers-reduced-motion:reduce){.wd-path-vid{transition:none;}.wd-path-img:hover{transform:none;}}
-@media(max-width:680px){.wd-hero-cards{display:flex;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;gap:14px;padding:8px 0 28px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}.wd-hero-cards::-webkit-scrollbar{display:none;}.wd-hero-cards>*{display:block!important;flex:0 0 78%;scroll-snap-align:center;grid-column:auto!important;transform:scale(.9);opacity:.7;transition:transform .35s ease,opacity .35s ease,box-shadow .35s ease;box-shadow:0 8px 20px rgba(20,32,26,.1);}.wd-hero-cards>.is-float{transform:scale(1);opacity:1;box-shadow:0 20px 42px rgba(20,32,26,.22);}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
-@media(max-width:680px) and (prefers-reduced-motion:reduce){.wd-hero-cards>*{transform:none;opacity:1;transition:none;}.wd-hero-cards>.is-float{transform:none;}}
+/* Mobile = floating swipe-loop deck: side cards sit smaller and tuck UNDER the
+   front card (negative margins + z-index), the front card pops and auto-plays its
+   clip, and a position chip shows which of the five you're on. */
+@media(max-width:680px){.wd-hero-cards{display:flex;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;gap:0;padding:8px 0 30px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}.wd-hero-cards::-webkit-scrollbar{display:none;}.wd-hero-cards>*{display:block!important;flex:0 0 80%;scroll-snap-align:center;grid-column:auto!important;margin:0 -8%;transform:scale(.84);opacity:.8;z-index:1;transition:transform .35s ease,opacity .35s ease,box-shadow .35s ease;box-shadow:0 8px 20px rgba(20,32,26,.12);}.wd-hero-cards>.is-float{transform:scale(1);opacity:1;z-index:3;box-shadow:0 22px 46px rgba(20,32,26,.28);}.wd-hero-cards>.is-float .wd-path-vid{opacity:1;}.wd-hero-cards>.is-float .wd-path-count{display:inline-flex;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
+@media(max-width:680px) and (prefers-reduced-motion:reduce){.wd-hero-cards{gap:12px;}.wd-hero-cards>*{margin:0;transform:none;opacity:1;transition:none;z-index:auto;}.wd-hero-cards>.is-float{transform:none;}.wd-hero-cards>.is-float .wd-path-vid{opacity:0;}}
 /* launch tracker */
 .wd-launch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin:0 0 22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
 .wdl-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
