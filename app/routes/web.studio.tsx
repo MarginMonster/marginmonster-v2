@@ -3687,7 +3687,6 @@ export default function WebStudio() {
       <style dangerouslySetInnerHTML={{ __html: WS_STYLE }} />
       <div className="ws-cinehead">
         <span className="ws-cinehead-bg" aria-hidden="true">
-          <span className="ws-cinehead-rose a" />
           <span className="ws-cinehead-rose b" />
           <span className="ws-cinehead-media">
             <img key={casual ? "c" : "m"} className="ws-cinehead-img" src={`/landing/${casual ? "creator" : "marketing"}-hero.jpg?v=5`} alt="" />

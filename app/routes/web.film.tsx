@@ -426,7 +426,6 @@ export default function FilmStudio() {
 
       <div className="fs-head">
         <span className="fs-head-bg" aria-hidden="true">
-          <span className="fs-head-rose a" />
           <span className="fs-head-rose b" />
           <span className="fs-head-media">
             <img key={tmpl?.key} className="fs-head-img" src={`/landing/film-still-${tmpl?.key || "shortfilm"}.jpg?v=1`} alt=""
