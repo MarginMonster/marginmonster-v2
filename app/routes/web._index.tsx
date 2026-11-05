@@ -499,32 +499,40 @@ export default function WebDashboard() {
             <button type="button" className="wd-path wd-path-img" onClick={() => { setMode("marketing"); navigate("/web/studio"); }}>
               <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/marketing-hero.jpg)" }} aria-hidden="true" />
               <span className="wd-path-body">
-                <span className="wd-path-eyebrow">{t("Social Marketing")}</span>
-                <b>{t("Grow on social")}</b>
-                <i>{t("Product ads & auto-posting")}</i>
-                <span className="wd-path-cue">{t("Open Social Marketing")} <Ico n="arrow" size={15} /></span>
+                <span className="wd-path-eyebrow">{t("Product ads")}</span>
+                <b>{t("Ad Maker")}</b>
+                <i>{t("Turn a product into an ad")}</i>
+                <span className="wd-path-cue">{t("Open Ad Maker")} <Ico n="arrow" size={15} /></span>
               </span>
             </button>
           </div>
-        </div>
-        <div className="wd-hero-nav">
-          <span className="wd-hero-paths-h">{t("Jump into a studio")}</span>
-          <div className="wd-hero-nav-row">
-            <button type="button" className="wd-path wd-navtile" onClick={() => navigate("/web/film")}>
-              <span className="wd-path-ic"><Ico n="filmreel" size={19} /></span>
-              <span className="wd-path-tx"><b>{t("Movie Maker")}</b><i>{t("Episodes & dialogue")}</i></span>
+          <div className="wd-hero-paths-trio">
+            <button type="button" className="wd-path wd-path-img" onClick={() => navigate("/web/film")}>
+              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/film-hero.jpg)" }} aria-hidden="true" />
+              <span className="wd-path-body">
+                <span className="wd-path-eyebrow">{t("Entertainment")}</span>
+                <b>{t("Movie Maker")}</b>
+                <i>{t("Episodes, music videos & dialogue")}</i>
+                <span className="wd-path-cue">{t("Open Movie Maker")} <Ico n="arrow" size={15} /></span>
+              </span>
             </button>
-            <button type="button" className="wd-path wd-navtile" onClick={() => { setMode("marketing"); navigate("/web/studio"); }}>
-              <span className="wd-path-ic"><Ico n="megaphone" size={19} /></span>
-              <span className="wd-path-tx"><b>{t("Ad Maker")}</b><i>{t("Product ads from a photo")}</i></span>
+            <button type="button" className="wd-path wd-path-img" onClick={() => navigate("/web/presenters")}>
+              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/presenter-hero.jpg)" }} aria-hidden="true" />
+              <span className="wd-path-body">
+                <span className="wd-path-eyebrow">{t("Your AI cast")}</span>
+                <b>{t("Presenters")}</b>
+                <i>{t("Avatars that sell")}</i>
+                <span className="wd-path-cue">{t("Open Presenters")} <Ico n="arrow" size={15} /></span>
+              </span>
             </button>
-            <button type="button" className="wd-path wd-navtile" onClick={() => navigate("/web/presenters")}>
-              <span className="wd-path-ic"><Ico n="presenter" size={19} /></span>
-              <span className="wd-path-tx"><b>{t("Presenters")}</b><i>{t("Your AI cast")}</i></span>
-            </button>
-            <button type="button" className="wd-path wd-navtile" onClick={() => navigate("/web/archive")}>
-              <span className="wd-path-ic"><Ico n="bookcase" size={19} /></span>
-              <span className="wd-path-tx"><b>{t("Archive")}</b><i>{t("Everything you've made")}</i></span>
+            <button type="button" className="wd-path wd-path-img" onClick={() => navigate("/web/archive")}>
+              <span className="wd-path-hero" style={{ backgroundImage: "url(/landing/archive-hero.jpg)" }} aria-hidden="true" />
+              <span className="wd-path-body">
+                <span className="wd-path-eyebrow">{t("Your library")}</span>
+                <b>{t("Archive")}</b>
+                <i>{t("Everything you've made")}</i>
+                <span className="wd-path-cue">{t("Open Archive")} <Ico n="arrow" size={15} /></span>
+              </span>
             </button>
           </div>
         </div>
@@ -914,7 +922,7 @@ const DASH_CSS = `
 .wd-hero-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:14px;}
 .wd-hero-chips button{border:1px solid var(--line2,#D7DCCB);background:var(--card);color:var(--ink2);font:inherit;font-weight:700;font-size:12.5px;cursor:pointer;padding:7px 14px;border-radius:999px;transition:border-color .14s,color .14s;}
 .wd-hero-chips button:hover{border-color:var(--green);color:var(--ink);}
-.wd-hero-paths{width:min(620px,100%);margin-top:22px;}
+.wd-hero-paths{width:min(820px,100%);margin-top:22px;}
 .wd-hero-paths-h{display:block;font-weight:800;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2);margin-bottom:9px;}
 .wd-hero-paths-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
 .wd-path{display:flex;align-items:center;gap:9px;min-width:0;text-align:left;cursor:pointer;
@@ -927,7 +935,7 @@ const DASH_CSS = `
 /* Image-rich mode cards — the gorgeous Creator/Social art from the old mode gate,
    pulled into the hero so it's one flowing lander instead of a splash + a hero. */
 .wd-path-img{flex-direction:column;align-items:stretch;gap:0;padding:0;overflow:hidden;}
-.wd-path-hero{display:block;height:96px;background-size:cover;background-position:center;border-bottom:1px solid var(--line2,#D7DCCB);transition:transform .25s ease;}
+.wd-path-hero{display:block;height:112px;background-size:cover;background-position:center;border-bottom:1px solid var(--line2,#D7DCCB);transition:transform .25s ease;}
 .wd-path-img:hover .wd-path-hero{transform:scale(1.04);}
 .wd-path-img{overflow:hidden;}
 .wd-path-body{display:flex;flex-direction:column;gap:3px;padding:13px 15px 14px;min-width:0;}
@@ -949,11 +957,10 @@ const DASH_CSS = `
 .wd-path-img:first-child .wd-path-dot{box-shadow:0 0 0 3px rgba(176,133,38,.16);}
 .wd-path-studio{width:100%;margin-top:10px;}
 .wd-plan-line{text-align:center;margin:0 0 20px;}
-/* Launcher-style section navigator — the quick-jump tiles from the old /web/home
-   console, brought home into the cream dashboard (reuses .wd-path's tile look). */
-.wd-hero-nav{width:min(620px,100%);margin-top:16px;}
-.wd-hero-nav-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
-@media(max-width:680px){.wd-hero-paths-row{grid-template-columns:1fr;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
+/* All five studios as full-bleed image cards — 2 primary on top, 3 below — so
+   Movie Maker / Presenters / Archive read as rich as Create / Ad Maker. */
+.wd-hero-paths-trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px;}
+@media(max-width:680px){.wd-hero-paths-row,.wd-hero-paths-trio{grid-template-columns:1fr;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
 /* launch tracker */
 .wd-launch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin:0 0 22px;box-shadow:0 2px 8px rgba(20,32,26,.05);}
 .wdl-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
