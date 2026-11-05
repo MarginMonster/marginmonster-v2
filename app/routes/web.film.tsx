@@ -425,8 +425,15 @@ export default function FilmStudio() {
       <style>{FS_STYLE}</style>
 
       <div className="fs-head">
-        <b>{t("Film Studio")} <span className="fs-beta">{t("new")}</span></b>
-        <span>{t("Premium long-form video — made from a prompt. Pick a format, we write the treatment free, then you spend only when you hit Generate.")}</span>
+        <div className="fs-head-copy">
+          <span className="fs-head-eyebrow"><Ico n="film" size={13} /> {t("Film Studio")} <span className="fs-beta">{t("new")}</span></span>
+          <b>{tmpl?.name || t("Film Studio")}</b>
+          <span>{t("Pick a format — we write it free, you only spend to render.")}</span>
+        </div>
+        <div className="fs-head-stage" aria-hidden="true">
+          <span className="fs-head-still" style={{ backgroundImage: `url(/landing/film-hero.jpg?v=5)` }} />
+          <img className="fs-head-cat" src="/helpurr-film.png" alt="" loading="lazy" />
+        </div>
       </div>
 
       {/* Template row */}
@@ -682,12 +689,19 @@ export default function FilmStudio() {
 const FS_STYLE = `
 .fs-wrap{max-width:760px;margin:0 auto;--fs-gold:#C79A3A;--fs-gold-lt:#E7C879;}
 /* Cinematic hero — a dark "movie theatre" band with a gold spotlight + underline. */
-.fs-head{position:relative;overflow:hidden;border-radius:22px;padding:30px 28px 27px;margin-bottom:6px;background:radial-gradient(135% 130% at 12% -20%,#214231 0%,#132219 46%,#0B140F 100%);box-shadow:0 22px 54px rgba(11,20,15,.42),inset 0 1px 0 rgba(255,255,255,.07);}
-.fs-head::before{content:"";position:absolute;inset:0;background:radial-gradient(55% 85% at 88% -5%,rgba(231,200,121,.2),transparent 60%);pointer-events:none;}
-.fs-head::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,transparent,var(--fs-gold-lt),var(--fs-gold),transparent);opacity:.75;}
-.fs-head b{position:relative;font-family:Poppins,sans-serif;font-weight:800;font-size:30px;letter-spacing:-.02em;color:#fff;display:flex;align-items:center;gap:12px;}
-.fs-beta{font-size:10.5px;font-weight:800;color:#14201A;background:linear-gradient(135deg,var(--fs-gold-lt),var(--fs-gold));border-radius:999px;padding:3px 11px;text-transform:uppercase;letter-spacing:.08em;box-shadow:0 2px 10px rgba(199,154,58,.45);}
-.fs-head>span{position:relative;display:block;font-size:13.5px;color:rgba(255,255,255,.74);margin-top:10px;max-width:520px;line-height:1.55;}
+/* Cinematic DARK hero, broken up + "leveled" with the app's own light rosettes so
+   it belongs with the airy rest of the app. Holds a film still + the film Helpurr. */
+.fs-head{position:relative;overflow:hidden;border-radius:22px;padding:22px 24px;margin-bottom:6px;background:radial-gradient(135% 130% at 10% -20%,#20402F 0%,#13231A 48%,#0B140F 100%);box-shadow:0 22px 54px rgba(11,20,15,.4),inset 0 1px 0 rgba(255,255,255,.07);display:flex;align-items:center;gap:20px;}
+.fs-head::before{content:"";position:absolute;right:-70px;top:-95px;width:320px;height:320px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.14;mix-blend-mode:screen;pointer-events:none;}
+.fs-head::after{content:"";position:absolute;left:-90px;bottom:-120px;width:270px;height:270px;background:url(/gstyle-rosette-green.svg) center/contain no-repeat;opacity:.17;mix-blend-mode:screen;pointer-events:none;}
+.fs-head-copy{position:relative;z-index:1;flex:1 1 auto;min-width:0;}
+.fs-head-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:var(--fs-gold-lt,#E7C879);text-transform:uppercase;letter-spacing:.08em;}
+.fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:27px;letter-spacing:-.02em;color:#fff;margin-top:8px;line-height:1.1;}
+.fs-head-copy>span{display:block;font-size:13px;color:rgba(255,255,255,.72);margin-top:8px;max-width:360px;line-height:1.5;}
+.fs-beta{font-size:9.5px;font-weight:800;color:#2A1C00;background:linear-gradient(135deg,var(--fs-gold-lt),var(--fs-gold));border-radius:999px;padding:2px 8px;text-transform:uppercase;letter-spacing:.06em;box-shadow:0 2px 10px rgba(199,154,58,.4);}
+.fs-head-stage{position:relative;z-index:1;flex:0 0 auto;width:210px;}
+.fs-head-still{display:block;width:210px;aspect-ratio:16/10;border-radius:14px;background-size:cover;background-position:center;background-color:#0b140f;box-shadow:0 16px 36px rgba(0,0,0,.42);border:4px solid rgba(255,255,255,.92);}
+.fs-head-cat{position:absolute;right:-10px;bottom:-12px;width:80px;height:auto;filter:drop-shadow(0 8px 14px rgba(0,0,0,.5));pointer-events:none;}
 .fs-tmpls{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0 6px;}
 .fs-tmpl{flex:1 1 200px;min-width:0;text-align:left;border:1px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#fff,#FCFAF3);border-radius:18px;padding:15px 16px 14px;cursor:pointer;transition:transform .18s cubic-bezier(.2,.7,.2,1),box-shadow .18s,border-color .18s;display:block;box-shadow:0 1px 2px rgba(20,32,26,.04);}
 .fs-tmpl:hover{transform:translateY(-4px);box-shadow:0 16px 32px rgba(20,32,26,.14);border-color:var(--green2,#1FA463);}
@@ -815,5 +829,5 @@ const FS_STYLE = `
 .fs-actor-recast:disabled{opacity:.5;cursor:default;}
 .fs-actor-own{margin:0;}
 @media(prefers-reduced-motion:reduce){.fs-go::after{display:none;}.fs-tmpl,.fs-shot-make,.fs-write,.fs-go,.fs-actor-cast{transition:none;}}
-@media(max-width:640px){.fs-head{padding:24px 20px 22px;}.fs-head b{font-size:25px;}.fs-head>span{font-size:13px;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
+@media(max-width:640px){.fs-head{flex-direction:column;align-items:flex-start;padding:20px;gap:18px;}.fs-head-copy b{font-size:23px;}.fs-head-stage{width:100%;max-width:280px;align-self:center;}.fs-head-still{width:100%;}.fs-head-cat{width:72px;right:0;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
 `;
