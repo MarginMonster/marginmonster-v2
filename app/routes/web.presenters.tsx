@@ -34,9 +34,16 @@ export default function PresenterHub() {
   return (
     <div className="ph-wrap">
       <style>{PH_STYLE}</style>
-      <div className="ph-head">
-        <b>{t("Your presenters")}</b>
-        <span>{t("A full cast of pro presenters, ready to film your product — or upload a photo and become the face of your brand.")}</span>
+      <div className="ph-cinehead">
+        <span className="ph-cinehead-bg" aria-hidden="true">
+          <span className="ph-cinehead-rose" />
+          <span className="ph-cinehead-media"><img className="ph-cinehead-img" src="/landing/presenter-hero.jpg?v=3" alt="" loading="lazy" /></span>
+        </span>
+        <div className="ph-cinehead-copy">
+          <span className="ph-cinehead-eyebrow"><Ico n="presenter" size={13} /> {t("Your AI cast")}</span>
+          <b>{t("Your presenters")}</b>
+          <span>{t("A full cast of pro presenters, ready to film your product — or upload a photo and become the face of your brand.")}</span>
+        </div>
       </div>
 
       {/* Forge hero — the differentiator, made prominent. */}
@@ -77,8 +84,19 @@ export default function PresenterHub() {
 
 const PH_STYLE = `
 .ph-wrap{max-width:780px;margin:0 auto;}
-.ph-head b{font-family:Poppins,sans-serif;font-weight:800;font-size:22px;color:var(--ink,#14201A);display:block;}
-.ph-head>span{display:block;font-size:13px;color:var(--ink2,#4A554E);margin-top:4px;max-width:500px;line-height:1.45;}
+/* Section hero — softened green band to match Film Studio / Studio. */
+.ph-cinehead{position:relative;z-index:1;border-radius:18px;padding:20px 24px;margin-bottom:16px;min-height:130px;display:flex;align-items:center;}
+.ph-cinehead-bg{position:absolute;inset:0;z-index:0;border-radius:18px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 8px 22px rgba(11,20,15,.16),inset 0 0 0 1px rgba(255,255,255,.1);}
+.ph-cinehead-rose{position:absolute;left:-130px;bottom:-170px;width:350px;height:350px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.3;mix-blend-mode:screen;pointer-events:none;will-change:transform;animation:phspin 115s linear infinite;}
+@keyframes phspin{to{transform:rotate(-360deg);}}
+.ph-cinehead-media{position:absolute;right:0;top:0;bottom:0;width:54%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 44%);mask-image:linear-gradient(90deg,transparent,#000 44%);}
+.ph-cinehead-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
+.ph-cinehead-copy{position:relative;z-index:1;flex:1 1 auto;min-width:0;max-width:52%;}
+.ph-cinehead-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:#E7C879;text-transform:uppercase;letter-spacing:.08em;}
+.ph-cinehead-copy b{font-family:Poppins,sans-serif;font-weight:800;font-size:26px;letter-spacing:-.02em;color:#fff;display:block;margin-top:7px;line-height:1.1;}
+.ph-cinehead-copy>span{display:block;font-size:13px;color:rgba(255,255,255,.74);margin-top:7px;max-width:320px;line-height:1.45;}
+@media(max-width:640px){.ph-cinehead{padding:18px;min-height:114px;}.ph-cinehead-copy b{font-size:21px;}.ph-cinehead-copy{max-width:60%;}.ph-cinehead-media{width:52%;}}
+@media(prefers-reduced-motion:reduce){.ph-cinehead-rose{animation:none;}}
 .ph-forge{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:16px 0 8px;padding:18px 20px;border-radius:16px;background:linear-gradient(135deg,#0C7A46,#0A5F38);color:#FBF6E6;box-shadow:0 8px 22px rgba(10,95,56,.28);text-decoration:none;transition:transform .12s,box-shadow .12s;}
 .ph-forge:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(10,95,56,.34);}
 .ph-forge-l{display:flex;align-items:center;gap:14px;min-width:0;}

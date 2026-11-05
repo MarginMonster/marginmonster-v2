@@ -1023,6 +1023,21 @@ const WA_CSS = `
 .wa-toast .wa-toast-ic{color:#8FE3B4;display:inline-grid;place-items:center;}
 .wa-toast-undo{border:0;background:none;color:#FFC24A;font:inherit;font-weight:800;cursor:pointer;padding:4px 6px;text-decoration:underline;flex:0 0 auto;}
 @media(max-width:640px){.wa-toast{left:16px;right:16px;transform:none;bottom:16px;}.wa-toast-undo{min-height:44px}@keyframes waToastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}}
+/* Section hero — softened green band to match Film Studio / Studio / Presenters. */
+.ar-cinehead{position:relative;z-index:1;border-radius:18px;padding:20px 24px;margin-bottom:16px;min-height:130px;display:flex;align-items:center;}
+.ar-cinehead-bg{position:absolute;inset:0;z-index:0;border-radius:18px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 8px 22px rgba(11,20,15,.16),inset 0 0 0 1px rgba(255,255,255,.1);}
+.ar-cinehead-rose{position:absolute;left:-130px;bottom:-170px;width:350px;height:350px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.3;mix-blend-mode:screen;pointer-events:none;will-change:transform;animation:arspin 115s linear infinite;}
+@keyframes arspin{to{transform:rotate(-360deg);}}
+.ar-cinehead-media{position:absolute;right:0;top:0;bottom:0;width:54%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 44%);mask-image:linear-gradient(90deg,transparent,#000 44%);}
+.ar-cinehead-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
+.ar-cinehead-copy{position:relative;z-index:1;flex:1 1 auto;min-width:0;max-width:54%;}
+.ar-cinehead-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:#E7C879;text-transform:uppercase;letter-spacing:.08em;}
+.ar-cinehead .wb-h1{color:#fff;text-align:left;margin:7px 0 0;font-size:26px;}
+.ar-cinehead .wb-sub{color:rgba(255,255,255,.74);text-align:left;margin:7px 0 0;max-width:360px;}
+.ar-cinehead .wb-sub b{color:#fff;}
+.ar-cinehead .wb-sub a{color:#E7C879;text-decoration:underline;}
+@media(max-width:640px){.ar-cinehead{padding:18px;min-height:118px;}.ar-cinehead .wb-h1{font-size:21px;}.ar-cinehead-copy{max-width:60%;}.ar-cinehead-media{width:52%;}}
+@media(prefers-reduced-motion:reduce){.ar-cinehead-rose{animation:none;}}
 `;
 
 export default function WebArchive() {
@@ -1226,13 +1241,22 @@ export default function WebArchive() {
   return (
     <div className={isCreator ? "wa-creator" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WA_CSS }} />
-      <h1 className="wb-h1">{t("Your Archive")}</h1>
-      {/* ONE unified archive (owner 11-01) — the Creator/Marketing toggle was
-          removed; everything the shop has made lives in a single list. */}
-      <p className="wb-sub">
-        {t("Everything you've made")} — {t("tap a piece to watch it big, keep it, download it")}{canPost ? (linkedCount > 1 ? t(", or post it to your {n} linked accounts", { n: linkedCount }) : t(", or post it to your {n} linked account", { n: linkedCount })) : ""}.
-        {cooking > 0 && <> · <b>{cooking > 1 ? t("{n} pieces cooking below", { n: cooking }) : t("{n} piece cooking below", { n: cooking })}</b> — {t("this page updates itself.")}</>}
-      </p>
+      <div className="ar-cinehead">
+        <span className="ar-cinehead-bg" aria-hidden="true">
+          <span className="ar-cinehead-rose" />
+          <span className="ar-cinehead-media"><img className="ar-cinehead-img" src="/landing/archive-hero.jpg?v=4" alt="" loading="lazy" /></span>
+        </span>
+        <div className="ar-cinehead-copy">
+          <span className="ar-cinehead-eyebrow"><Ico n="box" size={13} /> {t("Your library")}</span>
+          <h1 className="wb-h1">{t("Your Archive")}</h1>
+          {/* ONE unified archive (owner 11-01) — the Creator/Marketing toggle was
+              removed; everything the shop has made lives in a single list. */}
+          <p className="wb-sub">
+            {t("Everything you've made")} — {t("tap a piece to watch it big, keep it, download it")}{canPost ? (linkedCount > 1 ? t(", or post it to your {n} linked accounts", { n: linkedCount }) : t(", or post it to your {n} linked account", { n: linkedCount })) : ""}.
+            {cooking > 0 && <> · <b>{cooking > 1 ? t("{n} pieces cooking below", { n: cooking }) : t("{n} piece cooking below", { n: cooking })}</b> — {t("this page updates itself.")}</>}
+          </p>
+        </div>
+      </div>
       {!canPost && <p className="wb-note" style={{ marginTop: -14, marginBottom: 18 }}>{t("Want one-tap posting?")} <Link to="/web/connect">{t("Link your socials")}</Link>.</p>}
       <p className="wa-wallet">{hasPlan ? t("Wallet: {n} tokens", { n: tokens.toLocaleString("en-US") }) : t("Pick a plan to generate.")}</p>
       {err && !viewer && <div className="wb-err">{err}</div>}
