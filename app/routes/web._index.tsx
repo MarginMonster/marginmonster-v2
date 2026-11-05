@@ -492,7 +492,7 @@ export default function WebDashboard() {
           </div>
           <div className="wd-hero-paths-trio">
             <PathImg img="film" v={3} eyebrow={t("Entertainment")} title={t("Movie Maker")} sub={t("Episodes, music videos & dialogue")} cue={t("Open Movie Maker")} onClick={() => navigate("/web/film")} />
-            <PathImg img="presenter" v={3} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Avatars that sell")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />
+            <PathImg img="presenter" v={3} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Craft avatars, costumes & wardrobes")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />
             <PathImg img="archive" v={4} eyebrow={t("Your library")} title={t("Archive")} sub={t("Everything you've made")} cue={t("Open Archive")} onClick={() => navigate("/web/archive")} />
           </div>
         </div>
