@@ -4700,19 +4700,20 @@ export async function renderStyledSeedMulti(prompt: string, refImageUrls: (strin
  *  invented its own room and the finished clips cut between unrelated sets. Feeding the
  *  previous frame as a room anchor keeps one continuous location. Up to 3 refs (room +
  *  two faces, nano-banana's sweet spot). Durable /renders URL, or null. */
-export async function renderSceneSeedChained(prompt: string, roomRefUrl: string, castRefUrls: (string | null | undefined)[], aspect = "9:16"): Promise<string | null> {
+export async function renderSceneSeedChained(prompt: string, roomRefUrl: string, _castRefUrls?: (string | null | undefined)[], aspect = "9:16"): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN || !roomRefUrl) return null;
-    const faces = (castRefUrls || []).filter((u): u is string => !!u);
-    const refs = [roomRefUrl, ...faces].slice(0, 3);
     const ar = CREATE_ASPECT_VALUES.includes(aspect) ? aspect : "9:16";
-    const peopleClause = faces.length
-      ? ` The OTHER reference image(s) are the PEOPLE in the scene: keep them the EXACT same individuals — identical faces, age, skin, hair and wardrobe; do not swap, beautify or age them.`
-      : "";
-    const full = `${(prompt || "").trim().slice(0, 400)}. CRITICAL CONTINUITY: the FIRST reference image establishes the SETTING — keep the IDENTICAL room, set, furniture, walls, props, lighting and time of day; only move the CAMERA to a new angle and let the characters shift their pose naturally. Do NOT change the location, the decor or the mood.${peopleClause} No watermark, no signature.`;
-    const url = await repRun("google/nano-banana", { prompt: full, image_input: refs, aspect_ratio: ar, output_format: "jpg" });
+    // ROOM-DOMINANT, SINGLE reference. First attempt passed the room ref ALONGSIDE the
+    // separate cast-face portraits — but multi-image compositing diluted the set (the
+    // portraits' neutral backgrounds bled in and the room drifted shot-to-shot). The
+    // establishing frame ALREADY contains the characters, so a single strong img2img
+    // from it carries BOTH the room and the people; the model only has to swing the
+    // camera. That is the whole continuity fix: one set, new angles.
+    const full = `${(prompt || "").trim().slice(0, 440)}. CRITICAL CONTINUITY: reframe the EXACT scene in the reference image from a NEW camera angle. Keep the IDENTICAL room, set, furniture, walls, props, lighting and time of day, and the SAME people — same faces, hair and wardrobe. Only the camera angle and the characters' poses change; do NOT change the location, decor, mood or who is present. No watermark, no signature.`;
+    const url = await repRun("google/nano-banana", { prompt: full, image_input: [roomRefUrl], aspect_ratio: ar, output_format: "jpg" });
     const durable = await persistRemote(url, "jpg");
-    artLog("image-ad", `scene seed chained (room+cast x${refs.length}, ${ar})`);
+    artLog("image-ad", `scene seed chained (room-dominant, ${ar})`);
     return durable;
   } catch (e) {
     artLog("image-ad", `scene seed chained failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);

@@ -365,7 +365,10 @@ export default function FilmStudio() {
     const s = treatment.scenes[i];
     if (!s?.visual.trim()) return;
     const castText = (treatment.cast || []).join("; ");
-    const styleRef = frames.slice(0, i).reverse().find(Boolean) || "";
+    // Anchor every shot to the ESTABLISHING frame (the first one set), not the most
+    // recent — chaining shot→shot let the room drift a little each time and it compounded.
+    // One fixed anchor keeps all shots in the same set (same booth, new angles).
+    const styleRef = frames.find((f, j) => !!f && j !== i) || "";
     setFramingIndex(i);
     previewFrameFetcher.submit(
       { intent: "previewFilmFrame", template, sceneVisual: s.visual, castText, styleRefUrl: styleRef, sceneIndex: String(i), castRefs: JSON.stringify(shotCastRefs(s)) },
