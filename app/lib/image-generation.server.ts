@@ -4721,6 +4721,36 @@ export async function renderSceneSeedChained(prompt: string, roomRefUrl: string,
   }
 }
 
+/** The ShoulderShot method (how Runway/Kling/Veo-era dialogue continuity is actually
+ *  held): render ONE image split into two side-by-side panels — LEFT = character A
+ *  over-the-shoulder (A faces camera), RIGHT = character B reverse (B faces camera) —
+ *  BOTH in the exact same room. Because both angles are born from a single generation,
+ *  the set, furniture, props, lighting and grade match BY CONSTRUCTION. Deriving a
+ *  reverse angle by img2img from one POV instead re-imagines the room and drifts (the
+ *  "they moved to a different café" bug). The caller crops each half into a per-speaker
+ *  i2v seed → true shot/reverse-shot dialogue that never leaves the room. refs =
+ *  [establishing room frame, A's face, B's face] (cap 3). Returns the wide two-panel
+ *  /renders URL, or null. */
+export async function renderTwoPanelShotReverse(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; setting: string }): Promise<string | null> {
+  try {
+    if (!process.env.REPLICATE_API_TOKEN) return null;
+    const refs = [opts.roomRefUrl, opts.faceA, opts.faceB].filter((u): u is string => !!u).slice(0, 3);
+    const setting = (opts.setting || "a cinematic interior").trim().slice(0, 140);
+    const descA = (opts.descA || "the first person").trim().slice(0, 140);
+    const descB = (opts.descB || "the second person").trim().slice(0, 140);
+    const prompt = `A single photorealistic cinematic image split vertically into two equal side-by-side panels, both showing the SAME ${setting} from two opposite camera angles — a shot and its reverse-shot of a face-to-face conversation. LEFT panel: an over-the-shoulder shot where ${descA} faces the camera, seated across the table, with the OTHER person's shoulder blurred in the foreground. RIGHT panel: the REVERSE over-the-shoulder shot where ${descB} faces the camera, with the FIRST person's shoulder blurred in the foreground. BOTH panels are the EXACT same location: identical furniture, seating, table, walls, props, lighting and color grade — only the camera angle differs. Keep each person the exact same individual as in the reference faces — same face, hair and wardrobe. Cinematic, shallow depth of field, filmic, no on-screen text, no watermark.`;
+    const input: Record<string, unknown> = { prompt, aspect_ratio: "3:2", output_format: "jpg" };
+    if (refs.length) input.image_input = refs;
+    const url = await repRun("google/nano-banana", input);
+    const durable = await persistRemote(url, "jpg");
+    artLog("image-ad", `two-panel shot/reverse rendered (refs x${refs.length})`);
+    return durable;
+  } catch (e) {
+    artLog("image-ad", `two-panel shot/reverse failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return null;
+  }
+}
+
 export async function generateImageAd(
   shopId: string,
   brandProfile: BrandProfile,

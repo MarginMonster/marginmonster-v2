@@ -23,7 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
-import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained } from "./image-generation.server";
+import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderTwoPanelShotReverse } from "./image-generation.server";
 import { AVATAR_VOICES } from "./avatar-voice-catalog";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
@@ -89,6 +89,25 @@ async function extractLastFrame(videoPath: string): Promise<string | null> {
     const r = await runFfmpeg(["-y", "-sseof", "-0.2", "-i", videoPath, "-frames:v", "1", "-q:v", "2", out]);
     if (r.status === 0 && fs.existsSync(out)) return `/renders/${name}`;
   } catch { /* fall through — chain falls back to the scene's own seed still */ }
+  return null;
+}
+
+/** Crop one half (left or right panel) out of the two-panel shot/reverse image → a
+ *  single over-the-shoulder seed for that speaker. Persists to /renders (+ S3 mirror)
+ *  so Veo can fetch it. Returns the relative URL, or null. */
+async function cropPanelSeed(panelRelUrl: string, side: "left" | "right"): Promise<string | null> {
+  try {
+    const local = panelRelUrl.startsWith("/renders/") ? path.join(RENDERS(), path.basename(panelRelUrl)) : "";
+    if (!local || !fs.existsSync(local)) return null;
+    const name = `panel-${side}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.jpg`;
+    const out = path.join(RENDERS(), name);
+    const x = side === "left" ? "0" : "iw/2";
+    const r = await runFfmpeg(["-y", "-i", local, "-vf", `crop=iw/2:ih:${x}:0`, "-frames:v", "1", "-q:v", "2", out]);
+    if (r.status === 0 && fs.existsSync(out)) {
+      try { await mirrorRender(name, fs.readFileSync(out)); } catch { /* non-fatal */ }
+      return `/renders/${name}`;
+    }
+  } catch { /* fall through — caller uses the chain seed instead */ }
   return null;
 }
 
@@ -260,7 +279,7 @@ export async function generateTestMovie(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string };
   /** Per-scene APPROVED storyboard frames (relative /renders URLs), index-aligned
    *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
    *  that scene so it lands exactly as the merchant staged it. */
@@ -303,6 +322,43 @@ export async function generateTestMovie(opts: {
     } catch { /* fall through to text seeds */ }
   }
 
+  // 2b) SHOT / REVERSE-SHOT PANELS (the ShoulderShot method — how Runway/Kling/Veo-era
+  //     tools actually hold dialogue continuity). For a clean TWO-HANDER, render BOTH
+  //     over-the-shoulder angles as ONE matched image, so the room is identical by
+  //     construction, then seed each speaker's clips from their own panel. This REPLACES
+  //     last-frame→new-angle chaining, which re-imagines the set and drifts ("different
+  //     café, table changed, they swapped sides"). Gated on exactly two recurring
+  //     speakers; anything else falls back to the existing chain untouched.
+  const firstName = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
+  const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
+  let panelFor: ((speaker: string) => string | undefined) | null = null;
+  if (allSpeakers.length === 2) {
+    const [a, b] = allSpeakers;
+    const bibleFor = (n: string) => (treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || `${n}, a person`;
+    const faceFor = (n: string) => abs(castActors.find((c) => firstName(c.name) === firstName(n))?.faceUrl);
+    const setting = ((treatment.scenes[0]?.visual || opts.topic || "").split(/[.;]/)[0] || "")
+      .replace(/\b(two[- ]?shot|wide shot|close[- ]?up|medium shot|over[- ]the[- ]shoulder|establishing|shot)\b/gi, "")
+      .replace(/^\s*(across|of)\s+/i, "a ").replace(/\s+/g, " ").trim().slice(0, 130) || "a cinematic interior";
+    let panels: { left?: string; right?: string; a?: string; b?: string } | null = resume.ckPanels ? JSON.parse(resume.ckPanels) : null;
+    if (!panels?.left || !panels?.right) {
+      const roomRef = abs(approvedFrames[0]) || castRefAbs; // the merchant's opening frame, else the cast ref
+      const twoPanelUrl = await renderTwoPanelShotReverse({ roomRefUrl: roomRef, faceA: faceFor(a), faceB: faceFor(b), descA: bibleFor(a), descB: bibleFor(b), setting });
+      if (twoPanelUrl) {
+        const left = await cropPanelSeed(twoPanelUrl, "left");
+        const right = await cropPanelSeed(twoPanelUrl, "right");
+        if (left && right) { panels = { left, right, a: firstName(a), b: firstName(b) }; await ckpt({ ckPanels: JSON.stringify(panels) }); }
+      }
+    }
+    if (panels?.left && panels?.right) {
+      panelFor = (sp: string) => {
+        const k = firstName(sp);
+        if (k && k === panels!.a) return panels!.left;   // A faces camera in the LEFT panel
+        if (k && k === panels!.b) return panels!.right;  // B faces camera in the RIGHT panel
+        return undefined;
+      };
+    }
+  }
+
   // 3) Veo DIALOGUE clips (sequential) — see the design notes atop this file: one
   //    speaker per clip, seamless cuts from the prior clip's real last frame, no
   //    on-screen text, trailing silence trimmed.
@@ -318,11 +374,11 @@ export async function generateTestMovie(opts: {
     // the cut is seamless (positions carried over — the two-shot keeps the next
     // speaker in frame, so no wrong-speaker gibberish). Clip 0 / fallback: a clean
     // two-shot generated from the cast reference.
-    // Seed priority: the merchant's APPROVED storyboard frame for this scene →
-    // else chain from the prior clip's real last frame (continuity within a set) →
-    // else auto-render a fresh frame. An approved frame overrides the chain, so a
-    // set change lands exactly as the merchant staged it.
-    let seedAbs = abs(approvedFrames[i]) || abs(prevFrameUrl);
+    // Seed priority: the merchant's APPROVED storyboard frame for this scene (a
+    // deliberate set-piece / establisher wins) → else this speaker's SHOT/REVERSE
+    // PANEL (matched-room OTS, the default continuity for a two-hander) → else chain
+    // from the prior clip's real last frame → else auto-render a fresh frame.
+    let seedAbs = abs(approvedFrames[i]) || (panelFor ? abs(panelFor(speaker)) : undefined) || abs(prevFrameUrl);
     if (!seedAbs) {
       // Compose the auto-seed from the locked faces of the cast in THIS shot, so the
       // actors look identical from shot to shot (falls back to the group cast ref).
