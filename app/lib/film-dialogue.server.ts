@@ -147,7 +147,12 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
   const beat = async () => { if (jobId) await checkpointJob(jobId, { ckBeat: Date.now() }); };
   const produced = (): boolean => { try { return fs.existsSync(outPath) && ffprobeDuration(outPath) > 1; } catch { return false; } };
   const SCALE = "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30";
-  const TAIL = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outPath];
+  // Cinematic finish on the final cut (owner: "the cinematic touch is even more fire"):
+  // a light grade (gentle contrast + slight desaturation + a touch darker), a soft
+  // vignette, and fine FILM GRAIN — the research's "reads like real film stock, not AI"
+  // lever. Subtle on purpose; grain costs bitrate so crf is nudged 21→23 to compensate.
+  const GRADE = "eq=contrast=1.05:saturation=0.95:gamma=0.985,vignette=PI/6.5,noise=alls=5:allf=t";
+  const TAIL = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outPath];
 
   // PREFERRED: a short CROSSFADE at each cut (video xfade + audio acrossfade) so the
   // clip change reads as a smooth dissolve, not a clunky hard jump. Because clip N is
@@ -174,7 +179,8 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
       f.push(`[${aPrev}][a${i}]acrossfade=d=${FADE}[${aOut}]`);
       vPrev = vOut; aPrev = aOut; running = running + durs[i] - FADE;
     }
-    return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", "-map", "[ac]", ...TAIL];
+    f.push(`[vc]${GRADE}[vg]`);
+    return [...a, "-filter_complex", f.join(";"), "-map", "[vg]", "-map", "[ac]", ...TAIL];
   };
 
   // FALLBACK: plain hard-cut concat. Degrade ladder: with audio → silent.
@@ -188,10 +194,12 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
     });
     if (useAudio) {
       f.push(`${clips.map((_, i) => `[v${i}][a${i}]`).join("")}concat=n=${N}:v=1:a=1[vc][ac]`);
-      return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", "-map", "[ac]", ...TAIL];
+      f.push(`[vc]${GRADE}[vg]`);
+      return [...a, "-filter_complex", f.join(";"), "-map", "[vg]", "-map", "[ac]", ...TAIL];
     }
     f.push(`${clips.map((_, i) => `[v${i}]`).join("")}concat=n=${N}:v=1:a=0[vc]`);
-    return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", ...TAIL];
+    f.push(`[vc]${GRADE}[vg]`);
+    return [...a, "-filter_complex", f.join(";"), "-map", "[vg]", ...TAIL];
   };
 
   await beat();
