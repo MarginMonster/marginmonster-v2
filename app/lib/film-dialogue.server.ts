@@ -325,7 +325,7 @@ export async function generateTestMovie(opts: {
   let castRefAbs = abs(resume.ckCastRef);
   if (!castRefAbs && castBible) {
     try {
-      const ref = await renderCreativeSeed(`${tmpl.sceneHint}. A photorealistic group shot of the characters together in the scene, clear faces, cinematic. ${castBible}`, "9:16");
+      const ref = await renderCreativeSeed(`${treatment.scenes[0]?.visual || ""}. ${tmpl.sceneHint}. A photorealistic establishing wide shot of the characters together IN THIS EXACT LOCATION, showing the real setting and background around them, clear faces, cinematic. ${castBible}`, "9:16");
       if (ref) { await ckpt({ ckCastRef: ref }); castRefAbs = abs(ref); }
     } catch { /* fall through to text seeds */ }
   }
