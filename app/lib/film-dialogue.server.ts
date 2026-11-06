@@ -339,21 +339,41 @@ export async function generateTestMovie(opts: {
     const setting = ((treatment.scenes[0]?.visual || opts.topic || "").split(/[.;]/)[0] || "")
       .replace(/\b(two[- ]?shot|wide shot|close[- ]?up|medium shot|over[- ]the[- ]shoulder|establishing|shot)\b/gi, "")
       .replace(/^\s*(across|of)\s+/i, "a ").replace(/\s+/g, " ").trim().slice(0, 130) || "a cinematic interior";
-    let panels: { left?: string; right?: string; a?: string; b?: string } | null = resume.ckPanels ? JSON.parse(resume.ckPanels) : null;
+    let panels: { left?: string; right?: string; a?: string; b?: string; aOnLeft?: boolean } | null = resume.ckPanels ? JSON.parse(resume.ckPanels) : null;
     if (!panels?.left || !panels?.right) {
       const roomRef = abs(approvedFrames[0]) || castRefAbs; // the merchant's opening frame, else the cast ref
       const twoPanelUrl = await renderTwoPanelShotReverse({ roomRefUrl: roomRef, faceA: faceFor(a), faceB: faceFor(b), descA: bibleFor(a), descB: bibleFor(b), setting });
       if (twoPanelUrl) {
         const left = await cropPanelSeed(twoPanelUrl, "left");
         const right = await cropPanelSeed(twoPanelUrl, "right");
-        if (left && right) { panels = { left, right, a: firstName(a), b: firstName(b) }; await ckpt({ ckPanels: JSON.stringify(panels) }); }
+        if (left && right) {
+          // nano-banana does NOT reliably honour left/right, so DETECT which panel holds
+          // which character with one cheap vision call — otherwise a speaker's line lands
+          // on the wrong face. Defaults to A-on-left if the check is unavailable.
+          let aOnLeft = true;
+          try {
+            const { anthropicVision } = await import("./anthropic.server");
+            const twoPanelAbs = abs(twoPanelUrl);
+            if (twoPanelAbs) {
+              const v = await anthropicVision(
+                `This image has two side-by-side panels, each showing one person facing the camera. Person A is: ${bibleFor(a)}. Person B is: ${bibleFor(b)}. Which person is in the LEFT panel? Answer with a single letter, A or B, and nothing else.`,
+                [twoPanelAbs],
+                { maxTokens: 4 }
+              );
+              if ((v || "").trim().toUpperCase().startsWith("B")) aOnLeft = false;
+            }
+          } catch { /* keep default A-on-left */ }
+          panels = { left, right, a: firstName(a), b: firstName(b), aOnLeft };
+          await ckpt({ ckPanels: JSON.stringify(panels) });
+        }
       }
     }
     if (panels?.left && panels?.right) {
+      const aLeft = panels.aOnLeft !== false; // which panel shows speaker A facing camera
       panelFor = (sp: string) => {
         const k = firstName(sp);
-        if (k && k === panels!.a) return panels!.left;   // A faces camera in the LEFT panel
-        if (k && k === panels!.b) return panels!.right;  // B faces camera in the RIGHT panel
+        if (k && k === panels!.a) return aLeft ? panels!.left : panels!.right;   // A faces camera
+        if (k && k === panels!.b) return aLeft ? panels!.right : panels!.left;   // B faces camera (the other panel)
         return undefined;
       };
     }
