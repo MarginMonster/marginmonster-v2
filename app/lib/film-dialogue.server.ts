@@ -23,7 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
-import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti } from "./image-generation.server";
+import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained } from "./image-generation.server";
 import { AVATAR_VOICES } from "./avatar-voice-catalog";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
@@ -201,12 +201,20 @@ const STAGING = "Frame it as a TWO-SHOT that keeps BOTH characters visible in th
 /** Build + render ONE scene's photo seed (the storyboard frame). Shared by the
  *  render loop and the web "preview frame" action so the preview is WYSIWYG.
  *  Returns a relative /renders URL, or null on failure (caller decides fallback). */
-export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[] }): Promise<string | null> {
+export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[]; roomRefUrl?: string | null }): Promise<string | null> {
   const framed = `${opts.sceneVisual}. ${opts.sceneHint}. ${STAGING} ${opts.castText || ""} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
   try {
-    // CAST path first: when the shot's actors are locked, compose the frame from
-    // their faces so identity holds shot-to-shot (the frontier consistency method).
     const castRefs = (opts.castRefUrls || []).filter((u): u is string => !!u);
+    // CONTINUITY path first: when we have the PREVIOUS shot's frame AND the locked
+    // cast faces, chain them — the prior frame anchors the room/lighting/angle while
+    // the faces lock identity. Without this the room was reinvented every shot and the
+    // clips cut between unrelated sets (the "four different rooms" bug).
+    if (opts.roomRefUrl && castRefs.length) {
+      const chained = await renderSceneSeedChained(framed, opts.roomRefUrl, castRefs, "9:16");
+      if (chained) return chained;
+    }
+    // CAST path: when the shot's actors are locked (but no prior frame to chain from,
+    // e.g. the opening shot), compose from their faces so identity holds shot-to-shot.
     if (castRefs.length) {
       const multi = await renderStyledSeedMulti(framed, castRefs, "9:16");
       if (multi) return multi;
@@ -221,7 +229,11 @@ export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: s
  *  the sceneHint). */
 export async function previewFilmSceneFrame(opts: { template?: string; sceneVisual: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[] }): Promise<string | null> {
   const tmpl = filmTemplate(opts.template);
-  return renderSceneFrame({ sceneVisual: opts.sceneVisual, sceneHint: tmpl.sceneHint, castText: opts.castText, styleRefUrl: opts.styleRefUrl, castRefUrls: opts.castRefUrls });
+  // In the storyboard, styleRefUrl IS the previous shot's frame — use it as the ROOM
+  // anchor so each new shot is "same room, new angle, same characters" (owner's fix for
+  // clips that cut between unrelated sets). renderSceneFrame only chains when BOTH a
+  // room ref and cast faces are present; otherwise it falls back to the old behaviour.
+  return renderSceneFrame({ sceneVisual: opts.sceneVisual, sceneHint: tmpl.sceneHint, castText: opts.castText, styleRefUrl: opts.styleRefUrl, roomRefUrl: opts.styleRefUrl, castRefUrls: opts.castRefUrls });
 }
 
 /** Cast an actor: a clean, reusable casting PORTRAIT of one character, locked once

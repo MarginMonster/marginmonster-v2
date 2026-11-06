@@ -4692,6 +4692,34 @@ export async function renderStyledSeedMulti(prompt: string, refImageUrls: (strin
   }
 }
 
+/** A scene seed that carries BOTH the ROOM (from the previous shot's frame) AND the
+ *  cast IDENTITIES (from the locked face portraits). The FIRST ref is the ROOM anchor
+ *  — same set, furniture, walls, props, lighting and time of day, just a NEW camera
+ *  angle — and the remaining refs are the PEOPLE. This is the shot-to-shot continuity
+ *  fix: renderStyledSeedMulti locks faces but ignores the prior frame, so every shot
+ *  invented its own room and the finished clips cut between unrelated sets. Feeding the
+ *  previous frame as a room anchor keeps one continuous location. Up to 3 refs (room +
+ *  two faces, nano-banana's sweet spot). Durable /renders URL, or null. */
+export async function renderSceneSeedChained(prompt: string, roomRefUrl: string, castRefUrls: (string | null | undefined)[], aspect = "9:16"): Promise<string | null> {
+  try {
+    if (!process.env.REPLICATE_API_TOKEN || !roomRefUrl) return null;
+    const faces = (castRefUrls || []).filter((u): u is string => !!u);
+    const refs = [roomRefUrl, ...faces].slice(0, 3);
+    const ar = CREATE_ASPECT_VALUES.includes(aspect) ? aspect : "9:16";
+    const peopleClause = faces.length
+      ? ` The OTHER reference image(s) are the PEOPLE in the scene: keep them the EXACT same individuals — identical faces, age, skin, hair and wardrobe; do not swap, beautify or age them.`
+      : "";
+    const full = `${(prompt || "").trim().slice(0, 400)}. CRITICAL CONTINUITY: the FIRST reference image establishes the SETTING — keep the IDENTICAL room, set, furniture, walls, props, lighting and time of day; only move the CAMERA to a new angle and let the characters shift their pose naturally. Do NOT change the location, the decor or the mood.${peopleClause} No watermark, no signature.`;
+    const url = await repRun("google/nano-banana", { prompt: full, image_input: refs, aspect_ratio: ar, output_format: "jpg" });
+    const durable = await persistRemote(url, "jpg");
+    artLog("image-ad", `scene seed chained (room+cast x${refs.length}, ${ar})`);
+    return durable;
+  } catch (e) {
+    artLog("image-ad", `scene seed chained failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return null;
+  }
+}
+
 export async function generateImageAd(
   shopId: string,
   brandProfile: BrandProfile,
