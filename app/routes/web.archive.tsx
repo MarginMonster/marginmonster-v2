@@ -843,6 +843,10 @@ const WA_CSS = `
 .wa-vnav.next{right:10px}
 .wa-vcount{position:absolute;top:12px;left:12px;z-index:5;background:rgba(20,32,26,.72);color:#fff;font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:999px;}
 .wa-vfull{display:block;margin:0 auto;width:auto;height:auto;max-width:100%;max-height:74vh;object-fit:contain;background:#0b0f0d;}
+/* One-tap "sound on" nudge — only shows if a strict browser refused to open the
+   clip unmuted (iOS mostly). Sits above the native controls bar, centered. */
+.wa-vsound{position:absolute;left:50%;bottom:54px;transform:translateX(-50%);z-index:6;display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border:0;border-radius:999px;background:var(--green,#0C7A46);color:#fff;font:inherit;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.45);}
+.wa-vsound:hover{filter:brightness(1.07)}
 .wa-read{padding:24px 28px;overflow:auto;max-height:52vh;font-size:14.5px;line-height:1.65;color:var(--ink,#14201A);}
 .wa-read h1,.wa-read h2,.wa-read h3{font-family:Poppins,sans-serif;line-height:1.25;margin:1em 0 .4em;}
 .wa-read h1:first-child,.wa-read h2:first-child{margin-top:0}
@@ -1062,6 +1066,8 @@ export default function WebArchive() {
   type AFilter = "all" | "clearing" | "kept";
   const [filter, setFilter] = useState<AFilter>("all");
   const [viewer, setViewer] = useState<(typeof assets)[number] | null>(null);
+  const vfullRef = useRef<HTMLVideoElement | null>(null);
+  const [needsUnmute, setNeedsUnmute] = useState(false);
   const [copied, setCopied] = useState(false);
   // The fullscreen viewer portals to document.body (to escape the .wb-main
   // stacking context that otherwise traps its z-index below the shell nav).
@@ -1160,6 +1166,25 @@ export default function WebArchive() {
   // destroyed it with no confirm. Clearing it means the viewer's Delete always
   // starts disarmed (tap once to arm, again to delete), like a fresh open.
   useEffect(() => { setCapOpen(false); setCaption(""); setDraftPending(false); setCopied(false); setArmedDel(null); setActedId(null); }, [viewer?.id]);
+  // Open video pieces PLAYING WITH SOUND. Browsers override the HTML `autoplay`
+  // attribute for *unmuted* media (anti-annoyance policy), so the viewer would
+  // otherwise sit paused + silent on the first frame. We call play() imperatively
+  // on open — still inside the tile-tap's activation window, where sound IS
+  // allowed. If a strict browser (e.g. iOS) still refuses, fall back to muted
+  // playback + a one-tap "Tap for sound" nudge instead of a dead, silent frame.
+  useEffect(() => {
+    setNeedsUnmute(false);
+    if (!viewer?.isVideo || !viewer.media) return;
+    const v = vfullRef.current;
+    if (!v) return;
+    try { v.muted = false; } catch { /* */ }
+    const p = v.play();
+    if (p && typeof p.catch === "function") {
+      p.catch(() => {
+        try { v.muted = true; v.play().catch(() => { /* controls remain */ }); setNeedsUnmute(true); } catch { /* */ }
+      });
+    }
+  }, [viewer?.id, viewer?.isVideo, viewer?.media]);
   useEffect(() => { if (posted) setCapOpen(false); }, [posted]);
   // Close the viewer once a piece is deleted, or when a remix starts (so the
   // fresh "cooking…" tile is visible under the auto-revalidator). KEEP does NOT
@@ -1519,7 +1544,15 @@ export default function WebArchive() {
                   ? <div className="wa-read" dangerouslySetInnerHTML={{ __html: viewer.html }} />
                   : <div className="wa-read"><h2>{viewer.title}</h2><p>{viewer.snippet || t("Still being written…")}</p></div>
               ) : viewer.isVideo && viewer.media ? (
-                <video className="wa-vfull" src={viewer.media} controls autoPlay playsInline />
+                <>
+                  <video ref={vfullRef} className="wa-vfull" src={viewer.media} controls autoPlay playsInline />
+                  {needsUnmute && (
+                    <button type="button" className="wa-vsound"
+                      onClick={() => { const v = vfullRef.current; if (v) { v.muted = false; v.play().catch(() => { /* */ }); } setNeedsUnmute(false); }}>
+                      🔊 {t("Tap for sound")}
+                    </button>
+                  )}
+                </>
               ) : viewer.isAudio && viewer.media ? (
                 <div className="wa-audiofull">
                   <span className="wa-audio-ico"><Ico n="music" size={46} /></span>
