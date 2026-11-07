@@ -207,6 +207,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       } catch { /* ignore malformed */ }
     }
+    // Swappable dialogue engine (Test Movie A/B): "kling3" renders on Kling 3.0 Omni;
+    // absent keeps the default Veo path. Only Test Movie reads it downstream.
+    const dialogueEngine = ((form.get("dialogueEngine") as string) || "").trim();
     const cost = estimateFilmTokens(scenes);
 
     let unbacked = 0, unbackedFromExtra = 0;
@@ -219,6 +222,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         approvedTreatment,
         ...(approvedFrames ? { approvedFrames } : {}),
         ...(cast ? { cast } : {}),
+        ...(dialogueEngine === "kling3" ? { dialogueEngine: "kling3" } : {}),
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
         productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
         prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",

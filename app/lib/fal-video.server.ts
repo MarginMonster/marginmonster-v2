@@ -302,6 +302,19 @@ export async function falVideoSubmit(
     // generate_audio is added ONLY when asked (the Test Movie dialogue path) —
     // omitting it keeps every existing veo caller byte-for-byte unchanged.
     ? { prompt: opts.prompt, image_url: opts.startImage, aspect_ratio: "9:16", ...(opts.generateAudio ? { generate_audio: true } : {}) }
+    : /kling-video\/(?:v3|o3)/.test(model)
+    // Kling 3.0 / O3 image-to-video — the Test Movie dialogue engine option with
+    // NATIVE lip-synced speech. Scoped to v3/o3 so the existing SILENT Kling 2.x
+    // motion callers (which use the generic `image_url` else-branch) are untouched.
+    // V3 Pro's seed frame is `start_image_url`; O3 Standard uses `image_url`. Both
+    // take a string `duration` (3-15s) and `generate_audio` (default on). No aspect
+    // flag — the output ratio is inherited from the seed image.
+    ? {
+        prompt: opts.prompt,
+        ...(/\/o3\//.test(model) ? { image_url: opts.startImage } : { start_image_url: opts.startImage }),
+        duration: String(opts.durationSec ?? 10),
+        generate_audio: opts.generateAudio !== false,
+      }
     : /seedance/.test(model)
     // Seedance 2.5's schema is prompt + image_url + resolution + duration — it
     // takes NEITHER a negative_prompt NOR an aspect flag (sending them 422s).

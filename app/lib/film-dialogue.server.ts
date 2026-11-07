@@ -37,6 +37,13 @@ const VEO_POLL_MS = 10 * 60_000;
 // trade cost/time for quality here. fal veo3.1 → Replicate google/veo-3 fallback.
 const FAL_VEO = "fal-ai/veo3.1/image-to-video";
 const REP_VEO = "google/veo-3";
+// Kling 3.0 Omni — the SWAPPABLE Test Movie dialogue engine (owner A/B vs Veo,
+// 11-06). Native lip-synced speech in image-to-video, up to 15s, so one shot holds
+// a longer exchange with fewer cuts/less drift. fal v3 Pro → Replicate omni
+// fallback. Also the migration target for Veo 3.1's fal deprecation (Nov 17 2026).
+const FAL_KLING3 = "fal-ai/kling-video/v3/pro/image-to-video";
+const REP_KLING3 = "kwaivgi/kling-v3-omni-video";
+const KLING_DUR = 10; // seconds per talking clip (3-15); ~2x a Veo beat
 
 /** Parse a caption into ordered { speaker, line } turns. A shot is normally ONE
  *  speaker ("NAME: the line"), but this stays robust if the writer runs extra
@@ -74,6 +81,23 @@ async function veoDialogueClip(seedAbs: string, prompt: string, stage: string): 
     }
   }
   const id = await repCreate(REP_VEO, { prompt, image: seedAbs, aspect_ratio: "9:16", generate_audio: true });
+  return await repPoll(id, VEO_POLL_MS, stage);
+}
+
+/** A Kling 3.0 Omni clip where the character SPEAKS (native lip-synced audio). The
+ *  swappable alternative to veoDialogueClip: a longer beat (KLING_DUR) seeded from
+ *  the SAME still, so the only variable in the A/B is the engine. fal v3 Pro →
+ *  Replicate omni fallback. Returns the clip URL. */
+async function klingDialogueClip(seedAbs: string, prompt: string, stage: string): Promise<string> {
+  if (falEnabled()) {
+    try {
+      const rid = await falVideoSubmit(FAL_KLING3, { startImage: seedAbs, prompt, generateAudio: true, durationSec: KLING_DUR });
+      return await falVideoPoll(FAL_KLING3, rid, VEO_POLL_MS);
+    } catch (e) {
+      console.error(`[testmovie] fal kling3 failed, trying Replicate: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+    }
+  }
+  const id = await repCreate(REP_KLING3, { prompt, start_image: seedAbs, duration: KLING_DUR, generate_audio: true, aspect_ratio: "9:16", mode: "pro" });
   return await repPoll(id, VEO_POLL_MS, stage);
 }
 
@@ -297,6 +321,12 @@ export async function generateTestMovie(opts: {
    *  present in it (locked identity), and the speaker's voice timbre is pinned into
    *  the Veo prompt so the voice stays consistent across shots. */
   cast?: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }>;
+  /** Which dialogue clip engine renders the shots. "veo" (default, absent) = the
+   *  shipped Veo-3 path, byte-for-byte untouched. "kling3" = Kling 3.0 Omni (owner
+   *  A/B, 11-06): longer talking beats + native lip-sync. Everything else —
+   *  treatment, cast, seeds, shot/reverse panels, seamless chain, assembly — is
+   *  identical; ONLY the clip render swaps, so the comparison isolates the engine. */
+  dialogueEngine?: "veo" | "kling3";
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
   const jobId = opts.jobId;
@@ -435,7 +465,9 @@ export async function generateTestMovie(opts: {
       `${voiceLine} ${castBible} ${HOLD_STILL} ` +
       `Photorealistic live-action film, cinematic lighting, shallow depth of field, clean natural spoken-dialogue audio. ${NO_TEXT}`;
 
-    const clipUrl = await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
+    const clipUrl = opts.dialogueEngine === "kling3"
+      ? await klingDialogueClip(seedAbs, prompt, `testmovie-${i}`)
+      : await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, rawPath);
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
