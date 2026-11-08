@@ -366,14 +366,43 @@ export async function generateTestMovie(opts: {
   // identity conditioning and the Veo voice pin.
   const castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
 
-  // 2) CAST REFERENCE still (photoreal) — establishes the characters' look; the
-  //    first scene seeds from it, then the chain carries continuity.
+  // Detect BARRIER-SEPARATED staging (one character outside a window/glass, etc.). These
+  // films can't use the over-the-shoulder two-panel (it merges both people into one shared
+  // space) — instead they LOCK one environment plate that every shot is re-angled from.
+  const SEP_RE = /\b(window|glass|pane|windowpane|outside|behind the (?:glass|window)|other side of)\b/i;
+  const anySeparated = treatment.scenes.some((s) => SEP_RE.test(s.visual || ""));
+  const brightCue = "Clearly lit and well-exposed with visible faces — cinematic but NOT crushed to black.";
+
+  // 2) ESTABLISHING PLATE (photoreal) — the SINGLE locked environment. For a separated
+  //    film this is the Runway/Kling method made literal: build the plate, VISION-VERIFY
+  //    the separation actually rendered (one person outside the glass, one inside), and
+  //    reroll until it passes — so we never animate a wrong keyframe. Every shot is then
+  //    re-angled from THIS plate (below), so the room never changes shot to shot.
   let castRefAbs = abs(resume.ckCastRef);
   if (!castRefAbs && castBible) {
-    try {
-      const ref = await renderCreativeSeed(`${treatment.scenes[0]?.visual || ""} ${tmpl.sceneHint}. ${STAGING_CUE} Photorealistic, cinematic, clear faces, the real setting and background, no on-screen text. ${castBible}`, "9:16");
-      if (ref) { await ckpt({ ckCastRef: ref }); castRefAbs = abs(ref); }
-    } catch { /* fall through to text seeds */ }
+    const platePrompt = `${treatment.scenes[0]?.visual || ""} ${tmpl.sceneHint}. ${STAGING_CUE} Photorealistic, cinematic, clear faces, the real setting and background, no on-screen text. ${brightCue} ${castBible}`;
+    let best: string | null = null;
+    const tries = anySeparated ? 4 : 1;
+    for (let t = 0; t < tries; t++) {
+      let url: string | null = null;
+      try { url = await renderCreativeSeed(platePrompt, "9:16"); } catch { /* reroll */ }
+      if (!url) continue;
+      if (!best) best = url;
+      if (!anySeparated) break;
+      // VISION GATE: only commit the plate once the separation is actually visible.
+      let ok = false;
+      try {
+        const { anthropicVision } = await import("./anthropic.server");
+        const a = abs(url);
+        if (!a) ok = true;
+        else {
+          const v = await anthropicVision(`Film still. Does it clearly show ONE person OUTSIDE a window — on the far side of the wet glass, outdoors — AND a DIFFERENT person INSIDE the room? Answer only YES or NO.`, [a], { maxTokens: 4 });
+          ok = /^\s*yes/i.test((v || "").trim());
+        }
+      } catch { ok = true; }
+      if (ok) { best = url; break; }
+    }
+    if (best) { await ckpt({ ckCastRef: best }); castRefAbs = abs(best); }
   }
 
   // 2b) SHOT / REVERSE-SHOT PANELS (the ShoulderShot method — how Runway/Kling/Veo-era
@@ -385,12 +414,8 @@ export async function generateTestMovie(opts: {
   //     speakers; anything else falls back to the existing chain untouched.
   const firstName = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
-  // BARRIER-SEPARATED staging (one character outside a window/glass, etc.) must NOT use
-  // the over-the-shoulder two-panel — it forces both people into one shared OTS space and
-  // collapses the separation (the "doppelganger at the window" concept broke exactly this
-  // way). A separated film seeds each clip from its own staging-honest per-scene frame.
-  const SEP_RE = /\b(window|glass|pane|windowpane|outside|behind the (?:glass|window)|other side of)\b/i;
-  const anySeparated = treatment.scenes.some((s) => SEP_RE.test(s.visual || ""));
+  // A separated film does NOT use the over-the-shoulder two-panel (it merges both people
+  // into one shared space); it re-angles every shot from the locked plate instead (below).
   let panelFor: ((speaker: string) => string | undefined) | null = null;
   if (allSpeakers.length === 2 && !anySeparated) {
     const [a, b] = allSpeakers;
@@ -458,18 +483,23 @@ export async function generateTestMovie(opts: {
     // deliberate set-piece / establisher wins) → else this speaker's SHOT/REVERSE
     // PANEL (matched-room OTS, the default continuity for a two-hander) → else chain
     // from the prior clip's real last frame → else auto-render a fresh frame.
-    // A BARRIER-SEPARATED scene must NOT inherit the OTS panel or chain from the prior
-    // clip's frame — both drag the two characters into one shared space and kill the
-    // separation. It seeds from its OWN per-scene frame, rendered purely from the scene
-    // text (no 'together' cast-ref styling), which is also exactly the frame the
-    // storyboard preview shows: what you see is what the clip uses.
     const sceneSeparated = SEP_RE.test(scene.visual || "");
-    let seedAbs = abs(approvedFrames[i]);
-    if (!seedAbs && panelFor) seedAbs = abs(panelFor(speaker));
-    if (!seedAbs && !sceneSeparated) seedAbs = abs(prevFrameUrl);
+    let seedAbs = abs(approvedFrames[i]);                       // merchant-locked frame always wins
+    if (!seedAbs && panelFor) seedAbs = abs(panelFor(speaker)); // in-room two-hander: the OTS panel
+    // SEPARATED: re-angle THIS shot from the LOCKED PLATE (img2img) — same room, same
+    // people, new camera angle only — so the set never changes and the separation carries.
+    // This is the whole fix: one locked environment with camera-only moves (the Runway/
+    // Kling method), instead of regenerating the scene per shot (which drifted the room)
+    // or chaining a dark last-frame. STAGING_CUE is echoed so the reframe keeps her
+    // outside the glass; brightCue keeps Veo from crushing it to black.
+    if (!seedAbs && sceneSeparated && castRefAbs) {
+      const shotCastRefs = actorsInScene(castActors, scene).map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
+      const chained = await renderSceneSeedChained(`${scene.visual} ${STAGING_CUE} ${brightCue}`, castRefAbs, shotCastRefs, "9:16");
+      seedAbs = abs(chained);
+    }
+    if (!seedAbs && !sceneSeparated) seedAbs = abs(prevFrameUrl); // in-room: seamless last-frame chain
     if (!seedAbs) {
-      // Compose the auto-seed from the locked faces of the cast in THIS shot, so the
-      // actors look identical from shot to shot (falls back to the group cast ref).
+      // Last resort: a fresh per-scene frame from the scene text (no 'together' cast-ref).
       const shotCastRefs = actorsInScene(castActors, scene).map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
       const seedUrl = await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: sceneSeparated ? null : castRefAbs, castRefUrls: shotCastRefs });
       seedAbs = abs(seedUrl);
