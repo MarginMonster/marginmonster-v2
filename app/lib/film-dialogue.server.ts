@@ -590,17 +590,18 @@ export async function generateTestMovie(opts: {
       `${scene.visual} ${tmpl.sceneHint}. ${voiceLine} ` +
       `${STAGING} ${castBible} ${HOLD_STILL} ` +
       `Photorealistic live-action, cinematic lighting, shallow depth of field, clean natural dialogue audio. ${NO_TEXT}`;
-    // HYBRID prompt: a SILENT shot (no native audio), so the words come from our TTS via
-    // sync-3. We only need the SPEAKER's mouth moving naturally (so sync-3 drives the right
-    // face) + a real emotional PERFORMANCE in the face/eyes (sync-3 keeps everything but
-    // the mouth, so the acting has to come from here). No quoted line → no hallucinated
-    // captions. The other character's mouth stays closed = one mouth moves.
+    // HYBRID prompt — the OPPOSITE of the first attempt. sync-3 AND identity both need a
+    // CALM, CLOSE, near-front shot with a NEUTRAL, nearly-closed mouth and MINIMAL motion.
+    // The first version directed "intense dramatic performance, lips moving," which induced
+    // theatrical motion that MORPHED the faces; sync-3 then painted mouths onto broken
+    // faces. Keep it still; sync-3 adds ALL the talking; emotion = a RESTRAINED micro-
+    // expression, not theatrical. Lock the face hard against morphing.
     const hybridPrompt =
-      `${scene.visual} ${tmpl.sceneHint}. ` +
-      `${speaker ? `${speaker} is mid-sentence, talking — lips moving naturally as if speaking — while the other character listens in silence with a closed, still mouth.` : "One character talks, lips moving naturally; the other listens in silence, mouth closed."} ` +
-      `Direct it like a dramatic actor: real, intense emotion in the eyes and face that fits the moment — present and felt, NOT flat or casual. ` +
-      `${STAGING} ${castBible} ${HOLD_STILL} ` +
-      `Photorealistic live-action, cinematic lighting, shallow depth of field, strong emotional facial performance. ${NO_TEXT}`;
+      `A calm, steady cinematic CLOSE shot of ${speaker || "the character"} in this scene. ${tmpl.sceneHint}. ` +
+      `The camera is locked and still and ${speaker || "the character"} barely moves — only a subtle, restrained, natural micro-expression that fits the moment (composed, NOT exaggerated or theatrical). ` +
+      `Their face is turned nearly toward camera; their mouth stays relaxed and NEARLY CLOSED with minimal lip movement. ` +
+      `Keep their face, hair, skin tone and clothing EXACTLY the same the whole time — absolutely NO morphing, aging, or changing of their appearance into a different person. ` +
+      `Photorealistic live-action, cinematic lighting, shallow depth of field. ${NO_TEXT}`;
 
     // Render the clip. For a SEPARATED shot, QA the result and REROLL if Veo's motion
     // merged the two characters back together — the "clip collapsed them" failure. Cap
@@ -611,8 +612,19 @@ export async function generateTestMovie(opts: {
     for (let attempt = 0; attempt < maxTries; attempt++) {
       let clipUrl: string;
       if (lipSync) {
-        // HYBRID: 1) a SILENT, emotionally-performed cinematic shot.
-        const silentUrl = await veoDialogueClip(seedAbs, hybridPrompt, `testprocess-${i}`, false);
+        // HYBRID 1) SEED a CLOSE, near-front shot of THIS speaker from their locked portrait
+        // + the room plate — a shot/reverse-shot close-up (how films actually shoot dialogue).
+        // Close + locked face = identity holds; near-front + clear = exactly what sync-3 needs.
+        // Falls back to the scene's seed if the close-up can't be composed.
+        const spFace = abs(castActors.find((c) => firstName(c.name) === firstName(speaker))?.faceUrl);
+        const closeRefs = [spFace, castRefAbs].filter((u): u is string => !!u);
+        let closeSeed: string = seedAbs;
+        if (closeRefs.length) {
+          const cs = await renderStyledSeedMulti(`A cinematic CLOSE-UP of ${speaker || "the character"} in this scene, face turned nearly toward camera, dramatically and cinematically lit, calm and composed with a subtle restrained expression, mouth relaxed and nearly closed. Shallow depth of field, filmic, photorealistic. No on-screen text.`, closeRefs, "9:16");
+          if (cs) closeSeed = abs(cs) || seedAbs;
+        }
+        // 2) a SILENT, CALM cinematic clip from that close-up (sync-3 adds the talking).
+        const silentUrl = await veoDialogueClip(closeSeed, hybridPrompt, `testprocess-${i}`, false);
         // 2) CAST-VOICE TTS of this line (the gender-matched voice picked at cast time).
         const vId = castActors.find((c) => firstName(c.name) === firstName(speaker))?.voiceId
           || AVATAR_VOICES.find((v) => v.gender === "m")?.id || "English_Trustworth_Man";
