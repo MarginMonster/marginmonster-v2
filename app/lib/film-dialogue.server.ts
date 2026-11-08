@@ -617,10 +617,18 @@ export async function generateTestMovie(opts: {
         // Close + locked face = identity holds; near-front + clear = exactly what sync-3 needs.
         // Falls back to the scene's seed if the close-up can't be composed.
         const spFace = abs(castActors.find((c) => firstName(c.name) === firstName(speaker))?.faceUrl);
-        const closeRefs = [spFace, castRefAbs].filter((u): u is string => !!u);
+        const closeRefs = [spFace, castRefAbs].filter((u): u is string => !!u); // [face, room plate]
+        // Keep the close-up INSIDE the real set — describe the location AND feed the room
+        // plate, so the speaker isn't dropped onto a plain studio backdrop (the headshot look).
+        const settingDesc = ((scene.visual || opts.topic || "").split(/[.;]/)[0] || "")
+          .replace(/\b(two[- ]?shot|close[- ]?up|wide shot|over[- ]the[- ]shoulder|establishing|shot)\b/gi, "")
+          .replace(/\s+/g, " ").trim().slice(0, 120) || "the scene";
         let closeSeed: string = seedAbs;
         if (closeRefs.length) {
-          const cs = await renderStyledSeedMulti(`A cinematic CLOSE-UP of ${speaker || "the character"} in this scene, face turned nearly toward camera, dramatically and cinematically lit, calm and composed with a subtle restrained expression, mouth relaxed and nearly closed. Shallow depth of field, filmic, photorealistic. No on-screen text.`, closeRefs, "9:16");
+          const cs = await renderStyledSeedMulti(
+            `A cinematic CLOSE-UP of ${speaker || "the character"} set in ${settingDesc}. Match the FIRST reference image's exact face, hair and clothing. The BACKGROUND is that real location — kept clearly behind them and lit to match the scene; do NOT put them on a plain studio backdrop. Face turned nearly toward camera, calm and composed with a subtle restrained expression, mouth relaxed and nearly closed. Shallow depth of field, cinematic film lighting, filmic, photorealistic. No on-screen text.`,
+            closeRefs, "9:16",
+          );
           if (cs) closeSeed = abs(cs) || seedAbs;
         }
         // 2) a SILENT, CALM cinematic clip from that close-up (sync-3 adds the talking).
