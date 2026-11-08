@@ -347,7 +347,7 @@ export async function generateTestMovie(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckAutoCast?: string };
   /** Per-scene APPROVED storyboard frames (relative /renders URLs), index-aligned
    *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
    *  that scene so it lands exactly as the merchant staged it. */
@@ -383,8 +383,9 @@ export async function generateTestMovie(opts: {
 
   const castBible = treatment.cast && treatment.cast.length ? `The recurring cast (keep them identical in every shot): ${treatment.cast.join("; ")}.` : "";
   // Locked cast (faces + voices) the merchant cast in the UI — drives per-shot
-  // identity conditioning and the Veo voice pin.
-  const castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
+  // identity conditioning and the Veo voice pin. May be auto-filled below when the
+  // merchant didn't lock a cast, so faces still get a reference (stops identity drift).
+  let castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
 
   // Detect BARRIER-SEPARATED staging (one character outside a window/glass, etc.). These
   // films can't use the over-the-shoulder two-panel (it merges both people into one shared
@@ -434,6 +435,27 @@ export async function generateTestMovie(opts: {
   //     speakers; anything else falls back to the existing chain untouched.
   const firstName = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
+  // AUTO-LOCK CAST FACES (reference-locking — the Runway References / Kling Elements move).
+  // Without a locked face reference the two-panel + clips drift the identities shot to shot
+  // ("the characters change"). If the merchant didn't lock a cast, generate ONE clean
+  // portrait per speaker from the treatment's cast bible and reuse it as that character's
+  // identity reference everywhere (two-panel faces + per-clip seeds). Checkpointed so a
+  // resume doesn't recast. Portrait failure is non-fatal (falls back to text identity).
+  if (!castActors.length && allSpeakers.length === 2 && (treatment.cast || []).length) {
+    const cached = resume.ckAutoCast ? (JSON.parse(resume.ckAutoCast) as typeof castActors) : null;
+    if (cached && cached.length) castActors = cached;
+    else {
+      const made: typeof castActors = [];
+      for (const nm of allSpeakers) {
+        const bible = (treatment.cast || []).find((c) => c.toLowerCase().includes(firstName(nm))) || `${nm}, a person`;
+        let face: string | null = null;
+        try { face = await renderActorPortrait(bible); } catch { /* portrait optional */ }
+        made.push({ name: nm, faceUrl: face, voiceId: null });
+      }
+      castActors = made;
+      await ckpt({ ckAutoCast: JSON.stringify(made) });
+    }
+  }
   // A separated film does NOT use the over-the-shoulder two-panel (it merges both people
   // into one shared space); it re-angles every shot from the locked plate instead (below).
   let panelFor: ((speaker: string) => string | undefined) | null = null;
@@ -538,8 +560,8 @@ export async function generateTestMovie(opts: {
       return v ? ` ${speaker}'s voice is ${v.blurb.toLowerCase()} (a ${v.label.toLowerCase()} ${v.gender === "f" ? "female" : "male"} voice); keep this exact voice in every shot.` : "";
     })();
     const voiceLine = speaker
-      ? `ONLY ${speaker} speaks — a clear, natural, unhurried delivery with accurate lip-sync: "${line}". The other character stays silent, listening and reacting, not moving their lips. Keep ${speaker}'s voice natural and the SAME as in every other shot of the film.${speakerVoiceDesc}`
-      : `One character speaks clearly and unhurried, lips in sync: "${line}". The other listens in silence.`;
+      ? `ONLY ${speaker} — the person FACING the camera — speaks, and speaks the ENTIRE line start to finish: "${line}". Clear, natural, unhurried, accurate lip-sync. The OTHER character does NOT speak a single word: their mouth stays CLOSED and still the whole time, lips not moving at all, only listening and reacting. Never have the two trade off or split the sentence between them. Keep ${speaker}'s voice natural and the SAME as in every other shot of the film.${speakerVoiceDesc}`
+      : `ONE character speaks the entire line, clear and unhurried with accurate lip-sync: "${line}". The other character's mouth stays closed and still — they only listen, never speaking.`;
     // Lead with the shot + the SPOKEN LINE (promoted ahead of the staging/identity
     // cues so the dialogue the engine must lip-sync is front and center), then the
     // compact constraint cues. Every load-bearing rule is kept, just tightened.
