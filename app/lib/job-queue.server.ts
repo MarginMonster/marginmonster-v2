@@ -768,12 +768,15 @@ async function runJob(
           assertCapability(shop.activePlan, "creatorvideo");
         }
         let filmAssetId: string;
-        if ((payload.filmTemplate as string | undefined) === "testmovie") {
-          // ISOLATED dialogue experiment — its own engine; generateFilm untouched.
+        const ft = payload.filmTemplate as string | undefined;
+        if (ft === "testmovie" || ft === "testprocess") {
+          // ISOLATED dialogue experiments — their own engine; generateFilm untouched.
+          // "testprocess" = the hybrid lip-sync pipeline (silent performed shot + cast-voice
+          // TTS + sync-3 on the speaker); "testmovie" = the Veo-native path, unchanged.
           const { generateTestMovie } = await import("./film-dialogue.server");
           filmAssetId = await generateTestMovie({
             shopId,
-            template: "testmovie",
+            template: ft,
             topic: (payload.filmTopic as string) || (payload.topic as string) || "",
             sceneCount: typeof payload.filmScenes === "number" ? payload.filmScenes : undefined,
             section: (payload.section as string) || "creator",

@@ -26,7 +26,7 @@ import { db } from "../db.server";
 import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderTwoPanelShotReverse } from "./image-generation.server";
 import { AVATAR_VOICES } from "./avatar-voice-catalog";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
-import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
+import { falEnabled, falLipSync, falTts, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 
@@ -71,16 +71,16 @@ function splitExchange(caption: string): Array<{ speaker: string; line: string }
 
 /** A Veo clip where the characters SPEAK an exchange (audio on). FULL Veo-3:
  *  fal veo3.1 → Replicate google/veo-3 fallback. Returns the clip URL. */
-async function veoDialogueClip(seedAbs: string, prompt: string, stage: string): Promise<string> {
+async function veoDialogueClip(seedAbs: string, prompt: string, stage: string, generateAudio = true): Promise<string> {
   if (falEnabled()) {
     try {
-      const rid = await falVideoSubmit(FAL_VEO, { startImage: seedAbs, prompt, generateAudio: true });
+      const rid = await falVideoSubmit(FAL_VEO, { startImage: seedAbs, prompt, generateAudio });
       return await falVideoPoll(FAL_VEO, rid, VEO_POLL_MS);
     } catch (e) {
       console.error(`[testmovie] fal veo failed, trying Replicate: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     }
   }
-  const id = await repCreate(REP_VEO, { prompt, image: seedAbs, aspect_ratio: "9:16", generate_audio: true });
+  const id = await repCreate(REP_VEO, { prompt, image: seedAbs, aspect_ratio: "9:16", generate_audio: generateAudio });
   return await repPoll(id, VEO_POLL_MS, stage);
 }
 
@@ -364,7 +364,14 @@ export async function generateTestMovie(opts: {
    *  identical; ONLY the clip render swaps, so the comparison isolates the engine. */
   dialogueEngine?: "veo" | "kling3";
 }): Promise<string> {
-  const tmpl = filmTemplate(opts.template); // "testmovie"
+  const tmpl = filmTemplate(opts.template); // "testmovie" | "testprocess"
+  // HYBRID lip-sync pipeline ("11/8 Test Process"): generate a SILENT, emotionally-
+  // performed cinematic shot, then re-sync ONLY the speaker's mouth to our own cast-voice
+  // TTS with sync-3. One audio track → one mouth (no both-talking / line-splitting), the
+  // voice is cast not guessed (gender-correct), and sync-3 keeps the cinematic shot (no
+  // morphing). Everything else — script, cast-lock, seeds, two-panel — is shared with the
+  // Veo-native Test Movie; ONLY the clip step swaps.
+  const lipSync = tmpl.key === "testprocess";
   const jobId = opts.jobId;
   const resume = opts.resume || {};
   const approvedFrames = opts.approvedFrames || [];
@@ -450,7 +457,21 @@ export async function generateTestMovie(opts: {
         const bible = (treatment.cast || []).find((c) => c.toLowerCase().includes(firstName(nm))) || `${nm}, a person`;
         let face: string | null = null;
         try { face = await renderActorPortrait(bible); } catch { /* portrait optional */ }
-        made.push({ name: nm, faceUrl: face, voiceId: null });
+        // For the HYBRID pipeline, CAST a gender-matched voice per character (distinct, so
+        // two same-gender characters don't share a voice) — the TTS + lip-sync needs a real
+        // voice id. Native Test Movie leaves it null (unchanged — no voice pin added).
+        let voiceId: string | null = null;
+        if (lipSync) {
+          const g: "f" | "m" = /\b(she|her|woman|female|girl|lady|mother|mom|sister|daughter|wife|aunt|grandmother|widow|mrs|ms)\b/i.test(bible)
+            ? "f"
+            : /\b(he|him|his|man|male|boy|guy|father|dad|brother|son|husband|uncle|grandfather|mr)\b/i.test(bible)
+            ? "m"
+            : (made.length % 2 === 0 ? "f" : "m");
+          const pool = AVATAR_VOICES.filter((v) => v.gender === g);
+          const used = new Set(made.map((m) => m.voiceId).filter(Boolean));
+          voiceId = (pool.find((v) => !used.has(v.id)) || pool[0])?.id || null;
+        }
+        made.push({ name: nm, faceUrl: face, voiceId });
       }
       castActors = made;
       await ckpt({ ckAutoCast: JSON.stringify(made) });
@@ -569,6 +590,17 @@ export async function generateTestMovie(opts: {
       `${scene.visual} ${tmpl.sceneHint}. ${voiceLine} ` +
       `${STAGING} ${castBible} ${HOLD_STILL} ` +
       `Photorealistic live-action, cinematic lighting, shallow depth of field, clean natural dialogue audio. ${NO_TEXT}`;
+    // HYBRID prompt: a SILENT shot (no native audio), so the words come from our TTS via
+    // sync-3. We only need the SPEAKER's mouth moving naturally (so sync-3 drives the right
+    // face) + a real emotional PERFORMANCE in the face/eyes (sync-3 keeps everything but
+    // the mouth, so the acting has to come from here). No quoted line → no hallucinated
+    // captions. The other character's mouth stays closed = one mouth moves.
+    const hybridPrompt =
+      `${scene.visual} ${tmpl.sceneHint}. ` +
+      `${speaker ? `${speaker} is mid-sentence, talking — lips moving naturally as if speaking — while the other character listens in silence with a closed, still mouth.` : "One character talks, lips moving naturally; the other listens in silence, mouth closed."} ` +
+      `Direct it like a dramatic actor: real, intense emotion in the eyes and face that fits the moment — present and felt, NOT flat or casual. ` +
+      `${STAGING} ${castBible} ${HOLD_STILL} ` +
+      `Photorealistic live-action, cinematic lighting, shallow depth of field, strong emotional facial performance. ${NO_TEXT}`;
 
     // Render the clip. For a SEPARATED shot, QA the result and REROLL if Veo's motion
     // merged the two characters back together — the "clip collapsed them" failure. Cap
@@ -577,9 +609,21 @@ export async function generateTestMovie(opts: {
     let rawPath = "";
     const maxTries = sceneSeparated ? 3 : 1;
     for (let attempt = 0; attempt < maxTries; attempt++) {
-      const clipUrl = opts.dialogueEngine === "kling3"
-        ? await klingDialogueClip(seedAbs, prompt, `testmovie-${i}`)
-        : await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
+      let clipUrl: string;
+      if (lipSync) {
+        // HYBRID: 1) a SILENT, emotionally-performed cinematic shot.
+        const silentUrl = await veoDialogueClip(seedAbs, hybridPrompt, `testprocess-${i}`, false);
+        // 2) CAST-VOICE TTS of this line (the gender-matched voice picked at cast time).
+        const vId = castActors.find((c) => firstName(c.name) === firstName(speaker))?.voiceId
+          || AVATAR_VOICES.find((v) => v.gender === "m")?.id || "English_Trustworth_Man";
+        const audioUrl = await falTts(line || "…", vId, 1, { lang: null, emotion: "neutral" });
+        // 3) sync-3 re-syncs ONLY the speaker's mouth to that audio, keeping the shot intact.
+        clipUrl = await falLipSync(silentUrl, audioUrl);
+      } else {
+        clipUrl = opts.dialogueEngine === "kling3"
+          ? await klingDialogueClip(seedAbs, prompt, `testmovie-${i}`)
+          : await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
+      }
       const candidate = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
       await download(clipUrl, candidate);
       if (!(fs.existsSync(candidate) && ffprobeDuration(candidate) > 1)) { try { if (fs.existsSync(candidate)) fs.unlinkSync(candidate); } catch { /* */ } continue; }

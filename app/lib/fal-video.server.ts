@@ -284,6 +284,24 @@ export async function animateOmniHuman(opts: {
   return pollAvatar({ requestId: q.request_id || "", statusUrl: q.status_url, responseUrl: q.response_url }, 18 * 60_000);
 }
 
+/** sync-3 (Sync Labs) LIP-SYNC on EXISTING footage — re-drives the speaker's mouth to the
+ *  given audio while KEEPING the rest of the shot (face, scene, lighting, performance).
+ *  Unlike talking-head models it's built for real cinematic shots: two people in frame, a
+ *  speaker 3/4 away, a face half in shadow — it reads the whole frame and syncs the right
+ *  face. So a Veo/Kling shot keeps its cinematic look and only the mouth is re-synced to
+ *  our own TTS (one audio track → one mouth). video_url + audio_url → new video url;
+ *  sync_mode "cut_off" trims to the shorter of the two. */
+const SYNC_LIPSYNC = "fal-ai/sync-lipsync/v2/pro";
+export async function falLipSync(videoUrl: string, audioUrl: string): Promise<string> {
+  if (!falEnabled()) throw new Error("FAL_KEY not set");
+  const body = { video_url: videoUrl, audio_url: audioUrl, sync_mode: "cut_off" };
+  const submit = await fetch(`https://queue.fal.run/${SYNC_LIPSYNC}`, { method: "POST", headers: headers(), body: JSON.stringify(body) });
+  if (!submit.ok) throw new Error(`fal lipsync submit ${submit.status}: ${(await submit.text()).slice(0, 200)}`);
+  const q = (await submit.json()) as { status_url?: string; response_url?: string; request_id?: string };
+  if (!q.status_url || !q.response_url) throw new Error("fal lipsync: no queue urls");
+  return pollAvatar({ requestId: q.request_id || "", statusUrl: q.status_url, responseUrl: q.response_url }, 15 * 60_000);
+}
+
 /* ---- Generic fal image-to-video ------------------------------------------
  * Kling's current tiers (2.6 pro especially) are published on fal but not on
  * Replicate, and a same-keyframe bake-off across eight engines put 2.6 pro
