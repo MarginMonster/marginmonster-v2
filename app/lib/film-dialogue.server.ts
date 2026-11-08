@@ -43,7 +43,7 @@ const REP_VEO = "google/veo-3";
 // fallback. Also the migration target for Veo 3.1's fal deprecation (Nov 17 2026).
 const FAL_KLING3 = "fal-ai/kling-video/v3/pro/image-to-video";
 const REP_KLING3 = "kwaivgi/kling-v3-omni-video";
-const KLING_DUR = 10; // seconds per talking clip (3-15); ~2x a Veo beat
+const KLING_DUR = 15; // seconds per talking clip — Kling 3 Omni max; longest single take
 
 /** Parse a caption into ordered { speaker, line } turns. A shot is normally ONE
  *  speaker ("NAME: the line"), but this stays robust if the writer runs extra
