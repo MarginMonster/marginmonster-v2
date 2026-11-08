@@ -678,7 +678,7 @@ export default function FilmStudio() {
               </button>
               <button type="button" className={`fs-engine-opt${dialogueEngine === "kling3" ? " on" : ""}`}
                 aria-pressed={dialogueEngine === "kling3"} onClick={() => setDialogueEngine("kling3")}>
-                {t("Kling")}<small>{t("15s takes · new")}</small>
+                {t("Kling")}<small>{t("10s takes · new")}</small>
               </button>
             </div>
           </div>
