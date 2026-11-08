@@ -281,6 +281,10 @@ export default function FilmStudio() {
   const tmpl = d.templates.find((x) => x.key === template) || d.templates[0];
   // The Veo dialogue pipeline supports the per-scene storyboard (approve each frame).
   const isStoryboard = template === "testmovie";
+  // Test Movie can render its spoken dialogue on either engine: Veo (default,
+  // short cinematic beats) or Kling 3 Omni (longer single takes, native lip-sync).
+  // Only submitted for testmovie; the action ignores it for every other template.
+  const [dialogueEngine, setDialogueEngine] = useState<"veo" | "kling3">("veo");
   const [topic, setTopic] = useState("");
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
@@ -663,9 +667,26 @@ export default function FilmStudio() {
       {/* Step 3 — generate (the only paid step) */}
       <div className="fs-card fs-go-card">
         <div className="fs-lbl"><span className="fs-n">3</span> {t("Generate")}</div>
+        {/* Test Movie only: choose which engine renders the spoken dialogue. */}
+        {isStoryboard && (
+          <div className="fs-engine" role="group" aria-label={t("Dialogue engine")}>
+            <span className="fs-engine-cap">{t("Dialogue engine")}</span>
+            <div className="fs-engine-seg">
+              <button type="button" className={`fs-engine-opt${dialogueEngine === "veo" ? " on" : ""}`}
+                aria-pressed={dialogueEngine === "veo"} onClick={() => setDialogueEngine("veo")}>
+                {t("Veo")}<small>{t("cinematic beats · default")}</small>
+              </button>
+              <button type="button" className={`fs-engine-opt${dialogueEngine === "kling3" ? " on" : ""}`}
+                aria-pressed={dialogueEngine === "kling3"} onClick={() => setDialogueEngine("kling3")}>
+                {t("Kling")}<small>{t("longer takes · new")}</small>
+              </button>
+            </div>
+          </div>
+        )}
         <Form method="post">
           <input type="hidden" name="intent" value="film" />
           <input type="hidden" name="template" value={template} />
+          {isStoryboard && <input type="hidden" name="dialogueEngine" value={dialogueEngine} />}
           <input type="hidden" name="filmTopic" value={topic} />
           <input type="hidden" name="filmScenes" value={String(scenes)} />
           {tmpl?.needsProduct && <input type="hidden" name="filmProductTitle" value={prodTitle} />}
@@ -728,6 +749,15 @@ const FS_STYLE = `
 .fs-tmpl-sub{display:block;font-size:12px;color:var(--ink2,#4A554E);margin-top:3px;line-height:1.4;}
 .fs-card{background:linear-gradient(180deg,#fff,#FDFCF8);border:1px solid var(--line,#E4DFCF);border-radius:20px;padding:18px 20px;margin:14px 0;box-shadow:0 2px 4px rgba(20,32,26,.03),0 14px 32px rgba(20,32,26,.05);}
 .fs-go-card{border-color:transparent;box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 18px 40px rgba(12,122,70,.12);}
+/* Dialogue-engine picker (Test Movie only) — a compact segmented control. */
+.fs-engine{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px;}
+.fs-engine-cap{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
+.fs-engine-seg{display:inline-flex;gap:6px;max-width:100%;background:#F3EFE2;border:1px solid var(--line,#E4DFCF);border-radius:12px;padding:4px;}
+.fs-engine-opt{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:0;background:transparent;border-radius:9px;padding:7px 14px;cursor:pointer;font-family:Poppins,sans-serif;font-weight:800;font-size:13.5px;color:var(--ink,#14201A);line-height:1.12;white-space:nowrap;transition:background .15s,box-shadow .15s,color .15s;}
+.fs-engine-opt small{font-weight:600;font-size:10.5px;color:var(--ink2,#6B756E);letter-spacing:.01em;}
+.fs-engine-opt.on{background:#fff;box-shadow:0 1px 3px rgba(20,32,26,.14),inset 0 0 0 1px rgba(12,122,70,.5);color:var(--green,#0C7A46);}
+.fs-engine-opt.on small{color:var(--green,#0C7A46);opacity:.82;}
+.fs-engine-opt:not(.on):hover{background:rgba(255,255,255,.55);}
 .fs-lbl{display:flex;align-items:center;gap:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:15px;color:var(--ink,#14201A);margin-bottom:11px;letter-spacing:-.01em;}
 .fs-n{display:inline-grid;place-items:center;width:25px;height:25px;border-radius:999px;background:linear-gradient(135deg,var(--green,#0C7A46),var(--green2,#1FA463));color:#fff;font-size:13px;box-shadow:0 3px 9px rgba(12,122,70,.3);}
 .fs-free{font-size:10.5px;font-weight:800;color:var(--green,#0C7A46);background:var(--mint,#EAF6EF);border-radius:999px;padding:3px 10px;text-transform:uppercase;letter-spacing:.04em;}
