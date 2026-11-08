@@ -116,6 +116,26 @@ async function extractLastFrame(videoPath: string): Promise<string | null> {
   return null;
 }
 
+/** Per-clip QA for a SEPARATED scene. Veo's motion can quietly merge the two characters
+ *  back into one space by the end of a clip (the "clip collapsed them together" bug).
+ *  Extract the clip's LAST frame (where drift is worst) and ask vision whether the two
+ *  people are still separated by the window/glass. true = keep, false = reroll. Any error
+ *  in the checker returns true — QA never blocks a render on its own flakiness. */
+async function clipKeepsSeparation(videoPath: string, base: string): Promise<boolean> {
+  try {
+    const rel = await extractLastFrame(videoPath);
+    if (!rel) return true;
+    const url = base ? `${base}${rel}` : rel;
+    if (!/^https?:/i.test(url)) return true;
+    const { anthropicVision } = await import("./anthropic.server");
+    const v = await anthropicVision(
+      `Film still. One person is meant to be OUTSIDE a window (beyond the glass, outdoors) and one INSIDE the room. Are the two people still clearly SEPARATED by the window/glass — NOT standing together in the same space? Answer only YES or NO.`,
+      [url], { maxTokens: 4 }
+    );
+    return /^\s*yes/i.test((v || "").trim());
+  } catch { return true; }
+}
+
 /** Crop one half (left or right panel) out of the two-panel shot/reverse image → a
  *  single over-the-shoulder seed for that speaker. Persists to /renders (+ S3 mirror)
  *  so Veo can fetch it. Returns the relative URL, or null. */
@@ -528,12 +548,28 @@ export async function generateTestMovie(opts: {
       `${STAGING} ${castBible} ${HOLD_STILL} ` +
       `Photorealistic live-action, cinematic lighting, shallow depth of field, clean natural dialogue audio. ${NO_TEXT}`;
 
-    const clipUrl = opts.dialogueEngine === "kling3"
-      ? await klingDialogueClip(seedAbs, prompt, `testmovie-${i}`)
-      : await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
-    const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
-    await download(clipUrl, rawPath);
-    if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
+    // Render the clip. For a SEPARATED shot, QA the result and REROLL if Veo's motion
+    // merged the two characters back together — the "clip collapsed them" failure. Cap
+    // the tries so a stubborn shot still ships (the last attempt is accepted as-is)
+    // rather than looping. In-room shots render once (maxTries = 1), unchanged.
+    let rawPath = "";
+    const maxTries = sceneSeparated ? 3 : 1;
+    for (let attempt = 0; attempt < maxTries; attempt++) {
+      const clipUrl = opts.dialogueEngine === "kling3"
+        ? await klingDialogueClip(seedAbs, prompt, `testmovie-${i}`)
+        : await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
+      const candidate = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
+      await download(clipUrl, candidate);
+      if (!(fs.existsSync(candidate) && ffprobeDuration(candidate) > 1)) { try { if (fs.existsSync(candidate)) fs.unlinkSync(candidate); } catch { /* */ } continue; }
+      if (sceneSeparated && attempt < maxTries - 1 && !(await clipKeepsSeparation(candidate, base))) {
+        console.warn(`[testmovie] scene ${i + 1}: clip lost the separation — rerolling (${attempt + 1}/${maxTries})`);
+        try { fs.unlinkSync(candidate); } catch { /* */ }
+        continue;
+      }
+      rawPath = candidate;
+      break;
+    }
+    if (!rawPath) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
     const outPath = await trimTrailingSilence(rawPath); // cut the dead air after the last word
     clips.push(outPath);
     // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.
