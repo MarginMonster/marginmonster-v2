@@ -253,7 +253,7 @@ const STAGING = "Keep BOTH characters visible, each placed EXACTLY where the sce
 // right for the VIDEO prompt (Veo/Kling swallow long prompts), but an image model
 // (nano-banana) does better with a short, scene-led prompt — the long version
 // crowded the shot and got sliced off mid-rule. Keep only the separation essential.
-const STAGING_CUE = "Keep both characters visible, each exactly where the scene places them: if they are apart — one inside and one outside, or split by a window, glass, door or wall — keep that barrier clearly between them, never merged onto the same side.";
+const STAGING_CUE = "If one character is OUTSIDE a window and one is INSIDE, shoot from INSIDE the dark room looking OUT through the wet, rain-streaked glass: the OUTSIDE person stands beyond the pane, out in the rain on the far side of the window, while the INSIDE person is in the room — the window pane clearly between them, and NEVER both people inside the same room. Otherwise place each character exactly where the scene says, keeping any barrier between them and never merging them onto the same side.";
 
 /** Build + render ONE scene's photo seed (the storyboard frame). Shared by the
  *  render loop and the web "preview frame" action so the preview is WYSIWYG.
