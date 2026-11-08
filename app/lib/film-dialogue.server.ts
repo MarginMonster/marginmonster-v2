@@ -249,11 +249,24 @@ const HOLD_STILL = "The characters STAY in their positions — no standing up, s
 // the scene's own staging instead.
 const STAGING = "Frame it as a TWO-SHOT that keeps BOTH characters visible in the shot, but place each one EXACTLY where the scene describes: if they are apart — one indoors and one outdoors, on opposite sides of a window, door, wall or other barrier, or separated by glass — KEEP that separation with the barrier clearly between them; never merge them into the same space or onto the same side.";
 
+// A COMPACT staging cue for the still SEED prompt. The full STAGING paragraph is
+// right for the VIDEO prompt (Veo/Kling swallow long prompts), but an image model
+// (nano-banana) does better with a short, scene-led prompt — the long version
+// crowded the shot and got sliced off mid-rule. Keep only the separation essential.
+const STAGING_CUE = "Keep both characters visible, each exactly where the scene places them: if they are apart — one inside and one outside, or split by a window, glass, door or wall — keep that barrier clearly between them, never merged onto the same side.";
+
 /** Build + render ONE scene's photo seed (the storyboard frame). Shared by the
  *  render loop and the web "preview frame" action so the preview is WYSIWYG.
  *  Returns a relative /renders URL, or null on failure (caller decides fallback). */
 export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[]; roomRefUrl?: string | null }): Promise<string | null> {
-  const framed = `${opts.sceneVisual}. ${opts.sceneHint}. ${STAGING} ${opts.castText || ""} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
+  // SCENE-LED, COMPACT prompt. The old builder concatenated the scene + the full
+  // 60-word STAGING paragraph + the entire cast bible + a 45-word NO_TEXT essay —
+  // ~250 words that overran nano-banana's useful window (it slices ~440-500 chars),
+  // so the key image never dominated and the separation rule got chopped mid-clause.
+  // Lead with the shot; keep the rest to short cues. Identity is carried by the
+  // locked FACE refs in the two ref paths, so the cast bible is redundant there and
+  // only appended in the text-only fallback (no faces → the prompt must name who's in frame).
+  const base = `${opts.sceneVisual}. ${opts.sceneHint}. ${STAGING_CUE} Photorealistic, cinematic, natural lighting, no on-screen text.`.replace(/\s+/g, " ").trim();
   try {
     const castRefs = (opts.castRefUrls || []).filter((u): u is string => !!u);
     // CONTINUITY path first: when we have the PREVIOUS shot's frame AND the locked
@@ -261,18 +274,21 @@ export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: s
     // the faces lock identity. Without this the room was reinvented every shot and the
     // clips cut between unrelated sets (the "four different rooms" bug).
     if (opts.roomRefUrl && castRefs.length) {
-      const chained = await renderSceneSeedChained(framed, opts.roomRefUrl, castRefs, "9:16");
+      const chained = await renderSceneSeedChained(base, opts.roomRefUrl, castRefs, "9:16");
       if (chained) return chained;
     }
     // CAST path: when the shot's actors are locked (but no prior frame to chain from,
     // e.g. the opening shot), compose from their faces so identity holds shot-to-shot.
     if (castRefs.length) {
-      const multi = await renderStyledSeedMulti(framed, castRefs, "9:16");
+      const multi = await renderStyledSeedMulti(base, castRefs, "9:16");
       if (multi) return multi;
     }
+    // TEXT-ONLY fallback: no face refs, so the prompt must describe who is in the
+    // shot — append the cast bible here (and only here), where it earns its length.
+    const textPrompt = opts.castText ? `${base} ${opts.castText}`.replace(/\s+/g, " ").trim() : base;
     return opts.styleRefUrl
-      ? ((await renderStyledSeed(framed, opts.styleRefUrl, "9:16")) || (await renderCreativeSeed(framed, "9:16")))
-      : await renderCreativeSeed(framed, "9:16");
+      ? ((await renderStyledSeed(textPrompt, opts.styleRefUrl, "9:16")) || (await renderCreativeSeed(textPrompt, "9:16")))
+      : await renderCreativeSeed(textPrompt, "9:16");
   } catch { return null; }
 }
 
