@@ -371,7 +371,7 @@ export async function generateTestMovie(opts: {
   let castRefAbs = abs(resume.ckCastRef);
   if (!castRefAbs && castBible) {
     try {
-      const ref = await renderCreativeSeed(`${treatment.scenes[0]?.visual || ""}. ${tmpl.sceneHint}. A photorealistic establishing wide shot of the characters together IN THIS EXACT LOCATION, showing the real setting and background around them, clear faces, cinematic. ${castBible}`, "9:16");
+      const ref = await renderCreativeSeed(`${treatment.scenes[0]?.visual || ""} ${tmpl.sceneHint}. ${STAGING_CUE} Photorealistic, cinematic, clear faces, the real setting and background, no on-screen text. ${castBible}`, "9:16");
       if (ref) { await ckpt({ ckCastRef: ref }); castRefAbs = abs(ref); }
     } catch { /* fall through to text seeds */ }
   }
@@ -385,8 +385,14 @@ export async function generateTestMovie(opts: {
   //     speakers; anything else falls back to the existing chain untouched.
   const firstName = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
+  // BARRIER-SEPARATED staging (one character outside a window/glass, etc.) must NOT use
+  // the over-the-shoulder two-panel — it forces both people into one shared OTS space and
+  // collapses the separation (the "doppelganger at the window" concept broke exactly this
+  // way). A separated film seeds each clip from its own staging-honest per-scene frame.
+  const SEP_RE = /\b(window|glass|pane|windowpane|outside|behind the (?:glass|window)|other side of)\b/i;
+  const anySeparated = treatment.scenes.some((s) => SEP_RE.test(s.visual || ""));
   let panelFor: ((speaker: string) => string | undefined) | null = null;
-  if (allSpeakers.length === 2) {
+  if (allSpeakers.length === 2 && !anySeparated) {
     const [a, b] = allSpeakers;
     const bibleFor = (n: string) => (treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || `${n}, a person`;
     const faceFor = (n: string) => abs(castActors.find((c) => firstName(c.name) === firstName(n))?.faceUrl);
@@ -452,12 +458,20 @@ export async function generateTestMovie(opts: {
     // deliberate set-piece / establisher wins) → else this speaker's SHOT/REVERSE
     // PANEL (matched-room OTS, the default continuity for a two-hander) → else chain
     // from the prior clip's real last frame → else auto-render a fresh frame.
-    let seedAbs = abs(approvedFrames[i]) || (panelFor ? abs(panelFor(speaker)) : undefined) || abs(prevFrameUrl);
+    // A BARRIER-SEPARATED scene must NOT inherit the OTS panel or chain from the prior
+    // clip's frame — both drag the two characters into one shared space and kill the
+    // separation. It seeds from its OWN per-scene frame, rendered purely from the scene
+    // text (no 'together' cast-ref styling), which is also exactly the frame the
+    // storyboard preview shows: what you see is what the clip uses.
+    const sceneSeparated = SEP_RE.test(scene.visual || "");
+    let seedAbs = abs(approvedFrames[i]);
+    if (!seedAbs && panelFor) seedAbs = abs(panelFor(speaker));
+    if (!seedAbs && !sceneSeparated) seedAbs = abs(prevFrameUrl);
     if (!seedAbs) {
       // Compose the auto-seed from the locked faces of the cast in THIS shot, so the
       // actors look identical from shot to shot (falls back to the group cast ref).
       const shotCastRefs = actorsInScene(castActors, scene).map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
-      const seedUrl = await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: castRefAbs, castRefUrls: shotCastRefs });
+      const seedUrl = await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: sceneSeparated ? null : castRefAbs, castRefUrls: shotCastRefs });
       seedAbs = abs(seedUrl);
     }
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
