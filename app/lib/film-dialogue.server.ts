@@ -241,13 +241,13 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
 // Shared prompt fragments for the dialogue seed frames + Veo clips. Module-scope
 // so the web "preview frame" action renders a WYSIWYG storyboard frame with the
 // SAME prompt the render uses.
-const NO_TEXT = "Absolutely NO on-screen text of any kind: no subtitles, no captions, no titles, and no readable writing on any paper, document, folder, bulletin board, whiteboard, sign, poster or screen anywhere in the frame — keep every surface clean and text-free.";
-const HOLD_STILL = "The characters STAY in their positions — no standing up, sitting down, walking or crossing the room, only natural small gestures, head turns and talking. Keep every character's face, hair, hairstyle, clothing and wardrobe EXACTLY the same the whole time — no morphing, melting or changing of anyone's appearance.";
+const NO_TEXT = "No on-screen text of any kind — no subtitles, captions, titles or readable writing on any paper, sign, screen or surface; keep every surface clean.";
+const HOLD_STILL = "The characters STAY put — no standing, sitting down, walking or crossing the room, only small natural gestures, head turns and talking. Keep every face, hair and outfit EXACTLY the same throughout — no morphing or changing anyone's appearance.";
 // Keep both faces in the shot (continuity) WITHOUT forcing them into the same
 // space — "two-shot in the room" overrode scenes that place the characters apart
 // (one inside, one outside a window), collapsing them onto the same side. Honour
 // the scene's own staging instead.
-const STAGING = "Frame it as a TWO-SHOT that keeps BOTH characters visible in the shot, but place each one EXACTLY where the scene describes: if they are apart — one indoors and one outdoors, on opposite sides of a window, door, wall or other barrier, or separated by glass — KEEP that separation with the barrier clearly between them; never merge them into the same space or onto the same side.";
+const STAGING = "Keep BOTH characters visible, each placed EXACTLY where the scene describes: if they are apart — split by a window, glass, door, wall or other barrier — KEEP that barrier clearly between them, never merged into the same space or onto the same side.";
 
 // A COMPACT staging cue for the still SEED prompt. The full STAGING paragraph is
 // right for the VIDEO prompt (Veo/Kling swallow long prompts), but an image model
@@ -476,10 +476,13 @@ export async function generateTestMovie(opts: {
     const voiceLine = speaker
       ? `ONLY ${speaker} speaks — a clear, natural, unhurried delivery with accurate lip-sync: "${line}". The other character stays silent, listening and reacting, not moving their lips. Keep ${speaker}'s voice natural and the SAME as in every other shot of the film.${speakerVoiceDesc}`
       : `One character speaks clearly and unhurried, lips in sync: "${line}". The other listens in silence.`;
+    // Lead with the shot + the SPOKEN LINE (promoted ahead of the staging/identity
+    // cues so the dialogue the engine must lip-sync is front and center), then the
+    // compact constraint cues. Every load-bearing rule is kept, just tightened.
     const prompt =
-      `${scene.visual}. ${tmpl.sceneHint}. ${STAGING} ` +
-      `${voiceLine} ${castBible} ${HOLD_STILL} ` +
-      `Photorealistic live-action film, cinematic lighting, shallow depth of field, clean natural spoken-dialogue audio. ${NO_TEXT}`;
+      `${scene.visual} ${tmpl.sceneHint}. ${voiceLine} ` +
+      `${STAGING} ${castBible} ${HOLD_STILL} ` +
+      `Photorealistic live-action, cinematic lighting, shallow depth of field, clean natural dialogue audio. ${NO_TEXT}`;
 
     const clipUrl = opts.dialogueEngine === "kling3"
       ? await klingDialogueClip(seedAbs, prompt, `testmovie-${i}`)
