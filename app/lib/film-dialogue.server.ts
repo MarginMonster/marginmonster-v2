@@ -420,8 +420,8 @@ export async function generateTestMovie(opts: {
       return v ? ` ${speaker}'s voice is ${v.blurb.toLowerCase()} (a ${v.label.toLowerCase()} ${v.gender === "f" ? "female" : "male"} voice); keep this exact voice in every shot.` : "";
     })();
     const voiceLine = speaker
-      ? `ONLY ${speaker} speaks — a clear, natural, unhurried delivery with accurate lip-sync: "${line}". The other character stays silent, listening and reacting, not moving their lips. Keep ${speaker}'s voice natural and the SAME as in every other shot of the film.${speakerVoiceDesc}`
-      : `One character speaks clearly and unhurried, lips in sync: "${line}". The other listens in silence.`;
+      ? `There is ONLY ONE voice in this entire clip — ${speaker}'s. ${speaker} says this one line, clearly and naturally with accurate lip-sync, and nothing else is spoken: "${line}". The OTHER character is COMPLETELY SILENT the whole time — absolutely no talking, no murmuring, no mumbling, no whispering, no muttering and no background speech of any kind; their mouth stays closed and still, only listening and reacting. Do NOT generate any second voice, murmur, or gibberish anywhere in the clip — one voice only. Keep ${speaker}'s voice natural and the SAME as in every other shot.${speakerVoiceDesc}`
+      : `Exactly ONE voice in the whole clip: one character says this line clearly with accurate lip-sync: "${line}". The other character is completely silent — no talking, murmuring or mumbling at all, mouth closed, only listening.`;
     // LIGHT PROMPT — the SEED frame already carries the faces, room and staging, so the
     // prompt only drives the TALKING and tells Veo to HOLD the frame. Re-describing the
     // scene + both characters in text (scene.visual / STAGING / castBible) made Veo redraw
