@@ -159,22 +159,32 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       where: { shopId: sc.target.id, type: "VIDEO_AD" },
       orderBy: { createdAt: "desc" },
       take: 8,
-      select: { createdAt: true, title: true, bodyJson: true },
+      select: { createdAt: true, title: true, bodyJson: true, metaJson: true },
     });
     return json({
       shop: sc.target.domain,
       takes: assets.map((a) => {
         let engine = "?", hasUrl = false, fileExists = false, heldProduct = false;
+        let videoUrl: string | null = null;
         try {
           const b = JSON.parse(a.bodyJson);
-          engine = b.engine || "minimax-showcase";
+          // The film engine records the Veo/Kling choice in metaJson.engine; the
+          // older generators put it in bodyJson.engine. Prefer the former.
+          let meta: Record<string, unknown> = {};
+          try { meta = JSON.parse(a.metaJson || "{}"); } catch { /* skip */ }
+          engine = (typeof meta.engine === "string" && meta.engine) || b.engine || "minimax-showcase";
           hasUrl = !!b.videoUrl;
           heldProduct = b.heldProduct === true;
-          if (typeof b.videoUrl === "string" && b.videoUrl.startsWith("/renders/")) {
-            fileExists = fs.existsSync(path.join(process.cwd(), "data", "renders", path.basename(b.videoUrl)));
+          if (typeof b.videoUrl === "string") {
+            videoUrl = b.videoUrl;
+            if (b.videoUrl.startsWith("/renders/")) {
+              fileExists = fs.existsSync(path.join(process.cwd(), "data", "renders", path.basename(b.videoUrl)));
+            }
           }
         } catch { /* skip */ }
-        return { at: a.createdAt, title: a.title?.slice(0, 40), engine, hasUrl, fileExists, heldProduct };
+        // videoUrl is returned ONLY to a diagnostics-key holder — this whole
+        // route 404s without PURGE_KEY — so it never widens the public surface.
+        return { at: a.createdAt, title: a.title?.slice(0, 80), engine, hasUrl, fileExists, heldProduct, videoUrl };
       }),
     });
   }
