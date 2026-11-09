@@ -192,20 +192,6 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     dialogue: true,
     live: true,
   },
-  testprocess: {
-    key: "testprocess",
-    name: "11/8 Test Process",
-    brief: "the SAME dialogue scene, built the PRO way (the hybrid pipeline): a cinematic two-shot generated with NO spoken audio and an emotional performance, then each line is a cast voice (TTS) lip-synced onto the SPEAKER with a dedicated lip-sync pass — so only one mouth moves per line, the voice/gender is cast not guessed, and the faces don't morph",
-    sceneHint: "a cinematic, photorealistic live-action film scene — natural film lighting, filmic composition, real-looking people with real emotional performances; a clean, uncluttered set with NO readable text, documents, signage or screens",
-    musicHint: "subtle cinematic underscore",
-    defaultScenes: 2,
-    minScenes: 1,
-    maxScenes: 6,
-    captions: false,
-    castBible: true,
-    dialogue: true,
-    live: true,
-  },
   skit: {
     key: "skit",
     name: "Skit",
@@ -291,22 +277,16 @@ export async function previewFilmTreatment(opts: {
   // Narrated templates want each caption to BE the narrator's spoken line for
   // that beat (a flowing voiceover); others want a short on-screen hook.
   const captionLine = tmpl.dialogue
-    ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS, all in ONE continuous location (so they flow). Each shot = a VISUAL (what we SEE — a TWO-SHOT that frames BOTH characters together in the same place; the characters STAY where they are — NO standing up, sitting down, walking, turning away or crossing the room, because big movements make the AI video morph faces and clothing; keep it a still, tense TALKING scene with only small gestures and changing expressions; NO readable text, documents, papers, boards, signage or screens in view). Keep each VISUAL to ONE clear, easily-rendered sentence — the single key image of the shot (who is where, and the one thing we see), NOT a stack of competing details, because an image model has to draw it from this text. The CAPTION is formatted EXACTLY as "NAME: what they say" where in each shot ONE speaker says 1-2 FULL sentences (a complete beat, ~16-26 words — enough to fill several seconds of screen time), each line a COMPLETE thought that stands on its own — NEVER split one sentence across two speakers (no trailing off for the other character to finish). The speaker ALTERNATES from shot to shot. Across the shots it is a real back-and-forth building tension with a clear turn at the end; use the cast's names as the speakers.\n`
+    ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS, all in ONE continuous location (so they flow). Each shot = a VISUAL (what we SEE — a TWO-SHOT that frames BOTH characters together in the same place; the characters STAY where they are — NO standing up, sitting down, walking, turning away or crossing the room, because big movements make the AI video morph faces and clothing; keep it a still, tense TALKING scene with only small gestures and changing expressions; NO readable text, documents, papers, boards, signage or screens in view) and a CAPTION formatted EXACTLY as "NAME: what they say" where in each shot ONE speaker says 1-2 FULL sentences (a complete beat, ~16-26 words — enough to fill several seconds of screen time), and the speaker ALTERNATES from shot to shot. Across the shots it is a real back-and-forth building tension with a clear turn at the end; use the cast's names as the speakers.\n`
     : tmpl.sung
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes/flows with the others; read in order the captions ARE the song's lyrics.\n`
     : tmpl.narrated
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the NARRATOR'S spoken line for that beat — ONE natural sentence, <=14 words, moving the story forward; read in order the captions are a continuous, emotive voiceover that tells the whole story and lands the ending.\n`
     : `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a short CAPTION (one punchy on-screen line, <=8 words; the hook or the joke's line for that beat).\n`;
-  // A horror-flavored TOPIC on a dialogue template (Test Movie) gets the horror framing
-  // too — otherwise the general "nothing adult/unsafe" line sands the teeth off and the
-  // scene lands flat instead of scary. Still adults-only (render models refuse minors).
-  const horrorTopic = /\b(horror|scary|terrif|terror|creepy|sinister|dread|nightmare|haunt|disturb|unsettl|menac|eerie|chilling|macabre|demon|ghost|possess|stalk|slasher|murder|killer|sadist|cult|ritual)\b/i.test(topic);
   const safetyLine = tmpl.childSafe
     ? `SAFETY: this is for very young children — keep it 100% wholesome and G-rated: happy, gentle and safe. NOTHING scary, sad, violent, adult or unsafe; no real named people or brands; invent no claims.`
     : tmpl.key === "horror"
     ? `This is FICTIONAL horror for an entertainment video (a horror-short / scary-story channel). Write a GENUINELY SCARY, intense, DARK horror story — real menace, dread, danger, frightening imagery and a chilling twist; a horror-FILM feel, NOT a watered-down kids' version. Violence, death, blood and disturbing imagery are fine when they serve the scare, portrayed with cinematic intent. CAST ONLY ADULTS: every character — victim and threat alike — is a grown adult; never write a child, teenager, infant or any minor into the story, and never place a young person in peril (the AI render models refuse minors-in-danger, which hard-fails the whole video — so recast any endangered character as an adult). The ONLY other limits: no gratuitous, lingering torture or graphic mutilation purely for shock, and no real named people. Take the premise and make it as frightening as you can within that.`
-    : tmpl.dialogue && horrorTopic
-    ? `This is FICTIONAL horror for an entertainment video. Write GENUINELY SCARY, dark, unsettling DIALOGUE with real menace and dread, building to a chilling turn — a horror-FILM feel, NOT a watered-down version. Psychological terror, quiet wrongness, implied violence and deeply disturbing revelations are fine when they serve the scare; the horror lives in what the characters SAY and imply. CAST ONLY ADULTS — never write a child, teenager, infant or any minor (the AI render models refuse minors, which hard-fails the video; recast any such role as an adult). No gratuitous gore purely for shock, no real named people. Leave the audience deeply unsettled.`
     : `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe. Anyone who faces danger, threat, fear or menace is an ADULT — never place a child, teenager, infant or any minor in peril and never depict a minor being threatened, hunted, harmed or frightened; recast any such role as an adult (the AI render models refuse minors-in-danger, which hard-fails the video).`;
   const prompt =
     `Write ${tmpl.brief}.\n` +

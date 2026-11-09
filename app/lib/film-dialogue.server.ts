@@ -26,7 +26,7 @@ import { db } from "../db.server";
 import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderTwoPanelShotReverse } from "./image-generation.server";
 import { AVATAR_VOICES } from "./avatar-voice-catalog";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
-import { falEnabled, falLipSync, falTts, falVideoPoll, falVideoSubmit } from "./fal-video.server";
+import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 
@@ -43,7 +43,7 @@ const REP_VEO = "google/veo-3";
 // fallback. Also the migration target for Veo 3.1's fal deprecation (Nov 17 2026).
 const FAL_KLING3 = "fal-ai/kling-video/v3/pro/image-to-video";
 const REP_KLING3 = "kwaivgi/kling-v3-omni-video";
-const KLING_DUR = 10; // seconds per talking clip — 10s holds Kling's native lip-sync; 15s drifts
+const KLING_DUR = 10; // seconds per talking clip (3-15); ~2x a Veo beat
 
 /** Parse a caption into ordered { speaker, line } turns. A shot is normally ONE
  *  speaker ("NAME: the line"), but this stays robust if the writer runs extra
@@ -71,16 +71,16 @@ function splitExchange(caption: string): Array<{ speaker: string; line: string }
 
 /** A Veo clip where the characters SPEAK an exchange (audio on). FULL Veo-3:
  *  fal veo3.1 → Replicate google/veo-3 fallback. Returns the clip URL. */
-async function veoDialogueClip(seedAbs: string, prompt: string, stage: string, generateAudio = true): Promise<string> {
+async function veoDialogueClip(seedAbs: string, prompt: string, stage: string): Promise<string> {
   if (falEnabled()) {
     try {
-      const rid = await falVideoSubmit(FAL_VEO, { startImage: seedAbs, prompt, generateAudio });
+      const rid = await falVideoSubmit(FAL_VEO, { startImage: seedAbs, prompt, generateAudio: true });
       return await falVideoPoll(FAL_VEO, rid, VEO_POLL_MS);
     } catch (e) {
       console.error(`[testmovie] fal veo failed, trying Replicate: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     }
   }
-  const id = await repCreate(REP_VEO, { prompt, image: seedAbs, aspect_ratio: "9:16", generate_audio: generateAudio });
+  const id = await repCreate(REP_VEO, { prompt, image: seedAbs, aspect_ratio: "9:16", generate_audio: true });
   return await repPoll(id, VEO_POLL_MS, stage);
 }
 
@@ -114,26 +114,6 @@ async function extractLastFrame(videoPath: string): Promise<string | null> {
     if (r.status === 0 && fs.existsSync(out)) return `/renders/${name}`;
   } catch { /* fall through — chain falls back to the scene's own seed still */ }
   return null;
-}
-
-/** Per-clip QA for a SEPARATED scene. Veo's motion can quietly merge the two characters
- *  back into one space by the end of a clip (the "clip collapsed them together" bug).
- *  Extract the clip's LAST frame (where drift is worst) and ask vision whether the two
- *  people are still separated by the window/glass. true = keep, false = reroll. Any error
- *  in the checker returns true — QA never blocks a render on its own flakiness. */
-async function clipKeepsSeparation(videoPath: string, base: string): Promise<boolean> {
-  try {
-    const rel = await extractLastFrame(videoPath);
-    if (!rel) return true;
-    const url = base ? `${base}${rel}` : rel;
-    if (!/^https?:/i.test(url)) return true;
-    const { anthropicVision } = await import("./anthropic.server");
-    const v = await anthropicVision(
-      `Film still. One person is meant to be OUTSIDE a window (beyond the glass, outdoors) and one INSIDE the room. Are the two people still clearly SEPARATED by the window/glass — NOT standing together in the same space? Answer only YES or NO.`,
-      [url], { maxTokens: 4 }
-    );
-    return /^\s*yes/i.test((v || "").trim());
-  } catch { return true; }
 }
 
 /** Crop one half (left or right panel) out of the two-panel shot/reverse image → a
@@ -261,32 +241,19 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
 // Shared prompt fragments for the dialogue seed frames + Veo clips. Module-scope
 // so the web "preview frame" action renders a WYSIWYG storyboard frame with the
 // SAME prompt the render uses.
-const NO_TEXT = "No on-screen text of any kind — no subtitles, captions, titles or readable writing on any paper, sign, screen or surface; keep every surface clean.";
-const HOLD_STILL = "The characters STAY put — no standing, sitting down, walking or crossing the room, only small natural gestures, head turns and talking. Keep every face, hair and outfit EXACTLY the same throughout — no morphing or changing anyone's appearance.";
+const NO_TEXT = "Absolutely NO on-screen text of any kind: no subtitles, no captions, no titles, and no readable writing on any paper, document, folder, bulletin board, whiteboard, sign, poster or screen anywhere in the frame — keep every surface clean and text-free.";
+const HOLD_STILL = "The characters STAY in their positions — no standing up, sitting down, walking or crossing the room, only natural small gestures, head turns and talking. Keep every character's face, hair, hairstyle, clothing and wardrobe EXACTLY the same the whole time — no morphing, melting or changing of anyone's appearance.";
 // Keep both faces in the shot (continuity) WITHOUT forcing them into the same
 // space — "two-shot in the room" overrode scenes that place the characters apart
 // (one inside, one outside a window), collapsing them onto the same side. Honour
 // the scene's own staging instead.
-const STAGING = "Keep BOTH characters visible, each placed EXACTLY where the scene describes: if they are apart — split by a window, glass, door, wall or other barrier — KEEP that barrier clearly between them, never merged into the same space or onto the same side.";
-
-// A COMPACT staging cue for the still SEED prompt. The full STAGING paragraph is
-// right for the VIDEO prompt (Veo/Kling swallow long prompts), but an image model
-// (nano-banana) does better with a short, scene-led prompt — the long version
-// crowded the shot and got sliced off mid-rule. Keep only the separation essential.
-const STAGING_CUE = "If one character is OUTSIDE a window and one is INSIDE, shoot from INSIDE the dark room looking OUT through the wet, rain-streaked glass: the OUTSIDE person stands beyond the pane, out in the rain on the far side of the window, while the INSIDE person is in the room — the window pane clearly between them, and NEVER both people inside the same room. Otherwise place each character exactly where the scene says, keeping any barrier between them and never merging them onto the same side.";
+const STAGING = "Frame it as a TWO-SHOT that keeps BOTH characters visible in the shot, but place each one EXACTLY where the scene describes: if they are apart — one indoors and one outdoors, on opposite sides of a window, door, wall or other barrier, or separated by glass — KEEP that separation with the barrier clearly between them; never merge them into the same space or onto the same side.";
 
 /** Build + render ONE scene's photo seed (the storyboard frame). Shared by the
  *  render loop and the web "preview frame" action so the preview is WYSIWYG.
  *  Returns a relative /renders URL, or null on failure (caller decides fallback). */
 export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[]; roomRefUrl?: string | null }): Promise<string | null> {
-  // SCENE-LED, COMPACT prompt. The old builder concatenated the scene + the full
-  // 60-word STAGING paragraph + the entire cast bible + a 45-word NO_TEXT essay —
-  // ~250 words that overran nano-banana's useful window (it slices ~440-500 chars),
-  // so the key image never dominated and the separation rule got chopped mid-clause.
-  // Lead with the shot; keep the rest to short cues. Identity is carried by the
-  // locked FACE refs in the two ref paths, so the cast bible is redundant there and
-  // only appended in the text-only fallback (no faces → the prompt must name who's in frame).
-  const base = `${opts.sceneVisual}. ${opts.sceneHint}. ${STAGING_CUE} Photorealistic, cinematic, natural lighting, no on-screen text.`.replace(/\s+/g, " ").trim();
+  const framed = `${opts.sceneVisual}. ${opts.sceneHint}. ${STAGING} ${opts.castText || ""} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
   try {
     const castRefs = (opts.castRefUrls || []).filter((u): u is string => !!u);
     // CONTINUITY path first: when we have the PREVIOUS shot's frame AND the locked
@@ -294,21 +261,18 @@ export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: s
     // the faces lock identity. Without this the room was reinvented every shot and the
     // clips cut between unrelated sets (the "four different rooms" bug).
     if (opts.roomRefUrl && castRefs.length) {
-      const chained = await renderSceneSeedChained(base, opts.roomRefUrl, castRefs, "9:16");
+      const chained = await renderSceneSeedChained(framed, opts.roomRefUrl, castRefs, "9:16");
       if (chained) return chained;
     }
     // CAST path: when the shot's actors are locked (but no prior frame to chain from,
     // e.g. the opening shot), compose from their faces so identity holds shot-to-shot.
     if (castRefs.length) {
-      const multi = await renderStyledSeedMulti(base, castRefs, "9:16");
+      const multi = await renderStyledSeedMulti(framed, castRefs, "9:16");
       if (multi) return multi;
     }
-    // TEXT-ONLY fallback: no face refs, so the prompt must describe who is in the
-    // shot — append the cast bible here (and only here), where it earns its length.
-    const textPrompt = opts.castText ? `${base} ${opts.castText}`.replace(/\s+/g, " ").trim() : base;
     return opts.styleRefUrl
-      ? ((await renderStyledSeed(textPrompt, opts.styleRefUrl, "9:16")) || (await renderCreativeSeed(textPrompt, "9:16")))
-      : await renderCreativeSeed(textPrompt, "9:16");
+      ? ((await renderStyledSeed(framed, opts.styleRefUrl, "9:16")) || (await renderCreativeSeed(framed, "9:16")))
+      : await renderCreativeSeed(framed, "9:16");
   } catch { return null; }
 }
 
@@ -347,7 +311,7 @@ export async function generateTestMovie(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckAutoCast?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string };
   /** Per-scene APPROVED storyboard frames (relative /renders URLs), index-aligned
    *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
    *  that scene so it lands exactly as the merchant staged it. */
@@ -364,14 +328,7 @@ export async function generateTestMovie(opts: {
    *  identical; ONLY the clip render swaps, so the comparison isolates the engine. */
   dialogueEngine?: "veo" | "kling3";
 }): Promise<string> {
-  const tmpl = filmTemplate(opts.template); // "testmovie" | "testprocess"
-  // HYBRID lip-sync pipeline ("11/8 Test Process"): generate a SILENT, emotionally-
-  // performed cinematic shot, then re-sync ONLY the speaker's mouth to our own cast-voice
-  // TTS with sync-3. One audio track → one mouth (no both-talking / line-splitting), the
-  // voice is cast not guessed (gender-correct), and sync-3 keeps the cinematic shot (no
-  // morphing). Everything else — script, cast-lock, seeds, two-panel — is shared with the
-  // Veo-native Test Movie; ONLY the clip step swaps.
-  const lipSync = tmpl.key === "testprocess";
+  const tmpl = filmTemplate(opts.template); // "testmovie"
   const jobId = opts.jobId;
   const resume = opts.resume || {};
   const approvedFrames = opts.approvedFrames || [];
@@ -390,47 +347,17 @@ export async function generateTestMovie(opts: {
 
   const castBible = treatment.cast && treatment.cast.length ? `The recurring cast (keep them identical in every shot): ${treatment.cast.join("; ")}.` : "";
   // Locked cast (faces + voices) the merchant cast in the UI — drives per-shot
-  // identity conditioning and the Veo voice pin. May be auto-filled below when the
-  // merchant didn't lock a cast, so faces still get a reference (stops identity drift).
-  let castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
+  // identity conditioning and the Veo voice pin.
+  const castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
 
-  // Detect BARRIER-SEPARATED staging (one character outside a window/glass, etc.). These
-  // films can't use the over-the-shoulder two-panel (it merges both people into one shared
-  // space) — instead they LOCK one environment plate that every shot is re-angled from.
-  const SEP_RE = /\b(window|glass|pane|windowpane|outside|behind the (?:glass|window)|other side of)\b/i;
-  const anySeparated = treatment.scenes.some((s) => SEP_RE.test(s.visual || ""));
-  const brightCue = "Clearly lit and well-exposed with visible faces — cinematic but NOT crushed to black.";
-
-  // 2) ESTABLISHING PLATE (photoreal) — the SINGLE locked environment. For a separated
-  //    film this is the Runway/Kling method made literal: build the plate, VISION-VERIFY
-  //    the separation actually rendered (one person outside the glass, one inside), and
-  //    reroll until it passes — so we never animate a wrong keyframe. Every shot is then
-  //    re-angled from THIS plate (below), so the room never changes shot to shot.
+  // 2) CAST REFERENCE still (photoreal) — establishes the characters' look; the
+  //    first scene seeds from it, then the chain carries continuity.
   let castRefAbs = abs(resume.ckCastRef);
   if (!castRefAbs && castBible) {
-    const platePrompt = `${treatment.scenes[0]?.visual || ""} ${tmpl.sceneHint}. ${STAGING_CUE} Photorealistic, cinematic, clear faces, the real setting and background, no on-screen text. ${brightCue} ${castBible}`;
-    let best: string | null = null;
-    const tries = anySeparated ? 4 : 1;
-    for (let t = 0; t < tries; t++) {
-      let url: string | null = null;
-      try { url = await renderCreativeSeed(platePrompt, "9:16"); } catch { /* reroll */ }
-      if (!url) continue;
-      if (!best) best = url;
-      if (!anySeparated) break;
-      // VISION GATE: only commit the plate once the separation is actually visible.
-      let ok = false;
-      try {
-        const { anthropicVision } = await import("./anthropic.server");
-        const a = abs(url);
-        if (!a) ok = true;
-        else {
-          const v = await anthropicVision(`Film still. Does it clearly show ONE person OUTSIDE a window — on the far side of the wet glass, outdoors — AND a DIFFERENT person INSIDE the room? Answer only YES or NO.`, [a], { maxTokens: 4 });
-          ok = /^\s*yes/i.test((v || "").trim());
-        }
-      } catch { ok = true; }
-      if (ok) { best = url; break; }
-    }
-    if (best) { await ckpt({ ckCastRef: best }); castRefAbs = abs(best); }
+    try {
+      const ref = await renderCreativeSeed(`${treatment.scenes[0]?.visual || ""}. ${tmpl.sceneHint}. A photorealistic establishing wide shot of the characters together IN THIS EXACT LOCATION, showing the real setting and background around them, clear faces, cinematic. ${castBible}`, "9:16");
+      if (ref) { await ckpt({ ckCastRef: ref }); castRefAbs = abs(ref); }
+    } catch { /* fall through to text seeds */ }
   }
 
   // 2b) SHOT / REVERSE-SHOT PANELS (the ShoulderShot method — how Runway/Kling/Veo-era
@@ -442,45 +369,8 @@ export async function generateTestMovie(opts: {
   //     speakers; anything else falls back to the existing chain untouched.
   const firstName = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
-  // AUTO-LOCK CAST FACES (reference-locking — the Runway References / Kling Elements move).
-  // Without a locked face reference the two-panel + clips drift the identities shot to shot
-  // ("the characters change"). If the merchant didn't lock a cast, generate ONE clean
-  // portrait per speaker from the treatment's cast bible and reuse it as that character's
-  // identity reference everywhere (two-panel faces + per-clip seeds). Checkpointed so a
-  // resume doesn't recast. Portrait failure is non-fatal (falls back to text identity).
-  if (!castActors.length && allSpeakers.length === 2 && (treatment.cast || []).length) {
-    const cached = resume.ckAutoCast ? (JSON.parse(resume.ckAutoCast) as typeof castActors) : null;
-    if (cached && cached.length) castActors = cached;
-    else {
-      const made: typeof castActors = [];
-      for (const nm of allSpeakers) {
-        const bible = (treatment.cast || []).find((c) => c.toLowerCase().includes(firstName(nm))) || `${nm}, a person`;
-        let face: string | null = null;
-        try { face = await renderActorPortrait(bible); } catch { /* portrait optional */ }
-        // For the HYBRID pipeline, CAST a gender-matched voice per character (distinct, so
-        // two same-gender characters don't share a voice) — the TTS + lip-sync needs a real
-        // voice id. Native Test Movie leaves it null (unchanged — no voice pin added).
-        let voiceId: string | null = null;
-        if (lipSync) {
-          const g: "f" | "m" = /\b(she|her|woman|female|girl|lady|mother|mom|sister|daughter|wife|aunt|grandmother|widow|mrs|ms)\b/i.test(bible)
-            ? "f"
-            : /\b(he|him|his|man|male|boy|guy|father|dad|brother|son|husband|uncle|grandfather|mr)\b/i.test(bible)
-            ? "m"
-            : (made.length % 2 === 0 ? "f" : "m");
-          const pool = AVATAR_VOICES.filter((v) => v.gender === g);
-          const used = new Set(made.map((m) => m.voiceId).filter(Boolean));
-          voiceId = (pool.find((v) => !used.has(v.id)) || pool[0])?.id || null;
-        }
-        made.push({ name: nm, faceUrl: face, voiceId });
-      }
-      castActors = made;
-      await ckpt({ ckAutoCast: JSON.stringify(made) });
-    }
-  }
-  // A separated film does NOT use the over-the-shoulder two-panel (it merges both people
-  // into one shared space); it re-angles every shot from the locked plate instead (below).
   let panelFor: ((speaker: string) => string | undefined) | null = null;
-  if (allSpeakers.length === 2 && !anySeparated) {
+  if (allSpeakers.length === 2) {
     const [a, b] = allSpeakers;
     const bibleFor = (n: string) => (treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || `${n}, a person`;
     const faceFor = (n: string) => abs(castActors.find((c) => firstName(c.name) === firstName(n))?.faceUrl);
@@ -546,25 +436,12 @@ export async function generateTestMovie(opts: {
     // deliberate set-piece / establisher wins) → else this speaker's SHOT/REVERSE
     // PANEL (matched-room OTS, the default continuity for a two-hander) → else chain
     // from the prior clip's real last frame → else auto-render a fresh frame.
-    const sceneSeparated = SEP_RE.test(scene.visual || "");
-    let seedAbs = abs(approvedFrames[i]);                       // merchant-locked frame always wins
-    if (!seedAbs && panelFor) seedAbs = abs(panelFor(speaker)); // in-room two-hander: the OTS panel
-    // SEPARATED: re-angle THIS shot from the LOCKED PLATE (img2img) — same room, same
-    // people, new camera angle only — so the set never changes and the separation carries.
-    // This is the whole fix: one locked environment with camera-only moves (the Runway/
-    // Kling method), instead of regenerating the scene per shot (which drifted the room)
-    // or chaining a dark last-frame. STAGING_CUE is echoed so the reframe keeps her
-    // outside the glass; brightCue keeps Veo from crushing it to black.
-    if (!seedAbs && sceneSeparated && castRefAbs) {
-      const shotCastRefs = actorsInScene(castActors, scene).map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
-      const chained = await renderSceneSeedChained(`${scene.visual} ${STAGING_CUE} ${brightCue}`, castRefAbs, shotCastRefs, "9:16");
-      seedAbs = abs(chained);
-    }
-    if (!seedAbs && !sceneSeparated) seedAbs = abs(prevFrameUrl); // in-room: seamless last-frame chain
+    let seedAbs = abs(approvedFrames[i]) || (panelFor ? abs(panelFor(speaker)) : undefined) || abs(prevFrameUrl);
     if (!seedAbs) {
-      // Last resort: a fresh per-scene frame from the scene text (no 'together' cast-ref).
+      // Compose the auto-seed from the locked faces of the cast in THIS shot, so the
+      // actors look identical from shot to shot (falls back to the group cast ref).
       const shotCastRefs = actorsInScene(castActors, scene).map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
-      const seedUrl = await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: sceneSeparated ? null : castRefAbs, castRefUrls: shotCastRefs });
+      const seedUrl = await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: castRefAbs, castRefUrls: shotCastRefs });
       seedAbs = abs(seedUrl);
     }
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
@@ -581,81 +458,19 @@ export async function generateTestMovie(opts: {
       return v ? ` ${speaker}'s voice is ${v.blurb.toLowerCase()} (a ${v.label.toLowerCase()} ${v.gender === "f" ? "female" : "male"} voice); keep this exact voice in every shot.` : "";
     })();
     const voiceLine = speaker
-      ? `ONLY ${speaker} — the person FACING the camera — speaks, and speaks the ENTIRE line start to finish: "${line}". Clear, natural, unhurried, accurate lip-sync. The OTHER character does NOT speak a single word: their mouth stays CLOSED and still the whole time, lips not moving at all, only listening and reacting. Never have the two trade off or split the sentence between them. Keep ${speaker}'s voice natural and the SAME as in every other shot of the film.${speakerVoiceDesc}`
-      : `ONE character speaks the entire line, clear and unhurried with accurate lip-sync: "${line}". The other character's mouth stays closed and still — they only listen, never speaking.`;
-    // Lead with the shot + the SPOKEN LINE (promoted ahead of the staging/identity
-    // cues so the dialogue the engine must lip-sync is front and center), then the
-    // compact constraint cues. Every load-bearing rule is kept, just tightened.
+      ? `ONLY ${speaker} speaks — a clear, natural, unhurried delivery with accurate lip-sync: "${line}". The other character stays silent, listening and reacting, not moving their lips. Keep ${speaker}'s voice natural and the SAME as in every other shot of the film.${speakerVoiceDesc}`
+      : `One character speaks clearly and unhurried, lips in sync: "${line}". The other listens in silence.`;
     const prompt =
-      `${scene.visual} ${tmpl.sceneHint}. ${voiceLine} ` +
-      `${STAGING} ${castBible} ${HOLD_STILL} ` +
-      `Photorealistic live-action, cinematic lighting, shallow depth of field, clean natural dialogue audio. ${NO_TEXT}`;
-    // HYBRID prompt — the OPPOSITE of the first attempt. sync-3 AND identity both need a
-    // CALM, CLOSE, near-front shot with a NEUTRAL, nearly-closed mouth and MINIMAL motion.
-    // The first version directed "intense dramatic performance, lips moving," which induced
-    // theatrical motion that MORPHED the faces; sync-3 then painted mouths onto broken
-    // faces. Keep it still; sync-3 adds ALL the talking; emotion = a RESTRAINED micro-
-    // expression, not theatrical. Lock the face hard against morphing.
-    const hybridPrompt =
-      `A calm, steady cinematic CLOSE shot of ${speaker || "the character"} in this scene. ${tmpl.sceneHint}. ` +
-      `The camera is locked and still and ${speaker || "the character"} barely moves — only a subtle, restrained, natural micro-expression that fits the moment (composed, NOT exaggerated or theatrical). ` +
-      `Their face is turned nearly toward camera; their mouth stays relaxed and NEARLY CLOSED with minimal lip movement. ` +
-      `Keep their face, hair, skin tone and clothing EXACTLY the same the whole time — absolutely NO morphing, aging, or changing of their appearance into a different person. ` +
-      `Photorealistic live-action, cinematic lighting, shallow depth of field. ${NO_TEXT}`;
+      `${scene.visual}. ${tmpl.sceneHint}. ${STAGING} ` +
+      `${voiceLine} ${castBible} ${HOLD_STILL} ` +
+      `Photorealistic live-action film, cinematic lighting, shallow depth of field, clean natural spoken-dialogue audio. ${NO_TEXT}`;
 
-    // Render the clip. For a SEPARATED shot, QA the result and REROLL if Veo's motion
-    // merged the two characters back together — the "clip collapsed them" failure. Cap
-    // the tries so a stubborn shot still ships (the last attempt is accepted as-is)
-    // rather than looping. In-room shots render once (maxTries = 1), unchanged.
-    let rawPath = "";
-    const maxTries = sceneSeparated ? 3 : 1;
-    for (let attempt = 0; attempt < maxTries; attempt++) {
-      let clipUrl: string;
-      if (lipSync) {
-        // HYBRID 1) SEED a CLOSE, near-front shot of THIS speaker from their locked portrait
-        // + the room plate — a shot/reverse-shot close-up (how films actually shoot dialogue).
-        // Close + locked face = identity holds; near-front + clear = exactly what sync-3 needs.
-        // Falls back to the scene's seed if the close-up can't be composed.
-        const spFace = abs(castActors.find((c) => firstName(c.name) === firstName(speaker))?.faceUrl);
-        const closeRefs = [spFace, castRefAbs].filter((u): u is string => !!u); // [face, room plate]
-        // Keep the close-up INSIDE the real set — describe the location AND feed the room
-        // plate, so the speaker isn't dropped onto a plain studio backdrop (the headshot look).
-        const settingDesc = ((scene.visual || opts.topic || "").split(/[.;]/)[0] || "")
-          .replace(/\b(two[- ]?shot|close[- ]?up|wide shot|over[- ]the[- ]shoulder|establishing|shot)\b/gi, "")
-          .replace(/\s+/g, " ").trim().slice(0, 120) || "the scene";
-        let closeSeed: string = seedAbs;
-        if (closeRefs.length) {
-          const cs = await renderStyledSeedMulti(
-            `A cinematic CLOSE-UP of ${speaker || "the character"} set in ${settingDesc}. Match the FIRST reference image's exact face, hair and clothing. The BACKGROUND is that real location — kept clearly behind them and lit to match the scene; do NOT put them on a plain studio backdrop. Face turned nearly toward camera, calm and composed with a subtle restrained expression, mouth relaxed and nearly closed. Shallow depth of field, cinematic film lighting, filmic, photorealistic. No on-screen text.`,
-            closeRefs, "9:16",
-          );
-          if (cs) closeSeed = abs(cs) || seedAbs;
-        }
-        // 2) a SILENT, CALM cinematic clip from that close-up (sync-3 adds the talking).
-        const silentUrl = await veoDialogueClip(closeSeed, hybridPrompt, `testprocess-${i}`, false);
-        // 2) CAST-VOICE TTS of this line (the gender-matched voice picked at cast time).
-        const vId = castActors.find((c) => firstName(c.name) === firstName(speaker))?.voiceId
-          || AVATAR_VOICES.find((v) => v.gender === "m")?.id || "English_Trustworth_Man";
-        const audioUrl = await falTts(line || "…", vId, 1, { lang: null, emotion: "neutral" });
-        // 3) sync-3 re-syncs ONLY the speaker's mouth to that audio, keeping the shot intact.
-        clipUrl = await falLipSync(silentUrl, audioUrl);
-      } else {
-        clipUrl = opts.dialogueEngine === "kling3"
-          ? await klingDialogueClip(seedAbs, prompt, `testmovie-${i}`)
-          : await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
-      }
-      const candidate = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
-      await download(clipUrl, candidate);
-      if (!(fs.existsSync(candidate) && ffprobeDuration(candidate) > 1)) { try { if (fs.existsSync(candidate)) fs.unlinkSync(candidate); } catch { /* */ } continue; }
-      if (sceneSeparated && attempt < maxTries - 1 && !(await clipKeepsSeparation(candidate, base))) {
-        console.warn(`[testmovie] scene ${i + 1}: clip lost the separation — rerolling (${attempt + 1}/${maxTries})`);
-        try { fs.unlinkSync(candidate); } catch { /* */ }
-        continue;
-      }
-      rawPath = candidate;
-      break;
-    }
-    if (!rawPath) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
+    const clipUrl = opts.dialogueEngine === "kling3"
+      ? await klingDialogueClip(seedAbs, prompt, `testmovie-${i}`)
+      : await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
+    const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
+    await download(clipUrl, rawPath);
+    if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
     const outPath = await trimTrailingSilence(rawPath); // cut the dead air after the last word
     clips.push(outPath);
     // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.
