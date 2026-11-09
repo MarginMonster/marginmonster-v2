@@ -334,17 +334,55 @@ export async function generateTestMovie(opts: {
   //     else falls back to the existing chain untouched.
   const firstName = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
-  let sideShotUrl: string | undefined = abs(resume.ckSideShot);
-  if (!sideShotUrl && allSpeakers.length === 2) {
+  let sideShotUrl: string | undefined;
+  // Which side of the frame each speaker sits on in the master two-shot. In a two-shot
+  // BOTH faces are visible, so Veo must be TOLD who speaks or it animates the wrong mouth
+  // (owner: "one character saying the other's line"). Detected once, then fixed for every
+  // clip because every clip seeds from the same master (positions never move).
+  let sideFor: (sp: string) => "left" | "right" | "" = () => "";
+  if (allSpeakers.length === 2) {
     const [a, b] = allSpeakers;
     const bibleFor = (n: string) => (treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || `${n}, a person`;
     const faceFor = (n: string) => abs(castActors.find((c) => firstName(c.name) === firstName(n))?.faceUrl);
     const setting = ((treatment.scenes[0]?.visual || opts.topic || "").split(/[.;]/)[0] || "")
       .replace(/\b(two[- ]?shot|wide shot|close[- ]?up|medium shot|over[- ]the[- ]shoulder|establishing|shot)\b/gi, "")
       .replace(/^\s*(across|of)\s+/i, "a ").replace(/\s+/g, " ").trim().slice(0, 130) || "a cinematic interior";
-    const roomRef = abs(approvedFrames[0]); // the merchant's opening frame (room only), if any — else generate fresh
-    const url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(a), faceB: faceFor(b), descA: bibleFor(a), descB: bibleFor(b), setting });
-    if (url) { sideShotUrl = abs(url); await ckpt({ ckSideShot: url }); }
+    // Restore a saved shot + side map on resume; else render + detect the sides once.
+    let saved: { url: string; aOnLeft: boolean; a: string; b: string } | null = null;
+    try { saved = resume.ckSideShot ? JSON.parse(resume.ckSideShot) : null; } catch { saved = null; }
+    if (!saved?.url) {
+      const roomRef = abs(approvedFrames[0]); // the merchant's opening frame (room only), if any — else generate fresh
+      const url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(a), faceB: faceFor(b), descA: bibleFor(a), descB: bibleFor(b), setting });
+      if (url) {
+        // DETECT which side each character landed on — nano-banana doesn't reliably honour
+        // left/right, and the clip prompt needs the real side to point Veo at the speaker.
+        // One cheap vision call; defaults to A-on-left if unavailable.
+        let aOnLeft = true;
+        try {
+          const { anthropicVision } = await import("./anthropic.server");
+          const twoAbs = abs(url);
+          if (twoAbs) {
+            const v = await anthropicVision(
+              `Two people are seated across a table facing each other in this image. Person A is: ${bibleFor(a)}. Person B is: ${bibleFor(b)}. Which of them is on the LEFT side of the frame? Answer with a single letter, A or B, and nothing else.`,
+              [twoAbs], { maxTokens: 4 }
+            );
+            if ((v || "").trim().toUpperCase().startsWith("B")) aOnLeft = false;
+          }
+        } catch { /* keep default A-on-left */ }
+        saved = { url, aOnLeft, a: firstName(a), b: firstName(b) };
+        await ckpt({ ckSideShot: JSON.stringify(saved) });
+      }
+    }
+    if (saved?.url) {
+      sideShotUrl = abs(saved.url);
+      const map = saved;
+      sideFor = (sp: string) => {
+        const k = firstName(sp);
+        if (k && k === map.a) return map.aOnLeft ? "left" : "right";
+        if (k && k === map.b) return map.aOnLeft ? "right" : "left";
+        return "";
+      };
+    }
   }
 
   // 3) Veo DIALOGUE clips (sequential) — see the design notes atop this file: one
@@ -387,8 +425,13 @@ export async function generateTestMovie(opts: {
       const v = a && a.voiceId ? AVATAR_VOICES.find((x) => x.id === a.voiceId) : undefined;
       return v ? ` ${speaker}'s voice is ${v.blurb.toLowerCase()} (a ${v.label.toLowerCase()} ${v.gender === "f" ? "female" : "male"} voice); keep this exact voice in every shot.` : "";
     })();
+    // Point Veo at the RIGHT face: in the two-shot both people are visible, so name the
+    // speaker by their SIDE of the frame (detected above) — otherwise Veo animates the
+    // wrong brother's mouth and the line comes out of the wrong person (owner's bug).
+    const sSide = sideFor(speaker);
+    const oSide = sSide === "left" ? "right" : sSide === "right" ? "left" : "";
     const voiceLine = speaker
-      ? `There is ONLY ONE voice in this entire clip — ${speaker}'s. ${speaker} says this one line, clearly and naturally with accurate lip-sync, and nothing else is spoken: "${line}". The OTHER character is COMPLETELY SILENT the whole time — absolutely no talking, no murmuring, no mumbling, no whispering, no muttering and no background speech of any kind; their mouth stays closed and still, only listening and reacting. Do NOT generate any second voice, murmur, or gibberish anywhere in the clip — one voice only. Keep ${speaker}'s voice natural and the SAME as in every other shot.${speakerVoiceDesc}`
+      ? `${sSide ? `In this two-shot BOTH people are visible, but the ONLY one who speaks is the person seated on the ${sSide.toUpperCase()} side of the frame — that is ${speaker}. The person on the ${oSide.toUpperCase()} does NOT speak. ` : ""}There is ONLY ONE voice in this entire clip — ${speaker}'s. ${speaker}${sSide ? ` (the person on the ${sSide})` : ""} says this one line, clearly and naturally with accurate lip-sync, and nothing else is spoken: "${line}". ONLY ${speaker}'s mouth moves. The OTHER character${oSide ? ` (the person on the ${oSide})` : ""} is COMPLETELY SILENT the whole time — absolutely no talking, no murmuring, no mumbling, no whispering, no muttering and no background speech of any kind; their mouth stays closed and still, only listening and reacting. Do NOT generate any second voice, murmur, or gibberish anywhere in the clip — one voice only. Keep ${speaker}'s voice natural and the SAME as in every other shot.${speakerVoiceDesc}`
       : `Exactly ONE voice in the whole clip: one character says this line clearly with accurate lip-sync: "${line}". The other character is completely silent — no talking, murmuring or mumbling at all, mouth closed, only listening.`;
     // LIGHT PROMPT — the SEED frame already carries the faces, room and staging, so the
     // prompt only drives the TALKING and tells Veo to HOLD the frame. Re-describing the
