@@ -769,7 +769,7 @@ async function runJob(
         }
         let filmAssetId: string;
         const ft = payload.filmTemplate as string | undefined;
-        if (ft === "testmovie" || ft === "testprocess") {
+        if (ft === "testmovie" || ft === "testprocess" || ft === "moral" || ft === "horror") {
           // ISOLATED dialogue experiments — their own engine; generateFilm untouched.
           // "testprocess" = the hybrid lip-sync pipeline (silent performed shot + cast-voice
           // TTS + sync-3 on the speaker); "testmovie" = the Veo-native path, unchanged.

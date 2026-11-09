@@ -28,7 +28,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const { LIVE_FILM_TEMPLATES } = await import("../lib/film-engine.server");
   const templates = LIVE_FILM_TEMPLATES.map((t) => ({
-    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct,
+    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue,
   }));
   // The merchant's own catalogue — only products WITH a photo can seed a skit.
   const products = (await db.catalogProduct.findMany({
@@ -315,7 +315,7 @@ export default function FilmStudio() {
   const [template, setTemplate] = useState(d.templates[0]?.key || "musicvideo");
   const tmpl = d.templates.find((x) => x.key === template) || d.templates[0];
   // The Veo dialogue pipeline supports the per-scene storyboard (approve each frame).
-  const isStoryboard = template === "testmovie";
+  const isStoryboard = !!tmpl?.dialogue; // any dialogue card (Short Film, Moral, Horror) → the chat-flow UI + dialogue engine
   // Test Movie can render its spoken dialogue on either engine: Veo (default,
   // short cinematic beats) or Kling 3 Omni (longer single takes, native lip-sync).
   // Only submitted for testmovie; the action ignores it for every other template.
