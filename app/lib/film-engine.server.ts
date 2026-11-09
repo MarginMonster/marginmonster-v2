@@ -221,7 +221,17 @@ export function filmTemplate(key: string | undefined): FilmTemplate {
 export const LIVE_FILM_TEMPLATES = Object.values(FILM_TEMPLATES).filter((t) => t.live);
 
 // ---- Treatment (the free, pre-paid script preview) --------------------------
-export interface FilmScene { visual: string; caption?: string }
+export interface FilmScene {
+  visual: string;
+  caption?: string;
+  /** Test Movie location/angle model: `where` = the location this beat happens in (a
+   *  change starts a new scene = new master shot + a deliberate cut, cast carried); `shot`
+   *  = the camera angle within that location (a change re-frames the master = a cinematic
+   *  cut that holds the room + faces). Absent on both → one continuous location (the
+   *  validated seamless behaviour). */
+  where?: string;
+  shot?: string;
+}
 export interface FilmTreatment { title?: string; scenes: FilmScene[]; musicMood: string; cast?: string[] }
 
 const TREATMENT_SCHEMA = {

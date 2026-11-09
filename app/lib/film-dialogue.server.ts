@@ -279,7 +279,7 @@ export async function generateTestMovie(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string; ckMasters?: string };
   /** Per-scene APPROVED storyboard frames (relative /renders URLs), index-aligned
    *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
    *  that scene so it lands exactly as the merchant staged it. */
@@ -334,56 +334,71 @@ export async function generateTestMovie(opts: {
   //     else falls back to the existing chain untouched.
   const firstName = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
-  let sideShotUrl: string | undefined;
-  // Which side of the frame each speaker sits on in the master two-shot. In a two-shot
-  // BOTH faces are visible, so Veo must be TOLD who speaks or it animates the wrong mouth
-  // (owner: "one character saying the other's line"). Detected once, then fixed for every
-  // clip because every clip seeds from the same master (positions never move).
-  let sideFor: (sp: string) => "left" | "right" | "" = () => "";
-  if (allSpeakers.length === 2) {
-    const [a, b] = allSpeakers;
-    const bibleFor = (n: string) => (treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || `${n}, a person`;
-    const faceFor = (n: string) => abs(castActors.find((c) => firstName(c.name) === firstName(n))?.faceUrl);
-    const setting = ((treatment.scenes[0]?.visual || opts.topic || "").split(/[.;]/)[0] || "")
-      .replace(/\b(two[- ]?shot|wide shot|close[- ]?up|medium shot|over[- ]the[- ]shoulder|establishing|shot)\b/gi, "")
-      .replace(/^\s*(across|of)\s+/i, "a ").replace(/\s+/g, " ").trim().slice(0, 130) || "a cinematic interior";
-    // Restore a saved shot + side map on resume; else render + detect the sides once.
-    let saved: { url: string; aOnLeft: boolean; a: string; b: string } | null = null;
-    try { saved = resume.ckSideShot ? JSON.parse(resume.ckSideShot) : null; } catch { saved = null; }
-    if (!saved?.url) {
-      const roomRef = abs(approvedFrames[0]); // the merchant's opening frame (room only), if any — else generate fresh
-      const url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(a), faceB: faceFor(b), descA: bibleFor(a), descB: bibleFor(b), setting });
-      if (url) {
-        // DETECT which side each character landed on — nano-banana doesn't reliably honour
-        // left/right, and the clip prompt needs the real side to point Veo at the speaker.
-        // One cheap vision call; defaults to A-on-left if unavailable.
-        let aOnLeft = true;
-        try {
-          const { anthropicVision } = await import("./anthropic.server");
-          const twoAbs = abs(url);
-          if (twoAbs) {
-            const v = await anthropicVision(
-              `Two people are seated across a table facing each other in this image. Person A is: ${bibleFor(a)}. Person B is: ${bibleFor(b)}. Which of them is on the LEFT side of the frame? Answer with a single letter, A or B, and nothing else.`,
-              [twoAbs], { maxTokens: 4 }
-            );
-            if ((v || "").trim().toUpperCase().startsWith("B")) aOnLeft = false;
-          }
-        } catch { /* keep default A-on-left */ }
-        saved = { url, aOnLeft, a: firstName(a), b: firstName(b) };
-        await ckpt({ ckSideShot: JSON.stringify(saved) });
+  const isTwoHander = allSpeakers.length === 2;
+  const [spkA, spkB] = allSpeakers;
+  const bibleFor = (n: string) => (treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || `${n}, a person`;
+  const faceFor = (n: string) => abs(castActors.find((c) => firstName(c.name) === firstName(n))?.faceUrl);
+  const cleanSetting = (s: string) => (((s || "").split(/[.;]/)[0] || "")
+    .replace(/\b(two[- ]?shot|wide shot|close[- ]?up|medium shot|over[- ]the[- ]shoulder|establishing|shot)\b/gi, "")
+    .replace(/^\s*(across|of)\s+/i, "a ").replace(/\s+/g, " ").trim().slice(0, 130) || "a cinematic interior");
+
+  // LOCATION MASTERS. Each distinct LOCATION (scene.where, else the opening visual) gets ONE
+  // side-by-side master two-shot, built once + cached. Within a location every clip seeds
+  // from (or chains off) its master, so the room + faces are identical; a NEW location builds
+  // a NEW master (the deliberate scene-change cut, cast carried via the same faces); a NEW
+  // camera angle in the SAME location re-frames that master (a cinematic cut that holds room
+  // + faces). A flat treatment (no scene.where) collapses to a SINGLE location = the
+  // validated seamless behaviour, byte-for-byte. Two-handers only; else the chain fallback.
+  type Master = { url: string; aOnLeft: boolean; a: string; b: string };
+  const masters: Record<string, Master> = {};
+  try { const r = resume.ckMasters ? JSON.parse(resume.ckMasters) : null; if (r && typeof r === "object") Object.assign(masters, r); } catch { /* ignore */ }
+  const masterFor = async (locKey: string, where: string, roomRef?: string): Promise<Master | undefined> => {
+    if (!isTwoHander) return undefined;
+    if (masters[locKey]?.url) return masters[locKey];
+    const url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(spkA), faceB: faceFor(spkB), descA: bibleFor(spkA), descB: bibleFor(spkB), setting: cleanSetting(where) });
+    if (!url) return undefined;
+    // DETECT which side each character landed on — nano-banana doesn't reliably honour
+    // left/right, and the clip prompt needs the real side to point Veo at the speaker.
+    let aOnLeft = true;
+    try {
+      const { anthropicVision } = await import("./anthropic.server");
+      const twoAbs = abs(url);
+      if (twoAbs) {
+        const v = await anthropicVision(
+          `Two people are together in this image. Person A is: ${bibleFor(spkA)}. Person B is: ${bibleFor(spkB)}. Which of them is on the LEFT side of the frame? Answer with a single letter, A or B, and nothing else.`,
+          [twoAbs], { maxTokens: 4 }
+        );
+        if ((v || "").trim().toUpperCase().startsWith("B")) aOnLeft = false;
       }
-    }
-    if (saved?.url) {
-      sideShotUrl = abs(saved.url);
-      const map = saved;
-      sideFor = (sp: string) => {
-        const k = firstName(sp);
-        if (k && k === map.a) return map.aOnLeft ? "left" : "right";
-        if (k && k === map.b) return map.aOnLeft ? "right" : "left";
-        return "";
-      };
-    }
+    } catch { /* keep default A-on-left */ }
+    masters[locKey] = { url, aOnLeft, a: firstName(spkA), b: firstName(spkB) };
+    await ckpt({ ckMasters: JSON.stringify(masters) });
+    return masters[locKey];
+  };
+  const sideForMaster = (m: Master | undefined) => (sp: string): "left" | "right" | "" => {
+    if (!m) return "";
+    const k = firstName(sp);
+    if (k && k === m.a) return m.aOnLeft ? "left" : "right";
+    if (k && k === m.b) return m.aOnLeft ? "right" : "left";
+    return "";
+  };
+
+  // Per-scene LOCATION + ANGLE, and the transition that opens each beat. `where` defaults to
+  // the prior beat's location (else the opening visual); `shot` defaults to the wide two-shot.
+  const scenesArr = treatment.scenes;
+  const whereAt: string[] = [];
+  const shotAt: string[] = [];
+  for (let i = 0; i < scenesArr.length; i++) {
+    whereAt[i] = (scenesArr[i].where || "").trim() || (i > 0 ? whereAt[i - 1] : ((scenesArr[0]?.visual || opts.topic || "a cinematic interior")));
+    shotAt[i] = (scenesArr[i].shot || "").trim() || "wide two-shot";
   }
+  const locKeyAt = (i: number) => whereAt[i].toLowerCase().replace(/\s+/g, " ").trim().slice(0, 60) || "loc";
+  const transitionAt = (i: number): "location" | "angle" | "continue" => {
+    if (i === 0) return "location";
+    if (locKeyAt(i) !== locKeyAt(i - 1)) return "location";
+    if (shotAt[i] !== shotAt[i - 1]) return "angle";
+    return "continue";
+  };
 
   // 3) Veo DIALOGUE clips (sequential) — see the design notes atop this file: one
   //    speaker per clip, seamless cuts from the prior clip's real last frame, no
@@ -396,23 +411,40 @@ export async function generateTestMovie(opts: {
     const speaker = turns.find((t) => t.speaker)?.speaker || "";
     const line = turns.map((t) => t.line).join(" ").replace(/\s+/g, " ").trim();
 
-    // SEED. Clip 0 seeds from the side-by-side MASTER (both characters fully in frame,
-    // cast faces locked). Clips 1+ then CHAIN from the previous clip's REAL last frame,
-    // so each clip CONTINUES exactly where the last ended — the boundary frames are
-    // near-identical, which makes the 0.18s assembly crossfade genuinely invisible and
-    // the clips read as ONE continuous take (owner: make the transitions invisible). The
-    // held two-shot keeps both people + the room identical and each speaker's SIDE fixed,
-    // so chaining doesn't swap seats or re-imagine the set like the old OTS chain did.
-    // Seed priority: the merchant's APPROVED storyboard frame (a deliberate set-piece
-    // wins) → else the prior clip's real last frame (seamless continuity) → else the
-    // side-by-side master (clip 0 / fallback) → else auto-render a fresh frame.
-    let seedAbs = abs(approvedFrames[i]) || abs(prevFrameUrl) || sideShotUrl;
+    // SEED by transition (see the LOCATION MASTERS note above):
+    //  • location (clip 0 / scene change): the location's side-by-side MASTER — a clean cut
+    //    to the place, the cast carried via the same locked faces.
+    //  • angle (same location, new camera): RE-FRAME the master to this shot's angle — a
+    //    cinematic cut that holds the identical room, lighting, wardrobe and faces.
+    //  • continue (same shot): CHAIN from the prior clip's REAL last frame, so the clip
+    //    continues exactly where the last ended and the 0.18s crossfade is invisible.
+    // The merchant's APPROVED storyboard frame always wins. A flat treatment is one
+    // location of "continue" beats → beat 0 = master, the rest chain (validated behaviour).
+    const tr = transitionAt(i);
+    const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined);
+    const sideFor = sideForMaster(master);
+    let seedAbs = abs(approvedFrames[i]);
+    if (!seedAbs && master?.url) {
+      if (tr === "location") {
+        seedAbs = abs(master.url);
+      } else if (tr === "angle") {
+        const reangled = await renderSceneSeedChained(
+          `${whereAt[i]}. A ${shotAt[i]} of the same scene — the identical room, lighting, wardrobe and people, only the camera angle changes. ${NO_TEXT}`,
+          abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), "9:16",
+        );
+        seedAbs = abs(reangled) || abs(prevFrameUrl) || abs(master.url);
+      } else {
+        seedAbs = abs(prevFrameUrl) || abs(master.url);
+      }
+    }
     if (!seedAbs) {
-      // Compose the auto-seed from the locked faces of the cast in THIS shot, so the
-      // actors look identical from shot to shot (falls back to the group cast ref).
-      const shotCastRefs = actorsInScene(castActors, scene).map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
-      const seedUrl = await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: castRefAbs, castRefUrls: shotCastRefs });
-      seedAbs = abs(seedUrl);
+      // Non-two-hander (or the master couldn't render): chain if we can, else compose the
+      // seed from the locked faces of the cast in THIS shot so the actors hold shot-to-shot.
+      seedAbs = abs(prevFrameUrl);
+      if (!seedAbs) {
+        const shotCastRefs = actorsInScene(castActors, scene).map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
+        seedAbs = abs(await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: castRefAbs, castRefUrls: shotCastRefs }));
+      }
     }
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
 
