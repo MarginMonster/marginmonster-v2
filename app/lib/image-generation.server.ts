@@ -4751,6 +4751,40 @@ export async function renderTwoPanelShotReverse(opts: { roomRefUrl?: string | nu
   }
 }
 
+// SIDE-BY-SIDE TWO-SHOT — a single wide master where BOTH characters are fully in
+// frame at once (seated across the table, filmed from the side), so every dialogue
+// clip can seed from this ONE image. Unlike the over-the-shoulder shot/reverse, there
+// is NO blurred foreground head — that head was generated independently of the reverse
+// angle and so mismatched it (the "back of the head has hair, then he's bald on the
+// cut" continuity bug). With both people always fully framed there is nothing to
+// mismatch, and because both faces are born from one generation the two people + the
+// room are identical by construction and never drift. Seeded 9:16 to match the clips.
+export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; setting: string }): Promise<string | null> {
+  try {
+    if (!process.env.REPLICATE_API_TOKEN) return null;
+    const refs = [opts.roomRefUrl, opts.faceA, opts.faceB].filter((u): u is string => !!u).slice(0, 3);
+    const setting = (opts.setting || "a cinematic interior").trim().slice(0, 140);
+    const descA = (opts.descA || "the first person").trim().slice(0, 140);
+    const descB = (opts.descB || "the second person").trim().slice(0, 140);
+    const roomNote = opts.roomRefUrl
+      ? ` The FIRST reference image shows ONLY the room: copy its exact setting, furniture, seats, surfaces, lighting, windows and color grade, but DO NOT copy any people from it.`
+      : "";
+    const faceNote = (opts.faceA || opts.faceB)
+      ? ` The other reference images are the EXACT faces and looks of the two people — match each one's face, hair, facial hair and clothing precisely, and do NOT blend or swap them.`
+      : "";
+    const prompt = `A single photorealistic cinematic WIDE two-shot of BOTH people together in ${setting}, seated across a table facing each other, filmed from the side so that BOTH of them are fully visible in the same frame at the same time — ${descA} on one side and ${descB} on the other, each person's face and upper body clearly and sharply in view. This is NOT an over-the-shoulder shot: neither person is turned away from camera, cropped out, or blurred in the foreground; both are equally sharp and completely framed, like a two-person master shot in a film. Keep the two people clearly distinct and do NOT blend or swap their faces, hair, facial hair or clothing.${roomNote}${faceNote} Cinematic filmic lighting, shallow depth of field, vertical composition, no on-screen text, no watermark.`;
+    const input: Record<string, unknown> = { prompt, aspect_ratio: "9:16", output_format: "jpg" };
+    if (refs.length) input.image_input = refs;
+    const url = await repRun("google/nano-banana", input);
+    const durable = await persistRemote(url, "jpg");
+    artLog("image-ad", `side-by-side two-shot rendered (refs x${refs.length})`);
+    return durable;
+  } catch (e) {
+    artLog("image-ad", `side-by-side two-shot failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return null;
+  }
+}
+
 export async function generateImageAd(
   shopId: string,
   brandProfile: BrandProfile,

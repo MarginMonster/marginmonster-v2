@@ -23,7 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
-import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderTwoPanelShotReverse } from "./image-generation.server";
+import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderSideBySideTwoShot } from "./image-generation.server";
 import { AVATAR_VOICES } from "./avatar-voice-catalog";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
@@ -279,7 +279,7 @@ export async function generateTestMovie(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string };
   /** Per-scene APPROVED storyboard frames (relative /renders URLs), index-aligned
    *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
    *  that scene so it lands exactly as the merchant staged it. */
@@ -322,61 +322,29 @@ export async function generateTestMovie(opts: {
     } catch { /* fall through to text seeds */ }
   }
 
-  // 2b) SHOT / REVERSE-SHOT PANELS (the ShoulderShot method — how Runway/Kling/Veo-era
-  //     tools actually hold dialogue continuity). For a clean TWO-HANDER, render BOTH
-  //     over-the-shoulder angles as ONE matched image, so the room is identical by
-  //     construction, then seed each speaker's clips from their own panel. This REPLACES
-  //     last-frame→new-angle chaining, which re-imagines the set and drifts ("different
-  //     café, table changed, they swapped sides"). Gated on exactly two recurring
-  //     speakers; anything else falls back to the existing chain untouched.
+  // 2b) SIDE-BY-SIDE TWO-SHOT (the owner's "side by side thing"). Render ONE wide
+  //     master where BOTH characters are fully in frame at once — seated across the
+  //     table, filmed from the side — and seed EVERY clip from it. This REPLACES the
+  //     over-the-shoulder shot/reverse panels: their blurred foreground head was
+  //     generated independently of the reverse angle and so mismatched it (the owner's
+  //     "back of the head has hair, then he's bald on the cut" continuity bug). With
+  //     both people always fully framed there is nothing to mismatch, and because both
+  //     faces are born from one generation the two people + the room are identical by
+  //     construction and never drift. Gated on exactly two recurring speakers; anything
+  //     else falls back to the existing chain untouched.
   const firstName = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
-  let panelFor: ((speaker: string) => string | undefined) | null = null;
-  if (allSpeakers.length === 2) {
+  let sideShotUrl: string | undefined = abs(resume.ckSideShot);
+  if (!sideShotUrl && allSpeakers.length === 2) {
     const [a, b] = allSpeakers;
     const bibleFor = (n: string) => (treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || `${n}, a person`;
     const faceFor = (n: string) => abs(castActors.find((c) => firstName(c.name) === firstName(n))?.faceUrl);
     const setting = ((treatment.scenes[0]?.visual || opts.topic || "").split(/[.;]/)[0] || "")
       .replace(/\b(two[- ]?shot|wide shot|close[- ]?up|medium shot|over[- ]the[- ]shoulder|establishing|shot)\b/gi, "")
       .replace(/^\s*(across|of)\s+/i, "a ").replace(/\s+/g, " ").trim().slice(0, 130) || "a cinematic interior";
-    let panels: { left?: string; right?: string; a?: string; b?: string; aOnLeft?: boolean } | null = resume.ckPanels ? JSON.parse(resume.ckPanels) : null;
-    if (!panels?.left || !panels?.right) {
-      const roomRef = abs(approvedFrames[0]) || castRefAbs; // the merchant's opening frame, else the cast ref
-      const twoPanelUrl = await renderTwoPanelShotReverse({ roomRefUrl: roomRef, faceA: faceFor(a), faceB: faceFor(b), descA: bibleFor(a), descB: bibleFor(b), setting });
-      if (twoPanelUrl) {
-        const left = await cropPanelSeed(twoPanelUrl, "left");
-        const right = await cropPanelSeed(twoPanelUrl, "right");
-        if (left && right) {
-          // nano-banana does NOT reliably honour left/right, so DETECT which panel holds
-          // which character with one cheap vision call — otherwise a speaker's line lands
-          // on the wrong face. Defaults to A-on-left if the check is unavailable.
-          let aOnLeft = true;
-          try {
-            const { anthropicVision } = await import("./anthropic.server");
-            const twoPanelAbs = abs(twoPanelUrl);
-            if (twoPanelAbs) {
-              const v = await anthropicVision(
-                `This image has two side-by-side panels, each showing one person facing the camera. Person A is: ${bibleFor(a)}. Person B is: ${bibleFor(b)}. Which person is in the LEFT panel? Answer with a single letter, A or B, and nothing else.`,
-                [twoPanelAbs],
-                { maxTokens: 4 }
-              );
-              if ((v || "").trim().toUpperCase().startsWith("B")) aOnLeft = false;
-            }
-          } catch { /* keep default A-on-left */ }
-          panels = { left, right, a: firstName(a), b: firstName(b), aOnLeft };
-          await ckpt({ ckPanels: JSON.stringify(panels) });
-        }
-      }
-    }
-    if (panels?.left && panels?.right) {
-      const aLeft = panels.aOnLeft !== false; // which panel shows speaker A facing camera
-      panelFor = (sp: string) => {
-        const k = firstName(sp);
-        if (k && k === panels!.a) return aLeft ? panels!.left : panels!.right;   // A faces camera
-        if (k && k === panels!.b) return aLeft ? panels!.right : panels!.left;   // B faces camera (the other panel)
-        return undefined;
-      };
-    }
+    const roomRef = abs(approvedFrames[0]); // the merchant's opening frame (room only), if any — else generate fresh
+    const url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(a), faceB: faceFor(b), descA: bibleFor(a), descB: bibleFor(b), setting });
+    if (url) { sideShotUrl = abs(url); await ckpt({ ckSideShot: url }); }
   }
 
   // 3) Veo DIALOGUE clips (sequential) — see the design notes atop this file: one
@@ -390,15 +358,15 @@ export async function generateTestMovie(opts: {
     const speaker = turns.find((t) => t.speaker)?.speaker || "";
     const line = turns.map((t) => t.line).join(" ").replace(/\s+/g, " ").trim();
 
-    // SEED. Clip N>0: the previous clip's EXACT last frame, fed straight to Veo, so
-    // the cut is seamless (positions carried over — the two-shot keeps the next
-    // speaker in frame, so no wrong-speaker gibberish). Clip 0 / fallback: a clean
-    // two-shot generated from the cast reference.
+    // SEED. Every clip seeds from the SAME side-by-side two-shot (both characters
+    // fully in frame), so the two people and the room are identical in every clip by
+    // construction — the speaker just alternates. This is the held two-shot the owner
+    // asked for, and it removes the OTS back-of-head mismatch entirely.
     // Seed priority: the merchant's APPROVED storyboard frame for this scene (a
-    // deliberate set-piece / establisher wins) → else this speaker's SHOT/REVERSE
-    // PANEL (matched-room OTS, the default continuity for a two-hander) → else chain
-    // from the prior clip's real last frame → else auto-render a fresh frame.
-    let seedAbs = abs(approvedFrames[i]) || (panelFor ? abs(panelFor(speaker)) : undefined) || abs(prevFrameUrl);
+    // deliberate set-piece / establisher wins) → else the shared SIDE-BY-SIDE two-shot
+    // (the default for a two-hander) → else chain from the prior clip's real last frame
+    // → else auto-render a fresh frame.
+    let seedAbs = abs(approvedFrames[i]) || sideShotUrl || abs(prevFrameUrl);
     if (!seedAbs) {
       // Compose the auto-seed from the locked faces of the cast in THIS shot, so the
       // actors look identical from shot to shot (falls back to the group cast ref).
