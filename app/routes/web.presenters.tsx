@@ -57,13 +57,24 @@ export default function PresenterHub() {
         </span>
         <span className="ph-forge-go"><Ico n="camera" size={14} /> {t("Upload a photo")}</span>
       </Link>
+      {/* Film path — this cast stars in Movie Maker dialogue films, not just video ads. */}
+      <Link to="/web/film" className="ph-filmcta">
+        <span className="ph-forge-l">
+          <span className="ph-filmcta-ico" aria-hidden="true"><Ico n="film" size={22} /></span>
+          <span className="ph-forge-txt">
+            <b>{t("Cast them in a movie")}</b>
+            <span>{t("Write a scene and these faces act out real dialogue — pick them in Movie Maker's cast step.")}</span>
+          </span>
+        </span>
+        <span className="ph-filmcta-go"><Ico n="filmreel" size={14} /> {t("Open Movie Maker")}</span>
+      </Link>
       {forging > 0 && (
         <p className="ph-forging"><Ico n="bolt" size={13} /> {t("{n} presenter(s) still forging — they'll appear below when ready.", { n: forging })}</p>
       )}
 
       <div className="ph-castlbl">
         {t("The cast")}
-        <span>{t("tap one to star in your video")}{brandFaceId ? <> · <Ico n="star" size={11} /> {t("is your Brand Face")}</> : null}</span>
+        <span>{t("tap one for a video ad — or cast them in a movie")}{brandFaceId ? <> · <Ico n="star" size={11} /> {t("is your Brand Face")}</> : null}</span>
       </div>
       <div className="ph-grid">
         {cast.map((c) => {
@@ -116,5 +127,11 @@ const PH_STYLE = `
 .ph-face.bf{border-color:var(--gold,#D3A63A);box-shadow:0 0 0 1.5px var(--gold,#D3A63A);}
 .ph-bfbadge{position:absolute;top:7px;left:7px;z-index:2;display:inline-flex;align-items:center;gap:3px;background:var(--gold,#D3A63A);color:#3A2C06;font-size:10px;font-weight:800;border-radius:999px;padding:2px 8px;box-shadow:0 2px 5px rgba(0,0,0,.2);}
 .ph-yoursbadge{position:absolute;top:7px;left:7px;z-index:2;background:var(--green,#0C7A46);color:#fff;font-size:10px;font-weight:800;border-radius:999px;padding:2px 8px;box-shadow:0 2px 5px rgba(0,0,0,.2);}
-@media(max-width:640px){.ph-grid{grid-template-columns:repeat(3,minmax(0,1fr));}.ph-forge{flex-direction:column;align-items:flex-start;}.ph-forge-go{align-self:stretch;justify-content:center;}}
+.ph-filmcta{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 8px;padding:16px 20px;border-radius:16px;background:var(--card,#FDFCF7);border:1.5px solid #9CCBB1;box-shadow:0 6px 18px rgba(20,32,26,.08);text-decoration:none;transition:transform .12s,box-shadow .12s,border-color .12s;}
+.ph-filmcta:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(20,32,26,.12);border-color:var(--green,#0C7A46);}
+.ph-filmcta-ico{flex:0 0 auto;width:44px;height:44px;border-radius:12px;background:#EAF6EF;display:grid;place-items:center;color:var(--green,#0C7A46);}
+.ph-filmcta .ph-forge-txt b{color:var(--ink,#14201A);font-family:Poppins,sans-serif;font-weight:800;font-size:16px;display:block;}
+.ph-filmcta .ph-forge-txt span{color:var(--ink2,#4A554E);opacity:1;display:block;margin-top:2px;line-height:1.35;font-size:12.5px;}
+.ph-filmcta-go{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;background:var(--green,#0C7A46);color:#fff;font-weight:800;font-size:13px;border-radius:999px;padding:10px 16px;white-space:nowrap;}
+@media(max-width:640px){.ph-grid{grid-template-columns:repeat(3,minmax(0,1fr));}.ph-forge,.ph-filmcta{flex-direction:column;align-items:flex-start;}.ph-forge-go,.ph-filmcta-go{align-self:stretch;justify-content:center;}}
 `;

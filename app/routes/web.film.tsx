@@ -20,6 +20,7 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { estimateFilmTokens, FILM_PER_SCENE, FILM_BASE } from "../lib/plan-config";
 import { externalOrigin } from "../lib/origin.server";
 import { AVATAR_VOICES } from "../lib/avatar-voice-catalog";
+import { LIVE_AVATARS, avatarImg } from "../lib/avatars";
 
 export const meta: MetaFunction = () => [{ title: "Film Studio · EASYMODE" }];
 
@@ -52,8 +53,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const abs = /^https?:\/\//.test(url) ? url : origin + (url.startsWith("/") ? url : "/" + url);
     return { id: a.id, title: (a.title || "").slice(0, 80), url: abs };
   }).filter((x): x is { id: string; title: string; url: string } => !!x).slice(0, 18);
+  // The merchant's PRESENTER ROSTER (same faces as /web/presenters) — any one can be
+  // cast as a character's locked face in a dialogue film. Their forged customs first,
+  // then the premium-voiced built-in presenters.
+  const { customCastFor } = await import("../lib/custom-avatars.server");
+  const custom = await customCastFor(shop.id);
+  const roster = [
+    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true })),
+    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false })),
+  ].slice(0, 60);
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
+    roster,
     hasPlan: !!shop.activePlan?.active,
     trialing: planTrialing(shop.activePlan),
     canFilm: capabilitiesFor(shop.activePlan).has("creatorvideo"),
@@ -647,6 +658,21 @@ export default function FilmStudio() {
                     </div>
                     <div className="fs-actor-opts">
                       {c.faceUrl && <button type="button" className="fs-actor-recast" disabled={castingIndex !== null} onClick={() => makePortrait(i)}><Ico n="refresh" size={11} /> {t("Re-cast")}</button>}
+                      {d.roster.length > 0 && (
+                        <details className="fs-shot-own fs-actor-roster">
+                          <summary><Ico n="presenter" size={13} /> {t("Pick a presenter")}</summary>
+                          <div className="fs-roster" role="list" aria-label={t("Your presenters")}>
+                            {d.roster.map((r) => (
+                              <button type="button" role="listitem" key={r.id} className={`fs-rface${c.faceUrl === r.img ? " on" : ""}`}
+                                disabled={castingIndex !== null} title={r.name} onClick={() => useCastFace(i, r.img)}>
+                                <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
+                                {c.faceUrl === r.img && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                                <span className="fs-rface-name">{r.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </details>
+                      )}
                       <details className="fs-shot-own fs-actor-own">
                         <summary>{t("Use my own photo")}</summary>
                         {d.gallery.length > 0 ? (
@@ -995,4 +1021,13 @@ const FS_STYLE = `
 .fs-scenecut{display:flex;align-items:center;justify-content:center;gap:7px;margin:3px 0;padding:7px 12px;font-size:11.5px;font-weight:800;color:#8A5A12;background:#FBEFD6;border-radius:10px;}
 .fs-addscene{margin-top:8px;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px dashed #9CCBB1;background:#F3F9F4;color:var(--green,#0C7A46);font-family:Poppins,sans-serif;font-weight:800;font-size:13px;padding:11px;border-radius:14px;cursor:pointer;transition:background .14s,border-color .14s;}
 .fs-addscene:hover{background:#EAF6EF;border-color:var(--green,#0C7A46);}
+/* Cast roster picker (pick a presenter / avatar as a character's face) */
+.fs-actor-roster summary{display:inline-flex;align-items:center;gap:5px;}
+.fs-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:8px;margin:9px 0 2px;max-height:238px;overflow-y:auto;padding:2px;}
+.fs-rface{position:relative;border:1.5px solid var(--line,#E4DFCF);border-radius:12px;background:var(--card,#FDFCF7);padding:5px 5px 6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:border-color .14s,box-shadow .14s;}
+.fs-rface:hover:not(:disabled){border-color:#9CCBB1;box-shadow:0 4px 12px rgba(20,32,26,.12);}
+.fs-rface.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2px rgba(12,122,70,.18);}
+.fs-rface-img{width:100%;aspect-ratio:1/1;border-radius:9px;background:#EAF6EF center/cover no-repeat;}
+.fs-rface-name{font-size:10px;font-weight:700;color:var(--ink2,#4A554E);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.1;}
+.fs-rface-chk{position:absolute;top:4px;right:4px;width:18px;height:18px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.25);}
 `;
