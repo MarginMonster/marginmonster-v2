@@ -10,6 +10,7 @@ import { Form, useActionData, useFetcher, useLoaderData, useNavigation } from "@
 import { useEffect, useRef, useState } from "react";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
+import { estimateSpeakSeconds, clipFill, secondsLabel, CLIP_MAX_SECONDS } from "../lib/speech-meter";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { normalizeContentLang } from "../lib/content-lang";
@@ -616,7 +617,7 @@ export default function FilmStudio() {
           treatment preview. */}
       {isStoryboard ? (
         <div className="fs-card fs-scenecard">
-          <div className="fs-lbl"><span className="fs-n">2</span> {t("Your scene")} <span className="fs-free">{t("free")}</span></div>
+          <div className="fs-lbl"><span className="fs-n">2</span> {t("Your scene")} <span className="fs-free">{t("free")}</span>{treatment && treatment.scenes.length > 0 && (() => { const fs = treatment.scenes.reduce((a, s) => a + estimateSpeakSeconds(parseBeat(s.caption).line), 0); return fs > 0 ? <span className="fs-filmlen" title={t("Estimated spoken length of the whole film")}>≈ {secondsLabel(fs)} {t("film")}</span> : null; })()}</div>
           {!treatment ? (
             <>
               <p className="fs-hint">{t("We'll write the dialogue — then edit it like a text thread: tweak lines, swap who talks, add a scene. No tokens until you Generate.")}</p>
@@ -665,12 +666,19 @@ export default function FilmStudio() {
                             {ang.beats.map((b) => {
                               const f = faceOf(b.speaker);
                               const side = !!speakerNames[1] && firstTok(b.speaker) === firstTok(speakerNames[1]) ? "right" : "left";
+                              const secs = estimateSpeakSeconds(b.line);
+                              const over = secs > CLIP_MAX_SECONDS;
+                              const meterState = over ? "over" : secs > CLIP_MAX_SECONDS * 0.8 ? "warn" : "";
                               return (
                                 <div className={`fs-msg ${side}`} key={b.idx}>
                                   <span className="fs-msg-face" title={b.speaker} style={f ? { backgroundImage: `url(${f})` } : undefined}>{!f && (b.speaker || "?").slice(0, 1).toUpperCase()}</span>
                                   <div className="fs-msg-col">
                                     {speakerNames.length > 1 && <button type="button" className="fs-msg-spk" onClick={() => setBeatSpeaker(b.idx, nextSpeaker(b.speaker))} title={t("Tap to switch who speaks")}>{displayName(b.speaker)} <Ico n="refresh" size={9} /></button>}
                                     <textarea className="fs-msg-bubble" rows={2} value={b.line} maxLength={400} onChange={(e) => setBeatLine(b.idx, e.target.value)} placeholder={t("What do they say?")} />
+                                    <div className={`fs-meter ${meterState}`} title={t("How long this line takes to say — one clip holds about 10 seconds. Keep it under the cap so it isn't cut off or padded.")}>
+                                      <span className="fs-meter-bar"><i style={{ width: `${Math.min(100, clipFill(b.line) * 100)}%` }} /></span>
+                                      <span className="fs-meter-num">{secondsLabel(secs)}{over ? ` · over ${CLIP_MAX_SECONDS}s` : ` / ${CLIP_MAX_SECONDS}s`}</span>
+                                    </div>
                                   </div>
                                   {treatment.scenes.length > 1 && <button type="button" className="fs-msg-x" onClick={() => removeBeat(b.idx)} aria-label={t("Remove this line")}><Ico n="trash" size={11} /></button>}
                                 </div>
@@ -1083,6 +1091,16 @@ const FS_STYLE = `
 .fs-msg-bubble{width:100%;border:1.5px solid var(--line,#E4DFCF);background:#FCFBF5;border-radius:16px 16px 16px 5px;font-family:Poppins,sans-serif;font-size:13px;color:var(--ink,#14201A);padding:9px 13px;resize:vertical;line-height:1.45;box-sizing:border-box;transition:border-color .14s,box-shadow .14s;}
 .fs-msg.right .fs-msg-bubble{background:#EAF6EF;border-color:#B7DCC8;border-radius:16px 16px 5px 16px;}
 .fs-msg-bubble:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.fs-meter{display:flex;align-items:center;gap:7px;margin-top:4px;padding:0 2px;}
+.fs-msg.right .fs-meter{flex-direction:row-reverse;}
+.fs-meter-bar{position:relative;flex:1;max-width:120px;height:4px;border-radius:3px;background:#E7EFEA;overflow:hidden;}
+.fs-meter-bar i{position:absolute;top:0;left:0;bottom:0;border-radius:3px;background:var(--green2,#1FA463);transition:width .12s ease;}
+.fs-meter-num{font-size:10px;font-weight:700;color:#6A8577;letter-spacing:.2px;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.fs-meter.warn .fs-meter-bar i{background:#D59A2A;}
+.fs-meter.warn .fs-meter-num{color:#B07D16;}
+.fs-meter.over .fs-meter-bar i{background:#D6563F;}
+.fs-meter.over .fs-meter-num{color:#C0392B;font-weight:800;}
+.fs-filmlen{display:inline-flex;align-items:center;font-size:11px;font-weight:800;color:var(--green,#0C7A46);background:var(--mint,#EAF6EF);border:1px solid #CDE8DA;border-radius:999px;padding:2px 9px;margin-left:2px;font-variant-numeric:tabular-nums;}
 .fs-msg-x{flex:none;align-self:center;border:0;background:transparent;color:#C0B9A6;cursor:pointer;padding:5px;border-radius:7px;transition:color .14s,background .14s;}
 .fs-msg-x:hover{color:#C2410C;background:#FBEAE3;}
 .fs-chat-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:5px;padding-left:42px;}

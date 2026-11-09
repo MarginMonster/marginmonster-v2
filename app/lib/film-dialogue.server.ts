@@ -29,6 +29,7 @@ import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
+import { clipSecondsFor } from "./speech-meter";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -87,23 +88,26 @@ const KLING_DUR = 10;
 
 /** A Kling 3 Omni dialogue clip (native lip-synced audio) — byte-for-byte the same role
  *  as veoDialogueClip, only the renderer differs. Returns the clip URL. */
-async function klingDialogueClip(seedAbs: string, prompt: string, stage: string): Promise<string> {
+async function klingDialogueClip(seedAbs: string, prompt: string, stage: string, durationSec = KLING_DUR): Promise<string> {
+  const dur = Math.max(5, Math.min(KLING_DUR, Math.round(durationSec) || KLING_DUR));
   if (falEnabled()) {
     try {
-      const rid = await falVideoSubmit(FAL_KLING3, { startImage: seedAbs, prompt, generateAudio: true, durationSec: KLING_DUR });
+      const rid = await falVideoSubmit(FAL_KLING3, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur });
       return await falVideoPoll(FAL_KLING3, rid, VEO_POLL_MS);
     } catch (e) {
       console.error(`[testmovie] fal kling failed, trying Replicate: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     }
   }
-  const id = await repCreate(REP_KLING3, { prompt, start_image: seedAbs, generate_audio: true, duration: KLING_DUR });
+  const id = await repCreate(REP_KLING3, { prompt, start_image: seedAbs, generate_audio: true, duration: dur });
   return await repPoll(id, VEO_POLL_MS, stage);
 }
 
 /** Route a dialogue clip to the chosen engine — the ONE line that differs between the
  *  identical Veo and Kling pipelines. */
-async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string): Promise<string> {
-  return engine === "kling3" ? klingDialogueClip(seedAbs, prompt, stage) : veoDialogueClip(seedAbs, prompt, stage);
+async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string, durationSec?: number): Promise<string> {
+  // Only Kling takes a per-clip length; Veo's take length isn't a simple knob here, so it
+  // keeps its native clip and leans on the trailing/interior silence trims instead.
+  return engine === "kling3" ? klingDialogueClip(seedAbs, prompt, stage, durationSec) : veoDialogueClip(seedAbs, prompt, stage);
 }
 
 /** Grab the ACTUAL last frame of a rendered clip as a clean still (served from
@@ -602,8 +606,8 @@ export async function generateTestMovie(opts: {
       ? `Deliver it ${tone} — put that exact emotion and energy into the voice, expressively, NEVER flat or monotone.`
       : `Deliver it with the REAL emotion the words carry — an angry line sounds angry, a threat sounds menacing, hurt shows as hurt — with natural intonation and emphasis, NEVER flat or monotone.`;
     const voiceLine = speaker
-      ? `${sSide ? `In this two-shot BOTH people are visible, but the ONLY one who speaks is the person on the ${sSide.toUpperCase()} side of the frame — that is ${speaker}. The person on the ${oSide.toUpperCase()} does NOT speak. ` : ""}There is ONLY ONE voice in this entire clip — ${speaker}'s. ${speaker}${sSide ? ` (on the ${sSide})` : ""} says exactly this one line and nothing else: "${line}". ${deliver} Speak CLEARLY and crisply — every word fully articulated and intelligible, no mumbling, slurring or trailing off — BEGIN speaking right away and keep a natural, connected pace with NO long awkward silence, in accurate lip-sync. ONLY ${speaker}'s mouth moves. The OTHER character${oSide ? ` (on the ${oSide})` : ""} is COMPLETELY SILENT the whole time — absolutely no talking, murmuring, mumbling, whispering, muttering or background speech of any kind; their mouth stays closed and still, only listening and reacting. Do NOT generate any second voice, murmur or gibberish anywhere in the clip — one clear voice only. Keep ${speaker}'s voice the SAME as in every other shot.${speakerVoiceDesc}`
-      : `Exactly ONE voice in the whole clip saying this line clearly and expressively (never monotone), every word articulate, no mumbling, beginning right away: "${line}". ${deliver} The other character is completely silent — mouth closed, only listening.`;
+      ? `${sSide ? `In this two-shot BOTH people are visible, but the ONLY one who speaks is the person on the ${sSide.toUpperCase()} side of the frame — that is ${speaker}. The person on the ${oSide.toUpperCase()} does NOT speak. ` : ""}There is ONLY ONE voice in this entire clip — ${speaker}'s. ${speaker}${sSide ? ` (on the ${sSide})` : ""} says exactly this one line and nothing else: "${line}". Say it through exactly ONCE, word for word — do NOT repeat, echo, loop or restate any word or phrase, and add no words that are not in the line. The MOMENT the line is finished, ${speaker} stops speaking and simply holds a natural, quiet expression for the rest of the shot — no extra, improvised or filler words. ${deliver} Speak CLEARLY and crisply — every word fully articulated and intelligible, no mumbling, slurring or trailing off — BEGIN speaking right away and keep a natural, connected pace, in accurate lip-sync. ONLY ${speaker}'s mouth moves. The OTHER character${oSide ? ` (on the ${oSide})` : ""} is COMPLETELY SILENT the whole time — absolutely no talking, murmuring, mumbling, whispering, muttering or background speech of any kind; their mouth stays closed and still, only listening and reacting. Do NOT generate any second voice, murmur or gibberish anywhere in the clip — one clear voice only. Keep ${speaker}'s voice the SAME as in every other shot.${speakerVoiceDesc}`
+      : `Exactly ONE voice in the whole clip saying this line clearly and expressively (never monotone), every word articulate, no mumbling, beginning right away: "${line}". Say it through ONCE only — do NOT repeat, loop or restate any word, and add no words not in the line; the instant it is finished, stop speaking and hold a natural quiet expression for the rest of the shot. ${deliver} The other character is completely silent — mouth closed, only listening.`;
     // LIGHT PROMPT — the SEED frame already carries the faces, room and staging, so the
     // prompt only drives the TALKING and tells Veo to HOLD the frame. Re-describing the
     // scene + both characters in text (scene.visual / STAGING / castBible) made Veo redraw
@@ -614,7 +618,11 @@ export async function generateTestMovie(opts: {
       `${voiceLine} ` +
       `Keep EVERYONE and the entire setting EXACTLY as in the provided starting image — identical faces, hair, skin tone, clothing, lighting and background, unchanged throughout; and keep each person's EXACT facial hair fixed the whole time — every beard, mustache and bit of stubble stays precisely the same and never fades, thins, grows, appears or disappears. Do NOT morph, age or redraw anyone into a different person. The camera holds steady and nobody moves except natural talking and small, subtle head and expression shifts. Do NOT introduce any object that is not already in the starting image — no new cigarette, glass or prop appears; and if a person IS already holding something, keep it EXACTLY the same size and shape, held steady in the same hand — it must never morph, grow, shrink, drift, multiply or flicker. Photorealistic live-action, clean natural spoken-dialogue audio. ${NO_TEXT}`;
 
-    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`);
+    // Size the clip to the SPOKEN LINE (word-metered) instead of a flat 10s. A clip that
+    // outlasts its line is exactly what makes Kling pad the dead air — with silence (a
+    // pause) or by looping words — so matching the length to the words starves both.
+    const clipSecs = clipSecondsFor(line);
+    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs);
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, rawPath);
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
