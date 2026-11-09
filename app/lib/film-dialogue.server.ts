@@ -405,6 +405,11 @@ export async function generateTestMovie(opts: {
   //    on-screen text, trailing silence trimmed.
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
   let prevFrameUrl: string | undefined = resume.ckLastStill; // prior clip's last frame (relative /renders URL)
+  // Chaining from each clip's last frame gives seamless cuts but lets faces (esp. facial
+  // hair) DRIFT over a long film. Re-anchor to the pristine master after this many chained
+  // clips so drift can't accumulate (owner: "mustache disappearing and reappearing").
+  const ANCHOR_EVERY = 2;
+  let sinceAnchor = clips.length; // resume-safe-ish: force an early re-anchor after a restart
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     const turns = splitExchange(scene.caption || "");
@@ -426,15 +431,20 @@ export async function generateTestMovie(opts: {
     let seedAbs = abs(approvedFrames[i]);
     if (!seedAbs && master?.url) {
       if (tr === "location") {
-        seedAbs = abs(master.url);
+        seedAbs = abs(master.url); sinceAnchor = 0;
       } else if (tr === "angle") {
         const reangled = await renderSceneSeedChained(
           `${whereAt[i]}. A ${shotAt[i]} of the same scene — the identical room, lighting, wardrobe and people, only the camera angle changes. ${NO_TEXT}`,
           abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), "9:16",
         );
-        seedAbs = abs(reangled) || abs(prevFrameUrl) || abs(master.url);
+        seedAbs = abs(reangled) || abs(prevFrameUrl) || abs(master.url); sinceAnchor = 0;
+      } else if (sinceAnchor >= ANCHOR_EVERY) {
+        // RE-ANCHOR: after a few chained clips, reseed from the pristine master so faces /
+        // facial hair can't drift across a long film. The 0.18s crossfade hides the small
+        // pose reset, and the shot framing is identical so it reads as the same take.
+        seedAbs = abs(master.url); sinceAnchor = 0;
       } else {
-        seedAbs = abs(prevFrameUrl) || abs(master.url);
+        seedAbs = abs(prevFrameUrl) || abs(master.url); sinceAnchor++;
       }
     }
     if (!seedAbs) {
@@ -475,7 +485,7 @@ export async function generateTestMovie(opts: {
     void STAGING; void HOLD_STILL; // (kept defined for the seed/scene-frame paths; not in the clip prompt)
     const prompt =
       `${voiceLine} ` +
-      `Keep EVERYONE and the entire setting EXACTLY as in the provided starting image — identical faces, hair, skin tone, facial hair, clothing, lighting and background, unchanged throughout; do NOT morph, age or redraw anyone into a different person. The camera holds steady and nobody moves except natural talking and small, subtle head and expression shifts. Photorealistic live-action, clean natural spoken-dialogue audio. ${NO_TEXT}`;
+      `Keep EVERYONE and the entire setting EXACTLY as in the provided starting image — identical faces, hair, skin tone, clothing, lighting and background, unchanged throughout; and keep each person's EXACT facial hair fixed the whole time — every beard, mustache and bit of stubble stays precisely the same and never fades, thins, grows, appears or disappears. Do NOT morph, age or redraw anyone into a different person. The camera holds steady and nobody moves except natural talking and small, subtle head and expression shifts. Photorealistic live-action, clean natural spoken-dialogue audio. ${NO_TEXT}`;
 
     const clipUrl = await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
