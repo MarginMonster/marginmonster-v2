@@ -422,10 +422,15 @@ export async function generateTestMovie(opts: {
     const voiceLine = speaker
       ? `ONLY ${speaker} speaks — a clear, natural, unhurried delivery with accurate lip-sync: "${line}". The other character stays silent, listening and reacting, not moving their lips. Keep ${speaker}'s voice natural and the SAME as in every other shot of the film.${speakerVoiceDesc}`
       : `One character speaks clearly and unhurried, lips in sync: "${line}". The other listens in silence.`;
+    // LIGHT PROMPT — the SEED frame already carries the faces, room and staging, so the
+    // prompt only drives the TALKING and tells Veo to HOLD the frame. Re-describing the
+    // scene + both characters in text (scene.visual / STAGING / castBible) made Veo redraw
+    // the faces from the WORDS and drift them; stripping that lets the seed drive the look
+    // ("use the seed like you're supposed to" — owner). voiceLine = the single-speaker line.
+    void STAGING; void HOLD_STILL; // (kept defined for the seed/scene-frame paths; not in the clip prompt)
     const prompt =
-      `${scene.visual}. ${tmpl.sceneHint}. ${STAGING} ` +
-      `${voiceLine} ${castBible} ${HOLD_STILL} ` +
-      `Photorealistic live-action film, cinematic lighting, shallow depth of field, clean natural spoken-dialogue audio. ${NO_TEXT}`;
+      `${voiceLine} ` +
+      `Keep EVERYONE and the entire setting EXACTLY as in the provided starting image — identical faces, hair, skin tone, facial hair, clothing, lighting and background, unchanged throughout; do NOT morph, age or redraw anyone into a different person. The camera holds steady and nobody moves except natural talking and small, subtle head and expression shifts. Photorealistic live-action, clean natural spoken-dialogue audio. ${NO_TEXT}`;
 
     const clipUrl = await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
