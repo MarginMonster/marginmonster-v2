@@ -290,9 +290,9 @@ export async function previewFilmTreatment(opts: {
     ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FOUR fields:\n` +
       `• VISUAL — what we SEE: a TWO-SHOT framing BOTH characters together in the place; they STAY put (NO standing up, sitting down, walking, turning away or crossing — big moves make the AI morph faces/clothing); a still, tense TALKING beat with only small gestures and changing expressions; NO readable text, documents, papers, boards, signage or screens in view.\n` +
       `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot saying 1-2 FULL sentences (a complete beat, ~16-26 words), the speaker ALTERNATING shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names.\n` +
-      `• WHERE — the LOCATION this shot happens in, as a short vivid label (e.g. "a dim old diner at night, rain on the windows").\n` +
-      `• SHOT — the CAMERA ANGLE: use "wide two-shot" for most shots; use "close-up on NAME" or "reverse on NAME" only for a deliberate dramatic beat.\n` +
-      `KEEP MOST SHOTS IN ONE location with the SAME "wide two-shot" — that flows seamlessly and holds best. Start a NEW "where" ONLY when the story genuinely moves the SAME characters somewhere else (a real scene change; they are all present in the new place), and change "shot" to a close-up only for a real emotional emphasis. Prefer flow over cutting.\n`
+      `• WHERE — the LOCATION this beat happens in, as a short vivid label (e.g. "a dim old diner at night, rain on the windows").\n` +
+      `• SHOT — set this to EXACTLY "wide two-shot" for EVERY beat. Do NOT use close-ups, reverse angles or any other framing — the director adds those by hand later. Every beat in a scene MUST share the same "wide two-shot" so the whole scene plays as ONE seamless, continuous take.\n` +
+      `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places.\n`
     : tmpl.sung
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes/flows with the others; read in order the captions ARE the song's lyrics.\n`
     : tmpl.narrated

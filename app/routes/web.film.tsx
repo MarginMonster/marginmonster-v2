@@ -260,6 +260,21 @@ type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: st
 // reused as the identity reference for every shot they appear in.
 type CastMember = { name: string; desc: string; faceUrl: string | null; voiceId: string | null };
 
+// Backdrop presets — like the avatar-AI backdrop picker: tap one to set a scene's
+// location (the `where`), or type your own. `key` is matched against the where text
+// to light the active chip.
+const FILM_BACKDROPS: Array<{ key: string; label: string; where: string }> = [
+  { key: "diner", label: "Diner", where: "a warm dim diner at night, rain on the windows" },
+  { key: "street", label: "Street", where: "a rain-soaked city street at night, neon reflections on the wet asphalt" },
+  { key: "office", label: "Office", where: "a quiet modern office after hours, city lights through the glass" },
+  { key: "kitchen", label: "Kitchen", where: "a stainless-steel restaurant kitchen late at night, one lamp burning" },
+  { key: "car", label: "Car", where: "inside a parked car at night, streetlights sliding past the windows" },
+  { key: "living", label: "Living room", where: "a cozy living room in the evening, warm lamplight" },
+  { key: "bar", label: "Bar", where: "a moody, dimly lit bar at night" },
+  { key: "park", label: "Park", where: "a quiet park bench at dusk, soft golden light" },
+  { key: "warehouse", label: "Warehouse", where: "a cold empty warehouse at night, shafts of moonlight" },
+];
+
 export default function FilmStudio() {
   const d = useLoaderData<typeof loader>();
   const t = useT();
@@ -441,6 +456,13 @@ export default function FilmStudio() {
   const addScene = () => mutateScenes((ss) => [...ss, { visual: "A new location", where: "A new location", shot: WIDE, caption: `${speakerNames[0] || "Name"}: ` }]);
   const setWhere = (loc: FlowLoc, where: string) => mutateScenes((ss) => ss.map((s, j) => (j >= loc.firstIdx && j <= loc.lastIdx ? { ...s, where, visual: s.visual && s.visual !== loc.where ? s.visual : where } : s)));
   const setAngleShot = (ang: FlowAngle, shot: string) => mutateScenes((ss) => ss.map((s, j) => (ang.beats.some((b) => b.idx === j) ? { ...s, shot } : s)));
+  // Remove an angle CHANGE: fold this angle's beats back into the location's FIRST shot,
+  // so they rejoin the one seamless take (the only things that keep a cut are the user's
+  // explicit "cut to a close-up" and a new scene).
+  const removeAngle = (loc: FlowLoc, ang: FlowAngle) => mutateScenes((ss) => {
+    const base = loc.angles[0]?.shot || WIDE;
+    return ss.map((s, j) => (ang.beats.some((b) => b.idx === j) ? { ...s, shot: base } : s));
+  });
   const removeBeat = (idx: number) => mutateScenes((ss) => (ss.length > 1 ? ss.filter((_, j) => j !== idx) : ss));
   // Render (or re-roll) one scene's storyboard photo. Reuses a prior approved frame
   // as the style reference so faces + wardrobe stay consistent across shots.
@@ -589,32 +611,111 @@ export default function FilmStudio() {
         </div>
       </div>
 
-      {/* Step 2 — write the treatment FREE */}
-      <div className="fs-card">
-        <div className="fs-lbl"><span className="fs-n">2</span> {t("Write the treatment")} <span className="fs-free">{t("free")}</span></div>
-        <p className="fs-hint">{t("We draft every scene + the hook. Read it, tweak the lines, re-roll — no tokens spent until you Generate.")}</p>
-        <button type="button" className="fs-write" onClick={writeTreatment} disabled={writing || !productReady}>
-          {writing ? <>… {t("Writing")}</> : treatment ? <><Ico n="refresh" size={14} /> {t("Randomize")}</> : <><Ico n="wand" size={14} /> {t("Write the treatment — free")}</>}
-        </button>
-        {tmpl?.needsProduct && !productReady && <p className="fs-hint">{t("Add your product above first.")}</p>}
-        {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
-
-        {treatment && (
-          <div className="fs-treat">
-            {treatment.title && <div className="fs-treat-ttl">{treatment.title}</div>}
-            <div className="fs-treat-mood"><Ico n="music" size={12} /> {treatment.musicMood}</div>
-            <ol className="fs-scenes">
-              {treatment.scenes.map((s, i) => (
-                <li key={i} className="fs-scene">
-                  <span className="fs-scene-vis">{s.visual}</span>
-                  <input className="fs-scene-cap" value={s.caption || ""} onChange={(e) => editCaption(i, e.target.value)}
-                    placeholder={t("on-screen line (optional)")} maxLength={80} />
-                </li>
-              ))}
-            </ol>
-          </div>
-        )}
-      </div>
+      {/* Step 2 — write + edit the scene FREE. Dialogue (Test Movie) gets the COMBINED
+          conversation flow (one place, chat-style); other templates keep the classic
+          treatment preview. */}
+      {isStoryboard ? (
+        <div className="fs-card fs-scenecard">
+          <div className="fs-lbl"><span className="fs-n">2</span> {t("Your scene")} <span className="fs-free">{t("free")}</span></div>
+          {!treatment ? (
+            <>
+              <p className="fs-hint">{t("We'll write the dialogue — then edit it like a text thread: tweak lines, swap who talks, add a scene. No tokens until you Generate.")}</p>
+              <button type="button" className="fs-write" onClick={writeTreatment} disabled={writing}>
+                {writing ? <>… {t("Writing")}</> : <><Ico n="wand" size={14} /> {t("Write the dialogue — free")}</>}
+              </button>
+              {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
+            </>
+          ) : (
+            <>
+              <div className="fs-scenetop">
+                <span className="fs-scenetop-hint">{t("Edit any line. Tap a name to swap who talks. Lines in a scene play as one seamless take.")}</span>
+                <button type="button" className="fs-rewrite" onClick={writeTreatment} disabled={writing}>{writing ? "…" : <><Ico n="refresh" size={13} /> {t("Rewrite")}</>}</button>
+              </div>
+              <div className="fs-flow">
+                {flow.map((loc, li) => (
+                  <div key={li}>
+                    {li > 0 && <div className="fs-scenecut"><Ico n="scissors" size={13} /> {t("scene change · the cast walks in")}</div>}
+                    <div className="fs-loc">
+                      <div className="fs-loc-head">
+                        <span className="fs-loc-pin" aria-hidden="true">📍</span>
+                        <input className="fs-loc-where" value={loc.where} maxLength={120} onChange={(e) => setWhere(loc, e.target.value)} placeholder={t("Where does this scene happen?")} />
+                        <span className="fs-loc-scene">{t("scene {n}", { n: li + 1 })}</span>
+                        {speakerNames.length > 0 && (
+                          <span className="fs-loc-who">
+                            {speakerNames.slice(0, 4).map((nm, k) => { const f = faceOf(nm); return <span key={k} className="fs-who" title={nm} style={f ? { backgroundImage: `url(${f})` } : undefined}>{!f && (nm || "?").slice(0, 1).toUpperCase()}</span>; })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="fs-backdrops" role="group" aria-label={t("Backdrop")}>
+                        <span className="fs-backdrops-lbl">{t("backdrop")}</span>
+                        {FILM_BACKDROPS.map((bd) => (
+                          <button type="button" key={bd.key} className={`fs-bchip${loc.where.toLowerCase().includes(bd.key) ? " on" : ""}`} onClick={() => setWhere(loc, bd.where)}>{t(bd.label)}</button>
+                        ))}
+                      </div>
+                      {loc.angles.map((ang, ai) => (
+                        <div key={ai}>
+                          {ai > 0 && (
+                            <div className="fs-anglecut">
+                              <Ico n="video" size={12} />
+                              <input className="fs-anglecut-in" value={ang.shot} maxLength={60} onChange={(e) => setAngleShot(ang, e.target.value)} placeholder={t("close-up on …")} />
+                              <button type="button" className="fs-anglecut-x" onClick={() => removeAngle(loc, ang)} aria-label={t("Remove this angle change")}><Ico n="trash" size={11} /></button>
+                            </div>
+                          )}
+                          <div className="fs-chat">
+                            {ang.beats.map((b) => {
+                              const f = faceOf(b.speaker);
+                              const side = !!speakerNames[1] && firstTok(b.speaker) === firstTok(speakerNames[1]) ? "right" : "left";
+                              return (
+                                <div className={`fs-msg ${side}`} key={b.idx}>
+                                  <span className="fs-msg-face" title={b.speaker} style={f ? { backgroundImage: `url(${f})` } : undefined}>{!f && (b.speaker || "?").slice(0, 1).toUpperCase()}</span>
+                                  <div className="fs-msg-col">
+                                    {speakerNames.length > 1 && <button type="button" className="fs-msg-spk" onClick={() => setBeatSpeaker(b.idx, nextSpeaker(b.speaker))} title={t("Tap to switch who speaks")}>{displayName(b.speaker)} <Ico n="refresh" size={9} /></button>}
+                                    <textarea className="fs-msg-bubble" rows={2} value={b.line} maxLength={400} onChange={(e) => setBeatLine(b.idx, e.target.value)} placeholder={t("What do they say?")} />
+                                  </div>
+                                  {treatment.scenes.length > 1 && <button type="button" className="fs-msg-x" onClick={() => removeBeat(b.idx)} aria-label={t("Remove this line")}><Ico n="trash" size={11} /></button>}
+                                </div>
+                              );
+                            })}
+                            <div className="fs-chat-acts">
+                              <button type="button" className="fs-beat-add" onClick={() => addBeat(loc, ang)}>＋ {t("add a line")}</button>
+                              {ai === loc.angles.length - 1 && <button type="button" className="fs-loc-addangle" onClick={() => addAngle(loc)}><Ico n="video" size={12} /> {t("cut to a close-up")}</button>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="fs-addscene" onClick={addScene}><span aria-hidden="true">📍</span> {t("new scene — move them somewhere else")}</button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="fs-card">
+          <div className="fs-lbl"><span className="fs-n">2</span> {t("Write the treatment")} <span className="fs-free">{t("free")}</span></div>
+          <p className="fs-hint">{t("We draft every scene + the hook. Read it, tweak the lines, re-roll — no tokens spent until you Generate.")}</p>
+          <button type="button" className="fs-write" onClick={writeTreatment} disabled={writing || !productReady}>
+            {writing ? <>… {t("Writing")}</> : treatment ? <><Ico n="refresh" size={14} /> {t("Randomize")}</> : <><Ico n="wand" size={14} /> {t("Write the treatment — free")}</>}
+          </button>
+          {tmpl?.needsProduct && !productReady && <p className="fs-hint">{t("Add your product above first.")}</p>}
+          {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
+          {treatment && (
+            <div className="fs-treat">
+              {treatment.title && <div className="fs-treat-ttl">{treatment.title}</div>}
+              <div className="fs-treat-mood"><Ico n="music" size={12} /> {treatment.musicMood}</div>
+              <ol className="fs-scenes">
+                {treatment.scenes.map((s, i) => (
+                  <li key={i} className="fs-scene">
+                    <span className="fs-scene-vis">{s.visual}</span>
+                    <input className="fs-scene-cap" value={s.caption || ""} onChange={(e) => editCaption(i, e.target.value)} placeholder={t("on-screen line (optional)")} maxLength={80} />
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Step 2.5 — storyboard: approve a photo per scene before paying (dialogue only) */}
       {treatment && isStoryboard && cast.length > 0 && (() => {
@@ -700,77 +801,6 @@ export default function FilmStudio() {
         </div>
         );
       })()}
-
-      {treatment && isStoryboard && (
-        <div className="fs-card">
-          <div className="fs-lbl"><span className="fs-n"><Ico n="filmreel" size={13} /></span> {t("Story flow")} <span className="fs-free">{t("free")}</span></div>
-          <p className="fs-hint">{t("Your film as a flow of locations. Lines inside a place play as one seamless take; a new camera angle is a clean cut in the same room; a new scene moves everyone somewhere new.")}</p>
-          <div className="fs-flegend" aria-hidden="true">
-            <span><i className="fs-dot seam" /> {t("seamless")}</span>
-            <span><i className="fs-dot ang" /> {t("new angle · same place")}</span>
-            <span><i className="fs-dot loc" /> {t("scene change")}</span>
-          </div>
-          <div className="fs-flow">
-            {flow.map((loc, li) => (
-              <div key={li}>
-                {li > 0 && (
-                  <div className="fs-scenecut"><Ico n="scissors" size={13} /> {t("scene change → new location · the cast walks in")}</div>
-                )}
-                <div className="fs-loc">
-                  <div className="fs-loc-head">
-                    <span className="fs-loc-pin" aria-hidden="true">📍</span>
-                    <input className="fs-loc-where" value={loc.where} maxLength={120}
-                      onChange={(e) => setWhere(loc, e.target.value)} placeholder={t("Where does this scene happen?")} />
-                    <span className="fs-loc-scene">{t("scene {n}", { n: li + 1 })}</span>
-                    {speakerNames.length > 0 && (
-                      <span className="fs-loc-who">
-                        {speakerNames.slice(0, 4).map((nm, k) => {
-                          const f = faceOf(nm);
-                          return <span key={k} className="fs-who" title={nm} style={f ? { backgroundImage: `url(${f})` } : undefined}>{!f && (nm || "?").slice(0, 1).toUpperCase()}</span>;
-                        })}
-                      </span>
-                    )}
-                  </div>
-                  {loc.angles.map((ang, ai) => (
-                    <div key={ai}>
-                      {ai > 0 && <div className="fs-anglecut"><Ico n="video" size={12} /> {t("new camera angle · same room")}</div>}
-                      <div className="fs-shotblk">
-                        <div className="fs-shotblk-head">
-                          <Ico n="video" size={13} />
-                          <input className="fs-shot-angle" value={ang.shot} maxLength={60}
-                            onChange={(e) => setAngleShot(ang, e.target.value)} placeholder={t("camera angle (e.g. wide two-shot)")} />
-                        </div>
-                        <div className="fs-beats">
-                          {ang.beats.map((b) => {
-                            const f = faceOf(b.speaker);
-                            return (
-                              <div className="fs-beat" key={b.idx}>
-                                <span className="fs-beat-face" title={b.speaker} style={f ? { backgroundImage: `url(${f})` } : undefined}>{!f && (b.speaker || "?").slice(0, 1).toUpperCase()}</span>
-                                <div className="fs-beat-body">
-                                  {speakerNames.length > 1 && (
-                                    <button type="button" className="fs-beat-spk" onClick={() => setBeatSpeaker(b.idx, nextSpeaker(b.speaker))} title={t("Tap to switch who speaks")}>{displayName(b.speaker) || t("Name")} <Ico n="refresh" size={9} /></button>
-                                  )}
-                                  <textarea className="fs-beat-line" rows={2} value={b.line} maxLength={400}
-                                    onChange={(e) => setBeatLine(b.idx, e.target.value)} placeholder={t("What do they say?")} />
-                                </div>
-                                {treatment.scenes.length > 1 && <button type="button" className="fs-beat-x" onClick={() => removeBeat(b.idx)} aria-label={t("Remove this line")}><Ico n="trash" size={12} /></button>}
-                              </div>
-                            );
-                          })}
-                          <button type="button" className="fs-beat-add" onClick={() => addBeat(loc, ang)}>＋ {t("add a line")}</button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <button type="button" className="fs-loc-addangle" onClick={() => addAngle(loc)}><Ico n="video" size={12} /> {t("add a camera angle")}</button>
-                </div>
-              </div>
-            ))}
-            <button type="button" className="fs-addscene" onClick={addScene}><span aria-hidden="true">📍</span> {t("add a scene / new location")}</button>
-          </div>
-          <p className="fs-hint" style={{ margin: "12px 0 0" }}>{t("Tip: keep a scene in one place for a smooth take. Add a camera angle for a close-up, or a new scene to move somewhere else.")}</p>
-        </div>
-      )}
 
       {/* Step 3 — generate (the only paid step) */}
       <div className="fs-card fs-go-card">
@@ -1030,4 +1060,33 @@ const FS_STYLE = `
 .fs-rface-img{width:100%;aspect-ratio:1/1;border-radius:9px;background:#EAF6EF center/cover no-repeat;}
 .fs-rface-name{font-size:10px;font-weight:700;color:var(--ink2,#4A554E);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.1;}
 .fs-rface-chk{position:absolute;top:4px;right:4px;width:18px;height:18px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.25);}
+/* Combined "Your scene" card + chat-style conversation */
+.fs-scenetop{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;}
+.fs-scenetop-hint{font-size:12px;color:var(--ink2,#4A554E);line-height:1.4;flex:1;}
+.fs-rewrite{flex:none;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--green,#0C7A46);font-family:Poppins,sans-serif;font-weight:800;font-size:12px;border-radius:999px;padding:6px 13px;cursor:pointer;transition:background .14s,border-color .14s;}
+.fs-rewrite:hover:not(:disabled){background:#EAF6EF;border-color:#9CCBB1;}
+.fs-backdrops{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 13px;}
+.fs-backdrops-lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink2,#4A554E);opacity:.7;margin-right:2px;}
+.fs-bchip{border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font-family:Poppins,sans-serif;font-weight:700;font-size:11.5px;border-radius:999px;padding:4px 11px;cursor:pointer;transition:background .14s,border-color .14s,color .14s;}
+.fs-bchip:hover{border-color:#9CCBB1;background:#F3F9F4;}
+.fs-bchip.on{background:#E1F5EE;border-color:#1D9E75;color:#0F6E56;}
+.fs-chat{display:flex;flex-direction:column;gap:11px;padding:4px 0 2px;}
+.fs-msg{display:flex;align-items:flex-end;gap:8px;}
+.fs-msg.right{flex-direction:row-reverse;}
+.fs-msg-face{width:34px;height:34px;flex:none;border-radius:50%;background:#EAF6EF center/cover no-repeat;box-shadow:0 0 0 1.5px #9CCBB1;display:grid;place-items:center;font-size:13px;font-weight:800;color:#0F6E56;}
+.fs-msg-col{min-width:0;max-width:78%;display:flex;flex-direction:column;gap:3px;flex:1;}
+.fs-msg.right .fs-msg-col{align-items:flex-end;}
+.fs-msg-spk{align-self:flex-start;display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--green,#0C7A46);font-family:Poppins,sans-serif;font-weight:800;font-size:11px;padding:0 0 0 4px;cursor:pointer;}
+.fs-msg.right .fs-msg-spk{align-self:flex-end;padding:0 4px 0 0;}
+.fs-msg-bubble{width:100%;border:1.5px solid var(--line,#E4DFCF);background:#FCFBF5;border-radius:16px 16px 16px 5px;font-family:Poppins,sans-serif;font-size:13px;color:var(--ink,#14201A);padding:9px 13px;resize:vertical;line-height:1.45;box-sizing:border-box;transition:border-color .14s,box-shadow .14s;}
+.fs-msg.right .fs-msg-bubble{background:#EAF6EF;border-color:#B7DCC8;border-radius:16px 16px 5px 16px;}
+.fs-msg-bubble:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.fs-msg-x{flex:none;align-self:center;border:0;background:transparent;color:#C0B9A6;cursor:pointer;padding:5px;border-radius:7px;transition:color .14s,background .14s;}
+.fs-msg-x:hover{color:#C2410C;background:#FBEAE3;}
+.fs-chat-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:5px;padding-left:42px;}
+.fs-anglecut{display:flex;align-items:center;gap:7px;margin:12px 0 10px;color:#4A4397;}
+.fs-anglecut-in{flex:1;min-width:0;border:0;border-bottom:1px dashed #C6C2EE;background:transparent;font-family:Poppins,sans-serif;font-weight:700;font-size:11.5px;color:#4A4397;padding:2px;}
+.fs-anglecut-in:focus{outline:0;border-bottom-color:#7F77DD;}
+.fs-anglecut-x{flex:none;border:0;background:transparent;color:#C6C2EE;cursor:pointer;padding:3px;border-radius:6px;}
+.fs-anglecut-x:hover{color:#7F77DD;background:#EEEDFB;}
 `;
