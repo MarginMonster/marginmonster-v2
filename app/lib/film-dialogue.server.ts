@@ -77,6 +77,35 @@ async function veoDialogueClip(seedAbs: string, prompt: string, stage: string): 
   return await repPoll(id, VEO_POLL_MS, stage);
 }
 
+// Kling 3 Omni — the CHEAPER native-dialogue renderer, wired as a SWAPPABLE engine so
+// the merchant can run the IDENTICAL pipeline (same seed, chain, re-anchor, tone prompt,
+// assembly) on a different model and A/B the quality-per-dollar. 10s holds lip-sync
+// better than 15s. fal kling-video/v3/pro → Replicate kwaivgi/kling-v3-omni fallback.
+const FAL_KLING3 = "fal-ai/kling-video/v3/pro/image-to-video";
+const REP_KLING3 = "kwaivgi/kling-v3-omni-video";
+const KLING_DUR = 10;
+
+/** A Kling 3 Omni dialogue clip (native lip-synced audio) — byte-for-byte the same role
+ *  as veoDialogueClip, only the renderer differs. Returns the clip URL. */
+async function klingDialogueClip(seedAbs: string, prompt: string, stage: string): Promise<string> {
+  if (falEnabled()) {
+    try {
+      const rid = await falVideoSubmit(FAL_KLING3, { startImage: seedAbs, prompt, generateAudio: true, durationSec: KLING_DUR });
+      return await falVideoPoll(FAL_KLING3, rid, VEO_POLL_MS);
+    } catch (e) {
+      console.error(`[testmovie] fal kling failed, trying Replicate: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+    }
+  }
+  const id = await repCreate(REP_KLING3, { prompt, start_image: seedAbs, generate_audio: true, duration: KLING_DUR });
+  return await repPoll(id, VEO_POLL_MS, stage);
+}
+
+/** Route a dialogue clip to the chosen engine — the ONE line that differs between the
+ *  identical Veo and Kling pipelines. */
+async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string): Promise<string> {
+  return engine === "kling3" ? klingDialogueClip(seedAbs, prompt, stage) : veoDialogueClip(seedAbs, prompt, stage);
+}
+
 /** Grab the ACTUAL last frame of a rendered clip as a clean still (served from
  *  /renders). Used as the continuity REFERENCE for the next scene's seed — so the
  *  room and everyone's FINAL positions carry forward (the owner's "reuse the last
@@ -307,8 +336,13 @@ export async function generateTestMovie(opts: {
    *  present in it (locked identity), and the speaker's voice timbre is pinned into
    *  the Veo prompt so the voice stays consistent across shots. */
   cast?: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }>;
+  /** Which renderer runs the dialogue clips — the ONE thing that differs between the
+   *  otherwise-identical engine pipelines. "veo" (default, premium) or "kling3" (cheaper,
+   *  native audio). Recorded on the asset so the Archive shows which model made the film. */
+  dialogueEngine?: "veo" | "kling3";
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
+  const dialogueEngine = opts.dialogueEngine === "kling3" ? "kling3" : "veo";
   const jobId = opts.jobId;
   const resume = opts.resume || {};
   const approvedFrames = opts.approvedFrames || [];
@@ -511,7 +545,7 @@ export async function generateTestMovie(opts: {
       `${voiceLine} ` +
       `Keep EVERYONE and the entire setting EXACTLY as in the provided starting image — identical faces, hair, skin tone, clothing, lighting and background, unchanged throughout; and keep each person's EXACT facial hair fixed the whole time — every beard, mustache and bit of stubble stays precisely the same and never fades, thins, grows, appears or disappears. Do NOT morph, age or redraw anyone into a different person. The camera holds steady and nobody moves except natural talking and small, subtle head and expression shifts. Do NOT introduce any object that is not already in the starting image — no new cigarette, glass or prop appears; and if a person IS already holding something, keep it EXACTLY the same size and shape, held steady in the same hand — it must never morph, grow, shrink, drift, multiply or flicker. Photorealistic live-action, clean natural spoken-dialogue audio. ${NO_TEXT}`;
 
-    const clipUrl = await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
+    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`);
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, rawPath);
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
@@ -538,7 +572,7 @@ export async function generateTestMovie(opts: {
       status: "PENDING",
       title: `Test Movie — ${(treatment.title || opts.topic || "dialogue test").slice(0, 60)}`,
       bodyJson: JSON.stringify({ style: "TESTMOVIE", videoUrl: storedUrl, prompt: opts.topic || "", treatment }),
-      metaJson: JSON.stringify({ kind: "testmovie", template: tmpl.key, section: opts.section || "creator", scenes: clips.length, aspect: "vertical" }),
+      metaJson: JSON.stringify({ kind: "testmovie", template: tmpl.key, section: opts.section || "creator", scenes: clips.length, aspect: "vertical", engine: dialogueEngine }),
     },
   });
   return asset.id;

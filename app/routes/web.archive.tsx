@@ -81,6 +81,12 @@ function recipeLabel(metaJson: string | null, bodyJson: string | null): string |
   try { meta = JSON.parse(metaJson || "{}"); } catch { /* ignore */ }
   try { body = JSON.parse(bodyJson || "{}"); } catch { /* ignore */ }
   const pretty = (k: string) => k.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  // Test Movie A/B: label each film with the ENGINE that rendered it, so the merchant
+  // can tell Veo from Kling at a glance when judging the same scene across models.
+  if (meta.kind === "testmovie" || body.style === "TESTMOVIE") {
+    const eng = typeof meta.engine === "string" ? meta.engine : "veo";
+    return `Test Movie · ${eng === "kling3" ? "Kling" : "Veo"}`;
+  }
   const method = typeof body.method === "string" ? body.method : "";
   const m = method.match(/^(format|template|template-staged|template-fallback):(.+)$/);
   if (m) return `${pretty(m[2])}${m[1].startsWith("template") ? " backdrop" : ""}`;

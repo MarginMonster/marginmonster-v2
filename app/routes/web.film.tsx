@@ -807,18 +807,19 @@ export default function FilmStudio() {
         <div className="fs-lbl"><span className="fs-n">3</span> {t("Generate")}</div>
         {/* Test Movie only: choose which engine renders the spoken dialogue. */}
         {isStoryboard && (
-          <div className="fs-engine" role="group" aria-label={t("Dialogue engine")}>
-            <span className="fs-engine-cap">{t("Dialogue engine")}</span>
+          <div className="fs-engine" role="group" aria-label={t("Render engine")}>
+            <span className="fs-engine-cap">{t("Render engine")}</span>
             <div className="fs-engine-seg">
               <button type="button" className={`fs-engine-opt${dialogueEngine === "veo" ? " on" : ""}`}
                 aria-pressed={dialogueEngine === "veo"} onClick={() => setDialogueEngine("veo")}>
-                {t("Veo")}<small>{t("cinematic beats · default")}</small>
+                {t("Veo 3")}<small>{t("premium · default")}</small>
               </button>
               <button type="button" className={`fs-engine-opt${dialogueEngine === "kling3" ? " on" : ""}`}
                 aria-pressed={dialogueEngine === "kling3"} onClick={() => setDialogueEngine("kling3")}>
-                {t("Kling")}<small>{t("10s takes · new")}</small>
+                {t("Kling 3")}<small>{t("cheaper · native audio")}</small>
               </button>
             </div>
+            <p className="fs-engine-note">{t("Same film, different AI. Run both and compare — each is tagged by model in your Archive.")}</p>
           </div>
         )}
         <Form method="post">
@@ -890,6 +891,7 @@ const FS_STYLE = `
 /* Dialogue-engine picker (Test Movie only) — a compact segmented control. */
 .fs-engine{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px;}
 .fs-engine-cap{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
+.fs-engine-note{flex:1 1 100%;font-size:11.5px;color:var(--ink2,#4A554E);margin:4px 0 0;line-height:1.4;}
 .fs-engine-seg{display:inline-flex;gap:6px;max-width:100%;background:#F3EFE2;border:1px solid var(--line,#E4DFCF);border-radius:12px;padding:4px;}
 .fs-engine-opt{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:0;background:transparent;border-radius:9px;padding:7px 14px;cursor:pointer;font-family:Poppins,sans-serif;font-weight:800;font-size:13.5px;color:var(--ink,#14201A);line-height:1.12;white-space:nowrap;transition:background .15s,box-shadow .15s,color .15s;}
 .fs-engine-opt small{font-weight:600;font-size:10.5px;color:var(--ink2,#6B756E);letter-spacing:.01em;}
