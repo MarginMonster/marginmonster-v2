@@ -180,11 +180,54 @@ async function trimTrailingSilence(inPath: string): Promise<string> {
   return inPath;
 }
 
+/** Collapse ONE long pause in the MIDDLE of a clip (dead air between words where the
+ *  speaker just stands there) — the head/tail trim above never touches interior gaps, which
+ *  is what reads as "a somewhat long awkward pause". Detects the longest fully-interior
+ *  silence with silencedetect and excises most of it (keeping a short natural beat), cutting
+ *  BOTH video and audio at the same points so lip-sync holds. The clip's LAST frame is
+ *  unchanged (the span removed is in the middle), so the seamless chain is unaffected.
+ *  Conservative on purpose: one clearly-long (>1s) interior pause per clip, and only if the
+ *  result stays valid. Returns a NEW path, or the original if there's nothing to do. */
+async function collapseInteriorPause(inPath: string): Promise<string> {
+  try {
+    const dur = ffprobeDuration(inPath);
+    if (!(dur > 3)) return inPath; // too short for a mid-clip pause to matter
+    const probe = await runFfmpeg(["-i", inPath, "-af", "silencedetect=noise=-33dB:d=0.7", "-f", "null", "-"]);
+    const err = probe.stderr || "";
+    // silencedetect prints "silence_end: <end> | silence_duration: <len>" for each COMPLETE
+    // silence run; start = end - len. (A run with no end ran to EOF = trailing — not here.)
+    const runs = [...err.matchAll(/silence_end:\s*([\d.]+)\s*\|\s*silence_duration:\s*([\d.]+)/g)]
+      .map((m) => { const end = parseFloat(m[1]); const len = parseFloat(m[2]); return { start: end - len, end, len }; })
+      // interior only: clear of the head and tail (those are trimTrailingSilence's job)
+      .filter((r) => r.len > 1.0 && r.start > 0.8 && r.end < dur - 0.8)
+      .sort((a, b) => b.len - a.len);
+    if (!runs.length) return inPath;
+    const { start, end } = runs[0];
+    const keep1 = +(start + 0.22).toFixed(2); // leave a short natural beat of the pause
+    const start2 = +end.toFixed(2);
+    // Both kept halves must be substantial, and the excised span worth cutting.
+    if (keep1 < 0.6 || dur - start2 < 0.6 || start2 - keep1 < 0.5) return inPath;
+    const out = inPath.replace(/\.mp4$/i, "-nogap.mp4");
+    const fc = [
+      `[0:v]trim=0:${keep1},setpts=PTS-STARTPTS[v0]`,
+      `[0:a]atrim=0:${keep1},asetpts=PTS-STARTPTS[a0]`,
+      `[0:v]trim=start=${start2},setpts=PTS-STARTPTS[v1]`,
+      `[0:a]atrim=start=${start2},asetpts=PTS-STARTPTS[a1]`,
+      `[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]`,
+    ].join(";");
+    const r = await runFfmpeg(["-y", "-i", inPath, "-filter_complex", fc, "-map", "[v]", "-map", "[a]",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out]);
+    if (r.status === 0 && fs.existsSync(out) && ffprobeDuration(out) > 1) return out;
+  } catch { /* keep the original clip */ }
+  return inPath;
+}
+
 /** Concatenate the Veo clips, KEEPING their dialogue audio (unlike the main
  *  engine, which strips clip audio for a narrator/music bed). Degrade ladder:
  *  with audio → silent, so a clip that came back without an audio stream can't
  *  sink the whole render. */
-async function assembleTestMovie(clips: string[], outPath: string, jobId?: string): Promise<void> {
+async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[testmovie] no clips");
   const beat = async () => { if (jobId) await checkpointJob(jobId, { ckBeat: Date.now() }); };
@@ -203,9 +246,13 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
   // clip's duration for the offsets; if anything is off we fall back to concat below.
   const buildXfade = (): string[] | null => {
     if (N < 2) return null;
-    const FADE = 0.18;
+    // Chained cuts (clip N seeded from clip N-1's real last frame) are near-identical, so a
+    // tiny 0.18s dissolve is effectively invisible. A REFRAME seam (new location / camera
+    // angle / re-anchor) jumps more, so it gets a longer, softer 0.32s dissolve that reads
+    // as a deliberate cut to a new camera instead of a hitch. softSeams holds those indices.
+    const fadeFor = (i: number) => (softSeams?.has(i) ? 0.32 : 0.18);
     const durs = clips.map((c) => { try { return ffprobeDuration(c); } catch { return 0; } });
-    if (durs.some((d) => !(d > FADE + 0.3))) return null;
+    if (durs.some((d) => !(d > 0.62))) return null; // every clip must outlast the longest fade + margin
     const a: string[] = ["-y"];
     clips.forEach((c) => a.push("-i", c));
     const f: string[] = [];
@@ -215,6 +262,7 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
     });
     let vPrev = "v0", aPrev = "a0", running = durs[0];
     for (let i = 1; i < N; i++) {
+      const FADE = fadeFor(i);
       const vOut = i === N - 1 ? "vc" : `vx${i}`;
       const aOut = i === N - 1 ? "ac" : `ax${i}`;
       f.push(`[${vPrev}][v${i}]xfade=transition=fade:duration=${FADE}:offset=${Math.max(0, running - FADE).toFixed(3)}[${vOut}]`);
@@ -460,7 +508,20 @@ export async function generateTestMovie(opts: {
   // Chaining from each clip's last frame gives seamless cuts but lets faces (esp. facial
   // hair) DRIFT over a long film. Re-anchor to the pristine master after this many chained
   // clips so drift can't accumulate (owner: "mustache disappearing and reappearing").
-  const ANCHOR_EVERY = 2;
+  // Owner's call: push the re-anchor FARTHER apart (Kling holds faces far better than Veo
+  // did, so drift accumulates slower) AND render each re-anchor as an intentional CAMERA-
+  // ANGLE change, so the drift-reset reads as a deliberate cut to a new camera rather than a
+  // snap back to the same frame. softSeams = clip indices whose seam-before is a reframe
+  // (location / angle / re-anchor) → the assembler gives those a longer, softer dissolve.
+  const ANCHOR_EVERY = 3;
+  const ANCHOR_ANGLES = [
+    "a slightly tighter two-shot",
+    "a medium two-shot from a subtly lower angle",
+    "a closer two-shot of the same two people",
+    "a slightly wider two-shot",
+  ];
+  let anchorCount = 0;
+  const softSeams = new Set<number>();
   let sinceAnchor = clips.length; // resume-safe-ish: force an early re-anchor after a restart
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
@@ -483,18 +544,26 @@ export async function generateTestMovie(opts: {
     let seedAbs = abs(approvedFrames[i]);
     if (!seedAbs && master?.url) {
       if (tr === "location") {
-        seedAbs = abs(master.url); sinceAnchor = 0;
+        seedAbs = abs(master.url); sinceAnchor = 0; if (i > 0) softSeams.add(i);
       } else if (tr === "angle") {
         const reangled = await renderSceneSeedChained(
           `${whereAt[i]}. A ${shotAt[i]} of the same scene — the identical room, lighting, wardrobe and people, only the camera angle changes. ${NO_TEXT}`,
           abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), "9:16",
         );
-        seedAbs = abs(reangled) || abs(prevFrameUrl) || abs(master.url); sinceAnchor = 0;
+        seedAbs = abs(reangled) || abs(prevFrameUrl) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
       } else if (sinceAnchor >= ANCHOR_EVERY) {
-        // RE-ANCHOR: after a few chained clips, reseed from the pristine master so faces /
-        // facial hair can't drift across a long film. The 0.18s crossfade hides the small
-        // pose reset, and the shot framing is identical so it reads as the same take.
-        seedAbs = abs(master.url); sinceAnchor = 0;
+        // RE-ANCHOR as an INTENTIONAL camera move (owner's call): still reseed from the
+        // pristine master so faces / facial hair can't drift across a long film — but route
+        // it through a FRESH ANGLE so the reset reads as a deliberate cut to a new camera,
+        // not a snap back to the same frame. The generic framings (tighter / wider / lower)
+        // fit ANY setting, and the master image keeps the identical room, lighting,
+        // wardrobe and faces, so the angle change is grounded in the real scene.
+        const ang = ANCHOR_ANGLES[anchorCount++ % ANCHOR_ANGLES.length];
+        const reangled = await renderSceneSeedChained(
+          `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people in the same positions, ONLY the camera angle changes. ${NO_TEXT}`,
+          abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), "9:16",
+        );
+        seedAbs = abs(reangled) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
       } else {
         seedAbs = abs(prevFrameUrl) || abs(master.url); sinceAnchor++;
       }
@@ -549,7 +618,8 @@ export async function generateTestMovie(opts: {
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, rawPath);
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
-    const outPath = await trimTrailingSilence(rawPath); // cut the dead air after the last word
+    const trimmed = await trimTrailingSilence(rawPath); // cut dead air at the head/tail
+    const outPath = await collapseInteriorPause(trimmed); // and collapse a long mid-line pause
     clips.push(outPath);
     // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.
     prevFrameUrl = (await extractLastFrame(outPath)) || undefined;
@@ -560,7 +630,7 @@ export async function generateTestMovie(opts: {
   // 4) ASSEMBLE — concat the clips keeping the dialogue audio.
   const outName = `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleTestMovie(clips, outPath, jobId);
+  await assembleTestMovie(clips, outPath, jobId, softSeams);
   const outBuf = fs.readFileSync(outPath);
   try { await mirrorRender(outName, outBuf); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;
