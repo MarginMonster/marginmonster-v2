@@ -338,7 +338,12 @@ export async function previewFilmTreatment(opts: {
   let list = (parsed.scenes || []).filter((s) => s && s.visual).slice(0, scenes);
   // FTC backstop (captions are burned on screen): strip an endorsement
   // possessive from a third-party trademark the writer may have slipped in.
-  list = list.map((s) => ({ visual: s.visual, caption: s.caption ? dropOrgEndorsementPossessive(s.caption) : undefined }));
+  list = list.map((s) => ({
+    visual: s.visual,
+    caption: s.caption ? dropOrgEndorsementPossessive(s.caption) : undefined,
+    where: typeof s.where === "string" && s.where.trim() ? s.where.trim().slice(0, 120) : undefined,
+    shot: typeof s.shot === "string" && s.shot.trim() ? s.shot.trim().slice(0, 60) : undefined,
+  }));
   if (list.length < 1) throw new Error("[film] treatment came back empty");
   const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 4) : undefined;
   return { title: (parsed.title || topic || tmpl.name).slice(0, 80), scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast };

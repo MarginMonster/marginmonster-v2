@@ -389,13 +389,15 @@ export default function FilmStudio() {
     });
     return locs;
   })();
-  const speakerNames: string[] = (() => {
-    const set: string[] = [];
-    (treatment?.scenes || []).forEach((s) => { const sp = parseBeat(s.caption).speaker; if (sp && !set.includes(sp)) set.push(sp); });
-    cast.forEach((c) => { if (c.name && !set.includes(c.name)) set.push(c.name); });
-    return set;
-  })();
   const firstTok = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
+  const speakerNames: string[] = (() => {
+    const seen = new Set<string>(); const out: string[] = [];
+    const add = (nm: string) => { const k = firstTok(nm); if (nm && k && !seen.has(k)) { seen.add(k); out.push(nm); } };
+    cast.forEach((c) => c.name && add(c.name)); // prefer the cast's proper-case names
+    (treatment?.scenes || []).forEach((s) => { const sp = parseBeat(s.caption).speaker; if (sp) add(sp); });
+    return out;
+  })();
+  const displayName = (sp: string) => speakerNames.find((n) => firstTok(n) === firstTok(sp)) || sp;
   const faceOf = (name: string) => cast.find((c) => c.name && name && firstTok(c.name) === firstTok(name))?.faceUrl || null;
   const mutateScenes = (fn: (scenes: Scene[]) => Scene[]) => {
     if (!treatment) return;
@@ -404,7 +406,7 @@ export default function FilmStudio() {
   };
   const setBeatLine = (idx: number, line: string) => mutateScenes((ss) => ss.map((s, j) => (j === idx ? { ...s, caption: `${parseBeat(s.caption).speaker || speakerNames[0] || "Name"}: ${line}` } : s)));
   const setBeatSpeaker = (idx: number, name: string) => mutateScenes((ss) => ss.map((s, j) => (j === idx ? { ...s, caption: `${name}: ${parseBeat(s.caption).line}` } : s)));
-  const nextSpeaker = (cur: string) => { const i = speakerNames.indexOf(cur); return speakerNames.length ? speakerNames[(i + 1) % speakerNames.length] : cur; };
+  const nextSpeaker = (cur: string) => { if (!speakerNames.length) return cur; const i = speakerNames.findIndex((n) => firstTok(n) === firstTok(cur)); return speakerNames[((i < 0 ? -1 : i) + 1) % speakerNames.length]; };
   const insertAt = (ss: Scene[], at: number, s: Scene) => { const out = ss.slice(); out.splice(Math.min(Math.max(0, at), out.length), 0, s); return out; };
   const addBeat = (loc: FlowLoc, ang: FlowAngle) => mutateScenes((ss) => {
     const base = ss[loc.firstIdx];
@@ -711,7 +713,7 @@ export default function FilmStudio() {
                                 <span className="fs-beat-face" title={b.speaker} style={f ? { backgroundImage: `url(${f})` } : undefined}>{!f && (b.speaker || "?").slice(0, 1).toUpperCase()}</span>
                                 <div className="fs-beat-body">
                                   {speakerNames.length > 1 && (
-                                    <button type="button" className="fs-beat-spk" onClick={() => setBeatSpeaker(b.idx, nextSpeaker(b.speaker))} title={t("Tap to switch who speaks")}>{b.speaker || t("Name")} <Ico n="refresh" size={9} /></button>
+                                    <button type="button" className="fs-beat-spk" onClick={() => setBeatSpeaker(b.idx, nextSpeaker(b.speaker))} title={t("Tap to switch who speaks")}>{displayName(b.speaker) || t("Name")} <Ico n="refresh" size={9} /></button>
                                   )}
                                   <textarea className="fs-beat-line" rows={2} value={b.line} maxLength={400}
                                     onChange={(e) => setBeatLine(b.idx, e.target.value)} placeholder={t("What do they say?")} />
