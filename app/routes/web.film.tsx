@@ -243,7 +243,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({ error: tr(lang, "Unknown action.") });
 };
 
-type Scene = { visual: string; caption?: string };
+type Scene = { visual: string; caption?: string; where?: string; shot?: string };
 type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: string[] };
 // A locked "actor": one character's reusable face + pinned voice, cast once and
 // reused as the identity reference for every shot they appear in.
@@ -357,6 +357,69 @@ export default function FilmStudio() {
     if (!treatment) return;
     setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, visual: v } : s)) });
   };
+
+  // ---- FLOW editor (location + camera-angle storyboard) --------------------
+  // Each beat carries where (location) + shot (camera angle). GROUP the flat scenes
+  // into locations → angles → beats for the flow view; edits write straight back to
+  // the flat array, so the existing submit (approvedTreatment = treatment) carries the
+  // whole structure to the engine. Inside a location it renders seamless; a new
+  // location is a scene-change cut (cast carried); a new shot is a same-room angle cut.
+  const WIDE = "wide two-shot";
+  const parseBeat = (cap?: string): { speaker: string; line: string } => {
+    const m = (cap || "").match(/^\s*([^:]{1,40}):\s*([\s\S]*)$/);
+    return m ? { speaker: m[1].trim(), line: m[2].trim() } : { speaker: "", line: (cap || "").trim() };
+  };
+  const whereOf = (s: Scene, prev: string) => (s.where || "").trim() || prev || (s.visual || "").split(/[.;]/)[0].trim().slice(0, 80) || "A cinematic location";
+  type FlowBeat = { idx: number; speaker: string; line: string };
+  type FlowAngle = { shot: string; beats: FlowBeat[]; lastIdx: number };
+  type FlowLoc = { where: string; firstIdx: number; lastIdx: number; angles: FlowAngle[] };
+  const flow: FlowLoc[] = (() => {
+    const locs: FlowLoc[] = []; let prevWhere = "";
+    (treatment?.scenes || []).forEach((s, idx) => {
+      const where = whereOf(s, prevWhere); prevWhere = where;
+      const shot = (s.shot || "").trim() || WIDE;
+      let loc = locs[locs.length - 1];
+      if (!loc || loc.where !== where) { loc = { where, firstIdx: idx, lastIdx: idx, angles: [] }; locs.push(loc); }
+      loc.lastIdx = idx;
+      let ang = loc.angles[loc.angles.length - 1];
+      if (!ang || ang.shot !== shot) { ang = { shot, beats: [], lastIdx: idx }; loc.angles.push(ang); }
+      ang.lastIdx = idx;
+      const { speaker, line } = parseBeat(s.caption);
+      ang.beats.push({ idx, speaker, line });
+    });
+    return locs;
+  })();
+  const speakerNames: string[] = (() => {
+    const set: string[] = [];
+    (treatment?.scenes || []).forEach((s) => { const sp = parseBeat(s.caption).speaker; if (sp && !set.includes(sp)) set.push(sp); });
+    cast.forEach((c) => { if (c.name && !set.includes(c.name)) set.push(c.name); });
+    return set;
+  })();
+  const firstTok = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
+  const faceOf = (name: string) => cast.find((c) => c.name && name && firstTok(c.name) === firstTok(name))?.faceUrl || null;
+  const mutateScenes = (fn: (scenes: Scene[]) => Scene[]) => {
+    if (!treatment) return;
+    const next = fn(treatment.scenes.slice());
+    setTreatment({ ...treatment, scenes: next }); setScenes(next.length);
+  };
+  const setBeatLine = (idx: number, line: string) => mutateScenes((ss) => ss.map((s, j) => (j === idx ? { ...s, caption: `${parseBeat(s.caption).speaker || speakerNames[0] || "Name"}: ${line}` } : s)));
+  const setBeatSpeaker = (idx: number, name: string) => mutateScenes((ss) => ss.map((s, j) => (j === idx ? { ...s, caption: `${name}: ${parseBeat(s.caption).line}` } : s)));
+  const nextSpeaker = (cur: string) => { const i = speakerNames.indexOf(cur); return speakerNames.length ? speakerNames[(i + 1) % speakerNames.length] : cur; };
+  const insertAt = (ss: Scene[], at: number, s: Scene) => { const out = ss.slice(); out.splice(Math.min(Math.max(0, at), out.length), 0, s); return out; };
+  const addBeat = (loc: FlowLoc, ang: FlowAngle) => mutateScenes((ss) => {
+    const base = ss[loc.firstIdx];
+    const prevSpk = ang.beats[ang.beats.length - 1]?.speaker || speakerNames[0] || "";
+    return insertAt(ss, ang.lastIdx + 1, { visual: base?.visual || loc.where, where: loc.where, shot: ang.shot, caption: `${nextSpeaker(prevSpk)}: ` });
+  });
+  const addAngle = (loc: FlowLoc) => mutateScenes((ss) => {
+    const base = ss[loc.firstIdx];
+    const who = speakerNames[0] || "Name";
+    return insertAt(ss, loc.lastIdx + 1, { visual: base?.visual || loc.where, where: loc.where, shot: `close-up on ${who}`, caption: `${who}: ` });
+  });
+  const addScene = () => mutateScenes((ss) => [...ss, { visual: "A new location", where: "A new location", shot: WIDE, caption: `${speakerNames[0] || "Name"}: ` }]);
+  const setWhere = (loc: FlowLoc, where: string) => mutateScenes((ss) => ss.map((s, j) => (j >= loc.firstIdx && j <= loc.lastIdx ? { ...s, where, visual: s.visual && s.visual !== loc.where ? s.visual : where } : s)));
+  const setAngleShot = (ang: FlowAngle, shot: string) => mutateScenes((ss) => ss.map((s, j) => (ang.beats.some((b) => b.idx === j) ? { ...s, shot } : s)));
+  const removeBeat = (idx: number) => mutateScenes((ss) => (ss.length > 1 ? ss.filter((_, j) => j !== idx) : ss));
   // Render (or re-roll) one scene's storyboard photo. Reuses a prior approved frame
   // as the style reference so faces + wardrobe stay consistent across shots.
   // The locked cast faces for the characters whose name appears in a shot — so the
@@ -603,64 +666,72 @@ export default function FilmStudio() {
 
       {treatment && isStoryboard && (
         <div className="fs-card">
-          <div className="fs-lbl"><span className="fs-n"><Ico n="camera" size={13} /></span> {t("Storyboard")} <span className="fs-free">{t("free")}</span></div>
-          <p className="fs-hint">{t("Make the photo for each shot, refine it until it's right, then Generate. Every shot animates from the frame you lock — all right here, no jumping around.")}</p>
-          <div className="fs-board">
-            {treatment.scenes.map((s, i) => {
-              const busy = framingIndex === i;
-              const set = !!frames[i];
-              return (
-              <div className={`fs-shot${set ? " set" : ""}`} key={i}>
-                <div className="fs-shot-frame">
-                  {set
-                    ? <img src={frames[i] as string} alt={t("Shot {n}", { n: i + 1 })} loading="lazy" />
-                    : <span className="fs-shot-empty"><Ico n="camera" size={26} />{t("No photo yet")}</span>}
-                  {busy && <span className="fs-shot-spin" aria-hidden="true" />}
-                  <span className="fs-shot-tag">{set && <Ico n="check" size={11} />} {t("Shot {n}", { n: i + 1 })}</span>
-                </div>
-                <div className="fs-shot-main">
-                  <textarea className="fs-shot-desc" rows={2} value={s.visual} onChange={(e) => editVisual(i, e.target.value)} maxLength={1500}
-                    placeholder={t("Describe the shot — camera inside, the child in front, the figure at the window outside…")} />
-                  {!set ? (
-                    <button type="button" className="fs-shot-make" disabled={framingIndex !== null} onClick={() => makeFrame(i)}>
-                      {busy ? <>… {t("Making the photo")}</> : <><Ico n="camera" size={14} /> {t("Make the photo")}</>}
-                    </button>
-                  ) : (
-                    <>
-                      <div className="fs-shot-refine">
-                        <input className="fs-shot-edit" value={editDraft[i] || ""} disabled={framingIndex !== null} maxLength={300}
-                          placeholder={t("Describe a change — make it night, add the mum at the window, make her face wrong…")}
-                          onChange={(e) => setEditDraft((p) => ({ ...p, [i]: e.target.value }))}
-                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyEdit(i); } }} />
-                        <button type="button" className="fs-shot-apply" disabled={framingIndex !== null || !(editDraft[i] || "").trim()} onClick={() => applyEdit(i)}>{busy ? "…" : t("Apply")}</button>
-                      </div>
-                      <button type="button" className="fs-shot-reroll" disabled={framingIndex !== null} onClick={() => makeFrame(i)}><Ico n="refresh" size={12} /> {t("Re-roll from the description")}</button>
-                    </>
-                  )}
-                  <details className="fs-shot-own">
-                    <summary>{t("Use an image I already made")}</summary>
-                    {d.gallery.length > 0 ? (
-                      <div className="fs-shot-gallery" role="list" aria-label={t("Your images")}>
-                        {d.gallery.map((g) => (
-                          <button type="button" role="listitem" key={g.id} className={`fs-gthumb${frames[i] === g.url ? " on" : ""}`}
-                            disabled={framingIndex !== null} title={g.title || t("Use this image")} onClick={() => useFrameUrl(i, g.url)}>
-                            <img src={g.url} alt={g.title || t("Your image")} loading="lazy" />
-                            {frames[i] === g.url && <span className="fs-gthumb-chk" aria-hidden="true"><Ico n="check" size={12} /></span>}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="fs-gempty">{t("Images you make in Creator show up here to pick from.")}</p>
+          <div className="fs-lbl"><span className="fs-n"><Ico n="filmreel" size={13} /></span> {t("Story flow")} <span className="fs-free">{t("free")}</span></div>
+          <p className="fs-hint">{t("Your film as a flow of locations. Lines inside a place play as one seamless take; a new camera angle is a clean cut in the same room; a new scene moves everyone somewhere new.")}</p>
+          <div className="fs-flegend" aria-hidden="true">
+            <span><i className="fs-dot seam" /> {t("seamless")}</span>
+            <span><i className="fs-dot ang" /> {t("new angle · same place")}</span>
+            <span><i className="fs-dot loc" /> {t("scene change")}</span>
+          </div>
+          <div className="fs-flow">
+            {flow.map((loc, li) => (
+              <div key={li}>
+                {li > 0 && (
+                  <div className="fs-scenecut"><Ico n="scissors" size={13} /> {t("scene change → new location · the cast walks in")}</div>
+                )}
+                <div className="fs-loc">
+                  <div className="fs-loc-head">
+                    <span className="fs-loc-pin" aria-hidden="true">📍</span>
+                    <input className="fs-loc-where" value={loc.where} maxLength={120}
+                      onChange={(e) => setWhere(loc, e.target.value)} placeholder={t("Where does this scene happen?")} />
+                    <span className="fs-loc-scene">{t("scene {n}", { n: li + 1 })}</span>
+                    {speakerNames.length > 0 && (
+                      <span className="fs-loc-who">
+                        {speakerNames.slice(0, 4).map((nm, k) => {
+                          const f = faceOf(nm);
+                          return <span key={k} className="fs-who" title={nm} style={f ? { backgroundImage: `url(${f})` } : undefined}>{!f && (nm || "?").slice(0, 1).toUpperCase()}</span>;
+                        })}
+                      </span>
                     )}
-                    <input className="fs-shot-url" type="url" maxLength={2000} defaultValue="" placeholder={t("…or paste an image URL")} onChange={(e) => useFrameUrl(i, e.target.value)} />
-                  </details>
+                  </div>
+                  {loc.angles.map((ang, ai) => (
+                    <div key={ai}>
+                      {ai > 0 && <div className="fs-anglecut"><Ico n="video" size={12} /> {t("new camera angle · same room")}</div>}
+                      <div className="fs-shotblk">
+                        <div className="fs-shotblk-head">
+                          <Ico n="video" size={13} />
+                          <input className="fs-shot-angle" value={ang.shot} maxLength={60}
+                            onChange={(e) => setAngleShot(ang, e.target.value)} placeholder={t("camera angle (e.g. wide two-shot)")} />
+                        </div>
+                        <div className="fs-beats">
+                          {ang.beats.map((b) => {
+                            const f = faceOf(b.speaker);
+                            return (
+                              <div className="fs-beat" key={b.idx}>
+                                <span className="fs-beat-face" title={b.speaker} style={f ? { backgroundImage: `url(${f})` } : undefined}>{!f && (b.speaker || "?").slice(0, 1).toUpperCase()}</span>
+                                <div className="fs-beat-body">
+                                  {speakerNames.length > 1 && (
+                                    <button type="button" className="fs-beat-spk" onClick={() => setBeatSpeaker(b.idx, nextSpeaker(b.speaker))} title={t("Tap to switch who speaks")}>{b.speaker || t("Name")} <Ico n="refresh" size={9} /></button>
+                                  )}
+                                  <textarea className="fs-beat-line" rows={2} value={b.line} maxLength={400}
+                                    onChange={(e) => setBeatLine(b.idx, e.target.value)} placeholder={t("What do they say?")} />
+                                </div>
+                                {treatment.scenes.length > 1 && <button type="button" className="fs-beat-x" onClick={() => removeBeat(b.idx)} aria-label={t("Remove this line")}><Ico n="trash" size={12} /></button>}
+                              </div>
+                            );
+                          })}
+                          <button type="button" className="fs-beat-add" onClick={() => addBeat(loc, ang)}>＋ {t("add a line")}</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <button type="button" className="fs-loc-addangle" onClick={() => addAngle(loc)}><Ico n="video" size={12} /> {t("add a camera angle")}</button>
                 </div>
               </div>
-              );
-            })}
+            ))}
+            <button type="button" className="fs-addscene" onClick={addScene}><span aria-hidden="true">📍</span> {t("add a scene / new location")}</button>
           </div>
-          {previewFrameFetcher.data?.error && <p className="fs-err">{previewFrameFetcher.data.error}</p>}
-          <p className="fs-hint" style={{ margin: "12px 0 0" }}>{t("Shots you don't set auto-generate — just lock the ones that matter.")}</p>
+          <p className="fs-hint" style={{ margin: "12px 0 0" }}>{t("Tip: keep a scene in one place for a smooth take. Add a camera angle for a close-up, or a new scene to move somewhere else.")}</p>
         </div>
       )}
 
@@ -874,4 +945,43 @@ const FS_STYLE = `
 .fs-actor-own{margin:0;}
 @media(prefers-reduced-motion:reduce){.fs-go::after{display:none;}.fs-tmpl,.fs-shot-make,.fs-write,.fs-go,.fs-actor-cast{transition:none;}.fs-head-img,.fs-head-copy b,.fs-head-rose{animation:none;}}
 @media(max-width:640px){.fs-head{padding:18px;min-height:114px;}.fs-head-copy{max-width:60%;}.fs-head-copy b{font-size:21px;}.fs-head-media{width:52%;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
+/* ---- Story flow (location + camera-angle storyboard) ---- */
+.fs-flegend{display:flex;flex-wrap:wrap;gap:14px;margin:2px 0 12px;font-size:11.5px;color:var(--ink2,#4A554E);}
+.fs-flegend span{display:inline-flex;align-items:center;gap:6px;}
+.fs-dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+.fs-dot.seam{background:#12A85E;}
+.fs-dot.ang{background:#7F77DD;}
+.fs-dot.loc{background:#E3A531;}
+.fs-flow{display:flex;flex-direction:column;gap:4px;}
+.fs-loc{border:1.5px solid #9CCBB1;border-radius:18px;background:var(--card,#FDFCF7);box-shadow:0 9px 24px rgba(20,32,26,.10);padding:12px 13px 13px;}
+.fs-loc-head{display:flex;align-items:center;gap:9px;margin-bottom:11px;flex-wrap:wrap;}
+.fs-loc-pin{font-size:16px;line-height:1;flex:none;}
+.fs-loc-where{flex:1 1 180px;min-width:120px;border:0;border-bottom:1.5px solid transparent;background:transparent;font-family:Poppins,sans-serif;font-weight:800;font-size:15px;color:var(--ink,#14201A);padding:3px 2px;border-radius:0;transition:border-color .14s;}
+.fs-loc-where:focus{outline:0;border-bottom-color:var(--green,#0C7A46);}
+.fs-loc-scene{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#6F8A7C;background:#EAF6EF;padding:3px 8px;border-radius:7px;flex:none;}
+.fs-loc-who{display:inline-flex;align-items:center;flex:none;}
+.fs-who{width:28px;height:28px;border-radius:50%;background:#EAF6EF center/cover no-repeat;border:1.5px solid var(--card,#FDFCF7);box-shadow:0 0 0 1px #9CCBB1;display:grid;place-items:center;font-size:11px;font-weight:800;color:#0F6E56;margin-left:-7px;}
+.fs-loc-who .fs-who:first-child{margin-left:0;}
+.fs-shotblk{border:1px solid var(--line,#E4DFCF);border-radius:12px;background:#FCFBF5;padding:9px 10px;}
+.fs-shotblk-head{display:flex;align-items:center;gap:6px;color:var(--ink2,#4A554E);margin-bottom:8px;}
+.fs-shot-angle{flex:1;min-width:0;border:0;background:transparent;font-family:Poppins,sans-serif;font-weight:700;font-size:12px;color:var(--ink2,#4A554E);padding:2px;}
+.fs-shot-angle:focus{outline:0;color:var(--ink,#14201A);}
+.fs-beats{display:flex;flex-direction:column;gap:7px;}
+.fs-beat{display:flex;align-items:flex-start;gap:9px;}
+.fs-beat-face{width:30px;height:30px;flex:none;border-radius:50%;background:#EAF6EF center/cover no-repeat;box-shadow:0 0 0 1.5px #9CCBB1;display:grid;place-items:center;font-size:12px;font-weight:800;color:#0F6E56;margin-top:2px;}
+.fs-beat-body{flex:1;min-width:0;}
+.fs-beat-spk{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--green,#0C7A46);font-family:Poppins,sans-serif;font-weight:800;font-size:11.5px;padding:0 0 2px;cursor:pointer;}
+.fs-beat-line{width:100%;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;background:#fff;font-family:Poppins,sans-serif;font-size:13px;color:var(--ink,#14201A);padding:7px 9px;resize:vertical;line-height:1.4;box-sizing:border-box;transition:border-color .14s,box-shadow .14s;}
+.fs-beat-line:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.fs-beat-x{flex:none;border:0;background:transparent;color:#C0B9A6;cursor:pointer;padding:6px 2px;border-radius:7px;transition:color .14s,background .14s;}
+.fs-beat-x:hover{color:#C2410C;background:#FBEAE3;}
+.fs-beat-add{align-self:flex-start;margin-top:2px;border:1px dashed #9CCBB1;background:#F3F9F4;color:var(--green,#0C7A46);font-family:Poppins,sans-serif;font-weight:800;font-size:11.5px;padding:5px 11px;border-radius:9px;cursor:pointer;transition:background .14s;}
+.fs-beat-add:hover{background:#EAF6EF;}
+.fs-anglecut{display:flex;align-items:center;gap:6px;margin:8px 0;font-size:11px;font-weight:700;color:#4A4397;}
+.fs-anglecut::before,.fs-anglecut::after{content:"";flex:1;border-top:1px dashed #C6C2EE;}
+.fs-loc-addangle{margin-top:10px;display:inline-flex;align-items:center;gap:6px;border:1px solid #C6C2EE;background:#F3F2FD;color:#4A4397;font-family:Poppins,sans-serif;font-weight:800;font-size:11.5px;padding:6px 12px;border-radius:9px;cursor:pointer;transition:background .14s;}
+.fs-loc-addangle:hover{background:#EEEDFB;}
+.fs-scenecut{display:flex;align-items:center;justify-content:center;gap:7px;margin:3px 0;padding:7px 12px;font-size:11.5px;font-weight:800;color:#8A5A12;background:#FBEFD6;border-radius:10px;}
+.fs-addscene{margin-top:8px;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px dashed #9CCBB1;background:#F3F9F4;color:var(--green,#0C7A46);font-family:Poppins,sans-serif;font-weight:800;font-size:13px;padding:11px;border-radius:14px;cursor:pointer;transition:background .14s,border-color .14s;}
+.fs-addscene:hover{background:#EAF6EF;border-color:var(--green,#0C7A46);}
 `;
