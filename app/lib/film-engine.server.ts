@@ -228,9 +228,11 @@ export interface FilmScene {
    *  change starts a new scene = new master shot + a deliberate cut, cast carried); `shot`
    *  = the camera angle within that location (a change re-frames the master = a cinematic
    *  cut that holds the room + faces). Absent on both → one continuous location (the
-   *  validated seamless behaviour). */
+   *  validated seamless behaviour). `tone` = HOW the line is delivered (the emotion), fed
+   *  to the render so the voice isn't flat/monotone (e.g. "coldly, with quiet menace"). */
   where?: string;
   shot?: string;
+  tone?: string;
 }
 export interface FilmTreatment { title?: string; scenes: FilmScene[]; musicMood: string; cast?: string[] }
 
@@ -244,7 +246,7 @@ const TREATMENT_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        properties: { visual: { type: "string" }, caption: { type: "string" }, where: { type: "string" }, shot: { type: "string" } },
+        properties: { visual: { type: "string" }, caption: { type: "string" }, where: { type: "string" }, shot: { type: "string" }, tone: { type: "string" } },
         required: ["visual"],
       },
     },
@@ -287,11 +289,12 @@ export async function previewFilmTreatment(opts: {
   // Narrated templates want each caption to BE the narrator's spoken line for
   // that beat (a flowing voiceover); others want a short on-screen hook.
   const captionLine = tmpl.dialogue
-    ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FOUR fields:\n` +
+    ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FIVE fields:\n` +
       `• VISUAL — what we SEE: a TWO-SHOT framing BOTH characters together in the place; they STAY put (NO standing up, sitting down, walking, turning away or crossing — big moves make the AI morph faces/clothing); a still, tense TALKING beat with only small gestures and changing expressions; NO readable text, documents, papers, boards, signage or screens in view.\n` +
-      `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot saying 1-2 FULL sentences (a complete beat, ~16-26 words), the speaker ALTERNATING shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names.\n` +
+      `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot saying 1-2 FULL sentences (a complete beat, ~16-26 words — enough to fill the shot with NO dead air), the speaker ALTERNATING shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names. Make each line CONNECT to the one before it (a real reply, not a non-sequitur).\n` +
       `• WHERE — the LOCATION this beat happens in, as a short vivid label (e.g. "a dim old diner at night, rain on the windows").\n` +
       `• SHOT — set this to EXACTLY "wide two-shot" for EVERY beat. Do NOT use close-ups, reverse angles or any other framing — the director adds those by hand later. Every beat in a scene MUST share the same "wide two-shot" so the whole scene plays as ONE seamless, continuous take.\n` +
+      `• TONE — HOW this exact line is delivered: a short emotional direction for the voice (e.g. "coldly, with quiet menace", "voice rising in anger", "quietly, barely holding it together"). It must MATCH the words so the read is never flat or monotone.\n` +
       `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places.\n`
     : tmpl.sung
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes/flows with the others; read in order the captions ARE the song's lyrics.\n`
@@ -343,6 +346,7 @@ export async function previewFilmTreatment(opts: {
     caption: s.caption ? dropOrgEndorsementPossessive(s.caption) : undefined,
     where: typeof s.where === "string" && s.where.trim() ? s.where.trim().slice(0, 120) : undefined,
     shot: typeof s.shot === "string" && s.shot.trim() ? s.shot.trim().slice(0, 60) : undefined,
+    tone: typeof s.tone === "string" && s.tone.trim() ? s.tone.trim().slice(0, 100) : undefined,
   }));
   if (list.length < 1) throw new Error("[film] treatment came back empty");
   const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 4) : undefined;

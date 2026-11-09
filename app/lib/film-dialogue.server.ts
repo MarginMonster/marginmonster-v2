@@ -123,14 +123,28 @@ async function trimTrailingSilence(inPath: string): Promise<string> {
     const err = probe.stderr || "";
     const starts = [...err.matchAll(/silence_start:\s*(-?[\d.]+)/g)].map((m) => parseFloat(m[1]));
     const ends = [...err.matchAll(/silence_end:\s*([\d.]+)/g)].map((m) => parseFloat(m[1]));
+    // LEADING silence: a silence that starts at/near 0 and ends → the actor stands there
+    // before talking, which reads as an awkward pause before the reply. Trim the clip to
+    // start right as the speech does (leave a hair of lead-in). The clip's LAST frame is
+    // unchanged, so the seamless chain is unaffected.
+    let startAt = 0;
+    if (starts.length && starts[0] <= 0.3 && ends.length && ends[0] > 0.35) {
+      startAt = Math.max(0, ends[0] - 0.12);
+    }
+    // Trailing silence = a silence_start that runs to EOF (no later silence_end).
     const lastStart = starts.length ? starts[starts.length - 1] : NaN;
     const lastEnd = ends.length ? ends[ends.length - 1] : NaN;
-    // Trailing silence = a silence_start that runs to EOF (no later silence_end).
     const trailing = !Number.isNaN(lastStart) && (Number.isNaN(lastEnd) || lastEnd < lastStart);
-    if (trailing && lastStart > 1.2 && lastStart < dur - 0.5) {
-      const end = Math.min(dur, lastStart + 0.45);
+    let endAt = dur;
+    if (trailing && lastStart > startAt + 1.0 && lastStart < dur - 0.3) {
+      endAt = Math.min(dur, lastStart + 0.45);
+    }
+    if (startAt > 0.15 || endAt < dur - 0.2) {
       const out = inPath.replace(/\.mp4$/i, "-trim.mp4");
-      const r = await runFfmpeg(["-y", "-i", inPath, "-t", end.toFixed(2), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out]);
+      const args = ["-y", "-i", inPath];
+      if (startAt > 0.15) args.push("-ss", startAt.toFixed(2));
+      args.push("-t", Math.max(0.8, endAt - startAt).toFixed(2), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out);
+      const r = await runFfmpeg(args);
       if (r.status === 0 && fs.existsSync(out) && ffprobeDuration(out) > 0.8) return out;
     }
   } catch { /* keep the original clip */ }
@@ -478,9 +492,15 @@ export async function generateTestMovie(opts: {
     // wrong brother's mouth and the line comes out of the wrong person (owner's bug).
     const sSide = sideFor(speaker);
     const oSide = sSide === "left" ? "right" : sSide === "right" ? "left" : "";
+    // HOW to say it — Veo reads flat unless told the emotion. Use the scripter's per-beat
+    // tone if present, else infer from the words, and hard-ban mumbling + dead air.
+    const tone = (scene.tone || "").trim();
+    const deliver = tone
+      ? `Deliver it ${tone} — put that exact emotion and energy into the voice, expressively, NEVER flat or monotone.`
+      : `Deliver it with the REAL emotion the words carry — an angry line sounds angry, a threat sounds menacing, hurt shows as hurt — with natural intonation and emphasis, NEVER flat or monotone.`;
     const voiceLine = speaker
-      ? `${sSide ? `In this two-shot BOTH people are visible, but the ONLY one who speaks is the person seated on the ${sSide.toUpperCase()} side of the frame — that is ${speaker}. The person on the ${oSide.toUpperCase()} does NOT speak. ` : ""}There is ONLY ONE voice in this entire clip — ${speaker}'s. ${speaker}${sSide ? ` (the person on the ${sSide})` : ""} says this one line, clearly and naturally with accurate lip-sync, and nothing else is spoken: "${line}". ONLY ${speaker}'s mouth moves. The OTHER character${oSide ? ` (the person on the ${oSide})` : ""} is COMPLETELY SILENT the whole time — absolutely no talking, no murmuring, no mumbling, no whispering, no muttering and no background speech of any kind; their mouth stays closed and still, only listening and reacting. Do NOT generate any second voice, murmur, or gibberish anywhere in the clip — one voice only. Keep ${speaker}'s voice natural and the SAME as in every other shot.${speakerVoiceDesc}`
-      : `Exactly ONE voice in the whole clip: one character says this line clearly with accurate lip-sync: "${line}". The other character is completely silent — no talking, murmuring or mumbling at all, mouth closed, only listening.`;
+      ? `${sSide ? `In this two-shot BOTH people are visible, but the ONLY one who speaks is the person on the ${sSide.toUpperCase()} side of the frame — that is ${speaker}. The person on the ${oSide.toUpperCase()} does NOT speak. ` : ""}There is ONLY ONE voice in this entire clip — ${speaker}'s. ${speaker}${sSide ? ` (on the ${sSide})` : ""} says exactly this one line and nothing else: "${line}". ${deliver} Speak CLEARLY and crisply — every word fully articulated and intelligible, no mumbling, slurring or trailing off — BEGIN speaking right away and keep a natural, connected pace with NO long awkward silence, in accurate lip-sync. ONLY ${speaker}'s mouth moves. The OTHER character${oSide ? ` (on the ${oSide})` : ""} is COMPLETELY SILENT the whole time — absolutely no talking, murmuring, mumbling, whispering, muttering or background speech of any kind; their mouth stays closed and still, only listening and reacting. Do NOT generate any second voice, murmur or gibberish anywhere in the clip — one clear voice only. Keep ${speaker}'s voice the SAME as in every other shot.${speakerVoiceDesc}`
+      : `Exactly ONE voice in the whole clip saying this line clearly and expressively (never monotone), every word articulate, no mumbling, beginning right away: "${line}". ${deliver} The other character is completely silent — mouth closed, only listening.`;
     // LIGHT PROMPT — the SEED frame already carries the faces, room and staging, so the
     // prompt only drives the TALKING and tells Veo to HOLD the frame. Re-describing the
     // scene + both characters in text (scene.visual / STAGING / castBible) made Veo redraw

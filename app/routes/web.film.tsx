@@ -254,7 +254,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({ error: tr(lang, "Unknown action.") });
 };
 
-type Scene = { visual: string; caption?: string; where?: string; shot?: string };
+type Scene = { visual: string; caption?: string; where?: string; shot?: string; tone?: string };
 type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: string[] };
 // A locked "actor": one character's reusable face + pinned voice, cast once and
 // reused as the identity reference for every shot they appear in.
