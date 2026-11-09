@@ -396,15 +396,17 @@ export async function generateTestMovie(opts: {
     const speaker = turns.find((t) => t.speaker)?.speaker || "";
     const line = turns.map((t) => t.line).join(" ").replace(/\s+/g, " ").trim();
 
-    // SEED. Every clip seeds from the SAME side-by-side two-shot (both characters
-    // fully in frame), so the two people and the room are identical in every clip by
-    // construction — the speaker just alternates. This is the held two-shot the owner
-    // asked for, and it removes the OTS back-of-head mismatch entirely.
-    // Seed priority: the merchant's APPROVED storyboard frame for this scene (a
-    // deliberate set-piece / establisher wins) → else the shared SIDE-BY-SIDE two-shot
-    // (the default for a two-hander) → else chain from the prior clip's real last frame
-    // → else auto-render a fresh frame.
-    let seedAbs = abs(approvedFrames[i]) || sideShotUrl || abs(prevFrameUrl);
+    // SEED. Clip 0 seeds from the side-by-side MASTER (both characters fully in frame,
+    // cast faces locked). Clips 1+ then CHAIN from the previous clip's REAL last frame,
+    // so each clip CONTINUES exactly where the last ended — the boundary frames are
+    // near-identical, which makes the 0.18s assembly crossfade genuinely invisible and
+    // the clips read as ONE continuous take (owner: make the transitions invisible). The
+    // held two-shot keeps both people + the room identical and each speaker's SIDE fixed,
+    // so chaining doesn't swap seats or re-imagine the set like the old OTS chain did.
+    // Seed priority: the merchant's APPROVED storyboard frame (a deliberate set-piece
+    // wins) → else the prior clip's real last frame (seamless continuity) → else the
+    // side-by-side master (clip 0 / fallback) → else auto-render a fresh frame.
+    let seedAbs = abs(approvedFrames[i]) || abs(prevFrameUrl) || sideShotUrl;
     if (!seedAbs) {
       // Compose the auto-seed from the locked faces of the cast in THIS shot, so the
       // actors look identical from shot to shot (falls back to the group cast ref).
