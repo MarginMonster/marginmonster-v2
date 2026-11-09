@@ -146,7 +146,11 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
   if (!N) throw new Error("[testmovie] no clips");
   const beat = async () => { if (jobId) await checkpointJob(jobId, { ckBeat: Date.now() }); };
   const produced = (): boolean => { try { return fs.existsSync(outPath) && ffprobeDuration(outPath) > 1; } catch { return false; } };
-  const SCALE = "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30";
+  // Trim the bottom ~10% before scaling — a safety net against Veo's stochastic
+  // hallucinated subtitles/captions, which sit along the bottom edge (the prompt ban
+  // reduces but doesn't fully stop them). Heads stay (crop is anchored at the top);
+  // only lower-chest/background is lost, which also tightens the faces slightly.
+  const SCALE = "crop=iw:ih*0.90:0:0,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30";
   const TAIL = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outPath];
 
   // PREFERRED: a short CROSSFADE at each cut (video xfade + audio acrossfade) so the
@@ -209,7 +213,7 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
 // Shared prompt fragments for the dialogue seed frames + Veo clips. Module-scope
 // so the web "preview frame" action renders a WYSIWYG storyboard frame with the
 // SAME prompt the render uses.
-const NO_TEXT = "Absolutely NO on-screen text of any kind: no subtitles, no captions, no titles, and no readable writing on any paper, document, folder, bulletin board, whiteboard, sign, poster or screen anywhere in the frame — keep every surface clean and text-free.";
+const NO_TEXT = "Absolutely NO on-screen text of any kind: no subtitles, no captions, no karaoke text, no titles, no lower-thirds, and no readable writing on any paper, document, folder, bulletin board, whiteboard, sign, poster or screen anywhere in the frame. Do NOT display the spoken dialogue as text, and keep the BOTTOM edge of the frame completely clean and text-free. Every surface is blank.";
 const HOLD_STILL = "The characters STAY in their positions — no standing up, sitting down, walking or crossing the room, only natural small gestures, head turns and talking. Keep every character's face, hair, hairstyle, clothing and wardrobe EXACTLY the same the whole time — no morphing, melting or changing of anyone's appearance.";
 // Keep both faces in the shot (continuity) WITHOUT forcing them into the same
 // space — "two-shot in the room" overrode scenes that place the characters apart
