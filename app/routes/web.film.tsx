@@ -266,9 +266,18 @@ export default function FilmStudio() {
   const [castingIndex, setCastingIndex] = useState<number | null>(null);
   // Build the cast from the treatment's character list: parse a name, keep the
   // description, and auto-pick a gender-appropriate voice the merchant can change.
+  // The SPEAKING name — the single word the captions use (e.g. "Dominic" from
+  // "Chef Dominic Kane, a tall…"). Strip a leading title so the cast name matches
+  // the caption's speaker by first token (the engine + flow both key off that).
+  const TITLE_WORD = /^(chef|dr|doctor|mr|mrs|ms|miss|sir|madam|officer|detective|det|captain|capt|sergeant|sgt|professor|prof|coach|agent|father|mother|aunt|uncle|grandma|grandpa|king|queen|prince|princess|lord|lady|sister|brother|nurse|judge|mayor|pastor|reverend|rev)\.?$/i;
+  const speakName = (entry: string) => {
+    const head = (entry.split(/[,:—–]/)[0] || entry).trim();
+    const words = head.split(/\s+/).filter(Boolean);
+    return ((words.find((w) => !TITLE_WORD.test(w)) || words[0] || head) || "").slice(0, 40);
+  };
   const deriveCast = (tr2: Treatment): CastMember[] =>
     (Array.isArray(tr2.cast) ? tr2.cast : []).slice(0, 8).map((entry) => {
-      const name = ((entry.split(/[,:—–-]/)[0] || entry).trim() || entry).slice(0, 60);
+      const name = speakName(entry) || entry.slice(0, 40);
       const low = entry.toLowerCase();
       const fem = /\b(she|her|hers|woman|women|girl|mother|mom|mum|daughter|sister|lady|businesswoman|actress|queen|wife|aunt|grandmother|female)\b/.test(low);
       const masc = /\b(he|him|his|man|men|boy|father|dad|son|brother|guy|businessman|actor|king|husband|uncle|grandfather|male)\b/.test(low);
