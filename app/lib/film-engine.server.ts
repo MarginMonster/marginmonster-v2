@@ -162,12 +162,12 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     castBible: true,
     referenceSeed: true,
     narrated: true,
-    live: true,
+    live: false, // removed from the picker (owner 11-09) — engine def kept for old assets
   },
   testmovie: {
     key: "testmovie",
-    name: "Test Movie",
-    brief: "a SHORT FILM SCENE with real CHARACTER DIALOGUE — a tiny cast talking to each other with tension and a turn, in ONE continuous location (the experiment: characters actually SPEAK, and the shots chain together so it flows)",
+    name: "Short Film",
+    brief: "a cinematic SHORT FILM where your cast actually SPEAKS real dialogue to each other — scene by scene, with seamless flow and real emotion. The flagship movie maker.",
     sceneHint: "a cinematic, photorealistic live-action film scene — natural lighting, filmic composition, real-looking people; a clean, uncluttered set with NO readable text, documents, papers, bulletin boards, signage, posters or screens visible",
     musicHint: "subtle cinematic underscore",
     defaultScenes: 2,
@@ -190,7 +190,7 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     captions: false,
     castBible: true,
     dialogue: true,
-    live: true,
+    live: false, // Dialogue·Actors removed from the picker (owner 11-09) — dead-end experiment
   },
   skit: {
     key: "skit",
@@ -204,11 +204,9 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     captions: true,
     castBible: true,
     needsProduct: true,
-    // TEMP live on the Film tab: Skit's marketing re-home (its own /web/skit entry,
-    // per the owner's "Skit → social marketing" call) is a separate push. Flipping
-    // this to false NOW would leave Skit unreachable with no home, so it stays here
-    // until the marketing entry ships. Engine + product path are ready either way.
-    live: true,
+    // Removed from the Film picker (owner 11-09). Engine + product path stay ready for a
+    // future marketing re-home (its own /web/skit entry); just off the Movie Maker grid.
+    live: false,
   },
   // Planned — the engine drives it generically; out of the picker until wired.
   youtube: { key: "youtube", name: "YouTube Video", brief: "a long-form narrative YouTube video with a hook, body and payoff", sceneHint: "a clear, engaging cinematic scene", musicHint: "upbeat background music", defaultScenes: 10, minScenes: 6, maxScenes: 40, captions: true, live: false },

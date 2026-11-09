@@ -570,7 +570,7 @@ export async function generateTestMovie(opts: {
       shopId: opts.shopId,
       type: "VIDEO_AD",
       status: "PENDING",
-      title: `Test Movie — ${(treatment.title || opts.topic || "dialogue test").slice(0, 60)}`,
+      title: `Short Film — ${(treatment.title || opts.topic || "dialogue scene").slice(0, 60)}`,
       bodyJson: JSON.stringify({ style: "TESTMOVIE", videoUrl: storedUrl, prompt: opts.topic || "", treatment }),
       metaJson: JSON.stringify({ kind: "testmovie", template: tmpl.key, section: opts.section || "creator", scenes: clips.length, aspect: "vertical", engine: dialogueEngine }),
     },

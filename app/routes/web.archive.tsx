@@ -85,7 +85,7 @@ function recipeLabel(metaJson: string | null, bodyJson: string | null): string |
   // can tell Veo from Kling at a glance when judging the same scene across models.
   if (meta.kind === "testmovie" || body.style === "TESTMOVIE") {
     const eng = typeof meta.engine === "string" ? meta.engine : "veo";
-    return `Test Movie · ${eng === "kling3" ? "Kling" : "Veo"}`;
+    return `Short Film · ${eng === "kling3" ? "Kling" : "Veo"}`;
   }
   const method = typeof body.method === "string" ? body.method : "";
   const m = method.match(/^(format|template|template-staged|template-fallback):(.+)$/);
