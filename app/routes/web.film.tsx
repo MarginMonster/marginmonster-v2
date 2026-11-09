@@ -668,7 +668,7 @@ export default function FilmStudio() {
                               const side = !!speakerNames[1] && firstTok(b.speaker) === firstTok(speakerNames[1]) ? "right" : "left";
                               const secs = estimateSpeakSeconds(b.line);
                               const over = secs > CLIP_MAX_SECONDS;
-                              const meterState = over ? "over" : secs > CLIP_MAX_SECONDS * 0.8 ? "warn" : "";
+                              const meterState = over ? "over" : secs > CLIP_MAX_SECONDS * 0.92 ? "warn" : "";
                               return (
                                 <div className={`fs-msg ${side}`} key={b.idx}>
                                   <span className="fs-msg-face" title={b.speaker} style={f ? { backgroundImage: `url(${f})` } : undefined}>{!f && (b.speaker || "?").slice(0, 1).toUpperCase()}</span>
