@@ -37,13 +37,6 @@ const VEO_POLL_MS = 10 * 60_000;
 // trade cost/time for quality here. fal veo3.1 → Replicate google/veo-3 fallback.
 const FAL_VEO = "fal-ai/veo3.1/image-to-video";
 const REP_VEO = "google/veo-3";
-// Kling 3.0 Omni — the SWAPPABLE Test Movie dialogue engine (owner A/B vs Veo,
-// 11-06). Native lip-synced speech in image-to-video, up to 15s, so one shot holds
-// a longer exchange with fewer cuts/less drift. fal v3 Pro → Replicate omni
-// fallback. Also the migration target for Veo 3.1's fal deprecation (Nov 17 2026).
-const FAL_KLING3 = "fal-ai/kling-video/v3/pro/image-to-video";
-const REP_KLING3 = "kwaivgi/kling-v3-omni-video";
-const KLING_DUR = 10; // seconds per talking clip (3-15); ~2x a Veo beat
 
 /** Parse a caption into ordered { speaker, line } turns. A shot is normally ONE
  *  speaker ("NAME: the line"), but this stays robust if the writer runs extra
@@ -81,23 +74,6 @@ async function veoDialogueClip(seedAbs: string, prompt: string, stage: string): 
     }
   }
   const id = await repCreate(REP_VEO, { prompt, image: seedAbs, aspect_ratio: "9:16", generate_audio: true });
-  return await repPoll(id, VEO_POLL_MS, stage);
-}
-
-/** A Kling 3.0 Omni clip where the character SPEAKS (native lip-synced audio). The
- *  swappable alternative to veoDialogueClip: a longer beat (KLING_DUR) seeded from
- *  the SAME still, so the only variable in the A/B is the engine. fal v3 Pro →
- *  Replicate omni fallback. Returns the clip URL. */
-async function klingDialogueClip(seedAbs: string, prompt: string, stage: string): Promise<string> {
-  if (falEnabled()) {
-    try {
-      const rid = await falVideoSubmit(FAL_KLING3, { startImage: seedAbs, prompt, generateAudio: true, durationSec: KLING_DUR });
-      return await falVideoPoll(FAL_KLING3, rid, VEO_POLL_MS);
-    } catch (e) {
-      console.error(`[testmovie] fal kling3 failed, trying Replicate: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
-    }
-  }
-  const id = await repCreate(REP_KLING3, { prompt, start_image: seedAbs, duration: KLING_DUR, generate_audio: true, aspect_ratio: "9:16", mode: "pro" });
   return await repPoll(id, VEO_POLL_MS, stage);
 }
 
@@ -171,12 +147,7 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
   const beat = async () => { if (jobId) await checkpointJob(jobId, { ckBeat: Date.now() }); };
   const produced = (): boolean => { try { return fs.existsSync(outPath) && ffprobeDuration(outPath) > 1; } catch { return false; } };
   const SCALE = "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30";
-  // Cinematic finish on the final cut (owner: "the cinematic touch is even more fire"):
-  // a light grade (gentle contrast + slight desaturation + a touch darker), a soft
-  // vignette, and fine FILM GRAIN — the research's "reads like real film stock, not AI"
-  // lever. Subtle on purpose; grain costs bitrate so crf is nudged 21→23 to compensate.
-  const GRADE = "eq=contrast=1.05:saturation=0.95:gamma=0.985,vignette=PI/6.5,noise=alls=5:allf=t";
-  const TAIL = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outPath];
+  const TAIL = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outPath];
 
   // PREFERRED: a short CROSSFADE at each cut (video xfade + audio acrossfade) so the
   // clip change reads as a smooth dissolve, not a clunky hard jump. Because clip N is
@@ -203,8 +174,7 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
       f.push(`[${aPrev}][a${i}]acrossfade=d=${FADE}[${aOut}]`);
       vPrev = vOut; aPrev = aOut; running = running + durs[i] - FADE;
     }
-    f.push(`[vc]${GRADE}[vg]`);
-    return [...a, "-filter_complex", f.join(";"), "-map", "[vg]", "-map", "[ac]", ...TAIL];
+    return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", "-map", "[ac]", ...TAIL];
   };
 
   // FALLBACK: plain hard-cut concat. Degrade ladder: with audio → silent.
@@ -218,12 +188,10 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
     });
     if (useAudio) {
       f.push(`${clips.map((_, i) => `[v${i}][a${i}]`).join("")}concat=n=${N}:v=1:a=1[vc][ac]`);
-      f.push(`[vc]${GRADE}[vg]`);
-      return [...a, "-filter_complex", f.join(";"), "-map", "[vg]", "-map", "[ac]", ...TAIL];
+      return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", "-map", "[ac]", ...TAIL];
     }
     f.push(`${clips.map((_, i) => `[v${i}]`).join("")}concat=n=${N}:v=1:a=0[vc]`);
-    f.push(`[vc]${GRADE}[vg]`);
-    return [...a, "-filter_complex", f.join(";"), "-map", "[vg]", ...TAIL];
+    return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", ...TAIL];
   };
 
   await beat();
@@ -321,12 +289,6 @@ export async function generateTestMovie(opts: {
    *  present in it (locked identity), and the speaker's voice timbre is pinned into
    *  the Veo prompt so the voice stays consistent across shots. */
   cast?: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }>;
-  /** Which dialogue clip engine renders the shots. "veo" (default, absent) = the
-   *  shipped Veo-3 path, byte-for-byte untouched. "kling3" = Kling 3.0 Omni (owner
-   *  A/B, 11-06): longer talking beats + native lip-sync. Everything else —
-   *  treatment, cast, seeds, shot/reverse panels, seamless chain, assembly — is
-   *  identical; ONLY the clip render swaps, so the comparison isolates the engine. */
-  dialogueEngine?: "veo" | "kling3";
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
   const jobId = opts.jobId;
@@ -348,14 +310,14 @@ export async function generateTestMovie(opts: {
   const castBible = treatment.cast && treatment.cast.length ? `The recurring cast (keep them identical in every shot): ${treatment.cast.join("; ")}.` : "";
   // Locked cast (faces + voices) the merchant cast in the UI — drives per-shot
   // identity conditioning and the Veo voice pin.
-  let castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
+  const castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
 
   // 2) CAST REFERENCE still (photoreal) — establishes the characters' look; the
   //    first scene seeds from it, then the chain carries continuity.
   let castRefAbs = abs(resume.ckCastRef);
   if (!castRefAbs && castBible) {
     try {
-      const ref = await renderCreativeSeed(`${treatment.scenes[0]?.visual || ""}. ${tmpl.sceneHint}. A photorealistic establishing wide shot of the characters together IN THIS EXACT LOCATION, showing the real setting and background around them, clear faces, cinematic. ${castBible}`, "9:16");
+      const ref = await renderCreativeSeed(`${tmpl.sceneHint}. A photorealistic group shot of the characters together in the scene, clear faces, cinematic. ${castBible}`, "9:16");
       if (ref) { await ckpt({ ckCastRef: ref }); castRefAbs = abs(ref); }
     } catch { /* fall through to text seeds */ }
   }
@@ -369,20 +331,6 @@ export async function generateTestMovie(opts: {
   //     speakers; anything else falls back to the existing chain untouched.
   const firstName = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
-  // LOCK FACES — the one thing that actually held identity. When the merchant didn't lock a
-  // cast, generate ONE portrait per speaker from the treatment's cast bible and reuse it as
-  // that character's face reference: it feeds the two-panel (faceA/faceB) and each clip's
-  // seed. This is the ONLY addition on top of the clean baseline — nothing else is changed.
-  if (!castActors.length && allSpeakers.length === 2 && (treatment.cast || []).length) {
-    const made: typeof castActors = [];
-    for (const nm of allSpeakers) {
-      const bible = (treatment.cast || []).find((c) => c.toLowerCase().includes(firstName(nm))) || `${nm}, a person`;
-      let face: string | null = null;
-      try { face = await renderActorPortrait(bible); } catch { /* portrait optional — falls back to text identity */ }
-      made.push({ name: nm, faceUrl: face, voiceId: null });
-    }
-    castActors = made;
-  }
   let panelFor: ((speaker: string) => string | undefined) | null = null;
   if (allSpeakers.length === 2) {
     const [a, b] = allSpeakers;
@@ -479,9 +427,7 @@ export async function generateTestMovie(opts: {
       `${voiceLine} ${castBible} ${HOLD_STILL} ` +
       `Photorealistic live-action film, cinematic lighting, shallow depth of field, clean natural spoken-dialogue audio. ${NO_TEXT}`;
 
-    const clipUrl = opts.dialogueEngine === "kling3"
-      ? await klingDialogueClip(seedAbs, prompt, `testmovie-${i}`)
-      : await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
+    const clipUrl = await veoDialogueClip(seedAbs, prompt, `testmovie-${i}`);
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, rawPath);
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
