@@ -348,7 +348,7 @@ export async function generateTestMovie(opts: {
   const castBible = treatment.cast && treatment.cast.length ? `The recurring cast (keep them identical in every shot): ${treatment.cast.join("; ")}.` : "";
   // Locked cast (faces + voices) the merchant cast in the UI — drives per-shot
   // identity conditioning and the Veo voice pin.
-  const castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
+  let castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
 
   // 2) CAST REFERENCE still (photoreal) — establishes the characters' look; the
   //    first scene seeds from it, then the chain carries continuity.
@@ -369,6 +369,20 @@ export async function generateTestMovie(opts: {
   //     speakers; anything else falls back to the existing chain untouched.
   const firstName = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
+  // LOCK FACES — the one thing that actually held identity. When the merchant didn't lock a
+  // cast, generate ONE portrait per speaker from the treatment's cast bible and reuse it as
+  // that character's face reference: it feeds the two-panel (faceA/faceB) and each clip's
+  // seed. This is the ONLY addition on top of the clean baseline — nothing else is changed.
+  if (!castActors.length && allSpeakers.length === 2 && (treatment.cast || []).length) {
+    const made: typeof castActors = [];
+    for (const nm of allSpeakers) {
+      const bible = (treatment.cast || []).find((c) => c.toLowerCase().includes(firstName(nm))) || `${nm}, a person`;
+      let face: string | null = null;
+      try { face = await renderActorPortrait(bible); } catch { /* portrait optional — falls back to text identity */ }
+      made.push({ name: nm, faceUrl: face, voiceId: null });
+    }
+    castActors = made;
+  }
   let panelFor: ((speaker: string) => string | undefined) | null = null;
   if (allSpeakers.length === 2) {
     const [a, b] = allSpeakers;
