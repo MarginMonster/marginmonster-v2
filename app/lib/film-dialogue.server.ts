@@ -508,12 +508,15 @@ export async function generateTestMovie(opts: {
   // Chaining from each clip's last frame gives seamless cuts but lets faces (esp. facial
   // hair) DRIFT over a long film. Re-anchor to the pristine master after this many chained
   // clips so drift can't accumulate (owner: "mustache disappearing and reappearing").
-  // Owner's call: push the re-anchor FARTHER apart (Kling holds faces far better than Veo
-  // did, so drift accumulates slower) AND render each re-anchor as an intentional CAMERA-
-  // ANGLE change, so the drift-reset reads as a deliberate cut to a new camera rather than a
-  // snap back to the same frame. softSeams = clip indices whose seam-before is a reframe
-  // (location / angle / re-anchor) → the assembler gives those a longer, softer dissolve.
-  const ANCHOR_EVERY = 3;
+  // Owner's call ("make the anchors far apart and see what happens"): a 42s / 5-clip film
+  // held faces with ZERO drift fully chained (contact-sheet verified) — Kling just doesn't
+  // melt faces the way Veo did, so even dressed up as an angle change the re-anchor was
+  // still reading as a snag (owner graded it 8/10, "transitions the remaining snags"). Push
+  // it PAST the max film length so a normal short film (<=5 scenes) NEVER re-anchors — every
+  // cut becomes the invisible CHAINED type the owner already graded "fire", and the reframe
+  // snag simply never happens. The intentional-angle re-anchor below stays only as a drift
+  // safety for an unusually long (6+ clip) film. softSeams = user location/angle reframes.
+  const ANCHOR_EVERY = 4;
   const ANCHOR_ANGLES = [
     "a slightly tighter two-shot",
     "a medium two-shot from a subtly lower angle",
