@@ -337,12 +337,12 @@ export async function generateTestMovie(opts: {
    *  the Veo prompt so the voice stays consistent across shots. */
   cast?: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }>;
   /** Which renderer runs the dialogue clips — the ONE thing that differs between the
-   *  otherwise-identical engine pipelines. "veo" (default, premium) or "kling3" (cheaper,
+   *  otherwise-identical engine pipelines. "kling3" (default, cheaper) or "veo" (premium,
    *  native audio). Recorded on the asset so the Archive shows which model made the film. */
   dialogueEngine?: "veo" | "kling3";
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
-  const dialogueEngine = opts.dialogueEngine === "kling3" ? "kling3" : "veo";
+  const dialogueEngine = opts.dialogueEngine === "veo" ? "veo" : "kling3";
   const jobId = opts.jobId;
   const resume = opts.resume || {};
   const approvedFrames = opts.approvedFrames || [];

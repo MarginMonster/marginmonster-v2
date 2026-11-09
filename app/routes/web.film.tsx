@@ -218,9 +218,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       } catch { /* ignore malformed */ }
     }
-    // Swappable dialogue engine (Test Movie A/B): "kling3" renders on Kling 3.0 Omni;
-    // absent keeps the default Veo path. Only Test Movie reads it downstream.
-    const dialogueEngine = ((form.get("dialogueEngine") as string) || "").trim();
+    // Swappable render engine (Test Movie): Kling 3 Omni is the DEFAULT (owner A/B win —
+    // cheaper, quality held); "veo" switches to premium Veo 3. Only Test Movie reads it.
+    const dialogueEngine = ((form.get("dialogueEngine") as string) || "").trim() === "veo" ? "veo" : "kling3";
     const cost = estimateFilmTokens(scenes);
 
     let unbacked = 0, unbackedFromExtra = 0;
@@ -233,7 +233,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         approvedTreatment,
         ...(approvedFrames ? { approvedFrames } : {}),
         ...(cast ? { cast } : {}),
-        ...(dialogueEngine === "kling3" ? { dialogueEngine: "kling3" } : {}),
+        dialogueEngine,
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
         productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
         prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
@@ -319,7 +319,7 @@ export default function FilmStudio() {
   // Test Movie can render its spoken dialogue on either engine: Veo (default,
   // short cinematic beats) or Kling 3 Omni (longer single takes, native lip-sync).
   // Only submitted for testmovie; the action ignores it for every other template.
-  const [dialogueEngine, setDialogueEngine] = useState<"veo" | "kling3">("veo");
+  const [dialogueEngine, setDialogueEngine] = useState<"veo" | "kling3">("kling3");
   const [topic, setTopic] = useState("");
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
@@ -812,11 +812,11 @@ export default function FilmStudio() {
             <div className="fs-engine-seg">
               <button type="button" className={`fs-engine-opt${dialogueEngine === "veo" ? " on" : ""}`}
                 aria-pressed={dialogueEngine === "veo"} onClick={() => setDialogueEngine("veo")}>
-                {t("Veo 3")}<small>{t("premium · default")}</small>
+                {t("Veo 3")}<small>{t("premium")}</small>
               </button>
               <button type="button" className={`fs-engine-opt${dialogueEngine === "kling3" ? " on" : ""}`}
                 aria-pressed={dialogueEngine === "kling3"} onClick={() => setDialogueEngine("kling3")}>
-                {t("Kling 3")}<small>{t("cheaper · native audio")}</small>
+                {t("Kling 3")}<small>{t("cheaper · default")}</small>
               </button>
             </div>
             <p className="fs-engine-note">{t("Same film, different AI. Run both and compare — each is tagged by model in your Archive.")}</p>

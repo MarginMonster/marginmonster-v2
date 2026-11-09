@@ -793,8 +793,9 @@ async function runJob(
             approvedFrames: payload.approvedFrames as (string | null)[] | undefined,
             // Locked cast (face + voice per character) the merchant cast in the UI.
             cast: payload.cast as Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }> | undefined,
-            // Swappable renderer: "kling3" runs the identical pipeline on Kling 3 Omni.
-            dialogueEngine: payload.dialogueEngine === "kling3" ? "kling3" : undefined,
+            // Swappable renderer: Kling 3 Omni is the DEFAULT (owner A/B win); "veo"
+            // switches to premium Veo 3. Identical pipeline either way.
+            dialogueEngine: payload.dialogueEngine === "veo" ? "veo" : "kling3",
           });
         } else if ((payload.filmTemplate as string | undefined) === "avatardialogue") {
           // ISOLATED audio-driven pipeline — locked actors + fixed voices (HeyGen).
