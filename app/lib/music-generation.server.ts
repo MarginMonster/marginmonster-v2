@@ -115,7 +115,9 @@ export async function musicBedToDisk(prompt: string): Promise<string> {
  *  track, not an instrumental bed. Falls back to music-01. Throws on total
  *  failure so the caller can fall back to musicBedToDisk. */
 export async function singToDisk(lyrics: string, stylePrompt: string): Promise<string> {
-  const clean = (lyrics || "").trim().slice(0, 600);
+  // Up to a full ~2-minute song's worth of lyrics (music video). Short jingles stay
+  // well under this; minimax music-1.5 scales the song length to the lyric length.
+  const clean = (lyrics || "").trim().slice(0, 1800);
   if (!clean) throw new Error("[sing] no lyrics");
   const attempts: Array<{ model: string; input: Record<string, unknown> }> = [
     { model: "minimax/music-1.5", input: { lyrics: clean, prompt: stylePrompt || "catchy upbeat song with clear vocals" } },

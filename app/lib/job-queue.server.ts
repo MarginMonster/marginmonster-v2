@@ -788,7 +788,24 @@ async function runJob(
         // generateFilm only still serves legacy narrated/sung-over-stills (non-dialogue) ones.
         const { filmTemplate: ftLookup } = await import("./film-engine.server");
         const isDialogueFilm = !!ft && !!ftLookup(ft).dialogue;
-        if (ft === "testprocess" || isDialogueFilm) {
+        const isLipSyncMusicVideo = !!ft && !!ftLookup(ft).lipSyncSinger;
+        if (isLipSyncMusicVideo) {
+          // ISOLATED lip-sync Music Video engine: full genre song + OmniHuman singer.
+          const { generateMusicVideo } = await import("./music-video-pipeline.server");
+          filmAssetId = await generateMusicVideo({
+            shopId,
+            topic: (payload.filmTopic as string) || (payload.topic as string) || "",
+            genre: payload.filmGenre as string | undefined,
+            sceneCount: typeof payload.filmScenes === "number" ? payload.filmScenes : undefined,
+            section: (payload.section as string) || "creator",
+            jobId: payload.__jobId as string | undefined,
+            resume: {
+              ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
+              ckSong: payload.ckSong as string | undefined,
+              ckArtist: payload.ckArtist as string | undefined,
+            },
+          });
+        } else if (ft === "testprocess" || isDialogueFilm) {
           // ISOLATED dialogue experiments — their own engine; generateFilm untouched.
           // "testprocess" = the hybrid lip-sync pipeline (silent performed shot + cast-voice
           // TTS + sync-3 on the speaker); "testmovie" = the Veo-native path, unchanged.

@@ -27,10 +27,11 @@ export const meta: MetaFunction = () => [{ title: "Film Studio · EASYMODE" }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
-  const { LIVE_FILM_TEMPLATES } = await import("../lib/film-engine.server");
+  const { LIVE_FILM_TEMPLATES, GENRES } = await import("../lib/film-engine.server");
   const templates = LIVE_FILM_TEMPLATES.map((t) => ({
-    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue,
+    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger,
   }));
+  const genres = Object.entries(GENRES).map(([key, g]) => ({ key, label: g.label }));
   // The merchant's own catalogue — only products WITH a photo can seed a skit.
   const products = (await db.catalogProduct.findMany({
     where: { shopId: shop.id, imageUrl: { not: null } },
@@ -71,6 +72,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     canFilm: capabilitiesFor(shop.activePlan).has("creatorvideo"),
     outputLang: normalizeContentLang(shop.contentLang),
     templates,
+    genres,
     products,
     gallery,
     voices: AVATAR_VOICES.map((v) => ({ id: v.id, label: v.label, blurb: v.blurb, gender: v.gender })),
@@ -106,8 +108,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // FREE — write/re-write the treatment as plain text (no token spend).
   if (intent === "previewFilmTreatment") {
     const scenes = clampScenes(parseInt((form.get("filmScenes") as string) || "", 10) || tmpl.defaultScenes);
+    const genre = ((form.get("filmGenre") as string) || "").trim();
     try {
-      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, productTitle, productDescription });
+      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, productTitle, productDescription, genre });
       return json({ treatment });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't write that treatment — give it another go, or tweak the premise a little (for Horror, a spookier / less-graphic angle writes more reliably)."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
@@ -224,6 +227,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const dialogueEngine = ((form.get("dialogueEngine") as string) || "").trim() === "veo" ? "veo" : "kling3";
     const filmAspectRaw = ((form.get("filmAspect") as string) || "").trim();
     const filmAspect = filmAspectRaw === "16:9" || filmAspectRaw === "1:1" ? filmAspectRaw : "9:16";
+    // Music Video genre (rap/pop/rock/rnb/country) — only the lip-sync Music Video reads it.
+    const filmGenre = ((form.get("filmGenre") as string) || "").trim();
     const cost = estimateFilmTokens(scenes);
 
     let unbacked = 0, unbackedFromExtra = 0;
@@ -236,6 +241,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         approvedTreatment,
         ...(approvedFrames ? { approvedFrames } : {}),
         ...(cast ? { cast } : {}),
+        ...(filmGenre ? { filmGenre } : {}),
         dialogueEngine, filmAspect,
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
         productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
@@ -324,6 +330,8 @@ export default function FilmStudio() {
   // Only submitted for testmovie; the action ignores it for every other template.
   const [dialogueEngine, setDialogueEngine] = useState<"veo" | "kling3">("kling3");
   const [filmAspect, setFilmAspect] = useState<"9:16" | "16:9" | "1:1">("16:9");
+  // Music Video genre (lip-sync lane only) — drives the song + the artist/settings.
+  const [filmGenre, setFilmGenre] = useState<string>(d.genres?.[0]?.key || "rap");
   const [topic, setTopic] = useState("");
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
@@ -384,7 +392,7 @@ export default function FilmStudio() {
   };
   const writeTreatment = () => {
     treatmentFetcher.submit(
-      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc },
+      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc },
       { method: "post" }
     );
   };
@@ -704,8 +712,22 @@ export default function FilmStudio() {
         </div>
       ) : (
         <div className="fs-card">
-          <div className="fs-lbl"><span className="fs-n">2</span> {t("Write the treatment")} <span className="fs-free">{t("free")}</span></div>
-          <p className="fs-hint">{t("We draft every scene + the hook. Read it, tweak the lines, re-roll — no tokens spent until you Generate.")}</p>
+          {tmpl?.lipSyncSinger && (
+            <div className="fs-genrebox">
+              <div className="fs-lbl"><Ico n="music" size={16} /> {t("Genre")} <span className="fs-free">{t("sets the song + the look")}</span></div>
+              <p className="fs-hint">{t("One artist sings a full ~2-minute song and performs it on camera across your scenes.")}</p>
+              <div className="fs-genres">
+                {(d.genres || []).map((gr) => (
+                  <button type="button" key={gr.key} className={`fs-genre${filmGenre === gr.key ? " on" : ""}`}
+                    aria-pressed={filmGenre === gr.key} onClick={() => { setFilmGenre(gr.key); setTreatment(null); }}>
+                    {t(gr.label)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="fs-lbl"><span className="fs-n">2</span> {tmpl?.lipSyncSinger ? t("Write the song") : t("Write the treatment")} <span className="fs-free">{t("free")}</span></div>
+          <p className="fs-hint">{tmpl?.lipSyncSinger ? t("We write the full song + the scenes. Read the lyrics, re-roll — no tokens until you Generate.") : t("We draft every scene + the hook. Read it, tweak the lines, re-roll — no tokens spent until you Generate.")}</p>
           <button type="button" className="fs-write" onClick={writeTreatment} disabled={writing || !productReady}>
             {writing ? <>… {t("Writing")}</> : treatment ? <><Ico n="refresh" size={14} /> {t("Randomize")}</> : <><Ico n="wand" size={14} /> {t("Write the treatment — free")}</>}
           </button>
@@ -858,6 +880,7 @@ export default function FilmStudio() {
           <input type="hidden" name="template" value={template} />
           {isStoryboard && <input type="hidden" name="dialogueEngine" value={dialogueEngine} />}
           {isStoryboard && <input type="hidden" name="filmAspect" value={filmAspect} />}
+          {tmpl?.lipSyncSinger && <input type="hidden" name="filmGenre" value={filmGenre} />}
           <input type="hidden" name="filmTopic" value={topic} />
           <input type="hidden" name="filmScenes" value={String(scenes)} />
           {tmpl?.needsProduct && <input type="hidden" name="filmProductTitle" value={prodTitle} />}
@@ -921,6 +944,11 @@ const FS_STYLE = `
 .fs-card{background:linear-gradient(180deg,#fff,#FDFCF8);border:1px solid var(--line,#E4DFCF);border-radius:20px;padding:18px 20px;margin:14px 0;box-shadow:0 2px 4px rgba(20,32,26,.03),0 14px 32px rgba(20,32,26,.05);}
 .fs-go-card{border-color:transparent;box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 18px 40px rgba(12,122,70,.12);}
 /* Dialogue-engine picker (Test Movie only) — a compact segmented control. */
+.fs-genrebox{margin:0 0 16px;padding:0 0 15px;border-bottom:1px solid var(--line,#E4DFCF);}
+.fs-genres{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0;}
+.fs-genre{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:999px;padding:8px 15px;cursor:pointer;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:var(--ink,#14201A);transition:background .15s,border-color .15s,color .15s,transform .1s;}
+.fs-genre:hover{border-color:var(--green,#0C7A46);}
+.fs-genre.on{background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);color:#fff;}
 .fs-engine{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px;}
 .fs-engine-cap{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
 .fs-engine-note{flex:1 1 100%;font-size:11.5px;color:var(--ink2,#4A554E);margin:4px 0 0;line-height:1.4;}

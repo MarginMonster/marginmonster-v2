@@ -90,25 +90,44 @@ export interface FilmTemplate {
   /** The characters SING their lines (music video) instead of speaking them —
    *  the clip + voice prompts ask for lip-synced singing with a melody. */
   sing?: boolean;
+  /** LIP-SYNC MUSIC VIDEO (adult Music Video): a FULL ~2-min genre song (one
+   *  coherent minimax track), ONE consistent artist, and OmniHuman lip-syncs the
+   *  artist to the song across several settings. Routed to generateMusicVideo —
+   *  a dedicated engine; generateFilm never sees it. Picks a GENRE (see GENRES). */
+  lipSyncSinger?: boolean;
   /** Whether this template is wired end-to-end on the FILM TAB (route offers
    *  these). Skit lives in the marketing flow instead, so it is false here. */
   live: boolean;
 }
 
+/** Music-video GENRES — each maps to the sung-song STYLE (fed to minimax) and a
+ *  VISUAL VIBE (fed to the artist + scene seeds). The user picks one per video;
+ *  the picker on the Film tab offers these. Keys are stable; labels are shown. */
+export const GENRES: Record<string, { label: string; song: string; look: string }> = {
+  rap:    { label: "Rap / Hip-Hop", song: "hard-hitting modern hip-hop / rap, punchy 808 bass, crisp trap hi-hats, rhythmic confident rapped vocals with attitude", look: "bold urban hip-hop music-video energy — city streets, night neon, luxury cars, chains and streetwear, dramatic contrast lighting, swagger" },
+  pop:    { label: "Pop / Dance / EDM", song: "catchy mainstream pop / dance-pop with an EDM drop, bright synths, four-on-the-floor beat, big sing-along chorus, polished radio vocals", look: "glossy high-energy pop music-video — colorful studio lights, confetti, dance floor, vibrant saturated colors, stylish fashion" },
+  rock:   { label: "Rock / Punk / Alt", song: "driving alt-rock / punk, distorted electric guitars, live drums, raw energetic vocals with attitude", look: "gritty alt-rock music-video — garage or warehouse stage, moody industrial setting, leather and denim, dramatic hard lighting, raw edgy quirky energy" },
+  rnb:    { label: "R&B / Soul / Afrobeats", song: "smooth soulful R&B with an Afrobeats groove, warm bass, laid-back percussion, silky emotive vocals and harmonies", look: "warm stylish R&B music-video — golden-hour light, elegant interiors, rich color grade, smooth confident vibe, tasteful fashion" },
+  country:{ label: "Country", song: "heartfelt modern country, acoustic and slide guitar, warm storytelling vocals, catchy singalong chorus", look: "warm Americana country music-video — open fields, pickup truck, sunset, rustic barn, denim and boots, golden natural light" },
+};
+export const GENRE_KEYS = Object.keys(GENRES);
+export function genreOrDefault(k: string | undefined): string { return (k && GENRES[k]) ? k : "rap"; }
+
 export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
   musicvideo: {
     key: "musicvideo",
     name: "Music Video",
-    brief: "a MUSIC VIDEO with a real catchy sung song — one consistent artist performs it across vivid, beat-matched scenes",
-    sceneHint: "a vivid, cinematic, stylized music-video scene full of energy and mood, featuring the SAME artist performing — dynamic lighting, strong composition; NO on-screen text, logos or real named people",
-    musicHint: "an original catchy upbeat pop song with clear sung vocals, music-video energy",
-    defaultScenes: 6,
-    minScenes: 4,
-    maxScenes: 24,
-    captions: true,
+    brief: "a full ~2-minute MUSIC VIDEO — ONE artist actually sings a real genre song on camera (lip-synced) across several vivid settings, like a real DaBaby / Oliver Tree video",
+    sceneHint: "a vivid, cinematic, stylized music-video scene full of energy and mood, featuring the SAME artist performing to camera — dynamic lighting, strong composition; NO on-screen text, logos or real named people",
+    musicHint: "a catchy full-length genre song with clear sung/rapped vocals, real music-video energy",
+    defaultScenes: 5,
+    minScenes: 3,
+    maxScenes: 8,
+    captions: false, // a performance music video, not a lyric/karaoke video
     castBible: true,
     referenceSeed: true,
     sung: true,
+    lipSyncSinger: true,
     live: true,
   },
   kidstv: {
@@ -299,10 +318,18 @@ export async function previewFilmTreatment(opts: {
   contentLang?: string | null;
   productTitle?: string;
   productDescription?: string;
+  /** Music Video genre (rap/pop/rock/rnb/country) — flavours the song + visuals. */
+  genre?: string;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const scenes = clampScenes(tmpl, opts.sceneCount ?? tmpl.defaultScenes);
   const topic = (opts.topic || "").trim();
+  // Lip-sync Music Video: the chosen genre drives the song style, the artist and
+  // every setting; folded into the writer prompt so lyrics + visuals match it.
+  const genreKey = tmpl.lipSyncSinger ? genreOrDefault(opts.genre) : "";
+  const g = genreKey ? GENRES[genreKey] : null;
+  const genreLabel = g ? g.label : "pop";
+  const genreLine = g ? `\nGENRE: ${g.label}. The song must sound like authentic ${g.label} — ${g.song}. The artist and EVERY setting must look like a real ${g.label} music video — ${g.look}.` : "";
   const langLine = opts.contentLang && opts.contentLang !== "en" ? `\nWrite all captions in this language code: ${opts.contentLang}.` : "";
   const castLine = tmpl.castBible
     ? (tmpl.sing && !tmpl.childSafe
@@ -314,7 +341,11 @@ export async function previewFilmTreatment(opts: {
     : "";
   // Narrated templates want each caption to BE the narrator's spoken line for
   // that beat (a flowing voiceover); others want a short on-screen hook.
-  const captionLine = tmpl.dialogue
+  const captionLine = tmpl.lipSyncSinger
+    ? `\nWrite a FULL ~2-MINUTE ${genreLabel} SONG for ONE artist, plus ${scenes} matching VIDEO SCENES. Structure the song as verse / pre-chorus / CHORUS / verse / CHORUS / bridge / CHORUS with a strong, REPEATING chorus hook (the same chorus lines come back). Return EXACTLY ${scenes} scenes. Each scene has TWO fields:\n` +
+      `• VISUAL — the SAME artist performing to camera in a DISTINCT ${genreLabel} setting (${tmpl.sceneHint}); each scene is a different vivid location/outfit-accent so the video has visual variety; NO on-screen text, logos or real named people.\n` +
+      `• CAPTION — the CHUNK OF LYRICS the artist sings during THIS scene: about 4-6 short, singable, rhyming lines separated by " / ". Read in order, all ${scenes} captions joined end-to-end ARE the COMPLETE song lyrics — so together they MUST form one cohesive, rhyming, ~2-minute ${genreLabel} song with the chorus repeating. Make it genuinely catchy and authentic to ${genreLabel}.\n`
+    : tmpl.dialogue
     ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FIVE fields:\n` +
       `• VISUAL — what we SEE: a TWO-SHOT framing BOTH characters together in the place; they STAY put (NO standing up, sitting down, walking, turning away or crossing — big moves make the AI morph faces/clothing); a still, tense TALKING beat with only small gestures and changing expressions; keep hands EMPTY by default — do NOT add cigarettes, drinks, phones or handheld props for flavour (they warp badly in AI video), only include one if the user's theme specifically involves it; NO readable text, documents, papers, boards, signage or screens in view.\n` +
       `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot. Each line fills MOST of the ~10-second shot WITHOUT overrunning it: a two-sentence beat of about 15-18 words (~7-9 seconds of speech). This is a HARD window — NEVER a short one-liner (a line that doesn't fill the shot leaves dead air, which makes the AI voice stall or repeat words), and NEVER more than 18 words, because a longer line overruns the 10-second clip and gets cut off at the end. Count the words and stay inside 15-18. The speaker ALTERNATES shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names, and make each line a genuine REPLY to the one before it (never a non-sequitur).\n` +
@@ -335,6 +366,7 @@ export async function previewFilmTreatment(opts: {
   const prompt =
     `Write ${tmpl.brief}.\n` +
     (topic ? `THEME / what it's about: "${topic.slice(0, 300)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n` : `Pick a fun, broadly-appealing theme.\n`) +
+    genreLine +
     castLine +
     prodLine +
     captionLine +
@@ -343,7 +375,7 @@ export async function previewFilmTreatment(opts: {
   const write = async (p: string): Promise<FilmTreatment> => {
     const raw = await anthropicText(p, {
       model: "claude-sonnet-5",
-      maxTokens: 1500,
+      maxTokens: tmpl.lipSyncSinger ? 2600 : 1500, // a full ~2-min song's lyrics run long
       jsonSchema: { name: "film_treatment", schema: TREATMENT_SCHEMA as unknown as Record<string, unknown> },
     });
     return JSON.parse(raw) as FilmTreatment;
