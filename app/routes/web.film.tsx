@@ -229,6 +229,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const filmAspect = filmAspectRaw === "16:9" || filmAspectRaw === "1:1" ? filmAspectRaw : "9:16";
     // Music Video genre (rap/pop/rock/rnb/country) — only the lip-sync Music Video reads it.
     const filmGenre = ((form.get("filmGenre") as string) || "").trim();
+    // BYO-song: a merchant-uploaded track URL (from /api/film-song-upload) used INSTEAD of generating one.
+    const filmSongUrl = ((form.get("filmSongUrl") as string) || "").trim();
     const cost = estimateFilmTokens(scenes);
 
     let unbacked = 0, unbackedFromExtra = 0;
@@ -242,6 +244,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(approvedFrames ? { approvedFrames } : {}),
         ...(cast ? { cast } : {}),
         ...(filmGenre ? { filmGenre } : {}),
+        ...(filmSongUrl ? { filmSongUrl } : {}),
         dialogueEngine, filmAspect,
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
         productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
@@ -332,6 +335,24 @@ export default function FilmStudio() {
   const [filmAspect, setFilmAspect] = useState<"9:16" | "16:9" | "1:1">("16:9");
   // Music Video genre (lip-sync lane only) — drives the song + the artist/settings.
   const [filmGenre, setFilmGenre] = useState<string>(d.genres?.[0]?.key || "rap");
+  // BYO-song (Music Video): "write" = auto-generate the song, "upload" = merchant's own track.
+  const [songSource, setSongSource] = useState<"write" | "upload">("write");
+  const [filmSongUrl, setFilmSongUrl] = useState("");
+  const [songName, setSongName] = useState("");
+  const [songBusy, setSongBusy] = useState(false);
+  const songInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadSong = async (file?: File | null) => {
+    if (!file) return;
+    setSongBusy(true);
+    try {
+      const fd = new FormData(); fd.set("song", file);
+      const r = await fetch("/api/film-song-upload", { method: "POST", body: fd });
+      const j = await r.json();
+      if (j?.songUrl) { setFilmSongUrl(j.songUrl); setSongName(j.name || file.name); }
+      else alert(j?.error || "Couldn't upload that track.");
+    } catch { alert("Couldn't upload that track."); }
+    finally { setSongBusy(false); }
+  };
   const [topic, setTopic] = useState("");
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
@@ -749,6 +770,22 @@ export default function FilmStudio() {
                   </button>
                 ))}
               </div>
+              <div className="fs-songsrc">
+                <span className="fs-songsrc-cap">{t("The song")}</span>
+                <div className="fs-songsrc-seg">
+                  <button type="button" className={`fs-songsrc-opt${songSource === "write" ? " on" : ""}`} aria-pressed={songSource === "write"} onClick={() => setSongSource("write")}>{t("Write me one")}<small>{t("free")}</small></button>
+                  <button type="button" className={`fs-songsrc-opt${songSource === "upload" ? " on" : ""}`} aria-pressed={songSource === "upload"} onClick={() => setSongSource("upload")}>{t("Upload my own")}<small>{t("your track")}</small></button>
+                </div>
+              </div>
+              {songSource === "upload" && (
+                <div className="fs-songup">
+                  <input ref={songInputRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/mp4,audio/x-m4a,audio/aac,.mp3,.wav,.m4a,.aac" hidden onChange={(e) => uploadSong(e.currentTarget.files?.[0])} />
+                  <button type="button" className="fs-songup-btn" onClick={() => songInputRef.current?.click()} disabled={songBusy}>
+                    {songBusy ? <>… {t("Uploading")}</> : filmSongUrl ? <><Ico n="check" size={14} /> {songName || t("Song uploaded")}</> : <><Ico n="music" size={14} /> {t("Choose a song file")}</>}
+                  </button>
+                  {filmSongUrl && <p className="fs-hint">{t("We'll build the whole video around your track — artist, director's shots and lip-sync.")}</p>}
+                </div>
+              )}
             </div>
           )}
           <div className="fs-lbl"><span className="fs-n">2</span> {tmpl?.lipSyncSinger ? t("Write the song") : t("Write the treatment")} <span className="fs-free">{t("free")}</span></div>
@@ -906,6 +943,7 @@ export default function FilmStudio() {
           {isStoryboard && <input type="hidden" name="dialogueEngine" value={dialogueEngine} />}
           {isStoryboard && <input type="hidden" name="filmAspect" value={filmAspect} />}
           {tmpl?.lipSyncSinger && <input type="hidden" name="filmGenre" value={filmGenre} />}
+          {tmpl?.lipSyncSinger && songSource === "upload" && filmSongUrl && <input type="hidden" name="filmSongUrl" value={filmSongUrl} />}
           <input type="hidden" name="filmTopic" value={topic} />
           <input type="hidden" name="filmScenes" value={String(scenes)} />
           {tmpl?.needsProduct && <input type="hidden" name="filmProductTitle" value={prodTitle} />}
@@ -1031,6 +1069,16 @@ const FS_STYLE = `
 .fs-genre{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:999px;padding:8px 15px;cursor:pointer;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:var(--ink,#14201A);transition:background .15s,border-color .15s,color .15s,transform .1s;}
 .fs-genre:hover{border-color:var(--green,#0C7A46);}
 .fs-genre.on{background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);color:#fff;}
+.fs-songsrc{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 0;}
+.fs-songsrc-cap{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
+.fs-songsrc-seg{display:inline-flex;gap:6px;background:#F3EFE2;border:1px solid var(--line,#E4DFCF);border-radius:12px;padding:4px;}
+.fs-songsrc-opt{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:0;background:transparent;border-radius:9px;padding:7px 14px;cursor:pointer;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:var(--ink,#14201A);line-height:1.12;white-space:nowrap;}
+.fs-songsrc-opt small{font-weight:600;font-size:10px;color:var(--ink2,#6B756E);}
+.fs-songsrc-opt.on{background:#fff;box-shadow:0 1px 3px rgba(20,32,26,.14),inset 0 0 0 1px rgba(12,122,70,.5);color:var(--green,#0C7A46);}
+.fs-songsrc-opt.on small{color:var(--green,#0C7A46);opacity:.82;}
+.fs-songup{margin:12px 0 0;}
+.fs-songup-btn{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#fff,var(--mint,#EAF6EF));color:var(--green,#0C7A46);border:1.5px solid var(--green,#0C7A46);border-radius:999px;padding:10px 20px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit;}
+.fs-songup-btn:disabled{opacity:.6;cursor:default;}
 .fs-engine{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px;}
 .fs-engine-cap{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
 .fs-engine-note{flex:1 1 100%;font-size:11.5px;color:var(--ink2,#4A554E);margin:4px 0 0;line-height:1.4;}

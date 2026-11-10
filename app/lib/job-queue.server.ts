@@ -799,6 +799,7 @@ async function runJob(
             sceneCount: typeof payload.filmScenes === "number" ? payload.filmScenes : undefined,
             section: (payload.section as string) || "creator",
             jobId: payload.__jobId as string | undefined,
+            songUrl: (payload.filmSongUrl as string | undefined) || undefined, // BYO-song (uploaded track)
             resume: {
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
               ckSong: payload.ckSong as string | undefined,

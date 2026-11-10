@@ -132,6 +132,8 @@ export async function generateMusicVideo(opts: {
   section?: string;
   jobId?: string;
   treatment?: FilmTreatment;
+  /** BYO-song: a merchant-uploaded audio track to use INSTEAD of generating one with minimax. */
+  songUrl?: string;
   resume?: { ckTreatment?: string; ckSong?: string; ckArtist?: string };
 }): Promise<string> {
   const tmpl = filmTemplate("musicvideo");
@@ -162,6 +164,14 @@ export async function generateMusicVideo(opts: {
   // 2) SONG — one coherent genre track; measure its REAL length (the 2-min target
   //    is only as long as minimax gives) and split into N contiguous segments.
   let songPath = resume.ckSong && fs.existsSync(resume.ckSong) ? resume.ckSong : "";
+  if (!songPath && opts.songUrl) {
+    // BYO-song: the merchant uploaded their OWN track — use it instead of generating one. The
+    // upload endpoint wrote it to this server's /renders, so it's usually already local.
+    const local = path.join(RENDERS(), path.basename(opts.songUrl.split("?")[0]));
+    if (fs.existsSync(local)) songPath = local;
+    else { const dl = path.join(RENDERS(), `mvsong-dl-${rid()}.mp3`); await download(opts.songUrl, dl); songPath = dl; }
+    await ckpt({ ckSong: songPath });
+  }
   if (!songPath) {
     songPath = await singToDisk(lyrics, `${g.song}. ${treatment.musicMood || ""}`.slice(0, 300));
     await ckpt({ ckSong: songPath });
