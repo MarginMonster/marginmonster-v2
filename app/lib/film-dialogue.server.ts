@@ -65,16 +65,17 @@ function splitExchange(caption: string): Array<{ speaker: string; line: string }
 
 /** A Veo clip where the characters SPEAK an exchange (audio on). FULL Veo-3:
  *  fal veo3.1 → Replicate google/veo-3 fallback. Returns the clip URL. */
-async function veoDialogueClip(seedAbs: string, prompt: string, stage: string): Promise<string> {
+async function veoDialogueClip(seedAbs: string, prompt: string, stage: string, aspect: "9:16" | "16:9" | "1:1" = "9:16"): Promise<string> {
   if (falEnabled()) {
     try {
+      // fal Veo inherits the start image's aspect, so the seed shape carries the frame.
       const rid = await falVideoSubmit(FAL_VEO, { startImage: seedAbs, prompt, generateAudio: true });
       return await falVideoPoll(FAL_VEO, rid, VEO_POLL_MS);
     } catch (e) {
       console.error(`[testmovie] fal veo failed, trying Replicate: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     }
   }
-  const id = await repCreate(REP_VEO, { prompt, image: seedAbs, aspect_ratio: "9:16", generate_audio: true });
+  const id = await repCreate(REP_VEO, { prompt, image: seedAbs, aspect_ratio: aspect, generate_audio: true });
   return await repPoll(id, VEO_POLL_MS, stage);
 }
 
@@ -104,10 +105,10 @@ async function klingDialogueClip(seedAbs: string, prompt: string, stage: string,
 
 /** Route a dialogue clip to the chosen engine — the ONE line that differs between the
  *  identical Veo and Kling pipelines. */
-async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string, durationSec?: number): Promise<string> {
-  // Only Kling takes a per-clip length; Veo's take length isn't a simple knob here, so it
-  // keeps its native clip and leans on the trailing/interior silence trims instead.
-  return engine === "kling3" ? klingDialogueClip(seedAbs, prompt, stage, durationSec) : veoDialogueClip(seedAbs, prompt, stage);
+async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string, durationSec?: number, aspect?: "9:16" | "16:9" | "1:1"): Promise<string> {
+  // Only Kling takes a per-clip length; Veo keeps its native clip. Kling inherits the seed's
+  // aspect (the seed is rendered at the chosen ratio); Veo-Replicate takes it explicitly.
+  return engine === "kling3" ? klingDialogueClip(seedAbs, prompt, stage, durationSec) : veoDialogueClip(seedAbs, prompt, stage, aspect);
 }
 
 /** Grab the ACTUAL last frame of a rendered clip as a clean still (served from
@@ -231,7 +232,7 @@ async function collapseInteriorPause(inPath: string): Promise<string> {
  *  engine, which strips clip audio for a narrator/music bed). Degrade ladder:
  *  with audio → silent, so a clip that came back without an audio stream can't
  *  sink the whole render. */
-async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>): Promise<void> {
+async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>, aspect: "9:16" | "16:9" | "1:1" = "9:16"): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[testmovie] no clips");
   const beat = async () => { if (jobId) await checkpointJob(jobId, { ckBeat: Date.now() }); };
@@ -240,7 +241,8 @@ async function assembleTestMovie(clips: string[], outPath: string, jobId?: strin
   // hallucinated subtitles/captions, which sit along the bottom edge (the prompt ban
   // reduces but doesn't fully stop them). Heads stay (crop is anchored at the top);
   // only lower-chest/background is lost, which also tightens the faces slightly.
-  const SCALE = "crop=iw:ih*0.90:0:0,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30";
+  const [W, H] = aspect === "16:9" ? [1280, 720] : aspect === "1:1" ? [720, 720] : [720, 1280];
+  const SCALE = `crop=iw:ih*0.90:0:0,scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30`;
   const TAIL = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outPath];
 
   // PREFERRED: a short CROSSFADE at each cut (video xfade + audio acrossfade) so the
@@ -319,7 +321,8 @@ const STAGING = "Frame it as a TWO-SHOT that keeps BOTH characters visible in th
 /** Build + render ONE scene's photo seed (the storyboard frame). Shared by the
  *  render loop and the web "preview frame" action so the preview is WYSIWYG.
  *  Returns a relative /renders URL, or null on failure (caller decides fallback). */
-export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[]; roomRefUrl?: string | null }): Promise<string | null> {
+export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[]; roomRefUrl?: string | null; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
+  const ar = opts.aspect || "9:16";
   const framed = `${opts.sceneVisual}. ${opts.sceneHint}. ${STAGING} ${opts.castText || ""} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
   try {
     const castRefs = (opts.castRefUrls || []).filter((u): u is string => !!u);
@@ -328,18 +331,18 @@ export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: s
     // the faces lock identity. Without this the room was reinvented every shot and the
     // clips cut between unrelated sets (the "four different rooms" bug).
     if (opts.roomRefUrl && castRefs.length) {
-      const chained = await renderSceneSeedChained(framed, opts.roomRefUrl, castRefs, "9:16");
+      const chained = await renderSceneSeedChained(framed, opts.roomRefUrl, castRefs, ar);
       if (chained) return chained;
     }
     // CAST path: when the shot's actors are locked (but no prior frame to chain from,
     // e.g. the opening shot), compose from their faces so identity holds shot-to-shot.
     if (castRefs.length) {
-      const multi = await renderStyledSeedMulti(framed, castRefs, "9:16");
+      const multi = await renderStyledSeedMulti(framed, castRefs, ar);
       if (multi) return multi;
     }
     return opts.styleRefUrl
-      ? ((await renderStyledSeed(framed, opts.styleRefUrl, "9:16")) || (await renderCreativeSeed(framed, "9:16")))
-      : await renderCreativeSeed(framed, "9:16");
+      ? ((await renderStyledSeed(framed, opts.styleRefUrl, ar)) || (await renderCreativeSeed(framed, ar)))
+      : await renderCreativeSeed(framed, ar);
   } catch { return null; }
 }
 
@@ -392,6 +395,9 @@ export async function generateTestMovie(opts: {
    *  otherwise-identical engine pipelines. "kling3" (default, cheaper) or "veo" (premium,
    *  native audio). Recorded on the asset so the Archive shows which model made the film. */
   dialogueEngine?: "veo" | "kling3";
+  /** Output aspect ratio: "9:16" vertical (Shorts/TikTok, default), "16:9" landscape
+   *  (YouTube/TV/film — horizontal room for groups + cinematic blocking), or "1:1". */
+  aspect?: "9:16" | "16:9" | "1:1";
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
   // Style/mode switches so the ONE dialogue pipeline serves photoreal talking films
@@ -400,6 +406,11 @@ export async function generateTestMovie(opts: {
   const cartoon = !!tmpl.cartoon;
   const sing = !!tmpl.sing;
   const twoStyle: "photoreal" | "cartoon" = cartoon ? "cartoon" : "photoreal";
+  // Output aspect: 9:16 vertical (default, validated), 16:9 landscape (YouTube/TV/film —
+  // room for groups + cinematic blocking), or 1:1. Threaded to EVERY seed render + the
+  // clip render + the assembly crop so the whole film is natively that shape (not cropped).
+  const aspect: "9:16" | "16:9" | "1:1" = opts.aspect === "16:9" || opts.aspect === "1:1" ? opts.aspect : "9:16";
+  const [AW, AH] = aspect === "16:9" ? [1280, 720] : aspect === "1:1" ? [720, 720] : [720, 1280];
   const dialogueEngine = opts.dialogueEngine === "veo" ? "veo" : "kling3";
   const jobId = opts.jobId;
   const resume = opts.resume || {};
@@ -427,7 +438,7 @@ export async function generateTestMovie(opts: {
   let castRefAbs = abs(resume.ckCastRef);
   if (!castRefAbs && castBible) {
     try {
-      const ref = await renderCreativeSeed(`${tmpl.sceneHint}. A ${cartoon ? "bright, glossy 3D-animated cartoon" : "photorealistic cinematic"} group shot of the characters together in the scene, clear faces. ${castBible}`, "9:16");
+      const ref = await renderCreativeSeed(`${tmpl.sceneHint}. A ${cartoon ? "bright, glossy 3D-animated cartoon" : "photorealistic cinematic"} group shot of the characters together in the scene, clear faces. ${castBible}`, aspect);
       if (ref) { await ckpt({ ckCastRef: ref }); castRefAbs = abs(ref); }
     } catch { /* fall through to text seeds */ }
   }
@@ -465,7 +476,7 @@ export async function generateTestMovie(opts: {
   const masterFor = async (locKey: string, where: string, roomRef?: string): Promise<Master | undefined> => {
     if (!isTwoHander) return undefined;
     if (masters[locKey]?.url) return masters[locKey];
-    const url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(spkA), faceB: faceFor(spkB), descA: bibleFor(spkA), descB: bibleFor(spkB), setting: cleanSetting(where), style: twoStyle });
+    const url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(spkA), faceB: faceFor(spkB), descA: bibleFor(spkA), descB: bibleFor(spkB), setting: cleanSetting(where), style: twoStyle, aspect });
     if (!url) return undefined;
     // DETECT which side each character landed on — nano-banana doesn't reliably honour
     // left/right, and the clip prompt needs the real side to point Veo at the speaker.
@@ -558,7 +569,7 @@ export async function generateTestMovie(opts: {
       } else if (tr === "angle") {
         const reangled = await renderSceneSeedChained(
           `${whereAt[i]}. A ${shotAt[i]} of the same scene — the identical room, lighting, wardrobe and people, only the camera angle changes. ${NO_TEXT}`,
-          abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), "9:16",
+          abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
         );
         seedAbs = abs(reangled) || abs(prevFrameUrl) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
       } else if (sinceAnchor >= ANCHOR_EVERY) {
@@ -571,7 +582,7 @@ export async function generateTestMovie(opts: {
         const ang = ANCHOR_ANGLES[anchorCount++ % ANCHOR_ANGLES.length];
         const reangled = await renderSceneSeedChained(
           `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people in the same positions, ONLY the camera angle changes. ${NO_TEXT}`,
-          abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), "9:16",
+          abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
         );
         seedAbs = abs(reangled) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
       } else {
@@ -584,7 +595,7 @@ export async function generateTestMovie(opts: {
       seedAbs = abs(prevFrameUrl);
       if (!seedAbs) {
         const shotCastRefs = actorsInScene(castActors, scene).map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
-        seedAbs = abs(await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: castRefAbs, castRefUrls: shotCastRefs }));
+        seedAbs = abs(await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: castRefAbs, castRefUrls: shotCastRefs, aspect }));
       }
     }
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
@@ -632,7 +643,7 @@ export async function generateTestMovie(opts: {
     // outlasts its line is exactly what makes Kling pad the dead air — with silence (a
     // pause) or by looping words — so matching the length to the words starves both.
     const clipSecs = clipSecondsFor(line);
-    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs);
+    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs, aspect);
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, rawPath);
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
@@ -648,7 +659,7 @@ export async function generateTestMovie(opts: {
   // 4) ASSEMBLE — concat the clips keeping the dialogue audio.
   const outName = `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleTestMovie(clips, outPath, jobId, softSeams);
+  await assembleTestMovie(clips, outPath, jobId, softSeams, aspect);
   const outBuf = fs.readFileSync(outPath);
   try { await mirrorRender(outName, outBuf); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;
@@ -658,9 +669,9 @@ export async function generateTestMovie(opts: {
       shopId: opts.shopId,
       type: "VIDEO_AD",
       status: "PENDING",
-      title: `Short Film — ${(treatment.title || opts.topic || "dialogue scene").slice(0, 60)}`,
+      title: `${tmpl.name} — ${(treatment.title || opts.topic || "dialogue scene").slice(0, 60)}`,
       bodyJson: JSON.stringify({ style: "TESTMOVIE", videoUrl: storedUrl, prompt: opts.topic || "", treatment }),
-      metaJson: JSON.stringify({ kind: "testmovie", template: tmpl.key, section: opts.section || "creator", scenes: clips.length, aspect: "vertical", engine: dialogueEngine }),
+      metaJson: JSON.stringify({ kind: "testmovie", template: tmpl.key, section: opts.section || "creator", scenes: clips.length, aspect, engine: dialogueEngine }),
     },
   });
   return asset.id;

@@ -802,6 +802,8 @@ async function runJob(
             // Swappable renderer: Kling 3 Omni is the DEFAULT (owner A/B win); "veo"
             // switches to premium Veo 3. Identical pipeline either way.
             dialogueEngine: payload.dialogueEngine === "veo" ? "veo" : "kling3",
+            // Output shape: 9:16 vertical (default) · 16:9 landscape (YouTube/TV/film) · 1:1.
+            aspect: payload.filmAspect === "16:9" || payload.filmAspect === "1:1" ? payload.filmAspect : "9:16",
           });
         } else if ((payload.filmTemplate as string | undefined) === "avatardialogue") {
           // ISOLATED audio-driven pipeline — locked actors + fixed voices (HeyGen).

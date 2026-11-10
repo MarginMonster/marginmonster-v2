@@ -85,7 +85,10 @@ function recipeLabel(metaJson: string | null, bodyJson: string | null): string |
   // can tell Veo from Kling at a glance when judging the same scene across models.
   if (meta.kind === "testmovie" || body.style === "TESTMOVIE") {
     const eng = typeof meta.engine === "string" ? meta.engine : "veo";
-    return `Short Film · ${eng === "kling3" ? "Kling" : "Veo"}`;
+    const tk = typeof meta.template === "string" ? meta.template : "testmovie";
+    const names: Record<string, string> = { testmovie: "Short Film", moral: "Moral Story", horror: "Horror Story", kidstv: "Kids Cartoon", musicvideo: "Music Video", kidsmusic: "Kids Music Video" };
+    const ar = typeof meta.aspect === "string" && meta.aspect !== "9:16" && meta.aspect !== "vertical" ? ` · ${meta.aspect}` : "";
+    return `${names[tk] || "Short Film"} · ${eng === "kling3" ? "Kling" : "Veo"}${ar}`;
   }
   const method = typeof body.method === "string" ? body.method : "";
   const m = method.match(/^(format|template|template-staged|template-fallback):(.+)$/);

@@ -222,6 +222,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Swappable render engine (Test Movie): Kling 3 Omni is the DEFAULT (owner A/B win —
     // cheaper, quality held); "veo" switches to premium Veo 3. Only Test Movie reads it.
     const dialogueEngine = ((form.get("dialogueEngine") as string) || "").trim() === "veo" ? "veo" : "kling3";
+    const filmAspectRaw = ((form.get("filmAspect") as string) || "").trim();
+    const filmAspect = filmAspectRaw === "16:9" || filmAspectRaw === "1:1" ? filmAspectRaw : "9:16";
     const cost = estimateFilmTokens(scenes);
 
     let unbacked = 0, unbackedFromExtra = 0;
@@ -234,7 +236,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         approvedTreatment,
         ...(approvedFrames ? { approvedFrames } : {}),
         ...(cast ? { cast } : {}),
-        dialogueEngine,
+        dialogueEngine, filmAspect,
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
         productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
         prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
@@ -321,6 +323,7 @@ export default function FilmStudio() {
   // short cinematic beats) or Kling 3 Omni (longer single takes, native lip-sync).
   // Only submitted for testmovie; the action ignores it for every other template.
   const [dialogueEngine, setDialogueEngine] = useState<"veo" | "kling3">("kling3");
+  const [filmAspect, setFilmAspect] = useState<"9:16" | "16:9" | "1:1">("9:16");
   const [topic, setTopic] = useState("");
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
@@ -830,10 +833,31 @@ export default function FilmStudio() {
             <p className="fs-engine-note">{t("Same film, different AI. Run both and compare — each is tagged by model in your Archive.")}</p>
           </div>
         )}
+        {isStoryboard && (
+          <div className="fs-engine" role="group" aria-label={t("Aspect ratio")}>
+            <span className="fs-engine-cap">{t("Shape")}</span>
+            <div className="fs-engine-seg">
+              <button type="button" className={`fs-engine-opt${filmAspect === "9:16" ? " on" : ""}`}
+                aria-pressed={filmAspect === "9:16"} onClick={() => setFilmAspect("9:16")}>
+                {t("Vertical")}<small>{t("9:16 · TikTok")}</small>
+              </button>
+              <button type="button" className={`fs-engine-opt${filmAspect === "16:9" ? " on" : ""}`}
+                aria-pressed={filmAspect === "16:9"} onClick={() => setFilmAspect("16:9")}>
+                {t("Wide")}<small>{t("16:9 · YouTube")}</small>
+              </button>
+              <button type="button" className={`fs-engine-opt${filmAspect === "1:1" ? " on" : ""}`}
+                aria-pressed={filmAspect === "1:1"} onClick={() => setFilmAspect("1:1")}>
+                {t("Square")}<small>{t("1:1 · feed")}</small>
+              </button>
+            </div>
+            <p className="fs-engine-note">{t("Vertical for Shorts & Reels; Wide for YouTube, TV episodes and roomier multi-character scenes.")}</p>
+          </div>
+        )}
         <Form method="post">
           <input type="hidden" name="intent" value="film" />
           <input type="hidden" name="template" value={template} />
           {isStoryboard && <input type="hidden" name="dialogueEngine" value={dialogueEngine} />}
+          {isStoryboard && <input type="hidden" name="filmAspect" value={filmAspect} />}
           <input type="hidden" name="filmTopic" value={topic} />
           <input type="hidden" name="filmScenes" value={String(scenes)} />
           {tmpl?.needsProduct && <input type="hidden" name="filmProductTitle" value={prodTitle} />}
