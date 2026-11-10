@@ -671,7 +671,10 @@ export async function generateTestMovie(opts: {
     const styleNote = sing
       ? (cartoon ? "Bright 3D-animated cartoon style (not live-action); clean, clear SUNG vocal audio with a catchy melody, lip-synced to the words." : "Photorealistic live-action; clean, clear SUNG vocal audio with a catchy melody, lip-synced to the words.")
       : (cartoon ? "Bright, glossy 3D-animated cartoon style (not live-action), clean clear spoken-dialogue audio." : "Photorealistic live-action, clean natural spoken-dialogue audio.");
-    const prompt = `${voiceLine} ${lookNote} ${styleNote} ${NO_TEXT}`;
+    // Lock the frame + kill stray audio — the owner saw a mid-shot "orientation change" with
+    // a random sound effect. The camera must not move, and Kling must not invent foley/sfx.
+    const steadyNote = "The camera stays LOCKED and level the whole time — no rotation, tilt, roll, zoom, flip or orientation change, and the frame never turns sideways or upside down. The ONLY audio is the spoken voice(s) and faint natural room tone — absolutely NO sound effects, music, stingers, whooshes, transitions or foley of any kind.";
+    const prompt = `${voiceLine} ${lookNote} ${styleNote} ${steadyNote} ${NO_TEXT}`;
 
     // Size the clip to the SPOKEN LINE (word-metered) instead of a flat 10s. A clip that
     // outlasts its line is exactly what makes Kling pad the dead air — with silence (a
