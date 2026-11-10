@@ -37,6 +37,10 @@ const REALISM = "Photorealistic and cinematic like a real high-end music video �
 // complaint). Kling 2.5-turbo-pro = fast + good motion. The mouth is driven SEPARATELY by the
 // dedicated sync-lipsync model afterwards — OmniHuman did both at once and was "pitiful" at the mouth.
 const I2V_MODEL = "fal-ai/kling-video/v2.5-turbo/pro/image-to-video";
+// Backup motion engine — if the primary blips (a transient fal outage stilled a whole render once),
+// each scene retries on this before falling back to a static still, so one provider hiccup can't
+// turn the video into a slideshow.
+const I2V_FALLBACK = "fal-ai/kling-video/v2.6/pro/image-to-video";
 const CLIP_MAX = 10; // the i2v clip length cap (Kling 2.x); segments are sliced to match so the song stays continuous
 // DIRECTOR'S SHOT LIST — a real music video is EDITED: performance shots intercut with b-roll,
 // establishing wides, close-ups and cutaways (never the artist lip-syncing end-to-end). Each scene
@@ -251,11 +255,12 @@ export async function generateMusicVideo(opts: {
     const motionPrompt = shot.role === "perform"
       ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist performs/raps with high energy — head bobbing, body moving to the beat; hands move naturally and EMPTY — they are NOT holding anything and there is NO microphone. Keep the SAME person identical; photoreal, cinematic, high-production.`
       : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural motion. Keep the SAME person identical; photoreal, cinematic, high-production.`;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (const i2vModel of [I2V_MODEL, I2V_FALLBACK]) {
       try {
-        // silent motion clip (Kling 2.5-turbo-pro)
-        const reqId = await falVideoSubmit(I2V_MODEL, { startImage: imgAbs, prompt: motionPrompt, durationSec: D, generateAudio: false });
-        const motionUrl = await falVideoPoll(I2V_MODEL, reqId, 12 * 60_000);
+        // silent motion clip — primary engine, then the backup if it blips (so a provider outage
+        // can't still a whole scene the way it once stilled an entire render)
+        const reqId = await falVideoSubmit(i2vModel, { startImage: imgAbs, prompt: motionPrompt, durationSec: D, generateAudio: false });
+        const motionUrl = await falVideoPoll(i2vModel, reqId, 12 * 60_000);
         const out = path.join(RENDERS(), `mv-${Date.now()}-${i}-${rid()}.mp4`);
         if (shot.role === "perform") {
           // PERFORMANCE: dedicated lip-sync drives the mouth to this song segment
@@ -272,7 +277,7 @@ export async function generateMusicVideo(opts: {
         }
         if (fs.existsSync(out) && ffprobeDuration(out) > 1) { await ckpt({ [`ckClip${i}`]: out }); return out; }
       } catch (e) {
-        console.error(`[musicvideo] scene ${i + 1} (${shot.role}) attempt ${attempt + 1}/2 failed: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+        console.error(`[musicvideo] scene ${i + 1} (${shot.role}) i2v ${i2vModel} failed: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
       }
     }
     // Fallback: still image held over the segment audio (keeps the song continuous).
