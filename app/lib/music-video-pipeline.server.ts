@@ -211,9 +211,11 @@ export async function generateMusicVideo(opts: {
   }
   const songDur = ffprobeDuration(songPath);
   if (!(songDur > 3)) throw new Error("[musicvideo] song came back too short");
-  // Each scene is ONE i2v clip capped at CLIP_MAX; slice the song into contiguous D-second
-  // segments from the start so the concatenated clips rebuild a continuous song (no gaps).
-  const D = Math.min(CLIP_MAX, Math.max(5, Math.round(songDur / N)));
+  // Each scene is ONE i2v clip; slice the song into contiguous D-second segments so the clips
+  // concat into a continuous song. CRITICAL: Kling image-to-video only accepts a duration of
+  // "5" or "10" — any other value (e.g. 6 or 7 from a short song / N) silently 422s and the whole
+  // scene falls back to a STILL (the "no video, just still images" bug). So D snaps to 5 or 10.
+  const D = (songDur / N) >= 7.5 ? 10 : 5;
 
   // 3) ARTIST hero — ONE realistic portrait that locks the look (face + wardrobe) for the WHOLE
   //    video. Every scene is an EDIT of THIS exact image, so the artist can never drift.
