@@ -4340,6 +4340,22 @@ async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/n
   }
 }
 
+/** Place a LOCKED subject (e.g. a music-video artist) into a NEW setting while keeping their
+ *  identity EXACTLY. Crucially this EDITS the same source image (nano-banana-pro @2K
+ *  "match_input_image", kontext fallback) instead of re-generating — so the FACE does not drift
+ *  across scenes, which re-generating from a mere reference does (the "it changes the singer"
+ *  bug). pro @2K also reads far more photoreal than base nano-banana. Durable /renders URL or null. */
+export async function editSubjectIntoScene(subjectUrl: string, prompt: string): Promise<string | null> {
+  try {
+    if (!process.env.REPLICATE_API_TOKEN || !subjectUrl) return null;
+    const { url } = await editImg2Img(subjectUrl, (prompt || "").trim().slice(0, 480), "google/nano-banana-pro");
+    return await persistRemote(url, "jpg");
+  } catch (e) {
+    artLog("image-ad", `subject-into-scene failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return null;
+  }
+}
+
 /** Flag a finished asset with its SECTION so the Archive can split Creator from
  *  Marketing. Merges into metaJson (no schema change). Only "creator" is tagged —
  *  the Marketing archive is everything NOT tagged creator, so marketing + legacy

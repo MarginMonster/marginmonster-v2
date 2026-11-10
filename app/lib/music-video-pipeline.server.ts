@@ -22,7 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
-import { renderCreativeSeed, renderStyledSeedMulti } from "./image-generation.server";
+import { renderCreativeSeed, editSubjectIntoScene } from "./image-generation.server";
 import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { animateOmniHuman, falEnabled } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
@@ -31,6 +31,8 @@ import { singToDisk } from "./music-generation.server";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
+// Kill the "AI as fuck" look — push every artist/scene render toward real photography.
+const REALISM = "Photorealistic, shot on a real camera with natural lighting, realistic skin texture and fine detail — candid and authentic like a real music video; NOT glossy, plastic, waxy, over-saturated, CGI or obviously AI-generated.";
 
 /** Run async work over items with a bounded number in flight. */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
@@ -150,25 +152,23 @@ export async function generateMusicVideo(opts: {
   if (!(songDur > 3)) throw new Error("[musicvideo] song came back too short");
   const segLen = songDur / N;
 
-  // 3) ARTIST reference — locks the look across every setting.
+  // 3) ARTIST hero — ONE realistic portrait that locks the look (face + wardrobe) for the WHOLE
+  //    video. Every scene is an EDIT of THIS exact image, so the artist can never drift.
   let artistRef = abs(resume.ckArtist);
   if (!artistRef) {
-    const ref = await renderCreativeSeed(`${g.look}. A music-video portrait of the artist performing to camera: ${artistBible}. Clear sharp face, full performance energy, cinematic.`, "9:16");
+    const ref = await renderCreativeSeed(`A realistic ${g.label} music-video shot of the artist performing to camera: ${artistBible}. ${g.look}. Clear sharp face, full performance energy. ${REALISM}`, "9:16");
     if (ref) { await ckpt({ ckArtist: ref }); artistRef = abs(ref); }
   }
 
-  // 4) PER-SCENE images — the SAME artist in each distinct setting (identity locked
-  //    on the reference). Rendered in bounded parallel (image renders are cheap).
+  // 4) PER-SCENE images — EDIT the one hero into each NEW setting (nano-banana-pro @2K). Editing
+  //    the same source preserves the face (the "it changes the singer" fix) and pro @2K reads as
+  //    real photography (the "AI as fuck" fix). Falls back to the hero itself if an edit fails.
   const sceneImgs = await mapLimit(scenes, 3, async (s) => {
-    // Lock ONE main character across every setting. The reference portrait + the HARD
-    // identity instruction inside renderStyledSeedMulti keep the SAME artist; the prompt only
-    // drives the SETTING. Re-describing the artist here (the old renderStyledSeed path) let
-    // nano-banana invent a NEW rapper each scene — the owner's "3 different rappers" bug.
-    const prompt = `A ${g.label} music-video shot: the SAME artist from the reference performing/rapping to camera with full energy, in this setting — ${s.visual}. ${g.look}. ${tmpl.sceneHint}.`;
+    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Place them performing/rapping to camera with full energy in a NEW setting: ${s.visual}. ${g.look}. ${REALISM}`;
     const img = artistRef
-      ? ((await renderStyledSeedMulti(prompt, [artistRef], "9:16")) || (await renderCreativeSeed(prompt, "9:16")))
-      : await renderCreativeSeed(prompt, "9:16");
-    return abs(img);
+      ? await editSubjectIntoScene(artistRef, prompt)
+      : await renderCreativeSeed(`${g.look}. ${s.visual}. ${REALISM}`, "9:16");
+    return img ? abs(img) : artistRef; // same artist (the hero) if an edit fails
   });
 
   // 5) song SEGMENTS (local mp3 + hosted url for OmniHuman).
