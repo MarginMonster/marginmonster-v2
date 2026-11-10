@@ -84,6 +84,12 @@ export interface FilmTemplate {
    *  Routed to a SEPARATE engine (generateTestMovie) — generateFilm never sees it,
    *  so the main pipeline is untouched. */
   dialogue?: boolean;
+  /** Render the dialogue pipeline in CARTOON style (kids cartoon) instead of
+   *  photoreal — the two-shot master + clip prompts swap to 3D-animated. */
+  cartoon?: boolean;
+  /** The characters SING their lines (music video) instead of speaking them —
+   *  the clip + voice prompts ask for lip-synced singing with a melody. */
+  sing?: boolean;
   /** Whether this template is wired end-to-end on the FILM TAB (route offers
    *  these). Skit lives in the marketing flow instead, so it is false here. */
   live: boolean;
@@ -106,17 +112,18 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
   kidstv: {
     key: "kidstv",
     name: "Kids Cartoon",
-    brief: "a bright, wholesome kids cartoon episode (CoComelon-style) with a small recurring cast and a sing-along — a simple, happy little story a toddler would love",
+    brief: "a bright, wholesome kids cartoon where a small cast of cute characters TALK their way through a simple, happy little story a toddler would love — tell EXACTLY the story the user describes, kept gentle, clear and G-rated",
     sceneHint: "bright glossy 3D-animated cartoon, rounded friendly character designs, big expressive eyes, soft candy colors, simple cheerful backgrounds, wholesome and child-safe (G-rated), like a modern preschool cartoon",
     musicHint: "cheerful bouncy nursery-rhyme sing-along, upbeat and sweet",
-    defaultScenes: 6,
-    minScenes: 4,
-    maxScenes: 16,
+    defaultScenes: 4,
+    minScenes: 2,
+    maxScenes: 6,
     captions: true,
     castBible: true,
     referenceSeed: true,
     childSafe: true,
-    sung: true,
+    dialogue: true,
+    cartoon: true,
     live: true,
   },
   moral: {
@@ -306,7 +313,7 @@ export async function previewFilmTreatment(opts: {
     : `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe. Anyone who faces danger, threat, fear or menace is an ADULT — never place a child, teenager, infant or any minor in peril and never depict a minor being threatened, hunted, harmed or frightened; recast any such role as an adult (the AI render models refuse minors-in-danger, which hard-fails the video).`;
   const prompt =
     `Write ${tmpl.brief}.\n` +
-    (topic ? `THEME / what it's about: "${topic.slice(0, 300)}".\n` : `Pick a fun, broadly-appealing theme.\n`) +
+    (topic ? `THEME / what it's about: "${topic.slice(0, 300)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n` : `Pick a fun, broadly-appealing theme.\n`) +
     castLine +
     prodLine +
     captionLine +

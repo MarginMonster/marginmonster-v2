@@ -4759,7 +4759,7 @@ export async function renderTwoPanelShotReverse(opts: { roomRefUrl?: string | nu
 // cut" continuity bug). With both people always fully framed there is nothing to
 // mismatch, and because both faces are born from one generation the two people + the
 // room are identical by construction and never drift. Seeded 9:16 to match the clips.
-export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; setting: string }): Promise<string | null> {
+export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; setting: string; style?: "photoreal" | "cartoon" }): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN) return null;
     const refs = [opts.roomRefUrl, opts.faceA, opts.faceB].filter((u): u is string => !!u).slice(0, 3);
@@ -4772,7 +4772,17 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
     const faceNote = (opts.faceA || opts.faceB)
       ? ` The other reference images are the EXACT faces and looks of the two people — match each one's face, hair, facial hair and clothing precisely, and do NOT blend or swap them.`
       : "";
-    const prompt = `A single photorealistic cinematic MEDIUM two-shot of BOTH people together in ${setting}, facing each other in conversation and positioned NATURALLY for this exact place — seated across a table ONLY if the location is a diner, booth, bar, café, kitchen or similar sit-down spot; otherwise standing (or seated) exactly as the real setting calls for, and NEVER add a table, booth or chairs that do not belong here (e.g. on a street, in a hallway or outdoors they stand). Frame them from roughly the CHEST UP and fairly CLOSE so that BOTH of their FACES are LARGE, sharp and clearly visible and you can read their expressions — this is an intimate dialogue two-shot, NOT a distant full-body wide shot. ${descA} on one side and ${descB} on the other, both faces prominent and in focus. This is NOT an over-the-shoulder shot: neither person is turned fully away, cropped out, or blurred in the foreground; both are equally sharp. Keep the two people clearly distinct and do NOT blend or swap their faces, hair or clothing, and reproduce each person's EXACT facial hair — the same beard, mustache and stubble on each — identically; never add, remove, thin or fade anyone's facial hair. By DEFAULT both people's hands are empty, relaxed and still — do NOT add a cigarette, glass, phone or other small handheld prop unless the scene above specifically calls for one; if it DOES, render that single prop clearly and held naturally in one hand (never multiplied, floating or morphing).${roomNote}${faceNote} Cinematic filmic lighting, shallow depth of field, vertical composition, no on-screen text, no watermark.`;
+    const cartoon = opts.style === "cartoon";
+    const styleLead = cartoon
+      ? "A single bright, glossy 3D-animated CARTOON MEDIUM two-shot (modern wholesome preschool-cartoon look: rounded friendly character designs, big expressive eyes, soft candy colors)"
+      : "A single photorealistic cinematic MEDIUM two-shot";
+    const consistencyNote = cartoon
+      ? "Keep each character's exact cartoon design identical — the same hairstyle, colors and outfit on each — and never blend, swap or redraw their designs."
+      : "Keep the two people clearly distinct and do NOT blend or swap their faces, hair or clothing, and reproduce each person's EXACT facial hair — the same beard, mustache and stubble on each — identically; never add, remove, thin or fade anyone's facial hair.";
+    const styleTail = cartoon
+      ? "Clean cheerful cartoon lighting, soft candy colors, rounded friendly shapes, vertical composition, no on-screen text, no watermark."
+      : "Cinematic filmic lighting, shallow depth of field, vertical composition, no on-screen text, no watermark.";
+    const prompt = `${styleLead} of BOTH people together in ${setting}, facing each other in conversation and positioned NATURALLY for this exact place — seated across a table ONLY if the location is a diner, booth, bar, café, kitchen or similar sit-down spot; otherwise standing (or seated) exactly as the real setting calls for, and NEVER add a table, booth or chairs that do not belong here (e.g. on a street, in a hallway or outdoors they stand). Frame them from roughly the CHEST UP and fairly CLOSE so that BOTH of their FACES are LARGE, sharp and clearly visible and you can read their expressions — this is an intimate dialogue two-shot, NOT a distant full-body wide shot. ${descA} on one side and ${descB} on the other, both faces prominent and in focus. This is NOT an over-the-shoulder shot: neither person is turned fully away, cropped out, or blurred in the foreground; both are equally sharp. ${consistencyNote} By DEFAULT both people's hands are empty, relaxed and still — do NOT add a cigarette, glass, phone or other small handheld prop unless the scene above specifically calls for one; if it DOES, render that single prop clearly and held naturally in one hand (never multiplied, floating or morphing).${roomNote}${faceNote} ${styleTail}`;
     const input: Record<string, unknown> = { prompt, aspect_ratio: "9:16", output_format: "jpg" };
     if (refs.length) input.image_input = refs;
     const url = await repRun("google/nano-banana", input);

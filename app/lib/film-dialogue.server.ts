@@ -394,6 +394,12 @@ export async function generateTestMovie(opts: {
   dialogueEngine?: "veo" | "kling3";
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
+  // Style/mode switches so the ONE dialogue pipeline serves photoreal talking films
+  // (Short Film / Moral / Horror), cartoon talking films (Kids Cartoon · Peppa/Bluey) and
+  // sung films (Music Video, Kids Music Video · CoComelon). Everything else is identical.
+  const cartoon = !!tmpl.cartoon;
+  const sing = !!tmpl.sing;
+  const twoStyle: "photoreal" | "cartoon" = cartoon ? "cartoon" : "photoreal";
   const dialogueEngine = opts.dialogueEngine === "veo" ? "veo" : "kling3";
   const jobId = opts.jobId;
   const resume = opts.resume || {};
@@ -421,7 +427,7 @@ export async function generateTestMovie(opts: {
   let castRefAbs = abs(resume.ckCastRef);
   if (!castRefAbs && castBible) {
     try {
-      const ref = await renderCreativeSeed(`${tmpl.sceneHint}. A photorealistic group shot of the characters together in the scene, clear faces, cinematic. ${castBible}`, "9:16");
+      const ref = await renderCreativeSeed(`${tmpl.sceneHint}. A ${cartoon ? "bright, glossy 3D-animated cartoon" : "photorealistic cinematic"} group shot of the characters together in the scene, clear faces. ${castBible}`, "9:16");
       if (ref) { await ckpt({ ckCastRef: ref }); castRefAbs = abs(ref); }
     } catch { /* fall through to text seeds */ }
   }
@@ -459,7 +465,7 @@ export async function generateTestMovie(opts: {
   const masterFor = async (locKey: string, where: string, roomRef?: string): Promise<Master | undefined> => {
     if (!isTwoHander) return undefined;
     if (masters[locKey]?.url) return masters[locKey];
-    const url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(spkA), faceB: faceFor(spkB), descA: bibleFor(spkA), descB: bibleFor(spkB), setting: cleanSetting(where) });
+    const url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(spkA), faceB: faceFor(spkB), descA: bibleFor(spkA), descB: bibleFor(spkB), setting: cleanSetting(where), style: twoStyle });
     if (!url) return undefined;
     // DETECT which side each character landed on — nano-banana doesn't reliably honour
     // left/right, and the clip prompt needs the real side to point Veo at the speaker.
@@ -614,9 +620,13 @@ export async function generateTestMovie(opts: {
     // the faces from the WORDS and drift them; stripping that lets the seed drive the look
     // ("use the seed like you're supposed to" — owner). voiceLine = the single-speaker line.
     void STAGING; void HOLD_STILL; // (kept defined for the seed/scene-frame paths; not in the clip prompt)
-    const prompt =
-      `${voiceLine} ` +
-      `Keep EVERYONE and the entire setting EXACTLY as in the provided starting image — identical faces, hair, skin tone, clothing, lighting and background, unchanged throughout; and keep each person's EXACT facial hair fixed the whole time — every beard, mustache and bit of stubble stays precisely the same and never fades, thins, grows, appears or disappears. Do NOT morph, age or redraw anyone into a different person. The camera holds steady and nobody moves except natural talking and small, subtle head and expression shifts. Do NOT introduce any object that is not already in the starting image — no new cigarette, glass or prop appears; and if a person IS already holding something, keep it EXACTLY the same size and shape, held steady in the same hand — it must never morph, grow, shrink, drift, multiply or flicker. Photorealistic live-action, clean natural spoken-dialogue audio. ${NO_TEXT}`;
+    const lookNote = cartoon
+      ? `Keep EVERYONE and the entire setting EXACTLY as in the provided starting image — identical character designs, colors, outfits, lighting and background, unchanged throughout; keep each character's exact cartoon design fixed, and do NOT morph or redraw anyone into a different character. The camera holds steady and nobody moves except natural talking and small, subtle head and expression shifts. Do NOT introduce any object that is not already in the starting image.`
+      : `Keep EVERYONE and the entire setting EXACTLY as in the provided starting image — identical faces, hair, skin tone, clothing, lighting and background, unchanged throughout; and keep each person's EXACT facial hair fixed the whole time — every beard, mustache and bit of stubble stays precisely the same and never fades, thins, grows, appears or disappears. Do NOT morph, age or redraw anyone into a different person. The camera holds steady and nobody moves except natural talking and small, subtle head and expression shifts. Do NOT introduce any object that is not already in the starting image — no new cigarette, glass or prop appears; and if a person IS already holding something, keep it EXACTLY the same size and shape, held steady in the same hand — it must never morph, grow, shrink, drift, multiply or flicker.`;
+    const styleNote = sing
+      ? (cartoon ? "Bright 3D-animated cartoon style (not live-action); clean, clear SUNG vocal audio with a catchy melody, lip-synced to the words." : "Photorealistic live-action; clean, clear SUNG vocal audio with a catchy melody, lip-synced to the words.")
+      : (cartoon ? "Bright, glossy 3D-animated cartoon style (not live-action), clean clear spoken-dialogue audio." : "Photorealistic live-action, clean natural spoken-dialogue audio.");
+    const prompt = `${voiceLine} ${lookNote} ${styleNote} ${NO_TEXT}`;
 
     // Size the clip to the SPOKEN LINE (word-metered) instead of a flat 10s. A clip that
     // outlasts its line is exactly what makes Kling pad the dead air — with silence (a

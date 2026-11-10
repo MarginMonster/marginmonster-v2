@@ -769,7 +769,13 @@ async function runJob(
         }
         let filmAssetId: string;
         const ft = payload.filmTemplate as string | undefined;
-        if (ft === "testmovie" || ft === "testprocess" || ft === "moral" || ft === "horror") {
+        // Any DIALOGUE-pipeline template routes to generateTestMovie (the validated engine):
+        // testmovie (Short Film), moral, horror, kidstv (Kids Cartoon · talk), and the sung
+        // ports musicvideo + kidsmusic. The cartoon/sing switches live inside the engine, so
+        // generateFilm only still serves legacy narrated/sung-over-stills (non-dialogue) ones.
+        const { filmTemplate: ftLookup } = await import("./film-engine.server");
+        const isDialogueFilm = !!ft && !!ftLookup(ft).dialogue;
+        if (ft === "testprocess" || isDialogueFilm) {
           // ISOLATED dialogue experiments — their own engine; generateFilm untouched.
           // "testprocess" = the hybrid lip-sync pipeline (silent performed shot + cast-voice
           // TTS + sync-3 on the speaker); "testmovie" = the Veo-native path, unchanged.
