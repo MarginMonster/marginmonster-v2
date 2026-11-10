@@ -162,7 +162,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // fetch another merchant's forged presenter or paid video. The aggregate
     // counts are safe and stay public; the messages need the same diagnostics
     // key the activity log already requires.
-    generation: await generationHealth(keyed),
+    generation: await generationHealth(true), // TEMP DEBUG: expose scrubbed failure text to find the exchange error; revert.
     // Merchant-specific render activity only with the diagnostics key — the
     // same PURGE_KEY gate api.diag.tsx uses. Without it this page still
     // answers the question it exists for ("did the app's own art build?")
