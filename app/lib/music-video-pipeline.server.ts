@@ -22,7 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
-import { renderCreativeSeed, renderStyledSeed } from "./image-generation.server";
+import { renderCreativeSeed, renderStyledSeedMulti } from "./image-generation.server";
 import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { animateOmniHuman, falEnabled } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
@@ -160,9 +160,13 @@ export async function generateMusicVideo(opts: {
   // 4) PER-SCENE images — the SAME artist in each distinct setting (identity locked
   //    on the reference). Rendered in bounded parallel (image renders are cheap).
   const sceneImgs = await mapLimit(scenes, 3, async (s) => {
-    const prompt = `${g.look}. ${s.visual}. The SAME artist performing to camera, singing with energy: ${artistBible}. ${tmpl.sceneHint}.`;
+    // Lock ONE main character across every setting. The reference portrait + the HARD
+    // identity instruction inside renderStyledSeedMulti keep the SAME artist; the prompt only
+    // drives the SETTING. Re-describing the artist here (the old renderStyledSeed path) let
+    // nano-banana invent a NEW rapper each scene — the owner's "3 different rappers" bug.
+    const prompt = `A ${g.label} music-video shot: the SAME artist from the reference performing/rapping to camera with full energy, in this setting — ${s.visual}. ${g.look}. ${tmpl.sceneHint}.`;
     const img = artistRef
-      ? ((await renderStyledSeed(prompt, artistRef, "9:16")) || (await renderCreativeSeed(prompt, "9:16")))
+      ? ((await renderStyledSeedMulti(prompt, [artistRef], "9:16")) || (await renderCreativeSeed(prompt, "9:16")))
       : await renderCreativeSeed(prompt, "9:16");
     return abs(img);
   });
