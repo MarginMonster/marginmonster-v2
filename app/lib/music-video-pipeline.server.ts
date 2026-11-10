@@ -24,7 +24,7 @@ import crypto from "node:crypto";
 import { db } from "../db.server";
 import { renderCreativeSeed, editSubjectIntoScene } from "./image-generation.server";
 import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pipeline.server";
-import { animateOmniHuman, falEnabled } from "./fal-video.server";
+import { falVideoSubmit, falVideoPoll, falLipSync, falEnabled } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, type FilmTreatment } from "./film-engine.server";
 import { singToDisk } from "./music-generation.server";
@@ -33,6 +33,11 @@ const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
 // Kill the "AI as fuck" look — push every artist/scene render toward real photography.
 const REALISM = "Photorealistic, shot on a real camera with natural lighting, realistic skin texture and fine detail — candid and authentic like a real music video; NOT glossy, plastic, waxy, over-saturated, CGI or obviously AI-generated.";
+// MOTION engine: silent image-to-video with real body + camera movement (fixes the static-background
+// complaint). Kling 2.5-turbo-pro = fast + good motion. The mouth is driven SEPARATELY by the
+// dedicated sync-lipsync model afterwards — OmniHuman did both at once and was "pitiful" at the mouth.
+const I2V_MODEL = "fal-ai/kling-video/v2.5-turbo/pro/image-to-video";
+const CLIP_MAX = 10; // the i2v clip length cap (Kling 2.x); segments are sliced to match so the song stays continuous
 
 /** Run async work over items with a bounded number in flight. */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
@@ -81,46 +86,14 @@ async function stillClip(imgPath: string, segAudioPath: string, dur: number, W: 
   return out;
 }
 
-/** Assemble the clips into the finished music video. PREFERRED path: cinematic xfade
- *  TRANSITIONS between scenes (dissolves / dips / zooms, varied per cut — the owner's "real
- *  music-video transitions, not butt-cheek hard cuts") with the CLEAN continuous song laid over
- *  the whole thing (the clips were synced to contiguous segments, so the lip-sync still lines up;
- *  the mic at the mouth masks the small drift the xfade overlaps introduce). Falls back to a
- *  plain hard-cut concat (keeping clip audio), then to the first clip, so it never dies at a seam. */
-async function assembleMusicVideo(clips: string[], songPath: string, outPath: string, W: number, H: number): Promise<void> {
+/** Assemble the lip-synced clips into the finished music video. Each clip already carries its
+ *  contiguous song segment (sync-lipsync baked the segment audio in), so a plain hard-cut concat
+ *  rebuilds a continuous song with the mouth in sync — and because the i2v clips genuinely MOVE
+ *  (camera + body), clean cuts read like a real cut-driven music video instead of dead static
+ *  frames butting together. Degrades to the first clip alone if the graph fails. */
+async function assembleMusicVideo(clips: string[], outPath: string, W: number, H: number): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[musicvideo] no clips to assemble");
-  const haveSong = !!songPath && fs.existsSync(songPath);
-
-  if (N >= 2 && haveSong) {
-    try {
-      const XF = 0.35; // transition length
-      const TRANS = ["dissolve", "smoothleft", "circleopen", "fadeblack", "zoomin", "smoothright", "radial"];
-      const durs = clips.map((c) => { const d = ffprobeDuration(c); return d > 0.6 ? d : 2; });
-      const a: string[] = ["-y"];
-      clips.forEach((c) => a.push("-i", c));
-      a.push("-i", songPath);
-      const songIdx = N;
-      const f: string[] = [];
-      clips.forEach((_, i) => f.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30,format=yuv420p[v${i}]`));
-      let prev = "[v0]";
-      let off = durs[0] - XF;
-      for (let i = 1; i < N; i++) {
-        const t = TRANS[(i - 1) % TRANS.length];
-        const out = i === N - 1 ? "[vout]" : `[x${i}]`;
-        f.push(`${prev}[v${i}]xfade=transition=${t}:duration=${XF}:offset=${off.toFixed(3)}${out}`);
-        prev = out;
-        off += durs[i] - XF;
-      }
-      a.push("-filter_complex", f.join(";"), "-map", "[vout]", "-map", `${songIdx}:a`,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", outPath);
-      const r = await runFfmpeg(a);
-      if (r.status === 0 && fs.existsSync(outPath) && ffprobeDuration(outPath) > 1) return;
-    } catch { /* fall through to the hard-cut concat */ }
-  }
-
-  // FALLBACK: plain hard-cut concat keeping each clip's own (contiguous-segment) audio.
   const args: string[] = ["-y"];
   clips.forEach((c) => args.push("-i", c));
   const f: string[] = [];
@@ -160,7 +133,7 @@ export async function generateMusicVideo(opts: {
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   const abs = (u: string | null | undefined): string | null => (u ? (u.startsWith("http") ? u : `${base}${u}`) : null);
 
-  if (!falEnabled()) throw new Error("[musicvideo] FAL_KEY not set — OmniHuman lip-sync unavailable");
+  if (!falEnabled()) throw new Error("[musicvideo] FAL_KEY not set — i2v + lip-sync unavailable");
 
   // 1) SCRIPT — full ~2-min genre song (lyric chunk per scene) + N settings.
   let treatment: FilmTreatment;
@@ -183,7 +156,9 @@ export async function generateMusicVideo(opts: {
   }
   const songDur = ffprobeDuration(songPath);
   if (!(songDur > 3)) throw new Error("[musicvideo] song came back too short");
-  const segLen = songDur / N;
+  // Each scene is ONE i2v clip capped at CLIP_MAX; slice the song into contiguous D-second
+  // segments from the start so the concatenated clips rebuild a continuous song (no gaps).
+  const D = Math.min(CLIP_MAX, Math.max(5, Math.round(songDur / N)));
 
   // 3) ARTIST hero — ONE realistic portrait that locks the look (face + wardrobe) for the WHOLE
   //    video. Every scene is an EDIT of THIS exact image, so the artist can never drift.
@@ -204,45 +179,42 @@ export async function generateMusicVideo(opts: {
     return img ? abs(img) : artistRef; // same artist (the hero) if an edit fails
   });
 
-  // 5) song SEGMENTS (local mp3 + hosted url for OmniHuman).
+  // 5) song SEGMENTS (local mp3 + hosted url for the lip-sync model to drive the mouth to).
   const segs: Array<{ localPath: string; url: string }> = [];
   for (let i = 0; i < N; i++) {
-    const p = await sliceAudio(songPath, i * segLen, segLen);
+    const p = await sliceAudio(songPath, i * D, D);
     segs.push({ localPath: p, url: await hostRender(base, p) });
   }
 
-  // 6) PERFORM — OmniHuman lip-syncs the artist to each segment. Retry, then fall
-  //    back to a still-over-audio clip so one bad beat can't kill the render.
+  // 6) PERFORM — TWO engines so each does one job well (OmniHuman did both and the mouth was
+  //    "pitiful"): (a) MOTION — a SILENT i2v clip where the artist + camera actually move (fixes
+  //    the static-background note); (b) MOUTH — the dedicated sync-lipsync model re-drives the lips
+  //    on that footage to the song segment. Retry; fall back to a still-over-audio clip.
   const clips = await mapLimit(scenes, 3, async (_s, i) => {
     const imgAbs = sceneImgs[i];
     const seg = segs[i];
-    if (!imgAbs) {
-      // No scene image — still-clip needs a local image; skip to keep the song intact
-      // by holding the artist reference if we have it, else drop the beat.
-      return null;
-    }
+    if (!imgAbs) return null;
     const imgLocal = path.join(RENDERS(), path.basename(imgAbs));
+    const motionPrompt = `A ${g.label} music-video performance: the SAME artist performs/raps with high energy — head bobbing, body moving to the beat, hands gesturing — while the camera moves with a dynamic handheld sway and slow push-in; the setting is alive with motion. Keep the person identical, photoreal.`;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const vurl = await animateOmniHuman({
-          imageUrl: imgAbs,
-          audioUrl: seg.url,
-          resolution: "720p",
-          // turbo OFF: turbo traded quality for speed and the mouth read fake. Owner wants REAL
-          // lip-sync WITHOUT a mic crutch (90% use no mic), so run full quality. Short per-scene
-          // clips keep the render sane (the 60-min blow-up was ONE long 40s clip, not these).
-          prompt: `The artist raps/sings directly to camera with CRISP, ACCURATE lip-sync — the mouth shapes and jaw match the words precisely the whole time, clean articulation, no mumbling or smearing — high energy and attitude, a ${g.label} music-video performance with lots of natural body movement and head bob, and a subtle handheld camera sway.`,
-        });
+        // (a) silent motion clip (Kling 2.5-turbo-pro)
+        const reqId = await falVideoSubmit(I2V_MODEL, { startImage: imgAbs, prompt: motionPrompt, durationSec: D, generateAudio: false });
+        const motionUrl = await falVideoPoll(I2V_MODEL, reqId, 12 * 60_000);
+        // (b) dedicated lip-sync onto that footage, driven by the song segment
+        let finalUrl = motionUrl;
+        try { finalUrl = await falLipSync(motionUrl, seg.url); }
+        catch (e) { console.error(`[musicvideo] scene ${i + 1} lipsync failed, using motion-only: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
         const out = path.join(RENDERS(), `mv-${Date.now()}-${i}-${rid()}.mp4`);
-        await download(vurl, out);
+        await download(finalUrl, out);
         if (fs.existsSync(out) && ffprobeDuration(out) > 1) { await ckpt({ [`ckClip${i}`]: out }); return out; }
       } catch (e) {
-        console.error(`[musicvideo] scene ${i + 1} omnihuman attempt ${attempt + 1}/2 failed: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+        console.error(`[musicvideo] scene ${i + 1} i2v+lipsync attempt ${attempt + 1}/2 failed: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
       }
     }
     // Fallback: still image held over the segment audio (keeps the song continuous).
     try {
-      if (fs.existsSync(imgLocal)) return await stillClip(imgLocal, seg.localPath, segLen, W, H);
+      if (fs.existsSync(imgLocal)) return await stillClip(imgLocal, seg.localPath, D, W, H);
     } catch (e) { console.error(`[musicvideo] scene ${i + 1} still fallback failed: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
     return null;
   });
@@ -252,7 +224,7 @@ export async function generateMusicVideo(opts: {
   // 7) ASSEMBLE — hard-cut concat keeping audio → the full song under the performance.
   const outName = `mv-${Date.now()}-${rid()}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleMusicVideo(good, songPath, outPath, W, H);
+  await assembleMusicVideo(good, outPath, W, H);
   const finalDur = ffprobeDuration(outPath);
   try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;
@@ -267,7 +239,7 @@ export async function generateMusicVideo(opts: {
       metaJson: JSON.stringify({
         kind: "musicvideo", template: "musicvideo", section: opts.section || "creator",
         genre, genreLabel: g.label, scenes: good.length, lipSynced: good.length, aspect: "9:16",
-        songSeconds: Math.round(songDur), seconds: Math.round(finalDur), engine: "omnihuman",
+        songSeconds: Math.round(songDur), seconds: Math.round(finalDur), engine: "kling2.5+synclipsync",
       }),
     },
   });
