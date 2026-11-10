@@ -323,7 +323,7 @@ export default function FilmStudio() {
   // short cinematic beats) or Kling 3 Omni (longer single takes, native lip-sync).
   // Only submitted for testmovie; the action ignores it for every other template.
   const [dialogueEngine, setDialogueEngine] = useState<"veo" | "kling3">("kling3");
-  const [filmAspect, setFilmAspect] = useState<"9:16" | "16:9" | "1:1">("9:16");
+  const [filmAspect, setFilmAspect] = useState<"9:16" | "16:9" | "1:1">("16:9");
   const [topic, setTopic] = useState("");
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
@@ -821,13 +821,13 @@ export default function FilmStudio() {
           <div className="fs-engine" role="group" aria-label={t("Render engine")}>
             <span className="fs-engine-cap">{t("Render engine")}</span>
             <div className="fs-engine-seg">
-              <button type="button" className={`fs-engine-opt${dialogueEngine === "veo" ? " on" : ""}`}
-                aria-pressed={dialogueEngine === "veo"} onClick={() => setDialogueEngine("veo")}>
-                {t("Veo 3")}<small>{t("premium")}</small>
-              </button>
               <button type="button" className={`fs-engine-opt${dialogueEngine === "kling3" ? " on" : ""}`}
                 aria-pressed={dialogueEngine === "kling3"} onClick={() => setDialogueEngine("kling3")}>
-                {t("Kling 3")}<small>{t("cheaper · default")}</small>
+                {t("Kling 3")}<small>{t("recommended · default")}</small>
+              </button>
+              <button type="button" className={`fs-engine-opt${dialogueEngine === "veo" ? " on" : ""}`}
+                aria-pressed={dialogueEngine === "veo"} onClick={() => setDialogueEngine("veo")}>
+                {t("Veo 3")}<small>{t("premium · pricier")}</small>
               </button>
             </div>
             <p className="fs-engine-note">{t("Same film, different AI. Run both and compare — each is tagged by model in your Archive.")}</p>
@@ -837,20 +837,20 @@ export default function FilmStudio() {
           <div className="fs-engine" role="group" aria-label={t("Aspect ratio")}>
             <span className="fs-engine-cap">{t("Shape")}</span>
             <div className="fs-engine-seg">
-              <button type="button" className={`fs-engine-opt${filmAspect === "9:16" ? " on" : ""}`}
-                aria-pressed={filmAspect === "9:16"} onClick={() => setFilmAspect("9:16")}>
-                {t("Vertical")}<small>{t("9:16 · TikTok")}</small>
-              </button>
               <button type="button" className={`fs-engine-opt${filmAspect === "16:9" ? " on" : ""}`}
                 aria-pressed={filmAspect === "16:9"} onClick={() => setFilmAspect("16:9")}>
-                {t("Wide")}<small>{t("16:9 · YouTube")}</small>
+                {t("Wide")}<small>{t("16:9 · default")}</small>
+              </button>
+              <button type="button" className={`fs-engine-opt${filmAspect === "9:16" ? " on" : ""}`}
+                aria-pressed={filmAspect === "9:16"} onClick={() => setFilmAspect("9:16")}>
+                {t("Vertical")}<small>{t("9:16 · mobile")}</small>
               </button>
               <button type="button" className={`fs-engine-opt${filmAspect === "1:1" ? " on" : ""}`}
                 aria-pressed={filmAspect === "1:1"} onClick={() => setFilmAspect("1:1")}>
                 {t("Square")}<small>{t("1:1 · feed")}</small>
               </button>
             </div>
-            <p className="fs-engine-note">{t("Vertical for Shorts & Reels; Wide for YouTube, TV episodes and roomier multi-character scenes.")}</p>
+            <p className="fs-engine-note">{t("Wide for YouTube, TV episodes and roomier multi-character scenes; Vertical for mobile Shorts & Reels.")}</p>
           </div>
         )}
         <Form method="post">
