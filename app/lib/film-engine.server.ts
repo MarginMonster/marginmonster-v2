@@ -113,6 +113,26 @@ export const GENRES: Record<string, { label: string; song: string; look: string 
 export const GENRE_KEYS = Object.keys(GENRES);
 export function genreOrDefault(k: string | undefined): string { return (k && GENRES[k]) ? k : "rap"; }
 
+/** Music-video PROPS — "cool shit" the user can drop into their video. Each key maps to a label
+ *  (shown in the picker) + a phrase woven into a scene's prompt. Props are DISTRIBUTED across the
+ *  scenes (one per scene, round-robin) so they feel intentional, not crammed into every shot. */
+export const PROPS: Record<string, { label: string; phrase: string }> = {
+  tiger:     { label: "🐯 Tiger", phrase: "a real tiger right beside the artist" },
+  lion:      { label: "🦁 Lion", phrase: "a majestic lion in the scene with the artist" },
+  horse:     { label: "🐴 Horse", phrase: "a powerful horse the artist stands with" },
+  car:       { label: "🏎️ Luxury car", phrase: "a luxury supercar (Lamborghini / Rolls-Royce) the artist poses on" },
+  moto:      { label: "🏍️ Motorcycle", phrase: "a sleek motorcycle the artist is on" },
+  chains:    { label: "💎 Diamond chains", phrase: "heavy iced-out diamond chains and jewelry on the artist" },
+  cash:      { label: "💵 Stacks of cash", phrase: "thick stacks of cash in the artist's hands" },
+  champagne: { label: "🥂 Champagne", phrase: "champagne bottles being popped" },
+  jet:       { label: "✈️ Private jet", phrase: "a private jet behind the artist" },
+  katana:    { label: "🗡️ Katana", phrase: "a gleaming katana sword the artist holds" },
+  snake:     { label: "🐍 Snake", phrase: "a large snake draped around the artist" },
+  yacht:     { label: "🛥️ Yacht", phrase: "a luxury yacht the artist stands on" },
+  fire:      { label: "🔥 Fire", phrase: "dramatic flames framing the artist" },
+};
+export const PROP_KEYS = Object.keys(PROPS);
+
 export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
   musicvideo: {
     key: "musicvideo",

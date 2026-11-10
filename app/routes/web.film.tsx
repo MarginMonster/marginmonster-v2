@@ -27,11 +27,12 @@ export const meta: MetaFunction = () => [{ title: "Film Studio · EASYMODE" }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
-  const { LIVE_FILM_TEMPLATES, GENRES } = await import("../lib/film-engine.server");
+  const { LIVE_FILM_TEMPLATES, GENRES, PROPS } = await import("../lib/film-engine.server");
   const templates = LIVE_FILM_TEMPLATES.map((t) => ({
     key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger,
   }));
   const genres = Object.entries(GENRES).map(([key, g]) => ({ key, label: g.label }));
+  const props = Object.entries(PROPS).map(([key, p]) => ({ key, label: p.label }));
   // The merchant's own catalogue — only products WITH a photo can seed a skit.
   const products = (await db.catalogProduct.findMany({
     where: { shopId: shop.id, imageUrl: { not: null } },
@@ -73,6 +74,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     outputLang: normalizeContentLang(shop.contentLang),
     templates,
     genres,
+    props,
     products,
     gallery,
     voices: AVATAR_VOICES.map((v) => ({ id: v.id, label: v.label, blurb: v.blurb, gender: v.gender })),
@@ -231,6 +233,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const filmGenre = ((form.get("filmGenre") as string) || "").trim();
     // BYO-song: a merchant-uploaded track URL (from /api/film-song-upload) used INSTEAD of generating one.
     const filmSongUrl = ((form.get("filmSongUrl") as string) || "").trim();
+    // Props (Music Video) — keys the merchant picked, woven into the scenes. JSON array of strings.
+    let filmProps: string[] | undefined;
+    const propsRaw = ((form.get("filmProps") as string) || "").trim();
+    if (propsRaw) { try { const p = JSON.parse(propsRaw); if (Array.isArray(p)) filmProps = p.filter((x) => typeof x === "string").slice(0, 12); } catch { /* ignore malformed */ } }
     const cost = estimateFilmTokens(scenes);
 
     let unbacked = 0, unbackedFromExtra = 0;
@@ -245,6 +251,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(cast ? { cast } : {}),
         ...(filmGenre ? { filmGenre } : {}),
         ...(filmSongUrl ? { filmSongUrl } : {}),
+        ...(filmProps?.length ? { filmProps } : {}),
         dialogueEngine, filmAspect,
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
         productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
@@ -353,6 +360,9 @@ export default function FilmStudio() {
     } catch { alert("Couldn't upload that track."); }
     finally { setSongBusy(false); }
   };
+  // Props (Music Video) — up to 6 "cool shit" items woven into the scenes.
+  const [filmProps, setFilmProps] = useState<string[]>([]);
+  const toggleProp = (k: string) => setFilmProps((p) => (p.includes(k) ? p.filter((x) => x !== k) : p.length < 6 ? [...p, k] : p));
   const [topic, setTopic] = useState("");
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
@@ -786,6 +796,18 @@ export default function FilmStudio() {
                   {filmSongUrl && <p className="fs-hint">{t("We'll build the whole video around your track — artist, director's shots and lip-sync.")}</p>}
                 </div>
               )}
+              <div className="fs-propsbox">
+                <span className="fs-songsrc-cap">{t("Props")} <span className="fs-free" style={{ marginLeft: 4 }}>{t("optional")}</span></span>
+                <p className="fs-hint" style={{ margin: "6px 0 0" }}>{t("Cool shit to weave into the scenes — pick a few.")}</p>
+                <div className="fs-genres" style={{ marginTop: 9 }}>
+                  {(d.props || []).map((pr) => (
+                    <button type="button" key={pr.key} className={`fs-genre${filmProps.includes(pr.key) ? " on" : ""}`}
+                      aria-pressed={filmProps.includes(pr.key)} onClick={() => toggleProp(pr.key)}>
+                      {t(pr.label)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
           <div className="fs-lbl"><span className="fs-n">2</span> {tmpl?.lipSyncSinger ? t("Write the song") : t("Write the treatment")} <span className="fs-free">{t("free")}</span></div>
@@ -944,6 +966,7 @@ export default function FilmStudio() {
           {isStoryboard && <input type="hidden" name="filmAspect" value={filmAspect} />}
           {tmpl?.lipSyncSinger && <input type="hidden" name="filmGenre" value={filmGenre} />}
           {tmpl?.lipSyncSinger && songSource === "upload" && filmSongUrl && <input type="hidden" name="filmSongUrl" value={filmSongUrl} />}
+          {tmpl?.lipSyncSinger && filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}
           <input type="hidden" name="filmTopic" value={topic} />
           <input type="hidden" name="filmScenes" value={String(scenes)} />
           {tmpl?.needsProduct && <input type="hidden" name="filmProductTitle" value={prodTitle} />}
@@ -1069,6 +1092,7 @@ const FS_STYLE = `
 .fs-genre{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:999px;padding:8px 15px;cursor:pointer;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;color:var(--ink,#14201A);transition:background .15s,border-color .15s,color .15s,transform .1s;}
 .fs-genre:hover{border-color:var(--green,#0C7A46);}
 .fs-genre.on{background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);color:#fff;}
+.fs-propsbox{margin:16px 0 0;padding:14px 0 0;border-top:1px dashed var(--line,#E4DFCF);}
 .fs-songsrc{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0 0;}
 .fs-songsrc-cap{font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
 .fs-songsrc-seg{display:inline-flex;gap:6px;background:#F3EFE2;border:1px solid var(--line,#E4DFCF);border-radius:12px;padding:4px;}

@@ -26,7 +26,7 @@ import { renderCreativeSeed, editSubjectIntoScene } from "./image-generation.ser
 import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falVideoSubmit, falVideoPoll, falLipSync, falEnabled } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
-import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, type FilmTreatment } from "./film-engine.server";
+import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, PROPS, type FilmTreatment } from "./film-engine.server";
 import { singToDisk } from "./music-generation.server";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -167,11 +167,16 @@ export async function generateMusicVideo(opts: {
   treatment?: FilmTreatment;
   /** BYO-song: a merchant-uploaded audio track to use INSTEAD of generating one with minimax. */
   songUrl?: string;
+  /** PROPS (keys from film-engine PROPS) to weave into the scenes — tiger, luxury car, chains… */
+  props?: string[];
   resume?: { ckTreatment?: string; ckSong?: string; ckArtist?: string };
 }): Promise<string> {
   const tmpl = filmTemplate("musicvideo");
   const genre = genreOrDefault(opts.genre);
   const g = GENRES[genre];
+  // Props the merchant picked, distributed ONE per scene (round-robin) so they feel intentional.
+  const propList = (opts.props || []).filter((k) => PROPS[k]);
+  const propFor = (i: number): string => (propList.length ? ` Prominently feature ${PROPS[propList[i % propList.length]].phrase} in this shot.` : "");
   const [W, H] = [720, 1280]; // vertical music video (Shorts/TikTok/Reels)
   const N = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, opts.sceneCount ?? tmpl.defaultScenes));
   const jobId = opts.jobId;
@@ -230,7 +235,7 @@ export async function generateMusicVideo(opts: {
   //    real photography (the "AI as fuck" fix). Falls back to the hero itself if an edit fails.
   const sceneImgs = await mapLimit(scenes, 3, async (s, i) => {
     const shot = SHOTLIST[i % SHOTLIST.length];
-    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}. ${g.look}. ${REALISM}`;
+    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propFor(i)} ${g.look}. ${REALISM}`;
     const img = artistRef
       ? await editSubjectIntoScene(artistRef, prompt)
       : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, "9:16");
@@ -255,8 +260,8 @@ export async function generateMusicVideo(opts: {
     if (!imgAbs) return null;
     const imgLocal = path.join(RENDERS(), path.basename(imgAbs));
     const motionPrompt = shot.role === "perform"
-      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist performs/raps with high energy — head bobbing, body moving to the beat; hands move naturally and EMPTY — they are NOT holding anything and there is NO microphone. Keep the SAME person identical; photoreal, cinematic, high-production.`
-      : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural motion. Keep the SAME person identical; photoreal, cinematic, high-production.`;
+      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist performs/raps with high energy — head bobbing, body moving to the beat.${propFor(i)} There is NO microphone — the artist never holds a mic. Keep the SAME person identical; photoreal, cinematic, high-production.`
+      : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural motion.${propFor(i)} Keep the SAME person identical; photoreal, cinematic, high-production.`;
     for (const i2vModel of [I2V_MODEL, I2V_FALLBACK]) {
       try {
         // silent motion clip — primary engine, then the backup if it blips (so a provider outage
