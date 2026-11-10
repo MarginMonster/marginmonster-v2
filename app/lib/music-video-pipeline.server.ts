@@ -31,13 +31,25 @@ import { singToDisk } from "./music-generation.server";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
-// Kill the "AI as fuck" look — push every artist/scene render toward real photography.
-const REALISM = "Photorealistic, shot on a real camera with natural lighting, realistic skin texture and fine detail — candid and authentic like a real music video; NOT glossy, plastic, waxy, over-saturated, CGI or obviously AI-generated.";
+// Real, PREMIUM look — cinematic high-end music video, but real photography (not CGI/AI-looking).
+const REALISM = "Photorealistic and cinematic like a real high-end music video — shot on a real camera, realistic skin texture and fine detail, premium production value and colour; NOT plastic, waxy, cartoonish, CGI or obviously AI-generated.";
 // MOTION engine: silent image-to-video with real body + camera movement (fixes the static-background
 // complaint). Kling 2.5-turbo-pro = fast + good motion. The mouth is driven SEPARATELY by the
 // dedicated sync-lipsync model afterwards — OmniHuman did both at once and was "pitiful" at the mouth.
 const I2V_MODEL = "fal-ai/kling-video/v2.5-turbo/pro/image-to-video";
 const CLIP_MAX = 10; // the i2v clip length cap (Kling 2.x); segments are sliced to match so the song stays continuous
+// DIRECTOR'S SHOT LIST — a real music video is EDITED: performance shots intercut with b-roll,
+// establishing wides, close-ups and cutaways (never the artist lip-syncing end-to-end). Each scene
+// takes the next shot; `perform` shots get lip-synced, `broll` shots just ride the song over motion.
+// This reads premium AND hides the lip-sync (only tight performance shots carry a mouth).
+const SHOTLIST: Array<{ role: "perform" | "broll"; frame: string; cam: string }> = [
+  { role: "broll",   frame: "a cinematic WIDE ESTABLISHING shot of the whole location that sets the mood — the artist is small in the frame or walking through it, NOT facing camera", cam: "a slow cinematic push-in" },
+  { role: "perform", frame: "a MEDIUM shot of the artist performing straight to camera, framed from the waist up", cam: "a smooth handheld sway" },
+  { role: "perform", frame: "a tight, intense CLOSE-UP on the artist's face performing to camera, shallow depth of field", cam: "a slow subtle drift-in" },
+  { role: "broll",   frame: "a dynamic B-ROLL cutaway of the scenery, street or striking details of the location in motion — the artist is seen from behind or the side, NOT facing camera", cam: "a sweeping camera pan across the scene" },
+  { role: "perform", frame: "a powerful LOW-ANGLE WIDE shot of the artist performing to camera, full body, larger than life", cam: "a slow orbit around the artist" },
+  { role: "broll",   frame: "an atmospheric B-ROLL shot of the location from a fresh cinematic angle, moody and premium — the artist a small part of the frame, NOT facing camera", cam: "a slow tracking move" },
+];
 
 /** Run async work over items with a bounded number in flight. */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
@@ -171,11 +183,12 @@ export async function generateMusicVideo(opts: {
   // 4) PER-SCENE images — EDIT the one hero into each NEW setting (nano-banana-pro @2K). Editing
   //    the same source preserves the face (the "it changes the singer" fix) and pro @2K reads as
   //    real photography (the "AI as fuck" fix). Falls back to the hero itself if an edit fails.
-  const sceneImgs = await mapLimit(scenes, 3, async (s) => {
-    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Place them performing/rapping to camera with full energy in a NEW setting: ${s.visual}. ${g.look}. ${REALISM}`;
+  const sceneImgs = await mapLimit(scenes, 3, async (s, i) => {
+    const shot = SHOTLIST[i % SHOTLIST.length];
+    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}. ${g.look}. ${REALISM}`;
     const img = artistRef
       ? await editSubjectIntoScene(artistRef, prompt)
-      : await renderCreativeSeed(`${g.look}. ${s.visual}. ${REALISM}`, "9:16");
+      : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, "9:16");
     return img ? abs(img) : artistRef; // same artist (the hero) if an edit fails
   });
 
@@ -193,23 +206,34 @@ export async function generateMusicVideo(opts: {
   const clips = await mapLimit(scenes, 3, async (_s, i) => {
     const imgAbs = sceneImgs[i];
     const seg = segs[i];
+    const shot = SHOTLIST[i % SHOTLIST.length];
     if (!imgAbs) return null;
     const imgLocal = path.join(RENDERS(), path.basename(imgAbs));
-    const motionPrompt = `A ${g.label} music-video performance: the SAME artist performs/raps with high energy — head bobbing, body moving to the beat, hands gesturing — while the camera moves with a dynamic handheld sway and slow push-in; the setting is alive with motion. Keep the person identical, photoreal.`;
+    const motionPrompt = shot.role === "perform"
+      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist performs/raps with high energy — head bobbing, body moving to the beat; hands move naturally and EMPTY — they are NOT holding anything and there is NO microphone. Keep the SAME person identical; photoreal, cinematic, high-production.`
+      : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural motion. Keep the SAME person identical; photoreal, cinematic, high-production.`;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        // (a) silent motion clip (Kling 2.5-turbo-pro)
+        // silent motion clip (Kling 2.5-turbo-pro)
         const reqId = await falVideoSubmit(I2V_MODEL, { startImage: imgAbs, prompt: motionPrompt, durationSec: D, generateAudio: false });
         const motionUrl = await falVideoPoll(I2V_MODEL, reqId, 12 * 60_000);
-        // (b) dedicated lip-sync onto that footage, driven by the song segment
-        let finalUrl = motionUrl;
-        try { finalUrl = await falLipSync(motionUrl, seg.url); }
-        catch (e) { console.error(`[musicvideo] scene ${i + 1} lipsync failed, using motion-only: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
         const out = path.join(RENDERS(), `mv-${Date.now()}-${i}-${rid()}.mp4`);
-        await download(finalUrl, out);
+        if (shot.role === "perform") {
+          // PERFORMANCE: dedicated lip-sync drives the mouth to this song segment
+          let finalUrl = motionUrl;
+          try { finalUrl = await falLipSync(motionUrl, seg.url); }
+          catch (e) { console.error(`[musicvideo] scene ${i + 1} lipsync failed, motion-only: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+          await download(finalUrl, out);
+        } else {
+          // B-ROLL: lay the song segment over the silent motion clip (no mouth to sync). If the mux
+          // fails, `out` stays invalid and the still fallback (which has audio) takes over.
+          const vtmp = path.join(RENDERS(), `mvv-${Date.now()}-${i}-${rid()}.mp4`);
+          await download(motionUrl, vtmp);
+          await runFfmpeg(["-y", "-i", vtmp, "-i", seg.localPath, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", out]);
+        }
         if (fs.existsSync(out) && ffprobeDuration(out) > 1) { await ckpt({ [`ckClip${i}`]: out }); return out; }
       } catch (e) {
-        console.error(`[musicvideo] scene ${i + 1} i2v+lipsync attempt ${attempt + 1}/2 failed: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+        console.error(`[musicvideo] scene ${i + 1} (${shot.role}) attempt ${attempt + 1}/2 failed: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
       }
     }
     // Fallback: still image held over the segment audio (keeps the song continuous).
