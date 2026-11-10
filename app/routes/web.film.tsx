@@ -363,6 +363,8 @@ export default function FilmStudio() {
   // Props (Music Video) — up to 6 "cool shit" items woven into the scenes.
   const [filmProps, setFilmProps] = useState<string[]>([]);
   const toggleProp = (k: string) => setFilmProps((p) => (p.includes(k) ? p.filter((x) => x !== k) : p.length < 6 ? [...p, k] : p));
+  // Music Video card-builder: which summary card is expanded for editing (null = all collapsed).
+  const [openCard, setOpenCard] = useState<"genre" | "song" | "props" | "length" | null>(null);
   const [topic, setTopic] = useState("");
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
@@ -616,7 +618,7 @@ export default function FilmStudio() {
       </div>
 
       {/* Format picker — each card is that format's real AI still */}
-      <div className="fs-tmpls">
+      <div className="fs-tmpls" id="fs-formats">
         {d.templates.map((x) => {
           const m = FMT[x.key] || { tint: "t-film", kick: "", meta: "" };
           return (
@@ -642,6 +644,161 @@ export default function FilmStudio() {
         </div>
       </div>
 
+      {/* ───────── Music Video — the card builder (elegant, Studio-style) ─────────
+          One topic field + four summary cards you tap to edit, then Generate.
+          Replaces the long-scroll form for the sing lanes only. */}
+      {tmpl?.lipSyncSinger && (
+        <div className="mm">
+          <div className="mm-head">
+            <span className="mm-head-ico" aria-hidden="true">{fmtIcon(template)}</span>
+            <div className="mm-head-copy"><b>{t(tmpl.name)}</b><span>{t("One artist · your song · director's cuts")}</span></div>
+            <button type="button" className="mm-back" onClick={() => document.getElementById("fs-formats")?.scrollIntoView({ behavior: "smooth", block: "start" })}>‹ {t("Formats")}</button>
+          </div>
+
+          <div className="mm-topic">
+            <label htmlFor="mm-topic-in">{t("What's your video about?")}</label>
+            <input id="mm-topic-in" value={topic} onChange={(e) => setTopic(e.target.value)} maxLength={300}
+              placeholder={t("e.g. grinding from nothing, staying loyal, winning big")} />
+          </div>
+
+          <div className="mm-hint"><span aria-hidden="true">✎</span> {t("Tap any card to change it — we fill in smart defaults so you can just hit Generate.")}</div>
+
+          <div className="mm-grid">
+            {/* Genre */}
+            <button type="button" className={`mm-card${openCard === "genre" ? " on" : ""}`} onClick={() => setOpenCard(openCard === "genre" ? null : "genre")}>
+              <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
+              <span className="mm-card-top"><span className="mm-card-ico c1"><Ico n="music" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The beat")}</span><b>{t("Genre")}</b></span></span>
+              <span className="mm-val">{t((d.genres || []).find((g) => g.key === filmGenre)?.label || "Rap / Hip-Hop")}</span>
+            </button>
+            {/* Song */}
+            <button type="button" className={`mm-card${openCard === "song" ? " on" : ""}`} onClick={() => setOpenCard(openCard === "song" ? null : "song")}>
+              <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
+              <span className="mm-card-top"><span className="mm-card-ico c2"><Ico n="sound" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The song")}</span><b>{songSource === "upload" ? t("Your track") : t("Write me one")}</b></span></span>
+              <span className="mm-val">{songSource === "upload" ? (filmSongUrl ? <><Ico n="check" size={12} /> {songName || t("Song uploaded")}</> : t("Upload your own track")) : <>{t("We write + produce it ·")} <b className="mm-free">{t("free")}</b></>}</span>
+            </button>
+            {/* Props */}
+            <button type="button" className={`mm-card${openCard === "props" ? " on" : ""}`} onClick={() => setOpenCard(openCard === "props" ? null : "props")}>
+              <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
+              <span className="mm-card-top"><span className="mm-card-ico c3"><Ico n="gem" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("Cool shit")}</span><b>{t("Props")}</b></span></span>
+              {filmProps.length > 0 ? (
+                <span className="mm-chips">{filmProps.slice(0, 3).map((k) => { const p = (d.props || []).find((x) => x.key === k); return <span className="mm-chip" key={k}>{t(p?.label || k)}</span>; })}{filmProps.length > 3 && <span className="mm-chip">+{filmProps.length - 3}</span>}</span>
+              ) : <span className="mm-val mm-muted">{t("none yet · tap to add tigers, cars, chains…")}</span>}
+            </button>
+            {/* Length */}
+            <button type="button" className={`mm-card${openCard === "length" ? " on" : ""}`} onClick={() => setOpenCard(openCard === "length" ? null : "length")}>
+              <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
+              <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
+              <span className="mm-val">{t("{n} scenes · ~{sec}s · director's shots", { n: scenes, sec: scenes * 5 })}</span>
+            </button>
+          </div>
+
+          {/* expand-to-edit panels */}
+          {openCard === "genre" && (
+            <div className="mm-expand">
+              <div className="mm-expand-h">{t("Pick the genre")}</div>
+              <div className="mm-expand-sub">{t("Sets the song and the whole look — one artist performs it across your scenes.")}</div>
+              <div className="mm-props">
+                {(d.genres || []).map((gr) => (
+                  <button type="button" key={gr.key} className={`mm-prop${filmGenre === gr.key ? " on" : ""}`} onClick={() => { setFilmGenre(gr.key); setTreatment(null); }}>{t(gr.label)}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {openCard === "song" && (
+            <div className="mm-expand">
+              <div className="mm-expand-h">{t("Your song")}</div>
+              <div className="mm-expand-sub">{t("We write and produce an original — free — or bring your own track.")}</div>
+              <div className="fs-songsrc-seg">
+                <button type="button" className={`fs-songsrc-opt${songSource === "write" ? " on" : ""}`} onClick={() => setSongSource("write")}>{t("Write me one")}<small>{t("free")}</small></button>
+                <button type="button" className={`fs-songsrc-opt${songSource === "upload" ? " on" : ""}`} onClick={() => setSongSource("upload")}>{t("Upload my own")}<small>{t("your track")}</small></button>
+              </div>
+              {songSource === "upload" && (
+                <div className="fs-songup" style={{ marginTop: 12 }}>
+                  <input ref={songInputRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/mp4,audio/x-m4a,audio/aac,.mp3,.wav,.m4a,.aac" hidden onChange={(e) => uploadSong(e.currentTarget.files?.[0])} />
+                  <button type="button" className="fs-songup-btn" onClick={() => songInputRef.current?.click()} disabled={songBusy}>
+                    {songBusy ? <>… {t("Uploading")}</> : filmSongUrl ? <><Ico n="check" size={14} /> {songName || t("Song uploaded")}</> : <><Ico n="music" size={14} /> {t("Choose a song file")}</>}
+                  </button>
+                  {filmSongUrl && <p className="fs-hint">{t("We'll build the whole video around your track — artist, director's shots and lip-sync.")}</p>}
+                </div>
+              )}
+            </div>
+          )}
+          {openCard === "props" && (
+            <div className="mm-expand">
+              <div className="mm-expand-h">{t("Pick your props")}</div>
+              <div className="mm-expand-sub">{t("We'll weave them into the cast's scenes — tasteful, not cheesy. Up to 6.")}</div>
+              <div className="mm-props">
+                {(d.props || []).map((pr) => (
+                  <button type="button" key={pr.key} className={`mm-prop${filmProps.includes(pr.key) ? " on" : ""}`} onClick={() => toggleProp(pr.key)}>{t(pr.label)}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {openCard === "length" && (
+            <div className="mm-expand">
+              <div className="mm-expand-h">{t("How long?")}</div>
+              <div className="mm-expand-sub">{t("Each scene is a director's shot — about 5 seconds.")}</div>
+              <div className="fs-len" style={{ marginTop: 4 }}>
+                <span>{t("Scenes")}</span>
+                <div className="fs-stepper">
+                  <button type="button" onClick={() => bump(-1)} disabled={scenes <= tmpl.minScenes} aria-label={t("Fewer scenes")}>−</button>
+                  <b>{scenes}</b>
+                  <button type="button" onClick={() => bump(1)} disabled={scenes >= tmpl.maxScenes} aria-label={t("More scenes")}>+</button>
+                </div>
+                <span className="fs-len-note">{t("≈ {sec}s · {n} AI clips", { sec: scenes * 5, n: scenes })}</span>
+              </div>
+            </div>
+          )}
+
+          {/* optional free lyrics preview — stays collapsed so the look stays clean */}
+          <div className="mm-preview">
+            <button type="button" className="mm-preview-btn" onClick={writeTreatment} disabled={writing}>
+              {writing ? <>… {t("Writing")}</> : treatment ? <><Ico n="refresh" size={13} /> {t("Re-roll the lyrics")}</> : <><Ico n="wand" size={13} /> {t("Preview the song first — free")}</>}
+            </button>
+            {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
+            {treatment && (
+              <div className="fs-treat" style={{ marginTop: 12 }}>
+                {treatment.title && <div className="fs-treat-ttl">{treatment.title}</div>}
+                <div className="fs-treat-mood"><Ico n="music" size={12} /> {treatment.musicMood}</div>
+                <ol className="fs-scenes">
+                  {treatment.scenes.map((s, i) => (
+                    <li key={i} className="fs-scene">
+                      <span className="fs-scene-vis">{s.visual}</span>
+                      <input className="fs-scene-cap" value={s.caption || ""} onChange={(e) => editCaption(i, e.target.value)} placeholder={t("on-screen line (optional)")} maxLength={80} />
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+          </div>
+
+          {/* generate — the one button */}
+          <div className="mm-gen">
+            <Form method="post">
+              <input type="hidden" name="intent" value="film" />
+              <input type="hidden" name="template" value={template} />
+              <input type="hidden" name="filmGenre" value={filmGenre} />
+              {songSource === "upload" && filmSongUrl && <input type="hidden" name="filmSongUrl" value={filmSongUrl} />}
+              {filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}
+              <input type="hidden" name="filmTopic" value={topic} />
+              <input type="hidden" name="filmScenes" value={String(scenes)} />
+              {treatment && <input type="hidden" name="approvedTreatment" value={JSON.stringify(treatment)} />}
+              <button type="submit" className="mm-go" disabled={!canGo}>
+                {generating ? <>… {t("Starting your video")}</> : <><Ico n="film" size={17} /> {cost > 0 ? t("Generate Music Video · {cost} Tokens", { cost }) : t("Generate Music Video")}</>}
+              </button>
+            </Form>
+            <div className="mm-eta"><span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: true, dialogue: false, scenes, engine: dialogueEngine })}</b></div>
+            <p className="mm-note">{cost > 0 ? <>{t("{base} + {per}/scene × {n} = {cost} Tokens", { base: d.base, per: d.perScene, n: scenes, cost })} · <span className={affordable ? "fs-bal" : "fs-bal low"}>{t("you have {n}", { n: d.tokens })}</span></> : t("Free while we dial this in — pricing comes later.")}</p>
+            {!d.hasPlan && <p className="fs-err">{t("Pick a plan on the Dashboard first — film runs on tokens.")}</p>}
+            {d.hasPlan && !affordable && <p className="fs-err">{t("Not enough tokens for this length — shorten it, or top up on the Plans page.")}</p>}
+            {actionData?.error && <p className="fs-err">{actionData.error}</p>}
+            {actionData?.ok && <p className="fs-ok"><Ico n="check" size={14} /> {t("Rolling! Your video is rendering — it'll land in your Gallery in a few minutes. You can keep working.")}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* The classic long-form flow — every format except the Music Video sing lanes. */}
+      {!tmpl?.lipSyncSinger && (<>
       {/* Skit only — your product (kept pin-sharp in every scene) */}
       {tmpl?.needsProduct && (
         <div className="fs-card">
@@ -996,6 +1153,7 @@ export default function FilmStudio() {
           <p className="fs-ok"><Ico n="check" size={14} /> {t("Rolling! Your film is rendering — it'll land in your Gallery in a few minutes. You can keep working.")}</p>
         )}
       </div>
+      </>)}
     </div>
   );
 }
@@ -1315,4 +1473,65 @@ const FS_STYLE = `
 .fs-anglecut-in:focus{outline:0;border-bottom-color:#7F77DD;}
 .fs-anglecut-x{flex:none;border:0;background:transparent;color:#C6C2EE;cursor:pointer;padding:3px;border-radius:6px;}
 .fs-anglecut-x:hover{color:#7F77DD;background:#EEEDFB;}
+
+/* ───────── Music Video — the card builder ───────── */
+.mm{margin:2px 0 0;}
+.mm-head{display:flex;align-items:center;gap:14px;background:linear-gradient(145deg,#0E6B41,#083E27);border-radius:20px;padding:16px 20px;box-shadow:0 16px 40px -22px rgba(8,62,39,.6);}
+.mm-head-ico{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.12);display:grid;place-items:center;flex:none;}
+.mm-head-ico svg{width:24px;height:24px;stroke:#8FE9BC;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-head-copy{min-width:0;}
+.mm-head-copy b{font-family:Fraunces,Poppins,serif;font-weight:700;font-size:22px;color:#fff;letter-spacing:-.01em;display:block;line-height:1.1;}
+.mm-head-copy span{font-size:12.5px;color:rgba(255,255,255,.75);}
+.mm-back{margin-left:auto;flex:none;font-size:12px;font-weight:800;color:#A7F0C8;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:7px 13px;cursor:pointer;font-family:Poppins,sans-serif;transition:background .14s;}
+.mm-back:hover{background:rgba(255,255,255,.18);}
+.mm-topic{margin:16px 0 0;background:var(--panel,#FDFBF4);border:1.5px solid var(--line,#E4DFCF);border-radius:18px;padding:16px 18px;box-shadow:0 2px 4px rgba(20,32,26,.03);}
+.mm-topic label{font-size:13px;font-weight:800;color:var(--ink,#14201A);display:block;margin-bottom:8px;}
+.mm-topic input{width:100%;border:1.5px solid var(--line,#E4DFCF);border-radius:12px;padding:12px 14px;font-size:14.5px;font-family:Poppins,sans-serif;color:var(--ink,#14201A);background:#fff;}
+.mm-topic input:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.mm-topic input::placeholder{color:var(--ink3,#9AA39B);}
+.mm-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:18px 4px 10px;display:flex;align-items:center;gap:7px;}
+.mm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:13px;}
+.mm-card{position:relative;display:block;width:100%;text-align:left;cursor:pointer;background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:18px;padding:16px;box-shadow:0 1px 2px rgba(20,32,26,.04);transition:transform .16s cubic-bezier(.2,.7,.2,1),box-shadow .16s,border-color .16s;font-family:Poppins,sans-serif;}
+.mm-card:hover{transform:translateY(-3px);box-shadow:0 16px 34px -20px rgba(20,32,26,.26);border-color:var(--green2,#1EA85C);}
+.mm-card.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 16px 32px -20px rgba(12,122,70,.4);}
+.mm-card-top{display:flex;align-items:center;gap:11px;}
+.mm-card-ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;box-shadow:0 6px 14px -6px rgba(0,0,0,.35);}
+.mm-card-ico svg{stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-card-ico.c1{background:linear-gradient(135deg,#C2487E,#8E2F5C);}
+.mm-card-ico.c2{background:linear-gradient(135deg,#1EA85C,#0C7A46);}
+.mm-card-ico.c3{background:linear-gradient(135deg,#E8A43C,#CE7C18);}
+.mm-card-ico.c4{background:linear-gradient(135deg,#3E6FB0,#274C86);}
+.mm-card-ttl{display:block;min-width:0;}
+.mm-card-kick{display:block;font-size:10.5px;font-weight:800;color:var(--ink3,#9AA39B);text-transform:uppercase;letter-spacing:.06em;}
+.mm-card-ttl b{display:block;font-size:15.5px;font-weight:800;letter-spacing:-.01em;color:var(--ink,#14201A);line-height:1.15;}
+.mm-card-edit{position:absolute;top:13px;right:13px;width:26px;height:26px;border-radius:50%;background:var(--mint,#EAF6EF);color:var(--green,#0C7A46);display:grid;place-items:center;border:1px solid #D4EBDD;}
+.mm-card-edit svg{stroke:currentColor;stroke-width:2;fill:none;}
+.mm-val{display:block;margin:13px 0 0;font-size:13px;color:var(--ink2,#4A554E);line-height:1.4;}
+.mm-val .mm-free{color:var(--green,#0C7A46);font-weight:800;}
+.mm-muted{color:var(--ink3,#9AA39B);}
+.mm-chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;}
+.mm-chip{font-size:11.5px;font-weight:800;color:var(--green-d,#0A5E37);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:4px 10px;}
+.mm-expand{margin:13px 0 0;background:var(--panel,#FDFBF4);border:1.5px solid var(--green,#0C7A46);border-radius:18px;padding:16px 18px;box-shadow:0 0 0 1px rgba(12,122,70,.12),0 16px 36px -24px rgba(12,122,70,.4);}
+.mm-expand-h{font-size:13.5px;font-weight:800;color:var(--ink,#14201A);margin-bottom:4px;}
+.mm-expand-sub{font-size:12px;color:var(--ink2,#4A554E);margin-bottom:12px;line-height:1.4;}
+.mm-props{display:flex;flex-wrap:wrap;gap:9px;}
+.mm-prop{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:800;color:var(--ink,#14201A);cursor:pointer;font-family:Poppins,sans-serif;transition:background .14s,border-color .14s,color .14s;}
+.mm-prop:hover{border-color:var(--green,#0C7A46);}
+.mm-prop.on{background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);color:#fff;}
+.mm-preview{margin:16px 0 0;}
+.mm-preview-btn{display:inline-flex;align-items:center;gap:7px;border:1.5px dashed var(--green,#0C7A46);background:#fff;color:var(--green,#0C7A46);border-radius:12px;padding:10px 16px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;cursor:pointer;transition:background .14s;}
+.mm-preview-btn:hover:not(:disabled){background:var(--mint,#EAF6EF);}
+.mm-preview-btn:disabled{opacity:.6;cursor:default;}
+.mm-preview-btn svg{stroke:currentColor;stroke-width:2;fill:none;}
+.mm-gen{margin:18px 0 0;background:var(--panel,#FDFBF4);border:1.5px solid transparent;border-radius:20px;padding:18px;box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 22px 48px -26px rgba(12,122,70,.5);}
+.mm-go{position:relative;overflow:hidden;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,#0C7A46,#15B165 55%,#1EA85C);color:#fff;border:0;border-radius:15px;padding:16px;font-family:Poppins,sans-serif;font-weight:800;font-size:16.5px;letter-spacing:-.01em;cursor:pointer;box-shadow:0 14px 30px -14px rgba(12,122,70,.7),inset 0 1px 0 rgba(255,255,255,.25);}
+.mm-go:disabled{filter:grayscale(.55) brightness(.9);opacity:.75;cursor:default;box-shadow:none;}
+.mm-go svg{stroke:#fff;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-go::after{content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.45),transparent);transform:skewX(-18deg);animation:mm-sheen 4.5s ease-in-out infinite;}
+.mm-go:disabled::after{display:none;}
+@keyframes mm-sheen{0%,58%{left:-60%}80%,100%{left:130%}}
+.mm-eta{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:12px;font-size:13px;font-weight:700;color:var(--ink2,#4A554E);}
+.mm-eta b{color:var(--ink,#14201A);}
+.mm-note{text-align:center;font-size:12.5px;color:var(--ink2,#4A554E);margin-top:8px;}
+@media (prefers-reduced-motion:reduce){.mm-go::after{animation:none;}.mm-card{transition:none;}}
 `;
