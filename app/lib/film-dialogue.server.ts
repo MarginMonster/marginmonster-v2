@@ -488,7 +488,12 @@ export async function generateTestMovie(opts: {
   const masterFor = async (locKey: string, where: string, roomRef?: string): Promise<Master | undefined> => {
     if (!isTwoHander) return undefined;
     if (masters[locKey]?.url) return masters[locKey];
-    const url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(spkA), faceB: faceFor(spkB), descA: bibleFor(spkA), descB: bibleFor(spkB), setting: cleanSetting(where), style: twoStyle, aspect });
+    // The master two-shot is the WHOLE film's seed — nano-banana occasionally returns null,
+    // which hard-killed the render with "no seed frame". Retry a few times before giving up.
+    let url: string | null = null;
+    for (let attempt = 0; attempt < 3 && !url; attempt++) {
+      url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(spkA), faceB: faceFor(spkB), descA: bibleFor(spkA), descB: bibleFor(spkB), setting: cleanSetting(where), style: twoStyle, aspect });
+    }
     if (!url) return undefined;
     // DETECT which side each character landed on — nano-banana doesn't reliably honour
     // left/right, and the clip prompt needs the real side to point Veo at the speaker.
