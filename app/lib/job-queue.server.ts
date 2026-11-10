@@ -513,6 +513,19 @@ async function runJob(
       break;
     }
 
+    // Section editor Phase 3: re-roll ONE shot of a finished film via the dialogue engine,
+    // then re-stitch. Free (no tokens) during the build; updates the asset in place.
+    case "REGEN_SHOT": {
+      const { regenerateFilmShot } = await import("./film-edit.server");
+      const r = await regenerateFilmShot({
+        assetId: String(payload.assetId || ""),
+        shopId,
+        shotIndex: typeof payload.shotIndex === "number" ? payload.shotIndex : parseInt(String(payload.shotIndex ?? "-1"), 10),
+      });
+      if (!r.ok) throw new Error(r.error || "Shot regenerate failed");
+      break;
+    }
+
     case "GENERATE_BLOG_POST": {
       if (!shop?.brandProfile || !shop?.activePlan) {
         throw new Error("Shop missing brand profile or active plan");

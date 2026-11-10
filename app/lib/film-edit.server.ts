@@ -13,14 +13,14 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
 import { runFfmpeg, ffprobeDuration } from "./ugc-ad-pipeline.server";
-import { assembleTestMovie } from "./film-dialogue.server";
+import { assembleTestMovie, renderDialogueClipTo } from "./film-dialogue.server";
 import { mirrorRender } from "./object-storage.server";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const toLocal = (u: string) => path.join(RENDERS(), path.basename((u || "").split("?")[0]));
 const newName = (suffix: string) => `tm-edit-${Date.now()}-${crypto.randomBytes(5).toString("hex")}${suffix}.mp4`;
 
-export type Shot = { url: string; caption?: string; seed?: string };
+export type Shot = { url: string; caption?: string; seed?: string; prompt?: string; dur?: number };
 export type ShotOp = "trim" | "speed" | "volume" | "delete";
 
 async function ffOp(inLocal: string, args: string[], suffix: string): Promise<string | null> {
@@ -100,4 +100,51 @@ export async function editFilmShot(opts: {
     data: { bodyJson: JSON.stringify({ ...body, videoUrl }), metaJson: JSON.stringify({ ...meta, shots: next }) },
   });
   return { ok: true, videoUrl, shots: next };
+}
+
+/** Phase 3: RE-ROLL one shot via the dialogue engine (its stored seed + prompt), then
+ *  re-stitch. Slow (an AI clip render), so this runs on the worker via a REGEN_SHOT job. */
+export async function regenerateFilmShot(opts: { assetId: string; shopId: string; shotIndex: number }): Promise<{ ok: boolean; videoUrl?: string; error?: string }> {
+  const a = await db.asset.findFirst({ where: { id: opts.assetId, shopId: opts.shopId }, select: { id: true, bodyJson: true, metaJson: true } });
+  if (!a) return { ok: false, error: "Film not found." };
+  let body: Record<string, unknown> = {};
+  let meta: Record<string, unknown> = {};
+  try { body = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
+  try { meta = JSON.parse(a.metaJson || "{}"); } catch { /* ignore */ }
+  const shots: Shot[] = Array.isArray(meta.shots) ? (meta.shots as Shot[]).filter((s) => s && typeof s.url === "string") : [];
+  const i = opts.shotIndex;
+  if (i < 0 || i >= shots.length) return { ok: false, error: "That shot no longer exists." };
+  const shot = shots[i];
+  if (!shot.seed || !shot.prompt) return { ok: false, error: "This shot predates regenerate — re-render the film once to enable it." };
+  const engine: "veo" | "kling3" = meta.engine === "veo" ? "veo" : "kling3";
+  const aspect: "9:16" | "16:9" | "1:1" = meta.aspect === "16:9" || meta.aspect === "1:1" ? meta.aspect : "9:16";
+  const dur = typeof shot.dur === "number" && shot.dur > 0 ? shot.dur : 8;
+
+  let newClip: string;
+  try {
+    newClip = await renderDialogueClipTo(engine, shot.seed, shot.prompt, dur, aspect, `regen-${i}`);
+  } catch (e) {
+    return { ok: false, error: `Shot re-render failed: ${e instanceof Error ? e.message.slice(0, 80) : "unknown"}` };
+  }
+  const clipName = path.basename(newClip);
+  try { await mirrorRender(clipName, fs.readFileSync(newClip)); } catch { /* non-fatal */ }
+
+  const next = shots.slice();
+  next[i] = { ...shot, url: `/renders/${clipName}` };
+
+  const clipPaths = next.map((s) => toLocal(s.url)).filter((p) => fs.existsSync(p));
+  if (!clipPaths.length) return { ok: false, error: "No shot media to assemble." };
+  const outName = newName("");
+  const outPath = path.join(RENDERS(), outName);
+  try { await assembleTestMovie(clipPaths, outPath, undefined, undefined, aspect); }
+  catch (e) { return { ok: false, error: `Re-assembly failed: ${e instanceof Error ? e.message.slice(0, 60) : "unknown"}` }; }
+  if (!(fs.existsSync(outPath) && ffprobeDuration(outPath) > 1)) return { ok: false, error: "Re-assembly produced no film." };
+  try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
+  const videoUrl = `/renders/${outName}`;
+
+  await db.asset.update({
+    where: { id: a.id },
+    data: { bodyJson: JSON.stringify({ ...body, videoUrl }), metaJson: JSON.stringify({ ...meta, shots: next }) },
+  });
+  return { ok: true, videoUrl };
 }

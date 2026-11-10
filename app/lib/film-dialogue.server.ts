@@ -111,6 +111,18 @@ async function dialogueClip(engine: string, seedAbs: string, prompt: string, sta
   return engine === "kling3" ? klingDialogueClip(seedAbs, prompt, stage, durationSec) : veoDialogueClip(seedAbs, prompt, stage, aspect);
 }
 
+/** Render ONE dialogue clip end-to-end (render + download + head/tail + interior-pause trims)
+ *  → a local file path. The render loop does this inline; the SECTION EDITOR's regenerate
+ *  reuses it to re-roll a single shot from its stored seed + prompt. */
+export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: string, prompt: string, durSec: number, aspect: "9:16" | "16:9" | "1:1", stage: string): Promise<string> {
+  const clipUrl = await dialogueClip(engine, seedAbs, prompt, stage, durSec, aspect);
+  const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
+  await download(clipUrl, rawPath);
+  if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error("[regen] clip did not download");
+  const trimmed = await trimTrailingSilence(rawPath);
+  return await collapseInteriorPause(trimmed);
+}
+
 /** Grab the ACTUAL last frame of a rendered clip as a clean still (served from
  *  /renders). Used as the continuity REFERENCE for the next scene's seed — so the
  *  room and everyone's FINAL positions carry forward (the owner's "reuse the last
@@ -525,6 +537,11 @@ export async function generateTestMovie(opts: {
   //    speaker per clip, seamless cuts from the prior clip's real last frame, no
   //    on-screen text, trailing silence trimmed.
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
+  // Per-shot render inputs recorded for the section editor's Phase-3 regenerate (each shot's
+  // seed + clip prompt + duration). Pre-filled null for any clips restored from a resume.
+  const shotSeeds: (string | null)[] = clips.map(() => null);
+  const shotPrompts: (string | null)[] = clips.map(() => null);
+  const shotDurs: number[] = clips.map(() => 0);
   let prevFrameUrl: string | undefined = resume.ckLastStill; // prior clip's last frame (relative /renders URL)
   // Chaining from each clip's last frame gives seamless cuts but lets faces (esp. facial
   // hair) DRIFT over a long film. Re-anchor to the pristine master after this many chained
@@ -662,6 +679,7 @@ export async function generateTestMovie(opts: {
     const trimmed = await trimTrailingSilence(rawPath); // cut dead air at the head/tail
     const outPath = await collapseInteriorPause(trimmed); // and collapse a long mid-line pause
     clips.push(outPath);
+    shotSeeds.push(seedAbs); shotPrompts.push(prompt); shotDurs.push(clipSecs);
     // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.
     prevFrameUrl = (await extractLastFrame(outPath)) || undefined;
     await ckpt({ ckClips: clips, ckLastStill: prevFrameUrl });
@@ -691,6 +709,10 @@ export async function generateTestMovie(opts: {
         shots: clips.map((c, i) => ({
           url: `/renders/${path.basename(c)}`,
           caption: (treatment.scenes[i]?.caption || "").slice(0, 200),
+          // Regenerate inputs (section editor Phase 3): re-roll this one shot from its seed.
+          seed: shotSeeds[i] || undefined,
+          prompt: shotPrompts[i] || undefined,
+          dur: shotDurs[i] || undefined,
         })),
       }),
     },

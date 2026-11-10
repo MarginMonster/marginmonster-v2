@@ -9,14 +9,14 @@
 
 import { json, type LoaderFunctionArgs, type ActionFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { useLoaderData, Link, useFetcher, useRevalidator } from "@remix-run/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { editFilmShot, type ShotOp } from "../lib/film-edit.server";
 
 export const meta: MetaFunction = () => [{ title: "Shot Editor · EASYMODE" }];
 
-type Shot = { n: number; url: string; speaker: string; line: string };
+type Shot = { n: number; url: string; speaker: string; line: string; hasSeed: boolean };
 
 /** Split "NAME: the line" into speaker + line for the shot label. */
 function parseCaption(c: string): { speaker: string; line: string } {
@@ -33,12 +33,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
   if (!a) throw new Response("Film not found", { status: 404 });
   let body: { videoUrl?: string } = {};
-  let meta: { shots?: Array<{ url?: string; caption?: string }>; engine?: string; aspect?: string } = {};
+  let meta: { shots?: Array<{ url?: string; caption?: string; seed?: string; prompt?: string }>; engine?: string; aspect?: string } = {};
   try { body = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
   try { meta = JSON.parse(a.metaJson || "{}"); } catch { /* ignore */ }
   const shots: Shot[] = (meta.shots || [])
-    .filter((s): s is { url: string; caption?: string } => !!s && typeof s.url === "string")
-    .map((s, i) => { const { speaker, line } = parseCaption(s.caption || ""); return { n: i + 1, url: s.url, speaker, line }; });
+    .filter((s) => !!s && typeof s.url === "string")
+    .map((s, i) => { const { speaker, line } = parseCaption(s!.caption || ""); return { n: i + 1, url: s!.url as string, speaker, line, hasSeed: !!(s!.seed && s!.prompt) }; });
   return json({
     id: a.id,
     title: a.title || "Film",
@@ -52,12 +52,19 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 export async function action({ request, params }: ActionFunctionArgs) {
   const { shop } = await requireWebIdentity(request);
   const form = await request.formData();
-  const op = String(form.get("op") || "") as ShotOp;
+  const op = String(form.get("op") || "");
   const shotIndex = parseInt(String(form.get("shotIndex") || "-1"), 10);
+  // Phase 3 — regenerate: an AI re-render is too slow for a web request, so queue a worker
+  // job (free during the build) and let the editor poll until the re-stitched film lands.
+  if (op === "regen") {
+    const { enqueueJob } = await import("../lib/job-queue.server");
+    await enqueueJob(shop.id, "REGEN_SHOT", { assetId: params.id || "", shotIndex });
+    return json({ ok: true, queued: true });
+  }
   if (!["trim", "speed", "volume", "delete"].includes(op)) return json({ ok: false, error: "Unknown edit." });
   const num = (k: string) => { const v = parseFloat(String(form.get(k) || "")); return Number.isFinite(v) ? v : undefined; };
   const res = await editFilmShot({
-    assetId: params.id || "", shopId: shop.id, op, shotIndex,
+    assetId: params.id || "", shopId: shop.id, op: op as ShotOp, shotIndex,
     startSec: num("startSec"), endSec: num("endSec"), factor: num("factor"), deltaDb: num("deltaDb"),
   });
   return json(res);
@@ -77,6 +84,19 @@ export default function FilmEditor() {
   useEffect(() => { if (fx.state === "idle" && fx.data?.ok) rev.revalidate(); }, [fx.state, fx.data]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (sel >= d.shots.length) setSel(-1); }, [d.shots.length, sel]);
   const submit = (op: string, extra: Record<string, string> = {}) => { if (sel < 0) return; fx.submit({ op, shotIndex: String(sel), ...extra }, { method: "post" }); };
+  // Regenerate is a slow AI job — poll the loader until the film URL changes (the re-stitch
+  // landed). regenBase holds the film URL at queue time; when it differs, the re-roll is done.
+  const [regenBase, setRegenBase] = useState<string | null>(null);
+  const regenPolls = useRef(0);
+  useEffect(() => {
+    if (!regenBase) return;
+    if (d.filmUrl !== regenBase) { setRegenBase(null); regenPolls.current = 0; return; }
+    if (regenPolls.current > 45) { setRegenBase(null); return; } // ~9 min safety cap
+    const t = setTimeout(() => { regenPolls.current++; rev.revalidate(); }, 12000);
+    return () => clearTimeout(t);
+  }, [regenBase, d.filmUrl, rev]);
+  const regenBusy = !!regenBase;
+  const regen = () => { if (sel < 0) return; setRegenBase(d.filmUrl); fx.submit({ op: "regen", shotIndex: String(sel) }, { method: "post" }); };
 
   return (
     <div className="se-wrap">
@@ -103,15 +123,17 @@ export default function FilmEditor() {
               <div className="se-shot-h"><span className="se-shot-n">Shot {cur.n}</span>{cur.speaker && <span className="se-shot-spk">{cur.speaker}</span>}</div>
               <p className="se-shot-line">{cur.line || <em>no line</em>}</p>
               <div className="se-ops">
-                <button type="button" className="se-op" disabled={busy} onClick={() => submit("speed", { factor: "0.9" })}>🐢 Slower</button>
-                <button type="button" className="se-op" disabled={busy} onClick={() => submit("speed", { factor: "1.1" })}>🐇 Faster</button>
-                <button type="button" className="se-op" disabled={busy} onClick={() => submit("volume", { deltaDb: "3" })}>🔊 Louder</button>
-                <button type="button" className="se-op" disabled={busy} onClick={() => submit("volume", { deltaDb: "-3" })}>🔉 Quieter</button>
-                <button type="button" className="se-op se-op-del" disabled={busy || d.shots.length <= 1} onClick={() => submit("delete")}>🗑 Delete shot</button>
+                <button type="button" className="se-op se-op-regen" disabled={busy || regenBusy || !cur.hasSeed} title={cur.hasSeed ? "Re-roll a fresh AI take of this shot" : "Made before regenerate — re-render the film once to enable it"} onClick={regen}>✨ Regenerate shot</button>
+                <button type="button" className="se-op" disabled={busy || regenBusy} onClick={() => submit("speed", { factor: "0.9" })}>🐢 Slower</button>
+                <button type="button" className="se-op" disabled={busy || regenBusy} onClick={() => submit("speed", { factor: "1.1" })}>🐇 Faster</button>
+                <button type="button" className="se-op" disabled={busy || regenBusy} onClick={() => submit("volume", { deltaDb: "3" })}>🔊 Louder</button>
+                <button type="button" className="se-op" disabled={busy || regenBusy} onClick={() => submit("volume", { deltaDb: "-3" })}>🔉 Quieter</button>
+                <button type="button" className="se-op se-op-del" disabled={busy || regenBusy || d.shots.length <= 1} onClick={() => submit("delete")}>🗑 Delete shot</button>
               </div>
-              {busy && <div className="se-busy">Applying edit + re-stitching the film…</div>}
+              {regenBusy && <div className="se-busy">Re-rendering this shot with AI (~2–4 min) — the film refreshes when it's done. You can keep this open.</div>}
+              {busy && !regenBusy && <div className="se-busy">Applying edit + re-stitching the film…</div>}
               {fx.data && fx.data.ok === false && <div className="se-err">{fx.data.error}</div>}
-              <div className="se-soon">Trim handles & regenerate-this-shot land next.</div>
+              <div className="se-soon">Trim handles &amp; “add a shot” land next.</div>
             </>
           : <div className="se-shot-hint">Playing the full film. Tap a shot below to preview just that one.</div>}
       </div>
@@ -172,6 +194,8 @@ const CSS = `
 .se-op:disabled{opacity:.5;cursor:default;}
 .se-op-del{color:#C0392B;border-color:#E6C6C0;}
 .se-op-del:hover:not(:disabled){background:#FBEAE8;border-color:#C0392B;}
+.se-op-regen{color:#fff;background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);}
+.se-op-regen:hover:not(:disabled){background:var(--green2,#1FA463);border-color:var(--green2,#1FA463);}
 .se-busy{margin-top:9px;font-size:12.5px;font-weight:700;color:var(--green,#0C7A46);}
 .se-err{margin-top:9px;font-size:12.5px;font-weight:700;color:#C0392B;}
 `;
