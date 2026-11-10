@@ -81,12 +81,46 @@ async function stillClip(imgPath: string, segAudioPath: string, dur: number, W: 
   return out;
 }
 
-/** Hard-cut concat KEEPING each clip's audio, every clip normalised to W×H. The
- *  clips' audio are the song's contiguous segments, so this rebuilds the full song
- *  under the performance. Degrades to the first clip alone if the graph fails. */
-async function assembleMusicVideo(clips: string[], outPath: string, W: number, H: number): Promise<void> {
+/** Assemble the clips into the finished music video. PREFERRED path: cinematic xfade
+ *  TRANSITIONS between scenes (dissolves / dips / zooms, varied per cut — the owner's "real
+ *  music-video transitions, not butt-cheek hard cuts") with the CLEAN continuous song laid over
+ *  the whole thing (the clips were synced to contiguous segments, so the lip-sync still lines up;
+ *  the mic at the mouth masks the small drift the xfade overlaps introduce). Falls back to a
+ *  plain hard-cut concat (keeping clip audio), then to the first clip, so it never dies at a seam. */
+async function assembleMusicVideo(clips: string[], songPath: string, outPath: string, W: number, H: number): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[musicvideo] no clips to assemble");
+  const haveSong = !!songPath && fs.existsSync(songPath);
+
+  if (N >= 2 && haveSong) {
+    try {
+      const XF = 0.35; // transition length
+      const TRANS = ["dissolve", "smoothleft", "circleopen", "fadeblack", "zoomin", "smoothright", "radial"];
+      const durs = clips.map((c) => { const d = ffprobeDuration(c); return d > 0.6 ? d : 2; });
+      const a: string[] = ["-y"];
+      clips.forEach((c) => a.push("-i", c));
+      a.push("-i", songPath);
+      const songIdx = N;
+      const f: string[] = [];
+      clips.forEach((_, i) => f.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30,format=yuv420p[v${i}]`));
+      let prev = "[v0]";
+      let off = durs[0] - XF;
+      for (let i = 1; i < N; i++) {
+        const t = TRANS[(i - 1) % TRANS.length];
+        const out = i === N - 1 ? "[vout]" : `[x${i}]`;
+        f.push(`${prev}[v${i}]xfade=transition=${t}:duration=${XF}:offset=${off.toFixed(3)}${out}`);
+        prev = out;
+        off += durs[i] - XF;
+      }
+      a.push("-filter_complex", f.join(";"), "-map", "[vout]", "-map", `${songIdx}:a`,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", outPath);
+      const r = await runFfmpeg(a);
+      if (r.status === 0 && fs.existsSync(outPath) && ffprobeDuration(outPath) > 1) return;
+    } catch { /* fall through to the hard-cut concat */ }
+  }
+
+  // FALLBACK: plain hard-cut concat keeping each clip's own (contiguous-segment) audio.
   const args: string[] = ["-y"];
   clips.forEach((c) => args.push("-i", c));
   const f: string[] = [];
@@ -102,7 +136,6 @@ async function assembleMusicVideo(clips: string[], outPath: string, W: number, H
     "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outPath);
   const r = await runFfmpeg(args);
   if (r.status === 0 && fs.existsSync(outPath)) return;
-  // Degrade: just the first clip (always valid) so the render never dies at the seam.
   fs.copyFileSync(clips[0], outPath);
 }
 
@@ -156,7 +189,7 @@ export async function generateMusicVideo(opts: {
   //    video. Every scene is an EDIT of THIS exact image, so the artist can never drift.
   let artistRef = abs(resume.ckArtist);
   if (!artistRef) {
-    const ref = await renderCreativeSeed(`A realistic ${g.label} music-video shot of the artist performing to camera: ${artistBible}. ${g.look}. Clear sharp face, full performance energy. ${REALISM}`, "9:16");
+    const ref = await renderCreativeSeed(`A realistic ${g.label} music-video shot of the artist performing/rapping to camera: ${artistBible}. ${g.look}. Clear sharp face, full performance energy. ${REALISM}`, "9:16");
     if (ref) { await ckpt({ ckArtist: ref }); artistRef = abs(ref); }
   }
 
@@ -195,8 +228,10 @@ export async function generateMusicVideo(opts: {
           imageUrl: imgAbs,
           audioUrl: seg.url,
           resolution: "720p",
-          turbo: true, // 2-min lip-sync is otherwise a 40-60min render; turbo keeps it shippable
-          prompt: `The artist sings/raps directly to camera with energy and attitude, a ${g.label} music-video performance; natural body movement, the camera stays steady.`,
+          // turbo OFF: turbo traded quality for speed and the mouth read fake. Owner wants REAL
+          // lip-sync WITHOUT a mic crutch (90% use no mic), so run full quality. Short per-scene
+          // clips keep the render sane (the 60-min blow-up was ONE long 40s clip, not these).
+          prompt: `The artist raps/sings directly to camera with CRISP, ACCURATE lip-sync — the mouth shapes and jaw match the words precisely the whole time, clean articulation, no mumbling or smearing — high energy and attitude, a ${g.label} music-video performance with lots of natural body movement and head bob, and a subtle handheld camera sway.`,
         });
         const out = path.join(RENDERS(), `mv-${Date.now()}-${i}-${rid()}.mp4`);
         await download(vurl, out);
@@ -217,7 +252,7 @@ export async function generateMusicVideo(opts: {
   // 7) ASSEMBLE — hard-cut concat keeping audio → the full song under the performance.
   const outName = `mv-${Date.now()}-${rid()}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleMusicVideo(good, outPath, W, H);
+  await assembleMusicVideo(good, songPath, outPath, W, H);
   const finalDur = ffprobeDuration(outPath);
   try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;
