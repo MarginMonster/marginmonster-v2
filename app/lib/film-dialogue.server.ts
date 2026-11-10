@@ -108,7 +108,22 @@ async function klingDialogueClip(seedAbs: string, prompt: string, stage: string,
 async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string, durationSec?: number, aspect?: "9:16" | "16:9" | "1:1"): Promise<string> {
   // Only Kling takes a per-clip length; Veo keeps its native clip. Kling inherits the seed's
   // aspect (the seed is rendered at the chosen ratio); Veo-Replicate takes it explicitly.
-  return engine === "kling3" ? klingDialogueClip(seedAbs, prompt, stage, durationSec) : veoDialogueClip(seedAbs, prompt, stage, aspect);
+  // RETRY the whole render a few times: each clip already falls back fal→Replicate, but when
+  // BOTH hiccup on the same beat (a transient provider blip) the clip throws — and that single
+  // failure used to nuke a multi-minute film that had already rendered every other beat. A
+  // couple of fresh attempts clears a transient blip; a truly broken beat still surfaces.
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return engine === "kling3"
+        ? await klingDialogueClip(seedAbs, prompt, stage, durationSec)
+        : await veoDialogueClip(seedAbs, prompt, stage, aspect);
+    } catch (e) {
+      lastErr = e;
+      console.error(`[testmovie] clip ${stage} attempt ${attempt + 1}/3 failed: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(`[testmovie] clip ${stage} failed after retries`);
 }
 
 /** Render ONE dialogue clip end-to-end (render + download + head/tail + interior-pause trims)
@@ -673,7 +688,7 @@ export async function generateTestMovie(opts: {
       : (cartoon ? "Bright, glossy 3D-animated cartoon style (not live-action), clean clear spoken-dialogue audio." : "Photorealistic live-action, clean natural spoken-dialogue audio.");
     // Lock the frame + kill stray audio — the owner saw a mid-shot "orientation change" with
     // a random sound effect. The camera must not move, and Kling must not invent foley/sfx.
-    const steadyNote = "The camera stays LOCKED and level the whole time — no rotation, tilt, roll, zoom, flip or orientation change, and the frame never turns sideways or upside down. The ONLY audio is the spoken voice(s) and faint natural room tone — absolutely NO sound effects, music, stingers, whooshes, transitions or foley of any kind.";
+    const steadyNote = `The camera stays LOCKED, level and still the whole time — no rotation, tilt, roll, flip, zoom or orientation change.${sing ? " Keep ONLY the sung vocal and its melody — no stray sound effects, whooshes, stingers or foley." : " The ONLY audio is the spoken voice(s) and faint room tone — no sound effects, music, stingers, whooshes or foley."}`;
     const prompt = `${voiceLine} ${lookNote} ${styleNote} ${steadyNote} ${NO_TEXT}`;
 
     // Size the clip to the SPOKEN LINE (word-metered) instead of a flat 10s. A clip that
