@@ -592,7 +592,7 @@ export default function FilmStudio() {
             <button type="button" key={x.key} className={`fs-fmt${template === x.key ? " on" : ""}`}
               aria-pressed={template === x.key} onClick={() => switchTemplate(x.key)}>
               <span className="fs-fmt-cover">
-                <img src={`/landing/film-still-${x.key}.jpg?v=2`} alt="" loading="lazy"
+                <img src={`/landing/film-still-${x.key}.jpg?v=3`} alt="" loading="lazy"
                   onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
                 <span className={`fs-fmt-ico ${m.tint}`} aria-hidden="true">{fmtIcon(x.key)}</span>
                 {template === x.key && <span className="fs-fmt-check" aria-hidden="true"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg></span>}
@@ -604,7 +604,7 @@ export default function FilmStudio() {
         })}
         <div className="fs-fmt soon" aria-hidden="true">
           <span className="fs-fmt-cover">
-            <img src="/landing/film-still-shortfilm.jpg?v=2" alt="" />
+            <img src="/landing/film-still-shortfilm.jpg?v=3" alt="" />
             <span className="fs-fmt-soon"><span>{t("TV Shows · Episodes — soon")}</span></span>
           </span>
           <span className="fs-fmt-body"><span className="fs-fmt-desc">{t("A recurring cast across whole episodes — the next frontier.")}</span></span>
