@@ -99,13 +99,15 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
   musicvideo: {
     key: "musicvideo",
     name: "Music Video",
-    brief: "a short MUSIC VIDEO: a catchy sung-style hook broken into beat-synced visual scenes that tell a loose vibe/story",
-    sceneHint: "a vivid, cinematic, music-video visual (dynamic, stylized, full of energy) — NO text, words, logos or real named people in the image",
+    brief: "a MUSIC VIDEO with a real catchy sung song — one consistent artist performs it across vivid, beat-matched scenes",
+    sceneHint: "a vivid, cinematic, stylized music-video scene full of energy and mood, featuring the SAME artist performing — dynamic lighting, strong composition; NO on-screen text, logos or real named people",
     musicHint: "an original catchy upbeat pop song with clear sung vocals, music-video energy",
     defaultScenes: 6,
     minScenes: 4,
     maxScenes: 24,
     captions: true,
+    castBible: true,
+    referenceSeed: true,
     sung: true,
     live: true,
   },
@@ -123,6 +125,23 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     referenceSeed: true,
     childSafe: true,
     dialogue: true,
+    cartoon: true,
+    live: true,
+  },
+  kidsmusicvideo: {
+    key: "kidsmusicvideo",
+    name: "Kids Music Video",
+    brief: "a CoComelon-style kids SING-ALONG — cute cartoon characters sing one simple, catchy, wholesome song with a hook a toddler can sing along to",
+    sceneHint: "bright glossy 3D-animated cartoon, rounded friendly character designs, big expressive eyes, soft candy colors, simple cheerful backgrounds, wholesome child-safe (G-rated), like a modern preschool sing-along cartoon",
+    musicHint: "cheerful bouncy nursery-rhyme sing-along, upbeat sweet and simple, clear child-friendly vocals with a catchy repeating hook",
+    defaultScenes: 4,
+    minScenes: 2,
+    maxScenes: 8,
+    captions: true,
+    castBible: true,
+    referenceSeed: true,
+    childSafe: true,
+    sung: true,
     cartoon: true,
     live: true,
   },
@@ -286,7 +305,9 @@ export async function previewFilmTreatment(opts: {
   const topic = (opts.topic || "").trim();
   const langLine = opts.contentLang && opts.contentLang !== "en" ? `\nWrite all captions in this language code: ${opts.contentLang}.` : "";
   const castLine = tmpl.castBible
-    ? `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"). Every scene's VISUAL must feature these same named characters, described the same way.`
+    ? (tmpl.sing && !tmpl.childSafe
+      ? `\nFirst invent the ARTIST and return it as "cast": an array whose FIRST entry is ONE vivid, FIXED visual description of the singer to reuse in every scene (e.g. "Mia, a 25-year-old singer with long dark wavy hair, a black leather jacket and silver hoop earrings"); you may add ONE bandmate or dancer. Every scene's VISUAL must feature this SAME performer, described the same way.`
+      : `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"). Every scene's VISUAL must feature these same named characters, described the same way.`)
     : "";
   const prodLine = tmpl.needsProduct && opts.productTitle
     ? `\nTHE PRODUCT being advertised: "${opts.productTitle.slice(0, 80)}"${opts.productDescription ? ` — ${opts.productDescription.slice(0, 300)}` : ""}. Make it the HERO of the gag — the funny payoff features or revolves around this exact product. Say ONLY what is true of it; invent no claims, specs, prices or reviews.`
@@ -302,7 +323,7 @@ export async function previewFilmTreatment(opts: {
       `• TONE — HOW this exact line is delivered: a short emotional direction for the voice (e.g. "coldly, with quiet menace", "voice rising in anger", "quietly, barely holding it together"). It must MATCH the words so the read is never flat or monotone.\n` +
       `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places.\n`
     : tmpl.sung
-    ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes/flows with the others; read in order the captions ARE the song's lyrics.\n`
+    ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}, featuring the artist/cast performing) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes and flows with the others. Read in order the captions ARE the song's lyrics: give the whole thing a clear, repeating, sing-along HOOK${tmpl.childSafe ? " a toddler can sing along to" : ""}, like a real ${tmpl.childSafe ? "preschool nursery sing-along" : "pop song"}.\n`
     : tmpl.narrated
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the NARRATOR'S spoken line for that beat — ONE natural sentence, <=14 words, moving the story forward; read in order the captions are a continuous, emotive voiceover that tells the whole story and lands the ending.\n`
     : `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a short CAPTION (one punchy on-screen line, <=8 words; the hook or the joke's line for that beat).\n`;
