@@ -232,7 +232,7 @@ async function collapseInteriorPause(inPath: string): Promise<string> {
  *  engine, which strips clip audio for a narrator/music bed). Degrade ladder:
  *  with audio → silent, so a clip that came back without an audio stream can't
  *  sink the whole render. */
-async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>, aspect: "9:16" | "16:9" | "1:1" = "9:16"): Promise<void> {
+export async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>, aspect: "9:16" | "16:9" | "1:1" = "9:16"): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[testmovie] no clips");
   const beat = async () => { if (jobId) await checkpointJob(jobId, { ckBeat: Date.now() }); };

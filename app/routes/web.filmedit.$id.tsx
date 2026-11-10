@@ -7,11 +7,12 @@
  * regenerate · add-shot) hangs off this same rail in the next phases. Styled to our
  * market-green-on-cream theme, OpenArt's layout: preview up top, shot rail along the bottom. */
 
-import { json, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
-import { useLoaderData, Link } from "@remix-run/react";
-import { useState } from "react";
+import { json, type LoaderFunctionArgs, type ActionFunctionArgs, type MetaFunction } from "@remix-run/node";
+import { useLoaderData, Link, useFetcher, useRevalidator } from "@remix-run/react";
+import { useState, useEffect } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
+import { editFilmShot, type ShotOp } from "../lib/film-edit.server";
 
 export const meta: MetaFunction = () => [{ title: "Shot Editor · EASYMODE" }];
 
@@ -48,6 +49,20 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 }
 
+export async function action({ request, params }: ActionFunctionArgs) {
+  const { shop } = await requireWebIdentity(request);
+  const form = await request.formData();
+  const op = String(form.get("op") || "") as ShotOp;
+  const shotIndex = parseInt(String(form.get("shotIndex") || "-1"), 10);
+  if (!["trim", "speed", "volume", "delete"].includes(op)) return json({ ok: false, error: "Unknown edit." });
+  const num = (k: string) => { const v = parseFloat(String(form.get(k) || "")); return Number.isFinite(v) ? v : undefined; };
+  const res = await editFilmShot({
+    assetId: params.id || "", shopId: shop.id, op, shotIndex,
+    startSec: num("startSec"), endSec: num("endSec"), factor: num("factor"), deltaDb: num("deltaDb"),
+  });
+  return json(res);
+}
+
 export default function FilmEditor() {
   const d = useLoaderData<typeof loader>();
   // -1 = the full assembled film; 0..n-1 = a single shot.
@@ -55,6 +70,13 @@ export default function FilmEditor() {
   const src = sel >= 0 ? d.shots[sel]?.url : d.filmUrl;
   const wide = d.aspect === "16:9";
   const cur = sel >= 0 ? d.shots[sel] : null;
+  const fx = useFetcher<{ ok?: boolean; error?: string }>();
+  const rev = useRevalidator();
+  const busy = fx.state !== "idle" || rev.state !== "idle";
+  // A successful edit changed the asset — reload the loader so the preview + rail refresh.
+  useEffect(() => { if (fx.state === "idle" && fx.data?.ok) rev.revalidate(); }, [fx.state, fx.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (sel >= d.shots.length) setSel(-1); }, [d.shots.length, sel]);
+  const submit = (op: string, extra: Record<string, string> = {}) => { if (sel < 0) return; fx.submit({ op, shotIndex: String(sel), ...extra }, { method: "post" }); };
 
   return (
     <div className="se-wrap">
@@ -80,7 +102,16 @@ export default function FilmEditor() {
           ? <>
               <div className="se-shot-h"><span className="se-shot-n">Shot {cur.n}</span>{cur.speaker && <span className="se-shot-spk">{cur.speaker}</span>}</div>
               <p className="se-shot-line">{cur.line || <em>no line</em>}</p>
-              <div className="se-soon">Trim · speed · volume · regenerate — coming to each shot next.</div>
+              <div className="se-ops">
+                <button type="button" className="se-op" disabled={busy} onClick={() => submit("speed", { factor: "0.9" })}>🐢 Slower</button>
+                <button type="button" className="se-op" disabled={busy} onClick={() => submit("speed", { factor: "1.1" })}>🐇 Faster</button>
+                <button type="button" className="se-op" disabled={busy} onClick={() => submit("volume", { deltaDb: "3" })}>🔊 Louder</button>
+                <button type="button" className="se-op" disabled={busy} onClick={() => submit("volume", { deltaDb: "-3" })}>🔉 Quieter</button>
+                <button type="button" className="se-op se-op-del" disabled={busy || d.shots.length <= 1} onClick={() => submit("delete")}>🗑 Delete shot</button>
+              </div>
+              {busy && <div className="se-busy">Applying edit + re-stitching the film…</div>}
+              {fx.data && fx.data.ok === false && <div className="se-err">{fx.data.error}</div>}
+              <div className="se-soon">Trim handles & regenerate-this-shot land next.</div>
             </>
           : <div className="se-shot-hint">Playing the full film. Tap a shot below to preview just that one.</div>}
       </div>
@@ -135,4 +166,12 @@ const CSS = `
 .se-shot-idx{position:absolute;left:5px;top:5px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:800;border-radius:6px;padding:0 5px;}
 .se-shot-cap{font-size:11px;line-height:1.3;color:#3A4A41;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .se-shot.on .se-shot-cap{color:var(--ink,#14201A);font-weight:600;}
+.se-ops{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px;}
+.se-op{border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:9px;padding:6px 11px;font-family:Poppins,sans-serif;font-size:12.5px;font-weight:700;color:var(--ink,#14201A);cursor:pointer;transition:border-color .12s,background .12s;}
+.se-op:hover:not(:disabled){border-color:var(--green,#0C7A46);background:var(--mint,#EAF6EF);}
+.se-op:disabled{opacity:.5;cursor:default;}
+.se-op-del{color:#C0392B;border-color:#E6C6C0;}
+.se-op-del:hover:not(:disabled){background:#FBEAE8;border-color:#C0392B;}
+.se-busy{margin-top:9px;font-size:12.5px;font-weight:700;color:var(--green,#0C7A46);}
+.se-err{margin-top:9px;font-size:12.5px;font-weight:700;color:#C0392B;}
 `;
