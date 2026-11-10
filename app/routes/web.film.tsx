@@ -892,6 +892,9 @@ export default function FilmStudio() {
           <button type="submit" className="fs-go" disabled={!canGo}>
             {generating ? <>… {t("Starting your film")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost }) : t("Generate {name} · Free", { name: t(tmpl?.name || "Film") })}</>}
           </button>
+          <div className="fs-eta" aria-live="polite" title={t("A rough estimate — longer films and lip-sync take more time.")}>
+            <span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, scenes, engine: dialogueEngine })}</b>
+          </div>
         </Form>
         <p className="fs-cost">
           {cost > 0
@@ -911,8 +914,29 @@ export default function FilmStudio() {
   );
 }
 
+/** Rough render-time estimate shown beside Generate so the wait is expected. Buckets
+ *  by engine: lip-sync Music Video (OmniHuman, ~2 clips at a time — the slow lane),
+ *  dialogue films (per-beat Kling/Veo clips), and sung/other (parallel i2v). Returns a
+ *  friendly range string; recomputed live from scene count + template + engine. */
+function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; scenes: number; engine: "veo" | "kling3" }): string {
+  const n = Math.max(1, opts.scenes || 1);
+  let lo: number, hi: number;
+  if (opts.lipSyncSinger) {
+    const waves = Math.ceil(n / 2);            // OmniHuman lip-sync runs ~2 at a time
+    lo = 6 + waves * 6; hi = 9 + waves * 9;     // + song + artist + scene-image overhead
+  } else if (opts.dialogue) {
+    const per = opts.engine === "veo" ? 4 : 3.5;
+    lo = Math.round(3 + n * per * 0.8); hi = Math.round(5 + n * per * 1.3);
+  } else {
+    lo = Math.round(4 + n * 1.2); hi = Math.round(7 + n * 2); // sung / other (parallel scenes)
+  }
+  return lo === hi ? `~${lo} min` : `~${lo}–${hi} min`;
+}
+
 const FS_STYLE = `
 .fs-wrap{max-width:760px;margin:0 auto;--fs-gold:#C79A3A;--fs-gold-lt:#E7C879;}
+.fs-eta{display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 0;font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
+.fs-eta b{font-weight:800;color:var(--ink,#14201A);}
 /* Cinematic hero — a dark "movie theatre" band with a gold spotlight + underline. */
 /* Green hero band — SOFTENED so it sits in the page (light shadow + a crisp inner
    edge + slimmer) instead of a floating slab. Gold rosette, the still bleeds in. */
