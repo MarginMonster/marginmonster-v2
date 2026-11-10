@@ -115,14 +115,17 @@ export async function musicBedToDisk(prompt: string): Promise<string> {
  *  track, not an instrumental bed. Falls back to music-01. Throws on total
  *  failure so the caller can fall back to musicBedToDisk. */
 export async function singToDisk(lyrics: string, stylePrompt: string): Promise<string> {
-  // Up to a full ~2-minute song's worth of lyrics (music video). Short jingles stay
-  // well under this; minimax music-1.5 scales the song length to the lyric length.
-  const clean = (lyrics || "").trim().slice(0, 1800);
+  // minimax HARD-CAPS lyrics at 600 characters (E006) — longer input is rejected
+  // outright, so trim here. The model still returns a FULL song (it pads with
+  // intro/outro + repeats the chorus), so a tight <=590-char lyric sheet is enough
+  // for a full-length track. And `prompt` is REQUIRED on every attempt (422 without).
+  const clean = (lyrics || "").trim().slice(0, 590);
   if (!clean) throw new Error("[sing] no lyrics");
+  const style = stylePrompt || "catchy upbeat song with clear vocals";
   const attempts: Array<{ model: string; input: Record<string, unknown> }> = [
-    { model: "minimax/music-1.5", input: { lyrics: clean, prompt: stylePrompt || "catchy upbeat song with clear vocals" } },
-    { model: "minimax/music-1.5", input: { lyrics: clean } },
-    { model: "minimax/music-01", input: { lyrics: clean } },
+    { model: "minimax/music-1.5", input: { lyrics: clean, prompt: style } },
+    { model: "minimax/music-1.5", input: { lyrics: clean, prompt: style } },
+    { model: "minimax/music-01", input: { lyrics: clean, prompt: style } },
   ];
   let url = "";
   const errors: string[] = [];
