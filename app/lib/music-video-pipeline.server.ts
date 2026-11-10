@@ -32,7 +32,7 @@ import { singToDisk } from "./music-generation.server";
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
 // Real, PREMIUM look — cinematic high-end music video, but real photography (not CGI/AI-looking).
-const REALISM = "Photorealistic and cinematic like a real high-end music video — shot on a real camera, realistic skin texture and fine detail, premium production value and colour; NOT plastic, waxy, cartoonish, CGI or obviously AI-generated.";
+const REALISM = "Photorealistic and cinematic like a real high-end music video — shot on a real camera, realistic skin texture and fine detail, premium production value and colour; NOT plastic, waxy, cartoonish, CGI or obviously AI-generated. Keep it tasteful and genuinely cool — NOT cheesy, corny or over-the-top; NO fireworks, confetti, lasers, sparks, glitter or gimmicky effects.";
 // MOTION engine: silent image-to-video with real body + camera movement (fixes the static-background
 // complaint). Kling 2.5-turbo-pro = fast + good motion. The mouth is driven SEPARATELY by the
 // dedicated sync-lipsync model afterwards — OmniHuman did both at once and was "pitiful" at the mouth.
@@ -47,7 +47,7 @@ const SHOTLIST: Array<{ role: "perform" | "broll"; frame: string; cam: string }>
   { role: "perform", frame: "a MEDIUM shot of the artist performing straight to camera, framed from the waist up", cam: "a smooth handheld sway" },
   { role: "perform", frame: "a tight, intense CLOSE-UP on the artist's face performing to camera, shallow depth of field", cam: "a slow subtle drift-in" },
   { role: "broll",   frame: "a dynamic B-ROLL cutaway of the scenery, street or striking details of the location in motion — the artist is seen from behind or the side, NOT facing camera", cam: "a sweeping camera pan across the scene" },
-  { role: "perform", frame: "a powerful LOW-ANGLE WIDE shot of the artist performing to camera, full body, larger than life", cam: "a slow orbit around the artist" },
+  { role: "perform", frame: "a cool, composed WIDE shot of the artist performing to camera, full body, confident and stylish", cam: "a slow orbit around the artist" },
   { role: "broll",   frame: "an atmospheric B-ROLL shot of the location from a fresh cinematic angle, moody and premium — the artist a small part of the frame, NOT facing camera", cam: "a slow tracking move" },
 ];
 
@@ -98,14 +98,43 @@ async function stillClip(imgPath: string, segAudioPath: string, dur: number, W: 
   return out;
 }
 
-/** Assemble the lip-synced clips into the finished music video. Each clip already carries its
- *  contiguous song segment (sync-lipsync baked the segment audio in), so a plain hard-cut concat
- *  rebuilds a continuous song with the mouth in sync — and because the i2v clips genuinely MOVE
- *  (camera + body), clean cuts read like a real cut-driven music video instead of dead static
- *  frames butting together. Degrades to the first clip alone if the graph fails. */
+/** Assemble the clips into the finished music video. PREFERRED: a short CROSS-DISSOLVE on the
+ *  video + an AUDIO crossfade at every seam — smooth transitions, not a rocky hard cut, and no
+ *  audio pop (the owner's "transitions are rocky + audio rocky" fix). Each clip keeps its OWN
+ *  synced segment audio, and the video + audio shrink together by the overlap, so the lip-sync
+ *  stays aligned. Falls back to a plain hard-cut concat, then the first clip, so it never dies. */
 async function assembleMusicVideo(clips: string[], outPath: string, W: number, H: number): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[musicvideo] no clips to assemble");
+
+  if (N >= 2) {
+    try {
+      const XF = 0.3; // a clean, short cross-dissolve — smooth, not a gimmicky wipe
+      const durs = clips.map((c) => { const d = ffprobeDuration(c); return d > 0.6 ? d : 2; });
+      const a: string[] = ["-y"];
+      clips.forEach((c) => a.push("-i", c));
+      const f: string[] = [];
+      clips.forEach((_, i) => {
+        f.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30,format=yuv420p[v${i}]`);
+        f.push(`[${i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
+      });
+      let pv = "[v0]", pa = "[a0]", off = durs[0] - XF;
+      for (let i = 1; i < N; i++) {
+        const vo = i === N - 1 ? "[vout]" : `[vx${i}]`;
+        const ao = i === N - 1 ? "[aout]" : `[ax${i}]`;
+        f.push(`${pv}[v${i}]xfade=transition=fade:duration=${XF}:offset=${off.toFixed(3)}${vo}`);
+        f.push(`${pa}[a${i}]acrossfade=d=${XF}${ao}`);
+        pv = vo; pa = ao; off += durs[i] - XF;
+      }
+      a.push("-filter_complex", f.join(";"), "-map", "[vout]", "-map", "[aout]",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outPath);
+      const r = await runFfmpeg(a);
+      if (r.status === 0 && fs.existsSync(outPath) && ffprobeDuration(outPath) > 1) return;
+    } catch { /* fall through to the hard-cut concat */ }
+  }
+
+  // FALLBACK: plain hard-cut concat keeping each clip's audio.
   const args: string[] = ["-y"];
   clips.forEach((c) => args.push("-i", c));
   const f: string[] = [];
