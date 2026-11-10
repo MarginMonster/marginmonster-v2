@@ -176,7 +176,7 @@ export async function generateMusicVideo(opts: {
 
   // 6) PERFORM — OmniHuman lip-syncs the artist to each segment. Retry, then fall
   //    back to a still-over-audio clip so one bad beat can't kill the render.
-  const clips = await mapLimit(scenes, 2, async (_s, i) => {
+  const clips = await mapLimit(scenes, 3, async (_s, i) => {
     const imgAbs = sceneImgs[i];
     const seg = segs[i];
     if (!imgAbs) {
@@ -191,6 +191,7 @@ export async function generateMusicVideo(opts: {
           imageUrl: imgAbs,
           audioUrl: seg.url,
           resolution: "720p",
+          turbo: true, // 2-min lip-sync is otherwise a 40-60min render; turbo keeps it shippable
           prompt: `The artist sings/raps directly to camera with energy and attitude, a ${g.label} music-video performance; natural body movement, the camera stays steady.`,
         });
         const out = path.join(RENDERS(), `mv-${Date.now()}-${i}-${rid()}.mp4`);
