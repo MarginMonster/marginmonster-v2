@@ -550,39 +550,64 @@ export default function FilmStudio() {
     );
   };
 
+  // Per-format identity for the picker — accent tint, a one-word "kicker", and a
+  // length/voice chip. The cover is the format's real AI still (/landing/film-still-*).
+  const FMT: Record<string, { tint: string; kick: string; meta: string }> = {
+    musicvideo: { tint: "t-mv", kick: "Sings on camera", meta: "~2 min · lip-synced" },
+    moral: { tint: "t-moral", kick: "They talk it out", meta: "~45 sec · spoken" },
+    horror: { tint: "t-horror", kick: "Builds the dread", meta: "~45 sec · spoken" },
+    testmovie: { tint: "t-film", kick: "The flagship", meta: "~1 min · spoken" },
+    kidstv: { tint: "t-kids", kick: "Peppa / Bluey", meta: "~40 sec · G-rated" },
+    kidsmusicvideo: { tint: "t-kmv", kick: "CoComelon", meta: "~30 sec · sings" },
+  };
+  const fmtIcon = (key: string) => {
+    if (key === "musicvideo" || key === "kidsmusicvideo") return <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>;
+    if (key === "moral") return <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>;
+    if (key === "horror") return <svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7v12l2.5-2 2.5 2 2-2 2 2 2.5-2 2.5 2V9a7 7 0 0 0-7-7z" /><circle cx="9.5" cy="10" r="1" /><circle cx="14.5" cy="10" r="1" /></svg>;
+    if (key === "kidstv") return <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8" /><circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="6" r="2.5" /><circle cx="9.5" cy="12" r="1" /><circle cx="14.5" cy="12" r="1" /><path d="M9 16c1 1 5 1 6 0" /></svg>;
+    return <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.5" /><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 7h5M17 17h5" /></svg>;
+  };
+
   return (
     <div className="fs-wrap">
       <style>{FS_STYLE}</style>
 
       <div className="fs-head">
-        <span className="fs-head-bg" aria-hidden="true">
-          <span className="fs-head-rose b" />
-          <span className="fs-head-media">
-            <img key={tmpl?.key} className="fs-head-img" src={`/landing/film-still-${tmpl?.key || "shortfilm"}.jpg?v=1`} alt=""
-              onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
-          </span>
-        </span>
+        <video className="fs-head-vid" autoPlay muted loop playsInline poster="/landing/film-hero.jpg?v=5" aria-hidden="true">
+          <source src="/landing/film-hero.mp4" type="video/mp4" />
+        </video>
+        <span className="fs-head-scrim" aria-hidden="true" />
         <div className="fs-head-copy">
-          <span className="fs-head-eyebrow"><Ico n="film" size={13} /> {t("Film Studio")} <span className="fs-beta">{t("new")}</span></span>
-          <b key={tmpl?.key}>{tmpl?.name || t("Film Studio")}</b>
-          <span>{t("Pick a format — we write it free, you only spend to render.")}</span>
+          <span className="fs-head-eyebrow"><span className="fs-head-dot" aria-hidden="true" /> {t("Easymode Studio")}</span>
+          <b>{t("Make a movie.")} <em>{t("Just describe it.")}</em></b>
+          <span>{t("Pick a format, tell us the idea — we write it and film it. You just press go.")}</span>
         </div>
       </div>
 
-      {/* Template row */}
+      {/* Format picker — each card is that format's real AI still */}
       <div className="fs-tmpls">
-        {d.templates.map((x) => (
-          <button type="button" key={x.key} className={`fs-tmpl${template === x.key ? " on" : ""}`}
-            aria-pressed={template === x.key} onClick={() => switchTemplate(x.key)}>
-            <span className="fs-tmpl-ico" aria-hidden="true"><Ico n="film" size={20} /></span>
-            <b>{t(x.name)}</b>
-            <span className="fs-tmpl-sub">{t(x.brief)}</span>
-          </button>
-        ))}
-        <div className="fs-tmpl soon" aria-hidden="true">
-          <span className="fs-tmpl-ico"><Ico n="wand" size={20} /></span>
-          <b>{t("TV Shows · Episodes")}</b>
-          <span className="fs-tmpl-sub">{t("Coming next — talking characters + a recurring cast across episodes")}</span>
+        {d.templates.map((x) => {
+          const m = FMT[x.key] || { tint: "t-film", kick: "", meta: "" };
+          return (
+            <button type="button" key={x.key} className={`fs-fmt${template === x.key ? " on" : ""}`}
+              aria-pressed={template === x.key} onClick={() => switchTemplate(x.key)}>
+              <span className="fs-fmt-cover">
+                <img src={`/landing/film-still-${x.key}.jpg?v=2`} alt="" loading="lazy"
+                  onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
+                <span className={`fs-fmt-ico ${m.tint}`} aria-hidden="true">{fmtIcon(x.key)}</span>
+                {template === x.key && <span className="fs-fmt-check" aria-hidden="true"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg></span>}
+                <span className="fs-fmt-label">{m.kick && <span className="fs-fmt-kick">{t(m.kick)}</span>}<b>{t(x.name)}</b></span>
+              </span>
+              <span className="fs-fmt-body"><span className="fs-fmt-desc">{t(x.brief)}</span>{m.meta && <span className="fs-fmt-meta"><span aria-hidden="true">⏱</span> {t(m.meta)}</span>}</span>
+            </button>
+          );
+        })}
+        <div className="fs-fmt soon" aria-hidden="true">
+          <span className="fs-fmt-cover">
+            <img src="/landing/film-still-shortfilm.jpg?v=2" alt="" />
+            <span className="fs-fmt-soon"><span>{t("TV Shows · Episodes — soon")}</span></span>
+          </span>
+          <span className="fs-fmt-body"><span className="fs-fmt-desc">{t("A recurring cast across whole episodes — the next frontier.")}</span></span>
         </div>
       </div>
 
@@ -940,7 +965,10 @@ const FS_STYLE = `
 /* Cinematic hero — a dark "movie theatre" band with a gold spotlight + underline. */
 /* Green hero band — SOFTENED so it sits in the page (light shadow + a crisp inner
    edge + slimmer) instead of a floating slab. Gold rosette, the still bleeds in. */
-.fs-head{position:relative;z-index:1;border-radius:18px;padding:20px 24px;margin-bottom:14px;min-height:130px;display:flex;align-items:center;}
+.fs-head{position:relative;overflow:hidden;border-radius:20px;margin-bottom:16px;min-height:200px;display:flex;align-items:center;box-shadow:0 20px 48px -24px rgba(8,62,39,.55);}
+.fs-head-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;}
+.fs-head-scrim{position:absolute;inset:0;z-index:1;background:radial-gradient(130% 120% at 85% 10%,rgba(12,122,70,.1) 0%,rgba(8,55,34,.72) 48%,rgba(7,42,27,.94) 100%),linear-gradient(90deg,rgba(7,42,27,.92) 10%,rgba(7,42,27,.42) 66%,transparent);}
+.fs-head-dot{width:6px;height:6px;border-radius:50%;background:var(--fs-gold-lt,#E7C879);box-shadow:0 0 10px var(--fs-gold-lt,#E7C879);}
 .fs-head-bg{position:absolute;inset:0;z-index:0;border-radius:18px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 8px 22px rgba(11,20,15,.16),inset 0 0 0 1px rgba(255,255,255,.1);}
 .fs-head-rose{position:absolute;background:center/contain no-repeat;mix-blend-mode:screen;pointer-events:none;will-change:transform;}
 .fs-head-rose.b{left:-130px;bottom:-170px;width:350px;height:350px;background-image:url(/gstyle-rosette.svg);opacity:.3;animation:fsspinB 115s linear infinite;}
@@ -948,14 +976,15 @@ const FS_STYLE = `
 .fs-head-media{position:absolute;right:0;top:0;bottom:0;width:54%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 44%);mask-image:linear-gradient(90deg,transparent,#000 44%);}
 .fs-head-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;animation:fsstill .55s cubic-bezier(.2,.7,.2,1);}
 @keyframes fsstill{from{opacity:0;transform:scale(1.06);}to{opacity:1;transform:scale(1);}}
-.fs-head-copy{position:relative;z-index:1;flex:1 1 auto;min-width:0;max-width:52%;}
+.fs-head-copy{position:relative;z-index:2;flex:1 1 auto;min-width:0;padding:26px 30px;max-width:560px;}
 .fs-head-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:var(--fs-gold-lt,#E7C879);text-transform:uppercase;letter-spacing:.08em;}
-.fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:26px;letter-spacing:-.02em;color:#fff;margin-top:7px;line-height:1.1;animation:fsFadeUp .45s cubic-bezier(.2,.7,.2,1);}
+.fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:33px;letter-spacing:-.02em;color:#fff;margin-top:11px;line-height:1.04;text-shadow:0 2px 18px rgba(0,0,0,.4);}
+.fs-head-copy b em{font-style:normal;color:#8FE9BC;}
 @keyframes fsFadeUp{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:translateY(0);}}
-.fs-head-copy>span{display:block;font-size:13px;color:rgba(255,255,255,.74);margin-top:7px;max-width:320px;line-height:1.5;}
+.fs-head-copy>span{display:block;font-size:13.5px;color:rgba(255,255,255,.85);margin-top:10px;max-width:400px;line-height:1.5;text-shadow:0 1px 10px rgba(0,0,0,.4);}
 .fs-beta{font-size:9.5px;font-weight:800;color:#2A1C00;background:linear-gradient(135deg,var(--fs-gold-lt),var(--fs-gold));border-radius:999px;padding:2px 8px;text-transform:uppercase;letter-spacing:.06em;box-shadow:0 2px 8px rgba(199,154,58,.35);}
 .fs-head-cat{position:absolute;z-index:3;right:16px;bottom:-22px;width:98px;height:auto;filter:drop-shadow(0 12px 18px rgba(0,0,0,.48));pointer-events:none;}
-.fs-tmpls{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0 6px;}
+.fs-tmpls{display:grid;grid-template-columns:repeat(auto-fit,minmax(224px,1fr));gap:15px;margin:20px 0 6px;}
 .fs-tmpl{flex:1 1 200px;min-width:0;text-align:left;border:1px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#fff,#FCFAF3);border-radius:18px;padding:15px 16px 14px;cursor:pointer;transition:transform .18s cubic-bezier(.2,.7,.2,1),box-shadow .18s,border-color .18s;display:block;box-shadow:0 1px 2px rgba(20,32,26,.04);}
 .fs-tmpl:hover{transform:translateY(-4px);box-shadow:0 16px 32px rgba(20,32,26,.14);border-color:var(--green2,#1FA463);}
 .fs-tmpl.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 16px 32px rgba(12,122,70,.18);background:linear-gradient(180deg,#fff,#F2FAF5);}
@@ -965,6 +994,35 @@ const FS_STYLE = `
 .fs-tmpl.on .fs-tmpl-ico{box-shadow:0 5px 16px rgba(12,122,70,.45);}
 .fs-tmpl b{font-family:Poppins,sans-serif;font-weight:800;font-size:15px;color:var(--ink,#14201A);display:block;}
 .fs-tmpl-sub{display:block;font-size:12px;color:var(--ink2,#4A554E);margin-top:3px;line-height:1.4;}
+/* Format picker v2 — each card is the format's real AI still (cover) + accent identity. */
+.fs-fmt{position:relative;text-align:left;cursor:pointer;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:18px;padding:0;overflow:hidden;transition:transform .18s cubic-bezier(.2,.7,.2,1),box-shadow .18s,border-color .18s;box-shadow:0 1px 2px rgba(20,32,26,.05);}
+.fs-fmt:hover{transform:translateY(-5px);box-shadow:0 18px 38px -18px rgba(20,32,26,.28);}
+.fs-fmt:hover .fs-fmt-cover img{transform:scale(1.06);}
+.fs-fmt.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2px var(--green,#0C7A46),0 20px 40px -20px rgba(12,122,70,.5);}
+.fs-fmt-cover{position:relative;display:block;aspect-ratio:16/10;overflow:hidden;background:#20302A;}
+.fs-fmt-cover img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s cubic-bezier(.2,.7,.2,1);}
+.fs-fmt-cover::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(10,20,15,.82) 0%,rgba(10,20,15,.12) 46%,transparent 100%);}
+.fs-fmt-ico{position:absolute;z-index:2;top:10px;left:10px;width:36px;height:36px;border-radius:11px;display:grid;place-items:center;box-shadow:0 6px 16px -6px rgba(0,0,0,.6);}
+.fs-fmt-ico svg{width:19px;height:19px;stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.fs-fmt-check{position:absolute;z-index:2;top:10px;right:10px;width:23px;height:23px;border-radius:50%;background:var(--green,#0C7A46);display:grid;place-items:center;box-shadow:0 4px 10px -3px rgba(0,0,0,.5);}
+.fs-fmt-check svg{width:12px;height:12px;stroke:#fff;stroke-width:3;fill:none;}
+.fs-fmt-label{position:absolute;z-index:2;left:12px;right:12px;bottom:10px;}
+.fs-fmt-kick{display:block;font-size:10px;font-weight:800;color:#A7F0C8;text-transform:uppercase;letter-spacing:.07em;}
+.fs-fmt-label b{display:block;font-family:Poppins,sans-serif;font-size:16.5px;font-weight:800;letter-spacing:-.01em;color:#fff;line-height:1.1;margin-top:2px;text-shadow:0 1px 10px rgba(0,0,0,.5);}
+.fs-fmt-body{display:block;padding:12px 14px 14px;}
+.fs-fmt-desc{display:block;font-size:12.5px;line-height:1.42;color:var(--ink2,#4A554E);}
+.fs-fmt-meta{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-size:11px;font-weight:800;color:var(--green,#0C7A46);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:4px 10px;}
+.fs-fmt.soon{opacity:.72;cursor:default;}
+.fs-fmt.soon:hover{transform:none;box-shadow:0 1px 2px rgba(20,32,26,.05);}
+.fs-fmt.soon:hover .fs-fmt-cover img{transform:none;}
+.fs-fmt-soon{position:absolute;z-index:2;inset:0;display:grid;place-items:center;}
+.fs-fmt-soon span{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff;font-size:11.5px;font-weight:800;border-radius:999px;padding:7px 15px;letter-spacing:.02em;}
+.t-mv{background:linear-gradient(135deg,#C2487E,#8E2F5C);}
+.t-moral{background:linear-gradient(135deg,#1EA85C,#0C7A46);}
+.t-horror{background:linear-gradient(135deg,#5A4B8A,#342A57);}
+.t-film{background:linear-gradient(135deg,#3E4C5E,#222C38);}
+.t-kids{background:linear-gradient(135deg,#E8A43C,#CE7C18);}
+.t-kmv{background:linear-gradient(135deg,#2FA8A0,#167C77);}
 .fs-card{background:linear-gradient(180deg,#fff,#FDFCF8);border:1px solid var(--line,#E4DFCF);border-radius:20px;padding:18px 20px;margin:14px 0;box-shadow:0 2px 4px rgba(20,32,26,.03),0 14px 32px rgba(20,32,26,.05);}
 .fs-go-card{border-color:transparent;box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 18px 40px rgba(12,122,70,.12);}
 /* Dialogue-engine picker (Test Movie only) — a compact segmented control. */
