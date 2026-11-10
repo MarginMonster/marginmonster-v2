@@ -671,7 +671,16 @@ export async function generateTestMovie(opts: {
       status: "PENDING",
       title: `${tmpl.name} — ${(treatment.title || opts.topic || "dialogue scene").slice(0, 60)}`,
       bodyJson: JSON.stringify({ style: "TESTMOVIE", videoUrl: storedUrl, prompt: opts.topic || "", treatment }),
-      metaJson: JSON.stringify({ kind: "testmovie", template: tmpl.key, section: opts.section || "creator", scenes: clips.length, aspect, engine: dialogueEngine }),
+      metaJson: JSON.stringify({
+        kind: "testmovie", template: tmpl.key, section: opts.section || "creator",
+        scenes: clips.length, aspect, engine: dialogueEngine,
+        // Per-shot timeline for the section editor: each rendered shot's /renders URL +
+        // the line it speaks, so the editor can list, preview and (later) re-edit each one.
+        shots: clips.map((c, i) => ({
+          url: `/renders/${path.basename(c)}`,
+          caption: (treatment.scenes[i]?.caption || "").slice(0, 200),
+        })),
+      }),
     },
   });
   return asset.id;

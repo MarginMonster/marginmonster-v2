@@ -307,6 +307,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // Which recipe built this? Merchants remix and compare, and "the one
         // that worked" is unfindable if the ad won't say what it was.
         recipe: recipeLabel(a.metaJson, a.bodyJson),
+        // Does this film carry a per-shot timeline (dialogue pipeline)? Gates the "Edit
+        // shots" link into the section editor.
+        hasShots: (() => { try { const m = JSON.parse(a.metaJson || "{}"); return Array.isArray(m.shots) && m.shots.length > 0; } catch { return false; } })(),
         missed: pickedButMissed(a.metaJson, a.bodyJson),
         // The "receipt" for the viewer's right rail — selections + the script.
         details: buildDetails(a.type, a.metaJson, a.bodyJson),
@@ -1659,6 +1662,7 @@ export default function WebArchive() {
                       <button type="button" className="wa-vbtn full" disabled={busy} onClick={() => startPost(viewer.id)}>{isCreator ? t("Share to socials") : t("Post to socials")}</button>
                     )}
                     {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}><Ico n="download" /> {t("Download")}</a>}
+                    {viewer.hasShots && viewer.media && <a className="wa-vbtn ghost" href={`/web/filmedit/${viewer.id}`} title={t("Open the shot timeline — preview and edit each shot")}><Ico n="video" /> {t("Edit shots")}</a>}
                     {/* CROSS-SECTION BRIDGE — "edit my own content": open this
                         image in the Creator editor (seeds ?src=; the full
                         describe-first edit flow runs on it). Image-only — the
