@@ -547,7 +547,15 @@ export async function generateTestMovie(opts: {
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     const turns = splitExchange(scene.caption || "");
-    const speaker = turns.find((t) => t.speaker)?.speaker || "";
+    // EXCHANGE-PER-CLIP: a shot now holds a short back-and-forth — turnA speaks, turnB
+    // replies — so the clip is FULL of dialogue (Kling speaks ~0.28s/word, so a single line
+    // only half-filled a clip and left it to pad with dead ambient standing-around). turnB is
+    // the first LATER turn by a DIFFERENT speaker; absent it, we fall back to the single
+    // validated speaker. `line` joins both turns so the clip is sized to the whole exchange.
+    const fnm = (s: string) => (s || "").toLowerCase().split(/[\s,]/)[0];
+    const turnA = turns[0] || { speaker: "", line: "" };
+    const turnB = turns.find((t, k) => k > 0 && !!t.speaker && !!t.line && fnm(t.speaker) !== fnm(turnA.speaker)) || null;
+    const speaker = turnA.speaker; // leads the shot — drives the seed continuity + voice pin
     const line = turns.map((t) => t.line).join(" ").replace(/\s+/g, " ").trim();
 
     // SEED by transition (see the LOCATION MASTERS note above):
@@ -604,25 +612,29 @@ export async function generateTestMovie(opts: {
     // present and reacting; two-shot; voice pinned consistent; NO on-screen text.
     // Pin the speaker's voice to the timbre the merchant cast (Veo has no voice
     // reference, so a concrete described timbre is the lever that holds it steady).
-    const speakerVoiceDesc = (() => {
-      if (!speaker) return "";
-      const key = speaker.toLowerCase().split(/[\s,]/)[0];
-      const a = castActors.find((c) => (c.name || "").toLowerCase().split(/[\s,]/)[0] === key);
+    const voiceDescFor = (name: string): string => {
+      if (!name) return "";
+      const key = fnm(name);
+      const a = castActors.find((c) => fnm(c.name) === key);
       const v = a && a.voiceId ? AVATAR_VOICES.find((x) => x.id === a.voiceId) : undefined;
-      return v ? ` ${speaker}'s voice is ${v.blurb.toLowerCase()} (a ${v.label.toLowerCase()} ${v.gender === "f" ? "female" : "male"} voice); keep this exact voice in every shot.` : "";
-    })();
+      return v ? ` ${name}'s voice is ${v.blurb.toLowerCase()} (a ${v.label.toLowerCase()} ${v.gender === "f" ? "female" : "male"} voice); keep this exact voice in every shot.` : "";
+    };
+    const speakerVoiceDesc = voiceDescFor(speaker);
     // Point Veo at the RIGHT face: in the two-shot both people are visible, so name the
     // speaker by their SIDE of the frame (detected above) — otherwise Veo animates the
     // wrong brother's mouth and the line comes out of the wrong person (owner's bug).
     const sSide = sideFor(speaker);
     const oSide = sSide === "left" ? "right" : sSide === "right" ? "left" : "";
+    const sideB = turnB ? (sideFor(turnB.speaker) || oSide) : "";
     // HOW to say it — Veo reads flat unless told the emotion. Use the scripter's per-beat
     // tone if present, else infer from the words, and hard-ban mumbling + dead air.
     const tone = (scene.tone || "").trim();
     const deliver = tone
       ? `Deliver it ${tone} — put that exact emotion and energy into the voice, expressively, NEVER flat or monotone.`
       : `Deliver it with the REAL emotion the words carry — an angry line sounds angry, a threat sounds menacing, hurt shows as hurt — with natural intonation and emphasis, NEVER flat or monotone.`;
-    const voiceLine = speaker
+    const voiceLine = (turnB && turnB.speaker && turnB.line)
+      ? `This two-shot is a short back-and-forth between TWO people, one speaking at a time. FIRST, ${turnA.speaker}${sSide ? ` (on the ${sSide} side of the frame)` : ""} says, in accurate lip-sync: "${turnA.line}". THEN ${turnB.speaker}${sideB ? ` (on the ${sideB} side)` : ""} replies, in accurate lip-sync: "${turnB.line}". ONLY ONE person speaks at a time: ${turnA.speaker} goes FIRST — only ${turnA.speaker}'s mouth moves while ${turnB.speaker} stays silent, listening and reacting — THEN ${turnB.speaker} answers — only ${turnB.speaker}'s mouth moves while ${turnA.speaker} stays silent, listening. There are exactly TWO distinct voices: ${turnA.speaker}'s voice on the first line and ${turnB.speaker}'s voice on the second — they NEVER talk at the same time, never overlap, and NO third voice, murmur or gibberish appears anywhere. Each person says their line exactly ONCE, word for word, clearly and articulately, beginning right away with no long pauses, so the two lines fill the whole shot back-to-back. ${deliver}${voiceDescFor(turnA.speaker)}${voiceDescFor(turnB.speaker)}`
+      : speaker
       ? `${sSide ? `In this two-shot BOTH people are visible, but the ONLY one who speaks is the person on the ${sSide.toUpperCase()} side of the frame — that is ${speaker}. The person on the ${oSide.toUpperCase()} does NOT speak. ` : ""}There is ONLY ONE voice in this entire clip — ${speaker}'s. ${speaker}${sSide ? ` (on the ${sSide})` : ""} says exactly this one line and nothing else: "${line}". Say it through exactly ONCE, word for word — do NOT repeat, echo, loop or restate any word or phrase, and add no words that are not in the line. The MOMENT the line is finished, ${speaker} stops speaking and simply holds a natural, quiet expression for the rest of the shot — no extra, improvised or filler words. ${deliver} Speak CLEARLY and crisply — every word fully articulated and intelligible, no mumbling, slurring or trailing off — BEGIN speaking right away and keep a natural, connected pace, in accurate lip-sync. ONLY ${speaker}'s mouth moves. The OTHER character${oSide ? ` (on the ${oSide})` : ""} is COMPLETELY SILENT the whole time — absolutely no talking, murmuring, mumbling, whispering, muttering or background speech of any kind; their mouth stays closed and still, only listening and reacting. Do NOT generate any second voice, murmur or gibberish anywhere in the clip — one clear voice only. Keep ${speaker}'s voice the SAME as in every other shot.${speakerVoiceDesc}`
       : `Exactly ONE voice in the whole clip saying this line clearly and expressively (never monotone), every word articulate, no mumbling, beginning right away: "${line}". Say it through ONCE only — do NOT repeat, loop or restate any word, and add no words not in the line; the instant it is finished, stop speaking and hold a natural quiet expression for the rest of the shot. ${deliver} The other character is completely silent — mouth closed, only listening.`;
     // LIGHT PROMPT — the SEED frame already carries the faces, room and staging, so the

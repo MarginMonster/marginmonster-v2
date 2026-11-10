@@ -8,7 +8,10 @@
  *  Pure (no server-only deps) so the browser bundle can import it too. ~0.45s/word ≈ 135
  *  wpm, a natural dramatic-dialogue pace; calibrate against real renders if delivery drifts. */
 
-export const SECONDS_PER_WORD = 0.45;
+// Measured against real Kling renders: it speaks ~0.28s/word (≈210 wpm) — much faster
+// than a dramatic read. Sizing clips at the old 0.45 left ~half the clip as dead ambient
+// pad (the character standing there), so this is tuned to what the model actually delivers.
+export const SECONDS_PER_WORD = 0.28;
 /** A single dialogue clip (one speaker's beat) can't exceed the renderer's max take. */
 export const CLIP_MAX_SECONDS = 10;
 /** Floor — a very short line still needs a watchable beat to seed and hold on. */
