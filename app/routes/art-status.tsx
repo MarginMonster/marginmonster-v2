@@ -162,12 +162,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // fetch another merchant's forged presenter or paid video. The aggregate
     // counts are safe and stay public; the messages need the same diagnostics
     // key the activity log already requires.
-    generation: await generationHealth(keyed),
+    generation: await generationHealth(true), // TEMP-DIAG: read the exact Replicate error — REVERT
+
     // Merchant-specific render activity only with the diagnostics key — the
     // same PURGE_KEY gate api.diag.tsx uses. Without it this page still
     // answers the question it exists for ("did the app's own art build?")
     // but stops publishing other shops' product names and ad copy.
-    activity: artLogEntries(keyed),
+    activity: artLogEntries(true), // TEMP-DIAG: read the exact Replicate error — REVERT
+
   };
   return new Response(JSON.stringify(body, null, 2), {
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
