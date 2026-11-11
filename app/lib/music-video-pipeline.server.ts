@@ -22,7 +22,8 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
-import { renderCreativeSeed, editSubjectIntoScene } from "./image-generation.server";
+import { renderCreativeSeed, editSubjectIntoScene, renderStyledSeedMulti } from "./image-generation.server";
+import { anthropicVision } from "./anthropic.server";
 import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falVideoSubmit, falVideoPoll, falLipSync, falEnabled } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
@@ -160,6 +161,21 @@ async function assembleMusicVideo(clips: string[], outPath: string, W: number, H
   fs.copyFileSync(clips[0], outPath);
 }
 
+/** Vision gate for props: is the picked prop (a tiger, a horse…) actually visible in this scene
+ *  image? Country treatments keep writing their OWN animals (a "loyal dog") that crowd the prop out,
+ *  and an edit occasionally just drops it — this catches both so we can re-roll. Fails OPEN (accept)
+ *  on a vision outage so a QA hiccup never blocks a render. sonnet-4-6 (not haiku): the strict reader,
+ *  same model as the cartoon product-in-hand gate. */
+async function sceneShowsProp(imgUrl: string, noun: string): Promise<boolean> {
+  try {
+    const ans = await anthropicVision(
+      `Look at this music-video frame. Is a real, recognizable ${noun} clearly visible in it? Reply with ONE word, YES or NO.\nYES = a ${noun} is clearly present in the shot.\nNO = there is no ${noun} — only people, or a different animal such as a dog, or no animal at all.`,
+      [imgUrl], { maxTokens: 8, model: "claude-sonnet-4-6" }
+    );
+    return /\byes\b/i.test(ans);
+  } catch { return true; }
+}
+
 export async function generateMusicVideo(opts: {
   shopId: string;
   topic?: string;
@@ -246,38 +262,53 @@ export async function generateMusicVideo(opts: {
     if (ref) { await ckpt({ ckArtist: ref }); artistRef = abs(ref); }
   }
 
-  // 3b) PROP ANCHORS — establish each picked prop as ONE specific entity PAIRED with the artist,
-  //     once (the movie pipeline's cast-reference-sheet idea, applied to props). Every scene that
-  //     features a prop is EDITED from this anchor, so it's the SAME single tiger / car each time —
-  //     not a fresh (and sometimes duplicated) one per scene. Falls back to the plain artist hero
-  //     if an anchor render fails, so a flaky edit never blocks the video.
+  // 3b) PROP references — the ROBUST "props must actually show" path. Two things go wrong otherwise:
+  //     (a) the treatment writes its OWN animals (a country song keeps adding a "loyal dog") that
+  //     crowd the picked prop out of frame; (b) an edit occasionally just drops it. So build BOTH a
+  //     standalone single-animal REFERENCE per prop (locks ONE specific tiger / horse, used to force
+  //     it back in if a scene edit loses it) AND an artist+prop ANCHOR to seed scenes from — every
+  //     prompt saying this is the ONLY animal, no dog. Each falls back to the plain hero on failure.
+  const propRefs: Record<string, string> = {};
   const propAnchors: Record<string, string> = {};
   if (artistRef) {
     for (const k of propList) {
+      const noun = propNoun(k);
+      let pr = abs(resume[`ckPropRef_${k}`]);
+      if (!pr) { const r = await renderCreativeSeed(`A single real ${noun} — exactly ONE ${noun}, full body, photorealistic, plain neutral background. The only subject is this one ${noun}. ${REALISM}`, "9:16"); pr = abs(r); if (pr) await ckpt({ [`ckPropRef_${k}`]: pr }); }
+      if (pr) propRefs[k] = pr;
       const cached = abs(resume[`ckProp_${k}`]);
       if (cached) { propAnchors[k] = cached; continue; }
-      const noun = propNoun(k);
-      const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${PROPS[k].phrase} — a SINGLE ${noun}, only one, no duplicates and no other animals or extra objects. Full body, neutral studio backdrop. ${REALISM}`);
+      const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${PROPS[k].phrase} — a SINGLE ${noun}, only one. The ONLY animal in the image is this one ${noun}: do NOT include a dog or any other animal. Full body, neutral studio backdrop. ${REALISM}`);
       propAnchors[k] = a ? (abs(a) || artistRef) : artistRef;
       await ckpt({ [`ckProp_${k}`]: propAnchors[k] });
     }
   }
 
-  // 4) PER-SCENE images — EDIT the one hero into each NEW setting (nano-banana-pro @2K). Editing
-  //    the same source preserves the face (the "it changes the singer" fix) and pro @2K reads as
-  //    real photography (the "AI as fuck" fix). Falls back to the hero itself if an edit fails.
+  // 4) PER-SCENE images — EDIT the hero (or the artist+prop anchor) into each NEW setting
+  //    (nano-banana-pro @2K: preserves the face + reads photoreal). For PROP scenes we then
+  //    VISION-GATE the result: if the picked prop didn't survive the edit (the treatment's dog
+  //    won, or it got dropped), force it in with a HARD-LOCKED multi-reference compose so the prop
+  //    always lands. Prop-free scenes seed from the plain artist hero, unchanged.
   const sceneImgs = await mapLimit(scenes, 3, async (s, i) => {
     const shot = SHOTLIST[i % SHOTLIST.length];
     const propKey = propForScene[i];
-    // Seed from the prop's ANCHOR (artist + that one locked prop) so it's the SAME single prop —
-    // not a new tiger re-imagined from text. Prop-free scenes seed from the plain artist hero.
+    const noun = propKey ? propNoun(propKey) : "";
     const srcRef = (propKey && propAnchors[propKey]) || artistRef;
-    const propClause = propKey ? ` Keep the SAME single ${propNoun(propKey)} from the reference in the shot — exactly one ${propNoun(propKey)}, do NOT add more ${propNoun(propKey)}, animals or objects.` : "";
+    const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, the ONLY animal in frame; do NOT add more ${noun}, a dog, or any other animal.` : "";
     const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause} ${g.look}. ${REALISM}`;
-    const img = srcRef
+    let img = srcRef
       ? await editSubjectIntoScene(srcRef, prompt)
       : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, "9:16");
-    return img ? abs(img) : srcRef; // same artist (+ its prop) reference if an edit fails
+    // VISION GATE (prop scenes only): confirm the prop is actually in the shot; if not, force it in
+    // with a hard-locked compose off [artist, prop] refs so a dropped/crowded-out prop still lands.
+    if (propKey && artistRef && propRefs[propKey]) {
+      const cur = img ? abs(img) : null;
+      if (!cur || !(await sceneShowsProp(cur, noun))) {
+        const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${s.visual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, the ONLY animal in frame, no dog or other animals. ${g.look}. ${REALISM}`, [artistRef, propRefs[propKey]], "9:16");
+        if (forced) img = forced;
+      }
+    }
+    return img ? abs(img) : srcRef; // same artist (+ its prop) reference if everything fails
   });
 
   // 5) song SEGMENTS (local mp3 + hosted url for the lip-sync model to drive the mouth to).
@@ -300,7 +331,7 @@ export async function generateMusicVideo(opts: {
     const pKey = propForScene[i];
     // Reference the prop already baked into the seed image — never "add a tiger" (which spawns new
     // ones); just hold the single one in frame and forbid duplicates as the clip animates.
-    const keepProp = pKey ? ` The single ${propNoun(pKey)} already in the shot stays in frame — exactly one, do NOT add or duplicate any ${propNoun(pKey)}, animals or objects.` : "";
+    const keepProp = pKey ? ` The single ${propNoun(pKey)} already in the shot stays in frame — exactly one; do NOT add or duplicate any ${propNoun(pKey)}, a dog, or any other animal.` : "";
     const motionPrompt = shot.role === "perform"
       ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist performs/raps with high energy — head bobbing, body moving to the beat.${keepProp} There is NO microphone — the artist never holds a mic. Keep the SAME person identical; photoreal, cinematic, high-production.`
       : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural motion.${keepProp} Keep the SAME person identical; photoreal, cinematic, high-production.`;
