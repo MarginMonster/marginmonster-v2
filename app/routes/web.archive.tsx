@@ -1442,7 +1442,10 @@ export default function WebArchive() {
             return (
               <div className="wb-asset" key={a.id}>
                 <button type="button" className="wa-poster" onClick={() => setViewer(a)} title={a.isAudio ? t("Open & play") : t("Open it big")}>
-                  {a.isVideo && a.media && <video src={`${a.media}#t=0.1`} muted playsInline preload="metadata" />}
+                  {/* A cached first-frame JPG, NOT the video — iOS won't paint a <video>
+                      frame unprompted, so loading videos just to show a poster made the
+                      grid sit black and feel broken. The real <video> loads in the viewer. */}
+                  {a.isVideo && a.media && <img src={`/vthumb/${a.media.split("?")[0].split("/").pop()}`} alt={a.title} loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />}
                   {!a.isVideo && !a.isAudio && a.media && <img src={a.media} alt={a.title} loading="lazy" />}
                   {/* Audio has no still — the tile is a play affordance; the real
                       <audio> player lives in the viewer. (An <img src=mp3> would
