@@ -750,7 +750,20 @@ function fmtEta(etaSec: number, elapsedSec: number | undefined, t: (s: string, p
   if (etaSec > 10) return t("{n}s left", { n: etaSec });
   if (etaSec > 0) return t("almost there");
   const mins = Math.floor((elapsedSec ?? 0) / 60);
-  return mins >= 1 ? t("taking longer than usual · {mins} min in", { mins }) : t("taking longer than usual");
+  // "still rendering", not "taking longer than usual" — a lip-sync video legitimately runs 15-35 min,
+  // so the alarming phrasing fired on a perfectly healthy render the moment the (too-low) estimate ran out.
+  return mins >= 1 ? t("still rendering · {mins} min in", { mins }) : t("still rendering");
+}
+
+/** COMPACT status for the spinner OVERLAY — just the time, never the full sentence
+ *  (that lives in the detail line below the card, where there's room). A narrow card
+ *  wrapped the long overlay into a broken-looking mess; this keeps it one clean line. */
+function fmtEtaShort(etaSec: number, elapsedSec: number | undefined, t: (s: string, p?: Record<string, string | number>) => string): string {
+  if (etaSec > 60) return t("{n} min", { n: Math.ceil(etaSec / 60) });
+  if (etaSec > 10) return t("{n}s", { n: etaSec });
+  if (etaSec > 0) return t("almost there");
+  const mins = Math.floor((elapsedSec ?? 0) / 60);
+  return mins >= 1 ? t("{mins} min in", { mins }) : t("one moment");
 }
 // Sanitized download filename from the piece's title.
 function dlName(title: string, isVideo: boolean, isAudio = false): string {
@@ -1401,7 +1414,7 @@ export default function WebArchive() {
                 className="wb-cookimg"
                 style={j.productImage ? { backgroundImage: `linear-gradient(rgba(10,14,12,.5),rgba(10,14,12,.55)), url(${j.productImage})` } : undefined}
               >
-                <span className="wb-bufwrap"><span className="wb-spin" /><span className="wb-eta">{j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec, t)}</span></span>
+                <span className="wb-bufwrap"><span className="wb-spin" /><span className="wb-eta">{j.etaSec > 10 ? "~" : ""}{fmtEtaShort(j.etaSec, j.elapsedSec, t)}</span></span>
               </div>
               <div className="m">
                 {j.kind === "blog"

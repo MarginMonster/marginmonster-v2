@@ -1611,7 +1611,7 @@ const CSS = `
 .wb-spin::after{content:"";position:absolute;inset:2px;border-radius:50%;animation:wbRot 1.7s linear infinite;
   background:radial-gradient(circle 3.5px at 50% 2%,#FFF6DA,rgba(255,210,74,.95) 45%,transparent 68%);}
 @keyframes wbRot{to{transform:rotate(360deg)}}
-.wb-eta{color:#fff;font-weight:800;font-size:12.5px;letter-spacing:.02em;text-shadow:0 1px 8px rgba(0,0,0,.6);}
+.wb-eta{max-width:90%;text-align:center;line-height:1.2;text-wrap:balance;white-space:nowrap;color:#fff;font-weight:800;font-size:12.5px;letter-spacing:.02em;text-shadow:0 1px 8px rgba(0,0,0,.6);font-variant-numeric:tabular-nums;}
 .wb-failbadge{position:relative;z-index:1;font-size:30px;color:#E9897B;font-weight:800;}
 @media (prefers-reduced-motion: reduce){.wb-cookimg::after{animation:none}.wb-spin,.wb-spin::before,.wb-spin::after{animation:none}}
 .wb-asset .m{padding:10px 12px;font-size:13px;font-weight:600;}
