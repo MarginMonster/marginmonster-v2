@@ -169,14 +169,18 @@ export async function generateMusicVideo(opts: {
   songUrl?: string;
   /** PROPS (keys from film-engine PROPS) to weave into the scenes — tiger, luxury car, chains… */
   props?: string[];
-  resume?: { ckTreatment?: string; ckSong?: string; ckArtist?: string };
+  resume?: { ckTreatment?: string; ckSong?: string; ckArtist?: string; [k: string]: string | undefined };
 }): Promise<string> {
   const tmpl = filmTemplate("musicvideo");
   const genre = genreOrDefault(opts.genre);
   const g = GENRES[genre];
-  // Props the merchant picked, distributed ONE per scene (round-robin) so they feel intentional.
+  // Props the merchant picked. The "several tigers" fix = treat each prop like the movie pipeline
+  // treats its cast: establish it ONCE as a single locked reference entity, then SEED the scenes
+  // that feature it from THAT reference — instead of re-describing "a tiger" in text every scene,
+  // which spawned a different (and sometimes multiplied) tiger each time. `propNoun` gives a short
+  // singular noun ("tiger", "luxury car") so we can say "the SAME single X, exactly one" everywhere.
   const propList = (opts.props || []).filter((k) => PROPS[k]);
-  const propFor = (i: number): string => (propList.length ? ` Prominently feature ${PROPS[propList[i % propList.length]].phrase} in this shot.` : "");
+  const propNoun = (k: string): string => (PROPS[k]?.label || k).replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || k;
   const [W, H] = [720, 1280]; // vertical music video (Shorts/TikTok/Reels)
   const N = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, opts.sceneCount ?? tmpl.defaultScenes));
   const jobId = opts.jobId;
@@ -195,6 +199,15 @@ export async function generateMusicVideo(opts: {
   treatment.scenes = treatment.scenes.slice(0, N);
   await ckpt({ ckTreatment: JSON.stringify(treatment) });
   const scenes = treatment.scenes;
+  // Prop PLACEMENT: props land ONLY on PERFORMANCE shots (artist prominent, facing camera) and
+  // round-robin among the picks — at most one prop per scene. B-roll / wide atmospheric shots stay
+  // prop-free (a lone animal in an empty wide is where duplicates + weirdness creep in). This also
+  // naturally limits how often each prop appears, so it reads as a recurring motif, not a herd.
+  const propForScene: Record<number, string> = {};
+  if (propList.length) {
+    const performScenes = scenes.map((_, i) => i).filter((i) => SHOTLIST[i % SHOTLIST.length].role === "perform");
+    performScenes.forEach((sceneI, k) => { propForScene[sceneI] = propList[k % propList.length]; });
+  }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
   const lyrics = scenes.map((s) => (s.caption || "").replace(/\s*\/\s*/g, "\n")).filter(Boolean).join("\n");
   if (!lyrics.trim()) throw new Error("[musicvideo] no lyrics");
@@ -230,16 +243,38 @@ export async function generateMusicVideo(opts: {
     if (ref) { await ckpt({ ckArtist: ref }); artistRef = abs(ref); }
   }
 
+  // 3b) PROP ANCHORS — establish each picked prop as ONE specific entity PAIRED with the artist,
+  //     once (the movie pipeline's cast-reference-sheet idea, applied to props). Every scene that
+  //     features a prop is EDITED from this anchor, so it's the SAME single tiger / car each time —
+  //     not a fresh (and sometimes duplicated) one per scene. Falls back to the plain artist hero
+  //     if an anchor render fails, so a flaky edit never blocks the video.
+  const propAnchors: Record<string, string> = {};
+  if (artistRef) {
+    for (const k of propList) {
+      const cached = abs(resume[`ckProp_${k}`]);
+      if (cached) { propAnchors[k] = cached; continue; }
+      const noun = propNoun(k);
+      const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${PROPS[k].phrase} — a SINGLE ${noun}, only one, no duplicates and no other animals or extra objects. Full body, neutral studio backdrop. ${REALISM}`);
+      propAnchors[k] = a ? (abs(a) || artistRef) : artistRef;
+      await ckpt({ [`ckProp_${k}`]: propAnchors[k] });
+    }
+  }
+
   // 4) PER-SCENE images — EDIT the one hero into each NEW setting (nano-banana-pro @2K). Editing
   //    the same source preserves the face (the "it changes the singer" fix) and pro @2K reads as
   //    real photography (the "AI as fuck" fix). Falls back to the hero itself if an edit fails.
   const sceneImgs = await mapLimit(scenes, 3, async (s, i) => {
     const shot = SHOTLIST[i % SHOTLIST.length];
-    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propFor(i)} ${g.look}. ${REALISM}`;
-    const img = artistRef
-      ? await editSubjectIntoScene(artistRef, prompt)
+    const propKey = propForScene[i];
+    // Seed from the prop's ANCHOR (artist + that one locked prop) so it's the SAME single prop —
+    // not a new tiger re-imagined from text. Prop-free scenes seed from the plain artist hero.
+    const srcRef = (propKey && propAnchors[propKey]) || artistRef;
+    const propClause = propKey ? ` Keep the SAME single ${propNoun(propKey)} from the reference in the shot — exactly one ${propNoun(propKey)}, do NOT add more ${propNoun(propKey)}, animals or objects.` : "";
+    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause} ${g.look}. ${REALISM}`;
+    const img = srcRef
+      ? await editSubjectIntoScene(srcRef, prompt)
       : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, "9:16");
-    return img ? abs(img) : artistRef; // same artist (the hero) if an edit fails
+    return img ? abs(img) : srcRef; // same artist (+ its prop) reference if an edit fails
   });
 
   // 5) song SEGMENTS (local mp3 + hosted url for the lip-sync model to drive the mouth to).
@@ -259,9 +294,13 @@ export async function generateMusicVideo(opts: {
     const shot = SHOTLIST[i % SHOTLIST.length];
     if (!imgAbs) return null;
     const imgLocal = path.join(RENDERS(), path.basename(imgAbs));
+    const pKey = propForScene[i];
+    // Reference the prop already baked into the seed image — never "add a tiger" (which spawns new
+    // ones); just hold the single one in frame and forbid duplicates as the clip animates.
+    const keepProp = pKey ? ` The single ${propNoun(pKey)} already in the shot stays in frame — exactly one, do NOT add or duplicate any ${propNoun(pKey)}, animals or objects.` : "";
     const motionPrompt = shot.role === "perform"
-      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist performs/raps with high energy — head bobbing, body moving to the beat.${propFor(i)} There is NO microphone — the artist never holds a mic. Keep the SAME person identical; photoreal, cinematic, high-production.`
-      : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural motion.${propFor(i)} Keep the SAME person identical; photoreal, cinematic, high-production.`;
+      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist performs/raps with high energy — head bobbing, body moving to the beat.${keepProp} There is NO microphone — the artist never holds a mic. Keep the SAME person identical; photoreal, cinematic, high-production.`
+      : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural motion.${keepProp} Keep the SAME person identical; photoreal, cinematic, high-production.`;
     for (const i2vModel of [I2V_MODEL, I2V_FALLBACK]) {
       try {
         // silent motion clip — primary engine, then the backup if it blips (so a provider outage
