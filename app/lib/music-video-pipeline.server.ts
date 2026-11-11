@@ -106,41 +106,45 @@ async function stillClip(imgPath: string, segAudioPath: string, dur: number, W: 
   return out;
 }
 
-/** Assemble the clips into the finished music video. PREFERRED: a short CROSS-DISSOLVE on the
- *  video + an AUDIO crossfade at every seam — smooth transitions, not a rocky hard cut, and no
- *  audio pop (the owner's "transitions are rocky + audio rocky" fix). Each clip keeps its OWN
- *  synced segment audio, and the video + audio shrink together by the overlap, so the lip-sync
- *  stays aligned. Falls back to a plain hard-cut concat, then the first clip, so it never dies. */
-async function assembleMusicVideo(clips: string[], outPath: string, W: number, H: number): Promise<void> {
+/** Assemble the clips into the finished music video. The MUSIC must never cut at a seam (the owner's
+ *  "on the transition the music cuts" fix): each clip carried its OWN sliced segment, and cross-fading
+ *  two adjacent slices left an audible break. So instead we (1) normalise every clip to EXACTLY D sec
+ *  of SILENT video, (2) hard-join them on the beat (exact timeline = N×D), then (3) lay the ONE ORIGINAL
+ *  continuous song over the whole thing. Continuous music carries across each cut so it reads smooth
+ *  (how real music videos cut), and because every clip sits at its exact song position the lip-sync
+ *  stays aligned. Falls back to a plain per-clip concat if anything here fails, so it never dies. */
+async function assembleMusicVideo(clips: string[], songPath: string, D: number, outPath: string, W: number, H: number): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[musicvideo] no clips to assemble");
 
-  if (N >= 2) {
-    try {
-      const XF = 0.3; // a clean, short cross-dissolve — smooth, not a gimmicky wipe
-      const durs = clips.map((c) => { const d = ffprobeDuration(c); return d > 0.6 ? d : 2; });
-      const a: string[] = ["-y"];
-      clips.forEach((c) => a.push("-i", c));
-      const f: string[] = [];
-      clips.forEach((_, i) => {
-        f.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30,format=yuv420p[v${i}]`);
-        f.push(`[${i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
-      });
-      let pv = "[v0]", pa = "[a0]", off = durs[0] - XF;
-      for (let i = 1; i < N; i++) {
-        const vo = i === N - 1 ? "[vout]" : `[vx${i}]`;
-        const ao = i === N - 1 ? "[aout]" : `[ax${i}]`;
-        f.push(`${pv}[v${i}]xfade=transition=fade:duration=${XF}:offset=${off.toFixed(3)}${vo}`);
-        f.push(`${pa}[a${i}]acrossfade=d=${XF}${ao}`);
-        pv = vo; pa = ao; off += durs[i] - XF;
-      }
-      a.push("-filter_complex", f.join(";"), "-map", "[vout]", "-map", "[aout]",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outPath);
-      const r = await runFfmpeg(a);
-      if (r.status === 0 && fs.existsSync(outPath) && ffprobeDuration(outPath) > 1) return;
-    } catch { /* fall through to the hard-cut concat */ }
-  }
+  try {
+    // 1) each clip → EXACTLY D sec, silent, uniform WxH/fps (tpad clones the last frame if a clip came
+    //    back short, then -t trims to D — so the video lands exactly on the song's segment grid).
+    const norm: string[] = [];
+    for (let i = 0; i < N; i++) {
+      const o = path.join(RENDERS(), `mvn-${Date.now()}-${i}-${rid()}.mp4`);
+      const r = await runFfmpeg(["-y", "-i", clips[i], "-an",
+        "-vf", `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30,tpad=stop_mode=clone:stop_duration=2`,
+        "-t", D.toFixed(2), "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", o]);
+      if (r.status === 0 && fs.existsSync(o) && ffprobeDuration(o) > 0.5) norm.push(o);
+      else throw new Error(`[musicvideo] clip ${i} normalise failed`);
+    }
+    // 2) hard-join the uniform clips (exact timeline, no overlap).
+    const listPath = path.join(RENDERS(), `mvlist-${Date.now()}-${rid()}.txt`);
+    fs.writeFileSync(listPath, norm.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"));
+    const silent = path.join(RENDERS(), `mvcat-${Date.now()}-${rid()}.mp4`);
+    const rc = await runFfmpeg(["-y", "-f", "concat", "-safe", "0", "-i", listPath,
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-an", silent]);
+    if (rc.status !== 0 || !fs.existsSync(silent)) throw new Error("[musicvideo] concat failed");
+    // 3) lay the ORIGINAL continuous song over the whole cut (no seam, no per-slice crossfade). End on
+    //    the music (trim to the shorter of the video grid and the real song) so there's no dead air.
+    const songLen = ffprobeDuration(songPath);
+    const total = songLen > 1 ? Math.min(N * D, songLen) : N * D;
+    const ra = await runFfmpeg(["-y", "-i", silent, "-i", songPath,
+      "-map", "0:v", "-map", "1:a", "-t", total.toFixed(2),
+      "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outPath]);
+    if (ra.status === 0 && fs.existsSync(outPath) && ffprobeDuration(outPath) > 1) return;
+  } catch { /* fall through to the per-clip concat */ }
 
   // FALLBACK: plain hard-cut concat keeping each clip's audio.
   const args: string[] = ["-y"];
@@ -258,7 +262,7 @@ export async function generateMusicVideo(opts: {
   //    video. Every scene is an EDIT of THIS exact image, so the artist can never drift.
   let artistRef = abs(resume.ckArtist);
   if (!artistRef) {
-    const ref = await renderCreativeSeed(`A realistic ${g.label} music-video shot of the artist performing/rapping to camera: ${artistBible}. ${g.look}. Clear sharp face, full performance energy. ${REALISM}`, "9:16");
+    const ref = await renderCreativeSeed(`A realistic ${g.label} music-video shot of the artist, who ${g.perform}, to camera: ${artistBible}. ${g.look}. Clear sharp face with a natural, genuine expression that fits the song's emotion — NOT angry, snarling or aggressive. ${REALISM}`, "9:16");
     if (ref) { await ckpt({ ckArtist: ref }); artistRef = abs(ref); }
   }
 
@@ -295,7 +299,10 @@ export async function generateMusicVideo(opts: {
     const noun = propKey ? propNoun(propKey) : "";
     const srcRef = (propKey && propAnchors[propKey]) || artistRef;
     const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, the ONLY animal in frame; do NOT add more ${noun}, a dog, or any other animal.` : "";
-    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause} ${g.look}. ${REALISM}`;
+    // Match the facial expression to the SONG's emotion so the i2v doesn't amplify a wrong one (a
+    // warm country song was rendering a snarling, angry face). Only perform shots face camera.
+    const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
+    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause}${performNote} ${g.look}. ${REALISM}`;
     let img = srcRef
       ? await editSubjectIntoScene(srcRef, prompt)
       : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, "9:16");
@@ -333,8 +340,8 @@ export async function generateMusicVideo(opts: {
     // ones); just hold the single one in frame and forbid duplicates as the clip animates.
     const keepProp = pKey ? ` The single ${propNoun(pKey)} already in the shot stays in frame — exactly one; do NOT add or duplicate any ${propNoun(pKey)}, a dog, or any other animal.` : "";
     const motionPrompt = shot.role === "perform"
-      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist performs/raps with high energy — head bobbing, body moving to the beat.${keepProp} There is NO microphone — the artist never holds a mic. Keep the SAME person identical; photoreal, cinematic, high-production.`
-      : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural motion.${keepProp} Keep the SAME person identical; photoreal, cinematic, high-production.`;
+      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist ${g.perform}. Keep the movement NATURAL and VARIED — do NOT repeat the same gesture over and over, no exaggerated or aggressive motions, and no angry or snarling faces. Keep the head mostly steady and facing camera so the singing reads clearly and the lips stay in sync with the vocals.${keepProp} There is NO microphone — the artist never holds a mic. Keep the SAME person identical; photoreal, cinematic, high-production.`
+      : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural, flowing motion (no repeated or jittery movement).${keepProp} Keep the SAME person identical; photoreal, cinematic, high-production.`;
     for (const i2vModel of [I2V_MODEL, I2V_FALLBACK]) {
       try {
         // silent motion clip — primary engine, then the backup if it blips (so a provider outage
@@ -372,7 +379,7 @@ export async function generateMusicVideo(opts: {
   // 7) ASSEMBLE — hard-cut concat keeping audio → the full song under the performance.
   const outName = `mv-${Date.now()}-${rid()}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleMusicVideo(good, outPath, W, H);
+  await assembleMusicVideo(good, songPath, D, outPath, W, H);
   const finalDur = ffprobeDuration(outPath);
   try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;
