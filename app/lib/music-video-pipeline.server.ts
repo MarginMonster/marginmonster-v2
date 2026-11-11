@@ -374,7 +374,10 @@ export async function generateMusicVideo(opts: {
     return null;
   });
   const good = clips.filter((c): c is string => !!c);
-  if (!good.length) throw new Error("[musicvideo] every scene failed to render");
+  if (!good.length) {
+    const nullImgs = sceneImgs.filter((x) => !x).length;
+    throw new Error(`[musicvideo] every scene failed to render (artistRef=${artistRef ? "ok" : "NULL"}, nullSceneImgs=${nullImgs}/${N}, fal=${falEnabled() ? "on" : "off"})`);
+  }
 
   // 7) ASSEMBLE — hard-cut concat keeping audio → the full song under the performance.
   const outName = `mv-${Date.now()}-${rid()}.mp4`;
