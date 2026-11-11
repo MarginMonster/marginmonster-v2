@@ -34,6 +34,9 @@ const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
 // Real, PREMIUM look — cinematic high-end music video, but real photography (not CGI/AI-looking).
 const REALISM = "Photorealistic and cinematic like a real high-end music video — shot on a real camera, realistic skin texture and fine detail, premium production value and colour; NOT plastic, waxy, cartoonish, CGI or obviously AI-generated. Keep it tasteful and genuinely cool — NOT cheesy, corny or over-the-top; NO fireworks, confetti, lasers, sparks, glitter or gimmicky effects.";
+// There is exactly ONE artist. Wide / full-body shots otherwise sometimes composed or animated a
+// SECOND copy of the same person standing beside them (the "two artists in the barn" glitch).
+const ONE_PERSON = "There is exactly ONE artist in the shot — a single person; never a duplicate, twin, clone or second copy of them.";
 // MOTION engine: silent image-to-video with real body + camera movement (fixes the static-background
 // complaint). Kling 2.5-turbo-pro = fast + good motion. The mouth is driven SEPARATELY by the
 // dedicated sync-lipsync model afterwards — OmniHuman did both at once and was "pitiful" at the mouth.
@@ -302,7 +305,7 @@ export async function generateMusicVideo(opts: {
     // Match the facial expression to the SONG's emotion so the i2v doesn't amplify a wrong one (a
     // warm country song was rendering a snarling, angry face). Only perform shots face camera.
     const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
-    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause}${performNote} ${g.look}. ${REALISM}`;
+    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause}${performNote} ${g.look}. ${REALISM} ${ONE_PERSON}`;
     let img = srcRef
       ? await editSubjectIntoScene(srcRef, prompt)
       : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, "9:16");
@@ -311,7 +314,7 @@ export async function generateMusicVideo(opts: {
     if (propKey && artistRef && propRefs[propKey]) {
       const cur = img ? abs(img) : null;
       if (!cur || !(await sceneShowsProp(cur, noun))) {
-        const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${s.visual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, the ONLY animal in frame, no dog or other animals. ${g.look}. ${REALISM}`, [artistRef, propRefs[propKey]], "9:16");
+        const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${s.visual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, the ONLY animal in frame, no dog or other animals. ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRefs[propKey]], "9:16");
         if (forced) img = forced;
       }
     }
@@ -340,8 +343,8 @@ export async function generateMusicVideo(opts: {
     // ones); just hold the single one in frame and forbid duplicates as the clip animates.
     const keepProp = pKey ? ` The single ${propNoun(pKey)} already in the shot stays in frame — exactly one; do NOT add or duplicate any ${propNoun(pKey)}, a dog, or any other animal.` : "";
     const motionPrompt = shot.role === "perform"
-      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist ${g.perform}. Keep the movement NATURAL and VARIED — do NOT repeat the same gesture over and over, no exaggerated or aggressive motions, and no angry or snarling faces. Keep the head mostly steady and facing camera so the singing reads clearly and the lips stay in sync with the vocals.${keepProp} There is NO microphone — the artist never holds a mic. Keep the SAME person identical; photoreal, cinematic, high-production.`
-      : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural, flowing motion (no repeated or jittery movement).${keepProp} Keep the SAME person identical; photoreal, cinematic, high-production.`;
+      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist ${g.perform}. Keep the movement NATURAL and VARIED — do NOT repeat the same gesture over and over, no exaggerated or aggressive motions, and no angry or snarling faces. Keep the head mostly steady and facing camera so the singing reads clearly and the lips stay in sync with the vocals.${keepProp} There is NO microphone — the artist never holds a mic. Keep the SAME person identical; photoreal, cinematic, high-production. ${ONE_PERSON}`
+      : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural, flowing motion (no repeated or jittery movement).${keepProp} Keep the SAME person identical; photoreal, cinematic, high-production. ${ONE_PERSON}`;
     for (const i2vModel of [I2V_MODEL, I2V_FALLBACK]) {
       try {
         // silent motion clip — primary engine, then the backup if it blips (so a provider outage
