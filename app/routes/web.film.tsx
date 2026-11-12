@@ -1021,7 +1021,7 @@ export default function FilmStudio() {
           {/* A numbered 1→5 step flow, two across — each box goes green as you set it. */}
           <div className="mm-grid">
             {/* 1 · Artist — pick one of your avatars to STAR, or let us cast one */}
-            <button type="button" className={`mm-card${openCard === "artist" ? " on" : ""}${stepsDone.artist ? " done" : ""}`} onClick={() => tapCard("artist")}>
+            <button type="button" style={{ order: 1 }} className={`mm-card${openCard === "artist" ? " on" : ""}${stepsDone.artist ? " done" : ""}`} onClick={() => tapCard("artist")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.artist ? <Ico n="check" size={13} /> : 1}</span>
               <span className="mm-card-top">
                 {artistPick
@@ -1032,19 +1032,19 @@ export default function FilmStudio() {
               <span className="mm-val">{artistPick ? <><Ico n="check" size={12} /> {artistName || t("Your avatar")}</> : t("We cast one · or pick your avatar")}</span>
             </button>
             {/* 2 · Genre */}
-            <button type="button" className={`mm-card${openCard === "genre" ? " on" : ""}${stepsDone.genre ? " done" : ""}`} onClick={() => tapCard("genre")}>
+            <button type="button" style={{ order: 3 }} className={`mm-card${openCard === "genre" ? " on" : ""}${stepsDone.genre ? " done" : ""}`} onClick={() => tapCard("genre")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.genre ? <Ico n="check" size={13} /> : 2}</span>
               <span className="mm-card-top"><span className="mm-card-ico c1"><Ico n="music" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The beat")}</span><b>{t("Genre")}</b></span></span>
               <span className="mm-val">{t((d.genres || []).find((g) => g.key === filmGenre)?.label || "Rap / Hip-Hop")}</span>
             </button>
             {/* 3 · Song */}
-            <button type="button" className={`mm-card${openCard === "song" ? " on" : ""}${stepsDone.song ? " done" : ""}`} onClick={() => tapCard("song")}>
+            <button type="button" style={{ order: 5 }} className={`mm-card${openCard === "song" ? " on" : ""}${stepsDone.song ? " done" : ""}`} onClick={() => tapCard("song")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.song ? <Ico n="check" size={13} /> : 3}</span>
               <span className="mm-card-top"><span className="mm-card-ico c2"><Ico n="sound" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The song")}</span><b>{songSource === "upload" ? t("Your track") : t("Write me one")}</b></span></span>
               <span className="mm-val">{songSource === "upload" ? (filmSongUrl ? <><Ico n="check" size={12} /> {songName || t("Song uploaded")}</> : t("Upload your own track")) : <>{t("We write + produce it ·")} <b className="mm-free">{t("free")}</b></>}</span>
             </button>
             {/* 4 · Props */}
-            <button type="button" className={`mm-card${openCard === "props" ? " on" : ""}${stepsDone.props ? " done" : ""}`} onClick={() => tapCard("props")}>
+            <button type="button" style={{ order: 7 }} className={`mm-card${openCard === "props" ? " on" : ""}${stepsDone.props ? " done" : ""}`} onClick={() => tapCard("props")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.props ? <Ico n="check" size={13} /> : 4}</span>
               <span className="mm-card-top"><span className="mm-card-ico c3"><Ico n="gem" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("Cool shit")}</span><b>{t("Props")}</b></span></span>
               {filmProps.length > 0 ? (
@@ -1052,16 +1052,16 @@ export default function FilmStudio() {
               ) : <span className="mm-val mm-muted">{t("none yet · tap to add tigers, cars, chains…")}</span>}
             </button>
             {/* 5 · Length (spans the row — it's the last, simple step) */}
-            <button type="button" className={`mm-card mm-card-wide${openCard === "length" ? " on" : ""}${stepsDone.length ? " done" : ""}`} onClick={() => tapCard("length")}>
+            <button type="button" style={{ order: 9 }} className={`mm-card mm-card-wide${openCard === "length" ? " on" : ""}${stepsDone.length ? " done" : ""}`} onClick={() => tapCard("length")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.length ? <Ico n="check" size={13} /> : 5}</span>
               <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
               <span className="mm-val">{t("{n} scenes · ~{sec}s · director's shots", { n: scenes, sec: scenes * 5 })}</span>
             </button>
-          </div>
 
-          {/* expand-to-edit panels */}
+            {/* Each step's options live INSIDE the grid, full-width right after its own card (via CSS
+                `order`), so tapping a step opens its options AT the card — never buried down the page. */}
           {openCard === "artist" && (
-            <div className="mm-expand">
+            <div className="mm-expand mm-expand-grid" style={{ order: 2 }}>
               <div className="mm-expand-h">{t("Who's the artist?")}</div>
               <div className="mm-expand-sub">{t("Swipe to pick who stars — your avatars, or make a new one. That exact face performs every scene.")}</div>
               <input ref={artistPhotoRef} type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden onChange={(e) => { uploadArtistPhoto(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
@@ -1107,7 +1107,7 @@ export default function FilmStudio() {
             </div>
           )}
           {openCard === "genre" && (
-            <div className="mm-expand">
+            <div className="mm-expand mm-expand-grid" style={{ order: 4 }}>
               <div className="mm-expand-h">{t("Pick the genre")}</div>
               <div className="mm-expand-sub">{t("Swipe the genres — sets the song and the whole look. One artist performs it across your scenes.")}</div>
               <div className="mm-genrepick">
@@ -1122,7 +1122,7 @@ export default function FilmStudio() {
             </div>
           )}
           {openCard === "song" && (
-            <div className="mm-expand">
+            <div className="mm-expand mm-expand-grid" style={{ order: 6 }}>
               <div className="mm-expand-h">{t("Your song")}</div>
               <div className="mm-expand-sub">{t("We write and produce an original — free — or bring your own track.")}</div>
               <div className="fs-songsrc-seg">
@@ -1141,7 +1141,7 @@ export default function FilmStudio() {
             </div>
           )}
           {openCard === "props" && (
-            <div className="mm-expand">
+            <div className="mm-expand mm-expand-grid" style={{ order: 8 }}>
               <div className="mm-expand-h">{t("Pick your props")}</div>
               <div className="mm-expand-sub">{t("Tap to add — we weave them into the scenes, tasteful not cheesy. Up to 6, or make your own.")}</div>
               <input ref={propPhotoRef} type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden onChange={(e) => { uploadPropPhoto(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
@@ -1185,7 +1185,7 @@ export default function FilmStudio() {
             </div>
           )}
           {openCard === "length" && (
-            <div className="mm-expand">
+            <div className="mm-expand mm-expand-grid" style={{ order: 10 }}>
               <div className="mm-expand-h">{t("How long?")}</div>
               <div className="mm-expand-sub">{t("Each scene is a director's shot — about 5 seconds.")}</div>
               <div className="fs-len" style={{ marginTop: 4 }}>
@@ -1199,6 +1199,7 @@ export default function FilmStudio() {
               </div>
             </div>
           )}
+          </div>{/* /mm-grid — cards + their inline option panels */}
 
           {/* ONE button does it all (below) — writes the song AND builds the scenes. Here we just show
               the song's title + mood once it's written, as a little header above the filmstrip. */}
@@ -1949,12 +1950,17 @@ const FS_STYLE = `
 .mm-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:18px 4px 10px;display:flex;align-items:center;gap:7px;}
 /* The cards are a horizontal SLIDER (swipe through them like a wheel) — one row, so tapping a card
    opens its options directly beneath the row (adjacent), never buried under the other cards. */
-/* A numbered 1→5 step flow, two across — each step turns green once set. */
-.mm-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+/* A numbered 1-5 step flow, two across — each step turns green once set. An open step's options
+   panel is a full-width grid item placed right after its card (via the order property); dense flow
+   backfills so the 2-up cards never leave an empty gap next to the open step. */
+.mm-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;grid-auto-flow:row dense;}
 .mm-card{position:relative;text-align:left;cursor:pointer;background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:18px;padding:15px 16px;box-shadow:0 1px 2px rgba(20,32,26,.04);transition:transform .16s cubic-bezier(.2,.7,.2,1),box-shadow .16s,border-color .16s,background .2s;font-family:Poppins,sans-serif;}
 .mm-card-wide{grid-column:1 / -1;}
 .mm-card:hover{border-color:var(--green2,#1EA85C);box-shadow:0 10px 26px -18px rgba(20,32,26,.26);}
 .mm-card.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 14px 30px -20px rgba(12,122,70,.4);}
+/* a step's options open full-width right after its card (the order property places it there), so the
+   options always appear AT the card you tapped — never down at the bottom of the grid */
+.mm-expand-grid{grid-column:1 / -1;margin:0;}
 .mm-card.done{border-color:#7FC9A1 !important;background:linear-gradient(180deg,#EDF8F1,#fff) !important;}
 .mm-card.done.on{border-color:#0C7A46 !important;}
 /* step badge: the number, then a green check once the step is set */
