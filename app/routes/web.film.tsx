@@ -32,7 +32,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger,
   }));
   const genres = Object.entries(GENRES).map(([key, g]) => ({ key, label: g.label }));
-  const props = Object.entries(PROPS).map(([key, p]) => ({ key, label: p.label }));
+  // name = the label with its leading emoji stripped ("🐯 Tiger" -> "Tiger"); the picker shows a real
+  // generated photo (/propimg/:key) + this clean name instead of an emoji.
+  const props = Object.entries(PROPS).map(([key, p]) => ({ key, label: p.label, name: p.label.replace(/^[^\p{L}]+/u, "").trim() || p.label }));
   // The merchant's own catalogue — only products WITH a photo can seed a skit.
   const products = (await db.catalogProduct.findMany({
     where: { shopId: shop.id, imageUrl: { not: null } },
@@ -82,6 +84,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     base: FILM_BASE,
   });
 };
+
+// Parse the merchant's custom props (AI-made or their own photos) from a form field: [{key,label,img}].
+// Only http(s) image URLs, capped at 6 — so a malformed field can never inject anything odd downstream.
+function parseCustomProps(raw: string | null): Array<{ key: string; label: string; img: string }> {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((c) => c && typeof c.key === "string" && typeof c.img === "string" && /^https?:\/\//i.test(c.img))
+      .map((c) => ({ key: String(c.key).slice(0, 48), label: String(c.label || "prop").slice(0, 60), img: String(c.img).slice(0, 2000) }))
+      .slice(0, 6);
+  } catch { return []; }
+}
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const lang = await readUiLang(request);
@@ -190,11 +206,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // check accuracy + confirm the prop lands per scene BEFORE paying for the ~40-min render. The
   // approved stills ride back into the render as approvedSceneImgs, so what you see IS what renders
   // (the "limit the surprise" ask). No token spend here — just the seed images.
+  // FREE — make a custom PROP from a description: a clean studio photo the merchant can weave in.
+  if (intent === "makeProp") {
+    const desc = ((form.get("propDesc") as string) || "").trim().slice(0, 120);
+    if (!desc) return json({ error: tr(lang, "Describe your prop first.") });
+    try {
+      const { renderCreativeSeed } = await import("../lib/image-generation.server");
+      const img = await renderCreativeSeed(`A professional studio product photo of ${desc}: a single subject centered on a clean light grey seamless background, soft even studio lighting, photorealistic, crisp high detail, no people, no text, no watermark.`, "1:1");
+      if (!img) return json({ error: tr(lang, "Couldn't make that prop — try a different description.") });
+      return json({ img: /^https?:\/\//i.test(img) ? img : `${externalOrigin(request)}${img.startsWith("/") ? "" : "/"}${img}` });
+    } catch (e) {
+      return json({ error: tr(lang, "Couldn't make that prop — give it another go."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+    }
+  }
+
   if (intent === "previewFilmScenes") {
     const genre = ((form.get("filmGenre") as string) || "").trim();
     let filmProps: string[] | undefined;
     const propsRaw = ((form.get("filmProps") as string) || "").trim();
     if (propsRaw) { try { const p = JSON.parse(propsRaw); if (Array.isArray(p)) filmProps = p.filter((x) => typeof x === "string").slice(0, 12); } catch { /* ignore malformed */ } }
+    const customProps = parseCustomProps(form.get("filmCustomProps") as string);
     let approvedTreatment: Treatment | undefined;
     const approvedRaw = ((form.get("approvedTreatment") as string) || "").trim();
     if (approvedRaw) { try { const tObj = JSON.parse(approvedRaw); if (tObj && Array.isArray(tObj.scenes) && tObj.scenes.length) approvedTreatment = tObj; } catch { /* ignore malformed */ } }
@@ -204,7 +235,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, heroUrl, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
         return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef });
@@ -300,6 +331,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let filmProps: string[] | undefined;
     const propsRaw = ((form.get("filmProps") as string) || "").trim();
     if (propsRaw) { try { const p = JSON.parse(propsRaw); if (Array.isArray(p)) filmProps = p.filter((x) => typeof x === "string").slice(0, 12); } catch { /* ignore malformed */ } }
+    // Custom props (AI-made or the merchant's own photo) — each carries its own image to seed from.
+    const filmCustomProps = parseCustomProps(form.get("filmCustomProps") as string);
     // Pre-approved per-scene STILLS (Music Video storyboard) — render these EXACT images, no re-seed.
     // Keep positions (a null = that scene seeds fresh), so the index stays aligned with the scenes.
     let approvedSceneImgs: (string | null)[] | undefined;
@@ -321,6 +354,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(filmSongUrl ? { filmSongUrl } : {}),
         ...(filmHeroUrl ? { filmHeroUrl } : {}),
         ...(filmProps?.length ? { filmProps } : {}),
+        ...(filmCustomProps.length ? { filmCustomProps } : {}),
         ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
         dialogueEngine, filmAspect,
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
@@ -374,6 +408,8 @@ export default function FilmStudio() {
   // so the owner checks accuracy + the prop per scene and the render uses those EXACT stills (no surprise).
   const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; treatment?: Treatment; propForScene?: Record<number, string>; artistRef?: string | null; castRef?: string | null; error?: string }>();
   const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; error?: string }>();
+  // Make-your-own prop: describe it → we generate a studio photo of it (free).
+  const propMakerFetcher = useFetcher<{ img?: string; error?: string }>();
   const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null } | null>(null);
   const [rerollingScene, setRerollingScene] = useState<number | null>(null);
   // Storyboard (dialogue): per-scene approved frames + which scene is rendering now.
@@ -439,8 +475,55 @@ export default function FilmStudio() {
   // Props (Music Video) — up to 6 "cool shit" items woven into the scenes.
   const [filmProps, setFilmProps] = useState<string[]>([]);
   const toggleProp = (k: string) => setFilmProps((p) => (p.includes(k) ? p.filter((x) => x !== k) : p.length < 6 ? [...p, k] : p));
+  // Custom props the merchant made — AI-generated from a description, or their own uploaded photo.
+  // Each carries its own image so it seeds the render directly (no "generate a tiger" guesswork).
+  const [customProps, setCustomProps] = useState<Array<{ key: string; label: string; img: string }>>([]);
+  const [propMakerOpen, setPropMakerOpen] = useState(false);
+  const [propDesc, setPropDesc] = useState("");
+  const [propPhotoBusy, setPropPhotoBusy] = useState(false);
+  const propPhotoRef = useRef<HTMLInputElement | null>(null);
+  const propPendingRef = useRef(false);
+  const makingProp = propMakerFetcher.state !== "idle";
+  const newPropKey = () => `custom-${(typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10))}`;
+  const addCustomProp = (label: string, img: string) => {
+    const key = newPropKey();
+    setCustomProps((p) => [...p, { key, label: label.slice(0, 40) || "My prop", img }]);
+    setFilmProps((p) => (p.length < 6 && !p.includes(key) ? [...p, key] : p)); // auto-select the new prop
+  };
+  const makeAiProp = () => {
+    const desc = propDesc.trim();
+    if (!desc || makingProp) return;
+    propPendingRef.current = true;
+    propMakerFetcher.submit({ intent: "makeProp", propDesc: desc }, { method: "post" });
+  };
+  const uploadPropPhoto = async (file?: File | null) => {
+    if (!file) return;
+    setPropPhotoBusy(true);
+    try {
+      const fd = new FormData(); fd.set("productPhoto", file);
+      const r = await fetch("/api/buddy-upload", { method: "POST", body: fd });
+      const j = await r.json();
+      if (j?.frameUrl) addCustomProp((file.name || "My prop").replace(/\.[^.]+$/, ""), j.frameUrl);
+      else alert(j?.error || "Couldn't add that photo.");
+    } catch { alert("Couldn't add that photo."); }
+    finally { setPropPhotoBusy(false); }
+  };
+  // When the AI prop photo comes back, add it to the picker (auto-selected) and reset the maker.
+  useEffect(() => {
+    if (propMakerFetcher.state !== "idle" || !propPendingRef.current) return;
+    const img = propMakerFetcher.data?.img;
+    if (img) { propPendingRef.current = false; addCustomProp(propDesc.trim(), img); setPropDesc(""); setPropMakerOpen(false); }
+    else if (propMakerFetcher.data?.error) { propPendingRef.current = false; }
+  }, [propMakerFetcher.state, propMakerFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Music Video card-builder: which summary card is expanded for editing (null = all collapsed).
-  const [openCard, setOpenCard] = useState<"artist" | "genre" | "song" | "props" | "length" | null>(null);
+  type CardKey = "artist" | "genre" | "song" | "props" | "length";
+  const [openCard, setOpenCard] = useState<CardKey | null>(null);
+  // Tap a card in the slider → toggle its options open AND slide it to center, so the panel that
+  // opens right below the row clearly belongs to the card you tapped.
+  const tapCard = (key: CardKey, el: HTMLElement) => {
+    setOpenCard((cur) => (cur === key ? null : key));
+    try { el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); } catch { /* older browsers */ }
+  };
   const [topic, setTopic] = useState("");
   // The merchant can PICK one of their avatars to BE the artist ("" = auto-cast one for the genre).
   const [artistPick, setArtistPick] = useState<string>("");
@@ -509,13 +592,33 @@ export default function FilmStudio() {
     );
   };
   // Pre-seed the storyboard: render every scene's still (props placed) for approval before paying.
-  const previewScenes = () => {
+  const firePreviewScenes = (tr?: Treatment | null) => {
+    const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(treatment ? { approvedTreatment: JSON.stringify(treatment) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
       { method: "post" }
     );
   };
+  const previewScenes = () => firePreviewScenes();
   const seedBusy = sceneSeedsFetcher.state !== "idle";
+  // ONE button that does BOTH — write the song, then build the scenes (owner: "same thing, one
+  // button, do both"). We chain two fast calls so the song's words AUTOPOPULATE the filmstrip in
+  // seconds, then the stills fill in — instead of one long silent wait. A BYO track skips the write.
+  const [chainToScenes, setChainToScenes] = useState(false);
+  const makeStoryboard = () => {
+    if (writing || seedBusy) return;
+    if (songSource === "upload" && filmSongUrl) { previewScenes(); return; } // own track — no song to write
+    if (treatment && !seeds) { previewScenes(); return; }                    // song already written — add visuals
+    if (seeds) { setSeeds(null); }                                           // start over — fresh song + scenes
+    setChainToScenes(true);
+    writeTreatment();
+  };
+  // When the song lands during a chain, auto-continue into the stills (with the fresh treatment).
+  useEffect(() => {
+    if (!chainToScenes || writing) return;
+    const tr2 = treatmentFetcher.data?.treatment;
+    if (tr2 && tr2.scenes?.length) { setChainToScenes(false); firePreviewScenes(tr2); }
+  }, [treatmentFetcher.data, writing, chainToScenes]); // eslint-disable-line react-hooks/exhaustive-deps
   // Capture the previewed stills + the hero; the render then uses these EXACT images (no surprise),
   // and the hero lets a single scene be re-rolled without changing the artist.
   useEffect(() => {
@@ -558,20 +661,23 @@ export default function FilmStudio() {
   // The storyboard: ONE collapsed button → a swipeable filmstrip of the actual scene stills (each
   // re-rollable, text click-to-edit), so you approve what will render before paying. Reused by BOTH
   // the Music Video card-builder and the film flow — one row, so it never turns a page into a doom-scroll.
-  const storyboard = (autofill = false) => {
+  const storyboard = (autofill = false, makeFn?: () => void) => {
     // AUTOPOPULATE (autofill flows, e.g. Music Video): the filmstrip fills from the STORY the moment
     // there's a treatment — each scene's "what happens" + words appear immediately (free, click-to-edit).
     // The STILLS fill in when you Preview; until then each frame is a placeholder. So the strip builds
     // itself from the story + song + artist you set, and you polish the words before spending on visuals.
     // Non-autofill flows keep their own story view and only reveal the filmstrip once stills exist.
+    // makeFn (Music Video) = the ONE button that writes the song AND builds the scenes (chained).
     const strip = seeds?.treatment || (autofill ? treatment : null);
     const hasStills = !!seeds;
+    const busy = makeFn ? (writing || seedBusy) : seedBusy;
     return (
     <div className="mm-storyboard">
-      <button type="button" className="mm-preview-btn" onClick={previewScenes} disabled={seedBusy || !d.hasPlan}>
-        {seedBusy ? <>… {t("Building the scenes")}</>
-          : hasStills ? <><Ico n="refresh" size={13} /> {t("Re-roll the scenes")}</>
+      <button type="button" className="mm-preview-btn" onClick={makeFn || previewScenes} disabled={busy || !d.hasPlan}>
+        {busy ? (makeFn && writing ? <>… {t("Writing your song")}</> : <>… {t("Building the scenes")}</>)
+          : hasStills ? <><Ico n="refresh" size={13} /> {makeFn ? t("Start over — new song + scenes") : t("Re-roll the scenes")}</>
           : strip ? <><Ico n="image" size={13} /> {t("Add the visuals — free")}</>
+          : makeFn ? <><Ico n="wand" size={14} /> {t("Make the scenes — free")}</>
           : <><Ico n="film" size={13} /> {t("Preview the scenes — free")}</>}
       </button>
       {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
@@ -846,7 +952,7 @@ export default function FilmStudio() {
 
           <div className="mm-grid">
             {/* Artist — pick one of your avatars to STAR, or let us cast one */}
-            <button type="button" className={`mm-card${openCard === "artist" ? " on" : ""}`} onClick={() => setOpenCard(openCard === "artist" ? null : "artist")}>
+            <button type="button" className={`mm-card${openCard === "artist" ? " on" : ""}`} onClick={(e) => tapCard("artist", e.currentTarget)}>
               <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
               <span className="mm-card-top">
                 {artistPick
@@ -857,27 +963,27 @@ export default function FilmStudio() {
               <span className="mm-val">{artistPick ? <><Ico n="check" size={12} /> {artistName || t("Your avatar")}</> : t("We cast one · or pick your avatar")}</span>
             </button>
             {/* Genre */}
-            <button type="button" className={`mm-card${openCard === "genre" ? " on" : ""}`} onClick={() => setOpenCard(openCard === "genre" ? null : "genre")}>
+            <button type="button" className={`mm-card${openCard === "genre" ? " on" : ""}`} onClick={(e) => tapCard("genre", e.currentTarget)}>
               <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
               <span className="mm-card-top"><span className="mm-card-ico c1"><Ico n="music" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The beat")}</span><b>{t("Genre")}</b></span></span>
               <span className="mm-val">{t((d.genres || []).find((g) => g.key === filmGenre)?.label || "Rap / Hip-Hop")}</span>
             </button>
             {/* Song */}
-            <button type="button" className={`mm-card${openCard === "song" ? " on" : ""}`} onClick={() => setOpenCard(openCard === "song" ? null : "song")}>
+            <button type="button" className={`mm-card${openCard === "song" ? " on" : ""}`} onClick={(e) => tapCard("song", e.currentTarget)}>
               <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
               <span className="mm-card-top"><span className="mm-card-ico c2"><Ico n="sound" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The song")}</span><b>{songSource === "upload" ? t("Your track") : t("Write me one")}</b></span></span>
               <span className="mm-val">{songSource === "upload" ? (filmSongUrl ? <><Ico n="check" size={12} /> {songName || t("Song uploaded")}</> : t("Upload your own track")) : <>{t("We write + produce it ·")} <b className="mm-free">{t("free")}</b></>}</span>
             </button>
             {/* Props */}
-            <button type="button" className={`mm-card${openCard === "props" ? " on" : ""}`} onClick={() => setOpenCard(openCard === "props" ? null : "props")}>
+            <button type="button" className={`mm-card${openCard === "props" ? " on" : ""}`} onClick={(e) => tapCard("props", e.currentTarget)}>
               <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
               <span className="mm-card-top"><span className="mm-card-ico c3"><Ico n="gem" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("Cool shit")}</span><b>{t("Props")}</b></span></span>
               {filmProps.length > 0 ? (
-                <span className="mm-chips">{filmProps.slice(0, 3).map((k) => { const p = (d.props || []).find((x) => x.key === k); return <span className="mm-chip" key={k}>{t(p?.label || k)}</span>; })}{filmProps.length > 3 && <span className="mm-chip">+{filmProps.length - 3}</span>}</span>
+                <span className="mm-chips">{filmProps.slice(0, 3).map((k) => { const p = (d.props || []).find((x) => x.key === k); const cp = customProps.find((x) => x.key === k); return <span className="mm-chip" key={k}>{cp ? cp.label : t(p?.name || k)}</span>; })}{filmProps.length > 3 && <span className="mm-chip">+{filmProps.length - 3}</span>}</span>
               ) : <span className="mm-val mm-muted">{t("none yet · tap to add tigers, cars, chains…")}</span>}
             </button>
             {/* Length */}
-            <button type="button" className={`mm-card${openCard === "length" ? " on" : ""}`} onClick={() => setOpenCard(openCard === "length" ? null : "length")}>
+            <button type="button" className={`mm-card${openCard === "length" ? " on" : ""}`} onClick={(e) => tapCard("length", e.currentTarget)}>
               <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
               <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
               <span className="mm-val">{t("{n} scenes · ~{sec}s · director's shots", { n: scenes, sec: scenes * 5 })}</span>
@@ -939,12 +1045,45 @@ export default function FilmStudio() {
           {openCard === "props" && (
             <div className="mm-expand">
               <div className="mm-expand-h">{t("Pick your props")}</div>
-              <div className="mm-expand-sub">{t("We'll weave them into the cast's scenes — tasteful, not cheesy. Up to 6.")}</div>
-              <div className="mm-props">
+              <div className="mm-expand-sub">{t("Tap to add — we weave them into the scenes, tasteful not cheesy. Up to 6, or make your own.")}</div>
+              <input ref={propPhotoRef} type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden onChange={(e) => { uploadPropPhoto(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
+              <div className="mm-proppick">
+                {/* Make your own — AI from a description, or upload your own photo */}
+                <button type="button" className={`mm-ptile mm-ptile-new${propMakerOpen ? " on" : ""}`} onClick={() => setPropMakerOpen((v) => !v)} title={t("Create an AI prop")}>
+                  <span className="mm-ptile-img mm-ptile-newimg"><Ico n="wand" size={20} /></span>
+                  <span className="mm-ptile-name">{t("Create AI prop")}</span>
+                </button>
+                <button type="button" className="mm-ptile mm-ptile-new" onClick={() => propPhotoRef.current?.click()} title={t("Add your own photo")}>
+                  <span className="mm-ptile-img mm-ptile-newimg">{propPhotoBusy ? <span className="mm-ptile-spin" aria-hidden="true" /> : <Ico n="camera" size={20} />}</span>
+                  <span className="mm-ptile-name">{propPhotoBusy ? t("Adding…") : t("Add a photo")}</span>
+                </button>
+                {/* Custom props the merchant made (their photo / AI prop) */}
+                {customProps.map((cp) => (
+                  <button type="button" key={cp.key} className={`mm-ptile${filmProps.includes(cp.key) ? " on" : ""}`} onClick={() => toggleProp(cp.key)} title={cp.label}>
+                    <span className="mm-ptile-img" style={{ backgroundImage: `url(${cp.img})` }} />
+                    {filmProps.includes(cp.key) && <span className="mm-ptile-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                    <span className="mm-ptile-name">{cp.label}</span>
+                  </button>
+                ))}
+                {/* Catalog props — real generated photos, not emoji */}
                 {(d.props || []).map((pr) => (
-                  <button type="button" key={pr.key} className={`mm-prop${filmProps.includes(pr.key) ? " on" : ""}`} onClick={() => toggleProp(pr.key)}>{t(pr.label)}</button>
+                  <button type="button" key={pr.key} className={`mm-ptile${filmProps.includes(pr.key) ? " on" : ""}`} onClick={() => toggleProp(pr.key)} title={pr.name}>
+                    <span className="mm-ptile-img" style={{ backgroundImage: `url(/propimg/${pr.key})` }} />
+                    {filmProps.includes(pr.key) && <span className="mm-ptile-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                    <span className="mm-ptile-name">{t(pr.name)}</span>
+                  </button>
                 ))}
               </div>
+              {propMakerOpen && (
+                <div className="mm-propmaker">
+                  <input value={propDesc} onChange={(e) => setPropDesc(e.target.value)} maxLength={120} placeholder={t("e.g. a vintage gold microphone, a pet wolf, a neon skateboard")}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); makeAiProp(); } }} />
+                  <button type="button" onClick={makeAiProp} disabled={!propDesc.trim() || makingProp}>
+                    {makingProp ? <>… {t("Making")}</> : <><Ico n="wand" size={13} /> {t("Make it — free")}</>}
+                  </button>
+                </div>
+              )}
+              {propMakerFetcher.data?.error && <p className="fs-err">{propMakerFetcher.data.error}</p>}
             </div>
           )}
           {openCard === "length" && (
@@ -963,23 +1102,21 @@ export default function FilmStudio() {
             </div>
           )}
 
-          {/* Write the song — free. The scenes it writes AUTOPOPULATE the storyboard filmstrip below
-              (words click-to-edit there), so we don't repeat them here — just the title + mood. */}
-          <div className="mm-preview">
-            <button type="button" className="mm-preview-btn" onClick={writeTreatment} disabled={writing}>
-              {writing ? <>… {t("Writing")}</> : treatment ? <><Ico n="refresh" size={13} /> {t("Re-roll the song")}</> : <><Ico n="wand" size={13} /> {t("Write the song first — free")}</>}
-            </button>
-            {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
-            {treatment && (treatment.title || treatment.musicMood) && (
-              <div className="fs-treat" style={{ marginTop: 12 }}>
+          {/* ONE button does it all (below) — writes the song AND builds the scenes. Here we just show
+              the song's title + mood once it's written, as a little header above the filmstrip. */}
+          {treatment && (treatment.title || treatment.musicMood) && (
+            <div className="mm-preview">
+              <div className="fs-treat">
                 {treatment.title && <div className="fs-treat-ttl">{treatment.title}</div>}
                 {treatment.musicMood && <div className="fs-treat-mood"><Ico n="music" size={12} /> {treatment.musicMood}</div>}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+          {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
 
-          {/* STORYBOARD — autopopulates from the song, re-rollable, click-to-edit (shared helper above). */}
-          {storyboard(true)}
+          {/* STORYBOARD — the ONE "Make the scenes" button (song + stills, chained) → autopopulated,
+              re-rollable, click-to-edit filmstrip. Shared helper; makeStoryboard = write song + build. */}
+          {storyboard(true, makeStoryboard)}
 
           {/* generate — the one button */}
           <div className="mm-gen">
@@ -989,6 +1126,7 @@ export default function FilmStudio() {
               <input type="hidden" name="filmGenre" value={filmGenre} />
               {songSource === "upload" && filmSongUrl && <input type="hidden" name="filmSongUrl" value={filmSongUrl} />}
               {filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}
+              {customProps.length > 0 && <input type="hidden" name="filmCustomProps" value={JSON.stringify(customProps)} />}
               {artistPick && <input type="hidden" name="filmHeroUrl" value={artistPick} />}
               <input type="hidden" name="filmTopic" value={topic} />
               <input type="hidden" name="filmScenes" value={String(scenes)} />
@@ -1709,10 +1847,15 @@ const FS_STYLE = `
 .mm-topic input:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
 .mm-topic input::placeholder{color:var(--ink3,#9AA39B);}
 .mm-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:18px 4px 10px;display:flex;align-items:center;gap:7px;}
-.mm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:13px;}
-.mm-card{position:relative;display:block;width:100%;text-align:left;cursor:pointer;background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:18px;padding:16px;box-shadow:0 1px 2px rgba(20,32,26,.04);transition:transform .16s cubic-bezier(.2,.7,.2,1),box-shadow .16s,border-color .16s;font-family:Poppins,sans-serif;}
-.mm-card:hover{transform:translateY(-3px);box-shadow:0 16px 34px -20px rgba(20,32,26,.26);border-color:var(--green2,#1EA85C);}
-.mm-card.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 16px 32px -20px rgba(12,122,70,.4);}
+/* The cards are a horizontal SLIDER (swipe through them like a wheel) — one row, so tapping a card
+   opens its options directly beneath the row (adjacent), never buried under the other cards. */
+.mm-grid{display:flex;gap:11px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding:3px 2px 12px;scrollbar-width:thin;scroll-padding:0 2px;}
+.mm-grid::-webkit-scrollbar{height:6px;}
+.mm-grid::-webkit-scrollbar-thumb{background:#D4E3DA;border-radius:3px;}
+.mm-grid::-webkit-scrollbar-track{background:transparent;}
+.mm-card{position:relative;flex:0 0 min(80%,228px);scroll-snap-align:center;text-align:left;cursor:pointer;background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:18px;padding:15px 16px;box-shadow:0 1px 2px rgba(20,32,26,.04);transition:transform .16s cubic-bezier(.2,.7,.2,1),box-shadow .16s,border-color .16s;font-family:Poppins,sans-serif;}
+.mm-card:hover{border-color:var(--green2,#1EA85C);box-shadow:0 10px 26px -18px rgba(20,32,26,.26);}
+.mm-card.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 14px 30px -20px rgba(12,122,70,.4);}
 .mm-card-top{display:flex;align-items:center;gap:11px;}
 .mm-card-ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;box-shadow:0 6px 14px -6px rgba(0,0,0,.35);}
 .mm-card-ico svg{stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
@@ -1742,6 +1885,27 @@ const FS_STYLE = `
 .mm-artistpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:8px;max-height:252px;overflow-y:auto;padding:2px;}
 .mm-autoface-img{display:grid;place-items:center;background:linear-gradient(135deg,#EFEAFB,#DDD3F3)!important;}
 .mm-autoface-img svg{stroke:#6C4FB0;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+/* Props picker — real PHOTO tiles (not emoji), plus "Create AI prop" + "Add a photo" makers. */
+.mm-proppick{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:9px;max-height:300px;overflow-y:auto;padding:2px;}
+.mm-ptile{position:relative;border:1.5px solid var(--line,#E4DFCF);border-radius:13px;background:var(--card,#FDFCF7);padding:5px 5px 7px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;font-family:Poppins,sans-serif;transition:border-color .14s,box-shadow .14s,transform .14s;}
+.mm-ptile:hover{border-color:var(--green2,#1EA85C);transform:translateY(-2px);}
+.mm-ptile.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2px rgba(12,122,70,.18);}
+.mm-ptile-img{width:100%;aspect-ratio:1/1;border-radius:10px;background:#EFF4F1 center/cover no-repeat;display:grid;place-items:center;}
+.mm-ptile-name{font-size:10.5px;font-weight:800;color:var(--ink2,#4A554E);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.15;text-align:center;}
+.mm-ptile-chk{position:absolute;top:8px;right:8px;width:19px;height:19px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.25);}
+.mm-ptile-chk svg{stroke:#fff;stroke-width:2.4;fill:none;}
+.mm-ptile-new{border-style:dashed;border-color:#C9D7CE;}
+.mm-ptile-new .mm-ptile-name{color:var(--green,#0C7A46);}
+.mm-ptile-newimg{background:linear-gradient(135deg,#EAF6EF,#D7ECE0)!important;}
+.mm-ptile-newimg svg{stroke:var(--green,#0C7A46);stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-ptile-spin{width:18px;height:18px;border-radius:50%;border:2.5px solid #BFE0CD;border-top-color:var(--green,#0C7A46);animation:mmspin .7s linear infinite;}
+@keyframes mmspin{to{transform:rotate(360deg);}}
+.mm-propmaker{display:flex;gap:8px;margin:11px 0 0;flex-wrap:wrap;}
+.mm-propmaker input{flex:1;min-width:180px;border:1.5px solid var(--line,#E4DFCF);border-radius:11px;padding:11px 13px;font-size:13.5px;font-family:Poppins,sans-serif;color:var(--ink,#14201A);background:#fff;}
+.mm-propmaker input:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.mm-propmaker>button{flex:none;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:11px;background:var(--green,#0C7A46);color:#fff;font-weight:800;font-size:13px;padding:0 16px;cursor:pointer;font-family:Poppins,sans-serif;}
+.mm-propmaker>button:disabled{opacity:.5;cursor:default;}
+.mm-propmaker>button svg{stroke:#fff;stroke-width:2;fill:none;}
 .mm-preview{margin:16px 0 0;}
 .mm-preview-btn{display:inline-flex;align-items:center;gap:7px;border:1.5px dashed var(--green,#0C7A46);background:#fff;color:var(--green,#0C7A46);border-radius:12px;padding:10px 16px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;cursor:pointer;transition:background .14s;}
 .mm-preview-btn:hover:not(:disabled){background:var(--mint,#EAF6EF);}

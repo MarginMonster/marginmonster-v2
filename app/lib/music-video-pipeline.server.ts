@@ -191,6 +191,9 @@ async function sceneShowsProp(imgUrl: string, noun: string): Promise<boolean> {
 async function buildMusicVideoSeeds(p: {
   genre: string;
   props?: string[];
+  /** The merchant's OWN props — AI-made or an uploaded photo. Each carries its image, which IS the
+   *  prop reference (no "generate a tiger" guesswork — the render uses the exact thing they chose). */
+  customProps?: Array<{ key: string; label: string; img: string }>;
   scenes: FilmTreatment["scenes"];
   propForScene: Record<number, string>;
   artistBible: string;
@@ -201,8 +204,14 @@ async function buildMusicVideoSeeds(p: {
   base: string;
 }): Promise<{ artistRef: string | null; sceneImgs: (string | null)[] }> {
   const g = GENRES[genreOrDefault(p.genre)];
-  const propList = (p.props || []).filter((k) => PROPS[k]);
-  const propNoun = (k: string): string => (PROPS[k]?.label || k).replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || k;
+  const custom = p.customProps || [];
+  const customOf = (k: string) => custom.find((c) => c.key === k);
+  const propList = (p.props || []).filter((k) => PROPS[k] || customOf(k));
+  const propNoun = (k: string): string => { const c = customOf(k); return (c ? c.label : (PROPS[k]?.label || k)).replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || k; };
+  const propPhrase = (k: string): string => { const c = customOf(k); return c ? `the ${c.label}` : (PROPS[k]?.phrase || `a ${propNoun(k)}`); };
+  // The "only animal, no dog" guard was tuned for the ANIMAL catalog props; a custom skateboard
+  // isn't an animal, so only apply it to catalog props (custom props seed from their own photo).
+  const animalGuard = (k: string, noun: string): string => (customOf(k) ? "" : ` The ONLY animal in frame is this one ${noun}: do NOT add a dog or any other animal.`);
   const resume = p.resume || {};
   const ckpt = async (patch: Record<string, unknown>) => { if (p.jobId) await checkpointJob(p.jobId, patch); };
   const abs = (u: string | null | undefined): string | null => (u ? (u.startsWith("http") ? u : `${p.base}${u}`) : null);
@@ -233,12 +242,14 @@ async function buildMusicVideoSeeds(p: {
   if (artistRef) {
     for (const k of propList) {
       const noun = propNoun(k);
-      let pr = abs(resume[`ckPropRef_${k}`]);
-      if (!pr) { const r = await renderCreativeSeed(`A single real ${noun} — exactly ONE ${noun}, full body, photorealistic, plain neutral background. The only subject is this one ${noun}. ${REALISM}`, "9:16"); pr = abs(r); if (pr) await ckpt({ [`ckPropRef_${k}`]: pr }); }
-      if (pr) propRefs[k] = pr;
+      const c = customOf(k);
+      // Custom prop: its OWN photo IS the reference. Catalog prop: render one locked single-subject shot.
+      let pr = abs(resume[`ckPropRef_${k}`]) || (c ? abs(c.img) : null);
+      if (!pr) { const r = await renderCreativeSeed(`A single real ${noun} — exactly ONE ${noun}, full body, photorealistic, plain neutral background. The only subject is this one ${noun}. ${REALISM}`, "9:16"); pr = abs(r); }
+      if (pr) { propRefs[k] = pr; if (!resume[`ckPropRef_${k}`]) await ckpt({ [`ckPropRef_${k}`]: pr }); }
       const cached = abs(resume[`ckProp_${k}`]);
       if (cached) { propAnchors[k] = cached; continue; }
-      const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${PROPS[k].phrase} — a SINGLE ${noun}, only one. The ONLY animal in the image is this one ${noun}: do NOT include a dog or any other animal. Full body, neutral studio backdrop. ${REALISM}`);
+      const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${propPhrase(k)} — a SINGLE ${noun}, only one.${animalGuard(k, noun)} Full body, neutral studio backdrop. ${REALISM}`);
       propAnchors[k] = a ? (abs(a) || artistRef) : artistRef;
       await ckpt({ [`ckProp_${k}`]: propAnchors[k] });
     }
@@ -251,7 +262,7 @@ async function buildMusicVideoSeeds(p: {
     const propKey = propForScene[i];
     const noun = propKey ? propNoun(propKey) : "";
     const srcRef = (propKey && propAnchors[propKey]) || artistRef;
-    const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, the ONLY animal in frame; do NOT add more ${noun}, a dog, or any other animal.` : "";
+    const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, no duplicates.${animalGuard(propKey, noun)}` : "";
     const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
     const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause}${performNote} ${g.look}. ${REALISM} ${ONE_PERSON}`;
     let img = srcRef
@@ -260,7 +271,7 @@ async function buildMusicVideoSeeds(p: {
     if (propKey && artistRef && propRefs[propKey]) {
       const cur = img ? abs(img) : null;
       if (!cur || !(await sceneShowsProp(cur, noun))) {
-        const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${s.visual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, the ONLY animal in frame, no dog or other animals. ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRefs[propKey]], "9:16");
+        const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${s.visual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, no duplicates.${animalGuard(propKey, noun)} ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRefs[propKey]], "9:16");
         if (forced) img = forced;
       }
     }
@@ -275,14 +286,14 @@ async function buildMusicVideoSeeds(p: {
  *  scene BEFORE committing (the "limit the surprise" ask). The approved stills ride back into
  *  generateMusicVideo as `approvedSceneImgs` so it renders EXACTLY what was previewed. */
 export async function previewMusicVideoScenes(opts: {
-  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; treatment?: FilmTreatment; heroUrl?: string;
+  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string;
 }): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; propForScene: Record<number, string>; artistRef: string | null }> {
   const tmpl = filmTemplate("musicvideo");
   const genre = genreOrDefault(opts.genre);
   const g = GENRES[genre];
   const N = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, opts.sceneCount ?? tmpl.defaultScenes));
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-  const propList = (opts.props || []).filter((k) => PROPS[k]);
+  const propList = (opts.props || []).filter((k) => PROPS[k] || (opts.customProps || []).some((c) => c.key === k));
 
   let treatment: FilmTreatment = opts.treatment && opts.treatment.scenes?.length
     ? opts.treatment
@@ -297,7 +308,7 @@ export async function previewMusicVideoScenes(opts: {
   }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
 
-  const { sceneImgs, artistRef } = await buildMusicVideoSeeds({ genre, props: opts.props, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, resume: {}, base });
+  const { sceneImgs, artistRef } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, resume: {}, base });
   return { treatment, sceneImgs, propForScene, artistRef };
 }
 
@@ -354,6 +365,8 @@ export async function generateMusicVideo(opts: {
   songUrl?: string;
   /** PROPS (keys from film-engine PROPS) to weave into the scenes — tiger, luxury car, chains… */
   props?: string[];
+  /** The merchant's OWN props (AI-made or uploaded photos) — each carries its image to seed from. */
+  customProps?: Array<{ key: string; label: string; img: string }>;
   /** The merchant PICKED one of their avatars to BE the artist — lock THAT face for the whole video. */
   heroUrl?: string;
   /** Owner PREVIEWED + approved these exact per-scene stills — render them, don't re-seed (no surprise).
@@ -369,8 +382,9 @@ export async function generateMusicVideo(opts: {
   // that feature it from THAT reference — instead of re-describing "a tiger" in text every scene,
   // which spawned a different (and sometimes multiplied) tiger each time. `propNoun` gives a short
   // singular noun ("tiger", "luxury car") so we can say "the SAME single X, exactly one" everywhere.
-  const propList = (opts.props || []).filter((k) => PROPS[k]);
-  const propNoun = (k: string): string => (PROPS[k]?.label || k).replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || k;
+  const customOf = (k: string) => (opts.customProps || []).find((c) => c.key === k);
+  const propList = (opts.props || []).filter((k) => PROPS[k] || customOf(k));
+  const propNoun = (k: string): string => { const c = customOf(k); return (c ? c.label : (PROPS[k]?.label || k)).replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || k; };
   const [W, H] = [720, 1280]; // vertical music video (Shorts/TikTok/Reels)
   const N = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, opts.sceneCount ?? tmpl.defaultScenes));
   const jobId = opts.jobId;
@@ -430,7 +444,7 @@ export async function generateMusicVideo(opts: {
   //      SHARED seed path the preview uses (hero + prop anchors + vision-gated per-scene edits).
   const sceneImgs = opts.approvedSceneImgs && opts.approvedSceneImgs.length === N
     ? opts.approvedSceneImgs.map((u) => abs(u))
-    : (await buildMusicVideoSeeds({ genre, props: opts.props, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, jobId, resume, base })).sceneImgs;
+    : (await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, jobId, resume, base })).sceneImgs;
 
   // 5) song SEGMENTS (local mp3 + hosted url for the lip-sync model to drive the mouth to).
   const segs: Array<{ localPath: string; url: string }> = [];

@@ -801,6 +801,7 @@ async function runJob(
             jobId: payload.__jobId as string | undefined,
             songUrl: (payload.filmSongUrl as string | undefined) || undefined, // BYO-song (uploaded track)
             props: Array.isArray(payload.filmProps) ? (payload.filmProps as string[]) : undefined, // cool-shit props
+            customProps: Array.isArray(payload.filmCustomProps) ? (payload.filmCustomProps as Array<{ key: string; label: string; img: string }>) : undefined, // merchant's own props (AI / photo)
             heroUrl: (payload.filmHeroUrl as string | undefined) || undefined, // merchant PICKED an avatar to be the artist
             approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined, // storyboard-approved stills
 
