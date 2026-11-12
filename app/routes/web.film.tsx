@@ -199,11 +199,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const approvedRaw = ((form.get("approvedTreatment") as string) || "").trim();
     if (approvedRaw) { try { const tObj = JSON.parse(approvedRaw); if (tObj && Array.isArray(tObj.scenes) && tObj.scenes.length) approvedTreatment = tObj; } catch { /* ignore malformed */ } }
     const scenes = clampScenes(parseInt((form.get("filmScenes") as string) || "", 10) || tmpl.defaultScenes);
+    const heroUrl = ((form.get("filmHeroUrl") as string) || "").trim().slice(0, 2000) || undefined;
     try {
       if (tmpl.lipSyncSinger) {
-        // Music Video engine: artist hero + props.
+        // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, heroUrl, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
         return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef });
@@ -293,6 +294,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const filmGenre = ((form.get("filmGenre") as string) || "").trim();
     // BYO-song: a merchant-uploaded track URL (from /api/film-song-upload) used INSTEAD of generating one.
     const filmSongUrl = ((form.get("filmSongUrl") as string) || "").trim();
+    // Artist (Music Video) — the merchant picked one of their avatars to BE the star (empty = auto-cast).
+    const filmHeroUrl = ((form.get("filmHeroUrl") as string) || "").trim().slice(0, 2000);
     // Props (Music Video) — keys the merchant picked, woven into the scenes. JSON array of strings.
     let filmProps: string[] | undefined;
     const propsRaw = ((form.get("filmProps") as string) || "").trim();
@@ -316,6 +319,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(cast ? { cast } : {}),
         ...(filmGenre ? { filmGenre } : {}),
         ...(filmSongUrl ? { filmSongUrl } : {}),
+        ...(filmHeroUrl ? { filmHeroUrl } : {}),
         ...(filmProps?.length ? { filmProps } : {}),
         ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
         dialogueEngine, filmAspect,
@@ -436,8 +440,11 @@ export default function FilmStudio() {
   const [filmProps, setFilmProps] = useState<string[]>([]);
   const toggleProp = (k: string) => setFilmProps((p) => (p.includes(k) ? p.filter((x) => x !== k) : p.length < 6 ? [...p, k] : p));
   // Music Video card-builder: which summary card is expanded for editing (null = all collapsed).
-  const [openCard, setOpenCard] = useState<"genre" | "song" | "props" | "length" | null>(null);
+  const [openCard, setOpenCard] = useState<"artist" | "genre" | "song" | "props" | "length" | null>(null);
   const [topic, setTopic] = useState("");
+  // The merchant can PICK one of their avatars to BE the artist ("" = auto-cast one for the genre).
+  const [artistPick, setArtistPick] = useState<string>("");
+  const artistName = artistPick ? (d.roster.find((r) => r.img === artistPick)?.name || "") : "";
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
   // Product (skit): title + photo + (catalog) description.
@@ -504,7 +511,7 @@ export default function FilmStudio() {
   // Pre-seed the storyboard: render every scene's still (props placed) for approval before paying.
   const previewScenes = () => {
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(treatment ? { approvedTreatment: JSON.stringify(treatment) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(treatment ? { approvedTreatment: JSON.stringify(treatment) } : {}) },
       { method: "post" }
     );
   };
@@ -534,41 +541,60 @@ export default function FilmStudio() {
       setRerollingScene(null);
     }
   }, [rerollSceneFetcher.state, rerollSceneFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Any setup change invalidates the preview — the stills would no longer match the new settings.
-  useEffect(() => { setSeeds(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Any setup change invalidates the preview — the stills would no longer match the new settings
+  // (the artist too: a different face means the stills show the wrong person).
+  useEffect(() => { setSeeds(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick]); // eslint-disable-line react-hooks/exhaustive-deps
   // Click-to-edit the storyboard text — polish a scene's "what happens" or its words in place; the
   // render reads the edited treatment. Editing the VISUAL marks the still stale (re-roll to match).
+  // Writes to the stills' snapshot once they exist, otherwise to the autopopulated story treatment.
   const editSceneText = (i: number, field: "visual" | "caption", value: string) => {
-    setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? { ...s, [field]: value } : s)) } } : prev));
+    if (seeds) {
+      setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? { ...s, [field]: value } : s)) } } : prev));
+    } else if (treatment) {
+      setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, [field]: value } : s)) });
+    }
   };
 
   // The storyboard: ONE collapsed button → a swipeable filmstrip of the actual scene stills (each
   // re-rollable, text click-to-edit), so you approve what will render before paying. Reused by BOTH
   // the Music Video card-builder and the film flow — one row, so it never turns a page into a doom-scroll.
-  const storyboard = () => (
+  const storyboard = (autofill = false) => {
+    // AUTOPOPULATE (autofill flows, e.g. Music Video): the filmstrip fills from the STORY the moment
+    // there's a treatment — each scene's "what happens" + words appear immediately (free, click-to-edit).
+    // The STILLS fill in when you Preview; until then each frame is a placeholder. So the strip builds
+    // itself from the story + song + artist you set, and you polish the words before spending on visuals.
+    // Non-autofill flows keep their own story view and only reveal the filmstrip once stills exist.
+    const strip = seeds?.treatment || (autofill ? treatment : null);
+    const hasStills = !!seeds;
+    return (
     <div className="mm-storyboard">
       <button type="button" className="mm-preview-btn" onClick={previewScenes} disabled={seedBusy || !d.hasPlan}>
-        {seedBusy ? <>… {t("Building the scenes")}</> : seeds ? <><Ico n="refresh" size={13} /> {t("Re-roll the scenes")}</> : <><Ico n="film" size={13} /> {t("Preview the scenes — free")}</>}
+        {seedBusy ? <>… {t("Building the scenes")}</>
+          : hasStills ? <><Ico n="refresh" size={13} /> {t("Re-roll the scenes")}</>
+          : strip ? <><Ico n="image" size={13} /> {t("Add the visuals — free")}</>
+          : <><Ico n="film" size={13} /> {t("Preview the scenes — free")}</>}
       </button>
       {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
-      {seedBusy && !seeds && <p className="mm-sb-wait">{t("Building each scene's still — about a minute…")}</p>}
-      {seeds && (
+      {seedBusy && !hasStills && <p className="mm-sb-wait">{t("Building each scene's still — about a minute…")}</p>}
+      {strip && (
         <>
-          <div className="mm-sb-head"><Ico n="check" size={13} /> {t("Swipe through your story — this is exactly what renders. Re-roll any scene that's off, then Generate.")}</div>
+          <div className="mm-sb-head"><Ico n="check" size={13} /> {hasStills
+            ? t("Swipe through your story — this is exactly what renders. Re-roll any scene that's off, then Generate.")
+            : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life.")}</div>
           {/* A horizontal, swipeable FILMSTRIP (video-editor style): each scene = its still + what
               happens + the words — compact vertically, so the page never doom-scrolls. */}
           <div className="mm-sb-strip">
-            {seeds.imgs.map((u, i) => {
-              const sc = seeds.treatment.scenes[i];
-              const pk = seeds.propForScene[i];
+            {strip.scenes.map((sc, i) => {
+              const u = seeds?.imgs[i] ?? null;
+              const pk = seeds?.propForScene[i];
               const pl = pk ? ((d.props || []).find((pp) => pp.key === pk)?.label || pk) : "";
               return (
                 <div className="mm-sb-shot" key={i}>
                   <div className="mm-sb-frame">
-                    {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={20} /></span>}
+                    {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={20} />{!hasStills && <small>{t("visual fills on preview")}</small>}</span>}
                     {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
                     <span className="mm-sb-num">{i + 1}</span>
-                    {(seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={13} /></button>}
+                    {seeds && (seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={13} /></button>}
                   </div>
                   <div className="mm-sb-desc">
                     <textarea className="mm-sb-what" value={sc?.visual || ""} onChange={(e) => editSceneText(i, "visual", e.target.value)} rows={3} maxLength={400} placeholder={t("what happens in this scene…")} aria-label={t("Scene {n} — what happens", { n: i + 1 })} />
@@ -582,7 +608,8 @@ export default function FilmStudio() {
         </>
       )}
     </div>
-  );
+    );
+  };
   const editCaption = (i: number, v: string) => {
     if (!treatment) return;
     setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, caption: v } : s)) });
@@ -818,6 +845,17 @@ export default function FilmStudio() {
           <div className="mm-hint"><span aria-hidden="true">✎</span> {t("Tap any card to change it — we fill in smart defaults so you can just hit Generate.")}</div>
 
           <div className="mm-grid">
+            {/* Artist — pick one of your avatars to STAR, or let us cast one */}
+            <button type="button" className={`mm-card${openCard === "artist" ? " on" : ""}`} onClick={() => setOpenCard(openCard === "artist" ? null : "artist")}>
+              <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
+              <span className="mm-card-top">
+                {artistPick
+                  ? <span className="mm-card-face" style={{ backgroundImage: `url(${artistPick})` }} aria-hidden="true" />
+                  : <span className="mm-card-ico c5"><Ico n="presenter" size={20} /></span>}
+                <span className="mm-card-ttl"><span className="mm-card-kick">{t("The star")}</span><b>{t("Artist")}</b></span>
+              </span>
+              <span className="mm-val">{artistPick ? <><Ico n="check" size={12} /> {artistName || t("Your avatar")}</> : t("We cast one · or pick your avatar")}</span>
+            </button>
             {/* Genre */}
             <button type="button" className={`mm-card${openCard === "genre" ? " on" : ""}`} onClick={() => setOpenCard(openCard === "genre" ? null : "genre")}>
               <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
@@ -847,6 +885,27 @@ export default function FilmStudio() {
           </div>
 
           {/* expand-to-edit panels */}
+          {openCard === "artist" && (
+            <div className="mm-expand">
+              <div className="mm-expand-h">{t("Who's the artist?")}</div>
+              <div className="mm-expand-sub">{t("Pick one of your avatars to star — that exact face performs every scene. Or let us cast one that fits the genre.")}</div>
+              <div className="mm-artistpick">
+                <button type="button" className={`fs-rface mm-autoface${artistPick === "" ? " on" : ""}`} onClick={() => setArtistPick("")} title={t("Auto-cast")}>
+                  <span className="fs-rface-img mm-autoface-img" aria-hidden="true"><Ico n="wand" size={20} /></span>
+                  {artistPick === "" && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                  <span className="fs-rface-name">{t("Auto-cast")}</span>
+                </button>
+                {d.roster.map((r) => (
+                  <button type="button" key={r.id} className={`fs-rface${artistPick === r.img ? " on" : ""}`} title={r.name} onClick={() => setArtistPick(r.img)}>
+                    <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
+                    {artistPick === r.img && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                    <span className="fs-rface-name">{r.name}</span>
+                  </button>
+                ))}
+              </div>
+              {d.roster.length === 0 && <p className="fs-hint">{t("Forge an avatar in Presenters to star your own face — until then we cast one for you.")}</p>}
+            </div>
+          )}
           {openCard === "genre" && (
             <div className="mm-expand">
               <div className="mm-expand-h">{t("Pick the genre")}</div>
@@ -904,30 +963,23 @@ export default function FilmStudio() {
             </div>
           )}
 
-          {/* optional free lyrics preview — stays collapsed so the look stays clean */}
+          {/* Write the song — free. The scenes it writes AUTOPOPULATE the storyboard filmstrip below
+              (words click-to-edit there), so we don't repeat them here — just the title + mood. */}
           <div className="mm-preview">
             <button type="button" className="mm-preview-btn" onClick={writeTreatment} disabled={writing}>
-              {writing ? <>… {t("Writing")}</> : treatment ? <><Ico n="refresh" size={13} /> {t("Re-roll the lyrics")}</> : <><Ico n="wand" size={13} /> {t("Preview the song first — free")}</>}
+              {writing ? <>… {t("Writing")}</> : treatment ? <><Ico n="refresh" size={13} /> {t("Re-roll the song")}</> : <><Ico n="wand" size={13} /> {t("Write the song first — free")}</>}
             </button>
             {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
-            {treatment && (
+            {treatment && (treatment.title || treatment.musicMood) && (
               <div className="fs-treat" style={{ marginTop: 12 }}>
                 {treatment.title && <div className="fs-treat-ttl">{treatment.title}</div>}
-                <div className="fs-treat-mood"><Ico n="music" size={12} /> {treatment.musicMood}</div>
-                <ol className="fs-scenes">
-                  {treatment.scenes.map((s, i) => (
-                    <li key={i} className="fs-scene">
-                      <span className="fs-scene-vis">{s.visual}</span>
-                      <input className="fs-scene-cap" value={s.caption || ""} onChange={(e) => editCaption(i, e.target.value)} placeholder={t("on-screen line (optional)")} maxLength={80} />
-                    </li>
-                  ))}
-                </ol>
+                {treatment.musicMood && <div className="fs-treat-mood"><Ico n="music" size={12} /> {treatment.musicMood}</div>}
               </div>
             )}
           </div>
 
-          {/* STORYBOARD — pre-seed + re-roll (one collapsed button → grid; shared helper above). */}
-          {storyboard()}
+          {/* STORYBOARD — autopopulates from the song, re-rollable, click-to-edit (shared helper above). */}
+          {storyboard(true)}
 
           {/* generate — the one button */}
           <div className="mm-gen">
@@ -937,6 +989,7 @@ export default function FilmStudio() {
               <input type="hidden" name="filmGenre" value={filmGenre} />
               {songSource === "upload" && filmSongUrl && <input type="hidden" name="filmSongUrl" value={filmSongUrl} />}
               {filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}
+              {artistPick && <input type="hidden" name="filmHeroUrl" value={artistPick} />}
               <input type="hidden" name="filmTopic" value={topic} />
               <input type="hidden" name="filmScenes" value={String(scenes)} />
               {(seeds?.treatment || treatment) && <input type="hidden" name="approvedTreatment" value={JSON.stringify(seeds?.treatment || treatment)} />}
@@ -1667,6 +1720,8 @@ const FS_STYLE = `
 .mm-card-ico.c2{background:linear-gradient(135deg,#1EA85C,#0C7A46);}
 .mm-card-ico.c3{background:linear-gradient(135deg,#E8A43C,#CE7C18);}
 .mm-card-ico.c4{background:linear-gradient(135deg,#3E6FB0,#274C86);}
+.mm-card-ico.c5{background:linear-gradient(135deg,#7E57C2,#53389E);}
+.mm-card-face{width:40px;height:40px;border-radius:12px;flex:none;background:#EAF6EF center/cover no-repeat;box-shadow:0 6px 14px -6px rgba(0,0,0,.35),0 0 0 2px #fff;}
 .mm-card-ttl{display:block;min-width:0;}
 .mm-card-kick{display:block;font-size:10.5px;font-weight:800;color:var(--ink3,#9AA39B);text-transform:uppercase;letter-spacing:.06em;}
 .mm-card-ttl b{display:block;font-size:15.5px;font-weight:800;letter-spacing:-.01em;color:var(--ink,#14201A);line-height:1.15;}
@@ -1684,6 +1739,9 @@ const FS_STYLE = `
 .mm-prop{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:800;color:var(--ink,#14201A);cursor:pointer;font-family:Poppins,sans-serif;transition:background .14s,border-color .14s,color .14s;}
 .mm-prop:hover{border-color:var(--green,#0C7A46);}
 .mm-prop.on{background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);color:#fff;}
+.mm-artistpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:8px;max-height:252px;overflow-y:auto;padding:2px;}
+.mm-autoface-img{display:grid;place-items:center;background:linear-gradient(135deg,#EFEAFB,#DDD3F3)!important;}
+.mm-autoface-img svg{stroke:#6C4FB0;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 .mm-preview{margin:16px 0 0;}
 .mm-preview-btn{display:inline-flex;align-items:center;gap:7px;border:1.5px dashed var(--green,#0C7A46);background:#fff;color:var(--green,#0C7A46);border-radius:12px;padding:10px 16px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;cursor:pointer;transition:background .14s;}
 .mm-preview-btn:hover:not(:disabled){background:var(--mint,#EAF6EF);}
@@ -1699,8 +1757,9 @@ const FS_STYLE = `
 .mm-sb-shot{flex:0 0 auto;width:150px;scroll-snap-align:start;display:flex;flex-direction:column;gap:7px;}
 .mm-sb-frame{position:relative;border-radius:13px;overflow:hidden;background:#20302A;aspect-ratio:9/16;box-shadow:0 2px 8px rgba(20,32,26,.16);}
 .mm-sb-frame img{width:100%;height:100%;object-fit:cover;display:block;}
-.mm-sb-empty{position:absolute;inset:0;display:grid;place-items:center;color:#8A938B;}
-.mm-sb-empty svg{stroke:currentColor;stroke-width:1.8;fill:none;}
+.mm-sb-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#8A938B;text-align:center;padding:10px;}
+.mm-sb-empty svg{stroke:currentColor;stroke-width:1.8;fill:none;opacity:.7;}
+.mm-sb-empty small{font-size:10px;font-weight:700;color:#8A938B;line-height:1.25;max-width:118px;}
 .mm-sb-num{position:absolute;left:7px;top:7px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:rgba(10,20,15,.66);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;}
 .mm-sb-desc{display:flex;flex-direction:column;gap:4px;padding:0 1px;}
 /* Click-to-edit: the description + words are textareas that read as plain text until you tap them. */
