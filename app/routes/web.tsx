@@ -1488,7 +1488,9 @@ const CSS = `
   .wb-main{padding:10px 16px calc(98px + env(safe-area-inset-bottom,0px));}
   /* Phone nav = a FLOATING bottom tab bar (Facebook-style pill). Hide the top tab row. */
   .wb-tabs{display:none;}
-  .wb-bottom{display:flex;align-items:stretch;gap:2px;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:50;background:#fff;border:1px solid var(--line);border-radius:26px;padding:8px 8px 9px;box-shadow:0 12px 30px rgba(20,32,26,.18),0 3px 10px rgba(20,32,26,.10);}
+  /* GPU-composite the fixed nav so iOS Safari doesn't let it lag/"travel" up the page during
+     momentum scroll (translate3d forces its own layer; will-change keeps it there). */
+  .wb-bottom{display:flex;align-items:stretch;gap:2px;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:50;background:#fff;border:1px solid var(--line);border-radius:26px;padding:8px 8px 9px;box-shadow:0 12px 30px rgba(20,32,26,.18),0 3px 10px rgba(20,32,26,.10);-webkit-transform:translate3d(0,0,0);transform:translate3d(0,0,0);will-change:transform;-webkit-backface-visibility:hidden;backface-visibility:hidden;}
   .wb-bt{flex:1 1 0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;text-decoration:none;color:var(--ink2);font-size:9.5px;font-weight:700;min-width:0;white-space:nowrap;}
   .wb-bt-ic{display:flex;align-items:center;justify-content:center;width:46px;height:32px;border-radius:13px;transition:background .14s;}
   .wb-bt svg{width:22px;height:22px;stroke-width:1.9;}
