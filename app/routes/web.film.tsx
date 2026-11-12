@@ -1011,9 +1011,9 @@ export default function FilmStudio() {
           Replaces the long-scroll form for the sing lanes only. */}
       {tmpl?.lipSyncSinger && (
         <div className="mm">
-          <div className="mm-head">
-            <span className="mm-head-ico" aria-hidden="true">{fmtIcon(template)}</span>
-            <div className="mm-head-copy"><b>{t(tmpl.name)}</b><span>{t("One artist · your song · director's cuts")}</span></div>
+          <div className="mm-vhead">
+            <span className="mm-vhead-ico" aria-hidden="true">{fmtIcon(template)}</span>
+            <div className="mm-vhead-copy"><b>{t(tmpl.name)}</b><span>{t("One artist · your song · director's cuts")}</span></div>
             <button type="button" className="mm-back" onClick={() => document.getElementById("fs-formats")?.scrollIntoView({ behavior: "smooth", block: "start" })}>‹ {t("Formats")}</button>
           </div>
 
@@ -1055,7 +1055,7 @@ export default function FilmStudio() {
               <span className="mm-step" aria-hidden="true">{stepsDone.props ? <Ico n="check" size={13} /> : 4}</span>
               <span className="mm-card-top"><span className="mm-card-ico c3"><Ico n="gem" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("Cool shit")}</span><b>{t("Props")}</b></span></span>
               {filmProps.length > 0 ? (
-                <span className="mm-chips">{filmProps.slice(0, 3).map((k) => { const p = (d.props || []).find((x) => x.key === k); const cp = customProps.find((x) => x.key === k); return <span className="mm-chip" key={k}>{cp ? cp.label : t(p?.name || k)}</span>; })}{filmProps.length > 3 && <span className="mm-chip">+{filmProps.length - 3}</span>}</span>
+                <span className="mm-vchips">{filmProps.slice(0, 3).map((k) => { const p = (d.props || []).find((x) => x.key === k); const cp = customProps.find((x) => x.key === k); return <span className="mm-chip" key={k}>{cp ? cp.label : t(p?.name || k)}</span>; })}{filmProps.length > 3 && <span className="mm-chip">+{filmProps.length - 3}</span>}</span>
               ) : <span className="mm-val mm-muted">{t("none yet · tap to add tigers, cars, chains…")}</span>}
             </button>
             {/* 5 · Length (spans the row — it's the last, simple step) */}
@@ -1965,12 +1965,12 @@ const FS_STYLE = `
 
 /* ───────── Music Video — the card builder ───────── */
 .mm{margin:2px 0 0;}
-.mm-head{display:flex;align-items:center;gap:14px;background:linear-gradient(145deg,#0E6B41,#083E27);border-radius:20px;padding:16px 20px;box-shadow:0 16px 40px -22px rgba(8,62,39,.6);}
-.mm-head-ico{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.12);display:grid;place-items:center;flex:none;}
-.mm-head-ico svg{width:24px;height:24px;stroke:#8FE9BC;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
-.mm-head-copy{min-width:0;}
-.mm-head-copy b{font-family:Fraunces,Poppins,serif;font-weight:700;font-size:22px;color:#fff;letter-spacing:-.01em;display:block;line-height:1.1;}
-.mm-head-copy span{font-size:12.5px;color:rgba(255,255,255,.75);}
+.mm-vhead{display:flex;align-items:center;gap:14px;background:linear-gradient(145deg,#0E6B41,#083E27);border-radius:20px;padding:16px 20px;box-shadow:0 16px 40px -22px rgba(8,62,39,.6);}
+.mm-vhead-ico{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.12);display:grid;place-items:center;flex:none;}
+.mm-vhead-ico svg{width:24px;height:24px;stroke:#8FE9BC;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-vhead-copy{min-width:0;}
+.mm-vhead-copy b{font-family:Fraunces,Poppins,serif;font-weight:700;font-size:22px;color:#fff;letter-spacing:-.01em;display:block;line-height:1.1;}
+.mm-vhead-copy span{font-size:12.5px;color:rgba(255,255,255,.75);}
 .mm-back{margin-left:auto;flex:none;font-size:12px;font-weight:800;color:#A7F0C8;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:7px 13px;cursor:pointer;font-family:Poppins,sans-serif;transition:background .14s;}
 .mm-back:hover{background:rgba(255,255,255,.18);}
 .mm-topic{margin:16px 0 0;background:var(--panel,#FDFBF4);border:1.5px solid var(--line,#E4DFCF);border-radius:18px;padding:16px 18px;box-shadow:0 2px 4px rgba(20,32,26,.03);}
@@ -2016,7 +2016,7 @@ const FS_STYLE = `
 .mm-val{display:block;margin:13px 0 0;font-size:13px;color:var(--ink2,#4A554E);line-height:1.4;}
 .mm-val .mm-free{color:var(--green,#0C7A46);font-weight:800;}
 .mm-muted{color:var(--ink3,#9AA39B);}
-.mm-chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;}
+.mm-vchips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;}
 .mm-chip{font-size:11.5px;font-weight:800;color:var(--green-d,#0A5E37);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:4px 10px;}
 .mm-opts{margin:13px 0 0;background:var(--panel,#FDFBF4);border:1.5px solid var(--green,#0C7A46);border-radius:18px;padding:16px 18px;box-shadow:0 0 0 1px rgba(12,122,70,.12),0 16px 36px -24px rgba(12,122,70,.4);}
 .mm-opts-h{font-size:13.5px;font-weight:800;color:var(--ink,#14201A);margin-bottom:4px;}
