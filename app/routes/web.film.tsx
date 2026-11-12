@@ -1068,9 +1068,9 @@ export default function FilmStudio() {
             {/* Each step's options live INSIDE the grid, full-width right after its own card (via CSS
                 `order`), so tapping a step opens its options AT the card — never buried down the page. */}
           {openCard === "artist" && (
-            <div className="mm-expand mm-expand-grid" style={{ order: 2 }}>
-              <div className="mm-expand-h">{t("Who's the artist?")}</div>
-              <div className="mm-expand-sub">{t("Swipe to pick who stars — your avatars, or make a new one. That exact face performs every scene.")}</div>
+            <div className="mm-opts mm-opts-grid" style={{ order: 2 }}>
+              <div className="mm-opts-h">{t("Who's the artist?")}</div>
+              <div className="mm-opts-sub">{t("Swipe to pick who stars — your avatars, or make a new one. That exact face performs every scene.")}</div>
               <input ref={artistPhotoRef} type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden onChange={(e) => { uploadArtistPhoto(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
               <div className="mm-artistpick">
                 <button type="button" className={`fs-rface mm-autoface${artistPick === "" ? " on" : ""}`} onClick={() => setArtistPick("")} title={t("Auto-cast")}>
@@ -1114,9 +1114,9 @@ export default function FilmStudio() {
             </div>
           )}
           {openCard === "genre" && (
-            <div className="mm-expand mm-expand-grid" style={{ order: 4 }}>
-              <div className="mm-expand-h">{t("Pick the genre")}</div>
-              <div className="mm-expand-sub">{t("Swipe the genres — sets the song and the whole look. One artist performs it across your scenes.")}</div>
+            <div className="mm-opts mm-opts-grid" style={{ order: 4 }}>
+              <div className="mm-opts-h">{t("Pick the genre")}</div>
+              <div className="mm-opts-sub">{t("Swipe the genres — sets the song and the whole look. One artist performs it across your scenes.")}</div>
               <div className="mm-genrepick">
                 {(d.genres || []).map((gr) => (
                   <button type="button" key={gr.key} className={`mm-gtile${filmGenre === gr.key ? " on" : ""}`} onClick={() => { setFilmGenre(gr.key); setTreatment(null); }} title={t(gr.label)}>
@@ -1129,9 +1129,9 @@ export default function FilmStudio() {
             </div>
           )}
           {openCard === "song" && (
-            <div className="mm-expand mm-expand-grid" style={{ order: 6 }}>
-              <div className="mm-expand-h">{t("Your song")}</div>
-              <div className="mm-expand-sub">{t("We write and produce an original — free — or bring your own track.")}</div>
+            <div className="mm-opts mm-opts-grid" style={{ order: 6 }}>
+              <div className="mm-opts-h">{t("Your song")}</div>
+              <div className="mm-opts-sub">{t("We write and produce an original — free — or bring your own track.")}</div>
               <div className="fs-songsrc-seg">
                 <button type="button" className={`fs-songsrc-opt${songSource === "write" ? " on" : ""}`} onClick={() => setSongSource("write")}>{t("Write me one")}<small>{t("free")}</small></button>
                 <button type="button" className={`fs-songsrc-opt${songSource === "upload" ? " on" : ""}`} onClick={() => setSongSource("upload")}>{t("Upload my own")}<small>{t("your track")}</small></button>
@@ -1148,9 +1148,9 @@ export default function FilmStudio() {
             </div>
           )}
           {openCard === "props" && (
-            <div className="mm-expand mm-expand-grid" style={{ order: 8 }}>
-              <div className="mm-expand-h">{t("Pick your props")}</div>
-              <div className="mm-expand-sub">{t("Tap to add — we weave them into the scenes, tasteful not cheesy. Up to 6, or make your own.")}</div>
+            <div className="mm-opts mm-opts-grid" style={{ order: 8 }}>
+              <div className="mm-opts-h">{t("Pick your props")}</div>
+              <div className="mm-opts-sub">{t("Tap to add — we weave them into the scenes, tasteful not cheesy. Up to 6, or make your own.")}</div>
               <input ref={propPhotoRef} type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden onChange={(e) => { uploadPropPhoto(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
               <div className="mm-proppick">
                 {/* Make your own — AI from a description, or upload your own photo */}
@@ -1192,9 +1192,9 @@ export default function FilmStudio() {
             </div>
           )}
           {openCard === "length" && (
-            <div className="mm-expand mm-expand-grid" style={{ order: 10 }}>
-              <div className="mm-expand-h">{t("How long?")}</div>
-              <div className="mm-expand-sub">{t("Each scene is a director's shot — about 5 seconds.")}</div>
+            <div className="mm-opts mm-opts-grid" style={{ order: 10 }}>
+              <div className="mm-opts-h">{t("How long?")}</div>
+              <div className="mm-opts-sub">{t("Each scene is a director's shot — about 5 seconds.")}</div>
               <div className="fs-len" style={{ marginTop: 4 }}>
                 <span>{t("Scenes")}</span>
                 <div className="fs-stepper">
@@ -1240,10 +1240,15 @@ export default function FilmStudio() {
               <input type="hidden" name="filmScenes" value={String(scenes)} />
               {(seeds?.treatment || treatment) && <input type="hidden" name="approvedTreatment" value={JSON.stringify(seeds?.treatment || treatment)} />}
               {seeds && <input type="hidden" name="approvedSceneImgs" value={JSON.stringify(seeds.imgs)} />}
-              <button type="submit" className="mm-go" disabled={!canGo}>
-                {generating ? <>… {t("Starting your video")}</> : <><Ico n="film" size={17} /> {seeds ? (cost > 0 ? t("Render these scenes · {cost} Tokens", { cost }) : t("Render these scenes")) : (cost > 0 ? t("Generate Music Video · {cost} Tokens", { cost }) : t("Generate Music Video"))}</>}
+              {/* Generating is GATED on making the scenes first — you must script + preview the
+                  storyboard (above) before you can spend tokens on the render. */}
+              <button type="submit" className="mm-go" disabled={!canGo || !seeds}>
+                {generating ? <>… {t("Starting your video")}</>
+                  : !seeds ? <><Ico n="wand" size={17} /> {t("Make the scenes first ↑")}</>
+                  : <><Ico n="film" size={17} /> {cost > 0 ? t("Render these scenes · {cost} Tokens", { cost }) : t("Render these scenes")}</>}
               </button>
             </Form>
+            {!seeds && <p className="mm-note mm-note-req"><Ico n="wand" size={12} /> {t("Script out your scenes first — tap “Make the scenes” above, check the storyboard, then render.")}</p>}
             <div className="mm-eta"><span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: true, dialogue: false, scenes, engine: dialogueEngine })}</b></div>
             <p className="mm-note">{cost > 0 ? <>{t("{base} + {per}/scene × {n} = {cost} Tokens", { base: d.base, per: d.perScene, n: scenes, cost })} · <span className={affordable ? "fs-bal" : "fs-bal low"}>{t("you have {n}", { n: d.tokens })}</span></> : t("Free while we dial this in — pricing comes later.")}</p>
             {!d.hasPlan && <p className="fs-err">{t("Pick a plan on the Dashboard first — film runs on tokens.")}</p>}
@@ -1986,7 +1991,7 @@ const FS_STYLE = `
 .mm-card.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 14px 30px -20px rgba(12,122,70,.4);}
 /* a step's options open full-width right after its card (the order property places it there), so the
    options always appear AT the card you tapped — never down at the bottom of the grid */
-.mm-expand-grid{grid-column:1 / -1;margin:0;}
+.mm-opts-grid{grid-column:1 / -1;margin:0;}
 .mm-card.done{border-color:#7FC9A1 !important;background:linear-gradient(180deg,#EDF8F1,#fff) !important;}
 .mm-card.done.on{border-color:#0C7A46 !important;}
 /* step badge: the number, then a green check once the step is set */
@@ -2013,9 +2018,9 @@ const FS_STYLE = `
 .mm-muted{color:var(--ink3,#9AA39B);}
 .mm-chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;}
 .mm-chip{font-size:11.5px;font-weight:800;color:var(--green-d,#0A5E37);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:4px 10px;}
-.mm-expand{margin:13px 0 0;background:var(--panel,#FDFBF4);border:1.5px solid var(--green,#0C7A46);border-radius:18px;padding:16px 18px;box-shadow:0 0 0 1px rgba(12,122,70,.12),0 16px 36px -24px rgba(12,122,70,.4);}
-.mm-expand-h{font-size:13.5px;font-weight:800;color:var(--ink,#14201A);margin-bottom:4px;}
-.mm-expand-sub{font-size:12px;color:var(--ink2,#4A554E);margin-bottom:12px;line-height:1.4;}
+.mm-opts{margin:13px 0 0;background:var(--panel,#FDFBF4);border:1.5px solid var(--green,#0C7A46);border-radius:18px;padding:16px 18px;box-shadow:0 0 0 1px rgba(12,122,70,.12),0 16px 36px -24px rgba(12,122,70,.4);}
+.mm-opts-h{font-size:13.5px;font-weight:800;color:var(--ink,#14201A);margin-bottom:4px;}
+.mm-opts-sub{font-size:12px;color:var(--ink2,#4A554E);margin-bottom:12px;line-height:1.4;}
 .mm-props{display:flex;flex-wrap:wrap;gap:9px;}
 .mm-prop{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:800;color:var(--ink,#14201A);cursor:pointer;font-family:Poppins,sans-serif;transition:background .14s,border-color .14s,color .14s;}
 .mm-prop:hover{border-color:var(--green,#0C7A46);}
@@ -2120,5 +2125,7 @@ const FS_STYLE = `
 .mm-eta{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:12px;font-size:13px;font-weight:700;color:var(--ink2,#4A554E);}
 .mm-eta b{color:var(--ink,#14201A);}
 .mm-note{text-align:center;font-size:12.5px;color:var(--ink2,#4A554E);margin-top:8px;}
+.mm-note-req{display:flex;align-items:center;justify-content:center;gap:7px;text-align:center;font-size:12.5px;font-weight:700;color:var(--green-d,#0A5E37);background:rgba(12,122,70,.07);border:1px solid #CDE8D9;border-radius:11px;padding:10px 13px;margin-top:0;}
+.mm-note-req svg{stroke:var(--green,#0C7A46);stroke-width:2;fill:none;flex:none;}
 @media (prefers-reduced-motion:reduce){.mm-go::after{animation:none;}.mm-card{transition:none;}}
 `;
