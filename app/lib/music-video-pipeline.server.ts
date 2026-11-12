@@ -264,7 +264,7 @@ async function buildMusicVideoSeeds(p: {
  *  generateMusicVideo as `approvedSceneImgs` so it renders EXACTLY what was previewed. */
 export async function previewMusicVideoScenes(opts: {
   shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; treatment?: FilmTreatment;
-}): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; propForScene: Record<number, string> }> {
+}): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; propForScene: Record<number, string>; artistRef: string | null }> {
   const tmpl = filmTemplate("musicvideo");
   const genre = genreOrDefault(opts.genre);
   const g = GENRES[genre];
@@ -285,8 +285,49 @@ export async function previewMusicVideoScenes(opts: {
   }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
 
-  const { sceneImgs } = await buildMusicVideoSeeds({ genre, props: opts.props, scenes, propForScene, artistBible, resume: {}, base });
-  return { treatment, sceneImgs, propForScene };
+  const { sceneImgs, artistRef } = await buildMusicVideoSeeds({ genre, props: opts.props, scenes, propForScene, artistBible, resume: {}, base });
+  return { treatment, sceneImgs, propForScene, artistRef };
+}
+
+/** Re-roll ONE storyboard scene — regenerate just that still, reusing the SAME artist hero so the
+ *  person stays consistent, for when a scene comes back wrong (the prop missing, or an uninvited
+ *  character — "the tiger scene was an old lady"). Fast (one scene) vs re-rolling the whole batch.
+ *  Mirrors buildMusicVideoSeeds' per-scene path (edit the hero/anchor into the setting + vision-gate
+ *  the prop) — keep the prompts in sync with that function. */
+export async function rerollMusicVideoScene(opts: {
+  artistRef: string; sceneVisual: string; sceneIndex: number; propKey?: string; genre?: string;
+}): Promise<string | null> {
+  const g = GENRES[genreOrDefault(opts.genre)];
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  const abs = (u: string | null | undefined): string | null => (u ? (u.startsWith("http") ? u : `${base}${u}`) : null);
+  const propNoun = (k: string): string => (PROPS[k]?.label || k).replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || k;
+  const artistRef = abs(opts.artistRef);
+  if (!artistRef) return null;
+  const shot = SHOTLIST[opts.sceneIndex % SHOTLIST.length];
+  const propKey = opts.propKey && PROPS[opts.propKey] ? opts.propKey : undefined;
+  const noun = propKey ? propNoun(propKey) : "";
+
+  // For a prop scene, rebuild its locked single-animal ref + artist-anchor so the one prop lands.
+  let srcRef: string | null = artistRef;
+  let propRef: string | null = null;
+  if (propKey) {
+    const pr = await renderCreativeSeed(`A single real ${noun} — exactly ONE ${noun}, full body, photorealistic, plain neutral background. The only subject is this one ${noun}. ${REALISM}`, "9:16");
+    propRef = abs(pr);
+    const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${PROPS[propKey].phrase} — a SINGLE ${noun}, only one. The ONLY animal in the image is this one ${noun}: do NOT include a dog or any other animal. Full body, neutral studio backdrop. ${REALISM}`);
+    srcRef = a ? (abs(a) || artistRef) : artistRef;
+  }
+  const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, the ONLY animal in frame; do NOT add more ${noun}, a dog, or any other animal.` : "";
+  const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
+  const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${opts.sceneVisual}.${propClause}${performNote} ${g.look}. ${REALISM} ${ONE_PERSON}`;
+  let img = srcRef ? await editSubjectIntoScene(srcRef, prompt) : null;
+  if (propKey && propRef) {
+    const cur = img ? abs(img) : null;
+    if (!cur || !(await sceneShowsProp(cur, noun))) {
+      const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${opts.sceneVisual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, the ONLY animal in frame, no dog or other animals. ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRef], "9:16");
+      if (forced) img = forced;
+    }
+  }
+  return img ? abs(img) : null;
 }
 
 export async function generateMusicVideo(opts: {

@@ -210,6 +210,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
+  // FREE — RE-ROLL one storyboard scene (reusing the artist hero) when it came back wrong (prop
+  // missing / an uninvited character). Fast — just that one still, not the whole batch.
+  if (intent === "rerollFilmScene") {
+    const artistRef = ((form.get("artistRef") as string) || "").trim().slice(0, 2000);
+    const sceneVisual = ((form.get("sceneVisual") as string) || "").trim().slice(0, 1500);
+    const sceneIndex = parseInt((form.get("sceneIndex") as string) || "0", 10) || 0;
+    const propKey = ((form.get("propKey") as string) || "").trim() || undefined;
+    const genre = ((form.get("filmGenre") as string) || "").trim();
+    if (!artistRef || !sceneVisual) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
+    try {
+      const { rerollMusicVideoScene } = await import("../lib/music-video-pipeline.server");
+      const img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre });
+      if (!img) return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex });
+      return json({ ok: true, sceneIndex, img });
+    } catch (e) {
+      return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+    }
+  }
+
   // PAID — enqueue the render. Charge by the ACTUAL scene count (the approved
   // treatment's length if one was approved, else the slider), so the quote the
   // merchant saw == the debit. The queue's refundPrepaidOnce returns chargedTokens
@@ -332,8 +351,10 @@ export default function FilmStudio() {
   const treatmentFetcher = useFetcher<{ treatment?: Treatment; error?: string }>();
   // Music Video STORYBOARD: pre-seed every scene's still (props placed) BEFORE paying for the video,
   // so the owner checks accuracy + the prop per scene and the render uses those EXACT stills (no surprise).
-  const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; treatment?: Treatment; propForScene?: Record<number, string>; error?: string }>();
-  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string> } | null>(null);
+  const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; treatment?: Treatment; propForScene?: Record<number, string>; artistRef?: string | null; error?: string }>();
+  const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; error?: string }>();
+  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null } | null>(null);
+  const [rerollingScene, setRerollingScene] = useState<number | null>(null);
   // Storyboard (dialogue): per-scene approved frames + which scene is rendering now.
   const previewFrameFetcher = useFetcher<{ frameUrl?: string; sceneIndex?: number; error?: string }>();
   const [frames, setFrames] = useState<(string | null)[]>([]);
@@ -471,11 +492,31 @@ export default function FilmStudio() {
     );
   };
   const seedBusy = sceneSeedsFetcher.state !== "idle";
-  // Capture the previewed stills; the render then uses these EXACT images + their treatment (no surprise).
+  // Capture the previewed stills + the hero; the render then uses these EXACT images (no surprise),
+  // and the hero lets a single scene be re-rolled without changing the artist.
   useEffect(() => {
     const sd = sceneSeedsFetcher.data;
-    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {} });
+    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null });
   }, [sceneSeedsFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Re-roll ONE storyboard scene (reusing the hero) when it came back wrong; swap just that still.
+  const rerollScene = (i: number) => {
+    if (!seeds?.artistRef) return;
+    setRerollingScene(i);
+    rerollSceneFetcher.submit(
+      { intent: "rerollFilmScene", template, filmGenre, artistRef: seeds.artistRef, sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), ...(seeds.propForScene[i] ? { propKey: seeds.propForScene[i] } : {}) },
+      { method: "post" }
+    );
+  };
+  useEffect(() => {
+    const rd = rerollSceneFetcher.data;
+    if (rerollSceneFetcher.state === "idle" && rd) {
+      if (rd.ok && typeof rd.sceneIndex === "number" && rd.img) {
+        const idx = rd.sceneIndex, nimg = rd.img;
+        setSeeds((prev) => (prev ? { ...prev, imgs: prev.imgs.map((u, j) => (j === idx ? nimg : u)) } : prev));
+      }
+      setRerollingScene(null);
+    }
+  }, [rerollSceneFetcher.state, rerollSceneFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Any setup change invalidates the preview — the stills would no longer match the new settings.
   useEffect(() => { setSeeds(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl]); // eslint-disable-line react-hooks/exhaustive-deps
   const editCaption = (i: number, v: string) => {
@@ -839,6 +880,8 @@ export default function FilmStudio() {
                     return (
                       <div className="mm-sb-cell" key={i}>
                         {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={20} /></span>}
+                        {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
+                        {seeds.artistRef && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={13} /></button>}
                         <span className="mm-sb-tag"><b>{t("Scene {n}", { n: i + 1 })}</b>{pl ? <> · {t(pl)}</> : null}</span>
                       </div>
                     );
@@ -1611,6 +1654,13 @@ const FS_STYLE = `
 .mm-sb-empty svg{stroke:currentColor;stroke-width:1.8;fill:none;}
 .mm-sb-tag{position:absolute;left:0;right:0;bottom:0;padding:16px 8px 6px;font-size:10.5px;color:#fff;background:linear-gradient(0deg,rgba(10,20,15,.85),transparent);line-height:1.25;}
 .mm-sb-tag b{font-weight:800;}
+.mm-sb-reroll{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(10,20,15,.62);color:#fff;display:grid;place-items:center;cursor:pointer;opacity:.92;transition:background .14s;z-index:3;}
+.mm-sb-reroll:hover:not(:disabled){background:var(--green,#0C7A46);}
+.mm-sb-reroll:disabled{opacity:.4;cursor:default;}
+.mm-sb-reroll svg{stroke:#fff;stroke-width:2;fill:none;}
+.mm-sb-busy{position:absolute;inset:0;background:rgba(10,20,15,.55);display:grid;place-items:center;z-index:2;}
+.mm-sb-spin{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;animation:mm-sb-rot .8s linear infinite;}
+@keyframes mm-sb-rot{to{transform:rotate(360deg)}}
 .mm-gen{margin:18px 0 0;background:var(--panel,#FDFBF4);border:1.5px solid transparent;border-radius:20px;padding:18px;box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 22px 48px -26px rgba(12,122,70,.5);}
 .mm-go{position:relative;overflow:hidden;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,#0C7A46,#15B165 55%,#1EA85C);color:#fff;border:0;border-radius:15px;padding:16px;font-family:Poppins,sans-serif;font-weight:800;font-size:16.5px;letter-spacing:-.01em;cursor:pointer;box-shadow:0 14px 30px -14px rgba(12,122,70,.7),inset 0 1px 0 rgba(255,255,255,.25);}
 .mm-go:disabled{filter:grayscale(.55) brightness(.9);opacity:.75;cursor:default;box-shadow:none;}
