@@ -549,17 +549,27 @@ export default function FilmStudio() {
       {seedBusy && !seeds && <p className="mm-sb-wait">{t("Building each scene's still — about a minute…")}</p>}
       {seeds && (
         <>
-          <div className="mm-sb-head"><Ico n="check" size={13} /> {t("This is exactly what will render — check each scene, re-roll any that's off, then Generate.")}</div>
-          <div className="mm-sb-grid">
+          <div className="mm-sb-head"><Ico n="check" size={13} /> {t("Swipe through your story — this is exactly what renders. Re-roll any scene that's off, then Generate.")}</div>
+          {/* A horizontal, swipeable FILMSTRIP (video-editor style): each scene = its still + what
+              happens + the words — compact vertically, so the page never doom-scrolls. */}
+          <div className="mm-sb-strip">
             {seeds.imgs.map((u, i) => {
+              const sc = seeds.treatment.scenes[i];
               const pk = seeds.propForScene[i];
               const pl = pk ? ((d.props || []).find((pp) => pp.key === pk)?.label || pk) : "";
               return (
-                <div className="mm-sb-cell" key={i}>
-                  {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={20} /></span>}
-                  {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
-                  {(seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={13} /></button>}
-                  <span className="mm-sb-tag"><b>{t("Scene {n}", { n: i + 1 })}</b>{pl ? <> · {t(pl)}</> : null}</span>
+                <div className="mm-sb-shot" key={i}>
+                  <div className="mm-sb-frame">
+                    {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={20} /></span>}
+                    {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
+                    <span className="mm-sb-num">{i + 1}</span>
+                    {(seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={13} /></button>}
+                  </div>
+                  <div className="mm-sb-desc">
+                    {sc?.visual && <span className="mm-sb-what">{sc.visual}</span>}
+                    {sc?.caption && <span className="mm-sb-words">“{sc.caption}”</span>}
+                    {pl && <span className="mm-sb-prop">{t(pl)}</span>}
+                  </div>
                 </div>
               );
             })}
@@ -1678,13 +1688,19 @@ const FS_STYLE = `
 .mm-sb-wait{font-size:12.5px;color:var(--ink2,#4A554E);margin:10px 2px 0;display:flex;align-items:center;gap:7px;}
 .mm-sb-head{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:var(--green,#0C7A46);margin:14px 2px 10px;line-height:1.3;}
 .mm-sb-head svg{stroke:currentColor;stroke-width:2.4;fill:none;flex:none;}
-.mm-sb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;}
-.mm-sb-cell{position:relative;border-radius:13px;overflow:hidden;background:#20302A;aspect-ratio:9/16;box-shadow:0 2px 6px rgba(20,32,26,.12);}
-.mm-sb-cell img{width:100%;height:100%;object-fit:cover;display:block;}
+/* Horizontal, swipeable FILMSTRIP — each scene's still + what-happens + words, like a video editor.
+   Compact vertically so it never turns the page into a doom-scroll. */
+.mm-sb-strip{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 12px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
+.mm-sb-shot{flex:0 0 auto;width:150px;scroll-snap-align:start;display:flex;flex-direction:column;gap:7px;}
+.mm-sb-frame{position:relative;border-radius:13px;overflow:hidden;background:#20302A;aspect-ratio:9/16;box-shadow:0 2px 8px rgba(20,32,26,.16);}
+.mm-sb-frame img{width:100%;height:100%;object-fit:cover;display:block;}
 .mm-sb-empty{position:absolute;inset:0;display:grid;place-items:center;color:#8A938B;}
 .mm-sb-empty svg{stroke:currentColor;stroke-width:1.8;fill:none;}
-.mm-sb-tag{position:absolute;left:0;right:0;bottom:0;padding:16px 8px 6px;font-size:10.5px;color:#fff;background:linear-gradient(0deg,rgba(10,20,15,.85),transparent);line-height:1.25;}
-.mm-sb-tag b{font-weight:800;}
+.mm-sb-num{position:absolute;left:7px;top:7px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:rgba(10,20,15,.66);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;}
+.mm-sb-desc{display:flex;flex-direction:column;gap:4px;padding:0 1px;}
+.mm-sb-what{font-size:11px;line-height:1.32;color:var(--ink2,#4A554E);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.mm-sb-words{font-size:11px;line-height:1.3;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.mm-sb-prop{align-self:flex-start;font-size:10px;font-weight:800;color:var(--green-d,#0A5E37);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:2px 8px;}
 .mm-sb-reroll{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(10,20,15,.62);color:#fff;display:grid;place-items:center;cursor:pointer;opacity:.92;transition:background .14s;z-index:3;}
 .mm-sb-reroll:hover:not(:disabled){background:var(--green,#0C7A46);}
 .mm-sb-reroll:disabled{opacity:.4;cursor:default;}
