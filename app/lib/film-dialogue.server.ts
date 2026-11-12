@@ -387,9 +387,13 @@ export async function previewFilmSceneFrame(opts: { template?: string; sceneVisu
 /** Cast an actor: a clean, reusable casting PORTRAIT of one character, locked once
  *  and reused as the face reference for every shot they appear in. This is the
  *  "cast member" primitive — the same move as a Runway Reference / Kling Element. */
-export async function renderActorPortrait(description: string): Promise<string | null> {
+export async function renderActorPortrait(description: string, style?: "cartoon" | "realistic"): Promise<string | null> {
   const desc = (description || "").trim().slice(0, 400);
-  const prompt = `A clean, photorealistic 3/4 casting-portrait headshot of ${desc}. One person only, natural soft studio lighting, plain neutral background, sharp focus on the face, looking just off camera, cinematic, photoreal. No readable text.`;
+  // Cartoon templates (Kids Cartoon / Kids TV) cast CARTOON characters, not realistic people — so the
+  // portrait is rendered in the same bright glossy 3D-animated style the scenes use.
+  const prompt = style === "cartoon"
+    ? `A bright, glossy 3D-animated CARTOON character portrait of ${desc}. Rounded friendly character design, big expressive eyes, soft candy colors, wholesome child-safe (G-rated) preschool-cartoon look; ONE character only, centered, simple plain background, no readable text.`
+    : `A clean, photorealistic 3/4 casting-portrait headshot of ${desc}. One person only, natural soft studio lighting, plain neutral background, sharp focus on the face, looking just off camera, cinematic, photoreal. No readable text.`;
   return renderCreativeSeed(prompt, "9:16");
 }
 

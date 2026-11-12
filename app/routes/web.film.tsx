@@ -29,7 +29,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const { LIVE_FILM_TEMPLATES, GENRES, PROPS } = await import("../lib/film-engine.server");
   const templates = LIVE_FILM_TEMPLATES.map((t) => ({
-    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger,
+    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger, cartoon: !!t.cartoon,
   }));
   const genres = Object.entries(GENRES).map(([key, g]) => ({ key, label: g.label }));
   // name = the label with its leading emoji stripped ("🐯 Tiger" -> "Tiger"); the picker shows a real
@@ -176,7 +176,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!castDesc) return json({ error: tr(lang, "Describe the character first."), castIndex });
     try {
       const { renderActorPortrait } = await import("../lib/film-dialogue.server");
-      const portraitUrl = await renderActorPortrait(castDesc);
+      const portraitUrl = await renderActorPortrait(castDesc, tmpl.cartoon ? "cartoon" : "realistic");
       if (!portraitUrl) return json({ error: tr(lang, "Couldn't cast that actor — tweak the description and try again."), castIndex });
       return json({ portraitUrl, castIndex });
     } catch (e) {
@@ -903,7 +903,7 @@ export default function FilmStudio() {
     if (!c || !c.desc.trim()) return;
     setCastingIndex(i);
     portraitFetcher.submit(
-      { intent: "previewFilmPortrait", castDesc: c.desc, castIndex: String(i) },
+      { intent: "previewFilmPortrait", castDesc: c.desc, castIndex: String(i), template },
       { method: "post" }
     );
   };
@@ -915,6 +915,13 @@ export default function FilmStudio() {
   const setCastVoice = (i: number, voiceId: string) => {
     setCast((prev) => prev.map((c, j) => (j === i ? { ...c, voiceId: voiceId || null } : c)));
   };
+  // Make the cast editable + buildable — rename, re-describe, add your own character, or remove one.
+  // This is how you "create" a cast member (a cartoon character for Kids Cartoon, an actor for a film):
+  // add one, describe it, then Cast a face (cartoon-styled for cartoon templates).
+  const setCastName = (i: number, name: string) => setCast((prev) => prev.map((c, j) => (j === i ? { ...c, name } : c)));
+  const setCastDesc = (i: number, desc: string) => setCast((prev) => prev.map((c, j) => (j === i ? { ...c, desc } : c)));
+  const addCastMember = () => setCast((prev) => (prev.length >= 8 ? prev : [...prev, { name: "", desc: "", faceUrl: null, voiceId: null }]));
+  const removeCastMember = (i: number) => setCast((prev) => prev.filter((_, j) => j !== i));
   // Hear an actor's voice — the real MiniMax sample (public/voice-samples/<id>.mp3).
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
   const playVoice = (voiceId: string | null) => {
@@ -1472,8 +1479,8 @@ export default function FilmStudio() {
                     </button>
                   )}
                   <div className="fs-actor-main">
-                    <b className="fs-actor-name">{c.name}</b>
-                    <span className="fs-actor-desc">{c.desc}</span>
+                    <input className="fs-actor-name fs-actor-name-in" value={c.name} onChange={(e) => setCastName(i, e.target.value)} placeholder={t("Character name")} maxLength={40} disabled={castingIndex !== null} aria-label={t("Character name")} />
+                    <textarea className="fs-actor-desc fs-actor-desc-in" value={c.desc} onChange={(e) => setCastDesc(i, e.target.value)} placeholder={tmpl?.cartoon ? t("Describe this cartoon character — look, colors, personality") : t("Describe this character — look, age, vibe")} rows={2} maxLength={400} disabled={castingIndex !== null} aria-label={t("Character description")} />
                     <div className="fs-actor-voice">
                       <select aria-label={t("Voice for {name}", { name: c.name })} value={c.voiceId || ""} disabled={castingIndex !== null} onChange={(e) => setCastVoice(i, e.target.value)}>
                         <option value="">{t("Pick a voice")}</option>
@@ -1483,6 +1490,7 @@ export default function FilmStudio() {
                     </div>
                     <div className="fs-actor-opts">
                       {c.faceUrl && <button type="button" className="fs-actor-recast" disabled={castingIndex !== null} onClick={() => makePortrait(i)}><Ico n="refresh" size={11} /> {t("Re-cast")}</button>}
+                      {cast.length > 1 && <button type="button" className="fs-actor-del" disabled={castingIndex !== null} onClick={() => removeCastMember(i)} title={t("Remove this character")}>✕ {t("Remove")}</button>}
                       {d.roster.length > 0 && (
                         <details className="fs-shot-own fs-actor-roster">
                           <summary><Ico n="presenter" size={13} /> {t("Pick a presenter")}</summary>
@@ -1521,6 +1529,9 @@ export default function FilmStudio() {
               );
             })}
           </div>
+          <button type="button" className="fs-cast-add" onClick={addCastMember} disabled={cast.length >= 8 || castingIndex !== null}>
+            <span aria-hidden="true">＋</span> {tmpl?.cartoon ? t("Add a cartoon character") : t("Add a character")}
+          </button>
           {portraitFetcher.data?.error && <p className="fs-err">{portraitFetcher.data.error}</p>}
         </div>
         );
@@ -1830,6 +1841,21 @@ const FS_STYLE = `
 .fs-actor-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:8px;}
 .fs-actor-name{font-size:15px;color:var(--ink,#14201A);letter-spacing:-.01em;}
 .fs-actor-desc{font-size:12px;line-height:1.45;color:var(--ink2,#4A554E);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+/* editable cast (rename / re-describe / add / remove your own characters) */
+.fs-actor-name-in{width:100%;box-sizing:border-box;border:1.5px solid transparent;border-radius:8px;background:transparent;font-family:Poppins,sans-serif;font-weight:800;font-size:14.5px;color:var(--ink,#14201A);padding:4px 7px;transition:background .12s,border-color .12s;}
+.fs-actor-name-in:hover{background:rgba(12,122,70,.05);}
+.fs-actor-name-in:focus{outline:0;background:#fff;border-color:var(--green2,#1EA85C);}
+.fs-actor-name-in::placeholder{color:var(--ink3,#9AA39B);font-weight:700;}
+.fs-actor-desc-in{width:100%;box-sizing:border-box;border:1.5px solid transparent;border-radius:8px;background:transparent;resize:none;font-family:Poppins,sans-serif;font-size:12px;line-height:1.4;color:var(--ink2,#4A554E);padding:4px 7px;transition:background .12s,border-color .12s;}
+.fs-actor-desc-in:hover{background:rgba(12,122,70,.05);}
+.fs-actor-desc-in:focus{outline:0;background:#fff;border-color:var(--green2,#1EA85C);}
+.fs-actor-desc-in::placeholder{color:var(--ink3,#9AA39B);}
+.fs-actor-del{border:0;background:transparent;color:#B0564B;font-weight:800;font-size:11px;cursor:pointer;padding:5px 9px;border-radius:7px;font-family:Poppins,sans-serif;}
+.fs-actor-del:hover:not(:disabled){background:#FBECEA;}
+.fs-cast-add{display:inline-flex;align-items:center;gap:8px;margin:13px 0 2px;border:1.5px dashed var(--green,#0C7A46);background:rgba(12,122,70,.05);color:var(--green,#0C7A46);border-radius:13px;padding:12px 17px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;cursor:pointer;transition:background .14s;}
+.fs-cast-add:hover:not(:disabled){background:rgba(12,122,70,.1);}
+.fs-cast-add:disabled{opacity:.5;cursor:default;}
+.fs-cast-add span{font-size:17px;line-height:1;font-weight:700;}
 .fs-actor-voice{display:flex;gap:7px;align-items:stretch;}
 .fs-actor-voice select{flex:1 1 auto;min-width:0;box-sizing:border-box;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;padding:8px 11px;font-size:12.5px;font-family:inherit;color:var(--ink,#14201A);background:#fff;cursor:pointer;}
 .fs-actor-voice select:focus{outline:none;border-color:var(--green,#0C7A46);}
