@@ -670,7 +670,7 @@ export default function FilmStudio() {
     // makeFn (Music Video) = the ONE button that writes the song AND builds the scenes (chained).
     const strip = seeds?.treatment || (autofill ? treatment : null);
     const hasStills = !!seeds;
-    const busy = makeFn ? (writing || seedBusy) : seedBusy;
+    const busy = makeFn ? (writing || seedBusy || chainToScenes) : seedBusy;
     return (
     <div className="mm-storyboard">
       <button type="button" className="mm-preview-btn" onClick={makeFn || previewScenes} disabled={busy || !d.hasPlan}>
