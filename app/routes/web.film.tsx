@@ -200,11 +200,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (approvedRaw) { try { const tObj = JSON.parse(approvedRaw); if (tObj && Array.isArray(tObj.scenes) && tObj.scenes.length) approvedTreatment = tObj; } catch { /* ignore malformed */ } }
     const scenes = clampScenes(parseInt((form.get("filmScenes") as string) || "", 10) || tmpl.defaultScenes);
     try {
-      const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-      const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+      if (tmpl.lipSyncSinger) {
+        // Music Video engine: artist hero + props.
+        const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
+        if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
+        return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef });
+      }
+      // generateFilm engine (Kids Music Video / narrated story formats) — cast-locked scene seeds.
+      const { previewFilmSceneSeeds } = await import("../lib/film-engine.server");
+      const r = await previewFilmSceneSeeds({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, treatment: approvedTreatment as unknown as Parameters<typeof previewFilmSceneSeeds>[0]["treatment"], product: tmpl.needsProduct ? { title: productTitle, imageUrl: productImageUrl, description: productDescription } : undefined });
       const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
       if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
-      return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef });
+      return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: {}, castRef: r.castRef });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't preview the scenes — try again."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
     }
@@ -214,14 +223,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // missing / an uninvited character). Fast — just that one still, not the whole batch.
   if (intent === "rerollFilmScene") {
     const artistRef = ((form.get("artistRef") as string) || "").trim().slice(0, 2000);
+    const castRef = ((form.get("castRef") as string) || "").trim().slice(0, 2000);
     const sceneVisual = ((form.get("sceneVisual") as string) || "").trim().slice(0, 1500);
     const sceneIndex = parseInt((form.get("sceneIndex") as string) || "0", 10) || 0;
     const propKey = ((form.get("propKey") as string) || "").trim() || undefined;
     const genre = ((form.get("filmGenre") as string) || "").trim();
-    if (!artistRef || !sceneVisual) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
+    if (!sceneVisual) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
     try {
-      const { rerollMusicVideoScene } = await import("../lib/music-video-pipeline.server");
-      const img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre });
+      let img: string | null = null;
+      if (tmpl.lipSyncSinger) {
+        if (!artistRef) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
+        const { rerollMusicVideoScene } = await import("../lib/music-video-pipeline.server");
+        img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre });
+      } else {
+        const { rerollFilmSceneSeed } = await import("../lib/film-engine.server");
+        img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined });
+      }
       if (!img) return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex });
       return json({ ok: true, sceneIndex, img });
     } catch (e) {
@@ -351,9 +368,9 @@ export default function FilmStudio() {
   const treatmentFetcher = useFetcher<{ treatment?: Treatment; error?: string }>();
   // Music Video STORYBOARD: pre-seed every scene's still (props placed) BEFORE paying for the video,
   // so the owner checks accuracy + the prop per scene and the render uses those EXACT stills (no surprise).
-  const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; treatment?: Treatment; propForScene?: Record<number, string>; artistRef?: string | null; error?: string }>();
+  const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; treatment?: Treatment; propForScene?: Record<number, string>; artistRef?: string | null; castRef?: string | null; error?: string }>();
   const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; error?: string }>();
-  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null } | null>(null);
+  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null } | null>(null);
   const [rerollingScene, setRerollingScene] = useState<number | null>(null);
   // Storyboard (dialogue): per-scene approved frames + which scene is rendering now.
   const previewFrameFetcher = useFetcher<{ frameUrl?: string; sceneIndex?: number; error?: string }>();
@@ -496,14 +513,14 @@ export default function FilmStudio() {
   // and the hero lets a single scene be re-rolled without changing the artist.
   useEffect(() => {
     const sd = sceneSeedsFetcher.data;
-    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null });
+    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null, castRef: sd.castRef || null });
   }, [sceneSeedsFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Re-roll ONE storyboard scene (reusing the hero) when it came back wrong; swap just that still.
+  // Re-roll ONE storyboard scene (reusing the hero / cast ref) when it came back wrong; swap that still.
   const rerollScene = (i: number) => {
-    if (!seeds?.artistRef) return;
+    if (!seeds || (!seeds.artistRef && !seeds.castRef)) return;
     setRerollingScene(i);
     rerollSceneFetcher.submit(
-      { intent: "rerollFilmScene", template, filmGenre, artistRef: seeds.artistRef, sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), ...(seeds.propForScene[i] ? { propKey: seeds.propForScene[i] } : {}) },
+      { intent: "rerollFilmScene", template, filmGenre, artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), ...(seeds.propForScene[i] ? { propKey: seeds.propForScene[i] } : {}) },
       { method: "post" }
     );
   };
@@ -519,6 +536,38 @@ export default function FilmStudio() {
   }, [rerollSceneFetcher.state, rerollSceneFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Any setup change invalidates the preview — the stills would no longer match the new settings.
   useEffect(() => { setSeeds(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The storyboard: ONE collapsed button → a grid of the actual scene stills (each re-rollable), so
+  // you approve what will render before paying. Reused by BOTH the Music Video card-builder and the
+  // film flow — one button, no extra long section, so it never turns a page into a doom-scroll.
+  const storyboard = () => (
+    <div className="mm-storyboard">
+      <button type="button" className="mm-preview-btn" onClick={previewScenes} disabled={seedBusy || !d.hasPlan}>
+        {seedBusy ? <>… {t("Building the scenes")}</> : seeds ? <><Ico n="refresh" size={13} /> {t("Re-roll the scenes")}</> : <><Ico n="film" size={13} /> {t("Preview the scenes — free")}</>}
+      </button>
+      {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
+      {seedBusy && !seeds && <p className="mm-sb-wait">{t("Building each scene's still — about a minute…")}</p>}
+      {seeds && (
+        <>
+          <div className="mm-sb-head"><Ico n="check" size={13} /> {t("This is exactly what will render — check each scene, re-roll any that's off, then Generate.")}</div>
+          <div className="mm-sb-grid">
+            {seeds.imgs.map((u, i) => {
+              const pk = seeds.propForScene[i];
+              const pl = pk ? ((d.props || []).find((pp) => pp.key === pk)?.label || pk) : "";
+              return (
+                <div className="mm-sb-cell" key={i}>
+                  {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={20} /></span>}
+                  {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
+                  {(seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={13} /></button>}
+                  <span className="mm-sb-tag"><b>{t("Scene {n}", { n: i + 1 })}</b>{pl ? <> · {t(pl)}</> : null}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
   const editCaption = (i: number, v: string) => {
     if (!treatment) return;
     setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, caption: v } : s)) });
@@ -862,34 +911,8 @@ export default function FilmStudio() {
             )}
           </div>
 
-          {/* STORYBOARD — pre-seed every scene (with its prop) so you approve the ACTUAL stills before
-              paying; the render then uses these EXACT images, so there's no 40-minute surprise. */}
-          <div className="mm-storyboard">
-            <button type="button" className="mm-preview-btn" onClick={previewScenes} disabled={seedBusy || !d.hasPlan}>
-              {seedBusy ? <>… {t("Building the scenes")}</> : seeds ? <><Ico n="refresh" size={13} /> {t("Re-roll the scenes")}</> : <><Ico n="film" size={13} /> {t("Preview the scenes — free")}</>}
-            </button>
-            {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
-            {seedBusy && !seeds && <p className="mm-sb-wait">{t("Building each scene's still with your props — about a minute…")}</p>}
-            {seeds && (
-              <>
-                <div className="mm-sb-head"><Ico n="check" size={13} /> {t("This is exactly what will render — check the scenes + props, then Generate.")}</div>
-                <div className="mm-sb-grid">
-                  {seeds.imgs.map((u, i) => {
-                    const pk = seeds.propForScene[i];
-                    const pl = pk ? ((d.props || []).find((pp) => pp.key === pk)?.label || pk) : "";
-                    return (
-                      <div className="mm-sb-cell" key={i}>
-                        {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={20} /></span>}
-                        {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
-                        {seeds.artistRef && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={13} /></button>}
-                        <span className="mm-sb-tag"><b>{t("Scene {n}", { n: i + 1 })}</b>{pl ? <> · {t(pl)}</> : null}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
+          {/* STORYBOARD — pre-seed + re-roll (one collapsed button → grid; shared helper above). */}
+          {storyboard()}
 
           {/* generate — the one button */}
           <div className="mm-gen">
@@ -1196,6 +1219,13 @@ export default function FilmStudio() {
         );
       })()}
 
+      {/* STORYBOARD for the sung / narrated film formats (Kids Music Video, etc.) — the dialogue
+          films already have their own per-scene approval, and the product skit doesn't need it. ONE
+          collapsed button → grid, right before Generate, so the page stays short. */}
+      {!isStoryboard && !tmpl?.needsProduct && (
+        <div className="fs-card"><div className="fs-lbl"><Ico n="film" size={16} /> {t("See your scenes")} <span className="fs-free">{t("free")}</span></div>{storyboard()}</div>
+      )}
+
       {/* Step 3 — generate (the only paid step) */}
       <div className="fs-card fs-go-card">
         <div className="fs-lbl"><span className="fs-n">3</span> {t("Generate")}</div>
@@ -1249,7 +1279,8 @@ export default function FilmStudio() {
           {tmpl?.needsProduct && <input type="hidden" name="filmProductTitle" value={prodTitle} />}
           {tmpl?.needsProduct && <input type="hidden" name="filmProductImageUrl" value={prodImage} />}
           {tmpl?.needsProduct && <input type="hidden" name="filmProductDescription" value={prodDesc} />}
-          {treatment && <input type="hidden" name="approvedTreatment" value={JSON.stringify(treatment)} />}
+          {(seeds?.treatment || treatment) && <input type="hidden" name="approvedTreatment" value={JSON.stringify(seeds?.treatment || treatment)} />}
+          {!isStoryboard && seeds && <input type="hidden" name="approvedSceneImgs" value={JSON.stringify(seeds.imgs)} />}
           {isStoryboard && frames.some(Boolean) && <input type="hidden" name="approvedFrames" value={JSON.stringify(frames)} />}
           {isStoryboard && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId })))} />}
           <button type="submit" className="fs-go" disabled={!canGo}>

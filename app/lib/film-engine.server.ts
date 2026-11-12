@@ -567,6 +567,77 @@ async function stillToClip(stillPath: string, outPath: string): Promise<boolean>
   } catch { return false; }
 }
 
+/** FREE pre-seed PREVIEW for the generateFilm engine (sung / narrated formats — Kids Music Video and
+ *  the story genres): render each scene's SEED still (cast-locked, same as the render) WITHOUT the
+ *  video, so the owner checks accuracy + fixes a bad scene before paying. Mirrors generateFilm's seed
+ *  phase (one cast sheet → per-scene renderStyledSeed) — keep in sync. Returns the stills + treatment
+ *  + the cast ref (so a single scene can be re-rolled against the same cast). */
+export async function previewFilmSceneSeeds(opts: {
+  shopId: string; template?: string; topic?: string; sceneCount?: number; treatment?: FilmTreatment;
+  product?: { title?: string; imageUrl?: string; description?: string };
+}): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; castRef: string | null }> {
+  const tmpl = filmTemplate(opts.template);
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  const abs = (u: string | null | undefined): string | null => (u ? (u.startsWith("http") ? u : `${base}${u}`) : null);
+
+  let treatment: FilmTreatment = opts.treatment && opts.treatment.scenes?.length
+    ? opts.treatment
+    : await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, productTitle: opts.product?.title, productDescription: opts.product?.description });
+  treatment.scenes = treatment.scenes.slice(0, clampScenes(tmpl, opts.sceneCount ?? treatment.scenes.length));
+
+  const castBible = treatment.cast && treatment.cast.length ? `Recurring cast, keep EVERY character identical in every scene: ${treatment.cast.join("; ")}.` : "";
+  const safePhrase = tmpl.childSafe ? "Wholesome, child-safe, G-rated, bright and friendly. " : "";
+  const product = opts.product && opts.product.imageUrl ? opts.product : undefined;
+  const productAbs = product?.imageUrl ? abs(product.imageUrl) : undefined;
+  const productLine = productAbs && product ? ` The scene features this exact product: ${(product.title || "the product").slice(0, 80)}.${PRODUCT_TRUTH}` : "";
+
+  // One cast sheet, conditioned per scene (character-locked templates without a product) — same seed
+  // path the render uses, so the previewed stills match what will render.
+  let castRefAbs: string | undefined;
+  if (tmpl.referenceSeed && castBible && !productAbs) {
+    const castRef = await renderCreativeSeed(`${safePhrase}${tmpl.sceneHint}. A group portrait of the recurring cast standing together — full body, clear consistent faces, plain neutral background, IN THE EXACT SAME ART STYLE as the rest of the film. The cast: ${castBible}`, "9:16").catch(() => null);
+    if (castRef) castRefAbs = abs(castRef) || undefined;
+  }
+  const refAbs = productAbs || castRefAbs;
+
+  const N = treatment.scenes.length;
+  const sceneImgs: (string | null)[] = new Array(N).fill(null);
+  let next = 0;
+  const worker = async () => {
+    while (next < N) {
+      const i = next++;
+      const scene = treatment.scenes[i];
+      const seedPrompt = `${safePhrase}${scene.visual}. ${castBible}${productLine} ${tmpl.sceneHint}. Richly detailed, high quality.`;
+      let seedUrl: string | null = null;
+      for (let a = 0; a < 2 && !seedUrl; a++) {
+        try { seedUrl = refAbs ? ((await renderStyledSeed(seedPrompt, refAbs, "9:16")) || (await renderCreativeSeed(seedPrompt, "9:16"))) : await renderCreativeSeed(seedPrompt, "9:16"); } catch { /* retry once */ }
+      }
+      sceneImgs[i] = abs(seedUrl);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, N) }, () => worker()));
+
+  return { treatment, sceneImgs, castRef: castRefAbs || null };
+}
+
+/** Re-roll ONE generateFilm scene seed (reusing the cast ref so characters stay consistent) — the
+ *  story-engine counterpart of rerollMusicVideoScene. */
+export async function rerollFilmSceneSeed(opts: {
+  template?: string; sceneVisual: string; castRef?: string;
+}): Promise<string | null> {
+  const tmpl = filmTemplate(opts.template);
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  const abs = (u: string | null | undefined): string | null => (u ? (u.startsWith("http") ? u : `${base}${u}`) : null);
+  const safePhrase = tmpl.childSafe ? "Wholesome, child-safe, G-rated, bright and friendly. " : "";
+  const refAbs = opts.castRef ? abs(opts.castRef) : null;
+  const seedPrompt = `${safePhrase}${opts.sceneVisual}. ${tmpl.sceneHint}. Richly detailed, high quality.`;
+  let seedUrl: string | null = null;
+  for (let a = 0; a < 2 && !seedUrl; a++) {
+    try { seedUrl = refAbs ? ((await renderStyledSeed(seedPrompt, refAbs, "9:16")) || (await renderCreativeSeed(seedPrompt, "9:16"))) : await renderCreativeSeed(seedPrompt, "9:16"); } catch { /* retry once */ }
+  }
+  return abs(seedUrl);
+}
+
 // ---- The engine -------------------------------------------------------------
 export async function generateFilm(opts: {
   shopId: string;
@@ -579,6 +650,8 @@ export async function generateFilm(opts: {
   product?: { title?: string; imageUrl?: string; description?: string };
   section?: string;
   jobId?: string;
+  /** Owner PREVIEWED + approved these per-scene seed stills — render them, don't re-seed (no surprise). */
+  approvedSceneImgs?: (string | null)[];
   resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckMusic?: string; ckVo?: string };
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template);
@@ -639,7 +712,8 @@ export async function generateFilm(opts: {
     const outPath = path.join(RENDERS(), `film-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     const seedPrompt = `${safePhrase}${scene.visual}. ${castBible}${productLine} ${tmpl.sceneHint}. Richly detailed, high quality.`;
 
-    let seedUrl: string | null = null;
+    // An owner-approved storyboard still wins (render EXACTLY what was previewed); else seed fresh.
+    let seedUrl: string | null = opts.approvedSceneImgs?.[i] ?? null;
     for (let a = 0; a < 2 && !seedUrl; a++) {
       try {
         seedUrl = refAbs
@@ -660,8 +734,8 @@ export async function generateFilm(opts: {
           made = fs.existsSync(outPath) && ffprobeDuration(outPath) > 1;
         } catch { if (a < 1) await new Promise((r) => setTimeout(r, 1500)); }
       }
-      if (!made && seedUrl && seedUrl.startsWith("/renders/")) {
-        const stillDisk = path.join(RENDERS(), path.basename(seedUrl));
+      if (!made && seedUrl) {
+        const stillDisk = path.join(RENDERS(), path.basename(seedUrl.split("?")[0]));
         if (fs.existsSync(stillDisk)) made = await stillToClip(stillDisk, outPath);
       }
     }

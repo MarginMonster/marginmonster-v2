@@ -868,6 +868,7 @@ async function runJob(
             product: payload.filmProductImageUrl ? { title: payload.filmProductTitle as string | undefined, imageUrl: payload.filmProductImageUrl as string, description: payload.filmProductDescription as string | undefined } : undefined,
             section: (payload.section as string) || "creator",
             jobId: payload.__jobId as string | undefined,
+            approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined, // storyboard-approved stills
             resume: {
               // Merchant-approved treatment from the free preview wins on the first
               // run (checkpoint wins on resume) — rendered verbatim, no re-write.
