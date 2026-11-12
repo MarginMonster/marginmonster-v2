@@ -183,6 +183,112 @@ async function sceneShowsProp(imgUrl: string, noun: string): Promise<boolean> {
   } catch { return true; }
 }
 
+/** Build the per-scene SEED stills (the storyboard): the hero portrait → a locked single-animal
+ *  reference + an artist-anchor per prop → one edited, vision-gated still per scene. SHARED by
+ *  generateMusicVideo and the FREE pre-seed PREVIEW, so what the owner approves in the storyboard is
+ *  EXACTLY what the video renders from — no surprise after a long render. Returns absolute scene-image
+ *  URLs (a null for a scene that totally failed; the caller falls back on the hero). */
+async function buildMusicVideoSeeds(p: {
+  genre: string;
+  props?: string[];
+  scenes: FilmTreatment["scenes"];
+  propForScene: Record<number, string>;
+  artistBible: string;
+  jobId?: string;
+  resume?: Record<string, string | undefined>;
+  base: string;
+}): Promise<{ artistRef: string | null; sceneImgs: (string | null)[] }> {
+  const g = GENRES[genreOrDefault(p.genre)];
+  const propList = (p.props || []).filter((k) => PROPS[k]);
+  const propNoun = (k: string): string => (PROPS[k]?.label || k).replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || k;
+  const resume = p.resume || {};
+  const ckpt = async (patch: Record<string, unknown>) => { if (p.jobId) await checkpointJob(p.jobId, patch); };
+  const abs = (u: string | null | undefined): string | null => (u ? (u.startsWith("http") ? u : `${p.base}${u}`) : null);
+  const scenes = p.scenes;
+  const propForScene = p.propForScene;
+
+  // ARTIST hero — ONE realistic portrait that locks the look (face + wardrobe) for the WHOLE video.
+  let artistRef = abs(resume.ckArtist);
+  if (!artistRef) {
+    const ref = await renderCreativeSeed(`A realistic ${g.label} music-video shot of the artist, who ${g.perform}, to camera: ${p.artistBible}. ${g.look}. Clear sharp face with a natural, genuine expression that fits the song's emotion — NOT angry, snarling or aggressive. ${REALISM}`, "9:16");
+    if (ref) { await ckpt({ ckArtist: ref }); artistRef = abs(ref); }
+  }
+
+  // PROP references + artist-anchors — the robust "props must actually show" path (single locked
+  // animal per prop + an artist+prop anchor; every prompt says this is the ONLY animal, no dog).
+  const propRefs: Record<string, string> = {};
+  const propAnchors: Record<string, string> = {};
+  if (artistRef) {
+    for (const k of propList) {
+      const noun = propNoun(k);
+      let pr = abs(resume[`ckPropRef_${k}`]);
+      if (!pr) { const r = await renderCreativeSeed(`A single real ${noun} — exactly ONE ${noun}, full body, photorealistic, plain neutral background. The only subject is this one ${noun}. ${REALISM}`, "9:16"); pr = abs(r); if (pr) await ckpt({ [`ckPropRef_${k}`]: pr }); }
+      if (pr) propRefs[k] = pr;
+      const cached = abs(resume[`ckProp_${k}`]);
+      if (cached) { propAnchors[k] = cached; continue; }
+      const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${PROPS[k].phrase} — a SINGLE ${noun}, only one. The ONLY animal in the image is this one ${noun}: do NOT include a dog or any other animal. Full body, neutral studio backdrop. ${REALISM}`);
+      propAnchors[k] = a ? (abs(a) || artistRef) : artistRef;
+      await ckpt({ [`ckProp_${k}`]: propAnchors[k] });
+    }
+  }
+
+  // PER-SCENE stills — edit the hero (or the artist+prop anchor) into each setting; VISION-GATE props
+  // (if the picked prop didn't survive the edit, force it in with a hard-locked [artist, prop] compose).
+  const sceneImgs = await mapLimit(scenes, 3, async (s, i) => {
+    const shot = SHOTLIST[i % SHOTLIST.length];
+    const propKey = propForScene[i];
+    const noun = propKey ? propNoun(propKey) : "";
+    const srcRef = (propKey && propAnchors[propKey]) || artistRef;
+    const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, the ONLY animal in frame; do NOT add more ${noun}, a dog, or any other animal.` : "";
+    const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
+    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause}${performNote} ${g.look}. ${REALISM} ${ONE_PERSON}`;
+    let img = srcRef
+      ? await editSubjectIntoScene(srcRef, prompt)
+      : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, "9:16");
+    if (propKey && artistRef && propRefs[propKey]) {
+      const cur = img ? abs(img) : null;
+      if (!cur || !(await sceneShowsProp(cur, noun))) {
+        const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${s.visual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, the ONLY animal in frame, no dog or other animals. ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRefs[propKey]], "9:16");
+        if (forced) img = forced;
+      }
+    }
+    return img ? abs(img) : srcRef;
+  });
+
+  return { artistRef, sceneImgs };
+}
+
+/** FREE pre-seed PREVIEW: generate the storyboard stills (one per scene, props placed) WITHOUT
+ *  rendering the ~40-minute video, so the owner can check accuracy + confirm the prop is in each
+ *  scene BEFORE committing (the "limit the surprise" ask). The approved stills ride back into
+ *  generateMusicVideo as `approvedSceneImgs` so it renders EXACTLY what was previewed. */
+export async function previewMusicVideoScenes(opts: {
+  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; treatment?: FilmTreatment;
+}): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; propForScene: Record<number, string> }> {
+  const tmpl = filmTemplate("musicvideo");
+  const genre = genreOrDefault(opts.genre);
+  const g = GENRES[genre];
+  const N = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, opts.sceneCount ?? tmpl.defaultScenes));
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  const propList = (opts.props || []).filter((k) => PROPS[k]);
+
+  let treatment: FilmTreatment = opts.treatment && opts.treatment.scenes?.length
+    ? opts.treatment
+    : await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, genre });
+  treatment.scenes = treatment.scenes.slice(0, N);
+  const scenes = treatment.scenes;
+
+  const propForScene: Record<number, string> = {};
+  if (propList.length) {
+    const propScenes = scenes.map((_, i) => i).filter((i) => { const sh = SHOTLIST[i % SHOTLIST.length]; return sh.role === "perform" && sh.propOk; });
+    propScenes.forEach((sceneI, k) => { propForScene[sceneI] = propList[k % propList.length]; });
+  }
+  const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
+
+  const { sceneImgs } = await buildMusicVideoSeeds({ genre, props: opts.props, scenes, propForScene, artistBible, resume: {}, base });
+  return { treatment, sceneImgs, propForScene };
+}
+
 export async function generateMusicVideo(opts: {
   shopId: string;
   topic?: string;
@@ -195,6 +301,9 @@ export async function generateMusicVideo(opts: {
   songUrl?: string;
   /** PROPS (keys from film-engine PROPS) to weave into the scenes — tiger, luxury car, chains… */
   props?: string[];
+  /** Owner PREVIEWED + approved these exact per-scene stills — render them, don't re-seed (no surprise).
+   *  Index-aligned with scenes; a null entry means that scene fell back and should seed fresh. */
+  approvedSceneImgs?: (string | null)[];
   resume?: { ckTreatment?: string; ckSong?: string; ckArtist?: string; [k: string]: string | undefined };
 }): Promise<string> {
   const tmpl = filmTemplate("musicvideo");
@@ -261,65 +370,12 @@ export async function generateMusicVideo(opts: {
   // scene falls back to a STILL (the "no video, just still images" bug). So D snaps to 5 or 10.
   const D = (songDur / N) >= 7.5 ? 10 : 5;
 
-  // 3) ARTIST hero — ONE realistic portrait that locks the look (face + wardrobe) for the WHOLE
-  //    video. Every scene is an EDIT of THIS exact image, so the artist can never drift.
-  let artistRef = abs(resume.ckArtist);
-  if (!artistRef) {
-    const ref = await renderCreativeSeed(`A realistic ${g.label} music-video shot of the artist, who ${g.perform}, to camera: ${artistBible}. ${g.look}. Clear sharp face with a natural, genuine expression that fits the song's emotion — NOT angry, snarling or aggressive. ${REALISM}`, "9:16");
-    if (ref) { await ckpt({ ckArtist: ref }); artistRef = abs(ref); }
-  }
-
-  // 3b) PROP references — the ROBUST "props must actually show" path. Two things go wrong otherwise:
-  //     (a) the treatment writes its OWN animals (a country song keeps adding a "loyal dog") that
-  //     crowd the picked prop out of frame; (b) an edit occasionally just drops it. So build BOTH a
-  //     standalone single-animal REFERENCE per prop (locks ONE specific tiger / horse, used to force
-  //     it back in if a scene edit loses it) AND an artist+prop ANCHOR to seed scenes from — every
-  //     prompt saying this is the ONLY animal, no dog. Each falls back to the plain hero on failure.
-  const propRefs: Record<string, string> = {};
-  const propAnchors: Record<string, string> = {};
-  if (artistRef) {
-    for (const k of propList) {
-      const noun = propNoun(k);
-      let pr = abs(resume[`ckPropRef_${k}`]);
-      if (!pr) { const r = await renderCreativeSeed(`A single real ${noun} — exactly ONE ${noun}, full body, photorealistic, plain neutral background. The only subject is this one ${noun}. ${REALISM}`, "9:16"); pr = abs(r); if (pr) await ckpt({ [`ckPropRef_${k}`]: pr }); }
-      if (pr) propRefs[k] = pr;
-      const cached = abs(resume[`ckProp_${k}`]);
-      if (cached) { propAnchors[k] = cached; continue; }
-      const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${PROPS[k].phrase} — a SINGLE ${noun}, only one. The ONLY animal in the image is this one ${noun}: do NOT include a dog or any other animal. Full body, neutral studio backdrop. ${REALISM}`);
-      propAnchors[k] = a ? (abs(a) || artistRef) : artistRef;
-      await ckpt({ [`ckProp_${k}`]: propAnchors[k] });
-    }
-  }
-
-  // 4) PER-SCENE images — EDIT the hero (or the artist+prop anchor) into each NEW setting
-  //    (nano-banana-pro @2K: preserves the face + reads photoreal). For PROP scenes we then
-  //    VISION-GATE the result: if the picked prop didn't survive the edit (the treatment's dog
-  //    won, or it got dropped), force it in with a HARD-LOCKED multi-reference compose so the prop
-  //    always lands. Prop-free scenes seed from the plain artist hero, unchanged.
-  const sceneImgs = await mapLimit(scenes, 3, async (s, i) => {
-    const shot = SHOTLIST[i % SHOTLIST.length];
-    const propKey = propForScene[i];
-    const noun = propKey ? propNoun(propKey) : "";
-    const srcRef = (propKey && propAnchors[propKey]) || artistRef;
-    const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, the ONLY animal in frame; do NOT add more ${noun}, a dog, or any other animal.` : "";
-    // Match the facial expression to the SONG's emotion so the i2v doesn't amplify a wrong one (a
-    // warm country song was rendering a snarling, angry face). Only perform shots face camera.
-    const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
-    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause}${performNote} ${g.look}. ${REALISM} ${ONE_PERSON}`;
-    let img = srcRef
-      ? await editSubjectIntoScene(srcRef, prompt)
-      : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, "9:16");
-    // VISION GATE (prop scenes only): confirm the prop is actually in the shot; if not, force it in
-    // with a hard-locked compose off [artist, prop] refs so a dropped/crowded-out prop still lands.
-    if (propKey && artistRef && propRefs[propKey]) {
-      const cur = img ? abs(img) : null;
-      if (!cur || !(await sceneShowsProp(cur, noun))) {
-        const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${s.visual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, the ONLY animal in frame, no dog or other animals. ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRefs[propKey]], "9:16");
-        if (forced) img = forced;
-      }
-    }
-    return img ? abs(img) : srcRef; // same artist (+ its prop) reference if everything fails
-  });
+  // 3+4) SCENE SEEDS — the storyboard stills. If the owner PREVIEWED + approved them, render those
+  //      EXACT stills (what you saw IS what renders — no surprise); otherwise build them now via the
+  //      SHARED seed path the preview uses (hero + prop anchors + vision-gated per-scene edits).
+  const sceneImgs = opts.approvedSceneImgs && opts.approvedSceneImgs.length === N
+    ? opts.approvedSceneImgs.map((u) => abs(u))
+    : (await buildMusicVideoSeeds({ genre, props: opts.props, scenes, propForScene, artistBible, jobId, resume, base })).sceneImgs;
 
   // 5) song SEGMENTS (local mp3 + hosted url for the lip-sync model to drive the mouth to).
   const segs: Array<{ localPath: string; url: string }> = [];
@@ -379,7 +435,7 @@ export async function generateMusicVideo(opts: {
   const good = clips.filter((c): c is string => !!c);
   if (!good.length) {
     const nullImgs = sceneImgs.filter((x) => !x).length;
-    throw new Error(`[musicvideo] every scene failed to render (artistRef=${artistRef ? "ok" : "NULL"}, nullSceneImgs=${nullImgs}/${N}, fal=${falEnabled() ? "on" : "off"})`);
+    throw new Error(`[musicvideo] every scene failed to render (nullSceneImgs=${nullImgs}/${N}, approved=${opts.approvedSceneImgs ? "yes" : "no"}, fal=${falEnabled() ? "on" : "off"})`);
   }
 
   // 7) ASSEMBLE — hard-cut concat keeping audio → the full song under the performance.

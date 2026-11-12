@@ -186,6 +186,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
+  // FREE — PRE-SEED the Music Video: generate every scene's STILL (props placed) so the owner can
+  // check accuracy + confirm the prop lands per scene BEFORE paying for the ~40-min render. The
+  // approved stills ride back into the render as approvedSceneImgs, so what you see IS what renders
+  // (the "limit the surprise" ask). No token spend here — just the seed images.
+  if (intent === "previewFilmScenes") {
+    const genre = ((form.get("filmGenre") as string) || "").trim();
+    let filmProps: string[] | undefined;
+    const propsRaw = ((form.get("filmProps") as string) || "").trim();
+    if (propsRaw) { try { const p = JSON.parse(propsRaw); if (Array.isArray(p)) filmProps = p.filter((x) => typeof x === "string").slice(0, 12); } catch { /* ignore malformed */ } }
+    let approvedTreatment: Treatment | undefined;
+    const approvedRaw = ((form.get("approvedTreatment") as string) || "").trim();
+    if (approvedRaw) { try { const tObj = JSON.parse(approvedRaw); if (tObj && Array.isArray(tObj.scenes) && tObj.scenes.length) approvedTreatment = tObj; } catch { /* ignore malformed */ } }
+    const scenes = clampScenes(parseInt((form.get("filmScenes") as string) || "", 10) || tmpl.defaultScenes);
+    try {
+      const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
+      const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+      const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
+      if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
+      return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene });
+    } catch (e) {
+      return json({ error: tr(lang, "Couldn't preview the scenes — try again."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+    }
+  }
+
   // PAID — enqueue the render. Charge by the ACTUAL scene count (the approved
   // treatment's length if one was approved, else the slider), so the quote the
   // merchant saw == the debit. The queue's refundPrepaidOnce returns chargedTokens
@@ -237,6 +261,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let filmProps: string[] | undefined;
     const propsRaw = ((form.get("filmProps") as string) || "").trim();
     if (propsRaw) { try { const p = JSON.parse(propsRaw); if (Array.isArray(p)) filmProps = p.filter((x) => typeof x === "string").slice(0, 12); } catch { /* ignore malformed */ } }
+    // Pre-approved per-scene STILLS (Music Video storyboard) — render these EXACT images, no re-seed.
+    // Keep positions (a null = that scene seeds fresh), so the index stays aligned with the scenes.
+    let approvedSceneImgs: (string | null)[] | undefined;
+    const seedsRaw = ((form.get("approvedSceneImgs") as string) || "").trim();
+    if (seedsRaw) { try { const s = JSON.parse(seedsRaw); if (Array.isArray(s) && s.length) approvedSceneImgs = s.map((x) => (typeof x === "string" && x ? x.slice(0, 2000) : null)); } catch { /* ignore malformed */ } }
     const cost = estimateFilmTokens(scenes);
 
     let unbacked = 0, unbackedFromExtra = 0;
@@ -252,6 +281,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(filmGenre ? { filmGenre } : {}),
         ...(filmSongUrl ? { filmSongUrl } : {}),
         ...(filmProps?.length ? { filmProps } : {}),
+        ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
         dialogueEngine, filmAspect,
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
         productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
@@ -300,6 +330,10 @@ export default function FilmStudio() {
   const nav = useNavigation();
   const actionData = useActionData<typeof action>() as { ok?: boolean; queued?: string; cost?: number; error?: string } | undefined;
   const treatmentFetcher = useFetcher<{ treatment?: Treatment; error?: string }>();
+  // Music Video STORYBOARD: pre-seed every scene's still (props placed) BEFORE paying for the video,
+  // so the owner checks accuracy + the prop per scene and the render uses those EXACT stills (no surprise).
+  const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; treatment?: Treatment; propForScene?: Record<number, string>; error?: string }>();
+  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string> } | null>(null);
   // Storyboard (dialogue): per-scene approved frames + which scene is rendering now.
   const previewFrameFetcher = useFetcher<{ frameUrl?: string; sceneIndex?: number; error?: string }>();
   const [frames, setFrames] = useState<(string | null)[]>([]);
@@ -429,6 +463,21 @@ export default function FilmStudio() {
       { method: "post" }
     );
   };
+  // Pre-seed the storyboard: render every scene's still (props placed) for approval before paying.
+  const previewScenes = () => {
+    sceneSeedsFetcher.submit(
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(treatment ? { approvedTreatment: JSON.stringify(treatment) } : {}) },
+      { method: "post" }
+    );
+  };
+  const seedBusy = sceneSeedsFetcher.state !== "idle";
+  // Capture the previewed stills; the render then uses these EXACT images + their treatment (no surprise).
+  useEffect(() => {
+    const sd = sceneSeedsFetcher.data;
+    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {} });
+  }, [sceneSeedsFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Any setup change invalidates the preview — the stills would no longer match the new settings.
+  useEffect(() => { setSeeds(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl]); // eslint-disable-line react-hooks/exhaustive-deps
   const editCaption = (i: number, v: string) => {
     if (!treatment) return;
     setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, caption: v } : s)) });
@@ -772,6 +821,33 @@ export default function FilmStudio() {
             )}
           </div>
 
+          {/* STORYBOARD — pre-seed every scene (with its prop) so you approve the ACTUAL stills before
+              paying; the render then uses these EXACT images, so there's no 40-minute surprise. */}
+          <div className="mm-storyboard">
+            <button type="button" className="mm-preview-btn" onClick={previewScenes} disabled={seedBusy || !d.hasPlan}>
+              {seedBusy ? <>… {t("Building the scenes")}</> : seeds ? <><Ico n="refresh" size={13} /> {t("Re-roll the scenes")}</> : <><Ico n="film" size={13} /> {t("Preview the scenes — free")}</>}
+            </button>
+            {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
+            {seedBusy && !seeds && <p className="mm-sb-wait">{t("Building each scene's still with your props — about a minute…")}</p>}
+            {seeds && (
+              <>
+                <div className="mm-sb-head"><Ico n="check" size={13} /> {t("This is exactly what will render — check the scenes + props, then Generate.")}</div>
+                <div className="mm-sb-grid">
+                  {seeds.imgs.map((u, i) => {
+                    const pk = seeds.propForScene[i];
+                    const pl = pk ? ((d.props || []).find((pp) => pp.key === pk)?.label || pk) : "";
+                    return (
+                      <div className="mm-sb-cell" key={i}>
+                        {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={20} /></span>}
+                        <span className="mm-sb-tag"><b>{t("Scene {n}", { n: i + 1 })}</b>{pl ? <> · {t(pl)}</> : null}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
           {/* generate — the one button */}
           <div className="mm-gen">
             <Form method="post">
@@ -782,9 +858,10 @@ export default function FilmStudio() {
               {filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}
               <input type="hidden" name="filmTopic" value={topic} />
               <input type="hidden" name="filmScenes" value={String(scenes)} />
-              {treatment && <input type="hidden" name="approvedTreatment" value={JSON.stringify(treatment)} />}
+              {(seeds?.treatment || treatment) && <input type="hidden" name="approvedTreatment" value={JSON.stringify(seeds?.treatment || treatment)} />}
+              {seeds && <input type="hidden" name="approvedSceneImgs" value={JSON.stringify(seeds.imgs)} />}
               <button type="submit" className="mm-go" disabled={!canGo}>
-                {generating ? <>… {t("Starting your video")}</> : <><Ico n="film" size={17} /> {cost > 0 ? t("Generate Music Video · {cost} Tokens", { cost }) : t("Generate Music Video")}</>}
+                {generating ? <>… {t("Starting your video")}</> : <><Ico n="film" size={17} /> {seeds ? (cost > 0 ? t("Render these scenes · {cost} Tokens", { cost }) : t("Render these scenes")) : (cost > 0 ? t("Generate Music Video · {cost} Tokens", { cost }) : t("Generate Music Video"))}</>}
               </button>
             </Form>
             <div className="mm-eta"><span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: true, dialogue: false, scenes, engine: dialogueEngine })}</b></div>
@@ -1523,6 +1600,17 @@ const FS_STYLE = `
 .mm-preview-btn:hover:not(:disabled){background:var(--mint,#EAF6EF);}
 .mm-preview-btn:disabled{opacity:.6;cursor:default;}
 .mm-preview-btn svg{stroke:currentColor;stroke-width:2;fill:none;}
+.mm-storyboard{margin:16px 0 0;}
+.mm-sb-wait{font-size:12.5px;color:var(--ink2,#4A554E);margin:10px 2px 0;display:flex;align-items:center;gap:7px;}
+.mm-sb-head{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:var(--green,#0C7A46);margin:14px 2px 10px;line-height:1.3;}
+.mm-sb-head svg{stroke:currentColor;stroke-width:2.4;fill:none;flex:none;}
+.mm-sb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;}
+.mm-sb-cell{position:relative;border-radius:13px;overflow:hidden;background:#20302A;aspect-ratio:9/16;box-shadow:0 2px 6px rgba(20,32,26,.12);}
+.mm-sb-cell img{width:100%;height:100%;object-fit:cover;display:block;}
+.mm-sb-empty{position:absolute;inset:0;display:grid;place-items:center;color:#8A938B;}
+.mm-sb-empty svg{stroke:currentColor;stroke-width:1.8;fill:none;}
+.mm-sb-tag{position:absolute;left:0;right:0;bottom:0;padding:16px 8px 6px;font-size:10.5px;color:#fff;background:linear-gradient(0deg,rgba(10,20,15,.85),transparent);line-height:1.25;}
+.mm-sb-tag b{font-weight:800;}
 .mm-gen{margin:18px 0 0;background:var(--panel,#FDFBF4);border:1.5px solid transparent;border-radius:20px;padding:18px;box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 22px 48px -26px rgba(12,122,70,.5);}
 .mm-go{position:relative;overflow:hidden;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,#0C7A46,#15B165 55%,#1EA85C);color:#fff;border:0;border-radius:15px;padding:16px;font-family:Poppins,sans-serif;font-weight:800;font-size:16.5px;letter-spacing:-.01em;cursor:pointer;box-shadow:0 14px 30px -14px rgba(12,122,70,.7),inset 0 1px 0 rgba(255,255,255,.25);}
 .mm-go:disabled{filter:grayscale(.55) brightness(.9);opacity:.75;cursor:default;box-shadow:none;}

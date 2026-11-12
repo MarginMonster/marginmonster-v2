@@ -801,6 +801,8 @@ async function runJob(
             jobId: payload.__jobId as string | undefined,
             songUrl: (payload.filmSongUrl as string | undefined) || undefined, // BYO-song (uploaded track)
             props: Array.isArray(payload.filmProps) ? (payload.filmProps as string[]) : undefined, // cool-shit props
+            approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined, // storyboard-approved stills
+
             resume: {
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
               ckSong: payload.ckSong as string | undefined,
