@@ -220,6 +220,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
+  // FREE — make a custom ARTIST from a description: a realistic portrait to star in the video.
+  if (intent === "makeArtist") {
+    const desc = ((form.get("artistDesc") as string) || "").trim().slice(0, 120);
+    if (!desc) return json({ error: tr(lang, "Describe your artist first.") });
+    try {
+      const { renderCreativeSeed } = await import("../lib/image-generation.server");
+      const img = await renderCreativeSeed(`A realistic head-and-shoulders portrait of ${desc}: a real person looking at camera, natural genuine expression, soft studio lighting, photorealistic, sharp detailed face, plain neutral background, no text, no watermark.`, "9:16");
+      if (!img) return json({ error: tr(lang, "Couldn't make that avatar — try a different description.") });
+      return json({ img: /^https?:\/\//i.test(img) ? img : `${externalOrigin(request)}${img.startsWith("/") ? "" : "/"}${img}` });
+    } catch (e) {
+      return json({ error: tr(lang, "Couldn't make that avatar — give it another go."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+    }
+  }
+
   if (intent === "previewFilmScenes") {
     const genre = ((form.get("filmGenre") as string) || "").trim();
     let filmProps: string[] | undefined;
@@ -410,6 +424,8 @@ export default function FilmStudio() {
   const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; error?: string }>();
   // Make-your-own prop: describe it → we generate a studio photo of it (free).
   const propMakerFetcher = useFetcher<{ img?: string; error?: string }>();
+  // Make-your-own artist: describe a face → we generate a portrait (free), like the presenter forge.
+  const artistMakerFetcher = useFetcher<{ img?: string; error?: string }>();
   const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null } | null>(null);
   const [rerollingScene, setRerollingScene] = useState<number | null>(null);
   // Storyboard (dialogue): per-scene approved frames + which scene is rendering now.
@@ -515,14 +531,49 @@ export default function FilmStudio() {
     if (img) { propPendingRef.current = false; addCustomProp(propDesc.trim(), img); setPropDesc(""); setPropMakerOpen(false); }
     else if (propMakerFetcher.data?.error) { propPendingRef.current = false; }
   }, [propMakerFetcher.state, propMakerFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Music Video card-builder: which summary card is expanded for editing (null = all collapsed).
+
+  // ARTIST maker — create a face from a description, or upload your own. Mirrors the presenter picker
+  // (custom-generate + upload) so the artist chooser looks like the avatar selectors elsewhere.
+  const [customArtists, setCustomArtists] = useState<Array<{ img: string; name: string }>>([]);
+  const [artistMakerOpen, setArtistMakerOpen] = useState(false);
+  const [artistDesc, setArtistDesc] = useState("");
+  const [artistPhotoBusy, setArtistPhotoBusy] = useState(false);
+  const artistPhotoRef = useRef<HTMLInputElement | null>(null);
+  const artistPendingRef = useRef(false);
+  const makingArtist = artistMakerFetcher.state !== "idle";
+  const makeAiArtist = () => {
+    const desc = artistDesc.trim();
+    if (!desc || makingArtist) return;
+    artistPendingRef.current = true;
+    artistMakerFetcher.submit({ intent: "makeArtist", artistDesc: desc }, { method: "post" });
+  };
+  const uploadArtistPhoto = async (file?: File | null) => {
+    if (!file) return;
+    setArtistPhotoBusy(true);
+    try {
+      const fd = new FormData(); fd.set("productPhoto", file);
+      const r = await fetch("/api/buddy-upload", { method: "POST", body: fd });
+      const j = await r.json();
+      if (j?.frameUrl) { setCustomArtists((a) => [...a, { img: j.frameUrl, name: (file.name || "My avatar").replace(/\.[^.]+$/, "").slice(0, 24) }]); setArtistPick(j.frameUrl); }
+      else alert(j?.error || "Couldn't add that photo.");
+    } catch { alert("Couldn't add that photo."); }
+    finally { setArtistPhotoBusy(false); }
+  };
+  useEffect(() => {
+    if (artistMakerFetcher.state !== "idle" || !artistPendingRef.current) return;
+    const img = artistMakerFetcher.data?.img;
+    if (img) { artistPendingRef.current = false; const name = artistDesc.trim().slice(0, 24) || "Custom"; setCustomArtists((a) => [...a, { img, name }]); setArtistPick(img); setArtistDesc(""); setArtistMakerOpen(false); }
+    else if (artistMakerFetcher.data?.error) { artistPendingRef.current = false; }
+  }, [artistMakerFetcher.state, artistMakerFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Music Video card-builder: which summary step is expanded for editing (null = all collapsed).
   type CardKey = "artist" | "genre" | "song" | "props" | "length";
   const [openCard, setOpenCard] = useState<CardKey | null>(null);
-  // Tap a card in the slider → toggle its options open AND slide it to center, so the panel that
-  // opens right below the row clearly belongs to the card you tapped.
-  const tapCard = (key: CardKey, el: HTMLElement) => {
+  // A numbered step flow: each step turns green once you've set it, so you move through 1→5 like a
+  // guided checklist. Opening a step (and it already has a smart default) counts it as done.
+  const [stepsDone, setStepsDone] = useState<Record<string, boolean>>({});
+  const tapCard = (key: CardKey) => {
     setOpenCard((cur) => (cur === key ? null : key));
-    try { el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); } catch { /* older browsers */ }
+    setStepsDone((d) => (d[key] ? d : { ...d, [key]: true }));
   };
   const [topic, setTopic] = useState("");
   // The merchant can PICK one of their avatars to BE the artist ("" = auto-cast one for the genre).
@@ -661,18 +712,34 @@ export default function FilmStudio() {
   // The storyboard: ONE collapsed button → a swipeable filmstrip of the actual scene stills (each
   // re-rollable, text click-to-edit), so you approve what will render before paying. Reused by BOTH
   // the Music Video card-builder and the film flow — one row, so it never turns a page into a doom-scroll.
-  const storyboard = (autofill = false, makeFn?: () => void) => {
+  // The Make-the-scenes button (Music Video): one button that writes the song AND builds the scenes.
+  // Lives in the final "make & generate" card, next to Generate — not floating in the filmstrip.
+  const makeBtn = () => {
+    const hasStills = !!seeds;
+    const busy = writing || seedBusy || chainToScenes;
+    return (<>
+      <button type="button" className="mm-preview-btn" onClick={makeStoryboard} disabled={busy || !d.hasPlan}>
+        {busy ? (writing ? <>… {t("Writing your song")}</> : <>… {t("Building the scenes")}</>)
+          : hasStills ? <><Ico n="refresh" size={13} /> {t("Start over — new song + scenes")}</>
+          : <><Ico n="wand" size={14} /> {t("Make the scenes — free")}</>}
+      </button>
+      {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
+      {seedBusy && !hasStills && <p className="mm-sb-wait">{t("Building each scene's still — about a minute…")}</p>}
+    </>);
+  };
+  const storyboard = (autofill = false, makeFn?: () => void, filmstripOnly = false) => {
     // AUTOPOPULATE (autofill flows, e.g. Music Video): the filmstrip fills from the STORY the moment
     // there's a treatment — each scene's "what happens" + words appear immediately (free, click-to-edit).
     // The STILLS fill in when you Preview; until then each frame is a placeholder. So the strip builds
     // itself from the story + song + artist you set, and you polish the words before spending on visuals.
     // Non-autofill flows keep their own story view and only reveal the filmstrip once stills exist.
-    // makeFn (Music Video) = the ONE button that writes the song AND builds the scenes (chained).
+    // filmstripOnly (Music Video) = render JUST the swipeable strip; the Make button lives in the gen card.
     const strip = seeds?.treatment || (autofill ? treatment : null);
     const hasStills = !!seeds;
     const busy = makeFn ? (writing || seedBusy || chainToScenes) : seedBusy;
     return (
     <div className="mm-storyboard">
+      {!filmstripOnly && (<>
       <button type="button" className="mm-preview-btn" onClick={makeFn || previewScenes} disabled={busy || !d.hasPlan}>
         {busy ? (makeFn && writing ? <>… {t("Writing your song")}</> : <>… {t("Building the scenes")}</>)
           : hasStills ? <><Ico n="refresh" size={13} /> {makeFn ? t("Start over — new song + scenes") : t("Re-roll the scenes")}</>
@@ -682,6 +749,7 @@ export default function FilmStudio() {
       </button>
       {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
       {seedBusy && !hasStills && <p className="mm-sb-wait">{t("Building each scene's still — about a minute…")}</p>}
+      </>)}
       {strip && (
         <>
           <div className="mm-sb-head"><Ico n="check" size={13} /> {hasStills
@@ -948,12 +1016,13 @@ export default function FilmStudio() {
               placeholder={t("e.g. grinding from nothing, staying loyal, winning big")} />
           </div>
 
-          <div className="mm-hint"><span aria-hidden="true">✎</span> {t("Tap any card to change it — we fill in smart defaults so you can just hit Generate.")}</div>
+          <div className="mm-hint"><span aria-hidden="true">✎</span> {t("Tap each step to set it — we've filled in smart defaults, so you can breeze through and just Make it.")}</div>
 
+          {/* A numbered 1→5 step flow, two across — each box goes green as you set it. */}
           <div className="mm-grid">
-            {/* Artist — pick one of your avatars to STAR, or let us cast one */}
-            <button type="button" className={`mm-card${openCard === "artist" ? " on" : ""}`} onClick={(e) => tapCard("artist", e.currentTarget)}>
-              <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
+            {/* 1 · Artist — pick one of your avatars to STAR, or let us cast one */}
+            <button type="button" className={`mm-card${openCard === "artist" ? " on" : ""}${stepsDone.artist ? " done" : ""}`} onClick={() => tapCard("artist")}>
+              <span className="mm-step" aria-hidden="true">{stepsDone.artist ? <Ico n="check" size={13} /> : 1}</span>
               <span className="mm-card-top">
                 {artistPick
                   ? <span className="mm-card-face" style={{ backgroundImage: `url(${artistPick})` }} aria-hidden="true" />
@@ -962,29 +1031,29 @@ export default function FilmStudio() {
               </span>
               <span className="mm-val">{artistPick ? <><Ico n="check" size={12} /> {artistName || t("Your avatar")}</> : t("We cast one · or pick your avatar")}</span>
             </button>
-            {/* Genre */}
-            <button type="button" className={`mm-card${openCard === "genre" ? " on" : ""}`} onClick={(e) => tapCard("genre", e.currentTarget)}>
-              <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
+            {/* 2 · Genre */}
+            <button type="button" className={`mm-card${openCard === "genre" ? " on" : ""}${stepsDone.genre ? " done" : ""}`} onClick={() => tapCard("genre")}>
+              <span className="mm-step" aria-hidden="true">{stepsDone.genre ? <Ico n="check" size={13} /> : 2}</span>
               <span className="mm-card-top"><span className="mm-card-ico c1"><Ico n="music" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The beat")}</span><b>{t("Genre")}</b></span></span>
               <span className="mm-val">{t((d.genres || []).find((g) => g.key === filmGenre)?.label || "Rap / Hip-Hop")}</span>
             </button>
-            {/* Song */}
-            <button type="button" className={`mm-card${openCard === "song" ? " on" : ""}`} onClick={(e) => tapCard("song", e.currentTarget)}>
-              <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
+            {/* 3 · Song */}
+            <button type="button" className={`mm-card${openCard === "song" ? " on" : ""}${stepsDone.song ? " done" : ""}`} onClick={() => tapCard("song")}>
+              <span className="mm-step" aria-hidden="true">{stepsDone.song ? <Ico n="check" size={13} /> : 3}</span>
               <span className="mm-card-top"><span className="mm-card-ico c2"><Ico n="sound" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The song")}</span><b>{songSource === "upload" ? t("Your track") : t("Write me one")}</b></span></span>
               <span className="mm-val">{songSource === "upload" ? (filmSongUrl ? <><Ico n="check" size={12} /> {songName || t("Song uploaded")}</> : t("Upload your own track")) : <>{t("We write + produce it ·")} <b className="mm-free">{t("free")}</b></>}</span>
             </button>
-            {/* Props */}
-            <button type="button" className={`mm-card${openCard === "props" ? " on" : ""}`} onClick={(e) => tapCard("props", e.currentTarget)}>
-              <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
+            {/* 4 · Props */}
+            <button type="button" className={`mm-card${openCard === "props" ? " on" : ""}${stepsDone.props ? " done" : ""}`} onClick={() => tapCard("props")}>
+              <span className="mm-step" aria-hidden="true">{stepsDone.props ? <Ico n="check" size={13} /> : 4}</span>
               <span className="mm-card-top"><span className="mm-card-ico c3"><Ico n="gem" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("Cool shit")}</span><b>{t("Props")}</b></span></span>
               {filmProps.length > 0 ? (
                 <span className="mm-chips">{filmProps.slice(0, 3).map((k) => { const p = (d.props || []).find((x) => x.key === k); const cp = customProps.find((x) => x.key === k); return <span className="mm-chip" key={k}>{cp ? cp.label : t(p?.name || k)}</span>; })}{filmProps.length > 3 && <span className="mm-chip">+{filmProps.length - 3}</span>}</span>
               ) : <span className="mm-val mm-muted">{t("none yet · tap to add tigers, cars, chains…")}</span>}
             </button>
-            {/* Length */}
-            <button type="button" className={`mm-card${openCard === "length" ? " on" : ""}`} onClick={(e) => tapCard("length", e.currentTarget)}>
-              <span className="mm-card-edit" aria-hidden="true"><Ico n="pencil" size={13} /></span>
+            {/* 5 · Length (spans the row — it's the last, simple step) */}
+            <button type="button" className={`mm-card mm-card-wide${openCard === "length" ? " on" : ""}${stepsDone.length ? " done" : ""}`} onClick={() => tapCard("length")}>
+              <span className="mm-step" aria-hidden="true">{stepsDone.length ? <Ico n="check" size={13} /> : 5}</span>
               <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
               <span className="mm-val">{t("{n} scenes · ~{sec}s · director's shots", { n: scenes, sec: scenes * 5 })}</span>
             </button>
@@ -994,13 +1063,29 @@ export default function FilmStudio() {
           {openCard === "artist" && (
             <div className="mm-expand">
               <div className="mm-expand-h">{t("Who's the artist?")}</div>
-              <div className="mm-expand-sub">{t("Pick one of your avatars to star — that exact face performs every scene. Or let us cast one that fits the genre.")}</div>
+              <div className="mm-expand-sub">{t("Swipe to pick who stars — your avatars, or make a new one. That exact face performs every scene.")}</div>
+              <input ref={artistPhotoRef} type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden onChange={(e) => { uploadArtistPhoto(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
               <div className="mm-artistpick">
                 <button type="button" className={`fs-rface mm-autoface${artistPick === "" ? " on" : ""}`} onClick={() => setArtistPick("")} title={t("Auto-cast")}>
                   <span className="fs-rface-img mm-autoface-img" aria-hidden="true"><Ico n="wand" size={20} /></span>
                   {artistPick === "" && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
                   <span className="fs-rface-name">{t("Auto-cast")}</span>
                 </button>
+                <button type="button" className={`fs-rface mm-newface${artistMakerOpen ? " on" : ""}`} onClick={() => setArtistMakerOpen((v) => !v)} title={t("Create an avatar")}>
+                  <span className="fs-rface-img mm-newface-img" aria-hidden="true"><Ico n="wand" size={18} /></span>
+                  <span className="fs-rface-name">{t("Create")}</span>
+                </button>
+                <button type="button" className="fs-rface mm-newface" onClick={() => artistPhotoRef.current?.click()} title={t("Upload a face")}>
+                  <span className="fs-rface-img mm-newface-img" aria-hidden="true">{artistPhotoBusy ? <span className="mm-ptile-spin" /> : <Ico n="camera" size={18} />}</span>
+                  <span className="fs-rface-name">{artistPhotoBusy ? t("Adding…") : t("Upload")}</span>
+                </button>
+                {customArtists.map((ca, i) => (
+                  <button type="button" key={`ca${i}`} className={`fs-rface${artistPick === ca.img ? " on" : ""}`} title={ca.name} onClick={() => setArtistPick(ca.img)}>
+                    <span className="fs-rface-img" style={{ backgroundImage: `url(${ca.img})` }} />
+                    {artistPick === ca.img && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                    <span className="fs-rface-name">{ca.name}</span>
+                  </button>
+                ))}
                 {d.roster.map((r) => (
                   <button type="button" key={r.id} className={`fs-rface${artistPick === r.img ? " on" : ""}`} title={r.name} onClick={() => setArtistPick(r.img)}>
                     <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
@@ -1009,16 +1094,29 @@ export default function FilmStudio() {
                   </button>
                 ))}
               </div>
-              {d.roster.length === 0 && <p className="fs-hint">{t("Forge an avatar in Presenters to star your own face — until then we cast one for you.")}</p>}
+              {artistMakerOpen && (
+                <div className="mm-propmaker">
+                  <input value={artistDesc} onChange={(e) => setArtistDesc(e.target.value)} maxLength={120} placeholder={t("e.g. a young woman with curly red hair; a bearded man in a leather jacket")}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); makeAiArtist(); } }} />
+                  <button type="button" onClick={makeAiArtist} disabled={!artistDesc.trim() || makingArtist}>
+                    {makingArtist ? <>… {t("Making")}</> : <><Ico n="wand" size={13} /> {t("Make it — free")}</>}
+                  </button>
+                </div>
+              )}
+              {artistMakerFetcher.data?.error && <p className="fs-err">{artistMakerFetcher.data.error}</p>}
             </div>
           )}
           {openCard === "genre" && (
             <div className="mm-expand">
               <div className="mm-expand-h">{t("Pick the genre")}</div>
-              <div className="mm-expand-sub">{t("Sets the song and the whole look — one artist performs it across your scenes.")}</div>
-              <div className="mm-props">
+              <div className="mm-expand-sub">{t("Swipe the genres — sets the song and the whole look. One artist performs it across your scenes.")}</div>
+              <div className="mm-genrepick">
                 {(d.genres || []).map((gr) => (
-                  <button type="button" key={gr.key} className={`mm-prop${filmGenre === gr.key ? " on" : ""}`} onClick={() => { setFilmGenre(gr.key); setTreatment(null); }}>{t(gr.label)}</button>
+                  <button type="button" key={gr.key} className={`mm-gtile${filmGenre === gr.key ? " on" : ""}`} onClick={() => { setFilmGenre(gr.key); setTreatment(null); }} title={t(gr.label)}>
+                    <span className="mm-gtile-img" style={{ backgroundImage: `url(/genreimg/${gr.key})` }} />
+                    {filmGenre === gr.key && <span className="mm-ptile-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                    <span className="mm-gtile-name">{t(gr.label)}</span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -1114,12 +1212,14 @@ export default function FilmStudio() {
           )}
           {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
 
-          {/* STORYBOARD — the ONE "Make the scenes" button (song + stills, chained) → autopopulated,
-              re-rollable, click-to-edit filmstrip. Shared helper; makeStoryboard = write song + build. */}
-          {storyboard(true, makeStoryboard)}
+          {/* The swipeable storyboard filmstrip ONLY (the sideways flow) — autopopulated, re-rollable,
+              click-to-edit. The button that builds it lives in the "make & generate" step below. */}
+          {storyboard(true, undefined, true)}
 
-          {/* generate — the one button */}
-          <div className="mm-gen">
+          {/* FINAL STEP — Make the scenes + Generate, combined in one box. */}
+          <div className="mm-gen mm-makegen">
+            <div className="mm-makegen-h">{t("Make & generate your video")}</div>
+            {makeBtn()}
             <Form method="post">
               <input type="hidden" name="intent" value="film" />
               <input type="hidden" name="template" value={template} />
@@ -1849,13 +1949,19 @@ const FS_STYLE = `
 .mm-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:18px 4px 10px;display:flex;align-items:center;gap:7px;}
 /* The cards are a horizontal SLIDER (swipe through them like a wheel) — one row, so tapping a card
    opens its options directly beneath the row (adjacent), never buried under the other cards. */
-.mm-grid{display:flex;gap:11px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding:3px 2px 12px;scrollbar-width:thin;scroll-padding:0 2px;}
-.mm-grid::-webkit-scrollbar{height:6px;}
-.mm-grid::-webkit-scrollbar-thumb{background:#D4E3DA;border-radius:3px;}
-.mm-grid::-webkit-scrollbar-track{background:transparent;}
-.mm-card{position:relative;flex:0 0 min(80%,228px);scroll-snap-align:center;text-align:left;cursor:pointer;background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:18px;padding:15px 16px;box-shadow:0 1px 2px rgba(20,32,26,.04);transition:transform .16s cubic-bezier(.2,.7,.2,1),box-shadow .16s,border-color .16s;font-family:Poppins,sans-serif;}
+/* A numbered 1→5 step flow, two across — each step turns green once set. */
+.mm-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+.mm-card{position:relative;text-align:left;cursor:pointer;background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:18px;padding:15px 16px;box-shadow:0 1px 2px rgba(20,32,26,.04);transition:transform .16s cubic-bezier(.2,.7,.2,1),box-shadow .16s,border-color .16s,background .2s;font-family:Poppins,sans-serif;}
+.mm-card-wide{grid-column:1 / -1;}
 .mm-card:hover{border-color:var(--green2,#1EA85C);box-shadow:0 10px 26px -18px rgba(20,32,26,.26);}
 .mm-card.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 14px 30px -20px rgba(12,122,70,.4);}
+.mm-card.done{border-color:#B6DEC8;background:linear-gradient(180deg,#F5FBF8,#fff);}
+.mm-card.done.on{border-color:var(--green,#0C7A46);}
+/* step badge: the number, then a green check once the step is set */
+.mm-step{position:absolute;top:12px;right:12px;width:25px;height:25px;border-radius:50%;background:#EFF1EE;color:var(--ink3,#9AA39B);font-weight:800;font-size:12.5px;display:grid;place-items:center;font-family:Poppins,sans-serif;transition:background .2s,color .2s;}
+.mm-card.done .mm-step{background:var(--green,#0C7A46);color:#fff;}
+.mm-card.done .mm-step svg{stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+@media (max-width:360px){.mm-grid{grid-template-columns:1fr;}.mm-card-wide{grid-column:auto;}}
 .mm-card-top{display:flex;align-items:center;gap:11px;}
 .mm-card-ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;box-shadow:0 6px 14px -6px rgba(0,0,0,.35);}
 .mm-card-ico svg{stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
@@ -1882,11 +1988,21 @@ const FS_STYLE = `
 .mm-prop{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:999px;padding:8px 14px;font-size:13px;font-weight:800;color:var(--ink,#14201A);cursor:pointer;font-family:Poppins,sans-serif;transition:background .14s,border-color .14s,color .14s;}
 .mm-prop:hover{border-color:var(--green,#0C7A46);}
 .mm-prop.on{background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);color:#fff;}
-.mm-artistpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:8px;max-height:252px;overflow-y:auto;padding:2px;}
+/* HORIZONTAL scroll strip — the same premium avatar picker used elsewhere (swipe through faces). */
+.mm-artistpick{display:flex;gap:9px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 10px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
+.mm-artistpick::-webkit-scrollbar{height:6px;}
+.mm-artistpick::-webkit-scrollbar-thumb{background:#D4E3DA;border-radius:3px;}
+.mm-artistpick::-webkit-scrollbar-track{background:transparent;}
+.mm-artistpick .fs-rface{flex:0 0 78px;scroll-snap-align:start;}
 .mm-autoface-img{display:grid;place-items:center;background:linear-gradient(135deg,#EFEAFB,#DDD3F3)!important;}
 .mm-autoface-img svg{stroke:#6C4FB0;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 /* Props picker — real PHOTO tiles (not emoji), plus "Create AI prop" + "Add a photo" makers. */
-.mm-proppick{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:9px;max-height:300px;overflow-y:auto;padding:2px;}
+/* HORIZONTAL scroll strip (swipe sideways through the props), premium mobile feel. */
+.mm-proppick{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 10px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
+.mm-proppick::-webkit-scrollbar{height:6px;}
+.mm-proppick::-webkit-scrollbar-thumb{background:#D4E3DA;border-radius:3px;}
+.mm-proppick::-webkit-scrollbar-track{background:transparent;}
+.mm-proppick .mm-ptile{flex:0 0 88px;scroll-snap-align:start;}
 .mm-ptile{position:relative;border:1.5px solid var(--line,#E4DFCF);border-radius:13px;background:var(--card,#FDFCF7);padding:5px 5px 7px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;font-family:Poppins,sans-serif;transition:border-color .14s,box-shadow .14s,transform .14s;}
 .mm-ptile:hover{border-color:var(--green2,#1EA85C);transform:translateY(-2px);}
 .mm-ptile.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2px rgba(12,122,70,.18);}
@@ -1906,6 +2022,22 @@ const FS_STYLE = `
 .mm-propmaker>button{flex:none;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:11px;background:var(--green,#0C7A46);color:#fff;font-weight:800;font-size:13px;padding:0 16px;cursor:pointer;font-family:Poppins,sans-serif;}
 .mm-propmaker>button:disabled{opacity:.5;cursor:default;}
 .mm-propmaker>button svg{stroke:#fff;stroke-width:2;fill:none;}
+/* Artist "Create / Upload" tiles — dashed, match the prop makers */
+.mm-newface{border-style:dashed!important;border-color:#C9D7CE!important;}
+.mm-newface .fs-rface-name{color:var(--green,#0C7A46);}
+.mm-newface-img{display:grid!important;place-items:center;background:linear-gradient(135deg,#EAF6EF,#D7ECE0)!important;}
+.mm-newface-img svg{stroke:var(--green,#0C7A46);stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+/* Genre picker — HORIZONTAL scroll strip of genre cover PICTURES (not text pills). */
+.mm-genrepick{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 10px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
+.mm-genrepick::-webkit-scrollbar{height:6px;}
+.mm-genrepick::-webkit-scrollbar-thumb{background:#D4E3DA;border-radius:3px;}
+.mm-genrepick::-webkit-scrollbar-track{background:transparent;}
+.mm-gtile{position:relative;flex:0 0 118px;scroll-snap-align:start;border:1.5px solid var(--line,#E4DFCF);border-radius:14px;background:var(--card,#FDFCF7);padding:0;cursor:pointer;overflow:hidden;font-family:Poppins,sans-serif;transition:border-color .14s,box-shadow .14s,transform .14s;}
+.mm-gtile:hover{border-color:var(--green2,#1EA85C);transform:translateY(-2px);}
+.mm-gtile.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2px rgba(12,122,70,.18);}
+.mm-gtile-img{display:block;width:100%;aspect-ratio:16/10;background:#EFF4F1 center/cover no-repeat;}
+.mm-gtile-name{display:block;font-size:11.5px;font-weight:800;color:var(--ink,#14201A);padding:7px 9px 8px;text-align:left;line-height:1.2;white-space:normal;}
+.mm-gtile .mm-ptile-chk{top:7px;right:7px;}
 .mm-preview{margin:16px 0 0;}
 .mm-preview-btn{display:inline-flex;align-items:center;gap:7px;border:1.5px dashed var(--green,#0C7A46);background:#fff;color:var(--green,#0C7A46);border-radius:12px;padding:10px 16px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;cursor:pointer;transition:background .14s;}
 .mm-preview-btn:hover:not(:disabled){background:var(--mint,#EAF6EF);}
@@ -1942,6 +2074,11 @@ const FS_STYLE = `
 .mm-sb-spin{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;animation:mm-sb-rot .8s linear infinite;}
 @keyframes mm-sb-rot{to{transform:rotate(360deg)}}
 .mm-gen{margin:18px 0 0;background:var(--panel,#FDFBF4);border:1.5px solid transparent;border-radius:20px;padding:18px;box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 22px 48px -26px rgba(12,122,70,.5);}
+/* the combined MAKE + GENERATE final step box */
+.mm-makegen{display:flex;flex-direction:column;gap:12px;}
+.mm-makegen-h{font-size:13px;font-weight:800;color:var(--ink,#14201A);letter-spacing:-.01em;}
+.mm-makegen .mm-preview-btn{width:100%;justify-content:center;padding:13px 16px;font-size:14px;}
+.mm-makegen .mm-eta,.mm-makegen .mm-note{margin-top:0;}
 .mm-go{position:relative;overflow:hidden;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,#0C7A46,#15B165 55%,#1EA85C);color:#fff;border:0;border-radius:15px;padding:16px;font-family:Poppins,sans-serif;font-weight:800;font-size:16.5px;letter-spacing:-.01em;cursor:pointer;box-shadow:0 14px 30px -14px rgba(12,122,70,.7),inset 0 1px 0 rgba(255,255,255,.25);}
 .mm-go:disabled{filter:grayscale(.55) brightness(.9);opacity:.75;cursor:default;box-shadow:none;}
 .mm-go svg{stroke:#fff;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
