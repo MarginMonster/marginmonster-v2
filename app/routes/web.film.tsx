@@ -1961,7 +1961,7 @@ const FS_STYLE = `
 .mm-step{position:absolute;top:12px;right:12px;width:25px;height:25px;border-radius:50%;background:#EFF1EE;color:var(--ink3,#9AA39B);font-weight:800;font-size:12.5px;display:grid;place-items:center;font-family:Poppins,sans-serif;transition:background .2s,color .2s;}
 .mm-card.done .mm-step{background:var(--green,#0C7A46);color:#fff;}
 .mm-card.done .mm-step svg{stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round;}
-@media (max-width:360px){.mm-grid{grid-template-columns:1fr;}.mm-card-wide{grid-column:auto;}}
+@media (max-width:300px){.mm-grid{grid-template-columns:1fr;}.mm-card-wide{grid-column:auto;}}
 .mm-card-top{display:flex;align-items:center;gap:11px;}
 .mm-card-ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;box-shadow:0 6px 14px -6px rgba(0,0,0,.35);}
 .mm-card-ico svg{stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
