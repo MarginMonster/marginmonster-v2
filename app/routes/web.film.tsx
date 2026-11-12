@@ -204,7 +204,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
       const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
       if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
-      return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene });
+      return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't preview the scenes — try again."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
     }
