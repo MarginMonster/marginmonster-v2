@@ -536,10 +536,15 @@ export default function FilmStudio() {
   }, [rerollSceneFetcher.state, rerollSceneFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Any setup change invalidates the preview — the stills would no longer match the new settings.
   useEffect(() => { setSeeds(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Click-to-edit the storyboard text — polish a scene's "what happens" or its words in place; the
+  // render reads the edited treatment. Editing the VISUAL marks the still stale (re-roll to match).
+  const editSceneText = (i: number, field: "visual" | "caption", value: string) => {
+    setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? { ...s, [field]: value } : s)) } } : prev));
+  };
 
-  // The storyboard: ONE collapsed button → a grid of the actual scene stills (each re-rollable), so
-  // you approve what will render before paying. Reused by BOTH the Music Video card-builder and the
-  // film flow — one button, no extra long section, so it never turns a page into a doom-scroll.
+  // The storyboard: ONE collapsed button → a swipeable filmstrip of the actual scene stills (each
+  // re-rollable, text click-to-edit), so you approve what will render before paying. Reused by BOTH
+  // the Music Video card-builder and the film flow — one row, so it never turns a page into a doom-scroll.
   const storyboard = () => (
     <div className="mm-storyboard">
       <button type="button" className="mm-preview-btn" onClick={previewScenes} disabled={seedBusy || !d.hasPlan}>
@@ -566,8 +571,8 @@ export default function FilmStudio() {
                     {(seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={13} /></button>}
                   </div>
                   <div className="mm-sb-desc">
-                    {sc?.visual && <span className="mm-sb-what">{sc.visual}</span>}
-                    {sc?.caption && <span className="mm-sb-words">“{sc.caption}”</span>}
+                    <textarea className="mm-sb-what" value={sc?.visual || ""} onChange={(e) => editSceneText(i, "visual", e.target.value)} rows={3} maxLength={400} placeholder={t("what happens in this scene…")} aria-label={t("Scene {n} — what happens", { n: i + 1 })} />
+                    {(sc?.caption != null || tmpl?.lipSyncSinger) && <textarea className="mm-sb-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={2} maxLength={300} placeholder={t("the words / lyrics…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} />}
                     {pl && <span className="mm-sb-prop">{t(pl)}</span>}
                   </div>
                 </div>
@@ -1698,8 +1703,13 @@ const FS_STYLE = `
 .mm-sb-empty svg{stroke:currentColor;stroke-width:1.8;fill:none;}
 .mm-sb-num{position:absolute;left:7px;top:7px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:rgba(10,20,15,.66);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;}
 .mm-sb-desc{display:flex;flex-direction:column;gap:4px;padding:0 1px;}
-.mm-sb-what{font-size:11px;line-height:1.32;color:var(--ink2,#4A554E);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
-.mm-sb-words{font-size:11px;line-height:1.3;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+/* Click-to-edit: the description + words are textareas that read as plain text until you tap them. */
+.mm-sb-what,.mm-sb-words{width:100%;display:block;box-sizing:border-box;border:1px solid transparent;border-radius:7px;background:transparent;resize:none;font-family:Poppins,sans-serif;padding:3px 5px;margin:0;cursor:text;transition:background .12s,border-color .12s,box-shadow .12s;}
+.mm-sb-what:hover,.mm-sb-words:hover{background:rgba(12,122,70,.06);}
+.mm-sb-what:focus,.mm-sb-words:focus{outline:0;background:#fff;border-color:var(--green2,#1EA85C);box-shadow:0 0 0 2px rgba(12,122,70,.1);}
+.mm-sb-what::placeholder,.mm-sb-words::placeholder{color:var(--ink3,#9AA39B);font-style:normal;}
+.mm-sb-what{font-size:11px;line-height:1.32;color:var(--ink2,#4A554E);}
+.mm-sb-words{font-size:11px;line-height:1.3;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;}
 .mm-sb-prop{align-self:flex-start;font-size:10px;font-weight:800;color:var(--green-d,#0A5E37);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:2px 8px;}
 .mm-sb-reroll{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(10,20,15,.62);color:#fff;display:grid;place-items:center;cursor:pointer;opacity:.92;transition:background .14s;z-index:3;}
 .mm-sb-reroll:hover:not(:disabled){background:var(--green,#0C7A46);}
