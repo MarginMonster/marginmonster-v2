@@ -46,20 +46,24 @@ const I2V_MODEL = "fal-ai/kling-video/v2.5-turbo/pro/image-to-video";
 // turn the video into a slideshow.
 const I2V_FALLBACK = "fal-ai/kling-video/v2.6/pro/image-to-video";
 const CLIP_MAX = 10; // the i2v clip length cap (Kling 2.x); segments are sliced to match so the song stays continuous
-// DIRECTOR'S SHOT LIST — a real music video is EDITED: performance shots intercut with b-roll,
-// establishing wides, close-ups and cutaways (never the artist lip-syncing end-to-end). Each scene
-// takes the next shot; `perform` shots get lip-synced, `broll` shots just ride the song over motion.
-// This reads premium AND hides the lip-sync (only tight performance shots carry a mouth).
-// `propOk` marks shots a big prop (a tiger, a horse) actually FITS — a wide or medium where the
-// animal can stand beside the artist. Tight face close-ups and distant b-roll are propOk:false: a
-// horse shoved into a close-up on someone's face just gets cropped out (the "horse didn't show" bug).
+// DIRECTOR'S SHOT LIST — a real music video is EDITED like a real music video: a FEW performance
+// shots (artist to camera) intercut with lots of B-ROLL — dancing, the car/prop in action, lifestyle
+// and narrative cutaways, establishing wides, detail shots. The artist is NOT singing to camera every
+// scene (owner: "they're not just the singer singing in every scene — cut scenes come in with props,
+// dancing, cars"). This reads premium AND hides the lip-sync: only the `perform` shots carry a synced
+// mouth (now just ~1 in 3), and the b-roll rides the song over motion — fewer mouths = fewer sync
+// mistakes. `propOk` marks shots where a big prop (a car, a tiger, chains) actually FITS and should be
+// FEATURED — a performance medium/wide or the dedicated prop-hero cutaway. Tight face close-ups and
+// distant atmospheric b-roll are propOk:false (a horse shoved into a face close-up just gets cropped).
 const SHOTLIST: Array<{ role: "perform" | "broll"; frame: string; cam: string; propOk?: boolean }> = [
   { role: "broll",   frame: "a cinematic WIDE ESTABLISHING shot of the whole location that sets the mood — the artist is small in the frame or walking through it, NOT facing camera", cam: "a slow cinematic push-in" },
   { role: "perform", frame: "a MEDIUM shot of the artist performing straight to camera, framed from the waist up", cam: "a smooth handheld sway", propOk: true },
+  { role: "broll",   frame: "a dynamic, energetic B-ROLL shot of DANCING or movement — backup dancers or the artist moving stylishly through the scene, full of rhythm, NOT facing camera and NOT singing", cam: "a sweeping pan that follows the movement" },
   { role: "perform", frame: "a tight, intense CLOSE-UP on the artist's face performing to camera, shallow depth of field", cam: "a slow subtle drift-in" },
-  { role: "broll",   frame: "a dynamic B-ROLL cutaway of the scenery, street or striking details of the location in motion — the artist is seen from behind or the side, NOT facing camera", cam: "a sweeping camera pan across the scene" },
+  { role: "broll",   frame: "a cinematic HERO B-ROLL shot that FEATURES the prop in action — e.g. the car rolling, the chains gleaming, the motorcycle revving, the animal prowling — the artist near it but NOT singing to camera", cam: "a slow orbit showing it off", propOk: true },
+  { role: "broll",   frame: "a stylish LIFESTYLE / NARRATIVE cutaway that tells the story — the artist walking, riding, arriving or living the moment, cinematic and aspirational, NOT facing camera singing", cam: "a smooth handheld follow" },
   { role: "perform", frame: "a cool, composed WIDE shot of the artist performing to camera, full body, confident and stylish", cam: "a slow orbit around the artist", propOk: true },
-  { role: "broll",   frame: "an atmospheric B-ROLL shot of the location from a fresh cinematic angle, moody and premium — the artist a small part of the frame, NOT facing camera", cam: "a slow tracking move" },
+  { role: "broll",   frame: "an atmospheric detail B-ROLL shot — striking textures, the scenery in motion or a moody cinematic flourish, premium and filmic — the artist a small part of the frame or absent", cam: "a slow tracking move" },
 ];
 
 /** Run async work over items with a bounded number in flight. */
@@ -303,7 +307,7 @@ export async function previewMusicVideoScenes(opts: {
 
   const propForScene: Record<number, string> = {};
   if (propList.length) {
-    const propScenes = scenes.map((_, i) => i).filter((i) => { const sh = SHOTLIST[i % SHOTLIST.length]; return sh.role === "perform" && sh.propOk; });
+    const propScenes = scenes.map((_, i) => i).filter((i) => { const sh = SHOTLIST[i % SHOTLIST.length]; return sh.propOk; });
     propScenes.forEach((sceneI, k) => { propForScene[sceneI] = propList[k % propList.length]; });
   }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
@@ -409,7 +413,7 @@ export async function generateMusicVideo(opts: {
   // naturally limits how often each prop appears, so it reads as a recurring motif, not a herd.
   const propForScene: Record<number, string> = {};
   if (propList.length) {
-    const propScenes = scenes.map((_, i) => i).filter((i) => { const sh = SHOTLIST[i % SHOTLIST.length]; return sh.role === "perform" && sh.propOk; });
+    const propScenes = scenes.map((_, i) => i).filter((i) => { const sh = SHOTLIST[i % SHOTLIST.length]; return sh.propOk; });
     propScenes.forEach((sceneI, k) => { propForScene[sceneI] = propList[k % propList.length]; });
   }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;

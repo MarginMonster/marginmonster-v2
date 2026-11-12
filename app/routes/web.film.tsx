@@ -506,6 +506,8 @@ export default function FilmStudio() {
     setCustomProps((p) => [...p, { key, label: label.slice(0, 40) || "My prop", img }]);
     setFilmProps((p) => (p.length < 6 && !p.includes(key) ? [...p, key] : p)); // auto-select the new prop
   };
+  // The photo for a prop key (catalog → generated /propimg, custom → the merchant's own image).
+  const propThumb = (k: string) => { const cp = customProps.find((c) => c.key === k); return cp ? cp.img : `/propimg/${k}`; };
   const makeAiProp = () => {
     const desc = propDesc.trim();
     if (!desc || makingProp) return;
@@ -724,7 +726,7 @@ export default function FilmStudio() {
           : <><Ico n="wand" size={14} /> {t("Make the scenes — free")}</>}
       </button>
       {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
-      {seedBusy && !hasStills && <p className="mm-sb-wait">{t("Building each scene's still — about a minute…")}</p>}
+      {seedBusy && !hasStills && <p className="mm-sb-wait">{t("Drawing your scenes — about a minute. We're sketching every shot, hang tight ✨")}</p>}
     </>);
   };
   const storyboard = (autofill = false, makeFn?: () => void, filmstripOnly = false) => {
@@ -748,7 +750,7 @@ export default function FilmStudio() {
           : <><Ico n="film" size={13} /> {t("Preview the scenes — free")}</>}
       </button>
       {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
-      {seedBusy && !hasStills && <p className="mm-sb-wait">{t("Building each scene's still — about a minute…")}</p>}
+      {seedBusy && !hasStills && <p className="mm-sb-wait">{t("Drawing your scenes — about a minute. We're sketching every shot, hang tight ✨")}</p>}
       </>)}
       {strip && (
         <>
@@ -765,7 +767,7 @@ export default function FilmStudio() {
               return (
                 <div className="mm-sb-shot" key={i}>
                   <div className="mm-sb-frame">
-                    {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={20} />{!hasStills && <small>{t("visual fills on preview")}</small>}</span>}
+                    {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={20} /><small>{seedBusy ? t("sketching…") : t("tap Make the scenes")}</small></span>}
                     {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
                     <span className="mm-sb-num">{i + 1}</span>
                     {seeds && (seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={13} /></button>}
@@ -1041,7 +1043,7 @@ export default function FilmStudio() {
             {/* 2 · Genre */}
             <button type="button" style={{ order: 3 }} className={`mm-card${openCard === "genre" ? " on" : ""}${stepsDone.genre ? " done" : ""}`} onClick={() => tapCard("genre")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.genre ? <Ico n="check" size={13} /> : 2}</span>
-              <span className="mm-card-top"><span className="mm-card-ico c1"><Ico n="music" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The beat")}</span><b>{t("Genre")}</b></span></span>
+              <span className="mm-card-top"><span className="mm-card-face" style={{ backgroundImage: `url(/genreimg/${filmGenre})` }} aria-hidden="true" /><span className="mm-card-ttl"><span className="mm-card-kick">{t("The beat")}</span><b>{t("Genre")}</b></span></span>
               <span className="mm-val">{t((d.genres || []).find((g) => g.key === filmGenre)?.label || "Rap / Hip-Hop")}</span>
             </button>
             {/* 3 · Song */}
@@ -1053,7 +1055,7 @@ export default function FilmStudio() {
             {/* 4 · Props */}
             <button type="button" style={{ order: 7 }} className={`mm-card${openCard === "props" ? " on" : ""}${stepsDone.props ? " done" : ""}`} onClick={() => tapCard("props")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.props ? <Ico n="check" size={13} /> : 4}</span>
-              <span className="mm-card-top"><span className="mm-card-ico c3"><Ico n="gem" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("Cool shit")}</span><b>{t("Props")}</b></span></span>
+              <span className="mm-card-top">{filmProps.length > 0 ? <span className="mm-card-face" style={{ backgroundImage: `url(${propThumb(filmProps[0])})` }} aria-hidden="true" /> : <span className="mm-card-ico c3"><Ico n="gem" size={20} /></span>}<span className="mm-card-ttl"><span className="mm-card-kick">{t("Cool shit")}</span><b>{t("Props")}</b></span></span>
               {filmProps.length > 0 ? (
                 <span className="mm-vchips">{filmProps.slice(0, 3).map((k) => { const p = (d.props || []).find((x) => x.key === k); const cp = customProps.find((x) => x.key === k); return <span className="mm-chip" key={k}>{cp ? cp.label : t(p?.name || k)}</span>; })}{filmProps.length > 3 && <span className="mm-chip">+{filmProps.length - 3}</span>}</span>
               ) : <span className="mm-val mm-muted">{t("none yet · tap to add tigers, cars, chains…")}</span>}
@@ -1131,10 +1133,10 @@ export default function FilmStudio() {
           {openCard === "song" && (
             <div className="mm-opts mm-opts-grid" style={{ order: 6 }}>
               <div className="mm-opts-h">{t("Your song")}</div>
-              <div className="mm-opts-sub">{t("We write and produce an original — free — or bring your own track.")}</div>
+              <div className="mm-opts-sub">{t("We write AND produce the whole song, free — and you can swap in your own lyrics on the next step. Only upload if you already have a finished recording (an MP3).")}</div>
               <div className="fs-songsrc-seg">
-                <button type="button" className={`fs-songsrc-opt${songSource === "write" ? " on" : ""}`} onClick={() => setSongSource("write")}>{t("Write me one")}<small>{t("free")}</small></button>
-                <button type="button" className={`fs-songsrc-opt${songSource === "upload" ? " on" : ""}`} onClick={() => setSongSource("upload")}>{t("Upload my own")}<small>{t("your track")}</small></button>
+                <button type="button" className={`fs-songsrc-opt${songSource === "write" ? " on" : ""}`} onClick={() => setSongSource("write")}>{t("We produce it")}<small>{t("free · your lyrics ok")}</small></button>
+                <button type="button" className={`fs-songsrc-opt${songSource === "upload" ? " on" : ""}`} onClick={() => setSongSource("upload")}>{t("I have a track")}<small>{t("a finished MP3")}</small></button>
               </div>
               {songSource === "upload" && (
                 <div className="fs-songup" style={{ marginTop: 12 }}>
@@ -1919,7 +1921,7 @@ const FS_STYLE = `
 .fs-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:8px;margin:9px 0 2px;max-height:238px;overflow-y:auto;padding:2px;}
 .fs-rface{position:relative;border:1.5px solid var(--line,#E4DFCF);border-radius:12px;background:var(--card,#FDFCF7);padding:5px 5px 6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:border-color .14s,box-shadow .14s;}
 .fs-rface:hover:not(:disabled){border-color:#9CCBB1;box-shadow:0 4px 12px rgba(20,32,26,.12);}
-.fs-rface.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2px rgba(12,122,70,.18);}
+.fs-rface.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2.5px var(--green,#0C7A46),0 0 20px -2px rgba(18,168,94,.6),0 8px 22px -6px rgba(12,122,70,.5);}
 .fs-rface-img{width:100%;aspect-ratio:1/1;border-radius:9px;background:#EAF6EF center/cover no-repeat;}
 .fs-rface-name{font-size:10px;font-weight:700;color:var(--ink2,#4A554E);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.1;}
 .fs-rface-chk{position:absolute;top:4px;right:4px;width:18px;height:18px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.25);}
@@ -2042,11 +2044,11 @@ const FS_STYLE = `
 .mm-proppick .mm-ptile{flex:0 0 88px;scroll-snap-align:start;}
 .mm-ptile{position:relative;border:1.5px solid var(--line,#E4DFCF);border-radius:13px;background:var(--card,#FDFCF7);padding:5px 5px 7px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;font-family:Poppins,sans-serif;transition:border-color .14s,box-shadow .14s,transform .14s;}
 .mm-ptile:hover{border-color:var(--green2,#1EA85C);transform:translateY(-2px);}
-.mm-ptile.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2px rgba(12,122,70,.18);}
+.mm-ptile.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2.5px var(--green,#0C7A46),0 0 20px -2px rgba(18,168,94,.6),0 8px 22px -6px rgba(12,122,70,.5);}
 .mm-ptile-img{width:100%;aspect-ratio:1/1;border-radius:10px;background:#EFF4F1 center/cover no-repeat;display:grid;place-items:center;}
 .mm-ptile-name{font-size:10.5px;font-weight:800;color:var(--ink2,#4A554E);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.15;text-align:center;}
-.mm-ptile-chk{position:absolute;top:8px;right:8px;width:19px;height:19px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.25);}
-.mm-ptile-chk svg{stroke:#fff;stroke-width:2.4;fill:none;}
+/* selection is shown by the GREEN GLOW on the tile (not a check badge) — owner's call */
+.mm-ptile-chk,.fs-rface-chk{display:none !important;}
 .mm-ptile-new{border-style:dashed;border-color:#C9D7CE;}
 .mm-ptile-new .mm-ptile-name{color:var(--green,#0C7A46);}
 .mm-ptile-newimg{background:linear-gradient(135deg,#EAF6EF,#D7ECE0)!important;}
@@ -2071,7 +2073,7 @@ const FS_STYLE = `
 .mm-genrepick::-webkit-scrollbar-track{background:transparent;}
 .mm-gtile{position:relative;flex:0 0 118px;scroll-snap-align:start;border:1.5px solid var(--line,#E4DFCF);border-radius:14px;background:var(--card,#FDFCF7);padding:0;cursor:pointer;overflow:hidden;font-family:Poppins,sans-serif;transition:border-color .14s,box-shadow .14s,transform .14s;}
 .mm-gtile:hover{border-color:var(--green2,#1EA85C);transform:translateY(-2px);}
-.mm-gtile.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2px rgba(12,122,70,.18);}
+.mm-gtile.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2.5px var(--green,#0C7A46),0 0 20px -2px rgba(18,168,94,.6),0 8px 22px -6px rgba(12,122,70,.5);}
 .mm-gtile-img{display:block;width:100%;aspect-ratio:16/10;background:#EFF4F1 center/cover no-repeat;}
 .mm-gtile-name{display:block;font-size:11.5px;font-weight:800;color:var(--ink,#14201A);padding:7px 9px 8px;text-align:left;line-height:1.2;white-space:normal;}
 .mm-gtile .mm-ptile-chk{top:7px;right:7px;}
@@ -2081,7 +2083,8 @@ const FS_STYLE = `
 .mm-preview-btn:disabled{opacity:.6;cursor:default;}
 .mm-preview-btn svg{stroke:currentColor;stroke-width:2;fill:none;}
 .mm-storyboard{margin:16px 0 0;}
-.mm-sb-wait{font-size:12.5px;color:var(--ink2,#4A554E);margin:10px 2px 0;display:flex;align-items:center;gap:7px;}
+.mm-sb-wait{display:flex;align-items:center;gap:11px;font-size:13px;font-weight:700;color:var(--green-d,#0A5E37);background:rgba(12,122,70,.06);border:1px solid #CDE8D9;border-radius:12px;padding:12px 14px;margin:11px 0 0;line-height:1.35;}
+.mm-sb-wait::before{content:"";width:18px;height:18px;border-radius:50%;border:2.5px solid #BFE0CD;border-top-color:var(--green,#0C7A46);animation:mmspin .7s linear infinite;flex:none;}
 .mm-sb-head{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:var(--green,#0C7A46);margin:14px 2px 10px;line-height:1.3;}
 .mm-sb-head svg{stroke:currentColor;stroke-width:2.4;fill:none;flex:none;}
 /* Horizontal, swipeable FILMSTRIP — each scene's still + what-happens + words, like a video editor.
@@ -2090,18 +2093,22 @@ const FS_STYLE = `
 .mm-sb-shot{flex:0 0 auto;width:150px;scroll-snap-align:start;display:flex;flex-direction:column;gap:7px;}
 .mm-sb-frame{position:relative;border-radius:13px;overflow:hidden;background:#20302A;aspect-ratio:9/16;box-shadow:0 2px 8px rgba(20,32,26,.16);}
 .mm-sb-frame img{width:100%;height:100%;object-fit:cover;display:block;}
-.mm-sb-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#8A938B;text-align:center;padding:10px;}
-.mm-sb-empty svg{stroke:currentColor;stroke-width:1.8;fill:none;opacity:.7;}
-.mm-sb-empty small{font-size:10px;font-weight:700;color:#8A938B;line-height:1.25;max-width:118px;}
+/* a SOFT, shimmering placeholder (not a dark "broken"-looking box) while the still is being drawn */
+.mm-sb-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#6E8B7C;text-align:center;padding:10px;background:linear-gradient(140deg,#EEF6F1,#DCECE3);overflow:hidden;}
+.mm-sb-empty::before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.65) 50%,transparent 75%);background-size:220% 100%;animation:mmshimmer 1.5s linear infinite;}
+@keyframes mmshimmer{to{background-position:-220% 0;}}
+.mm-sb-empty svg{stroke:#7FA994;stroke-width:1.8;fill:none;position:relative;}
+.mm-sb-empty small{font-size:10px;font-weight:800;color:#5E8070;line-height:1.25;max-width:118px;position:relative;letter-spacing:.01em;}
 .mm-sb-num{position:absolute;left:7px;top:7px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:rgba(10,20,15,.66);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;}
-.mm-sb-desc{display:flex;flex-direction:column;gap:4px;padding:0 1px;}
+.mm-sb-desc{display:flex;flex-direction:column;gap:7px;padding:2px 1px 0;}
 /* Click-to-edit: the description + words are textareas that read as plain text until you tap them. */
-.mm-sb-what,.mm-sb-words{width:100%;display:block;box-sizing:border-box;border:1px solid transparent;border-radius:7px;background:transparent;resize:none;font-family:Poppins,sans-serif;padding:3px 5px;margin:0;cursor:text;transition:background .12s,border-color .12s,box-shadow .12s;}
+.mm-sb-what,.mm-sb-words{width:100%;display:block;box-sizing:border-box;border:1px solid transparent;border-radius:8px;background:transparent;resize:none;font-family:Poppins,sans-serif;padding:4px 6px;margin:0;cursor:text;transition:background .12s,border-color .12s,box-shadow .12s;}
 .mm-sb-what:hover,.mm-sb-words:hover{background:rgba(12,122,70,.06);}
 .mm-sb-what:focus,.mm-sb-words:focus{outline:0;background:#fff;border-color:var(--green2,#1EA85C);box-shadow:0 0 0 2px rgba(12,122,70,.1);}
 .mm-sb-what::placeholder,.mm-sb-words::placeholder{color:var(--ink3,#9AA39B);font-style:normal;}
-.mm-sb-what{font-size:11px;line-height:1.32;color:var(--ink2,#4A554E);}
-.mm-sb-words{font-size:11px;line-height:1.3;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;}
+.mm-sb-what{font-size:11.5px;line-height:1.4;color:var(--ink2,#4A554E);font-weight:500;}
+.mm-sb-words{font-size:11.5px;line-height:1.38;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;border-left:2.5px solid #BFE0CD!important;border-radius:0 8px 8px 0;background:rgba(12,122,70,.045);}
+.mm-sb-words:hover{background:rgba(12,122,70,.09);}
 .mm-sb-prop{align-self:flex-start;font-size:10px;font-weight:800;color:var(--green-d,#0A5E37);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:2px 8px;}
 .mm-sb-reroll{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(10,20,15,.62);color:#fff;display:grid;place-items:center;cursor:pointer;opacity:.92;transition:background .14s;z-index:3;}
 .mm-sb-reroll:hover:not(:disabled){background:var(--green,#0C7A46);}

@@ -17,12 +17,13 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
 
   const rendersDir = path.join(process.cwd(), "data", "renders");
   const cacheDir = path.join(rendersDir, "genres");
-  const cache = path.join(cacheDir, `${key}.jpg`);
+  // Bump the version to regenerate every genre cover (the prompt changed — fuller, brighter comps).
+  const cache = path.join(cacheDir, `${key}-v2.jpg`);
 
   if (!fs.existsSync(cache)) {
     try {
       const g = GENRES[key];
-      const prompt = `A cinematic, atmospheric music-video establishing shot that captures the look of ${g.label}: ${g.look}. Moody high-production cinematography, rich color, NO people, no text, no watermark.`;
+      const prompt = `A vibrant, premium music-video cover frame for ${g.label}: ${g.look}. A bold, well-lit SUBJECT-FILLED composition — the stage/setting FILLS the whole frame edge to edge with rich color and energy; do NOT leave a large dark empty sky or black space at the top. High-production, cinematic, saturated, eye-catching. NO people, no text, no watermark.`;
       const durable = await renderCreativeSeed(prompt, "16:9");
       if (durable) {
         const src = path.join(rendersDir, path.basename(durable.split("?")[0]));
