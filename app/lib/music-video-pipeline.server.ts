@@ -478,10 +478,18 @@ export async function generateMusicVideo(opts: {
         const motionUrl = await falVideoPoll(i2vModel, reqId, 12 * 60_000);
         const out = path.join(RENDERS(), `mv-${Date.now()}-${i}-${rid()}.mp4`);
         if (shot.role === "perform") {
-          // PERFORMANCE: dedicated lip-sync drives the mouth to this song segment
-          let finalUrl = motionUrl;
-          try { finalUrl = await falLipSync(motionUrl, seg.url); }
-          catch (e) { console.error(`[musicvideo] scene ${i + 1} lipsync failed, motion-only: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+          // PERFORMANCE: dedicated lip-sync drives the mouth to this song segment. RETRY it — a single
+          // transient fal hiccup used to drop the whole clip to "motion-only", where the mouth keeps the
+          // i2v's generic singing motion that matches NOTHING (owner: "moving lips but not with the words
+          // whatsoever"). Three tries with backoff turns an intermittent failure into a synced mouth.
+          let finalUrl = motionUrl, synced = false;
+          for (let att = 0; att < 3 && !synced; att++) {
+            try { finalUrl = await falLipSync(motionUrl, seg.url); synced = true; }
+            catch (e) {
+              if (att === 2) console.error(`[musicvideo] scene ${i + 1} lipsync FAILED after 3 tries, motion-only (mouth won't match): ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+              else await new Promise((r) => setTimeout(r, 2500));
+            }
+          }
           await download(finalUrl, out);
         } else {
           // B-ROLL: lay the song segment over the silent motion clip (no mouth to sync). If the mux
