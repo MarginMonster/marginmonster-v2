@@ -1955,11 +1955,11 @@ const FS_STYLE = `
 .mm-card-wide{grid-column:1 / -1;}
 .mm-card:hover{border-color:var(--green2,#1EA85C);box-shadow:0 10px 26px -18px rgba(20,32,26,.26);}
 .mm-card.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 14px 30px -20px rgba(12,122,70,.4);}
-.mm-card.done{border-color:#B6DEC8;background:linear-gradient(180deg,#F5FBF8,#fff);}
-.mm-card.done.on{border-color:var(--green,#0C7A46);}
+.mm-card.done{border-color:#7FC9A1 !important;background:linear-gradient(180deg,#EDF8F1,#fff) !important;}
+.mm-card.done.on{border-color:#0C7A46 !important;}
 /* step badge: the number, then a green check once the step is set */
 .mm-step{position:absolute;top:12px;right:12px;width:25px;height:25px;border-radius:50%;background:#EFF1EE;color:var(--ink3,#9AA39B);font-weight:800;font-size:12.5px;display:grid;place-items:center;font-family:Poppins,sans-serif;transition:background .2s,color .2s;}
-.mm-card.done .mm-step{background:var(--green,#0C7A46);color:#fff;}
+.mm-card.done .mm-step{background:#0C7A46 !important;color:#fff !important;}
 .mm-card.done .mm-step svg{stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 @media (max-width:300px){.mm-grid{grid-template-columns:1fr;}.mm-card-wide{grid-column:auto;}}
 .mm-card-top{display:flex;align-items:center;gap:11px;}
