@@ -632,18 +632,18 @@ export default function FilmStudio() {
     const nt = d.templates.find((x) => x.key === key);
     setTemplate(key); setScenes(nt?.defaultScenes || 6); setTreatment(null); setFrames([]); setCast([]);
   };
-  // Cinematic format entry: you land on the poster GRID; tap a format and the letterbox sweeps
-  // shut, we swap in that format's builder under cover, then it sweeps open. Exit reverses it.
+  // Cinematic format entry: you land on the poster GRID; tap a card and IT zooms in while the
+  // other cards are thrown away, then it becomes that format's builder. Back reverses it.
   const [entered, setEntered] = useState(false);
-  const [curtain, setCurtain] = useState(false);
+  const [zoomKey, setZoomKey] = useState<string | null>(null);
+  const [anim, setAnim] = useState<"" | "in" | "out">("");
   const enterFormat = (key: string) => {
-    switchTemplate(key);
-    setCurtain(true);
-    window.setTimeout(() => { setEntered(true); setCurtain(false); }, 300);
+    setZoomKey(key); setAnim("in");
+    window.setTimeout(() => { switchTemplate(key); setEntered(true); setAnim(""); setZoomKey(null); }, 420);
   };
   const exitFormat = () => {
-    setCurtain(true);
-    window.setTimeout(() => { setEntered(false); setCurtain(false); }, 300);
+    setAnim("out");
+    window.setTimeout(() => { setEntered(false); setAnim(""); }, 300);
   };
   const pickCatalog = (idx: number) => {
     const p = d.products[idx];
@@ -998,14 +998,12 @@ export default function FilmStudio() {
           Land on a 2-up grid of poster cards. Tap one → the letterbox sweeps shut and it opens, like a
           title card, into THAT format's builder (no doom-scroll past tiles you aren't using). */}
       <div className="fs-switch">
-        <div className={`fs-cine${curtain ? " on" : ""}`} aria-hidden="true"><span /><span /></div>
-
         {!entered && (
-          <div className="fs-fmtgrid" role="tablist" aria-label={t("Movie formats")}>
+          <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t("Movie formats")}>
             {d.templates.map((x) => {
               const m = FMT[x.key] || { tint: "t-film", kick: "", meta: "" };
               return (
-                <button type="button" role="tab" key={x.key} className="fs-fmt"
+                <button type="button" role="tab" key={x.key} className={`fs-fmt${zoomKey === x.key ? " zoom" : ""}`}
                   aria-selected={template === x.key} onClick={() => enterFormat(x.key)}>
                   <span className="fs-fmt-cover">
                     <img src={`/landing/film-still-${x.key}.jpg?v=3`} alt="" loading="lazy"
@@ -1028,7 +1026,7 @@ export default function FilmStudio() {
         )}
 
         {entered && (
-          <div className="fs-stage">
+          <div className={`fs-stage${anim === "out" ? " out" : ""}`}>
             <div className="fs-hero">
               <img className="fs-hero-art" src={`/landing/film-still-${template}.jpg?v=3`} alt=""
                 onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
@@ -1727,17 +1725,16 @@ const FS_STYLE = `
 .fs-tmpl b{font-family:Poppins,sans-serif;font-weight:800;font-size:15px;color:var(--ink,#14201A);display:block;}
 .fs-tmpl-sub{display:block;font-size:12px;color:var(--ink2,#4A554E);margin-top:3px;line-height:1.4;}
 /* Format picker v2 — each card is the format's real AI still (cover) + accent identity. */
-/* ───────── Cinematic: poster grid → title-card builder ─────────
-   Land on a 2-up poster grid; tap a format and the letterbox sweeps shut, swaps in that
-   format's builder under cover, then opens onto a title-card hero. Exit reverses it. */
+/* ───────── Cinematic: poster card ZOOMS IN, others thrown away, becomes the builder ─────────
+   Tap a card and it scales up (zoom) while its siblings fade + shrink away; then the stage it
+   lands on scales in from large and settles — reading as the card becoming the section. Back
+   shrinks the stage away and the grid fades back. (No black letterbox blink.) */
 .fs-switch{position:relative;}
-.fs-cine{position:absolute;inset:0;z-index:40;pointer-events:none;overflow:hidden;}
-.fs-cine span{position:absolute;left:0;right:0;height:0;background:#0A140F;transition:height .26s cubic-bezier(.7,0,.25,1);}
-.fs-cine span:first-child{top:0;}
-.fs-cine span:last-child{bottom:0;}
-.fs-cine.on span{height:52%;}
-.fs-fmtgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0 6px;}
-.fs-fmtgrid .fs-fmt{flex:none;width:auto;}
+.fs-fmtgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0 6px;animation:fsgridin .4s ease both;}
+@keyframes fsgridin{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+.fs-fmtgrid .fs-fmt{flex:none;width:auto;transform-origin:center;}
+.fs-fmtgrid.throw .fs-fmt{opacity:0;transform:scale(.72) translateY(26px);transition:opacity .32s ease,transform .36s ease;pointer-events:none;}
+.fs-fmtgrid.throw .fs-fmt.zoom{opacity:1;transform:scale(1.36) translateY(-10px);z-index:6;transition:transform .44s cubic-bezier(.34,.62,.2,1),box-shadow .44s ease;box-shadow:0 36px 72px -22px rgba(10,20,15,.6);}
 .fs-fmt-sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding:8px 11px 12px;font-size:11.5px;font-weight:700;color:var(--ink2,#55605A);line-height:1.32;}
 .fs-fmt-sub em{font-style:normal;font-weight:600;color:var(--ink3,#9AA39B);}
 .fs-hero{position:relative;height:150px;border-radius:16px;overflow:hidden;margin:16px 0 4px;background:#20302A;}
@@ -1752,13 +1749,17 @@ const FS_STYLE = `
 .fs-hero-back:hover{background:rgba(10,20,15,.66);}
 .fs-hero-ttl{position:absolute;left:16px;bottom:27px;z-index:3;font-family:Poppins,sans-serif;font-size:25px;font-weight:800;letter-spacing:-.01em;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.5);}
 .fs-hero-sub{position:absolute;left:16px;bottom:14px;z-index:3;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.86);text-shadow:0 1px 8px rgba(0,0,0,.5);}
-.fs-stepsin{animation:fsrise .5s ease both;}
-@keyframes fsrise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.fs-stage{animation:fsstagein .46s cubic-bezier(.2,.7,.2,1) both;transform-origin:center top;}
+@keyframes fsstagein{from{opacity:0;transform:scale(1.12)}to{opacity:1;transform:none}}
+.fs-stage.out{animation:fsstageout .3s ease forwards;transform-origin:center top;}
+@keyframes fsstageout{from{opacity:1;transform:none}to{opacity:0;transform:scale(.9)}}
+.fs-stepsin{animation:fsrise .52s cubic-bezier(.2,.7,.2,1) .04s both;}
+@keyframes fsrise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){
-  .fs-cine span{transition:none;}
-  .fs-cine.on span{height:0;}
+  .fs-fmtgrid,.fs-stage,.fs-stepsin{animation:none;}
+  .fs-fmtgrid.throw .fs-fmt,.fs-fmtgrid.throw .fs-fmt.zoom{transition:none;opacity:1;transform:none;}
+  .fs-stage.out{animation:none;opacity:1;transform:none;}
   .fs-hero-art{animation:none;}
-  .fs-stepsin{animation:none;}
 }
 .fs-fmt{position:relative;flex:0 0 130px;scroll-snap-align:start;text-align:left;cursor:pointer;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:15px;padding:0;overflow:hidden;transition:transform .16s,box-shadow .16s,border-color .16s;box-shadow:0 1px 2px rgba(20,32,26,.05);}
 .fs-fmt:hover{transform:translateY(-3px);box-shadow:0 12px 26px -16px rgba(20,32,26,.28);}
