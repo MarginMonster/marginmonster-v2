@@ -636,10 +636,22 @@ export default function FilmStudio() {
   // other cards are thrown away, then it becomes that format's builder. Back reverses it.
   const [entered, setEntered] = useState(false);
   const [zoomKey, setZoomKey] = useState<string | null>(null);
+  const [zoomStyle, setZoomStyle] = useState<{ transform: string } | undefined>(undefined);
   const [anim, setAnim] = useState<"" | "in" | "out">("");
-  const enterFormat = (key: string) => {
+  const enterFormat = (key: string, ev?: { currentTarget?: HTMLElement }) => {
+    // Zoom the tapped card toward the GRID CENTER (not in place) so it never flies off-screen.
+    const btn = ev?.currentTarget;
+    const grid = btn?.parentElement;
+    const reduce = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (btn && grid && !reduce) {
+      const br = btn.getBoundingClientRect();
+      const gr = grid.getBoundingClientRect();
+      const dx = Math.round((gr.left + gr.width / 2) - (br.left + br.width / 2));
+      const dy = Math.round((gr.top + gr.height / 2) - (br.top + br.height / 2));
+      setZoomStyle({ transform: `translate(${dx}px, ${dy}px) scale(1.42)` });
+    }
     setZoomKey(key); setAnim("in");
-    window.setTimeout(() => { switchTemplate(key); setEntered(true); setAnim(""); setZoomKey(null); }, 420);
+    window.setTimeout(() => { switchTemplate(key); setEntered(true); setAnim(""); setZoomKey(null); setZoomStyle(undefined); }, 420);
   };
   const exitFormat = () => {
     setAnim("out");
@@ -1004,7 +1016,8 @@ export default function FilmStudio() {
               const m = FMT[x.key] || { tint: "t-film", kick: "", meta: "" };
               return (
                 <button type="button" role="tab" key={x.key} className={`fs-fmt${zoomKey === x.key ? " zoom" : ""}`}
-                  aria-selected={template === x.key} onClick={() => enterFormat(x.key)}>
+                  style={zoomKey === x.key ? zoomStyle : undefined}
+                  aria-selected={template === x.key} onClick={(e) => enterFormat(x.key, e)}>
                   <span className="fs-fmt-cover">
                     <img src={`/landing/film-still-${x.key}.jpg?v=3`} alt="" loading="lazy"
                       onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
@@ -1734,7 +1747,7 @@ const FS_STYLE = `
 @keyframes fsgridin{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
 .fs-fmtgrid .fs-fmt{flex:none;width:auto;transform-origin:center;}
 .fs-fmtgrid.throw .fs-fmt{opacity:0;transform:scale(.72) translateY(26px);transition:opacity .32s ease,transform .36s ease;pointer-events:none;}
-.fs-fmtgrid.throw .fs-fmt.zoom{opacity:1;transform:scale(1.36) translateY(-10px);z-index:6;transition:transform .44s cubic-bezier(.34,.62,.2,1),box-shadow .44s ease;box-shadow:0 36px 72px -22px rgba(10,20,15,.6);}
+.fs-fmtgrid.throw .fs-fmt.zoom{opacity:1;z-index:6;will-change:transform;transition:transform .44s cubic-bezier(.34,.62,.2,1),box-shadow .44s ease;box-shadow:0 36px 72px -22px rgba(10,20,15,.6);}
 .fs-fmt-sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding:8px 11px 12px;font-size:11.5px;font-weight:700;color:var(--ink2,#55605A);line-height:1.32;}
 .fs-fmt-sub em{font-style:normal;font-weight:600;color:var(--ink3,#9AA39B);}
 .fs-hero{position:relative;height:150px;border-radius:16px;overflow:hidden;margin:16px 0 4px;background:#20302A;}
