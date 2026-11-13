@@ -639,15 +639,21 @@ export default function FilmStudio() {
   const [zoomStyle, setZoomStyle] = useState<{ transform: string } | undefined>(undefined);
   const [anim, setAnim] = useState<"" | "in" | "out">("");
   const enterFormat = (key: string, ev?: { currentTarget?: HTMLElement }) => {
-    // Zoom the tapped card toward the GRID CENTER (not in place) so it never flies off-screen.
+    // Fly the tapped card to the center of the VISIBLE band (between the grid's top and just above
+    // the bottom nav), not the grid center — the grid is taller than the screen, so grid-center
+    // dropped the zoom below the fold. This keeps it on-screen wherever the card or scroll sits.
     const btn = ev?.currentTarget;
     const grid = btn?.parentElement;
     const reduce = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (btn && grid && !reduce) {
+    if (btn && grid && typeof window !== "undefined" && !reduce) {
       const br = btn.getBoundingClientRect();
       const gr = grid.getBoundingClientRect();
-      const dx = Math.round((gr.left + gr.width / 2) - (br.left + br.width / 2));
-      const dy = Math.round((gr.top + gr.height / 2) - (br.top + br.height / 2));
+      const topBound = Math.max(gr.top, 8);
+      const botBound = window.innerHeight - 92;
+      const cx = window.innerWidth / 2;
+      const cy = (topBound + botBound) / 2;
+      const dx = Math.round(cx - (br.left + br.width / 2));
+      const dy = Math.round(cy - (br.top + br.height / 2));
       setZoomStyle({ transform: `translate(${dx}px, ${dy}px) scale(1.42)` });
     }
     setZoomKey(key); setAnim("in");
