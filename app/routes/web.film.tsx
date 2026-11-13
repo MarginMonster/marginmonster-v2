@@ -460,9 +460,6 @@ export default function FilmStudio() {
     });
 
   const [template, setTemplate] = useState(d.templates[0]?.key || "musicvideo");
-  // The format picker is a stack of 7 big cards — collapse it to a slim bar once a format is chosen
-  // (there's always a default), so you don't doom-scroll past all of them to reach the builder.
-  const [formatsOpen, setFormatsOpen] = useState(false);
   const tmpl = d.templates.find((x) => x.key === template) || d.templates[0];
   // The Veo dialogue pipeline supports the per-scene storyboard (approve each frame).
   const isStoryboard = !!tmpl?.dialogue; // any dialogue card (Short Film, Moral, Horror) → the chat-flow UI + dialogue engine
@@ -634,7 +631,6 @@ export default function FilmStudio() {
   const switchTemplate = (key: string) => {
     const nt = d.templates.find((x) => x.key === key);
     setTemplate(key); setScenes(nt?.defaultScenes || 6); setTreatment(null); setFrames([]); setCast([]);
-    setFormatsOpen(false); // collapse the picker back to the slim bar so the builder is right there
   };
   const pickCatalog = (idx: number) => {
     const p = d.products[idx];
@@ -985,41 +981,30 @@ export default function FilmStudio() {
         </div>
       </div>
 
-      {/* Format picker — collapses to a slim "Format · Change" bar so you don't scroll past 7 big
-          cards to reach the builder. Tap the bar (or the builder's "Formats" button) to pick another. */}
-      <div className="fs-fmtsec" id="fs-formats">
-      <button type="button" className={`fs-fmtbar${formatsOpen ? " open" : ""}`} onClick={() => setFormatsOpen((o) => !o)} aria-expanded={formatsOpen}>
-        <span className="fs-fmtbar-ic" aria-hidden="true">{fmtIcon(template)}</span>
-        <span className="fs-fmtbar-tx"><small>{formatsOpen ? t("Pick a format") : t("Format")}</small><b>{t(d.templates.find((x) => x.key === template)?.name || "Music Video")}</b></span>
-        <span className="fs-fmtbar-cue">{formatsOpen ? t("Close ▲") : t("Change ▾")}</span>
-      </button>
-      {formatsOpen && (
-      <div className="fs-tmpls">
+      {/* Format picker — a COMPACT horizontal strip you swipe through, so every format is visible at a
+          glance with NO vertical doom-scroll of big cards. The selected one glows; pick and the builder
+          below updates. (Each tile = cover + name only; the full blurb lives on the card you land in.) */}
+      <div className="fs-fmtrow" role="tablist" aria-label={t("Movie formats")}>
         {d.templates.map((x) => {
           const m = FMT[x.key] || { tint: "t-film", kick: "", meta: "" };
           return (
-            <button type="button" key={x.key} className={`fs-fmt${template === x.key ? " on" : ""}`}
-              aria-pressed={template === x.key} onClick={() => switchTemplate(x.key)}>
+            <button type="button" role="tab" key={x.key} className={`fs-fmt${template === x.key ? " on" : ""}`}
+              aria-selected={template === x.key} onClick={() => switchTemplate(x.key)}>
               <span className="fs-fmt-cover">
                 <img src={`/landing/film-still-${x.key}.jpg?v=3`} alt="" loading="lazy"
                   onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
                 <span className={`fs-fmt-ico ${m.tint}`} aria-hidden="true">{fmtIcon(x.key)}</span>
-                {template === x.key && <span className="fs-fmt-check" aria-hidden="true"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg></span>}
-                <span className="fs-fmt-label">{m.kick && <span className="fs-fmt-kick">{t(m.kick)}</span>}<b>{t(x.name)}</b></span>
+                <span className="fs-fmt-label"><b>{t(x.name)}</b></span>
               </span>
-              <span className="fs-fmt-body"><span className="fs-fmt-desc">{t(x.brief)}</span>{m.meta && <span className="fs-fmt-meta"><span aria-hidden="true">⏱</span> {t(m.meta)}</span>}</span>
             </button>
           );
         })}
         <div className="fs-fmt soon" aria-hidden="true">
           <span className="fs-fmt-cover">
             <img src="/landing/film-still-shortfilm.jpg?v=3" alt="" />
-            <span className="fs-fmt-soon"><span>{t("TV Shows · Episodes — soon")}</span></span>
+            <span className="fs-fmt-soon"><span>{t("TV — soon")}</span></span>
           </span>
-          <span className="fs-fmt-body"><span className="fs-fmt-desc">{t("A recurring cast across whole episodes — the next frontier.")}</span></span>
         </div>
-      </div>
-      )}
       </div>
 
       {/* ───────── Music Video — the card builder (elegant, Studio-style) ─────────
@@ -1027,12 +1012,6 @@ export default function FilmStudio() {
           Replaces the long-scroll form for the sing lanes only. */}
       {tmpl?.lipSyncSinger && (
         <div className="mm">
-          <div className="mm-vhead">
-            <span className="mm-vhead-ico" aria-hidden="true">{fmtIcon(template)}</span>
-            <div className="mm-vhead-copy"><b>{t(tmpl.name)}</b><span>{t("One artist · your song · director's cuts")}</span></div>
-            <button type="button" className="mm-back" onClick={() => { setFormatsOpen(true); setTimeout(() => document.getElementById("fs-formats")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40); }}>‹ {t("Formats")}</button>
-          </div>
-
           <div className="mm-topic">
             <label htmlFor="mm-topic-in">{t("What's your video about?")}</label>
             <input id="mm-topic-in" value={topic} onChange={(e) => setTopic(e.target.value)} maxLength={300}
@@ -1694,17 +1673,12 @@ const FS_STYLE = `
 .fs-beta{font-size:9.5px;font-weight:800;color:#2A1C00;background:linear-gradient(135deg,var(--fs-gold-lt),var(--fs-gold));border-radius:999px;padding:2px 8px;text-transform:uppercase;letter-spacing:.06em;box-shadow:0 2px 8px rgba(199,154,58,.35);}
 .fs-head-cat{position:absolute;z-index:3;right:16px;bottom:-22px;width:98px;height:auto;filter:drop-shadow(0 12px 18px rgba(0,0,0,.48));pointer-events:none;}
 /* slim format bar — the collapsed state of the picker so you don't scroll past 7 big cards */
-.fs-fmtsec{margin:18px 0 6px;}
-.fs-fmtbar{display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;background:linear-gradient(145deg,#0E6B41,#083E27);border:0;border-radius:18px;padding:12px 15px;box-shadow:0 14px 34px -22px rgba(8,62,39,.6);font-family:Poppins,sans-serif;transition:transform .14s,box-shadow .14s;}
-.fs-fmtbar:hover{transform:translateY(-1px);box-shadow:0 18px 38px -22px rgba(8,62,39,.7);}
-.fs-fmtbar-ic{width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.14);display:grid;place-items:center;flex:none;}
-.fs-fmtbar-ic svg{width:22px;height:22px;stroke:#8FE9BC;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
-.fs-fmtbar-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;}
-.fs-fmtbar-tx small{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:rgba(255,255,255,.6);}
-.fs-fmtbar-tx b{font-size:17px;font-weight:800;color:#fff;letter-spacing:-.01em;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.fs-fmtbar-cue{flex:none;font-size:12px;font-weight:800;color:#A7F0C8;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:7px 13px;}
-.fs-fmtbar.open{border-radius:18px 18px 0 0;box-shadow:none;}
-.fs-tmpls{display:grid;grid-template-columns:repeat(auto-fit,minmax(224px,1fr));gap:15px;margin:12px 0 6px;}
+/* Format picker — a COMPACT horizontal strip of small poster tiles you swipe through, so every format
+   is visible at a glance with NO vertical doom-scroll of big cards. */
+.fs-fmtrow{display:flex;gap:11px;overflow-x:auto;overflow-y:hidden;margin:18px 0 4px;padding:3px 2px 12px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
+.fs-fmtrow::-webkit-scrollbar{height:6px;}
+.fs-fmtrow::-webkit-scrollbar-thumb{background:#D4E3DA;border-radius:3px;}
+.fs-fmtrow::-webkit-scrollbar-track{background:transparent;}
 .fs-tmpl{flex:1 1 200px;min-width:0;text-align:left;border:1px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#fff,#FCFAF3);border-radius:18px;padding:15px 16px 14px;cursor:pointer;transition:transform .18s cubic-bezier(.2,.7,.2,1),box-shadow .18s,border-color .18s;display:block;box-shadow:0 1px 2px rgba(20,32,26,.04);}
 .fs-tmpl:hover{transform:translateY(-4px);box-shadow:0 16px 32px rgba(20,32,26,.14);border-color:var(--green2,#1FA463);}
 .fs-tmpl.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 16px 32px rgba(12,122,70,.18);background:linear-gradient(180deg,#fff,#F2FAF5);}
@@ -1715,20 +1689,20 @@ const FS_STYLE = `
 .fs-tmpl b{font-family:Poppins,sans-serif;font-weight:800;font-size:15px;color:var(--ink,#14201A);display:block;}
 .fs-tmpl-sub{display:block;font-size:12px;color:var(--ink2,#4A554E);margin-top:3px;line-height:1.4;}
 /* Format picker v2 — each card is the format's real AI still (cover) + accent identity. */
-.fs-fmt{position:relative;text-align:left;cursor:pointer;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:18px;padding:0;overflow:hidden;transition:transform .18s cubic-bezier(.2,.7,.2,1),box-shadow .18s,border-color .18s;box-shadow:0 1px 2px rgba(20,32,26,.05);}
-.fs-fmt:hover{transform:translateY(-5px);box-shadow:0 18px 38px -18px rgba(20,32,26,.28);}
+.fs-fmt{position:relative;flex:0 0 130px;scroll-snap-align:start;text-align:left;cursor:pointer;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:15px;padding:0;overflow:hidden;transition:transform .16s,box-shadow .16s,border-color .16s;box-shadow:0 1px 2px rgba(20,32,26,.05);}
+.fs-fmt:hover{transform:translateY(-3px);box-shadow:0 12px 26px -16px rgba(20,32,26,.28);}
 .fs-fmt:hover .fs-fmt-cover img{transform:scale(1.06);}
 .fs-fmt.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2px var(--green,#0C7A46),0 20px 40px -20px rgba(12,122,70,.5);}
-.fs-fmt-cover{position:relative;display:block;aspect-ratio:16/10;overflow:hidden;background:#20302A;}
+.fs-fmt-cover{position:relative;display:block;aspect-ratio:4/5;overflow:hidden;background:#20302A;}
 .fs-fmt-cover img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s cubic-bezier(.2,.7,.2,1);}
 .fs-fmt-cover::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(10,20,15,.82) 0%,rgba(10,20,15,.12) 46%,transparent 100%);}
-.fs-fmt-ico{position:absolute;z-index:2;top:10px;left:10px;width:36px;height:36px;border-radius:11px;display:grid;place-items:center;box-shadow:0 6px 16px -6px rgba(0,0,0,.6);}
-.fs-fmt-ico svg{width:19px;height:19px;stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.fs-fmt-ico{position:absolute;z-index:2;top:8px;left:8px;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;box-shadow:0 5px 14px -5px rgba(0,0,0,.6);}
+.fs-fmt-ico svg{width:15px;height:15px;stroke:#fff;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 .fs-fmt-check{position:absolute;z-index:2;top:10px;right:10px;width:23px;height:23px;border-radius:50%;background:var(--green,#0C7A46);display:grid;place-items:center;box-shadow:0 4px 10px -3px rgba(0,0,0,.5);}
 .fs-fmt-check svg{width:12px;height:12px;stroke:#fff;stroke-width:3;fill:none;}
-.fs-fmt-label{position:absolute;z-index:2;left:12px;right:12px;bottom:10px;}
+.fs-fmt-label{position:absolute;z-index:2;left:9px;right:9px;bottom:9px;}
 .fs-fmt-kick{display:block;font-size:10px;font-weight:800;color:#A7F0C8;text-transform:uppercase;letter-spacing:.07em;}
-.fs-fmt-label b{display:block;font-family:Poppins,sans-serif;font-size:16.5px;font-weight:800;letter-spacing:-.01em;color:#fff;line-height:1.1;margin-top:2px;text-shadow:0 1px 10px rgba(0,0,0,.5);}
+.fs-fmt-label b{display:block;font-family:Poppins,sans-serif;font-size:12.5px;font-weight:800;letter-spacing:-.01em;color:#fff;line-height:1.12;text-shadow:0 1px 10px rgba(0,0,0,.6);}
 .fs-fmt-body{display:block;padding:12px 14px 14px;}
 .fs-fmt-desc{display:block;font-size:12.5px;line-height:1.42;color:var(--ink2,#4A554E);}
 .fs-fmt-meta{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-size:11px;font-weight:800;color:var(--green,#0C7A46);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:4px 10px;}
