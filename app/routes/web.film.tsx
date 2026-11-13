@@ -1034,13 +1034,6 @@ export default function FilmStudio() {
                 </button>
               );
             })}
-            <div className="fs-fmt soon" aria-hidden="true">
-              <span className="fs-fmt-cover">
-                <img src="/landing/film-still-shortfilm.jpg?v=3" alt="" />
-                <span className="fs-fmt-soon"><span>{t("TV — soon")}</span></span>
-              </span>
-              <span className="fs-fmt-sub">{t("YouTube & episodic")}</span>
-            </div>
           </div>
         )}
 
@@ -1750,6 +1743,12 @@ const FS_STYLE = `
    shrinks the stage away and the grid fades back. (No black letterbox blink.) */
 .fs-switch{position:relative;}
 .fs-fmtgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0 6px;animation:fsgridin .4s ease both;}
+/* Tablet / desktop: cap the stage width and show 3 columns so posters stay poster-sized
+   instead of ballooning to half the screen on a wide monitor. Phones keep the 2-up grid. */
+@media (min-width:640px){
+  .fs-switch{max-width:760px;margin-left:auto;margin-right:auto;}
+  .fs-fmtgrid{grid-template-columns:repeat(3,minmax(0,1fr));}
+}
 @keyframes fsgridin{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
 .fs-fmtgrid .fs-fmt{flex:none;width:auto;transform-origin:center;}
 .fs-fmtgrid.throw .fs-fmt{opacity:0;transform:scale(.72) translateY(26px);transition:opacity .32s ease,transform .36s ease;pointer-events:none;}
