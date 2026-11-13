@@ -1278,11 +1278,12 @@ export default function FilmStudio() {
       )}
 
       {/* Step 1 — the vibe + length */}
-      <div className="fs-card">
-        <div className="fs-lbl"><span className="fs-n">1</span> {tmpl?.needsProduct ? t("What's the gag?") : t("What's it about?")}</div>
-        <textarea className="fs-ta" rows={3} value={topic} onChange={(e) => setTopic(e.target.value)}
+      {/* Describe-first entry — same premium look as the Music Video builder's topic box. */}
+      <div className="mm-topic mm-topic-film">
+        <label htmlFor="fs-topic-in">{tmpl?.needsProduct ? t("What's the gag?") : t("What's your movie about?")}</label>
+        <textarea id="fs-topic-in" rows={3} value={topic} onChange={(e) => setTopic(e.target.value)}
           placeholder={tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={300} />
-        <div className="fs-len">
+        <div className="fs-len fs-len-topic">
           <span>{t("Scenes")}</span>
           <div className="fs-stepper">
             <button type="button" onClick={() => bump(-1)} disabled={scenes <= tmpl.minScenes} aria-label={t("Fewer scenes")}>−</button>
@@ -1292,6 +1293,7 @@ export default function FilmStudio() {
           <span className="fs-len-note">{t("≈ {sec}s · {n} AI clips", { sec: scenes * 5, n: scenes })}</span>
         </div>
       </div>
+      <div className="mm-hint"><span aria-hidden="true">✎</span> {t("Tell us the idea — we write it and film it. Set anything below, or just hit the button.")}</div>
 
       {/* Step 2 — write + edit the scene FREE. Dialogue (Test Movie) gets the COMBINED
           conversation flow (one place, chat-style); other templates keep the classic
@@ -1976,9 +1978,12 @@ const FS_STYLE = `
 .mm-back:hover{background:rgba(255,255,255,.18);}
 .mm-topic{margin:16px 0 0;background:var(--panel,#FDFBF4);border:1.5px solid var(--line,#E4DFCF);border-radius:18px;padding:16px 18px;box-shadow:0 2px 4px rgba(20,32,26,.03);}
 .mm-topic label{font-size:13px;font-weight:800;color:var(--ink,#14201A);display:block;margin-bottom:8px;}
-.mm-topic input{width:100%;border:1.5px solid var(--line,#E4DFCF);border-radius:12px;padding:12px 14px;font-size:14.5px;font-family:Poppins,sans-serif;color:var(--ink,#14201A);background:#fff;}
-.mm-topic input:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
-.mm-topic input::placeholder{color:var(--ink3,#9AA39B);}
+.mm-topic input,.mm-topic textarea{width:100%;border:1.5px solid var(--line,#E4DFCF);border-radius:12px;padding:12px 14px;font-size:14.5px;font-family:Poppins,sans-serif;color:var(--ink,#14201A);background:#fff;box-sizing:border-box;}
+.mm-topic textarea{resize:vertical;min-height:62px;line-height:1.45;}
+.mm-topic input:focus,.mm-topic textarea:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.mm-topic input::placeholder,.mm-topic textarea::placeholder{color:var(--ink3,#9AA39B);}
+/* scene-count row that lives under the describe-first box in the classic (non-MV) builder */
+.fs-len-topic{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#E4DFCF);font-size:13px;font-weight:700;color:var(--ink2,#55605A);flex-wrap:wrap;}
 .mm-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:18px 4px 10px;display:flex;align-items:center;gap:7px;}
 /* The cards are a horizontal SLIDER (swipe through them like a wheel) — one row, so tapping a card
    opens its options directly beneath the row (adjacent), never buried under the other cards. */
