@@ -372,7 +372,7 @@ export async function previewFilmTreatment(opts: {
   const castLine = tmpl.castBible
     ? (tmpl.sing && !tmpl.childSafe
       ? (artistName
-        ? `\nThe artist is named "${artistName}" — use THIS exact name everywhere and do NOT invent a different one. Return it as "cast": an array whose FIRST entry is ONE vivid, FIXED visual description of ${artistName} to reuse in every scene (e.g. "${artistName}, a singer with long dark wavy hair, a black leather jacket and silver hoop earrings").${coStars} Every scene's VISUAL must feature this SAME performer, and any lyric or caption that names the singer uses "${artistName}".${noSlop}`
+        ? `\nThe artist is named "${artistName}" — use THIS EXACT name everywhere; do NOT give them a stage name, alias, rap name or ANY other name. Return "cast" as an array of vivid FIXED visual descriptions, EACH STARTING WITH THE PERSON'S EXACT NAME: the FIRST entry is ${artistName} (e.g. "${artistName}, a singer with long dark wavy hair and a black leather jacket")${castNames.length ? `, then ONE entry for EACH co-star, in this order and with these EXACT names — ${castNames.map((n) => `"${n}"`).join(", ")} (e.g. "${castNames[0]}, …")` : ""}. Every scene's VISUAL and caption must use ONLY these exact names — NEVER a made-up or stage name.${coStars} Every scene's VISUAL features this SAME performer.${noSlop}`
         : `\nFirst invent the ARTIST and return it as "cast": an array whose FIRST entry is ONE vivid, FIXED visual description of the singer to reuse in every scene (e.g. "Mia, a 25-year-old singer with long dark wavy hair, a black leather jacket and silver hoop earrings").${coStars} Every scene's VISUAL must feature this SAME performer, described the same way.${noSlop}`)
       : `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"). Every scene's VISUAL must feature these same named characters, described the same way.${noSlop}`)
     : "";
@@ -447,8 +447,30 @@ export async function previewFilmTreatment(opts: {
     tone: typeof s.tone === "string" && s.tone.trim() ? s.tone.trim().slice(0, 100) : undefined,
   }));
   if (list.length < 1) throw new Error("[film] treatment came back empty");
-  const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 4) : undefined;
-  return { title: (parsed.title || topic || tmpl.name).slice(0, 80), scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast };
+  const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 5) : undefined;
+  let outTitle = (parsed.title || topic || tmpl.name).slice(0, 80);
+  // NAME ENFORCEMENT (robust). The writer keeps inventing stage names (Kai Monroe, Wyatt, Vex, Dalla…)
+  // despite being told the EXACT names. So read the name it ACTUALLY used for each cast slot (the leading
+  // token of that cast description) and HARD-SUBSTITUTE it with the provided name across the whole
+  // treatment — the only thing that reliably kills "AI slop" names + lets the per-scene cast match.
+  if (cast && cast.length && (artistName || castNames.length)) {
+    const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const subs: Array<{ from: string; to: string }> = [];
+    cast.forEach((desc, i) => {
+      const want = i === 0 ? artistName : castNames[i - 1];
+      if (!want) return;
+      const used = (desc.split(/[,—:–(-]/)[0] || "").trim();
+      // Only treat the leading token as a name to swap if it LOOKS like one (1-3 capitalised words) and differs.
+      if (used && used !== want && used.length <= 40 && /^\p{Lu}[\p{L}.'-]*(?:\s+\p{Lu}[\p{L}.'-]*){0,2}$/u.test(used)) subs.push({ from: used, to: want });
+    });
+    if (subs.length) {
+      const apply = (txt?: string): string => { let o = txt || ""; for (const s of subs) o = o.replace(new RegExp(`\\b${esc(s.from)}\\b`, "g"), s.to); return o; };
+      list = list.map((s) => ({ ...s, visual: apply(s.visual), caption: s.caption ? apply(s.caption) : undefined }));
+      for (let i = 0; i < cast.length; i++) cast[i] = apply(cast[i]);
+      outTitle = apply(outTitle);
+    }
+  }
+  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast };
 }
 
 // ---- Assembly ---------------------------------------------------------------
