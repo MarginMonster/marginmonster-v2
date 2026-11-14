@@ -108,8 +108,24 @@ function parseCastExtra(raw: string | null): Array<{ img: string; name: string }
     const out = arr
       .filter((m) => m && typeof m.img === "string" && m.img.trim())
       .map((m) => ({ img: String(m.img).slice(0, 2000), name: String(m.name || "").slice(0, 40) }))
-      .slice(0, 2);
+      .slice(0, 6); // cast LIBRARY cap (per-scene still ≤2 co-stars)
     return out.length ? out : undefined;
+  } catch { return undefined; }
+}
+
+/** Per-scene cast (owner edit): scene index → the cast IMAGES featured in that scene. */
+function parseCastForScene(raw: string | null): Record<number, string[]> | undefined {
+  if (!raw) return undefined;
+  try {
+    const o = JSON.parse(raw);
+    if (!o || typeof o !== "object") return undefined;
+    const out: Record<number, string[]> = {};
+    for (const k of Object.keys(o)) {
+      const n = parseInt(k, 10);
+      if (!Number.isFinite(n)) continue;
+      out[n] = Array.isArray(o[k]) ? o[k].filter((x: unknown) => typeof x === "string").map((x: string) => x.slice(0, 2000)).slice(0, 3) : [];
+    }
+    return Object.keys(out).length ? out : undefined;
   } catch { return undefined; }
 }
 
@@ -264,15 +280,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const scenes = clampScenes(parseInt((form.get("filmScenes") as string) || "", 10) || tmpl.defaultScenes);
     const heroUrl = ((form.get("filmHeroUrl") as string) || "").trim().slice(0, 2000) || undefined;
     const castExtra = parseCastExtra(form.get("filmCastExtra") as string);
+    const castForScene = parseCastForScene(form.get("filmCastForScene") as string);
     const filmAspect = ((form.get("filmAspect") as string) || "").trim();
     try {
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, castForScene, aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
-        return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef });
+        return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef, castRefs: r.castRefs });
       }
       // generateFilm engine (Kids Music Video / narrated story formats) — cast-locked scene seeds.
       const { previewFilmSceneSeeds } = await import("../lib/film-engine.server");
@@ -294,13 +311,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const sceneIndex = parseInt((form.get("sceneIndex") as string) || "0", 10) || 0;
     const propKey = ((form.get("propKey") as string) || "").trim() || undefined;
     const genre = ((form.get("filmGenre") as string) || "").trim();
+    const rerollAspect = ((form.get("filmAspect") as string) || "").trim();
+    let sceneCastRefs: string[] = [];
+    const scrRaw = ((form.get("sceneCastRefs") as string) || "").trim();
+    if (scrRaw) { try { const a = JSON.parse(scrRaw); if (Array.isArray(a)) sceneCastRefs = a.filter((x) => typeof x === "string").slice(0, 2); } catch { /* ignore */ } }
     if (!sceneVisual) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
     try {
       let img: string | null = null;
       if (tmpl.lipSyncSinger) {
         if (!artistRef) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
         const { rerollMusicVideoScene } = await import("../lib/music-video-pipeline.server");
-        img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre });
+        img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect });
       } else {
         const { rerollFilmSceneSeed } = await import("../lib/film-engine.server");
         img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined });
@@ -369,6 +390,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const filmCustomProps = parseCustomProps(form.get("filmCustomProps") as string);
     // Extra cast (Music Video) — co-stars beyond the lead, composed into perform scenes.
     const filmCastExtra = parseCastExtra(form.get("filmCastExtra") as string);
+    // Per-scene cast (Music Video owner edit) — scene index → the cast imgs featured in that scene.
+    const filmCastForScene = parseCastForScene(form.get("filmCastForScene") as string);
     // Pre-approved per-scene STILLS (Music Video storyboard) — render these EXACT images, no re-seed.
     // Keep positions (a null = that scene seeds fresh), so the index stays aligned with the scenes.
     let approvedSceneImgs: (string | null)[] | undefined;
@@ -390,6 +413,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(filmSongUrl ? { filmSongUrl } : {}),
         ...(filmHeroUrl ? { filmHeroUrl } : {}),
         ...(filmCastExtra ? { filmCastExtra } : {}),
+        ...(filmCastForScene ? { filmCastForScene } : {}),
         ...(filmProps?.length ? { filmProps } : {}),
         ...(filmCustomProps.length ? { filmCustomProps } : {}),
         ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
@@ -449,7 +473,13 @@ export default function FilmStudio() {
   const propMakerFetcher = useFetcher<{ img?: string; error?: string }>();
   // Make-your-own artist: describe a face → we generate a portrait (free), like the presenter forge.
   const artistMakerFetcher = useFetcher<{ img?: string; error?: string }>();
-  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null } | null>(null);
+  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null; castRefs: string[] } | null>(null);
+  // Per-scene CO-STAR edit (owner): scene index → the co-star imgs featured in that scene (the artist
+  // always leads a perform scene). Unset scenes fall back to an intelligent default (one rotating
+  // co-star per perform scene) so the roster isn't crammed into every card.
+  const [castForScene, setCastForScene] = useState<Record<number, string[]>>({});
+  const [sceneCastPick, setSceneCastPick] = useState<number | null>(null);
+  const [sceneCastDraft, setSceneCastDraft] = useState<string[]>([]);
   const [rerollingScene, setRerollingScene] = useState<number | null>(null);
   // Storyboard (dialogue): per-scene approved frames + which scene is rendering now.
   const previewFrameFetcher = useFetcher<{ frameUrl?: string; sceneIndex?: number; error?: string }>();
@@ -591,7 +621,7 @@ export default function FilmStudio() {
   // dancers). Faces come from the same pool (roster / your custom avatars); each gets a name, and on
   // the scenes below you pick which appear in each shot. The lead (artistPick) stays the star/singer.
   const [castExtra, setCastExtra] = useState<Array<{ img: string; name: string }>>([]);
-  const addCastMemberMv = (img: string, name: string) => setCastExtra((c) => (c.some((m) => m.img === img) ? c.filter((m) => m.img !== img) : [...c, { img, name: (name || "").trim() || `Cast ${c.length + 1}` }]));
+  const addCastMemberMv = (img: string, name: string) => setCastExtra((c) => (c.some((m) => m.img === img) ? c.filter((m) => m.img !== img) : (c.length >= 6 ? c : [...c, { img, name: (name || "").trim() || `Cast ${c.length + 1}` }])));
   const renameCastMemberMv = (img: string, name: string) => setCastExtra((c) => c.map((m) => (m.img === img ? { ...m, name } : m)));
   useEffect(() => {
     if (artistMakerFetcher.state !== "idle" || !artistPendingRef.current) return;
@@ -712,7 +742,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: mvAspect, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: mvAspect, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
       { method: "post" }
     );
   };
@@ -740,15 +770,19 @@ export default function FilmStudio() {
   // and the hero lets a single scene be re-rolled without changing the artist.
   useEffect(() => {
     const sd = sceneSeedsFetcher.data;
-    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null, castRef: sd.castRef || null });
+    const crefs = (sd as { castRefs?: string[] } | undefined)?.castRefs;
+    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null, castRef: sd.castRef || null, castRefs: Array.isArray(crefs) ? crefs : [] });
   }, [sceneSeedsFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Re-roll ONE storyboard scene (reusing the hero / cast ref) when it came back wrong; swap that still.
-  const rerollScene = (i: number, propOverride?: string) => {
+  const rerollScene = (i: number, propOverride?: string, castOverride?: string[]) => {
     if (!seeds || (!seeds.artistRef && !seeds.castRef)) return;
     const pk = propOverride !== undefined ? propOverride : (seeds.propForScene[i] || "");
+    // Resolve THIS scene's co-stars → their styled refs so the re-roll composes the right faces.
+    const costarImgs = castOverride !== undefined ? castOverride : sceneCostars(seeds.treatment.scenes, i);
+    const sceneCastRefs = costarImgs.map((img) => costarImgToRef(img)).filter(Boolean) as string[];
     setRerollingScene(i);
     rerollSceneFetcher.submit(
-      { intent: "rerollFilmScene", template, filmGenre, artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), ...(pk ? { propKey: pk } : {}) },
+      { intent: "rerollFilmScene", template, filmGenre, filmAspect: mvAspect, artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}) },
       { method: "post" }
     );
   };
@@ -785,7 +819,7 @@ export default function FilmStudio() {
   }, [rerollSceneFetcher.state, rerollSceneFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Any setup change invalidates the preview — the stills would no longer match the new settings
   // (the artist too: a different face means the stills show the wrong person).
-  useEffect(() => { setSeeds(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick, mvAspect]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setSeeds(null); setCastForScene({}); setSceneCastPick(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick, mvAspect]); // eslint-disable-line react-hooks/exhaustive-deps
   // Artist or cast CHANGED → clear the SCRIPT too so it re-writes with the picked names. Fixes the
   // "Kazon" AI-slop name persisting from a treatment that was written before the cast was set.
   useEffect(() => { setTreatment(null); }, [artistPick, castExtra.map((m) => m.img).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -808,9 +842,49 @@ export default function FilmStudio() {
     if (seeds) setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) } } : prev));
     else if (treatment) setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) });
   };
+  // ---- Per-scene CO-STAR cast (owner edit) ---------------------------------
+  // Intelligent default: the artist leads EVERY perform scene; each co-star rotates through the perform
+  // scenes (one per scene) so the whole roster isn't crammed onto every card. A broll/cut scene carries
+  // no featured co-star. Owner overrides (castForScene) win.
+  const defaultSceneCostars = (scenesArr: Scene[], i: number): string[] => {
+    if (sceneKind(scenesArr[i], i) !== "perform" || !castExtra.length) return [];
+    const performIdxs = scenesArr.map((s, j) => (sceneKind(s, j) === "perform" ? j : -1)).filter((j) => j >= 0);
+    const pOrder = Math.max(0, performIdxs.indexOf(i));
+    return [castExtra[pOrder % castExtra.length].img];
+  };
+  const sceneCostars = (scenesArr: Scene[], i: number): string[] => castForScene[i] ?? defaultSceneCostars(scenesArr, i);
+  // The whole scene→co-stars map (defaults + overrides) — what the preview + the render receive.
+  const resolveCastMap = (scenesArr: Scene[]): Record<number, string[]> => {
+    const m: Record<number, string[]> = {};
+    scenesArr.forEach((_, i) => { m[i] = sceneCostars(scenesArr, i); });
+    return m;
+  };
+  // A co-star's source img → its styled ref (index-aligned: castExtra[k] ↔ seeds.castRefs[k]). A member
+  // added AFTER the preview has no styled ref yet — fall back to their raw face so the re-roll still
+  // composes them (the full GENERATE re-styles every member, so the final video is consistent).
+  const costarImgToRef = (img: string): string | null => {
+    const k = castExtra.findIndex((m) => m.img === img);
+    if (k >= 0 && seeds?.castRefs?.[k]) return seeds.castRefs[k];
+    return img || null;
+  };
+  const castMemberName = (img: string): string => (img === artistPick ? artistName : (castExtra.find((m) => m.img === img)?.name || ""));
+  const openSceneCastPick = (i: number) => {
+    if (sceneCastPick === i) { setSceneCastPick(null); return; }
+    setSceneCastDraft(seeds ? sceneCostars(seeds.treatment.scenes, i) : []);
+    setSceneCastPick(i);
+  };
+  const toggleSceneCastDraft = (img: string) => setSceneCastDraft((prev) => (prev.includes(img) ? prev.filter((x) => x !== img) : [...prev, img].slice(-2)));
+  const confirmSceneCastMv = (i: number) => {
+    setCastForScene((prev) => ({ ...prev, [i]: sceneCastDraft }));
+    setSceneCastPick(null);
+    rerollScene(i, undefined, sceneCastDraft);
+  };
   // Add / reorder / delete scenes in the pre-editor. Structural edits keep the stills (imgs) and the
   // per-scene prop map index-aligned to the scenes array, so nothing shifts out from under a still.
   const structEditScenes = (fn: (cur: { scenes: Scene[]; imgs: (string | null)[]; prop: Record<number, string> }) => { scenes: Scene[]; imgs: (string | null)[]; prop: Record<number, string> }) => {
+    // Adding / removing / reordering shifts scene indices — the per-scene cast overrides (keyed by
+    // index) would misalign, so clear them back to the intelligent default rather than mismatch faces.
+    setCastForScene({}); setSceneCastPick(null);
     if (seeds) {
       setSeeds((prev) => {
         if (!prev) return prev;
@@ -939,10 +1013,32 @@ export default function FilmStudio() {
                     {isMv ? (
                       <>
                         <div className="mm-sc-chips">
-                          {perform && artistName && <span className="mm-sc-chip mm-chip-av">{artistPick ? <img src={artistPick} alt="" /> : null}{artistName}</span>}
-                          {perform && castExtra.map((m) => <span className="mm-sc-chip mm-chip-av" key={m.img}><img src={m.img} alt="" />{m.name}</span>)}
+                          {perform && artistName && <span className="mm-sc-chip mm-chip-av mm-chip-lead">{artistPick ? <img src={artistPick} alt="" /> : null}{artistName}</span>}
+                          {perform && sceneCostars(strip.scenes, i).map((img) => <span className="mm-sc-chip mm-chip-av" key={img}><img src={img} alt="" />{castMemberName(img) || t("Cast")}</span>)}
+                          {seeds && perform && <button type="button" className="mm-sc-chip mm-chip-cast" onClick={() => openSceneCastPick(i)} disabled={rerollingScene !== null} aria-label={t("Edit who's in this scene")}><Ico n="star" size={11} /> {t("Cast")}</button>}
                           {seeds && <button type="button" className={`mm-sc-chip mm-chip-prop${pl ? "" : " empty"}`} onClick={() => openScenePropPick(i)} disabled={rerollingScene !== null} aria-label={t("Props in this scene")}><Ico n="gem" size={11} /> {pl || t("No props")}</button>}
                         </div>
+                        {seeds && sceneCastPick === i && (
+                          <div className="mm-sc-castedit">
+                            <div className="mm-sc-castpick">
+                              {castExtra.map((m) => (
+                                <button type="button" key={m.img} className={`mm-cp-opt${sceneCastDraft.includes(m.img) ? " on" : ""}`} onClick={() => toggleSceneCastDraft(m.img)} title={m.name}>
+                                  <span className="mm-cp-img" style={{ backgroundImage: `url(${m.img})` }} aria-hidden="true" />{m.name || t("Cast")}
+                                </button>
+                              ))}
+                              {[...customArtists.map((c) => ({ img: c.img, name: c.name })), ...d.roster.map((r) => ({ img: r.img, name: r.name }))].filter((r) => r.img && !castExtra.some((m) => m.img === r.img)).slice(0, 14).map((r) => (
+                                <button type="button" key={`pool-${r.img}`} className="mm-cp-opt mm-cp-add" onClick={() => { addCastMemberMv(r.img, r.name); toggleSceneCastDraft(r.img); }} title={r.name}>
+                                  <span className="mm-cp-img" style={{ backgroundImage: `url(${r.img})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{r.name}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="mm-cp-hint">{t("The star always leads. Add up to 2 co-stars for this scene — or pick a face from your cast / the roster.")}</div>
+                            <div className="mm-sc-propcta">
+                              <button type="button" className="mm-sp-confirm" onClick={() => confirmSceneCastMv(i)} disabled={rerollingScene !== null}><Ico n="refresh" size={12} /> {t("Regenerate scene {n}", { n: i + 1 })}</button>
+                              <button type="button" className="mm-sp-cancel" onClick={() => setSceneCastPick(null)}>{t("Cancel")}</button>
+                            </div>
+                          </div>
+                        )}
                         {seeds && scenePropPick === i && (
                           <div className="mm-sc-propedit">
                             <div className="mm-sc-proppick">
@@ -1471,6 +1567,7 @@ export default function FilmStudio() {
               {customProps.length > 0 && <input type="hidden" name="filmCustomProps" value={JSON.stringify(customProps)} />}
               {artistPick && <input type="hidden" name="filmHeroUrl" value={artistPick} />}
               {castExtra.length > 0 && <input type="hidden" name="filmCastExtra" value={JSON.stringify(castExtra)} />}
+              {tmpl?.lipSyncSinger && seeds && castExtra.length > 0 && <input type="hidden" name="filmCastForScene" value={JSON.stringify(resolveCastMap(seeds.treatment.scenes))} />}
               {tmpl?.lipSyncSinger && <input type="hidden" name="filmAspect" value={mvAspect} />}
               <input type="hidden" name="filmTopic" value={topic} />
               <input type="hidden" name="filmScenes" value={String(scenes)} />
@@ -2461,6 +2558,18 @@ const FS_STYLE = `
 .mm-sc-chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 8px 2px 3px;border:1px solid;}
 .mm-sc-chip img{width:17px;height:17px;border-radius:50%;object-fit:cover;flex:none;}
 .mm-chip-av{background:#EAF2FB;border-color:#D4E4F5;color:#1A4E85;}
+.mm-chip-lead{background:#E7EEFA;border-color:#C7D9F0;font-weight:800;box-shadow:inset 0 0 0 1px #C7D9F0;}
+.mm-chip-cast{background:#F3EEFB;border-color:#E0D4F3;color:#5B3A99;padding:2px 9px;cursor:pointer;transition:background .14s;}
+.mm-chip-cast:hover:not(:disabled){background:#EBE2F7;}
+.mm-chip-cast:disabled{opacity:.5;cursor:default;}
+.mm-chip-cast svg{stroke:currentColor;stroke-width:2;fill:none;}
+.mm-sc-castedit{display:flex;flex-direction:column;gap:7px;}
+.mm-sc-castpick{display:flex;gap:6px;overflow-x:auto;padding:7px 1px 2px;scrollbar-width:thin;}
+.mm-cp-opt{flex:0 0 auto;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;width:58px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:10px;padding:5px 3px;font-size:9.5px;font-weight:700;color:var(--ink2,#55605A);cursor:pointer;line-height:1.1;text-align:center;}
+.mm-cp-opt.on{border-color:#7A4FC2;box-shadow:0 0 0 1.5px #7A4FC2;color:#5B3A99;}
+.mm-cp-img{width:46px;height:46px;border-radius:50%;background:#20302A;background-size:cover;background-position:center;}
+.mm-cp-plus{position:absolute;top:3px;right:5px;width:16px;height:16px;line-height:15px;text-align:center;border-radius:50%;background:var(--green,#0C7A46);color:#fff;font-size:11px;font-weight:800;}
+.mm-cp-hint{font-size:10.5px;font-weight:600;color:var(--ink3,#9AA39B);line-height:1.35;}
 .mm-chip-pr{background:#F0F8F3;border-color:#CFE8DB;color:#0A5E37;padding-left:8px;}
 .mm-chip-prop{background:#F0F8F3;border-color:#CFE8DB;color:#0A5E37;padding:2px 9px;cursor:pointer;transition:background .14s;}
 .mm-chip-prop:hover:not(:disabled){background:#E4F2EA;}
