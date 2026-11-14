@@ -190,26 +190,38 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const showParam = parseInt(new URL(request.url).searchParams.get("show") || "", 10);
   const show = Math.min(SHOW_MAX, Math.max(SHOW_STEP, Number.isFinite(showParam) ? showParam : SHOW_STEP));
 
+  // Scene stills + avatar/wardrobe portraits (from the Movie Maker) get their OWN archive section,
+  // so they don't crowd the ad Images tab or dominate pagination. They're marked by metaJson.kind.
+  const GALLERY_KINDS = ['"kind":"musicvideo-scene"', '"kind":"wardrobe"'];
+  const galleryWhere = { OR: GALLERY_KINDS.map((k) => ({ metaJson: { contains: k } })) };
+
   // True per-type totals, independent of what we render — the tab labels were
   // counting the truncated page and therefore under-reported the library.
   const totalsRaw = await db.asset.groupBy({
     by: ["type"],
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] } },
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere },
     _count: { _all: true },
   });
-  const totals = { video: 0, image: 0, music: 0, blog: 0 };
+  const totals = { video: 0, image: 0, music: 0, blog: 0, stills: 0 };
   for (const t of totalsRaw) {
     if (t.type === "VIDEO_AD") totals.video = t._count._all;
     else if (t.type === "IMAGE_AD") totals.image = t._count._all;
     else if (t.type === "AUDIO") totals.music = t._count._all;
     else if (t.type === "BLOG_POST") totals.blog = t._count._all;
   }
+  totals.stills = await db.asset.count({ where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere } });
   const totalAll = totals.video + totals.image + totals.music + totals.blog;
 
   const assets = await db.asset.findMany({
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] } },
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere },
     orderBy: { createdAt: "desc" },
     take: show,
+  });
+  // Separate fetch for the Scenes & Portraits section (its own pagination so neither crowds the other).
+  const stills = await db.asset.findMany({
+    where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere },
+    orderBy: { createdAt: "desc" },
+    take: 180,
   });
   const jobs = await db.job.findMany({
     where: { shopId: shop.id, status: { in: ["PENDING", "IN_PROGRESS", "FAILED"] }, type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_SONG", "GENERATE_BLOG_POST"] } },
@@ -260,22 +272,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Un-kept media (PENDING video/photo) auto-clears at 30 days — surface a
   // per-item countdown so nothing vanishes as a surprise. Blogs never expire.
   const CACHE_DAYS = 30;
-  return json({
-    section,
-    canPost: socialProviderEnabled() && linked.length > 0,
-    linkedCount: linked.length,
-    linked,
-    tokens: tokensRemainingLive(shop.activePlan),
-    hasPlan: !!shop.activePlan,
-    cost: TOKEN_COST,
-    cooking: cookingCards.filter((c) => c.status === "generating").length,
-    cookingCards,
-    totals,
-    // Whether anything is still hidden, and how to ask for more of it.
-    shown: Math.min(show, totalAll),
-    totalAll,
-    nextShow: totalAll > show ? Math.min(SHOW_MAX, show + SHOW_STEP) : null,
-    assets: assets.map((a) => {
+  const mapAsset = (a: (typeof assets)[number]) => {
       let body: { videoUrl?: string; imageUrl?: string; audioUrl?: string; title?: string; html?: string; needsRegen?: boolean } = {};
       try { body = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
       // MEDIA WE KNOW IS GONE.
@@ -329,7 +326,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // dead piece; the stamp lives on the asset so it cannot be farmed.
         freeRemake: expired && !(() => { try { return JSON.parse(a.metaJson || "{}").freeReplacedAt; } catch { return false; } })(),
       };
-    }),
+  };
+  return json({
+    section,
+    canPost: socialProviderEnabled() && linked.length > 0,
+    linkedCount: linked.length,
+    linked,
+    tokens: tokensRemainingLive(shop.activePlan),
+    hasPlan: !!shop.activePlan,
+    cost: TOKEN_COST,
+    cooking: cookingCards.filter((c) => c.status === "generating").length,
+    cookingCards,
+    totals,
+    // Whether anything is still hidden, and how to ask for more of it.
+    shown: Math.min(show, totalAll),
+    totalAll,
+    nextShow: totalAll > show ? Math.min(SHOW_MAX, show + SHOW_STEP) : null,
+    assets: assets.map(mapAsset),
+    stills: stills.map(mapAsset),
   });
 };
 
@@ -771,7 +785,7 @@ function dlName(title: string, isVideo: boolean, isAudio = false): string {
   return `${base}.${isAudio ? "mp3" : isVideo ? "mp4" : "jpg"}`;
 }
 
-type ATab = "video" | "image" | "music" | "blog";
+type ATab = "video" | "image" | "music" | "blog" | "stills";
 const A_KIND: Record<string, ATab> = { VIDEO_AD: "video", IMAGE_AD: "image", AUDIO: "music", BLOG_POST: "blog" };
 
 // Route-local styles for everything the parity pass added (viewer, badges,
@@ -1071,7 +1085,7 @@ const WA_CSS = `
 
 export default function WebArchive() {
   const t = useT();
-  const { section, assets, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
+  const { section, assets, stills, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
   const isCreator = section === "creator";
   // Preserve the section across tab links, "show more", and revalidation so the
   // Gallery stays the Gallery.
@@ -1082,7 +1096,7 @@ export default function WebArchive() {
   const busy = nav.state !== "idle";
   // ?tab= deep link → initial tab.
   const [searchParams] = useSearchParams();
-  const startTab = (["video", "image", "music", "blog"] as const).find((t) => t === searchParams.get("tab"));
+  const startTab = (["video", "image", "music", "blog", "stills"] as const).find((t) => t === searchParams.get("tab"));
   const [tab, setTab] = useState<ATab>(startTab || "video");
   // Quick-filter within a tab. Up to 600 pieces land here, and the two things a
   // merchant actually hunts for are "what's about to be deleted" (un-kept media
@@ -1223,7 +1237,7 @@ export default function WebArchive() {
     else if (actionData && "unkept" in actionData) setViewer((v) => (v ? { ...v, status: "PENDING" } : v));
   }, [actionData]);
 
-  const shelf = assets.filter((a) => A_KIND[a.type] === tab);
+  const shelf = tab === "stills" ? stills : assets.filter((a) => A_KIND[a.type] === tab);
   // The true library count for the open tab, so the note under the shelf
   // matches the number on the tab itself.
   const tabTotal = totals?.[tab] ?? shelf.length;
@@ -1235,7 +1249,7 @@ export default function WebArchive() {
   const isKept = (a: { status: string }) => a.status === "APPROVED" || a.status === "PUBLISHED";
   const clearingCount = shelf.filter((a) => a.daysLeft != null).length;
   const keptCount = shelf.filter((a) => isKept(a)).length;
-  const canFilter = (tab === "video" || tab === "image") && (clearingCount > 0 || keptCount > 0);
+  const canFilter = (tab === "video" || tab === "image" || tab === "stills") && (clearingCount > 0 || keptCount > 0);
   // What actually renders + what the viewer arrows cycle through. Pagination and
   // the empty state stay on the unfiltered `shelf` — they describe the library,
   // not the chip. Oldest-first would bury the nearest-purge pieces, so the
@@ -1317,7 +1331,7 @@ export default function WebArchive() {
         </div>
       )}
       <div className="ws-tabs" style={{ marginBottom: 16 }}>
-        {([["video", "video", t("Videos")], ["image", "image", t("Images")], ["music", "music", t("Music")], ["blog", "article", t("Articles")]] as [ATab, string, string][]).map(([k, icon, label]) => {
+        {([["video", "video", t("Videos")], ["image", "image", t("Images")], ["music", "music", t("Music")], ["blog", "article", t("Articles")], ...((totals?.stills ?? 0) > 0 ? [["stills", "film", t("Scenes & Portraits")]] : [])] as [ATab, string, string][]).map(([k, icon, label]) => {
           // Count the whole library, not the slice we happened to render —
           // this used to read off `assets`, so a truncated page under-reported
           // how much the merchant actually owned.
