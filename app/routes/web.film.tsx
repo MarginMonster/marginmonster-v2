@@ -748,6 +748,8 @@ export default function FilmStudio() {
       { method: "post" }
     );
   };
+  // Tap a scene still to inspect it big (lightbox).
+  const [zoomImg, setZoomImg] = useState<string | null>(null);
   // Per-scene PROP edit (post-creation): set/clear a scene's prop and re-roll JUST that scene with it.
   const [scenePropPick, setScenePropPick] = useState<number | null>(null);
   const setScenePropMv = (i: number, propKey: string) => {
@@ -872,6 +874,12 @@ export default function FilmStudio() {
     const busy = makeFn ? (writing || seedBusy || chainToScenes) : seedBusy;
     return (
     <div className="mm-storyboard">
+      {zoomImg && (
+        <div className="mm-lightbox" onClick={() => setZoomImg(null)} role="dialog" aria-label={t("Scene preview")}>
+          <img src={zoomImg} alt="" />
+          <button type="button" className="mm-lightbox-x" onClick={() => setZoomImg(null)} aria-label={t("Close")}>✕</button>
+        </div>
+      )}
       {!filmstripOnly && (<>
       <button type="button" className="mm-preview-btn" onClick={makeFn || previewScenes} disabled={busy || !d.hasPlan}>
         {busy ? (makeFn && writing ? <>… {t("Writing your song")}</> : <>… {t("Building the scenes")}</>)
@@ -903,7 +911,7 @@ export default function FilmStudio() {
               return (
                 <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i}>
                   <div className="mm-sc-frame">
-                    {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sc-load wb-cookimg" aria-hidden="true"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
+                    {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" className="mm-sc-zoomable" onClick={() => setZoomImg(u)} /> : <span className="mm-sc-load wb-cookimg" aria-hidden="true"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     {rerollingScene === i && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     <span className="mm-sb-num">{i + 1}</span>
                     <button type="button" className="mm-sc-x" onClick={() => sbRemoveScene(i)} disabled={strip.scenes.length <= 1} title={t("Remove this scene")} aria-label={t("Remove scene {n}", { n: i + 1 })}>✕</button>
@@ -2396,6 +2404,12 @@ const FS_STYLE = `
 .mm-sc .wb-cookimg{position:absolute;inset:0;width:100%;height:100%;aspect-ratio:auto;}
 .mm-sc .wb-spin{width:52px;height:52px;}
 .mm-sb-busy-rose{background:linear-gradient(160deg,#0E8A4F,#0A5F38 55%,#084A2C)!important;display:grid;place-items:center;}
+.mm-sc-zoomable{cursor:zoom-in;}
+.mm-lightbox{position:fixed;inset:0;z-index:9999;background:rgba(8,16,12,.9);display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;animation:mmlbin .18s ease;}
+@keyframes mmlbin{from{opacity:0}to{opacity:1}}
+.mm-lightbox img{max-width:100%;max-height:100%;border-radius:12px;box-shadow:0 20px 60px -10px rgba(0,0,0,.7);}
+.mm-lightbox-x{position:fixed;top:18px;right:18px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:17px;cursor:pointer;display:grid;place-items:center;}
+.mm-lightbox-x:hover{background:rgba(255,255,255,.3);}
 .mm-sc .wb-bufwrap::before{width:118px;height:118px;}
 .mm-sc-x{position:absolute;top:6px;right:6px;z-index:3;width:25px;height:25px;border-radius:50%;border:none;background:rgba(10,20,15,.6);color:#fff;font-size:13px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .14s;}
 .mm-sc-x:hover:not(:disabled){background:#B4463A;}
