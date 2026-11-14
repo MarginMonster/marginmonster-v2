@@ -990,34 +990,49 @@ export default function FilmStudio() {
   }, [outfitFetcher.state, outfitFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // The face to SHOW for an avatar — the thumbnail of its selected outfit if generated, else the original.
   const avatarFace = (img: string): string => styleFor(img, outfits[img] || "") || img;
-  // The outfit SLIDER (no separate trigger — opens under the selected avatar). Own look + presets (each
-  // shows its saved thumbnail once generated, or a spinner while generating) + any custom-described
-  // outfits + a describe/Make row.
+  const presetLabel = (desc: string): string | undefined => OUTFIT_PRESETS.find((o) => o.desc === desc)?.label;
+  // The outfit SLIDER (opens under the selected avatar). SAVED looks (Own look + generated outfits, big
+  // thumbnails side by side) on top; the preset "suggestions" below are just hints to generate (each
+  // moves up into the saved row once made); a describe-your-own "Make it" row at the bottom.
   const outfitSlider = (img: string, name: string) => {
     const cur = outfits[img] || "";
     const draft = outfitDrafts[img] || "";
     const busyDesc = outfitBusyFor && outfitBusyFor.img === img ? outfitBusyFor.desc : null;
-    const customSaved = (outfitStyles[img] || []).filter((s) => !OUTFIT_PRESETS.some((o) => o.desc === s.desc));
-    const tile = (desc: string, label: string, keyOwn?: boolean) => {
-      const sImg = keyOwn ? img : styleFor(img, desc);
-      const gen = busyDesc === desc;
-      const on = keyOwn ? !cur : cur === desc;
+    const saved = outfitStyles[img] || [];
+    const suggestions = OUTFIT_PRESETS.filter((o) => !saved.some((s) => s.desc === o.desc) && o.desc !== busyDesc);
+    const look = (faceUrl: string, desc: string, label: string, own: boolean) => {
+      const on = own ? !cur : cur === desc;
       return (
-        <button type="button" key={keyOwn ? "own" : desc} className={`mm-sp-opt${on ? " on" : ""}`} onClick={() => applyOutfit(img, keyOwn ? "" : desc)} disabled={!!busyDesc} title={label}>
-          <span className="mm-sp-img mm-wd2-ph" aria-hidden="true">{gen ? <span className="mm-wd2-spin" /> : sImg ? <img src={sImg} alt="" /> : <Ico n="shirt" size={16} />}</span>{label}
+        <button type="button" key={own ? "own" : desc} className={`mm-wd2-look${on ? " on" : ""}`} onClick={() => applyOutfit(img, own ? "" : desc)} disabled={!!busyDesc} title={label}>
+          <span className="mm-wd2-lookimg"><img src={faceUrl} alt="" />{on && <span className="mm-wd2-lookchk" aria-hidden="true"><Ico n="check" size={12} /></span>}</span>
+          <span className="mm-wd2-lookname">{label}</span>
         </button>
       );
     };
     return (
       <div className="mm-wd2">
-        <div className="mm-wd2-h"><Ico n="shirt" size={12} /> {t("{name}'s outfit", { name })}{busyDesc && <span className="mm-wd2-making">{t("generating…")}</span>}</div>
-        <div className="mm-sc-proppick mm-wd2-pick">
-          {tile("", t("Own look"), true)}
-          {OUTFIT_PRESETS.map((o) => tile(o.desc, t(o.label)))}
-          {customSaved.map((s) => tile(s.desc, s.desc.length > 14 ? s.desc.slice(0, 14) + "…" : s.desc))}
+        <div className="mm-wd2-h"><Ico n="shirt" size={13} /> {t("{name}'s wardrobe", { name })}</div>
+        <div className="mm-wd2-hint">{t("Tap a look to use it. Tap a suggestion to generate it — it saves here beside the others. Or describe your own below.")}</div>
+        <div className="mm-wd2-saved">
+          {look(img, "", t("Own look"), true)}
+          {saved.map((s) => look(s.img, s.desc, presetLabel(s.desc) ? t(presetLabel(s.desc) as string) : (s.desc.length > 18 ? s.desc.slice(0, 18) + "…" : s.desc), false))}
+          {busyDesc && (
+            <span className="mm-wd2-look is-making" aria-live="polite">
+              <span className="mm-wd2-lookimg"><span className="mm-wd2-spin" /></span>
+              <span className="mm-wd2-lookname">{presetLabel(busyDesc) ? t(presetLabel(busyDesc) as string) : t("Making…")}</span>
+            </span>
+          )}
         </div>
+        {suggestions.length > 0 && (
+          <div className="mm-wd2-sugs">
+            <span className="mm-wd2-sugl">{t("Suggestions")}</span>
+            {suggestions.map((o) => (
+              <button type="button" key={o.k} className="mm-wd2-sug" onClick={() => applyOutfit(img, o.desc)} disabled={!!busyDesc}>+ {t(o.label)}</button>
+            ))}
+          </div>
+        )}
         <div className="mm-wd2-make">
-          <input className="mm-wardrobe-input" value={draft} onChange={(e) => setOutfitDrafts((d) => ({ ...d, [img]: e.target.value }))} placeholder={t("…or describe an outfit (red sequin dress, varsity jacket…)")} maxLength={160} onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) { e.preventDefault(); applyOutfit(img, draft.trim()); } }} aria-label={t("Describe an outfit for {name}", { name })} />
+          <input className="mm-wardrobe-input" value={draft} onChange={(e) => setOutfitDrafts((d) => ({ ...d, [img]: e.target.value }))} placeholder={t("Describe an outfit — a red sequin dress, a varsity jacket…")} maxLength={160} onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) { e.preventDefault(); applyOutfit(img, draft.trim()); } }} aria-label={t("Describe an outfit for {name}", { name })} />
           <button type="button" className="mm-wd2-gen" onClick={() => draft.trim() && applyOutfit(img, draft.trim())} disabled={!draft.trim() || !!busyDesc}><Ico n="wand" size={13} /> {t("Make it")}</button>
         </div>
       </div>
@@ -2615,19 +2630,31 @@ const FS_STYLE = `
 .mm-castmem-wd svg{stroke:#fff;stroke-width:2.2;fill:none;}
 .mm-wd2{display:flex;flex-direction:column;gap:7px;}
 .mm-castmem-wrap .mm-wd2{margin:7px 0 3px 4px;}
-.mm-wd2-h{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;color:var(--ink2,#55605A);}
+.mm-wd2-h{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;color:var(--ink,#14201A);}
 .mm-wd2-h svg{stroke:currentColor;stroke-width:2;fill:none;}
-.mm-wd2-making{color:#7A4FC2;font-weight:700;}
-.mm-wd2-spin{width:20px;height:20px;border:2.5px solid #E0D4F3;border-top-color:#7A4FC2;border-radius:50%;animation:mm-wd2-rot .7s linear infinite;}
+.mm-wd2-hint{font-size:11px;font-weight:600;color:var(--ink3,#9AA39B);line-height:1.4;margin:-3px 0 1px;}
+.mm-wd2-spin{width:24px;height:24px;border:2.5px solid #E0D4F3;border-top-color:#7A4FC2;border-radius:50%;animation:mm-wd2-rot .7s linear infinite;}
 @keyframes mm-wd2-rot{to{transform:rotate(360deg);}}
-.mm-wd2-pick{margin-top:2px;}
-.mm-wd2-ph{display:grid!important;place-items:center;color:#7A4FC2;background:#F3EEFB!important;overflow:hidden;}
-.mm-wd2-ph img{width:100%;height:100%;object-fit:cover;border-radius:7px;}
-.mm-wd2-ph svg{stroke:currentColor;stroke-width:1.8;fill:none;}
+.mm-wd2-saved{display:flex;gap:10px;overflow-x:auto;padding:3px 1px 5px;scrollbar-width:thin;}
+.mm-wd2-look{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:5px;width:78px;border:0;background:transparent;cursor:pointer;padding:0;}
+.mm-wd2-look[disabled]{cursor:default;}
+.mm-wd2-lookimg{position:relative;width:78px;height:78px;border-radius:14px;overflow:hidden;background:#F3EEFB;display:grid;place-items:center;border:2px solid var(--line,#E4DFCF);transition:border-color .14s,box-shadow .14s;}
+.mm-wd2-look.on .mm-wd2-lookimg{border-color:#7A4FC2;box-shadow:0 0 0 2px #7A4FC2;}
+.mm-wd2-lookimg img{width:100%;height:100%;object-fit:cover;}
+.mm-wd2-lookchk{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:#7A4FC2;color:#fff;display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.22);}
+.mm-wd2-lookchk svg{stroke:#fff;stroke-width:2.6;fill:none;}
+.mm-wd2-lookname{font-size:11px;font-weight:700;color:var(--ink2,#55605A);text-align:center;line-height:1.2;max-width:78px;}
+.mm-wd2-look.on .mm-wd2-lookname{color:#5B3A99;}
+.mm-wd2-look.is-making .mm-wd2-lookname{color:#7A4FC2;}
+.mm-wd2-sugs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+.mm-wd2-sugl{font-size:10px;font-weight:800;color:var(--ink3,#9AA39B);text-transform:uppercase;letter-spacing:.05em;margin-right:2px;}
+.mm-wd2-sug{border:1.5px dashed #D9C9F0;background:#FBF8FF;color:#5B3A99;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:Poppins,sans-serif;transition:background .14s,border-color .14s;}
+.mm-wd2-sug:hover:not(:disabled){background:#F3EEFB;border-color:#7A4FC2;}
+.mm-wd2-sug:disabled{opacity:.5;cursor:default;}
 .mm-wd2-make{display:flex;gap:7px;align-items:center;}
-.mm-wardrobe-input{flex:1;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;padding:9px 12px;font-size:12.5px;font-family:Poppins,sans-serif;color:var(--ink,#14201A);background:#fff;}
+.mm-wardrobe-input{flex:1;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;padding:10px 12px;font-size:12.5px;font-family:Poppins,sans-serif;color:var(--ink,#14201A);background:#fff;}
 .mm-wardrobe-input:focus{outline:0;border-color:#7A4FC2;box-shadow:0 0 0 3px rgba(122,79,194,.12);}
-.mm-wd2-gen{flex:none;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:10px;background:#7A4FC2;color:#fff;font-weight:800;font-size:12px;padding:9px 13px;cursor:pointer;font-family:Poppins,sans-serif;}
+.mm-wd2-gen{flex:none;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:10px;background:#7A4FC2;color:#fff;font-weight:800;font-size:12px;padding:10px 14px;cursor:pointer;font-family:Poppins,sans-serif;}
 .mm-wd2-gen:disabled{opacity:.5;cursor:default;}
 .mm-wd2-gen svg{stroke:#fff;stroke-width:2;fill:none;}
 .mm-autoface-img{display:grid;place-items:center;background:linear-gradient(135deg,#EFEAFB,#DDD3F3)!important;}
