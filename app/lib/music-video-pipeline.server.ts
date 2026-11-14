@@ -218,6 +218,8 @@ async function buildMusicVideoSeeds(p: {
   /** Extra named cast beyond the lead (co-stars, dancers) — each face is styled into the genre then
    *  composed INTO perform scenes alongside the artist (identity-locked, never blended). */
   castExtra?: Array<{ img: string; name: string }>;
+  /** Output shape — "9:16" (default), "16:9" or "1:1". Drives the seed render aspect (clips follow). */
+  aspect?: string;
   jobId?: string;
   resume?: Record<string, string | undefined>;
   base: string;
@@ -236,6 +238,7 @@ async function buildMusicVideoSeeds(p: {
   const abs = (u: string | null | undefined): string | null => (u ? (u.startsWith("http") ? u : `${p.base}${u}`) : null);
   const scenes = p.scenes;
   const propForScene = p.propForScene;
+  const asp = (p.aspect === "16:9" || p.aspect === "1:1") ? p.aspect : "9:16";
 
   // ARTIST hero — ONE realistic portrait that locks the look (face + wardrobe) for the WHOLE video.
   // If the merchant PICKED one of their avatars, lock THAT face as the artist — style it into the genre
@@ -303,16 +306,23 @@ async function buildMusicVideoSeeds(p: {
     const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, no duplicates.${animalGuard(propKey, noun)}` : "";
     const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
     const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause}${performNote} ${g.look}. ${REALISM} ${ONE_PERSON}`;
-    // Perform scene WITH extra cast → compose the artist + co-stars together (identity-locked, no blend).
-    let img = (shot.role === "perform" && castRefs.length && artistRef)
-      ? await renderStyledSeedMulti(`A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${s.visual}. Feature the artist together with ${castNames || "the co-stars"} — keep EACH person's face and identity EXACTLY as in their reference photo; do NOT blend, merge, duplicate or swap faces.${propClause}${performNote} ${g.look}. ${REALISM}`, [artistRef, ...castRefs].slice(0, 3), "9:16")
+    // Compose the scene still. 9:16 single-subject keeps the proven edit-into-scene path; multi-cast OR a
+    // non-vertical aspect routes through renderStyledSeedMulti, which reframes the refs to any aspect.
+    const multiCast = shot.role === "perform" && castRefs.length > 0 && !!artistRef;
+    let img = (multiCast || (asp !== "9:16" && srcRef))
+      ? await renderStyledSeedMulti(
+          multiCast
+            ? `A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${s.visual}. Feature the artist together with ${castNames || "the co-stars"} — keep EACH person's face and identity EXACTLY as in their reference photo; do NOT blend, merge, duplicate or swap faces.${propClause}${performNote} ${g.look}. ${REALISM}`
+            : `A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${s.visual}. Keep this EXACT person's face and identity — do not swap them.${propClause}${performNote} ${g.look}. ${REALISM}`,
+          (multiCast ? [artistRef, ...castRefs] : [srcRef]).filter(Boolean).slice(0, 3) as string[],
+          asp)
       : srcRef
         ? await editSubjectIntoScene(srcRef, prompt)
-        : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, "9:16");
+        : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, asp);
     if (propKey && artistRef && propRefs[propKey]) {
       const cur = img ? abs(img) : null;
       if (!cur || !(await sceneShowsProp(cur, noun))) {
-        const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${s.visual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, no duplicates.${animalGuard(propKey, noun)} ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRefs[propKey]], "9:16");
+        const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${s.visual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, no duplicates.${animalGuard(propKey, noun)} ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRefs[propKey]], asp);
         if (forced) img = forced;
       }
     }
@@ -327,7 +337,7 @@ async function buildMusicVideoSeeds(p: {
  *  scene BEFORE committing (the "limit the surprise" ask). The approved stills ride back into
  *  generateMusicVideo as `approvedSceneImgs` so it renders EXACTLY what was previewed. */
 export async function previewMusicVideoScenes(opts: {
-  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>;
+  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>; aspect?: string;
 }): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; propForScene: Record<number, string>; artistRef: string | null }> {
   const tmpl = filmTemplate("musicvideo");
   const genre = genreOrDefault(opts.genre);
@@ -349,7 +359,7 @@ export async function previewMusicVideoScenes(opts: {
   }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
 
-  const { sceneImgs, artistRef } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, resume: {}, base });
+  const { sceneImgs, artistRef } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, aspect: opts.aspect, resume: {}, base });
   return { treatment, sceneImgs, propForScene, artistRef };
 }
 
@@ -412,6 +422,8 @@ export async function generateMusicVideo(opts: {
   heroUrl?: string;
   /** Extra named cast beyond the lead — composed into perform scenes alongside the artist. */
   castExtra?: Array<{ img: string; name: string }>;
+  /** Output shape — "9:16" (default), "16:9" or "1:1". */
+  aspect?: string;
   /** Owner PREVIEWED + approved these exact per-scene stills — render them, don't re-seed (no surprise).
    *  Index-aligned with scenes; a null entry means that scene fell back and should seed fresh. */
   approvedSceneImgs?: (string | null)[];
@@ -487,7 +499,7 @@ export async function generateMusicVideo(opts: {
   //      SHARED seed path the preview uses (hero + prop anchors + vision-gated per-scene edits).
   const sceneImgs = opts.approvedSceneImgs && opts.approvedSceneImgs.length === N
     ? opts.approvedSceneImgs.map((u) => abs(u))
-    : (await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, jobId, resume, base })).sceneImgs;
+    : (await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, aspect: opts.aspect, jobId, resume, base })).sceneImgs;
 
   // 5) song SEGMENTS (local mp3 + hosted url for the lip-sync model to drive the mouth to).
   const segs: Array<{ localPath: string; url: string }> = [];
@@ -577,7 +589,7 @@ export async function generateMusicVideo(opts: {
       bodyJson: JSON.stringify({ style: "MUSICVIDEO", videoUrl: storedUrl, prompt: opts.topic || "", genre, treatment }),
       metaJson: JSON.stringify({
         kind: "musicvideo", template: "musicvideo", section: opts.section || "creator",
-        genre, genreLabel: g.label, scenes: good.length, lipSynced: good.length, aspect: "9:16",
+        genre, genreLabel: g.label, scenes: good.length, lipSynced: good.length, aspect: (opts.aspect === "16:9" || opts.aspect === "1:1") ? opts.aspect : "9:16",
         songSeconds: Math.round(songDur), seconds: Math.round(finalDur), engine: "kling2.5+synclipsync",
       }),
     },

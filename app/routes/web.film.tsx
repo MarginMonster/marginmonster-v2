@@ -264,11 +264,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const scenes = clampScenes(parseInt((form.get("filmScenes") as string) || "", 10) || tmpl.defaultScenes);
     const heroUrl = ((form.get("filmHeroUrl") as string) || "").trim().slice(0, 2000) || undefined;
     const castExtra = parseCastExtra(form.get("filmCastExtra") as string);
+    const filmAspect = ((form.get("filmAspect") as string) || "").trim();
     try {
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
         return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef });
@@ -490,6 +491,9 @@ export default function FilmStudio() {
   // Only submitted for testmovie; the action ignores it for every other template.
   const [dialogueEngine, setDialogueEngine] = useState<"veo" | "kling3">("kling3");
   const [filmAspect, setFilmAspect] = useState<"9:16" | "16:9" | "1:1">("16:9");
+  // Music Video output shape — its OWN state (defaults to the owner-validated 9:16; the picker lets them
+  // choose 16:9 / 1:1). Kept separate from the dialogue-flow filmAspect so neither changes the other.
+  const [mvAspect, setMvAspect] = useState<"9:16" | "16:9" | "1:1">("9:16");
   // Music Video genre (lip-sync lane only) — drives the song + the artist/settings.
   const [filmGenre, setFilmGenre] = useState<string>(d.genres?.[0]?.key || "rap");
   // BYO-song (Music Video): "write" = auto-generate the song, "upload" = merchant's own track.
@@ -708,7 +712,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: mvAspect, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
       { method: "post" }
     );
   };
@@ -774,7 +778,7 @@ export default function FilmStudio() {
   }, [rerollSceneFetcher.state, rerollSceneFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Any setup change invalidates the preview — the stills would no longer match the new settings
   // (the artist too: a different face means the stills show the wrong person).
-  useEffect(() => { setSeeds(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setSeeds(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick, mvAspect]); // eslint-disable-line react-hooks/exhaustive-deps
   // Artist or cast CHANGED → clear the SCRIPT too so it re-writes with the picked names. Fixes the
   // "Kazon" AI-slop name persisting from a treatment that was written before the cast was set.
   useEffect(() => { setTreatment(null); }, [artistPick, castExtra.map((m) => m.img).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -910,7 +914,7 @@ export default function FilmStudio() {
               const perform = !isMv || sceneKind(sc, i) === "perform";
               return (
                 <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i}>
-                  <div className="mm-sc-frame">
+                  <div className="mm-sc-frame" style={isMv && mvAspect !== "9:16" ? { aspectRatio: mvAspect === "16:9" ? "16 / 9" : "1 / 1" } : undefined}>
                     {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" className="mm-sc-zoomable" onClick={() => setZoomImg(u)} /> : <span className="mm-sc-load wb-cookimg" aria-hidden="true"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     {rerollingScene === i && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     <span className="mm-sb-num">{i + 1}</span>
@@ -1436,6 +1440,14 @@ export default function FilmStudio() {
           {/* FINAL STEP — Make the scenes + Generate, combined in one box. */}
           <div className="mm-gen mm-makegen">
             <div className="mm-makegen-h">{t("Make & generate your video")}</div>
+            <div className="mm-aspect" role="group" aria-label={t("Shape")}>
+              <span className="mm-aspect-lbl">{t("Shape")}</span>
+              <div className="mm-aspect-seg">
+                <button type="button" className={`mm-aspect-opt${mvAspect === "9:16" ? " on" : ""}`} aria-pressed={mvAspect === "9:16"} onClick={() => setMvAspect("9:16")}>{t("Vertical")}<small>9:16</small></button>
+                <button type="button" className={`mm-aspect-opt${mvAspect === "16:9" ? " on" : ""}`} aria-pressed={mvAspect === "16:9"} onClick={() => setMvAspect("16:9")}>{t("Wide")}<small>16:9</small></button>
+                <button type="button" className={`mm-aspect-opt${mvAspect === "1:1" ? " on" : ""}`} aria-pressed={mvAspect === "1:1"} onClick={() => setMvAspect("1:1")}>{t("Square")}<small>1:1</small></button>
+              </div>
+            </div>
             {makeBtn()}
             <Form method="post">
               <input type="hidden" name="intent" value="film" />
@@ -1446,6 +1458,7 @@ export default function FilmStudio() {
               {customProps.length > 0 && <input type="hidden" name="filmCustomProps" value={JSON.stringify(customProps)} />}
               {artistPick && <input type="hidden" name="filmHeroUrl" value={artistPick} />}
               {castExtra.length > 0 && <input type="hidden" name="filmCastExtra" value={JSON.stringify(castExtra)} />}
+              {tmpl?.lipSyncSinger && <input type="hidden" name="filmAspect" value={mvAspect} />}
               <input type="hidden" name="filmTopic" value={topic} />
               <input type="hidden" name="filmScenes" value={String(scenes)} />
               {(seeds?.treatment || treatment) && <input type="hidden" name="approvedTreatment" value={JSON.stringify(seeds?.treatment || treatment)} />}
@@ -2463,6 +2476,13 @@ const FS_STYLE = `
 /* the combined MAKE + GENERATE final step box */
 .mm-makegen{display:flex;flex-direction:column;gap:12px;}
 .mm-makegen-h{font-size:13px;font-weight:800;color:var(--ink,#14201A);letter-spacing:-.01em;}
+.mm-aspect{display:flex;align-items:center;gap:10px;}
+.mm-aspect-lbl{font-size:12px;font-weight:800;color:var(--ink2,#55605A);flex:none;}
+.mm-aspect-seg{display:flex;gap:6px;flex:1;}
+.mm-aspect-opt{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:10px;padding:6px 4px;font-size:12px;font-weight:700;color:var(--ink2,#4A554E);cursor:pointer;transition:border-color .14s,background .14s;}
+.mm-aspect-opt small{font-size:9.5px;font-weight:700;color:var(--ink3,#9AA39B);}
+.mm-aspect-opt.on{border-color:var(--green,#0C7A46);background:#F0F8F3;color:var(--green,#0C7A46);box-shadow:0 0 0 1px var(--green,#0C7A46);}
+.mm-aspect-opt.on small{color:var(--green,#0C7A46);}
 .mm-makegen .mm-preview-btn{width:100%;justify-content:center;padding:13px 16px;font-size:14px;}
 .mm-makegen .mm-eta,.mm-makegen .mm-note{margin-top:0;}
 .mm-go{position:relative;overflow:hidden;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,#0C7A46,#15B165 55%,#1EA85C);color:#fff;border:0;border-radius:15px;padding:16px;font-family:Poppins,sans-serif;font-weight:800;font-size:16.5px;letter-spacing:-.01em;cursor:pointer;box-shadow:0 14px 30px -14px rgba(12,122,70,.7),inset 0 1px 0 rgba(255,255,255,.25);}
