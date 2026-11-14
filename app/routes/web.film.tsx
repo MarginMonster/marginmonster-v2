@@ -8,6 +8,7 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { Form, useActionData, useFetcher, useLoaderData, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { estimateSpeakSeconds, clipFill, secondsLabel, CLIP_MAX_SECONDS } from "../lib/speech-meter";
@@ -1018,7 +1019,7 @@ export default function FilmStudio() {
           {saved.map((s) => look(s.img, s.desc, presetLabel(s.desc) ? t(presetLabel(s.desc) as string) : (s.desc.length > 18 ? s.desc.slice(0, 18) + "…" : s.desc), false))}
           {busyDesc && (
             <span className="mm-wd2-look is-making" aria-live="polite">
-              <span className="mm-wd2-lookimg"><span className="mm-wd2-spin" /></span>
+              <span className="mm-wd2-lookimg wb-cookimg mm-wd2-cook"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>
               <span className="mm-wd2-lookname">{presetLabel(busyDesc) ? t(presetLabel(busyDesc) as string) : t("Making…")}</span>
             </span>
           )}
@@ -1118,11 +1119,12 @@ export default function FilmStudio() {
     const busy = makeFn ? (writing || seedBusy || chainToScenes) : seedBusy;
     return (
     <div className="mm-storyboard">
-      {zoomImg && (
+      {zoomImg && typeof document !== "undefined" && createPortal(
         <div className="mm-lightbox" onClick={() => setZoomImg(null)} role="dialog" aria-label={t("Scene preview")}>
-          <img src={zoomImg} alt="" />
+          <img src={zoomImg} alt="" onClick={(e) => e.stopPropagation()} />
           <button type="button" className="mm-lightbox-x" onClick={() => setZoomImg(null)} aria-label={t("Close")}>✕</button>
-        </div>
+        </div>,
+        document.body,
       )}
       {!filmstripOnly && (<>
       <button type="button" className="mm-preview-btn" onClick={makeFn || previewScenes} disabled={busy || !d.hasPlan}>
@@ -2175,7 +2177,7 @@ function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; scenes: nu
 }
 
 const FS_STYLE = `
-.fs-wrap{max-width:760px;margin:0 auto;--fs-gold:#C79A3A;--fs-gold-lt:#E7C879;}
+.fs-wrap{max-width:1340px;margin:0 auto;--fs-gold:#C79A3A;--fs-gold-lt:#E7C879;}
 .fs-eta{display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 0;font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
 .fs-eta b{font-weight:800;color:var(--ink,#14201A);}
 /* Cinematic hero — a dark "movie theatre" band with a gold spotlight + underline. */
@@ -2226,8 +2228,12 @@ const FS_STYLE = `
 /* Tablet / desktop: cap the stage width and show 3 columns so posters stay poster-sized
    instead of ballooning to half the screen on a wide monitor. Phones keep the 2-up grid. */
 @media (min-width:640px){
-  .fs-switch{max-width:760px;margin-left:auto;margin-right:auto;}
+  .fs-switch{max-width:1340px;margin-left:auto;margin-right:auto;}
   .fs-fmtgrid{grid-template-columns:repeat(3,minmax(0,1fr));}
+}
+/* Wide desktop: the format poster grid breathes into 4 columns. */
+@media (min-width:1120px){
+  .fs-fmtgrid{grid-template-columns:repeat(4,minmax(0,1fr));}
 }
 @keyframes fsgridin{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
 .fs-fmtgrid .fs-fmt{flex:none;width:auto;transform-origin:center;}
@@ -2573,6 +2579,8 @@ const FS_STYLE = `
 .mm-card.done .mm-step{background:#0C7A46 !important;color:#fff !important;}
 .mm-card.done .mm-step svg{stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 @media (max-width:300px){.mm-grid{grid-template-columns:1fr;}.mm-card-wide{grid-column:auto;}}
+/* Wide desktop: fan the step cards into 3 columns so they don't balloon in the wider studio. */
+@media (min-width:960px){.mm-grid{grid-template-columns:repeat(3,minmax(0,1fr));}}
 .mm-card-top{display:flex;align-items:center;gap:11px;}
 .mm-card-ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;box-shadow:0 6px 14px -6px rgba(0,0,0,.35);}
 .mm-card-ico svg{stroke:#fff;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
@@ -2635,6 +2643,10 @@ const FS_STYLE = `
 .mm-wd2-hint{font-size:11px;font-weight:600;color:var(--ink3,#9AA39B);line-height:1.4;margin:-3px 0 1px;}
 .mm-wd2-spin{width:24px;height:24px;border:2.5px solid #E0D4F3;border-top-color:#7A4FC2;border-radius:50%;animation:mm-wd2-rot .7s linear infinite;}
 @keyframes mm-wd2-rot{to{transform:rotate(360deg);}}
+/* Generating tile uses the Archive's rosette-green cook spinner (sized to the 78px look tile). */
+.mm-wd2-cook{background:linear-gradient(160deg,#0E8A4F,#0A5F38 55%,#084A2C)!important;border-color:#0C7A46!important;display:grid!important;place-items:center;overflow:hidden;}
+.mm-wd2-cook .wb-spin{width:30px;height:30px;}
+.mm-wd2-cook .wb-bufwrap::before{width:70px;height:70px;}
 .mm-wd2-saved{display:flex;gap:10px;overflow-x:auto;padding:3px 1px 5px;scrollbar-width:thin;}
 .mm-wd2-look{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:5px;width:78px;border:0;background:transparent;cursor:pointer;padding:0;}
 .mm-wd2-look[disabled]{cursor:default;}
@@ -2742,6 +2754,7 @@ const FS_STYLE = `
      state reuses the Archive's rosette-green cook tile (.wb-cookimg/.wb-bufwrap/.wb-spin). ── */
 .mm-sb-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:2px 0 4px;}
 @media(min-width:640px){.mm-sb-list{grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media(min-width:1120px){.mm-sb-list{grid-template-columns:repeat(4,minmax(0,1fr));}}
 .mm-sc{display:flex;flex-direction:column;border:1.5px solid var(--line,#E4DFCF);border-radius:14px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(20,32,26,.06);}
 .mm-sc.is-perform{border-color:#A6DCC0;}
 .mm-sc.is-broll{border-color:#CBC6F2;}
