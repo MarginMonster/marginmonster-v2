@@ -754,17 +754,24 @@ export default function FilmStudio() {
   };
   // Tap a scene still to inspect it big (lightbox).
   const [zoomImg, setZoomImg] = useState<string | null>(null);
-  // Per-scene PROP edit (post-creation): set/clear a scene's prop and re-roll JUST that scene with it.
+  // Per-scene PROP edit (post-creation): STAGE a prop in a draft (no auto-regen), then an explicit
+  // "Regenerate this scene" CTA re-rolls just that scene with it.
   const [scenePropPick, setScenePropPick] = useState<number | null>(null);
-  const setScenePropMv = (i: number, propKey: string) => {
+  const [scenePropDraft, setScenePropDraft] = useState<string>("");
+  const openScenePropPick = (i: number) => {
+    if (scenePropPick === i) { setScenePropPick(null); return; }
+    setScenePropDraft(seeds?.propForScene[i] || "");
+    setScenePropPick(i);
+  };
+  const confirmScenePropMv = (i: number) => {
     setSeeds((prev) => {
       if (!prev) return prev;
       const pf = { ...prev.propForScene };
-      if (propKey) pf[i] = propKey; else delete pf[i];
+      if (scenePropDraft) pf[i] = scenePropDraft; else delete pf[i];
       return { ...prev, propForScene: pf };
     });
     setScenePropPick(null);
-    rerollScene(i, propKey);
+    rerollScene(i, scenePropDraft);
   };
   useEffect(() => {
     const rd = rerollSceneFetcher.data;
@@ -934,16 +941,22 @@ export default function FilmStudio() {
                         <div className="mm-sc-chips">
                           {perform && artistName && <span className="mm-sc-chip mm-chip-av">{artistPick ? <img src={artistPick} alt="" /> : null}{artistName}</span>}
                           {perform && castExtra.map((m) => <span className="mm-sc-chip mm-chip-av" key={m.img}><img src={m.img} alt="" />{m.name}</span>)}
-                          {seeds && <button type="button" className={`mm-sc-chip mm-chip-prop${pl ? "" : " empty"}`} onClick={() => setScenePropPick(scenePropPick === i ? null : i)} disabled={rerollingScene !== null} aria-label={t("Props in this scene")}><Ico n="gem" size={11} /> {pl || t("No props")}</button>}
+                          {seeds && <button type="button" className={`mm-sc-chip mm-chip-prop${pl ? "" : " empty"}`} onClick={() => openScenePropPick(i)} disabled={rerollingScene !== null} aria-label={t("Props in this scene")}><Ico n="gem" size={11} /> {pl || t("No props")}</button>}
                         </div>
                         {seeds && scenePropPick === i && (
-                          <div className="mm-sc-proppick">
-                            <button type="button" className={`mm-sp-opt${!pk ? " on" : ""}`} onClick={() => setScenePropMv(i, "")}>{t("None")}</button>
-                            {(d.props || []).map((pp) => (
-                              <button type="button" key={pp.key} className={`mm-sp-opt${pk === pp.key ? " on" : ""}`} onClick={() => setScenePropMv(i, pp.key)} title={t(pp.label)}>
-                                <span className="mm-sp-img" style={{ backgroundImage: `url(/propimg/${pp.key})` }} aria-hidden="true" />{t(pp.label)}
-                              </button>
-                            ))}
+                          <div className="mm-sc-propedit">
+                            <div className="mm-sc-proppick">
+                              <button type="button" className={`mm-sp-opt${!scenePropDraft ? " on" : ""}`} onClick={() => setScenePropDraft("")}>{t("None")}</button>
+                              {(d.props || []).map((pp) => (
+                                <button type="button" key={pp.key} className={`mm-sp-opt${scenePropDraft === pp.key ? " on" : ""}`} onClick={() => setScenePropDraft(pp.key)} title={t(pp.label)}>
+                                  <span className="mm-sp-img" style={{ backgroundImage: `url(/propimg/${pp.key})` }} aria-hidden="true" />{t(pp.label)}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="mm-sc-propcta">
+                              <button type="button" className="mm-sp-confirm" onClick={() => confirmScenePropMv(i)} disabled={rerollingScene !== null}><Ico n="refresh" size={12} /> {t("Regenerate scene {n}", { n: i + 1 })}</button>
+                              <button type="button" className="mm-sp-cancel" onClick={() => setScenePropPick(null)}>{t("Cancel")}</button>
+                            </div>
                           </div>
                         )}
                       </>
@@ -2458,6 +2471,14 @@ const FS_STYLE = `
 .mm-sp-opt{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;width:58px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:10px;padding:5px 3px;font-size:9.5px;font-weight:700;color:var(--ink2,#55605A);cursor:pointer;line-height:1.1;text-align:center;}
 .mm-sp-opt.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46);}
 .mm-sp-img{width:46px;height:40px;border-radius:7px;background:#20302A;background-size:cover;background-position:center;}
+.mm-sc-propedit{display:flex;flex-direction:column;gap:7px;}
+.mm-sc-propcta{display:flex;gap:7px;align-items:center;}
+.mm-sp-confirm{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;background:var(--green,#0C7A46);color:#fff;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:800;cursor:pointer;transition:background .14s,opacity .14s;}
+.mm-sp-confirm:hover:not(:disabled){background:#0A6B3D;}
+.mm-sp-confirm:disabled{opacity:.5;cursor:default;}
+.mm-sp-confirm svg{stroke:currentColor;stroke-width:2.5;fill:none;}
+.mm-sp-cancel{flex:0 0 auto;border:1.5px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);border-radius:9px;padding:9px 13px;font-size:12px;font-weight:700;cursor:pointer;}
+.mm-sp-cancel:hover{background:#F3F1EA;}
 .mm-sc-add{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:800;color:var(--green,#0C7A46);background:#fff;border:1.5px dashed #BFE0CD;border-radius:13px;padding:11px;margin-top:3px;cursor:pointer;transition:background .14s;}
 .mm-sc-add:hover{background:#F0F8F3;}
 /* Loading as a PROCESS: determinate bar + scene N of M + ETA (replaces the all-at-once "sketching"). */
