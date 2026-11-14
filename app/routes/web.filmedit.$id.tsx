@@ -160,7 +160,7 @@ export default function FilmEditor() {
 }
 
 const CSS = `
-.se-wrap{max-width:1080px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-left,0px)) 40px;font-family:Poppins,system-ui,sans-serif;color:var(--ink,#14201A);}
+.se-wrap{max-width:none;margin:0 auto;padding:16px max(16px,env(safe-area-inset-left,0px)) 40px;font-family:Poppins,system-ui,sans-serif;color:var(--ink,#14201A);}
 .se-top{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
 .se-back{color:var(--green,#0C7A46);font-weight:700;text-decoration:none;font-size:14px;}
 .se-ttl{font-weight:800;font-size:18px;flex:1;min-width:140px;}

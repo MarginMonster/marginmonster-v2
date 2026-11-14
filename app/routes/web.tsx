@@ -1277,7 +1277,7 @@ const CSS = `
 .wb a:focus-visible,.wb button:focus-visible,.wb input:focus-visible,.wb select:focus-visible,.wb textarea:focus-visible,.wb [tabindex]:focus-visible{
   outline:2px solid var(--green2,#12A85E);outline-offset:2px;
 }
-.wb-nav{position:relative;z-index:30;display:flex;align-items:center;gap:14px 18px;max-width:1080px;margin:0 auto;padding:18px 24px;flex-wrap:wrap;}
+.wb-nav{position:relative;z-index:30;display:flex;align-items:center;gap:14px 18px;max-width:none;margin:0 auto;padding:18px clamp(18px,3vw,56px);flex-wrap:wrap;}
 .wb-brand{order:1;display:flex;align-items:center;gap:8px;font-family:Poppins,sans-serif;font-weight:800;font-size:18px;color:var(--ink);text-decoration:none;}
 .wb-brand b{color:var(--gold)}
 .wb-tabs{order:2;display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
@@ -1397,7 +1397,7 @@ const CSS = `
 .wb-menu-link svg{width:15px;height:15px;color:var(--ink2);flex:0 0 auto;}
 .wb-menu-link.danger{color:#A23A2A;justify-content:flex-start;}
 .wb-menu-link.danger:hover{background:rgba(162,58,42,.08);}
-.wb-main{max-width:1080px;margin:0 auto;padding:10px 24px 70px;}
+.wb-main{max-width:none;margin:0 auto;padding:10px clamp(18px,3vw,56px) 70px;}
 .wb-main.wb-main-bare{max-width:none;padding:0;}
 
 /* ---- Status HUD — the app's level/wallet status bar, GStyle for the web shell ---- */

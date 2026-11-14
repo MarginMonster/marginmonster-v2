@@ -146,7 +146,7 @@ const LX_CSS = `
   position:relative;width:100%;min-height:100vh;color:var(--cream);font-family:var(--fbody);
   background:radial-gradient(120% 80% at 84% -12%, rgba(44,198,127,.15), transparent 58%),radial-gradient(90% 70% at 4% 2%, rgba(242,220,160,.06), transparent 52%),var(--bg);}
 .lx *{box-sizing:border-box;}
-.lx-wrap{max-width:1200px;margin:0 auto;padding:0 max(22px,env(safe-area-inset-left,0px)) 48px;}
+.lx-wrap{max-width:none;margin:0 auto;padding:0 max(22px,env(safe-area-inset-left,0px)) 48px;}
 .lx-top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0 8px;}
 .lx-brand{display:flex;align-items:center;gap:11px;}
 .lx-mark{width:38px;height:38px;border-radius:11px;background:linear-gradient(155deg,var(--green),var(--green-soft));display:grid;place-items:center;box-shadow:0 6px 18px rgba(44,198,127,.3);}

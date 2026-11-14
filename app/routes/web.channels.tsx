@@ -493,7 +493,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
 const CH_CSS = `
 .ch{--l:#E7E2D2;--ink:#14201A;--ink2:#5B6B61;--ink3:#8A968E;--g:#0C7A46;--g2:#12A85E;--paper:#FFFDF7;
   --sh-sm:0 1px 2px rgba(20,32,26,.05);--sh-md:0 2px 6px rgba(20,32,26,.05),0 14px 34px -14px rgba(20,32,26,.16);
-  max-width:960px;margin:0 auto;padding:14px 16px 64px;font-family:Poppins,sans-serif;color:var(--ink);}
+  max-width:none;margin:0 auto;padding:14px 16px 64px;font-family:Poppins,sans-serif;color:var(--ink);}
 .ch-srcswitch{display:inline-flex;gap:4px;background:#fff;border:1px solid #E2DCC8;border-radius:999px;padding:4px;margin:0 0 16px;}
 .ch-src{min-height:44px;display:inline-flex;align-items:center;padding:0 16px;border-radius:999px;font:inherit;font-weight:700;font-size:13px;color:#5B6B61;text-decoration:none;cursor:pointer;border:0;background:none;}
 .ch-src.sel{background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;}

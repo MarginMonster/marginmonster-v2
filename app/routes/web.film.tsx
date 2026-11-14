@@ -2177,7 +2177,7 @@ function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; scenes: nu
 }
 
 const FS_STYLE = `
-.fs-wrap{max-width:1340px;margin:0 auto;--fs-gold:#C79A3A;--fs-gold-lt:#E7C879;}
+.fs-wrap{max-width:none;margin:0 auto;--fs-gold:#C79A3A;--fs-gold-lt:#E7C879;}
 .fs-eta{display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 0;font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
 .fs-eta b{font-weight:800;color:var(--ink,#14201A);}
 /* Cinematic hero — a dark "movie theatre" band with a gold spotlight + underline. */
@@ -2228,7 +2228,7 @@ const FS_STYLE = `
 /* Tablet / desktop: cap the stage width and show 3 columns so posters stay poster-sized
    instead of ballooning to half the screen on a wide monitor. Phones keep the 2-up grid. */
 @media (min-width:640px){
-  .fs-switch{max-width:1340px;margin-left:auto;margin-right:auto;}
+  .fs-switch{max-width:none;margin-left:auto;margin-right:auto;}
   .fs-fmtgrid{grid-template-columns:repeat(3,minmax(0,1fr));}
 }
 /* Wide desktop: the format poster grid breathes into 4 columns. */
@@ -2755,6 +2755,7 @@ const FS_STYLE = `
 .mm-sb-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:2px 0 4px;}
 @media(min-width:640px){.mm-sb-list{grid-template-columns:repeat(3,minmax(0,1fr));}}
 @media(min-width:1120px){.mm-sb-list{grid-template-columns:repeat(4,minmax(0,1fr));}}
+@media(min-width:1680px){.mm-sb-list{grid-template-columns:repeat(5,minmax(0,1fr));}}
 .mm-sc{display:flex;flex-direction:column;border:1.5px solid var(--line,#E4DFCF);border-radius:14px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(20,32,26,.06);}
 .mm-sc.is-perform{border-color:#A6DCC0;}
 .mm-sc.is-broll{border-color:#CBC6F2;}

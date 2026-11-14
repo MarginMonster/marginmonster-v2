@@ -865,7 +865,7 @@ export default function WebCampaigns() {
 }
 
 const WC_STYLE = `
-.wc{max-width:1080px;margin:0 auto;padding:4px 0 40px}
+.wc{max-width:none;margin:0 auto;padding:4px 0 40px}
 .wc-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
 .wc-head h1{font-family:Poppins,sans-serif;font-size:26px;font-weight:800;margin:0 0 4px;color:var(--ink,#14201A)}
 .wc-head p{margin:0;font-size:13.5px;color:var(--ink2,#4A554E);max-width:56ch}
