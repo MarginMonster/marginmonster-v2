@@ -299,6 +299,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         expired,
         isVideo: a.type === "VIDEO_AD",
         isAudio: a.type === "AUDIO",
+        // Output shape so the viewer can frame landscape (16:9) / square videos properly, not squeeze
+        // them into the portrait stage. Refined from the real video dimensions once it loads.
+        aspect: (() => { try { const m = JSON.parse(a.metaJson || "{}"); return typeof m.aspect === "string" ? m.aspect : null; } catch { return null; } })(),
         snippet: text ? text.slice(0, 140) : undefined,
         html: a.type === "BLOG_POST" && typeof body.html === "string" ? body.html : undefined,
         // Which recipe built this? Merchants remix and compare, and "the one
@@ -858,6 +861,10 @@ const WA_CSS = `
 /* MOBILE / default: stacked. The clip fills a phone-width card, info below. */
 .wa-viewer.vmedia{width:min(440px,94vw);}
 .wa-viewer.vmedia .wa-vfull{width:auto;height:auto;max-width:100%;max-height:74vh;object-fit:contain;}
+/* LANDSCAPE / square clip → a WIDE viewer so a 16:9 video fills a landscape frame instead of being
+   squeezed into the portrait stage. */
+.wa-viewer.vmedia.wa-wide{width:min(820px,96vw);}
+.wa-viewer.vmedia.wa-wide .wa-vfull{max-height:58vh;}
 @media (min-width:760px){
   /* DESKTOP: clip LEFT, info RIGHT — a landscape card. The clip (max 80vh)
      drives the card height; the rail stretches to match and its text is
@@ -866,6 +873,10 @@ const WA_CSS = `
   .wa-viewer.vmedia .wa-vstage{flex:0 0 auto;align-self:stretch;max-width:58vh;}
   .wa-viewer.vmedia .wa-vfull{width:auto;height:auto;max-width:58vh;max-height:80vh;}
   .wa-viewer.vmedia .wa-vmeta{flex:1 1 340px;min-width:306px;max-width:360px;border-top:none;border-left:1px solid var(--line,#E5E0CF);align-self:stretch;}
+  /* Landscape clip on desktop: let the stage grow wide and the video fill it (no portrait cap). */
+  .wa-viewer.vmedia.wa-wide{max-width:min(1280px,96vw);}
+  .wa-viewer.vmedia.wa-wide .wa-vstage{flex:1 1 auto;max-width:none;}
+  .wa-viewer.vmedia.wa-wide .wa-vfull{max-width:100%;max-height:80vh;}
   .wa-viewer.vmedia .wa-vheart{right:12px;}
 }
 .wa-vx{position:absolute;top:10px;right:10px;z-index:6;width:34px;height:34px;border-radius:50%;border:0;background:rgba(20,32,26,.78);color:#fff;font-size:15px;cursor:pointer;display:grid;place-items:center;}
@@ -1107,6 +1118,9 @@ export default function WebArchive() {
   const [viewer, setViewer] = useState<(typeof assets)[number] | null>(null);
   const vfullRef = useRef<HTMLVideoElement | null>(null);
   const [needsUnmute, setNeedsUnmute] = useState(false);
+  // Landscape (16:9) / square videos need a WIDE viewer, not the portrait stage. Seed from the stored
+  // aspect (no flash) then confirm from the real video dimensions on load.
+  const [vidWide, setVidWide] = useState(false);
   const [copied, setCopied] = useState(false);
   // The fullscreen viewer portals to document.body (to escape the .wb-main
   // stacking context that otherwise traps its z-index below the shell nav).
@@ -1213,6 +1227,7 @@ export default function WebArchive() {
   // playback + a one-tap "Tap for sound" nudge instead of a dead, silent frame.
   useEffect(() => {
     setNeedsUnmute(false);
+    setVidWide(viewer?.aspect === "16:9" || viewer?.aspect === "1:1"); // seed from stored shape; refined on load
     if (!viewer?.isVideo || !viewer.media) return;
     const v = vfullRef.current;
     if (!v) return;
@@ -1554,7 +1569,7 @@ export default function WebArchive() {
           the Helpurr FAB (z-index:10600) still sits above the scrim. */}
       {viewer && mounted ? createPortal(
         <div className="wa-scrim" onClick={() => setViewer(null)}>
-          <div className={`wa-viewer${viewer.media && viewer.type !== "BLOG_POST" && !viewer.isAudio ? " vmedia" : ""}`} onClick={(e) => e.stopPropagation()}>
+          <div className={`wa-viewer${viewer.media && viewer.type !== "BLOG_POST" && !viewer.isAudio ? " vmedia" : ""}${vidWide && viewer.isVideo ? " wa-wide" : ""}`} onClick={(e) => e.stopPropagation()}>
             <button type="button" className="wa-vx" aria-label={t("Close")} onClick={() => setViewer(null)}>✕</button>
             <div className={`wa-vstage${viewer.media && viewer.type !== "BLOG_POST" && !viewer.isAudio ? " media" : ""}`}>
               {visibleShelf.length > 1 && vIdx >= 0 && (
@@ -1587,7 +1602,7 @@ export default function WebArchive() {
                   : <div className="wa-read"><h2>{viewer.title}</h2><p>{viewer.snippet || t("Still being written…")}</p></div>
               ) : viewer.isVideo && viewer.media ? (
                 <>
-                  <video ref={vfullRef} className="wa-vfull" src={viewer.media} controls autoPlay playsInline />
+                  <video ref={vfullRef} className="wa-vfull" src={viewer.media} controls autoPlay playsInline onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth > 0) setVidWide(v.videoWidth >= v.videoHeight); }} />
                   {needsUnmute && (
                     <button type="button" className="wa-vsound"
                       onClick={() => { const v = vfullRef.current; if (v) { v.muted = false; v.play().catch(() => { /* */ }); } setNeedsUnmute(false); }}>
