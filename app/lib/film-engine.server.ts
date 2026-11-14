@@ -343,6 +343,8 @@ export async function previewFilmTreatment(opts: {
   productDescription?: string;
   /** Music Video genre (rap/pop/rock/rnb/country) — flavours the song + visuals. */
   genre?: string;
+  /** The picked avatar's name — the singer uses THIS name instead of an invented one. */
+  artistName?: string;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const scenes = clampScenes(tmpl, opts.sceneCount ?? tmpl.defaultScenes);
@@ -354,9 +356,12 @@ export async function previewFilmTreatment(opts: {
   const genreLabel = g ? g.label : "pop";
   const genreLine = g ? `\nGENRE: ${g.label}. The song must sound like authentic ${g.label} — ${g.song}. The artist and EVERY setting must look like a real ${g.label} music video — ${g.look}.` : "";
   const langLine = opts.contentLang && opts.contentLang !== "en" ? `\nWrite all captions in this language code: ${opts.contentLang}.` : "";
+  const artistName = (opts.artistName || "").trim().slice(0, 60);
   const castLine = tmpl.castBible
     ? (tmpl.sing && !tmpl.childSafe
-      ? `\nFirst invent the ARTIST and return it as "cast": an array whose FIRST entry is ONE vivid, FIXED visual description of the singer to reuse in every scene (e.g. "Mia, a 25-year-old singer with long dark wavy hair, a black leather jacket and silver hoop earrings"); you may add ONE bandmate or dancer. Every scene's VISUAL must feature this SAME performer, described the same way.`
+      ? (artistName
+        ? `\nThe artist is named "${artistName}" — use THIS exact name everywhere and do NOT invent a different one. Return it as "cast": an array whose FIRST entry is ONE vivid, FIXED visual description of ${artistName} to reuse in every scene (e.g. "${artistName}, a singer with long dark wavy hair, a black leather jacket and silver hoop earrings"); you may add ONE bandmate or dancer. Every scene's VISUAL must feature this SAME performer, and any lyric or caption that names the singer uses "${artistName}".`
+        : `\nFirst invent the ARTIST and return it as "cast": an array whose FIRST entry is ONE vivid, FIXED visual description of the singer to reuse in every scene (e.g. "Mia, a 25-year-old singer with long dark wavy hair, a black leather jacket and silver hoop earrings"); you may add ONE bandmate or dancer. Every scene's VISUAL must feature this SAME performer, described the same way.`)
       : `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"). Every scene's VISUAL must feature these same named characters, described the same way.`)
     : "";
   const prodLine = tmpl.needsProduct && opts.productTitle
