@@ -294,12 +294,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const castExtra = parseCastExtra(form.get("filmCastExtra") as string);
     const castForScene = parseCastForScene(form.get("filmCastForScene") as string);
     const outfits = parseOutfits(form.get("filmOutfits") as string);
+    const pvArtistName = ((form.get("filmArtistName") as string) || "").trim().slice(0, 60);
+    let pvCastNames: string[] | undefined;
+    const pvCastRaw = ((form.get("filmCastNames") as string) || "").trim();
+    if (pvCastRaw) { try { const a = JSON.parse(pvCastRaw); if (Array.isArray(a)) pvCastNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     const filmAspect = ((form.get("filmAspect") as string) || "").trim();
     try {
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, castForScene, outfits, aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, castForScene, outfits, artistName: pvArtistName, castNames: pvCastNames, aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
         return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef, castRefs: r.castRefs });
@@ -408,6 +412,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const filmCastForScene = parseCastForScene(form.get("filmCastForScene") as string);
     // Wardrobe (Music Video owner edit) — cast member img → an outfit description.
     const filmOutfits = parseOutfits(form.get("filmOutfits") as string);
+    // Names (Music Video) — the picked avatar + co-stars, so the writer never invents "AI slop" names.
+    const genArtistName = ((form.get("filmArtistName") as string) || "").trim().slice(0, 60);
+    let genCastNames: string[] | undefined;
+    const genCastRaw = ((form.get("filmCastNames") as string) || "").trim();
+    if (genCastRaw) { try { const a = JSON.parse(genCastRaw); if (Array.isArray(a)) genCastNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     // Pre-approved per-scene STILLS (Music Video storyboard) — render these EXACT images, no re-seed.
     // Keep positions (a null = that scene seeds fresh), so the index stays aligned with the scenes.
     let approvedSceneImgs: (string | null)[] | undefined;
@@ -431,6 +440,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(filmCastExtra ? { filmCastExtra } : {}),
         ...(filmCastForScene ? { filmCastForScene } : {}),
         ...(filmOutfits ? { filmOutfits } : {}),
+        ...(genArtistName ? { filmArtistName: genArtistName } : {}),
+        ...(genCastNames?.length ? { filmCastNames: genCastNames } : {}),
         ...(filmProps?.length ? { filmProps } : {}),
         ...(filmCustomProps.length ? { filmCustomProps } : {}),
         ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
@@ -762,7 +773,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: mvAspect, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: mvAspect, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
       { method: "post" }
     );
   };
@@ -867,7 +878,15 @@ export default function FilmStudio() {
   // scenes (one per scene) so the whole roster isn't crammed onto every card. A broll/cut scene carries
   // no featured co-star. Owner overrides (castForScene) win.
   const defaultSceneCostars = (scenesArr: Scene[], i: number): string[] => {
-    if (sceneKind(scenesArr[i], i) !== "perform" || !castExtra.length) return [];
+    if (!castExtra.length) return [];
+    const sc = scenesArr[i];
+    // Cast whose NAME the writer put in THIS scene's description appear here (the band in the barn, the
+    // riders in the truck) — this is the "intelligent per scene" bit: it follows what the song describes.
+    const text = `${sc?.visual || ""} ${sc?.caption || ""}`.toLowerCase();
+    const mentioned = castExtra.filter((m) => m.name && m.name.length > 1 && text.includes(m.name.toLowerCase())).map((m) => m.img);
+    if (mentioned.length) return mentioned.slice(0, 2);
+    // No one named → a PERFORM scene gets one rotating co-star for variety; a solo/cut scene stays solo.
+    if (sceneKind(sc, i) !== "perform") return [];
     const performIdxs = scenesArr.map((s, j) => (sceneKind(s, j) === "perform" ? j : -1)).filter((j) => j >= 0);
     const pOrder = Math.max(0, performIdxs.indexOf(i));
     return [castExtra[pOrder % castExtra.length].img];
@@ -1633,6 +1652,8 @@ export default function FilmStudio() {
               {castExtra.length > 0 && <input type="hidden" name="filmCastExtra" value={JSON.stringify(castExtra)} />}
               {tmpl?.lipSyncSinger && seeds && castExtra.length > 0 && <input type="hidden" name="filmCastForScene" value={JSON.stringify(resolveCastMap(seeds.treatment.scenes))} />}
               {tmpl?.lipSyncSinger && Object.keys(outfits).length > 0 && <input type="hidden" name="filmOutfits" value={JSON.stringify(outfits)} />}
+              {tmpl?.lipSyncSinger && artistName && <input type="hidden" name="filmArtistName" value={artistName} />}
+              {tmpl?.lipSyncSinger && castNames.length > 0 && <input type="hidden" name="filmCastNames" value={JSON.stringify(castNames)} />}
               {tmpl?.lipSyncSinger && <input type="hidden" name="filmAspect" value={mvAspect} />}
               <input type="hidden" name="filmTopic" value={topic} />
               <input type="hidden" name="filmScenes" value={String(scenes)} />

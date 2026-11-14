@@ -339,17 +339,25 @@ async function buildMusicVideoSeeds(p: {
     const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause}${performNote} ${g.look}. ${REALISM} ${ONE_PERSON}`;
     // Compose the scene still. 9:16 single-subject keeps the proven edit-into-scene path; multi-cast OR a
     // non-vertical aspect routes through renderStyledSeedMulti, which reframes the refs to any aspect.
-    const multiCast = shot.role === "perform" && sceneCostarRefs.length > 0 && !!artistRef;
-    let img = (multiCast || (asp !== "9:16" && srcRef))
-      ? await renderStyledSeedMulti(
-          multiCast
-            ? `A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${s.visual}. Feature the artist together with ${sceneCastNames || "the co-stars"} — keep EACH person's face and identity EXACTLY as in their reference photo; do NOT blend, merge, duplicate or swap faces.${propClause}${performNote} ${g.look}. ${REALISM}`
-            : `A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${s.visual}. Keep this EXACT person's face and identity — do not swap them.${propClause}${performNote} ${g.look}. ${REALISM}`,
-          (multiCast ? [artistRef, ...sceneCostarRefs] : [srcRef]).filter(Boolean).slice(0, 3) as string[],
-          asp)
-      : srcRef
-        ? await editSubjectIntoScene(srcRef, prompt)
-        : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, asp);
+    const multiCast = sceneCostarRefs.length > 0 && !!artistRef; // compose the scene's cast in ANY scene (barn band, truck riders), not just perform
+    const multiPrompt = `A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${s.visual}. Feature the artist together with ${sceneCastNames || "the co-stars"} — keep EACH person's face and identity EXACTLY as in their reference photo; do NOT blend, merge, duplicate or swap faces.${propClause}${performNote} ${g.look}. ${REALISM}`;
+    const singlePrompt = `A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${s.visual}. Keep this EXACT person's face and identity — do not swap them.${propClause}${performNote} ${g.look}. ${REALISM}`;
+    const genPrimary = (): Promise<string | null> => {
+      if (multiCast || (asp !== "9:16" && srcRef)) {
+        return renderStyledSeedMulti(multiCast ? multiPrompt : singlePrompt, (multiCast ? [artistRef, ...sceneCostarRefs] : [srcRef]).filter(Boolean).slice(0, 3) as string[], asp);
+      }
+      return srcRef ? editSubjectIntoScene(srcRef, prompt) : renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, asp);
+    };
+    // RETRY before giving up — a transient gen blip otherwise fell back to the raw artist portrait, which
+    // came out IDENTICAL across failed scenes AND in the portrait's 9:16 (ignoring the chosen shape).
+    let img: string | null = null;
+    for (let attempt = 0; attempt < 2 && !img; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, 1500));
+      try { img = await genPrimary(); } catch { img = null; }
+    }
+    // Last resort = a scene-only render at the CHOSEN aspect (distinct per scene, correct shape) — NEVER
+    // the portrait fallback that produced the duplicate 9:16 stills.
+    if (!img) { try { img = await renderCreativeSeed(`A cinematic ${g.label} music-video shot: ${shot.frame}, ${s.visual}. ${g.look}. ${REALISM}`, asp); } catch { /* keep null */ } }
     if (propKey && artistRef && propRefs[propKey]) {
       const cur = img ? abs(img) : null;
       if (!cur || !(await sceneShowsProp(cur, noun))) {
@@ -368,7 +376,7 @@ async function buildMusicVideoSeeds(p: {
  *  scene BEFORE committing (the "limit the surprise" ask). The approved stills ride back into
  *  generateMusicVideo as `approvedSceneImgs` so it renders EXACTLY what was previewed. */
 export async function previewMusicVideoScenes(opts: {
-  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>; castForScene?: Record<number, string[]>; outfits?: Record<string, string>; aspect?: string;
+  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>; castForScene?: Record<number, string[]>; outfits?: Record<string, string>; aspect?: string; artistName?: string; castNames?: string[];
 }): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; propForScene: Record<number, string>; artistRef: string | null; castRefs: string[] }> {
   const tmpl = filmTemplate("musicvideo");
   const genre = genreOrDefault(opts.genre);
@@ -379,7 +387,7 @@ export async function previewMusicVideoScenes(opts: {
 
   let treatment: FilmTreatment = opts.treatment && opts.treatment.scenes?.length
     ? opts.treatment
-    : await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, genre });
+    : await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, genre, artistName: opts.artistName, castNames: opts.castNames });
   treatment.scenes = treatment.scenes.slice(0, N);
   const scenes = treatment.scenes;
 
@@ -435,7 +443,7 @@ export async function rerollMusicVideoScene(opts: {
   const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
   // Multi-cast OR a non-vertical aspect → compose via the multi-ref seed (identity-locked faces, reframed
   // to the chosen shape). A single 9:16 subject keeps the proven edit-into-scene path.
-  const multiCast = shot.role === "perform" && costarRefs.length > 0;
+  const multiCast = costarRefs.length > 0; // compose the scene's cast in ANY scene type, not just perform
   let img: string | null;
   if (multiCast || asp !== "9:16") {
     const refs = (multiCast ? [artistRef, ...costarRefs, ...(propRef ? [propRef] : [])] : [srcRef || artistRef]).filter(Boolean).slice(0, 3) as string[];
@@ -480,6 +488,9 @@ export async function generateMusicVideo(opts: {
   castForScene?: Record<number, string[]>;
   /** Wardrobe (owner edit): cast member IMG → an outfit description, applied when they're styled. */
   outfits?: Record<string, string>;
+  /** The picked avatar's name + co-star names — the writer uses THESE, not invented "AI slop" names. */
+  artistName?: string;
+  castNames?: string[];
   /** Output shape — "9:16" (default), "16:9" or "1:1". */
   aspect?: string;
   /** Owner PREVIEWED + approved these exact per-scene stills — render them, don't re-seed (no surprise).
@@ -512,7 +523,7 @@ export async function generateMusicVideo(opts: {
   let treatment: FilmTreatment;
   if (resume.ckTreatment) treatment = JSON.parse(resume.ckTreatment);
   else if (opts.treatment && opts.treatment.scenes?.length) treatment = opts.treatment;
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, genre });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, genre, artistName: opts.artistName, castNames: opts.castNames });
   treatment.scenes = treatment.scenes.slice(0, N);
   await ckpt({ ckTreatment: JSON.stringify(treatment) });
   const scenes = treatment.scenes;

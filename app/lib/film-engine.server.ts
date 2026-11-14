@@ -364,7 +364,7 @@ export async function previewFilmTreatment(opts: {
   const artistName = (opts.artistName || "").trim().slice(0, 60);
   const castNames = (opts.castNames || []).map((n) => (n || "").trim()).filter(Boolean).slice(0, 4);
   const coStars = castNames.length
-    ? ` Named co-stars who ALSO appear in some scenes — use THESE EXACT names and NEVER invent other named people: ${castNames.join(", ")}.`
+    ? ` Named co-stars who ALSO appear — use THESE EXACT names and NEVER invent other named people: ${castNames.join(", ")}. In every scene where more than the singer appears (a band, friends, a dance, a crowd of known faces), NAME which of them is there IN that scene's visual (e.g. "${castNames[0]} plays guitar beside ${artistName || "the singer"}"), so those scenes feature the real cast — not strangers.`
     : " You may add ONE unnamed bandmate or dancer.";
   // Kill "AI slop" names/pets WITHOUT banning atmosphere: the writer kept inventing a dog + NAMED
   // extras nobody asked for, but a crowd at a show or passersby on a street are fine and wanted.
