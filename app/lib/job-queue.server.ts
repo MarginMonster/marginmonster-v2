@@ -803,6 +803,7 @@ async function runJob(
             props: Array.isArray(payload.filmProps) ? (payload.filmProps as string[]) : undefined, // cool-shit props
             customProps: Array.isArray(payload.filmCustomProps) ? (payload.filmCustomProps as Array<{ key: string; label: string; img: string }>) : undefined, // merchant's own props (AI / photo)
             heroUrl: (payload.filmHeroUrl as string | undefined) || undefined, // merchant PICKED an avatar to be the artist
+            castExtra: Array.isArray(payload.filmCastExtra) ? (payload.filmCastExtra as Array<{ img: string; name: string }>) : undefined, // extra named cast beyond the lead
             approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined, // storyboard-approved stills
 
             resume: {

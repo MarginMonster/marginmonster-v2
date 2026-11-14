@@ -98,6 +98,20 @@ function parseCustomProps(raw: string | null): Array<{ key: string; label: strin
       .slice(0, 6);
   } catch { return []; }
 }
+// Extra cast members (beyond the lead artist) sent from the Music Video builder. Images may be
+// relative roster paths OR absolute uploads; the pipeline's abs() resolves them. Cap at 2 (3-ref limit).
+function parseCastExtra(raw: string | null): Array<{ img: string; name: string }> | undefined {
+  if (!raw) return undefined;
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return undefined;
+    const out = arr
+      .filter((m) => m && typeof m.img === "string" && m.img.trim())
+      .map((m) => ({ img: String(m.img).slice(0, 2000), name: String(m.name || "").slice(0, 40) }))
+      .slice(0, 2);
+    return out.length ? out : undefined;
+  } catch { return undefined; }
+}
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const lang = await readUiLang(request);
@@ -246,11 +260,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (approvedRaw) { try { const tObj = JSON.parse(approvedRaw); if (tObj && Array.isArray(tObj.scenes) && tObj.scenes.length) approvedTreatment = tObj; } catch { /* ignore malformed */ } }
     const scenes = clampScenes(parseInt((form.get("filmScenes") as string) || "", 10) || tmpl.defaultScenes);
     const heroUrl = ((form.get("filmHeroUrl") as string) || "").trim().slice(0, 2000) || undefined;
+    const castExtra = parseCastExtra(form.get("filmCastExtra") as string);
     try {
       if (tmpl.lipSyncSinger) {
-        // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + props.
+        // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
         return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef });
@@ -348,6 +363,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (propsRaw) { try { const p = JSON.parse(propsRaw); if (Array.isArray(p)) filmProps = p.filter((x) => typeof x === "string").slice(0, 12); } catch { /* ignore malformed */ } }
     // Custom props (AI-made or the merchant's own photo) — each carries its own image to seed from.
     const filmCustomProps = parseCustomProps(form.get("filmCustomProps") as string);
+    // Extra cast (Music Video) — co-stars beyond the lead, composed into perform scenes.
+    const filmCastExtra = parseCastExtra(form.get("filmCastExtra") as string);
     // Pre-approved per-scene STILLS (Music Video storyboard) — render these EXACT images, no re-seed.
     // Keep positions (a null = that scene seeds fresh), so the index stays aligned with the scenes.
     let approvedSceneImgs: (string | null)[] | undefined;
@@ -368,6 +385,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(filmGenre ? { filmGenre } : {}),
         ...(filmSongUrl ? { filmSongUrl } : {}),
         ...(filmHeroUrl ? { filmHeroUrl } : {}),
+        ...(filmCastExtra ? { filmCastExtra } : {}),
         ...(filmProps?.length ? { filmProps } : {}),
         ...(filmCustomProps.length ? { filmCustomProps } : {}),
         ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
@@ -686,7 +704,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
       { method: "post" }
     );
   };
@@ -1386,6 +1404,7 @@ export default function FilmStudio() {
               {filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}
               {customProps.length > 0 && <input type="hidden" name="filmCustomProps" value={JSON.stringify(customProps)} />}
               {artistPick && <input type="hidden" name="filmHeroUrl" value={artistPick} />}
+              {castExtra.length > 0 && <input type="hidden" name="filmCastExtra" value={JSON.stringify(castExtra)} />}
               <input type="hidden" name="filmTopic" value={topic} />
               <input type="hidden" name="filmScenes" value={String(scenes)} />
               {(seeds?.treatment || treatment) && <input type="hidden" name="approvedTreatment" value={JSON.stringify(seeds?.treatment || treatment)} />}

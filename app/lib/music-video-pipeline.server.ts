@@ -215,6 +215,9 @@ async function buildMusicVideoSeeds(p: {
   artistBible: string;
   /** The merchant PICKED one of their avatars to BE the artist — lock THAT face for the whole video. */
   heroUrl?: string;
+  /** Extra named cast beyond the lead (co-stars, dancers) — each face is styled into the genre then
+   *  composed INTO perform scenes alongside the artist (identity-locked, never blended). */
+  castExtra?: Array<{ img: string; name: string }>;
   jobId?: string;
   resume?: Record<string, string | undefined>;
   base: string;
@@ -251,6 +254,25 @@ async function buildMusicVideoSeeds(p: {
     if (ref) { await ckpt({ ckArtist: ref }); artistRef = abs(ref); }
   }
 
+  // EXTRA CAST — style each picked co-star into the genre like the lead (identity locked), so they can
+  // be composed INTO perform scenes alongside the artist. Cached per member so a restart doesn't redo it.
+  const castExtra = (p.castExtra || []).filter((m) => m && m.img).slice(0, 2); // artist + up to 2 = 3-ref cap
+  const castRefs: string[] = [];
+  for (let ci = 0; ci < castExtra.length; ci++) {
+    const m = castExtra[ci];
+    let cref = abs(resume[`ckCast_${ci}`]) || null;
+    if (!cref) {
+      const src = abs(m.img);
+      if (src) {
+        const styled = await editSubjectIntoScene(src, `Keep this EXACT person's face and identity identical — same face, hair, skin and build; do NOT swap them for anyone else. Make it a realistic ${g.label} music-video shot of them. ${g.look}. Clear sharp face with a natural, genuine expression. ${REALISM}`);
+        cref = abs(styled) || src;
+        if (cref && !resume[`ckCast_${ci}`]) await ckpt({ [`ckCast_${ci}`]: cref });
+      }
+    }
+    if (cref) castRefs.push(cref);
+  }
+  const castNames = castExtra.map((m) => (m.name || "").trim()).filter(Boolean).join(", ");
+
   // PROP references + artist-anchors — the robust "props must actually show" path (single locked
   // animal per prop + an artist+prop anchor; every prompt says this is the ONLY animal, no dog).
   const propRefs: Record<string, string> = {};
@@ -281,9 +303,12 @@ async function buildMusicVideoSeeds(p: {
     const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, no duplicates.${animalGuard(propKey, noun)}` : "";
     const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
     const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause}${performNote} ${g.look}. ${REALISM} ${ONE_PERSON}`;
-    let img = srcRef
-      ? await editSubjectIntoScene(srcRef, prompt)
-      : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, "9:16");
+    // Perform scene WITH extra cast → compose the artist + co-stars together (identity-locked, no blend).
+    let img = (shot.role === "perform" && castRefs.length && artistRef)
+      ? await renderStyledSeedMulti(`A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${s.visual}. Feature the artist together with ${castNames || "the co-stars"} — keep EACH person's face and identity EXACTLY as in their reference photo; do NOT blend, merge, duplicate or swap faces.${propClause}${performNote} ${g.look}. ${REALISM}`, [artistRef, ...castRefs].slice(0, 3), "9:16")
+      : srcRef
+        ? await editSubjectIntoScene(srcRef, prompt)
+        : await renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, "9:16");
     if (propKey && artistRef && propRefs[propKey]) {
       const cur = img ? abs(img) : null;
       if (!cur || !(await sceneShowsProp(cur, noun))) {
@@ -302,7 +327,7 @@ async function buildMusicVideoSeeds(p: {
  *  scene BEFORE committing (the "limit the surprise" ask). The approved stills ride back into
  *  generateMusicVideo as `approvedSceneImgs` so it renders EXACTLY what was previewed. */
 export async function previewMusicVideoScenes(opts: {
-  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string;
+  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>;
 }): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; propForScene: Record<number, string>; artistRef: string | null }> {
   const tmpl = filmTemplate("musicvideo");
   const genre = genreOrDefault(opts.genre);
@@ -324,7 +349,7 @@ export async function previewMusicVideoScenes(opts: {
   }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
 
-  const { sceneImgs, artistRef } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, resume: {}, base });
+  const { sceneImgs, artistRef } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, resume: {}, base });
   return { treatment, sceneImgs, propForScene, artistRef };
 }
 
@@ -385,6 +410,8 @@ export async function generateMusicVideo(opts: {
   customProps?: Array<{ key: string; label: string; img: string }>;
   /** The merchant PICKED one of their avatars to BE the artist — lock THAT face for the whole video. */
   heroUrl?: string;
+  /** Extra named cast beyond the lead — composed into perform scenes alongside the artist. */
+  castExtra?: Array<{ img: string; name: string }>;
   /** Owner PREVIEWED + approved these exact per-scene stills — render them, don't re-seed (no surprise).
    *  Index-aligned with scenes; a null entry means that scene fell back and should seed fresh. */
   approvedSceneImgs?: (string | null)[];
@@ -460,7 +487,7 @@ export async function generateMusicVideo(opts: {
   //      SHARED seed path the preview uses (hero + prop anchors + vision-gated per-scene edits).
   const sceneImgs = opts.approvedSceneImgs && opts.approvedSceneImgs.length === N
     ? opts.approvedSceneImgs.map((u) => abs(u))
-    : (await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, jobId, resume, base })).sceneImgs;
+    : (await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, jobId, resume, base })).sceneImgs;
 
   // 5) song SEGMENTS (local mp3 + hosted url for the lip-sync model to drive the mouth to).
   const segs: Array<{ localPath: string; url: string }> = [];
