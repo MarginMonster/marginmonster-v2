@@ -548,6 +548,18 @@ export default function FilmStudio() {
   const [wardrobeOpen, setWardrobeOpen] = useState<string | null>(null); // which CAST member's outfit slider is open (artist's always shows)
   const [outfitBusyFor, setOutfitBusyFor] = useState<{ img: string; desc: string } | null>(null);
   const [outfitDrafts, setOutfitDrafts] = useState<Record<string, string>>({}); // describe-an-outfit text, per avatar
+  // Wardrobe PERSISTS across reloads (it's keyed by avatar img, which is stable) — otherwise a generated
+  // costume vanished the moment the page reloaded ("didn't save on my character"). localStorage, client-only.
+  const wardrobeFirstPersist = useRef(true);
+  useEffect(() => {
+    if (typeof localStorage === "undefined") return;
+    try { const o = JSON.parse(localStorage.getItem("mm-wardrobe-v1") || "{}"); if (o && typeof o === "object") { if (o.outfitStyles && typeof o.outfitStyles === "object") setOutfitStyles(o.outfitStyles); if (o.outfits && typeof o.outfits === "object") setOutfits(o.outfits); } } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    if (wardrobeFirstPersist.current) { wardrobeFirstPersist.current = false; return; } // skip the initial empty write (would clobber the restore)
+    if (typeof localStorage === "undefined") return;
+    try { localStorage.setItem("mm-wardrobe-v1", JSON.stringify({ outfits, outfitStyles })); } catch { /* quota / private mode */ }
+  }, [outfits, outfitStyles]);
   const [rerollingScene, setRerollingScene] = useState<number | null>(null);
   // Storyboard (dialogue): per-scene approved frames + which scene is rendering now.
   const previewFrameFetcher = useFetcher<{ frameUrl?: string; sceneIndex?: number; error?: string }>();
@@ -2616,6 +2628,17 @@ const FS_STYLE = `
 .mm-artistpick::-webkit-scrollbar-thumb{background:#D4E3DA;border-radius:3px;}
 .mm-artistpick::-webkit-scrollbar-track{background:transparent;}
 .mm-artistpick .fs-rface{flex:0 0 78px;scroll-snap-align:start;}
+/* Desktop: the avatar + cast portrait cards get MUCH bigger so the row reads premium, not a
+   cramped strip of tiny faces (owner: "the little stuff makes it look rough"). */
+@media(min-width:960px){
+  .mm-artistpick{gap:14px;padding-bottom:12px;}
+  .mm-artistpick .fs-rface{flex-basis:128px;border-radius:16px;padding:7px 7px 9px;}
+  .mm-artistpick .fs-rface-img{border-radius:12px;}
+  .mm-artistpick .fs-rface-name{font-size:13px;}
+  .mm-wd2-saved{gap:14px;}
+  .mm-wd2-look,.mm-wd2-lookname{width:110px;max-width:110px;}
+  .mm-wd2-lookimg{width:110px;height:110px;border-radius:18px;}
+}
 /* The cast LIBRARY — extra named members beyond the lead artist (Stage 2). */
 .mm-castlib{margin-top:14px;padding-top:13px;border-top:1px solid var(--line,#E4DFCF);}
 .mm-castlib-h{font-size:13px;font-weight:800;color:var(--ink,#14201A);display:flex;align-items:center;gap:7px;margin-bottom:3px;}
