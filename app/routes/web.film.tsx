@@ -2187,7 +2187,7 @@ const FS_STYLE = `
 .fs-head{position:relative;overflow:hidden;border-radius:20px;margin-bottom:16px;min-height:200px;display:flex;align-items:center;box-shadow:0 20px 48px -24px rgba(8,62,39,.55);}
 /* Desktop: a proper tall hero (a thin 200px strip looked tiny against the full-bleed width). */
 @media(min-width:960px){.fs-head{min-height:320px;}.fs-head-copy{padding:44px 54px;max-width:680px;}.fs-head-copy b{font-size:50px;}.fs-head-copy>span{font-size:16.5px;max-width:540px;margin-top:14px;}.fs-head-eyebrow{font-size:12.5px;}}
-.fs-head-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;}
+.fs-head-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 28%;z-index:0;}
 .fs-head-scrim{position:absolute;inset:0;z-index:1;background:radial-gradient(130% 120% at 85% 10%,rgba(12,122,70,.1) 0%,rgba(8,55,34,.72) 48%,rgba(7,42,27,.94) 100%),linear-gradient(90deg,rgba(7,42,27,.92) 10%,rgba(7,42,27,.42) 66%,transparent);}
 .fs-head-dot{width:6px;height:6px;border-radius:50%;background:var(--fs-gold-lt,#E7C879);box-shadow:0 0 10px var(--fs-gold-lt,#E7C879);}
 .fs-head-bg{position:absolute;inset:0;z-index:0;border-radius:18px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 8px 22px rgba(11,20,15,.16),inset 0 0 0 1px rgba(255,255,255,.1);}
