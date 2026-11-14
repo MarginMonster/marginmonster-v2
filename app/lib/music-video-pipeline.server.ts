@@ -403,6 +403,8 @@ export async function rerollMusicVideoScene(opts: {
   artistRef: string; sceneVisual: string; sceneIndex: number; propKey?: string; genre?: string;
   /** The scene's co-star styled refs (per-scene cast edit) — composed alongside the artist. */
   castRefs?: string[]; aspect?: string;
+  /** The merchant's OWN props (AI-made / uploaded) — so a per-scene custom prop re-rolls from its photo. */
+  customProps?: Array<{ key: string; label: string; img: string }>;
 }): Promise<string | null> {
   const g = GENRES[genreOrDefault(opts.genre)];
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -412,20 +414,24 @@ export async function rerollMusicVideoScene(opts: {
   const artistRef = abs(opts.artistRef);
   if (!artistRef) return null;
   const shot = SHOTLIST[opts.sceneIndex % SHOTLIST.length];
-  const propKey = opts.propKey && PROPS[opts.propKey] ? opts.propKey : undefined;
-  const noun = propKey ? propNoun(propKey) : "";
+  // Accept a CATALOG prop OR one of the merchant's OWN custom props (which seed from their photo).
+  const custom = (opts.customProps || []).find((c) => c.key === opts.propKey && c.img);
+  const propKey = opts.propKey && (PROPS[opts.propKey] || custom) ? opts.propKey : undefined;
+  const noun = !propKey ? "" : (custom ? ((custom.label || "").replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || "prop") : propNoun(propKey));
+  const propPhrase = !propKey ? "" : (custom ? `the ${custom.label}` : (PROPS[propKey].phrase || `a ${noun}`));
+  const animalG = (custom || !propKey) ? "" : ` The ONLY animal in the image is this one ${noun}: do NOT include a dog or any other animal.`;
   const costarRefs = (opts.castRefs || []).map((r) => abs(r)).filter((r): r is string => !!r && r !== artistRef).slice(0, 2);
 
-  // For a prop scene, rebuild its locked single-animal ref + artist-anchor so the one prop lands.
+  // For a prop scene, rebuild its locked single-subject ref + artist-anchor so the one prop lands. A
+  // custom prop IS its own photo; a catalog prop renders one locked single-subject shot.
   let srcRef: string | null = artistRef;
   let propRef: string | null = null;
   if (propKey) {
-    const pr = await renderCreativeSeed(`A single real ${noun} — exactly ONE ${noun}, full body, photorealistic, plain neutral background. The only subject is this one ${noun}. ${REALISM}`, "9:16");
-    propRef = abs(pr);
-    const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${PROPS[propKey].phrase} — a SINGLE ${noun}, only one. The ONLY animal in the image is this one ${noun}: do NOT include a dog or any other animal. Full body, neutral studio backdrop. ${REALISM}`);
+    propRef = custom ? abs(custom.img) : abs(await renderCreativeSeed(`A single real ${noun} — exactly ONE ${noun}, full body, photorealistic, plain neutral background. The only subject is this one ${noun}. ${REALISM}`, "9:16"));
+    const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${propPhrase} — a SINGLE ${noun}, only one.${animalG} Full body, neutral studio backdrop. ${REALISM}`);
     srcRef = a ? (abs(a) || artistRef) : artistRef;
   }
-  const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, the ONLY animal in frame; do NOT add more ${noun}, a dog, or any other animal.` : "";
+  const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, no duplicates.${custom ? "" : ` The ONLY animal in frame is this one ${noun}; do NOT add a dog or any other animal.`}` : "";
   const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
   // Multi-cast OR a non-vertical aspect → compose via the multi-ref seed (identity-locked faces, reframed
   // to the chosen shape). A single 9:16 subject keeps the proven edit-into-scene path.
@@ -445,7 +451,7 @@ export async function rerollMusicVideoScene(opts: {
   if (propKey && propRef && !multiCast) {
     const cur = img ? abs(img) : null;
     if (!cur || !(await sceneShowsProp(cur, noun))) {
-      const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${opts.sceneVisual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, the ONLY animal in frame, no dog or other animals. ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRef], asp);
+      const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${opts.sceneVisual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, no duplicates.${custom ? "" : " The ONLY animal in frame, no dog or other animals."} ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRef], asp);
       if (forced) img = forced;
     }
   }

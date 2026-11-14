@@ -328,13 +328,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let sceneCastRefs: string[] = [];
     const scrRaw = ((form.get("sceneCastRefs") as string) || "").trim();
     if (scrRaw) { try { const a = JSON.parse(scrRaw); if (Array.isArray(a)) sceneCastRefs = a.filter((x) => typeof x === "string").slice(0, 2); } catch { /* ignore */ } }
+    const rerollCustomProps = parseCustomProps(form.get("filmCustomProps") as string);
     if (!sceneVisual) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
     try {
       let img: string | null = null;
       if (tmpl.lipSyncSinger) {
         if (!artistRef) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
         const { rerollMusicVideoScene } = await import("../lib/music-video-pipeline.server");
-        img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect });
+        img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect, customProps: rerollCustomProps });
       } else {
         const { rerollFilmSceneSeed } = await import("../lib/film-engine.server");
         img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined });
@@ -801,7 +802,7 @@ export default function FilmStudio() {
     const sceneCastRefs = costarImgs.map((img) => costarImgToRef(img)).filter(Boolean) as string[];
     setRerollingScene(i);
     rerollSceneFetcher.submit(
-      { intent: "rerollFilmScene", template, filmGenre, filmAspect: mvAspect, artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}) },
+      { intent: "rerollFilmScene", template, filmGenre, filmAspect: mvAspect, artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}) },
       { method: "post" }
     );
   };
@@ -1038,7 +1039,7 @@ export default function FilmStudio() {
             {strip.scenes.map((sc, i) => {
               const u = seeds?.imgs[i] ?? null;
               const pk = seeds?.propForScene[i];
-              const pl = pk ? ((d.props || []).find((pp) => pp.key === pk)?.label || pk) : "";
+              const pl = pk ? ((d.props || []).find((pp) => pp.key === pk)?.label || customProps.find((c) => c.key === pk)?.label || pk) : "";
               const perform = !isMv || sceneKind(sc, i) === "perform";
               return (
                 <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i}>
@@ -1095,6 +1096,14 @@ export default function FilmStudio() {
                                   <span className="mm-sp-img" style={{ backgroundImage: `url(/propimg/${pp.key})` }} aria-hidden="true" />{t(pp.label)}
                                 </button>
                               ))}
+                              {customProps.map((c) => (
+                                <button type="button" key={c.key} className={`mm-sp-opt${scenePropDraft === c.key ? " on" : ""}`} onClick={() => setScenePropDraft(c.key)} title={c.label}>
+                                  <span className="mm-sp-img" style={{ backgroundImage: `url(${c.img})` }} aria-hidden="true" />{c.label}
+                                </button>
+                              ))}
+                              <button type="button" className="mm-sp-opt mm-sp-new" onClick={() => setOpenCard("props")} title={t("Create or upload a prop")}>
+                                <span className="mm-sp-img mm-sp-newimg" aria-hidden="true">＋</span>{t("New")}
+                              </button>
                             </div>
                             <div className="mm-sc-propcta">
                               <button type="button" className="mm-sp-confirm" onClick={() => confirmScenePropMv(i)} disabled={rerollingScene !== null}><Ico n="refresh" size={12} /> {t("Regenerate scene {n}", { n: i + 1 })}</button>
@@ -2645,6 +2654,8 @@ const FS_STYLE = `
 .mm-sp-opt{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;width:58px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:10px;padding:5px 3px;font-size:9.5px;font-weight:700;color:var(--ink2,#55605A);cursor:pointer;line-height:1.1;text-align:center;}
 .mm-sp-opt.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46);}
 .mm-sp-img{width:46px;height:40px;border-radius:7px;background:#20302A;background-size:cover;background-position:center;}
+.mm-sp-new{color:var(--green,#0C7A46);border-style:dashed;}
+.mm-sp-newimg{display:grid;place-items:center;background:#F0F8F3!important;color:var(--green,#0C7A46);font-size:22px;font-weight:800;line-height:1;}
 .mm-sc-propedit{display:flex;flex-direction:column;gap:7px;}
 .mm-sc-propcta{display:flex;gap:7px;align-items:center;}
 .mm-sp-confirm{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;background:var(--green,#0C7A46);color:#fff;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:800;cursor:pointer;transition:background .14s,opacity .14s;}
