@@ -66,6 +66,18 @@ const SHOTLIST: Array<{ role: "perform" | "broll"; frame: string; cam: string; p
   { role: "broll",   frame: "an atmospheric detail B-ROLL shot — striking textures, the scenery in motion or a moody cinematic flourish, premium and filmic — the artist a small part of the frame or absent", cam: "a slow tracking move" },
 ];
 
+/** The shot for scene i — honoring the pre-editor's per-scene Performance/Cut-scene override
+ *  (scene.kind) over the default SHOTLIST cadence. Flipping a scene swaps in a role-appropriate
+ *  generic framing so a performance beat doesn't get stuck with a b-roll frame (or vice versa). */
+function shotFor(s: { kind?: "perform" | "broll" } | undefined, i: number): { role: "perform" | "broll"; frame: string; cam: string; propOk?: boolean } {
+  const base = SHOTLIST[i % SHOTLIST.length];
+  const role = (s && s.kind) || base.role;
+  if (role === base.role) return base;
+  return role === "perform"
+    ? { role: "perform", frame: "a MEDIUM shot of the artist performing to camera, waist up, confident and stylish", cam: "a smooth handheld sway", propOk: true }
+    : { role: "broll", frame: "a cinematic B-ROLL cutaway (no singer performing) — props, movement or scenery, premium and filmic", cam: "a slow cinematic move", propOk: true };
+}
+
 /** Run async work over items with a bounded number in flight. */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -262,7 +274,7 @@ async function buildMusicVideoSeeds(p: {
   // PER-SCENE stills — edit the hero (or the artist+prop anchor) into each setting; VISION-GATE props
   // (if the picked prop didn't survive the edit, force it in with a hard-locked [artist, prop] compose).
   const sceneImgs = await mapLimit(scenes, 3, async (s, i) => {
-    const shot = SHOTLIST[i % SHOTLIST.length];
+    const shot = shotFor(s, i);
     const propKey = propForScene[i];
     const noun = propKey ? propNoun(propKey) : "";
     const srcRef = (propKey && propAnchors[propKey]) || artistRef;
@@ -464,7 +476,7 @@ export async function generateMusicVideo(opts: {
   const clips = await mapLimit(scenes, 3, async (_s, i) => {
     const imgAbs = sceneImgs[i];
     const seg = segs[i];
-    const shot = SHOTLIST[i % SHOTLIST.length];
+    const shot = shotFor(_s, i);
     if (!imgAbs) return null;
     const imgLocal = path.join(RENDERS(), path.basename(imgAbs));
     const pKey = propForScene[i];

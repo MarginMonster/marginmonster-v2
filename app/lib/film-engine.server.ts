@@ -299,6 +299,9 @@ export interface FilmScene {
   where?: string;
   shot?: string;
   tone?: string;
+  /** Music Video pre-editor override: "perform" = the artist sings (lip-synced); "broll" = a cut
+   *  scene (props/dancing/scenery, no lip-sync). Absent → the pipeline's SHOTLIST cadence decides. */
+  kind?: "perform" | "broll";
 }
 export interface FilmTreatment { title?: string; scenes: FilmScene[]; musicMood: string; cast?: string[] }
 
