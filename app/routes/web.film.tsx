@@ -788,6 +788,31 @@ export default function FilmStudio() {
   // the Music Video card-builder and the film flow — one row, so it never turns a page into a doom-scroll.
   // The Make-the-scenes button (Music Video): one button that writes the song AND builds the scenes.
   // Lives in the final "make & generate" card, next to Generate — not floating in the filmstrip.
+  // Loading as a PROCESS (not an all-at-once "sketching"): a determinate bar + "scene N of M" + ETA
+  // that advances while the stills render, so the wait reads like Archive loading, with an end in sight.
+  const [seedPct, setSeedPct] = useState(0);
+  useEffect(() => {
+    if (!seedBusy) { setSeedPct(0); return; }
+    const estMs = Math.max(14, Math.ceil(scenes / 3) * 9) * 1000;
+    const start = Date.now();
+    const id = window.setInterval(() => {
+      const el = Date.now() - start;
+      setSeedPct(Math.min(92, (1 - Math.exp(-el / (estMs * 0.6))) * 100));
+    }, 350);
+    return () => window.clearInterval(id);
+  }, [seedBusy, scenes]);
+  const seedProgressUI = () => {
+    const estSec = Math.max(14, Math.ceil(scenes / 3) * 9);
+    const cur = Math.min(scenes, Math.floor((seedPct / 100) * scenes) + 1);
+    const left = Math.max(3, Math.ceil((1 - seedPct / 100) * estSec));
+    return (
+      <div className="mm-sb-prog" role="status" aria-live="polite">
+        <div className="mm-sb-prog-top"><span><span className="mm-sb-prog-spin" aria-hidden="true" /> {t("Drawing your scenes")}</span><span className="mm-sb-prog-eta">{t("about {n}s left", { n: left })}</span></div>
+        <div className="mm-sb-prog-track"><div className="mm-sb-prog-fill" style={{ width: `${Math.round(seedPct)}%` }} /></div>
+        <div className="mm-sb-prog-step">{t("Scene {cur} of {total} · rendering…", { cur, total: scenes })}</div>
+      </div>
+    );
+  };
   const makeBtn = () => {
     const hasStills = !!seeds;
     const busy = writing || seedBusy || chainToScenes;
@@ -798,7 +823,7 @@ export default function FilmStudio() {
           : <><Ico n="wand" size={14} /> {t("Make the scenes — free")}</>}
       </button>
       {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
-      {seedBusy && !hasStills && <p className="mm-sb-wait">{t("Drawing your scenes — about a minute. We're sketching every shot, hang tight ✨")}</p>}
+      {seedBusy && !hasStills && seedProgressUI()}
     </>);
   };
   const storyboard = (autofill = false, makeFn?: () => void, filmstripOnly = false) => {
@@ -822,7 +847,7 @@ export default function FilmStudio() {
           : <><Ico n="film" size={13} /> {t("Preview the scenes — free")}</>}
       </button>
       {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
-      {seedBusy && !hasStills && <p className="mm-sb-wait">{t("Drawing your scenes — about a minute. We're sketching every shot, hang tight ✨")}</p>}
+      {seedBusy && !hasStills && seedProgressUI()}
       </>)}
       {strip && (() => {
         const isMv = !!tmpl?.lipSyncSinger;
@@ -2314,6 +2339,15 @@ const FS_STYLE = `
 .mm-sc-del:disabled{opacity:.4;cursor:default;}
 .mm-sc-add{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:800;color:var(--green,#0C7A46);background:#fff;border:1.5px dashed #BFE0CD;border-radius:14px;padding:13px;margin-top:11px;cursor:pointer;transition:background .14s;}
 .mm-sc-add:hover{background:#F0F8F3;}
+/* Loading as a PROCESS: determinate bar + scene N of M + ETA (replaces the all-at-once "sketching"). */
+.mm-sb-prog{background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:14px;padding:13px 14px;margin:10px 0 4px;box-shadow:0 1px 2px rgba(20,32,26,.04);}
+.mm-sb-prog-top{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:800;color:var(--ink,#14201A);}
+.mm-sb-prog-spin{display:inline-block;width:13px;height:13px;border:2px solid #C7E3D3;border-top-color:var(--green,#0C7A46);border-radius:50%;vertical-align:-2px;margin-right:6px;animation:fsspin .8s linear infinite;}
+@keyframes fsspin{to{transform:rotate(360deg)}}
+.mm-sb-prog-eta{font-size:12px;font-weight:600;color:var(--ink3,#9AA39B);}
+.mm-sb-prog-track{height:7px;background:#EEF3F0;border-radius:5px;margin:10px 0 7px;overflow:hidden;}
+.mm-sb-prog-fill{height:100%;background:var(--green,#0C7A46);border-radius:5px;transition:width .4s ease;min-width:4px;}
+.mm-sb-prog-step{font-size:12px;color:var(--ink2,#55605A);font-weight:600;}
 .mm-sb-busy{position:absolute;inset:0;background:rgba(10,20,15,.55);display:grid;place-items:center;z-index:2;}
 .mm-sb-spin{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;animation:mm-sb-rot .8s linear infinite;}
 @keyframes mm-sb-rot{to{transform:rotate(360deg)}}
