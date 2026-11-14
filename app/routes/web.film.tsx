@@ -562,6 +562,12 @@ export default function FilmStudio() {
     } catch { alert("Couldn't add that photo."); }
     finally { setArtistPhotoBusy(false); }
   };
+  // The CAST LIBRARY — additional named cast beyond the lead artist (co-stars, a love interest,
+  // dancers). Faces come from the same pool (roster / your custom avatars); each gets a name, and on
+  // the scenes below you pick which appear in each shot. The lead (artistPick) stays the star/singer.
+  const [castExtra, setCastExtra] = useState<Array<{ img: string; name: string }>>([]);
+  const addCastMemberMv = (img: string, name: string) => setCastExtra((c) => (c.some((m) => m.img === img) ? c.filter((m) => m.img !== img) : [...c, { img, name: (name || "").trim() || `Cast ${c.length + 1}` }]));
+  const renameCastMemberMv = (img: string, name: string) => setCastExtra((c) => c.map((m) => (m.img === img ? { ...m, name } : m)));
   useEffect(() => {
     if (artistMakerFetcher.state !== "idle" || !artistPendingRef.current) return;
     const img = artistMakerFetcher.data?.img;
@@ -1222,6 +1228,39 @@ export default function FilmStudio() {
                 </div>
               )}
               {artistMakerFetcher.data?.error && <p className="fs-err">{artistMakerFetcher.data.error}</p>}
+              {/* The CAST LIBRARY — optional extra people beyond the lead. Pick faces (your avatars or the
+                  roster), name them; on the scenes below you choose who's in each shot. */}
+              <div className="mm-castlib">
+                <div className="mm-castlib-h">{t("The rest of your cast")} <span className="mm-castlib-badge">{t("optional")}</span></div>
+                <div className="mm-opts-sub">{t("Add co-stars, a love interest, dancers — anyone else who appears. Name them, then pick who's in each scene below.")}</div>
+                {castExtra.length > 0 && (
+                  <div className="mm-castlib-list">
+                    {castExtra.map((m) => (
+                      <div className="mm-castmem" key={m.img}>
+                        <span className="mm-castmem-face" style={{ backgroundImage: `url(${m.img})` }} aria-hidden="true" />
+                        <input className="mm-castmem-name" value={m.name} onChange={(e) => renameCastMemberMv(m.img, e.target.value)} maxLength={24} aria-label={t("Cast member name")} />
+                        <button type="button" className="mm-castmem-del" onClick={() => addCastMemberMv(m.img, m.name)} aria-label={t("Remove from cast")}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mm-artistpick mm-castpick">
+                  {customArtists.map((ca, i) => (
+                    <button type="button" key={`cx${i}`} className={`fs-rface${castExtra.some((m) => m.img === ca.img) ? " on" : ""}`} title={ca.name} onClick={() => addCastMemberMv(ca.img, ca.name)}>
+                      <span className="fs-rface-img" style={{ backgroundImage: `url(${ca.img})` }} />
+                      {castExtra.some((m) => m.img === ca.img) && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                      <span className="fs-rface-name">{ca.name}</span>
+                    </button>
+                  ))}
+                  {d.roster.map((r) => (
+                    <button type="button" key={`cx-${r.id}`} className={`fs-rface${castExtra.some((m) => m.img === r.img) ? " on" : ""}`} title={r.name} onClick={() => addCastMemberMv(r.img, r.name)}>
+                      <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
+                      {castExtra.some((m) => m.img === r.img) && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                      <span className="fs-rface-name">{r.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
           {openCard === "genre" && (
@@ -2199,6 +2238,18 @@ const FS_STYLE = `
 .mm-artistpick::-webkit-scrollbar-thumb{background:#D4E3DA;border-radius:3px;}
 .mm-artistpick::-webkit-scrollbar-track{background:transparent;}
 .mm-artistpick .fs-rface{flex:0 0 78px;scroll-snap-align:start;}
+/* The cast LIBRARY — extra named members beyond the lead artist (Stage 2). */
+.mm-castlib{margin-top:14px;padding-top:13px;border-top:1px solid var(--line,#E4DFCF);}
+.mm-castlib-h{font-size:13px;font-weight:800;color:var(--ink,#14201A);display:flex;align-items:center;gap:7px;margin-bottom:3px;}
+.mm-castlib-badge{font-size:10px;font-weight:700;color:var(--ink3,#9AA39B);background:var(--panel,#F3F1EA);border:1px solid var(--line,#E4DFCF);border-radius:999px;padding:1px 8px;}
+.mm-castlib-list{display:flex;flex-direction:column;gap:7px;margin:9px 0 4px;}
+.mm-castmem{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--line,#E4DFCF);border-radius:11px;padding:6px 8px;}
+.mm-castmem-face{width:34px;height:34px;border-radius:50%;background-size:cover;background-position:center;flex:none;}
+.mm-castmem-name{flex:1;min-width:0;border:1px solid transparent;border-radius:8px;background:transparent;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;color:var(--ink,#14201A);padding:5px 8px;}
+.mm-castmem-name:focus{outline:0;background:#FCFBF7;border-color:var(--green2,#1EA85C);box-shadow:0 0 0 2px rgba(12,122,70,.1);}
+.mm-castmem-del{flex:none;width:28px;height:28px;border-radius:8px;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink3,#9AA39B);font-size:12px;cursor:pointer;display:grid;place-items:center;transition:background .14s,color .14s;}
+.mm-castmem-del:hover{background:#FBEEEC;color:#B4463A;border-color:#F2D6D1;}
+.mm-castpick{margin-top:4px;}
 .mm-autoface-img{display:grid;place-items:center;background:linear-gradient(135deg,#EFEAFB,#DDD3F3)!important;}
 .mm-autoface-img svg{stroke:#6C4FB0;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 /* Props picker — real PHOTO tiles (not emoji), plus "Create AI prop" + "Add a photo" makers. */
