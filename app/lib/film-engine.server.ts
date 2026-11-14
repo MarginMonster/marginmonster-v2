@@ -366,8 +366,9 @@ export async function previewFilmTreatment(opts: {
   const coStars = castNames.length
     ? ` Named co-stars who ALSO appear in some scenes — use THESE EXACT names and NEVER invent other named people: ${castNames.join(", ")}.`
     : " You may add ONE unnamed bandmate or dancer.";
-  // Kill "AI slop": the writer kept inventing a dog + background extras nobody asked for.
-  const noSlop = " Do NOT invent any animals (no dogs, cats or pets), extra crowds, children or background props the user did not request — keep every scene to the named performer(s) and the setting only.";
+  // Kill "AI slop" names/pets WITHOUT banning atmosphere: the writer kept inventing a dog + NAMED
+  // extras nobody asked for, but a crowd at a show or passersby on a street are fine and wanted.
+  const noSlop = " Do NOT invent any uninvited NAMED or featured characters, or animals/pets (no dogs, cats) — the only recurring, named people are the cast above. Incidental UNNAMED background people (a crowd at a show, dancers, passersby on a street) are fine and encouraged where the setting calls for them.";
   const castLine = tmpl.castBible
     ? (tmpl.sing && !tmpl.childSafe
       ? (artistName
