@@ -392,7 +392,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({ error: tr(lang, "Unknown action.") });
 };
 
-type Scene = { visual: string; caption?: string; where?: string; shot?: string; tone?: string };
+type Scene = { visual: string; caption?: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll" };
 type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: string[] };
 // A locked "actor": one character's reusable face + pinned voice, cast once and
 // reused as the identity reference for every shot they appear in.
@@ -742,6 +742,15 @@ export default function FilmStudio() {
       setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, [field]: value } : s)) });
     }
   };
+  // Each scene is a PERFORMANCE shot (the artist sings, lip-synced) or a CUT SCENE / b-roll (cars,
+  // props, dancing — no lip-sync). Default cadence mirrors the pipeline SHOTLIST (cycles every 8) so
+  // the pre-editor shows a sensible type per scene; the merchant can flip any scene.
+  const DEFAULT_ROLES: Array<"perform" | "broll"> = ["broll", "perform", "broll", "perform", "broll", "broll", "perform", "broll"];
+  const sceneKind = (sc: Scene, i: number): "perform" | "broll" => sc?.kind || DEFAULT_ROLES[i % DEFAULT_ROLES.length];
+  const setSceneKind = (i: number, kind: "perform" | "broll") => {
+    if (seeds) setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) } } : prev));
+    else if (treatment) setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) });
+  };
 
   // The storyboard: ONE collapsed button → a swipeable filmstrip of the actual scene stills (each
   // re-rollable, text click-to-edit), so you approve what will render before paying. Reused by BOTH
@@ -784,37 +793,63 @@ export default function FilmStudio() {
       {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
       {seedBusy && !hasStills && <p className="mm-sb-wait">{t("Drawing your scenes — about a minute. We're sketching every shot, hang tight ✨")}</p>}
       </>)}
-      {strip && (
+      {strip && (() => {
+        const isMv = !!tmpl?.lipSyncSinger;
+        return (
         <>
-          <div className="mm-sb-head"><Ico n="check" size={13} /> {hasStills
-            ? t("Swipe through your story — this is exactly what renders. Re-roll any scene that's off, then Generate.")
-            : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life.")}</div>
-          {/* A horizontal, swipeable FILMSTRIP (video-editor style): each scene = its still + what
-              happens + the words — compact vertically, so the page never doom-scrolls. */}
-          <div className="mm-sb-strip">
+          <div className="mm-sb-head"><Ico n="check" size={13} /> {isMv
+            ? t("Your story, scene by scene — edit any line, and set each scene as a Performance (lip-synced) or a Cut scene (b-roll). This is what renders.")
+            : (hasStills
+              ? t("Swipe through your story — this is exactly what renders. Re-roll any scene that's off, then Generate.")
+              : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life."))}</div>
+          {/* Pre-editor: a vertical list of scene cards (not a cramped strip) — each with its still, an
+              editable "what we see" + "words", and a Performance/Cut-scene type you can flip. */}
+          <div className={`mm-sb-list${isMv ? " is-mv" : ""}`}>
             {strip.scenes.map((sc, i) => {
               const u = seeds?.imgs[i] ?? null;
               const pk = seeds?.propForScene[i];
               const pl = pk ? ((d.props || []).find((pp) => pp.key === pk)?.label || pk) : "";
+              const perform = !isMv || sceneKind(sc, i) === "perform";
               return (
-                <div className="mm-sb-shot" key={i}>
-                  <div className="mm-sb-frame">
-                    {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={20} /><small>{seedBusy ? t("sketching…") : t("tap Make the scenes")}</small></span>}
-                    {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
-                    <span className="mm-sb-num">{i + 1}</span>
-                    {seeds && (seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={13} /></button>}
+                <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i}>
+                  <div className="mm-sc-head">
+                    <span className="mm-sc-num">{t("Scene {n}", { n: i + 1 })}</span>
+                    {isMv && (
+                      <button type="button" className="mm-sc-type" onClick={() => setSceneKind(i, perform ? "broll" : "perform")}
+                        title={t("Switch between a lip-synced performance and a b-roll cut scene")}
+                        aria-label={t("Scene {n} is a {type} — tap to switch", { n: i + 1, type: perform ? t("Performance") : t("Cut scene") })}>
+                        <span className="mm-sc-dot" aria-hidden="true" /> {perform ? t("Performance") : t("Cut scene")} <Ico n="refresh" size={11} />
+                      </button>
+                    )}
                   </div>
-                  <div className="mm-sb-desc">
-                    <textarea className="mm-sb-what" value={sc?.visual || ""} onChange={(e) => editSceneText(i, "visual", e.target.value)} rows={3} maxLength={400} placeholder={t("what happens in this scene…")} aria-label={t("Scene {n} — what happens", { n: i + 1 })} />
-                    {(sc?.caption != null || tmpl?.lipSyncSinger) && <textarea className="mm-sb-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={2} maxLength={300} placeholder={t("the words / lyrics…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} />}
-                    {pl && <span className="mm-sb-prop">{t(pl)}</span>}
+                  <div className="mm-sc-body">
+                    <div className="mm-sc-frame">
+                      {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={18} /><small>{seedBusy ? t("sketching…") : t("tap Make")}</small></span>}
+                      {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
+                      <span className="mm-sb-num">{i + 1}</span>
+                      {seeds && (seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={12} /></button>}
+                    </div>
+                    <div className="mm-sc-fields">
+                      <label className="mm-sc-lab">{t("What we see")}</label>
+                      <textarea className="mm-sc-what" value={sc?.visual || ""} onChange={(e) => editSceneText(i, "visual", e.target.value)} rows={2} maxLength={400} placeholder={t("what we see in this scene…")} aria-label={t("Scene {n} — what we see", { n: i + 1 })} />
+                      {isMv
+                        ? (perform
+                          ? (<>
+                              <label className="mm-sc-lab">{t("Words · lip-synced")}</label>
+                              <textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={2} maxLength={300} placeholder={t("the lyric lines sung here…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} />
+                            </>)
+                          : <span className="mm-sc-note">{t("Cut scene — no singing. Cuts away to props, dancing or scenery while the song plays.")}</span>)
+                        : ((sc?.caption != null) && <textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={2} maxLength={300} placeholder={t("the words / lyrics…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} />)}
+                      {pl && <span className="mm-sb-prop">{t(pl)}</span>}
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
         </>
-      )}
+        );
+      })()}
     </div>
     );
   };
@@ -2207,6 +2242,30 @@ const FS_STYLE = `
 .mm-sb-reroll:hover:not(:disabled){background:var(--green,#0C7A46);}
 .mm-sb-reroll:disabled{opacity:.4;cursor:default;}
 .mm-sb-reroll svg{stroke:#fff;stroke-width:2;fill:none;}
+/* ── Scene PRE-EDITOR: a vertical list of roomy, clearly-editable scene cards ── */
+.mm-sb-list{display:flex;flex-direction:column;gap:11px;padding:2px 0 4px;}
+.mm-sc{border:1.5px solid var(--line,#E4DFCF);border-radius:15px;background:#fff;padding:11px 12px;box-shadow:0 1px 2px rgba(20,32,26,.04);}
+.mm-sc.is-perform{border-left:3px solid #1EA85C;}
+.mm-sc.is-broll{border-left:3px solid #7F77DD;}
+.mm-sc-head{display:flex;align-items:center;gap:9px;margin-bottom:9px;}
+.mm-sc-num{font-size:13px;font-weight:800;color:var(--ink,#14201A);}
+.mm-sc-type{margin-left:auto;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line,#E4DFCF);background:#F7FAF8;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700;color:var(--ink2,#4A554E);cursor:pointer;transition:background .14s,border-color .14s;}
+.mm-sc-type:hover{background:#EEF6F1;border-color:#BFE0CD;}
+.mm-sc-type svg{stroke:currentColor;stroke-width:2;fill:none;opacity:.55;}
+.mm-sc-dot{width:9px;height:9px;border-radius:50%;flex:none;}
+.is-perform .mm-sc-dot{background:#1EA85C;}
+.is-broll .mm-sc-dot{background:#7F77DD;}
+.mm-sc-body{display:flex;gap:11px;}
+.mm-sc-frame{position:relative;flex:0 0 78px;width:78px;aspect-ratio:9/16;border-radius:11px;overflow:hidden;background:#20302A;box-shadow:0 2px 8px rgba(20,32,26,.16);}
+.mm-sc-frame img{width:100%;height:100%;object-fit:cover;display:block;}
+.mm-sc-fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+.mm-sc-lab{font-size:10.5px;font-weight:800;color:var(--ink3,#9AA39B);letter-spacing:.03em;text-transform:uppercase;margin:3px 0 0 2px;}
+.mm-sc-what,.mm-sc-words{width:100%;display:block;box-sizing:border-box;border:1px solid var(--line,#E4DFCF);border-radius:9px;background:#FCFBF7;resize:vertical;font-family:Poppins,sans-serif;padding:8px 10px;margin:0;cursor:text;transition:background .12s,border-color .12s,box-shadow .12s;}
+.mm-sc-what:focus,.mm-sc-words:focus{outline:0;background:#fff;border-color:var(--green2,#1EA85C);box-shadow:0 0 0 3px rgba(12,122,70,.1);}
+.mm-sc-what::placeholder,.mm-sc-words::placeholder{color:var(--ink3,#9AA39B);}
+.mm-sc-what{font-size:13px;line-height:1.42;color:var(--ink,#14201A);font-weight:500;}
+.mm-sc-words{font-size:13px;line-height:1.42;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;border-left:3px solid #BFE0CD;}
+.mm-sc-note{font-size:12px;color:var(--ink2,#55605A);background:#F3F1FB;border:1px solid #E3DFF6;border-radius:9px;padding:8px 10px;line-height:1.4;}
 .mm-sb-busy{position:absolute;inset:0;background:rgba(10,20,15,.55);display:grid;place-items:center;z-index:2;}
 .mm-sb-spin{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;animation:mm-sb-rot .8s linear infinite;}
 @keyframes mm-sb-rot{to{transform:rotate(360deg)}}
