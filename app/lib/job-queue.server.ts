@@ -805,6 +805,7 @@ async function runJob(
             heroUrl: (payload.filmHeroUrl as string | undefined) || undefined, // merchant PICKED an avatar to be the artist
             castExtra: Array.isArray(payload.filmCastExtra) ? (payload.filmCastExtra as Array<{ img: string; name: string }>) : undefined, // extra named cast beyond the lead
             castForScene: (payload.filmCastForScene && typeof payload.filmCastForScene === "object") ? (payload.filmCastForScene as Record<number, string[]>) : undefined, // per-scene cast (owner edit)
+            outfits: (payload.filmOutfits && typeof payload.filmOutfits === "object") ? (payload.filmOutfits as Record<string, string>) : undefined, // wardrobe (owner edit)
             aspect: (payload.filmAspect as string | undefined) || undefined, // output shape 9:16 / 16:9 / 1:1
             approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined, // storyboard-approved stills
 

@@ -222,6 +222,9 @@ async function buildMusicVideoSeeds(p: {
    *  hero img and/or co-star imgs). Lets each scene differ — star-only here, star+co-star there, or a
    *  set-only b-roll. When unset for a scene, falls back to "all cast in every perform scene" (legacy). */
   castForScene?: Record<number, string[]>;
+  /** Wardrobe (owner edit): cast member IMG → an outfit description ("a sharp black suit"). Applied when
+   *  that member is styled into the genre, so they wear it for the whole video. */
+  outfits?: Record<string, string>;
   /** Output shape — "9:16" (default), "16:9" or "1:1". Drives the seed render aspect (clips follow). */
   aspect?: string;
   jobId?: string;
@@ -243,6 +246,12 @@ async function buildMusicVideoSeeds(p: {
   const scenes = p.scenes;
   const propForScene = p.propForScene;
   const asp = (p.aspect === "16:9" || p.aspect === "1:1") ? p.aspect : "9:16";
+  // Wardrobe: an owner-chosen outfit for a cast member rides their genre-styling prompt (kept for the
+  // whole video, since the scenes inherit the styled ref's wardrobe).
+  const outfitClause = (img: string | null | undefined): string => {
+    const o = img && p.outfits ? (p.outfits[img] || "").trim() : "";
+    return o ? ` They are wearing ${o.slice(0, 160)} — keep this outfit consistent in every shot.` : "";
+  };
 
   // ARTIST hero — ONE realistic portrait that locks the look (face + wardrobe) for the WHOLE video.
   // If the merchant PICKED one of their avatars, lock THAT face as the artist — style it into the genre
@@ -253,7 +262,7 @@ async function buildMusicVideoSeeds(p: {
     const picked = abs(p.heroUrl);
     let ref: string | null = null;
     if (picked) {
-      const styled = await editSubjectIntoScene(picked, `Keep this EXACT person's face and identity identical — same face, hair, skin and build; do NOT swap them for anyone else. Make it a realistic ${g.label} music-video shot of them, who ${g.perform}, to camera. ${g.look}. Clear sharp face with a natural, genuine expression that fits the song's emotion — NOT angry, snarling or aggressive. ${REALISM}`);
+      const styled = await editSubjectIntoScene(picked, `Keep this EXACT person's face and identity identical — same face, hair, skin and build; do NOT swap them for anyone else. Make it a realistic ${g.label} music-video shot of them, who ${g.perform}, to camera.${outfitClause(p.heroUrl)} ${g.look}. Clear sharp face with a natural, genuine expression that fits the song's emotion — NOT angry, snarling or aggressive. ${REALISM}`);
       ref = styled || picked;
     } else {
       ref = await renderCreativeSeed(`A realistic ${g.label} music-video shot of the artist, who ${g.perform}, to camera: ${p.artistBible}. ${g.look}. Clear sharp face with a natural, genuine expression that fits the song's emotion — NOT angry, snarling or aggressive. ${REALISM}`, "9:16");
@@ -271,7 +280,7 @@ async function buildMusicVideoSeeds(p: {
     if (!cref) {
       const src = abs(m.img);
       if (src) {
-        const styled = await editSubjectIntoScene(src, `Keep this EXACT person's face and identity identical — same face, hair, skin and build; do NOT swap them for anyone else. Make it a realistic ${g.label} music-video shot of them. ${g.look}. Clear sharp face with a natural, genuine expression. ${REALISM}`);
+        const styled = await editSubjectIntoScene(src, `Keep this EXACT person's face and identity identical — same face, hair, skin and build; do NOT swap them for anyone else. Make it a realistic ${g.label} music-video shot of them.${outfitClause(m.img)} ${g.look}. Clear sharp face with a natural, genuine expression. ${REALISM}`);
         cref = abs(styled) || src;
         if (cref && !resume[`ckCast_${ci}`]) await ckpt({ [`ckCast_${ci}`]: cref });
       }
@@ -359,7 +368,7 @@ async function buildMusicVideoSeeds(p: {
  *  scene BEFORE committing (the "limit the surprise" ask). The approved stills ride back into
  *  generateMusicVideo as `approvedSceneImgs` so it renders EXACTLY what was previewed. */
 export async function previewMusicVideoScenes(opts: {
-  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>; castForScene?: Record<number, string[]>; aspect?: string;
+  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>; castForScene?: Record<number, string[]>; outfits?: Record<string, string>; aspect?: string;
 }): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; propForScene: Record<number, string>; artistRef: string | null; castRefs: string[] }> {
   const tmpl = filmTemplate("musicvideo");
   const genre = genreOrDefault(opts.genre);
@@ -381,7 +390,7 @@ export async function previewMusicVideoScenes(opts: {
   }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
 
-  const { sceneImgs, artistRef, castRefs } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, aspect: opts.aspect, resume: {}, base });
+  const { sceneImgs, artistRef, castRefs } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, aspect: opts.aspect, resume: {}, base });
   return { treatment, sceneImgs, propForScene, artistRef, castRefs };
 }
 
@@ -463,6 +472,8 @@ export async function generateMusicVideo(opts: {
   castExtra?: Array<{ img: string; name: string }>;
   /** Per-scene cast (owner edit): scene index → the cast IMAGES to feature in that scene. */
   castForScene?: Record<number, string[]>;
+  /** Wardrobe (owner edit): cast member IMG → an outfit description, applied when they're styled. */
+  outfits?: Record<string, string>;
   /** Output shape — "9:16" (default), "16:9" or "1:1". */
   aspect?: string;
   /** Owner PREVIEWED + approved these exact per-scene stills — render them, don't re-seed (no surprise).
@@ -540,7 +551,7 @@ export async function generateMusicVideo(opts: {
   //      SHARED seed path the preview uses (hero + prop anchors + vision-gated per-scene edits).
   const sceneImgs = opts.approvedSceneImgs && opts.approvedSceneImgs.length === N
     ? opts.approvedSceneImgs.map((u) => abs(u))
-    : (await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, aspect: opts.aspect, jobId, resume, base })).sceneImgs;
+    : (await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, aspect: opts.aspect, jobId, resume, base })).sceneImgs;
 
   // 5) song SEGMENTS (local mp3 + hosted url for the lip-sync model to drive the mouth to).
   const segs: Array<{ localPath: string; url: string }> = [];

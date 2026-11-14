@@ -129,6 +129,18 @@ function parseCastForScene(raw: string | null): Record<number, string[]> | undef
   } catch { return undefined; }
 }
 
+/** Wardrobe (owner edit): cast member IMG → an outfit description. */
+function parseOutfits(raw: string | null): Record<string, string> | undefined {
+  if (!raw) return undefined;
+  try {
+    const o = JSON.parse(raw);
+    if (!o || typeof o !== "object") return undefined;
+    const out: Record<string, string> = {};
+    for (const k of Object.keys(o)) { const v = o[k]; if (typeof v === "string" && v.trim()) out[k.slice(0, 2000)] = v.trim().slice(0, 160); }
+    return Object.keys(out).length ? out : undefined;
+  } catch { return undefined; }
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const lang = await readUiLang(request);
   const { shop } = await requireWebIdentity(request);
@@ -281,12 +293,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const heroUrl = ((form.get("filmHeroUrl") as string) || "").trim().slice(0, 2000) || undefined;
     const castExtra = parseCastExtra(form.get("filmCastExtra") as string);
     const castForScene = parseCastForScene(form.get("filmCastForScene") as string);
+    const outfits = parseOutfits(form.get("filmOutfits") as string);
     const filmAspect = ((form.get("filmAspect") as string) || "").trim();
     try {
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, castForScene, aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, castForScene, outfits, aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
         return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef, castRefs: r.castRefs });
@@ -392,6 +405,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const filmCastExtra = parseCastExtra(form.get("filmCastExtra") as string);
     // Per-scene cast (Music Video owner edit) — scene index → the cast imgs featured in that scene.
     const filmCastForScene = parseCastForScene(form.get("filmCastForScene") as string);
+    // Wardrobe (Music Video owner edit) — cast member img → an outfit description.
+    const filmOutfits = parseOutfits(form.get("filmOutfits") as string);
     // Pre-approved per-scene STILLS (Music Video storyboard) — render these EXACT images, no re-seed.
     // Keep positions (a null = that scene seeds fresh), so the index stays aligned with the scenes.
     let approvedSceneImgs: (string | null)[] | undefined;
@@ -414,6 +429,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(filmHeroUrl ? { filmHeroUrl } : {}),
         ...(filmCastExtra ? { filmCastExtra } : {}),
         ...(filmCastForScene ? { filmCastForScene } : {}),
+        ...(filmOutfits ? { filmOutfits } : {}),
         ...(filmProps?.length ? { filmProps } : {}),
         ...(filmCustomProps.length ? { filmCustomProps } : {}),
         ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
@@ -480,6 +496,9 @@ export default function FilmStudio() {
   const [castForScene, setCastForScene] = useState<Record<number, string[]>>({});
   const [sceneCastPick, setSceneCastPick] = useState<number | null>(null);
   const [sceneCastDraft, setSceneCastDraft] = useState<string[]>([]);
+  // Wardrobe (owner edit): cast member IMG → an outfit description. Applied when they're styled into
+  // the genre, so they wear it for the whole video. Empty = keep their own look.
+  const [outfits, setOutfits] = useState<Record<string, string>>({});
   const [rerollingScene, setRerollingScene] = useState<number | null>(null);
   // Storyboard (dialogue): per-scene approved frames + which scene is rendering now.
   const previewFrameFetcher = useFetcher<{ frameUrl?: string; sceneIndex?: number; error?: string }>();
@@ -742,7 +761,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: mvAspect, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: mvAspect, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
       { method: "post" }
     );
   };
@@ -878,6 +897,34 @@ export default function FilmStudio() {
     setCastForScene((prev) => ({ ...prev, [i]: sceneCastDraft }));
     setSceneCastPick(null);
     rerollScene(i, undefined, sceneCastDraft);
+  };
+  // ---- Wardrobe (owner edit) ------------------------------------------------
+  // A sideways picker per cast member: pick a preset outfit or describe a custom one. The choice rides
+  // their styling prompt at seed-time (free + instant — shows up when the scenes are made).
+  const OUTFIT_PRESETS: Array<{ k: string; label: string; desc: string }> = [
+    { k: "signature", label: "Their own look", desc: "" },
+    { k: "suit", label: "Sharp suit", desc: "a sharp tailored suit" },
+    { k: "street", label: "Streetwear", desc: "stylish modern streetwear" },
+    { k: "glam", label: "Glam stage", desc: "a glamorous sequined stage outfit" },
+    { k: "casual", label: "Casual", desc: "relaxed casual everyday clothes" },
+    { k: "western", label: "Western", desc: "western country attire with denim and boots" },
+    { k: "leather", label: "Leather", desc: "an edgy black leather jacket look" },
+    { k: "allwhite", label: "All white", desc: "a clean all-white designer outfit" },
+  ];
+  const setOutfit = (img: string, desc: string) => setOutfits((p) => { const n = { ...p }; if (desc) n[img] = desc; else delete n[img]; return n; });
+  const renderWardrobe = (img: string, name: string) => {
+    const cur = outfits[img] || "";
+    return (
+      <div className="mm-wardrobe" key={`wd-${img}`}>
+        <div className="mm-wardrobe-h"><span className="mm-wd-face" style={{ backgroundImage: `url(${img})` }} aria-hidden="true" /> {name}</div>
+        <div className="mm-wardrobe-strip">
+          {OUTFIT_PRESETS.map((o) => (
+            <button type="button" key={o.k} className={`mm-wd-opt${(o.desc ? cur === o.desc : !cur) ? " on" : ""}`} onClick={() => setOutfit(img, o.desc)}>{t(o.label)}</button>
+          ))}
+        </div>
+        <input className="mm-wardrobe-input" value={cur} onChange={(e) => setOutfit(img, e.target.value)} placeholder={t("…or describe an outfit (red sequin dress, varsity jacket…)")} maxLength={160} aria-label={t("Describe an outfit for {name}", { name })} />
+      </div>
+    );
   };
   // Add / reorder / delete scenes in the pre-editor. Structural edits keep the stills (imgs) and the
   // per-scene prop map index-aligned to the scenes array, so nothing shifts out from under a still.
@@ -1433,6 +1480,14 @@ export default function FilmStudio() {
                   ))}
                 </div>
               </div>
+              {(artistPick || castExtra.length > 0) && (
+                <div className="mm-castlib mm-wardrobe-sec">
+                  <div className="mm-castlib-h">{t("Wardrobe")} <span className="mm-castlib-badge">{t("optional")}</span></div>
+                  <div className="mm-opts-sub">{t("Give anyone a different outfit — pick a style or describe one. It's applied when you make the scenes.")}</div>
+                  {artistPick && renderWardrobe(artistPick, artistName || t("the star"))}
+                  {castExtra.map((m) => renderWardrobe(m.img, m.name || t("co-star")))}
+                </div>
+              )}
             </div>
           )}
           {openCard === "genre" && (
@@ -1568,6 +1623,7 @@ export default function FilmStudio() {
               {artistPick && <input type="hidden" name="filmHeroUrl" value={artistPick} />}
               {castExtra.length > 0 && <input type="hidden" name="filmCastExtra" value={JSON.stringify(castExtra)} />}
               {tmpl?.lipSyncSinger && seeds && castExtra.length > 0 && <input type="hidden" name="filmCastForScene" value={JSON.stringify(resolveCastMap(seeds.treatment.scenes))} />}
+              {tmpl?.lipSyncSinger && Object.keys(outfits).length > 0 && <input type="hidden" name="filmOutfits" value={JSON.stringify(outfits)} />}
               {tmpl?.lipSyncSinger && <input type="hidden" name="filmAspect" value={mvAspect} />}
               <input type="hidden" name="filmTopic" value={topic} />
               <input type="hidden" name="filmScenes" value={String(scenes)} />
@@ -2433,6 +2489,15 @@ const FS_STYLE = `
 .mm-castmem-del{flex:none;width:28px;height:28px;border-radius:8px;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink3,#9AA39B);font-size:12px;cursor:pointer;display:grid;place-items:center;transition:background .14s,color .14s;}
 .mm-castmem-del:hover{background:#FBEEEC;color:#B4463A;border-color:#F2D6D1;}
 .mm-castpick{margin-top:4px;}
+.mm-wardrobe-sec{margin-top:14px;}
+.mm-wardrobe{margin-top:10px;padding:10px;border:1px solid var(--line,#E4DFCF);border-radius:12px;background:#FBFAF6;display:flex;flex-direction:column;gap:7px;}
+.mm-wardrobe-h{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:var(--ink,#14201A);}
+.mm-wd-face{width:22px;height:22px;border-radius:50%;background:#20302A;background-size:cover;background-position:center;flex:none;}
+.mm-wardrobe-strip{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin;}
+.mm-wd-opt{flex:0 0 auto;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:700;color:var(--ink2,#55605A);cursor:pointer;white-space:nowrap;transition:border-color .14s,background .14s,color .14s;}
+.mm-wd-opt.on{border-color:#7A4FC2;background:#F3EEFB;color:#5B3A99;box-shadow:0 0 0 1px #7A4FC2;}
+.mm-wardrobe-input{border:1.5px solid var(--line,#E4DFCF);border-radius:10px;padding:9px 12px;font-size:12.5px;font-family:Poppins,sans-serif;color:var(--ink,#14201A);background:#fff;}
+.mm-wardrobe-input:focus{outline:0;border-color:#7A4FC2;box-shadow:0 0 0 3px rgba(122,79,194,.12);}
 .mm-autoface-img{display:grid;place-items:center;background:linear-gradient(135deg,#EFEAFB,#DDD3F3)!important;}
 .mm-autoface-img svg{stroke:#6C4FB0;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 /* Props picker — real PHOTO tiles (not emoji), plus "Create AI prop" + "Add a photo" makers. */
