@@ -773,6 +773,9 @@ export default function FilmStudio() {
   // Any setup change invalidates the preview — the stills would no longer match the new settings
   // (the artist too: a different face means the stills show the wrong person).
   useEffect(() => { setSeeds(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Artist or cast CHANGED → clear the SCRIPT too so it re-writes with the picked names. Fixes the
+  // "Kazon" AI-slop name persisting from a treatment that was written before the cast was set.
+  useEffect(() => { setTreatment(null); }, [artistPick, castExtra.map((m) => m.img).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   // Click-to-edit the storyboard text — polish a scene's "what happens" or its words in place; the
   // render reads the edited treatment. Editing the VISUAL marks the still stale (re-roll to match).
   // Writes to the stills' snapshot once they exist, otherwise to the autopopulated story treatment.
@@ -901,7 +904,7 @@ export default function FilmStudio() {
                 <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i}>
                   <div className="mm-sc-frame">
                     {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sc-load wb-cookimg" aria-hidden="true"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
-                    {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
+                    {rerollingScene === i && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     <span className="mm-sb-num">{i + 1}</span>
                     <button type="button" className="mm-sc-x" onClick={() => sbRemoveScene(i)} disabled={strip.scenes.length <= 1} title={t("Remove this scene")} aria-label={t("Remove scene {n}", { n: i + 1 })}>✕</button>
                     {seeds && (seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={12} /></button>}
@@ -2392,6 +2395,7 @@ const FS_STYLE = `
 .mm-sc-load{position:absolute;inset:0;}
 .mm-sc .wb-cookimg{position:absolute;inset:0;width:100%;height:100%;aspect-ratio:auto;}
 .mm-sc .wb-spin{width:52px;height:52px;}
+.mm-sb-busy-rose{background:linear-gradient(160deg,#0E8A4F,#0A5F38 55%,#084A2C)!important;display:grid;place-items:center;}
 .mm-sc .wb-bufwrap::before{width:118px;height:118px;}
 .mm-sc-x{position:absolute;top:6px;right:6px;z-index:3;width:25px;height:25px;border-radius:50%;border:none;background:rgba(10,20,15,.6);color:#fff;font-size:13px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .14s;}
 .mm-sc-x:hover:not(:disabled){background:#B4463A;}
