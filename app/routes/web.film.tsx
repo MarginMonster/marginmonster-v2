@@ -751,6 +751,37 @@ export default function FilmStudio() {
     if (seeds) setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) } } : prev));
     else if (treatment) setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) });
   };
+  // Add / reorder / delete scenes in the pre-editor. Structural edits keep the stills (imgs) and the
+  // per-scene prop map index-aligned to the scenes array, so nothing shifts out from under a still.
+  const structEditScenes = (fn: (cur: { scenes: Scene[]; imgs: (string | null)[]; prop: Record<number, string> }) => { scenes: Scene[]; imgs: (string | null)[]; prop: Record<number, string> }) => {
+    if (seeds) {
+      setSeeds((prev) => {
+        if (!prev) return prev;
+        const r = fn({ scenes: prev.treatment.scenes, imgs: prev.imgs, prop: prev.propForScene });
+        return { ...prev, treatment: { ...prev.treatment, scenes: r.scenes }, imgs: r.imgs, propForScene: r.prop };
+      });
+    } else if (treatment) {
+      const r = fn({ scenes: treatment.scenes, imgs: [], prop: {} });
+      setTreatment({ ...treatment, scenes: r.scenes });
+    }
+  };
+  const reindexProp = (prop: Record<number, string>, removed: number) => {
+    const out: Record<number, string> = {};
+    Object.keys(prop).forEach((k) => { const n = +k; if (n < removed) out[n] = prop[n]; else if (n > removed) out[n - 1] = prop[n]; });
+    return out;
+  };
+  const sbAddScene = () => structEditScenes(({ scenes, imgs, prop }) => ({ scenes: [...scenes, { visual: "", caption: "", kind: "broll" }], imgs: [...imgs, null], prop }));
+  const sbRemoveScene = (i: number) => structEditScenes(({ scenes, imgs, prop }) => ({ scenes: scenes.filter((_, j) => j !== i), imgs: imgs.filter((_, j) => j !== i), prop: reindexProp(prop, i) }));
+  const sbMoveScene = (i: number, dir: -1 | 1) => structEditScenes(({ scenes, imgs, prop }) => {
+    const j = i + dir;
+    if (j < 0 || j >= scenes.length) return { scenes, imgs, prop };
+    const sc = scenes.slice(), im = imgs.slice();
+    [sc[i], sc[j]] = [sc[j], sc[i]]; [im[i], im[j]] = [im[j], im[i]];
+    const p: Record<number, string> = { ...prop }; const a = prop[i], b = prop[j];
+    if (b === undefined) delete p[i]; else p[i] = b;
+    if (a === undefined) delete p[j]; else p[j] = a;
+    return { scenes: sc, imgs: im, prop: p };
+  });
 
   // The storyboard: ONE collapsed button → a swipeable filmstrip of the actual scene stills (each
   // re-rollable, text click-to-edit), so you approve what will render before paying. Reused by BOTH
@@ -843,10 +874,17 @@ export default function FilmStudio() {
                       {pl && <span className="mm-sb-prop">{t(pl)}</span>}
                     </div>
                   </div>
+                  <div className="mm-sc-foot">
+                    <button type="button" className="mm-sc-mv" onClick={() => sbMoveScene(i, -1)} disabled={i === 0} aria-label={t("Move scene up")}>↑</button>
+                    <button type="button" className="mm-sc-mv" onClick={() => sbMoveScene(i, 1)} disabled={i === strip.scenes.length - 1} aria-label={t("Move scene down")}>↓</button>
+                    <span className="mm-sc-sp" />
+                    <button type="button" className="mm-sc-del" onClick={() => sbRemoveScene(i)} disabled={strip.scenes.length <= 1} aria-label={t("Delete scene {n}", { n: i + 1 })}>✕ {t("Remove")}</button>
+                  </div>
                 </div>
               );
             })}
           </div>
+          <button type="button" className="mm-sc-add" onClick={sbAddScene}>+ {t("Add a scene")}</button>
         </>
         );
       })()}
@@ -2266,6 +2304,16 @@ const FS_STYLE = `
 .mm-sc-what{font-size:13px;line-height:1.42;color:var(--ink,#14201A);font-weight:500;}
 .mm-sc-words{font-size:13px;line-height:1.42;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;border-left:3px solid #BFE0CD;}
 .mm-sc-note{font-size:12px;color:var(--ink2,#55605A);background:#F3F1FB;border:1px solid #E3DFF6;border-radius:9px;padding:8px 10px;line-height:1.4;}
+.mm-sc-foot{display:flex;align-items:center;gap:7px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line,#EEE8D8);}
+.mm-sc-mv{width:31px;height:31px;border-radius:8px;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);font-size:15px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .14s,border-color .14s;}
+.mm-sc-mv:hover:not(:disabled){background:#F3F6F4;border-color:#BFE0CD;}
+.mm-sc-mv:disabled{opacity:.34;cursor:default;}
+.mm-sc-sp{flex:1;}
+.mm-sc-del{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#B4463A;background:#FBEEEC;border:1px solid #F2D6D1;border-radius:8px;padding:7px 12px;cursor:pointer;transition:background .14s;}
+.mm-sc-del:hover:not(:disabled){background:#F7E1DD;}
+.mm-sc-del:disabled{opacity:.4;cursor:default;}
+.mm-sc-add{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:800;color:var(--green,#0C7A46);background:#fff;border:1.5px dashed #BFE0CD;border-radius:14px;padding:13px;margin-top:11px;cursor:pointer;transition:background .14s;}
+.mm-sc-add:hover{background:#F0F8F3;}
 .mm-sb-busy{position:absolute;inset:0;background:rgba(10,20,15,.55);display:grid;place-items:center;z-index:2;}
 .mm-sb-spin{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;animation:mm-sb-rot .8s linear infinite;}
 @keyframes mm-sb-rot{to{transform:rotate(360deg)}}
