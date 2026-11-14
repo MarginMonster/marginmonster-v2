@@ -779,28 +779,14 @@ export default function FilmStudio() {
   // other cards are thrown away, then it becomes that format's builder. Back reverses it.
   const [entered, setEntered] = useState(false);
   const [zoomKey, setZoomKey] = useState<string | null>(null);
-  const [zoomStyle, setZoomStyle] = useState<{ transform: string } | undefined>(undefined);
   const [anim, setAnim] = useState<"" | "in" | "out">("");
-  const enterFormat = (key: string, ev?: { currentTarget?: HTMLElement }) => {
-    // Fly the tapped card to the center of the VISIBLE band (between the grid's top and just above
-    // the bottom nav), not the grid center — the grid is taller than the screen, so grid-center
-    // dropped the zoom below the fold. This keeps it on-screen wherever the card or scroll sits.
-    const btn = ev?.currentTarget;
-    const grid = btn?.parentElement;
+  const enterFormat = (key: string) => {
+    // Clean, robust transition (the old fly-to-viewport-center math glitched the card up into the hero,
+    // worse now the layout is full-bleed): the tapped card POPS in place + the others recede, then the
+    // format's own banner + builder fade in where the hero was. No position math to get wrong.
     const reduce = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (btn && grid && typeof window !== "undefined" && !reduce) {
-      const br = btn.getBoundingClientRect();
-      const gr = grid.getBoundingClientRect();
-      const topBound = Math.max(gr.top, 8);
-      const botBound = window.innerHeight - 92;
-      const cx = window.innerWidth / 2;
-      const cy = (topBound + botBound) / 2;
-      const dx = Math.round(cx - (br.left + br.width / 2));
-      const dy = Math.round(cy - (br.top + br.height / 2));
-      setZoomStyle({ transform: `translate(${dx}px, ${dy}px) scale(1.42)` });
-    }
     setZoomKey(key); setAnim("in");
-    window.setTimeout(() => { switchTemplate(key); setEntered(true); setAnim(""); setZoomKey(null); setZoomStyle(undefined); }, 420);
+    window.setTimeout(() => { switchTemplate(key); setEntered(true); setAnim(""); setZoomKey(null); }, reduce ? 0 : 400);
   };
   const exitFormat = () => {
     setAnim("out");
@@ -1433,7 +1419,10 @@ export default function FilmStudio() {
     <div className="fs-wrap">
       <style>{FS_STYLE}</style>
 
-      <div className="fs-head">
+      {/* The "Make a movie" hero shows only while picking a format — once a format is chosen, its own
+          banner (fs-hero) REPLACES it so there aren't two stacked headers. */}
+      {!entered && (
+      <div className={`fs-head${anim === "in" ? " throw" : ""}`}>
         <video className="fs-head-vid" autoPlay muted loop playsInline poster="/landing/film-hero.jpg?v=5" aria-hidden="true">
           <source src="/landing/film-hero.mp4" type="video/mp4" />
         </video>
@@ -1444,6 +1433,7 @@ export default function FilmStudio() {
           <span>{t("Pick a format, tell us the idea — we write it and film it. You just press go.")}</span>
         </div>
       </div>
+      )}
 
       {/* ───────── Pick a format, cinematic ─────────
           Land on a 2-up grid of poster cards. Tap one → the letterbox sweeps shut and it opens, like a
@@ -1455,8 +1445,7 @@ export default function FilmStudio() {
               const m = FMT[x.key] || { tint: "t-film", kick: "", meta: "" };
               return (
                 <button type="button" role="tab" key={x.key} className={`fs-fmt${zoomKey === x.key ? " zoom" : ""}`}
-                  style={zoomKey === x.key ? zoomStyle : undefined}
-                  aria-selected={template === x.key} onClick={(e) => enterFormat(x.key, e)}>
+                  aria-selected={template === x.key} onClick={() => enterFormat(x.key)}>
                   <span className="fs-fmt-cover">
                     <img src={`/landing/film-still-${x.key}.jpg?v=3`} alt="" loading="lazy"
                       onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
@@ -2243,17 +2232,15 @@ const FS_STYLE = `
   .fs-switch{max-width:none;margin-left:auto;margin-right:auto;}
   .fs-fmtgrid{grid-template-columns:repeat(3,minmax(0,1fr));}
 }
-/* Wide desktop: the format poster grid breathes into 4 columns. */
-@media (min-width:1120px){
-  .fs-fmtgrid{grid-template-columns:repeat(4,minmax(0,1fr));}
-}
 @keyframes fsgridin{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
 .fs-fmtgrid .fs-fmt{flex:none;width:auto;transform-origin:center;}
 .fs-fmtgrid.throw .fs-fmt{opacity:0;transform:scale(.72) translateY(26px);transition:opacity .32s ease,transform .36s ease;pointer-events:none;}
-.fs-fmtgrid.throw .fs-fmt.zoom{opacity:1;z-index:6;will-change:transform;transition:transform .44s cubic-bezier(.34,.62,.2,1),box-shadow .44s ease;box-shadow:0 36px 72px -22px rgba(10,20,15,.6);}
+.fs-fmtgrid.throw .fs-fmt.zoom{opacity:1;z-index:6;will-change:transform;transform:scale(1.16);transition:transform .4s cubic-bezier(.34,.62,.2,1),box-shadow .4s ease;box-shadow:0 36px 72px -22px rgba(10,20,15,.6);}
+.fs-head.throw{opacity:0;transform:scale(.97);transition:opacity .32s ease,transform .36s ease;pointer-events:none;}
 .fs-fmt-sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding:8px 11px 12px;font-size:11.5px;font-weight:700;color:var(--ink2,#55605A);line-height:1.32;}
 .fs-fmt-sub em{font-style:normal;font-weight:600;color:var(--ink3,#9AA39B);}
-.fs-hero{position:relative;height:150px;border-radius:16px;overflow:hidden;margin:16px 0 4px;background:#20302A;}
+.fs-hero{position:relative;height:150px;border-radius:16px;overflow:hidden;margin:2px 0 10px;background:#20302A;}
+@media(min-width:960px){.fs-hero{height:200px;}.fs-hero-ttl{font-size:32px;left:24px;}.fs-hero-sub{left:24px;font-size:14px;}.fs-hero-back{left:24px;}}
 .fs-hero-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:fsken 16s ease-in-out infinite alternate;}
 @keyframes fsken{from{transform:scale(1.03)}to{transform:scale(1.15)}}
 .fs-hero::before,.fs-hero::after{content:"";position:absolute;left:0;right:0;height:11px;background:#0A140F;z-index:2;}
