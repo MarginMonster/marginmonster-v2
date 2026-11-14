@@ -871,10 +871,8 @@ export default function FilmStudio() {
                       : <span className="mm-sc-num">{t("Scene {n}", { n: i + 1 })}</span>}
                     <textarea className="mm-sc-what" value={sc?.visual || ""} onChange={(e) => editSceneText(i, "visual", e.target.value)} rows={2} maxLength={400} placeholder={t("what we see in this scene…")} aria-label={t("Scene {n} — what we see", { n: i + 1 })} />
                     {isMv
-                      ? (perform
-                        ? <textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the lyric lines sung here…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} />
-                        : <span className="mm-sc-note">{t("Cut scene — no singing; cuts to props or scenery.")}</span>)
-                      : ((sc?.caption != null) && <textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the words / lyrics…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} />)}
+                      ? (perform && <div className="mm-sc-lyr"><span className="mm-sc-lyr-ico" aria-hidden="true">♪</span><textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the words sung here…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} /></div>)
+                      : ((sc?.caption != null) && <div className="mm-sc-lyr"><span className="mm-sc-lyr-ico" aria-hidden="true">♪</span><textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the words / lyrics…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} /></div>)}
                     {((isMv && perform && artistName) || pl) && (
                       <div className="mm-sc-chips">
                         {isMv && perform && artistName && <span className="mm-sc-chip mm-chip-av">{artistPick ? <img src={artistPick} alt="" /> : null}{artistName}</span>}
@@ -2307,12 +2305,14 @@ const FS_STYLE = `
 .mm-sc-dot{width:8px;height:8px;border-radius:50%;flex:none;}
 .is-perform .mm-sc-dot{background:#1EA85C;}
 .is-broll .mm-sc-dot{background:#7F77DD;}
-.mm-sc-what,.mm-sc-words{width:100%;display:block;box-sizing:border-box;border:1px solid #ECE7D9;border-radius:8px;background:#FCFBF7;resize:none;font-family:Poppins,sans-serif;padding:5px 8px;margin:0;cursor:text;transition:background .12s,border-color .12s,box-shadow .12s;}
+.mm-sc-what,.mm-sc-words{width:100%;display:block;box-sizing:border-box;border:1px solid transparent;border-radius:7px;background:transparent;resize:none;font-family:Poppins,sans-serif;padding:3px 5px;margin:0;cursor:text;transition:background .12s,border-color .12s,box-shadow .12s;}
+.mm-sc-what:hover,.mm-sc-words:hover{background:rgba(12,122,70,.05);}
 .mm-sc-what:focus,.mm-sc-words:focus{outline:0;background:#fff;border-color:var(--green2,#1EA85C);box-shadow:0 0 0 2px rgba(12,122,70,.1);}
 .mm-sc-what::placeholder,.mm-sc-words::placeholder{color:var(--ink3,#9AA39B);}
-.mm-sc-what{font-size:12px;line-height:1.36;color:var(--ink,#14201A);font-weight:500;}
-.mm-sc-words{font-size:12px;line-height:1.34;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;border-left:2.5px solid #BFE0CD;}
-.mm-sc-note{font-size:11px;color:var(--ink2,#55605A);background:#F3F1FB;border:1px solid #E3DFF6;border-radius:8px;padding:5px 8px;line-height:1.34;}
+.mm-sc-what{font-size:12.5px;line-height:1.4;color:var(--ink,#14201A);font-weight:500;}
+.mm-sc-lyr{display:flex;align-items:flex-start;gap:2px;}
+.mm-sc-lyr-ico{flex:none;font-size:12px;line-height:1;color:#1EA85C;padding:5px 0 0;}
+.mm-sc-words{font-size:12.5px;line-height:1.38;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;}
 .mm-sc-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px;}
 .mm-sc-chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 8px 2px 3px;border:1px solid;}
 .mm-sc-chip img{width:17px;height:17px;border-radius:50%;object-fit:cover;flex:none;}
