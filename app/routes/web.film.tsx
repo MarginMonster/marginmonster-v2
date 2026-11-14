@@ -901,9 +901,10 @@ export default function FilmStudio() {
                     {isMv
                       ? (perform && <div className="mm-sc-lyr"><span className="mm-sc-lyr-ico" aria-hidden="true">♪</span><textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the words sung here…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} /></div>)
                       : ((sc?.caption != null) && <div className="mm-sc-lyr"><span className="mm-sc-lyr-ico" aria-hidden="true">♪</span><textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the words / lyrics…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} /></div>)}
-                    {((isMv && perform && artistName) || pl) && (
+                    {((isMv && perform && (artistName || castExtra.length)) || pl) && (
                       <div className="mm-sc-chips">
                         {isMv && perform && artistName && <span className="mm-sc-chip mm-chip-av">{artistPick ? <img src={artistPick} alt="" /> : null}{artistName}</span>}
+                        {isMv && perform && castExtra.map((m) => <span className="mm-sc-chip mm-chip-av" key={m.img}><img src={m.img} alt="" />{m.name}</span>)}
                         {pl && <span className="mm-sc-chip mm-chip-pr">{t(pl)}</span>}
                       </div>
                     )}
@@ -2379,7 +2380,7 @@ const FS_STYLE = `
 .mm-sc-dot{width:8px;height:8px;border-radius:50%;flex:none;}
 .is-perform .mm-sc-dot{background:#1EA85C;}
 .is-broll .mm-sc-dot{background:#7F77DD;}
-.mm-sc-what,.mm-sc-words{width:100%;display:block;box-sizing:border-box;border:1px solid transparent;border-radius:7px;background:transparent;resize:none;font-family:Poppins,sans-serif;padding:3px 5px;margin:0;cursor:text;transition:background .12s,border-color .12s,box-shadow .12s;}
+.mm-sc-what,.mm-sc-words{width:100%;display:block;box-sizing:border-box;border:1px solid transparent;border-radius:7px;background:transparent;resize:none;overflow:hidden;field-sizing:content;min-height:1.5em;font-family:Poppins,sans-serif;padding:3px 5px;margin:0;cursor:text;transition:background .12s,border-color .12s,box-shadow .12s;}
 .mm-sc-what:hover,.mm-sc-words:hover{background:rgba(12,122,70,.05);}
 .mm-sc-what:focus,.mm-sc-words:focus{outline:0;background:#fff;border-color:var(--green2,#1EA85C);box-shadow:0 0 0 2px rgba(12,122,70,.1);}
 .mm-sc-what::placeholder,.mm-sc-words::placeholder{color:var(--ink3,#9AA39B);}
