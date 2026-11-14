@@ -510,10 +510,11 @@ export async function generateMusicVideo(opts: {
     // Reference the prop already baked into the seed image — never "add a tiger" (which spawns new
     // ones); just hold the single one in frame and forbid duplicates as the clip animates.
     const keepProp = pKey ? ` The single ${propNoun(pKey)} already in the shot stays in frame — exactly one; do NOT add or duplicate any ${propNoun(pKey)}, a dog, or any other animal.` : "";
+    const closeupSteady = /close-?up/i.test(shot.frame) ? " This is a TIGHT CLOSE-UP on the face: keep the head and camera almost perfectly still — only subtle, natural micro-motion — so the mouth stays crisp and the lip-sync reads cleanly; NO fast head turns or large moves." : "";
     const motionPrompt = shot.role === "perform"
-      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist ${g.perform}. Keep the movement NATURAL and VARIED — do NOT repeat the same gesture over and over, no exaggerated or aggressive motions, and no angry or snarling faces. Keep the head mostly steady and facing camera so the singing reads clearly and the lips stay in sync with the vocals.${keepProp} There is NO microphone — the artist never holds a mic. Keep the SAME person identical; photoreal, cinematic, high-production. ${ONE_PERSON}`
+      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist ${g.perform}. Keep the movement NATURAL and VARIED — do NOT repeat the same gesture over and over, no exaggerated or aggressive motions, and no angry or snarling faces. Keep the head mostly steady and facing camera so the singing reads clearly and the lips stay in sync with the vocals.${closeupSteady}${keepProp} There is NO microphone — the artist never holds a mic. Keep the SAME person identical; photoreal, cinematic, high-production. ${ONE_PERSON}`
       : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural, flowing motion (no repeated or jittery movement).${keepProp} Keep the SAME person identical; photoreal, cinematic, high-production. ${ONE_PERSON}`;
-    for (const i2vModel of [I2V_MODEL, I2V_FALLBACK]) {
+    for (const i2vModel of [I2V_MODEL, I2V_FALLBACK, I2V_MODEL, I2V_FALLBACK]) { // TWO passes — a transient i2v/mux blip shouldn't drop a whole scene to a static still (owner: "first cutscene is a still not video")
       try {
         // silent motion clip — primary engine, then the backup if it blips (so a provider outage
         // can't still a whole scene the way it once stilled an entire render)
@@ -544,6 +545,7 @@ export async function generateMusicVideo(opts: {
         if (fs.existsSync(out) && ffprobeDuration(out) > 1) { await ckpt({ [`ckClip${i}`]: out }); return out; }
       } catch (e) {
         console.error(`[musicvideo] scene ${i + 1} (${shot.role}) i2v ${i2vModel} failed: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+        await new Promise((r) => setTimeout(r, 2000)); // brief backoff before the next attempt
       }
     }
     // Fallback: still image held over the segment audio (keeps the song continuous).
