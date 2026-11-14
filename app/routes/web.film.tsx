@@ -1462,6 +1462,8 @@ export default function FilmStudio() {
         {entered && (
           <div className={`fs-stage${anim === "out" ? " out" : ""}`}>
             <div className="fs-hero">
+              <img className="fs-hero-blur" src={`/landing/film-still-${template}.jpg?v=3`} alt="" aria-hidden="true"
+                onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
               <img className="fs-hero-art" src={`/landing/film-still-${template}.jpg?v=3`} alt=""
                 onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
               <div className="fs-hero-scrim" aria-hidden="true" />
@@ -2245,13 +2247,13 @@ const FS_STYLE = `
 .fs-fmt-sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding:8px 11px 12px;font-size:11.5px;font-weight:700;color:var(--ink2,#55605A);line-height:1.32;}
 .fs-fmt-sub em{font-style:normal;font-weight:600;color:var(--ink3,#9AA39B);}
 .fs-hero{position:relative;height:150px;border-radius:16px;overflow:hidden;margin:2px 0 10px;background:#20302A;}
-@media(min-width:960px){.fs-hero{height:260px;}.fs-hero-art{object-position:center 26%;}.fs-hero-ttl{font-size:34px;left:26px;}.fs-hero-sub{left:26px;font-size:14px;}.fs-hero-back{left:26px;}}
-.fs-hero-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:fsken 16s ease-in-out infinite alternate;}
-@keyframes fsken{from{transform:scale(1.03)}to{transform:scale(1.15)}}
-.fs-hero::before,.fs-hero::after{content:"";position:absolute;left:0;right:0;height:11px;background:#0A140F;z-index:2;}
-.fs-hero::before{top:0;}
-.fs-hero::after{bottom:0;}
-.fs-hero-scrim{position:absolute;inset:0;z-index:1;background:linear-gradient(to top,rgba(8,16,12,.76) 0%,rgba(8,16,12,.1) 54%,rgba(8,16,12,.3) 100%);}
+@media(min-width:960px){.fs-hero{height:260px;}.fs-hero-art{object-fit:contain;object-position:center;}.fs-hero-ttl{font-size:34px;left:26px;}.fs-hero-sub{left:26px;font-size:14px;}.fs-hero-back{left:26px;}}
+.fs-hero-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;}
+@keyframes fsken{from{transform:scale(1.06)}to{transform:scale(1.2)}}
+/* Ambient fill: a blurred, zoomed copy of the same still fills the banner behind the (contain) art, so
+   the WHOLE scene shows on desktop with no empty bars — matches the main hero. */
+.fs-hero-blur{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(28px) brightness(.5) saturate(1.12);transform:scale(1.2);z-index:0;animation:fsken 18s ease-in-out infinite alternate;}
+.fs-hero-scrim{position:absolute;inset:0;z-index:2;background:linear-gradient(to top,rgba(8,16,12,.6) 0%,rgba(8,16,12,.06) 54%,rgba(8,16,12,.22) 100%);}
 .fs-hero-back{position:absolute;top:19px;left:12px;z-index:4;display:inline-flex;align-items:center;gap:4px;font-family:Poppins,sans-serif;font-size:12.5px;font-weight:700;color:#fff;background:rgba(10,20,15,.46);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:6px 13px 6px 10px;cursor:pointer;}
 .fs-hero-back span{font-size:16px;line-height:1;margin-top:-1px;}
 .fs-hero-back:hover{background:rgba(10,20,15,.66);}
