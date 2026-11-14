@@ -142,8 +142,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const scenes = clampScenes(parseInt((form.get("filmScenes") as string) || "", 10) || tmpl.defaultScenes);
     const genre = ((form.get("filmGenre") as string) || "").trim();
     const artistName = ((form.get("filmArtistName") as string) || "").trim().slice(0, 60);
+    let castNames: string[] | undefined;
+    const castNamesRaw = ((form.get("filmCastNames") as string) || "").trim();
+    if (castNamesRaw) { try { const a = JSON.parse(castNamesRaw); if (Array.isArray(a)) castNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     try {
-      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName });
+      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames });
       return json({ treatment });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't write that treatment — give it another go, or tweak the premise a little (for Horror, a spookier / less-graphic angle writes more reliably)."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
@@ -605,7 +608,8 @@ export default function FilmStudio() {
   const [topic, setTopic] = useState("");
   // The merchant can PICK one of their avatars to BE the artist ("" = auto-cast one for the genre).
   const [artistPick, setArtistPick] = useState<string>("");
-  const artistName = artistPick ? (d.roster.find((r) => r.img === artistPick)?.name || "") : "";
+  const artistName = artistPick ? (d.roster.find((r) => r.img === artistPick)?.name || customArtists.find((c) => c.img === artistPick)?.name || "") : "";
+  const castNames = castExtra.map((m) => (m.name || "").trim()).filter(Boolean);
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
   // Product (skit): title + photo + (catalog) description.
@@ -696,7 +700,7 @@ export default function FilmStudio() {
   };
   const writeTreatment = () => {
     treatmentFetcher.submit(
-      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}) },
+      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}) },
       { method: "post" }
     );
   };

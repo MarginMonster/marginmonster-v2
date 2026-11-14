@@ -348,6 +348,8 @@ export async function previewFilmTreatment(opts: {
   genre?: string;
   /** The picked avatar's name — the singer uses THIS name instead of an invented one. */
   artistName?: string;
+  /** Named co-stars (extra cast) — the writer uses THESE names, not invented ones. */
+  castNames?: string[];
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const scenes = clampScenes(tmpl, opts.sceneCount ?? tmpl.defaultScenes);
@@ -360,12 +362,18 @@ export async function previewFilmTreatment(opts: {
   const genreLine = g ? `\nGENRE: ${g.label}. The song must sound like authentic ${g.label} — ${g.song}. The artist and EVERY setting must look like a real ${g.label} music video — ${g.look}.` : "";
   const langLine = opts.contentLang && opts.contentLang !== "en" ? `\nWrite all captions in this language code: ${opts.contentLang}.` : "";
   const artistName = (opts.artistName || "").trim().slice(0, 60);
+  const castNames = (opts.castNames || []).map((n) => (n || "").trim()).filter(Boolean).slice(0, 4);
+  const coStars = castNames.length
+    ? ` Named co-stars who ALSO appear in some scenes — use THESE EXACT names and NEVER invent other named people: ${castNames.join(", ")}.`
+    : " You may add ONE unnamed bandmate or dancer.";
+  // Kill "AI slop": the writer kept inventing a dog + background extras nobody asked for.
+  const noSlop = " Do NOT invent any animals (no dogs, cats or pets), extra crowds, children or background props the user did not request — keep every scene to the named performer(s) and the setting only.";
   const castLine = tmpl.castBible
     ? (tmpl.sing && !tmpl.childSafe
       ? (artistName
-        ? `\nThe artist is named "${artistName}" — use THIS exact name everywhere and do NOT invent a different one. Return it as "cast": an array whose FIRST entry is ONE vivid, FIXED visual description of ${artistName} to reuse in every scene (e.g. "${artistName}, a singer with long dark wavy hair, a black leather jacket and silver hoop earrings"); you may add ONE bandmate or dancer. Every scene's VISUAL must feature this SAME performer, and any lyric or caption that names the singer uses "${artistName}".`
-        : `\nFirst invent the ARTIST and return it as "cast": an array whose FIRST entry is ONE vivid, FIXED visual description of the singer to reuse in every scene (e.g. "Mia, a 25-year-old singer with long dark wavy hair, a black leather jacket and silver hoop earrings"); you may add ONE bandmate or dancer. Every scene's VISUAL must feature this SAME performer, described the same way.`)
-      : `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"). Every scene's VISUAL must feature these same named characters, described the same way.`)
+        ? `\nThe artist is named "${artistName}" — use THIS exact name everywhere and do NOT invent a different one. Return it as "cast": an array whose FIRST entry is ONE vivid, FIXED visual description of ${artistName} to reuse in every scene (e.g. "${artistName}, a singer with long dark wavy hair, a black leather jacket and silver hoop earrings").${coStars} Every scene's VISUAL must feature this SAME performer, and any lyric or caption that names the singer uses "${artistName}".${noSlop}`
+        : `\nFirst invent the ARTIST and return it as "cast": an array whose FIRST entry is ONE vivid, FIXED visual description of the singer to reuse in every scene (e.g. "Mia, a 25-year-old singer with long dark wavy hair, a black leather jacket and silver hoop earrings").${coStars} Every scene's VISUAL must feature this SAME performer, described the same way.${noSlop}`)
+      : `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"). Every scene's VISUAL must feature these same named characters, described the same way.${noSlop}`)
     : "";
   const prodLine = tmpl.needsProduct && opts.productTitle
     ? `\nTHE PRODUCT being advertised: "${opts.productTitle.slice(0, 80)}"${opts.productDescription ? ` — ${opts.productDescription.slice(0, 300)}` : ""}. Make it the HERO of the gag — the funny payoff features or revolves around this exact product. Say ONLY what is true of it; invent no claims, specs, prices or reviews.`
