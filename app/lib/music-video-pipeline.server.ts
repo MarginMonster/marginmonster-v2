@@ -399,6 +399,19 @@ export async function previewMusicVideoScenes(opts: {
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
 
   const { sceneImgs, artistRef, castRefs } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, aspect: opts.aspect, resume: {}, base });
+  // Archive every scene still the owner generates here, so their scene generations are saved (not just
+  // ephemeral preview frames). Best-effort + parallel — never block or fail the preview on it.
+  try {
+    const title = (treatment.title || opts.topic || g.label).slice(0, 48);
+    await Promise.all(sceneImgs.map((u, i) => (u
+      ? db.asset.create({ data: {
+          shopId: opts.shopId, type: "IMAGE_AD", status: "PENDING",
+          title: `Scene ${i + 1} — ${title}`,
+          bodyJson: JSON.stringify({ imageUrl: u, url: u, style: "MUSICVIDEO_SCENE", scene: i + 1 }),
+          metaJson: JSON.stringify({ kind: "musicvideo-scene", section: "creator", genre, scene: i + 1 }),
+        } }).catch(() => null)
+      : Promise.resolve(null))));
+  } catch { /* archive is best-effort */ }
   return { treatment, sceneImgs, propForScene, artistRef, castRefs };
 }
 

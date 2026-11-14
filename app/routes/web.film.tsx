@@ -291,6 +291,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const absSrc = /^https?:\/\//i.test(src) ? src : `${externalOrigin(request)}${src.startsWith("/") ? "" : "/"}${src}`;
       const img = await editSubjectIntoScene(absSrc, `Keep this EXACT person identical — same face, hair, skin, build and identity; do NOT swap them for a different person. Change ONLY their clothing: dress them in ${desc}. A clean waist-up portrait looking at camera, soft studio lighting, photorealistic, sharp detailed face, plain neutral background, no text, no watermark.`);
       if (!img) return json({ error: tr(lang, "Couldn't make that outfit — try another.") });
+      // Archive the generated outfit so it's saved alongside the merchant's other work.
+      try {
+        await db.asset.create({ data: {
+          shopId: shop.id, type: "IMAGE_AD", status: "PENDING",
+          title: `Wardrobe — ${desc.slice(0, 50)}`,
+          bodyJson: JSON.stringify({ imageUrl: img, url: img, style: "WARDROBE", outfit: desc }),
+          metaJson: JSON.stringify({ kind: "wardrobe", section: "creator", outfit: desc.slice(0, 120) }),
+        } });
+      } catch { /* archive is best-effort — never fail the gen on it */ }
       return json({ img: /^https?:\/\//i.test(img) ? img : `${externalOrigin(request)}${img.startsWith("/") ? "" : "/"}${img}` });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't make that outfit — give it another go."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
