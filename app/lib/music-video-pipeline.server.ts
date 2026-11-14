@@ -272,7 +272,7 @@ async function buildMusicVideoSeeds(p: {
 
   // EXTRA CAST — style each picked co-star into the genre like the lead (identity locked), so they can
   // be composed INTO perform scenes alongside the artist. Cached per member so a restart doesn't redo it.
-  const castExtra = (p.castExtra || []).filter((m) => m && m.img).slice(0, 6); // cast LIBRARY (per-scene still picks ≤2 co-stars)
+  const castExtra = (p.castExtra || []).filter((m) => m && m.img).slice(0, 2); // 1 star + up to 2 co-stars = 3-ref compositing max (more faces break the render)
   const castRefs: string[] = [];
   for (let ci = 0; ci < castExtra.length; ci++) {
     const m = castExtra[ci];

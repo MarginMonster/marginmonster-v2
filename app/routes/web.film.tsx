@@ -109,7 +109,7 @@ function parseCastExtra(raw: string | null): Array<{ img: string; name: string }
     const out = arr
       .filter((m) => m && typeof m.img === "string" && m.img.trim())
       .map((m) => ({ img: String(m.img).slice(0, 2000), name: String(m.name || "").slice(0, 40) }))
-      .slice(0, 6); // cast LIBRARY cap (per-scene still ≤2 co-stars)
+      .slice(0, 2); // 1 star + 2 co-stars = the 3-ref compositing max; more breaks the render
     return out.length ? out : undefined;
   } catch { return undefined; }
 }
@@ -701,7 +701,7 @@ export default function FilmStudio() {
   // dancers). Faces come from the same pool (roster / your custom avatars); each gets a name, and on
   // the scenes below you pick which appear in each shot. The lead (artistPick) stays the star/singer.
   const [castExtra, setCastExtra] = useState<Array<{ img: string; name: string }>>([]);
-  const addCastMemberMv = (img: string, name: string) => setCastExtra((c) => (c.some((m) => m.img === img) ? c.filter((m) => m.img !== img) : (c.length >= 6 ? c : [...c, { img, name: (name || "").trim() || `Cast ${c.length + 1}` }])));
+  const addCastMemberMv = (img: string, name: string) => setCastExtra((c) => (c.some((m) => m.img === img) ? c.filter((m) => m.img !== img) : (c.length >= 2 ? c : [...c, { img, name: (name || "").trim() || `Cast ${c.length + 1}` }])));
   const renameCastMemberMv = (img: string, name: string) => setCastExtra((c) => c.map((m) => (m.img === img ? { ...m, name } : m)));
   useEffect(() => {
     if (artistMakerFetcher.state !== "idle" || !artistPendingRef.current) return;
@@ -1493,7 +1493,7 @@ export default function FilmStudio() {
                 {artistPick
                   ? <span className="mm-card-face" style={{ backgroundImage: `url(${artistPick})` }} aria-hidden="true" />
                   : <span className="mm-card-ico c5"><Ico n="presenter" size={20} /></span>}
-                <span className="mm-card-ttl"><span className="mm-card-kick">{t("The star")}</span><b>{t("Artist")}</b></span>
+                <span className="mm-card-ttl"><span className="mm-card-kick">{t("The lead")}</span><b>{t("Star")}</b></span>
               </span>
               <span className="mm-val">{artistPick ? <><Ico n="check" size={12} /> {artistName || t("Your avatar")}{castExtra.length > 0 ? t(" + {n} cast", { n: castExtra.length }) : ""}</> : t("We cast one · or pick your avatar")}</span>
               {castExtra.length > 0 && (
@@ -1535,7 +1535,7 @@ export default function FilmStudio() {
                 `order`), so tapping a step opens its options AT the card — never buried down the page. */}
           {openCard === "artist" && (
             <div className="mm-opts mm-opts-grid" style={{ order: 2 }}>
-              <div className="mm-opts-h">{t("Who's the artist?")}</div>
+              <div className="mm-opts-h">{t("Who's the star?")}</div>
               <div className="mm-opts-sub">{t("Swipe to pick who stars — your avatars, or make a new one. That exact face performs every scene.")}</div>
               <input ref={artistPhotoRef} type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden onChange={(e) => { uploadArtistPhoto(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
               <div className="mm-artistpick">
@@ -1583,7 +1583,7 @@ export default function FilmStudio() {
                   roster), name them; on the scenes below you choose who's in each shot. */}
               <div className="mm-castlib">
                 <div className="mm-castlib-h">{t("The rest of your cast")} <span className="mm-castlib-badge">{t("optional")}</span></div>
-                <div className="mm-opts-sub">{t("Add co-stars, a love interest, dancers — anyone else who appears. Name them, then pick who's in each scene below.")}</div>
+                <div className="mm-opts-sub">{t("Add up to 2 co-stars — a love interest, a bandmate, a dancer. (The star + 2 keeps every face sharp; more than that and the AI starts warping them.) Name them, then pick who's in each scene below.")}</div>
                 {castExtra.length > 0 && (
                   <div className="mm-castlib-list">
                     {castExtra.map((m) => (
@@ -2245,7 +2245,7 @@ const FS_STYLE = `
 .fs-fmt-sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding:8px 11px 12px;font-size:11.5px;font-weight:700;color:var(--ink2,#55605A);line-height:1.32;}
 .fs-fmt-sub em{font-style:normal;font-weight:600;color:var(--ink3,#9AA39B);}
 .fs-hero{position:relative;height:150px;border-radius:16px;overflow:hidden;margin:2px 0 10px;background:#20302A;}
-@media(min-width:960px){.fs-hero{height:200px;}.fs-hero-ttl{font-size:32px;left:24px;}.fs-hero-sub{left:24px;font-size:14px;}.fs-hero-back{left:24px;}}
+@media(min-width:960px){.fs-hero{height:260px;}.fs-hero-art{object-position:center 26%;}.fs-hero-ttl{font-size:34px;left:26px;}.fs-hero-sub{left:26px;font-size:14px;}.fs-hero-back{left:26px;}}
 .fs-hero-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:fsken 16s ease-in-out infinite alternate;}
 @keyframes fsken{from{transform:scale(1.03)}to{transform:scale(1.15)}}
 .fs-hero::before,.fs-hero::after{content:"";position:absolute;left:0;right:0;height:11px;background:#0A140F;z-index:2;}
@@ -2602,6 +2602,17 @@ const FS_STYLE = `
 .mm-card-edit{position:absolute;top:13px;right:13px;width:26px;height:26px;border-radius:50%;background:var(--mint,#EAF6EF);color:var(--green,#0C7A46);display:grid;place-items:center;border:1px solid #D4EBDD;}
 .mm-card-edit svg{stroke:currentColor;stroke-width:2;fill:none;}
 .mm-val{display:block;margin:13px 0 0;font-size:13px;color:var(--ink2,#4A554E);line-height:1.4;}
+/* Desktop: the step cards get real presence (they looked thin + sparse stretched across the wide view). */
+@media(min-width:960px){
+  .mm-card{padding:22px 26px;border-radius:20px;}
+  .mm-card-top{gap:14px;}
+  .mm-card-ico,.mm-card-face{width:50px;height:50px;border-radius:14px;}
+  .mm-card-ico svg{width:24px;height:24px;}
+  .mm-card-kick{font-size:11.5px;}
+  .mm-card-ttl b{font-size:19px;}
+  .mm-val{font-size:14.5px;margin-top:15px;}
+  .mm-step{width:28px;height:28px;font-size:13.5px;top:16px;right:16px;}
+}
 .mm-val .mm-free{color:var(--green,#0C7A46);font-weight:800;}
 .mm-card-cast{display:flex;margin-top:10px;padding-left:5px;}
 .mm-card-castface{width:26px;height:26px;border-radius:50%;background:#20302A;background-size:cover;background-position:center;border:2px solid #fff;margin-left:-7px;box-shadow:0 1px 3px rgba(0,0,0,.14);}
