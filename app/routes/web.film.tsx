@@ -532,10 +532,12 @@ export default function FilmStudio() {
   // this desc; `outfitPreview` holds a GENERATED thumbnail of the avatar wearing it (display + "saved
   // as a style"). The picker opens on an avatar's wardrobe icon (not a doomscroll list).
   const [outfits, setOutfits] = useState<Record<string, string>>({});
-  const [outfitPreview, setOutfitPreview] = useState<Record<string, string>>({});
-  const [wardrobeOpen, setWardrobeOpen] = useState<string | null>(null);
-  const [outfitBusyFor, setOutfitBusyFor] = useState<string | null>(null);
-  const [outfitDraft, setOutfitDraft] = useState<string>("");
+  // Saved generated outfits per avatar (a gallery) — persists across open/close so a generated outfit
+  // is still there when you click out + back. Each = {desc (drives the render), img (the thumbnail)}.
+  const [outfitStyles, setOutfitStyles] = useState<Record<string, Array<{ desc: string; img: string }>>>({});
+  const [wardrobeOpen, setWardrobeOpen] = useState<string | null>(null); // which CAST member's outfit slider is open (artist's always shows)
+  const [outfitBusyFor, setOutfitBusyFor] = useState<{ img: string; desc: string } | null>(null);
+  const [outfitDrafts, setOutfitDrafts] = useState<Record<string, string>>({}); // describe-an-outfit text, per avatar
   const [rerollingScene, setRerollingScene] = useState<number | null>(null);
   // Storyboard (dialogue): per-scene approved frames + which scene is rendering now.
   const previewFrameFetcher = useFetcher<{ frameUrl?: string; sceneIndex?: number; error?: string }>();
@@ -944,9 +946,10 @@ export default function FilmStudio() {
     rerollScene(i, undefined, sceneCastDraft);
   };
   // ---- Wardrobe (owner edit) ------------------------------------------------
-  // Opens from an avatar's wardrobe icon (like the prop picker) — pick a preset or describe one, and we
-  // GENERATE the avatar wearing it (identity locked) + save it as that avatar's style. The chosen outfit
-  // also rides the render as a description, so the whole video wears it. No more doomscroll list.
+  // Folded INTO the avatar picker: select an avatar → an outfit slider opens under it (presets + your
+  // SAVED generated outfits, which persist). Picking a preset/describing GENERATES the SAME avatar in
+  // that outfit (identity locked) and saves it as a style; the chosen outfit also rides the render as a
+  // description. You can still change it per-scene below.
   const OUTFIT_PRESETS: Array<{ k: string; label: string; desc: string }> = [
     { k: "suit", label: "Sharp suit", desc: "a sharp tailored suit" },
     { k: "street", label: "Streetwear", desc: "stylish modern streetwear" },
@@ -957,53 +960,57 @@ export default function FilmStudio() {
     { k: "allwhite", label: "All white", desc: "a clean all-white designer outfit" },
     { k: "formal", label: "Formal", desc: "elegant formal evening wear" },
   ];
-  // Pick/clear an outfit for an avatar: set the desc (drives the render) + GENERATE a preview thumbnail
-  // of the avatar wearing it (its saved style). Clearing returns to their own look.
+  const styleFor = (img: string, desc: string): string | undefined => (outfitStyles[img] || []).find((s) => s.desc === desc)?.img;
+  // Select an outfit for an avatar (sets the render desc) and GENERATE it if not already saved. Clearing
+  // returns to their own look. A generated outfit is appended to outfitStyles[img] so it stays saved.
   const applyOutfit = (img: string, desc: string) => {
     setOutfits((p) => { const n = { ...p }; if (desc) n[img] = desc; else delete n[img]; return n; });
-    if (!desc) { setOutfitPreview((p) => { const n = { ...p }; delete n[img]; return n; }); return; }
-    setOutfitDraft("");
-    setOutfitBusyFor(img);
+    if (!desc) return;
+    if (styleFor(img, desc)) return; // already generated + saved — selecting is enough
+    setOutfitDrafts((d) => ({ ...d, [img]: "" }));
+    setOutfitBusyFor({ img, desc });
     outfitFetcher.submit({ intent: "styleOutfit", outfitImg: img, outfitDesc: desc }, { method: "post" });
   };
   useEffect(() => {
     const r = outfitFetcher.data;
     if (outfitFetcher.state === "idle" && r && outfitBusyFor) {
-      if (r.img) { const bf = outfitBusyFor; const im = r.img; setOutfitPreview((p) => ({ ...p, [bf]: im })); }
+      const { img, desc } = outfitBusyFor;
+      if (r.img) { const im = r.img; setOutfitStyles((p) => ({ ...p, [img]: [...(p[img] || []).filter((s) => s.desc !== desc), { desc, img: im }] })); }
       setOutfitBusyFor(null);
     }
   }, [outfitFetcher.state, outfitFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
-  // The face to SHOW for an avatar — its outfit style if one's been generated, else the original.
-  const avatarFace = (img: string): string => outfitPreview[img] || img;
-  // The collapsed wardrobe control: a trigger (icon + current outfit) that opens a prop-picker-style row.
-  const wardrobeControl = (img: string, name: string) => {
-    const open = wardrobeOpen === img;
+  // The face to SHOW for an avatar — the thumbnail of its selected outfit if generated, else the original.
+  const avatarFace = (img: string): string => styleFor(img, outfits[img] || "") || img;
+  // The outfit SLIDER (no separate trigger — opens under the selected avatar). Own look + presets (each
+  // shows its saved thumbnail once generated, or a spinner while generating) + any custom-described
+  // outfits + a describe/Make row.
+  const outfitSlider = (img: string, name: string) => {
     const cur = outfits[img] || "";
-    const busy = outfitBusyFor === img;
+    const draft = outfitDrafts[img] || "";
+    const busyDesc = outfitBusyFor && outfitBusyFor.img === img ? outfitBusyFor.desc : null;
+    const customSaved = (outfitStyles[img] || []).filter((s) => !OUTFIT_PRESETS.some((o) => o.desc === s.desc));
+    const tile = (desc: string, label: string, keyOwn?: boolean) => {
+      const sImg = keyOwn ? img : styleFor(img, desc);
+      const gen = busyDesc === desc;
+      const on = keyOwn ? !cur : cur === desc;
+      return (
+        <button type="button" key={keyOwn ? "own" : desc} className={`mm-sp-opt${on ? " on" : ""}`} onClick={() => applyOutfit(img, keyOwn ? "" : desc)} disabled={!!busyDesc} title={label}>
+          <span className="mm-sp-img mm-wd2-ph" aria-hidden="true">{gen ? <span className="mm-wd2-spin" /> : sImg ? <img src={sImg} alt="" /> : <Ico n="shirt" size={16} />}</span>{label}
+        </button>
+      );
+    };
     return (
       <div className="mm-wd2">
-        <button type="button" className={`mm-wd2-trigger${cur ? " set" : ""}`} onClick={() => { setWardrobeOpen(open ? null : img); setOutfitDraft(""); }} aria-expanded={open}>
-          <Ico n="shirt" size={12} /> {cur ? t("Outfit: {o}", { o: cur.length > 20 ? cur.slice(0, 20) + "…" : cur }) : t("Change {name}'s outfit", { name })}
-          {busy ? <span className="mm-wd2-mini wb-bufwrap" aria-hidden="true"><span className="wb-spin" /></span> : <span className="mm-wd2-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>}
-        </button>
-        {open && (
-          <>
-            <div className="mm-sc-proppick mm-wd2-pick">
-              <button type="button" className={`mm-sp-opt${!cur ? " on" : ""}`} onClick={() => applyOutfit(img, "")} title={t("Their own look")}>
-                <span className="mm-sp-img" style={{ backgroundImage: `url(${img})` }} aria-hidden="true" />{t("Own look")}
-              </button>
-              {OUTFIT_PRESETS.map((o) => (
-                <button type="button" key={o.k} className={`mm-sp-opt${cur === o.desc ? " on" : ""}`} onClick={() => applyOutfit(img, o.desc)} title={t(o.label)}>
-                  <span className="mm-sp-img mm-wd2-ph" aria-hidden="true">{cur === o.desc && outfitPreview[img] ? <img src={outfitPreview[img]} alt="" /> : <Ico n="shirt" size={16} />}</span>{t(o.label)}
-                </button>
-              ))}
-            </div>
-            <div className="mm-wd2-make">
-              <input className="mm-wardrobe-input" value={outfitDraft} onChange={(e) => setOutfitDraft(e.target.value)} placeholder={t("…or describe an outfit (red sequin dress, varsity jacket…)")} maxLength={160} onKeyDown={(e) => { if (e.key === "Enter" && outfitDraft.trim()) { e.preventDefault(); applyOutfit(img, outfitDraft.trim()); } }} aria-label={t("Describe an outfit for {name}", { name })} />
-              <button type="button" className="mm-wd2-gen" onClick={() => outfitDraft.trim() && applyOutfit(img, outfitDraft.trim())} disabled={!outfitDraft.trim() || busy}><Ico n="wand" size={13} /> {t("Make it")}</button>
-            </div>
-          </>
-        )}
+        <div className="mm-wd2-h"><Ico n="shirt" size={12} /> {t("{name}'s outfit", { name })}{busyDesc && <span className="mm-wd2-making">{t("generating…")}</span>}</div>
+        <div className="mm-sc-proppick mm-wd2-pick">
+          {tile("", t("Own look"), true)}
+          {OUTFIT_PRESETS.map((o) => tile(o.desc, t(o.label)))}
+          {customSaved.map((s) => tile(s.desc, s.desc.length > 14 ? s.desc.slice(0, 14) + "…" : s.desc))}
+        </div>
+        <div className="mm-wd2-make">
+          <input className="mm-wardrobe-input" value={draft} onChange={(e) => setOutfitDrafts((d) => ({ ...d, [img]: e.target.value }))} placeholder={t("…or describe an outfit (red sequin dress, varsity jacket…)")} maxLength={160} onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) { e.preventDefault(); applyOutfit(img, draft.trim()); } }} aria-label={t("Describe an outfit for {name}", { name })} />
+          <button type="button" className="mm-wd2-gen" onClick={() => draft.trim() && applyOutfit(img, draft.trim())} disabled={!draft.trim() || !!busyDesc}><Ico n="wand" size={13} /> {t("Make it")}</button>
+        </div>
       </div>
     );
   };
@@ -1141,9 +1148,9 @@ export default function FilmStudio() {
                     {isMv ? (
                       <>
                         <div className="mm-sc-chips">
-                          {perform && artistName && <span className="mm-sc-chip mm-chip-av mm-chip-lead">{artistPick ? <img src={artistPick} alt="" /> : null}{artistName}</span>}
-                          {perform && sceneCostars(strip.scenes, i).map((img) => <span className="mm-sc-chip mm-chip-av" key={img}><img src={img} alt="" />{castMemberName(img) || t("Cast")}</span>)}
-                          {seeds && perform && <button type="button" className="mm-sc-chip mm-chip-cast" onClick={() => openSceneCastPick(i)} disabled={rerollingScene !== null} aria-label={t("Edit who's in this scene")}><Ico n="star" size={11} /> {t("Cast")}</button>}
+                          {artistName && <span className="mm-sc-chip mm-chip-av mm-chip-lead">{artistPick ? <img src={avatarFace(artistPick)} alt="" /> : null}{artistName}</span>}
+                          {sceneCostars(strip.scenes, i).map((img) => <span className="mm-sc-chip mm-chip-av" key={img}><img src={avatarFace(img)} alt="" />{castMemberName(img) || t("Cast")}</span>)}
+                          {seeds && <button type="button" className="mm-sc-chip mm-chip-cast" onClick={() => openSceneCastPick(i)} disabled={rerollingScene !== null} aria-label={t("Edit who's in this scene")}><Ico n="star" size={11} /> {t("Cast")}</button>}
                           {seeds && <button type="button" className={`mm-sc-chip mm-chip-prop${pl ? "" : " empty"}`} onClick={() => openScenePropPick(i)} disabled={rerollingScene !== null} aria-label={t("Props in this scene")}><Ico n="gem" size={11} /> {pl || t("No props")}</button>}
                         </div>
                         {seeds && sceneCastPick === i && (
@@ -1543,7 +1550,7 @@ export default function FilmStudio() {
                 </div>
               )}
               {artistMakerFetcher.data?.error && <p className="fs-err">{artistMakerFetcher.data.error}</p>}
-              {artistPick && <div className="mm-artist-wd">{wardrobeControl(artistPick, artistName || t("the star"))}</div>}
+              {artistPick && <div className="mm-artist-wd">{outfitSlider(artistPick, artistName || t("the star"))}</div>}
               {outfitFetcher.data?.error && <p className="fs-err">{outfitFetcher.data.error}</p>}
               {/* The CAST LIBRARY — optional extra people beyond the lead. Pick faces (your avatars or the
                   roster), name them; on the scenes below you choose who's in each shot. */}
@@ -1555,11 +1562,13 @@ export default function FilmStudio() {
                     {castExtra.map((m) => (
                       <div className="mm-castmem-wrap" key={m.img}>
                         <div className="mm-castmem">
-                          <span className="mm-castmem-face" style={{ backgroundImage: `url(${avatarFace(m.img)})` }} aria-hidden="true" />
+                          <button type="button" className={`mm-castmem-face mm-castmem-faceb${wardrobeOpen === m.img ? " on" : ""}`} style={{ backgroundImage: `url(${avatarFace(m.img)})` }} onClick={() => setWardrobeOpen(wardrobeOpen === m.img ? null : m.img)} title={t("Change outfit")} aria-label={t("Change {name}'s outfit", { name: m.name || t("co-star") })}>
+                            <span className="mm-castmem-wd" aria-hidden="true"><Ico n="shirt" size={10} /></span>
+                          </button>
                           <input className="mm-castmem-name" value={m.name} onChange={(e) => renameCastMemberMv(m.img, e.target.value)} maxLength={24} aria-label={t("Cast member name")} />
                           <button type="button" className="mm-castmem-del" onClick={() => addCastMemberMv(m.img, m.name)} aria-label={t("Remove from cast")}>✕</button>
                         </div>
-                        {wardrobeControl(m.img, m.name || t("co-star"))}
+                        {wardrobeOpen === m.img && outfitSlider(m.img, m.name || t("co-star"))}
                       </div>
                     ))}
                   </div>
@@ -2587,19 +2596,21 @@ const FS_STYLE = `
 .mm-castmem-del{flex:none;width:28px;height:28px;border-radius:8px;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink3,#9AA39B);font-size:12px;cursor:pointer;display:grid;place-items:center;transition:background .14s,color .14s;}
 .mm-castmem-del:hover{background:#FBEEEC;color:#B4463A;border-color:#F2D6D1;}
 .mm-castpick{margin-top:4px;}
-/* Wardrobe — a COLLAPSED control under each avatar (no doomscroll): a trigger that opens a prop-picker
-   -style outfit row; picking one GENERATES the avatar in that outfit (identity locked) + saves it. */
+/* Wardrobe — folded INTO the avatar picker (no doomscroll): an outfit slider opens under the selected
+   avatar; presets + your SAVED generated outfits (each a thumbnail); picking GENERATES + saves it. */
 .mm-castmem-wrap{display:flex;flex-direction:column;gap:0;}
-.mm-artist-wd{margin-top:9px;}
+.mm-artist-wd{margin-top:11px;padding-top:11px;border-top:1px dashed var(--line,#E4DFCF);}
+.mm-castmem-faceb{position:relative;border:0;cursor:pointer;padding:0;transition:box-shadow .14s;}
+.mm-castmem-faceb.on{box-shadow:0 0 0 2px #7A4FC2;}
+.mm-castmem-wd{position:absolute;right:-2px;bottom:-2px;width:15px;height:15px;border-radius:50%;background:#7A4FC2;color:#fff;display:grid;place-items:center;border:1.5px solid #fff;}
+.mm-castmem-wd svg{stroke:#fff;stroke-width:2.2;fill:none;}
 .mm-wd2{display:flex;flex-direction:column;gap:7px;}
-.mm-castmem-wrap .mm-wd2{margin:4px 0 2px 4px;}
-.mm-wd2-trigger{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;border:1.5px dashed var(--line,#E4DFCF);background:#fff;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:700;color:var(--ink2,#55605A);cursor:pointer;transition:border-color .14s,background .14s,color .14s;}
-.mm-wd2-trigger:hover{background:#FBFAF6;}
-.mm-wd2-trigger.set{border-style:solid;border-color:#7A4FC2;background:#F3EEFB;color:#5B3A99;}
-.mm-wd2-trigger svg{stroke:currentColor;stroke-width:2;fill:none;}
-.mm-wd2-caret{color:var(--ink3,#9AA39B);font-size:10px;}
-.mm-wd2-mini{width:14px;height:14px;display:inline-grid;place-items:center;}
-.mm-wd2-mini .wb-spin{width:14px;height:14px;}
+.mm-castmem-wrap .mm-wd2{margin:7px 0 3px 4px;}
+.mm-wd2-h{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;color:var(--ink2,#55605A);}
+.mm-wd2-h svg{stroke:currentColor;stroke-width:2;fill:none;}
+.mm-wd2-making{color:#7A4FC2;font-weight:700;}
+.mm-wd2-spin{width:20px;height:20px;border:2.5px solid #E0D4F3;border-top-color:#7A4FC2;border-radius:50%;animation:mm-wd2-rot .7s linear infinite;}
+@keyframes mm-wd2-rot{to{transform:rotate(360deg);}}
 .mm-wd2-pick{margin-top:2px;}
 .mm-wd2-ph{display:grid!important;place-items:center;color:#7A4FC2;background:#F3EEFB!important;overflow:hidden;}
 .mm-wd2-ph img{width:100%;height:100%;object-fit:cover;border-radius:7px;}
