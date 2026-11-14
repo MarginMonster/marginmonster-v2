@@ -772,16 +772,6 @@ export default function FilmStudio() {
   };
   const sbAddScene = () => structEditScenes(({ scenes, imgs, prop }) => ({ scenes: [...scenes, { visual: "", caption: "", kind: "broll" }], imgs: [...imgs, null], prop }));
   const sbRemoveScene = (i: number) => structEditScenes(({ scenes, imgs, prop }) => ({ scenes: scenes.filter((_, j) => j !== i), imgs: imgs.filter((_, j) => j !== i), prop: reindexProp(prop, i) }));
-  const sbMoveScene = (i: number, dir: -1 | 1) => structEditScenes(({ scenes, imgs, prop }) => {
-    const j = i + dir;
-    if (j < 0 || j >= scenes.length) return { scenes, imgs, prop };
-    const sc = scenes.slice(), im = imgs.slice();
-    [sc[i], sc[j]] = [sc[j], sc[i]]; [im[i], im[j]] = [im[j], im[i]];
-    const p: Record<number, string> = { ...prop }; const a = prop[i], b = prop[j];
-    if (b === undefined) delete p[i]; else p[i] = b;
-    if (a === undefined) delete p[j]; else p[j] = a;
-    return { scenes: sc, imgs: im, prop: p };
-  });
 
   // The storyboard: ONE collapsed button → a swipeable filmstrip of the actual scene stills (each
   // re-rollable, text click-to-edit), so you approve what will render before paying. Reused by BOTH
@@ -854,7 +844,7 @@ export default function FilmStudio() {
         return (
         <>
           <div className="mm-sb-head"><Ico n="check" size={13} /> {isMv
-            ? t("Your story, scene by scene — edit any line, and set each scene as a Performance (lip-synced) or a Cut scene (b-roll). This is what renders.")
+            ? t("Here's your video, shot by shot — every scene's right here. Tap any line to change it. A green Performance is sung to camera; a purple Cut scene breaks to props or scenery with no singing (tap the pill to switch). Happy with it? Hit Generate.")
             : (hasStills
               ? t("Swipe through your story — this is exactly what renders. Re-roll any scene that's off, then Generate.")
               : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life."))}</div>
@@ -868,42 +858,31 @@ export default function FilmStudio() {
               const perform = !isMv || sceneKind(sc, i) === "perform";
               return (
                 <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i}>
-                  <div className="mm-sc-head">
-                    <span className="mm-sc-num">{t("Scene {n}", { n: i + 1 })}</span>
-                    {isMv && (
-                      <button type="button" className="mm-sc-type" onClick={() => setSceneKind(i, perform ? "broll" : "perform")}
-                        title={t("Switch between a lip-synced performance and a b-roll cut scene")}
-                        aria-label={t("Scene {n} is a {type} — tap to switch", { n: i + 1, type: perform ? t("Performance") : t("Cut scene") })}>
-                        <span className="mm-sc-dot" aria-hidden="true" /> {perform ? t("Performance") : t("Cut scene")} <Ico n="refresh" size={11} />
-                      </button>
-                    )}
+                  <div className="mm-sc-frame">
+                    {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={16} /><small>{seedBusy ? t("sketching…") : t("tap Make")}</small></span>}
+                    {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
+                    <span className="mm-sb-num">{i + 1}</span>
+                    {seeds && (seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={11} /></button>}
                   </div>
-                  <div className="mm-sc-body">
-                    <div className="mm-sc-frame">
-                      {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" /> : <span className="mm-sb-empty"><Ico n="image" size={18} /><small>{seedBusy ? t("sketching…") : t("tap Make")}</small></span>}
-                      {rerollingScene === i && <span className="mm-sb-busy"><span className="mm-sb-spin" /></span>}
-                      <span className="mm-sb-num">{i + 1}</span>
-                      {seeds && (seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={12} /></button>}
-                    </div>
-                    <div className="mm-sc-fields">
-                      <label className="mm-sc-lab">{t("What we see")}</label>
-                      <textarea className="mm-sc-what" value={sc?.visual || ""} onChange={(e) => editSceneText(i, "visual", e.target.value)} rows={2} maxLength={400} placeholder={t("what we see in this scene…")} aria-label={t("Scene {n} — what we see", { n: i + 1 })} />
+                  <div className="mm-sc-bd">
+                    <div className="mm-sc-top">
                       {isMv
-                        ? (perform
-                          ? (<>
-                              <label className="mm-sc-lab">{t("Words · lip-synced")}</label>
-                              <textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={2} maxLength={300} placeholder={t("the lyric lines sung here…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} />
-                            </>)
-                          : <span className="mm-sc-note">{t("Cut scene — no singing. Cuts away to props, dancing or scenery while the song plays.")}</span>)
-                        : ((sc?.caption != null) && <textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={2} maxLength={300} placeholder={t("the words / lyrics…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} />)}
-                      {pl && <span className="mm-sb-prop">{t(pl)}</span>}
+                        ? <button type="button" className="mm-sc-type" onClick={() => setSceneKind(i, perform ? "broll" : "perform")} title={t("Performance = sung to camera (lip-synced). Cut scene = b-roll, no singing. Tap to switch.")} aria-label={t("Scene {n} is a {type} — tap to switch", { n: i + 1, type: perform ? t("Performance") : t("Cut scene") })}><span className="mm-sc-dot" aria-hidden="true" /> {perform ? t("Performance") : t("Cut scene")} <Ico n="refresh" size={10} /></button>
+                        : <span className="mm-sc-num">{t("Scene {n}", { n: i + 1 })}</span>}
+                      <button type="button" className="mm-sc-x" onClick={() => sbRemoveScene(i)} disabled={strip.scenes.length <= 1} title={t("Remove this scene")} aria-label={t("Remove scene {n}", { n: i + 1 })}>✕</button>
                     </div>
-                  </div>
-                  <div className="mm-sc-foot">
-                    <button type="button" className="mm-sc-mv" onClick={() => sbMoveScene(i, -1)} disabled={i === 0} aria-label={t("Move scene up")}>↑</button>
-                    <button type="button" className="mm-sc-mv" onClick={() => sbMoveScene(i, 1)} disabled={i === strip.scenes.length - 1} aria-label={t("Move scene down")}>↓</button>
-                    <span className="mm-sc-sp" />
-                    <button type="button" className="mm-sc-del" onClick={() => sbRemoveScene(i)} disabled={strip.scenes.length <= 1} aria-label={t("Delete scene {n}", { n: i + 1 })}>✕ {t("Remove")}</button>
+                    <textarea className="mm-sc-what" value={sc?.visual || ""} onChange={(e) => editSceneText(i, "visual", e.target.value)} rows={2} maxLength={400} placeholder={t("what we see in this scene…")} aria-label={t("Scene {n} — what we see", { n: i + 1 })} />
+                    {isMv
+                      ? (perform
+                        ? <textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the lyric lines sung here…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} />
+                        : <span className="mm-sc-note">{t("Cut scene — no singing; cuts to props, dancing or scenery while the song plays.")}</span>)
+                      : ((sc?.caption != null) && <textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the words / lyrics…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} />)}
+                    {((isMv && perform && artistName) || pl) && (
+                      <div className="mm-sc-chips">
+                        {isMv && perform && artistName && <span className="mm-sc-chip mm-chip-av">{artistPick ? <img src={artistPick} alt="" /> : null}{artistName}</span>}
+                        {pl && <span className="mm-sc-chip mm-chip-pr">{t(pl)}</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -2305,39 +2284,37 @@ const FS_STYLE = `
 .mm-sb-reroll:hover:not(:disabled){background:var(--green,#0C7A46);}
 .mm-sb-reroll:disabled{opacity:.4;cursor:default;}
 .mm-sb-reroll svg{stroke:#fff;stroke-width:2;fill:none;}
-/* ── Scene PRE-EDITOR: a vertical list of roomy, clearly-editable scene cards ── */
-.mm-sb-list{display:flex;flex-direction:column;gap:11px;padding:2px 0 4px;}
-.mm-sc{border:1.5px solid var(--line,#E4DFCF);border-radius:15px;background:#fff;padding:11px 12px;box-shadow:0 1px 2px rgba(20,32,26,.04);}
+/* ── Scene PRE-EDITOR: COMPACT, all-visible cards (thumb + editable text + chip row) ── */
+.mm-sb-list{display:flex;flex-direction:column;gap:9px;padding:2px 0 4px;}
+.mm-sc{display:flex;gap:10px;border:1.5px solid var(--line,#E4DFCF);border-radius:14px;background:#fff;padding:9px 10px;box-shadow:0 1px 2px rgba(20,32,26,.04);}
 .mm-sc.is-perform{border-left:3px solid #1EA85C;}
 .mm-sc.is-broll{border-left:3px solid #7F77DD;}
-.mm-sc-head{display:flex;align-items:center;gap:9px;margin-bottom:9px;}
-.mm-sc-num{font-size:13px;font-weight:800;color:var(--ink,#14201A);}
-.mm-sc-type{margin-left:auto;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line,#E4DFCF);background:#F7FAF8;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700;color:var(--ink2,#4A554E);cursor:pointer;transition:background .14s,border-color .14s;}
+.mm-sc-frame{position:relative;flex:0 0 54px;width:54px;aspect-ratio:9/16;border-radius:10px;overflow:hidden;background:#20302A;box-shadow:0 2px 8px rgba(20,32,26,.16);}
+.mm-sc-frame img{width:100%;height:100%;object-fit:cover;display:block;}
+.mm-sc-bd{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+.mm-sc-top{display:flex;align-items:center;gap:8px;}
+.mm-sc-num{font-size:12.5px;font-weight:800;color:var(--ink,#14201A);}
+.mm-sc-type{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line,#E4DFCF);background:#F7FAF8;border-radius:999px;padding:3px 9px;font-size:11.5px;font-weight:700;color:var(--ink2,#4A554E);cursor:pointer;transition:background .14s,border-color .14s;}
 .mm-sc-type:hover{background:#EEF6F1;border-color:#BFE0CD;}
-.mm-sc-type svg{stroke:currentColor;stroke-width:2;fill:none;opacity:.55;}
-.mm-sc-dot{width:9px;height:9px;border-radius:50%;flex:none;}
+.mm-sc-type svg{stroke:currentColor;stroke-width:2;fill:none;opacity:.5;}
+.mm-sc-dot{width:8px;height:8px;border-radius:50%;flex:none;}
 .is-perform .mm-sc-dot{background:#1EA85C;}
 .is-broll .mm-sc-dot{background:#7F77DD;}
-.mm-sc-body{display:flex;gap:11px;}
-.mm-sc-frame{position:relative;flex:0 0 78px;width:78px;aspect-ratio:9/16;border-radius:11px;overflow:hidden;background:#20302A;box-shadow:0 2px 8px rgba(20,32,26,.16);}
-.mm-sc-frame img{width:100%;height:100%;object-fit:cover;display:block;}
-.mm-sc-fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
-.mm-sc-lab{font-size:10.5px;font-weight:800;color:var(--ink3,#9AA39B);letter-spacing:.03em;text-transform:uppercase;margin:3px 0 0 2px;}
-.mm-sc-what,.mm-sc-words{width:100%;display:block;box-sizing:border-box;border:1px solid var(--line,#E4DFCF);border-radius:9px;background:#FCFBF7;resize:vertical;font-family:Poppins,sans-serif;padding:8px 10px;margin:0;cursor:text;transition:background .12s,border-color .12s,box-shadow .12s;}
-.mm-sc-what:focus,.mm-sc-words:focus{outline:0;background:#fff;border-color:var(--green2,#1EA85C);box-shadow:0 0 0 3px rgba(12,122,70,.1);}
+.mm-sc-x{margin-left:auto;width:24px;height:24px;border-radius:7px;border:1px solid transparent;background:transparent;color:var(--ink3,#9AA39B);font-size:13px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .14s,color .14s;}
+.mm-sc-x:hover:not(:disabled){background:#FBEEEC;color:#B4463A;}
+.mm-sc-x:disabled{opacity:.3;cursor:default;}
+.mm-sc-what,.mm-sc-words{width:100%;display:block;box-sizing:border-box;border:1px solid #ECE7D9;border-radius:8px;background:#FCFBF7;resize:none;font-family:Poppins,sans-serif;padding:5px 8px;margin:0;cursor:text;transition:background .12s,border-color .12s,box-shadow .12s;}
+.mm-sc-what:focus,.mm-sc-words:focus{outline:0;background:#fff;border-color:var(--green2,#1EA85C);box-shadow:0 0 0 2px rgba(12,122,70,.1);}
 .mm-sc-what::placeholder,.mm-sc-words::placeholder{color:var(--ink3,#9AA39B);}
-.mm-sc-what{font-size:13px;line-height:1.42;color:var(--ink,#14201A);font-weight:500;}
-.mm-sc-words{font-size:13px;line-height:1.42;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;border-left:3px solid #BFE0CD;}
-.mm-sc-note{font-size:12px;color:var(--ink2,#55605A);background:#F3F1FB;border:1px solid #E3DFF6;border-radius:9px;padding:8px 10px;line-height:1.4;}
-.mm-sc-foot{display:flex;align-items:center;gap:7px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line,#EEE8D8);}
-.mm-sc-mv{width:31px;height:31px;border-radius:8px;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);font-size:15px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .14s,border-color .14s;}
-.mm-sc-mv:hover:not(:disabled){background:#F3F6F4;border-color:#BFE0CD;}
-.mm-sc-mv:disabled{opacity:.34;cursor:default;}
-.mm-sc-sp{flex:1;}
-.mm-sc-del{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#B4463A;background:#FBEEEC;border:1px solid #F2D6D1;border-radius:8px;padding:7px 12px;cursor:pointer;transition:background .14s;}
-.mm-sc-del:hover:not(:disabled){background:#F7E1DD;}
-.mm-sc-del:disabled{opacity:.4;cursor:default;}
-.mm-sc-add{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:800;color:var(--green,#0C7A46);background:#fff;border:1.5px dashed #BFE0CD;border-radius:14px;padding:13px;margin-top:11px;cursor:pointer;transition:background .14s;}
+.mm-sc-what{font-size:12.5px;line-height:1.38;color:var(--ink,#14201A);font-weight:500;}
+.mm-sc-words{font-size:12.5px;line-height:1.36;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;border-left:2.5px solid #BFE0CD;}
+.mm-sc-note{font-size:11.5px;color:var(--ink2,#55605A);background:#F3F1FB;border:1px solid #E3DFF6;border-radius:8px;padding:6px 9px;line-height:1.38;}
+.mm-sc-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}
+.mm-sc-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px 3px 4px;border:1px solid;}
+.mm-sc-chip img{width:19px;height:19px;border-radius:50%;object-fit:cover;flex:none;}
+.mm-chip-av{background:#EAF2FB;border-color:#D4E4F5;color:#1A4E85;}
+.mm-chip-pr{background:#F0F8F3;border-color:#CFE8DB;color:#0A5E37;padding-left:9px;}
+.mm-sc-add{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:800;color:var(--green,#0C7A46);background:#fff;border:1.5px dashed #BFE0CD;border-radius:13px;padding:11px;margin-top:3px;cursor:pointer;transition:background .14s;}
 .mm-sc-add:hover{background:#F0F8F3;}
 /* Loading as a PROCESS: determinate bar + scene N of M + ETA (replaces the all-at-once "sketching"). */
 .mm-sb-prog{background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:14px;padding:13px 14px;margin:10px 0 4px;box-shadow:0 1px 2px rgba(20,32,26,.04);}
