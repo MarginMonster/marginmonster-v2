@@ -739,13 +739,26 @@ export default function FilmStudio() {
     if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null, castRef: sd.castRef || null });
   }, [sceneSeedsFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Re-roll ONE storyboard scene (reusing the hero / cast ref) when it came back wrong; swap that still.
-  const rerollScene = (i: number) => {
+  const rerollScene = (i: number, propOverride?: string) => {
     if (!seeds || (!seeds.artistRef && !seeds.castRef)) return;
+    const pk = propOverride !== undefined ? propOverride : (seeds.propForScene[i] || "");
     setRerollingScene(i);
     rerollSceneFetcher.submit(
-      { intent: "rerollFilmScene", template, filmGenre, artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), ...(seeds.propForScene[i] ? { propKey: seeds.propForScene[i] } : {}) },
+      { intent: "rerollFilmScene", template, filmGenre, artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), ...(pk ? { propKey: pk } : {}) },
       { method: "post" }
     );
+  };
+  // Per-scene PROP edit (post-creation): set/clear a scene's prop and re-roll JUST that scene with it.
+  const [scenePropPick, setScenePropPick] = useState<number | null>(null);
+  const setScenePropMv = (i: number, propKey: string) => {
+    setSeeds((prev) => {
+      if (!prev) return prev;
+      const pf = { ...prev.propForScene };
+      if (propKey) pf[i] = propKey; else delete pf[i];
+      return { ...prev, propForScene: pf };
+    });
+    setScenePropPick(null);
+    rerollScene(i, propKey);
   };
   useEffect(() => {
     const rd = rerollSceneFetcher.data;
@@ -901,13 +914,25 @@ export default function FilmStudio() {
                     {isMv
                       ? (perform && <div className="mm-sc-lyr"><span className="mm-sc-lyr-ico" aria-hidden="true">♪</span><textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the words sung here…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} /></div>)
                       : ((sc?.caption != null) && <div className="mm-sc-lyr"><span className="mm-sc-lyr-ico" aria-hidden="true">♪</span><textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the words / lyrics…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} /></div>)}
-                    {((isMv && perform && (artistName || castExtra.length)) || pl) && (
-                      <div className="mm-sc-chips">
-                        {isMv && perform && artistName && <span className="mm-sc-chip mm-chip-av">{artistPick ? <img src={artistPick} alt="" /> : null}{artistName}</span>}
-                        {isMv && perform && castExtra.map((m) => <span className="mm-sc-chip mm-chip-av" key={m.img}><img src={m.img} alt="" />{m.name}</span>)}
-                        {pl && <span className="mm-sc-chip mm-chip-pr">{t(pl)}</span>}
-                      </div>
-                    )}
+                    {isMv ? (
+                      <>
+                        <div className="mm-sc-chips">
+                          {perform && artistName && <span className="mm-sc-chip mm-chip-av">{artistPick ? <img src={artistPick} alt="" /> : null}{artistName}</span>}
+                          {perform && castExtra.map((m) => <span className="mm-sc-chip mm-chip-av" key={m.img}><img src={m.img} alt="" />{m.name}</span>)}
+                          {seeds && <button type="button" className={`mm-sc-chip mm-chip-prop${pl ? "" : " empty"}`} onClick={() => setScenePropPick(scenePropPick === i ? null : i)} disabled={rerollingScene !== null} aria-label={t("Props in this scene")}><Ico n="gem" size={11} /> {pl || t("No props")}</button>}
+                        </div>
+                        {seeds && scenePropPick === i && (
+                          <div className="mm-sc-proppick">
+                            <button type="button" className={`mm-sp-opt${!pk ? " on" : ""}`} onClick={() => setScenePropMv(i, "")}>{t("None")}</button>
+                            {(d.props || []).map((pp) => (
+                              <button type="button" key={pp.key} className={`mm-sp-opt${pk === pp.key ? " on" : ""}`} onClick={() => setScenePropMv(i, pp.key)} title={t(pp.label)}>
+                                <span className="mm-sp-img" style={{ backgroundImage: `url(/propimg/${pp.key})` }} aria-hidden="true" />{t(pp.label)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (pl && <div className="mm-sc-chips"><span className="mm-sc-chip mm-chip-pr">{t(pl)}</span></div>)}
                   </div>
                 </div>
               );
@@ -2393,6 +2418,15 @@ const FS_STYLE = `
 .mm-sc-chip img{width:17px;height:17px;border-radius:50%;object-fit:cover;flex:none;}
 .mm-chip-av{background:#EAF2FB;border-color:#D4E4F5;color:#1A4E85;}
 .mm-chip-pr{background:#F0F8F3;border-color:#CFE8DB;color:#0A5E37;padding-left:8px;}
+.mm-chip-prop{background:#F0F8F3;border-color:#CFE8DB;color:#0A5E37;padding:2px 9px;cursor:pointer;transition:background .14s;}
+.mm-chip-prop:hover:not(:disabled){background:#E4F2EA;}
+.mm-chip-prop.empty{background:#F3F1EA;border-color:#E4DFCF;color:#8A8577;}
+.mm-chip-prop svg{stroke:currentColor;stroke-width:2;fill:none;}
+.mm-chip-prop:disabled{opacity:.5;cursor:default;}
+.mm-sc-proppick{display:flex;gap:6px;overflow-x:auto;padding:7px 1px 2px;scrollbar-width:thin;}
+.mm-sp-opt{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;width:58px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:10px;padding:5px 3px;font-size:9.5px;font-weight:700;color:var(--ink2,#55605A);cursor:pointer;line-height:1.1;text-align:center;}
+.mm-sp-opt.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46);}
+.mm-sp-img{width:46px;height:40px;border-radius:7px;background:#20302A;background-size:cover;background-position:center;}
 .mm-sc-add{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:800;color:var(--green,#0C7A46);background:#fff;border:1.5px dashed #BFE0CD;border-radius:13px;padding:11px;margin-top:3px;cursor:pointer;transition:background .14s;}
 .mm-sc-add:hover{background:#F0F8F3;}
 /* Loading as a PROCESS: determinate bar + scene N of M + ETA (replaces the all-at-once "sketching"). */
