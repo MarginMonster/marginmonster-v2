@@ -522,7 +522,10 @@ export async function generateMusicVideo(opts: {
   const customOf = (k: string) => (opts.customProps || []).find((c) => c.key === k);
   const propList = (opts.props || []).filter((k) => PROPS[k] || customOf(k));
   const propNoun = (k: string): string => { const c = customOf(k); return (c ? c.label : (PROPS[k]?.label || k)).replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || k; };
-  const [W, H] = [720, 1280]; // vertical music video (Shorts/TikTok/Reels)
+  // Output dimensions follow the CHOSEN shape — this is what the final mux crops/scales every clip to.
+  // It was hardcoded 720×1280, so a 16:9 pick still rendered a 9:16 video (the wide scene got cropped).
+  const vidAspect = (opts.aspect === "16:9" || opts.aspect === "1:1") ? opts.aspect : "9:16";
+  const [W, H] = vidAspect === "16:9" ? [1280, 720] : vidAspect === "1:1" ? [1080, 1080] : [720, 1280];
   const N = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, opts.sceneCount ?? tmpl.defaultScenes));
   const jobId = opts.jobId;
   const resume = opts.resume || {};
