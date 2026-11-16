@@ -1554,7 +1554,7 @@ export default function FilmStudio() {
             <button type="button" style={{ order: 9 }} className={`mm-card mm-card-wide${openCard === "length" ? " on" : ""}${stepsDone.length ? " done" : ""}`} onClick={() => tapCard("length")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.length ? <Ico n="check" size={13} /> : 5}</span>
               <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
-              <span className="mm-val">{t("{n} scenes · ~{sec}s · director's shots", { n: scenes, sec: scenes * 5 })}</span>
+              <span className="mm-val">{t("{n} scenes · ~{sec}s · director's shots", { n: scenes, sec: scenes * 10 })}</span>
             </button>
 
             {/* Each step's options live INSIDE the grid, full-width right after its own card (via CSS
@@ -1736,7 +1736,7 @@ export default function FilmStudio() {
           {openCard === "length" && (
             <div className="mm-opts mm-opts-grid" style={{ order: 10 }}>
               <div className="mm-opts-h">{t("How long?")}</div>
-              <div className="mm-opts-sub">{t("Each scene is a director's shot — about 5 seconds.")}</div>
+              <div className="mm-opts-sub">{t("Each scene is a sung shot — roughly 10 seconds — so the video length grows with the scene count.")}</div>
               <div className="fs-len" style={{ marginTop: 4 }}>
                 <span>{t("Scenes")}</span>
                 <div className="fs-stepper">
@@ -1744,7 +1744,7 @@ export default function FilmStudio() {
                   <b>{scenes}</b>
                   <button type="button" onClick={() => bump(1)} disabled={scenes >= tmpl.maxScenes} aria-label={t("More scenes")}>+</button>
                 </div>
-                <span className="fs-len-note">{t("≈ {sec}s · {n} AI clips", { sec: scenes * 5, n: scenes })}</span>
+                <span className="fs-len-note">{t("≈ {sec}s · {n} AI clips", { sec: scenes * 10, n: scenes })}</span>
               </div>
             </div>
           )}
