@@ -376,7 +376,7 @@ async function buildMusicVideoSeeds(p: {
  *  scene BEFORE committing (the "limit the surprise" ask). The approved stills ride back into
  *  generateMusicVideo as `approvedSceneImgs` so it renders EXACTLY what was previewed. */
 export async function previewMusicVideoScenes(opts: {
-  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>; castForScene?: Record<number, string[]>; outfits?: Record<string, string>; aspect?: string; artistName?: string; castNames?: string[];
+  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>; castForScene?: Record<number, string[]>; outfits?: Record<string, string>; aspect?: string; artistName?: string; castNames?: string[]; artistGender?: "m" | "f"; castGenders?: Array<{ name: string; gender: "m" | "f" }>;
 }): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; propForScene: Record<number, string>; artistRef: string | null; castRefs: string[] }> {
   const tmpl = filmTemplate("musicvideo");
   const genre = genreOrDefault(opts.genre);
@@ -387,7 +387,7 @@ export async function previewMusicVideoScenes(opts: {
 
   let treatment: FilmTreatment = opts.treatment && opts.treatment.scenes?.length
     ? opts.treatment
-    : await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, genre, artistName: opts.artistName, castNames: opts.castNames });
+    : await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, genre, artistName: opts.artistName, castNames: opts.castNames, artistGender: opts.artistGender, castGenders: opts.castGenders });
   treatment.scenes = treatment.scenes.slice(0, N);
   const scenes = treatment.scenes;
 
@@ -504,6 +504,9 @@ export async function generateMusicVideo(opts: {
   /** The picked avatar's name + co-star names — the writer uses THESE, not invented "AI slop" names. */
   artistName?: string;
   castNames?: string[];
+  /** The lead's gender (drives the SUNG voice) + known co-star genders (drive casting). */
+  artistGender?: "m" | "f";
+  castGenders?: Array<{ name: string; gender: "m" | "f" }>;
   /** Output shape — "9:16" (default), "16:9" or "1:1". */
   aspect?: string;
   /** Owner PREVIEWED + approved these exact per-scene stills — render them, don't re-seed (no surprise).
@@ -539,7 +542,7 @@ export async function generateMusicVideo(opts: {
   let treatment: FilmTreatment;
   if (resume.ckTreatment) treatment = JSON.parse(resume.ckTreatment);
   else if (opts.treatment && opts.treatment.scenes?.length) treatment = opts.treatment;
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, genre, artistName: opts.artistName, castNames: opts.castNames });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, genre, artistName: opts.artistName, castNames: opts.castNames, artistGender: opts.artistGender, castGenders: opts.castGenders });
   treatment.scenes = treatment.scenes.slice(0, N);
   await ckpt({ ckTreatment: JSON.stringify(treatment) });
   const scenes = treatment.scenes;
@@ -568,7 +571,10 @@ export async function generateMusicVideo(opts: {
     await ckpt({ ckSong: songPath });
   }
   if (!songPath) {
-    songPath = await singToDisk(lyrics, `${g.song}. ${treatment.musicMood || ""}`.slice(0, 300));
+    // Lead the style with the singer's gender so the VOICE matches the avatar (tester: a female
+    // character was singing in a male voice). Empty when unknown → minimax picks as before.
+    const voiceSex = opts.artistGender === "f" ? "female vocals, a woman singing lead. " : opts.artistGender === "m" ? "male vocals, a man singing lead. " : "";
+    songPath = await singToDisk(lyrics, `${voiceSex}${g.song}. ${treatment.musicMood || ""}`.slice(0, 300));
     await ckpt({ ckSong: songPath });
   }
   const songDur = ffprobeDuration(songPath);

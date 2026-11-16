@@ -808,6 +808,8 @@ async function runJob(
             outfits: (payload.filmOutfits && typeof payload.filmOutfits === "object") ? (payload.filmOutfits as Record<string, string>) : undefined, // wardrobe (owner edit)
             artistName: (payload.filmArtistName as string | undefined) || undefined, // picked avatar name (no AI-slop names)
             castNames: Array.isArray(payload.filmCastNames) ? (payload.filmCastNames as string[]) : undefined,
+            artistGender: payload.filmArtistGender === "f" ? "f" : payload.filmArtistGender === "m" ? "m" : undefined, // drives the sung VOICE + casting
+            castGenders: Array.isArray(payload.filmCastGenders) ? (payload.filmCastGenders as Array<{ name: string; gender: "m" | "f" }>) : undefined,
             aspect: (payload.filmAspect as string | undefined) || undefined, // output shape 9:16 / 16:9 / 1:1
             approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined, // storyboard-approved stills
 

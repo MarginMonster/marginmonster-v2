@@ -65,8 +65,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { customCastFor } = await import("../lib/custom-avatars.server");
   const custom = await customCastFor(shop.id);
   const roster = [
-    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true })),
-    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false })),
+    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m" })),
+    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender })),
   ].slice(0, 60);
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
@@ -142,6 +142,18 @@ function parseOutfits(raw: string | null): Record<string, string> | undefined {
   } catch { return undefined; }
 }
 
+/** The lead's gender (drives the sung voice + casting) and each named co-star's known gender. */
+function parseArtistGender(raw: string | null): "m" | "f" | undefined { return raw === "f" ? "f" : raw === "m" ? "m" : undefined; }
+function parseCastGenders(raw: string | null): Array<{ name: string; gender: "m" | "f" }> | undefined {
+  if (!raw) return undefined;
+  try {
+    const a = JSON.parse(raw);
+    if (!Array.isArray(a)) return undefined;
+    const out = a.filter((x) => x && typeof x.name === "string" && (x.gender === "m" || x.gender === "f")).map((x) => ({ name: String(x.name).slice(0, 40), gender: x.gender as "m" | "f" })).slice(0, 4);
+    return out.length ? out : undefined;
+  } catch { return undefined; }
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const lang = await readUiLang(request);
   const { shop } = await requireWebIdentity(request);
@@ -175,7 +187,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const castNamesRaw = ((form.get("filmCastNames") as string) || "").trim();
     if (castNamesRaw) { try { const a = JSON.parse(castNamesRaw); if (Array.isArray(a)) castNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     try {
-      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames });
+      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string) });
       return json({ treatment });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't write that treatment — give it another go, or tweak the premise a little (for Horror, a spookier / less-graphic angle writes more reliably)."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
@@ -330,7 +342,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, castForScene, outfits, artistName: pvArtistName, castNames: pvCastNames, aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, castForScene, outfits, artistName: pvArtistName, castNames: pvCastNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
         return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef, castRefs: r.castRefs });
@@ -444,6 +456,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let genCastNames: string[] | undefined;
     const genCastRaw = ((form.get("filmCastNames") as string) || "").trim();
     if (genCastRaw) { try { const a = JSON.parse(genCastRaw); if (Array.isArray(a)) genCastNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
+    const genArtistGender = parseArtistGender(form.get("filmArtistGender") as string);
+    const genCastGenders = parseCastGenders(form.get("filmCastGenders") as string);
     // Pre-approved per-scene STILLS (Music Video storyboard) — render these EXACT images, no re-seed.
     // Keep positions (a null = that scene seeds fresh), so the index stays aligned with the scenes.
     let approvedSceneImgs: (string | null)[] | undefined;
@@ -469,6 +483,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(filmOutfits ? { filmOutfits } : {}),
         ...(genArtistName ? { filmArtistName: genArtistName } : {}),
         ...(genCastNames?.length ? { filmCastNames: genCastNames } : {}),
+        ...(genArtistGender ? { filmArtistGender: genArtistGender } : {}),
+        ...(genCastGenders?.length ? { filmCastGenders: genCastGenders } : {}),
         ...(filmProps?.length ? { filmProps } : {}),
         ...(filmCustomProps.length ? { filmCustomProps } : {}),
         ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
@@ -724,6 +740,14 @@ export default function FilmStudio() {
   const [artistPick, setArtistPick] = useState<string>("");
   const artistName = artistPick ? (d.roster.find((r) => r.img === artistPick)?.name || customArtists.find((c) => c.img === artistPick)?.name || "") : "";
   const castNames = castExtra.map((m) => (m.name || "").trim()).filter(Boolean);
+  // Gender drives BOTH the sung VOICE (a female avatar must sing in a female voice — the tester's main
+  // bug: "female character sing in male voice") and how the writer casts each person (no man in a
+  // "girlfriend" role). Seeded from the roster's known gender; a toggle lets the owner set it for an
+  // UPLOADED face whose gender we can't know.
+  const genderOfImg = (img: string): "m" | "f" | null => { const g = (d.roster.find((r) => r.img === img) as { gender?: string } | undefined)?.gender; return g === "f" || g === "m" ? g : null; };
+  const [artistGender, setArtistGender] = useState<"m" | "f">("m");
+  useEffect(() => { const g = genderOfImg(artistPick); if (g) setArtistGender(g); }, [artistPick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const castGenders = castExtra.map((m) => ({ name: (m.name || "").trim(), gender: genderOfImg(m.img) })).filter((c): c is { name: string; gender: "m" | "f" } => !!c.name && !!c.gender);
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
   // Product (skit): title + photo + (catalog) description.
@@ -800,7 +824,7 @@ export default function FilmStudio() {
   };
   const writeTreatment = () => {
     treatmentFetcher.submit(
-      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}) },
+      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}) },
       { method: "post" }
     );
   };
@@ -808,7 +832,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: mvAspect, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: mvAspect, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
       { method: "post" }
     );
   };
@@ -1579,6 +1603,16 @@ export default function FilmStudio() {
                 </div>
               )}
               {artistMakerFetcher.data?.error && <p className="fs-err">{artistMakerFetcher.data.error}</p>}
+              {artistPick && (
+                <div className="mm-gender">
+                  <span className="mm-gender-lbl">{t("Voice")}</span>
+                  <div className="mm-gender-seg">
+                    <button type="button" className={`mm-gender-opt${artistGender === "m" ? " on" : ""}`} aria-pressed={artistGender === "m"} onClick={() => setArtistGender("m")}>{t("Male")}</button>
+                    <button type="button" className={`mm-gender-opt${artistGender === "f" ? " on" : ""}`} aria-pressed={artistGender === "f"} onClick={() => setArtistGender("f")}>{t("Female")}</button>
+                  </div>
+                  <span className="mm-gender-hint">{t("Sets the singing voice — check it matches an uploaded face")}</span>
+                </div>
+              )}
               {artistPick && <div className="mm-artist-wd">{outfitSlider(artistPick, artistName || t("the star"))}</div>}
               {outfitFetcher.data?.error && <p className="fs-err">{outfitFetcher.data.error}</p>}
               {/* The CAST LIBRARY — optional extra people beyond the lead. Pick faces (your avatars or the
@@ -1757,6 +1791,8 @@ export default function FilmStudio() {
               {tmpl?.lipSyncSinger && Object.keys(outfits).length > 0 && <input type="hidden" name="filmOutfits" value={JSON.stringify(outfits)} />}
               {tmpl?.lipSyncSinger && artistName && <input type="hidden" name="filmArtistName" value={artistName} />}
               {tmpl?.lipSyncSinger && castNames.length > 0 && <input type="hidden" name="filmCastNames" value={JSON.stringify(castNames)} />}
+              {tmpl?.lipSyncSinger && <input type="hidden" name="filmArtistGender" value={artistGender} />}
+              {tmpl?.lipSyncSinger && castGenders.length > 0 && <input type="hidden" name="filmCastGenders" value={JSON.stringify(castGenders)} />}
               {tmpl?.lipSyncSinger && <input type="hidden" name="filmAspect" value={mvAspect} />}
               <input type="hidden" name="filmTopic" value={topic} />
               <input type="hidden" name="filmScenes" value={String(scenes)} />
@@ -2661,6 +2697,12 @@ const FS_STYLE = `
 /* Wardrobe — folded INTO the avatar picker (no doomscroll): an outfit slider opens under the selected
    avatar; presets + your SAVED generated outfits (each a thumbnail); picking GENERATES + saves it. */
 .mm-castmem-wrap{display:flex;flex-direction:column;gap:0;}
+.mm-gender{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:11px;}
+.mm-gender-lbl{font-size:12px;font-weight:800;color:var(--ink,#14201A);}
+.mm-gender-seg{display:inline-flex;gap:5px;background:#F3EFE2;border:1px solid var(--line,#E4DFCF);border-radius:11px;padding:4px;}
+.mm-gender-opt{border:0;background:transparent;border-radius:8px;padding:6px 16px;font-size:12.5px;font-weight:700;color:var(--ink2,#55605A);cursor:pointer;font-family:Poppins,sans-serif;transition:background .14s,color .14s;}
+.mm-gender-opt.on{background:var(--green,#0C7A46);color:#fff;}
+.mm-gender-hint{font-size:11px;font-weight:600;color:var(--ink3,#9AA39B);}
 .mm-artist-wd{margin-top:11px;padding-top:11px;border-top:1px dashed var(--line,#E4DFCF);}
 .mm-castmem-faceb{position:relative;border:0;cursor:pointer;padding:0;transition:box-shadow .14s;}
 .mm-castmem-faceb.on{box-shadow:0 0 0 2px #7A4FC2;}

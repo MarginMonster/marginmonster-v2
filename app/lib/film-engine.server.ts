@@ -350,6 +350,9 @@ export async function previewFilmTreatment(opts: {
   artistName?: string;
   /** Named co-stars (extra cast) — the writer uses THESE names, not invented ones. */
   castNames?: string[];
+  /** The lead's gender + each known co-star's — so the writer never casts a man in a woman's role/dress. */
+  artistGender?: "m" | "f";
+  castGenders?: Array<{ name: string; gender: "m" | "f" }>;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const scenes = clampScenes(tmpl, opts.sceneCount ?? tmpl.defaultScenes);
@@ -366,6 +369,12 @@ export async function previewFilmTreatment(opts: {
   const coStars = castNames.length
     ? ` Named co-stars who ALSO appear — use THESE EXACT names and NEVER invent other named people: ${castNames.join(", ")}. In every scene where more than the singer appears (a band, friends, a dance, a crowd of known faces), NAME which of them is there IN that scene's visual (e.g. "${castNames[0]} plays guitar beside ${artistName || "the singer"}"), so those scenes feature the real cast — not strangers.`
     : " You may add ONE unnamed bandmate or dancer.";
+  // Each avatar HAS a gender (the tester's bug: a female avatar got written — and sung — as male). State
+  // it so the writer never casts a man in a woman's role/clothing (or a dress) or vice versa.
+  const genderBits: string[] = [];
+  if (artistName && opts.artistGender) genderBits.push(`${artistName} is ${opts.artistGender === "f" ? "FEMALE (a woman)" : "MALE (a man)"}`);
+  for (const c of (opts.castGenders || [])) if (c && c.name && (c.gender === "m" || c.gender === "f")) genderBits.push(`${c.name} is ${c.gender === "f" ? "FEMALE (a woman)" : "MALE (a man)"}`);
+  const genderLine = genderBits.length ? `\nCAST GENDERS — honour these EXACTLY: ${genderBits.join("; ")}. NEVER put a man in a woman's role, description or clothing (a dress, "his girlfriend"), nor a woman in a man's — match each person's stated gender in every scene, outfit and pronoun.` : "";
   // Kill "AI slop" names/pets WITHOUT banning atmosphere: the writer kept inventing a dog + NAMED
   // extras nobody asked for, but a crowd at a show or passersby on a street are fine and wanted.
   const noSlop = " Do NOT invent any uninvited NAMED or featured characters, or animals/pets (no dogs, cats) — the only recurring, named people are the cast above. Incidental UNNAMED background people (a crowd at a show, dancers, passersby on a street) are fine and encouraged where the setting calls for them.";
@@ -409,6 +418,7 @@ export async function previewFilmTreatment(opts: {
     (topic ? `THEME / what it's about: "${topic.slice(0, 300)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n` : `Pick a fun, broadly-appealing theme.\n`) +
     genreLine +
     castLine +
+    genderLine +
     prodLine +
     captionLine +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
