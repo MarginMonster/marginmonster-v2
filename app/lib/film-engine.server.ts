@@ -401,11 +401,24 @@ export async function previewFilmTreatment(opts: {
   // off mid-verse, so the short cuts get a hook sized to their length instead.
   const shortCut = scenes <= 2;
   const hookLines = scenes === 1 ? 2 : 5;
+  // FULL-LENGTH videos (1:00 and up) are sung by the full-length engine (music-2.5 — see singToDisk),
+  // which takes a whole lyric sheet and sings it as one track. So write a song sized to the video rather
+  // than the 560-character sheet the short engine is capped at (which ran out at about a minute and left
+  // the 1:30 / 2:00 videos repeating themselves). Keep this threshold in step with `fullLength` in the
+  // music-video pipeline.
+  const fullSong = scenes >= 6;
+  // ~4.2 s per line leaves the song a little LONGER than the video (measured 4.6–5.5 s per line), so it
+  // is trimmed to length with a fade rather than repeated: 1:00 → 14 lines, 1:30 → 21, 2:00 → 29.
+  const fullLines = Math.round((scenes * 10) / 4.2);
   const songShape = shortCut
     ? `This is a SHORT ${scenes * 10}-second cut, so write ONLY the HOOK: EXACTLY ${hookLines} short, punchy lyric lines in TOTAL — no verses and no repeated lines. (The music engine sings about one line every 5 seconds and everything after ${scenes * 10} seconds is cut off, so extra lines would never be heard.)`
+    : fullSong
+    ? `This video runs ${scenes * 10} seconds and the music engine sings about one line every 4-5 seconds, so write a FULL song of about ${fullLines} short lyric lines in TOTAL (2-3 per scene): verses that carry the story forward and a catchy chorus hook that comes back two or three times — WRITE THE CHORUS LINES OUT again every time they are sung. Keep every line short (10 words or fewer).`
     : `Keep the song TIGHT: a short verse, a REPEATING chorus hook, a second short verse, then the chorus again. HARD LIMIT — the complete lyrics (ALL ${scenes} scene captions joined together) MUST total UNDER 560 characters (roughly 95 words); lean on the repeating chorus. The music engine expands these lyrics into a full-length track, so short and punchy is exactly right.`;
   const captionShape = shortCut
     ? `• CAPTION — the lyric lines sung in THIS scene (${scenes === 1 ? "both lines" : "2-3 lines each"}), separated by " / ". Read in order, the captions ARE the complete ${hookLines}-line ${genreLabel} hook. Authentic to ${genreLabel}.\n`
+    : fullSong
+    ? `• CAPTION — the 2-3 SHORT lyric lines sung in THIS scene, separated by " / ". Read in order, all ${scenes} captions joined ARE the complete ${genreLabel} song, with the chorus written out each time it returns. Authentic to ${genreLabel}.\n`
     : `• CAPTION — the 2-3 SHORT lyric lines sung in THIS scene, separated by " / ". Read in order, all ${scenes} captions joined ARE the complete (short, catchy) ${genreLabel} song with the chorus repeating. Authentic to ${genreLabel}; keep it well within the character limit.\n`;
   const captionLine = tmpl.lipSyncSinger
     ? `\nWrite a catchy ${genreLabel} SONG for ONE artist, plus ${scenes} VIDEO SCENE${scenes === 1 ? "" : "S"}. ${songShape} Return EXACTLY ${scenes} scene${scenes === 1 ? "" : "s"}. Each scene has TWO fields:\n` +

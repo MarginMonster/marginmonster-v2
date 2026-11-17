@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
-import { repCreate, repPoll } from "./ugc-ad-pipeline.server";
+import { repCreate, repPoll, ffprobeDuration } from "./ugc-ad-pipeline.server";
 import { persistRemoteAudio } from "./image-generation.server";
 
 // meta/musicgen is a VERSIONED community model — it 404s on the versionless
@@ -114,37 +114,56 @@ export async function musicBedToDisk(prompt: string): Promise<string> {
  *  the Film engine's musical templates (music video, kids cartoon): a real sung
  *  track, not an instrumental bed. Falls back to music-01. Throws on total
  *  failure so the caller can fall back to musicBedToDisk. */
-export async function singToDisk(lyrics: string, stylePrompt: string): Promise<string> {
-  // minimax HARD-CAPS lyrics at 600 characters (E006) — longer input is rejected
+export async function singToDisk(lyrics: string, stylePrompt: string, opts: { fullLength?: boolean; minSeconds?: number } = {}): Promise<string> {
+  // music-1.5 HARD-CAPS lyrics at 600 characters (E006) — longer input is rejected
   // outright, so trim here. `prompt` is REQUIRED on every attempt (422 without).
   // MEASURED 2026-11-16 (music-1.5, rap style): it sings the lyrics ONCE, starting
   // immediately, at roughly one line every 5 seconds, and stops when they run out —
   // 2 lines → 11s, 4 → 20s, 6 → 26s, 8 → 34s. It does NOT pad to a "full-length
   // track", so a 590-char sheet tops out around one minute; callers that need an
   // exact length fit the result (see fitSongToLength in the music-video pipeline).
-  const clean = (lyrics || "").trim().slice(0, 590);
+  const raw = (lyrics || "").trim();
+  const clean = raw.slice(0, 590);
   if (!clean) throw new Error("[sing] no lyrics");
   const style = stylePrompt || "catchy upbeat song with clear vocals";
-  const attempts: Array<{ model: string; input: Record<string, unknown> }> = [
-    { model: "minimax/music-1.5", input: { lyrics: clean, prompt: style } },
-    { model: "minimax/music-1.5", input: { lyrics: clean, prompt: style } },
-    { model: "minimax/music-01", input: { lyrics: clean, prompt: style } },
-  ];
-  let url = "";
-  const errors: string[] = [];
-  for (const a of attempts) {
-    try { url = audioUrlOf(await repPoll(await repCreate(a.model, a.input), 5 * 60_000, "sing"), a.model); if (url) break; }
-    catch (e) { errors.push((e as Error).message.slice(0, 160)); }
-  }
-  if (!url) throw new Error(`[sing] every engine failed: ${errors.join(" | ")}`);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`[sing] fetch ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length < 2_000) throw new Error("[sing] came back empty");
+  const v15 = { model: "minimax/music-1.5", input: { lyrics: clean, prompt: style } as Record<string, unknown> };
+  // FULL-LENGTH songs (the 1:00+ music-video lengths): music-2.5 takes 3,500 characters of lyrics and
+  // sang a 30-line sheet as ONE 2:22 track (measured 2026-11-16), where 1.5 runs out at about a minute
+  // and the video had to repeat the song. The owner heard that track and approved the sound. If 2.5 is
+  // down, 1.5 still answers and the caller loops it to length exactly as before.
+  const v25 = { model: "minimax/music-2.5", input: { lyrics: raw.slice(0, 3400), prompt: style } as Record<string, unknown> };
   const dir = path.join(process.cwd(), "data", "renders");
   fs.mkdirSync(dir, { recursive: true });
-  const fileName = `sing-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp3`;
-  const filePath = path.join(dir, fileName);
-  fs.writeFileSync(filePath, buf);
-  return filePath;
+  const save = async (url: string): Promise<string> => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`[sing] fetch ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 2_000) throw new Error("[sing] came back empty");
+    const filePath = path.join(dir, `sing-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp3`);
+    fs.writeFileSync(filePath, buf);
+    return filePath;
+  };
+  const errors: string[] = [];
+  if (opts.fullLength) {
+    // Up to TWO takes, keeping the longer. This engine picks its own tempo, so the same kind of sheet
+    // comes back at different lengths (measured, tagged sheets: 15 lines → 82 s, 22 → 104 s, 30 → 139 s;
+    // UNTAGGED sheets swung from 44 s to 108 s) — and a song that runs short of the video has to be
+    // repeated to fill it. A 2-minute track takes ~2 minutes to generate, hence the longer leash.
+    let best: { file: string; seconds: number } | null = null;
+    for (let take = 0; take < 2; take++) {
+      try {
+        const file = await save(audioUrlOf(await repPoll(await repCreate(v25.model, v25.input), 10 * 60_000, "sing"), v25.model));
+        let seconds = 0;
+        try { seconds = ffprobeDuration(file); } catch { seconds = 0; }
+        if (!best || seconds > best.seconds) best = { file, seconds };
+        if (!opts.minSeconds || seconds >= opts.minSeconds) break;
+      } catch (e) { errors.push((e as Error).message.slice(0, 160)); }
+    }
+    if (best) return best.file;
+  }
+  for (const a of [v15, v15, { model: "minimax/music-01", input: { lyrics: clean, prompt: style } as Record<string, unknown> }]) {
+    try { return await save(audioUrlOf(await repPoll(await repCreate(a.model, a.input), 5 * 60_000, "sing"), a.model)); }
+    catch (e) { errors.push((e as Error).message.slice(0, 160)); }
+  }
+  throw new Error(`[sing] every engine failed: ${errors.join(" | ")}`);
 }

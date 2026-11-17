@@ -121,6 +121,30 @@ async function sliceAudio(songPath: string, start: number, len: number): Promise
   return out;
 }
 
+/** The lyric sheet for the FULL-LENGTH song engine (1:00+ videos): the scene lyrics with ARRANGEMENT TAGS.
+ *  The tags are what make music-2.5 arrange a whole song — intro, verses, a returning chorus, outro —
+ *  rather than rattle the lines off: tagged sheets came back at a steady ~4.6–5.5 s per line (15 lines →
+ *  82 s, 22 → 104 s, 30 → 139 s), while the same kind of lyrics with no tags swung from 44 s to 108 s.
+ *  A scene whose lines are mostly REPEATS of lines sung elsewhere is the chorus (the writer is told to
+ *  write the chorus out every time it returns). */
+function fullSongSheet(scenes: Array<{ caption?: string }>): string {
+  const sceneLines = scenes.map((s) => (s.caption || "").split(/\s*\/\s*/).map((l) => l.trim()).filter(Boolean));
+  const norm = (l: string) => l.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, "").replace(/\s+/g, " ").trim();
+  const seen = new Map<string, number>();
+  for (const ls of sceneLines) for (const l of ls) seen.set(norm(l), (seen.get(norm(l)) || 0) + 1);
+  const out: string[] = ["[Intro]"];
+  let prev = "";
+  for (const ls of sceneLines) {
+    if (!ls.length) continue;
+    const repeats = ls.filter((l) => (seen.get(norm(l)) || 0) > 1).length;
+    const part = repeats * 2 >= ls.length ? "[Chorus]" : "[Verse]";
+    if (part !== prev) { out.push(part); prev = part; }
+    out.push(...ls);
+  }
+  out.push("[Outro]");
+  return out.join("\n");
+}
+
 /** Force the song to EXACTLY `targetSec` seconds so the finished video lands on the length the merchant
  *  PICKED (and is billed for). minimax returns an unpredictable "full song" length, so without this the
  *  video came out however long the song happened to be — the tester's "I set 20s, got 40s" bug. Long song
@@ -629,7 +653,10 @@ export async function generateMusicVideo(opts: {
     // Lead the style with the singer's gender so the VOICE matches the avatar (tester: a female
     // character was singing in a male voice). Empty when unknown → minimax picks as before.
     const voiceSex = opts.artistGender === "f" ? "female vocals, a woman singing lead. " : opts.artistGender === "m" ? "male vocals, a man singing lead. " : "";
-    songPath = await singToDisk(lyrics, `${voiceSex}${g.song}. ${treatment.musicMood || ""}`.slice(0, 300));
+    // 1:00 and longer → the full-length song engine: one real track sized to the video, sent as a tagged
+    // sheet, instead of a one-minute song repeated to fill the time.
+    const fullLength = N * 10 >= 60;
+    songPath = await singToDisk(fullLength ? fullSongSheet(scenes) : lyrics, `${voiceSex}${g.song}. ${treatment.musicMood || ""}`.slice(0, 300), { fullLength, minSeconds: N * 10 });
     await ckpt({ ckSong: songPath });
   }
   // EXACT LENGTH — the finished video must be the length the merchant PICKED (and was billed for), not
