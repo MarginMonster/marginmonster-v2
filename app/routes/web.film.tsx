@@ -2482,6 +2482,15 @@ const FS_STYLE = `
 .fs-head-tag i{flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:#FF6B5E;box-shadow:0 0 0 3px rgba(255,107,94,.28);}
 .fs-head-tag em{font-style:normal;font-weight:700;opacity:.78;}
 @keyframes fstag{from{opacity:0;transform:translateY(5px);}}
+/* Desktop: the hero is far wider than any clip (4–5 : 1), and stretching a clip to cover it shows a
+   sliver — the tops of two heads. So each clip plays WHOLE, as a screen standing at the right of the
+   hero, with its own blurred poster as the wall behind it; the scrim only shades the side the words are on. */
+@media(min-width:960px){
+  .fs-head{min-height:clamp(320px,24vw,420px);}
+  .fs-reel .fs-head-vid{inset:18px 18px 18px auto;width:auto;height:calc(100% - 36px);aspect-ratio:16/9;object-fit:cover;object-position:center;border-radius:14px;box-shadow:0 18px 44px -14px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.16);}
+  .fs-head-scrim{background:linear-gradient(90deg,rgba(7,42,27,.92) 8%,rgba(7,42,27,.6) 42%,rgba(7,42,27,.2) 66%,rgba(7,42,27,.08) 100%);}
+  .fs-head-tag{right:32px;bottom:32px;}
+}
 @media(max-width:640px){.fs-head-tag{top:12px;bottom:auto;right:12px;min-height:28px;padding:4px 10px 4px 9px;font-size:11px;}.fs-head-tag em{display:none;}}
 @media(prefers-reduced-motion:reduce){.fs-reel{transition:none;}.fs-head-tag{animation:none;}}
 .fs-head-scrim{position:absolute;inset:0;z-index:2;background:radial-gradient(130% 120% at 85% 10%,rgba(12,122,70,.08) 0%,rgba(8,55,34,.42) 48%,rgba(7,42,27,.6) 100%),linear-gradient(90deg,rgba(7,42,27,.9) 8%,rgba(7,42,27,.3) 60%,transparent);}
