@@ -272,3 +272,26 @@ test("a turn that never shows the back, made from a real kit, is caught", { skip
   assert.ok(shape.back < 0.85, `the held side views measured ${shape.back.toFixed(2)}× the front — a side view should be much narrower`);
   assert.equal(shape.full, false);
 });
+
+/* ---------- the stock characters ---------- */
+
+test("every stock character has a portrait, a cut-out, a 3D view — and a voice the app will not mistake for a clone", async () => {
+  const { STOCK_CHARACTERS } = await import("../app/lib/stock-characters.ts");
+  const { AVATAR_VOICES } = await import("../app/lib/avatar-voice-catalog.ts");
+  assert.ok(STOCK_CHARACTERS.length >= 6, `only ${STOCK_CHARACTERS.length} stock characters`);
+  const ids = new Set<string>();
+  for (const c of STOCK_CHARACTERS) {
+    assert.ok(!ids.has(c.id) && !cast.includes(c.id), `${c.id}: the id is already taken`);
+    ids.add(c.id);
+    assert.ok(c.kind === "cartoon" || c.kind === "monster", `${c.id}: a stock character is a cartoon or a monster`);
+    assert.ok(fs.existsSync(path.join(root, "public", "avatars", `${c.id}_0.jpg`)), `${c.id}: public/avatars/${c.id}_0.jpg is missing`);
+    assert.ok((kits[c.id]?.cuts || 0) >= 1, `${c.id} has no cut-out — run scripts/build-presenter-kits.ts ${c.id}`);
+    assert.ok(shown(kits[c.id]?.spins?.[0]), `${c.id} has no 3D view — run scripts/build-presenter-kits.ts --spin ${c.id}`);
+    // Any voice id that is not in the catalog (and not a designed "ttv-" one) is treated everywhere as
+    // a merchant's own cloned voice: sent to the voice-conversion paths, hidden on the Presenters page.
+    assert.ok(AVATAR_VOICES.some((v) => v.id === c.voiceId), `${c.id}: voice "${c.voiceId}" is not a catalog voice`);
+    // what tells a picture model how they sound and what not to "fix" about them
+    assert.ok((c.voiceStyle || "").length > 20, `${c.id} has no voice described in words`);
+    assert.ok((c.continuity || "").length > 20, `${c.id} has no continuity note`);
+  }
+});

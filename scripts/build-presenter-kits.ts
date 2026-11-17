@@ -14,7 +14,7 @@
  *   --reframe cut the frames again from the turn already saved in --tmp (free — no generation), after a
  *             change to how frames are picked or cropped
  *   --tmp     where the intermediate still / turn / mask / contact sheet are kept (default: the OS temp dir)
- *   no ids    = every live presenter plus the private cast
+ *   no ids    = every live presenter, the private cast and the stock characters
  *
  * A step whose output is already there is skipped.
  *
@@ -29,9 +29,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { LIVE_AVATARS, PRIVATE_AVATARS, AVATAR_BY_ID, OUTFITS } from "../app/lib/avatars";
+import { LIVE_AVATARS, PRIVATE_AVATARS, STOCK_CHARACTERS, AVATAR_BY_ID, OUTFITS } from "../app/lib/avatars";
 import { lookPrefix, type SpinMeta } from "../app/lib/presenter-kits";
-import { buildSpin, cutOutPortrait, fillMatte, measureTurn, spinFrames, spinSheet, type KitSpin, type KitTools } from "../app/lib/presenter-kit-core";
+import { buildSpin, cutOutPortrait, fillMatte, matteByFrames, measureTurn, spinFrames, spinSheet, type KitSpin, type KitTools } from "../app/lib/presenter-kit-core";
 
 const root = process.cwd();
 const envFile = path.join(root, ".env");
@@ -59,7 +59,7 @@ const tmpRoot = path.resolve(value("--tmp") || path.join(os.tmpdir(), "easymode-
 const jobs = Math.max(1, Math.min(6, parseInt(value("--jobs") || "3", 10) || 3));
 if (!token && !(reframe && !rematte && !doCuts)) { console.error("REPLICATE_API_TOKEN is not set (.env)"); process.exit(1); }
 
-const cast = ids.length ? ids : [...LIVE_AVATARS.map((a) => a.id), ...PRIVATE_AVATARS.map((a) => a.id)];
+const cast = ids.length ? ids : [...LIVE_AVATARS, ...PRIVATE_AVATARS, ...STOCK_CHARACTERS].map((a) => a.id);
 const manifestFile = path.join(root, "app", "lib", "presenter-kits.json");
 type Entry = { cuts?: number; v?: number; spins?: Array<SpinMeta | null> };
 const pause = (ms: number) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
@@ -118,8 +118,11 @@ async function one(id: string, look: number | null): Promise<void> {
   if (built && !respin && !reframe) { console.log(`[${tag}] rotation already built — skipping`); return; }
   let spin: KitSpin;
   if (reframe) {
-    if (!fs.existsSync(turn) || !fs.existsSync(matte)) { console.log(`[${tag}] no saved turn in ${tmpDir} to cut again — skipping`); return; }
-    if (rematte) {
+    if (!fs.existsSync(turn) || (!fs.existsSync(matte) && !rematte)) { console.log(`[${tag}] no saved turn in ${tmpDir} to cut again — skipping`); return; }
+    if (rematte && (avatar.kind === "cartoon" || avatar.kind === "monster")) {
+      // not a person: the mask is made again from nothing, frame by frame
+      await matteByFrames(tools, turn, matte, tmpDir);
+    } else if (rematte) {
       // always start from the one-way mask, so running this twice doesn't fill a mask that is already filled
       const oneWay = path.join(tmpDir, "matte-fwd.mp4");
       if (fs.existsSync(oneWay)) fs.copyFileSync(oneWay, matte); else fs.copyFileSync(matte, oneWay);
@@ -128,7 +131,7 @@ async function one(id: string, look: number | null): Promise<void> {
     spin = await spinFrames(tools, turn, matte, outDir, prefix);
   } else {
     if (respin) for (const f of [turn, matte, path.join(tmpDir, "sheet.jpg")]) fs.rmSync(f, { force: true });
-    spin = await buildSpin(tools, { portrait: portrait(look), outDir, prefix, tmpDir, look: { continuity: avatar.continuity } });
+    spin = await buildSpin(tools, { portrait: portrait(look), outDir, prefix, tmpDir, look: { continuity: avatar.continuity, kind: avatar.kind } });
   }
   await spinSheet(tools, outDir, prefix, spin, path.join(tmpDir, "sheet.jpg"), 12);
   const shape = await measureTurn(tools, outDir, prefix, spin);

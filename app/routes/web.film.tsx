@@ -22,7 +22,7 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { estimateFilmTokens, FILM_PER_SCENE, FILM_BASE } from "../lib/plan-config";
 import { externalOrigin } from "../lib/origin.server";
 import { AVATAR_VOICES, AVATAR_VOICE_IDS, autoCastVoices } from "../lib/avatar-voice-catalog";
-import { LIVE_AVATARS, avatarImg } from "../lib/avatars";
+import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
 
 export const meta: MetaFunction = () => [{ title: "Film Studio · EASYMODE" }];
 
@@ -67,10 +67,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // A stock presenter the shop gave a voice of its own (Presenters → open one → Voice) brings that
   // voice into the part, exactly like a custom presenter does; otherwise the film auto-casts a voice.
   const stockVoice = await stockVoicesFor(shop.id);
+  // `kind` — a person, or one of the stock CHARACTERS (cartoon characters, monsters). The characters
+  // are offered only where a character belongs: the cast step of the story formats (see rosterFor).
   const roster = [
-    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null })),
-    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null })),
-  ].slice(0, 60);
+    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null, kind: "person" as const })),
+    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null, kind: "person" as const })),
+    ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || a.voiceId || null, kind: (a.kind || "person") as "person" | "cartoon" | "monster" })),
+  ].slice(0, 70);
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
     roster,
@@ -704,6 +707,16 @@ function LoopCover({ k }: { k: string }) {
 
 export default function FilmStudio() {
   const d = useLoaderData<typeof loader>();
+  // Who can be cast where. The Music Video is built around a real-looking singer, so it is offered
+  // people only. A story's cast step offers whoever belongs in that kind of film, the likeliest first:
+  // cartoon characters lead a Kids Cartoon (and no monster is offered to a children's show), monsters
+  // lead a Horror Story; a cartoon character is not offered to the live-action formats, which would
+  // redraw it as a real animal.
+  const people = d.roster.filter((r) => r.kind === "person");
+  const rosterFor = (format: string) => {
+    const order: Array<"person" | "cartoon" | "monster"> = format === "kidstv" ? ["cartoon", "person"] : format === "horror" ? ["monster", "person"] : ["person", "monster"];
+    return order.flatMap((k) => d.roster.filter((r) => r.kind === k));
+  };
   const t = useT();
   const nav = useNavigation();
   const actionData = useActionData<typeof action>() as { ok?: boolean; queued?: string; cost?: number; error?: string } | undefined;
@@ -1401,7 +1414,7 @@ export default function FilmStudio() {
                                   <span className="mm-cp-img" style={{ backgroundImage: `url(${m.img})` }} aria-hidden="true" />{m.name || t("Cast")}
                                 </button>
                               ))}
-                              {[...customArtists.map((c) => ({ img: c.img, name: c.name })), ...d.roster.map((r) => ({ img: r.img, name: r.name }))].filter((r) => r.img && !castExtra.some((m) => m.img === r.img)).slice(0, 14).map((r) => (
+                              {[...customArtists.map((c) => ({ img: c.img, name: c.name })), ...people.map((r) => ({ img: r.img, name: r.name }))].filter((r) => r.img && !castExtra.some((m) => m.img === r.img)).slice(0, 14).map((r) => (
                                 <button type="button" key={`pool-${r.img}`} className="mm-cp-opt mm-cp-add" onClick={() => { addCastMemberMv(r.img, r.name); toggleSceneCastDraft(r.img); }} title={r.name}>
                                   <span className="mm-cp-img" style={{ backgroundImage: `url(${r.img})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{r.name}
                                 </button>
@@ -1634,12 +1647,15 @@ export default function FilmStudio() {
   // Per-format identity for the picker — accent tint, a one-word "kicker", and a
   // length/voice chip. The cover is the format's real AI still (/landing/film-still-*).
   const FMT: Record<string, { tint: string; kick: string; meta: string }> = {
-    musicvideo: { tint: "t-mv", kick: "Sings on camera", meta: "~2 min · lip-synced" },
-    moral: { tint: "t-moral", kick: "They talk it out", meta: "~45 sec · spoken" },
-    horror: { tint: "t-horror", kick: "Builds the dread", meta: "~45 sec · spoken" },
-    testmovie: { tint: "t-film", kick: "The flagship", meta: "~1 min · spoken" },
-    kidstv: { tint: "t-kids", kick: "Peppa / Bluey", meta: "~40 sec · G-rated" },
-    kidsmusicvideo: { tint: "t-kmv", kick: "CoComelon", meta: "~30 sec · sings" },
+    // What you get, in our own words, then how long. Never another company's show, artist or rating
+    // system by name — two of these said "Peppa / Bluey" and "CoComelon" (owner, 2026-11-17: "they
+    // can't say those things").
+    musicvideo: { tint: "t-mv", kick: "Your artist sings on camera", meta: "up to 2 min" },
+    moral: { tint: "t-moral", kick: "A story with a lesson", meta: "about 45 sec" },
+    horror: { tint: "t-horror", kick: "A scare that builds", meta: "about 45 sec" },
+    testmovie: { tint: "t-film", kick: "Your story, acted out", meta: "about 1 min" },
+    kidstv: { tint: "t-kids", kick: "A cartoon for little ones", meta: "about 40 sec" },
+    kidsmusicvideo: { tint: "t-kmv", kick: "A sing-along for little ones", meta: "about 30 sec" },
   };
   const fmtIcon = (key: string) => {
     if (key === "musicvideo" || key === "kidsmusicvideo") return <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>;
@@ -1800,7 +1816,7 @@ export default function FilmStudio() {
                     <span className="fs-rface-name">{ca.name}</span>
                   </button>
                 ))}
-                {d.roster.map((r) => (
+                {people.map((r) => (
                   <button type="button" key={r.id} className={`fs-rface${artistPick === r.img ? " on" : ""}`} title={r.name} onClick={() => setArtistPick(r.img)}>
                     <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
                     {artistPick === r.img && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
@@ -1859,7 +1875,7 @@ export default function FilmStudio() {
                       <span className="fs-rface-name">{ca.name}</span>
                     </button>
                   ))}
-                  {d.roster.map((r) => (
+                  {people.map((r) => (
                     <button type="button" key={`cx-${r.id}`} className={`fs-rface${castExtra.some((m) => m.img === r.img) ? " on" : ""}`} title={r.name} onClick={() => addCastMemberMv(r.img, r.name)}>
                       <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
                       {castExtra.some((m) => m.img === r.img) && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
@@ -2293,7 +2309,7 @@ export default function FilmStudio() {
                         <details className="fs-shot-own fs-actor-roster">
                           <summary><Ico n="presenter" size={13} /> {t("Pick a presenter")}</summary>
                           <div className="fs-roster" role="list" aria-label={t("Your presenters")}>
-                            {d.roster.map((r) => (
+                            {rosterFor(template).map((r) => (
                               <button type="button" role="listitem" key={r.id} className={`fs-rface${c.faceUrl === r.img ? " on" : ""}`}
                                 disabled={castingIndex !== null} title={r.name} onClick={() => castPresenter(i, r)}>
                                 <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
@@ -2549,8 +2565,9 @@ const FS_STYLE = `
 .fs-fmtgrid.throw .fs-fmt{opacity:0;transform:scale(.72) translateY(26px);transition:opacity .32s ease,transform .36s ease;pointer-events:none;}
 .fs-fmtgrid.throw .fs-fmt.zoom{opacity:1;z-index:6;will-change:transform;transform:scale(1.16);transition:transform .4s cubic-bezier(.34,.62,.2,1),box-shadow .4s ease;box-shadow:0 36px 72px -22px rgba(10,20,15,.6);}
 .fs-head.throw{opacity:0;transform:scale(.97);transition:opacity .32s ease,transform .36s ease;pointer-events:none;}
-.fs-fmt-sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding:8px 11px 12px;font-size:11.5px;font-weight:700;color:var(--ink2,#55605A);line-height:1.32;}
-.fs-fmt-sub em{font-style:normal;font-weight:600;color:var(--ink3,#9AA39B);}
+.fs-fmt-sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding:9px 11px 12px;font-size:12px;font-weight:700;color:var(--ink,#14201A);line-height:1.34;}
+@media(min-width:640px){.fs-fmt-sub{padding:11px 16px 14px;font-size:13.5px;}}
+.fs-fmt-sub em{font-style:normal;font-weight:600;color:var(--ink2,#55605A);}
 .fs-hero{position:relative;height:150px;border-radius:16px;overflow:hidden;margin:2px 0 10px;background:#20302A;}
 @media(min-width:960px){.fs-hero{height:260px;}.fs-hero-art{object-fit:contain;object-position:center;}.fs-hero-ttl{font-size:34px;left:26px;}.fs-hero-sub{left:26px;font-size:14px;}.fs-hero-back{left:26px;}}
 .fs-hero-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;}
@@ -2588,14 +2605,17 @@ const FS_STYLE = `
 /* the format's loop, faded in over its still while the card is pointed at (see LoopCover) */
 .fs-fmt-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease;pointer-events:none;}
 .fs-fmt-vid.on{opacity:1;}
-.fs-fmt-cover::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(10,20,15,.82) 0%,rgba(10,20,15,.12) 46%,transparent 100%);}
+/* the covers MOVE now, so the title has to win: a deeper, taller shade under it and a bigger, heavier name */
+.fs-fmt-cover::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(6,14,10,.94) 0%,rgba(6,14,10,.62) 24%,rgba(6,14,10,.14) 50%,transparent 68%);}
 .fs-fmt-ico{position:absolute;z-index:2;top:8px;left:8px;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;box-shadow:0 5px 14px -5px rgba(0,0,0,.6);}
 .fs-fmt-ico svg{width:15px;height:15px;stroke:#fff;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 .fs-fmt-check{position:absolute;z-index:2;top:10px;right:10px;width:23px;height:23px;border-radius:50%;background:var(--green,#0C7A46);display:grid;place-items:center;box-shadow:0 4px 10px -3px rgba(0,0,0,.5);}
 .fs-fmt-check svg{width:12px;height:12px;stroke:#fff;stroke-width:3;fill:none;}
 .fs-fmt-label{position:absolute;z-index:2;left:9px;right:9px;bottom:9px;}
 .fs-fmt-kick{display:block;font-size:10px;font-weight:800;color:#A7F0C8;text-transform:uppercase;letter-spacing:.07em;}
-.fs-fmt-label b{display:block;font-family:Poppins,sans-serif;font-size:12.5px;font-weight:800;letter-spacing:-.01em;color:#fff;line-height:1.12;text-shadow:0 1px 10px rgba(0,0,0,.6);}
+.fs-fmt-label b{display:block;font-family:Poppins,sans-serif;font-size:17px;font-weight:800;letter-spacing:-.02em;color:#fff;line-height:1.08;text-shadow:0 2px 14px rgba(0,0,0,.75),0 1px 2px rgba(0,0,0,.65);}
+@media(min-width:640px){.fs-fmt-label{left:16px;right:16px;bottom:14px;}.fs-fmt-label b{font-size:24px;}}
+@media(min-width:1100px){.fs-fmt-label b{font-size:28px;}}
 .fs-fmt-body{display:block;padding:12px 14px 14px;}
 .fs-fmt-desc{display:block;font-size:12.5px;line-height:1.42;color:var(--ink2,#4A554E);}
 .fs-fmt-meta{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-size:11px;font-weight:800;color:var(--green,#0C7A46);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:4px 10px;}

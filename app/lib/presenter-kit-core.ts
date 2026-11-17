@@ -9,7 +9,9 @@
  *                        back on the exact frame it started from, so the sequence loops
  *   3. matte             arielreplicate/robust_video_matting → an alpha mask for every frame, run over the
  *                        clip forwards AND backwards and merged (fillMatte) so nothing that has just
- *                        come into view is left half see-through
+ *                        come into view is left half see-through. That model only sees PEOPLE: a
+ *                        character that is not one (a cartoon pup, a monster) is cut out frame by
+ *                        frame with the portrait cut-out model instead (matteByFrames)
  *   4. frames            ffmpeg: alpha-merge, one shared crop (so the feet never slide), N WebP frames
  * and separately the head-and-shoulders portraits are cut out with 851-labs/background-remover.
  *
@@ -74,18 +76,43 @@ async function repRun(
   const url = "model" in target ? `${REP}/models/${target.model}/predictions` : `${REP}/predictions`;
   const body = JSON.stringify("model" in target ? { input } : { version: target.version, input });
   let id = "";
+  let refused = "";
+  let throttled = 0;
   for (let attempt = 0; attempt < 8 && !id; attempt++) {
-    const res = await fetch(url, { method: "POST", headers, body });
+    let res: Response;
+    try {
+      res = await fetch(url, { method: "POST", headers, body });
+    } catch (e) {
+      // the connection dropped before an answer — nothing was started, so asking again is safe
+      refused = e instanceof Error ? e.message : String(e);
+      await sleep(3000 + attempt * 2000);
+      continue;
+    }
     if (res.status === 429) {
+      // "Slow down" is not a failure: wait as long as we are told and ask again, without using up
+      // the tries kept for real trouble. (A turn cut out frame by frame is ~145 requests in a few
+      // minutes; being held back is the normal state of affairs, and giving up after eight
+      // refusals threw away turns that were three-quarters done.) Ten minutes of it is enough.
       const hint = Number(res.headers.get("retry-after"));
+      refused = `429 ${(await res.text().catch(() => "")).slice(0, 160)}`;
+      if (++throttled > 60) break;
+      attempt--;
+      await sleep((Number.isFinite(hint) && hint > 0 ? Math.min(hint, 30) : 8) * 1000 + 500 + Math.round(Math.random() * 1500));
+      continue;
+    }
+    // A gateway hiccup (502 / 503 / 504, an HTML error page) is the provider's front door, not a
+    // verdict on the request. A turn cut out frame by frame makes ~145 requests; before this was
+    // retried, one such hiccup threw away the whole turn — five of the first six characters.
+    if (res.status >= 500) {
+      refused = `${res.status}`;
       await res.text().catch(() => "");
-      await sleep((Number.isFinite(hint) && hint > 0 ? hint : 10) * 1000 + 1000);
+      await sleep(3000 + attempt * 3000);
       continue;
     }
     if (!res.ok) throw new Error(`[kit:${what}] create ${res.status}: ${(await res.text()).slice(0, 240)}`);
     id = ((await res.json()) as { id: string }).id;
   }
-  if (!id) throw new Error(`[kit:${what}] rate-limited too long`);
+  if (!id) throw new Error(`[kit:${what}] could not start (${refused || "no answer"}) after 8 tries`);
   const started = Date.now();
   let unreadable = 0;
   while (Date.now() - started < maxMs) {
@@ -114,9 +141,17 @@ async function repRun(
 }
 
 async function save(url: string, file: string): Promise<void> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(5 * 60_000) });
-  if (!res.ok) throw new Error(`[kit] download ${res.status}`);
-  fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+  let last: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(5 * 60_000) });
+      if (res.ok) { fs.writeFileSync(file, Buffer.from(await res.arrayBuffer())); return; }
+      last = new Error(`[kit] download ${res.status}`);
+      if (res.status < 500 && res.status !== 429) break; // gone or refused: asking again won't help
+    } catch (e) { last = e; }
+    await sleep(2000 + attempt * 3000);
+  }
+  throw last instanceof Error ? last : new Error("[kit] download failed");
 }
 
 /** Run a binary without blocking the event loop (on the server this shares a process with every request). */
@@ -161,10 +196,25 @@ async function probe(t: KitTools, file: string): Promise<{ w: number; h: number;
 
 /* ---------- the prompts ---------- */
 
-/** Extra words for a presenter that isn't an ordinary person (a mascot whose skin has to stay green below the chin). */
-export type KitLook = { continuity?: string };
+/** What the still has to know about who it is drawing: extra words for a presenter that isn't an
+ *  ordinary person (a mascot whose skin has to stay green below the chin), and `kind` — "cartoon" or
+ *  "monster" — for a character that is not a person at all. */
+export type KitLook = { continuity?: string; kind?: string };
 
 export function stillPrompt(look: KitLook = {}): string {
+  // A character is REDRAWN whole, in its own art style, with nothing added. The wording for people
+  // ("studio photograph… continued down to matching trousers or skirt and shoes") would photograph a
+  // cartoon and put trousers on a puppy.
+  if (look.kind === "cartoon" || look.kind === "monster") {
+    return [
+      "A full-body picture of the exact same character as in the reference image, head to toe, in EXACTLY the same art style and rendering as the reference:",
+      "the same design, proportions, colours, markings, face and expression, and the same clothing and accessories — add nothing that is not in the reference, and leave nothing out.",
+      look.continuity || "",
+      "The character stands upright and relaxed, facing the camera, arms loose at its sides, the whole body visible down to the floor, centred, with a little space above the head and below the feet.",
+      "Seamless plain light-grey studio backdrop that curves into the floor, soft even light, a faint contact shadow on the floor, sharp focus.",
+      "No text, no props, nothing in the hands, nobody else.",
+    ].filter(Boolean).join(" ");
+  }
   return [
     "Full-body studio photograph of the exact same person or character as in the reference image, head to toe:",
     "the same face, hair, skin, age, build and the same outfit as in the reference, continued naturally down to matching trousers or skirt and shoes.",
@@ -206,6 +256,65 @@ export async function turntable(t: KitTools, still: string, seconds = 6): Promis
 /** Step 3 — the alpha mask of that clip. `videoUrl` must be a URL the model can fetch. Returns the mask video URL. */
 export async function matte(t: KitTools, videoUrl: string): Promise<string> {
   return repRun(t, { version: MATTING_VERSION }, { input_video: videoUrl, output_type: "alpha-mask" }, "matte", 10 * 60_000);
+}
+
+/** Is this a character that is not a person? (The video matting model above only knows people.) */
+const isCharacter = (look?: KitLook): boolean => look?.kind === "cartoon" || look?.kind === "monster";
+
+/** Step 3 for a character that is NOT a person — the mask, frame by frame.
+ *
+ *  The video matting model is trained on people and simply does not see anybody else: the first
+ *  capybara it was shown came back as an empty mask, a puppy as nothing, a werewolf as scraps. The
+ *  model that cuts out the portraits takes any subject, so every frame of the turn is cut out with it
+ *  (at half size — the mask is only an outline, and the frames end up smaller than that anyway) and
+ *  the alphas are joined back into one mask video the size and speed of the clip. Each frame is seen
+ *  on its own, so there is nothing to lag behind and no second pass to run.
+ *  About 145 small predictions a turn, four at a time: a couple of minutes and a few cents. */
+export async function matteByFrames(t: KitTools, turnFile: string, matteFile: string, tmpDir: string): Promise<void> {
+  const src = await probe(t, turnFile);
+  const rate = (await run(t.ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", turnFile])).out.trim() || "24";
+  // The cut-outs are kept until the mask is finished, so a run that stops part-way (one request in
+  // 145 failing for good) picks up where it left off instead of paying for every frame again. They
+  // belong to ONE turn: a different turn.mp4 (a re-roll) starts from nothing.
+  const dir = path.join(tmpDir, "matte-frames");
+  const stat = fs.statSync(turnFile);
+  const sig = `${stat.size}-${Math.round(stat.mtimeMs)}`;
+  const sigFile = path.join(dir, "turn.sig");
+  if (!fs.existsSync(sigFile) || fs.readFileSync(sigFile, "utf8") !== sig) fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  {
+    if (!fs.existsSync(sigFile)) {
+      const h = Math.min(src.h, 960);
+      const w = Math.round((src.w * h) / src.h / 2) * 2;
+      await ff(t, ["-i", turnFile, "-vf", `scale=${w}:${h}:flags=area`, "-q:v", "3", "-start_number", "0", path.join(dir, "f%04d.jpg")], "matte-frames");
+      fs.writeFileSync(sigFile, sig);
+    }
+    const frames = fs.readdirSync(dir).filter((f) => /^f\d{4}\.jpg$/.test(f)).sort();
+    if (frames.length !== src.frames) throw new Error(`[kit:matte] wrote ${frames.length} frames of ${src.frames}`);
+    const quiet: KitTools = { ...t, log: undefined }; // not 145 lines of "cut-out: 3 s"
+    let next = 0;
+    const started = Date.now();
+    await Promise.all(Array.from({ length: 4 }, async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= frames.length) return;
+        const cut = path.join(dir, `c${String(i).padStart(4, "0")}.png`);
+        if (fs.existsSync(cut) && fs.statSync(cut).size > 500) continue; // from a run that stopped part-way
+        const url = await repRun(quiet, { version: CUTOUT_VERSION }, { image: imageRef(path.join(dir, frames[i])), format: "png", background_type: "rgba" }, `cut-out ${i}`, 4 * 60_000);
+        await save(url, `${cut}.part`);
+        fs.renameSync(`${cut}.part`, cut);
+      }
+    }));
+    await ff(t, [
+      "-framerate", rate, "-start_number", "0", "-i", path.join(dir, "c%04d.png"),
+      "-vf", `alphaextract,scale=${src.w}:${src.h}:flags=bilinear,format=yuv420p`,
+      "-an", "-c:v", "libx264", "-crf", "10", "-preset", "veryfast", matteFile,
+    ], "matte-video");
+    const made = await probe(t, matteFile);
+    if (made.frames !== src.frames) throw new Error(`[kit:matte] the mask has ${made.frames} frames, the clip ${src.frames}`);
+    t.log?.(`matte, frame by frame: ${Math.round((Date.now() - started) / 1000)} s`);
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 /** Hand a local file to a model: uploaded to Replicate's file store, which gives back a URL its models can read. */
@@ -567,15 +676,28 @@ export async function spinSources(t: KitTools, o: { portrait: string; tmpDir: st
   const matteFile = path.join(o.tmpDir, "matte.mp4");
   const have = (file: string) => fs.existsSync(file) && fs.statSync(file).size > 2000;
   if (!have(stillFile)) await save(await fullBodyStill(t, o.portrait, o.look), stillFile);
-  if (!have(turnFile) || !have(matteFile)) {
-    fs.rmSync(matteFile, { force: true });
-    const turnUrl = await turntable(t, stillFile);
+  let turnUrl = "";
+  if (!have(turnFile)) {
+    fs.rmSync(matteFile, { force: true }); // a mask belongs to one turn
+    turnUrl = await turntable(t, stillFile);
     await save(turnUrl, turnFile);
-    await save(await matte(t, turnUrl), matteFile);
-    // The second pass only ever improves the mask; a turn is not thrown away (and paid for again)
-    // because it could not be run — the one-way mask is what every kit had before it existed.
-    try { await fillMatte(t, turnFile, matteFile, o.tmpDir); }
-    catch (e) { t.log?.(`second matting pass did not run — keeping the one-way mask: ${e instanceof Error ? e.message.slice(0, 200) : e}`); }
+  }
+  if (!have(matteFile)) {
+    if (isCharacter(o.look)) {
+      await matteByFrames(t, turnFile, matteFile, o.tmpDir);
+    } else {
+      // a turn saved by an earlier run has no address the model can read any more — give it one
+      const stored = turnUrl ? null : await upload(t, turnFile, "video/mp4");
+      try {
+        await save(await matte(t, turnUrl || (stored as { url: string }).url), matteFile);
+      } finally {
+        if (stored) await fetch(`${REP}/files/${stored.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${t.token}` } }).catch(() => undefined);
+      }
+      // The second pass only ever improves the mask; a turn is not thrown away (and paid for again)
+      // because it could not be run — the one-way mask is what every kit had before it existed.
+      try { await fillMatte(t, turnFile, matteFile, o.tmpDir); }
+      catch (e) { t.log?.(`second matting pass did not run — keeping the one-way mask: ${e instanceof Error ? e.message.slice(0, 200) : e}`); }
+    }
   }
   return { stillFile, turnFile, matteFile };
 }

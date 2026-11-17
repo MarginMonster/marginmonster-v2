@@ -6116,16 +6116,26 @@ ${VOICE_UI_CSS}
 @media(max-width:560px){.ws-artip-pet{width:48px;height:48px}.ws-artip-arw{min-width:30px;min-height:30px}}
 /* Create → two generate CTAs (Pro gold / Ultra green), each with a slowly
    spinning gold rosette and the model's description + cost. */
-.ws-cta2{display:flex;gap:11px;align-items:flex-start}
-.ws-ctacol{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
-.ws-cta{position:relative;overflow:hidden;width:100%;border-radius:12px;padding:13px 14px;font:inherit;cursor:pointer;text-align:center;border:0;display:block;transition:filter .12s,transform .12s,box-shadow .12s;box-shadow:0 2px 7px rgba(20,32,26,.13),inset 0 1px 0 rgba(255,255,255,.18)}
+/* The two make buttons are ONE pair: two equal columns at every width. They used to stack on a phone
+   with align-items:flex-start, which sized each to its own words — two different-width blocks hugging
+   the left edge, at half opacity because nothing was typed yet. The owner: "these CTA buttons look
+   like legos". */
+.ws-cta2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
+.ws-ctacol{min-width:0;display:flex;flex-direction:column;gap:6px}
+.ws-cta{position:relative;overflow:hidden;box-sizing:border-box;width:100%;min-height:66px;border-radius:14px;padding:12px 10px;font:inherit;cursor:pointer;text-align:center;border:0;display:block;transition:filter .12s,transform .12s,box-shadow .12s,background .16s,color .16s;box-shadow:0 2px 7px rgba(20,32,26,.13),inset 0 1px 0 rgba(255,255,255,.18)}
 .ws-cta::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:118px;height:118px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.17;animation:ws-ctaspin 90s linear infinite;pointer-events:none}
 @keyframes ws-ctaspin{to{transform:translate(-50%,-50%) rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.ws-cta::after{animation:none}}
 .ws-cta:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.04);box-shadow:0 5px 13px rgba(20,32,26,.2),inset 0 1px 0 rgba(255,255,255,.18)}
 .ws-cta:hover:not(:disabled)::after{animation-duration:3.5s}
 .ws-cta:active:not(:disabled){transform:translateY(0);box-shadow:0 1px 4px rgba(20,32,26,.16),inset 0 1px 0 rgba(255,255,255,.18)}
-.ws-cta:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+/* Not ready yet (nothing described, or not enough tokens): the same two buttons in OUTLINE — each
+   keeps its colour in its edge and its name — instead of a washed-out copy of the filled ones. */
+.ws-cta:disabled{opacity:1;cursor:not-allowed;background:var(--card,#FDFCF7)}
+.ws-cta:disabled::after{display:none}
+.ws-cta-pro:disabled{color:#8A6A16;box-shadow:inset 0 0 0 1.5px rgba(211,166,58,.6)}
+.ws-cta-ultra:disabled{color:#0C7A46;box-shadow:inset 0 0 0 1.5px rgba(12,122,70,.42)}
+.ws-cta:disabled .ws-cta-c{background:rgba(20,32,26,.06);color:var(--ink2,#4A554E)}
 .ws-cta b{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:16px;line-height:1}
 .ws-cta-c{position:relative;display:inline-block;margin-top:7px;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 11px}
 .ws-cta-d{display:block;font-size:11.5px;line-height:1.35;color:var(--ink2,#5A665E);padding:0 3px;text-align:center}
@@ -6133,7 +6143,7 @@ ${VOICE_UI_CSS}
 .ws-cta-pro .ws-cta-c{background:rgba(58,44,6,.16)}
 .ws-cta-ultra{background:linear-gradient(158deg,#13A95E,#0A5F38);color:#FBF6E6}
 .ws-cta-ultra .ws-cta-c{background:rgba(0,0,0,.22)}
-@media(max-width:560px){.ws-cta2{flex-direction:column}}
+@media(max-width:380px){.ws-cta2{gap:8px}.ws-cta{padding:11px 6px}.ws-cta-c{font-size:10.5px;padding:2px 8px}.ws-cta-d{font-size:11px}}
 /* Format category chips — turn a 40-tile wall into a short, browsable menu.
    Wrap on desktop (all chips fit); scroll sideways on a phone so they never
    stack three rows deep above the tiles. */

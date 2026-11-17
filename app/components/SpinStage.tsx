@@ -1,8 +1,15 @@
-/* A presenter you can turn around — the "examine your character" stage in the Presenters section.
+/* A character you can turn around — the "examine your character" stage in the Presenters section.
  *
  * It plays a kit's rotation (N transparent frames of one full turn, see app/lib/presenter-kits.ts) on a
- * canvas: drag sideways and the presenter turns with your finger, let go and they coast to a stop.
- * On open they do one slow turn by themselves, so nobody has to be told it moves.
+ * canvas. Left alone, the figure turns slowly and steadily, the way a character does on a select
+ * screen — every figure at the same pace and in the same direction (the owner, 2026-11-17: "All 3D
+ * models need a slow turn consistently"; it used to make one turn on opening and then stand still).
+ * Drag sideways and the figure turns with your finger, let go and it coasts to a stop, and a moment
+ * later the slow turn picks up again from wherever you left it.
+ *
+ * A turn has only sixty frames, six degrees apart — played slowly, frame by frame, that is a slide
+ * show. So each frame dissolves quickly into the next (it is held sharp for most of its time, because
+ * two views averaged half-and-half are a double image), which reads as one continuous movement.
  *
  * Frames load coarse-to-fine — the first one, then every 16th, 8th, 4th… — so the figure appears at
  * once and can already be turned while the rest arrive; a frame that isn't in yet is drawn as its
@@ -12,7 +19,10 @@ import { useEffect, useRef, useState } from "react";
 import { spinFrame, type Spin } from "../lib/presenter-kits";
 import { nearestLoaded, spinLoadOrder } from "../lib/spin-frames";
 
-const ease = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+/** How long one unprompted turn takes — the same for every figure. */
+const TURN_MS = 15000;
+/** How long after the last touch the slow turn waits before it carries on. */
+const RESUME_MS = 2200;
 
 export function SpinStage({ spin, name, label, hint, loadingLabel }: {
   spin: Spin;
@@ -31,19 +41,21 @@ export function SpinStage({ spin, name, label, hint, loadingLabel }: {
   const [angle, setAngle] = useState(0);
   const s = useRef({
     imgs: [] as (HTMLImageElement | null)[],
-    pos: 0, vel: 0, drawn: -1, dragging: false, lastX: 0, lastT: 0,
-    intro: null as null | { start: number; dur: number }, introDone: false, angle: 0, shown: 0,
+    pos: 0, vel: 0, drawn: "", dragging: false, lastX: 0, lastT: 0,
+    // the slow turn: allowed at all (not for a viewer who asked for less motion), and not before `resumeAt`
+    auto: false, resumeAt: Infinity, byHand: false, shown: 0,
   });
 
   useEffect(() => {
     const st = s.current;
     st.imgs = new Array(spin.n).fill(null);
-    st.pos = 0; st.vel = 0; st.drawn = -1; st.dragging = false; st.intro = null; st.introDone = false; st.angle = 0; st.shown = 0;
+    st.pos = 0; st.vel = 0; st.drawn = ""; st.dragging = false; st.byHand = false; st.shown = 0;
+    st.auto = !(typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+    st.resumeAt = Infinity;
     setCount(0); setTouched(false); setPainted(false); setAngle(0);
     let alive = true;
     let done = 0;
     const order = spinLoadOrder(spin.n);
-    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     // a few at a time, in order — so the coarse frames really do land before the fine ones
     let next = 0;
     const pump = () => {
@@ -56,10 +68,8 @@ export function SpinStage({ spin, name, label, hint, loadingLabel }: {
         if (ok) st.imgs[i] = img;
         done++;
         setCount(done);
-        // one unprompted turn, as soon as there are enough frames for it to read as a turn
-        if (!st.introDone && !st.intro && !reduce && done >= Math.min(spin.n, Math.ceil(spin.n / 4) + 1)) {
-          st.intro = { start: performance.now() + 250, dur: 5200 };
-        }
+        // the slow turn starts as soon as there are enough frames for it to read as a turn
+        if (st.resumeAt === Infinity && !st.dragging && done >= Math.min(spin.n, Math.ceil(spin.n / 4) + 1)) st.resumeAt = performance.now() + 250;
         pump();
       };
       img.onload = () => settle(true);
@@ -73,29 +83,71 @@ export function SpinStage({ spin, name, label, hint, loadingLabel }: {
     const tick = (now: number) => {
       const dt = Math.min(64, now - last);
       last = now;
-      if (st.intro && !st.dragging) {
-        const x = (now - st.intro.start) / st.intro.dur;
-        if (x >= 1) { st.pos = 0; st.intro = null; st.introDone = true; }
-        else if (x > 0) st.pos = spin.dir * spin.n * ease(x);
-      } else if (!st.dragging && Math.abs(st.vel) > 0.0004) {
+      let turning = false;
+      if (st.dragging) {
+        // the hand is turning it
+      } else if (Math.abs(st.vel) > 0.0004) {
         st.pos += st.vel * dt;
         st.vel *= Math.pow(0.94, dt / 16);
+        st.resumeAt = now + RESUME_MS;
+      } else if (st.auto && now >= st.resumeAt) {
+        st.pos += spin.dir * (spin.n / TURN_MS) * dt;
+        turning = true;
       }
-      const idx = nearestLoaded(st.pos, st.imgs, spin.n);
+      // keep the number small: only where it sits inside one turn matters
+      if (st.pos > spin.n * 64 || st.pos < -spin.n * 64) st.pos = ((st.pos % spin.n) + spin.n) % spin.n;
+
       const cv = canvasRef.current;
-      if (cv && idx >= 0 && idx !== st.drawn) {
-        const ctx = cv.getContext("2d");
-        const img = st.imgs[idx];
-        if (ctx && img) {
-          ctx.clearRect(0, 0, cv.width, cv.height);
-          ctx.drawImage(img, 0, 0, cv.width, cv.height);
-          st.drawn = idx;
-          setPainted(true);
-          st.angle = Math.round((idx / spin.n) * 360);
+      const ctx = cv ? cv.getContext("2d") : null;
+      if (cv && ctx) {
+        const p = ((st.pos % spin.n) + spin.n) % spin.n;
+        const i0 = Math.floor(p) % spin.n;
+        const i1 = (i0 + 1) % spin.n;
+        // Hold each real frame for most of its time and dissolve to the next one quickly: two views six
+        // degrees apart averaged half-and-half are a double image, so as little time as possible is
+        // spent there.
+        const raw = p - Math.floor(p);
+        const u = Math.min(1, Math.max(0, (raw - 0.3) / 0.4));
+        const f = u * u * (3 - 2 * u);
+        const a = st.imgs[i0];
+        const b = st.imgs[i1];
+        if (a && b && f > 0.03 && f < 0.97) {
+          // between two frames: both, in proportion ("lighter" adds, so the edges cross-fade too)
+          const key = `${i0}+${Math.round(f * 24)}`;
+          if (key !== st.drawn) {
+            ctx.clearRect(0, 0, cv.width, cv.height);
+            ctx.globalCompositeOperation = "source-over";
+            ctx.globalAlpha = 1 - f;
+            ctx.drawImage(a, 0, 0, cv.width, cv.height);
+            ctx.globalCompositeOperation = "lighter";
+            ctx.globalAlpha = f;
+            ctx.drawImage(b, 0, 0, cv.width, cv.height);
+            ctx.globalCompositeOperation = "source-over";
+            ctx.globalAlpha = 1;
+            st.drawn = key;
+            setPainted(true);
+          }
+        } else {
+          const idx = nearestLoaded(st.pos, st.imgs, spin.n);
+          const img = idx >= 0 ? st.imgs[idx] : null;
+          const key = `${idx}`;
+          if (img && key !== st.drawn) {
+            ctx.globalCompositeOperation = "source-over";
+            ctx.globalAlpha = 1;
+            ctx.clearRect(0, 0, cv.width, cv.height);
+            ctx.drawImage(img, 0, 0, cv.width, cv.height);
+            st.drawn = key;
+            setPainted(true);
+          }
         }
       }
-      // tell assistive tech where the turn came to rest — not sixty times a second on the way there
-      if (!st.dragging && !st.intro && Math.abs(st.vel) <= 0.0004 && st.angle !== st.shown) { st.shown = st.angle; setAngle(st.angle); }
+      // tell assistive tech where a turn made BY HAND came to rest — not the slow turn, and not sixty
+      // times a second on the way there
+      if (st.byHand && !st.dragging && !turning && Math.abs(st.vel) <= 0.0004) {
+        st.byHand = false;
+        const deg = Math.round(((((st.pos % spin.n) + spin.n) % spin.n) / spin.n) * 360) % 360;
+        if (deg !== st.shown) { st.shown = deg; setAngle(deg); }
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -104,8 +156,7 @@ export function SpinStage({ spin, name, label, hint, loadingLabel }: {
 
   const grab = () => {
     const st = s.current;
-    if (st.intro) { st.intro = null; }
-    st.introDone = true;
+    st.byHand = true;
     setTouched(true);
   };
   const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -133,6 +184,7 @@ export function SpinStage({ spin, name, label, hint, loadingLabel }: {
     if (!st.dragging) return;
     st.dragging = false;
     if (performance.now() - st.lastT > 90) st.vel = 0; // they stopped before letting go — no coasting
+    st.resumeAt = performance.now() + RESUME_MS;
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* already released */ }
   };
   const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -142,7 +194,9 @@ export function SpinStage({ spin, name, label, hint, loadingLabel }: {
     grab();
     const st = s.current;
     st.vel = 0;
-    st.pos += (e.key === "ArrowRight" ? 1 : -1) * spin.dir * Math.max(1, Math.round(spin.n / 24));
+    // whole frames, from a whole frame — a keyboard step should land on a sharp picture
+    st.pos = Math.round(st.pos) + (e.key === "ArrowRight" ? 1 : -1) * spin.dir * Math.max(1, Math.round(spin.n / 24));
+    st.resumeAt = performance.now() + RESUME_MS * 2;
   };
 
   const loading = count < spin.n;

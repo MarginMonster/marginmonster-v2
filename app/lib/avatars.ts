@@ -6,10 +6,15 @@
 
 import RAW from "./avatars-data.json";
 import LEDGER from "./voice-design-ledger.json";
+import { STOCK_CHARACTERS } from "./stock-characters";
 
 export type Gender = "f" | "m";
 export type AgeBand = "young" | "mid" | "mature"; // ~20s / 30s-40s / 50s+
 export type Energy = "hype" | "warm" | "calm";
+/** What sort of character a cast member is. The cast was all people until 2026-11; the Presenters
+ *  section is now the home of EVERY kind of character — cartoon characters for the kids formats,
+ *  monsters for the horror ones — so nothing may assume a member of the cast is a human being. */
+export type CharacterKind = "person" | "cartoon" | "monster";
 
 export type Avatar = {
   id: string;
@@ -30,6 +35,12 @@ export type Avatar = {
    *  ordinary human hands on the product, because nothing ever said his skin
    *  continues past his chin. Blank for the human cast. */
   continuity?: string;
+  /** Blank = a person. See CharacterKind. */
+  kind?: CharacterKind;
+  /** How this character SOUNDS, in words ("a hollow, echoing whisper") — for the engines that perform
+   *  a voice from a description (the film models speak their own audio). A stock voice id can only
+   *  pick one of a handful of ordinary human voices; a monster or a cartoon pup needs more range. */
+  voiceStyle?: string;
 };
 
 /* Derive persona traits from the desc + vibe (the cast is authored with clear
@@ -138,10 +149,13 @@ export function privateCastFor(...identities: (string | null | undefined)[]): Av
     .map(({ owners: _owners, ...a }) => a);
 }
 
-/* Lookups include the private cast — generation pipelines resolve by id
- * after the picker has already enforced visibility. */
+// The stock characters (cartoon characters, monsters) live in their own file — see there.
+export { STOCK_CHARACTERS };
+
+/* Lookups include the private cast and the stock characters — generation pipelines
+ * resolve by id after the picker has already enforced visibility. */
 export const AVATAR_BY_ID: Record<string, Avatar> = Object.fromEntries(
-  [...AVATARS, ...PRIVATE_AVATARS.map(({ owners: _owners, ...a }) => a)].map((a) => [a.id, a])
+  [...AVATARS, ...PRIVATE_AVATARS.map(({ owners: _owners, ...a }) => a), ...STOCK_CHARACTERS].map((a) => [a.id, a])
 );
 
 /* Wardrobe — 4 outfit variants per avatar. `desc` feeds both the portrait
