@@ -6234,6 +6234,9 @@ ${VOICE_UI_CSS}
 .ws-cta b{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:16px;line-height:1}
 .ws-cta-c{position:relative;display:inline-block;margin-top:7px;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 11px}
 .ws-cta-d{display:block;font-size:11.5px;line-height:1.35;color:var(--ink2,#5A665E);padding:0 3px;text-align:center}
+/* in a narrow column (the desktop rail) the price wraps: make it a tidy two-line label, not a squashed pill */
+.ws-cta2{container-type:inline-size}
+@container (max-width:250px){.ws-cta{padding:11px 5px;min-height:78px}.ws-cta b{font-size:15px}.ws-cta-c{border-radius:9px;line-height:1.2;padding:3px 8px;font-size:10.5px}.ws-cta-d{font-size:10.5px}}
 @media(max-width:380px){.ws-cta2{gap:8px}.ws-cta{padding:11px 6px}.ws-cta-c{font-size:10.5px;padding:2px 8px}.ws-cta-d{font-size:11px}}
 /* Format category chips — turn a 40-tile wall into a short, browsable menu.
    Wrap on desktop (all chips fit); scroll sideways on a phone so they never
