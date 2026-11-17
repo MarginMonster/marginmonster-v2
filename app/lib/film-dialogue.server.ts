@@ -448,7 +448,7 @@ export async function generateTestMovie(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string; ckMasters?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string; ckMasters?: string; ckCastLooks?: string };
   /** Per-scene APPROVED storyboard frames (relative /renders URLs), index-aligned
    *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
    *  that scene so it lands exactly as the merchant staged it. */
@@ -506,12 +506,38 @@ export async function generateTestMovie(opts: {
   const castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
   // The script writer invents a look for every name without seeing who the merchant cast. For a
   // character who HAS a cast photo that written look is wrong by construction, so it is kept out of
-  // every prompt: the photo is the look.
+  // every prompt: the photo is the look. What the photo actually shows is READ once per film, in words
+  // ("a girl of about ten with shoulder-length wavy dark-blonde hair, a grey shirt over a blue tee"),
+  // so that everything that works from a description — who is standing on which side, is the cast in
+  // the frame at all — works from a TRUE one.
+  const nameKey = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
+  const castLooks: Record<string, string> = {};
+  try { const r = resume.ckCastLooks ? JSON.parse(resume.ckCastLooks) : null; if (r && typeof r === "object") Object.assign(castLooks, r); } catch { /* ignore */ }
+  await Promise.all(castActors.filter((c) => !!c.faceUrl).map(async (c) => {
+    const k = nameKey(c.name);
+    const faceAbs = abs(c.faceUrl);
+    if (!k || !faceAbs || castLooks[k]) return;
+    try {
+      const { anthropicVision } = await import("./anthropic.server");
+      const v = await anthropicVision(
+        "Describe this person's visible look in ONE short phrase for a film's casting sheet: apparent age range, hair colour, hair length and style, any facial hair or glasses, and what they are wearing. Begin with 'a' or 'an'. No name, no guess at who they are, nothing about the photo itself. Example: a man in his forties with short grey hair and a trimmed beard, wearing a navy blazer over a white shirt",
+        [faceAbs], { maxTokens: 90 }
+      );
+      const look = (v || "").replace(/\s+/g, " ").replace(/^["'\s]+|["'.\s]+$/g, "").slice(0, 220);
+      if (look.length > 12) castLooks[k] = look;
+    } catch (e) {
+      console.error(`[testmovie] couldn't read ${c.name}'s cast photo — their side is assumed, not checked: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+    }
+  }));
+  if (Object.keys(castLooks).length) {
+    await ckpt({ ckCastLooks: JSON.stringify(castLooks) });
+    console.log(`[testmovie] cast looks — ${Object.entries(castLooks).map(([k, v]) => `${k}: ${v}`).join(" | ").slice(0, 400)}`);
+  }
   const actorOfEntry = (entry: string) => {
     const head = ((entry || "").split(/[,:—–]/)[0] || "").toLowerCase().split(/\s+/).filter(Boolean);
-    return castActors.find((c) => !!c.faceUrl && head.includes((c.name || "").toLowerCase().split(/[\s,]/)[0]));
+    return castActors.find((c) => !!c.faceUrl && head.includes(nameKey(c.name)));
   };
-  const castNote = (entry: string) => { const a = actorOfEntry(entry); return a ? `${a.name.trim()} (exactly as in their reference photo)` : entry; };
+  const castNote = (entry: string) => { const a = actorOfEntry(entry); return a ? `${a.name.trim()}, ${castLooks[nameKey(a.name)] || "exactly as in their reference photo"}` : entry; };
   const castBible = treatment.cast && treatment.cast.length ? `The recurring cast (keep them identical in every shot): ${treatment.cast.map(castNote).join("; ")}.` : "";
 
   // 2) CAST REFERENCE still (photoreal) — establishes the characters' look; the
@@ -538,7 +564,13 @@ export async function generateTestMovie(opts: {
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
   const isTwoHander = allSpeakers.length === 2;
   const [spkA, spkB] = allSpeakers;
-  const bibleFor = (n: string) => (treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || `${n}, a person`;
+  // A character's look in words: the TRUE one read off their cast photo when they have one, else the
+  // script writer's. (The writer's look for a cast presenter is an invention and matches nobody.)
+  const bibleFor = (n: string) => {
+    const actor = castActors.find((c) => !!c.faceUrl && firstName(c.name) === firstName(n));
+    if (actor) return `${actor.name.trim()}, ${castLooks[firstName(actor.name)] || "the person in their reference photo"}`;
+    return (treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || `${n}, a person`;
+  };
   const faceFor = (n: string) => { const k = firstName(n); return abs(castActors.find((c) => { const nm = (c.name || "").toLowerCase(); return firstName(c.name) === k || (!!k && nm.split(/[\s,]/).includes(k)); })?.faceUrl); };
   const cleanSetting = (s: string) => (((s || "").split(/[.;]/)[0] || "")
     .replace(/\b(two[- ]?shot|wide shot|close[- ]?up|medium shot|over[- ]the[- ]shoulder|establishing|shot)\b/gi, "")
@@ -551,19 +583,24 @@ export async function generateTestMovie(opts: {
   // camera angle in the SAME location re-frames that master (a cinematic cut that holds room
   // + faces). A flat treatment (no scene.where) collapses to a SINGLE location = the
   // validated seamless behaviour, byte-for-byte. Two-handers only; else the chain fallback.
-  /** Is the cast member in `faceAbs` recognisably one of the two people in the two-shot? Judged on what
-   *  a viewer would notice — hair colour / length / style and apparent age — not on pose or lighting.
-   *  Can't be checked (no key, a blip) → true: the check may ask for a redraw, never block a film. */
-  const castIsIn = async (twoShotAbs: string | undefined, faceAbs: string): Promise<boolean> => {
-    if (!twoShotAbs) return true;
+  /** Is a cast member who looks like `look` (read off their photo) one of the two people in the
+   *  two-shot? Judged on what a viewer would notice — hair colour / length / style and clothing — not on
+   *  pose or lighting. One image, one question: the form of check this pipeline's other gates use.
+   *  Can't be checked (no description, no key, a blip) → true: the check may ask for a redraw, never
+   *  block a film. */
+  const castIsIn = async (twoShotAbs: string | undefined, look: string): Promise<boolean> => {
+    if (!twoShotAbs || !look) return true;
     try {
       const { anthropicVision } = await import("./anthropic.server");
       const v = await anthropicVision(
-        "The FIRST image is a two-shot of two people. The SECOND image is a reference photo of a cast member. Does ONE of the two people in the first image read as that same character — the same hair colour, the same hair length and style, and a matching apparent age and build? Ignore pose, camera angle, lighting, expression and background. Answer YES or NO and nothing else.",
-        [twoShotAbs, faceAbs], { maxTokens: 4, model: "claude-sonnet-5" }
+        `Two people are in this image. Is ONE of them ${look}? Judge by hair colour, hair length and style, and clothing; ignore pose, camera angle, lighting and expression. Answer YES or NO and nothing else.`,
+        [twoShotAbs], { maxTokens: 4 }
       );
       return !/^\s*no\b/i.test(v || "");
-    } catch { return true; }
+    } catch (e) {
+      console.error(`[testmovie] cast check skipped: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+      return true;
+    }
   };
   type Master = { url: string; aOnLeft: boolean; a: string; b: string };
   const masters: Record<string, Master> = {};
@@ -582,12 +619,12 @@ export async function generateTestMovie(opts: {
     let url: string | null = null;
     let castOk = true;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const tryUrl = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), setting: cleanSetting(where), style: twoStyle, aspect });
+      const tryUrl = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, setting: cleanSetting(where), style: twoStyle, aspect });
       if (!tryUrl) continue;
       url = tryUrl;
       castOk = true;
-      for (const face of [faceA, faceB]) {
-        if (face && !(await castIsIn(abs(tryUrl), face))) castOk = false;
+      for (const sp of [spkA, spkB]) {
+        if (faceFor(sp) && !(await castIsIn(abs(tryUrl), castLooks[firstName(sp)] || ""))) castOk = false;
       }
       if (castOk) break;
       console.log(`[testmovie] master two-shot try ${attempt + 1}: a cast member doesn't match their photo — redrawing`);
@@ -600,23 +637,26 @@ export async function generateTestMovie(opts: {
     try {
       const { anthropicVision } = await import("./anthropic.server");
       const twoAbs = abs(url);
-      if (twoAbs && (faceA || faceB)) {
-        // A cast photo says who is who far better than a written description (which, for a cast
-        // presenter, is the script writer's invention and matches nobody in the frame).
-        const v = await anthropicVision(
-          "The FIRST image is a two-shot of two people. The SECOND image is a reference photo of ONE of them — match by hair colour, hair length and style, apparent age and clothing. Is that person on the LEFT or the RIGHT side of the first image? Answer LEFT or RIGHT and nothing else.",
-          [twoAbs, (faceA || faceB) as string], { maxTokens: 4, model: "claude-sonnet-5" }
-        );
-        const left = /left/i.test(v || ""), right = /right/i.test(v || "");
-        if (left !== right) aOnLeft = faceA ? left : right;
-      } else if (twoAbs) {
-        const v = await anthropicVision(
+      if (twoAbs) {
+        // One image, two descriptions, "A or B" — the question every approved film was built on. What
+        // changed is the descriptions: bibleFor() now gives a cast presenter's REAL look (read off their
+        // photo) instead of the script writer's invention, which matched nobody in the frame.
+        // (A two-image "which side is the person in this photo on" version shipped for one deploy and
+        // silently answered nothing: the film then put each line in the wrong mouth.)
+        const ask = () => anthropicVision(
           `Two people are together in this image. Person A is: ${bibleFor(spkA)}. Person B is: ${bibleFor(spkB)}. Which of them is on the LEFT side of the frame? Answer with a single letter, A or B, and nothing else.`,
           [twoAbs], { maxTokens: 4 }
         );
-        if ((v || "").trim().toUpperCase().startsWith("B")) aOnLeft = false;
+        let ans = ((await ask()) || "").trim().toUpperCase();
+        // anything but a clear A or B is asked once more — guessing here is a coin flip on the whole film
+        if (!/^[AB]/.test(ans)) ans = ((await ask()) || "").trim().toUpperCase();
+        if (ans.startsWith("B")) aOnLeft = false;
+        console.log(`[testmovie] sides — ${spkA} is on the ${aOnLeft ? "LEFT" : "RIGHT"}, ${spkB} on the ${aOnLeft ? "RIGHT" : "LEFT"} (answer "${ans.slice(0, 12)}"${ans.startsWith("A") || ans.startsWith("B") ? "" : " — NOT a clear answer, left assumed"})`);
       }
-    } catch { /* keep default A-on-left */ }
+    } catch (e) {
+      // keep default A-on-left — but say so: a wrong side puts every line in the wrong mouth
+      console.error(`[testmovie] couldn't tell who is on which side (assuming ${spkA} is on the left): ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+    }
     masters[locKey] = { url, aOnLeft, a: firstName(spkA), b: firstName(spkB) };
     await ckpt({ ckMasters: JSON.stringify(masters) });
     return masters[locKey];

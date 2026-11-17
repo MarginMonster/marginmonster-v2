@@ -842,6 +842,7 @@ async function runJob(
               ckLastStill: payload.ckLastStill as string | undefined,
               ckPanels: payload.ckPanels as string | undefined,
               ckMasters: payload.ckMasters as string | undefined,
+              ckCastLooks: payload.ckCastLooks as string | undefined,
             },
             // Per-scene storyboard frames the merchant generated + approved in the UI.
             approvedFrames: payload.approvedFrames as (string | null)[] | undefined,

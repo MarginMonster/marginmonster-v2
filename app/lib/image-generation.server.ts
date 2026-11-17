@@ -4783,7 +4783,7 @@ export async function renderTwoPanelShotReverse(opts: { roomRefUrl?: string | nu
 // cut" continuity bug). With both people always fully framed there is nothing to
 // mismatch, and because both faces are born from one generation the two people + the
 // room are identical by construction and never drift. Seeded 9:16 to match the clips.
-export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; nameA?: string; nameB?: string; setting: string; style?: "photoreal" | "cartoon"; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
+export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; nameA?: string; nameB?: string; lookA?: string; lookB?: string; setting: string; style?: "photoreal" | "cartoon"; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN) return null;
     const refs = [opts.roomRefUrl, opts.faceA, opts.faceB].filter((u): u is string => !!u).slice(0, 3);
@@ -4801,11 +4801,13 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
     const refNo = (u?: string | null) => (u ? refs.indexOf(u) + 1 : 0);
     const nameA = (opts.nameA || "").trim().slice(0, 40) || "the first person";
     const nameB = (opts.nameB || "").trim().slice(0, 40) || "the second person";
-    const who = (name: string, face: string | null | undefined, desc: string) => (face && refNo(face)
-      ? `${name} — EXACTLY the person in reference image ${refNo(face)}: the same face, the same hair (colour, length and style), skin tone, apparent age and build, wearing what they wear in that photo`
+    // `look` = what that photo shows, in words (read off the photo, not written by the script writer):
+    // said alongside the photo it makes the text and the image agree instead of compete.
+    const who = (name: string, face: string | null | undefined, desc: string, look?: string) => (face && refNo(face)
+      ? `${name} — EXACTLY the person in reference image ${refNo(face)}${look ? ` (${look.trim().slice(0, 200)})` : ""}: the same face, the same hair (colour, length and style), skin tone, apparent age and build, wearing what they wear in that photo`
       : desc);
-    const personA = who(nameA, opts.faceA, descA);
-    const personB = who(nameB, opts.faceB, descB);
+    const personA = who(nameA, opts.faceA, descA, opts.lookA);
+    const personB = who(nameB, opts.faceB, descB, opts.lookB);
     const bound = [
       opts.faceA && refNo(opts.faceA) ? `reference image ${refNo(opts.faceA)} is ${nameA} and ONLY ${nameA}` : "",
       opts.faceB && refNo(opts.faceB) ? `reference image ${refNo(opts.faceB)} is ${nameB} and ONLY ${nameB}` : "",
