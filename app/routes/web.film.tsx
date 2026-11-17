@@ -21,7 +21,7 @@ import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { estimateFilmTokens, FILM_PER_SCENE, FILM_BASE } from "../lib/plan-config";
 import { externalOrigin } from "../lib/origin.server";
-import { AVATAR_VOICES, AVATAR_VOICE_IDS } from "../lib/avatar-voice-catalog";
+import { AVATAR_VOICES, AVATAR_VOICE_IDS, autoCastVoices } from "../lib/avatar-voice-catalog";
 import { LIVE_AVATARS, avatarImg } from "../lib/avatars";
 
 export const meta: MetaFunction = () => [{ title: "Film Studio · EASYMODE" }];
@@ -533,7 +533,9 @@ type Scene = { visual: string; caption?: string; where?: string; shot?: string; 
 type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: string[] };
 // A locked "actor": one character's reusable face + pinned voice, cast once and
 // reused as the identity reference for every shot they appear in.
-type CastMember = { name: string; desc: string; faceUrl: string | null; voiceId: string | null };
+// autoVoice = the voice was picked FOR this character (not by the merchant, not brought by a presenter),
+// so it may still be re-picked when the rest of the cast changes.
+type CastMember = { name: string; desc: string; faceUrl: string | null; voiceId: string | null; autoVoice?: boolean };
 
 // Backdrop presets — like the avatar-AI backdrop picker: tap one to set a scene's
 // location (the `where`), or type your own. `key` is matched against the where text
@@ -630,17 +632,19 @@ export default function FilmStudio() {
     // Two characters of the same gender get DIFFERENT voices. They both used to get that gender's first
     // voice — harmless while the voice was only a hint, but with the voices locked it made two people in
     // one scene speak with a single voice.
-    const used: Record<"f" | "m", number> = { f: 0, m: 0 };
-    return (Array.isArray(tr2.cast) ? tr2.cast : []).slice(0, 8).map((entry) => {
-      const name = speakName(entry) || entry.slice(0, 40);
-      const low = entry.toLowerCase();
-      const fem = /\b(she|her|hers|woman|women|girl|mother|mom|mum|daughter|sister|lady|businesswoman|actress|queen|wife|aunt|grandmother|female)\b/.test(low);
-      const masc = /\b(he|him|his|man|men|boy|father|dad|son|brother|guy|businessman|actor|king|husband|uncle|grandfather|male)\b/.test(low);
-      const g = fem && !masc ? "f" : masc && !fem ? "m" : null;
-      const pool = g ? d.voices.filter((x) => x.gender === g) : [];
-      const v = g && pool.length ? pool[used[g]++ % pool.length] : null;
-      return { name, desc: entry.trim().slice(0, 300), faceUrl: null, voiceId: v ? v.id : null };
-    });
+    // …and the pick now reads the character's AGE as well as gender (a child gets the young voice, an
+    // elder the mature one) — see autoCastVoices.
+    const entries = (Array.isArray(tr2.cast) ? tr2.cast : []).slice(0, 8);
+    const picks = autoCastVoices(entries.map((entry) => ({ desc: entry, voiceId: null, auto: true })));
+    return entries.map((entry, k) => ({
+      name: speakName(entry) || entry.slice(0, 40), desc: entry.trim().slice(0, 300), faceUrl: null,
+      voiceId: picks[k], autoVoice: true,
+    }));
+  };
+  /** Re-pick the voices that were chosen FOR characters, around the ones that were chosen BY someone. */
+  const rebalanceVoices = (list: CastMember[]): CastMember[] => {
+    const picks = autoCastVoices(list.map((c) => ({ desc: c.desc, voiceId: c.voiceId, auto: !!c.autoVoice })));
+    return list.map((c, k) => (c.autoVoice ? { ...c, voiceId: picks[k] } : c));
   };
 
   const [template, setTemplate] = useState(d.templates[0]?.key || "musicvideo");
@@ -1434,14 +1438,16 @@ export default function FilmStudio() {
     setCast((prev) => prev.map((c, j) => (j === i ? { ...c, faceUrl: u || null } : c)));
   };
   const setCastVoice = (i: number, voiceId: string) => {
-    setCast((prev) => prev.map((c, j) => (j === i ? { ...c, voiceId: voiceId || null } : c)));
+    setCast((prev) => rebalanceVoices(prev.map((c, j) => (j === i ? { ...c, voiceId: voiceId || null, autoVoice: false } : c))));
   };
   // Casting one of YOUR PRESENTERS brings their voice with them — only the face used to come across, so
   // a presenter you'd given a voice (or your own voice) showed up in the film sounding like someone else.
   const castPresenter = (i: number, r: { img: string; voiceId?: string | null }) => {
     const u = (r.img || "").trim();
     if (u !== "" && !/^(https?:\/\/|\/)/.test(u)) return;
-    setCast((prev) => prev.map((c, j) => (j === i ? { ...c, faceUrl: u || null, ...(r.voiceId ? { voiceId: r.voiceId } : {}) } : c)));
+    // …and the others' automatic voices are re-picked around it, so the presenter's voice isn't also
+    // on someone else in the scene.
+    setCast((prev) => rebalanceVoices(prev.map((c, j) => (j === i ? { ...c, faceUrl: u || null, ...(r.voiceId ? { voiceId: r.voiceId, autoVoice: false } : {}) } : c))));
   };
   // "Lock these voices" (dialogue films): each character speaks in exactly the voice picked for them.
   // Off by default — the video model voices the lines itself — and it switches itself ON the moment a

@@ -162,7 +162,7 @@ const FORMATS: [string, string][] = [["motivational", "Motivational"], ["facts",
 // the ▶ plays the SAME pre-rendered /voice-samples/*.mp3 the pipeline actually uses
 // (free, instant). Keep in sync if the server map changes.
 const VOICES: [string, string, string][] = [
-  ["f-warm", "Female · calm", "English_FriendlyPerson"],
+  ["f-warm", "Female · calm", "English_CalmWoman"],
   ["f-hype", "Female · hype", "English_ConfidentWoman"],
   ["m-warm", "Male · calm", "English_Trustworth_Man"],
   ["m-hype", "Male · hype", "English_magnetic_voiced_man"],

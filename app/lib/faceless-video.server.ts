@@ -37,7 +37,7 @@ const WHISPERX_VERSION = "655845d6190ef70573c669245f245892cd039df4b880a1e3a65852
 // No-avatar voice picker over the verified MiniMax speech-02 pool (see ugc VOICES).
 const VOICE_MAP: Record<string, string> = {
   "f-hype": "English_ConfidentWoman",
-  "f-warm": "English_FriendlyPerson",
+  "f-warm": "English_CalmWoman", // was English_FriendlyPerson — a man's voice (see avatar-voice-catalog.ts)
   "m-hype": "English_magnetic_voiced_man",
   "m-warm": "English_Trustworth_Man",
 };

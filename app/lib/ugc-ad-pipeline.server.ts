@@ -354,7 +354,6 @@ const VOICES: VoiceTag[] = [
   { id: "English_Soft-spokenGirl", gender: "f", age: "young", energy: "calm" },
   { id: "English_Whispering_girl", gender: "f", age: "young", energy: "calm" },
   { id: "English_ConfidentWoman", gender: "f", age: "mid", energy: "hype" },
-  { id: "English_FriendlyPerson", gender: "f", age: "mid", energy: "warm" },
   { id: "English_captivating_female1", gender: "f", age: "mid", energy: "warm" },
   { id: "English_CalmWoman", gender: "f", age: "mid", energy: "calm" },
   { id: "English_SereneWoman", gender: "f", age: "mid", energy: "calm" },
@@ -366,6 +365,7 @@ const VOICES: VoiceTag[] = [
   { id: "English_Aussie_Bloke", gender: "m", age: "mid", energy: "hype" },
   { id: "English_magnetic_voiced_man", gender: "m", age: "mid", energy: "hype" },
   { id: "English_Trustworth_Man", gender: "m", age: "mid", energy: "warm" },
+  { id: "English_FriendlyPerson", gender: "m", age: "mid", energy: "warm" }, // a man's voice (measured) — it was listed under female
   { id: "English_Diligent_Man", gender: "m", age: "mid", energy: "warm" },
   { id: "English_PatientMan", gender: "m", age: "mid", energy: "calm" },
   { id: "English_Gentle-voiced_man", gender: "m", age: "mid", energy: "calm" },
@@ -407,7 +407,7 @@ export function pickVoice(avatar: { id: string; gender: "f" | "m"; ageBand: "you
     return { id: v.id, score: ageScore + energyScore + jitter };
   });
   scored.sort((a, b) => b.score - a.score);
-  return scored[0]?.id || "English_FriendlyPerson";
+  return scored[0]?.id || (avatar.gender === "f" ? "English_CalmWoman" : "English_Trustworth_Man");
 }
 
 /** Hand-cast voice signatures — every presenter gets their OWN (voice, pitch,
