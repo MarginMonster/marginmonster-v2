@@ -2041,6 +2041,54 @@ function VoiceMaker({ gender, onMade, onCancel }: { gender: "f" | "m"; onMade: (
   );
 }
 
+/* Narrator for a faceless video: the four stock reads, then the shop's OWN recorded voices (sent as
+ * "own:<voiceId>" and checked against the shop's voices again when the video renders). The same
+ * "Use my own voice" recorder the presenter picker has opens right here, so narrating in your own
+ * voice never means making a presenter first. */
+const NARRATOR_VOICES: [string, string][] = [["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]];
+
+function NarratorPills({ value, onChange, myVoices, canMake }: { value: string; onChange: (k: string) => void; myVoices: MyVoiceT[]; canMake: boolean }) {
+  const t = useT();
+  const revalidator = useRevalidator();
+  const [mine, setMine] = useState<MyVoiceT[]>(myVoices);
+  const mineKey = myVoices.map((v) => v.id).join(",");
+  useEffect(() => { setMine(myVoices); }, [mineKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [makerOpen, setMakerOpen] = useState(false);
+  // a voice removed elsewhere (Manage presenters) must not stay picked here
+  const gone = value.startsWith("own:") && !mine.some((v) => `own:${v.voiceId}` === value);
+  useEffect(() => { if (gone) onChange("f-warm"); }, [gone]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <>
+      <div className="ws-fmtcats ws-pills2" role="radiogroup" aria-label={t("Voice")}>
+        {NARRATOR_VOICES.map(([k, label]) => (
+          <button type="button" key={k} role="radio" aria-checked={value === k}
+            className={`ws-fmtcat${value === k ? " sel" : ""}`} onClick={() => onChange(k)}>{t(label)}</button>
+        ))}
+        {mine.map((v) => {
+          const k = `own:${v.voiceId}`;
+          return (
+            <button type="button" key={k} role="radio" aria-checked={value === k} title={t("Your own voice")}
+              className={`ws-fmtcat own${value === k ? " sel" : ""}`} onClick={() => onChange(k)}>
+              <Ico n="mic" size={12} /><span>{v.label}</span>
+            </button>
+          );
+        })}
+        {canMake && !makerOpen && (
+          <button type="button" className="ws-fmtcat own add" onClick={() => setMakerOpen(true)}>
+            <Ico n="mic" size={12} /><span>{t("Use my own voice")}</span>
+          </button>
+        )}
+      </div>
+      {canMake && makerOpen && (
+        <div className="ws-narr-maker">
+          <VoiceMaker gender={value.startsWith("m-") ? "m" : "f"} onCancel={() => setMakerOpen(false)}
+            onMade={(v) => { setMine((m) => [v, ...m.filter((x) => x.id !== v.id)]); onChange(`own:${v.voiceId}`); setMakerOpen(false); revalidator.revalidate(); }} />
+        </div>
+      )}
+    </>
+  );
+}
+
 type MyPresenter = { id: string; name: string; img: string; voiceId: string; gender: string };
 
 /* Manage YOUR custom presenters — the home the quota error always promised
@@ -5521,12 +5569,7 @@ export default function WebStudio() {
                       ))}
                     </div>
                     <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Voice")}</div>
-                    <div className="ws-fmtcats ws-pills2" role="radiogroup" aria-label={t("Voice")}>
-                      {([["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]] as [string, string][]).map(([k, label]) => (
-                        <button type="button" key={k} role="radio" aria-checked={voiceKey === k}
-                          className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(label)}</button>
-                      ))}
-                    </div>
+                    <NarratorPills value={voiceKey} onChange={setVoiceKey} myVoices={d.myVoices} canMake={d.canMakeVoice} />
                     <input type="hidden" name="facelessFormat" value={facelessFormat} />
                     <input type="hidden" name="voiceKey" value={voiceKey} />
                     <p className="ws-note" style={{ marginTop: 12 }}>{t("We write the script, voice it, generate the b-roll + word-synced captions and set it to music — a ready-to-post 9:16 video. Takes a few minutes.")}</p>
@@ -5747,12 +5790,7 @@ export default function WebStudio() {
                   ))}
                 </div>
                 <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Voice")}</div>
-                <div className="ws-fmtcats ws-pills2" role="radiogroup" aria-label={t("Voice")}>
-                  {([["f-warm", "Female · calm"], ["f-hype", "Female · hype"], ["m-warm", "Male · calm"], ["m-hype", "Male · hype"]] as [string, string][]).map(([k, label]) => (
-                    <button type="button" key={k} role="radio" aria-checked={voiceKey === k}
-                      className={`ws-fmtcat${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(label)}</button>
-                  ))}
-                </div>
+                <NarratorPills value={voiceKey} onChange={setVoiceKey} myVoices={d.myVoices} canMake={d.canMakeVoice} />
                 {/* Faceless quality (Pro/Ultra) moved OUT to the two generate buttons below. */}
                 <input type="hidden" name="facelessFormat" value={facelessFormat} />
                 <input type="hidden" name="voiceKey" value={voiceKey} />
@@ -6456,6 +6494,11 @@ const WS_STYLE = `
 .ws-fmtcat.sel{border-color:var(--green2);box-shadow:0 0 0 1px var(--green2);background:#F0FAF4;color:var(--ink,#14201A)}
 .ws-fmtcats.ws-pills2{display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow:visible}
 .ws-pills2 .ws-fmtcat{width:100%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:9px 12px}
+.ws-fmtcat.own{display:inline-flex;align-items:center;justify-content:center;gap:5px}
+.ws-fmtcat.own svg{flex:0 0 auto}
+.ws-fmtcat.own span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ws-fmtcat.own.add{border-style:dashed;color:var(--green,#0C7A46)}
+.ws-narr-maker{margin-top:10px}
 .ws-fmthint{margin:-4px 0 10px;font-size:12.5px;color:var(--ink2,#4A554E)}
 .ws-fmtsel{display:flex;align-items:center;gap:8px;margin:0 0 11px;font-size:12.5px;color:var(--ink2,#4A554E)}
 .ws-fmtsel b{color:var(--green);font-size:12.5px}

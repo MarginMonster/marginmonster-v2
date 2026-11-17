@@ -70,6 +70,20 @@ export async function resolveVoiceChoice(shopId: string, id: string | null | und
   return DEFAULT_AVATAR_VOICE[gender];
 }
 
+/** The narrator pickers (faceless videos, channels) carry one of the shop's own voices as
+ *  "own:<voiceId>" next to the four stock keys. Returns the voice id when it is STILL one of this
+ *  shop's ready voices — checked at render, because a channel keeps posting long after the voice was
+ *  picked — else null, and the caller falls back to a stock narrator. */
+export const OWN_VOICE_KEY = "own:";
+export async function ownNarratorVoice(shopId: string, voiceKey: string | null | undefined): Promise<string | null> {
+  const key = (voiceKey || "").trim();
+  if (!key.startsWith(OWN_VOICE_KEY)) return null;
+  const want = key.slice(OWN_VOICE_KEY.length);
+  if (!want) return null;
+  const mine = await db.voiceClone.findFirst({ where: { shopId, voiceId: want, status: "ready" }, select: { voiceId: true } });
+  return mine?.voiceId || null;
+}
+
 /** Poll target for the picker while a clone is being made. Shop-scoped. */
 export async function voiceCloneState(shopId: string, id: string): Promise<VoiceCloneState | null> {
   const r = await db.voiceClone.findFirst({ where: { id, shopId } });
@@ -174,8 +188,9 @@ export async function startVoiceClone(opts: {
   return { id: row.id, seconds: Math.round(sample.seconds) };
 }
 
-/** Remove one of the shop's voices: the row, its files, and any presenter still using it goes back to
- *  the stock default for its gender (so nothing is left pointing at a voice that no longer exists). */
+/** Remove one of the shop's voices: the row, its files, and any presenter or channel still using it
+ *  goes back to the stock default for its gender (so nothing is left pointing at a voice that no
+ *  longer exists). */
 export async function deleteVoiceClone(shopId: string, id: string): Promise<boolean> {
   const row = await db.voiceClone.findFirst({ where: { id, shopId } });
   if (!row) return false;
@@ -184,6 +199,11 @@ export async function deleteVoiceClone(shopId: string, id: string): Promise<bool
     for (const u of users) {
       await db.customAvatar.update({ where: { id: u.id }, data: { voiceId: DEFAULT_AVATAR_VOICE[u.gender === "f" ? "f" : "m"] } });
     }
+    // a channel narrated by this voice goes back to the stock narrator of the same gender
+    await db.creatorSeries.updateMany({
+      where: { shopId, voiceKey: `${OWN_VOICE_KEY}${row.voiceId}` },
+      data: { voiceKey: row.gender === "f" ? "f-warm" : "m-warm" },
+    });
   }
   for (const f of [row.sampleFile, row.previewFile]) {
     if (f) { try { fs.rmSync(path.join(RENDERS(), f), { force: true }); } catch { /* cache file — non-fatal */ } }

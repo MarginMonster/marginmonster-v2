@@ -31,6 +31,8 @@ import {
   assertPlayableVideo,
 } from "./ugc-ad-pipeline.server";
 import { OUTFITS, type Avatar } from "./avatars";
+import { isPersonalVoice } from "./avatar-voice-catalog";
+import { ensureVoiceModel, coverSongInVoice, matchLoudness } from "./singing-voice.server";
 import {
   CARTOON_RECIPES,
   checkpointUrlAlive,
@@ -378,6 +380,36 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     songUrl = sung.url;
     engine = sung.engine;
     await ckpt({ ckSongUrl: songUrl, ckEngine: engine });
+  }
+
+  // OWN VOICE — a singer who speaks with the merchant's OWN cloned voice sings the anthem in it too. The
+  // song is kept and its lead vocal re-voiced (the same step the Music Video uses), BEFORE the lip-sync
+  // so the mouth follows the voice people will hear. Guarded: any hiccup keeps the song as it was sung.
+  // The re-voiced track lives on our own /renders, so unlike a provider link it doesn't expire on a retry.
+  const ownVoice = singer && singer.voiceId && isPersonalVoice(singer.voiceId) ? singer.voiceId : "";
+  const inOwnVoice = async (url: string): Promise<string> => {
+    if (!ownVoice) return url;
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    const ref = path.join(os.tmpdir(), `anthem-ref-${crypto.randomBytes(6).toString("hex")}.mp3`);
+    try {
+      const model = await ensureVoiceModel(ownVoice, base);
+      const covered = await coverSongInVoice(url, model.url);
+      await download(url, ref);
+      const leveled = await matchLoudness(covered, ref);
+      const name = path.basename(leveled);
+      try { await mirrorRender(name, fs.readFileSync(leveled)); } catch { /* non-fatal */ }
+      console.log(`[anthem] sung in ${singer?.id}'s own voice`);
+      return `${base}/renders/${name}`;
+    } catch (e) {
+      console.error(`[anthem] own-voice step failed, keeping the song as sung: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+      return url;
+    } finally {
+      try { fs.rmSync(ref, { force: true }); } catch { /* temp file */ }
+    }
+  };
+  if (ownVoice && (ck as Record<string, unknown>).ckSongVoiced !== songUrl) {
+    const voiced = await inOwnVoice(songUrl);
+    if (voiced !== songUrl) { songUrl = voiced; await ckpt({ ckSongUrl: songUrl, ckSongVoiced: songUrl }); }
   }
 
   // 3) VISUAL — the cast singer LIPSYNCS the anthem on camera (photoreal, or
@@ -733,9 +765,9 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
       const resung = await singJingle(lyrics, singer?.gender, {
         save: (id, eng) => ckpt({ ckMusicId: id, ckMusicEngine: eng }),
       }, params.jingleStyle);
-      songUrl = resung.url;
+      songUrl = await inOwnVoice(resung.url); // a re-sung anthem keeps the singer's own voice too
       engine = resung.engine;
-      await ckpt({ ckSongUrl: songUrl, ckEngine: engine });
+      await ckpt({ ckSongUrl: songUrl, ckEngine: engine, ckSongVoiced: ownVoice ? songUrl : "" });
       await download(songUrl, rawSongPath);
     }
 

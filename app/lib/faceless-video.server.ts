@@ -17,6 +17,7 @@ import { brollStill } from "./image-generation.server";
 import { musicBedToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
+import { ownNarratorVoice } from "./voice-clone.server";
 
 // Truncate on a sentence boundary so a hard char-cap never feeds the writer a
 // dangling half-spec ("…holds up to 2L and is made from"). Falls back to the
@@ -308,7 +309,10 @@ export async function generateFacelessVideo(opts: {
     await ckpt({ ckScript: JSON.stringify(script) });
   }
   const fullScript = script.beats.map((b) => b.line).join(" ");
-  const voiceId = VOICE_MAP[opts.voiceKey || ""] || VOICE_MAP[`${script.voiceGender || "f"}-warm`] || VOICE_MAP["f-warm"];
+  // The merchant's own recorded voice ("own:<voiceId>") narrates while it is still one of the shop's
+  // voices; a voice removed since quietly falls back to a stock narrator, so a channel keeps posting.
+  const ownVoice = await ownNarratorVoice(opts.shopId, opts.voiceKey);
+  const voiceId = ownVoice || VOICE_MAP[opts.voiceKey || ""] || VOICE_MAP[`${script.voiceGender || "f"}-warm`] || VOICE_MAP["f-warm"];
 
   // 2) VOICEOVER — one MiniMax read (turbo fallback). Persist to a public
   //    /renders mp3 so WhisperX can fetch it and it survives a restart.

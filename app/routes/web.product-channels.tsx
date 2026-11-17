@@ -15,6 +15,7 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { xpForSpend } from "../lib/achievements";
 import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
+import { shopVoiceClones } from "../lib/voice-clone.server";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
@@ -68,6 +69,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     facelessCost: TOKEN_COST.faceless,
     canUse, providerOn, linked, productCount, series,
     cadences: Object.entries(CADENCE).map(([key, v]) => ({ key, label: v.label, perWeek: v.perWeek })),
+    // the shop's own recorded voices — offered as narrators next to the stock four
+    myVoices: (await shopVoiceClones(shop.id)).map((v) => ({ id: v.id, voiceId: v.voiceId, label: v.label })),
   });
 };
 
@@ -154,7 +157,7 @@ function relTime(iso: string | null, t: (s: string, p?: Record<string, string | 
 type Series = ReturnType<typeof useLoaderData<typeof loader>>["series"][number];
 
 export default function ProductChannels() {
-  const { tokens, facelessCost, canUse, linked, productCount, series, cadences } = useLoaderData<typeof loader>();
+  const { tokens, facelessCost, canUse, linked, productCount, series, cadences, myVoices } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as { error?: string } | undefined;
   const nav = useNavigation();
   const t = useT();
@@ -201,7 +204,7 @@ export default function ProductChannels() {
       )}
 
       {canUse && productCount > 0 && showForm && (
-        <SetupForm linked={linked} tokens={tokens} facelessCost={facelessCost} productCount={productCount} cadences={cadences} existingNames={series.map((s) => s.name)} error={actionData?.error} creating={creating} onCancel={series.length ? () => setShowForm(false) : undefined} />
+        <SetupForm linked={linked} tokens={tokens} facelessCost={facelessCost} productCount={productCount} cadences={cadences} myVoices={myVoices} existingNames={series.map((s) => s.name)} error={actionData?.error} creating={creating} onCancel={series.length ? () => setShowForm(false) : undefined} />
       )}
 
       {series.length > 0 && (
@@ -215,9 +218,10 @@ export default function ProductChannels() {
   );
 }
 
-function SetupForm({ linked, tokens, facelessCost, productCount, cadences, existingNames, error, creating, onCancel }: {
+function SetupForm({ linked, tokens, facelessCost, productCount, cadences, myVoices, existingNames, error, creating, onCancel }: {
   linked: string[]; tokens: number; facelessCost: number; productCount: number;
   cadences: { key: string; label: string; perWeek: number }[];
+  myVoices: { id: string; voiceId: string; label: string }[];
   existingNames: string[];
   error?: string; creating: boolean; onCancel?: () => void;
 }) {
@@ -270,7 +274,14 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, exist
         </div>
         <div>
           <label className="pc-lbl">{t("Voice")}</label>
-          <div className="pc-pills2">{VOICES.map(([k, l]) => <button type="button" key={k} className={`pc-pill${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(l)}</button>)}</div>
+          <div className="pc-pills2">
+            {VOICES.map(([k, l]) => <button type="button" key={k} className={`pc-pill${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)}>{t(l)}</button>)}
+            {/* the shop's own recorded voices ("own:<voiceId>" — re-checked when each video renders) */}
+            {myVoices.map((v) => {
+              const k = `own:${v.voiceId}`;
+              return <button type="button" key={k} className={`pc-pill own${voiceKey === k ? " sel" : ""}`} onClick={() => setVoiceKey(k)} title={t("Your own voice")}><Ico n="mic" size={12} /> {v.label}</button>;
+            })}
+          </div>
         </div>
       </div>
 
@@ -400,6 +411,7 @@ const PC_CSS = `
 .pc-pill{font:inherit;font-weight:700;font-size:12.5px;color:var(--ink2);background:#fff;border:1px solid var(--l);border-radius:12px;padding:10px 8px;cursor:pointer;text-align:center;transition:all .12s;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pc-pill:hover{border-color:#9CCBB1;transform:translateY(-1px);box-shadow:var(--sh-sm);}
 .pc-pill.sel{background:#EAF6EF;border-color:var(--g);color:var(--ink);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.pc-pill.own svg{vertical-align:-2px;margin-right:2px;}
 .pc-cads{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
 .pc-cad{font:inherit;display:flex;flex-direction:column;gap:3px;align-items:center;background:#fff;border:1px solid var(--l);border-radius:14px;padding:13px 8px;cursor:pointer;transition:all .12s;}
 .pc-cad b{font-size:14px;color:var(--ink);}.pc-cad span{font-size:11.5px;color:var(--ink3);font-weight:600;}

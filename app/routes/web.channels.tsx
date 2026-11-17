@@ -14,6 +14,7 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { xpForSpend } from "../lib/achievements";
 import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
+import { shopVoiceClones } from "../lib/voice-clone.server";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
@@ -75,6 +76,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     linked,
     series,
     cadences: Object.entries(CADENCE).map(([key, v]) => ({ key, label: v.label, perWeek: v.perWeek })),
+    // the shop's own recorded voices — offered as narrators next to the stock four
+    myVoices: (await shopVoiceClones(shop.id)).map((v) => ({ id: v.id, voiceId: v.voiceId, label: v.label, preview: v.preview })),
   });
 };
 
@@ -181,7 +184,7 @@ type Series = ReturnType<typeof useLoaderData<typeof loader>>["series"][number];
 
 export default function Channels() {
   const t = useT();
-  const { name, tokens, facelessCost, canUse, linked, series, cadences } = useLoaderData<typeof loader>();
+  const { name, tokens, facelessCost, canUse, linked, series, cadences, myVoices } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as { error?: string } | undefined;
   const nav = useNavigation();
   const creating = nav.state !== "idle" && nav.formData?.get("intent") === "create";
@@ -219,7 +222,7 @@ export default function Channels() {
       )}
 
       {canUse && showForm && (
-        <SetupForm linked={linked} tokens={tokens} facelessCost={facelessCost} cadences={cadences} error={actionData?.error} creating={creating} onCancel={series.length ? () => setShowForm(false) : undefined} />
+        <SetupForm linked={linked} tokens={tokens} facelessCost={facelessCost} cadences={cadences} myVoices={myVoices} error={actionData?.error} creating={creating} onCancel={series.length ? () => setShowForm(false) : undefined} />
       )}
 
       {series.length > 0 && (
@@ -235,9 +238,10 @@ export default function Channels() {
   );
 }
 
-function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, onCancel }: {
+function SetupForm({ linked, tokens, facelessCost, cadences, myVoices, error, creating, onCancel }: {
   linked: string[]; tokens: number; facelessCost: number;
   cadences: { key: string; label: string; perWeek: number }[];
+  myVoices: OwnVoice[];
   error?: string; creating: boolean; onCancel?: () => void;
 }) {
   const t = useT();
@@ -297,7 +301,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
         </div>
         <div>
           <label className="ch-lbl">{t("Voice")}</label>
-          <VoicePick value={voiceKey} onChange={setVoiceKey} />
+          <VoicePick value={voiceKey} onChange={setVoiceKey} myVoices={myVoices} />
         </div>
       </div>
 
@@ -355,7 +359,9 @@ function SetupForm({ linked, tokens, facelessCost, cadences, error, creating, on
  * so a merchant HEARS the voice before committing to weeks of it — this is a
  * channel that'll speak in this voice on repeat. Same /voice-samples/*.mp3 the
  * faceless pipeline uses; one <audio>, one playing at a time. */
-function VoicePick({ value, onChange }: { value: string; onChange: (k: string) => void }) {
+type OwnVoice = { id: string; voiceId: string; label: string; preview: string };
+
+function VoicePick({ value, onChange, myVoices }: { value: string; onChange: (k: string) => void; myVoices: OwnVoice[] }) {
   const t = useT();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
@@ -366,11 +372,11 @@ function VoicePick({ value, onChange }: { value: string; onChange: (k: string) =
     a.addEventListener("ended", done);
     return () => a.removeEventListener("ended", done);
   }, []);
-  const play = (sampleId: string, key: string) => {
+  const play = (src: string, key: string) => {
     const a = audioRef.current;
     if (!a) return;
     if (playing === key) { a.pause(); setPlaying(null); return; }
-    a.src = `/voice-samples/${sampleId}.mp3`;
+    a.src = src;
     a.currentTime = 0;
     a.play().then(() => setPlaying(key)).catch(() => setPlaying(null));
   };
@@ -382,10 +388,27 @@ function VoicePick({ value, onChange }: { value: string; onChange: (k: string) =
         return (
           <div key={k} className={`ch-voice${sel ? " sel" : ""}`}>
             <button type="button" className="ch-voice-pick" onClick={() => onChange(k)} aria-pressed={sel}>{t(l)}</button>
-            <button type="button" className={`ch-voice-play${on ? " on" : ""}`} onClick={() => play(sampleId, k)}
+            <button type="button" className={`ch-voice-play${on ? " on" : ""}`} onClick={() => play(`/voice-samples/${sampleId}.mp3`, k)}
               aria-label={on ? t("Stop preview") : t("Preview the {label} voice", { label: t(l) })}>
               {on ? <Ico n="sound" size={15} /> : <Ico n="play" size={15} />}
             </button>
+          </div>
+        );
+      })}
+      {/* the shop's own recorded voices ("own:<voiceId>" — re-checked when each video renders) */}
+      {myVoices.map((v) => {
+        const k = `own:${v.voiceId}`;
+        const sel = value === k;
+        const on = playing === k;
+        return (
+          <div key={k} className={`ch-voice${sel ? " sel" : ""}`}>
+            <button type="button" className="ch-voice-pick own" onClick={() => onChange(k)} aria-pressed={sel} title={t("Your own voice")}><Ico n="mic" size={12} /> {v.label}</button>
+            {v.preview ? (
+              <button type="button" className={`ch-voice-play${on ? " on" : ""}`} onClick={() => play(v.preview, k)}
+                aria-label={on ? t("Stop preview") : t("Preview the {label} voice", { label: v.label })}>
+                {on ? <Ico n="sound" size={15} /> : <Ico n="play" size={15} />}
+              </button>
+            ) : null}
           </div>
         );
       })}
@@ -536,6 +559,7 @@ const CH_CSS = `
 .ch-voice.sel{background:#EAF6EF;border-color:var(--g);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
 .ch-voice-pick{flex:1;min-width:0;font:inherit;font-weight:700;font-size:12.5px;color:var(--ink2);background:none;border:0;padding:10px 8px;cursor:pointer;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ch-voice.sel .ch-voice-pick{color:var(--ink);}
+.ch-voice-pick.own svg{vertical-align:-2px;margin-right:2px;}
 .ch-voice-play{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:34px;border:0;border-left:1px solid var(--l);background:none;color:var(--ink3);cursor:pointer;transition:all .12s;}
 .ch-voice-play:hover{color:var(--g);background:#F7FBF8;}
 .ch-voice-play.on{color:var(--g);background:#EAF6EF;}

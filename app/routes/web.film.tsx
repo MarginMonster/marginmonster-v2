@@ -784,10 +784,12 @@ export default function FilmStudio() {
   useEffect(() => { const g = genderOfImg(artistPick); if (g) setArtistGender(g); }, [artistPick]); // eslint-disable-line react-hooks/exhaustive-deps
   const castGenders = castExtra.map((m) => ({ name: (m.name || "").trim(), gender: genderOfImg(m.img) })).filter((c): c is { name: string; gender: "m" | "f" } => !!c.name && !!c.gender);
   // Avatar-voice singing (opt-in beta): only when the picked artist is a CUSTOM avatar that has its own
-  // MiniMax voice — then the song can be sung in THAT voice (seed-vc). Library avatars keep the sung voice.
+  // MiniMax voice — then the song can be sung in THAT voice (the re-voice step). Library avatars keep the sung voice.
   const artistVoiceId = (d.roster.find((r) => r.img === artistPick) as { voiceId?: string | null } | undefined)?.voiceId || "";
   const [singVoice, setSingVoice] = useState(false);
-  useEffect(() => { if (!artistVoiceId) setSingVoice(false); }, [artistVoiceId]);
+  // A star on YOUR OWN voice sings in it by default (that's what the voice is for); a star on a stock
+  // voice starts with the toggle off, as before. Either way it stays a switch the merchant can flip.
+  useEffect(() => { setSingVoice(!!artistVoiceId && d.myVoices.some((v) => v.voiceId === artistVoiceId)); }, [artistVoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
   // Product (skit): title + photo + (catalog) description.
