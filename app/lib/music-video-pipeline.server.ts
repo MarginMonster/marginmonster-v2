@@ -28,7 +28,7 @@ import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pi
 import { falVideoSubmit, falVideoPoll, falLipSync, falEnabled } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, PROPS, type FilmTreatment } from "./film-engine.server";
-import { singToDisk } from "./music-generation.server";
+import { singToDisk, synthVoiceSampleToDisk, seedVcConvert } from "./music-generation.server";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -107,6 +107,35 @@ async function sliceAudio(songPath: string, start: number, len: number): Promise
   await runFfmpeg(["-y", "-ss", start.toFixed(2), "-t", len.toFixed(2), "-i", songPath, "-c:a", "libmp3lame", "-q:a", "4", out]);
   if (!fs.existsSync(out)) throw new Error("[musicvideo] segment slice failed");
   return out;
+}
+
+/** Force the song to EXACTLY `targetSec` seconds so the finished video lands on the length the merchant
+ *  PICKED (and is billed for). minimax returns an unpredictable "full song" length, so without this the
+ *  video came out however long the song happened to be — the tester's "I set 20s, got 40s" bug. Long song
+ *  → trim to target with a soft tail fade; short song → loop it past the target, then trim + fade (covers
+ *  the 2-minute tier when minimax sings short). Fails OPEN (returns the original path) so a fit hiccup
+ *  never kills a render. */
+async function fitSongToLength(songPath: string, targetSec: number): Promise<string> {
+  try {
+    const cur = ffprobeDuration(songPath);
+    if (!(targetSec > 0) || !(cur > 0.5)) return songPath;
+    if (Math.abs(cur - targetSec) < 0.25) return songPath; // already on target within a frame
+    const out = path.join(RENDERS(), `mvfit-${Date.now()}-${rid()}.mp3`);
+    const fade = Math.min(1.2, targetSec * 0.15);            // soft ending so the cut never clips mid-note
+    const fadeStart = Math.max(0, targetSec - fade).toFixed(2);
+    const afade = `afade=t=out:st=${fadeStart}:d=${fade.toFixed(2)}`;
+    if (cur >= targetSec) {
+      const r = await runFfmpeg(["-y", "-t", targetSec.toFixed(2), "-i", songPath,
+        "-af", afade, "-c:a", "libmp3lame", "-q:a", "4", out]);
+      if (r.status === 0 && fs.existsSync(out) && ffprobeDuration(out) > 1) return out;
+    } else {
+      const loops = Math.ceil(targetSec / cur); // -stream_loop N repeats the input N extra times
+      const r = await runFfmpeg(["-y", "-stream_loop", String(loops), "-i", songPath,
+        "-t", targetSec.toFixed(2), "-af", afade, "-c:a", "libmp3lame", "-q:a", "4", out]);
+      if (r.status === 0 && fs.existsSync(out) && ffprobeDuration(out) > 1) return out;
+    }
+  } catch { /* fall through to the original song */ }
+  return songPath;
 }
 
 /** Fallback clip when OmniHuman can't sing a scene: the still image held for the
@@ -507,6 +536,11 @@ export async function generateMusicVideo(opts: {
   /** The lead's gender (drives the SUNG voice) + known co-star genders (drive casting). */
   artistGender?: "m" | "f";
   castGenders?: Array<{ name: string; gender: "m" | "f" }>;
+  /** Avatar-voice singing (opt-in beta): re-timbre the song to the picked avatar's OWN voice via seed-vc.
+   *  `artistVoiceId` is that avatar's MiniMax voice id (custom avatars only). Guarded — falls back to the
+   *  normal sung voice on any failure. */
+  singVoice?: boolean;
+  artistVoiceId?: string;
   /** Output shape — "9:16" (default), "16:9" or "1:1". */
   aspect?: string;
   /** Owner PREVIEWED + approved these exact per-scene stills — render them, don't re-seed (no surprise).
@@ -577,13 +611,36 @@ export async function generateMusicVideo(opts: {
     songPath = await singToDisk(lyrics, `${voiceSex}${g.song}. ${treatment.musicMood || ""}`.slice(0, 300));
     await ckpt({ ckSong: songPath });
   }
+  // EXACT LENGTH — the finished video must be the length the merchant PICKED (and was billed for), not
+  // whatever minimax happened to sing (the "set 20s, got 40s" bug). Every scene is one 10-second Kling
+  // clip, so the target is N×10s; fit the song to exactly that grid (trim-long / loop-short), cached so a
+  // resume doesn't re-fit. BYO songs are fit too, so an uploaded track also honours the picked length.
+  const D = 10; // Kling image-to-video only accepts "5" or "10"; we standardise on 10s/scene for exact math
+  const targetLen = N * D;
+  if (resume.ckSongFit && fs.existsSync(resume.ckSongFit)) songPath = resume.ckSongFit;
+  else { songPath = await fitSongToLength(songPath, targetLen); await ckpt({ ckSongFit: songPath }); }
+  // AVATAR VOICE (opt-in beta) — make the avatar actually SING in their OWN voice: synth a reference in
+  // the avatar's real voice, then run seed-vc singing-voice conversion over the (already length-fit) song.
+  // Fully guarded — any hiccup keeps the normal sung track, so a render never fails over this. Cached so a
+  // resume doesn't redo the slow conversion.
+  let voiceMatched = false;
+  if (opts.singVoice && opts.artistVoiceId) {
+    if (resume.ckSongVoice && fs.existsSync(resume.ckSongVoice)) { songPath = resume.ckSongVoice; voiceMatched = true; }
+    else {
+      try {
+        const samplePath = await synthVoiceSampleToDisk(opts.artistVoiceId);
+        const sampleUrl = await hostRender(base, samplePath);
+        const songUrl = await hostRender(base, songPath);
+        songPath = await seedVcConvert(songUrl, sampleUrl);
+        voiceMatched = true;
+        await ckpt({ ckSongVoice: songPath });
+      } catch (e) {
+        console.error(`[musicvideo] avatar-voice conversion failed, keeping the normal sung voice: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+      }
+    }
+  }
   const songDur = ffprobeDuration(songPath);
   if (!(songDur > 3)) throw new Error("[musicvideo] song came back too short");
-  // Each scene is ONE i2v clip; slice the song into contiguous D-second segments so the clips
-  // concat into a continuous song. CRITICAL: Kling image-to-video only accepts a duration of
-  // "5" or "10" — any other value (e.g. 6 or 7 from a short song / N) silently 422s and the whole
-  // scene falls back to a STILL (the "no video, just still images" bug). So D snaps to 5 or 10.
-  const D = (songDur / N) >= 7.5 ? 10 : 5;
 
   // 3+4) SCENE SEEDS — the storyboard stills. If the owner PREVIEWED + approved them, render those
   //      EXACT stills (what you saw IS what renders — no surprise); otherwise build them now via the
@@ -681,7 +738,7 @@ export async function generateMusicVideo(opts: {
       metaJson: JSON.stringify({
         kind: "musicvideo", template: "musicvideo", section: opts.section || "creator",
         genre, genreLabel: g.label, scenes: good.length, lipSynced: good.length, aspect: (opts.aspect === "16:9" || opts.aspect === "1:1") ? opts.aspect : "9:16",
-        songSeconds: Math.round(songDur), seconds: Math.round(finalDur), engine: "kling2.5+synclipsync",
+        targetSeconds: targetLen, songSeconds: Math.round(songDur), seconds: Math.round(finalDur), voiceMatched, engine: "kling2.5+synclipsync",
       }),
     },
   });

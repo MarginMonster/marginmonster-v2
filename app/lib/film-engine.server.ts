@@ -143,9 +143,12 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     brief: "a full ~2-minute MUSIC VIDEO — ONE artist actually sings a real genre song on camera (lip-synced) across several vivid settings, like a real DaBaby / Oliver Tree video",
     sceneHint: "a vivid, cinematic, stylized music-video scene full of energy and mood, featuring the SAME artist performing to camera — dynamic lighting, strong composition; NO on-screen text, logos or real named people",
     musicHint: "a catchy full-length genre song with clear sung/rapped vocals, real music-video energy",
-    defaultScenes: 5,
-    minScenes: 3,
-    maxScenes: 8,
+    // EXACT-LENGTH tiers: each scene renders as one 10-second sung clip, so the merchant picks a length
+    // (10s→2:00) and N = seconds/10. min 1 (a 10s single-shot video is valid), max 12 (the full 2-minute
+    // song spec). The song is fit to EXACTLY N×10s so the finished video lands on the picked length.
+    defaultScenes: 3,
+    minScenes: 1,
+    maxScenes: 12,
     captions: false, // a performance music video, not a lyric/karaoke video
     castBible: true,
     referenceSeed: true,

@@ -812,10 +812,14 @@ async function runJob(
             castGenders: Array.isArray(payload.filmCastGenders) ? (payload.filmCastGenders as Array<{ name: string; gender: "m" | "f" }>) : undefined,
             aspect: (payload.filmAspect as string | undefined) || undefined, // output shape 9:16 / 16:9 / 1:1
             approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined, // storyboard-approved stills
+            singVoice: payload.filmSingVoice === true, // opt-in: sing in the avatar's OWN voice (seed-vc)
+            artistVoiceId: typeof payload.filmArtistVoiceId === "string" ? payload.filmArtistVoiceId : undefined,
 
             resume: {
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
               ckSong: payload.ckSong as string | undefined,
+              ckSongFit: payload.ckSongFit as string | undefined,
+              ckSongVoice: payload.ckSongVoice as string | undefined,
               ckArtist: payload.ckArtist as string | undefined,
             },
           });

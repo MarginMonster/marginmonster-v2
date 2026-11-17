@@ -65,8 +65,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { customCastFor } = await import("../lib/custom-avatars.server");
   const custom = await customCastFor(shop.id);
   const roster = [
-    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m" })),
-    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender })),
+    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null })),
+    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: null })),
   ].slice(0, 60);
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
@@ -458,6 +458,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (genCastRaw) { try { const a = JSON.parse(genCastRaw); if (Array.isArray(a)) genCastNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     const genArtistGender = parseArtistGender(form.get("filmArtistGender") as string);
     const genCastGenders = parseCastGenders(form.get("filmCastGenders") as string);
+    // Avatar-voice singing (opt-in beta) — sing the song in the picked avatar's OWN voice (seed-vc).
+    const genSingVoice = ((form.get("filmSingVoice") as string) || "") === "1";
+    const genArtistVoiceId = ((form.get("filmArtistVoiceId") as string) || "").trim().slice(0, 80);
     // Pre-approved per-scene STILLS (Music Video storyboard) — render these EXACT images, no re-seed.
     // Keep positions (a null = that scene seeds fresh), so the index stays aligned with the scenes.
     let approvedSceneImgs: (string | null)[] | undefined;
@@ -485,6 +488,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(genCastNames?.length ? { filmCastNames: genCastNames } : {}),
         ...(genArtistGender ? { filmArtistGender: genArtistGender } : {}),
         ...(genCastGenders?.length ? { filmCastGenders: genCastGenders } : {}),
+        ...(genSingVoice && genArtistVoiceId ? { filmSingVoice: true, filmArtistVoiceId: genArtistVoiceId } : {}),
         ...(filmProps?.length ? { filmProps } : {}),
         ...(filmCustomProps.length ? { filmCustomProps } : {}),
         ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
@@ -529,6 +533,15 @@ const FILM_BACKDROPS: Array<{ key: string; label: string; where: string }> = [
   { key: "park", label: "Park", where: "a quiet park bench at dusk, soft golden light" },
   { key: "warehouse", label: "Warehouse", where: "a cold empty warehouse at night, shafts of moonlight" },
 ];
+
+// EXACT-length tiers for the Music Video. Each scene is one 10-second sung Kling clip, so N = seconds/10
+// and the engine fits the song to EXACTLY N×10s — the picked length is what renders (and what's billed).
+const MV_LENGTHS: Array<{ sec: number; n: number }> = [
+  { sec: 10, n: 1 }, { sec: 20, n: 2 }, { sec: 30, n: 3 },
+  { sec: 60, n: 6 }, { sec: 90, n: 9 }, { sec: 120, n: 12 },
+];
+/** "30s" / "1:30" / "2:00" from a scene count (10s each). */
+const mvLenLabel = (n: number) => { const s = n * 10; return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 
 export default function FilmStudio() {
   const d = useLoaderData<typeof loader>();
@@ -748,6 +761,11 @@ export default function FilmStudio() {
   const [artistGender, setArtistGender] = useState<"m" | "f">("m");
   useEffect(() => { const g = genderOfImg(artistPick); if (g) setArtistGender(g); }, [artistPick]); // eslint-disable-line react-hooks/exhaustive-deps
   const castGenders = castExtra.map((m) => ({ name: (m.name || "").trim(), gender: genderOfImg(m.img) })).filter((c): c is { name: string; gender: "m" | "f" } => !!c.name && !!c.gender);
+  // Avatar-voice singing (opt-in beta): only when the picked artist is a CUSTOM avatar that has its own
+  // MiniMax voice — then the song can be sung in THAT voice (seed-vc). Library avatars keep the sung voice.
+  const artistVoiceId = (d.roster.find((r) => r.img === artistPick) as { voiceId?: string | null } | undefined)?.voiceId || "";
+  const [singVoice, setSingVoice] = useState(false);
+  useEffect(() => { if (!artistVoiceId) setSingVoice(false); }, [artistVoiceId]);
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
   // Product (skit): title + photo + (catalog) description.
@@ -1554,7 +1572,7 @@ export default function FilmStudio() {
             <button type="button" style={{ order: 9 }} className={`mm-card mm-card-wide${openCard === "length" ? " on" : ""}${stepsDone.length ? " done" : ""}`} onClick={() => tapCard("length")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.length ? <Ico n="check" size={13} /> : 5}</span>
               <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
-              <span className="mm-val">{t("{n} scenes · ~{sec}s · director's shots", { n: scenes, sec: scenes * 10 })}</span>
+              <span className="mm-val">{t("{len} · {n} sung shots", { len: mvLenLabel(scenes), n: scenes })}</span>
             </button>
 
             {/* Each step's options live INSIDE the grid, full-width right after its own card (via CSS
@@ -1736,16 +1754,16 @@ export default function FilmStudio() {
           {openCard === "length" && (
             <div className="mm-opts mm-opts-grid" style={{ order: 10 }}>
               <div className="mm-opts-h">{t("How long?")}</div>
-              <div className="mm-opts-sub">{t("Each scene is a sung shot — roughly 10 seconds — so the video length grows with the scene count.")}</div>
-              <div className="fs-len" style={{ marginTop: 4 }}>
-                <span>{t("Scenes")}</span>
-                <div className="fs-stepper">
-                  <button type="button" onClick={() => bump(-1)} disabled={scenes <= tmpl.minScenes} aria-label={t("Fewer scenes")}>−</button>
-                  <b>{scenes}</b>
-                  <button type="button" onClick={() => bump(1)} disabled={scenes >= tmpl.maxScenes} aria-label={t("More scenes")}>+</button>
-                </div>
-                <span className="fs-len-note">{t("≈ {sec}s · {n} AI clips", { sec: scenes * 10, n: scenes })}</span>
+              <div className="mm-opts-sub">{t("Pick the exact length — your video comes out this long, to the second. Each 10 seconds is one sung shot.")}</div>
+              <div className="mm-lenpick" role="group" aria-label={t("Video length")}>
+                {MV_LENGTHS.filter((L) => L.n >= tmpl.minScenes && L.n <= tmpl.maxScenes).map((L) => (
+                  <button type="button" key={L.sec} className={`mm-lenopt${scenes === L.n ? " on" : ""}`} aria-pressed={scenes === L.n} onClick={() => setScenes(L.n)}>
+                    <b>{mvLenLabel(L.n)}</b>
+                    <small>{t("{n} shots", { n: L.n })}</small>
+                  </button>
+                ))}
               </div>
+              <div className="mm-opts-sub mm-lentip">{t("Longer = more scenes to shoot, so it takes a bit longer to render (and will cost a little more once pricing's on).")}</div>
             </div>
           )}
           </div>{/* /mm-grid — cards + their inline option panels */}
@@ -1777,6 +1795,15 @@ export default function FilmStudio() {
                 <button type="button" className={`mm-aspect-opt${mvAspect === "1:1" ? " on" : ""}`} aria-pressed={mvAspect === "1:1"} onClick={() => setMvAspect("1:1")}>{t("Square")}<small>1:1</small></button>
               </div>
             </div>
+            {tmpl?.lipSyncSinger && artistPick && artistVoiceId && (
+              <label className="mm-voicetog">
+                <input type="checkbox" checked={singVoice} onChange={(e) => setSingVoice(e.target.checked)} />
+                <span className="mm-voicetog-txt">
+                  <b><Ico n="music" size={13} /> {t("Sing in {name}'s own voice", { name: artistName || t("your avatar") })} <span className="mm-beta">{t("beta")}</span></b>
+                  <small>{t("Use your avatar's real voice for the vocals instead of a generic singer. Adds a little render time.")}</small>
+                </span>
+              </label>
+            )}
             {makeBtn()}
             <Form method="post">
               <input type="hidden" name="intent" value="film" />
@@ -1794,6 +1821,8 @@ export default function FilmStudio() {
               {tmpl?.lipSyncSinger && <input type="hidden" name="filmArtistGender" value={artistGender} />}
               {tmpl?.lipSyncSinger && castGenders.length > 0 && <input type="hidden" name="filmCastGenders" value={JSON.stringify(castGenders)} />}
               {tmpl?.lipSyncSinger && <input type="hidden" name="filmAspect" value={mvAspect} />}
+              {tmpl?.lipSyncSinger && singVoice && artistVoiceId && <input type="hidden" name="filmSingVoice" value="1" />}
+              {tmpl?.lipSyncSinger && singVoice && artistVoiceId && <input type="hidden" name="filmArtistVoiceId" value={artistVoiceId} />}
               <input type="hidden" name="filmTopic" value={topic} />
               <input type="hidden" name="filmScenes" value={String(scenes)} />
               {(seeds?.treatment || treatment) && <input type="hidden" name="approvedTreatment" value={JSON.stringify(seeds?.treatment || treatment)} />}
@@ -2925,6 +2954,22 @@ const FS_STYLE = `
 .mm-aspect-opt small{font-size:9.5px;font-weight:700;color:var(--ink3,#9AA39B);}
 .mm-aspect-opt.on{border-color:var(--green,#0C7A46);background:#F0F8F3;color:var(--green,#0C7A46);box-shadow:0 0 0 1px var(--green,#0C7A46);}
 .mm-aspect-opt.on small{color:var(--green,#0C7A46);}
+.mm-lenpick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;}
+.mm-lenopt{display:flex;flex-direction:column;align-items:center;gap:2px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:12px;padding:12px 6px;cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s;}
+.mm-lenopt b{font-size:18px;font-weight:900;color:var(--ink,#14201A);font-variant-numeric:tabular-nums;}
+.mm-lenopt small{font-size:10.5px;font-weight:700;color:var(--ink3,#9AA39B);}
+.mm-lenopt.on{border-color:var(--green,#0C7A46);background:#F0F8F3;box-shadow:0 0 0 1px var(--green,#0C7A46);}
+.mm-lenopt.on b{color:var(--green,#0C7A46);}
+.mm-lenopt.on small{color:var(--green,#0C7A46);}
+.mm-lentip{font-size:11px;color:var(--ink3,#9AA39B);margin-top:2px;}
+@media(max-width:520px){.mm-lenpick{grid-template-columns:repeat(3,1fr);}}
+.mm-voicetog{display:flex;align-items:flex-start;gap:10px;border:1.5px solid var(--line,#E4DFCF);background:#FBFAF5;border-radius:12px;padding:11px 13px;cursor:pointer;margin-top:2px;}
+.mm-voicetog:has(input:checked){border-color:var(--green,#0C7A46);background:#F0F8F3;}
+.mm-voicetog input{margin-top:2px;width:17px;height:17px;accent-color:var(--green,#0C7A46);flex:none;cursor:pointer;}
+.mm-voicetog-txt{display:flex;flex-direction:column;gap:2px;}
+.mm-voicetog-txt b{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:800;color:var(--ink,#14201A);}
+.mm-voicetog-txt small{font-size:11px;color:var(--ink3,#9AA39B);line-height:1.35;}
+.mm-beta{font-size:9px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:var(--green,#0C7A46);background:#DEF0E6;border-radius:5px;padding:1px 5px;}
 .mm-makegen .mm-preview-btn{width:100%;justify-content:center;padding:13px 16px;font-size:14px;}
 .mm-makegen .mm-eta,.mm-makegen .mm-note{margin-top:0;}
 .mm-go{position:relative;overflow:hidden;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,#0C7A46,#15B165 55%,#1EA85C);color:#fff;border:0;border-radius:15px;padding:16px;font-family:Poppins,sans-serif;font-weight:800;font-size:16.5px;letter-spacing:-.01em;cursor:pointer;box-shadow:0 14px 30px -14px rgba(12,122,70,.7),inset 0 1px 0 rgba(255,255,255,.25);}
