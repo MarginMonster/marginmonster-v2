@@ -4,6 +4,7 @@ import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
+import { AVATAR_VOICES } from "../lib/avatar-voice-catalog";
 
 export const meta: MetaFunction = () => [{ title: "Your presenters · EASYMODE" }];
 
@@ -16,20 +17,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { account, shop } = await requireWebIdentity(request);
   const { customCastFor } = await import("../lib/custom-avatars.server");
   const custom = await customCastFor(shop.id);
+  // Each of YOUR presenters shows the voice it speaks with — a stock voice's name, or one of the shop's
+  // own cloned voices ("My voice"). Changing it happens in the Studio's Manage panel (linked below).
+  const { shopVoiceClones, canCloneVoice } = await import("../lib/voice-clone.server");
+  const myVoices = await shopVoiceClones(shop.id);
+  const voiceOf = (id?: string): { voice: string; own: boolean } => {
+    const mine = myVoices.find((v) => v.voiceId === id);
+    if (mine) return { voice: mine.label, own: true };
+    return { voice: AVATAR_VOICES.find((v) => v.id === id)?.label || "", own: false };
+  };
   const cast = [
-    ...custom.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true })),
-    ...[...privateCastFor(account.email, shop.id, shop.domain), ...LIVE_AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false })),
+    ...custom.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, ...voiceOf(c.voiceId) })),
+    ...[...privateCastFor(account.email, shop.id, shop.domain), ...LIVE_AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, voice: "", own: false })),
   ];
   const brandFaceId = shop.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
   // Brand Face leads the grid (your face, front and center), then everyone else.
   const bf = cast.find((c) => c.id === brandFaceId);
   const ordered = bf ? [bf, ...cast.filter((c) => c.id !== brandFaceId)] : cast;
   const forging = custom.filter((c) => c.status !== "ready").length;
-  return json({ cast: ordered, brandFaceId, forging });
+  const hasCustom = custom.some((c) => c.status === "ready");
+  return json({ cast: ordered, brandFaceId, forging, hasCustom, canMakeVoice: canCloneVoice(account, shop) });
 };
 
 export default function PresenterHub() {
-  const { cast, brandFaceId, forging } = useLoaderData<typeof loader>();
+  const { cast, brandFaceId, forging, hasCustom, canMakeVoice } = useLoaderData<typeof loader>();
   const t = useT();
   return (
     <div className="ph-wrap">
@@ -68,6 +79,18 @@ export default function PresenterHub() {
         </span>
         <span className="ph-filmcta-go"><Ico n="filmreel" size={14} /> {t("Open Movie Maker")}</span>
       </Link>
+      {/* Voices — one slim row, only once you have a presenter of your own. Opens the Studio's Manage panel
+          (the same voice picker used when you create one), so there is nothing new to learn. */}
+      {hasCustom && (
+        <Link to="/web/studio?do=video&manage=1" className="ph-voicecta">
+          <span className="ph-voicecta-ico" aria-hidden="true"><Ico n="mic" size={16} /></span>
+          <span className="ph-voicecta-txt">
+            <b>{t("Presenter voices")}</b>
+            <span>{canMakeVoice ? t("Change a presenter's voice — or record your own, and they talk and sing like you.") : t("Change the voice any of your presenters speaks with.")}</span>
+          </span>
+          <span className="ph-voicecta-go">{t("Manage")} <Ico n="arrow" size={12} /></span>
+        </Link>
+      )}
       {forging > 0 && (
         <p className="ph-forging"><Ico n="bolt" size={13} /> {t("{n} presenter(s) still forging — they'll appear below when ready.", { n: forging })}</p>
       )}
@@ -85,6 +108,7 @@ export default function PresenterHub() {
               {c.custom && !isBf && <span className="ph-yoursbadge">{t("Yours")}</span>}
               <span className="ph-face-img" style={{ backgroundImage: `url(${c.img})` }} role="img" aria-label={c.name} />
               <span className="ph-face-nm">{c.name}</span>
+              {c.custom && c.voice ? <span className={`ph-face-voice${c.own ? " own" : ""}`}><Ico n="mic" size={10} /> {c.own ? c.voice : t(c.voice)}</span> : null}
             </Link>
           );
         })}
@@ -117,6 +141,15 @@ const PH_STYLE = `
 .ph-forge-txt span{font-size:12.5px;opacity:.9;display:block;margin-top:2px;line-height:1.35;}
 .ph-forge-go{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;background:#FBF6E6;color:var(--green,#0C7A46);font-weight:800;font-size:13px;border-radius:999px;padding:10px 16px;white-space:nowrap;}
 .ph-forging{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2,#4A554E);margin:0 0 6px;}
+.ph-voicecta{display:flex;align-items:center;gap:12px;margin:0 0 8px;padding:11px 16px;border-radius:14px;background:var(--card,#FDFCF7);border:1.5px solid var(--line,#E4DFCF);text-decoration:none;transition:border-color .12s,box-shadow .12s;}
+.ph-voicecta:hover{border-color:var(--green,#0C7A46);box-shadow:0 6px 16px rgba(20,32,26,.08);}
+.ph-voicecta-ico{flex:0 0 auto;width:34px;height:34px;border-radius:50%;background:#EAF6EF;color:var(--green,#0C7A46);display:grid;place-items:center;}
+.ph-voicecta-txt{flex:1 1 auto;min-width:0;}
+.ph-voicecta-txt b{display:block;font-size:14px;font-weight:800;color:var(--ink,#14201A);}
+.ph-voicecta-txt span{display:block;font-size:12.5px;color:var(--ink2,#4A554E);line-height:1.35;margin-top:1px;}
+.ph-voicecta-go{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;font-size:13px;font-weight:800;color:var(--green,#0C7A46);white-space:nowrap;}
+.ph-face-voice{display:flex;align-items:center;justify-content:center;gap:3px;margin:-3px 0 7px;font-size:10.5px;font-weight:700;color:var(--ink2,#4A554E);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px;}
+.ph-face-voice.own{color:var(--green,#0C7A46);}
 .ph-castlbl{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-weight:800;font-size:14px;color:var(--ink,#14201A);margin:18px 0 12px;}
 .ph-castlbl span{display:inline-flex;align-items:center;gap:4px;font-weight:600;font-size:12px;color:var(--ink2,#4A554E);}
 .ph-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;}

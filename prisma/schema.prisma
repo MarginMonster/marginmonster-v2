@@ -159,6 +159,7 @@ model Shop {
   tokenPurchases     TokenPurchase[]
   presenterShots     PresenterShot[]
   customAvatars      CustomAvatar[]
+  voiceClones        VoiceClone[]
   /// The storefront this shop's catalogue was mirrored from (web accounts).
   storeUrl           String?
   catalog            CatalogProduct[]
@@ -275,6 +276,31 @@ model CustomAvatar {
   refFile   String? // uploaded reference image on the renders disk
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// "My own voice" — a voice cloned from a recording the merchant made and
+/// confirmed is theirs (or that they have permission to use). It belongs to the
+/// SHOP, not to one presenter: any of the shop's custom presenters can speak
+/// with it by setting CustomAvatar.voiceId to this row's voiceId, so the voice
+/// picker simply lists these next to the stock voices. Created in the
+/// background (status cloning → ready | failed) because the provider call can
+/// outlast a request.
+model VoiceClone {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  voiceId     String?  @unique // the MiniMax voice id speech is synthesized with; null until ready
+  label       String   @default("My voice")
+  gender      String   @default("m")
+  status      String   @default("cloning") // cloning | ready | failed
+  error       String?
+  sampleFile  String? // the cleaned recording on the renders disk (mp3)
+  previewFile String? // a short line spoken in the new voice (mp3) — the picker's ▶
+  consentAt   DateTime // when the merchant confirmed the voice is theirs / they have permission
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shopId])
 }
 
 model TokenPurchase {

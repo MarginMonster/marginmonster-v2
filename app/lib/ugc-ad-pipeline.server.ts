@@ -26,6 +26,7 @@ import { anthropicText } from "./anthropic.server";
 import { mirrorRender } from "./object-storage.server";
 import { falEnabled, falQueueHandleFor, falTts, pollAvatar, submitAvatar, FalRenderFailed } from "./fal-video.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
+import { isPersonalVoice } from "./avatar-voice-catalog";
 import { hasCJK, langDirective, voiceLangOpts } from "./content-lang";
 import { scriptTooShort, capScript, endStop } from "./script-length";
 import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
@@ -1168,6 +1169,20 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       });
       return await repPoll(ttsId, 3 * 60_000, "tts");
     } catch (e) {
+      // A PERSONAL voice — the merchant's own cloned "My voice" — is not substitutable
+      // either, for the same reason a designed voice isn't: a stranger's voice coming out
+      // of the merchant's own face is the one result worse than a failed take. Cloned
+      // voices speak on turbo too, so give the SAME voice one more go there; if it still
+      // can't speak, fail the take (the worker retries, and a terminal failure refunds).
+      if (isPersonalVoice(avatar.voiceId)) {
+        try {
+          const ttsId = await repCreate("minimax/speech-02-turbo", { text: script, voice_id: delivery.voice, ...voiceLangOpts(contentLang) });
+          return await repPoll(ttsId, 3 * 60_000, "tts");
+        } catch (e2) {
+          console.error(`[ugc:tts] REFUSING to substitute ${avatar.id}'s own voice: ${(e2 as Error).message}`);
+          throw new Error(`[ugc:tts] ${avatar.id}'s own voice could not speak and will not be substituted: ${(e2 as Error).message}`);
+        }
+      }
       // input-schema drift or hd outage must never kill a take — bare turbo read.
       // Use the SCORED STOCK voice, not delivery.voice: the commonest hd failure
       // is an unknown/unavailable voice_id, and re-sending the same id to turbo

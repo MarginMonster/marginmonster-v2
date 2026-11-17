@@ -38,6 +38,7 @@ import {
 } from "./ugc-ad-pipeline.server";
 import type { BrandProfile } from "@prisma/client";
 import { langDirective, voiceLangOpts } from "./content-lang";
+import { isPersonalVoice } from "./avatar-voice-catalog";
 import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
 import { scriptTooShort, capScript, endStop } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
@@ -929,6 +930,17 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   // 3) VOICE — moved AHEAD of the animation because the lipsync step needs
   // the audio to sync to. Style-cast narrator reads the script (cheap; regen
   // on dead URL).
+  // A presenter who speaks with their OWN cloned voice ("My voice") keeps it as a cartoon too — the
+  // merchant made a cartoon of THEMSELVES and expects to hear themselves. The style's narrator voice
+  // stays the default (and stays for presenters on a stock voice, exactly as before).
+  let cartoonVoice: string = recipe.voice;
+  if (params.avatarId) {
+    try {
+      const { resolvePresenter } = await import("./custom-avatars.server");
+      const own = (await resolvePresenter(params.shopId, params.avatarId, params.avatarVariant ?? 0)).avatar.voiceId;
+      if (own && isPersonalVoice(own)) cartoonVoice = own;
+    } catch { /* an unresolvable presenter is reported by the keyframe step, not here */ }
+  }
   let audioBuf: Buffer | null = null;
   if (resume.audioUrl) {
     try { audioBuf = await downloadBuffer(resume.audioUrl); } catch { audioBuf = null; }
@@ -941,7 +953,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
         priorId: ck.ckTtsId,
         create: () => repCreate("minimax/speech-02-hd", {
           text: script,
-          voice_id: recipe.voice,
+          voice_id: cartoonVoice,
           emotion: "happy",
           // see ugc — the voice must expect the language the script is in
           ...voiceLangOpts(contentLang),
@@ -952,7 +964,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       });
     } catch {
       audioUrl = await resumablePrediction({
-        create: () => repCreate("minimax/speech-02-turbo", { text: script, voice_id: recipe.voice }),
+        create: () => repCreate("minimax/speech-02-turbo", { text: script, voice_id: cartoonVoice }),
         save: (id) => ckpt({ ckTtsId: id }),
         maxMs: 3 * 60_000,
         stage: "cartoon-tts",
@@ -1151,7 +1163,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
           style: "CARTOON",
           cartoonStyle: recipe.name,
           engine: lipSynced ? "flux+omni-human" : "flux+kling",
-          voiceId: recipe.voice,
+          voiceId: cartoonVoice,
           videoUrl: `/renders/${fileName}`,
           keyframeUrl,
           prompt: script,

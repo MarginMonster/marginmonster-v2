@@ -56,6 +56,14 @@ export function safeVoiceId(id: string | null | undefined, gender: "f" | "m"): s
   return id && AVATAR_VOICE_IDS.has(id) ? id : DEFAULT_AVATAR_VOICE[gender];
 }
 
+/** True when a CUSTOM presenter's stored voice is somebody's OWN — a cloned "My voice" — rather than one
+ *  of the stock catalog voices above. Pass the presenter's `voiceId` field (only custom presenters have
+ *  one). Pipelines use it to REFUSE to substitute the voice: a stranger's voice in the merchant's own
+ *  mouth is worse than a failed, refunded render. Pure and dependency-free, so it is safe anywhere. */
+export function isPersonalVoice(voiceId: string | null | undefined): boolean {
+  return !!voiceId && !AVATAR_VOICE_IDS.has(voiceId) && !voiceId.startsWith("ttv-");
+}
+
 /** The phrase every preview sample speaks — kept short and upbeat so a merchant
  *  can judge tone in ~4 seconds. Also used by the sample generator. */
 export const VOICE_SAMPLE_TEXT = "Hey! Let me show you something I think you're really going to love.";
