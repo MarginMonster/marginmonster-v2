@@ -15,6 +15,21 @@ import type { Avatar } from "./avatars";
  * `continuity` is what a picture model must not "fix": a puppy does not wear trousers.
  *
  * In a file of its own, importing nothing but a type, so the tests can read it (avatars.ts imports JSON). */
+
+/** How each character's voice is PERFORMED — what the owner approved by ear on 2026-11-17 after
+ *  rejecting pitch-shifted stock voices outright. Engine: ElevenLabs v3 (Replicate `elevenlabs/v3`):
+ *  a named voice, acting directions as [tags] before/after the line, low stability = more expressive.
+ *  The approved clips are public/voice-samples/characters/<id>.mp3.
+ *  ⚠ Not wired into any pipeline yet — until it is, nothing in the app may claim a character
+ *  "speaks in" this voice. */
+export const CHARACTER_ACTING: Record<string, { voice: string; before: string; after?: string; stability: number; style: number; speed: number }> = {
+  pip: { voice: "Kuon", before: "[excited] [giggling]", stability: 0.3, style: 0.7, speed: 1.08 },
+  dot: { voice: "Kuon", before: "[childlike] [amazed] [giggles]", stability: 0.3, style: 0.8, speed: 1.0 },
+  coco: { voice: "Austin", before: "[sleepy] [slow drawl]", after: "[yawns]", stability: 0.35, style: 0.6, speed: 0.9 },
+  howl: { voice: "Reginald", before: "[snarling] [menacing]", after: "[growls]", stability: 0.25, style: 0.9, speed: 0.92 },
+  mary: { voice: "Hope", before: "[whispering] [sorrowful]", after: "[sighs]", stability: 0.3, style: 0.8, speed: 0.9 },
+  keeper: { voice: "Reginald", before: "[deep] [slow] [menacing whisper]", stability: 0.3, style: 0.8, speed: 0.85 },
+};
 export const STOCK_CHARACTERS: Avatar[] = [
   {
     id: "pip", name: "Pip", vibe: "Cartoon pup", kind: "cartoon",

@@ -12,6 +12,7 @@
  * from the static cast without a DB hit on the hot path.
  */
 
+import { charKindOf, characterContinuity } from "./character-prompts";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "../db.server";
@@ -33,13 +34,16 @@ const rendersDir = () => {
 type Row = {
   id: string; name: string; desc: string; gender: string; energy: string;
   voiceId: string | null; status: string; error: string | null; files: string;
+  kind?: string | null;
 };
 
 const toAvatar = (r: Row): Avatar => ({
   id: `${CUSTOM_PREFIX}${r.id}`,
   name: r.name,
-  vibe: "Your brand presenter",
+  vibe: "Your character",
   desc: r.desc,
+  // a cartoon or a creature: what it is, and what a picture model must not "fix" about it
+  ...(charKindOf(r.kind) !== "person" ? { kind: charKindOf(r.kind), continuity: characterContinuity(charKindOf(r.kind), r.desc) } : {}),
   gender: (r.gender === "f" ? "f" : "m"),
   ageBand: "mid",
   energy: (["hype", "warm", "calm"].includes(r.energy) ? r.energy : "warm") as Avatar["energy"],
@@ -183,8 +187,12 @@ export async function forgeCustomAvatar(customAvatarId: string): Promise<void> {
   // merchant's twelve presenter slots eaten by a row nothing will ever finish.
   try {
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-    if (!row.refFile || !base) throw new Error("forge needs a reference image and SHOPIFY_APP_URL");
-    await forgePortraits(row, base);
+    if (!row.refFile) throw new Error("forge needs a reference image");
+    if (charKindOf(row.kind) !== "person") await registerCharacter(row);
+    else {
+      if (!base) throw new Error("forge needs SHOPIFY_APP_URL");
+      await forgePortraits(row, base);
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await db.customAvatar
@@ -192,6 +200,19 @@ export async function forgeCustomAvatar(customAvatarId: string): Promise<void> {
       .catch(() => { /* the job's terminal path is the backstop */ });
     throw e;
   }
+}
+
+/** A character that is not a person keeps the ONE look its maker approved: the preview they said yes
+ *  to becomes the portrait, byte for byte — nothing is drawn again, so nothing can drift from it (no
+ *  outfits; a creature is not re-dressed in "smart" and "street"). */
+async function registerCharacter(row: { id: string; refFile: string | null }): Promise<void> {
+  const src = path.join(rendersDir(), "uploads", row.refFile || "");
+  if (!row.refFile || !fs.existsSync(src)) throw new Error("the approved picture is no longer on the disk");
+  const buf = fs.readFileSync(src);
+  const name = `cav-${row.id}_0.jpg`;
+  fs.writeFileSync(path.join(rendersDir(), name), buf);
+  try { await mirrorRender(name, buf); } catch { /* non-fatal, as everywhere else */ }
+  await db.customAvatar.update({ where: { id: row.id }, data: { status: "ready", files: JSON.stringify([name]), error: null } });
 }
 
 async function forgePortraits(row: { id: string; refFile: string | null; desc?: string | null }, base: string): Promise<void> {

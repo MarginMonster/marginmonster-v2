@@ -19,6 +19,7 @@
  * Everything runs in the background of this process and records its progress in the database, so a page
  * that is polling — or a different page tomorrow — sees the same truth. */
 
+import { charKindOf, characterContinuity } from "./character-prompts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -237,9 +238,13 @@ async function runSpin(rowId: string, name: string, portrait: string, look: numb
     const src = path.join(RENDERS(), portrait);
     if (!fs.existsSync(src)) return await fail("the presenter's portrait is not on the disk");
     const t = tools(tag);
+    // A cartoon or a creature is drawn and cut out differently from a person (see presenter-kit-core).
+    const owner = await db.customAvatar.findUnique({ where: { id: rowId }, select: { kind: true, desc: true } });
+    const kind = charKindOf(owner?.kind);
+    const lookOf = kind === "person" ? undefined : { kind, continuity: characterContinuity(kind, owner?.desc || "") };
     let lastWhy = "";
     for (let attempt = 0; attempt < 2; attempt++) {
-      const sources = await generationSlot(() => spinSources(t, { portrait: src, tmpDir: tmp }));
+      const sources = await generationSlot(() => spinSources(t, { portrait: src, tmpDir: tmp, look: lookOf }));
       const { spin, check } = await oneAtATime(async () => {
         const made = await spinFrames(t, sources.turnFile, sources.matteFile, RENDERS(), prefix);
         // Is it one real rotation — not half-way-and-back, and not a flip that never shows their back?

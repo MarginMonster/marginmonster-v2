@@ -275,6 +275,9 @@ model CustomAvatar {
   error     String?
   files     String   @default("[]") // JSON: renders-disk filenames, wardrobe order 0-3
   refFile   String? // uploaded reference image on the renders disk
+  // What sort of character this is: person | cartoon | monster (CharacterKind in app/lib/avatars.ts).
+  // A person is forged into four outfits; a cartoon or a monster keeps the ONE look its maker approved.
+  kind      String   @default("person")
   // The "character kit" the Presenters section shows (app/lib/presenter-kit.server.ts). Files live on the
   // renders disk: kit<id>-o<N>.webp are the portraits with the background removed, and each outfit's
   // full-body rotation is a PresenterSpin row plus its frames.

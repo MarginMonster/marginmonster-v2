@@ -91,7 +91,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       };
     });
     return {
-      id: c.id, rowId: c.rowId, name: c.name, custom: true, kind: "person" as CharacterKind,
+      id: c.id, rowId: c.rowId, name: c.name, custom: true, kind: (c.kind || "person") as CharacterKind,
       vibe: "Your character", about: /the brand's own presenter character$/.test(c.desc) ? "" : sentence(c.desc),
       gender: c.gender, age: "", energy: c.energy,
       img: c.img, cut: cutAt(0),
@@ -546,7 +546,7 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
     : t("The voice {name} speaks with in your video ads.", { name: c.name });
   const gender = c.gender === "f" ? "f" : "m";
   const showLooks = c.looks.length > 1;
-  const isCharacter = c.kind !== "person";
+  const isCharacter = c.kind !== "person" && !c.custom;
   const badge = isBrandFace ? t("Brand Face") : c.custom ? t("Your character") : c.kind === "cartoon" ? t("Cartoon character") : c.kind === "monster" ? t("Monster") : t("Pro cast");
   // Removing one of your own presenters. It sits at the end of what scrolls on a desktop ("in") and
   // after the actions on a phone ("out") — the stylesheet shows one of the two.

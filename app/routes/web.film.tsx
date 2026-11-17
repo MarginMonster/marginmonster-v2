@@ -70,7 +70,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // `kind` — a person, or one of the stock CHARACTERS (cartoon characters, monsters). The characters
   // are offered only where a character belongs: the cast step of the story formats (see rosterFor).
   const roster = [
-    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null, kind: "person" as const })),
+    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null, kind: (c.kind || "person") as "person" | "cartoon" | "monster" })),
     ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null, kind: "person" as const })),
     ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || a.voiceId || null, kind: (a.kind || "person") as "person" | "cartoon" | "monster" })),
   ].slice(0, 70);

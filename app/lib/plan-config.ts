@@ -331,6 +331,13 @@ export const TOKEN_COST = {
   //   while the UI said "the forge runs on tokens".) On an ANNUAL plan a token is worth ~$0.036, so 60
   //   there is about 34¢ under cost; 70 would cover it — the owner's call if annual becomes the norm.
   avatarForge: 60,
+  // A CHARACTER that is not a person (a cartoon, a creature) keeps the one look its maker approved — no
+  // outfits — so it costs us far less, and by the same break-even rule it is charged far less:
+  //   the previews its maker looked at     premium image model, ~$0.15 each, say two             $0.30
+  //   1 full-body 3D view                  still $0.039 + turntable $0.36 + a frame-by-frame
+  //                                        cut-out of the turn ~$0.05, 1 turn in 7 rolled again    $0.51
+  //   total ≈ $0.81  →  19 tokens at $0.0432. 20 it is.
+  characterForge: 20,
   // One outfit's 3D view bought on its own — for a presenter made before the 3D views existed. $0.47 is
   // 11 tokens; kept at the 10-an-outfit the price above works out to (60 − the 20 the portraits cost),
   // so "all four outfits" costs the same whether it came with the presenter or was added later.
@@ -412,6 +419,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   faceless: "Faceless video",
   boost: "Ad boost",
   avatarForge: "Custom presenter",
+  characterForge: "Custom character",
   avatarSpin: "Presenter 3D view",
   email: "Marketing email",
 };
