@@ -564,6 +564,139 @@ const MV_LENGTHS: Array<{ sec: number; n: number }> = [
 /** "30s" / "1:30" / "2:00" from a scene count (10s each). */
 const mvLenLabel = (n: number) => { const s = n * 10; return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 
+/* ---------- the landing's moving pictures ----------
+ * Real renders made on this page — one short seamless loop per format (public/landing/film-loop-<key>.mp4,
+ * a 16:9 cut, a 4:5 "-tall" cut for phones, and a poster of its first frame). The hero plays them one
+ * after another; each format card plays its own when you point at it. Cut by scratch tooling from the
+ * founder's own archive; generated actors and cartoons only. Bump the versions when a file is replaced. */
+const LOOP_V = 1;
+const STILL_V = 4;
+const LOOP_KEYS = ["musicvideo", "testmovie", "kidstv", "moral", "horror", "kidsmusicvideo"];
+/** Formats whose cover has its own 4:5 picture for phones (the rest are one picture cropped both ways). */
+const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo"]);
+const stillOf = (key: string) => `/landing/film-still-${key}.jpg?v=${STILL_V}`;
+const stillFallback = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const el = e.currentTarget;
+  if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; }
+};
+
+/** One clip of the hero's reel. `key` is the format it shows off ("" for the opening clip). */
+type ReelClip = { key: string; src: string; poster: string };
+const HERO_REEL: ReelClip[] = [
+  { key: "", src: "/landing/film-hero.mp4", poster: "/landing/film-hero.jpg?v=5" },
+  ...LOOP_KEYS.map((key) => ({ key, src: `/landing/film-loop-${key}.mp4?v=${LOOP_V}`, poster: `/landing/film-loop-${key}.jpg?v=${LOOP_V}` })),
+];
+
+/** The hero's reel: real renders, one after another, cross-fading. Two players are stacked — the one in
+ *  front plays its clip through once; the one behind already holds the next clip, so the hand-over is a
+ *  fade and never a blank frame. A viewer who asked for reduced motion gets the first poster, still. */
+function HeroReel({ clips, onShow }: { clips: ReelClip[]; onShow: (key: string) => void }) {
+  const [slot, setSlot] = useState<[number, number]>([0, clips.length > 1 ? 1 : 0]);
+  const [front, setFront] = useState(0);
+  const vids = useRef<[HTMLVideoElement | null, HTMLVideoElement | null]>([null, null]);
+  const live = useRef({ front: 0, slot: [0, 0] as [number, number], still: false });
+  live.current.front = front;
+  live.current.slot = slot;
+  const swap = useRef<number | null>(null);
+
+  const advance = (from: number) => {
+    const st = live.current;
+    if (from !== st.front || clips.length < 2 || st.still) return;
+    const back = 1 - from;
+    const v = vids.current[back];
+    if (!v) return;
+    try { v.currentTime = 0; } catch { /* not loaded yet — it starts from the top anyway */ }
+    v.muted = true;
+    v.play().catch(() => undefined);
+    setFront(back);
+    onShow(clips[st.slot[back]].key);
+    // once the cross-fade is over, the player that just left takes the clip after the one now showing
+    if (swap.current) window.clearTimeout(swap.current);
+    swap.current = window.setTimeout(() => {
+      setSlot((s) => { const next: [number, number] = [s[0], s[1]]; next[from] = (s[back] + 1) % clips.length; return next; });
+    }, 1000);
+  };
+
+  useEffect(() => {
+    live.current.still = !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const first = vids.current[0];
+    if (first && !live.current.still) { first.muted = true; first.play().catch(() => undefined); }
+    onShow(clips[0].key);
+    return () => { if (swap.current) window.clearTimeout(swap.current); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // a clip that never reports its end (it failed to load, or stalled) must not freeze the reel
+  useEffect(() => {
+    if (clips.length < 2) return;
+    const id = window.setTimeout(() => advance(front), 12000);
+    return () => window.clearTimeout(id);
+  }, [front]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <>
+      {[0, 1].map((k) => {
+        const c = clips[slot[k]];
+        return (
+          <span key={k} className={`fs-reel${front === k ? " on" : ""}`} aria-hidden="true">
+            <img className="fs-reel-amb" src={c.poster} alt="" />
+            <video ref={(el) => { vids.current[k] = el; }} className="fs-head-vid" src={c.src} poster={c.poster}
+              muted playsInline preload="auto" loop={clips.length < 2} onEnded={() => advance(k)} />
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+/** A format card's cover: its still, and the format's loop playing over it while a pointer is on the card
+ *  (or it has keyboard focus) — on a touch screen, while the card is on screen. The clip is fetched the
+ *  first time it is needed, in the cut that fits the card (16:9 on a wide screen, 4:5 on a phone). */
+function LoopCover({ k }: { k: string }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const [on, setOn] = useState(false);
+  const has = LOOP_KEYS.includes(k);
+  useEffect(() => {
+    const v = ref.current;
+    const card = v ? (v.closest(".fs-fmt") as HTMLElement | null) : null;
+    if (!v || !card || !window.matchMedia) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const start = () => {
+      if (!v.getAttribute("src")) v.src = `/landing/film-loop-${k}${window.matchMedia("(min-width:640px)").matches ? "" : "-tall"}.mp4?v=${LOOP_V}`;
+      v.muted = true;
+      v.play().catch(() => undefined);
+    };
+    const stop = () => { v.pause(); setOn(false); };
+    if (window.matchMedia("(hover:hover) and (pointer:fine)").matches) {
+      card.addEventListener("pointerenter", start);
+      card.addEventListener("pointerleave", stop);
+      card.addEventListener("focus", start);
+      card.addEventListener("blur", stop);
+      return () => {
+        card.removeEventListener("pointerenter", start);
+        card.removeEventListener("pointerleave", stop);
+        card.removeEventListener("focus", start);
+        card.removeEventListener("blur", stop);
+      };
+    }
+    if (typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver((entries) => { for (const e of entries) (e.isIntersecting ? start : stop)(); }, { threshold: 0.65 });
+    io.observe(card);
+    return () => io.disconnect();
+  }, [k]);
+  return (
+    <>
+      {TALL_STILLS.has(k) ? (
+        <picture>
+          <source media="(max-width:639px)" srcSet={`/landing/film-still-${k}-tall.jpg?v=${STILL_V}`} />
+          <img src={stillOf(k)} alt="" loading="lazy" onError={stillFallback} />
+        </picture>
+      ) : (
+        <img src={stillOf(k)} alt="" loading="lazy" onError={stillFallback} />
+      )}
+      {has && <video ref={ref} className={`fs-fmt-vid${on ? " on" : ""}`} muted loop playsInline preload="none" tabIndex={-1} aria-hidden="true" onPlaying={() => setOn(true)} />}
+    </>
+  );
+}
+
 export default function FilmStudio() {
   const d = useLoaderData<typeof loader>();
   const t = useT();
@@ -853,6 +986,8 @@ export default function FilmStudio() {
   const [entered, setEntered] = useState(false);
   const [zoomKey, setZoomKey] = useState<string | null>(null);
   const [anim, setAnim] = useState<"" | "in" | "out">("");
+  // which format the hero's reel is showing off right now ("" = its opening clip)
+  const [reelKey, setReelKey] = useState("");
   const enterFormat = (key: string) => {
     // Clean, robust transition (the old fly-to-viewport-center math glitched the card up into the hero,
     // worse now the layout is full-bleed): the tapped card POPS in place + the others recede, then the
@@ -1517,15 +1652,23 @@ export default function FilmStudio() {
           banner (fs-hero) REPLACES it so there aren't two stacked headers. */}
       {!entered && (
       <div className={`fs-head${anim === "in" ? " throw" : ""}`}>
-        <video className="fs-head-vid" autoPlay muted loop playsInline poster="/landing/film-hero.jpg?v=5" aria-hidden="true">
-          <source src="/landing/film-hero.mp4" type="video/mp4" />
-        </video>
+        {/* A reel of real renders, one per format, instead of one clip on a loop. */}
+        <HeroReel clips={HERO_REEL.filter((c) => !c.key || d.templates.some((x) => x.key === c.key))} onShow={setReelKey} />
         <span className="fs-head-scrim" aria-hidden="true" />
         <div className="fs-head-copy">
           <span className="fs-head-eyebrow"><span className="fs-head-dot" aria-hidden="true" /> {t("Easymode Studio")}</span>
           <b>{t("Make a movie.")} <em>{t("Just describe it.")}</em></b>
           <span>{t("Pick a format, tell us the idea — we write it and film it. You just press go.")}</span>
         </div>
+        {/* what is playing — and a way straight into making one */}
+        {(() => {
+          const playing = reelKey ? d.templates.find((x) => x.key === reelKey) : null;
+          return playing ? (
+            <button type="button" className="fs-head-tag" key={reelKey} onClick={() => enterFormat(reelKey)}>
+              <i aria-hidden="true" />{t(playing.name)}<em> · {t("made here")}</em>
+            </button>
+          ) : null;
+        })()}
       </div>
       )}
 
@@ -1541,8 +1684,7 @@ export default function FilmStudio() {
                 <button type="button" role="tab" key={x.key} className={`fs-fmt${zoomKey === x.key ? " zoom" : ""}`}
                   aria-selected={template === x.key} onClick={() => enterFormat(x.key)}>
                   <span className="fs-fmt-cover">
-                    <img src={`/landing/film-still-${x.key}.jpg?v=3`} alt="" loading="lazy"
-                      onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
+                    <LoopCover k={x.key} />
                     <span className={`fs-fmt-ico ${m.tint}`} aria-hidden="true">{fmtIcon(x.key)}</span>
                     <span className="fs-fmt-label"><b>{t(x.name)}</b></span>
                   </span>
@@ -1556,10 +1698,8 @@ export default function FilmStudio() {
         {entered && (
           <div className={`fs-stage${anim === "out" ? " out" : ""}`}>
             <div className="fs-hero">
-              <img className="fs-hero-blur" src={`/landing/film-still-${template}.jpg?v=3`} alt="" aria-hidden="true"
-                onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
-              <img className="fs-hero-art" src={`/landing/film-still-${template}.jpg?v=3`} alt=""
-                onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = "1"; el.src = "/landing/film-hero.jpg?v=5"; } }} />
+              <img className="fs-hero-blur" src={stillOf(template)} alt="" aria-hidden="true" onError={stillFallback} />
+              <img className="fs-hero-art" src={stillOf(template)} alt="" onError={stillFallback} />
               <div className="fs-hero-scrim" aria-hidden="true" />
               <button type="button" className="fs-hero-back" onClick={exitFormat}><span aria-hidden="true">‹</span> {t("Formats")}</button>
               <div className="fs-hero-ttl">{t(tmpl?.name || "Film")}</div>
@@ -2331,6 +2471,19 @@ const FS_STYLE = `
 /* Desktop: a proper tall hero (a thin 200px strip looked tiny against the full-bleed width). */
 @media(min-width:960px){.fs-head{min-height:320px;}.fs-head-vid{object-fit:contain;object-position:center;}.fs-head-copy{padding:44px 54px;max-width:680px;}.fs-head-copy b{font-size:50px;}.fs-head-copy>span{font-size:16.5px;max-width:540px;margin-top:14px;}.fs-head-eyebrow{font-size:12.5px;}}
 .fs-head-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;z-index:1;}
+/* The reel: two stacked players that cross-fade. Each carries a blurred copy of its own poster behind
+   the clip, so the ambient fill beside a letterboxed clip always matches what is playing. */
+.fs-reel{position:absolute;inset:0;z-index:1;opacity:0;transition:opacity .9s ease;}
+.fs-reel.on{opacity:1;}
+.fs-reel-amb{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(30px) brightness(.5) saturate(1.15);transform:scale(1.18);}
+/* what the reel is showing — tap it to make one */
+.fs-head-tag{position:absolute;z-index:4;right:16px;bottom:14px;display:inline-flex;align-items:center;gap:7px;min-height:34px;box-sizing:border-box;padding:6px 13px 6px 11px;border:1px solid rgba(255,255,255,.3);border-radius:999px;background:rgba(7,42,27,.58);color:#fff;font:inherit;font-size:12px;font-weight:800;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);animation:fstag .5s ease both;transition:background .14s,border-color .14s,transform .14s;}
+.fs-head-tag:hover{background:rgba(7,42,27,.82);border-color:rgba(255,255,255,.65);transform:translateY(-1px);}
+.fs-head-tag i{flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:#FF6B5E;box-shadow:0 0 0 3px rgba(255,107,94,.28);}
+.fs-head-tag em{font-style:normal;font-weight:700;opacity:.78;}
+@keyframes fstag{from{opacity:0;transform:translateY(5px);}}
+@media(max-width:640px){.fs-head-tag{top:12px;bottom:auto;right:12px;min-height:28px;padding:4px 10px 4px 9px;font-size:11px;}.fs-head-tag em{display:none;}}
+@media(prefers-reduced-motion:reduce){.fs-reel{transition:none;}.fs-head-tag{animation:none;}}
 .fs-head-scrim{position:absolute;inset:0;z-index:2;background:radial-gradient(130% 120% at 85% 10%,rgba(12,122,70,.08) 0%,rgba(8,55,34,.42) 48%,rgba(7,42,27,.6) 100%),linear-gradient(90deg,rgba(7,42,27,.9) 8%,rgba(7,42,27,.3) 60%,transparent);}
 .fs-head-dot{width:6px;height:6px;border-radius:50%;background:var(--fs-gold-lt,#E7C879);box-shadow:0 0 10px var(--fs-gold-lt,#E7C879);}
 .fs-head-bg{position:absolute;inset:0;z-index:0;border-radius:18px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 8px 22px rgba(11,20,15,.16),inset 0 0 0 1px rgba(255,255,255,.1);}
@@ -2417,6 +2570,10 @@ const FS_STYLE = `
 /* Desktop: the format posters go LANDSCAPE (wide, not a tall 4:5 that dominated the screen). */
 @media(min-width:640px){.fs-fmt-cover{aspect-ratio:16/9;}}
 .fs-fmt-cover img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s cubic-bezier(.2,.7,.2,1);}
+.fs-fmt-cover picture{display:contents;}
+/* the format's loop, faded in over its still while the card is pointed at (see LoopCover) */
+.fs-fmt-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease;pointer-events:none;}
+.fs-fmt-vid.on{opacity:1;}
 .fs-fmt-cover::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(10,20,15,.82) 0%,rgba(10,20,15,.12) 46%,transparent 100%);}
 .fs-fmt-ico{position:absolute;z-index:2;top:8px;left:8px;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;box-shadow:0 5px 14px -5px rgba(0,0,0,.6);}
 .fs-fmt-ico svg{width:15px;height:15px;stroke:#fff;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
