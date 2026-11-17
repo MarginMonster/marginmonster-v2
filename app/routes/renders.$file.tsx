@@ -35,17 +35,19 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
       // A voice model is ~145 MB — never buffer it whole (the media path below reads the file into
       // memory, fine for a few-MB clip). Pull-based web stream over a file descriptor: no Node stream
       // 'error' event to go uncaught (the crash the note above warns about), and the fd is closed on
-      // finish, error or client disconnect.
+      // finish, error or client disconnect. The fd opens on the FIRST read and the queue holds nothing
+      // ahead of the reader (highWaterMark 0), so a response whose body is never read — a HEAD — opens
+      // no file at all.
       if (!fs.existsSync(filePath)) return new Response("Not found", { status: 404 });
       const size = fs.statSync(filePath).size;
       let fd: number | null = null;
       let pos = 0;
       const close = () => { if (fd !== null) { try { fs.closeSync(fd); } catch { /* already closed */ } fd = null; } };
       const body = new ReadableStream<Uint8Array>({
-        start() { fd = fs.openSync(filePath, "r"); },
         pull(controller) {
           try {
-            if (fd === null || pos >= size) { close(); controller.close(); return; }
+            if (pos >= size) { close(); controller.close(); return; }
+            if (fd === null) fd = fs.openSync(filePath, "r");
             const len = Math.min(1024 * 1024, size - pos);
             const buf = Buffer.allocUnsafe(len);
             const n = fs.readSync(fd, buf, 0, len, pos);
@@ -56,7 +58,7 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
           } catch (e) { close(); controller.error(e); }
         },
         cancel() { close(); },
-      });
+      }, { highWaterMark: 0 });
       return new Response(body, { headers: { "Content-Type": "application/zip", "Content-Length": String(size), "Cache-Control": "private, no-store" } });
     }
     // Read-fallback: if the file isn't on the local disk (fresh instance, or a
