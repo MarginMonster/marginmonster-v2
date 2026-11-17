@@ -99,6 +99,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({ ok: false });
 };
 
+/** Every page that is part of auto-posting — the nav's "Auto-post" tab is lit on all of them. */
+const AUTOPOST_PATHS = ["/web/autopost", "/web/connect", "/web/channels", "/web/product-channels", "/web/campaigns"];
+
 export default function WebLayout() {
   const { authed, hud, isAdmin } = useLoaderData<typeof loader>();
   const loc = useLocation();
@@ -145,6 +148,7 @@ export default function WebLayout() {
               <Link className={tab("/web/film")} to="/web/film">{t("Movie Maker")}</Link>
               <Link className={`wb-tab${loc.pathname === "/web/studio" && mode === "marketing" ? " on" : ""}`} to="/web/studio" onClick={() => chooseMode("marketing")}>{t("Ad Maker")}</Link>
               <Link className={tab("/web/presenters")} to="/web/presenters">{t("Presenters")}</Link>
+              <Link className={`wb-tab${AUTOPOST_PATHS.includes(loc.pathname) ? " on" : ""}`} to="/web/autopost">{t("Auto-post")}</Link>
               <Link className={tab("/web/archive")} to="/web/archive">{t("Archive")}</Link>
             </nav>
           )}

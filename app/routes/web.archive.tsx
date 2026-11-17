@@ -1352,7 +1352,9 @@ export default function WebArchive() {
           </p>
         </div>
       </div>
-      {!canPost && <p className="wb-note" style={{ marginTop: -14, marginBottom: 18 }}>{t("Want one-tap posting?")} <Link to="/web/connect">{t("Link your socials")}</Link>.</p>}
+      {!canPost
+        ? <p className="wb-note" style={{ marginTop: -14, marginBottom: 14 }}>{t("Want one-tap posting?")} <Link to="/web/connect">{t("Link your socials")}</Link> · <Link to="/web/autopost">{t("See everything that can post itself")}</Link></p>
+        : <p className="wb-note" style={{ marginTop: -14, marginBottom: 14 }}><Link to="/web/autopost">{t("Auto-post")}</Link> — {t("channels and campaigns that post themselves.")}</p>}
       {!hasPlan && <p className="wa-wallet">{t("Pick a plan to generate.")}</p>}
       {err && !viewer && <div className="wb-err">{err}</div>}
       {ok && <div className="wb-ok">{ok}</div>}

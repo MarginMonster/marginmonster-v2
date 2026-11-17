@@ -561,6 +561,7 @@ export default function WebDashboard() {
               <PathImg key={`${set}-film`} idx={3} img="film" v={3} eyebrow={t("Entertainment")} title={t("Movie Maker")} sub={t("Films, cartoons, music videos & episodes")} cue={t("Open Movie Maker")} onClick={() => navigate("/web/film")} />,
               <PathImg key={`${set}-presenter`} idx={4} img="presenter" v={3} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Craft avatars, costumes & wardrobes")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />,
               <PathImg key={`${set}-archive`} idx={5} img="archive" v={4} eyebrow={t("Your library")} title={t("Archive")} sub={t("Every piece you've made, ready to post")} cue={t("Open Archive")} onClick={() => navigate("/web/archive")} />,
+              <PathImg key={`${set}-autopost`} idx={6} img="marketing" v={2} eyebrow={t("Hands off")} title={t("Auto-post")} sub={t("Link your socials, run channels & campaigns that post themselves")} cue={t("Open Auto-post")} onClick={() => navigate("/web/autopost")} />,
             ])}
           </div>
         </div>
