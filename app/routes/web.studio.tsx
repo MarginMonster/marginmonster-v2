@@ -6498,6 +6498,7 @@ const WS_STYLE = `
 .ws-fmtcat.own svg{flex:0 0 auto}
 .ws-fmtcat.own span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .ws-fmtcat.own.add{border-style:dashed;color:var(--green,#0C7A46)}
+.ws-pills2 .ws-fmtcat.own.add{grid-column:1/-1}
 .ws-narr-maker{margin-top:10px}
 .ws-fmthint{margin:-4px 0 10px;font-size:12.5px;color:var(--ink2,#4A554E)}
 .ws-fmtsel{display:flex;align-items:center;gap:8px;margin:0 0 11px;font-size:12.5px;color:var(--ink2,#4A554E)}
