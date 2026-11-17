@@ -393,7 +393,9 @@ export async function falVideoPoll(model: string, requestId: string, maxMs = 12 
   // caller keeps its request id so a later attempt can re-attach.
   if (!completed) throw new Error(`fal video ${requestId}: stopped watching — the render is still running`);
   const r = await fetch(responseUrl, { headers: { Authorization: `Key ${process.env.FAL_KEY}` } });
-  if (!r.ok) throw new Error(`fal video result ${r.status}`);
+  // A render fal REJECTED (bad input, a content check) reports COMPLETED and answers the result
+  // read with a 4xx whose body says why — keep that reason, or the fallback hides a fixable cause.
+  if (!r.ok) throw new Error(`fal video result ${r.status}: ${(await r.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 300)}`);
   const rj = (await r.json()) as { video?: { url?: string }; video_url?: string };
   const url = rj.video?.url || rj.video_url;
   if (!url) throw new Error("fal video: no output url");

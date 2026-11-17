@@ -28,6 +28,7 @@ import { AVATAR_VOICES, isPersonalVoice } from "./avatar-voice-catalog";
 import { ensureVoiceModel, revoiceClip } from "./singing-voice.server";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
+import { clampKlingPrompt, clipRules, fitClipPrompt } from "./clip-prompt";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { clipSecondsFor } from "./speech-meter";
@@ -83,25 +84,32 @@ async function veoDialogueClip(seedAbs: string, prompt: string, stage: string, a
 // Kling 3 Omni — the CHEAPER native-dialogue renderer, wired as a SWAPPABLE engine so
 // the merchant can run the IDENTICAL pipeline (same seed, chain, re-anchor, tone prompt,
 // assembly) on a different model and A/B the quality-per-dollar. 10s holds lip-sync
-// better than 15s. fal kling-video/v3/pro → Replicate kwaivgi/kling-v3-omni fallback.
+// better than 15s. Replicate kwaivgi/kling-v3-omni (pro) → fal kling-video/v3/pro fallback.
 const FAL_KLING3 = "fal-ai/kling-video/v3/pro/image-to-video";
 const REP_KLING3 = "kwaivgi/kling-v3-omni-video";
 const KLING_DUR = 10;
 
 /** A Kling 3 Omni dialogue clip (native lip-synced audio) — byte-for-byte the same role
- *  as veoDialogueClip, only the renderer differs. Returns the clip URL. */
-async function klingDialogueClip(seedAbs: string, prompt: string, stage: string, durationSec = KLING_DUR): Promise<string> {
+ *  as veoDialogueClip, only the renderer differs. Returns the clip URL.
+ *
+ *  Replicate's Kling 3 Omni (pro mode) goes FIRST: it is the renderer every owner-approved Short Film
+ *  actually came from. fal's Kling 3 Pro used to be listed first, but it refused every shot (the prompt
+ *  was over its 2,500-character cap) and the film always fell through to Replicate. Now that the prompt
+ *  fits, putting fal first would silently swap the model under the flagship — so the proven renderer
+ *  stays first and fal is a real, working fallback. `mode` is pinned to the default the approved films
+ *  used, so a provider-side default change can't alter the look either. */
+async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: string, durationSec = KLING_DUR): Promise<string> {
   const dur = Math.max(5, Math.min(KLING_DUR, Math.round(durationSec) || KLING_DUR));
-  if (falEnabled()) {
-    try {
-      const rid = await falVideoSubmit(FAL_KLING3, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur });
-      return await falVideoPoll(FAL_KLING3, rid, VEO_POLL_MS);
-    } catch (e) {
-      console.error(`[testmovie] fal kling failed, trying Replicate: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
-    }
+  const prompt = clampKlingPrompt(rawPrompt);
+  try {
+    const id = await repCreate(REP_KLING3, { prompt, start_image: seedAbs, generate_audio: true, duration: dur, mode: "pro" });
+    return await repPoll(id, VEO_POLL_MS, stage);
+  } catch (e) {
+    if (!falEnabled()) throw e;
+    console.error(`[testmovie] replicate kling failed, trying fal: ${e instanceof Error ? e.message.slice(0, 360) : e}`);
   }
-  const id = await repCreate(REP_KLING3, { prompt, start_image: seedAbs, generate_audio: true, duration: dur });
-  return await repPoll(id, VEO_POLL_MS, stage);
+  const rid = await falVideoSubmit(FAL_KLING3, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur });
+  return await falVideoPoll(FAL_KLING3, rid, VEO_POLL_MS);
 }
 
 /** Route a dialogue clip to the chosen engine — the ONE line that differs between the
@@ -735,9 +743,9 @@ export async function generateTestMovie(opts: {
       ? `Deliver it ${tone} — put that exact emotion and energy into the voice, expressively, NEVER flat or monotone.`
       : `Deliver it with the REAL emotion the words carry — an angry line sounds angry, a threat sounds menacing, hurt shows as hurt — with natural intonation and emphasis, NEVER flat or monotone.`;
     const voiceLine = (turnB && turnB.speaker && turnB.line)
-      ? `This two-shot is a short back-and-forth between TWO people, one speaking at a time. FIRST, ${turnA.speaker}${sSide ? ` (on the ${sSide} side of the frame)` : ""} says, in accurate lip-sync: "${turnA.line}". THEN ${turnB.speaker}${sideB ? ` (on the ${sideB} side)` : ""} replies, in accurate lip-sync: "${turnB.line}". ONLY ONE person speaks at a time: ${turnA.speaker} goes FIRST — only ${turnA.speaker}'s mouth moves while ${turnB.speaker} stays silent, listening and reacting — THEN ${turnB.speaker} answers — only ${turnB.speaker}'s mouth moves while ${turnA.speaker} stays silent, listening. There are exactly TWO distinct voices: ${turnA.speaker}'s voice on the first line and ${turnB.speaker}'s voice on the second — they NEVER talk at the same time, never overlap, and NO third voice, murmur or gibberish appears anywhere. Each person says their line exactly ONCE, word for word, clearly and articulately, beginning right away with no long pauses, so the two lines fill the whole shot back-to-back. ${deliver}${voiceDescFor(turnA.speaker)}${voiceDescFor(turnB.speaker)}`
+      ? `This two-shot is a short back-and-forth between TWO people, one speaking at a time. FIRST, ${turnA.speaker}${sSide ? ` (on the ${sSide} side of the frame)` : ""} says, in accurate lip-sync: "${turnA.line}". THEN ${turnB.speaker}${sideB ? ` (on the ${sideB} side)` : ""} replies, in accurate lip-sync: "${turnB.line}". ONLY ONE person speaks at a time: ${turnA.speaker} goes FIRST — only ${turnA.speaker}'s mouth moves while ${turnB.speaker} stays silent, listening and reacting — THEN ${turnB.speaker} answers — only ${turnB.speaker}'s mouth moves while ${turnA.speaker} stays silent, listening. There are exactly TWO distinct voices: ${turnA.speaker}'s voice on the first line and ${turnB.speaker}'s voice on the second — they NEVER talk at the same time, never overlap, and NO third voice, murmur or gibberish appears anywhere. Each person says their line exactly ONCE, word for word, clearly and articulately, beginning right away with no long pauses, so the two lines fill the whole shot back-to-back. ${deliver}`
       : speaker
-      ? `${sSide ? `In this two-shot BOTH people are visible, but the ONLY one who speaks is the person on the ${sSide.toUpperCase()} side of the frame — that is ${speaker}. The person on the ${oSide.toUpperCase()} does NOT speak. ` : ""}There is ONLY ONE voice in this entire clip — ${speaker}'s. ${speaker}${sSide ? ` (on the ${sSide})` : ""} says exactly this one line and nothing else: "${line}". Say it through exactly ONCE, word for word — do NOT repeat, echo, loop or restate any word or phrase, and add no words that are not in the line. The MOMENT the line is finished, ${speaker} stops speaking and simply holds a natural, quiet expression for the rest of the shot — no extra, improvised or filler words. ${deliver} Speak CLEARLY and crisply — every word fully articulated and intelligible, no mumbling, slurring or trailing off — BEGIN speaking right away and keep a natural, connected pace, in accurate lip-sync. ONLY ${speaker}'s mouth moves. The OTHER character${oSide ? ` (on the ${oSide})` : ""} is COMPLETELY SILENT the whole time — absolutely no talking, murmuring, mumbling, whispering, muttering or background speech of any kind; their mouth stays closed and still, only listening and reacting. Do NOT generate any second voice, murmur or gibberish anywhere in the clip — one clear voice only. Keep ${speaker}'s voice the SAME as in every other shot.${speakerVoiceDesc}`
+      ? `${sSide ? `In this two-shot BOTH people are visible, but the ONLY one who speaks is the person on the ${sSide.toUpperCase()} side of the frame — that is ${speaker}. The person on the ${oSide.toUpperCase()} does NOT speak. ` : ""}There is ONLY ONE voice in this entire clip — ${speaker}'s. ${speaker}${sSide ? ` (on the ${sSide})` : ""} says exactly this one line and nothing else: "${line}". Say it through exactly ONCE, word for word — do NOT repeat, echo, loop or restate any word or phrase, and add no words that are not in the line. The MOMENT the line is finished, ${speaker} stops speaking and simply holds a natural, quiet expression for the rest of the shot — no extra, improvised or filler words. ${deliver} Speak CLEARLY and crisply — every word fully articulated and intelligible, no mumbling, slurring or trailing off — BEGIN speaking right away and keep a natural, connected pace, in accurate lip-sync. ONLY ${speaker}'s mouth moves. The OTHER character${oSide ? ` (on the ${oSide})` : ""} is COMPLETELY SILENT the whole time — absolutely no talking, murmuring, mumbling, whispering, muttering or background speech of any kind; their mouth stays closed and still, only listening and reacting. Do NOT generate any second voice, murmur or gibberish anywhere in the clip — one clear voice only. Keep ${speaker}'s voice the SAME as in every other shot.`
       : `Exactly ONE voice in the whole clip saying this line clearly and expressively (never monotone), every word articulate, no mumbling, beginning right away: "${line}". Say it through ONCE only — do NOT repeat, loop or restate any word, and add no words not in the line; the instant it is finished, stop speaking and hold a natural quiet expression for the rest of the shot. ${deliver} The other character is completely silent — mouth closed, only listening.`;
     // LIGHT PROMPT — the SEED frame already carries the faces, room and staging, so the
     // prompt only drives the TALKING and tells Veo to HOLD the frame. Re-describing the
@@ -745,16 +753,14 @@ export async function generateTestMovie(opts: {
     // the faces from the WORDS and drift them; stripping that lets the seed drive the look
     // ("use the seed like you're supposed to" — owner). voiceLine = the single-speaker line.
     void STAGING; void HOLD_STILL; // (kept defined for the seed/scene-frame paths; not in the clip prompt)
-    const lookNote = cartoon
-      ? `Keep EVERYONE and the entire setting EXACTLY as in the provided starting image — identical character designs, colors, outfits, lighting and background, unchanged throughout; keep each character's exact cartoon design fixed, and do NOT morph or redraw anyone into a different character. The camera holds steady and nobody moves except natural talking and small, subtle head and expression shifts. Do NOT introduce any object that is not already in the starting image.`
-      : `Keep EVERYONE and the entire setting EXACTLY as in the provided starting image — identical faces, hair, skin tone, clothing, lighting and background, unchanged throughout; and keep each person's EXACT facial hair fixed the whole time — every beard, mustache and bit of stubble stays precisely the same and never fades, thins, grows, appears or disappears. Do NOT morph, age or redraw anyone into a different person. The camera holds steady and nobody moves except natural talking and small, subtle head and expression shifts. Do NOT introduce any object that is not already in the starting image — no new cigarette, glass or prop appears; and if a person IS already holding something, keep it EXACTLY the same size and shape, held steady in the same hand — it must never morph, grow, shrink, drift, multiply or flicker.`;
-    const styleNote = sing
-      ? (cartoon ? "Bright 3D-animated cartoon style (not live-action); clean, clear SUNG vocal audio with a catchy melody, lip-synced to the words." : "Photorealistic live-action; clean, clear SUNG vocal audio with a catchy melody, lip-synced to the words.")
-      : (cartoon ? "Bright, glossy 3D-animated cartoon style (not live-action), clean clear spoken-dialogue audio." : "Photorealistic live-action, clean natural spoken-dialogue audio.");
-    // Lock the frame + kill stray audio — the owner saw a mid-shot "orientation change" with
-    // a random sound effect. The camera must not move, and Kling must not invent foley/sfx.
-    const steadyNote = `The camera stays LOCKED, level and still the whole time — no rotation, tilt, roll, flip, zoom or orientation change.${sing ? " Keep ONLY the sung vocal and its melody — no stray sound effects, whooshes, stingers or foley." : " The ONLY audio is the spoken voice(s) and faint room tone — no sound effects, music, stingers, whooshes or foley."}`;
-    const prompt = `${voiceLine} ${lookNote} ${styleNote} ${steadyNote} ${NO_TEXT}`;
+    // The standing rules (look / style / camera+audio / no-text) come from clipRules — written short so
+    // the whole prompt fits what Kling reads. (The long NO_TEXT above stays for the image prompts.)
+    const rules = clipRules({ cartoon, sing });
+    // Voice timbre ("X's voice is warm…") rides separately so the fitter can drop it last of all.
+    const voiceDesc = (turnB && turnB.speaker && turnB.line) ? `${voiceDescFor(turnA.speaker)}${voiceDescFor(turnB.speaker)}` : speaker ? speakerVoiceDesc : "";
+    const fitted = fitClipPrompt({ voice: voiceLine, voiceDesc, ...rules });
+    const prompt = fitted.prompt;
+    if (fitted.gaveUp) console.log(`[testmovie] shot ${i + 1}: prompt fitted to ${prompt.length} chars by giving up: ${fitted.gaveUp}`);
 
     // Size the clip to the SPOKEN LINE (word-metered) instead of a flat 10s. A clip that
     // outlasts its line is exactly what makes Kling pad the dead air — with silence (a
