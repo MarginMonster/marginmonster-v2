@@ -24,7 +24,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
 import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderSideBySideTwoShot } from "./image-generation.server";
-import { AVATAR_VOICES } from "./avatar-voice-catalog";
+import { AVATAR_VOICES, isPersonalVoice } from "./avatar-voice-catalog";
+import { ensureVoiceModel, revoiceClip } from "./singing-voice.server";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
@@ -429,6 +430,12 @@ export async function generateTestMovie(opts: {
   /** Output aspect ratio: "9:16" vertical (Shorts/TikTok, default), "16:9" landscape
    *  (YouTube/TV/film — horizontal room for groups + cinematic blocking), or "1:1". */
   aspect?: "9:16" | "16:9" | "1:1";
+  /** LOCK THE CAST'S VOICES (opt-in beta): every character speaks in EXACTLY the voice the merchant gave
+   *  them, in every shot. The video model acts each line in a voice of its own (the cast voice was only a
+   *  text hint, and it drifted shot to shot); with this on, each one-speaker clip is re-voiced with that
+   *  character's trained voice model — same performance, same lip-sync, their voice. A character on the
+   *  merchant's OWN cloned voice is re-voiced regardless of this flag (that is why they picked it). */
+  lockVoices?: boolean;
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
   // Style/mode switches so the ONE dialogue pipeline serves photoreal talking films
@@ -561,6 +568,60 @@ export async function generateTestMovie(opts: {
   //    speaker per clip, seamless cuts from the prior clip's real last frame, no
   //    on-screen text, trailing silence trimmed.
   const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
+
+  // CAST VOICES — give each character the voice the merchant picked for them (see `lockVoices`).
+  // Kling/Veo act every line in a voice of their own; a one-speaker clip is then RE-VOICED with the
+  // character's trained voice model (the same models the Music Video sings with), which keeps the
+  // performance, the timing and the lip-sync and changes only whose voice it is. Models are trained once
+  // per voice and reused; training starts NOW, alongside the first shots, and each clip's re-voice runs
+  // in the background while later shots render — so it costs little extra time. Everything here fails
+  // open: a voice that can't be applied leaves that clip with the voice the video model gave it.
+  const castVoiceOf = (speakerName: string): string | null => {
+    const key = firstName(speakerName);
+    const v = key ? castActors.find((c) => firstName(c.name) === key)?.voiceId || "" : "";
+    return v && !v.startsWith("ttv-") && (opts.lockVoices || isPersonalVoice(v)) ? v : null;
+  };
+  /** The voice to put on shot i, or null: only clips where ONE person speaks (re-voicing an exchange
+   *  would give both people the same voice). */
+  const clipVoiceAt = (i: number): string | null => {
+    const t = splitExchange(treatment.scenes[i]?.caption || "");
+    const lead = t[0]?.speaker || "";
+    if (!lead) return null;
+    if (t.some((x, k) => k > 0 && !!x.speaker && !!x.line && firstName(x.speaker) !== firstName(lead))) return null;
+    return castVoiceOf(lead);
+  };
+  const voiceModels = new Map<string, Promise<string | null>>();
+  const voiceModelFor = (voiceId: string): Promise<string | null> => {
+    let job = voiceModels.get(voiceId);
+    if (!job) {
+      job = ensureVoiceModel(voiceId, base).then((m) => m.url).catch((e) => {
+        console.error(`[testmovie] couldn't prepare a cast voice — those lines keep the generated voice: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+        return null;
+      });
+      voiceModels.set(voiceId, job);
+    }
+    return job;
+  };
+  const revoiceTried = new Set<number>();
+  let voicesLocked = 0;
+  const revoiceAt = async (idx: number): Promise<void> => {
+    const voiceId = clipVoiceAt(idx);
+    if (!voiceId || revoiceTried.has(idx) || path.basename(clips[idx] || "").startsWith("tmv-")) return;
+    revoiceTried.add(idx);
+    try {
+      const modelUrl = await voiceModelFor(voiceId);
+      if (!modelUrl) return;
+      clips[idx] = await revoiceClip(clips[idx], modelUrl, base);
+      voicesLocked++;
+      await ckpt({ ckClips: clips });
+    } catch (e) {
+      console.error(`[testmovie] shot ${idx + 1}: cast voice not applied, keeping the generated voice: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+    }
+  };
+  const revoiceJobs: Promise<void>[] = [];
+  // start learning any new voices right away (a first-time voice takes ~6 minutes)
+  for (let i = 0; i < treatment.scenes.length; i++) { const v = clipVoiceAt(i); if (v) void voiceModelFor(v); }
+
   // Per-shot render inputs recorded for the section editor's Phase-3 regenerate (each shot's
   // seed + clip prompt + duration). Pre-filled null for any clips restored from a resume.
   const shotSeeds: (string | null)[] = clips.map(() => null);
@@ -710,8 +771,16 @@ export async function generateTestMovie(opts: {
     // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.
     prevFrameUrl = (await extractLastFrame(outPath)) || undefined;
     await ckpt({ ckClips: clips, ckLastStill: prevFrameUrl });
+    // put the character's own voice on this shot in the background while the next one renders
+    // (the next shot chains off this one's last FRAME, which re-voicing doesn't touch)
+    revoiceJobs.push(revoiceAt(clips.length - 1));
   }
   if (!clips.length) throw new Error("[testmovie] no clips rendered");
+  // every cast voice lands before the cut: the ones started above, then any shot that was restored from
+  // a checkpoint before its voice was applied (a re-voiced clip is named tmv-…, so it's never done twice)
+  await Promise.all(revoiceJobs);
+  for (let i = 0; i < clips.length; i++) await revoiceAt(i);
+  if (voicesLocked) console.log(`[testmovie] cast voices applied to ${voicesLocked} of ${clips.length} shots`);
 
   // 4) ASSEMBLE — concat the clips keeping the dialogue audio.
   const outName = `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
@@ -730,7 +799,7 @@ export async function generateTestMovie(opts: {
       bodyJson: JSON.stringify({ style: "TESTMOVIE", videoUrl: storedUrl, prompt: opts.topic || "", treatment }),
       metaJson: JSON.stringify({
         kind: "testmovie", template: tmpl.key, section: opts.section || "creator",
-        scenes: clips.length, aspect, engine: dialogueEngine,
+        scenes: clips.length, aspect, engine: dialogueEngine, voicesLocked,
         // Per-shot timeline for the section editor: each rendered shot's /renders URL +
         // the line it speaks, so the editor can list, preview and (later) re-edit each one.
         shots: clips.map((c, i) => ({

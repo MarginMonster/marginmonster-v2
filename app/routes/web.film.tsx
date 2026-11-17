@@ -21,7 +21,7 @@ import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { estimateFilmTokens, FILM_PER_SCENE, FILM_BASE } from "../lib/plan-config";
 import { externalOrigin } from "../lib/origin.server";
-import { AVATAR_VOICES } from "../lib/avatar-voice-catalog";
+import { AVATAR_VOICES, AVATAR_VOICE_IDS } from "../lib/avatar-voice-catalog";
 import { LIVE_AVATARS, avatarImg } from "../lib/avatars";
 
 export const meta: MetaFunction = () => [{ title: "Film Studio · EASYMODE" }];
@@ -81,6 +81,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     products,
     gallery,
     voices: AVATAR_VOICES.map((v) => ({ id: v.id, label: v.label, blurb: v.blurb, gender: v.gender })),
+    // the shop's own cloned voices ("My voices") — offered in the cast's voice menu above the stock ones
+    myVoices: await (await import("../lib/voice-clone.server")).shopVoiceClones(shop.id),
     perScene: FILM_PER_SCENE,
     base: FILM_BASE,
   });
@@ -432,6 +434,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       } catch { /* ignore malformed */ }
     }
+    // A cast voice must be a stock voice or one of THIS shop's own voices — never an id the client made
+    // up (which could be another shop's cloned voice).
+    if (cast) {
+      const { shopVoiceClones } = await import("../lib/voice-clone.server");
+      const mine = new Set((await shopVoiceClones(shop.id)).map((v) => v.voiceId));
+      cast = cast.map((c) => ({ ...c, voiceId: c.voiceId && (AVATAR_VOICE_IDS.has(c.voiceId) || mine.has(c.voiceId)) ? c.voiceId : null }));
+    }
+    // "Lock these voices" (dialogue films): every character speaks in exactly the voice picked for them.
+    const filmLockVoices = ((form.get("filmLockVoices") as string) || "") === "1";
     // Swappable render engine (Test Movie): Kling 3 Omni is the DEFAULT (owner A/B win —
     // cheaper, quality held); "veo" switches to premium Veo 3. Only Test Movie reads it.
     const dialogueEngine = ((form.get("dialogueEngine") as string) || "").trim() === "veo" ? "veo" : "kling3";
@@ -482,6 +493,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         approvedTreatment,
         ...(approvedFrames ? { approvedFrames } : {}),
         ...(cast ? { cast } : {}),
+        ...(cast && filmLockVoices ? { filmLockVoices: true } : {}),
         ...(filmGenre ? { filmGenre } : {}),
         ...(filmSongUrl ? { filmSongUrl } : {}),
         ...(filmHeroUrl ? { filmHeroUrl } : {}),
@@ -614,16 +626,22 @@ export default function FilmStudio() {
     const words = head.split(/\s+/).filter(Boolean);
     return ((words.find((w) => !TITLE_WORD.test(w)) || words[0] || head) || "").slice(0, 40);
   };
-  const deriveCast = (tr2: Treatment): CastMember[] =>
-    (Array.isArray(tr2.cast) ? tr2.cast : []).slice(0, 8).map((entry) => {
+  const deriveCast = (tr2: Treatment): CastMember[] => {
+    // Two characters of the same gender get DIFFERENT voices. They both used to get that gender's first
+    // voice — harmless while the voice was only a hint, but with the voices locked it made two people in
+    // one scene speak with a single voice.
+    const used: Record<"f" | "m", number> = { f: 0, m: 0 };
+    return (Array.isArray(tr2.cast) ? tr2.cast : []).slice(0, 8).map((entry) => {
       const name = speakName(entry) || entry.slice(0, 40);
       const low = entry.toLowerCase();
       const fem = /\b(she|her|hers|woman|women|girl|mother|mom|mum|daughter|sister|lady|businesswoman|actress|queen|wife|aunt|grandmother|female)\b/.test(low);
       const masc = /\b(he|him|his|man|men|boy|father|dad|son|brother|guy|businessman|actor|king|husband|uncle|grandfather|male)\b/.test(low);
       const g = fem && !masc ? "f" : masc && !fem ? "m" : null;
-      const v = g ? d.voices.find((x) => x.gender === g) : null;
+      const pool = g ? d.voices.filter((x) => x.gender === g) : [];
+      const v = g && pool.length ? pool[used[g]++ % pool.length] : null;
       return { name, desc: entry.trim().slice(0, 300), faceUrl: null, voiceId: v ? v.id : null };
     });
+  };
 
   const [template, setTemplate] = useState(d.templates[0]?.key || "musicvideo");
   const tmpl = d.templates.find((x) => x.key === template) || d.templates[0];
@@ -1416,6 +1434,19 @@ export default function FilmStudio() {
   const setCastVoice = (i: number, voiceId: string) => {
     setCast((prev) => prev.map((c, j) => (j === i ? { ...c, voiceId: voiceId || null } : c)));
   };
+  // Casting one of YOUR PRESENTERS brings their voice with them — only the face used to come across, so
+  // a presenter you'd given a voice (or your own voice) showed up in the film sounding like someone else.
+  const castPresenter = (i: number, r: { img: string; voiceId?: string | null }) => {
+    const u = (r.img || "").trim();
+    if (u !== "" && !/^(https?:\/\/|\/)/.test(u)) return;
+    setCast((prev) => prev.map((c, j) => (j === i ? { ...c, faceUrl: u || null, ...(r.voiceId ? { voiceId: r.voiceId } : {}) } : c)));
+  };
+  // "Lock these voices" (dialogue films): each character speaks in exactly the voice picked for them.
+  // Off by default — the video model voices the lines itself — and it switches itself ON the moment a
+  // character is given one of your OWN voices, because picking that only means something if it's used.
+  const [lockVoices, setLockVoices] = useState(false);
+  const castHasOwnVoice = cast.some((c) => !!c.voiceId && d.myVoices.some((v) => v.voiceId === c.voiceId));
+  useEffect(() => { if (castHasOwnVoice) setLockVoices(true); }, [castHasOwnVoice]);
   // Make the cast editable + buildable — rename, re-describe, add your own character, or remove one.
   // This is how you "create" a cast member (a cartoon character for Kids Cartoon, an actor for a film):
   // add one, describe it, then Cast a face (cartoon-styled for cartoon templates).
@@ -1427,9 +1458,12 @@ export default function FilmStudio() {
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
   const playVoice = (voiceId: string | null) => {
     if (!voiceId) return;
+    // one of the shop's own voices plays its own preview line; stock voices play the bundled sample
+    const own = d.myVoices.find((v) => v.voiceId === voiceId);
+    if (own && !own.preview) return;
     try {
       if (voiceAudioRef.current) { voiceAudioRef.current.pause(); }
-      const a = new Audio(`/voice-samples/${voiceId}.mp3`);
+      const a = new Audio(own ? own.preview : `/voice-samples/${voiceId}.mp3`);
       voiceAudioRef.current = a;
       a.play().catch(() => { /* autoplay / missing sample — fine */ });
     } catch { /* no Audio — fine */ }
@@ -2085,7 +2119,14 @@ export default function FilmStudio() {
                     <div className="fs-actor-voice">
                       <select aria-label={t("Voice for {name}", { name: c.name })} value={c.voiceId || ""} disabled={castingIndex !== null} onChange={(e) => setCastVoice(i, e.target.value)}>
                         <option value="">{t("Pick a voice")}</option>
-                        {d.voices.map((v) => <option key={v.id} value={v.id}>{v.label} · {v.blurb}</option>)}
+                        {d.myVoices.length > 0 && (
+                          <optgroup label={t("My voices")}>
+                            {d.myVoices.map((v) => <option key={v.voiceId} value={v.voiceId}>{v.label} · {t("your own voice")}</option>)}
+                          </optgroup>
+                        )}
+                        {d.myVoices.length > 0
+                          ? <optgroup label={t("Stock voices")}>{d.voices.map((v) => <option key={v.id} value={v.id}>{v.label} · {v.blurb}</option>)}</optgroup>
+                          : d.voices.map((v) => <option key={v.id} value={v.id}>{v.label} · {v.blurb}</option>)}
                       </select>
                       <button type="button" className="fs-voice-play" disabled={!c.voiceId} onClick={() => playVoice(c.voiceId)} aria-label={t("Hear this voice")} title={t("Hear this voice")}><Ico n="sound" size={14} /></button>
                     </div>
@@ -2098,7 +2139,7 @@ export default function FilmStudio() {
                           <div className="fs-roster" role="list" aria-label={t("Your presenters")}>
                             {d.roster.map((r) => (
                               <button type="button" role="listitem" key={r.id} className={`fs-rface${c.faceUrl === r.img ? " on" : ""}`}
-                                disabled={castingIndex !== null} title={r.name} onClick={() => useCastFace(i, r.img)}>
+                                disabled={castingIndex !== null} title={r.name} onClick={() => castPresenter(i, r)}>
                                 <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
                                 {c.faceUrl === r.img && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
                                 <span className="fs-rface-name">{r.name}</span>
@@ -2133,6 +2174,19 @@ export default function FilmStudio() {
           <button type="button" className="fs-cast-add" onClick={addCastMember} disabled={cast.length >= 8 || castingIndex !== null}>
             <span aria-hidden="true">＋</span> {tmpl?.cartoon ? t("Add a cartoon character") : t("Add a character")}
           </button>
+          {/* Lock these voices — ONE switch for the whole cast. Without it the video model voices each line
+              itself (the picked voice is only a hint, and it can drift between shots). */}
+          {cast.some((c) => c.voiceId) && (
+            <label className="fs-lockvoice">
+              <input type="checkbox" checked={lockVoices} onChange={(e) => setLockVoices(e.target.checked)} />
+              <span className="fs-lockvoice-txt">
+                <b><Ico n="mic" size={13} /> {t("Lock these voices")} <span className="fs-lockvoice-beta">{t("beta")}</span></b>
+                <small>{castHasOwnVoice
+                  ? t("Your own voice is in this cast, so every character speaks in exactly the voice picked for them — in every shot.")
+                  : t("Every character speaks in exactly the voice you picked, in every shot — instead of a voice the video model makes up. The first film with a voice takes a few minutes longer while we learn it.")}</small>
+              </span>
+            </label>
+          )}
           {portraitFetcher.data?.error && <p className="fs-err">{portraitFetcher.data.error}</p>}
         </div>
         );
@@ -2202,6 +2256,7 @@ export default function FilmStudio() {
           {!isStoryboard && seeds && <input type="hidden" name="approvedSceneImgs" value={JSON.stringify(seeds.imgs)} />}
           {isStoryboard && frames.some(Boolean) && <input type="hidden" name="approvedFrames" value={JSON.stringify(frames)} />}
           {isStoryboard && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId })))} />}
+          {isStoryboard && lockVoices && cast.some((c) => c.voiceId) && <input type="hidden" name="filmLockVoices" value="1" />}
           <button type="submit" className="fs-go" disabled={!canGo}>
             {generating ? <>… {t("Starting your film")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost }) : t("Generate {name} · Free", { name: t(tmpl?.name || "Film") })}</>}
           </button>
@@ -2517,6 +2572,13 @@ const FS_STYLE = `
 .fs-cast-add{display:inline-flex;align-items:center;gap:8px;margin:13px 0 2px;border:1.5px dashed var(--green,#0C7A46);background:rgba(12,122,70,.05);color:var(--green,#0C7A46);border-radius:13px;padding:12px 17px;font-family:Poppins,sans-serif;font-weight:800;font-size:13px;cursor:pointer;transition:background .14s;}
 .fs-cast-add:hover:not(:disabled){background:rgba(12,122,70,.1);}
 .fs-cast-add:disabled{opacity:.5;cursor:default;}
+.fs-lockvoice{display:flex;align-items:flex-start;gap:10px;margin:12px 0 2px;border:1.5px solid var(--line,#E4DFCF);background:#FBFAF5;border-radius:13px;padding:11px 13px;cursor:pointer;}
+.fs-lockvoice:has(input:checked){border-color:var(--green,#0C7A46);background:#F0F8F3;}
+.fs-lockvoice input{flex:none;width:17px;height:17px;margin-top:2px;accent-color:var(--green,#0C7A46);cursor:pointer;}
+.fs-lockvoice-txt{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.fs-lockvoice-txt b{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:800;color:var(--ink,#14201A);}
+.fs-lockvoice-txt small{font-size:11.5px;color:var(--ink2,#55605A);line-height:1.4;}
+.fs-lockvoice-beta{font-size:9px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:var(--green,#0C7A46);background:#DEF0E6;border-radius:5px;padding:1px 5px;}
 .fs-cast-add span{font-size:17px;line-height:1;font-weight:700;}
 .fs-actor-voice{display:flex;gap:7px;align-items:stretch;}
 .fs-actor-voice select{flex:1 1 auto;min-width:0;box-sizing:border-box;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;padding:8px 11px;font-size:12.5px;font-family:inherit;color:var(--ink,#14201A);background:#fff;cursor:pointer;}

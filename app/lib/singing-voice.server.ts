@@ -21,7 +21,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { repCreate, repPoll, download, runFfmpeg } from "./ugc-ad-pipeline.server";
+import { repCreate, repPoll, download, runFfmpeg, ffprobeDuration } from "./ugc-ad-pipeline.server";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -217,11 +217,14 @@ export async function ensureVoiceModel(voiceId: string, base: string): Promise<{
 // ---- 2. COVER: re-voice a song --------------------------------------------------------------------------
 
 /** Re-voice `songUrl` (a public mp3) with the trained voice at `modelUrl`. Returns the ABSOLUTE disk path
- *  of the new mix (mp3, same duration as the input). */
-export async function coverSongInVoice(songUrl: string, modelUrl: string): Promise<string> {
+ *  of the new mix (mp3, same duration as the input). `speech` = spoken dialogue rather than a song: the
+ *  model's default studio reverb on the converted voice is right for a sung vocal and wrong for a line
+ *  spoken in a room (the room's own sound stays in the untouched background track), so it's switched off. */
+export async function coverSongInVoice(songUrl: string, modelUrl: string, opts: { speech?: boolean } = {}): Promise<string> {
   const id = await createCommunity(COVER_MODEL, {
     song_input: songUrl, rvc_model: "CUSTOM", custom_rvc_model_download_url: modelUrl,
     pitch_change: "no-change", output_format: "mp3",
+    ...(opts.speech ? { reverb_wetness: 0, reverb_dryness: 1 } : {}),
   });
   const url = await repPoll(id, COVER_MAX_MS, "voice-cover");
   if (typeof url !== "string" || !/^https?:\/\//.test(url)) throw new Error("[voice] cover returned no audio");
@@ -229,6 +232,36 @@ export async function coverSongInVoice(songUrl: string, modelUrl: string): Promi
   await download(url, out);
   if (!fs.existsSync(out) || fs.statSync(out).size < 2_000) throw new Error("[voice] cover came back empty");
   return out;
+}
+
+/** Re-voice the SPEECH in a finished video clip with a trained voice — the picture, the timing (so the
+ *  lip-sync) and the background sound all stay; only the voice's timbre changes. This is how a dialogue
+ *  film's character speaks in the voice the merchant gave them: the video model acts the line in a voice
+ *  of its own, and this swaps that voice for the character's. Returns the ABSOLUTE path of a NEW clip of
+ *  exactly the same duration (file name `tmv-…`, which the dialogue pipeline reads as "already done").
+ *  Throws on any failure so the caller keeps the original clip. */
+export async function revoiceClip(clipPath: string, modelUrl: string, base: string): Promise<string> {
+  if (!base) throw new Error("[voice] no public base url");
+  const src = path.join(RENDERS(), `vsrc-${Date.now()}-${rid()}.mp3`);
+  let covered = "";
+  let leveled = "";
+  try {
+    const ex = await runFfmpeg(["-y", "-i", clipPath, "-vn", "-c:a", "libmp3lame", "-q:a", "2", src]);
+    if (ex.status !== 0 || !fs.existsSync(src) || fs.statSync(src).size < 2_000) throw new Error("[voice] the clip has no audio to re-voice");
+    covered = await coverSongInVoice(`${base}/renders/${path.basename(src)}`, modelUrl, { speech: true });
+    leveled = await matchLoudness(covered, src);
+    const seconds = ffprobeDuration(clipPath);
+    const out = path.join(RENDERS(), `tmv-${Date.now()}-${rid()}.mp4`);
+    // same picture (stream-copied), new voice, padded/cut to the clip's exact length
+    const mux = await runFfmpeg(["-y", "-i", clipPath, "-i", leveled, "-map", "0:v", "-map", "1:a", "-c:v", "copy",
+      "-c:a", "aac", "-b:a", "192k", "-af", "apad", "-t", seconds.toFixed(3), "-movflags", "+faststart", out]);
+    if (mux.status !== 0 || !fs.existsSync(out) || !(ffprobeDuration(out) > 0.5)) throw new Error("[voice] couldn't put the new voice back on the clip");
+    return out;
+  } finally {
+    for (const f of [src, covered, leveled]) {
+      if (f) { try { fs.rmSync(f, { force: true }); } catch { /* temp file — best-effort */ } }
+    }
+  }
 }
 
 async function meanVolumeDb(file: string): Promise<number | null> {

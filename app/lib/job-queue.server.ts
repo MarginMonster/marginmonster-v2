@@ -847,6 +847,8 @@ async function runJob(
             approvedFrames: payload.approvedFrames as (string | null)[] | undefined,
             // Locked cast (face + voice per character) the merchant cast in the UI.
             cast: payload.cast as Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }> | undefined,
+            // "Lock these voices": re-voice each line with the voice picked for that character.
+            lockVoices: payload.filmLockVoices === true,
             // Swappable renderer: Kling 3 Omni is the DEFAULT (owner A/B win); "veo"
             // switches to premium Veo 3. Identical pipeline either way.
             dialogueEngine: payload.dialogueEngine === "veo" ? "veo" : "kling3",
