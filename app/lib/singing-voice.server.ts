@@ -22,6 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { repCreate, repPoll, download, runFfmpeg, ffprobeDuration } from "./ugc-ad-pipeline.server";
+import { trackF0, medianHz, semitonesToMatch } from "./pitch";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -158,6 +159,11 @@ async function trainVoiceModel(voiceId: string, key: string, base: string, final
     await Promise.all(Array.from({ length: 3 }, async () => {
       while (next < VOICE_SCRIPT.length) { const i = next++; await synthSpeech(voiceId, VOICE_SCRIPT[i], clips[i]); }
     }));
+    // (while the speech is here: note where this voice naturally speaks — re-voicing a spoken line needs it)
+    try {
+      const hz = await medianPitchOf(clips[0]);
+      if (hz) fs.writeFileSync(pitchFile(voiceId), JSON.stringify({ hz: Math.round(hz) }));
+    } catch { /* measured later, on first use */ }
     // b) one take → 8-second mono 40 kHz WAV clips
     const list = path.join(work, "concat.txt");
     fs.writeFileSync(list, clips.map((c) => `file '${c.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`).join("\n"));
@@ -214,16 +220,87 @@ export async function ensureVoiceModel(voiceId: string, base: string): Promise<{
   return { url, trained: true };
 }
 
+// ---- 1b. PITCH: where a voice naturally speaks ------------------------------------------------------------
+//
+// The re-voice keeps whatever pitch it is handed. Handed a line the video model acted far from the picked
+// voice's own range, it comes out wrong in proportion: a 93 Hz stock voice driven at a child's 320 Hz was
+// "a demon" (owner, 2026-11-17). So a spoken line is first moved to where the picked voice speaks.
+
+/** Median speaking pitch (Hz) of the voice in an audio or video file; null when there is too little
+ *  voiced speech to say. Looks at the first 40 seconds, in slices, yielding between them — the worker
+ *  shares its event loop with every request. */
+export async function medianPitchOf(file: string): Promise<number | null> {
+  const raw = path.join(RENDERS(), `pitch-${rid()}.raw`);
+  try {
+    const r = await runFfmpeg(["-y", "-i", file, "-vn", "-t", "40", "-ac", "1", "-ar", "16000", "-f", "s16le", raw]);
+    if (r.status !== 0 || !fs.existsSync(raw)) return null;
+    const b = fs.readFileSync(raw);
+    const n = b.length >> 1;
+    const SLICE = 16000 * 2; // 2 s at a time
+    const f0s: number[] = [];
+    for (let at = 0; at < n; at += SLICE) {
+      const len = Math.min(SLICE + 16000 / 4, n - at); // a little overlap so no frame is lost at the seam
+      const x = new Float32Array(len);
+      for (let i = 0; i < len; i++) x[i] = b.readInt16LE((at + i) * 2) / 32768;
+      for (const f of trackF0(x, 16000)) f0s.push(f);
+      await new Promise<void>((res) => setImmediate(res));
+    }
+    return medianHz(f0s);
+  } catch {
+    return null;
+  } finally {
+    try { fs.rmSync(raw, { force: true }); } catch { /* temp file */ }
+  }
+}
+
+const pitchFile = (voiceId: string) => path.join(RENDERS(), `rvcvoice-${voiceKey(voiceId)}.pitch.json`);
+const voicePitchJobs = new Map<string, Promise<number | null>>();
+
+/** The pitch a voice naturally speaks at (Hz), measured once and kept beside its model: from the stock
+ *  voice's pre-rendered sample when there is one, else from one short line synthesized in that voice.
+ *  Null when it can't be measured — the caller then leaves the line's pitch alone. */
+export function voicePitch(voiceId: string): Promise<number | null> {
+  const vid = (voiceId || "").trim();
+  if (!vid) return Promise.resolve(null);
+  let job = voicePitchJobs.get(vid);
+  if (!job) {
+    job = (async () => {
+      const cache = pitchFile(vid);
+      try { const hz = Number(JSON.parse(fs.readFileSync(cache, "utf8")).hz); if (hz > 40 && hz < 800) return hz; } catch { /* not measured yet */ }
+      let hz: number | null = null;
+      const sample = path.join(process.cwd(), "public", "voice-samples", `${vid}.mp3`);
+      if (/^[\w-]+$/.test(vid) && fs.existsSync(sample)) hz = await medianPitchOf(sample);
+      if (!hz) {
+        const tmp = path.join(RENDERS(), `pitchsrc-${rid()}.mp3`);
+        try {
+          await synthSpeech(vid, "Okay, so this is the thing. I was going to tell you all about it yesterday, but honestly, today is even better.", tmp);
+          hz = await medianPitchOf(tmp);
+        } finally {
+          try { fs.rmSync(tmp, { force: true }); } catch { /* temp file */ }
+        }
+      }
+      if (hz) { try { fs.writeFileSync(cache, JSON.stringify({ hz: Math.round(hz) })); } catch { /* cache only */ } }
+      return hz;
+    })().catch(() => null).finally(() => voicePitchJobs.delete(vid));
+    voicePitchJobs.set(vid, job);
+  }
+  return job;
+}
+
 // ---- 2. COVER: re-voice a song --------------------------------------------------------------------------
 
 /** Re-voice `songUrl` (a public mp3) with the trained voice at `modelUrl`. Returns the ABSOLUTE disk path
  *  of the new mix (mp3, same duration as the input). `speech` = spoken dialogue rather than a song: the
  *  model's default studio reverb on the converted voice is right for a sung vocal and wrong for a line
  *  spoken in a room (the room's own sound stays in the untouched background track), so it's switched off. */
-export async function coverSongInVoice(songUrl: string, modelUrl: string, opts: { speech?: boolean } = {}): Promise<string> {
+export async function coverSongInVoice(songUrl: string, modelUrl: string, opts: { speech?: boolean; semitones?: number } = {}): Promise<string> {
+  // `semitones` moves the whole track (voice and background alike) — right for a spoken line, whose
+  // background is only room tone; a SONG keeps its key, so the singing path never passes it.
+  const semitones = Math.max(-12, Math.min(12, Math.round(opts.semitones || 0)));
   const id = await createCommunity(COVER_MODEL, {
     song_input: songUrl, rvc_model: "CUSTOM", custom_rvc_model_download_url: modelUrl,
     pitch_change: "no-change", output_format: "mp3",
+    ...(semitones ? { pitch_change_all: semitones } : {}),
     ...(opts.speech ? { reverb_wetness: 0, reverb_dryness: 1 } : {}),
   });
   const url = await repPoll(id, COVER_MAX_MS, "voice-cover");
@@ -239,8 +316,13 @@ export async function coverSongInVoice(songUrl: string, modelUrl: string, opts: 
  *  film's character speaks in the voice the merchant gave them: the video model acts the line in a voice
  *  of its own, and this swaps that voice for the character's. Returns the ABSOLUTE path of a NEW clip of
  *  exactly the same duration (file name `tmv-…`, which the dialogue pipeline reads as "already done").
- *  Throws on any failure so the caller keeps the original clip. */
-export async function revoiceClip(clipPath: string, modelUrl: string, base: string): Promise<string> {
+ *  Throws on any failure so the caller keeps the original clip.
+ *
+ *  `voiceId` (the voice the model was trained on) makes it PITCH-AWARE: the line is moved to where
+ *  that voice naturally speaks before it is converted. Without that a low voice put on a high-pitched
+ *  performance comes out stretched and wrong — and the same character would sit at a different pitch
+ *  in every shot, because the video model invents a new voice each time. */
+export async function revoiceClip(clipPath: string, modelUrl: string, base: string, opts: { voiceId?: string } = {}): Promise<string> {
   if (!base) throw new Error("[voice] no public base url");
   const src = path.join(RENDERS(), `vsrc-${Date.now()}-${rid()}.mp3`);
   let covered = "";
@@ -248,7 +330,13 @@ export async function revoiceClip(clipPath: string, modelUrl: string, base: stri
   try {
     const ex = await runFfmpeg(["-y", "-i", clipPath, "-vn", "-c:a", "libmp3lame", "-q:a", "2", src]);
     if (ex.status !== 0 || !fs.existsSync(src) || fs.statSync(src).size < 2_000) throw new Error("[voice] the clip has no audio to re-voice");
-    covered = await coverSongInVoice(`${base}/renders/${path.basename(src)}`, modelUrl, { speech: true });
+    let semitones = 0;
+    if (opts.voiceId) {
+      const [from, to] = await Promise.all([medianPitchOf(src), voicePitch(opts.voiceId)]);
+      semitones = semitonesToMatch(from, to);
+      console.log(`[voice] line at ${from ? Math.round(from) : "?"} Hz, voice speaks at ${to ? Math.round(to) : "?"} Hz -> ${semitones ? `moved ${semitones > 0 ? "+" : ""}${semitones} semitones` : "pitch left as is"}`);
+    }
+    covered = await coverSongInVoice(`${base}/renders/${path.basename(src)}`, modelUrl, { speech: true, semitones });
     leveled = await matchLoudness(covered, src);
     const seconds = ffprobeDuration(clipPath);
     const out = path.join(RENDERS(), `tmv-${Date.now()}-${rid()}.mp4`);

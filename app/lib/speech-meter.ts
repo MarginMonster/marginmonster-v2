@@ -26,17 +26,26 @@ export function estimateSpeakSeconds(line: string): number {
   return words * SECONDS_PER_WORD + 0.4 + pauses;
 }
 
-/** The render clip length for a line: long enough never to clip the speech, short enough
- *  to leave no big dead tail for the model to pad. Clamped to the renderer's sane range. */
+/** The video model waits about this long before the first word (measured on real renders: 1.2 s and
+ *  1.4 s). The estimate above counts 0.4 s of it — what is left in the film once the lead-in has been
+ *  trimmed — so the rest has to be added back when sizing the take itself. */
+export const MODEL_LEAD_IN_EXTRA = 0.8;
+
+/** The render clip length for a line: long enough never to clip the speech — the take must also hold
+ *  the model's own lead-in, or the last word lands on the very last frame (a 17-word line in a 7 s take
+ *  ended exactly at the cut). The dead air that leaves is trimmed afterwards, so a little headroom
+ *  costs nothing on screen. Clamped to the renderer's sane range. */
 export function clipSecondsFor(line: string): number {
   const spoken = estimateSpeakSeconds(line);
-  return Math.max(CLIP_MIN_SECONDS, Math.min(CLIP_MAX_SECONDS, Math.round(spoken + 1.2)));
+  return Math.max(CLIP_MIN_SECONDS, Math.min(CLIP_MAX_SECONDS, Math.round(spoken + MODEL_LEAD_IN_EXTRA + 1.0)));
 }
 
 /** How full a line is against ONE clip's ceiling, as 0..1+ — drives the editor meter bar
- *  (>1 means the line would overrun the clip and get cut off). */
+ *  (>1 means the line would overrun the clip and get cut off). The ceiling is the longest take less
+ *  the lead-in the model spends before it speaks. */
 export function clipFill(line: string): number {
-  return CLIP_MAX_SECONDS > 0 ? estimateSpeakSeconds(line) / CLIP_MAX_SECONDS : 0;
+  const room = CLIP_MAX_SECONDS - MODEL_LEAD_IN_EXTRA;
+  return room > 0 ? estimateSpeakSeconds(line) / room : 0;
 }
 
 /** A compact "~Xs" label for the meter (one decimal under 10s, whole seconds above). */

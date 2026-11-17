@@ -29,6 +29,7 @@ import { ensureVoiceModel, revoiceClip } from "./singing-voice.server";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { clampKlingPrompt, clipRules, fitClipPrompt } from "./clip-prompt";
+import { isNoopTrim, parseSilences, planClipTrim, TAIL_KEEP_LAST } from "./clip-trim";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { clipSecondsFor } from "./speech-meter";
@@ -138,12 +139,12 @@ async function dialogueClip(engine: string, seedAbs: string, prompt: string, sta
 /** Render ONE dialogue clip end-to-end (render + download + head/tail + interior-pause trims)
  *  → a local file path. The render loop does this inline; the SECTION EDITOR's regenerate
  *  reuses it to re-roll a single shot from its stored seed + prompt. */
-export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: string, prompt: string, durSec: number, aspect: "9:16" | "16:9" | "1:1", stage: string): Promise<string> {
+export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: string, prompt: string, durSec: number, aspect: "9:16" | "16:9" | "1:1", stage: string, chained = false): Promise<string> {
   const clipUrl = await dialogueClip(engine, seedAbs, prompt, stage, durSec, aspect);
   const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
   await download(clipUrl, rawPath);
   if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error("[regen] clip did not download");
-  const trimmed = await trimTrailingSilence(rawPath);
+  const trimmed = await trimTrailingSilence(rawPath, { chained });
   return await collapseInteriorPause(trimmed);
 }
 
@@ -181,41 +182,49 @@ async function cropPanelSeed(panelRelUrl: string, side: "left" | "right"): Promi
   return null;
 }
 
-/** Trim the trailing silence (dead air after the last spoken word) so a clip ends
- *  on the line, not on a long pause before the cut. Detects the final silence run
- *  with ffmpeg silencedetect and cuts there (+ a short tail), re-encoding for a
- *  frame-accurate cut. Returns a NEW path, or the original if nothing to trim. */
-async function trimTrailingSilence(inPath: string): Promise<string> {
+/** Take the dead air off a rendered clip: the pause before the line starts and the hold after it
+ *  ends (see clip-trim.ts for the rules and why). `chained` = this clip was seeded from the previous
+ *  clip's last frame — its first frames are what makes that cut invisible, so its lead-in is played
+ *  FAST rather than cut off; a clip that opens on a new picture just has the lead-in cut. Re-encodes
+ *  for frame-accurate edits. Returns a NEW path, or the original if there is nothing to trim. */
+async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; last?: boolean } = {}): Promise<string> {
   try {
     const dur = ffprobeDuration(inPath);
     if (!(dur > 2)) return inPath;
     const probe = await runFfmpeg(["-i", inPath, "-af", "silencedetect=noise=-33dB:d=0.6", "-f", "null", "-"]);
     const err = probe.stderr || "";
-    const starts = [...err.matchAll(/silence_start:\s*(-?[\d.]+)/g)].map((m) => parseFloat(m[1]));
-    const ends = [...err.matchAll(/silence_end:\s*([\d.]+)/g)].map((m) => parseFloat(m[1]));
-    // LEADING silence: a silence that starts at/near 0 and ends → the actor stands there
-    // before talking, which reads as an awkward pause before the reply. Trim the clip to
-    // start right as the speech does (leave a hair of lead-in). The clip's LAST frame is
-    // unchanged, so the seamless chain is unaffected.
-    let startAt = 0;
-    if (starts.length && starts[0] <= 0.3 && ends.length && ends[0] > 0.35) {
-      startAt = Math.max(0, ends[0] - 0.12);
+    const plan = planClipTrim(parseSilences(err), dur, { chained: !!opts.chained, tailKeep: opts.last ? TAIL_KEEP_LAST : undefined });
+    if (isNoopTrim(plan, dur)) return inPath;
+    const ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"];
+    const out = inPath.replace(/\.mp4$/i, "-trim.mp4");
+    const good = () => { try { return fs.existsSync(out) && ffprobeDuration(out) > 0.8; } catch { return false; } };
+    if (plan.retime) {
+      // keep the opening frames, play the rest of the lead-in fast, then the line at normal speed
+      const { hold, leadEnd, speed } = plan.retime;
+      const fps = Number((err.match(/,\s*(\d+(?:\.\d+)?)\s*fps/) || [])[1]) || 24;
+      const tempo = speed > 2 ? `atempo=2.0,atempo=${(speed / 2).toFixed(3)}` : `atempo=${speed.toFixed(3)}`;
+      const a = hold.toFixed(3), b = leadEnd.toFixed(3), e = plan.endAt.toFixed(3);
+      const fc = [
+        `[0:v]trim=0:${a},setpts=PTS-STARTPTS[v0]`,
+        `[0:v]trim=${a}:${b},setpts=(PTS-STARTPTS)/${speed.toFixed(3)}[v1]`,
+        `[0:v]trim=${b}:${e},setpts=PTS-STARTPTS[v2]`,
+        `[0:a]atrim=0:${a},asetpts=PTS-STARTPTS[a0]`,
+        `[0:a]atrim=${a}:${b},asetpts=PTS-STARTPTS,${tempo}[a1]`,
+        `[0:a]atrim=${b}:${e},asetpts=PTS-STARTPTS[a2]`,
+        `[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[vc][a]`,
+        `[vc]fps=${fps}[v]`,
+      ].join(";");
+      const r = await runFfmpeg(["-y", "-i", inPath, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", ...ENC, out]);
+      if (r.status === 0 && good()) return out;
+      // couldn't re-time it: still never cut the head of a continuing clip — fall through to the tail only
     }
-    // Trailing silence = a silence_start that runs to EOF (no later silence_end).
-    const lastStart = starts.length ? starts[starts.length - 1] : NaN;
-    const lastEnd = ends.length ? ends[ends.length - 1] : NaN;
-    const trailing = !Number.isNaN(lastStart) && (Number.isNaN(lastEnd) || lastEnd < lastStart);
-    let endAt = dur;
-    if (trailing && lastStart > startAt + 1.0 && lastStart < dur - 0.3) {
-      endAt = Math.min(dur, lastStart + 0.45);
-    }
-    if (startAt > 0.15 || endAt < dur - 0.2) {
-      const out = inPath.replace(/\.mp4$/i, "-trim.mp4");
+    const startAt = plan.cutHead;
+    if (startAt > 0.15 || plan.endAt < dur - 0.2) {
       const args = ["-y", "-i", inPath];
       if (startAt > 0.15) args.push("-ss", startAt.toFixed(2));
-      args.push("-t", Math.max(0.8, endAt - startAt).toFixed(2), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out);
+      args.push("-t", Math.max(0.8, plan.endAt - startAt).toFixed(2), ...ENC, out);
       const r = await runFfmpeg(args);
-      if (r.status === 0 && fs.existsSync(out) && ffprobeDuration(out) > 0.8) return out;
+      if (r.status === 0 && good()) return out;
     }
   } catch { /* keep the original clip */ }
   return inPath;
@@ -474,10 +483,18 @@ export async function generateTestMovie(opts: {
   treatment.scenes = treatment.scenes.slice(0, want);
   await ckpt({ ckTreatment: JSON.stringify(treatment) });
 
-  const castBible = treatment.cast && treatment.cast.length ? `The recurring cast (keep them identical in every shot): ${treatment.cast.join("; ")}.` : "";
   // Locked cast (faces + voices) the merchant cast in the UI — drives per-shot
   // identity conditioning and the Veo voice pin.
   const castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
+  // The script writer invents a look for every name without seeing who the merchant cast. For a
+  // character who HAS a cast photo that written look is wrong by construction, so it is kept out of
+  // every prompt: the photo is the look.
+  const actorOfEntry = (entry: string) => {
+    const head = ((entry || "").split(/[,:—–]/)[0] || "").toLowerCase().split(/\s+/).filter(Boolean);
+    return castActors.find((c) => !!c.faceUrl && head.includes((c.name || "").toLowerCase().split(/[\s,]/)[0]));
+  };
+  const castNote = (entry: string) => { const a = actorOfEntry(entry); return a ? `${a.name.trim()} (exactly as in their reference photo)` : entry; };
+  const castBible = treatment.cast && treatment.cast.length ? `The recurring cast (keep them identical in every shot): ${treatment.cast.map(castNote).join("; ")}.` : "";
 
   // 2) CAST REFERENCE still (photoreal) — establishes the characters' look; the
   //    first scene seeds from it, then the chain carries continuity.
@@ -516,6 +533,20 @@ export async function generateTestMovie(opts: {
   // camera angle in the SAME location re-frames that master (a cinematic cut that holds room
   // + faces). A flat treatment (no scene.where) collapses to a SINGLE location = the
   // validated seamless behaviour, byte-for-byte. Two-handers only; else the chain fallback.
+  /** Is the cast member in `faceAbs` recognisably one of the two people in the two-shot? Judged on what
+   *  a viewer would notice — hair colour / length / style and apparent age — not on pose or lighting.
+   *  Can't be checked (no key, a blip) → true: the check may ask for a redraw, never block a film. */
+  const castIsIn = async (twoShotAbs: string | undefined, faceAbs: string): Promise<boolean> => {
+    if (!twoShotAbs) return true;
+    try {
+      const { anthropicVision } = await import("./anthropic.server");
+      const v = await anthropicVision(
+        "The FIRST image is a two-shot of two people. The SECOND image is a reference photo of a cast member. Does ONE of the two people in the first image read as that same character — the same hair colour, the same hair length and style, and a matching apparent age and build? Ignore pose, camera angle, lighting, expression and background. Answer YES or NO and nothing else.",
+        [twoShotAbs, faceAbs], { maxTokens: 4, model: "claude-sonnet-5" }
+      );
+      return !/^\s*no\b/i.test(v || "");
+    } catch { return true; }
+  };
   type Master = { url: string; aOnLeft: boolean; a: string; b: string };
   const masters: Record<string, Master> = {};
   try { const r = resume.ckMasters ? JSON.parse(resume.ckMasters) : null; if (r && typeof r === "object") Object.assign(masters, r); } catch { /* ignore */ }
@@ -524,18 +555,43 @@ export async function generateTestMovie(opts: {
     if (masters[locKey]?.url) return masters[locKey];
     // The master two-shot is the WHOLE film's seed — nano-banana occasionally returns null,
     // which hard-killed the render with "no seed frame". Retry a few times before giving up.
+    // …and a master that doesn't LOOK like the people who were cast is the wrong film from its first
+    // frame (owner: "the avatar is not Madalynn"). So each try is checked against the cast photos and
+    // re-drawn if a cast member isn't recognisably there; the last try is kept either way, so a picky
+    // check can never stop a film.
+    const faceA = faceFor(spkA), faceB = faceFor(spkB);
+    const nameOf = (sp: string) => (castActors.find((c) => firstName(c.name) === firstName(sp))?.name || sp || "").trim() || sp;
     let url: string | null = null;
-    for (let attempt = 0; attempt < 3 && !url; attempt++) {
-      url = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA: faceFor(spkA), faceB: faceFor(spkB), descA: bibleFor(spkA), descB: bibleFor(spkB), setting: cleanSetting(where), style: twoStyle, aspect });
+    let castOk = true;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const tryUrl = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), setting: cleanSetting(where), style: twoStyle, aspect });
+      if (!tryUrl) continue;
+      url = tryUrl;
+      castOk = true;
+      for (const face of [faceA, faceB]) {
+        if (face && !(await castIsIn(abs(tryUrl), face))) castOk = false;
+      }
+      if (castOk) break;
+      console.log(`[testmovie] master two-shot try ${attempt + 1}: a cast member doesn't match their photo — redrawing`);
     }
     if (!url) return undefined;
+    if (!castOk) console.error("[testmovie] master two-shot: cast still not a clear match after 3 tries — keeping the last");
     // DETECT which side each character landed on — nano-banana doesn't reliably honour
     // left/right, and the clip prompt needs the real side to point Veo at the speaker.
     let aOnLeft = true;
     try {
       const { anthropicVision } = await import("./anthropic.server");
       const twoAbs = abs(url);
-      if (twoAbs) {
+      if (twoAbs && (faceA || faceB)) {
+        // A cast photo says who is who far better than a written description (which, for a cast
+        // presenter, is the script writer's invention and matches nobody in the frame).
+        const v = await anthropicVision(
+          "The FIRST image is a two-shot of two people. The SECOND image is a reference photo of ONE of them — match by hair colour, hair length and style, apparent age and clothing. Is that person on the LEFT or the RIGHT side of the first image? Answer LEFT or RIGHT and nothing else.",
+          [twoAbs, (faceA || faceB) as string], { maxTokens: 4, model: "claude-sonnet-5" }
+        );
+        const left = /left/i.test(v || ""), right = /right/i.test(v || "");
+        if (left !== right) aOnLeft = faceA ? left : right;
+      } else if (twoAbs) {
         const v = await anthropicVision(
           `Two people are together in this image. Person A is: ${bibleFor(spkA)}. Person B is: ${bibleFor(spkB)}. Which of them is on the LEFT side of the frame? Answer with a single letter, A or B, and nothing else.`,
           [twoAbs], { maxTokens: 4 }
@@ -611,6 +667,7 @@ export async function generateTestMovie(opts: {
     return job;
   };
   const revoiceTried = new Set<number>();
+  const shotVoice: Record<number, string> = {}; // shot index → the cast voice that was put on it
   let voicesLocked = 0;
   const revoiceAt = async (idx: number): Promise<void> => {
     const voiceId = clipVoiceAt(idx);
@@ -619,7 +676,8 @@ export async function generateTestMovie(opts: {
     try {
       const modelUrl = await voiceModelFor(voiceId);
       if (!modelUrl) return;
-      clips[idx] = await revoiceClip(clips[idx], modelUrl, base);
+      clips[idx] = await revoiceClip(clips[idx], modelUrl, base, { voiceId });
+      shotVoice[idx] = voiceId;
       voicesLocked++;
       await ckpt({ ckClips: clips });
     } catch (e) {
@@ -635,6 +693,7 @@ export async function generateTestMovie(opts: {
   const shotSeeds: (string | null)[] = clips.map(() => null);
   const shotPrompts: (string | null)[] = clips.map(() => null);
   const shotDurs: number[] = clips.map(() => 0);
+  const shotChained: boolean[] = clips.map(() => false);
   let prevFrameUrl: string | undefined = resume.ckLastStill; // prior clip's last frame (relative /renders URL)
   // Chaining from each clip's last frame gives seamless cuts but lets faces (esp. facial
   // hair) DRIFT over a long film. Re-anchor to the pristine master after this many chained
@@ -717,6 +776,11 @@ export async function generateTestMovie(opts: {
       }
     }
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
+    // Does this shot CONTINUE the last one (seeded from its final frame)? Then its opening frames are
+    // what makes the cut invisible and must survive the trim. Any other seed is a new picture: that seam
+    // gets the softer dissolve, and the shot may simply start on its line.
+    const chained = i > 0 && !!prevFrameUrl && seedAbs === abs(prevFrameUrl);
+    if (i > 0 && !chained) softSeams.add(i);
 
     // Veo prompt: ONE speaker talks a full beat (clean single voice), the other
     // present and reacting; two-shot; voice pinned consistent; NO on-screen text.
@@ -770,10 +834,11 @@ export async function generateTestMovie(opts: {
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, rawPath);
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
-    const trimmed = await trimTrailingSilence(rawPath); // cut dead air at the head/tail
+    // dead air off both ends (a continuing shot keeps its opening frames; the film's last shot holds a beat longer)
+    const trimmed = await trimTrailingSilence(rawPath, { chained, last: i === treatment.scenes.length - 1 });
     const outPath = await collapseInteriorPause(trimmed); // and collapse a long mid-line pause
     clips.push(outPath);
-    shotSeeds.push(seedAbs); shotPrompts.push(prompt); shotDurs.push(clipSecs);
+    shotSeeds.push(seedAbs); shotPrompts.push(prompt); shotDurs.push(clipSecs); shotChained.push(chained);
     // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.
     prevFrameUrl = (await extractLastFrame(outPath)) || undefined;
     await ckpt({ ckClips: clips, ckLastStill: prevFrameUrl });
@@ -815,6 +880,10 @@ export async function generateTestMovie(opts: {
           seed: shotSeeds[i] || undefined,
           prompt: shotPrompts[i] || undefined,
           dur: shotDurs[i] || undefined,
+          // continues the previous shot (seeded from its last frame) → a re-roll must keep its opening frames
+          chained: shotChained[i] || undefined,
+          // the cast voice on this shot ("Lock these voices") → a re-roll of it gets the same voice
+          voice: shotVoice[i] || undefined,
         })),
       }),
     },

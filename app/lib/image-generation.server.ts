@@ -4783,7 +4783,7 @@ export async function renderTwoPanelShotReverse(opts: { roomRefUrl?: string | nu
 // cut" continuity bug). With both people always fully framed there is nothing to
 // mismatch, and because both faces are born from one generation the two people + the
 // room are identical by construction and never drift. Seeded 9:16 to match the clips.
-export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; setting: string; style?: "photoreal" | "cartoon"; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
+export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; nameA?: string; nameB?: string; setting: string; style?: "photoreal" | "cartoon"; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN) return null;
     const refs = [opts.roomRefUrl, opts.faceA, opts.faceB].filter((u): u is string => !!u).slice(0, 3);
@@ -4793,8 +4793,25 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
     const roomNote = opts.roomRefUrl
       ? ` The FIRST reference image shows ONLY the room: copy its exact setting, furniture, seats, surfaces, lighting, windows and color grade, but DO NOT copy any people from it.`
       : "";
-    const faceNote = (opts.faceA || opts.faceB)
-      ? ` The other reference images are the EXACT faces and looks of the two people — match each one's face, hair, facial hair and clothing precisely, and do NOT blend or swap them.`
+    // A person who has a reference photo LOOKS LIKE THE PHOTO. The script writer invents a look for every
+    // name ("long auburn hair in a braid, mustard hoodie") without ever seeing the presenter the merchant
+    // cast — and when that text sat beside the photo, with nothing saying whose photo it was, the picture
+    // model drew the text and gave the photo's clothes to the other person. So: each photo is bound to
+    // its person by number and name, and the written look is DROPPED for anyone who has one.
+    const refNo = (u?: string | null) => (u ? refs.indexOf(u) + 1 : 0);
+    const nameA = (opts.nameA || "").trim().slice(0, 40) || "the first person";
+    const nameB = (opts.nameB || "").trim().slice(0, 40) || "the second person";
+    const who = (name: string, face: string | null | undefined, desc: string) => (face && refNo(face)
+      ? `${name} — EXACTLY the person in reference image ${refNo(face)}: the same face, the same hair (colour, length and style), skin tone, apparent age and build, wearing what they wear in that photo`
+      : desc);
+    const personA = who(nameA, opts.faceA, descA);
+    const personB = who(nameB, opts.faceB, descB);
+    const bound = [
+      opts.faceA && refNo(opts.faceA) ? `reference image ${refNo(opts.faceA)} is ${nameA} and ONLY ${nameA}` : "",
+      opts.faceB && refNo(opts.faceB) ? `reference image ${refNo(opts.faceB)} is ${nameB} and ONLY ${nameB}` : "",
+    ].filter(Boolean);
+    const faceNote = bound.length
+      ? ` WHO IS WHO: ${bound.join("; ")}. A person with a reference photo must be recognisably that same person — never a different hair colour, hairstyle, age or outfit — and their look must never be given to the other person.${bound.length === 1 ? " The person WITHOUT a reference photo is drawn from their description and must look clearly different from the one with a photo." : ""}`
       : "";
     const cartoon = opts.style === "cartoon";
     const ar = opts.aspect || "9:16";
@@ -4808,7 +4825,7 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
     const styleTail = cartoon
       ? `Clean cheerful cartoon lighting, soft candy colors, rounded friendly shapes, ${comp}, no on-screen text, no watermark.`
       : `Cinematic filmic lighting, shallow depth of field, ${comp}, no on-screen text, no watermark.`;
-    const prompt = `${styleLead} of BOTH people together in ${setting}, facing each other in conversation and positioned NATURALLY for this exact place — seated across a table ONLY if the location is a diner, booth, bar, café, kitchen or similar sit-down spot; otherwise standing (or seated) exactly as the real setting calls for, and NEVER add a table, booth or chairs that do not belong here (e.g. on a street, in a hallway or outdoors they stand). Frame them from roughly the CHEST UP and fairly CLOSE so that BOTH of their FACES are LARGE, sharp and clearly visible and you can read their expressions — this is an intimate dialogue two-shot, NOT a distant full-body wide shot. ${descA} on one side and ${descB} on the other, both faces prominent and in focus. This is NOT an over-the-shoulder shot: neither person is turned fully away, cropped out, or blurred in the foreground; both are equally sharp. Both people share the SAME space on the SAME side of the room, standing CLOSE together directly facing each other — they are NOT separated by any window, glass pane, partition, railing, counter, doorway or divider BETWEEN them; if the setting has a window it stays in the BACKGROUND behind or beside them, never between them and never splitting the frame down the middle. ${consistencyNote} By DEFAULT both people's hands are empty, relaxed and still — do NOT add a cigarette, glass, phone or other small handheld prop unless the scene above specifically calls for one; if it DOES, render that single prop clearly and held naturally in one hand (never multiplied, floating or morphing).${roomNote}${faceNote} ${styleTail}`;
+    const prompt = `${styleLead} of BOTH people together in ${setting}, facing each other in conversation and positioned NATURALLY for this exact place — seated across a table ONLY if the location is a diner, booth, bar, café, kitchen or similar sit-down spot; otherwise standing (or seated) exactly as the real setting calls for, and NEVER add a table, booth or chairs that do not belong here (e.g. on a street, in a hallway or outdoors they stand). Frame them from roughly the CHEST UP and fairly CLOSE so that BOTH of their FACES are LARGE, sharp and clearly visible and you can read their expressions — this is an intimate dialogue two-shot, NOT a distant full-body wide shot. ${personA} on one side and ${personB} on the other, both faces prominent and in focus. This is NOT an over-the-shoulder shot: neither person is turned fully away, cropped out, or blurred in the foreground; both are equally sharp. Both people share the SAME space on the SAME side of the room, standing CLOSE together directly facing each other — they are NOT separated by any window, glass pane, partition, railing, counter, doorway or divider BETWEEN them; if the setting has a window it stays in the BACKGROUND behind or beside them, never between them and never splitting the frame down the middle. ${consistencyNote} By DEFAULT both people's hands are empty, relaxed and still — do NOT add a cigarette, glass, phone or other small handheld prop unless the scene above specifically calls for one; if it DOES, render that single prop clearly and held naturally in one hand (never multiplied, floating or morphing).${roomNote}${faceNote} ${styleTail}`;
     const input: Record<string, unknown> = { prompt, aspect_ratio: ar, output_format: "jpg" };
     if (refs.length) input.image_input = refs;
     const url = await repRun("google/nano-banana", input);
