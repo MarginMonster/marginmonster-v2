@@ -371,7 +371,9 @@ export async function previewFilmTreatment(opts: {
   const castNames = (opts.castNames || []).map((n) => (n || "").trim()).filter(Boolean).slice(0, 4);
   const coStars = castNames.length
     ? ` Named co-stars who ALSO appear — use THESE EXACT names and NEVER invent other named people: ${castNames.join(", ")}. In every scene where more than the singer appears (a band, friends, a dance, a crowd of known faces), NAME which of them is there IN that scene's visual (e.g. "${castNames[0]} plays guitar beside ${artistName || "the singer"}"), so those scenes feature the real cast — not strangers.`
-    : " You may add ONE unnamed bandmate or dancer.";
+    // No co-stars picked = a SOLO artist. The old wording ("you may add ONE unnamed bandmate") still got a
+    // NAMED stranger written into the cast and the lyrics ("Treyvon on the beat" in a solo video).
+    : " You may put ONE unnamed bandmate or dancer in a scene's visual — but NEVER give them a name, NEVER list them in \"cast\" and NEVER mention them in the lyrics: \"cast\" has exactly ONE entry, the artist.";
   // Each avatar HAS a gender (the tester's bug: a female avatar got written — and sung — as male). State
   // it so the writer never casts a man in a woman's role/clothing (or a dress) or vice versa.
   const genderBits: string[] = [];
@@ -393,10 +395,22 @@ export async function previewFilmTreatment(opts: {
     : "";
   // Narrated templates want each caption to BE the narrator's spoken line for
   // that beat (a flowing voiceover); others want a short on-screen hook.
+  // EXACT-LENGTH short cuts (10s / 20s): the video is cut to exactly scenes×10 seconds, and the music
+  // engine sings roughly ONE lyric line every 5 seconds then stops (measured on music-1.5: 2 lines → 11s,
+  // 4 → 20s, 6 → 26s, 8 → 34s). A full verse-chorus song written for a 10-second video just gets chopped
+  // off mid-verse, so the short cuts get a hook sized to their length instead.
+  const shortCut = scenes <= 2;
+  const hookLines = scenes === 1 ? 2 : 5;
+  const songShape = shortCut
+    ? `This is a SHORT ${scenes * 10}-second cut, so write ONLY the HOOK: EXACTLY ${hookLines} short, punchy lyric lines in TOTAL — no verses and no repeated lines. (The music engine sings about one line every 5 seconds and everything after ${scenes * 10} seconds is cut off, so extra lines would never be heard.)`
+    : `Keep the song TIGHT: a short verse, a REPEATING chorus hook, a second short verse, then the chorus again. HARD LIMIT — the complete lyrics (ALL ${scenes} scene captions joined together) MUST total UNDER 560 characters (roughly 95 words); lean on the repeating chorus. The music engine expands these lyrics into a full-length track, so short and punchy is exactly right.`;
+  const captionShape = shortCut
+    ? `• CAPTION — the lyric lines sung in THIS scene (${scenes === 1 ? "both lines" : "2-3 lines each"}), separated by " / ". Read in order, the captions ARE the complete ${hookLines}-line ${genreLabel} hook. Authentic to ${genreLabel}.\n`
+    : `• CAPTION — the 2-3 SHORT lyric lines sung in THIS scene, separated by " / ". Read in order, all ${scenes} captions joined ARE the complete (short, catchy) ${genreLabel} song with the chorus repeating. Authentic to ${genreLabel}; keep it well within the character limit.\n`;
   const captionLine = tmpl.lipSyncSinger
-    ? `\nWrite a catchy ${genreLabel} SONG for ONE artist, plus ${scenes} VIDEO SCENES. Keep the song TIGHT: a short verse, a REPEATING chorus hook, a second short verse, then the chorus again. HARD LIMIT — the complete lyrics (ALL ${scenes} scene captions joined together) MUST total UNDER 560 characters (roughly 95 words); lean on the repeating chorus. The music engine expands these lyrics into a full-length track, so short and punchy is exactly right. Return EXACTLY ${scenes} scenes. Each scene has TWO fields:\n` +
+    ? `\nWrite a catchy ${genreLabel} SONG for ONE artist, plus ${scenes} VIDEO SCENE${scenes === 1 ? "" : "S"}. ${songShape} Return EXACTLY ${scenes} scene${scenes === 1 ? "" : "s"}. Each scene has TWO fields:\n` +
       `• VISUAL — the SAME artist performing to camera in a DISTINCT ${genreLabel} setting (${tmpl.sceneHint}); a different vivid location each scene for visual variety; NO on-screen text, logos or real named people.\n` +
-      `• CAPTION — the 2-3 SHORT lyric lines sung in THIS scene, separated by " / ". Read in order, all ${scenes} captions joined ARE the complete (short, catchy) ${genreLabel} song with the chorus repeating. Authentic to ${genreLabel}; keep it well within the character limit.\n` +
+      captionShape +
       `RENDER-SAFE — these scenes become AI video and some things glitch badly when animated. UNLESS the theme above explicitly calls for it, AVOID: fire, flames, bonfires, sparks or embers; riding in the BED of a moving truck or any fast open-air wind (the wind + flames warp into a mess); extreme tight face-filling close-ups; and exaggerated or extreme facial emotions (screaming, sobbing, snarling). Prefer steady medium and wide shots, grounded settings, gentle believable motion, and natural, genuine expressions.\n`
     : tmpl.dialogue
     ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FIVE fields:\n` +
@@ -416,8 +430,13 @@ export async function previewFilmTreatment(opts: {
     : tmpl.key === "horror"
     ? `This is FICTIONAL horror for an entertainment video (a horror-short / scary-story channel). Write a GENUINELY SCARY, intense, DARK horror story — real menace, dread, danger, frightening imagery and a chilling twist; a horror-FILM feel, NOT a watered-down kids' version. Violence, death, blood and disturbing imagery are fine when they serve the scare, portrayed with cinematic intent. CAST ONLY ADULTS: every character — victim and threat alike — is a grown adult; never write a child, teenager, infant or any minor into the story, and never place a young person in peril (the AI render models refuse minors-in-danger, which hard-fails the whole video — so recast any endangered character as an adult). The ONLY other limits: no gratuitous, lingering torture or graphic mutilation purely for shock, and no real named people. Take the premise and make it as frightening as you can within that.`
     : `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe. Anyone who faces danger, threat, fear or menace is an ADULT — never place a child, teenager, infant or any minor in peril and never depict a minor being threatened, hunted, harmed or frightened; recast any such role as an adult (the AI render models refuse minors-in-danger, which hard-fails the video).`;
+  // The template brief says "a full ~2-minute MUSIC VIDEO … across several vivid settings" — say what a
+  // short cut actually is, so the brief doesn't fight the hook-sized lyric budget above.
+  const brief = tmpl.lipSyncSinger && shortCut
+    ? `a SHORT ${scenes * 10}-second MUSIC VIDEO cut — ONE artist actually sings a real genre hook on camera (lip-synced) ${scenes === 1 ? "in one vivid setting" : "across two vivid settings"}`
+    : tmpl.brief;
   const prompt =
-    `Write ${tmpl.brief}.\n` +
+    `Write ${brief}.\n` +
     (topic ? `THEME / what it's about: "${topic.slice(0, 300)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n` : `Pick a fun, broadly-appealing theme.\n`) +
     genreLine +
     castLine +

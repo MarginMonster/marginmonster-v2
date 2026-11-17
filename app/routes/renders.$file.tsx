@@ -23,10 +23,42 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     const name = params.file || "";
     // allow the image ad formats too — this guard used to be .mp4-only, which
     // 404'd every img-*.jpg and made all image ads render blank.
-    if (!/^[a-zA-Z0-9_-]+\.(mp4|mp3|jpe?g|png|webp)$/.test(name)) {
+    // The ONLY zips served are the avatar-voice engine's own (singing-voice.server.ts): the speech
+    // dataset it hands the RVC trainer and the trained voice model the cover model downloads. Their
+    // names carry an HMAC of the voice id, so they can't be guessed.
+    const isVoiceZip = /^rvc(voice|data)-[a-zA-Z0-9_-]+\.zip$/.test(name);
+    if (!isVoiceZip && !/^[a-zA-Z0-9_-]+\.(mp4|mp3|jpe?g|png|webp)$/.test(name)) {
       return new Response("Not found", { status: 404 });
     }
     const filePath = path.join(process.cwd(), "data", "renders", name);
+    if (isVoiceZip) {
+      // A voice model is ~145 MB — never buffer it whole (the media path below reads the file into
+      // memory, fine for a few-MB clip). Pull-based web stream over a file descriptor: no Node stream
+      // 'error' event to go uncaught (the crash the note above warns about), and the fd is closed on
+      // finish, error or client disconnect.
+      if (!fs.existsSync(filePath)) return new Response("Not found", { status: 404 });
+      const size = fs.statSync(filePath).size;
+      let fd: number | null = null;
+      let pos = 0;
+      const close = () => { if (fd !== null) { try { fs.closeSync(fd); } catch { /* already closed */ } fd = null; } };
+      const body = new ReadableStream<Uint8Array>({
+        start() { fd = fs.openSync(filePath, "r"); },
+        pull(controller) {
+          try {
+            if (fd === null || pos >= size) { close(); controller.close(); return; }
+            const len = Math.min(1024 * 1024, size - pos);
+            const buf = Buffer.allocUnsafe(len);
+            const n = fs.readSync(fd, buf, 0, len, pos);
+            if (n <= 0) { close(); controller.close(); return; }
+            pos += n;
+            controller.enqueue(new Uint8Array(buf.buffer, buf.byteOffset, n));
+            if (pos >= size) { close(); controller.close(); }
+          } catch (e) { close(); controller.error(e); }
+        },
+        cancel() { close(); },
+      });
+      return new Response(body, { headers: { "Content-Type": "application/zip", "Content-Length": String(size), "Cache-Control": "private, no-store" } });
+    }
     // Read-fallback: if the file isn't on the local disk (fresh instance, or a
     // disk that was resized/recreated), pull it from durable object storage and
     // rehydrate the local copy so subsequent requests are fast. This is what

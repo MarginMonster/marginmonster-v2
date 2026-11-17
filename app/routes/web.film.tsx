@@ -372,13 +372,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const scrRaw = ((form.get("sceneCastRefs") as string) || "").trim();
     if (scrRaw) { try { const a = JSON.parse(scrRaw); if (Array.isArray(a)) sceneCastRefs = a.filter((x) => typeof x === "string").slice(0, 2); } catch { /* ignore */ } }
     const rerollCustomProps = parseCustomProps(form.get("filmCustomProps") as string);
+    // The scene's CURRENT type + the video's scene count, so the re-roll frames the shot for what it is now.
+    const rerollKindRaw = ((form.get("sceneKind") as string) || "").trim();
+    const rerollKind = rerollKindRaw === "perform" || rerollKindRaw === "broll" ? rerollKindRaw : undefined;
+    const rerollSceneCount = parseInt((form.get("sceneCount") as string) || "", 10) || undefined;
     if (!sceneVisual) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
     try {
       let img: string | null = null;
       if (tmpl.lipSyncSinger) {
         if (!artistRef) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
         const { rerollMusicVideoScene } = await import("../lib/music-video-pipeline.server");
-        img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect, customProps: rerollCustomProps });
+        img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect, customProps: rerollCustomProps, kind: rerollKind, sceneCount: rerollSceneCount });
       } else {
         const { rerollFilmSceneSeed } = await import("../lib/film-engine.server");
         img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined });
@@ -890,7 +894,7 @@ export default function FilmStudio() {
     const sceneCastRefs = costarImgs.map((img) => costarImgToRef(img)).filter(Boolean) as string[];
     setRerollingScene(i);
     rerollSceneFetcher.submit(
-      { intent: "rerollFilmScene", template, filmGenre, filmAspect: mvAspect, artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}) },
+      { intent: "rerollFilmScene", template, filmGenre, filmAspect: mvAspect, artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}) },
       { method: "post" }
     );
   };
@@ -945,7 +949,10 @@ export default function FilmStudio() {
   // props, dancing — no lip-sync). Default cadence mirrors the pipeline SHOTLIST (cycles every 8) so
   // the pre-editor shows a sensible type per scene; the merchant can flip any scene.
   const DEFAULT_ROLES: Array<"perform" | "broll"> = ["broll", "perform", "broll", "perform", "broll", "broll", "perform", "broll"];
-  const sceneKind = (sc: Scene, i: number): "perform" | "broll" => sc?.kind || DEFAULT_ROLES[i % DEFAULT_ROLES.length];
+  // Short exact-length cuts LEAD with the performance: a 1-scene (10s) video is the artist singing (not a
+  // lone establishing wide), 2 scenes = performance then a cutaway. Mirrors defaultRole() in the pipeline.
+  const defaultSceneRole = (i: number, n: number): "perform" | "broll" => (n <= 1 ? "perform" : n === 2 ? (i === 0 ? "perform" : "broll") : DEFAULT_ROLES[i % DEFAULT_ROLES.length]);
+  const sceneKind = (sc: Scene, i: number, n: number): "perform" | "broll" => sc?.kind || defaultSceneRole(i, n);
   const setSceneKind = (i: number, kind: "perform" | "broll") => {
     if (seeds) setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) } } : prev));
     else if (treatment) setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) });
@@ -963,8 +970,8 @@ export default function FilmStudio() {
     const mentioned = castExtra.filter((m) => m.name && m.name.length > 1 && text.includes(m.name.toLowerCase())).map((m) => m.img);
     if (mentioned.length) return mentioned.slice(0, 2);
     // No one named → a PERFORM scene gets one rotating co-star for variety; a solo/cut scene stays solo.
-    if (sceneKind(sc, i) !== "perform") return [];
-    const performIdxs = scenesArr.map((s, j) => (sceneKind(s, j) === "perform" ? j : -1)).filter((j) => j >= 0);
+    if (sceneKind(sc, i, scenesArr.length) !== "perform") return [];
+    const performIdxs = scenesArr.map((s, j) => (sceneKind(s, j, scenesArr.length) === "perform" ? j : -1)).filter((j) => j >= 0);
     const pOrder = Math.max(0, performIdxs.indexOf(i));
     return [castExtra[pOrder % castExtra.length].img];
   };
@@ -1193,7 +1200,7 @@ export default function FilmStudio() {
               const u = seeds?.imgs[i] ?? null;
               const pk = seeds?.propForScene[i];
               const pl = pk ? ((d.props || []).find((pp) => pp.key === pk)?.label || customProps.find((c) => c.key === pk)?.label || pk) : "";
-              const perform = !isMv || sceneKind(sc, i) === "perform";
+              const perform = !isMv || sceneKind(sc, i, strip.scenes.length) === "perform";
               return (
                 <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i}>
                   <div className="mm-sc-frame" style={isMv && mvAspect !== "9:16" ? { aspectRatio: mvAspect === "16:9" ? "16 / 9" : "1 / 1" } : undefined}>
@@ -1800,7 +1807,7 @@ export default function FilmStudio() {
                 <input type="checkbox" checked={singVoice} onChange={(e) => setSingVoice(e.target.checked)} />
                 <span className="mm-voicetog-txt">
                   <b><Ico n="music" size={13} /> {t("Sing in {name}'s own voice", { name: artistName || t("your avatar") })} <span className="mm-beta">{t("beta")}</span></b>
-                  <small>{t("Use your avatar's real voice for the vocals instead of a generic singer. Adds a little render time.")}</small>
+                  <small>{t("Your avatar's own voice sings the song instead of a generic singer. The first video with a voice takes about 8 minutes longer while we learn it — after that, about a minute.")}</small>
                 </span>
               </label>
             )}

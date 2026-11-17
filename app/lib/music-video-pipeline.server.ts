@@ -28,7 +28,8 @@ import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pi
 import { falVideoSubmit, falVideoPoll, falLipSync, falEnabled } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, PROPS, type FilmTreatment } from "./film-engine.server";
-import { singToDisk, synthVoiceSampleToDisk, seedVcConvert } from "./music-generation.server";
+import { singToDisk } from "./music-generation.server";
+import { ensureVoiceModel, coverSongInVoice, matchLoudness } from "./singing-voice.server";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -66,12 +67,23 @@ const SHOTLIST: Array<{ role: "perform" | "broll"; frame: string; cam: string; p
   { role: "broll",   frame: "an atmospheric detail B-ROLL shot — striking textures, the scenery in motion or a moody cinematic flourish, premium and filmic — the artist a small part of the frame or absent", cam: "a slow tracking move" },
 ];
 
-/** The shot for scene i — honoring the pre-editor's per-scene Performance/Cut-scene override
- *  (scene.kind) over the default SHOTLIST cadence. Flipping a scene swaps in a role-appropriate
+/** Default role for scene i of an n-scene video. The SHOTLIST opens on a wide establishing cutaway, which
+ *  is right for a full edit but wrong for the short exact-length cuts: a 1-scene (10s) music video must BE
+ *  the artist singing, not a lone establishing wide with no one on the mic (found on the first 10s prod
+ *  test), and a 2-scene (20s) cut leads with the performance then cuts away. Keep in sync with
+ *  defaultSceneRole() in web.film.tsx. */
+function defaultRole(i: number, n: number): "perform" | "broll" {
+  if (n <= 1) return "perform";
+  if (n === 2) return i === 0 ? "perform" : "broll";
+  return SHOTLIST[i % SHOTLIST.length].role;
+}
+
+/** The shot for scene i of n — honoring the pre-editor's per-scene Performance/Cut-scene override
+ *  (scene.kind) over the default cadence. Flipping a scene swaps in a role-appropriate
  *  generic framing so a performance beat doesn't get stuck with a b-roll frame (or vice versa). */
-function shotFor(s: { kind?: "perform" | "broll" } | undefined, i: number): { role: "perform" | "broll"; frame: string; cam: string; propOk?: boolean } {
+function shotFor(s: { kind?: "perform" | "broll" } | undefined, i: number, n: number): { role: "perform" | "broll"; frame: string; cam: string; propOk?: boolean } {
   const base = SHOTLIST[i % SHOTLIST.length];
-  const role = (s && s.kind) || base.role;
+  const role = (s && s.kind) || defaultRole(i, n);
   if (role === base.role) return base;
   return role === "perform"
     ? { role: "perform", frame: "a MEDIUM shot of the artist performing to camera, waist up, confident and stylish", cam: "a smooth handheld sway", propOk: true }
@@ -186,10 +198,14 @@ async function assembleMusicVideo(clips: string[], songPath: string, D: number, 
     if (rc.status !== 0 || !fs.existsSync(silent)) throw new Error("[musicvideo] concat failed");
     // 3) lay the ORIGINAL continuous song over the whole cut (no seam, no per-slice crossfade). End on
     //    the music (trim to the shorter of the video grid and the real song) so there's no dead air.
+    //    The song was FIT to the grid upstream; a re-encoded or re-voiced track can land a few ms short of
+    //    it, so pad those with silence (apad) and cut on the grid — the file is EXACTLY the picked length.
+    //    Only a genuinely short song (a fit that failed open) still ends the video early.
     const songLen = ffprobeDuration(songPath);
-    const total = songLen > 1 ? Math.min(N * D, songLen) : N * D;
+    const grid = N * D;
+    const total = songLen > 1 ? (songLen >= grid - 0.5 ? grid : Math.min(grid, songLen)) : grid;
     const ra = await runFfmpeg(["-y", "-i", silent, "-i", songPath,
-      "-map", "0:v", "-map", "1:a", "-t", total.toFixed(2),
+      "-map", "0:v", "-map", "1:a", "-af", "apad", "-t", total.toFixed(2),
       "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outPath]);
     if (ra.status === 0 && fs.existsSync(outPath) && ffprobeDuration(outPath) > 1) return;
   } catch { /* fall through to the per-clip concat */ }
@@ -348,7 +364,7 @@ async function buildMusicVideoSeeds(p: {
   // PER-SCENE stills — edit the hero (or the artist+prop anchor) into each setting; VISION-GATE props
   // (if the picked prop didn't survive the edit, force it in with a hard-locked [artist, prop] compose).
   const sceneImgs = await mapLimit(scenes, 3, async (s, i) => {
-    const shot = shotFor(s, i);
+    const shot = shotFor(s, i, scenes.length);
     const propKey = propForScene[i];
     const noun = propKey ? propNoun(propKey) : "";
     // Resolve THIS scene's CO-STARS (owner per-scene edit) → styled refs. castForScene stores the
@@ -422,7 +438,7 @@ export async function previewMusicVideoScenes(opts: {
 
   const propForScene: Record<number, string> = {};
   if (propList.length) {
-    const propScenes = scenes.map((_, i) => i).filter((i) => { const sh = SHOTLIST[i % SHOTLIST.length]; return sh.propOk; });
+    const propScenes = scenes.map((_, i) => i).filter((i) => shotFor(scenes[i], i, scenes.length).propOk);
     propScenes.forEach((sceneI, k) => { propForScene[sceneI] = propList[k % propList.length]; });
   }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
@@ -455,6 +471,11 @@ export async function rerollMusicVideoScene(opts: {
   castRefs?: string[]; aspect?: string;
   /** The merchant's OWN props (AI-made / uploaded) — so a per-scene custom prop re-rolls from its photo. */
   customProps?: Array<{ key: string; label: string; img: string }>;
+  /** The scene's CURRENT Performance/Cut-scene setting + the video's scene count, so a re-roll frames the
+   *  shot for what the scene IS now. (It used to re-roll from the default cadence only — flip scene 1 to
+   *  Performance, re-roll, and you got another establishing wide.) */
+  kind?: "perform" | "broll";
+  sceneCount?: number;
 }): Promise<string | null> {
   const g = GENRES[genreOrDefault(opts.genre)];
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -463,7 +484,7 @@ export async function rerollMusicVideoScene(opts: {
   const propNoun = (k: string): string => (PROPS[k]?.label || k).replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || k;
   const artistRef = abs(opts.artistRef);
   if (!artistRef) return null;
-  const shot = SHOTLIST[opts.sceneIndex % SHOTLIST.length];
+  const shot = shotFor({ kind: opts.kind }, opts.sceneIndex, opts.sceneCount && opts.sceneCount > 0 ? opts.sceneCount : SHOTLIST.length);
   // Accept a CATALOG prop OR one of the merchant's OWN custom props (which seed from their photo).
   const custom = (opts.customProps || []).find((c) => c.key === opts.propKey && c.img);
   const propKey = opts.propKey && (PROPS[opts.propKey] || custom) ? opts.propKey : undefined;
@@ -586,7 +607,7 @@ export async function generateMusicVideo(opts: {
   // naturally limits how often each prop appears, so it reads as a recurring motif, not a herd.
   const propForScene: Record<number, string> = {};
   if (propList.length) {
-    const propScenes = scenes.map((_, i) => i).filter((i) => { const sh = SHOTLIST[i % SHOTLIST.length]; return sh.propOk; });
+    const propScenes = scenes.map((_, i) => i).filter((i) => shotFor(scenes[i], i, scenes.length).propOk);
     propScenes.forEach((sceneI, k) => { propForScene[sceneI] = propList[k % propList.length]; });
   }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
@@ -619,21 +640,23 @@ export async function generateMusicVideo(opts: {
   const targetLen = N * D;
   if (resume.ckSongFit && fs.existsSync(resume.ckSongFit)) songPath = resume.ckSongFit;
   else { songPath = await fitSongToLength(songPath, targetLen); await ckpt({ ckSongFit: songPath }); }
-  // AVATAR VOICE (opt-in beta) — make the avatar actually SING in their OWN voice: synth a reference in
-  // the avatar's real voice, then run seed-vc singing-voice conversion over the (already length-fit) song.
+  // AVATAR VOICE (opt-in beta) — make the avatar actually SING in their OWN voice: keep the song, re-voice
+  // its lead vocal with an RVC model trained on the avatar's voice (trained once per voice, then reused —
+  // see singing-voice.server.ts). Runs on the already length-fit song, so it converts only what's used.
   // Fully guarded — any hiccup keeps the normal sung track, so a render never fails over this. Cached so a
-  // resume doesn't redo the slow conversion.
+  // resume doesn't redo it.
   let voiceMatched = false;
   if (opts.singVoice && opts.artistVoiceId) {
     if (resume.ckSongVoice && fs.existsSync(resume.ckSongVoice)) { songPath = resume.ckSongVoice; voiceMatched = true; }
     else {
       try {
-        const samplePath = await synthVoiceSampleToDisk(opts.artistVoiceId);
-        const sampleUrl = await hostRender(base, samplePath);
-        const songUrl = await hostRender(base, songPath);
-        songPath = await seedVcConvert(songUrl, sampleUrl);
+        const t0 = Date.now();
+        const model = await ensureVoiceModel(opts.artistVoiceId, base);
+        const covered = await coverSongInVoice(await hostRender(base, songPath), model.url);
+        songPath = await matchLoudness(covered, songPath);
         voiceMatched = true;
         await ckpt({ ckSongVoice: songPath });
+        console.log(`[musicvideo] avatar voice applied in ${Math.round((Date.now() - t0) / 1000)}s (${model.trained ? "trained a new voice model" : "reused the saved voice model"})`);
       } catch (e) {
         console.error(`[musicvideo] avatar-voice conversion failed, keeping the normal sung voice: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
       }
@@ -663,7 +686,7 @@ export async function generateMusicVideo(opts: {
   const clips = await mapLimit(scenes, 3, async (_s, i) => {
     const imgAbs = sceneImgs[i];
     const seg = segs[i];
-    const shot = shotFor(_s, i);
+    const shot = shotFor(_s, i, scenes.length);
     if (!imgAbs) return null;
     const imgLocal = path.join(RENDERS(), path.basename(imgAbs));
     const pKey = propForScene[i];
