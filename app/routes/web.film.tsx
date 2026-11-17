@@ -565,12 +565,17 @@ const MV_LENGTHS: Array<{ sec: number; n: number }> = [
 const mvLenLabel = (n: number) => { const s = n * 10; return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 
 /* ---------- the landing's moving pictures ----------
- * Real renders made on this page — one short seamless loop per format (public/landing/film-loop-<key>.mp4,
- * a 16:9 cut, a 4:5 "-tall" cut for phones, and a poster of its first frame). The hero plays them one
+ * Real renders made on this page — one short clip per format (public/landing/film-loop-<key>.mp4, a
+ * 16:9 cut, a 4:5 "-tall" cut for phones, and a poster of its first frame). The hero plays them one
  * after another; each format card plays its own when you point at it. Cut by scratch tooling from the
- * founder's own archive; generated actors and cartoons only. Bump the versions when a file is replaced. */
-const LOOP_V = 1;
-const STILL_V = 4;
+ * founder's own archive; generated actors and cartoons only. Bump the versions when a file is replaced.
+ *
+ * Each clip is ONE continuous take with nothing blended into it. The first set (v1) ran through the
+ * dissolves the film engine used to put between takes, and had its own tail cross-faded into its head
+ * to loop "seamlessly" — both read as a glitch every few seconds, and the owner saw it at once. A clip
+ * repeats with a plain jump; its in and out points were picked where the two frames are most alike. */
+const LOOP_V = 2;
+const STILL_V = 5;
 const LOOP_KEYS = ["musicvideo", "testmovie", "kidstv", "moral", "horror", "kidsmusicvideo"];
 /** Formats whose cover has its own 4:5 picture for phones (the rest are one picture cropped both ways). */
 const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo"]);

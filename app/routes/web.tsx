@@ -177,16 +177,20 @@ export default function WebLayout() {
           <Outlet context={{ mode, setMode: chooseMode }} />
         </main>
         {/* Phone navigation — a FLOATING bottom tab bar (Facebook-style pill).
-            CSS shows it only on phones, where the top tab row is hidden. The
-            Dashboard (/web) is the green center anchor; make-tools sit left,
-            distribute/manage right. The bar is skipped on /web/home, the
-            immersive launcher (reached via the brand logo top-left). */}
+            CSS shows it only on phones, where the top tab row is hidden.
+
+            Every section the desktop tabs have, in the same order. Presenters was missing — the only way
+            to it on a phone was a tile on the Dashboard, which the owner (2026-11-17) reasonably read as
+            "there's no way to get to presenters on mobile". Six items have no middle, so the Dashboard —
+            still the green anchor — leads the row instead of sitting in the centre of five.
+            The bar is skipped on /web/home, the immersive launcher (reached via the brand logo top-left). */}
         {authed && loc.pathname !== "/web/home" && (
           <nav className="wb-bottom" aria-label={t("Primary")}>
+            <Link to="/web" className={`wb-bt wb-bt-mid${loc.pathname === "/web" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="grid" size={22} /></span><span>{t("Dashboard")}</span></Link>
             <Link to="/web/studio" onClick={() => chooseMode("casual")} className={`wb-bt${loc.pathname === "/web/studio" && mode === "casual" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="palette" size={22} /></span><span>{t("Creator")}</span></Link>
             <Link to="/web/film" className={`wb-bt${loc.pathname === "/web/film" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="filmreel" size={22} /></span><span>{t("Movie Maker")}</span></Link>
-            <Link to="/web" className={`wb-bt wb-bt-mid${loc.pathname === "/web" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="grid" size={22} /></span><span>{t("Dashboard")}</span></Link>
             <Link to="/web/studio" onClick={() => chooseMode("marketing")} className={`wb-bt${loc.pathname === "/web/studio" && mode === "marketing" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="megaphone" size={22} /></span><span>{t("Ad Maker")}</span></Link>
+            <Link to="/web/presenters" className={`wb-bt${loc.pathname === "/web/presenters" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="presenter" size={22} /></span><span>{t("Presenters")}</span></Link>
             <Link to="/web/archive" className={`wb-bt${loc.pathname === "/web/archive" ? " on" : ""}`}><span className="wb-bt-ic"><Ico n="bookcase" size={22} /></span><span>{t("Archive")}</span></Link>
           </nav>
         )}
@@ -1491,13 +1495,14 @@ const CSS = `
   /* GPU-composite the fixed nav so iOS Safari doesn't let it lag/"travel" up the page during
      momentum scroll (translate3d forces its own layer; will-change keeps it there). */
   .wb-bottom{display:flex;align-items:stretch;gap:2px;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:50;background:#fff;border:1px solid var(--line);border-radius:26px;padding:8px 8px 9px;box-shadow:0 12px 30px rgba(20,32,26,.18),0 3px 10px rgba(20,32,26,.10);-webkit-transform:translate3d(0,0,0);transform:translate3d(0,0,0);will-change:transform;-webkit-backface-visibility:hidden;backface-visibility:hidden;}
-  .wb-bt{flex:1 1 0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;text-decoration:none;color:var(--ink2);font-size:9.5px;font-weight:700;min-width:0;white-space:nowrap;}
-  .wb-bt-ic{display:flex;align-items:center;justify-content:center;width:46px;height:32px;border-radius:13px;transition:background .14s;}
+  .wb-bt{flex:1 1 0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;text-decoration:none;color:var(--ink2);font-size:9px;font-weight:700;letter-spacing:-.01em;min-width:0;white-space:nowrap;}
+  .wb-bt-ic{display:flex;align-items:center;justify-content:center;width:42px;height:32px;border-radius:13px;transition:background .14s;}
   .wb-bt svg{width:22px;height:22px;stroke-width:1.9;}
   .wb-bt.on{color:var(--green);}
   .wb-bt.on .wb-bt-ic{background:rgba(12,122,70,.12);}
   .wb-bt-mid{color:var(--green);}
   .wb-bt-mid .wb-bt-ic{width:40px;height:40px;border-radius:50%;background:var(--green);color:#fff;box-shadow:0 4px 12px rgba(12,122,70,.35);}
+  @media(max-width:350px){.wb-bottom{left:6px;right:6px;padding-left:5px;padding-right:5px;}.wb-bt{font-size:8px;}}
   .wb-bt-mid.on .wb-bt-ic{background:var(--green);}
 }
 .wb-h1{font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(24px,4vw,34px);letter-spacing:-.02em;margin:14px 0 6px;overflow-wrap:anywhere;}
