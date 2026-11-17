@@ -13,9 +13,11 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { stockSpin, stockCut, stockLooks, customSpin, customCut, spinFrame, type Spin } from "../lib/presenter-kits";
 import { useModalA11y } from "../lib/use-modal-a11y";
 import { VoicePicker, VOICE_UI_CSS, type MyVoiceT } from "../components/VoicePicker";
+import { CharacterForge, FORGE_CSS } from "../components/CharacterForge";
+import { DEFAULT_CHARACTER_VOICE, characterVoice, characterVoiceSample } from "../lib/character-voices";
 import { SpinStage, SPIN_STAGE_CSS } from "../components/SpinStage";
 
-export const meta: MetaFunction = () => [{ title: "Your cast · EASYMODE" }];
+export const meta: MetaFunction = () => [{ title: "Your cast · EasyMode" }];
 
 /* The Presenters section — the cast, and everything about each member of it, in ONE place.
  *
@@ -74,6 +76,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const voiceInfo = (voiceId: string | null | undefined, stockId?: string) => {
     const mine = myVoices.find((v) => v.voiceId === voiceId);
     if (mine) return { voiceId: mine.voiceId, voice: mine.label, voiceOwn: true, voiceSample: mine.preview };
+    const acted = characterVoice(voiceId);
+    if (acted) return { voiceId: acted.id, voice: acted.label, voiceOwn: false, voiceSample: characterVoiceSample(acted.id) };
     const cat = AVATAR_VOICES.find((v) => v.id === voiceId);
     if (cat) return { voiceId: cat.id, voice: cat.label, voiceOwn: false, voiceSample: `/voice-samples/${cat.id}.mp3` };
     return { voiceId: "", voice: "", voiceOwn: false, voiceSample: stockId && DESIGNED_VOICES.has(stockId) ? `/voice-videos/${stockId}.mp4?v=4` : "" };
@@ -92,7 +96,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
     return {
       id: c.id, rowId: c.rowId, name: c.name, custom: true, kind: (c.kind || "person") as CharacterKind,
-      vibe: "Your character", about: /the brand's own presenter character$/.test(c.desc) ? "" : sentence(c.desc),
+      vibe: c.kind === "monster" ? "Your creature" : c.kind === "cartoon" ? "Your cartoon" : "Your character", about: /the brand's own presenter character$/.test(c.desc) ? "" : sentence(c.desc),
       gender: c.gender, age: "", energy: c.energy,
       img: c.img, cut: cutAt(0),
       looks,
@@ -174,6 +178,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ? (await ownRow())?.status === "ready"
         : [...privateCastFor(account.email, shop.id, shop.domain), ...LIVE_AVATARS].some((a) => a.id === avatarId);
       if (!known) return gone();
+      // The Brand Face is who presents your product videos, and those are built around a person who can
+      // hold the product. A cartoon or a creature is cast in films instead.
+      if (cav.isCustomAvatarId(avatarId) && ((await ownRow())?.kind || "person") !== "person") {
+        return json({ error: tr(lang, "Your Brand Face presents your product videos, so it has to be a person. Cast this character in a movie instead.") });
+      }
     }
     await db.shop.update({ where: { id: shop.id }, data: { brandAvatarId: avatarId || null, brandAvatarVariant: 0 } });
     return json({ ok: "brand" });
@@ -276,7 +285,6 @@ function lineupOf(cast: Member[], brandFaceId: string | null): Standing[] {
 }
 
 type Show = "all" | "mine" | CharacterKind;
-const FORGE = "/web/studio?do=video&forge=1";
 
 export default function PresenterHub() {
   const d = useLoaderData<typeof loader>();
@@ -287,7 +295,9 @@ export default function PresenterHub() {
   const location = useLocation();
   const revalidator = useRevalidator();
   const who = sp.get("who");
-  const [show, setShow] = useState<Show>("all");
+  const [picked, setShow] = useState<Show>(() => { const v = sp.get("show"); return v === "mine" || v === "person" || v === "cartoon" || v === "monster" ? v : "all"; });
+  // "Create your own character" opens here, in place (?forge=1 opens it straight away)
+  const [forgeOpen, setForgeOpen] = useState(sp.get("forge") === "1");
   const tabs = ([
     { id: "all", label: "All", n: cast.length },
     { id: "mine", label: "Yours", n: cast.filter((c) => c.custom).length },
@@ -295,6 +305,9 @@ export default function PresenterHub() {
     { id: "cartoon", label: "Cartoons", n: cast.filter((c) => c.kind === "cartoon").length },
     { id: "monster", label: "Monsters", n: cast.filter((c) => c.kind === "monster").length },
   ] as Array<{ id: Show; label: string; n: number }>).filter((x) => x.n > 0);
+  // A tab that no longer exists (you deleted your last character while on "Yours") must not leave an
+  // empty grid with no chip lit.
+  const show: Show = tabs.some((x) => x.id === picked) ? picked : "all";
   const shown = show === "all" ? cast : cast.filter((c) => (show === "mine" ? c.custom : c.kind === show));
   // ← → in the character view page through what the grid is showing — unless the presenter that is
   // open isn't among them (a link straight to someone the filter hides), then through everyone
@@ -348,9 +361,9 @@ export default function PresenterHub() {
         <div className="ph-hero-copy">
           <span className="ph-hero-eyebrow"><Ico n="presenter" size={13} /> {t("Your AI cast")}</span>
           <h1 className="ph-hero-h">{t("Meet your cast")}</h1>
-          <p>{t("People, cartoon characters, monsters — every one of them can star in your videos and movies. Pick one, or create your own.")}</p>
+          <p>{t("People, cartoon characters, monsters — the cast for your movies, shows and ads. Pick one, or create your own.")}</p>
           <div className="ph-hero-cta">
-            <Link to={FORGE} className="ph-hero-btn main"><Ico n="wand" size={15} /> {t("Create your own character")}</Link>
+            <button type="button" className="ph-hero-btn main" onClick={() => setForgeOpen(true)}><Ico n="wand" size={15} /> {t("Create your own character")}</button>
             <Link to="/web/film" className="ph-hero-btn"><Ico n="film" size={15} /> {t("Cast them in a movie")}</Link>
           </div>
         </div>
@@ -373,7 +386,7 @@ export default function PresenterHub() {
         <p className="ph-forging bad" key={f.id}>
           <Ico n="warning" size={13} />
           <span>
-            {t("{name} couldn't be made from that photo. A clear, front-facing photo works best.", { name: f.name })}{" "}
+            {t("{name} couldn't be made — your tokens were returned. Try again; a clear, front-facing picture works best.", { name: f.name })}{" "}
             <button type="button" className="ph-linkbtn" disabled={cleanup.state !== "idle"}
               onClick={() => { const fd = new FormData(); fd.set("intent", "delete"); fd.set("avatarId", f.id); cleanup.submit(fd, { method: "post" }); }}>
               {t("Dismiss")}
@@ -400,12 +413,12 @@ export default function PresenterHub() {
       <div className="ph-grid">
         {/* Making your own leads the grid — it is the first thing a new merchant should see they can do. */}
         {(show === "all" || show === "mine") && (
-          <Link to={FORGE} className="ph-new">
+          <button type="button" className="ph-new" onClick={() => setForgeOpen(true)}>
             <span className="ph-new-ico" aria-hidden="true"><Ico n="wand" size={22} /></span>
             <b>{t("Create your own character")}</b>
             <span className="ph-new-sub">{t("You, a model, a mascot, a cartoon, a creature — yours alone.")}</span>
-            <i><Ico n="camera" size={12} /> {t("Upload a photo")}</i>
-          </Link>
+            <i><Ico n="wand" size={12} /> {t("Describe them or add a picture")}</i>
+          </button>
         )}
         {shown.map((c) => {
           const isBf = c.id === d.brandFaceId;
@@ -446,6 +459,7 @@ export default function PresenterHub() {
         />,
         document.body,
       ) : null}
+      <CharacterForge open={forgeOpen} onClose={() => setForgeOpen(false)} />
     </div>
   );
 }
@@ -532,7 +546,7 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
   const missing3d = c.custom ? c.looks.filter((l) => !l.spin && l.spinState !== "building").length : 0;
   const voiceName = c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.signature ? t("Signature voice") : t("Automatic");
   const voiceNote = c.voiceOwn ? t("Your own voice")
-    : c.voice ? t(AVATAR_VOICES.find((v) => v.id === c.voiceId)?.blurb || "")
+    : c.voice ? t(characterVoice(c.voiceId)?.blurb || AVATAR_VOICES.find((v) => v.id === c.voiceId)?.blurb || "")
     : c.signature ? t("Designed for {name}", { name: c.name })
     : t("Picked automatically — choose one to make it theirs");
   // What the voice shown actually does — said per kind of voice, because it differs: a recorded voice
@@ -546,7 +560,9 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
     : t("The voice {name} speaks with in your video ads.", { name: c.name });
   const gender = c.gender === "f" ? "f" : "m";
   const showLooks = c.looks.length > 1;
-  const isCharacter = c.kind !== "person" && !c.custom;
+  // a cartoon or a creature — one of the stock ones, or one you made: it is cast in films, not in ads
+  const isCharacter = c.kind !== "person";
+  const characterKind = c.kind === "person" ? undefined : c.kind;
   const badge = isBrandFace ? t("Brand Face") : c.custom ? t("Your character") : c.kind === "cartoon" ? t("Cartoon character") : c.kind === "monster" ? t("Monster") : t("Pro cast");
   // Removing one of your own presenters. It sits at the end of what scrolls on a desktop ("in") and
   // after the actions on a phone ("out") — the stylesheet shows one of the two.
@@ -559,7 +575,7 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
           <button type="button" className="pc-textbtn" onClick={() => setArmed(false)}>{t("Keep")}</button>
         </p>
       ) : (
-        <button type="button" className="pc-del" onClick={() => setArmed(true)}><Ico n="trash" size={13} /> {t("Delete this presenter")}</button>
+        <button type="button" className="pc-del" onClick={() => setArmed(true)}><Ico n="trash" size={13} /> {c.kind === "person" ? t("Delete this presenter") : t("Delete this character")}</button>
       )}
     </section>
   ) : null;
@@ -609,7 +625,7 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
           <h3 className="pc-vtitle">{t("Choose a voice")}</h3>
           <p className="pc-vsub">{t("Tap ▶ to hear one. {name} keeps the voice they have until you save.", { name: c.name })}</p>
           {fetcher.data?.error ? <p className="pc-err" role="alert">{fetcher.data.error}</p> : null}
-          <VoicePicker gender={gender} value={pendingVoice} onChange={setPendingVoice} myVoices={myVoices} canMake={canMakeVoice} showAll
+          <VoicePicker gender={gender} value={pendingVoice} onChange={setPendingVoice} myVoices={myVoices} canMake={canMakeVoice} showAll characterKind={characterKind}
             signature={c.signature ? { name: c.name, sample: c.signature.sample || undefined } : undefined} />
          </div>
          <div className="pc-sec pc-acts pc-vfoot">
@@ -621,7 +637,7 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
          </div>
          </>) : (<>
          <div className="pc-scroll">
-          <span className={`pc-badge${isBrandFace ? " bf" : c.custom ? " own" : isCharacter ? ` ${c.kind}` : ""}`}>{isBrandFace ? <Ico n="star" size={11} /> : null}{badge}</span>
+          <span className={`pc-badge${isBrandFace ? " bf" : c.custom ? " own" : c.kind !== "person" ? ` ${c.kind}` : ""}`}>{isBrandFace ? <Ico n="star" size={11} /> : null}{badge}</span>
           {renaming ? (
             <form className="pc-rename" onSubmit={(e) => { e.preventDefault(); if (newName.trim()) post({ intent: "rename", name: newName.trim() }); }}>
               <input className="wb-in" value={newName} maxLength={40} onChange={(e) => setNewName(e.target.value)} aria-label={t("Presenter name")} autoFocus />
@@ -681,7 +697,7 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
                   <small>{voiceNote}</small>
                 </span>
                 <button type="button" className="pc-chg"
-                  onClick={() => { audioRef.current?.pause(); setPlaying(false); setPendingVoice(c.voiceId || (c.custom ? DEFAULT_AVATAR_VOICE[gender] : "")); setVoiceOpen(true); }}>
+                  onClick={() => { audioRef.current?.pause(); setPlaying(false); setPendingVoice(c.voiceId || (!c.custom ? "" : characterKind ? DEFAULT_CHARACTER_VOICE[characterKind][gender] : DEFAULT_AVATAR_VOICE[gender])); setVoiceOpen(true); }}>
                   {t("Change")}
                 </button>
               </div>
@@ -702,6 +718,8 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
                 <p className="pc-fine">{c.kind === "cartoon"
                   ? t("In Movie Maker, pick Kids Cartoon and write your story — {name} is in the cast step, under “Pick a presenter”.", { name: c.name })
                   : t("In Movie Maker, pick Horror Story and write your story — {name} is in the cast step, under “Pick a presenter”.", { name: c.name })}</p>
+                {/* a character that was made Brand Face before that was limited to people can still be un-made */}
+                {isBrandFace ? <button type="button" className="pc-act" disabled={busy} onClick={() => post({ intent: "setBrandFace", avatarId: "" })}><Ico n="star" size={14} /> {t("Clear Brand Face")}</button> : null}
               </>
             ) : (
               <>
@@ -728,6 +746,7 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
 
 const PH_STYLE = `
 ${VOICE_UI_CSS}
+${FORGE_CSS}
 ${SPIN_STAGE_CSS}
 .ph-wrap{max-width:1360px;margin:0 auto;}
 /* THE backdrop every presenter stands on — grid cards, outfit tiles, the stage and the hero's line-up.
@@ -750,7 +769,7 @@ ${SPIN_STAGE_CSS}
 .ph-hero-h{margin:10px 0 0;font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(30px,3.3vw,46px);line-height:1.04;letter-spacing:-.025em;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.28);}
 .ph-hero-copy p{margin:12px 0 0;max-width:400px;font-size:15px;line-height:1.5;color:rgba(255,255,255,.86);}
 .ph-hero-cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;}
-.ph-hero-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;box-sizing:border-box;min-height:44px;padding:10px 18px;border-radius:999px;border:1.5px solid rgba(255,255,255,.4);background:rgba(255,255,255,.09);color:#fff;font-size:13.5px;font-weight:800;text-decoration:none;white-space:nowrap;transition:transform .14s,background .14s,border-color .14s,box-shadow .14s;}
+.ph-hero-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;box-sizing:border-box;min-height:44px;padding:10px 18px;border-radius:999px;border:1.5px solid rgba(255,255,255,.4);background:rgba(255,255,255,.09);color:#fff;font:inherit;font-size:13.5px;font-weight:800;text-decoration:none;white-space:nowrap;cursor:pointer;transition:transform .14s,background .14s,border-color .14s,box-shadow .14s;}
 .ph-hero-btn:hover{transform:translateY(-1px);background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.75);}
 .ph-hero-btn.main{background:#FBF6E6;border-color:#FBF6E6;color:#0A5F38;box-shadow:0 10px 22px -10px rgba(0,0,0,.5);}
 .ph-hero-btn.main:hover{background:#fff;border-color:#fff;box-shadow:0 14px 28px -10px rgba(0,0,0,.55);}
@@ -818,7 +837,7 @@ ${SPIN_STAGE_CSS}
 .pc-badge.cartoon{background:#FFE9A8;color:#4A3300;}
 .pc-badge.monster{background:#2B2140;color:#E9DEFF;}
 /* "make your own" — the first tile of the grid */
-.ph-new{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;padding:18px 14px;text-align:center;border-radius:18px;border:1.5px dashed #8CC3A6;background:linear-gradient(180deg,#F4FAF6,#E5F3EB);color:var(--ink,#14201A);text-decoration:none;transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s,border-color .2s,background .2s;}
+.ph-new{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;width:100%;font:inherit;cursor:pointer;padding:18px 14px;text-align:center;border-radius:18px;border:1.5px dashed #8CC3A6;background:linear-gradient(180deg,#F4FAF6,#E5F3EB);color:var(--ink,#14201A);text-decoration:none;transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s,border-color .2s,background .2s;}
 .ph-new:hover{transform:translateY(-4px);border-color:var(--green,#0C7A46);background:linear-gradient(180deg,#F7FCF9,#DAEFE3);box-shadow:0 24px 40px -22px rgba(12,122,70,.5);}
 .ph-new-ico{flex:0 0 auto;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#12A85E,#0A5F38);color:#fff;display:grid;place-items:center;box-shadow:0 10px 20px -8px rgba(12,122,70,.65);}
 .ph-new b{font-family:Poppins,sans-serif;font-weight:800;font-size:15px;line-height:1.2;}

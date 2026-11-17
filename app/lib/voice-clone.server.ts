@@ -21,6 +21,7 @@ import { mirrorRender } from "./object-storage.server";
 import { capabilitiesFor } from "./capabilities.server";
 import { isAdminEmail } from "./admin.server";
 import { AVATAR_VOICE_IDS, DEFAULT_AVATAR_VOICE, VOICE_SAMPLE_TEXT } from "./avatar-voice-catalog";
+import { isCharacterVoice } from "./character-voices";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(8).toString("hex");
@@ -62,7 +63,7 @@ export async function shopVoiceClones(shopId: string): Promise<MyVoice[]> {
  *  safeVoiceId() made, widened to the shop's own voices. */
 export async function resolveVoiceChoice(shopId: string, id: string | null | undefined, gender: "f" | "m"): Promise<string> {
   const want = (id || "").trim();
-  if (want && AVATAR_VOICE_IDS.has(want)) return want;
+  if (want && (AVATAR_VOICE_IDS.has(want) || isCharacterVoice(want))) return want;
   if (want) {
     const mine = await db.voiceClone.findFirst({ where: { shopId, voiceId: want, status: "ready" }, select: { id: true } });
     if (mine) return want;

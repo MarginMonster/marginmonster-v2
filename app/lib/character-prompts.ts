@@ -19,7 +19,11 @@ export const charKindOf = (v: unknown): CharKind => (v === "cartoon" || v === "m
 export const CHAR_DESC_MAX = 400;
 
 const FIGURE = "The whole figure is in frame from head to feet, facing the camera, centred, with a little space above the head.";
+// A creature is not stood up straight like a model: a hunched beast stays hunched.
+const CREATURE_FIGURE = "The whole creature is in frame from the top of its head to its feet, in its own natural stance, facing the camera, centred, with a little space above it.";
 const CLEAN = "No text, no logo, no watermark, nobody else in the picture.";
+// A reference is often a screenshot or a photo of a drawing: the phone's icons and the page around it are not the character.
+const REF_ONLY = "Ignore any icons, borders, captions or interface marks around the reference.";
 
 /** The prompt for the one picture a maker sees first. `hasRef`: they added a picture of the character. */
 export function characterPreviewPrompt(kind: CharKind, desc: string, hasRef: boolean): string {
@@ -30,12 +34,15 @@ export function characterPreviewPrompt(kind: CharKind, desc: string, hasRef: boo
       hasRef
         ? "Redraw the creature in the reference image as a finished, highly detailed character design: a photorealistic practical-effects creature from a horror film, eerie rather than gory."
         : "A finished, highly detailed character design of a creature: a photorealistic practical-effects creature from a horror film, eerie rather than gory.",
+      // The first drafts kept the antlers and lost the BEAST: a hulking, hunched mass came back as a tall
+      // lean athlete. Mass and stance are named outright, and so is every part a model likes to tidy away.
       hasRef
-        ? "It must stay the SAME creature — the same silhouette, build, bulk and posture, the same head and every feature on it, the same horns or antlers, spikes, limbs and body, the same colours and surface."
+        ? "It must stay the SAME creature — the same silhouette and the same MASS: where the reference is hulking, hunched, bloated or heavy, it is every bit as hulking, hunched, bloated or heavy here, never slimmer, taller or more athletic. The same stance, the same head and every feature on it, the same eyes, jaws and teeth wherever they are on the body, the same horns or antlers, spikes, fur, limbs and body, the same colours and surface."
         : "",
-      "Do NOT make it more human and do not dress it: no human face, no human hands, no clothes unless they are asked for or shown." + words,
-      FIGURE,
+      "Do NOT make it more human and do not dress it: no human face, no human hands, no human physique, no clothes unless they are asked for or shown." + words,
+      CREATURE_FIGURE,
       "Plain seamless mid-grey studio backdrop, moody soft light. No blood.",
+      hasRef ? REF_ONLY : "",
       CLEAN,
     ].filter(Boolean).join(" ");
   }

@@ -25,6 +25,8 @@ import crypto from "node:crypto";
 import { db } from "../db.server";
 import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderSideBySideTwoShot } from "./image-generation.server";
 import { AVATAR_VOICES, isPersonalVoice } from "./avatar-voice-catalog";
+import { characterVoice, isCharacterVoice } from "./character-voices";
+import { chainClipVoice } from "./character-voice.server";
 import { ensureVoiceModel, revoiceClip } from "./singing-voice.server";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
@@ -727,7 +729,10 @@ export async function generateTestMovie(opts: {
   const castVoiceOf = (speakerName: string): string | null => {
     const key = firstName(speakerName);
     const v = key ? castActors.find((c) => firstName(c.name) === key)?.voiceId || "" : "";
-    return v && !v.startsWith("ttv-") && (opts.lockVoices || isPersonalVoice(v)) ? v : null;
+    // A PERFORMED character voice is not re-voiced this way: the trainer learns a voice from the stock
+    // speech model, which has no such voice. It is described to the video model instead (voiceDescFor)
+    // and a creature's chain is laid over its lines (below).
+    return v && !v.startsWith("ttv-") && !isCharacterVoice(v) && (opts.lockVoices || isPersonalVoice(v)) ? v : null;
   };
   /** The voice to put on shot i, or null: only clips where ONE person speaks (re-voicing an exchange
    *  would give both people the same voice). */
@@ -874,6 +879,9 @@ export async function generateTestMovie(opts: {
       if (!name) return "";
       const key = fnm(name);
       const a = castActors.find((c) => fnm(c.name) === key);
+      // a cartoon's or a creature's voice, in the words it was designed in — the video model acts it
+      const acted = a ? characterVoice(a.voiceId) : null;
+      if (acted) return ` ${name}'s voice is ${acted.style}; keep this exact voice in every shot.`;
       const v = a && a.voiceId ? AVATAR_VOICES.find((x) => x.id === a.voiceId) : undefined;
       return v ? ` ${name}'s voice is ${v.blurb.toLowerCase()} (a ${v.label.toLowerCase()} ${v.gender === "f" ? "female" : "male"} voice); keep this exact voice in every shot.` : "";
     };
@@ -920,7 +928,13 @@ export async function generateTestMovie(opts: {
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
     // dead air off both ends (a continuing shot keeps its opening frames; the film's last shot holds a beat longer)
     const trimmed = await trimTrailingSilence(rawPath, { chained, last: i === treatment.scenes.length - 1 });
-    const outPath = await collapseInteriorPause(trimmed); // and collapse a long mid-line pause
+    const dry = await collapseInteriorPause(trimmed); // and collapse a long mid-line pause
+    // A CREATURE'S LINES get its creature chain — the same one its voice-over goes through — laid over
+    // this clip's own audio, in sync with the picture. Only on a shot where the creature is the ONE who
+    // speaks: the chain is over the whole track, and a second speaker would be dragged through it too.
+    const soloVoice = turnB ? null : characterVoice(castActors.find((c) => fnm(c.name) === fnm(speaker))?.voiceId);
+    const outPath = soloVoice?.acting.chain ? await chainClipVoice(dry, soloVoice.acting.chain) : dry;
+    if (outPath !== dry && soloVoice) { shotVoice[clips.length] = soloVoice.id; voicesLocked++; }
     clips.push(outPath);
     shotSeeds.push(seedAbs); shotPrompts.push(prompt); shotDurs.push(clipSecs); shotChained.push(chained);
     // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.

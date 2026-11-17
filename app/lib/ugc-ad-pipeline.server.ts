@@ -27,6 +27,7 @@ import { mirrorRender } from "./object-storage.server";
 import { falEnabled, falQueueHandleFor, falTts, pollAvatar, submitAvatar, FalRenderFailed } from "./fal-video.server";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { isPersonalVoice } from "./avatar-voice-catalog";
+import { isCharacterVoice } from "./character-voices";
 import { hasCJK, langDirective, voiceLangOpts } from "./content-lang";
 import { scriptTooShort, capScript, endStop } from "./script-length";
 import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
@@ -1115,6 +1116,17 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     console.error(`[ugc:tts] VOICE DOWNGRADE — ${avatar.id} lost ${delivery.voice} → ${to}: ${voiceFallbackReason}`);
   };
   const freshTts = async (): Promise<string> => {
+    // A PERFORMED character voice (a cartoon's, a creature's — character-voices.ts) is acted by its own
+    // engine, not read by the stock speech model. Like a designed voice it is NOT substitutable: a ghost
+    // read by a stock announcer is the wrong ad. A failure throws; the worker retries, and a terminal
+    // failure refunds.
+    if (isCharacterVoice(delivery.voice)) {
+      const origin = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      if (!origin) throw new Error("[ugc:tts] a character voice needs SHOPIFY_APP_URL (the lip-sync engine fetches the audio from it)");
+      const { speakCharacter } = await import("./character-voice.server");
+      const made = await speakCharacter(delivery.voice, script, { lang: contentLang ?? null, stage: "tts" });
+      return `${origin}${made.url}`;
+    }
     // designed voices (ttv-voice-*) live on the fal MiniMax account — they can
     // ONLY be spoken there.
     if (delivery.voice.startsWith("ttv-")) {

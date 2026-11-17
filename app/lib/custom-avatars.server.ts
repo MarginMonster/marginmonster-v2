@@ -21,6 +21,7 @@ import { OUTFITS } from "./avatars";
 import { brandStill } from "./commercial-ad-pipeline.server";
 import { mirrorRender } from "./object-storage.server";
 import { AVATAR_VOICE_IDS } from "./avatar-voice-catalog";
+import { characterVoice, isCharacterVoice } from "./character-voices";
 
 export const CUSTOM_PREFIX = "cav";
 export const isCustomAvatarId = (id: string): boolean => id.startsWith(CUSTOM_PREFIX);
@@ -50,6 +51,8 @@ const toAvatar = (r: Row): Avatar => ({
   // The owner's picked voice, used verbatim by castFor — this is the fix for a
   // forged presenter falling through to the scorer and getting a random accent.
   voiceId: r.voiceId || undefined,
+  // a performed character voice also comes with itself in words, for the film models that act a voice
+  ...(characterVoice(r.voiceId) ? { voiceStyle: characterVoice(r.voiceId)!.style } : {}),
 });
 
 const fileList = (r: { files: string }): string[] => {
@@ -91,7 +94,7 @@ export async function customCastFor(shopId: string): Promise<Array<Avatar & {
 
 /** Is this still a voice the shop may use — a catalog voice, or one of its own that is still there? */
 async function usableVoice(shopId: string, voiceId: string): Promise<boolean> {
-  if (AVATAR_VOICE_IDS.has(voiceId)) return true;
+  if (AVATAR_VOICE_IDS.has(voiceId) || isCharacterVoice(voiceId)) return true;
   const mine = await db.voiceClone.findFirst({ where: { shopId, voiceId, status: "ready" }, select: { id: true } });
   return !!mine;
 }
@@ -200,6 +203,15 @@ export async function forgeCustomAvatar(customAvatarId: string): Promise<void> {
       .catch(() => { /* the job's terminal path is the backstop */ });
     throw e;
   }
+}
+
+/** Register a character that is not a person, right now — it is one file copy, so it does not wait in
+ *  the render queue (the dialog said "joins your cast in a moment", and a film ahead of it in the queue
+ *  made that ten minutes). Throws if the approved picture is gone. */
+export async function registerCharacterNow(customAvatarId: string): Promise<void> {
+  const row = await db.customAvatar.findUnique({ where: { id: customAvatarId } });
+  if (!row) throw new Error(`custom avatar ${customAvatarId} not found`);
+  await registerCharacter(row);
 }
 
 /** A character that is not a person keeps the ONE look its maker approved: the preview they said yes

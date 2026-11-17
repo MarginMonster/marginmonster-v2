@@ -39,6 +39,7 @@ import {
 import type { BrandProfile } from "@prisma/client";
 import { langDirective, voiceLangOpts } from "./content-lang";
 import { isPersonalVoice } from "./avatar-voice-catalog";
+import { isCharacterVoice } from "./character-voices";
 import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
 import { scriptTooShort, capScript, endStop } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
@@ -938,7 +939,8 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     try {
       const { resolvePresenter } = await import("./custom-avatars.server");
       const own = (await resolvePresenter(params.shopId, params.avatarId, params.avatarVariant ?? 0)).avatar.voiceId;
-      if (own && isPersonalVoice(own)) cartoonVoice = own;
+      // …and so does one who has a PERFORMED character voice: it is theirs, not a narrator's.
+      if (own && (isPersonalVoice(own) || isCharacterVoice(own))) cartoonVoice = own;
     } catch { /* an unresolvable presenter is reported by the keyframe step, not here */ }
   }
   let audioBuf: Buffer | null = null;
@@ -947,6 +949,14 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
   }
   if (!audioBuf || audioBuf.length < 10_000) {
     let audioUrl: string;
+    if (isCharacterVoice(cartoonVoice)) {
+      // acted by its own engine (character-voice.server.ts) — never sent to the stock speech model,
+      // which has no such voice. Not substitutable: a failure fails the take, which retries and refunds.
+      const origin = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+      if (!origin) throw new Error("[cartoon:tts] a character voice needs SHOPIFY_APP_URL");
+      const { speakCharacter } = await import("./character-voice.server");
+      audioUrl = `${origin}${(await speakCharacter(cartoonVoice, script, { lang: contentLang ?? null, stage: "cartoon-tts" })).url}`;
+    } else
     // Cheap, but still billed at create — a restart mid-poll re-attaches.
     try {
       audioUrl = await resumablePrediction({

@@ -22,6 +22,8 @@ import { db } from "../db.server";
 import { runFfmpeg, ffprobeDuration } from "./ugc-ad-pipeline.server";
 import { assembleTestMovie, renderDialogueClipTo } from "./film-dialogue.server";
 import { ensureVoiceModel, revoiceClip } from "./singing-voice.server";
+import { characterVoice } from "./character-voices";
+import { chainClipVoice } from "./character-voice.server";
 import { mirrorRender } from "./object-storage.server";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -174,7 +176,11 @@ export async function regenerateFilmShot(opts: { assetId: string; shopId: string
   // The video model acts every take in a voice of its own. If this shot carried a cast voice, the new
   // take gets the same one — otherwise the re-rolled shot would be the only line in the film spoken by
   // a stranger. Fails open, like the render: a voice that can't be applied keeps the take as it is.
-  if (shot.voice) {
+  const creature = characterVoice(shot.voice);
+  if (creature) {
+    // a creature's line: the same chain the first render laid over it (never the re-voice trainer)
+    newClip = await chainClipVoice(newClip, creature.acting.chain);
+  } else if (shot.voice) {
     try {
       const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
       const model = await ensureVoiceModel(shot.voice, base);

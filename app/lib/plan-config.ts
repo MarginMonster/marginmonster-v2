@@ -326,17 +326,24 @@ export const TOKEN_COST = {
   //   4 portrait cut-outs   background remover                                                 ~$0.001
   //   4 full-body 3D views  one per outfit: still $0.039 + a 6 s turntable clip $0.36 + its
   //                         matte ~$0.02 = $0.42, and about 1 turn in 7 has to be rolled again   $1.89
-  //   total ≈ $2.49  →  58 tokens at $0.0432 a token (Studio $39/900, Legend $69/1600 — the plans that
+  //   the free previews     everyday image model (google/nano-banana), $0.039 each, say two        $0.08
+  //   total ≈ $2.57  →  59 tokens at $0.0433 a token (Studio $39/900, Legend $69/1600 — the plans that
   //   can forge). 60 it is. (It was 20 before the 3D views existed — and nothing at all before that,
   //   while the UI said "the forge runs on tokens".) On an ANNUAL plan a token is worth ~$0.036, so 60
-  //   there is about 34¢ under cost; 70 would cover it — the owner's call if annual becomes the norm.
+  //   there is about 40¢ under cost; 72 would cover it — the owner's call if annual becomes the norm.
   avatarForge: 60,
   // A CHARACTER that is not a person (a cartoon, a creature) keeps the one look its maker approved — no
-  // outfits — so it costs us far less, and by the same break-even rule it is charged far less:
-  //   the previews its maker looked at     premium image model, ~$0.15 each, say two             $0.30
-  //   1 full-body 3D view                  still $0.039 + turntable $0.36 + a frame-by-frame
-  //                                        cut-out of the turn ~$0.05, 1 turn in 7 rolled again    $0.51
-  //   total ≈ $0.81  →  19 tokens at $0.0432. 20 it is.
+  // outfits — so it costs us far less, and by the same break-even rule it is charged far less. Prices
+  // read off the providers' own pages, 2026-11-17 (owner: "20 tokens sounds okay as long as we aren't
+  // losing money"):
+  //   1 full-body 3D view     still $0.039 + a 6 s 720p turntable $0.36 + the turn cut out frame by
+  //                           frame (~145 × $0.00047) $0.07 = $0.47; 1 turn in 7 is rolled again     $0.53
+  //   the free previews       everyday image model, $0.039 each — typically two                    $0.08
+  //   total ≈ $0.61 against 20 tokens = $0.87 (monthly) / $0.72 (annual). Even a maker who uses all
+  //   eight of a day's previews first costs $0.84 — still inside 20 tokens on a monthly plan.
+  //   ⚠ This only holds while previews are drawn on the EVERYDAY model. On the premium one ($0.15) the
+  //   third preview already puts the character under water — character-preview.server.ts keeps the
+  //   premium model as the fallback only, and tests/character-prompts.test.ts pins that order.
   characterForge: 20,
   // One outfit's 3D view bought on its own — for a presenter made before the 3D views existed. $0.47 is
   // 11 tokens; kept at the 10-an-outfit the price above works out to (60 − the 20 the portraits cost),

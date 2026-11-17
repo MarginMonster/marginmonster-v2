@@ -391,7 +391,7 @@ function repHeaders(): Record<string, string> {
 }
 
 /** Create + poll a Replicate official-model prediction; returns the first output URL. */
-async function repRun(model: string, input: Record<string, unknown>, maxMs = 120_000): Promise<string> {
+export async function repRun(model: string, input: Record<string, unknown>, maxMs = 120_000): Promise<string> {
   // 429 = Replicate per-model rate limit, and it is TRANSIENT. Throwing on it
   // terminal-failed merchant image ads whenever background art forging (or a
   // burst of merchant work) saturated the model — the single biggest cause of

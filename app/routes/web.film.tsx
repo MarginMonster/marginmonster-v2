@@ -22,9 +22,10 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { estimateFilmTokens, FILM_PER_SCENE, FILM_BASE } from "../lib/plan-config";
 import { externalOrigin } from "../lib/origin.server";
 import { AVATAR_VOICES, AVATAR_VOICE_IDS, autoCastVoices } from "../lib/avatar-voice-catalog";
+import { CHARACTER_VOICES, characterVoiceSample, isCharacterVoice } from "../lib/character-voices";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
 
-export const meta: MetaFunction = () => [{ title: "Film Studio · EASYMODE" }];
+export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
@@ -445,7 +446,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (cast) {
       const { shopVoiceClones } = await import("../lib/voice-clone.server");
       const mine = new Set((await shopVoiceClones(shop.id)).map((v) => v.voiceId));
-      cast = cast.map((c) => ({ ...c, voiceId: c.voiceId && (AVATAR_VOICE_IDS.has(c.voiceId) || mine.has(c.voiceId)) ? c.voiceId : null }));
+      cast = cast.map((c) => ({ ...c, voiceId: c.voiceId && (AVATAR_VOICE_IDS.has(c.voiceId) || isCharacterVoice(c.voiceId) || mine.has(c.voiceId)) ? c.voiceId : null }));
     }
     // "Lock these voices" (dialogue films): every character speaks in exactly the voice picked for them.
     const filmLockVoices = ((form.get("filmLockVoices") as string) || "") === "1";
@@ -1627,7 +1628,8 @@ export default function FilmStudio() {
     if (own && !own.preview) return;
     try {
       if (voiceAudioRef.current) { voiceAudioRef.current.pause(); }
-      const a = new Audio(own ? own.preview : `/voice-samples/${voiceId}.mp3`);
+      // a performed character voice plays the take that was approved for it
+      const a = new Audio(own ? own.preview : isCharacterVoice(voiceId) ? characterVoiceSample(voiceId) : `/voice-samples/${voiceId}.mp3`);
       voiceAudioRef.current = a;
       a.play().catch(() => { /* autoplay / missing sample — fine */ });
     } catch { /* no Audio — fine */ }
@@ -2296,9 +2298,11 @@ export default function FilmStudio() {
                             {d.myVoices.map((v) => <option key={v.voiceId} value={v.voiceId}>{v.label} · {t("your own voice")}</option>)}
                           </optgroup>
                         )}
-                        {d.myVoices.length > 0
-                          ? <optgroup label={t("Stock voices")}>{d.voices.map((v) => <option key={v.id} value={v.id}>{v.label} · {v.blurb}</option>)}</optgroup>
-                          : d.voices.map((v) => <option key={v.id} value={v.id}>{v.label} · {v.blurb}</option>)}
+                        {/* a cartoon's or a creature's own performed voice — and any character can wear one */}
+                        <optgroup label={t("Character voices")}>
+                          {CHARACTER_VOICES.map((v) => <option key={v.id} value={v.id}>{t(v.label)} · {t(v.blurb)}</option>)}
+                        </optgroup>
+                        <optgroup label={t("People's voices")}>{d.voices.map((v) => <option key={v.id} value={v.id}>{v.label} · {v.blurb}</option>)}</optgroup>
                       </select>
                       <button type="button" className="fs-voice-play" disabled={!c.voiceId} onClick={() => playVoice(c.voiceId)} aria-label={t("Hear this voice")} title={t("Hear this voice")}><Ico n="sound" size={14} /></button>
                     </div>

@@ -116,7 +116,9 @@ export function safeVoiceId(id: string | null | undefined, gender: "f" | "m"): s
  *  one). Pipelines use it to REFUSE to substitute the voice: a stranger's voice in the merchant's own
  *  mouth is worse than a failed, refunded render. Pure and dependency-free, so it is safe anywhere. */
 export function isPersonalVoice(voiceId: string | null | undefined): boolean {
-  return !!voiceId && !AVATAR_VOICE_IDS.has(voiceId) && !voiceId.startsWith("ttv-");
+  // "char:" = a performed character voice (character-voices.ts) — not anybody's own voice, and not an id
+  // any speech model knows: it is spoken by character-voice.server.ts and nothing else.
+  return !!voiceId && !AVATAR_VOICE_IDS.has(voiceId) && !voiceId.startsWith("ttv-") && !voiceId.startsWith("char:");
 }
 
 /** The phrase every preview sample speaks — kept short and upbeat so a merchant

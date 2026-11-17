@@ -13,6 +13,7 @@ import { useRevalidator } from "@remix-run/react";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { AVATAR_VOICES, DEFAULT_AVATAR_VOICE } from "../lib/avatar-voice-catalog";
+import { CHARACTER_VOICES, DEFAULT_CHARACTER_VOICE, characterVoiceSample } from "../lib/character-voices";
 
 /* Pick a voice for a custom presenter — chips under the gender toggle, each with
  * a ▶ that plays the real pre-rendered sample (free, instant) so a merchant
@@ -21,7 +22,7 @@ import { AVATAR_VOICES, DEFAULT_AVATAR_VOICE } from "../lib/avatar-voice-catalog
  * all-neutral-English, so nothing here surprises them with an accent. */
 export type MyVoiceT = { id: string; voiceId: string; label: string; gender: "f" | "m"; preview: string };
 
-export function VoicePicker({ gender, value, onChange, myVoices, canMake, signature, showAll }: {
+export function VoicePicker({ gender, value, onChange, myVoices, canMake, signature, showAll, characterKind }: {
   gender: "f" | "m"; value: string; onChange: (id: string) => void;
   /** The shop's OWN cloned voices ("My voices") — listed above the stock ones. */
   myVoices?: MyVoiceT[];
@@ -32,6 +33,9 @@ export function VoicePicker({ gender, value, onChange, myVoices, canMake, signat
   /** Also list the other gender’s stock voices (after this gender’s), so a voice that was saved from
    *  the other list still shows as the selected one. */
   showAll?: boolean;
+  /** The one being voiced is a cartoon or a creature: the PERFORMED character voices are offered first
+   *  (its own kind leading), each with the approved take behind its ▶; the people's voices follow. */
+  characterKind?: "cartoon" | "monster";
 }) {
   const t = useT();
   const revalidator = useRevalidator();
@@ -43,6 +47,11 @@ export function VoicePicker({ gender, value, onChange, myVoices, canMake, signat
   const [makerOpen, setMakerOpen] = useState(false);
   const [armed, setArmed] = useState<string | null>(null);
   const voices = AVATAR_VOICES.filter((v) => v.gender === gender);
+  const charVoices = characterKind
+    ? [...CHARACTER_VOICES.filter((v) => v.kind === characterKind), ...CHARACTER_VOICES.filter((v) => v.kind !== characterKind)]
+    : [];
+  // what a voice falls back to when the one it was on is removed
+  const fallbackVoice = signature ? "" : characterKind ? DEFAULT_CHARACTER_VOICE[characterKind][gender] : DEFAULT_AVATAR_VOICE[gender];
   const others = showAll ? AVATAR_VOICES.filter((v) => v.gender !== gender) : [];
   useEffect(() => {
     const a = audioRef.current;
@@ -65,7 +74,7 @@ export function VoicePicker({ gender, value, onChange, myVoices, canMake, signat
     fd.set("intent", "delete"); fd.set("id", v.id);
     try { await fetch("/api/avatar-voice", { method: "POST", body: fd }); } catch { /* the reload below shows the truth */ }
     setMine((m) => m.filter((x) => x.id !== v.id));
-    if (value === v.voiceId) onChange(signature ? "" : DEFAULT_AVATAR_VOICE[gender]);
+    if (value === v.voiceId) onChange(fallbackVoice);
     revalidator.revalidate();
   };
   return (
@@ -86,6 +95,24 @@ export function VoicePicker({ gender, value, onChange, myVoices, canMake, signat
             ) : null}
           </div>
         )}
+        {charVoices.length > 0 && <div className="ws-vp-sec">{t("Character voices")}</div>}
+        {charVoices.map((v) => {
+          const sel = value === v.id;
+          const on = playing === v.id;
+          return (
+            <div key={v.id} className={`ws-vp-chip char${sel ? " sel" : ""}`}>
+              <button type="button" className="ws-vp-pick" onClick={() => onChange(v.id)} aria-pressed={sel}>
+                <b><Ico n={v.kind === "monster" ? "moon" : "paw"} size={12} /> {t(v.label)}</b>
+                <em className="ws-vp-blurb">{t(v.blurb)}</em>
+                {sel ? <i className="ws-vp-tick" aria-hidden="true">✓</i> : null}
+              </button>
+              <button type="button" className={`ws-vp-play${on ? " on" : ""}`} onClick={() => play(v.id, characterVoiceSample(v.id))}
+                aria-label={on ? t("Stop preview") : t("Preview the {label} voice", { label: t(v.label) })}>
+                {on ? "⏸" : "▶"}
+              </button>
+            </div>
+          );
+        })}
         {mine.length > 0 && <div className="ws-vp-sec">{t("My voices")}</div>}
         {mine.map((v) => {
           const sel = value === v.voiceId;
@@ -111,7 +138,7 @@ export function VoicePicker({ gender, value, onChange, myVoices, canMake, signat
             </div>
           );
         })}
-        {(mine.length > 0 || signature) && <div className="ws-vp-sec">{t("Stock voices")}</div>}
+        {(mine.length > 0 || signature || charVoices.length > 0) && <div className="ws-vp-sec">{charVoices.length > 0 ? t("People's voices") : t("Stock voices")}</div>}
         {[...voices, ...others].map((v, i) => {
           const sel = value === v.id;
           const on = playing === v.id;
@@ -305,6 +332,8 @@ export const VOICE_UI_CSS = `
 .ws-vpx .ws-vp{margin-bottom:8px}
 .ws-vp-sec{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3,#8A938C);padding:2px 2px 0}
 .ws-vp-chip.mine .ws-vp-pick b{display:inline-flex;align-items:center;gap:4px;color:var(--green,#0C7A46)}
+.ws-vp-chip.char .ws-vp-pick b{display:inline-flex;align-items:center;gap:5px}
+.ws-vp-chip.char .ws-vp-pick b svg{color:var(--gold-deep,#7E5E13)}
 .ws-vp-rm{flex:0 0 auto;border:0;border-left:1px solid var(--line,#E4DFCF);background:transparent;color:var(--ink3,#8A938C);padding:0 10px;cursor:pointer;display:grid;place-items:center;font-size:11px;font-weight:800}
 .ws-vp-rm:hover{color:#B3261E;background:#FCF1F0}
 .ws-vp-rm.armed{color:#fff;background:#B3261E}

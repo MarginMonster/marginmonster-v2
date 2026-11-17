@@ -27,6 +27,7 @@ import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/ca
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
 import { AVATAR_VOICES, DEFAULT_AVATAR_VOICE, safeVoiceId } from "../lib/avatar-voice-catalog";
 import { VoicePicker, VoiceMaker, VOICE_UI_CSS, type MyVoiceT } from "../components/VoicePicker";
+import { CharacterForge, FORGE_CSS } from "../components/CharacterForge";
 import { useModalA11y } from "../lib/use-modal-a11y";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS, AD_FORMAT_BY_KEY, FORMAT_GROUPS, type AdFormat } from "../lib/ad-formats";
@@ -221,7 +222,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { customCastFor } = await import("../lib/custom-avatars.server");
   const custom = await customCastFor(shop.id);
   const cast = [
-    ...custom.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, img: c.img, designed: false })),
+    // People only. A cartoon or a creature is cast in FILMS (Movie Maker has its own roster): the ad
+    // pipelines are built around a waist-up human who can hold a product, and a head-to-feet creature
+    // breaks their framing and their hand checks.
+    ...custom.filter((c) => c.status === "ready" && (c.kind || "person") === "person").map((c) => ({ id: c.id, name: c.name, img: c.img, designed: false })),
     ...[...privateCastFor(account.email, shop.id, shop.domain), ...LIVE_AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) })),
   ];
   const forgingAvatars = custom
@@ -232,7 +236,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // free a slot. voiceId drives which chip shows selected; gender picks defaults.
   const myPresenters = custom
     .filter((c) => c.status === "ready")
-    .map((c) => ({ id: c.id, name: c.name, img: c.img, voiceId: c.voiceId || "", gender: c.gender }));
+    .map((c) => ({ id: c.id, name: c.name, img: c.img, voiceId: c.voiceId || "", gender: c.gender, kind: (c.kind || "person") as "person" | "cartoon" | "monster" }));
   // "My voices" — the shop's own cloned voices, listed in the SAME voice picker beside the stock ones —
   // and whether this account may make a new one right now (see canCloneVoice).
   const { shopVoiceClones, canCloneVoice } = await import("../lib/voice-clone.server");
@@ -609,150 +613,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
-  // "Turn your brand mascot into a marketing tool" — forge a private
-  // presenter from an uploaded reference. Queued: four renders take ~90s.
-  // Step one of creating a character: SEE them. One picture, from a description and/or a picture the
-  // maker added — free, counted, and nothing is charged or queued. (See character-preview.server.ts.)
-  if (intent === "previewCharacter") {
-    if (!shop.activePlan?.active) return json({ avatarError: tr(lang, "Pick a plan first — creating a character runs on tokens.") });
-    if (!capabilitiesFor(shop.activePlan).has("video")) {
-      return json({ avatarError: tr(lang, "Custom characters star in your videos — upgrade to a plan with video to create one.") });
-    }
-    const { charKindOf, CHAR_DESC_MAX } = await import("../lib/character-prompts");
-    const pv = await import("../lib/character-preview.server");
-    const kind = charKindOf(form.get("charKind"));
-    const desc = ((form.get("avatarDesc") as string) || "").trim().slice(0, CHAR_DESC_MAX);
-    // the picture they added: a new upload, or the one that came with an earlier preview in this sitting
-    let refFile = ((form.get("refFile") as string) || "").trim();
-    const photo = form.get("avatarPhoto");
-    if (photo && typeof photo !== "string" && photo.size > 0) {
-      if (!/^image\//.test(photo.type)) return json({ avatarError: tr(lang, "That file isn't an image — use a JPG, PNG or WebP.") });
-      if (photo.size > 8 * 1024 * 1024) return json({ avatarError: tr(lang, "Image too large — keep it under 8 MB.") });
-      const [fsMod, crypto] = await Promise.all([import("node:fs"), import("node:crypto")]);
-      const ext = photo.type === "image/png" ? "png" : photo.type === "image/webp" ? "webp" : "jpg";
-      refFile = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext as UploadExt, "mascot");
-      fsMod.writeFileSync(pv.uploadPath(refFile), Buffer.from(await photo.arrayBuffer()));
-    } else if (refFile && !pv.ownsUpload(shop.id, refFile)) {
-      refFile = "";
-    }
-    if (!refFile && desc.length < 8) return json({ avatarError: tr(lang, "Describe your character, or add a picture of them.") });
-    if (pv.previewsLeft(shop.id) <= 0) {
-      return json({ avatarError: tr(lang, "That's {n} previews today — register one you like, or come back tomorrow for more.", { n: pv.PREVIEWS_PER_DAY }) });
-    }
-    if (desc) {
-      const { screenCreatePrompt } = await import("../lib/prompt-safety.server");
-      const verdict = await screenCreatePrompt(desc);
-      if (!verdict.ok) return json({ avatarError: verdict.message });
-    }
-    try {
-      const file = await pv.makeCharacterPreview({ shopId: shop.id, kind, desc, refFile: refFile || undefined });
-      return json({ charPreview: { file, refFile, kind, left: pv.previewsLeft(shop.id) } });
-    } catch (e) {
-      console.error(`[studio] character preview failed for shop ${shop.id}: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
-      return json({ avatarError: tr(lang, "We couldn't draw them that time — nothing was charged. Try again, or change the description.") });
-    }
-  }
-
-  if (intent === "forgeAvatar") {
-    if (!shop.activePlan?.active) return json({ avatarError: tr(lang, "Pick a plan first — the forge runs on tokens.") });
-    // Custom presenters exist to STAR in avatar videos — a "video" capability
-    // (Studio+). The forge was gated only on an active plan, so a standalone
-    // Creator plan ($6.99, no video) could forge presenters it can never use in
-    // a video AND at a loss: its tokens are worth a third of a Studio token, and
-    // the forge is priced to break even at Studio/Legend token value (see
-    // TOKEN_COST.avatarForge). Gate it to the tiers that can use the output.
-    if (!capabilitiesFor(shop.activePlan).has("video")) {
-      return json({ avatarError: tr(lang, "Custom presenters star in your avatar videos — upgrade to a plan with video to forge one.") });
-    }
-    const name = ((form.get("avatarName") as string) || "").trim().slice(0, 40);
-    if (!name) return json({ avatarError: tr(lang, "Give your presenter a name.") });
-    const gender = form.get("avatarGender") === "f" ? "f" : "m";
-    // The character is forged from the PREVIEW its maker approved (step one, above) — what they said
-    // yes to is what they get. A cartoon or a creature keeps that one look and costs less; a person is
-    // forged into four outfits.
-    const { charKindOf, CHAR_DESC_MAX } = await import("../lib/character-prompts");
-    const { ownsUpload } = await import("../lib/character-preview.server");
-    const kind = charKindOf(form.get("charKind"));
-    const forgeCost = kind === "person" ? TOKEN_COST.avatarForge : TOKEN_COST.characterForge;
-    const fileName = ((form.get("previewFile") as string) || "").trim();
-    if (!fileName) return json({ avatarError: tr(lang, "Make a preview of your character first — you see them before anything is charged.") });
-    if (!ownsUpload(shop.id, fileName)) return json({ avatarError: tr(lang, "That preview isn't available any more — make a new one.") });
-    // THE FORGE COSTS US FOUR RENDERS AND CHARGED FOR NONE.
-    //
-    // The guard above already tells the merchant "the forge runs on tokens",
-    // and then nothing took any: no spendTokens, no in-flight guard, no cap on
-    // how many presenters a shop could forge. Every submit queued a job that
-    // renders one portrait per outfit — four paid generations, in parallel —
-    // so pressing the button repeatedly was free to the merchant and billed to
-    // us, without limit.
-    const running = await db.job.count({
-      where: { shopId: shop.id, type: "FORGE_CUSTOM_AVATAR", status: { in: ["PENDING", "IN_PROGRESS"] } },
-    });
-    if (running > 0) {
-      return json({ avatarError: tr(lang, "Your last presenter is still being forged — give it a minute.") });
-    }
-    const MAX_CUSTOM_PRESENTERS = 12;
-    // A FAILED forge produced nothing usable, so it must not eat one of the twelve
-    // slots — count only presenters that are forging or ready. (The failed row
-    // still shows in the gallery with a one-tap remove; it just never blocks.)
-    const owned = await db.customAvatar.count({ where: { shopId: shop.id, status: { not: "failed" } } });
-    if (owned >= MAX_CUSTOM_PRESENTERS) {
-      return json({ avatarError: tr(lang, "You already have {n} presenters — delete one to forge another.", { n: MAX_CUSTOM_PRESENTERS }) });
-    }
-
-    let forgeFromExtra = 0;
-    try {
-      forgeFromExtra = (await spendTokens(shop.id, forgeCost)).fromExtra;
-    } catch (e) {
-      return json({ avatarError: e instanceof Error ? e.message : tr(lang, "Not enough tokens to forge a presenter.") });
-    }
-
-    // The spend above is committed, so everything after it has to either queue
-    // the work or give the tokens back. Unguarded, a failure here escaped the
-    // action as a 500 error page with the forge fee gone and no job to refund
-    // it — refundPrepaidOnce needs a job row, and there is none until the
-    // enqueue below succeeds.
-    try {
-      const row = await db.customAvatar.create({
-        data: {
-          shopId: shop.id, name, gender,
-          // Vibe sets the speaking PACE (castFor maps energy → speed); voice is
-          // the owner's explicit pick, coerced to a known clean voice so a bad id
-          // can never reach the TTS model.
-          energy: ["hype", "warm", "calm"].includes(String(form.get("avatarEnergy"))) ? String(form.get("avatarEnergy")) : "warm",
-          // a stock voice, or one of this shop's OWN cloned voices ("My voice") — anything else falls
-          // back to the gender default, so a bad id can never reach the TTS model
-          voiceId: await (await import("../lib/voice-clone.server")).resolveVoiceChoice(shop.id, (form.get("avatarVoice") as string) || "", gender),
-          desc: ((form.get("avatarDesc") as string) || "").trim().slice(0, CHAR_DESC_MAX) || `${name}, the brand's own presenter character`,
-          refFile: fileName,
-          kind,
-          // The price just charged includes a 3D view of each of the four outfits. Record what each
-          // one's share was (and how much of it came from purchased tokens), so the views are built
-          // without charging again and one that can't be made is refunded to where it was paid from.
-          spinPaid: TOKEN_COST.avatarSpin,
-          spinPaidExtra: Math.floor((forgeFromExtra * TOKEN_COST.avatarSpin) / forgeCost),
-        },
-      });
-      await enqueueJob(shop.id, "FORGE_CUSTOM_AVATAR", {
-        customAvatarId: row.id,
-        prePaid: true,
-        chargedTokens: forgeCost,
-        chargedFromExtra: forgeFromExtra,
-      });
-      return json({ avatarQueued: name });
-    } catch (e) {
-      try {
-        await refundTokens(shop.id, forgeCost, forgeFromExtra);
-        console.warn(`[studio] forge failed before queueing — refunded ${forgeCost} tokens to shop ${shop.id}`);
-      } catch (re) {
-        console.error(
-          `[studio] FORGE REFUND FAILED — shop ${shop.id} is owed ${forgeCost} tokens: `,
-          re instanceof Error ? re.message.slice(0, 200) : re,
-        );
-      }
-      return json({ avatarError: e instanceof Error ? e.message : tr(lang, "Couldn't start the forge — your tokens were returned.") });
-    }
-  }
+  // Creating a character (the free preview, then registering it) lives in its own resource route —
+  // app/routes/api.character.tsx — so the one dialog can be opened from the Presenters section too.
 
   // Managing your OWN presenters (delete / change voice) is deliberately NOT
   // gated on an active plan or brand voice — a lapsed merchant must still be able
@@ -1758,8 +1620,8 @@ function ForgingPresenter({ name, status, startedAt }: { name: string; status: s
   if (failed) {
     return (
       <div className="ws-forge ws-forge-bad" role="status">
-        <b>{t("{name} couldn’t be forged.", { name })}</b>
-        <span>{t("The reference photo didn’t give us enough to work with — try a clearer, front-facing image.")}</span>
+        <b>{t("{name} couldn’t be made.", { name })}</b>
+        <span>{t("Their outfits didn’t come out, and your tokens come back by themselves. Try again — a clear, front-facing picture works best.")}</span>
       </div>
     );
   }
@@ -1834,7 +1696,7 @@ function NarratorPills({ value, onChange, myVoices, canMake }: { value: string; 
   );
 }
 
-type MyPresenter = { id: string; name: string; img: string; voiceId: string; gender: string };
+type MyPresenter = { id: string; name: string; img: string; voiceId: string; gender: string; kind: "person" | "cartoon" | "monster" };
 
 /* Manage YOUR custom presenters — the home the quota error always promised
  * ("delete one to forge another") but never had, plus the fix for a presenter
@@ -1901,7 +1763,7 @@ function ManagePresenters({ presenters, myVoices, canMakeVoice, onClose }: { pre
                 )}
                 {open && (
                   <div className="ws-mp-voice">
-                    <VoicePicker gender={gender} value={pendingVoice} onChange={setPendingVoice} myVoices={myVoices} canMake={canMakeVoice} />
+                    <VoicePicker gender={gender} value={pendingVoice} onChange={setPendingVoice} myVoices={myVoices} canMake={canMakeVoice} characterKind={p.kind === "person" ? undefined : p.kind} />
                     <button type="button" className="wb-btn ws-mp-save" disabled={busy || pendingVoice === (p.voiceId || "")}
                       onClick={() => { const fd = new FormData(); fd.set("intent", "setAvatarVoice"); fd.set("avatarId", p.id); fd.set("avatarVoice", pendingVoice); fetcher.submit(fd, { method: "post" }); }}>
                       {busy ? t("Saving…") : t("Save voice")}
@@ -2627,52 +2489,17 @@ export default function WebStudio() {
   const [productSize, setProductSize] = useState("");
   const [showConnect, setShowConnect] = useState(false);
   const [storeInput, setStoreInput] = useState("");
-  const [avatarName, setAvatarName] = useState("");
-  const [avatarGender, setAvatarGender] = useState("m");
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  // Voice is now an explicit PICK (was a scorer guess that sometimes handed a
-  // merchant an accent). desc + energy let them shape the character/pace; the
-  // preview is a local object-URL of the uploaded photo so they see what they're
-  // forging before they spend.
-  const [avatarVoice, setAvatarVoice] = useState(DEFAULT_AVATAR_VOICE.m);
-  const [avatarDesc, setAvatarDesc] = useState("");
-  const [avatarEnergy, setAvatarEnergy] = useState("warm");
-  const [avatarPreview, setAvatarPreview] = useState("");
-  useEffect(() => {
-    if (!avatarFile) { setAvatarPreview(""); return; }
-    const url = URL.createObjectURL(avatarFile);
-    setAvatarPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [avatarFile]);
   // Manage YOUR presenters: change a voice (incl. fixing a pre-picker one) or
   // delete one to free a slot. The panel owns its own fetcher.
   // ?manage=1 opens the Manage panel straight away (the Presenters page links here to change a voice)
   const [manageOpen, setManageOpen] = useState(searchParams.get("manage") === "1");
-  // "Create your own presenter" — the forge, promoted from a buried Import card
-  // to a first-class modal opened straight from the presenter picker. A
-  // dedicated fetcher (not the global submit) keeps the forge's own
-  // submitting/queued/error state scoped, so the modal can show a spinner then
-  // a confirmation instead of silently closing (the merchant hit Forge and saw
-  // nothing). `forging` flips the modal from the form to the progress view;
-  // reset on close so reopening is a fresh form.
+  // "Create your character" — one shared dialog (components/CharacterForge.tsx), opened here from the
+  // presenter picker and the Import tab; ?forge=1 opens it straight away.
   const [forgeOpen, setForgeOpen] = useState(searchParams.get("forge") === "1");
-  const [forging, setForging] = useState(false);
-  const forgeFetcher = useFetcher<{ avatarQueued?: string; avatarError?: string }>();
-  // Creating a character is two steps: SEE them (a free preview from a description and/or a picture),
-  // then register the one you like — which is when tokens are charged and the character is forged from
-  // that very picture. `charPreview` is the picture on show; `refFile` the picture the maker added, kept
-  // so "Try another" doesn't upload it again.
-  const [charKind, setCharKind] = useState<"person" | "cartoon" | "monster">("person");
-  const [charPreview, setCharPreview] = useState<{ file: string; refFile: string } | null>(null);
-  const charPreviewFetcher = useFetcher<{ charPreview?: { file: string; refFile: string; kind: string; left: number }; avatarError?: string }>();
-  useEffect(() => {
-    if (charPreviewFetcher.state === "idle" && charPreviewFetcher.data?.charPreview) setCharPreview({ file: charPreviewFetcher.data.charPreview.file, refFile: charPreviewFetcher.data.charPreview.refFile });
-  }, [charPreviewFetcher.state, charPreviewFetcher.data]);
   // Escape-to-close + focus-trap + focus-return for the overlays. Each dialog
   // gets a ref; the hook no-ops while its overlay is closed. (Manage runs the
   // same hook inside its own component.)
-  const closeForge = useCallback(() => { setForgeOpen(false); setForging(false); }, []);
-  const forgeDialogRef = useModalA11y<HTMLDivElement>(forgeOpen, closeForge);
+  const closeForge = useCallback(() => setForgeOpen(false), []);
   const doneDialogRef = useModalA11y<HTMLDivElement>(showDone, () => setShowDone(false));
   const lightboxRef = useModalA11y<HTMLDivElement>(!!expandImg, () => setExpandImg(null));
   const [urlInput, setUrlInput] = useState("");
@@ -5847,141 +5674,7 @@ export default function WebStudio() {
         </section>
       )}
 
-      {forgeOpen && (
-        <div className="ws-scrim" onClick={closeForge}>
-          <div ref={forgeDialogRef} className="ws-forgem" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-            <button type="button" className="ws-forgem-x" onClick={closeForge} aria-label={t("Close")}><Ico n="x" size={16} /></button>
-            {forging ? (
-              forgeFetcher.data?.avatarError ? (
-                <div className="ws-forgem-done">
-                  <span className="ws-forgem-bad"><Ico n="warning" size={26} /></span>
-                  <b>{t("Couldn't start the forge")}</b>
-                  <p>{String(forgeFetcher.data.avatarError)}</p>
-                  <button type="button" className="wb-btn ws-forgem-go" onClick={() => setForging(false)}>{t("Try again")}</button>
-                </div>
-              ) : forgeFetcher.data?.avatarQueued && forgeFetcher.state === "idle" ? (
-                <div className="ws-forgem-done">
-                  <span className="ws-forgem-check"><Ico n="check" size={30} /></span>
-                  <b>{t("{name} is on the way!", { name: String(forgeFetcher.data.avatarQueued) })}</b>
-                  <p>{charKind === "person"
-                    ? t("We're forging four outfits — about a minute. Your new presenter appears in your presenter list when it's ready; keep creating in the meantime.")
-                    : t("They join your cast in a moment, and their 3D figure follows a few minutes later; keep creating in the meantime.")}</p>
-                  <button type="button" className="wb-btn ws-forgem-go" onClick={() => { setForgeOpen(false); setForging(false); setAvatarName(""); setAvatarFile(null); setAvatarDesc(""); setAvatarEnergy("warm"); setCharPreview(null); setCharKind("person"); }}>{t("Got it")}</button>
-                </div>
-              ) : (
-                <div className="ws-forgem-done">
-                  <span className="ws-forge-spin ws-forgem-spin" aria-hidden="true" />
-                  <b>{t("Registering {name}…", { name: avatarName.trim() || t("your character") })}</b>
-                  <p>{t("Hang tight — setting them up.")}</p>
-                </div>
-              )
-            ) : (
-              <>
-                <div className="ws-forgem-h">
-                  <span className="ws-forgem-crest"><Ico n="wand" size={20} /></span>
-                  <div>
-                    <b>{t("Create your character")}</b>
-                    <span>{t("A person, a mascot, a cartoon, a creature — describe them or add a picture. You see them first; nothing is charged until you say yes.")}</span>
-                  </div>
-                </div>
-                <div className="ws-seg ws-forgem-seg ws-forgem-kind">
-                  {([["person", "Person"], ["cartoon", "Cartoon"], ["monster", "Creature"]] as ["person" | "cartoon" | "monster", string][]).map(([k, label]) => (
-                    <button type="button" key={k} className={charKind === k ? "sel" : ""} disabled={charPreviewFetcher.state !== "idle"}
-                      onClick={() => { if (k !== charKind) { setCharKind(k); setCharPreview(null); } }}>{t(label)}</button>
-                  ))}
-                </div>
-                {(() => {
-                  const drawing = charPreviewFetcher.state !== "idle";
-                  // ask for a preview: with the picture just added, or (for "Try another") the one already uploaded
-                  const askPreview = (keptRef?: string) => {
-                    const fd = new FormData();
-                    fd.set("intent", "previewCharacter");
-                    fd.set("charKind", charKind);
-                    fd.set("avatarDesc", avatarDesc.trim());
-                    if (keptRef) fd.set("refFile", keptRef);
-                    else if (avatarFile) fd.set("avatarPhoto", avatarFile);
-                    charPreviewFetcher.submit(fd, { method: "post", encType: "multipart/form-data" });
-                  };
-                  const previewError = !drawing && charPreviewFetcher.data?.avatarError ? <p className="ws-forgem-err">{String(charPreviewFetcher.data.avatarError)}</p> : null;
-                  if (!charPreview) {
-                    return (
-                      <>
-                        <label className={`ws-forgem-up hero${avatarPreview ? " has" : ""}`}>
-                          <input type="file" accept="image/*" onChange={(e) => setAvatarFile(e.target.files?.[0] || null)} hidden />
-                          {avatarPreview
-                            ? <><span className="ws-forgem-thumb big" style={{ backgroundImage: `url(${avatarPreview})` }} aria-hidden="true" /><span className="ws-forgem-up-t">{t("Picture added — tap to change")}</span></>
-                            : <><Ico n="camera" size={26} /><span className="ws-forgem-up-t">{t("Add a picture")}<em> · {t("optional")}</em></span><span className="ws-forgem-up-s">{charKind === "person" ? t("A photo of you or a model — front-facing works best") : t("A drawing, a sketch, your mascot — anything that shows them")}</span></>}
-                        </label>
-                        <div className="ws-forgem-lbl">{t("Describe them")}<span>{t("the more you say, the more it's them")}</span></div>
-                        <textarea className="wb-in ws-forgem-desc" rows={3} maxLength={400}
-                          placeholder={charKind === "monster" ? t("e.g. a hulking swamp creature with antlers, glowing eyes and arms that reach its knees")
-                            : charKind === "cartoon" ? t("e.g. a round orange fox cub with a white-tipped tail, a green scarf and a big grin")
-                            : t("e.g. warm smile, early 30s, short dark curls, smart-casual")}
-                          value={avatarDesc} onChange={(e) => setAvatarDesc(e.target.value)} />
-                        <CharCount value={avatarDesc} max={400} />
-                        {previewError}
-                        {!d.caps.includes("video") && (
-                          <p className="ws-forgem-gate">{t("Custom characters need a plan with video — Studio and up.")}</p>
-                        )}
-                        <button type="button" className="wb-btn ws-forgem-go" disabled={drawing || (!avatarFile && avatarDesc.trim().length < 8) || !d.caps.includes("video")} onClick={() => askPreview()}>
-                          {drawing ? t("Drawing them — about half a minute…") : <><Ico n="eye" size={16} /> {t("Show me first — free")}</>}
-                        </button>
-                        <p className="ws-forgem-note">{t("A preview costs nothing. If you like what you see, you register them — that's when tokens are used.")}</p>
-                      </>
-                    );
-                  }
-                  const cost = charKind === "person" ? d.costs.avatarForge : d.costs.characterForge;
-                  return (
-                    <>
-                      <div className="ws-forgem-prev"><img src={`/uploads/${charPreview.file}`} alt={t("Your character")} /></div>
-                      <div className="ws-forgem-prevacts">
-                        <button type="button" disabled={drawing} onClick={() => askPreview(charPreview.refFile)}>{drawing ? t("Drawing another…") : <><Ico n="refresh" size={13} /> {t("Try another")}</>}</button>
-                        <button type="button" disabled={drawing} onClick={() => setCharPreview(null)}><Ico n="pencil" size={13} /> {t("Change the description")}</button>
-                      </div>
-                      {previewError}
-                      <input className="wb-in ws-forgem-nm" placeholder={t("Name them (e.g. Alex, or your brand)")}
-                        value={avatarName} onChange={(e) => setAvatarName(e.target.value)} maxLength={40} />
-                      <div className="ws-forgem-lbl" style={{ marginTop: 10 }}>{t("Voice")}<span>{t("tap ▶ to hear it")}</span></div>
-                      <div className="ws-seg ws-forgem-seg">
-                        {([["m", "He"], ["f", "She"]] as [string, string][]).map(([g, label]) => (
-                          <button type="button" key={g} className={avatarGender === g ? "sel" : ""}
-                            onClick={() => { setAvatarGender(g); setAvatarVoice(DEFAULT_AVATAR_VOICE[g as "f" | "m"]); }}>{t(label)}</button>
-                        ))}
-                      </div>
-                      <VoicePicker gender={avatarGender === "f" ? "f" : "m"} value={avatarVoice} onChange={setAvatarVoice} myVoices={d.myVoices} canMake={d.canMakeVoice} />
-                      <div className="ws-forgem-lbl" style={{ marginTop: 10 }}>{t("Vibe")}</div>
-                      <div className="ws-seg ws-forgem-seg">
-                        {([["warm", "Warm"], ["hype", "Energetic"], ["calm", "Chill"]] as [string, string][]).map(([e, label]) => (
-                          <button type="button" key={e} className={avatarEnergy === e ? "sel" : ""} onClick={() => setAvatarEnergy(e)}>{t(label)}</button>
-                        ))}
-                      </div>
-                      <button type="button" className="wb-btn ws-forgem-go" disabled={drawing || forgeFetcher.state !== "idle" || !avatarName.trim() || !d.caps.includes("video")}
-                        onClick={() => {
-                          const fd = new FormData();
-                          fd.set("intent", "forgeAvatar");
-                          fd.set("avatarName", avatarName.trim());
-                          fd.set("avatarGender", avatarGender);
-                          fd.set("avatarVoice", avatarVoice);
-                          fd.set("avatarEnergy", avatarEnergy);
-                          fd.set("avatarDesc", avatarDesc.trim());
-                          fd.set("charKind", charKind);
-                          fd.set("previewFile", charPreview.file);
-                          forgeFetcher.submit(fd, { method: "post" });
-                          setForging(true);
-                        }}>
-                        <Ico n="wand" size={16} /> {avatarName.trim() ? t("Register {name}", { name: avatarName.trim() }) : t("Register this character")} · {cost} {t("tokens")}
-                      </button>
-                      <p className="ws-forgem-note">{charKind === "person"
-                        ? t("They're forged from this picture into four outfits, each with a 3D figure you can turn around — in Presenters a few minutes later.")
-                        : t("This is the look they keep. Their 3D figure you can turn around follows in Presenters a few minutes later.")}</p>
-                    </>
-                  );
-                })()}
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <CharacterForge open={forgeOpen} onClose={closeForge} />
 
       {manageOpen && <ManagePresenters presenters={d.myPresenters} myVoices={d.myVoices} canMakeVoice={d.canMakeVoice} onClose={() => setManageOpen(false)} />}
 
@@ -6129,6 +5822,7 @@ const WS_STYLE = `
 .ws-forgem-lbl span{font-weight:500;font-size:11px;color:var(--ink2,#4A554E)}
 .ws-forgem-desc{width:100%;margin:10px 0 2px;resize:vertical;min-height:40px;font-family:inherit}
 ${VOICE_UI_CSS}
+${FORGE_CSS}
 /* Manage modal rows: head (thumb · name · Voice · delete), then optional voice
    editor / delete-confirm. */
 .ws-managem{position:relative;width:min(440px,94vw);background:var(--card,#FDFCF7);border-radius:18px;padding:22px 20px 20px;box-shadow:0 24px 70px rgba(8,12,10,.4);animation:ws-lb-in .16s ease}
