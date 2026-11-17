@@ -113,7 +113,7 @@ async function one(id: string, look: number | null): Promise<void> {
     // frames replaced under the same names → a new version, so no browser keeps the old ones
     return { ...e, cuts: e.cuts || 0, v: built ? (e.v || 1) + 1 : e.v || 1, spins };
   });
-  console.log(`[${tag}] rotation: ${spin.frames} frames ${spin.w}x${spin.h}, slides ${pct(shape.first)} then ${pct(shape.second)} of its width a frame → ${shape.full ? `a full turn (dir ${shape.dir})` : "NOT a full turn — re-roll it with --respin"}`);
+  console.log(`[${tag}] rotation: ${spin.frames} frames ${spin.w}x${spin.h}, slides ${pct(shape.first)} then ${pct(shape.second)} of its width a frame, back ${shape.back.toFixed(2)}× the front → ${shape.full ? `a full turn (dir ${shape.dir})` : "NOT a full turn — re-roll it with --respin"}`);
 }
 
 // the work list: a presenter's cut-outs, then one entry per outfit that has a portrait

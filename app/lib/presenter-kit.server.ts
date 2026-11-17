@@ -242,11 +242,11 @@ async function runSpin(rowId: string, name: string, portrait: string, look: numb
       const sources = await generationSlot(() => spinSources(t, { portrait: src, tmpDir: tmp }));
       const { spin, check } = await oneAtATime(async () => {
         const made = await spinFrames(t, sources.turnFile, sources.matteFile, RENDERS(), prefix);
-        // Is it one real rotation, or did the model turn them half-way and bring them back? Measured on
-        // the frames (see measureTurn) — and logged either way, so a refusal can be checked by eye.
+        // Is it one real rotation — not half-way-and-back, and not a flip that never shows their back?
+        // Measured on the frames (see turnShape) and logged either way, so a refusal can be checked by eye.
         return { spin: made, check: await measureTurn(t, RENDERS(), prefix, made) };
       });
-      const why = `surface slides ${(check.first * 100).toFixed(2)}% then ${(check.second * 100).toFixed(2)}% of its width a frame`;
+      const why = `surface slides ${(check.first * 100).toFixed(2)}% then ${(check.second * 100).toFixed(2)}% of its width a frame, back ${check.back.toFixed(2)}x the front`;
       console.log(`[kit] ${tag}: turn check — ${why} → ${check.full ? `a full turn, dir ${check.dir}` : "NOT a full turn"}`);
       if (check.full) {
         for (let i = 0; i < spin.frames; i++) await mirror(path.join(RENDERS(), `${prefix}s${String(i).padStart(2, "0")}.webp`));

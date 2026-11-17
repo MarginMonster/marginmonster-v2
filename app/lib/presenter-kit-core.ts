@@ -336,28 +336,39 @@ export async function spinFrames(
 
 /* ---------- is it really one full turn? ---------- */
 
-/** What a finished rotation measures as. `first` / `second`: how far the presenter's visible surface
- *  slides sideways from one frame to the next (as a fraction of the frame width, + = toward the right
- *  of the picture), averaged over the first and the second half of the turn. */
-export type TurnShape = { first: number; second: number; full: boolean; dir: 1 | -1 };
+/** What a finished rotation measures as.
+ *  `first` / `second`: how far the presenter's visible surface slides sideways from one frame to the
+ *  next (as a fraction of the frame width, + = toward the right of the picture), averaged over the
+ *  first and the second half of the turn.
+ *  `back`: how wide the shoulders get in the middle of the turn, relative to the front view (1 = as wide). */
+export type TurnShape = { first: number; second: number; back: number; full: boolean; dir: 1 | -1 };
 
-/** The video model is told to start and end on the same frame, and sometimes it gets there the lazy
- *  way: it turns the presenter half-way and brings them BACK. That still loops and still looks fine on
- *  a contact sheet at a glance — 3 of the first 22 stock kits did it — and a drag plays it as a wobble.
+/** The video model is told to start and end on the same frame, and it has two lazy ways of getting
+ *  there that both loop, both look fine on a contact sheet at a glance, and both got past me:
  *
- *  The tell: whatever side of a turning body faces us slides across the picture in the direction of
- *  the turn — and keeps sliding that SAME way for the whole of a real rotation (front, side, back,
- *  other side: the part we can see is always the near part). Turn back, and it slides the other way.
- *  So: the slide must have the same sign through the first half of the frames and the second.
+ *  1. THERE AND BACK — it turns the presenter half-way and brings them back (3 of the first 22 stock
+ *     kits). A drag plays it as a wobble.
+ *     The tell: whatever side of a turning body faces us slides across the picture in the direction of
+ *     the turn, and keeps sliding that SAME way for the whole of a real rotation (front, side, back,
+ *     other side: the part we can see is always the near part). Turn back, and it slides the other
+ *     way. So the slide must have the same sign through the first half of the frames and the second.
  *
- *  `dir` falls out of it too — the way the surface slides is the way the face swings first, which is
+ *  2. THE PAPER FLIP — the head turns all the way round but the body never shows its back: it goes
+ *     from one side view to the other as if it were a cardboard cut-out being flipped. (Stock presenter
+ *     "rosa", after a re-roll — it passed check 1, shipped, and the owner found it in minutes: "Rosa
+ *     stuff is a bit glitched".)
+ *     The tell: shoulders are wide from the front, narrow from the side, and WIDE AGAIN from behind.
+ *     A flip stays narrow all the way through the middle. Every one of the other 24 stock rotations
+ *     gets at least as wide at the back as at the front (1.01–1.16); rosa's reached 0.69.
+ *
+ *  `dir` falls out of check 1 — the way the surface slides is the way the face swings first, which is
  *  what lets the viewer make a drag to the right turn the presenter to the right.
  *
- *  Chosen after three other ideas failed on the real kits (feet pointing, narrowest-frame, mirror
- *  symmetry — each mis-read good turns whose owner stood with one foot forward). This one read all 22
- *  stock rotations correctly and rejected a there-and-back built from every one of them
- *  (tests/presenter-kit.test.ts). Arithmetic on the frames themselves — no model to ask. */
-export function turnShape(slides: number[]): TurnShape {
+ *  Three other ideas were tried on the real kits and dropped because they mis-read good turns whose
+ *  owner stood with one foot forward: which way the feet point, the narrowest frame, mirror symmetry.
+ *  Arithmetic on the frames themselves — no model to ask (tests/presenter-kit.test.ts runs it on every
+ *  committed rotation, and on a there-and-back and a flip built from real frames). */
+export function turnShape(slides: number[], widths: number[]): TurnShape {
   const n = slides.length;
   const mean = (a: number, b: number) => {
     const part = slides.slice(Math.round(a * n), Math.round(b * n)).filter((x) => Number.isFinite(x));
@@ -366,8 +377,40 @@ export function turnShape(slides: number[]): TurnShape {
   const first = mean(0.1, 0.45);
   const second = mean(0.55, 0.9);
   const least = 0.002; // a fifth of a percent of the frame width per step; real turns measure 0.5–4 %
-  const full = Math.abs(first) >= least && Math.abs(second) >= least && Math.sign(first) === Math.sign(second);
-  return { first, second, full, dir: first > 0 ? 1 : -1 };
+  const oneWay = Math.abs(first) >= least && Math.abs(second) >= least && Math.sign(first) === Math.sign(second);
+  // the front: the first frames and the last one (the turn ends where it began)
+  const frontParts = [widths[0], widths[1], widths[widths.length - 1]].filter((x) => Number.isFinite(x) && x > 0);
+  const front = frontParts.length ? frontParts.reduce((s, x) => s + x, 0) / frontParts.length : 0;
+  const middle = widths.slice(Math.round(0.35 * widths.length), Math.round(0.65 * widths.length)).filter((x) => Number.isFinite(x));
+  const back = front > 0 && middle.length ? Math.max(...middle) / front : 0;
+  return { first, second, back, full: oneWay && back >= 0.85, dir: first > 0 ? 1 : -1 };
+}
+
+/** The top and bottom rows of the figure in one frame's alpha mask, or null when nobody is there. */
+function figureSpan(mask: Uint8Array, w: number, h: number): { top: number; bottom: number } | null {
+  const rowHas = (y: number) => { for (let x = 0; x < w; x++) if (mask[y * w + x] > 128) return true; return false; };
+  let top = 0;
+  while (top < h && !rowHas(top)) top++;
+  let bottom = h - 1;
+  while (bottom > top && !rowHas(bottom)) bottom--;
+  return bottom > top ? { top, bottom } : null;
+}
+
+/** How wide the shoulders are in one frame (`w`×`h` alpha mask), in pixels: the widest row between the
+ *  neck and the chest. That band on purpose — lower down, arms hanging away from the body make a side
+ *  view look as wide as a front one. NaN when nobody is in the frame. */
+export function shoulderWidth(mask: Uint8Array, w: number, h: number): number {
+  const fig = figureSpan(mask, w, h);
+  if (!fig) return NaN;
+  const tall = fig.bottom - fig.top;
+  let best = 0;
+  for (let y = fig.top + Math.round(0.16 * tall); y <= fig.top + Math.round(0.3 * tall); y++) {
+    let lo = w;
+    let hi = -1;
+    for (let x = 0; x < w; x++) if (mask[y * w + x] > 128) { if (x < lo) lo = x; if (x > hi) hi = x; }
+    if (hi - lo > best) best = hi - lo;
+  }
+  return best;
 }
 
 /** How many pixels the middle of the presenter's head and torso moved sideways between two frames
@@ -375,16 +418,12 @@ export function turnShape(slides: number[]): TurnShape {
  *  of a turning body nearest the camera, where the surface moves most and the outline doesn't confuse it. */
 export function slideBetween(maskA: Uint8Array, greyA: Uint8Array, maskB: Uint8Array, greyB: Uint8Array, w: number, h: number): number {
   const reach = Math.max(2, Math.round(w * 0.055));
-  const rowHas = (y: number) => { for (let x = 0; x < w; x++) if (maskA[y * w + x] > 128) return true; return false; };
-  let top = 0;
-  while (top < h && !rowHas(top)) top++;
-  let bottom = h - 1;
-  while (bottom > top && !rowHas(bottom)) bottom--;
-  if (bottom <= top) return NaN;
-  const tall = bottom - top;
+  const fig = figureSpan(maskA, w, h);
+  if (!fig) return NaN;
+  const tall = fig.bottom - fig.top;
   const cost = new Float64Array(2 * reach + 1);
   const seen = new Float64Array(2 * reach + 1);
-  for (let y = top + Math.round(0.04 * tall); y <= top + Math.round(0.55 * tall); y++) {
+  for (let y = fig.top + Math.round(0.04 * tall); y <= fig.top + Math.round(0.55 * tall); y++) {
     let lo = w;
     let hi = -1;
     for (let x = 0; x < w; x++) if (maskA[y * w + x] > 128) { if (x < lo) lo = x; if (x > hi) hi = x; }
@@ -429,7 +468,8 @@ export async function measureTurn(t: KitTools, dir: string, prefix: string, spin
   const grey = await read("", "picture");
   const at = (buf: Buffer, i: number) => buf.subarray((i % spin.frames) * size, ((i % spin.frames) + 1) * size);
   const slides = Array.from({ length: spin.frames }, (_, i) => slideBetween(at(masks, i), at(grey, i), at(masks, i + 1), at(grey, i + 1), w, h) / w);
-  return turnShape(slides);
+  const widths = Array.from({ length: spin.frames }, (_, i) => shoulderWidth(at(masks, i), w, h));
+  return turnShape(slides, widths);
 }
 
 /** A strip of the rotation on a plain backdrop, for a person to check the turn looks right. */

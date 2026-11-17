@@ -5,7 +5,10 @@
  *   - 3 of the first 22 rotations were not rotations. The video model turned the presenter half-way and
  *     brought them back — it loops, it looks fine at a glance, and dragging it plays a wobble. The check
  *     that catches it (which way the visible surface slides) is tested against every committed kit AND
- *     against a there-and-back built from each of them.
+ *     against a there-and-back built from real frames.
+ *   - One more got past that check and into production: the head turned all the way round but the body
+ *     never showed its back (the owner, within minutes: "Rosa stuff is a bit glitched"). Hence the second
+ *     check — the shoulders have to get wide again in the middle of the turn.
  *   - Frames picked evenly in TIME gave a dead zone: the model idles facing front for up to a third of
  *     the clip, so a drag did nothing and then whipped round. */
 
@@ -15,7 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { measureTurn, slideBetween, spinCrop, spinFramePicks, stepSize, turnShape } from "../app/lib/presenter-kit-core.ts";
+import { measureTurn, shoulderWidth, slideBetween, spinCrop, spinFramePicks, stepSize, turnShape } from "../app/lib/presenter-kit-core.ts";
 import { nearestLoaded, spinLoadOrder } from "../app/lib/spin-frames.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -101,17 +104,49 @@ test("one crop box holds the presenter through the whole turn", () => {
 
 /* ---------- is it a full turn ---------- */
 
+// shoulders through one real rotation of 60 frames: wide (front), narrow (side), wide (back), narrow, wide
+const TURN_WIDTHS = Array.from({ length: 60 }, (_, i) => 60 + 40 * Math.abs(Math.cos((i / 60) * 2 * Math.PI)));
+
 test("a real rotation slides the same way through both halves; a there-and-back does not", () => {
   const out = Array(30).fill(0.02);
-  assert.deepEqual({ ...turnShape([...out, ...out]), first: 0, second: 0 }, { first: 0, second: 0, full: true, dir: 1 });
-  assert.equal(turnShape([...out, ...out].map((x) => -x)).dir, -1);
-  assert.equal(turnShape([...out, ...out].map((x) => -x)).full, true);
+  const real = turnShape([...out, ...out], TURN_WIDTHS);
+  assert.equal(real.full, true);
+  assert.equal(real.dir, 1);
+  assert.equal(turnShape([...out, ...out].map((x) => -x), TURN_WIDTHS).dir, -1);
+  assert.equal(turnShape([...out, ...out].map((x) => -x), TURN_WIDTHS).full, true);
   // out, then back the way it came
-  assert.equal(turnShape([...out, ...out.map((x) => -x)]).full, false);
+  assert.equal(turnShape([...out, ...out.map((x) => -x)], TURN_WIDTHS).full, false);
   // a figure that never really turns
-  assert.equal(turnShape(Array(60).fill(0.0005)).full, false);
+  assert.equal(turnShape(Array(60).fill(0.0005), TURN_WIDTHS).full, false);
   // frames the measurement could not read are ignored, not counted as zero
-  assert.equal(turnShape([...out, ...out].map((x, i) => (i % 7 === 0 ? NaN : x))).full, true);
+  assert.equal(turnShape([...out, ...out].map((x, i) => (i % 7 === 0 ? NaN : x)), TURN_WIDTHS).full, true);
+});
+
+test("a rotation has to show the presenter's BACK: wide, narrow, wide again", () => {
+  const slides = Array(60).fill(0.02); // turning the same way throughout — the first check is satisfied
+  assert.ok(turnShape(slides, TURN_WIDTHS).back > 0.95, "a real turn is as wide at the back as at the front");
+  // the paper flip: side view to side view, the body never squaring up to the camera in between
+  const flip = TURN_WIDTHS.map((w, i) => (i > 14 && i < 46 ? 62 : w));
+  const flipped = turnShape(slides, flip);
+  assert.ok(flipped.back < 0.7, `a flip measured ${flipped.back.toFixed(2)} at the back`);
+  assert.equal(flipped.full, false);
+  // a scarf or a broad jacket keeps the side views fairly wide — still a real turn if the back squares up
+  assert.equal(turnShape(slides, TURN_WIDTHS.map((w) => Math.max(w, 82))).full, true);
+  // widths that could not be read: no back view on record, so not shown
+  assert.equal(turnShape(slides, Array(60).fill(NaN)).full, false);
+});
+
+test("shoulder width is read at the shoulders, not where the arms hang", () => {
+  const w = 100;
+  const h = 200;
+  const mask = new Uint8Array(w * h);
+  const fill = (x0: number, x1: number, y0: number, y1: number) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) mask[y * w + x] = 255; };
+  fill(42, 58, 10, 36);   // head
+  fill(30, 70, 36, 100);  // torso, 40 wide
+  fill(36, 64, 100, 190); // legs
+  fill(8, 30, 80, 120);   // an arm held well away from the body, low down — not counted
+  assert.equal(shoulderWidth(mask, w, h), 39);
+  assert.ok(Number.isNaN(shoulderWidth(new Uint8Array(w * h), w, h)), "nobody in the frame");
 });
 
 test("the slide between two frames is measured in the middle of the figure", () => {
@@ -202,14 +237,14 @@ test("every rotation that is shown is one real turn, in the direction on record"
       if (!shown(m)) continue; // dir 0 = held back, never shown
       const shape = await measureTurn(tools, path.join(root, "public", "kits", id), prefixOf(look), { frames: m.n, w: m.w, h: m.h });
       const what = `${id} outfit ${look}`;
-      assert.ok(shape.full, `${what} is not a full turn (slides ${(shape.first * 100).toFixed(2)}% then ${(shape.second * 100).toFixed(2)}%) — re-roll it: build-presenter-kits.ts --respin --look ${look} ${id}`);
+      assert.ok(shape.full, `${what} is not a full turn (slides ${(shape.first * 100).toFixed(2)}% then ${(shape.second * 100).toFixed(2)}%, back ${shape.back.toFixed(2)}× the front) — re-roll it: build-presenter-kits.ts --respin --look ${look} ${id}`);
       assert.equal(shape.dir, m.dir, `${what}: recorded dir ${m.dir}, measures ${shape.dir}`);
     }
   }
 });
 
-test("a there-and-back made from a real kit is caught", { skip: !haveFfmpeg && "ffmpeg not available" }, async () => {
-  // Play mei's first half forwards, then backwards: exactly what the video model does when it cheats.
+/** Measure a rotation made by re-ordering a real kit's frames: frame i of the fake is frame `from(i, n)` of mei's. */
+async function measureFake(from: (i: number, n: number) => number) {
   const id = "mei";
   const m = kits[id]?.spins?.[0];
   assert.ok(shown(m), "mei's kit is needed for this test");
@@ -217,12 +252,23 @@ test("a there-and-back made from a real kit is caught", { skip: !haveFfmpeg && "
   const tmp = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TEMP || process.env.TMPDIR || "/tmp"), "kit-fake-"));
   try {
     for (let i = 0; i < n; i++) {
-      const from = i <= n / 2 ? i : n - i;
-      fs.copyFileSync(path.join(root, "public", "kits", id, `s${String(from).padStart(2, "0")}.webp`), path.join(tmp, `s${String(i).padStart(2, "0")}.webp`));
+      fs.copyFileSync(path.join(root, "public", "kits", id, `s${String(from(i, n)).padStart(2, "0")}.webp`), path.join(tmp, `s${String(i).padStart(2, "0")}.webp`));
     }
-    const shape = await measureTurn({ token: "", ffmpeg: "ffmpeg", ffprobe: "ffprobe" }, tmp, "", { frames: n, w: m.w, h: m.h });
-    assert.equal(shape.full, false, `a there-and-back passed as a full turn (slides ${(shape.first * 100).toFixed(2)}% then ${(shape.second * 100).toFixed(2)}%)`);
+    return await measureTurn({ token: "", ffmpeg: "ffmpeg", ffprobe: "ffprobe" }, tmp, "", { frames: n, w: m.w, h: m.h });
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+test("a there-and-back made from a real kit is caught", { skip: !haveFfmpeg && "ffmpeg not available" }, async () => {
+  // Play mei's first half forwards, then backwards: exactly what the video model does when it cheats.
+  const shape = await measureFake((i, n) => (i <= n / 2 ? i : n - i));
+  assert.equal(shape.full, false, `a there-and-back passed as a full turn (slides ${(shape.first * 100).toFixed(2)}% then ${(shape.second * 100).toFixed(2)}%)`);
+});
+
+test("a turn that never shows the back, made from a real kit, is caught", { skip: !haveFfmpeg && "ffmpeg not available" }, async () => {
+  // Front to side as recorded, the side view HELD where the back should be, then the other side to front.
+  const shape = await measureFake((i, n) => (i < n / 4 || i > (3 * n) / 4 ? i : i < n / 2 ? Math.round(n / 4) : Math.round((3 * n) / 4)));
+  assert.ok(shape.back < 0.85, `the held side views measured ${shape.back.toFixed(2)}× the front — a side view should be much narrower`);
+  assert.equal(shape.full, false);
 });
