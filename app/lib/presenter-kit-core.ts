@@ -7,7 +7,9 @@
  *   2. turntable         bytedance/seedance-1-pro, the still as BOTH first and last frame with a locked
  *                        camera: the model turns the person through one full rotation and has to land
  *                        back on the exact frame it started from, so the sequence loops
- *   3. matte             arielreplicate/robust_video_matting → an alpha mask for every frame
+ *   3. matte             arielreplicate/robust_video_matting → an alpha mask for every frame, run over the
+ *                        clip forwards AND backwards and merged (fillMatte) so nothing that has just
+ *                        come into view is left half see-through
  *   4. frames            ffmpeg: alpha-merge, one shared crop (so the feet never slide), N WebP frames
  * and separately the head-and-shoulders portraits are cut out with 851-labs/background-remover.
  *
@@ -204,6 +206,63 @@ export async function turntable(t: KitTools, still: string, seconds = 6): Promis
 /** Step 3 — the alpha mask of that clip. `videoUrl` must be a URL the model can fetch. Returns the mask video URL. */
 export async function matte(t: KitTools, videoUrl: string): Promise<string> {
   return repRun(t, { version: MATTING_VERSION }, { input_video: videoUrl, output_type: "alpha-mask" }, "matte", 10 * 60_000);
+}
+
+/** Hand a local file to a model: uploaded to Replicate's file store, which gives back a URL its models can read. */
+async function upload(t: KitTools, file: string, mime: string): Promise<{ id: string; url: string }> {
+  const form = new FormData();
+  form.append("content", new Blob([fs.readFileSync(file)], { type: mime }), path.basename(file));
+  const res = await fetch(`${REP}/files`, { method: "POST", headers: { Authorization: `Bearer ${t.token}` }, body: form, signal: AbortSignal.timeout(5 * 60_000) });
+  if (!res.ok) throw new Error(`[kit:upload] ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const j = (await res.json()) as { id?: string; urls?: { get?: string } };
+  if (!j.id || !j.urls?.get) throw new Error("[kit:upload] the file store returned no address");
+  return { id: j.id, url: j.urls.get };
+}
+
+/** Step 3b — fill in what the mask misses.
+ *
+ *  The matting model carries what it has seen from one frame to the next, so a part of the presenter
+ *  that has only just come into view — the far shoe as they turn, the gap between the legs as it
+ *  closes — stays half see-through for a few frames: a washed-out shoe, a pale streak down a trouser
+ *  leg (found on 6 of the 25 stock turns by looking at every frame). Played BACKWARDS that same part
+ *  is on its way OUT of view and the model already knows it. So the clip is matted in reverse as well,
+ *  and for every pixel the more opaque of the two masks is kept.
+ *
+ *  The reversed pass runs at half size: reversing a clip means holding every frame of it in memory at
+ *  once (about 450 MB at full size, on a server that shares its memory with the film renderer). Its
+ *  mask is shrunk by a pixel before it is merged, so it can fill a hole but never widen the outline.
+ *  `matteFile` is replaced by the merged mask; if anything here fails it is left exactly as it was. */
+export async function fillMatte(t: KitTools, turnFile: string, matteFile: string, tmpDir: string): Promise<void> {
+  const src = await probe(t, turnFile);
+  const mask = await probe(t, matteFile);
+  const w = Math.max(2, Math.round(src.w / 4) * 2);
+  const h = Math.max(2, Math.round(src.h / 4) * 2);
+  const rev = path.join(tmpDir, "turn-rev.mp4");
+  const revMatte = path.join(tmpDir, "matte-rev.mp4");
+  const merged = path.join(tmpDir, "matte-filled.mp4");
+  try {
+    await ff(t, ["-i", turnFile, "-vf", `scale=${w}:${h}:flags=area,reverse`, "-an", "-c:v", "libx264", "-crf", "14", "-preset", "veryfast", "-pix_fmt", "yuv420p", rev], "reverse");
+    const up = await upload(t, rev, "video/mp4");
+    try {
+      await save(await matte(t, up.url), revMatte);
+    } finally {
+      // best effort: an upload that isn't deleted expires by itself
+      await fetch(`${REP}/files/${up.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${t.token}` } }).catch(() => undefined);
+    }
+    const back = await probe(t, revMatte);
+    if (back.frames !== mask.frames) throw new Error(`[kit:fill] the reversed mask has ${back.frames} frames, the mask ${mask.frames}`);
+    await ff(t, [
+      "-i", matteFile, "-i", revMatte,
+      "-filter_complex",
+      `[1:v]format=gray,reverse,erosion,scale=${mask.w}:${mask.h}:flags=bilinear[b];[0:v]format=gray[a];[a][b]blend=all_mode=lighten,format=yuv420p[v]`,
+      "-map", "[v]", "-an", "-c:v", "libx264", "-crf", "10", "-preset", "veryfast", merged,
+    ], "fill");
+    const out = await probe(t, merged);
+    if (out.frames !== mask.frames) throw new Error(`[kit:fill] the merged mask has ${out.frames} frames, the mask ${mask.frames}`);
+    fs.renameSync(merged, matteFile);
+  } finally {
+    for (const f of [rev, revMatte, merged]) fs.rmSync(f, { force: true });
+  }
 }
 
 /** The box that holds the presenter in EVERY frame of the mask (so one crop fits the whole turn), padded a little. */
@@ -513,6 +572,10 @@ export async function spinSources(t: KitTools, o: { portrait: string; tmpDir: st
     const turnUrl = await turntable(t, stillFile);
     await save(turnUrl, turnFile);
     await save(await matte(t, turnUrl), matteFile);
+    // The second pass only ever improves the mask; a turn is not thrown away (and paid for again)
+    // because it could not be run — the one-way mask is what every kit had before it existed.
+    try { await fillMatte(t, turnFile, matteFile, o.tmpDir); }
+    catch (e) { t.log?.(`second matting pass did not run — keeping the one-way mask: ${e instanceof Error ? e.message.slice(0, 200) : e}`); }
   }
   return { stillFile, turnFile, matteFile };
 }

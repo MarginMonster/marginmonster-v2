@@ -2,12 +2,15 @@
  * record them in app/lib/presenter-kits.json. Run on a developer machine — the files are committed, so
  * production never spends anything on the stock cast and every merchant sees them instantly.
  *
- *   npx vite-node scripts/build-presenter-kits.ts -- [--spin] [--cuts] [--look N] [--respin] [--reframe] [--tmp <dir>] [--jobs 3] [id …]
+ *   npx vite-node scripts/build-presenter-kits.ts -- [--spin] [--cuts] [--look N] [--respin] [--rematte] [--reframe] [--tmp <dir>] [--jobs 3] [id …]
  *
  *   --spin    only the full-body rotations       --cuts   only the portrait cut-outs   (default: both)
  *   --look N  only outfit N (0 = Casual … 3 = Street); default: every outfit the presenter has a portrait for
  *   --respin  throw away the turn (keep the still) and roll a new one — for a turn the check below says
  *             is not one full rotation, or one that looks wrong
+ *   --rematte run the second matting pass (fillMatte) on the turn already saved in --tmp and cut the
+ *             frames again — for kits built before that pass existed (a cent or two each; the one-way
+ *             mask is kept beside it as matte-fwd.mp4, so it can be run again)
  *   --reframe cut the frames again from the turn already saved in --tmp (free — no generation), after a
  *             change to how frames are picked or cropped
  *   --tmp     where the intermediate still / turn / mask / contact sheet are kept (default: the OS temp dir)
@@ -28,7 +31,7 @@ import os from "node:os";
 import path from "node:path";
 import { LIVE_AVATARS, PRIVATE_AVATARS, AVATAR_BY_ID, OUTFITS } from "../app/lib/avatars";
 import { lookPrefix, type SpinMeta } from "../app/lib/presenter-kits";
-import { buildSpin, cutOutPortrait, measureTurn, spinFrames, spinSheet, type KitSpin, type KitTools } from "../app/lib/presenter-kit-core";
+import { buildSpin, cutOutPortrait, fillMatte, measureTurn, spinFrames, spinSheet, type KitSpin, type KitTools } from "../app/lib/presenter-kit-core";
 
 const root = process.cwd();
 const envFile = path.join(root, ".env");
@@ -46,25 +49,42 @@ const flag = (name: string) => argv.includes(name);
 const value = (name: string) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
 const valued = new Set(["--tmp", "--jobs", "--look"]);
 const ids = argv.filter((a, i) => !a.startsWith("--") && !valued.has(argv[i - 1]));
-const reframe = flag("--reframe");
+const rematte = flag("--rematte");
+const reframe = flag("--reframe") || rematte;
 const respin = flag("--respin");
 const doSpin = flag("--spin") || respin || reframe || !flag("--cuts");
 const doCuts = flag("--cuts") || !(flag("--spin") || respin || reframe);
 const onlyLook = value("--look") === undefined ? null : Math.max(0, Math.min(OUTFITS.length - 1, parseInt(value("--look") as string, 10) || 0));
 const tmpRoot = path.resolve(value("--tmp") || path.join(os.tmpdir(), "easymode-kits"));
 const jobs = Math.max(1, Math.min(6, parseInt(value("--jobs") || "3", 10) || 3));
-if (!token && !(reframe && !doCuts)) { console.error("REPLICATE_API_TOKEN is not set (.env)"); process.exit(1); }
+if (!token && !(reframe && !rematte && !doCuts)) { console.error("REPLICATE_API_TOKEN is not set (.env)"); process.exit(1); }
 
 const cast = ids.length ? ids : [...LIVE_AVATARS.map((a) => a.id), ...PRIVATE_AVATARS.map((a) => a.id)];
 const manifestFile = path.join(root, "app", "lib", "presenter-kits.json");
 type Entry = { cuts?: number; v?: number; spins?: Array<SpinMeta | null> };
-const readManifest = (): Record<string, Entry> => { try { return JSON.parse(fs.readFileSync(manifestFile, "utf8")); } catch { return {}; } };
+const pause = (ms: number) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
+/** Windows refuses to open a file for a moment after something else touched it (a virus scanner, the
+ *  type-checker, git). Try again for a second before believing it. */
+function patiently<T>(what: () => T): T {
+  for (let i = 0; ; i++) {
+    try { return what(); } catch (e) { if (i >= 20) throw e; pause(60); }
+  }
+}
+/** The manifest as it is on disk. No file = no kits yet; a file that can't be READ is an error, never
+ *  "empty" — the next write would then keep one presenter's entry and silently drop everyone else's. */
+const readManifest = (): Record<string, Entry> => {
+  if (!fs.existsSync(manifestFile)) return {};
+  return patiently(() => JSON.parse(fs.readFileSync(manifestFile, "utf8")) as Record<string, Entry>);
+};
 // Several rotations build at once; each re-reads the file before writing its own part so none is lost.
+// Written beside the file and moved over it, so nothing ever reads half a manifest.
 const record = (id: string, change: (e: Entry) => Entry) => {
   const all = readManifest();
   all[id] = change(all[id] || {});
   const sorted = Object.fromEntries(Object.keys(all).sort().map((k) => [k, all[k]]));
-  fs.writeFileSync(manifestFile, JSON.stringify(sorted, null, 2) + "\n");
+  const tmp = `${manifestFile}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(sorted, null, 2) + "\n");
+  try { patiently(() => fs.renameSync(tmp, manifestFile)); } catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
 };
 const pct = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(2)}%`;
 
@@ -99,6 +119,12 @@ async function one(id: string, look: number | null): Promise<void> {
   let spin: KitSpin;
   if (reframe) {
     if (!fs.existsSync(turn) || !fs.existsSync(matte)) { console.log(`[${tag}] no saved turn in ${tmpDir} to cut again — skipping`); return; }
+    if (rematte) {
+      // always start from the one-way mask, so running this twice doesn't fill a mask that is already filled
+      const oneWay = path.join(tmpDir, "matte-fwd.mp4");
+      if (fs.existsSync(oneWay)) fs.copyFileSync(oneWay, matte); else fs.copyFileSync(matte, oneWay);
+      await fillMatte(tools, turn, matte, tmpDir);
+    }
     spin = await spinFrames(tools, turn, matte, outDir, prefix);
   } else {
     if (respin) for (const f of [turn, matte, path.join(tmpDir, "sheet.jpg")]) fs.rmSync(f, { force: true });
