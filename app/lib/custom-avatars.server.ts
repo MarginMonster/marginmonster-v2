@@ -19,6 +19,7 @@ import type { Avatar } from "./avatars";
 import { OUTFITS } from "./avatars";
 import { brandStill } from "./commercial-ad-pipeline.server";
 import { mirrorRender } from "./object-storage.server";
+import { AVATAR_VOICE_IDS } from "./avatar-voice-catalog";
 
 export const CUSTOM_PREFIX = "cav";
 export const isCustomAvatarId = (id: string): boolean => id.startsWith(CUSTOM_PREFIX);
@@ -52,17 +53,84 @@ const fileList = (r: { files: string }): string[] => {
   catch { return []; }
 };
 
-/** This shop's ready custom presenters, Avatar-shaped for the pickers, plus
- *  the /renders portrait URL the tile shows. Forging rows come back too so
- *  the Studio can show progress. */
-export async function customCastFor(shopId: string): Promise<Array<Avatar & { img: string; status: string; createdAt: Date }>> {
-  const rows = await db.customAvatar.findMany({ where: { shopId }, orderBy: { createdAt: "desc" } });
+/** The portrait files of a custom presenter row, wardrobe order. */
+export const portraitFilesOf = (r: { files: string }): string[] => fileList(r);
+
+/** One outfit's 3D view as the database has it (see presenter-kit.server.ts). */
+export type SpinRow = { avatarId: string; look: number; state: string; frames: number; frameW: number; frameH: number; dir: number; startedAt: Date; updatedAt: Date };
+
+/** This shop's custom presenters, Avatar-shaped for the pickers, plus the
+ *  /renders portrait URL the tile shows. Forging rows come back too so the
+ *  Studio can show progress. `rowId`, `imgs` (all four outfits) and the kit
+ *  fields are what the Presenters section's character view reads. */
+export async function customCastFor(shopId: string): Promise<Array<Avatar & {
+  img: string; status: string; createdAt: Date;
+  rowId: string; imgs: string[]; error: string | null; cuts: number; spins: SpinRow[];
+}>> {
+  const rows = await db.customAvatar.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, include: { spins: true } });
   return rows.map((r) => {
     const files = fileList(r);
     // createdAt rides along so the forging placeholder can count from the REAL
     // start — a reload mid-forge should say "1m 40s", not restart at zero.
-    return { ...toAvatar(r), img: files[0] ? `/renders/${files[0]}` : "", status: r.status, createdAt: r.createdAt };
+    return {
+      ...toAvatar(r), img: files[0] ? `/renders/${files[0]}` : "", status: r.status, createdAt: r.createdAt,
+      rowId: r.id, imgs: files.map((x) => `/renders/${x}`), error: r.error,
+      cuts: r.cuts, spins: r.spins,
+    };
   });
+}
+
+/* ---- A shop's own voice choice for a STOCK presenter ----
+ * The stock cast each have a hand-designed signature voice. A merchant can put a different voice on
+ * one of them — a catalog voice, or their own recorded voice — and it is stored per shop (PresenterVoice).
+ * Custom presenters keep their voice on their own row; this is only for ids from the public cast. */
+
+/** Is this still a voice the shop may use — a catalog voice, or one of its own that is still there? */
+async function usableVoice(shopId: string, voiceId: string): Promise<boolean> {
+  if (AVATAR_VOICE_IDS.has(voiceId)) return true;
+  const mine = await db.voiceClone.findFirst({ where: { shopId, voiceId, status: "ready" }, select: { id: true } });
+  return !!mine;
+}
+
+/** Every stock presenter this shop has re-voiced: presenter id → voice id. */
+export async function stockVoicesFor(shopId: string): Promise<Record<string, string>> {
+  const rows = await db.presenterVoice.findMany({ where: { shopId }, select: { avatarId: true, voiceId: true } });
+  return Object.fromEntries(rows.map((r) => [r.avatarId, r.voiceId]));
+}
+
+/** Put a voice on a stock presenter for this shop — or, with an empty id, give them their signature
+ *  voice back. Returns the voice now in force ("" = signature). An id the shop may not use is refused. */
+export async function setStockVoice(shopId: string, avatarId: string, voiceId: string): Promise<string> {
+  const { AVATAR_BY_ID } = await import("./avatars");
+  if (isCustomAvatarId(avatarId) || !AVATAR_BY_ID[avatarId]) throw new Error(`unknown presenter "${avatarId}"`);
+  const want = (voiceId || "").trim();
+  if (!want) {
+    await db.presenterVoice.deleteMany({ where: { shopId, avatarId } });
+    return "";
+  }
+  if (!(await usableVoice(shopId, want))) throw new Error("That voice isn't available anymore — pick another.");
+  await db.presenterVoice.upsert({
+    where: { shopId_avatarId: { shopId, avatarId } },
+    create: { shopId, avatarId, voiceId: want },
+    update: { voiceId: want },
+  });
+  return want;
+}
+
+/** Delete one of the shop's own presenters: its portraits, its reference photo, its character kit and
+ *  the row. Returns the presenter's name, or null when it was already gone. */
+export async function deleteCustomAvatar(shopId: string, publicOrRowId: string): Promise<string | null> {
+  const id = publicOrRowId.startsWith(CUSTOM_PREFIX) ? publicOrRowId.slice(CUSTOM_PREFIX.length) : publicOrRowId;
+  const row = await db.customAvatar.findFirst({ where: { id, shopId } });
+  if (!row) return null;
+  const dir = rendersDir();
+  const gone = (name: string) => { try { fs.unlinkSync(path.join(dir, name)); } catch { /* cache file — non-fatal */ } };
+  for (const x of fileList(row)) gone(x);
+  if (row.refFile) gone(path.join("uploads", row.refFile));
+  // the kit: kit<id>-o0..3.webp + kit<id>-s00..NN.webp
+  try { for (const x of fs.readdirSync(dir)) if (x.startsWith(`kit${row.id}-`)) gone(x); } catch { /* nothing to clean */ }
+  await db.customAvatar.delete({ where: { id: row.id } });
+  return row.name;
 }
 
 /** Resolve a presenter id (public cast or this shop's custom) to persona +
@@ -76,9 +144,20 @@ export async function resolvePresenter(
   if (!isCustomAvatarId(avatarId)) {
     const { AVATAR_BY_ID } = await import("./avatars");
     const { resolvePortraitFile } = await import("./ugc-ad-pipeline.server");
-    const avatar = AVATAR_BY_ID[avatarId];
-    if (!avatar) throw new Error(`unknown presenter "${avatarId}"`);
+    const stock = AVATAR_BY_ID[avatarId];
+    if (!stock) throw new Error(`unknown presenter "${avatarId}"`);
     const portraitFile = resolvePortraitFile(avatarId, variant);
+    // The shop's own voice choice for this stock presenter, if it made one. castFor() speaks a
+    // presenter's `voiceId` verbatim, so this is the whole override — every pipeline that goes through
+    // here (video ads, songs, cartoons) hears it. Checked at use: a voice the shop has since deleted is
+    // not sent to the speech model, the presenter just goes back to their signature voice.
+    let avatar = stock;
+    try {
+      const pick = await db.presenterVoice.findUnique({ where: { shopId_avatarId: { shopId, avatarId } }, select: { voiceId: true } });
+      if (pick && (await usableVoice(shopId, pick.voiceId))) avatar = { ...stock, voiceId: pick.voiceId };
+    } catch (e) {
+      console.error(`[presenter] could not read the voice choice for ${avatarId}: ${e instanceof Error ? e.message : e}`);
+    }
     return { avatar, portraitFile, portraitPublicPath: `/avatars/${path.basename(portraitFile)}` };
   }
   const row = await db.customAvatar.findFirst({ where: { id: avatarId.slice(CUSTOM_PREFIX.length), shopId } });

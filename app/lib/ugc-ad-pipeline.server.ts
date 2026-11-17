@@ -446,14 +446,14 @@ export function castFor(avatar: { id: string; gender: "f" | "m"; ageBand: "young
 
 /** Prefer the system ffmpeg (Docker image ships Debian's full build — the npm
  *  static Linux binary is missing drawtext, which broke captioning in prod). */
-function ffmpegBin(): string {
+export function ffmpegBin(): string {
   for (const p of ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", path.join(process.cwd(), "bin", "ffmpeg")]) {
     if (fs.existsSync(p)) return p;
   }
   if (!ffmpegPath) throw new Error("[ugc:assemble] no ffmpeg binary available");
   return ffmpegPath as unknown as string;
 }
-function ffprobeBin(): string {
+export function ffprobeBin(): string {
   for (const p of ["/usr/bin/ffprobe", "/usr/local/bin/ffprobe", path.join(process.cwd(), "bin", "ffprobe")]) {
     if (fs.existsSync(p)) return p;
   }

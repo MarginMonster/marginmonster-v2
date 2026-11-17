@@ -160,6 +160,7 @@ model Shop {
   presenterShots     PresenterShot[]
   customAvatars      CustomAvatar[]
   voiceClones        VoiceClone[]
+  presenterVoices    PresenterVoice[]
   /// The storefront this shop's catalogue was mirrored from (web accounts).
   storeUrl           String?
   catalog            CatalogProduct[]
@@ -274,8 +275,58 @@ model CustomAvatar {
   error     String?
   files     String   @default("[]") // JSON: renders-disk filenames, wardrobe order 0-3
   refFile   String? // uploaded reference image on the renders disk
+  // The "character kit" the Presenters section shows (app/lib/presenter-kit.server.ts). Files live on the
+  // renders disk: kit<id>-o<N>.webp are the portraits with the background removed, and each outfit's
+  // full-body rotation is a PresenterSpin row plus its frames.
+  cuts      Int      @default(0) // how many portrait cut-outs exist, wardrobe order
+  // Tokens PER OUTFIT that the creation price already paid toward its 3D view (and how many of those
+  // came from the purchased bucket) — so the views are built without charging again, and a view that
+  // can't be made is refunded to where the money came from. 0 on presenters made before 3D views existed.
+  spinPaid      Int  @default(0)
+  spinPaidExtra Int  @default(0)
+  spins     PresenterSpin[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// The full-body rotation of ONE outfit of a custom presenter — what turns when you drag them in the
+// Presenters section. One row per (presenter, outfit) rather than a JSON list on the presenter, because
+// several outfits build at once and each must be able to report in without overwriting the others.
+// Frames: kit<avatarId>-s<FF>.webp for outfit 0, kit<avatarId>-<look>-s<FF>.webp for the rest.
+model PresenterSpin {
+  id        String       @id @default(cuid())
+  avatarId  String
+  avatar    CustomAvatar @relation(fields: [avatarId], references: [id], onDelete: Cascade)
+  look      Int // wardrobe index 0-3
+  state     String       @default("building") // building | ready | failed
+  error     String?
+  frames    Int          @default(0)
+  frameW    Int          @default(0)
+  frameH    Int          @default(0)
+  dir       Int          @default(1) // 1 = the face swings right first, -1 = left (see presenter-kits.ts)
+  // What this view was paid with (0 = free: an admin build). A view that fails is refunded exactly once.
+  paid       Int         @default(0)
+  paidExtra  Int         @default(0) // how much of `paid` came out of the purchased bucket
+  refundedAt DateTime?
+  startedAt DateTime     @default(now()) // a build that died with a deploy may be started again after a while
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([avatarId, look])
+}
+
+// The voice a shop chose for a STOCK presenter (a custom presenter keeps its voice on its own row).
+// No row = the presenter speaks in its own signature voice.
+model PresenterVoice {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  avatarId  String // stock presenter id, e.g. "mei"
+  voiceId   String // a catalog voice, or one of this shop's own cloned voices
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([shopId, avatarId])
 }
 
 /// "My own voice" — a voice cloned from a recording the merchant made and

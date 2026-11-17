@@ -199,6 +199,8 @@ export async function deleteVoiceClone(shopId: string, id: string): Promise<bool
     for (const u of users) {
       await db.customAvatar.update({ where: { id: u.id }, data: { voiceId: DEFAULT_AVATAR_VOICE[u.gender === "f" ? "f" : "m"] } });
     }
+    // a STOCK presenter this shop had re-voiced with it goes back to their signature voice
+    await db.presenterVoice.deleteMany({ where: { shopId, voiceId: row.voiceId } });
     // a channel narrated by this voice goes back to the stock narrator of the same gender
     await db.creatorSeries.updateMany({
       where: { shopId, voiceKey: `${OWN_VOICE_KEY}${row.voiceId}` },

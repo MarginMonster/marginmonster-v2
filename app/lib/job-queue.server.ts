@@ -1358,6 +1358,12 @@ async function runJob(
       // portraits forged from the merchant's uploaded reference.
       const { forgeCustomAvatar } = await import("./custom-avatars.server");
       await forgeCustomAvatar(payload.customAvatarId as string);
+      // The portraits exist — start the rest of the presenter's kit (the cut-outs, and the 3D view
+      // of each outfit that the creation price paid for). In the background and never fatal: the
+      // presenter is delivered either way, and the Presenters page starts anything left undone.
+      void import("./presenter-kit.server")
+        .then((m) => m.ensureKits(shopId))
+        .catch((e) => console.error(`[kit] could not start the kit after forging: ${e instanceof Error ? e.message : e}`));
       break;
     }
 

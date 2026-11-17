@@ -62,11 +62,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // The merchant's PRESENTER ROSTER (same faces as /web/presenters) — any one can be
   // cast as a character's locked face in a dialogue film. Their forged customs first,
   // then the premium-voiced built-in presenters.
-  const { customCastFor } = await import("../lib/custom-avatars.server");
+  const { customCastFor, stockVoicesFor } = await import("../lib/custom-avatars.server");
   const custom = await customCastFor(shop.id);
+  // A stock presenter the shop gave a voice of its own (Presenters → open one → Voice) brings that
+  // voice into the part, exactly like a custom presenter does; otherwise the film auto-casts a voice.
+  const stockVoice = await stockVoicesFor(shop.id);
   const roster = [
     ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null })),
-    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: null })),
+    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null })),
   ].slice(0, 60);
   return json({
     tokens: tokensRemainingLive(shop.activePlan),

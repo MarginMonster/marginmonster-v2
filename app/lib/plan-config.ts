@@ -319,11 +319,22 @@ export const TOKEN_COST = {
   // (and absurd next to faceless, a full 30s video, at 30). 50 keeps a big margin
   // and sits sensibly above faceless. Premium engines still add their surcharge.
   casualVideo: 50,
-  // Forging a custom presenter renders one portrait per wardrobe outfit —
-  // four paid image generations in parallel — so it is priced as what it is.
-  // It used to cost nothing at all while the UI said "the forge runs on
-  // tokens", which made it the cheapest way to spend our money.
-  avatarForge: 20,
+  // Creating a custom presenter is priced to BREAK EVEN, not to earn (owner, 2026-11-17: "avatar
+  // creation needs to be a break-even deal — we make the real money on the video and ad creation").
+  // What one presenter costs us to make:
+  //   4 outfit portraits    fal nano-banana-pro/edit, ~$0.15 each                              $0.60
+  //   4 portrait cut-outs   background remover                                                 ~$0.001
+  //   4 full-body 3D views  one per outfit: still $0.039 + a 6 s turntable clip $0.36 + its
+  //                         matte ~$0.02 = $0.42, and about 1 turn in 7 has to be rolled again   $1.89
+  //   total ≈ $2.49  →  58 tokens at $0.0432 a token (Studio $39/900, Legend $69/1600 — the plans that
+  //   can forge). 60 it is. (It was 20 before the 3D views existed — and nothing at all before that,
+  //   while the UI said "the forge runs on tokens".) On an ANNUAL plan a token is worth ~$0.036, so 60
+  //   there is about 34¢ under cost; 70 would cover it — the owner's call if annual becomes the norm.
+  avatarForge: 60,
+  // One outfit's 3D view bought on its own — for a presenter made before the 3D views existed. $0.47 is
+  // 11 tokens; kept at the 10-an-outfit the price above works out to (60 − the 20 the portraits cost),
+  // so "all four outfits" costs the same whether it came with the presenter or was added later.
+  avatarSpin: 10,
   // A drafted marketing email. Cheap next to a render, but it is still an
   // Anthropic call and it was free and unlimited before this.
   email: 3,
@@ -401,6 +412,7 @@ export const TOKEN_ACTION_LABEL: Record<TokenAction, string> = {
   faceless: "Faceless video",
   boost: "Ad boost",
   avatarForge: "Custom presenter",
+  avatarSpin: "Presenter 3D view",
   email: "Marketing email",
 };
 
