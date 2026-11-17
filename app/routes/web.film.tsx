@@ -1572,7 +1572,7 @@ export default function FilmStudio() {
             <button type="button" style={{ order: 9 }} className={`mm-card mm-card-wide${openCard === "length" ? " on" : ""}${stepsDone.length ? " done" : ""}`} onClick={() => tapCard("length")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.length ? <Ico n="check" size={13} /> : 5}</span>
               <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
-              <span className="mm-val">{t("{len} · {n} sung shots", { len: mvLenLabel(scenes), n: scenes })}</span>
+              <span className="mm-val">{scenes === 1 ? t("{len} · 1 sung shot", { len: mvLenLabel(scenes) }) : t("{len} · {n} sung shots", { len: mvLenLabel(scenes), n: scenes })}</span>
             </button>
 
             {/* Each step's options live INSIDE the grid, full-width right after its own card (via CSS
@@ -1759,7 +1759,7 @@ export default function FilmStudio() {
                 {MV_LENGTHS.filter((L) => L.n >= tmpl.minScenes && L.n <= tmpl.maxScenes).map((L) => (
                   <button type="button" key={L.sec} className={`mm-lenopt${scenes === L.n ? " on" : ""}`} aria-pressed={scenes === L.n} onClick={() => setScenes(L.n)}>
                     <b>{mvLenLabel(L.n)}</b>
-                    <small>{t("{n} shots", { n: L.n })}</small>
+                    <small>{L.n === 1 ? t("1 shot") : t("{n} shots", { n: L.n })}</small>
                   </button>
                 ))}
               </div>
