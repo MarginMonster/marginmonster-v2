@@ -6,6 +6,11 @@
 // voice asked to speak at a child's pitch comes out stretched and monstrous (measured: a 93 Hz stock
 // voice driven at 320 Hz). Knowing both pitches lets the re-voice move the line into the range the
 // picked voice actually speaks in, which is also what makes a character sound the same in every shot.
+//
+// NOT for finding where a line starts and ends. The voicing test here is deliberately strict (it has to
+// be, to give a trustworthy pitch), so it calls only about a third of speech frames voiced — tried as a
+// "speech span" on real shots it put the end of a line 1.1 s early ("…split it, okay?" was missed),
+// which would have cut the words off. Trimming stays on the volume-based detector in clip-trim.ts.
 
 /** Voiced-frame pitch estimates (Hz) for `x` (mono samples in -1..1 at `sr` Hz). */
 export function trackF0(x: Float32Array, sr = 16000, fmin = 70, fmax = 700): number[] {

@@ -8,7 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseSilences, planClipTrim, plannedSeconds, isNoopTrim, LEAD_HOLD, LEAD_MAX_SPEED, TAIL_KEEP, TAIL_KEEP_LAST } from "../app/lib/clip-trim.ts";
+import { parseSilences, planClipTrim, plannedSeconds, isNoopTrim, LEAD_HOLD, LEAD_MAX_SPEED, TAIL_KEEP, TAIL_KEEP_LAST, END_HOLD_MAX, SILENCE_FILTER } from "../app/lib/clip-trim.ts";
 
 // ffmpeg silencedetect (noise=-33dB:d=0.6) on the two raw shots, verbatim.
 const SHOT1 = `
@@ -90,8 +90,38 @@ test("a clip with nothing to trim, or nothing but silence, is left alone", () =>
 
 test("the film's last shot holds a beat longer than the others", () => {
   const mid = planClipTrim(parseSilences(SHOT1), SHOT1_DUR, { chained: false });
-  const last = planClipTrim(parseSilences(SHOT1), SHOT1_DUR, { chained: false, tailKeep: TAIL_KEEP_LAST });
+  const last = planClipTrim(parseSilences(SHOT1), SHOT1_DUR, { chained: false, last: true });
   assert.ok(last.endAt > mid.endAt + 0.4 && last.endAt <= SHOT1_DUR);
+  assert.ok(Math.abs(last.endAt - (7.820975 + TAIL_KEEP_LAST)) < 1e-6);
+  assert.equal(last.holdEnd, 0, "the take already has its beat of quiet — nothing to hold");
+  assert.equal(mid.holdEnd, 0, "only the film's last shot is ever held");
+});
+
+test("a last shot whose line runs to the final frame holds that frame instead of ending on the word", () => {
+  // the re-rendered film, 2026-11-17: June's "…okay?" finished 0.2 s before the take ended
+  const plan = planClipTrim(parseSilences(SHOT2), SHOT2_DUR, { chained: true, last: true });
+  assert.equal(plan.endAt, SHOT2_DUR, "nothing is cut off the end — there is nothing spare");
+  assert.equal(plan.holdEnd, END_HOLD_MAX);
+  assert.ok(!isNoopTrim(plan, SHOT2_DUR));
+  // no quiet anywhere in the take (speech wall to wall): still held
+  assert.equal(planClipTrim([], 6, { chained: false, last: true }).holdEnd, END_HOLD_MAX);
+  // …and a take with a short tail is topped up to a full beat, not doubled
+  const short = planClipTrim(parseSilences("silence_start: 7.5\nsilence_end: 7.9 | silence_duration: 0.4"), 7.9, { chained: false, last: true });
+  assert.equal(short.endAt, 7.9);
+  assert.ok(Math.abs(short.holdEnd - (TAIL_KEEP_LAST - 0.4)) < 1e-6, `held ${short.holdEnd}`);
+  assert.ok(Math.abs(plannedSeconds(short) - (7.9 + short.holdEnd)) < 1e-9);
+});
+
+test("a half-second lead-in is seen (the detection filter is fine enough)", () => {
+  assert.match(SILENCE_FILTER, /d=0\.3\d?$/);
+  // the re-rendered film's first shot: 0.45 s of quiet before the first word — at d=0.6 it went unseen
+  const runs = parseSilences("silence_start: 0.0155\nsilence_end: 0.448 | silence_duration: 0.43\nsilence_start: 7.60\nsilence_end: 9.03 | silence_duration: 1.43");
+  const first = planClipTrim(runs, 9.04, { chained: false });
+  assert.ok(Math.abs(first.cutHead - (0.448 - 0.12)) < 1e-6, "the film's first shot starts just before its first word");
+  // on a CONTINUING shot the same half second is too little to be worth re-timing — it stays, uncut
+  const cont = planClipTrim(runs, 9.04, { chained: true });
+  assert.equal(cont.cutHead, 0);
+  assert.equal(cont.retime, null);
 });
 
 test("a line that ends close to the end of the clip keeps its last word", () => {

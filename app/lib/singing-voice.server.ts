@@ -159,11 +159,6 @@ async function trainVoiceModel(voiceId: string, key: string, base: string, final
     await Promise.all(Array.from({ length: 3 }, async () => {
       while (next < VOICE_SCRIPT.length) { const i = next++; await synthSpeech(voiceId, VOICE_SCRIPT[i], clips[i]); }
     }));
-    // (while the speech is here: note where this voice naturally speaks — re-voicing a spoken line needs it)
-    try {
-      const hz = await medianPitchOf(clips[0]);
-      if (hz) fs.writeFileSync(pitchFile(voiceId), JSON.stringify({ hz: Math.round(hz) }));
-    } catch { /* measured later, on first use */ }
     // b) one take → 8-second mono 40 kHz WAV clips
     const list = path.join(work, "concat.txt");
     fs.writeFileSync(list, clips.map((c) => `file '${c.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`).join("\n"));
@@ -253,11 +248,12 @@ export async function medianPitchOf(file: string): Promise<number | null> {
   }
 }
 
+const PITCH_REFERENCE_LINE = "Okay, so this is the thing. I was going to tell you all about it yesterday, but honestly, today is even better.";
 const pitchFile = (voiceId: string) => path.join(RENDERS(), `rvcvoice-${voiceKey(voiceId)}.pitch.json`);
 const voicePitchJobs = new Map<string, Promise<number | null>>();
 
-/** The pitch a voice naturally speaks at (Hz), measured once and kept beside its model: from the stock
- *  voice's pre-rendered sample when there is one, else from one short line synthesized in that voice.
+/** The pitch a voice naturally speaks at (Hz), measured once and kept beside its model: from the
+ *  same short line read plainly in that voice (the picker's sample if that can't be synthesized).
  *  Null when it can't be measured — the caller then leaves the line's pitch alone. */
 export function voicePitch(voiceId: string): Promise<number | null> {
   const vid = (voiceId || "").trim();
@@ -267,17 +263,21 @@ export function voicePitch(voiceId: string): Promise<number | null> {
     job = (async () => {
       const cache = pitchFile(vid);
       try { const hz = Number(JSON.parse(fs.readFileSync(cache, "utf8")).hz); if (hz > 40 && hz < 800) return hz; } catch { /* not measured yet */ }
+      // ONE yardstick for every voice: a plain read of the same two sentences. (The picker's stock
+      // samples are rendered "happy" and sit 3-5 semitones above the same voice reading plainly —
+      // "Playful" is 326 Hz there and ~250 Hz in a plain read — so mixing the two as references put
+      // different characters on different scales.) The sample is only the fallback.
       let hz: number | null = null;
-      const sample = path.join(process.cwd(), "public", "voice-samples", `${vid}.mp3`);
-      if (/^[\w-]+$/.test(vid) && fs.existsSync(sample)) hz = await medianPitchOf(sample);
+      const tmp = path.join(RENDERS(), `pitchsrc-${rid()}.mp3`);
+      try {
+        await synthSpeech(vid, PITCH_REFERENCE_LINE, tmp);
+        hz = await medianPitchOf(tmp);
+      } catch { /* fall back to the sample below */ } finally {
+        try { fs.rmSync(tmp, { force: true }); } catch { /* temp file */ }
+      }
       if (!hz) {
-        const tmp = path.join(RENDERS(), `pitchsrc-${rid()}.mp3`);
-        try {
-          await synthSpeech(vid, "Okay, so this is the thing. I was going to tell you all about it yesterday, but honestly, today is even better.", tmp);
-          hz = await medianPitchOf(tmp);
-        } finally {
-          try { fs.rmSync(tmp, { force: true }); } catch { /* temp file */ }
-        }
+        const sample = path.join(process.cwd(), "public", "voice-samples", `${vid}.mp3`);
+        if (/^[\w-]+$/.test(vid) && fs.existsSync(sample)) hz = await medianPitchOf(sample);
       }
       if (hz) { try { fs.writeFileSync(cache, JSON.stringify({ hz: Math.round(hz) })); } catch { /* cache only */ } }
       return hz;

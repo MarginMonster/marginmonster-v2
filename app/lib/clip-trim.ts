@@ -43,6 +43,10 @@ export function parseSilences(stderr: string): SilenceRun[] {
   return runs;
 }
 
+/** The ffmpeg filter the runs come from. 0.35 s is the shortest quiet worth acting on: at 0.6 s a
+ *  half-second lead-in went unseen, so a film opened on dead air. */
+export const SILENCE_FILTER = "silencedetect=noise=-33dB:d=0.35";
+
 /** Start this long before the first word, so its attack isn't clipped. */
 export const LEAD_PAD = 0.12;
 /** A continuing clip plays this much at normal speed first — it covers the dissolve from the previous
@@ -57,6 +61,9 @@ export const LEAD_MAX_SPEED = 3;
 export const TAIL_KEEP = 0.45;
 /** The film's LAST shot holds a little longer, so the film doesn't stop on the final syllable. */
 export const TAIL_KEEP_LAST = 1.0;
+/** …and when the take itself ran out before that (the line finished on its last frames), the final
+ *  frame is held for up to this long to make up the difference. */
+export const END_HOLD_MAX = 0.8;
 
 export type TrimPlan = {
   /** Drop everything before this point (0 = keep the start). Only for a clip that opens on a new picture. */
@@ -65,13 +72,17 @@ export type TrimPlan = {
   retime: { hold: number; leadEnd: number; speed: number } | null;
   /** Stop here (= the clip's length when there is nothing to trim off the end). */
   endAt: number;
+  /** Hold the final frame this long after `endAt` (the film's last shot only; 0 otherwise). */
+  holdEnd: number;
 };
 
 /** Decide the trim for one clip of length `dur` from its silence runs. `chained` = this clip was seeded
  *  from the previous clip's last frame, so its first frames must survive. */
-export function planClipTrim(runs: SilenceRun[], dur: number, opts: { chained: boolean; tailKeep?: number }): TrimPlan {
-  const none: TrimPlan = { cutHead: 0, retime: null, endAt: dur };
+export function planClipTrim(runs: SilenceRun[], dur: number, opts: { chained: boolean; last?: boolean }): TrimPlan {
+  // a last shot with no quiet at all after its line still gets its hold
+  const none: TrimPlan = { cutHead: 0, retime: null, endAt: dur, holdEnd: opts.last && dur > 0 ? END_HOLD_MAX : 0 };
   if (!(dur > 0) || !runs.length) return none;
+  const tailKeep = opts.last ? TAIL_KEEP_LAST : TAIL_KEEP;
 
   // Lead-in: a silence that starts at (or right by) the top of the clip and ends well before its end.
   const first = runs[0];
@@ -82,9 +93,16 @@ export function planClipTrim(runs: SilenceRun[], dur: number, opts: { chained: b
   const last = runs[runs.length - 1];
   const reachesEnd = last.end === null || last.end >= dur - 0.15;
   let endAt = dur;
-  if (reachesEnd && last.start > leadEnd + 1.0 && last.start < dur - 0.3) endAt = Math.min(dur, last.start + (opts.tailKeep ?? TAIL_KEEP));
+  if (reachesEnd && last.start > leadEnd + 1.0 && last.start < dur - 0.3) endAt = Math.min(dur, last.start + tailKeep);
+  // The film's last shot: however much quiet the take has after its line, make it up to a full beat.
+  let holdEnd = 0;
+  if (opts.last) {
+    const quiet = reachesEnd && last.start > leadEnd + 1.0 ? Math.max(0, endAt - last.start) : 0;
+    const need = Math.min(END_HOLD_MAX, TAIL_KEEP_LAST - quiet);
+    if (need > 0.15) holdEnd = need;
+  }
 
-  if (!opts.chained) return { cutHead: leadEnd > 0.15 ? leadEnd : 0, retime: null, endAt };
+  if (!opts.chained) return { cutHead: leadEnd > 0.15 ? leadEnd : 0, retime: null, endAt, holdEnd };
 
   let retime: TrimPlan["retime"] = null;
   const span = leadEnd - LEAD_HOLD;
@@ -92,16 +110,16 @@ export function planClipTrim(runs: SilenceRun[], dur: number, opts: { chained: b
     const speed = Math.min(LEAD_MAX_SPEED, span / LEAD_TARGET);
     if (speed > 1.15) retime = { hold: LEAD_HOLD, leadEnd, speed };
   }
-  return { cutHead: 0, retime, endAt };
+  return { cutHead: 0, retime, endAt, holdEnd };
 }
 
 /** How long the clip is once the plan is applied. */
 export function plannedSeconds(plan: TrimPlan): number {
   const squeezed = plan.retime ? (plan.retime.leadEnd - plan.retime.hold) * (1 - 1 / plan.retime.speed) : 0;
-  return plan.endAt - plan.cutHead - squeezed;
+  return plan.endAt - plan.cutHead - squeezed + plan.holdEnd;
 }
 
 /** True when the plan changes nothing worth a re-encode. */
 export function isNoopTrim(plan: TrimPlan, dur: number): boolean {
-  return !plan.retime && plan.cutHead <= 0.15 && plan.endAt >= dur - 0.2;
+  return !plan.retime && plan.cutHead <= 0.15 && plan.endAt >= dur - 0.2 && !(plan.holdEnd > 0);
 }

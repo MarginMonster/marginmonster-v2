@@ -29,7 +29,7 @@ import { ensureVoiceModel, revoiceClip } from "./singing-voice.server";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { clampKlingPrompt, clipRules, fitClipPrompt } from "./clip-prompt";
-import { isNoopTrim, parseSilences, planClipTrim, TAIL_KEEP_LAST } from "./clip-trim";
+import { isNoopTrim, parseSilences, planClipTrim, SILENCE_FILTER } from "./clip-trim";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { clipSecondsFor } from "./speech-meter";
@@ -185,19 +185,24 @@ async function cropPanelSeed(panelRelUrl: string, side: "left" | "right"): Promi
 /** Take the dead air off a rendered clip: the pause before the line starts and the hold after it
  *  ends (see clip-trim.ts for the rules and why). `chained` = this clip was seeded from the previous
  *  clip's last frame — its first frames are what makes that cut invisible, so its lead-in is played
- *  FAST rather than cut off; a clip that opens on a new picture just has the lead-in cut. Re-encodes
- *  for frame-accurate edits. Returns a NEW path, or the original if there is nothing to trim. */
+ *  FAST rather than cut off; a clip that opens on a new picture just has the lead-in cut. `last` = the
+ *  film's final shot: it keeps a full beat after its line, holding its last frame if the take ran out
+ *  first. Re-encodes for frame-accurate edits. Returns a NEW path, or the original if nothing changes. */
 async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; last?: boolean } = {}): Promise<string> {
+  const ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"];
+  const usable = (p: string) => { try { return fs.existsSync(p) && ffprobeDuration(p) > 0.8; } catch { return false; } };
+  let result = inPath;
+  let holdEnd = 0;
   try {
     const dur = ffprobeDuration(inPath);
     if (!(dur > 2)) return inPath;
-    const probe = await runFfmpeg(["-i", inPath, "-af", "silencedetect=noise=-33dB:d=0.6", "-f", "null", "-"]);
+    const probe = await runFfmpeg(["-i", inPath, "-af", SILENCE_FILTER, "-f", "null", "-"]);
     const err = probe.stderr || "";
-    const plan = planClipTrim(parseSilences(err), dur, { chained: !!opts.chained, tailKeep: opts.last ? TAIL_KEEP_LAST : undefined });
+    const plan = planClipTrim(parseSilences(err), dur, { chained: !!opts.chained, last: !!opts.last });
+    holdEnd = plan.holdEnd;
     if (isNoopTrim(plan, dur)) return inPath;
-    const ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"];
     const out = inPath.replace(/\.mp4$/i, "-trim.mp4");
-    const good = () => { try { return fs.existsSync(out) && ffprobeDuration(out) > 0.8; } catch { return false; } };
+    let done = false;
     if (plan.retime) {
       // keep the opening frames, play the rest of the lead-in fast, then the line at normal speed
       const { hold, leadEnd, speed } = plan.retime;
@@ -215,19 +220,32 @@ async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; la
         `[vc]fps=${fps}[v]`,
       ].join(";");
       const r = await runFfmpeg(["-y", "-i", inPath, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", ...ENC, out]);
-      if (r.status === 0 && good()) return out;
+      done = r.status === 0 && usable(out);
       // couldn't re-time it: still never cut the head of a continuing clip — fall through to the tail only
     }
     const startAt = plan.cutHead;
-    if (startAt > 0.15 || plan.endAt < dur - 0.2) {
+    if (!done && (startAt > 0.15 || plan.endAt < dur - 0.2)) {
       const args = ["-y", "-i", inPath];
       if (startAt > 0.15) args.push("-ss", startAt.toFixed(2));
       args.push("-t", Math.max(0.8, plan.endAt - startAt).toFixed(2), ...ENC, out);
       const r = await runFfmpeg(args);
-      if (r.status === 0 && good()) return out;
+      done = r.status === 0 && usable(out);
     }
+    if (done) result = out;
   } catch { /* keep the original clip */ }
-  return inPath;
+  // The film's last shot: hold its final frame so the film doesn't stop on the last syllable. (A player
+  // freezes on the last frame anyway — what this buys is the beat of quiet after the line.)
+  if (holdEnd > 0.15) {
+    try {
+      const d = ffprobeDuration(result);
+      const held = result.replace(/\.mp4$/i, "-hold.mp4");
+      const h = holdEnd.toFixed(2);
+      const fc = `[0:v]tpad=stop_mode=clone:stop_duration=${h}[v];[0:a]afade=t=out:st=${Math.max(0, d - 0.12).toFixed(2)}:d=0.12,apad=pad_dur=${h}[a]`;
+      const r = await runFfmpeg(["-y", "-i", result, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", ...ENC, held]);
+      if (r.status === 0 && usable(held) && ffprobeDuration(held) > d + 0.1) result = held;
+    } catch { /* the film just ends where the take does */ }
+  }
+  return result;
 }
 
 /** Collapse ONE long pause in the MIDDLE of a clip (dead air between words where the
