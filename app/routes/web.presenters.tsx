@@ -10,7 +10,7 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import { LIVE_AVATARS, OUTFITS, avatarImg, DESIGNED_VOICES, privateCastFor, type Avatar } from "../lib/avatars";
 import { AVATAR_VOICES, DEFAULT_AVATAR_VOICE } from "../lib/avatar-voice-catalog";
 import { TOKEN_COST } from "../lib/plan-config";
-import { stockSpin, stockCut, stockLooks, customSpin, customCut, type Spin } from "../lib/presenter-kits";
+import { stockSpin, stockCut, stockLooks, customSpin, customCut, spinFrame, type Spin } from "../lib/presenter-kits";
 import { useModalA11y } from "../lib/use-modal-a11y";
 import { VoicePicker, VOICE_UI_CSS, type MyVoiceT } from "../components/VoicePicker";
 import { SpinStage, SPIN_STAGE_CSS } from "../components/SpinStage";
@@ -233,6 +233,34 @@ export const shouldRevalidate: ShouldRevalidateFunction = ({ currentUrl, nextUrl
 
 type Saved = { ok?: string; error?: string; name?: string };
 
+/* The hero's line-up: the cast standing together, full height — each figure is the first frame of
+ * that presenter's 3D view, so it is the real person you are about to open, not a stock group photo.
+ * Your Brand Face leads from the centre (when they can be turned around); beside them a fixed, varied
+ * pick of the pro cast, so the row reads as a cast rather than as whoever sorts first. An id that isn't
+ * in this viewer's cast (a private presenter, one since retired) is simply skipped. */
+const LINEUP = ["valentina", "monster", "desmond", "aditi", "marquis", "fatima", "cole", "keiko", "omar", "isla", "tunde", "esther"];
+type Standing = { m: Member; spin: Spin; rank: number; lead: boolean };
+function lineupOf(cast: Member[], brandFaceId: string | null): Standing[] {
+  const spinOf = (m: Member) => m.looks[0]?.spin || null;
+  const lead = cast.find((c) => c.id === brandFaceId && spinOf(c));
+  const picks: Member[] = lead ? [lead] : [];
+  for (const id of LINEUP) {
+    const m = cast.find((c) => c.id === id);
+    if (m && spinOf(m) && !picks.includes(m)) picks.push(m);
+  }
+  for (const c of cast) if (!c.custom && spinOf(c) && !picks.includes(c)) picks.push(c);
+  // centre-out: the first pick in the middle, the next two either side of them, and so on outward
+  const row: Standing[] = [];
+  picks.slice(0, 7).forEach((m, i) => {
+    const s: Standing = { m, spin: spinOf(m) as Spin, rank: Math.ceil(i / 2), lead: i === 0 && !!lead };
+    if (i % 2) row.unshift(s); else row.push(s);
+  });
+  return row;
+}
+
+type Show = "all" | "mine" | "f" | "m";
+const FORGE = "/web/studio?do=video&forge=1";
+
 export default function PresenterHub() {
   const d = useLoaderData<typeof loader>();
   const cast = d.cast as Member[];
@@ -242,8 +270,20 @@ export default function PresenterHub() {
   const location = useLocation();
   const revalidator = useRevalidator();
   const who = sp.get("who");
-  const openIdx = who ? cast.findIndex((c) => c.id === who) : -1;
-  const open = openIdx >= 0 ? cast[openIdx] : null;
+  const [show, setShow] = useState<Show>("all");
+  const tabs = ([
+    { id: "all", label: "All", n: cast.length },
+    { id: "mine", label: "Yours", n: cast.filter((c) => c.custom).length },
+    { id: "f", label: "Women", n: cast.filter((c) => c.gender === "f").length },
+    { id: "m", label: "Men", n: cast.filter((c) => c.gender !== "f").length },
+  ] as Array<{ id: Show; label: string; n: number }>).filter((x) => x.n > 0);
+  const shown = show === "all" ? cast : cast.filter((c) => (show === "mine" ? c.custom : show === "f" ? c.gender === "f" : c.gender !== "f"));
+  // ← → in the character view page through what the grid is showing — unless the presenter that is
+  // open isn't among them (a link straight to someone the filter hides), then through everyone
+  const list = who && shown.some((c) => c.id === who) ? shown : cast;
+  const openIdx = who ? list.findIndex((c) => c.id === who) : -1;
+  const open = openIdx >= 0 ? list[openIdx] : null;
+  const row = lineupOf(cast, d.brandFaceId);
   const cleanup = useFetcher<Saved>();
   // The character view is portaled to <body> (below), which only exists in the browser.
   const [mounted, setMounted] = useState(false);
@@ -271,47 +311,43 @@ export default function PresenterHub() {
     else navigate("/web/presenters", { replace: true, preventScrollReset: true });
   };
   const go = (idx: number) => {
-    const next = cast[(idx + cast.length) % cast.length];
+    const next = list[(idx + list.length) % list.length];
     if (next) navigate(`/web/presenters?who=${encodeURIComponent(next.id)}`, { replace: true, preventScrollReset: true, state: location.state });
   };
 
   return (
     <div className="ph-wrap">
       <style dangerouslySetInnerHTML={{ __html: PH_STYLE }} />
-      <div className="ph-cinehead">
-        <span className="ph-cinehead-bg" aria-hidden="true">
-          <span className="ph-cinehead-rose" />
-          <span className="ph-cinehead-media"><img className="ph-cinehead-img" src="/landing/presenter-hero.jpg?v=3" alt="" loading="lazy" /></span>
+      {/* The hero: what this section is, the two things to do with a cast (make one of your own, put
+          them in a film — they used to be two full-width bars stacked under a banner), and the cast
+          itself standing on the right. With fewer than three figures to stand there it falls back to
+          the group photo. */}
+      <header className={`ph-hero${row.length >= 3 ? "" : " photo"}`}>
+        <span className="ph-hero-rose" aria-hidden="true" />
+        <span className="ph-hero-stage" aria-hidden="true">
+          {row.length < 3 && <img className="ph-hero-img" src="/landing/presenter-hero.jpg?v=3" alt="" />}
         </span>
-        <div className="ph-cinehead-copy">
-          <span className="ph-cinehead-eyebrow"><Ico n="presenter" size={13} /> {t("Your AI cast")}</span>
-          <b>{t("Your presenters")}</b>
-          <span>{t("A full cast of pro presenters, ready to film your product — or upload a photo and become the face of your brand.")}</span>
+        <div className="ph-hero-copy">
+          <span className="ph-hero-eyebrow"><Ico n="presenter" size={13} /> {t("Your AI cast")}</span>
+          <h1 className="ph-hero-h">{t("Your presenters")}</h1>
+          <p>{t("A full cast of pro presenters, ready to film your product — or upload a photo and become the face of your brand.")}</p>
+          <div className="ph-hero-cta">
+            <Link to={FORGE} className="ph-hero-btn main"><Ico n="camera" size={15} /> {t("Create your own presenter")}</Link>
+            <Link to="/web/film" className="ph-hero-btn"><Ico n="film" size={15} /> {t("Cast them in a movie")}</Link>
+          </div>
         </div>
-      </div>
-
-      {/* Forge hero — the differentiator, made prominent. */}
-      <Link to="/web/studio?do=video&forge=1" className="ph-forge">
-        <span className="ph-forge-l">
-          <span className="ph-forge-ico" aria-hidden="true"><Ico n="wand" size={22} /></span>
-          <span className="ph-forge-txt">
-            <b>{t("Create your own presenter")}</b>
-            <span>{t("Be the face of your brand — you, a model, or your mascot. Four outfits, yours alone.")}</span>
-          </span>
-        </span>
-        <span className="ph-forge-go"><Ico n="camera" size={14} /> {t("Upload a photo")}</span>
-      </Link>
-      {/* Film path — this cast stars in Movie Maker dialogue films, not just video ads. */}
-      <Link to="/web/film" className="ph-filmcta">
-        <span className="ph-forge-l">
-          <span className="ph-filmcta-ico" aria-hidden="true"><Ico n="film" size={22} /></span>
-          <span className="ph-forge-txt">
-            <b>{t("Cast them in a movie")}</b>
-            <span>{t("Write a scene and these faces act out real dialogue — pick them in Movie Maker's cast step.")}</span>
-          </span>
-        </span>
-        <span className="ph-filmcta-go"><Ico n="filmreel" size={14} /> {t("Open Movie Maker")}</span>
-      </Link>
+        {row.length >= 3 && (
+          <div className="ph-lineup">
+            {row.map(({ m, spin, rank, lead }) => (
+              <Link key={m.id} to={`/web/presenters?who=${encodeURIComponent(m.id)}`} state={{ hub: true }} preventScrollReset
+                className={`ph-lu r${rank}${lead ? " lead" : ""}`} style={{ aspectRatio: `${spin.w} / ${spin.h}` }} aria-label={m.name}>
+                <img src={spinFrame(spin, 0)} alt="" draggable={false} />
+                <span className="ph-lu-nm" aria-hidden="true">{lead ? <Ico n="star" size={10} /> : null}{m.name}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </header>
       {d.forging > 0 && (
         <p className="ph-forging"><Ico n="bolt" size={13} /><span>{t("{n} presenter(s) still forging — they'll appear below when ready.", { n: d.forging })}</span></p>
       )}
@@ -328,20 +364,46 @@ export default function PresenterHub() {
         </p>
       ))}
 
-      <div className="ph-castlbl">
-        {t("The cast")}
-        <span>{t("tap one to meet them")}{d.brandFaceId ? <> · <Ico n="star" size={11} /> {t("is your Brand Face")}</> : null}</span>
+      <div className="ph-bar">
+        <div className="ph-bar-t">
+          <h2>{t("The cast")}</h2>
+          <span>{t("tap one to meet them")}{d.brandFaceId ? <> · <Ico n="star" size={11} /> {t("is your Brand Face")}</> : null}</span>
+        </div>
+        {tabs.length > 2 && (
+          <div className="ph-filters" role="group" aria-label={t("Show")}>
+            {tabs.map((f) => (
+              <button type="button" key={f.id} className={show === f.id ? "on" : ""} aria-pressed={show === f.id} onClick={() => setShow(f.id)}>
+                {t(f.label)}<i>{f.n}</i>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="ph-grid">
-        {cast.map((c) => {
+        {/* Making your own leads the grid — it is the first thing a new merchant should see they can do. */}
+        {(show === "all" || show === "mine") && (
+          <Link to={FORGE} className="ph-new">
+            <span className="ph-new-ico" aria-hidden="true"><Ico n="wand" size={22} /></span>
+            <b>{t("Create your own presenter")}</b>
+            <span className="ph-new-sub">{t("Be the face of your brand — you, a model, or your mascot. Four outfits, yours alone.")}</span>
+            <i><Ico n="camera" size={12} /> {t("Upload a photo")}</i>
+          </Link>
+        )}
+        {shown.map((c) => {
           const isBf = c.id === d.brandFaceId;
           return (
             <Link key={c.id} to={`/web/presenters?who=${encodeURIComponent(c.id)}`} state={{ hub: true }} preventScrollReset className={`ph-face${isBf ? " bf" : ""}`}>
               {isBf && <span className="ph-bfbadge"><Ico n="star" size={10} /> {t("Brand Face")}</span>}
               {c.custom && !isBf && <span className="ph-yoursbadge">{t("Yours")}</span>}
-              <span className={`ph-face-img ph-bd${c.cut ? "" : " raw"}`}><img src={c.cut || c.img} alt={c.name} loading="lazy" draggable={false} /></span>
-              <span className="ph-face-nm">{c.name}</span>
-              <span className={`ph-face-voice${c.voiceOwn ? " own" : ""}`}><Ico n="mic" size={10} /> {c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.custom ? t("Automatic") : t("Signature")}</span>
+              {c.looks.some((l) => !!l.spin) && <span className="ph-3d" aria-hidden="true"><Ico n="sphere" size={10} /> {t("3D")}</span>}
+              <span className={`ph-face-img ph-bd${c.cut ? "" : " raw"}`}>
+                <img src={c.cut || c.img} alt={c.name} loading="lazy" draggable={false} />
+                <span className="ph-face-go" aria-hidden="true"><Ico n="arrow" size={15} /></span>
+              </span>
+              <span className="ph-face-meta">
+                <span className="ph-face-nm">{c.name}</span>
+                <span className={`ph-face-voice${c.voiceOwn ? " own" : ""}`}><Ico n="mic" size={10} /> {c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.custom ? t("Automatic") : t("Signature")}</span>
+              </span>
             </Link>
           );
         })}
@@ -358,7 +420,7 @@ export default function PresenterHub() {
           myVoices={d.myVoices as MyVoiceT[]}
           canMakeVoice={d.canMakeVoice}
           spinCost={d.spinCost}
-          position={`${openIdx + 1} / ${cast.length}`}
+          position={`${openIdx + 1} / ${list.length}`}
           onClose={close}
           onPrev={() => go(openIdx - 1)}
           onNext={() => go(openIdx + 1)}
@@ -384,12 +446,15 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
   const t = useT();
   const fetcher = useFetcher<Saved>();
   const busy = fetcher.state !== "idle";
-  const dialogRef = useModalA11y<HTMLDivElement>(true, onClose);
   // which outfit is on the stage, and whether it is shown as its portrait rather than its 3D view
   const [look, setLook] = useState(0);
   const [flat, setFlat] = useState(false);
+  // choosing a voice takes over the column beside the stage (its own screen, not a drawer in a drawer)
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [pendingVoice, setPendingVoice] = useState(c.voiceId);
+  const voicePanelRef = useRef<HTMLDivElement | null>(null);
+  // Escape steps back out of the voice screen first, and only then closes the presenter
+  const dialogRef = useModalA11y<HTMLDivElement>(true, () => { if (voiceOpen) setVoiceOpen(false); else onClose(); });
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState(c.name);
   const [armed, setArmed] = useState(false);
@@ -402,10 +467,12 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
   }, []);
-  // ← → page through the cast, unless the keys are busy turning the figure or typing a name
+  // ← → page through the cast, unless the keys are busy turning the figure, typing a name, or a
+  // voice is being chosen (paging away would throw the choice out)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (voiceOpen) return;
       const el = e.target as HTMLElement | null;
       if (el && (el.closest(".spin") || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       e.preventDefault();
@@ -413,7 +480,11 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onPrev, onNext]);
+  }, [onPrev, onNext, voiceOpen]);
+  // on a phone the voice screen opens below the stage: bring its top into view
+  useEffect(() => {
+    if (voiceOpen && window.matchMedia("(max-width:760px)").matches) voicePanelRef.current?.scrollIntoView({ block: "start" });
+  }, [voiceOpen]);
   // a save landed: fold the editors; a delete landed: there is nobody left to look at
   useEffect(() => {
     if (fetcher.state !== "idle" || !fetcher.data?.ok) return;
@@ -455,6 +526,21 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
   const gender = c.gender === "f" ? "f" : "m";
   const showLooks = c.looks.length > 1;
   const badge = isBrandFace ? t("Brand Face") : c.custom ? t("Your presenter") : t("Pro cast");
+  // Removing one of your own presenters. It sits at the end of what scrolls on a desktop ("in") and
+  // after the actions on a phone ("out") — the stylesheet shows one of the two.
+  const danger = (where: "in" | "out") => c.custom ? (
+    <section className={`pc-sec pc-danger ${where}`}>
+      {armed ? (
+        <p className="pc-warn">
+          {t("Delete {name}? This can't be undone.", { name: c.name })}
+          <button type="button" className="pc-del go" disabled={busy} onClick={() => post({ intent: "delete" })}>{busy ? t("Deleting…") : t("Delete")}</button>
+          <button type="button" className="pc-textbtn" onClick={() => setArmed(false)}>{t("Keep")}</button>
+        </p>
+      ) : (
+        <button type="button" className="pc-del" onClick={() => setArmed(true)}><Ico n="trash" size={13} /> {t("Delete this presenter")}</button>
+      )}
+    </section>
+  ) : null;
 
   return (
     <div className="pc-scrim" onClick={onClose}>
@@ -489,7 +575,30 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
           )}
         </div>
 
-        <div className="pc-info">
+        {/* Who they are scrolls; what to do with them stays put underneath, so "Make a video" is never
+            below the fold however much there is to read. (On a phone it is all one scroll.) */}
+        <div className={`pc-info${voiceOpen ? " voice" : ""}`}>
+         {voiceOpen ? (<>
+         {/* Choosing a voice: every voice as a card you can play, and Save always in reach. */}
+         <div className="pc-scroll pc-vpanel" ref={voicePanelRef}>
+          <button type="button" className="pc-back" onClick={() => setVoiceOpen(false)}>
+            <Ico n="arrow" size={14} style={{ transform: "rotate(180deg)" }} /> {t("Back to {name}", { name: c.name })}
+          </button>
+          <h3 className="pc-vtitle">{t("Choose a voice")}</h3>
+          <p className="pc-vsub">{t("Tap ▶ to hear one. {name} keeps the voice they have until you save.", { name: c.name })}</p>
+          {fetcher.data?.error ? <p className="pc-err" role="alert">{fetcher.data.error}</p> : null}
+          <VoicePicker gender={gender} value={pendingVoice} onChange={setPendingVoice} myVoices={myVoices} canMake={canMakeVoice} showAll
+            signature={c.signature ? { name: c.name, sample: c.signature.sample || undefined } : undefined} />
+         </div>
+         <div className="pc-sec pc-acts pc-vfoot">
+          <button type="button" className="wb-btn pc-act-main" disabled={busy || pendingVoice === c.voiceId}
+            onClick={() => post({ intent: "setVoice", voiceId: pendingVoice })}>
+            {busy ? t("Saving…") : t("Save voice")}
+          </button>
+          <button type="button" className="pc-act" onClick={() => setVoiceOpen(false)}>{t("Cancel")}</button>
+         </div>
+         </>) : (<>
+         <div className="pc-scroll">
           <span className={`pc-badge${isBrandFace ? " bf" : c.custom ? " own" : ""}`}>{isBrandFace ? <Ico n="star" size={11} /> : null}{badge}</span>
           {renaming ? (
             <form className="pc-rename" onSubmit={(e) => { e.preventDefault(); if (newName.trim()) post({ intent: "rename", name: newName.trim() }); }}>
@@ -509,39 +618,6 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
           </div>
           {c.about ? <p className="pc-about">{c.about}</p> : null}
           {fetcher.data?.error ? <p className="pc-err" role="alert">{fetcher.data.error}</p> : null}
-
-          {/* Voice */}
-          <section className="pc-sec">
-            <h3 className="pc-h"><Ico n="mic" size={13} /> {t("Voice")}</h3>
-            <div className={`pc-voice${voiceOpen ? " open" : ""}`}>
-              <div className="pc-voice-row">
-                <button type="button" className={`pc-play${playing ? " on" : ""}`} onClick={hear} disabled={!c.voiceSample}
-                  aria-label={playing ? t("Stop") : t("Hear {name}'s voice", { name: c.name })}>
-                  {playing ? "⏸" : "▶"}
-                </button>
-                <span className="pc-voice-t">
-                  <b className={c.voiceOwn ? "own" : ""}>{voiceName}</b>
-                  <small>{voiceNote}</small>
-                </span>
-                <button type="button" className="pc-chg" aria-expanded={voiceOpen}
-                  onClick={() => { audioRef.current?.pause(); setPlaying(false); setPendingVoice(c.voiceId || (c.custom ? DEFAULT_AVATAR_VOICE[gender] : "")); setVoiceOpen((v) => !v); }}>
-                  {voiceOpen ? t("Close") : t("Change")}
-                </button>
-              </div>
-              {voiceOpen && (
-                <div className="pc-voice-pick">
-                  <VoicePicker gender={gender} value={pendingVoice} onChange={setPendingVoice} myVoices={myVoices} canMake={canMakeVoice} showAll
-                    signature={c.signature ? { name: c.name, sample: c.signature.sample || undefined } : undefined} />
-                  <button type="button" className="wb-btn pc-save" disabled={busy || pendingVoice === c.voiceId}
-                    onClick={() => post({ intent: "setVoice", voiceId: pendingVoice })}>
-                    {busy ? t("Saving…") : t("Save voice")}
-                  </button>
-                </div>
-              )}
-              <audio ref={audioRef} preload="none" onEnded={() => setPlaying(false)} />
-            </div>
-            {voiceFine ? <p className="pc-fine">{voiceFine}</p> : null}
-          </section>
 
           {/* Outfits */}
           {showLooks && (
@@ -569,6 +645,31 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
             </section>
           )}
 
+          {/* Voice */}
+          <section className="pc-sec">
+            <h3 className="pc-h"><Ico n="mic" size={13} /> {t("Voice")}</h3>
+            <div className={`pc-voice${playing ? " playing" : ""}`}>
+              <div className="pc-voice-row">
+                <button type="button" className={`pc-play${playing ? " on" : ""}`} onClick={hear} disabled={!c.voiceSample}
+                  aria-label={playing ? t("Stop") : t("Hear {name}'s voice", { name: c.name })}>
+                  {playing ? "⏸" : "▶"}
+                </button>
+                <span className="pc-voice-t">
+                  <b className={c.voiceOwn ? "own" : ""}>{voiceName}{playing ? <i className="pc-eq" aria-hidden="true"><i /><i /><i /><i /></i> : null}</b>
+                  <small>{voiceNote}</small>
+                </span>
+                <button type="button" className="pc-chg"
+                  onClick={() => { audioRef.current?.pause(); setPlaying(false); setPendingVoice(c.voiceId || (c.custom ? DEFAULT_AVATAR_VOICE[gender] : "")); setVoiceOpen(true); }}>
+                  {t("Change")}
+                </button>
+              </div>
+              <audio ref={audioRef} preload="none" onEnded={() => setPlaying(false)} />
+            </div>
+            {voiceFine ? <p className="pc-fine">{voiceFine}</p> : null}
+          </section>
+          {danger("in")}
+         </div>
+
           {/* What to do with them */}
           <section className="pc-sec pc-acts">
             <Link to={`/web/studio?do=video&avatar=${encodeURIComponent(c.id)}`} className="wb-btn pc-act-main"><Ico n="video" size={15} /> {t("Make a video with {name}", { name: c.name })}</Link>
@@ -582,19 +683,8 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
             {isBrandFace ? <p className="pc-fine">{t("Your Brand Face is picked for you first whenever you make a video. Tap again to clear it.")}</p> : null}
           </section>
 
-          {c.custom && (
-            <section className="pc-sec pc-danger">
-              {armed ? (
-                <p className="pc-warn">
-                  {t("Delete {name}? This can't be undone.", { name: c.name })}
-                  <button type="button" className="pc-del go" disabled={busy} onClick={() => post({ intent: "delete" })}>{busy ? t("Deleting…") : t("Delete")}</button>
-                  <button type="button" className="pc-textbtn" onClick={() => setArmed(false)}>{t("Keep")}</button>
-                </p>
-              ) : (
-                <button type="button" className="pc-del" onClick={() => setArmed(true)}><Ico n="trash" size={13} /> {t("Delete this presenter")}</button>
-              )}
-            </section>
-          )}
+          {danger("out")}
+         </>)}
         </div>
       </div>
     </div>
@@ -604,57 +694,137 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
 const PH_STYLE = `
 ${VOICE_UI_CSS}
 ${SPIN_STAGE_CSS}
-.ph-wrap{max-width:780px;margin:0 auto;}
-/* THE backdrop every presenter stands on — grid cards, outfit tiles and the stage. One soft studio
-   wall, lit from the top: light enough for dark hair and dark clothes to read, deep enough that a
-   white shirt still has an edge. */
+.ph-wrap{max-width:1360px;margin:0 auto;}
+/* THE backdrop every presenter stands on — grid cards, outfit tiles, the stage and the hero's line-up.
+   One soft studio wall, lit from the top: light enough for dark hair and dark clothes to read, deep
+   enough that a white shirt still has an edge. */
 .ph-bd{background:radial-gradient(125% 95% at 50% 22%,#EDF1E8 0%,#D9E1D4 55%,#C2CDBE 100%);}
-/* Section hero — softened green band to match Film Studio / Studio. */
-.ph-cinehead{position:relative;z-index:1;border-radius:18px;padding:20px 24px;margin-bottom:16px;min-height:130px;display:flex;align-items:center;}
-.ph-cinehead-bg{position:absolute;inset:0;z-index:0;border-radius:18px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 8px 22px rgba(11,20,15,.16),inset 0 0 0 1px rgba(255,255,255,.1);}
-.ph-cinehead-rose{position:absolute;left:-130px;bottom:-170px;width:350px;height:350px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.3;mix-blend-mode:screen;pointer-events:none;will-change:transform;animation:phspin 115s linear infinite;}
+
+/* ---- the hero: the section's green band on the left, the cast standing in the studio on the right ---- */
+.ph-hero{position:relative;isolation:isolate;display:flex;align-items:center;min-height:clamp(260px,42vh,380px);margin-bottom:22px;border-radius:22px;overflow:hidden;background:radial-gradient(120% 160% at 0% 0%,#3A8660 0%,#226043 42%,#143F2B 100%);box-shadow:0 24px 54px -28px rgba(8,62,39,.62),inset 0 0 0 1px rgba(255,255,255,.08);}
+.ph-hero-rose{position:absolute;z-index:0;left:-150px;bottom:-190px;width:400px;height:400px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.28;mix-blend-mode:screen;pointer-events:none;will-change:transform;animation:phspin 115s linear infinite;}
 @keyframes phspin{to{transform:rotate(-360deg);}}
-.ph-cinehead-media{position:absolute;right:0;top:0;bottom:0;width:54%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 44%);mask-image:linear-gradient(90deg,transparent,#000 44%);}
-.ph-cinehead-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
-.ph-cinehead-copy{position:relative;z-index:1;flex:1 1 auto;min-width:0;max-width:52%;}
-.ph-cinehead-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:#E7C879;text-transform:uppercase;letter-spacing:.08em;}
-.ph-cinehead-copy b{font-family:Poppins,sans-serif;font-weight:800;font-size:26px;letter-spacing:-.02em;color:#fff;display:block;margin-top:7px;line-height:1.1;}
-.ph-cinehead-copy>span{display:block;font-size:13px;color:rgba(255,255,255,.74);margin-top:7px;max-width:320px;line-height:1.45;}
-@media(max-width:640px){.ph-cinehead{padding:18px;min-height:114px;}.ph-cinehead-copy b{font-size:21px;}.ph-cinehead-copy{max-width:60%;}.ph-cinehead-media{width:52%;}}
-@media(prefers-reduced-motion:reduce){.ph-cinehead-rose{animation:none;}}
-.ph-forge{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:16px 0 8px;padding:18px 20px;border-radius:16px;background:linear-gradient(135deg,#0C7A46,#0A5F38);color:#FBF6E6;box-shadow:0 8px 22px rgba(10,95,56,.28);text-decoration:none;transition:transform .12s,box-shadow .12s;}
-.ph-forge:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(10,95,56,.34);}
-.ph-forge-l{display:flex;align-items:center;gap:14px;min-width:0;}
-.ph-forge-ico{flex:0 0 auto;width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.16);display:grid;place-items:center;color:#FBF6E6;}
-.ph-forge-txt{min-width:0;}
-.ph-forge-txt b{font-family:Poppins,sans-serif;font-weight:800;font-size:16px;display:block;}
-.ph-forge-txt span{font-size:12.5px;opacity:.9;display:block;margin-top:2px;line-height:1.35;}
-.ph-forge-go{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;background:#FBF6E6;color:var(--green,#0C7A46);font-weight:800;font-size:13px;border-radius:999px;padding:10px 16px;white-space:nowrap;}
-.ph-forging{display:flex;align-items:flex-start;gap:6px;font-size:12px;line-height:1.4;color:var(--ink2,#4A554E);margin:0 0 6px;}
+/* the studio wall — the light the cards stand in, fading into the green so the two halves are one picture */
+.ph-hero-stage{position:absolute;z-index:0;top:0;right:0;bottom:0;width:64%;background:radial-gradient(85% 120% at 58% 10%,#F5F8F0 0%,#E0E8DB 50%,#BECBBA 100%);-webkit-mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.45) 13%,#000 29%);mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.45) 13%,#000 29%);}
+/* the wall darkens a little toward the bottom, behind the cast */
+.ph-hero-stage::after{content:"";position:absolute;left:0;right:0;bottom:0;height:34%;background:linear-gradient(180deg,rgba(60,84,66,0),rgba(60,84,66,.2));}
+.ph-hero.photo .ph-hero-stage::after{display:none;}
+.ph-hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
+.ph-hero-copy{position:relative;z-index:2;box-sizing:border-box;width:40%;min-width:0;padding:34px 0 34px clamp(26px,3.4vw,48px);}
+.ph-hero-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:#E7C879;text-transform:uppercase;letter-spacing:.09em;}
+.ph-hero-h{margin:10px 0 0;font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(30px,3.3vw,46px);line-height:1.04;letter-spacing:-.025em;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.28);}
+.ph-hero-copy p{margin:12px 0 0;max-width:400px;font-size:15px;line-height:1.5;color:rgba(255,255,255,.86);}
+.ph-hero-cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;}
+.ph-hero-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;box-sizing:border-box;min-height:44px;padding:10px 18px;border-radius:999px;border:1.5px solid rgba(255,255,255,.4);background:rgba(255,255,255,.09);color:#fff;font-size:13.5px;font-weight:800;text-decoration:none;white-space:nowrap;transition:transform .14s,background .14s,border-color .14s,box-shadow .14s;}
+.ph-hero-btn:hover{transform:translateY(-1px);background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.75);}
+.ph-hero-btn.main{background:#FBF6E6;border-color:#FBF6E6;color:#0A5F38;box-shadow:0 10px 22px -10px rgba(0,0,0,.5);}
+.ph-hero-btn.main:hover{background:#fff;border-color:#fff;box-shadow:0 14px 28px -10px rgba(0,0,0,.55);}
+/* The line-up — framed like a cast photo: everyone from the thigh up, shoulder to shoulder, the lead
+   in front. A figure is as tall as --h: the smaller of "a bit taller than the hero" and "what lets the
+   whole row fit its width" (--fit, set for how many are standing) — so a tall window never pushes the
+   outer figures off the edge. The bottom third of each figure hangs below the hero, which clips it. */
+.ph-lineup{position:absolute;z-index:1;top:0;right:0;bottom:0;width:60%;box-sizing:border-box;display:flex;align-items:flex-end;justify-content:center;padding:0 clamp(12px,2vw,30px) 0 0;container-type:size;--fit:52cqw;}
+.ph-lu{--h:calc(var(--s,1)*118%);position:relative;flex:0 0 auto;height:var(--h);margin:0 -12px -100px;display:block;outline:none;transform-origin:50% 100%;transition:transform .28s cubic-bezier(.2,.8,.2,1),filter .28s;animation:phrise .7s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--d,0)*80ms + 60ms);-webkit-tap-highlight-color:transparent;}
+@supports (height:1cqh){.ph-lu{--h:calc(var(--s,1)*min(128cqh,var(--fit)));margin:0 calc(var(--h)*-.045) calc(var(--h)*-.32);}}
+@keyframes phrise{from{opacity:0;transform:translateY(22px);}}
+.ph-lu img{display:block;width:100%;height:100%;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;}
+/* the one in the middle stands tallest and in front; each pair further out a little smaller, a little further back */
+.ph-lu.r0{--s:1;--d:0;z-index:5;}
+.ph-lu.r1{--s:.94;--d:1;z-index:4;}
+.ph-lu.r2{--s:.885;--d:2;z-index:3;filter:saturate(.96);}
+.ph-lu.r3{--s:.83;--d:3;z-index:2;filter:saturate(.92) brightness(.985);}
+.ph-lu:hover,.ph-lu:focus-visible{transform:translateY(-8px) scale(1.03);z-index:7;filter:none;}
+.ph-lu-nm{position:absolute;z-index:2;left:50%;bottom:calc(32% + 12px);transform:translate(-50%,6px);opacity:0;display:inline-flex;align-items:center;gap:4px;padding:4px 11px;border-radius:999px;background:rgba(20,32,26,.82);color:#fff;font-family:Poppins,sans-serif;font-size:11.5px;font-weight:700;letter-spacing:.02em;white-space:nowrap;pointer-events:none;transition:opacity .18s,transform .18s;box-shadow:0 4px 12px rgba(20,32,26,.25);}
+.ph-lu:hover .ph-lu-nm,.ph-lu:focus-visible .ph-lu-nm,.ph-lu.lead .ph-lu-nm{opacity:1;transform:translate(-50%,0);}
+.ph-lu.lead .ph-lu-nm{background:#E7C879;color:#3A2C06;}
+.ph-lu:focus-visible .ph-lu-nm{box-shadow:0 0 0 3px var(--green2,#12A85E);}
+
+.ph-forging{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;line-height:1.4;color:var(--ink2,#4A554E);margin:0 2px 8px;}
 .ph-forging svg{margin-top:2px;}
 .ph-forging.bad{color:#8A3B12;}
 .ph-linkbtn{border:0;background:transparent;padding:2px 4px;font:inherit;font-weight:800;color:var(--green,#0C7A46);text-decoration:underline;text-underline-offset:2px;cursor:pointer;}
-.ph-castlbl{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-weight:800;font-size:14px;color:var(--ink,#14201A);margin:18px 0 12px;}
-.ph-castlbl span{display:inline-flex;align-items:center;gap:4px;font-weight:600;font-size:12px;color:var(--ink2,#4A554E);}
-.ph-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;}
-.ph-face{position:relative;border-radius:14px;overflow:hidden;border:1.5px solid var(--line,#E4DFCF);background:#fff;cursor:pointer;text-decoration:none;display:block;transition:transform .12s,box-shadow .12s,border-color .12s;}
-.ph-face:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(20,32,26,.14);border-color:var(--green2,#1FA463);}
+
+/* ---- the cast ---- */
+.ph-bar{display:flex;align-items:center;justify-content:space-between;gap:10px 20px;flex-wrap:wrap;margin:0 2px 14px;}
+.ph-bar-t{display:flex;align-items:baseline;gap:4px 12px;flex-wrap:wrap;min-width:0;}
+.ph-bar h2{margin:0;font-family:Poppins,sans-serif;font-weight:800;font-size:21px;line-height:1.2;letter-spacing:-.015em;color:var(--ink,#14201A);}
+.ph-bar-t span{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;color:var(--ink2,#4A554E);}
+.ph-filters{display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:#fff;border:1px solid var(--line,#E1DECD);box-shadow:0 2px 8px rgba(20,32,26,.05);}
+.ph-filters button{display:inline-flex;align-items:center;gap:6px;min-height:36px;border:0;background:transparent;border-radius:999px;padding:6px 14px;font:inherit;font-size:12.5px;font-weight:800;color:var(--ink2,#4A554E);cursor:pointer;transition:background .12s,color .12s;}
+.ph-filters button i{font-style:normal;font-weight:700;font-size:11px;opacity:.72;font-variant-numeric:tabular-nums;}
+.ph-filters button:hover{background:#F1F5EE;color:var(--ink,#14201A);}
+.ph-filters button.on{background:var(--green,#0C7A46);color:#fff;}
+@media(pointer:coarse){.ph-filters button{min-height:44px;}}
+.ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:16px;}
+.ph-face{position:relative;display:flex;flex-direction:column;border-radius:18px;overflow:hidden;border:1px solid var(--line,#E1DECD);background:#fff;box-shadow:0 1px 2px rgba(20,32,26,.04),0 10px 24px -16px rgba(20,32,26,.24);cursor:pointer;text-decoration:none;transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s,border-color .2s;}
+.ph-face:hover{transform:translateY(-4px);box-shadow:0 2px 4px rgba(20,32,26,.05),0 24px 40px -20px rgba(20,32,26,.4);border-color:#9CCBB1;}
 .ph-face-img{display:block;position:relative;width:100%;aspect-ratio:3/4;overflow:hidden;}
-.ph-face-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 18%;display:block;transition:transform .25s ease;}
-.ph-face:hover .ph-face-img img{transform:scale(1.04);}
-.ph-face-nm{display:block;padding:7px 8px 2px;font-size:12px;font-weight:700;color:var(--ink,#14201A);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.ph-face-voice{display:flex;align-items:center;justify-content:center;gap:3px;margin:0 0 7px;font-size:10.5px;font-weight:700;color:var(--ink2,#4A554E);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px;}
+.ph-face-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 18%;display:block;transition:transform .35s cubic-bezier(.2,.8,.2,1);}
+.ph-face:hover .ph-face-img img{transform:scale(1.045);}
+/* "open" — slides in on the picture when the card is pointed at */
+.ph-face-go{position:absolute;right:9px;bottom:9px;width:32px;height:32px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;display:grid;place-items:center;box-shadow:0 6px 14px -4px rgba(12,122,70,.6);opacity:0;transform:translateY(6px);transition:opacity .18s,transform .18s;}
+.ph-face:hover .ph-face-go,.ph-face:focus-visible .ph-face-go{opacity:1;transform:none;}
+.ph-face-meta{display:flex;flex-direction:column;gap:2px;min-width:0;padding:10px 12px 12px;}
+.ph-face-nm{font-family:Poppins,sans-serif;font-size:14px;font-weight:700;line-height:1.25;color:var(--ink,#14201A);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ph-face-voice{display:flex;align-items:center;gap:4px;min-width:0;font-size:11.5px;font-weight:600;color:var(--ink2,#4A554E);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ph-face-voice svg{flex:0 0 auto;}
 .ph-face-voice.own{color:var(--green,#0C7A46);}
-.ph-face.bf{border-color:var(--gold,#D3A63A);box-shadow:0 0 0 1.5px var(--gold,#D3A63A);}
-.ph-bfbadge{position:absolute;top:7px;left:7px;z-index:2;display:inline-flex;align-items:center;gap:3px;background:var(--gold,#D3A63A);color:#3A2C06;font-size:10px;font-weight:800;border-radius:999px;padding:2px 8px;box-shadow:0 2px 5px rgba(0,0,0,.2);}
-.ph-yoursbadge{position:absolute;top:7px;left:7px;z-index:2;background:var(--green,#0C7A46);color:#fff;font-size:10px;font-weight:800;border-radius:999px;padding:2px 8px;box-shadow:0 2px 5px rgba(0,0,0,.2);}
-.ph-filmcta{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 8px;padding:16px 20px;border-radius:16px;background:var(--card,#FDFCF7);border:1.5px solid #9CCBB1;box-shadow:0 6px 18px rgba(20,32,26,.08);text-decoration:none;transition:transform .12s,box-shadow .12s,border-color .12s;}
-.ph-filmcta:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(20,32,26,.12);border-color:var(--green,#0C7A46);}
-.ph-filmcta-ico{flex:0 0 auto;width:44px;height:44px;border-radius:12px;background:#EAF6EF;display:grid;place-items:center;color:var(--green,#0C7A46);}
-.ph-filmcta .ph-forge-txt b{color:var(--ink,#14201A);font-family:Poppins,sans-serif;font-weight:800;font-size:16px;display:block;}
-.ph-filmcta .ph-forge-txt span{color:var(--ink2,#4A554E);opacity:1;display:block;margin-top:2px;line-height:1.35;font-size:12.5px;}
-.ph-filmcta-go{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;background:var(--green,#0C7A46);color:#fff;font-weight:800;font-size:13px;border-radius:999px;padding:10px 16px;white-space:nowrap;}
-@media(max-width:640px){.ph-grid{grid-template-columns:repeat(3,minmax(0,1fr));}.ph-forge,.ph-filmcta{flex-direction:column;align-items:flex-start;}.ph-forge-go,.ph-filmcta-go{align-self:stretch;justify-content:center;}}
+.ph-face.bf{border-color:#D3A63A;box-shadow:0 0 0 1.5px #D3A63A,0 10px 24px -16px rgba(20,32,26,.24);}
+.ph-face.bf:hover{border-color:#D3A63A;box-shadow:0 0 0 1.5px #D3A63A,0 24px 40px -20px rgba(20,32,26,.4);}
+.ph-bfbadge,.ph-yoursbadge,.ph-3d{position:absolute;top:9px;z-index:2;display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:800;border-radius:999px;padding:3px 8px;line-height:1.2;}
+.ph-bfbadge{left:9px;background:#E7C879;color:#3A2C06;box-shadow:0 2px 6px rgba(0,0,0,.18);}
+.ph-yoursbadge{left:9px;background:var(--green,#0C7A46);color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.18);}
+.ph-3d{right:9px;background:rgba(20,32,26,.62);color:#fff;letter-spacing:.03em;}
+/* "make your own" — the first tile of the grid */
+.ph-new{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;padding:18px 14px;text-align:center;border-radius:18px;border:1.5px dashed #8CC3A6;background:linear-gradient(180deg,#F4FAF6,#E5F3EB);color:var(--ink,#14201A);text-decoration:none;transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s,border-color .2s,background .2s;}
+.ph-new:hover{transform:translateY(-4px);border-color:var(--green,#0C7A46);background:linear-gradient(180deg,#F7FCF9,#DAEFE3);box-shadow:0 24px 40px -22px rgba(12,122,70,.5);}
+.ph-new-ico{flex:0 0 auto;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#12A85E,#0A5F38);color:#fff;display:grid;place-items:center;box-shadow:0 10px 20px -8px rgba(12,122,70,.65);}
+.ph-new b{font-family:Poppins,sans-serif;font-weight:800;font-size:15px;line-height:1.2;}
+.ph-new-sub{font-size:11.5px;line-height:1.42;color:var(--ink2,#4A554E);}
+.ph-new i{font-style:normal;display:inline-flex;align-items:center;gap:5px;margin-top:4px;padding:7px 13px;border-radius:999px;background:#fff;border:1px solid #BFE0CD;color:var(--green,#0C7A46);font-size:12px;font-weight:800;white-space:nowrap;}
+
+@media(max-width:1179px){.ph-lineup{--fit:72cqw;}.ph-lu.r3{display:none;}}
+@media(max-width:899px){
+  .ph-hero-copy{width:50%;padding-top:26px;padding-bottom:26px;}
+  .ph-hero-copy p{font-size:13.5px;}
+  .ph-hero-stage{width:58%;}
+  .ph-lineup{width:50%;--fit:104cqw;}
+  .ph-lu.r2{display:none;}
+}
+@media(max-width:640px){
+  /* phone: the copy, then the cast standing along the bottom of the card */
+  .ph-hero{flex-direction:column;align-items:stretch;min-height:0;border-radius:18px;margin-bottom:18px;}
+  .ph-hero-copy{width:auto;padding:20px 18px 0;}
+  .ph-hero-h{font-size:27px;}
+  .ph-hero-cta{margin-top:14px;gap:8px;}
+  .ph-hero-btn{flex:1 1 auto;padding:10px 14px;font-size:13px;}
+  .ph-hero-stage{top:auto;left:0;width:auto;height:222px;-webkit-mask-image:linear-gradient(180deg,transparent 0,rgba(0,0,0,.5) 16%,#000 36%);mask-image:linear-gradient(180deg,transparent 0,rgba(0,0,0,.5) 16%,#000 36%);}
+  .ph-hero.photo .ph-hero-stage{position:relative;height:150px;margin-top:14px;}
+  .ph-lineup{position:relative;width:auto;height:200px;margin-top:10px;padding:0 10px;--fit:72cqw;}
+  .ph-lu.r2{display:block;}
+  .ph-bar{margin-bottom:12px;}
+  .ph-bar h2{font-size:18px;}
+  .ph-filters{width:100%;box-sizing:border-box;}
+  .ph-filters button{flex:1 1 auto;justify-content:center;padding:6px 8px;}
+  .ph-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+  .ph-face{border-radius:14px;}
+  .ph-face-meta{padding:7px 8px 9px;}
+  .ph-face-nm{font-size:12px;}
+  .ph-face-voice{font-size:10.5px;}
+  .ph-face-go{display:none;}
+  .ph-bfbadge,.ph-yoursbadge,.ph-3d{top:6px;font-size:9px;padding:2px 6px;}
+  .ph-bfbadge,.ph-yoursbadge{left:6px;}
+  .ph-3d{right:6px;}
+  .ph-3d svg{display:none;}
+  .ph-bfbadge~.ph-3d{display:none;}
+  .ph-new{border-radius:14px;padding:12px 8px;gap:6px;}
+  .ph-new-ico{width:40px;height:40px;}
+  .ph-new b{font-size:12.5px;}
+  .ph-new-sub{display:none;}
+  .ph-new i{font-size:10px;padding:5px 8px;}
+  .ph-new i svg{display:none;}
+}
+@media(prefers-reduced-motion:reduce){.ph-hero-rose,.ph-lu{animation:none;}.ph-lu,.ph-face,.ph-new,.ph-face-go{transition:none;}.ph-lu:hover,.ph-lu:focus-visible,.ph-face:hover,.ph-new:hover{transform:none;}}
 
 /* ---- the character view ---- */
 .pc-scrim{font-family:Inter,-apple-system,sans-serif;color:var(--ink,#14201A);position:fixed;inset:0;z-index:10500;background:rgba(11,20,15,.62);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:18px;animation:pcfade .16s ease;}
@@ -686,7 +856,8 @@ ${SPIN_STAGE_CSS}
 .pc-buildbtn:disabled{opacity:.6;cursor:default;}
 /* the figure sits ON the stage floor: measured from the bottom edge, not from a flex margin */
 .pc-stage .spin-fig{position:absolute;left:50%;bottom:6%;height:86%;margin:0;transform:translateX(-50%);}
-.pc-info{min-width:0;min-height:0;overflow-y:auto;padding:26px 26px 22px;-webkit-overflow-scrolling:touch;}
+.pc-info{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
+.pc-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;padding:26px 26px 20px;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#C9D2C6 transparent;}
 .pc-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:#EAF0E6;color:var(--ink2,#4A554E);font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;}
 .pc-badge.own{background:#E3F3EA;color:var(--green,#0C7A46);}
 .pc-badge.bf{background:#F6E9BF;color:#5C4508;}
@@ -705,8 +876,17 @@ ${SPIN_STAGE_CSS}
 .pc-h-act:hover{border-color:var(--green2,#12A85E);background:#F3F9F4;}
 .pc-h-act:disabled{opacity:.6;cursor:default;}
 .pc-h{display:flex;align-items:center;gap:6px;margin:0 0 9px;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink2,#4A554E);}
-.pc-voice{border:1.5px solid var(--line,#E1DECD);border-radius:14px;background:#fff;overflow:hidden;}
-.pc-voice.open{border-color:var(--green2,#12A85E);}
+.pc-voice{border:1.5px solid var(--line,#E1DECD);border-radius:16px;background:#fff;overflow:hidden;transition:border-color .16s,box-shadow .16s;}
+.pc-voice:hover{border-color:#BFD9C9;}
+.pc-voice.playing{border-color:var(--green2,#12A85E);box-shadow:0 0 0 3px rgba(18,168,94,.13);}
+/* a little equaliser beside the name while the voice is playing */
+.pc-eq{display:inline-flex;align-items:flex-end;gap:2px;height:12px;margin-left:8px;vertical-align:-1px;}
+.pc-eq i{width:3px;height:100%;border-radius:2px;background:var(--green2,#12A85E);transform-origin:50% 100%;animation:pceq .9s ease-in-out infinite;}
+.pc-eq i:nth-child(1){animation-delay:-.2s;}
+.pc-eq i:nth-child(2){animation-delay:-.55s;}
+.pc-eq i:nth-child(3){animation-delay:-.05s;}
+.pc-eq i:nth-child(4){animation-delay:-.7s;}
+@keyframes pceq{0%,100%{transform:scaleY(.3);}50%{transform:scaleY(1);}}
 .pc-voice-row{display:flex;align-items:center;gap:11px;padding:10px 12px;}
 .pc-play{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:0;background:var(--green,#0C7A46);color:#fff;font-size:13px;display:grid;place-items:center;cursor:pointer;transition:transform .12s,background .12s;}
 .pc-play:hover{transform:scale(1.06);}
@@ -718,19 +898,47 @@ ${SPIN_STAGE_CSS}
 .pc-voice-t small{font-size:12px;color:var(--ink2,#4A554E);line-height:1.3;}
 .pc-chg{flex:0 0 auto;border:1.5px solid var(--line,#E1DECD);background:transparent;border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:800;color:var(--green,#0C7A46);cursor:pointer;}
 .pc-chg:hover{border-color:var(--green2,#12A85E);background:#F3F9F4;}
-.pc-voice-pick{padding:0 12px 12px;}
-.pc-voice-pick .ws-vp{max-height:216px;}
-.pc-voice-pick .ws-vpx{margin-bottom:10px;}
-.pc-save{width:100%;}
+/* ---- choosing a voice: its own screen in the column beside the stage ---- */
+.pc-vpanel{display:flex;flex-direction:column;}
+.pc-back{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;min-height:36px;margin:-4px 0 10px -8px;padding:6px 12px 6px 8px;border:0;border-radius:999px;background:transparent;font:inherit;font-size:12.5px;font-weight:800;color:var(--ink2,#4A554E);cursor:pointer;}
+.pc-back:hover{background:#EDF1E8;color:var(--ink,#14201A);}
+.pc-vtitle{margin:0 44px 0 0;font-family:Poppins,sans-serif;font-weight:800;font-size:27px;line-height:1.1;letter-spacing:-.02em;color:var(--ink,#14201A);}
+.pc-vsub{margin:7px 0 16px;max-width:52ch;font-size:13.5px;line-height:1.45;color:var(--ink2,#4A554E);}
+/* the shared picker, laid out as cards: play on the left, name over its description, a tick when chosen */
+.pc-vpanel .ws-vpx{margin:0;}
+.pc-vpanel .ws-vp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;max-height:none;overflow:visible;margin:0 0 12px;padding:0;}
+.pc-vpanel .ws-vp-sec{grid-column:1/-1;margin:8px 0 -1px;padding:0 2px;font-size:11px;letter-spacing:.07em;color:var(--ink2,#4A554E);}
+.pc-vpanel .ws-vp-sec:first-child{margin-top:0;}
+.pc-vpanel .ws-vp-chip{align-items:center;gap:10px;box-sizing:border-box;min-height:60px;padding:8px 10px;border:1.5px solid var(--line,#E1DECD);border-radius:14px;background:#fff;overflow:visible;transition:border-color .14s,box-shadow .14s,background .14s;}
+.pc-vpanel .ws-vp-chip:hover{border-color:#9CCBB1;box-shadow:0 8px 18px -12px rgba(20,32,26,.35);}
+.pc-vpanel .ws-vp-chip.sel{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1px var(--green,#0C7A46),0 8px 18px -12px rgba(12,122,70,.45);background:#F0FAF4;}
+.pc-vpanel .ws-vp-chip.sig{grid-column:1/-1;border-color:#E7D08A;background:linear-gradient(135deg,#FFFDF4,#FBF3D9);}
+.pc-vpanel .ws-vp-chip.sig.sel{border-color:var(--green,#0C7A46);background:linear-gradient(135deg,#F4FBF7,#E6F5EC);}
+.pc-vpanel .ws-vp-chip.sig .ws-vp-pick b{display:inline-flex;align-items:center;gap:5px;}
+.pc-vpanel .ws-vp-play{order:-1;flex:0 0 auto;width:40px;height:40px;border:0;border-radius:50%;background:#E3F3EA;color:var(--green,#0C7A46);font-size:12px;transition:background .12s,transform .12s;}
+.pc-vpanel .ws-vp-play:hover{background:#D0EBDC;transform:scale(1.06);}
+.pc-vpanel .ws-vp-play.on{background:var(--green,#0C7A46);color:#fff;}
+.pc-vpanel .ws-vp-pick{display:grid;grid-template-columns:minmax(0,1fr) auto;align-content:center;column-gap:8px;row-gap:1px;min-height:44px;padding:0;}
+.pc-vpanel .ws-vp-pick b{grid-column:1;min-width:0;font-size:14px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pc-vpanel .ws-vp-blurb{grid-column:1;font-size:12px;line-height:1.3;}
+.pc-vpanel .ws-vp-tick{grid-column:2;grid-row:1/span 2;align-self:center;width:22px;height:22px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;display:grid;place-items:center;font-size:12px;}
+.pc-vpanel .ws-vp-rm{align-self:center;width:32px;height:32px;padding:0;border:0;border-radius:9px;}
+.pc-vpanel .ws-vp-rm.armed{width:auto;padding:0 10px;}
+.pc-vpanel .ws-vp-own{border-radius:14px;padding:12px 14px;}
+.pc-info>.pc-acts.pc-vfoot{flex-direction:row;align-items:stretch;}
+.pc-vfoot .pc-act-main{flex:1 1 auto;width:auto;}
+.pc-vfoot .pc-act{flex:0 0 auto;min-width:112px;}
 .pc-fine{margin:8px 0 0;font-size:11.5px;line-height:1.4;color:var(--ink2,#4A554E);}
 .pc-looks{display:flex;gap:9px;flex-wrap:wrap;}
-.pc-look{flex:0 0 auto;width:74px;border:0;background:transparent;padding:0;cursor:pointer;text-align:center;}
+.pc-look{flex:0 0 auto;width:74px;border:0;background:transparent;padding:0;cursor:pointer;text-align:center;transition:transform .14s;}
+.pc-look:hover{transform:translateY(-2px);}
+.pc-look.on .pc-look-nm{color:var(--green,#0C7A46);font-weight:800;}
 .pc-look-img{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:3/4;border-radius:11px;overflow:hidden;border:2px solid transparent;box-shadow:0 0 0 1px var(--line,#E1DECD);color:var(--green,#0C7A46);transition:box-shadow .12s,border-color .12s;}
 .pc-look-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 18%;display:block;}
 .pc-look.on .pc-look-img{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1px var(--green,#0C7A46);}
 .pc-look:hover .pc-look-img{box-shadow:0 0 0 1px var(--green2,#12A85E);}
 .pc-look-nm{display:block;margin-top:5px;font-size:11.5px;font-weight:700;color:var(--ink,#14201A);}
-.pc-acts{display:flex;flex-direction:column;gap:9px;}
+.pc-info>.pc-acts{flex:0 0 auto;display:flex;flex-direction:column;gap:9px;margin-top:0;padding:14px 26px 18px;background:var(--card,#FDFCF7);}
 .pc-act-main{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;text-align:center;}
 .pc-act-row{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
 .pc-act{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:9px 12px;border-radius:12px;border:1.5px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);font-size:13px;font-weight:800;text-decoration:none;cursor:pointer;transition:border-color .12s,background .12s;}
@@ -738,6 +946,7 @@ ${SPIN_STAGE_CSS}
 .pc-act.on{border-color:var(--gold,#B08526);background:#FBF3D9;color:#5C4508;}
 .pc-act:disabled{opacity:.6;cursor:default;}
 .pc-danger{display:flex;}
+.pc-danger.out{display:none;}
 .pc-del{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;padding:6px 2px;font-size:12.5px;font-weight:700;color:#9A4A42;cursor:pointer;}
 .pc-del:hover{color:#B3261E;}
 .pc-del.go{padding:7px 14px;border-radius:999px;background:#B3261E;color:#fff;font-weight:800;}
@@ -747,9 +956,37 @@ ${SPIN_STAGE_CSS}
   .pc-scrim{padding:0;align-items:stretch;}
   .pc{display:block;width:100%;height:100dvh;border-radius:0;overflow-y:auto;-webkit-overflow-scrolling:touch;}
   .pc-stage{height:min(54dvh,440px);}
-  .pc-info{overflow:visible;padding:18px 16px calc(28px + env(safe-area-inset-bottom,0px));}
+  .pc-info{display:block;overflow:visible;padding-bottom:calc(28px + env(safe-area-inset-bottom,0px));}
+  .pc-scroll{overflow:visible;padding:18px 16px 0;}
+  .pc-info>.pc-acts{margin-top:18px;padding:16px 16px 0;}
+  .pc-danger.in{display:none;}
+  .pc-info.voice{padding-bottom:0;}
+  .pc-vpanel .ws-vp{grid-template-columns:minmax(0,1fr);}
+  .pc-vtitle{font-size:23px;}
+  .pc-info>.pc-acts.pc-vfoot{position:sticky;bottom:0;z-index:3;margin-top:14px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));box-shadow:0 -12px 22px -16px rgba(20,32,26,.4);}
+  .pc-danger.out{display:flex;margin-top:14px;padding:0 16px;border-top:0;}
   .pc-name{font-size:27px;margin-right:0;}
   .pc-x{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:10px;}
 }
-@media(prefers-reduced-motion:reduce){.pc-scrim,.pc{animation:none;}.ph-face-img img{transition:none;}}
+/* a desktop has room for a bigger figure and a calmer column beside it */
+@media(min-width:1180px) and (min-height:600px){
+  .pc{width:min(1140px,100%);height:min(760px,calc(100dvh - 44px));grid-template-columns:minmax(0,47fr) minmax(0,53fr);border-radius:26px;}
+  .pc-scroll{padding:30px 40px 22px;}
+  .pc-info>.pc-acts{padding:16px 40px 22px;}
+  .pc-name{font-size:38px;margin-top:10px;}
+  .pc-vibe{font-size:15.5px;margin-top:5px;}
+  .pc-facts{margin-top:14px;gap:7px;}
+  .pc-facts span{padding:6px 12px;font-size:12.5px;}
+  .pc-about{font-size:14.5px;margin-top:14px;max-width:52ch;}
+  .pc-scroll .pc-sec{margin-top:19px;padding-top:17px;}
+  .pc-look{width:86px;}
+  .pc-x{top:16px;right:16px;width:40px;height:40px;}
+  .pc-nav{width:44px;height:44px;margin-top:-22px;}
+  .pc-nav.prev{left:14px;}
+  .pc-nav.next{right:14px;}
+  .pc-count{top:18px;left:18px;}
+  .pc-view{top:16px;}
+  .pc-view button{padding:6px 13px;font-size:12px;}
+}
+@media(prefers-reduced-motion:reduce){.pc-scrim,.pc,.pc-eq i{animation:none;}.ph-face-img img,.pc-look{transition:none;}.pc-look:hover{transform:none;}}
 `;
