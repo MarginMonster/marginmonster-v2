@@ -127,7 +127,7 @@ export default function AdminMembers() {
   const { rows, summary } = useLoaderData<typeof loader>();
   return (
     <div className="am-wrap">
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <header className="am-head">
         <h1 className="am-title">Members</h1>
         <p className="am-sub">Everyone who's signed up on EasyMode · as of {summary.generatedAt}</p>

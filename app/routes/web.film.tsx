@@ -1511,7 +1511,7 @@ export default function FilmStudio() {
 
   return (
     <div className="fs-wrap">
-      <style>{FS_STYLE}</style>
+      <style dangerouslySetInnerHTML={{ __html: FS_STYLE }} />
 
       {/* The "Make a movie" hero shows only while picking a format — once a format is chosen, its own
           banner (fs-hero) REPLACES it so there aren't two stacked headers. */}

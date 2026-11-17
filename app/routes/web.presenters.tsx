@@ -1,6 +1,7 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { Link, useFetcher, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type ShouldRevalidateFunction } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
@@ -45,8 +46,8 @@ const DECADE: Record<string, string> = { twenties: "20s", thirties: "30s", forti
 /** "a gentle East Asian woman in her mid twenties with…" → "Mid 20s". */
 function ageText(a: Avatar): string {
   const m = /\b(early|mid|late)\s+(twenties|thirties|forties|fifties|sixties|seventies)\b/i.exec(a.desc);
-  if (m) return `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${DECADE[m[2].toLowerCase()]}`;
-  return a.ageBand === "young" ? "20s" : a.ageBand === "mature" ? "50s+" : "30s–40s";
+  // only an age the description states — a guessed band reads as a fact ("30s–40s" on an ogre mascot)
+  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${DECADE[m[2].toLowerCase()]}` : "";
 }
 // The cast's descriptions were written as prompts: "a photorealistic friendly ogre" is a note to the
 // picture model, not something to say about them.
@@ -244,6 +245,9 @@ export default function PresenterHub() {
   const openIdx = who ? cast.findIndex((c) => c.id === who) : -1;
   const open = openIdx >= 0 ? cast[openIdx] : null;
   const cleanup = useFetcher<Saved>();
+  // The character view is portaled to <body> (below), which only exists in the browser.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // A presenter whose cut-outs or 3D views are still being made: look again until they land — every
   // 5 seconds for the first two minutes, then every 15 (a presenter's four 3D views take about ten
@@ -273,7 +277,7 @@ export default function PresenterHub() {
 
   return (
     <div className="ph-wrap">
-      <style>{PH_STYLE}</style>
+      <style dangerouslySetInnerHTML={{ __html: PH_STYLE }} />
       <div className="ph-cinehead">
         <span className="ph-cinehead-bg" aria-hidden="true">
           <span className="ph-cinehead-rose" />
@@ -343,7 +347,10 @@ export default function PresenterHub() {
         })}
       </div>
 
-      {open && (
+      {/* Portaled to document.body so it escapes .wb-main's stacking context: inside it, the scrim's
+          z-index only counts against the page, and the site header (z-index 30) showed through the top
+          of the view — on a phone, straight across the stage and its close button. */}
+      {open && mounted ? createPortal(
         <CharacterView
           key={open.id}
           c={open}
@@ -355,8 +362,9 @@ export default function PresenterHub() {
           onClose={close}
           onPrev={() => go(openIdx - 1)}
           onNext={() => go(openIdx + 1)}
-        />
-      )}
+        />,
+        document.body,
+      ) : null}
     </div>
   );
 }
@@ -649,7 +657,7 @@ ${SPIN_STAGE_CSS}
 @media(max-width:640px){.ph-grid{grid-template-columns:repeat(3,minmax(0,1fr));}.ph-forge,.ph-filmcta{flex-direction:column;align-items:flex-start;}.ph-forge-go,.ph-filmcta-go{align-self:stretch;justify-content:center;}}
 
 /* ---- the character view ---- */
-.pc-scrim{position:fixed;inset:0;z-index:10500;background:rgba(11,20,15,.62);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:18px;animation:pcfade .16s ease;}
+.pc-scrim{font-family:Inter,-apple-system,sans-serif;color:var(--ink,#14201A);position:fixed;inset:0;z-index:10500;background:rgba(11,20,15,.62);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:18px;animation:pcfade .16s ease;}
 @keyframes pcfade{from{opacity:0}}
 .pc{position:relative;display:grid;grid-template-columns:minmax(0,45fr) minmax(0,55fr);width:min(940px,100%);height:min(660px,calc(100dvh - 36px));background:var(--card,#FDFCF7);border-radius:22px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.42);animation:pcrise .22s cubic-bezier(.2,.8,.2,1);}
 @keyframes pcrise{from{opacity:0;transform:translateY(14px) scale(.985)}}

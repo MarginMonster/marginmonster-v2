@@ -132,7 +132,7 @@ export default function DevDashboard() {
   const { users, money: m, usage, generatedAt } = useLoaderData<typeof loader>();
   return (
     <div className="dd-wrap">
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <header className="dd-head">
         <h1 className="dd-title">Dev dashboard</h1>
         <p className="dd-sub">easymodeapp.com · as of {generatedAt} · <Link to="/admin/members">members →</Link></p>

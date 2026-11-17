@@ -163,7 +163,7 @@ export default function SeedBeta() {
 
   return (
     <div className="sb-wrap">
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <h1 className="sb-h1">Beta tester logins</h1>
       <p className="sb-sub">
         Each email below becomes its own <b>private</b> account — separate gallery, tokens and work — with an active

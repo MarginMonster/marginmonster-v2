@@ -147,7 +147,7 @@ export default function AdminMemberGenerations() {
   const [active, setActive] = useState<null | (typeof tiles)[number]>(null);
   return (
     <div className="mg-wrap">
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <header className="mg-head">
         <Link to="/admin/members" className="mg-back">← Members</Link>
         <h1 className="mg-title">{member.name === "—" ? member.email : member.name}</h1>

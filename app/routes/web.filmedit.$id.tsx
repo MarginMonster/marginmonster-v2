@@ -100,7 +100,7 @@ export default function FilmEditor() {
 
   return (
     <div className="se-wrap">
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="se-top">
         <Link to="/web/archive" className="se-back">← {`Archive`}</Link>
         <div className="se-ttl">{d.title}</div>
