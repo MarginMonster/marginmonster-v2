@@ -6,6 +6,7 @@
  * server-side capability gates, same worker pipelines. Product input =
  * name + photo (upload, URL, or scraped from any store's product page). */
 
+import { HeroVideo } from "../components/HeroVideo";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { trimToWord } from "../lib/text-trim";
 import { Form, Link, useActionData, useFetcher, useLoaderData, useNavigation, useOutletContext, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
@@ -3702,7 +3703,7 @@ export default function WebStudio() {
         <span className="ws-cinehead-bg" aria-hidden="true">
           <span className="ws-cinehead-rose b" />
           <span className="ws-cinehead-media">
-            <img key={casual ? "c" : "m"} className="ws-cinehead-img" src={`/landing/${casual ? "creator" : "marketing"}-hero.jpg?v=5`} alt="" />
+            <HeroVideo name={casual ? "creator" : "marketing"} still={5} clip={5} className="ws-cinehead-img" />
           </span>
         </span>
         <div className="ws-cinehead-copy">
@@ -6225,12 +6226,10 @@ ${VOICE_UI_CSS}
 .ws-cta:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.04)}
 .ws-cta:hover:not(:disabled)::after{animation-duration:7s}
 .ws-cta:active:not(:disabled){transform:translateY(0);filter:brightness(.98)}
-/* Not ready yet (nothing described, or not enough tokens): the same two buttons in OUTLINE — each keeps
-   its colour in its rule, its name and its rosette — instead of a washed-out copy of the filled ones. */
-.ws-cta:disabled{cursor:not-allowed;background:var(--card,#FDFCF7);box-shadow:inset 0 0 0 1.5px var(--cta-rule)}
-.ws-cta-pro:disabled{color:#8A6A16;--cta-rule:rgba(211,166,58,.75);--cta-rose:#D3A63A;--cta-rose-o:.42}
-.ws-cta-ultra:disabled{color:#0C7A46;--cta-rule:rgba(12,122,70,.5);--cta-rose:#0C7A46;--cta-rose-o:.26}
-.ws-cta:disabled .ws-cta-c{background:rgba(20,32,26,.06);color:var(--ink2,#4A554E)}
+/* Not ready yet (nothing described, or not enough tokens): the SAME filled, rosetted button, a shade
+   quieter and without its lift. (An outlined version was tried and shown to the owner beside the filled
+   one; he pointed at the filled row: "Top options".) */
+.ws-cta:disabled{cursor:not-allowed;box-shadow:none;filter:saturate(.72) brightness(1.03);opacity:.74}
 @keyframes ws-ctaspin{to{transform:translate(-50%,-50%) rotate(360deg)}}
 .ws-cta b{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:16px;line-height:1}
 .ws-cta-c{position:relative;display:inline-block;margin-top:7px;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 11px}

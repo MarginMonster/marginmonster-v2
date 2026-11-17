@@ -3,6 +3,7 @@
  * fullscreen viewer, Keep + 30-day expiry countdown, delete, remix, blog
  * read/export, caption preview before posting, downloads, wallet readout. */
 
+import { HeroVideo } from "../components/HeroVideo";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
@@ -800,7 +801,8 @@ const A_KIND: Record<string, ATab> = { VIDEO_AD: "video", IMAGE_AD: "image", AUD
 // deliberately different weights of the same green.
 const WA_CSS = `
 .wa-wallet{font-size:13px;font-weight:800;color:var(--green,#0C7A46);margin:0 0 12px;}
-.wa-shelfnote{font-size:12.5px;color:var(--ink2,#5b6b61);margin:-4px 0 14px;}
+.wa-shelfnote{display:flex;align-items:flex-start;gap:6px;font-size:12px;line-height:1.45;color:var(--ink2,#5b6b61);margin:0 0 14px;}
+.wa-shelfnote svg{flex:0 0 auto;margin-top:2px;}
 .wa-poster{position:relative;display:block;width:100%;padding:0;border:0;background:#0b0f0d;cursor:pointer;font:inherit;color:inherit;}
 .wa-poster video,.wa-poster img{width:100%;aspect-ratio:4/5;height:auto;object-fit:cover;display:block;pointer-events:none;}
 .wa-play{position:absolute;inset:0;display:grid;place-items:center;font-size:32px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.65);pointer-events:none;}
@@ -1041,7 +1043,21 @@ const WA_CSS = `
 /* Quick-filter chips — a light outlined pill row that sifts the current tab
    ("All / Clearing soon / Kept"). Lit chip reuses the same green as the tabs so
    the whole header reads as one control surface. */
-.wa-filters{display:flex;flex-wrap:wrap;gap:8px;margin:-4px 0 14px;}
+/* ---- the top of the shelf: tabs · filters + count · one quiet note ---- */
+.ws-tabs.wa-typebar{justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto;gap:8px;margin:0 0 12px;padding:2px 0 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.ws-tabs.wa-typebar::-webkit-scrollbar{display:none;}
+.wa-typebar .ws-tab{flex:0 0 auto;white-space:nowrap;}
+.wa-bar{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;margin:0 0 10px;min-height:0;}
+.wa-bar:empty{display:none;}
+.wa-count{margin:0;font-size:12.5px;color:var(--ink2,#5b6b61);}
+.wa-count a{font-weight:700;color:var(--green,#0C7A46);text-decoration:none;white-space:nowrap;}
+.wa-count a:hover{text-decoration:underline;}
+.wa-filters{display:flex;flex-wrap:wrap;gap:8px;margin:0;}
+@media(max-width:640px){
+  /* edge to edge, so the last tab peeks in and says "there is more this way" */
+  .ws-tabs.wa-typebar{margin-inline:-16px;padding-inline:16px;}
+  .wa-typebar .ws-tab{padding:9px 14px;}
+}
 .wa-filterchip{display:inline-flex;align-items:center;gap:5px;font-family:Poppins,sans-serif;font-weight:700;font-size:12.5px;color:var(--ink2,#4A554E);background:#fff;border:1px solid var(--line,#E1DECD);border-radius:999px;padding:6px 13px;cursor:pointer;line-height:1;transition:background .12s,color .12s,border-color .12s;}
 .wa-filterchip:hover{color:var(--ink,#14201A);border-color:#CFD6C5;}
 .wa-filterchip.on{background:#EAF6EF;color:var(--green,#0C7A46);border-color:#BFE2CD;}
@@ -1323,7 +1339,7 @@ export default function WebArchive() {
       <div className="ar-cinehead">
         <span className="ar-cinehead-bg" aria-hidden="true">
           <span className="ar-cinehead-rose" />
-          <span className="ar-cinehead-media"><img className="ar-cinehead-img" src="/landing/archive-hero.jpg?v=4" alt="" loading="lazy" /></span>
+          <span className="ar-cinehead-media"><HeroVideo name="archive" still={4} clip={5} className="ar-cinehead-img" /></span>
         </span>
         <div className="ar-cinehead-copy">
           <span className="ar-cinehead-eyebrow"><Ico n="box" size={13} /> {t("Your library")}</span>
@@ -1337,7 +1353,7 @@ export default function WebArchive() {
         </div>
       </div>
       {!canPost && <p className="wb-note" style={{ marginTop: -14, marginBottom: 18 }}>{t("Want one-tap posting?")} <Link to="/web/connect">{t("Link your socials")}</Link>.</p>}
-      <p className="wa-wallet">{hasPlan ? t("Wallet: {n} tokens", { n: tokens.toLocaleString("en-US") }) : t("Pick a plan to generate.")}</p>
+      {!hasPlan && <p className="wa-wallet">{t("Pick a plan to generate.")}</p>}
       {err && !viewer && <div className="wb-err">{err}</div>}
       {ok && <div className="wb-ok">{ok}</div>}
       {remixed && (
@@ -1345,7 +1361,7 @@ export default function WebArchive() {
           <Ico n="sparkle" /> {remixFree ? t("Making it again, on us") : t("Remixing")} — {t("a fresh {kind} is on the way. It'll land on this shelf in a minute.", { kind: remixed === "blog" ? t("article") : remixed })}{remixFree ? t(" No tokens spent.") : ""}
         </div>
       )}
-      <div className="ws-tabs" style={{ marginBottom: 16 }}>
+      <div className="ws-tabs wa-typebar">
         {([["video", "video", t("Videos")], ["image", "image", t("Images")], ["music", "music", t("Music")], ["blog", "article", t("Articles")], ...((totals?.stills ?? 0) > 0 ? [["stills", "film", t("Scenes & Portraits")]] : [])] as [ATab, string, string][]).map(([k, icon, label]) => {
           // Count the whole library, not the slice we happened to render —
           // this used to read off `assets`, so a truncated page under-reported
@@ -1363,40 +1379,44 @@ export default function WebArchive() {
           doom-scroll. "Clearing soon" surfaces exactly the un-kept media on the
           30-day clock (what a merchant comes here to rescue); "Kept" is the
           saved shelf. Only shows when there's actually something to sift. */}
-      {canFilter && (
-        <div className="wa-filters" role="group" aria-label={t("Filter pieces")}>
-          <button type="button" className={`wa-filterchip${filter === "all" ? " on" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>{t("All")} · {shelf.length}</button>
-          {clearingCount > 0 && (
-            <button type="button" className={`wa-filterchip${filter === "clearing" ? " on" : ""}`} aria-pressed={filter === "clearing"} onClick={() => setFilter("clearing")}><Ico n="hourglass" /> {t("Clearing soon")} · {clearingCount}</button>
-          )}
-          {keptCount > 0 && (
-            <button type="button" className={`wa-filterchip${filter === "kept" ? " on" : ""}`} aria-pressed={filter === "kept"} onClick={() => setFilter("kept")}><Ico n="heart" /> {t("Kept")} · {keptCount}</button>
-          )}
-        </div>
-      )}
+      {/* One line under the tabs: the quick filters on the left, how much is showing (and the way to
+          older pieces) on the right — they used to be four separate rows stacked down the page. */}
+      <div className="wa-bar">
+        {canFilter && (
+          <div className="wa-filters" role="group" aria-label={t("Filter pieces")}>
+            <button type="button" className={`wa-filterchip${filter === "all" ? " on" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>{t("All")} · {shelf.length}</button>
+            {clearingCount > 0 && (
+              <button type="button" className={`wa-filterchip${filter === "clearing" ? " on" : ""}`} aria-pressed={filter === "clearing"} onClick={() => setFilter("clearing")}><Ico n="hourglass" /> {t("Clearing soon")} · {clearingCount}</button>
+            )}
+            {keptCount > 0 && (
+              <button type="button" className={`wa-filterchip${filter === "kept" ? " on" : ""}`} aria-pressed={filter === "kept"} onClick={() => setFilter("kept")}><Ico n="heart" /> {t("Kept")} · {keptCount}</button>
+            )}
+          </div>
+        )}
+        {/* Only when there is genuinely more of THIS type to load. The library
+            can be past the page size while the open tab is already complete —
+            the Videos tab read “Showing 9 of 9 videos. Show older pieces→”. */}
+        {nextShow != null && shelf.length < tabTotal && (
+          // The oldest pieces are the ones nearest the 30-day clear, so "older"
+          // must stay reachable — Keep is only available from the viewer here.
+          //
+          // Counted for THIS tab, not the whole library. The page loads the
+          // newest N across every type and the tabs then filter that slice in
+          // the browser, so the tab label ("Images · 77") and the shelf under it
+          // disagreed with no explanation, and the note said "60 of 87" on a tab
+          // showing neither number.
+          <p className="wa-count">
+            {shelf.length === 0
+              // None of THIS type are in the recent window (older ones got crowded
+              // out by newer pieces of other types) — don't pretend there are none.
+              ? <>{t("Your")} <b>{tabTotal}</b> {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : t(tab + "s")} {t("are further back.")}{" "}</>
+              : <>{t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}{tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : t(tab + "s")}.{" "}</>}
+            <Link to={`?show=${nextShow}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
+          </p>
+        )}
+      </div>
       {(tab === "video" || tab === "image") && shelf.some((a) => a.daysLeft != null) && (
         <p className="wa-shelfnote"><Ico n="hourglass" /> {t("Un-kept videos & photos clear after 30 days — open a piece and hit")} <b>{t("Keep")}</b> {t("to save it for good.")}</p>
-      )}
-      {/* Only when there is genuinely more of THIS type to load. The library
-          can be past the page size while the open tab is already complete —
-          the Videos tab read “Showing 9 of 9 videos. Show older pieces→”. */}
-      {nextShow != null && shelf.length < tabTotal && (
-        // The oldest pieces are the ones nearest the 30-day clear, so "older"
-        // must stay reachable — Keep is only available from the viewer here.
-        //
-        // Counted for THIS tab, not the whole library. The page loads the
-        // newest N across every type and the tabs then filter that slice in
-        // the browser, so the tab label ("Images · 77") and the shelf under it
-        // disagreed with no explanation, and the note said "60 of 87" on a tab
-        // showing neither number.
-        <p className="wa-shelfnote">
-          {shelf.length === 0
-            // None of THIS type are in the recent window (older ones got crowded
-            // out by newer pieces of other types) — don't pretend there are none.
-            ? <>{t("Your")} <b>{tabTotal}</b> {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : t(tab + "s")} {t("are further back.")}{" "}</>
-            : <>{t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}{tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : t(tab + "s")}.{" "}</>}
-          <Link to={`?show=${nextShow}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
-        </p>
       )}
       {/* "Yet — make one" only when there are GENUINELY none of this type —
           tabTotal === 0 — not merely none in the current page (which is the
