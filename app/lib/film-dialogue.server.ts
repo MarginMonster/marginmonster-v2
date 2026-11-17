@@ -30,6 +30,7 @@ import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { clampKlingPrompt, clipRules, fitClipPrompt } from "./clip-prompt";
 import { isNoopTrim, parseSilences, planClipTrim, SILENCE_FILTER } from "./clip-trim";
+import { letterboxCrop, parseCropdetect } from "./letterbox";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { clipSecondsFor } from "./speech-meter";
@@ -146,6 +147,31 @@ export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: st
   if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error("[regen] clip did not download");
   const trimmed = await trimTrailingSilence(rawPath, { chained });
   return await collapseInteriorPause(trimmed);
+}
+
+/** An image model asked for a "cinematic" frame sometimes returns it with black bars baked in, and a
+ *  film seeded from that frame carries the bars through every shot. If `relUrl` (a /renders still) is
+ *  letterboxed, crop to the picture and scale back to the frame's own size — a slight zoom, no bars.
+ *  Returns the same URL when there is nothing to fix or anything goes wrong. */
+async function removeLetterbox(relUrl: string | null): Promise<string | null> {
+  if (!relUrl) return relUrl;
+  try {
+    const local = relUrl.startsWith("/renders/") ? path.join(RENDERS(), path.basename(relUrl)) : "";
+    if (!local || !fs.existsSync(local)) return relUrl;
+    const probe = await runFfmpeg(["-loop", "1", "-i", local, "-frames:v", "3", "-vf", "cropdetect=limit=24:round=2:reset=0", "-f", "null", "-"]);
+    const found = parseCropdetect(probe.stderr || "");
+    const crop = found ? letterboxCrop(found.frame, found.crop) : null;
+    if (!found || !crop) return relUrl;
+    const { w: W, h: H } = found.frame;
+    const name = `img-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.jpg`;
+    const out = path.join(RENDERS(), name);
+    const vf = `crop=${crop.w}:${crop.h}:${crop.x}:${crop.y},scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`;
+    const r = await runFfmpeg(["-y", "-i", local, "-vf", vf, "-frames:v", "1", "-q:v", "2", out]);
+    if (r.status !== 0 || !fs.existsSync(out) || fs.statSync(out).size < 5_000) return relUrl;
+    try { await mirrorRender(name, fs.readFileSync(out)); } catch { /* non-fatal */ }
+    console.log(`[testmovie] seed frame came back with black bars (${found.frame.h - crop.h}px top+bottom, ${found.frame.w - crop.w}px sides) — cropped out`);
+    return `/renders/${name}`;
+  } catch { return relUrl; }
 }
 
 /** Grab the ACTUAL last frame of a rendered clip as a clean still (served from
@@ -619,7 +645,7 @@ export async function generateTestMovie(opts: {
     let url: string | null = null;
     let castOk = true;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const tryUrl = await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, setting: cleanSetting(where), style: twoStyle, aspect });
+      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, setting: cleanSetting(where), style: twoStyle, aspect }));
       if (!tryUrl) continue;
       url = tryUrl;
       castOk = true;
@@ -802,10 +828,10 @@ export async function generateTestMovie(opts: {
       if (tr === "location") {
         seedAbs = abs(master.url); sinceAnchor = 0; if (i > 0) softSeams.add(i);
       } else if (tr === "angle") {
-        const reangled = await renderSceneSeedChained(
+        const reangled = await removeLetterbox(await renderSceneSeedChained(
           `${whereAt[i]}. A ${shotAt[i]} of the same scene — the identical room, lighting, wardrobe and people, only the camera angle changes. ${NO_TEXT}`,
           abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
-        );
+        ));
         seedAbs = abs(reangled) || abs(prevFrameUrl) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
       } else if (sinceAnchor >= ANCHOR_EVERY) {
         // RE-ANCHOR as an INTENTIONAL camera move (owner's call): still reseed from the
@@ -815,10 +841,10 @@ export async function generateTestMovie(opts: {
         // fit ANY setting, and the master image keeps the identical room, lighting,
         // wardrobe and faces, so the angle change is grounded in the real scene.
         const ang = ANCHOR_ANGLES[anchorCount++ % ANCHOR_ANGLES.length];
-        const reangled = await renderSceneSeedChained(
+        const reangled = await removeLetterbox(await renderSceneSeedChained(
           `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people in the same positions, ONLY the camera angle changes. ${NO_TEXT}`,
           abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
-        );
+        ));
         seedAbs = abs(reangled) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
       } else {
         seedAbs = abs(prevFrameUrl) || abs(master.url); sinceAnchor++;
