@@ -6209,27 +6209,32 @@ ${VOICE_UI_CSS}
    like legos". */
 .ws-cta2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
 .ws-ctacol{min-width:0;display:flex;flex-direction:column;gap:6px}
-.ws-cta{position:relative;overflow:hidden;box-sizing:border-box;width:100%;min-height:66px;border-radius:14px;padding:12px 10px;font:inherit;cursor:pointer;text-align:center;border:0;display:block;transition:filter .12s,transform .12s,box-shadow .12s,background .16s,color .16s;box-shadow:0 2px 7px rgba(20,32,26,.13),inset 0 1px 0 rgba(255,255,255,.18)}
-.ws-cta::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:118px;height:118px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.17;animation:ws-ctaspin 90s linear infinite;pointer-events:none}
-@keyframes ws-ctaspin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+/* The make buttons wear the app's own button dress (see .wb-btn in web.tsx): a hairline ruled inside the
+   edge, and the engine-turned rosette turning slowly where it bleeds off the right. They were flat
+   gradient blocks with the rosette as a faint centred watermark — "need rosettes, better brand tie in". */
+.ws-cta{position:relative;isolation:isolate;overflow:hidden;box-sizing:border-box;width:100%;min-height:70px;border-radius:14px;padding:13px 10px;font:inherit;cursor:pointer;text-align:center;border:0;display:block;transition:filter .12s,transform .12s,box-shadow .12s}
+.ws-cta::before{content:"";position:absolute;inset:4px;border-radius:10px;border:1px solid var(--cta-rule);pointer-events:none}
+.ws-cta::after{content:"";position:absolute;z-index:-1;top:50%;right:-128px;width:196px;height:196px;margin-top:-98px;pointer-events:none;background:var(--cta-rose);opacity:var(--cta-rose-o,.6);-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;animation:ws-ctaturn 60s linear infinite}
+@keyframes ws-ctaturn{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.ws-cta::after{animation:none}}
-.ws-cta:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.04);box-shadow:0 5px 13px rgba(20,32,26,.2),inset 0 1px 0 rgba(255,255,255,.18)}
-.ws-cta:hover:not(:disabled)::after{animation-duration:3.5s}
-.ws-cta:active:not(:disabled){transform:translateY(0);box-shadow:0 1px 4px rgba(20,32,26,.16),inset 0 1px 0 rgba(255,255,255,.18)}
-/* Not ready yet (nothing described, or not enough tokens): the same two buttons in OUTLINE — each
-   keeps its colour in its edge and its name — instead of a washed-out copy of the filled ones. */
-.ws-cta:disabled{opacity:1;cursor:not-allowed;background:var(--card,#FDFCF7)}
-.ws-cta:disabled::after{display:none}
-.ws-cta-pro:disabled{color:#8A6A16;box-shadow:inset 0 0 0 1.5px rgba(211,166,58,.6)}
-.ws-cta-ultra:disabled{color:#0C7A46;box-shadow:inset 0 0 0 1.5px rgba(12,122,70,.42)}
+.ws-cta-ultra{--cta-rule:rgba(255,210,74,.46);--cta-rose:#FFD24A;--cta-rose-o:.62;color:#FBF6E6;background:linear-gradient(100deg,#12A85E 30%,#0A6A3D 74%,#075530),linear-gradient(165deg,#12A85E,#0B6B3E);box-shadow:0 4px 12px rgba(12,122,70,.28)}
+.ws-cta-ultra .ws-cta-c{background:rgba(0,0,0,.26)}
+/* the gold one: the same dress cut in bronze, so the rosette reads as engraving on the metal */
+.ws-cta-pro{--cta-rule:rgba(92,69,8,.4);--cta-rose:#6B4E0A;--cta-rose-o:.44;color:#3A2C06;background:linear-gradient(100deg,#F4E2A0 26%,#DFB955 70%,#C99A2E);box-shadow:0 4px 12px rgba(176,133,38,.3)}
+.ws-cta-pro .ws-cta-c{background:rgba(58,44,6,.16)}
+.ws-cta:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.04)}
+.ws-cta:hover:not(:disabled)::after{animation-duration:7s}
+.ws-cta:active:not(:disabled){transform:translateY(0);filter:brightness(.98)}
+/* Not ready yet (nothing described, or not enough tokens): the same two buttons in OUTLINE — each keeps
+   its colour in its rule, its name and its rosette — instead of a washed-out copy of the filled ones. */
+.ws-cta:disabled{cursor:not-allowed;background:var(--card,#FDFCF7);box-shadow:inset 0 0 0 1.5px var(--cta-rule)}
+.ws-cta-pro:disabled{color:#8A6A16;--cta-rule:rgba(211,166,58,.75);--cta-rose:#D3A63A;--cta-rose-o:.42}
+.ws-cta-ultra:disabled{color:#0C7A46;--cta-rule:rgba(12,122,70,.5);--cta-rose:#0C7A46;--cta-rose-o:.26}
 .ws-cta:disabled .ws-cta-c{background:rgba(20,32,26,.06);color:var(--ink2,#4A554E)}
+@keyframes ws-ctaspin{to{transform:translate(-50%,-50%) rotate(360deg)}}
 .ws-cta b{position:relative;display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:16px;line-height:1}
 .ws-cta-c{position:relative;display:inline-block;margin-top:7px;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 11px}
 .ws-cta-d{display:block;font-size:11.5px;line-height:1.35;color:var(--ink2,#5A665E);padding:0 3px;text-align:center}
-.ws-cta-pro{background:linear-gradient(158deg,#F0D98A,#D3A63A);color:#3A2C06}
-.ws-cta-pro .ws-cta-c{background:rgba(58,44,6,.16)}
-.ws-cta-ultra{background:linear-gradient(158deg,#13A95E,#0A5F38);color:#FBF6E6}
-.ws-cta-ultra .ws-cta-c{background:rgba(0,0,0,.22)}
 @media(max-width:380px){.ws-cta2{gap:8px}.ws-cta{padding:11px 6px}.ws-cta-c{font-size:10.5px;padding:2px 8px}.ws-cta-d{font-size:11px}}
 /* Format category chips — turn a 40-tile wall into a short, browsable menu.
    Wrap on desktop (all chips fit); scroll sideways on a phone so they never

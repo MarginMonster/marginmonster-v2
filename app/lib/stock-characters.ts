@@ -16,19 +16,28 @@ import type { Avatar } from "./avatars";
  *
  * In a file of its own, importing nothing but a type, so the tests can read it (avatars.ts imports JSON). */
 
-/** How each character's voice is PERFORMED — what the owner approved by ear on 2026-11-17 after
- *  rejecting pitch-shifted stock voices outright. Engine: ElevenLabs v3 (Replicate `elevenlabs/v3`):
- *  a named voice, acting directions as [tags] before/after the line, low stability = more expressive.
- *  The approved clips are public/voice-samples/characters/<id>.mp3.
+/** How each character's voice is PERFORMED — what the owner picked by ear on 2026-11-17, after throwing
+ *  out pitch-shifted stock voices ("ass cheeks with syrup").
+ *
+ *  Engine: ElevenLabs v3 (Replicate `elevenlabs/v3`) — a named voice, ACTING directions as [tags] inside the
+ *  line, low stability = a bigger performance. The cartoon voices are used as they come.
+ *  A monster's clean take "still missed the mark"; what he picked is the take put through a CREATURE
+ *  CHAIN, the way a film does it (ffmpeg, 44.1 kHz; "big(r)" = asetrate=44100*r,aresample=44100,atempo=1/r,
+ *  which lowers pitch AND formants — a bigger throat, not a slowed-down voice):
+ *    hollow  big(0.88), asubboost, aecho 90|180|270 ms, lowpass 3.2 kHz
+ *    feral2  big(0.84) +5 dB into asoftclip(atan), mixed with an octave-down copy (lowpass 700 Hz, 0.7), chorus
+ *    ghost   highpass 150 Hz; the dry line + a reverse-reverb swell (areverse, aecho 350|700 ms, areverse)
+ *            + a whisper double 40 ms late and 3 % up at 0.35; then aecho 180|420 ms
+ *  The picked clips are public/voice-samples/characters/<id>.mp3. A transcriber gets every word of each.
  *  ⚠ Not wired into any pipeline yet — until it is, nothing in the app may claim a character
  *  "speaks in" this voice. */
-export const CHARACTER_ACTING: Record<string, { voice: string; before: string; after?: string; stability: number; style: number; speed: number }> = {
+export const CHARACTER_ACTING: Record<string, { voice: string; before: string; after?: string; stability: number; style: number; speed: number; chain?: "hollow" | "feral2" | "ghost" }> = {
   pip: { voice: "Kuon", before: "[excited] [giggling]", stability: 0.3, style: 0.7, speed: 1.08 },
   dot: { voice: "Kuon", before: "[childlike] [amazed] [giggles]", stability: 0.3, style: 0.8, speed: 1.0 },
   coco: { voice: "Austin", before: "[sleepy] [slow drawl]", after: "[yawns]", stability: 0.35, style: 0.6, speed: 0.9 },
-  howl: { voice: "Reginald", before: "[snarling] [menacing]", after: "[growls]", stability: 0.25, style: 0.9, speed: 0.92 },
-  mary: { voice: "Hope", before: "[whispering] [sorrowful]", after: "[sighs]", stability: 0.3, style: 0.8, speed: 0.9 },
-  keeper: { voice: "Reginald", before: "[deep] [slow] [menacing whisper]", stability: 0.3, style: 0.8, speed: 0.85 },
+  howl: { voice: "Reginald", before: "[guttural] [feral snarl]", after: "[roars]", stability: 0.15, style: 1.0, speed: 0.9, chain: "feral2" },
+  mary: { voice: "Hope", before: "[ghostly] [breathy whisper] [weeping]", after: "[soft sob]", stability: 0.15, style: 1.0, speed: 0.85, chain: "ghost" },
+  keeper: { voice: "Reginald", before: "[deep] [slow] [menacing whisper]", stability: 0.3, style: 0.8, speed: 0.85, chain: "hollow" },
 };
 export const STOCK_CHARACTERS: Avatar[] = [
   {

@@ -19,9 +19,9 @@ import { useEffect, useRef, useState } from "react";
 import { spinFrame, type Spin } from "../lib/presenter-kits";
 import { nearestLoaded, spinLoadOrder } from "../lib/spin-frames";
 
-/** How long one unprompted turn takes — the same for every figure. (15 s read as sluggish to the
- *  owner on first sight: "needs to be slightly faster".) */
-const TURN_MS = 11000;
+/** How long one unprompted turn takes — the same for every figure. Set by the owner's eye: 15 s read
+ *  as sluggish ("needs to be slightly faster"), and so did 11 ("3d model slightly faster"). */
+const TURN_MS = 8000;
 /** How long after the last touch the slow turn waits before it carries on. */
 const RESUME_MS = 2200;
 
