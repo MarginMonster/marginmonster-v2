@@ -14,7 +14,7 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { editFilmShot, type ShotOp } from "../lib/film-edit.server";
 
-export const meta: MetaFunction = () => [{ title: "Shot Editor · EASYMODE" }];
+export const meta: MetaFunction = () => [{ title: "Shot Editor · EasyMode" }];
 
 type Shot = { n: number; url: string; speaker: string; line: string; hasSeed: boolean };
 

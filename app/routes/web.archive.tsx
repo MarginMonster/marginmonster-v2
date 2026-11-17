@@ -1049,6 +1049,10 @@ const WA_CSS = `
 .wa-typebar .ws-tab{flex:0 0 auto;white-space:nowrap;}
 .wa-bar{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;margin:0 0 10px;min-height:0;}
 .wa-bar:empty{display:none;}
+.wa-autonote{display:flex;align-items:flex-start;gap:7px;margin:-4px 2px 14px;font-size:12.5px;line-height:1.45;color:var(--ink2,#5b6b61);}
+.wa-autonote svg{flex:0 0 auto;margin-top:3px;color:var(--green,#0C7A46);}
+.wa-autonote a{font-weight:800;color:var(--green,#0C7A46);text-decoration:none;}
+.wa-autonote a:hover{text-decoration:underline;}
 .wa-count{margin:0;font-size:12.5px;color:var(--ink2,#5b6b61);}
 .wa-count a{font-weight:700;color:var(--green,#0C7A46);text-decoration:none;white-space:nowrap;}
 .wa-count a:hover{text-decoration:underline;}
@@ -1353,8 +1357,8 @@ export default function WebArchive() {
         </div>
       </div>
       {!canPost
-        ? <p className="wb-note" style={{ marginTop: -6, marginBottom: 14 }}>{t("Want one-tap posting?")} <Link to="/web/connect">{t("Link your socials")}</Link> · <Link to="/web/autopost">{t("See everything that can post itself")}</Link></p>
-        : <p className="wb-note" style={{ marginTop: -6, marginBottom: 14 }}><Link to="/web/autopost">{t("Auto-post")}</Link> — {t("channels and campaigns that post themselves.")}</p>}
+        ? <p className="wa-autonote"><Ico n="rocket" size={13} /> <span>{t("Want one-tap posting?")} <Link to="/web/connect">{t("Link your socials")}</Link> · <Link to="/web/autopost">{t("See everything that can post itself")}</Link></span></p>
+        : <p className="wa-autonote"><Ico n="rocket" size={13} /> <span><Link to="/web/autopost">{t("Auto-post")}</Link> — {t("channels and campaigns that post themselves.")}</span></p>}
       {!hasPlan && <p className="wa-wallet">{t("Pick a plan to generate.")}</p>}
       {err && !viewer && <div className="wb-err">{err}</div>}
       {ok && <div className="wb-ok">{ok}</div>}
@@ -1368,8 +1372,10 @@ export default function WebArchive() {
           // Count the whole library, not the slice we happened to render —
           // this used to read off `assets`, so a truncated page under-reported
           // how much the merchant actually owned.
+          // …plus what is being made right now (it is about to be a piece). A job that FAILED is not one:
+          // counting its card made the tab say "Videos · 115" over a shelf that said "57 of 111".
           const n = (totals?.[k] ?? assets.filter((a) => A_KIND[a.type] === k).length)
-            + cookingCards.filter((j) => j.kind === k).length;
+            + cookingCards.filter((j) => j.kind === k && j.status === "generating").length;
           return (
             <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setFilter("all"); }}>
               <Ico n={icon} /> {label} · {n}

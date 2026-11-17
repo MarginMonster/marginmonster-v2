@@ -1,12 +1,13 @@
 import { json, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { Link, useLoaderData } from "@remix-run/react";
 import { Ico } from "../lib/icons";
+import { HeroVideo } from "../components/HeroVideo";
 import { useT } from "../lib/ui-lang";
 import { db } from "../db.server";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { linkedFromCache, socialProviderEnabled } from "../lib/social-provider.server";
 
-export const meta: MetaFunction = () => [{ title: "Auto-post · EASYMODE" }];
+export const meta: MetaFunction = () => [{ title: "Auto-post · EasyMode" }];
 
 /* Auto-post — the way in to everything that posts by itself.
  *
@@ -22,18 +23,24 @@ export const meta: MetaFunction = () => [{ title: "Auto-post · EASYMODE" }];
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const linked = socialProviderEnabled() ? linkedFromCache(shop.socialsJson) : [];
-  const [channels, productChannels, campaigns] = await Promise.all([
-    db.creatorSeries.count({ where: { shopId: shop.id, sourceType: "vibe", status: { not: "ENDED" } } }),
-    db.creatorSeries.count({ where: { shopId: shop.id, sourceType: "product", status: { not: "ENDED" } } }),
+  // RUNNING is "ACTIVE". A series the engine paused (out of tokens, a lapsed plan, a social that needs
+  // re-linking) is not posting anything, and a green "1 channel running" over it was simply untrue.
+  const series = (sourceType: string, status: string) => db.creatorSeries.count({ where: { shopId: shop.id, sourceType, status } });
+  const [channels, channelsPaused, productChannels, productChannelsPaused, campaigns, campaignsPaused] = await Promise.all([
+    series("vibe", "ACTIVE"), series("vibe", "PAUSED"),
+    series("product", "ACTIVE"), series("product", "PAUSED"),
     db.questline.count({ where: { shopId: shop.id, status: "ACTIVE" } }),
+    db.questline.count({ where: { shopId: shop.id, status: "PAUSED" } }),
   ]);
-  return json({ linked, channels, productChannels, campaigns });
+  return json({ linked, channels, channelsPaused, productChannels, productChannelsPaused, campaigns, campaignsPaused });
 };
 
 export default function AutoPost() {
   const d = useLoaderData<typeof loader>();
   const t = useT();
-  const running = (n: number, one: string, many: string) => (n > 0 ? t(n === 1 ? one : many, { n }) : t("Not set up yet"));
+  // what stands under each card: how many are running — or, with none running, how many are paused
+  const running = (n: number, paused: number, one: string, many: string) =>
+    n > 0 ? t(n === 1 ? one : many, { n }) : paused > 0 ? t(paused === 1 ? "{n} paused" : "{n} paused", { n: paused }) : t("Not set up yet");
   const cards = [
     {
       to: "/web/connect", icon: "link", on: d.linked.length > 0,
@@ -43,25 +50,25 @@ export default function AutoPost() {
       cue: d.linked.length > 0 ? t("Manage accounts") : t("Link an account"),
     },
     {
-      to: "/web/channels", icon: "video", on: d.channels > 0,
+      to: "/web/channels", icon: "video", on: d.channels > 0, paused: d.channels === 0 && d.channelsPaused > 0,
       title: t("Channels"),
       sub: t("Pick a vibe once. A fresh video is written, voiced, captioned and posted on the schedule you choose — hands off."),
-      state: running(d.channels, "{n} channel running", "{n} channels running"),
-      cue: d.channels > 0 ? t("Open Channels") : t("Start a channel"),
+      state: running(d.channels, d.channelsPaused, "{n} channel running", "{n} channels running"),
+      cue: d.channels + d.channelsPaused > 0 ? t("Open Channels") : t("Start a channel"),
     },
     {
-      to: "/web/product-channels", icon: "box", on: d.productChannels > 0,
+      to: "/web/product-channels", icon: "box", on: d.productChannels > 0, paused: d.productChannels === 0 && d.productChannelsPaused > 0,
       title: t("Product Channels"),
       sub: t("Point it at your store. It works through your catalogue, turning each product into a video and posting it with a link back."),
-      state: running(d.productChannels, "{n} product channel running", "{n} product channels running"),
-      cue: d.productChannels > 0 ? t("Open Product Channels") : t("Start a product channel"),
+      state: running(d.productChannels, d.productChannelsPaused, "{n} product channel running", "{n} product channels running"),
+      cue: d.productChannels + d.productChannelsPaused > 0 ? t("Open Product Channels") : t("Start a product channel"),
     },
     {
-      to: "/web/campaigns", icon: "megaphone", on: d.campaigns > 0,
+      to: "/web/campaigns", icon: "megaphone", on: d.campaigns > 0, paused: d.campaigns === 0 && d.campaignsPaused > 0,
       title: t("Campaigns"),
       sub: t("A month of content, made and posted for you: choose what to push, and the calendar fills and runs itself."),
-      state: running(d.campaigns, "{n} campaign running", "{n} campaigns running"),
-      cue: d.campaigns > 0 ? t("Open Campaigns") : t("Plan a campaign"),
+      state: running(d.campaigns, d.campaignsPaused, "{n} campaign running", "{n} campaigns running"),
+      cue: d.campaigns + d.campaignsPaused > 0 ? t("Open Campaigns") : t("Plan a campaign"),
     },
   ];
   return (
@@ -69,6 +76,8 @@ export default function AutoPost() {
       <style dangerouslySetInnerHTML={{ __html: AP_CSS }} />
       <header className="ap-head">
         <span className="ap-head-rose" aria-hidden="true" />
+        {/* the same moving band every other section opens with */}
+        <span className="ap-head-media" aria-hidden="true"><HeroVideo name="autopost" still={1} clip={1} className="ap-head-img" /></span>
         <div className="ap-head-copy">
           <span className="ap-eyebrow"><Ico n="rocket" size={13} /> {t("Hands off")}</span>
           <h1>{t("Auto-post")}</h1>
@@ -82,7 +91,7 @@ export default function AutoPost() {
             <span className="ap-ico" aria-hidden="true"><Ico n={c.icon} size={22} /></span>
             <b>{c.title}</b>
             <span className="ap-sub">{c.sub}</span>
-            <span className={`ap-state${c.on ? " on" : ""}`}>{c.on ? <Ico n="check" size={11} /> : null}{c.state}</span>
+            <span className={`ap-state${c.on ? " on" : "paused" in c && c.paused ? " paused" : ""}`}>{c.on ? <Ico n="check" size={11} /> : null}{c.state}</span>
             <span className="ap-cue">{c.cue} <Ico n="arrow" size={13} /></span>
           </Link>
         ))}
@@ -97,9 +106,11 @@ export default function AutoPost() {
 const AP_CSS = `
 .ap-wrap{max-width:1360px;margin:0 auto;}
 .ap-head{position:relative;isolation:isolate;overflow:hidden;display:flex;align-items:center;min-height:150px;margin-bottom:20px;border-radius:22px;background:radial-gradient(120% 160% at 0% 0%,#3A8660 0%,#226043 42%,#143F2B 100%);box-shadow:0 24px 54px -28px rgba(8,62,39,.62),inset 0 0 0 1px rgba(255,255,255,.08);}
-.ap-head-rose{position:absolute;z-index:0;right:-110px;top:50%;width:380px;height:380px;margin-top:-190px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.3;mix-blend-mode:screen;pointer-events:none;animation:apspin 115s linear infinite;}
+.ap-head-rose{position:absolute;z-index:0;left:-130px;bottom:-190px;width:380px;height:380px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.3;mix-blend-mode:screen;pointer-events:none;animation:apspin 115s linear infinite;}
+.ap-head-media{position:absolute;z-index:0;right:0;top:0;bottom:0;width:56%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 46%);mask-image:linear-gradient(90deg,transparent,#000 46%);}
+.ap-head-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 56%;display:block;}
 @keyframes apspin{to{transform:rotate(360deg);}}
-.ap-head-copy{position:relative;z-index:1;padding:26px clamp(22px,3.4vw,48px);}
+.ap-head-copy{position:relative;z-index:1;max-width:58%;padding:26px clamp(22px,3.4vw,48px);}
 .ap-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:#E7C879;text-transform:uppercase;letter-spacing:.09em;}
 .ap-head h1{margin:8px 0 0;font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(28px,3.2vw,44px);line-height:1.05;letter-spacing:-.025em;color:#fff;}
 .ap-head p{margin:10px 0 0;max-width:520px;font-size:15px;line-height:1.5;color:rgba(255,255,255,.86);}
@@ -113,9 +124,10 @@ const AP_CSS = `
 .ap-sub{flex:1 1 auto;font-size:13.5px;line-height:1.5;color:var(--ink2,#4A554E);}
 .ap-state{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;margin-top:4px;padding:4px 10px;border-radius:999px;background:#F1EFE4;color:var(--ink2,#4A554E);font-size:11.5px;font-weight:800;}
 .ap-state.on{background:#E3F3EA;color:var(--green,#0C7A46);}
+.ap-state.paused{background:#FDF4E3;color:#8A5A12;}
 .ap-cue{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:13.5px;font-weight:800;color:var(--green,#0C7A46);}
 .ap-note{display:flex;align-items:flex-start;gap:7px;margin:16px 2px 0;font-size:13px;line-height:1.45;color:var(--ink2,#4A554E);}
 .ap-note svg{flex:0 0 auto;margin-top:2px;}
-@media(max-width:640px){.ap-head{min-height:0;border-radius:18px;margin-bottom:16px;}.ap-head-copy{padding:20px 18px;}.ap-head p{font-size:13.5px;}.ap-grid{gap:12px;}.ap-card{padding:16px 16px 15px;}}
+@media(max-width:640px){.ap-head{min-height:0;border-radius:18px;margin-bottom:16px;}.ap-head-copy{max-width:66%;padding:20px 18px;}.ap-head-media{width:50%;}.ap-head p{font-size:13.5px;}.ap-grid{gap:12px;}.ap-card{padding:16px 16px 15px;}}
 @media(prefers-reduced-motion:reduce){.ap-head-rose{animation:none;}.ap-card{transition:none;}.ap-card:hover{transform:none;}}
 `;

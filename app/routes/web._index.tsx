@@ -394,7 +394,7 @@ export default function WebDashboard() {
   const successCtaRef = useRef<HTMLAnchorElement | null>(null);
   const successModalRef = useRef<HTMLDivElement | null>(null);
   const cardsRef = useRef<HTMLDivElement | null>(null);
-  // Mobile studio cards render as a swipe-loop carousel: 3 clones of the 5 cards
+  // Mobile studio cards render as a swipe-loop carousel: 3 clones of the 6 cards
   // so the scroll wraps endlessly, and the card nearest centre "floats" (scaled
   // up). Auto-detects carousel vs the desktop grid by whether it overflows, so
   // nothing fires on desktop.
@@ -409,7 +409,7 @@ export default function WebDashboard() {
     const setW = () => {
       const a = el.children[0] as HTMLElement | undefined;
       const b = el.children[1] as HTMLElement | undefined;
-      return (a && b ? b.offsetLeft - a.offsetLeft : el.clientWidth) * 5;
+      return (a && b ? b.offsetLeft - a.offsetLeft : el.clientWidth) * TILES;
     };
     let reduceMo = false;
     try { reduceMo = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch { /* ignore */ }
@@ -560,8 +560,8 @@ export default function WebDashboard() {
               <PathImg key={`${set}-marketing`} idx={2} img="marketing" v={2} eyebrow={t("Product ads")} title={t("Ad Maker")} sub={t("Turn your product into a ready-to-post ad")} cue={t("Open Ad Maker")} onClick={() => { setMode("marketing"); navigate("/web/studio"); }} />,
               <PathImg key={`${set}-film`} idx={3} img="film" v={3} eyebrow={t("Entertainment")} title={t("Movie Maker")} sub={t("Films, cartoons, music videos & episodes")} cue={t("Open Movie Maker")} onClick={() => navigate("/web/film")} />,
               <PathImg key={`${set}-presenter`} idx={4} img="presenter" v={3} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Craft avatars, costumes & wardrobes")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />,
-              <PathImg key={`${set}-archive`} idx={5} img="archive" v={4} eyebrow={t("Your library")} title={t("Archive")} sub={t("Every piece you've made, ready to post")} cue={t("Open Archive")} onClick={() => navigate("/web/archive")} />,
-              <PathImg key={`${set}-autopost`} idx={6} img="marketing" v={2} eyebrow={t("Hands off")} title={t("Auto-post")} sub={t("Link your socials, run channels & campaigns that post themselves")} cue={t("Open Auto-post")} onClick={() => navigate("/web/autopost")} />,
+              <PathImg key={`${set}-autopost`} idx={5} img="autopost" v={1} eyebrow={t("Hands off")} title={t("Auto-post")} sub={t("Link your socials, run channels & campaigns that post themselves")} cue={t("Open Auto-post")} onClick={() => navigate("/web/autopost")} />,
+              <PathImg key={`${set}-archive`} idx={6} img="archive" v={4} eyebrow={t("Your library")} title={t("Archive")} sub={t("Every piece you've made, ready to post")} cue={t("Open Archive")} onClick={() => navigate("/web/archive")} />,
             ])}
           </div>
         </div>
@@ -928,6 +928,9 @@ export default function WebDashboard() {
 
 /* Route-local dashboard styles — GStyle palette (paper #F4F1E6, card #FDFCF7,
  * ink #14201A, green #12A85E, gold #B08526/#E7C879). */
+/** How many tiles the front door has — the phone carousel's loop length and its "2/6" chip read it. */
+const TILES = 6;
+
 function PathImg({ img, v, eyebrow, title, sub, cue, idx, onClick }: { img: string; v: number; eyebrow: string; title: string; sub: string; cue: string; idx: number; onClick: () => void }) {
   const play = (e: { currentTarget: HTMLElement }) => {
     try { if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return; } catch { /* ignore */ }
@@ -940,7 +943,7 @@ function PathImg({ img, v, eyebrow, title, sub, cue, idx, onClick }: { img: stri
   };
   return (
     <button type="button" className="wd-path wd-path-img" onClick={onClick} onMouseEnter={play} onMouseLeave={stop} onFocus={play} onBlur={stop}>
-      <span className="wd-path-count" aria-hidden="true">{idx}/5</span>
+      <span className="wd-path-count" aria-hidden="true">{idx}/{TILES}</span>
       <span className="wd-path-hero" style={{ backgroundImage: `url(/landing/${img}-hero.jpg?v=${v})` }} aria-hidden="true">
         <video className="wd-path-vid" muted loop playsInline preload="none" poster={`/landing/${img}-hero.jpg?v=${v}`} aria-hidden="true">
           <source src={`/landing/${img}-hero.mp4?v=5`} type="video/mp4" />
@@ -979,12 +982,13 @@ const DASH_CSS = `
 .wd-hero-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:14px;}
 .wd-hero-chips button{border:1px solid var(--line2,#D7DCCB);background:var(--card);color:var(--ink2);font:inherit;font-weight:700;font-size:12.5px;cursor:pointer;padding:7px 14px;border-radius:999px;transition:border-color .14s,color .14s;}
 .wd-hero-chips button:hover{border-color:var(--green);color:var(--ink);}
-.wd-hero-paths{width:min(820px,100%);margin-top:22px;}
+.wd-hero-paths{width:min(900px,100%);margin-top:22px;}
 .wd-hero-paths-h{display:block;font-weight:800;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2);margin-bottom:9px;}
-.wd-hero-cards{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;}
-.wd-hero-cards>:nth-child(-n+2){grid-column:span 3;}
-.wd-hero-cards>:nth-child(3),.wd-hero-cards>:nth-child(4),.wd-hero-cards>:nth-child(5){grid-column:span 2;}
-.wd-hero-cards>:nth-child(n+6){display:none;}
+/* Six doors, three across — every one the same size, none hidden. (The grid was built for five: two wide
+   and three narrow, with everything after the fifth switched off — so the sixth tile, Auto-post, was in
+   the page and invisible.) Only the first set shows here; the other two are the phone carousel's clones. */
+.wd-hero-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+.wd-hero-cards>:nth-child(n+7){display:none;}
 .wd-path{display:flex;align-items:center;gap:9px;min-width:0;text-align:left;cursor:pointer;
   background:var(--card);border:1px solid var(--line2,#D7DCCB);border-radius:15px;padding:11px 12px;transition:border-color .14s,transform .12s,box-shadow .14s;}
 .wd-path:hover{border-color:var(--green);transform:translateY(-2px);box-shadow:0 8px 18px rgba(12,122,70,.12);}
@@ -1002,7 +1006,7 @@ const DASH_CSS = `
 .wd-path-eyebrow{font-weight:800;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--green);margin-bottom:1px;}
 /* Creator card keeps its gold identity (its art is warm/gold); --gold-deep passes
    AA at 9.5px where --gold would not. Social stays green. */
-.wd-hero-cards>:nth-child(5n+1) .wd-path-eyebrow{color:var(--gold-deep,#7E5E13);}
+.wd-hero-cards>:nth-child(6n+1) .wd-path-eyebrow{color:var(--gold-deep,#7E5E13);}
 .wd-path-body b{font-weight:800;font-size:16px;line-height:1.2;color:var(--ink);font-family:Poppins,sans-serif;}
 .wd-path-body i{font-style:normal;font-size:12.5px;color:var(--ink2);line-height:1.4;}
 .wd-path-cost{font-size:11.5px;font-weight:700;color:var(--ink);margin-top:2px;}
@@ -1024,7 +1028,7 @@ const DASH_CSS = `
    and a lift. preload=none so clips load only on hover. */
 .wd-path-img{position:relative;}
 .wd-path-img .wd-path-hero{position:relative;}
-/* Position chip (e.g. "2/5") — only shown on the front card of the mobile carousel. */
+/* Position chip (e.g. "2/6") — only shown on the front card of the mobile carousel. */
 .wd-path-count{display:none;position:absolute;top:10px;left:10px;z-index:4;padding:3px 9px;border-radius:999px;background:rgba(20,32,26,.62);color:#fff;font-size:12px;font-weight:700;line-height:1;letter-spacing:.02em;align-items:center;font-variant-numeric:tabular-nums;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);pointer-events:none;}
 .wd-path-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease;pointer-events:none;}
 .wd-path-img:hover .wd-path-vid,.wd-path-img:focus-visible .wd-path-vid{opacity:1;}
@@ -1032,7 +1036,7 @@ const DASH_CSS = `
 @media(prefers-reduced-motion:reduce){.wd-path-vid{transition:none;}.wd-path-img:hover{transform:none;}}
 /* Mobile = floating swipe-loop deck: side cards sit smaller and tuck UNDER the
    front card (negative margins + z-index), the front card pops and auto-plays its
-   clip, and a position chip shows which of the five you're on. */
+   clip, and a position chip shows which of the six you're on. */
 @media(max-width:680px){.wd-hero-cards{display:flex;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;gap:0;padding:16px 0 32px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}.wd-hero-cards::-webkit-scrollbar{display:none;}.wd-hero-cards>*{display:block!important;flex:0 0 80%;scroll-snap-align:center;grid-column:auto!important;margin:0 -8%;transform:scale(.82);opacity:.78;z-index:1;transition:transform .35s ease,opacity .35s ease,box-shadow .35s ease;box-shadow:0 4px 14px rgba(20,32,26,.07);}.wd-hero-cards>.is-float{transform:scale(1.06);opacity:1;z-index:3;box-shadow:0 3px 8px rgba(20,32,26,.05),0 16px 34px rgba(20,32,26,.13);}.wd-hero-cards>.is-float .wd-path-vid{opacity:1;}.wd-hero-cards>.is-float .wd-path-count{display:inline-flex;}.wd-path-tx i,.wd-path-body i{white-space:normal;}.wd-hero-chips button{min-height:44px;display:inline-flex;align-items:center;}}
 @media(max-width:680px) and (prefers-reduced-motion:reduce){.wd-hero-cards{gap:12px;}.wd-hero-cards>*{margin:0;transform:none;opacity:1;transition:none;z-index:auto;}.wd-hero-cards>.is-float{transform:none;}.wd-hero-cards>.is-float .wd-path-vid{opacity:0;}}
 /* launch tracker */
