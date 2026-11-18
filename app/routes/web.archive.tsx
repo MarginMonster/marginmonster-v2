@@ -1365,8 +1365,10 @@ export default function WebArchive() {
     URL.revokeObjectURL(url);
   };
 
-  const genCards = cookingCards.filter((j) => j.kind === tab && j.status === "generating");
-  const failCards = cookingCards.filter((j) => j.kind === tab && j.status === "failed");
+  // a search narrows the cooking and failed cards too, by the same title the finished piece will carry
+  const qMatch = (title: string) => !q || title.toLowerCase().includes(q.toLowerCase());
+  const genCards = cookingCards.filter((j) => j.kind === tab && j.status === "generating" && qMatch(j.productTitle));
+  const failCards = cookingCards.filter((j) => j.kind === tab && j.status === "failed" && qMatch(j.productTitle));
 
   return (
     <div className={isCreator ? "wa-creator" : undefined}>
