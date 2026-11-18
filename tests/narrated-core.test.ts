@@ -8,8 +8,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
-  BOLD_LINE, MIN_SCENE_S, barsIn, boldCards, captionFilters, captionStyleOf, drawable, entryName, evenParts, frameWords, kenBurns, namedIn, nameWords, wrapEven,
-  sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, wrapLines, type WordT,
+  BOLD_LINE, MIN_SCENE_S, barBox, barsIn, boldCards, captionFilters, captionStyleOf, drawable, entryName, evenParts, frameWords, kenBurns, namedIn, nameWords, wrapEven,
+  keepToldScenes, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, wrapLines, type WordT,
 } from "../app/lib/narrated-core.ts";
 
 /** A narration "heard" word for word: `gap` seconds of silence between scenes. */
@@ -235,7 +235,28 @@ test("a picture with black bars baked in is caught — and a dark scene is not m
   // pillarboxed: a tall picture inside a wide frame
   assert.equal(barsIn("  Stream #0:0: Video: mjpeg, yuvj420p, 1344x768, 25 fps\n[Parsed_cropdetect_0 @ 0x1] crop=540:768:402:0\n"), true);
   assert.equal(barsIn(""), false);
+  // thin bars — 50px top and bottom of 1344, seen on the live site — are bars too, and can be cropped off
+  const thin = head + "[Parsed_cropdetect_0 @ 0x1] crop=768:1244:0:50\n";
+  assert.equal(barsIn(thin), true);
+  assert.deepEqual(barBox(thin), { w: 768, h: 1244, x: 0, y: 50 });
+  // …while 40px of dark sky above a full picture (the same scene, drawn again) is not
+  assert.equal(barBox(head + "[Parsed_cropdetect_0 @ 0x1] crop=768:1304:0:40\n"), null);
   assert.ok(frameWords("9:16").startsWith("A tall vertical") && frameWords("16:9").startsWith("A wide") && frameWords("1:1").startsWith("A square"));
+});
+
+test("an approved picture stays with ITS scene, whatever is dropped around it", () => {
+  // the first live film re-drew all six approved pictures; and an empty scene must not slide the rest along
+  const scenes = [{ caption: "One." }, { caption: "  " }, { caption: "Three." }, { caption: "Four." }, { caption: "Five." }];
+  const imgs = ["a.jpg", "b.jpg", "c.jpg", null, "e.jpg"];
+  const kept = keepToldScenes(scenes, imgs, 12);
+  assert.deepEqual(kept.scenes.map((x) => x.caption), ["One.", "Three.", "Four.", "Five."]);
+  assert.deepEqual(kept.approved, ["a.jpg", "c.jpg", null, "e.jpg"]);
+  // every scene approved → every picture used, in order
+  const all = keepToldScenes(scenes.filter((x) => x.caption.trim()), ["1", "2", "3", "4"], 12);
+  assert.deepEqual(all.approved, ["1", "2", "3", "4"]);
+  // capped, pictures capped with it; no pictures given → none claimed
+  assert.deepEqual(keepToldScenes(scenes, imgs, 2).approved, ["a.jpg", "c.jpg"]);
+  assert.deepEqual(keepToldScenes(scenes, [], 12).approved, [null, null, null, null]);
 });
 
 test("caption style: only the three known styles, anything else is the fallback", () => {

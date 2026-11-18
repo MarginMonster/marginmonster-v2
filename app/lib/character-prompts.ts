@@ -80,3 +80,22 @@ export function characterContinuity(kind: CharKind, desc: string): string {
     ? `This is a creature, not a person${said ? ` (${said})` : ""}. Its whole body stays exactly as in the reference — the same anatomy, hide, limbs, claws and proportions. Never human skin, human hands or a human face, and no clothes that are not in the reference.`
     : `This is a cartoon character, not a person${said ? ` (${said})` : ""}. Its whole body stays exactly as in the reference, in the same art style — the same design, colours and markings, and only the clothes and accessories it already has.`;
 }
+
+/* ---- a character in a FILM's cast ----
+ * The film engines compose shots from the cast's pictures. Their identity locks were written for people
+ * ("same face, same hair, same skin, same age"); told that about a werewolf, a picture model gives it a
+ * man's face. These say the same thing for a cast that is not all people. */
+
+/** The lock for a shot composed from cast pictures when at least one of them is not a person. */
+export const MIXED_CAST_LOCK = "CRITICAL: every character from the reference images is the EXACT same one here — the same face, body, colours, fur or skin, markings, hair and clothing, and nothing added to what it wears. A creature stays a creature and a cartoon character stays a cartoon character: never made human, never given a human face, human skin or human hands, never redrawn in another style. Any real person stays the exact same individual at the same age — never beautified, restyled or swapped.";
+
+/** How to tell a picture model that reference image `n` IS this cast member, for a character who is not a person. */
+export const characterInRef = (name: string, n: number, look?: string): string =>
+  `${name} — EXACTLY the character in reference image ${n}${look ? ` (${look.trim().slice(0, 200)})` : ""}: the same creature design — the same head and face, eyes, fur or skin, colours and markings, body shape and size — wearing only what it wears in that picture. It is NOT a human being: no human face, no human skin, no human hands`;
+
+/** The word a character goes by in name keys: the first word of the name that is not "the", lower-cased
+ *  ("The Ganve" → "ganve", "Mourning Mary" → "mourning", "Howl" → "howl"). */
+export const nameTok = (n: string | null | undefined): string => {
+  const w = (n || "").toLowerCase().split(/[\s,]+/).filter(Boolean);
+  return w.find((x) => x !== "the") || w[0] || "";
+};

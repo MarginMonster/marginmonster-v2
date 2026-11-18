@@ -26,6 +26,7 @@ import { CHARACTER_VOICES, characterVoiceSample, isCharacterVoice } from "../lib
 import { GENRE_PACE, PACES, PACE_KEYS, cutCount, isPace, paceFor, type Pace } from "../lib/mv-pace";
 import { CAPTION_STYLES, captionStyleOf, type CaptionStyle } from "../lib/narrated-core";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
+import { nameTok } from "../lib/character-prompts";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
 
@@ -256,7 +257,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!sceneVisual) return json({ error: tr(lang, "Describe the shot first."), sceneIndex });
     try {
       const { previewFilmSceneFrame } = await import("../lib/film-dialogue.server");
-      const frameUrl = await previewFilmSceneFrame({ template: tmpl.key, sceneVisual, castText, styleRefUrl, castRefUrls });
+      const frameUrl = await previewFilmSceneFrame({ template: tmpl.key, sceneVisual, castText, styleRefUrl, castRefUrls, creatureCast: ((form.get("creatureCast") as string) || "") === "1" });
       if (!frameUrl) return json({ error: tr(lang, "Couldn't render that frame — tweak the shot and try again."), sceneIndex });
       return json({ frameUrl, sceneIndex });
     } catch (e) {
@@ -483,7 +484,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (Array.isArray(c)) {
           const mapped = c
             .filter((x) => x && typeof x.name === "string" && x.name.trim())
-            .map((x) => ({ name: String(x.name).slice(0, 80), faceUrl: x.faceUrl ? String(x.faceUrl).slice(0, 2000) : null, voiceId: x.voiceId ? String(x.voiceId).slice(0, 80) : null }))
+            .map((x) => ({
+              name: String(x.name).slice(0, 80), faceUrl: x.faceUrl ? String(x.faceUrl).slice(0, 2000) : null, voiceId: x.voiceId ? String(x.voiceId).slice(0, 80) : null,
+              // what a cast member IS, when it is not a person — with what it looks like, in the maker's own words
+              ...(x.kind === "cartoon" || x.kind === "monster" ? { kind: x.kind as "cartoon" | "monster", look: typeof x.look === "string" ? x.look.replace(/\s+/g, " ").trim().slice(0, 220) : "" } : {}),
+            }))
             .slice(0, 8);
           if (mapped.length) cast = mapped;
         }
@@ -510,8 +515,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     // The picked cast rides along with what each one IS and looks like (a creature stays a creature).
     if (storyCast.length) {
-      const byName = new Map(storyCast.map((c) => [c.name.toLowerCase(), c]));
-      if (cast) cast = cast.map((c) => { const p = byName.get(c.name.toLowerCase()); return p ? { ...c, kind: p.kind, look: p.look } : c; });
+      const byName = new Map(storyCast.map((c) => [nameTok(c.name), c]));
+      if (cast) cast = cast.map((c) => { const p = c.kind ? undefined : byName.get(nameTok(c.name)); return p && p.kind !== "person" && c.faceUrl === p.faceUrl ? { ...c, kind: p.kind, look: p.look } : c; });
       else if (narrated) cast = storyCast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: null, kind: c.kind, look: c.look }));
     }
     // "Lock these voices" (dialogue films): every character speaks in exactly the voice picked for them.
@@ -614,7 +619,9 @@ type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: st
 // reused as the identity reference for every shot they appear in.
 // autoVoice = the voice was picked FOR this character (not by the merchant, not brought by a presenter),
 // so it may still be re-picked when the rest of the cast changes.
-type CastMember = { name: string; desc: string; faceUrl: string | null; voiceId: string | null; autoVoice?: boolean };
+// kind / look = what a cast member IS and looks like when they came from the cast (a cartoon character
+// and a monster are drawn and filmed as what they are, not as people).
+type CastMember = { name: string; desc: string; faceUrl: string | null; voiceId: string | null; autoVoice?: boolean; kind?: "person" | "cartoon" | "monster"; look?: string };
 
 // Backdrop presets — like the avatar-AI backdrop picker: tap one to set a scene's
 // location (the `where`), or type your own. `key` is matched against the where text
@@ -849,7 +856,7 @@ export default function FilmStudio() {
   // The SPEAKING name — the single word the captions use (e.g. "Dominic" from
   // "Chef Dominic Kane, a tall…"). Strip a leading title so the cast name matches
   // the caption's speaker by first token (the engine + flow both key off that).
-  const TITLE_WORD = /^(chef|dr|doctor|mr|mrs|ms|miss|sir|madam|officer|detective|det|captain|capt|sergeant|sgt|professor|prof|coach|agent|father|mother|aunt|uncle|grandma|grandpa|king|queen|prince|princess|lord|lady|sister|brother|nurse|judge|mayor|pastor|reverend|rev)\.?$/i;
+  const TITLE_WORD = /^(the|chef|dr|doctor|mr|mrs|ms|miss|sir|madam|officer|detective|det|captain|capt|sergeant|sgt|professor|prof|coach|agent|father|mother|aunt|uncle|grandma|grandpa|king|queen|prince|princess|lord|lady|sister|brother|nurse|judge|mayor|pastor|reverend|rev)\.?$/i;
   const speakName = (entry: string) => {
     const head = (entry.split(/[,:—–]/)[0] || entry).trim();
     const words = head.split(/\s+/).filter(Boolean);
@@ -1069,10 +1076,9 @@ export default function FilmStudio() {
   /** The characters the maker picked arrive in the cast stage already wearing their own face and voice. */
   const castFromPicked = (list: CastMember[]): CastMember[] => {
     if (!pickedCast.length) return list;
-    const tok = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
     return rebalanceVoices(list.map((c) => {
-      const p = pickedCast.find((r) => tok(r.name) === tok(c.name));
-      return p ? { ...c, faceUrl: p.img, ...(p.voiceId ? { voiceId: p.voiceId, autoVoice: false } : {}) } : c;
+      const p = pickedCast.find((r) => nameTok(r.name) === nameTok(c.name));
+      return p ? { ...c, faceUrl: p.img, kind: p.kind, look: p.look, ...(p.voiceId ? { voiceId: p.voiceId, autoVoice: false } : {}) } : c;
     }));
   };
   const setStoryLen = (n: number) => { setScenes(n); if (treatment && treatment.scenes.length !== n) { setTreatment(null); setFrames([]); setCast([]); } };
@@ -1089,7 +1095,7 @@ export default function FilmStudio() {
     const data = portraitFetcher.data;
     if (data && data.portraitUrl && typeof data.castIndex === "number") {
       const idx = data.castIndex, url = data.portraitUrl;
-      setCast((prev) => prev.map((c, j) => (j === idx ? { ...c, faceUrl: url } : c)));
+      setCast((prev) => prev.map((c, j) => (j === idx ? { ...c, faceUrl: url, kind: undefined, look: undefined } : c)));
     }
     setCastingIndex(null);
   }, [portraitFetcher.state, portraitFetcher.data]);
@@ -1632,7 +1638,7 @@ export default function FilmStudio() {
     });
     return locs;
   })();
-  const firstTok = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
+  const firstTok = nameTok;
   const speakerNames: string[] = (() => {
     const seen = new Set<string>(); const out: string[] = [];
     const add = (nm: string) => { const k = firstTok(nm); if (nm && k && !seen.has(k)) { seen.add(k); out.push(nm); } };
@@ -1679,7 +1685,7 @@ export default function FilmStudio() {
   const shotCastRefs = (s: Scene): string[] => {
     const hay = `${s.visual} ${s.caption || ""}`.toLowerCase();
     return cast
-      .filter((c) => c.faceUrl && c.name && hay.includes(c.name.toLowerCase().split(/[\s,]/)[0]))
+      .filter((c) => c.faceUrl && c.name && !!nameTok(c.name) && hay.includes(nameTok(c.name)))
       .map((c) => c.faceUrl as string)
       .slice(0, 3);
   };
@@ -1694,7 +1700,7 @@ export default function FilmStudio() {
     const styleRef = frames.find((f, j) => !!f && j !== i) || "";
     setFramingIndex(i);
     previewFrameFetcher.submit(
-      { intent: "previewFilmFrame", template, sceneVisual: s.visual, castText, styleRefUrl: styleRef, sceneIndex: String(i), castRefs: JSON.stringify(shotCastRefs(s)) },
+      { intent: "previewFilmFrame", template, sceneVisual: s.visual, castText, styleRefUrl: styleRef, sceneIndex: String(i), castRefs: JSON.stringify(shotCastRefs(s)), ...(cast.some((c) => c.faceUrl && c.kind && c.kind !== "person") ? { creatureCast: "1" } : {}) },
       { method: "post" }
     );
   };
@@ -1718,19 +1724,19 @@ export default function FilmStudio() {
   const useCastFace = (i: number, url: string) => {
     const u = url.trim();
     if (u !== "" && !/^(https?:\/\/|\/)/.test(u)) return;
-    setCast((prev) => prev.map((c, j) => (j === i ? { ...c, faceUrl: u || null } : c)));
+    setCast((prev) => prev.map((c, j) => (j === i ? { ...c, faceUrl: u || null, kind: undefined, look: undefined } : c)));
   };
   const setCastVoice = (i: number, voiceId: string) => {
     setCast((prev) => rebalanceVoices(prev.map((c, j) => (j === i ? { ...c, voiceId: voiceId || null, autoVoice: false } : c))));
   };
   // Casting one of YOUR PRESENTERS brings their voice with them — only the face used to come across, so
   // a presenter you'd given a voice (or your own voice) showed up in the film sounding like someone else.
-  const castPresenter = (i: number, r: { img: string; voiceId?: string | null }) => {
+  const castPresenter = (i: number, r: { img: string; voiceId?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string }) => {
     const u = (r.img || "").trim();
     if (u !== "" && !/^(https?:\/\/|\/)/.test(u)) return;
     // …and the others' automatic voices are re-picked around it, so the presenter's voice isn't also
     // on someone else in the scene.
-    setCast((prev) => rebalanceVoices(prev.map((c, j) => (j === i ? { ...c, faceUrl: u || null, ...(r.voiceId ? { voiceId: r.voiceId, autoVoice: false } : {}) } : c))));
+    setCast((prev) => rebalanceVoices(prev.map((c, j) => (j === i ? { ...c, faceUrl: u || null, kind: r.kind || "person", look: r.look || "", ...(r.voiceId ? { voiceId: r.voiceId, autoVoice: false } : {}) } : c))));
   };
   // "Lock these voices" (dialogue films): each character speaks in exactly the voice picked for them.
   // Off by default — the video model voices the lines itself — and it switches itself ON the moment a
@@ -2265,7 +2271,11 @@ export default function FilmStudio() {
       {/* ───────── The STORY builder — the Music Video's card flow, for the story formats ───────── */}
       {isStoryboard && (() => {
         const lens = narrated ? [3, 4, 5, 6, 8, 10, 12] : Array.from({ length: Math.max(1, tmpl.maxScenes - tmpl.minScenes + 1) }, (_, k) => tmpl.minScenes + k);
-        const lenLabel = (n: number) => (narrated ? `≈ ${mvLenLabel(n)}` : `≈ ${n * 8}s`);
+        // a scene is two or three sentences: about ten seconds in an ordinary voice, more in a slow, performed one
+        // (the first live story, told by the Hollow voice, ran 83 s for six scenes)
+        const perScene = ({ "char:keeper": 14, "char:mary": 13, "char:coco": 12, "char:howl": 12 } as Record<string, number>)[narratorId] || 10;
+        const secLabel = (sec: number) => { const r = Math.round(sec / 5) * 5; return r < 60 ? `${r}s` : `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`; };
+        const lenLabel = (n: number) => (narrated ? `≈ ${secLabel(n * perScene)}` : `≈ ${n * 8}s`);
         const shapeName = filmAspect === "16:9" ? t("Wide") : filmAspect === "9:16" ? t("Vertical") : t("Square");
         const capName = t(CAPTION_STYLES.find((c) => c.key === captions)?.label || "Off");
         const voiceTile = (id: string, label: string, blurb: string) => (
@@ -2763,7 +2773,7 @@ export default function FilmStudio() {
           {(seeds?.treatment || treatment) && <input type="hidden" name="approvedTreatment" value={JSON.stringify(seeds?.treatment || treatment)} />}
           {(!isStoryboard || narrated) && seeds && <input type="hidden" name="approvedSceneImgs" value={JSON.stringify(seeds.imgs)} />}
           {isStoryboard && !narrated && frames.some(Boolean) && <input type="hidden" name="approvedFrames" value={JSON.stringify(frames)} />}
-          {isStoryboard && !narrated && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId })))} />}
+          {isStoryboard && !narrated && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId, ...(c.faceUrl && c.kind && c.kind !== "person" ? { kind: c.kind, look: c.look || "" } : {}) })))} />}
           {isStoryboard && !narrated && lockVoices && cast.some((c) => c.voiceId) && <input type="hidden" name="filmLockVoices" value="1" />}
           <button type="submit" className="fs-go" disabled={!canGo}>
             {generating ? <>… {t("Starting your film")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost }) : t("Generate {name} · Free", { name: t(tmpl?.name || "Film") })}</>}

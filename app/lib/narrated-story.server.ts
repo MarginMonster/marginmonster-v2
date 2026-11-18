@@ -30,7 +30,7 @@ import { voiceLangOpts, normalizeContentLang } from "./content-lang";
 import { AVATAR_VOICE_IDS } from "./avatar-voice-catalog";
 import { characterVoice, isCharacterVoice } from "./character-voices";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
-import { barsIn, boldCards, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
+import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -179,7 +179,10 @@ export async function assembleNarrated(o: {
   const norm: string[] = [];
   for (const s of o.stills) {
     const n = `${s}.n.jpg`;
-    const c = await runFfmpeg(["-y", "-i", s, "-frames:v", "1", n]);
+    // a picture that was kept with black bars baked in has them cropped off here, not shown
+    let crop: string[] = [];
+    try { const box = barBox((await runFfmpeg(["-loop", "1", "-i", s, "-vf", "cropdetect=limit=10:round=2:reset=0", "-frames:v", "5", "-f", "null", "-"])).stderr); if (box) crop = ["-vf", `crop=${box.w}:${box.h}:${box.x}:${box.y}`]; } catch { /* as it is */ }
+    const c = await runFfmpeg(["-y", "-i", s, ...crop, "-frames:v", "1", n]);
     norm.push(c.status === 0 && fs.existsSync(n) ? n : s);
   }
   await beat();
@@ -263,15 +266,17 @@ export async function generateNarratedStory(opts: {
   if (resume.ckTreatment) treatment = JSON.parse(resume.ckTreatment);
   else if (opts.treatment && opts.treatment.scenes?.length) treatment = opts.treatment;
   else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, contentLang: lang, mode: "narrated", cast: (opts.cast || []).map((c) => ({ name: c.name, desc: c.look })) });
-  // a scene with nothing to say is not a scene — and its approved picture goes with it, so the
-  // pictures that follow stay on their own scenes (kept through a restart: ckApproved)
-  let approved: (string | null)[];
-  if (resume.ckTreatment && resume.ckApproved) { try { approved = JSON.parse(resume.ckApproved) as (string | null)[]; } catch { approved = []; } }
-  else {
-    const given = resume.ckTreatment ? [] : (opts.approvedSceneImgs || []);
-    const kept = treatment.scenes.map((s, i) => ({ s, img: given[i] ?? null })).filter((x) => x.s && (x.s.caption || "").trim()).slice(0, clampNarrated(opts.sceneCount ?? treatment.scenes.length));
-    treatment.scenes = kept.map((x) => x.s);
-    approved = kept.map((x) => x.img);
+  // The scenes it is told in, each with the picture the maker approved for it. On a RESTART both were
+  // saved together (ckApproved exists only then). NB the approved story arrives in resume.ckTreatment on
+  // the first run too — that field alone does not mean a restart (the first live film re-drew every
+  // approved picture because this once assumed it did).
+  let approved: (string | null)[] = [];
+  let restored = false;
+  if (resume.ckApproved) { try { const a = JSON.parse(resume.ckApproved); if (Array.isArray(a)) { approved = a as (string | null)[]; restored = true; } } catch { /* fall through */ } }
+  if (!restored) {
+    const kept = keepToldScenes(treatment.scenes, opts.approvedSceneImgs || [], clampNarrated(opts.sceneCount ?? treatment.scenes.length));
+    treatment.scenes = kept.scenes;
+    approved = kept.approved;
   }
   if (treatment.scenes.length < 2) throw new Error("[narrated] the story has nothing to tell");
   await ckpt({ ckTreatment: JSON.stringify(treatment), ckApproved: JSON.stringify(approved) });
@@ -370,6 +375,8 @@ export async function generateNarratedStory(opts: {
         aspect, captions: style, narrator, narratorName: voiceName, seconds: Math.round(voDur + TAIL_S),
         // which voice ACTUALLY told it, and whether its pictures were timed to the words or by length
         timedToWords: words.length > 0,
+        // how many of its pictures were the ones approved in the storyboard (the rest were drawn at render)
+        approvedPictures: approved.filter(Boolean).length,
       }),
     },
   });

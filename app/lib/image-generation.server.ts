@@ -12,6 +12,7 @@ import { CREATE_MODEL_BY_KEY, DEFAULT_CREATE_MODEL, CREATE_ASPECT_VALUES, DEFAUL
 import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
+import { characterInRef } from "./character-prompts";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
 import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
@@ -4786,7 +4787,7 @@ export async function renderTwoPanelShotReverse(opts: { roomRefUrl?: string | nu
 // cut" continuity bug). With both people always fully framed there is nothing to
 // mismatch, and because both faces are born from one generation the two people + the
 // room are identical by construction and never drift. Seeded 9:16 to match the clips.
-export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; nameA?: string; nameB?: string; lookA?: string; lookB?: string; setting: string; style?: "photoreal" | "cartoon"; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
+export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; nameA?: string; nameB?: string; lookA?: string; lookB?: string; /** a cast member who is not a person (a cartoon character, a monster) is bound to its picture as a CHARACTER, not as a face-hair-and-age */ creatureA?: boolean; creatureB?: boolean; setting: string; style?: "photoreal" | "cartoon"; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN) return null;
     const refs = [opts.roomRefUrl, opts.faceA, opts.faceB].filter((u): u is string => !!u).slice(0, 3);
@@ -4806,17 +4807,20 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
     const nameB = (opts.nameB || "").trim().slice(0, 40) || "the second person";
     // `look` = what that photo shows, in words (read off the photo, not written by the script writer):
     // said alongside the photo it makes the text and the image agree instead of compete.
-    const who = (name: string, face: string | null | undefined, desc: string, look?: string) => (face && refNo(face)
-      ? `${name} — EXACTLY the person in reference image ${refNo(face)}${look ? ` (${look.trim().slice(0, 200)})` : ""}: the same face, the same hair (colour, length and style), skin tone, apparent age and build, wearing what they wear in that photo`
+    const who = (name: string, face: string | null | undefined, desc: string, look?: string, creature?: boolean) => (face && refNo(face)
+      ? (creature
+        ? characterInRef(name, refNo(face), look)
+        : `${name} — EXACTLY the person in reference image ${refNo(face)}${look ? ` (${look.trim().slice(0, 200)})` : ""}: the same face, the same hair (colour, length and style), skin tone, apparent age and build, wearing what they wear in that photo`)
       : desc);
-    const personA = who(nameA, opts.faceA, descA, opts.lookA);
-    const personB = who(nameB, opts.faceB, descB, opts.lookB);
+    const personA = who(nameA, opts.faceA, descA, opts.lookA, opts.creatureA);
+    const personB = who(nameB, opts.faceB, descB, opts.lookB, opts.creatureB);
+    const anyCreature = (!!opts.creatureA && !!opts.faceA) || (!!opts.creatureB && !!opts.faceB);
     const bound = [
       opts.faceA && refNo(opts.faceA) ? `reference image ${refNo(opts.faceA)} is ${nameA} and ONLY ${nameA}` : "",
       opts.faceB && refNo(opts.faceB) ? `reference image ${refNo(opts.faceB)} is ${nameB} and ONLY ${nameB}` : "",
     ].filter(Boolean);
     const faceNote = bound.length
-      ? ` WHO IS WHO: ${bound.join("; ")}. A person with a reference photo must be recognisably that same person — never a different hair colour, hairstyle, age or outfit — and their look must never be given to the other person.${bound.length === 1 ? " The person WITHOUT a reference photo is drawn from their description and must look clearly different from the one with a photo." : ""}`
+      ? ` WHO IS WHO: ${bound.join("; ")}. A person with a reference photo must be recognisably that same person — never a different hair colour, hairstyle, age or outfit — and their look must never be given to the other person.${anyCreature ? " A character who is a creature or a cartoon stays exactly that creature, at its own size, in every detail — it is never turned into a person, and nothing of it is given to the other one." : ""}${bound.length === 1 ? " The person WITHOUT a reference photo is drawn from their description and must look clearly different from the one with a photo." : ""}`
       : "";
     const cartoon = opts.style === "cartoon";
     const ar = opts.aspect || "9:16";
@@ -4826,6 +4830,8 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
       : "A single photorealistic cinematic MEDIUM two-shot";
     const consistencyNote = cartoon
       ? "Keep each character's exact cartoon design identical — the same hairstyle, colors and outfit on each — and never blend, swap or redraw their designs."
+      : anyCreature
+      ? "Keep the two clearly distinct and do NOT blend or swap their faces, bodies, fur, hair or clothing: a creature stays a creature — never given a human face, skin or hands — and a person stays that exact person."
       : "Keep the two people clearly distinct and do NOT blend or swap their faces, hair or clothing, and reproduce each person's EXACT facial hair — the same beard, mustache and stubble on each — identically; never add, remove, thin or fade anyone's facial hair.";
     const styleTail = cartoon
       ? `Clean cheerful cartoon lighting, soft candy colors, rounded friendly shapes, ${comp}, no on-screen text, no watermark.`

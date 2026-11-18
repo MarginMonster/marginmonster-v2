@@ -61,6 +61,14 @@ export function sceneWindows(lines: string[], words: WordT[], total: number): Wi
   return starts.map((t0, k) => ({ t0, t1: k + 1 < n ? starts[k + 1] : T }));
 }
 
+/** The scenes a narrated story is told in: the ones that have something to say, at most `max` of them —
+ *  each kept WITH the picture the maker approved for it, so dropping an empty scene never slides every
+ *  later picture onto the wrong scene. `approved` is index-aligned with `scenes` as they came in. */
+export function keepToldScenes<S extends { caption?: string }>(scenes: S[], approved: (string | null | undefined)[], max: number): { scenes: S[]; approved: (string | null)[] } {
+  const kept = (scenes || []).map((s, i) => ({ s, img: (approved || [])[i] || null })).filter((x) => !!x.s && !!(x.s.caption || "").trim()).slice(0, Math.max(1, max));
+  return { scenes: kept.map((x) => x.s), approved: kept.map((x) => x.img) };
+}
+
 /** Letters, digits and the punctuation that can be drawn without quoting trouble. An apostrophe becomes
  *  the typographic one: a straight one would end the text inside the filter. A dash between words
  *  becomes a space, so "door—open" does not close up into one word. */
@@ -308,14 +316,19 @@ export function sceneCast(visual: string, pickedNames: string[], others: string[
  *  (or a tall one pillarboxed inside a wide frame)? Read from ffmpeg's own report of the picture's size
  *  and of the box its non-black content sits in (`cropdetect`). Only a matching PAIR of bars counts:
  *  a night sky is dark at the top of a picture, not at the top and the bottom alike. */
-export function barsIn(ffmpegReport: string): boolean {
+export function barsIn(ffmpegReport: string): boolean { return !!barBox(ffmpegReport); }
+/** The box the picture's real content sits in when it has such bars (else null) — for cropping them off. */
+export function barBox(ffmpegReport: string): { w: number; h: number; x: number; y: number } | null {
   const size = /Video:[^\n]*?\b(\d{3,5})x(\d{3,5})\b/.exec(ffmpegReport || "");
   const crops = [...(ffmpegReport || "").matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
-  if (!size || !crops.length) return false;
+  if (!size || !crops.length) return null;
   const W = Number(size[1]), H = Number(size[2]);
   const [w, h, x, y] = crops[crops.length - 1].slice(1).map(Number);
-  const pair = (a: number, b: number, full: number) => a > full * 0.06 && b > full * 0.06 && Math.abs(a - b) < full * 0.05;
-  return pair(y, H - h - y, H) || pair(x, W - w - x, W);
+  // a live still had bars of 3.7% — thin, but a black band top and bottom all the same
+  const pair = (a: number, b: number, full: number) => a > full * 0.025 && b > full * 0.025 && Math.abs(a - b) < full * 0.025;
+  if (pair(y, H - h - y, H)) return { w: W, h, x: 0, y };
+  if (pair(x, W - w - x, W)) return { w, h: H, x, y: 0 };
+  return null;
 }
 /** What a picture model is told about the frame it is filling. */
 export const frameWords = (aspect: string): string =>

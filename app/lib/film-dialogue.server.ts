@@ -37,6 +37,7 @@ import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { clipSecondsFor } from "./speech-meter";
 import { captionStyleOf } from "./narrated-core";
+import { MIXED_CAST_LOCK, nameTok } from "./character-prompts";
 import { normalizeContentLang } from "./content-lang";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -414,7 +415,7 @@ const STAGING = "Frame it as a TWO-SHOT that keeps BOTH characters visible in th
 /** Build + render ONE scene's photo seed (the storyboard frame). Shared by the
  *  render loop and the web "preview frame" action so the preview is WYSIWYG.
  *  Returns a relative /renders URL, or null on failure (caller decides fallback). */
-export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[]; roomRefUrl?: string | null; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
+export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[]; roomRefUrl?: string | null; aspect?: "9:16" | "16:9" | "1:1"; /** the cast pictures include a cartoon character or a monster: lock them as what they are, not as people */ creatureCast?: boolean }): Promise<string | null> {
   const ar = opts.aspect || "9:16";
   const framed = `${opts.sceneVisual}. ${opts.sceneHint}. ${STAGING} ${opts.castText || ""} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
   try {
@@ -430,7 +431,7 @@ export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: s
     // CAST path: when the shot's actors are locked (but no prior frame to chain from,
     // e.g. the opening shot), compose from their faces so identity holds shot-to-shot.
     if (castRefs.length) {
-      const multi = await renderStyledSeedMulti(framed, castRefs, ar);
+      const multi = await renderStyledSeedMulti(framed, castRefs, ar, opts.creatureCast ? MIXED_CAST_LOCK : undefined);
       if (multi) return multi;
     }
     return opts.styleRefUrl
@@ -441,13 +442,13 @@ export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: s
 
 /** Template-resolving wrapper for the web action (which has the template key, not
  *  the sceneHint). */
-export async function previewFilmSceneFrame(opts: { template?: string; sceneVisual: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[] }): Promise<string | null> {
+export async function previewFilmSceneFrame(opts: { template?: string; sceneVisual: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[]; creatureCast?: boolean }): Promise<string | null> {
   const tmpl = filmTemplate(opts.template);
   // In the storyboard, styleRefUrl IS the previous shot's frame — use it as the ROOM
   // anchor so each new shot is "same room, new angle, same characters" (owner's fix for
   // clips that cut between unrelated sets). renderSceneFrame only chains when BOTH a
   // room ref and cast faces are present; otherwise it falls back to the old behaviour.
-  return renderSceneFrame({ sceneVisual: opts.sceneVisual, sceneHint: tmpl.sceneHint, castText: opts.castText, styleRefUrl: opts.styleRefUrl, roomRefUrl: opts.styleRefUrl, castRefUrls: opts.castRefUrls });
+  return renderSceneFrame({ sceneVisual: opts.sceneVisual, sceneHint: tmpl.sceneHint, castText: opts.castText, styleRefUrl: opts.styleRefUrl, roomRefUrl: opts.styleRefUrl, castRefUrls: opts.castRefUrls, creatureCast: opts.creatureCast });
 }
 
 /** Cast an actor: a clean, reusable casting PORTRAIT of one character, locked once
@@ -467,7 +468,7 @@ export async function renderActorPortrait(description: string, style?: "cartoon"
  *  condition each shot's seed frame on the right locked faces. */
 function actorsInScene(cast: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }>, scene: { visual?: string; caption?: string }): Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }> {
   const hay = `${scene.visual || ""} ${scene.caption || ""}`.toLowerCase();
-  return cast.filter((c) => { const key = (c.name || "").toLowerCase().split(/[\s,]/)[0]; return key && hay.includes(key); });
+  return cast.filter((c) => { const key = nameTok(c.name); return key && hay.includes(key); });
 }
 
 export async function generateTestMovie(opts: {
@@ -487,7 +488,7 @@ export async function generateTestMovie(opts: {
    *  pinned voice id. Every shot's auto-seed is composed from the faces of the cast
    *  present in it (locked identity), and the speaker's voice timbre is pinned into
    *  the Veo prompt so the voice stays consistent across shots. */
-  cast?: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }>;
+  cast?: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string }>;
   /** Which renderer runs the dialogue clips — the ONE thing that differs between the
    *  otherwise-identical engine pipelines. "kling3" (default, cheaper) or "veo" (premium,
    *  native audio). Recorded on the asset so the Archive shows which model made the film. */
@@ -543,17 +544,25 @@ export async function generateTestMovie(opts: {
   // ("a girl of about ten with shoulder-length wavy dark-blonde hair, a grey shirt over a blue tee"),
   // so that everything that works from a description — who is standing on which side, is the cast in
   // the frame at all — works from a TRUE one.
-  const nameKey = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
+  const nameKey = nameTok;
+  /** A cast member who is not a person — a cartoon character or a monster. */
+  const isCreature = (c: { kind?: string } | undefined | null): boolean => !!c && (c.kind === "cartoon" || c.kind === "monster");
+  const creatureNamed = (n: string): boolean => isCreature(castActors.find((c) => !!c.faceUrl && nameTok(c.name) === nameTok(n)));
+  const castHasCreature = castActors.some((c) => !!c.faceUrl && isCreature(c));
   const castLooks: Record<string, string> = {};
   try { const r = resume.ckCastLooks ? JSON.parse(resume.ckCastLooks) : null; if (r && typeof r === "object") Object.assign(castLooks, r); } catch { /* ignore */ }
   await Promise.all(castActors.filter((c) => !!c.faceUrl).map(async (c) => {
     const k = nameKey(c.name);
     const faceAbs = abs(c.faceUrl);
     if (!k || !faceAbs || castLooks[k]) return;
+    // a cartoon character or a monster: what it was DESIGNED as is its look (no reading needed)
+    if (isCreature(c) && (c.look || "").trim().length > 12) { castLooks[k] = (c.look || "").replace(/\s+/g, " ").trim().slice(0, 220); return; }
     try {
       const { anthropicVision } = await import("./anthropic.server");
       const v = await anthropicVision(
-        "Describe this person's visible look in ONE short phrase for a film's casting sheet: apparent age range, hair colour, hair length and style, any facial hair or glasses, and what they are wearing. Begin with 'a' or 'an'. No name, no guess at who they are, nothing about the photo itself. Example: a man in his forties with short grey hair and a trimmed beard, wearing a navy blazer over a white shirt",
+        isCreature(c)
+          ? "Describe this character's visible look in ONE short phrase for a film's casting sheet: what kind of creature or cartoon character it is, its fur or skin and colours, its eyes, anything it wears. Begin with 'a' or 'an'. No name, nothing about the picture itself. Example: a huge upright werewolf with shaggy dark-grey fur, glowing yellow eyes and bared fangs, in the torn remains of a red plaid shirt"
+          : "Describe this person's visible look in ONE short phrase for a film's casting sheet: apparent age range, hair colour, hair length and style, any facial hair or glasses, and what they are wearing. Begin with 'a' or 'an'. No name, no guess at who they are, nothing about the photo itself. Example: a man in his forties with short grey hair and a trimmed beard, wearing a navy blazer over a white shirt",
         [faceAbs], { maxTokens: 90 }
       );
       const look = (v || "").replace(/\s+/g, " ").replace(/^["'\s]+|["'.\s]+$/g, "").slice(0, 220);
@@ -593,7 +602,7 @@ export async function generateTestMovie(opts: {
   //     faces are born from one generation the two people + the room are identical by
   //     construction and never drift. Gated on exactly two recurring speakers; anything
   //     else falls back to the existing chain untouched.
-  const firstName = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
+  const firstName = nameTok;
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
   const isTwoHander = allSpeakers.length === 2;
   const [spkA, spkB] = allSpeakers;
@@ -601,7 +610,7 @@ export async function generateTestMovie(opts: {
   // script writer's. (The writer's look for a cast presenter is an invention and matches nobody.)
   const bibleFor = (n: string) => {
     const actor = castActors.find((c) => !!c.faceUrl && firstName(c.name) === firstName(n));
-    if (actor) return `${actor.name.trim()}, ${castLooks[firstName(actor.name)] || "the person in their reference photo"}`;
+    if (actor) return `${actor.name.trim()}, ${castLooks[firstName(actor.name)] || (isCreature(actor) ? "the character in their reference picture" : "the person in their reference photo")}`;
     return (treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || `${n}, a person`;
   };
   const faceFor = (n: string) => { const k = firstName(n); return abs(castActors.find((c) => { const nm = (c.name || "").toLowerCase(); return firstName(c.name) === k || (!!k && nm.split(/[\s,]/).includes(k)); })?.faceUrl); };
@@ -621,12 +630,14 @@ export async function generateTestMovie(opts: {
    *  pose or lighting. One image, one question: the form of check this pipeline's other gates use.
    *  Can't be checked (no description, no key, a blip) → true: the check may ask for a redraw, never
    *  block a film. */
-  const castIsIn = async (twoShotAbs: string | undefined, look: string): Promise<boolean> => {
+  const castIsIn = async (twoShotAbs: string | undefined, look: string, creature = false): Promise<boolean> => {
     if (!twoShotAbs || !look) return true;
     try {
       const { anthropicVision } = await import("./anthropic.server");
       const v = await anthropicVision(
-        `Two people are in this image. Is ONE of them ${look}? Judge by hair colour, hair length and style, and clothing; ignore pose, camera angle, lighting and expression. Answer YES or NO and nothing else.`,
+        creature
+          ? `Two characters are in this image. Is ONE of them ${look}? Judge by what kind of creature it is, its fur or skin and colours, and what it wears — a human being is NOT it; ignore pose, camera angle, lighting and expression. Answer YES or NO and nothing else.`
+          : `Two people are in this image. Is ONE of them ${look}? Judge by hair colour, hair length and style, and clothing; ignore pose, camera angle, lighting and expression. Answer YES or NO and nothing else.`,
         [twoShotAbs], { maxTokens: 4 }
       );
       return !/^\s*no\b/i.test(v || "");
@@ -652,12 +663,12 @@ export async function generateTestMovie(opts: {
     let url: string | null = null;
     let castOk = true;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, setting: cleanSetting(where), style: twoStyle, aspect }));
+      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), setting: cleanSetting(where), style: twoStyle, aspect }));
       if (!tryUrl) continue;
       url = tryUrl;
       castOk = true;
       for (const sp of [spkA, spkB]) {
-        if (faceFor(sp) && !(await castIsIn(abs(tryUrl), castLooks[firstName(sp)] || ""))) castOk = false;
+        if (faceFor(sp) && !(await castIsIn(abs(tryUrl), castLooks[firstName(sp)] || "", creatureNamed(sp)))) castOk = false;
       }
       if (castOk) break;
       console.log(`[testmovie] master two-shot try ${attempt + 1}: a cast member doesn't match their photo — redrawing`);
@@ -677,7 +688,9 @@ export async function generateTestMovie(opts: {
         // (A two-image "which side is the person in this photo on" version shipped for one deploy and
         // silently answered nothing: the film then put each line in the wrong mouth.)
         const ask = () => anthropicVision(
-          `Two people are together in this image. Person A is: ${bibleFor(spkA)}. Person B is: ${bibleFor(spkB)}. Which of them is on the LEFT side of the frame? Answer with a single letter, A or B, and nothing else.`,
+          (creatureNamed(spkA) || creatureNamed(spkB))
+            ? `Two characters are together in this image. Character A is: ${bibleFor(spkA)}. Character B is: ${bibleFor(spkB)}. Which of them is on the LEFT side of the frame? Answer with a single letter, A or B, and nothing else.`
+            : `Two people are together in this image. Person A is: ${bibleFor(spkA)}. Person B is: ${bibleFor(spkB)}. Which of them is on the LEFT side of the frame? Answer with a single letter, A or B, and nothing else.`,
           [twoAbs], { maxTokens: 4 }
         );
         let ans = ((await ask()) || "").trim().toUpperCase();
@@ -815,7 +828,7 @@ export async function generateTestMovie(opts: {
     // only half-filled a clip and left it to pad with dead ambient standing-around). turnB is
     // the first LATER turn by a DIFFERENT speaker; absent it, we fall back to the single
     // validated speaker. `line` joins both turns so the clip is sized to the whole exchange.
-    const fnm = (s: string) => (s || "").toLowerCase().split(/[\s,]/)[0];
+    const fnm = nameTok;
     const turnA = turns[0] || { speaker: "", line: "" };
     const turnB = turns.find((t, k) => k > 0 && !!t.speaker && !!t.line && fnm(t.speaker) !== fnm(turnA.speaker)) || null;
     const speaker = turnA.speaker; // leads the shot — drives the seed continuity + voice pin
@@ -866,7 +879,7 @@ export async function generateTestMovie(opts: {
       seedAbs = abs(prevFrameUrl);
       if (!seedAbs) {
         const shotCastRefs = actorsInScene(castActors, scene).map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
-        seedAbs = abs(await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: castRefAbs, castRefUrls: shotCastRefs, aspect }));
+        seedAbs = abs(await renderSceneFrame({ sceneVisual: scene.visual, sceneHint: tmpl.sceneHint, castText: castBible, styleRefUrl: castRefAbs, castRefUrls: shotCastRefs, aspect, creatureCast: castHasCreature }));
       }
     }
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
