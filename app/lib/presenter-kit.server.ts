@@ -19,6 +19,7 @@
  * Everything runs in the background of this process and records its progress in the database, so a page
  * that is polling — or a different page tomorrow — sees the same truth. */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { charKindOf, characterContinuity } from "./character-prompts";
 import fs from "node:fs";
 import os from "node:os";
@@ -58,14 +59,20 @@ export function spinIsStale(r: { avatarId: string; look: number; state: string; 
 function tools(tag: string): KitTools {
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) throw new Error("[kit] REPLICATE_API_TOKEN not set");
-  return { token, ffmpeg: ffmpegBin(), ffprobe: ffprobeBin(), log: (m) => console.log(`[kit] ${tag}: ${m}`) };
+  return { token, ffmpeg: ffmpegBin(), ffprobe: ffprobeBin(), log: (m) => console.log(`[kit] ${tag}: ${m}`), lane: oneAtATime };
 }
 
 /** Anything that runs ffmpeg goes through here, one at a time: this process shares the box with the
- *  render worker, and two ffmpeg runs side by side is how this instance has run out of memory before. */
+ *  render worker, and two ffmpeg runs side by side is how this instance has run out of memory before.
+ *  Every single ffmpeg run of a build also comes through here (KitTools.lane) — the matting passes run
+ *  while two builds may be generating at once. Re-entrant: a job already holding the lane (spinFrames
+ *  inside a lane job) runs its own ffmpeg steps directly instead of queueing behind itself. */
+const holdingLane = new AsyncLocalStorage<true>();
 let chain: Promise<unknown> = Promise.resolve();
 function oneAtATime<T>(job: () => Promise<T>): Promise<T> {
-  const run = chain.then(job, job);
+  if (holdingLane.getStore()) return job();
+  const go = () => holdingLane.run(true, job);
+  const run = chain.then(go, go);
   chain = run.catch(() => undefined);
   return run;
 }

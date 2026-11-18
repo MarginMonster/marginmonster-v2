@@ -486,6 +486,11 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [pendingVoice, setPendingVoice] = useState(c.voiceId);
   const voicePanelRef = useRef<HTMLDivElement | null>(null);
+  // Opening the voice screen unmounts the "Change" button that opened it, so keyboard and screen-reader
+  // focus fell back to the page; closing it never came back either. Focus follows the screen both ways.
+  const voiceTitleRef = useRef<HTMLHeadingElement | null>(null);
+  const voiceChangeRef = useRef<HTMLButtonElement | null>(null);
+  const voiceWasOpen = useRef(false);
   // Escape steps back out of the voice screen first, and only then closes the presenter
   const dialogRef = useModalA11y<HTMLDivElement>(true, () => { if (voiceOpen) setVoiceOpen(false); else onClose(); });
   const [renaming, setRenaming] = useState(false);
@@ -517,6 +522,9 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
   // on a phone the voice screen opens below the stage: bring its top into view
   useEffect(() => {
     if (voiceOpen && window.matchMedia("(max-width:760px)").matches) voicePanelRef.current?.scrollIntoView({ block: "start" });
+    if (voiceOpen) voiceTitleRef.current?.focus({ preventScroll: true });
+    else if (voiceWasOpen.current) voiceChangeRef.current?.focus({ preventScroll: true });
+    voiceWasOpen.current = voiceOpen;
   }, [voiceOpen]);
   // a save landed: fold the editors; a delete landed: there is nobody left to look at
   useEffect(() => {
@@ -622,7 +630,7 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
           <button type="button" className="pc-back" onClick={() => setVoiceOpen(false)}>
             <Ico n="arrow" size={14} style={{ transform: "rotate(180deg)" }} /> {t("Back to {name}", { name: c.name })}
           </button>
-          <h3 className="pc-vtitle">{t("Choose a voice")}</h3>
+          <h3 className="pc-vtitle" ref={voiceTitleRef} tabIndex={-1}>{t("Choose a voice")}</h3>
           <p className="pc-vsub">{t("Tap ▶ to hear one. {name} keeps the voice they have until you save.", { name: c.name })}</p>
           {fetcher.data?.error ? <p className="pc-err" role="alert">{fetcher.data.error}</p> : null}
           <VoicePicker gender={gender} value={pendingVoice} onChange={setPendingVoice} myVoices={myVoices} canMake={canMakeVoice} showAll characterKind={characterKind}
@@ -696,7 +704,7 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
                   <b className={c.voiceOwn ? "own" : ""}>{voiceName}{playing ? <i className="pc-eq" aria-hidden="true"><i /><i /><i /><i /></i> : null}</b>
                   <small>{voiceNote}</small>
                 </span>
-                <button type="button" className="pc-chg"
+                <button type="button" className="pc-chg" ref={voiceChangeRef}
                   onClick={() => { audioRef.current?.pause(); setPlaying(false); setPendingVoice(c.voiceId || (!c.custom ? "" : characterKind ? DEFAULT_CHARACTER_VOICE[characterKind][gender] : DEFAULT_AVATAR_VOICE[gender])); setVoiceOpen(true); }}>
                   {t("Change")}
                 </button>
@@ -965,6 +973,7 @@ ${SPIN_STAGE_CSS}
 .pc-vpanel{display:flex;flex-direction:column;}
 .pc-back{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;min-height:36px;margin:-4px 0 10px -8px;padding:6px 12px 6px 8px;border:0;border-radius:999px;background:transparent;font:inherit;font-size:12.5px;font-weight:800;color:var(--ink2,#4A554E);cursor:pointer;}
 .pc-back:hover{background:#EDF1E8;color:var(--ink,#14201A);}
+.pc-vtitle:focus{outline:none}
 .pc-vtitle{margin:0 44px 0 0;font-family:Poppins,sans-serif;font-weight:800;font-size:27px;line-height:1.1;letter-spacing:-.02em;color:var(--ink,#14201A);}
 .pc-vsub{margin:7px 0 16px;max-width:52ch;font-size:13.5px;line-height:1.45;color:var(--ink2,#4A554E);}
 /* the shared picker, laid out as cards: play on the left, name over its description, a tick when chosen */

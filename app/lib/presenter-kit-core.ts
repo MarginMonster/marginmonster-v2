@@ -44,7 +44,12 @@ export type KitTools = {
   ffmpeg: string;
   ffprobe: string;
   log?: (msg: string) => void;
+  /** Runs an ffmpeg job when it is its turn. The server passes its one-at-a-time lane: two ffmpeg runs
+   *  side by side (a build's matting pass next to the render worker) is how the box ran out of memory.
+   *  Absent (the stock build script), ffmpeg just runs. */
+  lane?: <T>(job: () => Promise<T>) => Promise<T>;
 };
+const inLane = <T>(t: KitTools, job: () => Promise<T>): Promise<T> => (t.lane ? t.lane(job) : job());
 
 export type KitSpin = {
   /** How many frames the rotation has. */
@@ -182,7 +187,7 @@ function runBytes(bin: string, args: string[]): Promise<{ code: number; out: Buf
 }
 
 async function ff(t: KitTools, args: string[], what: string): Promise<string> {
-  const r = await run(t.ffmpeg, ["-hide_banner", "-y", ...args]);
+  const r = await inLane(t, () => run(t.ffmpeg, ["-hide_banner", "-y", ...args]));
   if (r.code !== 0) throw new Error(`[kit:${what}] ffmpeg failed: ${r.err.slice(-400)}`);
   return r.err;
 }
@@ -447,7 +452,7 @@ export function stepSize(maskA: Uint8Array, greyA: Uint8Array, maskB: Uint8Array
 
 /** One video as small grey frames. */
 async function greyFrames(t: KitTools, file: string, w: number, h: number): Promise<Buffer> {
-  const r = await runBytes(t.ffmpeg, ["-hide_banner", "-loglevel", "error", "-i", file, "-vf", `scale=${w}:${h}`, "-f", "rawvideo", "-pix_fmt", "gray", "-"]);
+  const r = await inLane(t, () => runBytes(t.ffmpeg, ["-hide_banner", "-loglevel", "error", "-i", file, "-vf", `scale=${w}:${h}`, "-f", "rawvideo", "-pix_fmt", "gray", "-"]));
   if (r.code !== 0) throw new Error(`[kit:motion] ffmpeg failed: ${r.err.slice(-300)}`);
   return r.out;
 }
@@ -624,10 +629,10 @@ export async function measureTurn(t: KitTools, dir: string, prefix: string, spin
   const h = Math.max(2, Math.round(spin.h / 2));
   const size = w * h;
   const read = async (filter: string, what: string): Promise<Buffer> => {
-    const r = await runBytes(t.ffmpeg, [
+    const r = await inLane(t, () => runBytes(t.ffmpeg, [
       "-hide_banner", "-loglevel", "error", "-start_number", "0", "-i", path.join(dir, `${prefix}s%02d.webp`),
       "-vf", `${filter}scale=${w}:${h}`, "-f", "rawvideo", "-pix_fmt", "gray", "-",
-    ]);
+    ]));
     if (r.code !== 0) throw new Error(`[kit:measure] ffmpeg failed (${what}): ${r.err.slice(-300)}`);
     if (Math.floor(r.out.length / size) < spin.frames) throw new Error(`[kit:measure] read ${Math.floor(r.out.length / size)} of ${spin.frames} frames (${what})`);
     return r.out;
