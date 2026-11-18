@@ -380,3 +380,23 @@ export function kenBurns(i: number, frames: number, W: number, H: number): strin
 /** The frame a story is drawn on. */
 export const storyFrame = (aspect: string | null | undefined): { aspect: "9:16" | "16:9" | "1:1"; W: number; H: number } =>
   aspect === "16:9" ? { aspect: "16:9", W: 1280, H: 720 } : aspect === "1:1" ? { aspect: "1:1", W: 1080, H: 1080 } : { aspect: "9:16", W: 720, H: 1280 };
+
+/* ---- how loud a finished film is ----
+ * An acted film's sound is whatever the video model performed; the first two came out at about -24 dB
+ * beside narrated stories at -18. A film is measured once and moved to the target with ONE gain for the
+ * whole film (no moment-to-moment riding, which pumps the room tone up between lines). */
+
+/** ffmpeg's loudnorm measurement (`print_format=json`) → integrated loudness and true peak, or null. */
+export function parseLoudness(report: string): { i: number; tp: number } | null {
+  const i = /"input_i"\s*:\s*"(-?[\d.]+|-inf)"/.exec(report || "");
+  const tp = /"input_tp"\s*:\s*"(-?[\d.]+|-inf)"/.exec(report || "");
+  if (!i || !tp || i[1] === "-inf") return null;
+  const iv = Number(i[1]), tv = tp[1] === "-inf" ? -99 : Number(tp[1]);
+  return Number.isFinite(iv) && Number.isFinite(tv) ? { i: iv, tp: tv } : null;
+}
+/** The gain (dB) that takes a film from where it measures to `target` LUFS: never more than `maxBoost`
+ *  up or 12 down, and 0 when it is already within a decibel (nothing to gain from re-encoding). */
+export function levelGain(measured: { i: number; tp: number }, target = -16, maxBoost = 12): number {
+  const g = Math.max(-12, Math.min(maxBoost, target - measured.i));
+  return Math.abs(g) < 1 ? 0 : Math.round(g * 10) / 10;
+}

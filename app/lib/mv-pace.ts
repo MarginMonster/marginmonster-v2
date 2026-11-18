@@ -178,7 +178,8 @@ export function beatTimes(pcm: Float32Array, sr: number): number[] {
     let sc = 0;
     for (let i = 0; i + 2 * lag + 1 < n; i++) {
       const x = flat[i];
-      if (x) sc += x * (flat[Math.round(i + lag)] + 0.5 * flat[Math.round(i + 2 * lag)]);
+      if (!x) continue;
+      sc += x * (flat[Math.round(i + lag)] + 0.5 * flat[Math.round(i + 2 * lag)]);
     }
     return sc * Math.exp(-0.5 * Math.pow(Math.log2(bpm / 115) / 0.8, 2)); // most songs sit near the middle
   };
@@ -189,29 +190,49 @@ export function beatTimes(pcm: Float32Array, sr: number): number[] {
     if (sc > best) { best = sc; bestBpm = bpm; }
   }
   if (!(best > 0) || best < 1.5 * (total / tried)) return [];
-  // the tempo to a twentieth of a beat a minute: half a beat-per-minute out is a tenth of a second by the end
-  for (let bpm = bestBpm - 0.45; bpm <= bestBpm + 0.45; bpm += 0.05) { const sc = score(bpm); if (sc > best) { best = sc; bestBpm = bpm; } }
-  const bestLag = (60 / bestBpm) * fps;
-  // where the first beats fall: the offset that catches the most spikes in the opening twelve seconds
-  const opening = Math.min(n, Math.round(fps * 12));
+  const coarse = (60 / bestBpm) * fps;
+  // Where the first beats fall: the offset that catches the most spikes in the opening ten seconds (the
+  // envelope has a frame every 11.6 ms, so the tempo above is only good to about half a beat a minute —
+  // over ten seconds that has not drifted; over the whole song it would have).
+  const opening = Math.min(n, Math.round(fps * 10));
   let phase = 0, top = -1;
-  for (let ph = 0; ph < bestLag; ph++) {
+  for (let ph = 0; ph < coarse; ph += 0.5) {
     let sum = 0;
-    for (let t = ph; t < opening; t += bestLag) sum += flat[Math.round(t)] || 0;
+    for (let t = ph; t < opening; t += coarse) sum += flat[Math.round(t)] || 0;
     if (sum > top) { top = sum; phase = ph; }
   }
-  // …then the song is walked beat by beat, each one settling towards the spike nearest where it was expected
-  const out: number[] = [];
-  const reach = Math.max(1, Math.round(bestLag * 0.2));
-  let t = phase;
-  while (t < n) {
-    const c0 = Math.round(t);
-    let at = c0, peak = 0;
-    for (let k = Math.max(0, c0 - reach); k <= Math.min(n - 1, c0 + reach); k++) if (flat[k] > peak) { peak = flat[k]; at = k; }
-    const settled = peak > 0 ? t + 0.6 * (at - t) : t;
-    out.push((settled * hop + win / 2) / sr);
-    t = settled + bestLag;
+  /** Walk the song a beat at a time from `start`, `period` frames apart. Each beat is only NUDGED towards
+   *  a spike close to where it was expected (a fifth of the way, within an eighth of a beat): enough to
+   *  follow a tempo that breathes or is a hair out, never enough to wander onto the off-beat of a busy
+   *  pattern (the first real rap video did exactly that when the pull was stronger). */
+  const walk = (period: number, start: number): { beats: number[]; hits: Array<[number, number, number]> } => {
+    const beatsAt: number[] = [];
+    const hits: Array<[number, number, number]> = [];
+    const reach = Math.max(1, Math.round(period * 0.125));
+    let t = start, k = 0;
+    while (t < n) {
+      const c0 = Math.round(t);
+      let at = c0, peak = 0;
+      for (let q = Math.max(0, c0 - reach); q <= Math.min(n - 1, c0 + reach); q++) if (flat[q] > peak) { peak = flat[q]; at = q; }
+      if (peak > 0) { hits.push([k, at, peak]); t += 0.2 * (at - t); }
+      beatsAt.push(t);
+      t += period; k++;
+    }
+    return { beats: beatsAt, hits };
+  };
+  const first = walk(coarse, phase);
+  // The tempo, exactly: a straight line (beat number → frame) through the stronger half of the hits.
+  let period = coarse, start = phase;
+  const strong = [...first.hits].sort((x, y) => y[2] - x[2]).slice(0, Math.max(8, Math.ceil(first.hits.length / 2)));
+  if (strong.length >= 8) {
+    const mk = strong.reduce((acc, h) => acc + h[0], 0) / strong.length;
+    const mf = strong.reduce((acc, h) => acc + h[1], 0) / strong.length;
+    let num = 0, den = 0;
+    for (const h of strong) { num += (h[0] - mk) * (h[1] - mf); den += (h[0] - mk) * (h[0] - mk); }
+    const slope = den > 0 ? num / den : coarse;
+    if (Math.abs(slope - coarse) / coarse < 0.02) { period = slope; start = mf - slope * mk; while (start < 0) start += period; }
   }
+  const out = walk(period, start).beats.map((fr) => (fr * hop + win / 2) / sr);
   return out;
 }
 

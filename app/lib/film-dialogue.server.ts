@@ -649,7 +649,7 @@ export async function generateTestMovie(opts: {
   type Master = { url: string; aOnLeft: boolean; a: string; b: string };
   const masters: Record<string, Master> = {};
   try { const r = resume.ckMasters ? JSON.parse(resume.ckMasters) : null; if (r && typeof r === "object") Object.assign(masters, r); } catch { /* ignore */ }
-  const masterFor = async (locKey: string, where: string, roomRef?: string): Promise<Master | undefined> => {
+  const masterFor = async (locKey: string, where: string, roomRef?: string, action?: string): Promise<Master | undefined> => {
     if (!isTwoHander) return undefined;
     if (masters[locKey]?.url) return masters[locKey];
     // The master two-shot is the WHOLE film's seed — nano-banana occasionally returns null,
@@ -663,7 +663,7 @@ export async function generateTestMovie(opts: {
     let url: string | null = null;
     let castOk = true;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), setting: cleanSetting(where), style: twoStyle, aspect }));
+      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), action, setting: cleanSetting(where), style: twoStyle, aspect }));
       if (!tryUrl) continue;
       url = tryUrl;
       castOk = true;
@@ -844,7 +844,8 @@ export async function generateTestMovie(opts: {
     // The merchant's APPROVED storyboard frame always wins. A flat treatment is one
     // location of "continue" beats → beat 0 = master, the rest chain (validated behaviour).
     const tr = transitionAt(i);
-    const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined);
+    // the master of a location is drawn from the first scene set there: that scene's picture says what the shot shows
+    const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, scene.visual);
     const sideFor = sideForMaster(master);
     let seedAbs = abs(approvedFrames[i]);
     if (!seedAbs && master?.url) {
@@ -973,6 +974,10 @@ export async function generateTestMovie(opts: {
   const outName = `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
   await assembleTestMovie(clips, outPath, jobId, softSeams, aspect);
+  // 4a) LOUDNESS — an acted film's sound is whatever the video model performed, and it came out much
+  // quieter than a narrated story (-24 dB against -18 on the first two made side by side). Levelled to
+  // the same loudness; never fatal.
+  try { const { levelFilm } = await import("./film-loudness.server"); await levelFilm(outPath); } catch (e) { console.error(`[testmovie] loudness not levelled: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
   // 4b) CAPTIONS (the maker's choice): each shot's line, as written, in time with its voice. A sung
   // film has its own lyric treatment; this is for spoken ones. It can never cost the film.
   let captioned: string = "off";
