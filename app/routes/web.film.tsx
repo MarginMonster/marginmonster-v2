@@ -16,6 +16,7 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { normalizeContentLang } from "../lib/content-lang";
 import { db } from "../db.server";
+import { isAdminEmail } from "../lib/admin.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { enqueueJob } from "../lib/job-queue.server";
@@ -191,7 +192,7 @@ function parseCastGenders(raw: string | null): Array<{ name: string; gender: "m"
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const lang = await readUiLang(request);
-  const { shop } = await requireWebIdentity(request);
+  const { shop, account } = await requireWebIdentity(request);
   const form = await request.formData();
   const intent = ((form.get("intent") as string) || "").trim();
   const { filmTemplate, previewFilmTreatment, canNarrate, clampNarrated } = await import("../lib/film-engine.server");
@@ -457,6 +458,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // merchant saw == the debit. The queue's refundPrepaidOnce returns chargedTokens
   // on terminal failure; this catch covers a charge that never gets a job row.
   if (intent === "film") {
+    // FREE FILMS, CAPPED — OFF until the owner turns it on. While films cost 0 tokens (plan-config
+    // FILM_BASE / FILM_PER_SCENE), one account could render hundreds of dollars of acted films a day (Kling
+    // ≈ $0.28 a second). FILM_FREE_DAILY_CAP=<n> in the environment limits each account to n films in any
+    // 24 hours. Admins are never capped, and the cap stops applying the moment films have a price.
+    const freeCap = parseInt(process.env.FILM_FREE_DAILY_CAP || "", 10);
+    if (Number.isFinite(freeCap) && freeCap > 0 && estimateFilmTokens(1) === 0 && !isAdminEmail(account.email)) {
+      const made = await db.job.count({
+        where: { shopId: shop.id, type: "GENERATE_VIDEO_AD", createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, payload: { contains: '"contentType":"film"' } },
+      });
+      if (made >= freeCap) return json({ error: tr(lang, "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.", { n: freeCap }) });
+    }
     const approvedRaw = ((form.get("approvedTreatment") as string) || "").trim();
     let approvedTreatment: string | undefined;
     let scenes = clampScenes(parseInt((form.get("filmScenes") as string) || "", 10) || tmpl.defaultScenes);

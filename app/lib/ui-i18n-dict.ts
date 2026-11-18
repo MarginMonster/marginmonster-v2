@@ -2545,6 +2545,7 @@ const es: Record<string, string> = {
   "Search your pieces": "Busca tus piezas",
   "Results for “{q}”": "Resultados para “{q}”",
   "Nothing here matches “{q}”.": "Nada aquí coincide con “{q}”.",
+  "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.": "Has creado {n} películas en las últimas 24 horas. Movie Maker es gratis mientras lo terminamos, así que por ahora el límite es de {n} al día — vuelve mañana para hacer más.",
 };
 
 const fr: Record<string, string> = {
@@ -5062,6 +5063,7 @@ const fr: Record<string, string> = {
   "Search your pieces": "Cherche dans tes créations",
   "Results for “{q}”": "Résultats pour « {q} »",
   "Nothing here matches “{q}”.": "Rien ici ne correspond à « {q} ».",
+  "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.": "Tu as fait {n} films ces dernières 24 heures. Movie Maker est gratuit le temps qu'on le termine, donc c'est limité à {n} par jour pour l'instant — reviens demain pour en faire d'autres.",
 };
 
 const de: Record<string, string> = {
@@ -7588,6 +7590,7 @@ const de: Record<string, string> = {
   "Search your pieces": "Deine Stücke durchsuchen",
   "Results for “{q}”": "Ergebnisse für „{q}“",
   "Nothing here matches “{q}”.": "Hier passt nichts zu „{q}“.",
+  "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.": "Du hast in den letzten 24 Stunden {n} Filme gemacht. Movie Maker ist kostenlos, solange wir ihn fertigstellen, deshalb gilt vorerst ein Limit von {n} pro Tag — morgen geht es weiter.",
 };
 
 const zh: Record<string, string> = {
@@ -10176,6 +10179,7 @@ const zh: Record<string, string> = {
   "Search your pieces": "搜索你的作品",
   "Results for “{q}”": "“{q}”的搜索结果",
   "Nothing here matches “{q}”.": "这里没有与“{q}”匹配的内容。",
+  "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.": "过去 24 小时内你已制作了 {n} 部影片。Movie Maker 在完善期间免费，因此目前每天限 {n} 部 — 明天再来制作更多。",
 };
 
 const ur: Record<string, string> = {
@@ -12754,6 +12758,7 @@ const ur: Record<string, string> = {
   "Search your pieces": "اپنی تخلیقات تلاش کریں",
   "Results for “{q}”": "“{q}” کے نتائج",
   "Nothing here matches “{q}”.": "یہاں “{q}” سے کچھ نہیں ملتا۔",
+  "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.": "آپ نے پچھلے 24 گھنٹوں میں {n} فلمیں بنائی ہیں۔ Movie Maker مکمل ہونے تک مفت ہے، اس لیے فی الحال روزانہ {n} کی حد ہے — مزید کے لیے کل واپس آئیں۔",
 };
 
 export const UI_DICT: Partial<Record<UiLang, Record<string, string>>> = { es, fr, de, zh, ur };
