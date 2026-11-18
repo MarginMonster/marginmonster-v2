@@ -656,12 +656,18 @@ const mvLenLabel = (n: number) => { const s = n * 10; return s < 60 ? `${s}s` : 
  * Each clip is ONE continuous take with nothing blended into it. The first set (v1) ran through the
  * dissolves the film engine used to put between takes, and had its own tail cross-faded into its head
  * to loop "seamlessly" — both read as a glitch every few seconds, and the owner saw it at once. A clip
- * repeats with a plain jump; its in and out points were picked where the two frames are most alike. */
-const LOOP_V = 2;
-const STILL_V = 5;
+ * repeats with a plain jump; its in and out points were picked where the two frames are most alike.
+ *
+ * v3 (2026-11-18): Short Film and Moral Story were two people in side profile ("weak sauce flex", the
+ * owner, 11-17). Their clips and covers are now from films made after the acted films' two-shot was
+ * opened up — both faces toward the camera, the story's object in the picture (the neon OPEN sign, the
+ * broken pocket watch) — and they have their own 4:5 covers, since a centre crop of a two-shot on a
+ * phone card cut both faces in half. */
+const LOOP_V = 3;
+const STILL_V = 6;
 const LOOP_KEYS = ["musicvideo", "testmovie", "kidstv", "moral", "horror", "kidsmusicvideo"];
 /** Formats whose cover has its own 4:5 picture for phones (the rest are one picture cropped both ways). */
-const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo"]);
+const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo", "testmovie", "moral"]);
 const stillOf = (key: string) => `/landing/film-still-${key}.jpg?v=${STILL_V}`;
 const stillFallback = (e: React.SyntheticEvent<HTMLImageElement>) => {
   const el = e.currentTarget;

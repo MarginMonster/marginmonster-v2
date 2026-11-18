@@ -790,6 +790,8 @@ function dlName(title: string, isVideo: boolean, isAudio = false): string {
 }
 
 type ATab = "video" | "image" | "music" | "blog" | "stills";
+/** What a tab's pieces are called in a sentence ("Showing 60 of 82 videos"). */
+const TAB_PLURAL: Record<ATab, string> = { video: "videos", image: "images", music: "tracks", blog: "articles", stills: "pictures" };
 const A_KIND: Record<string, ATab> = { VIDEO_AD: "video", IMAGE_AD: "image", AUDIO: "music", BLOG_POST: "blog" };
 
 // Route-local styles for everything the parity pass added (viewer, badges,
@@ -1417,8 +1419,9 @@ export default function WebArchive() {
             {shelf.length === 0
               // None of THIS type are in the recent window (older ones got crowded
               // out by newer pieces of other types) — don't pretend there are none.
-              ? <>{t("Your")} <b>{tabTotal}</b> {tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : t(tab + "s")} {t("are further back.")}{" "}</>
-              : <>{t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}{tab === "blog" ? t("articles") : tab === "music" ? t("tracks") : t(tab + "s")}.{" "}</>}
+              // (the word was built as tab + "s", which on the Scenes & Portraits tab read "stillss")
+              ? <>{t("Your")} <b>{tabTotal}</b> {t(TAB_PLURAL[tab])} {t("are further back.")}{" "}</>
+              : <>{t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}{t(TAB_PLURAL[tab])}.{" "}</>}
             <Link to={`?show=${nextShow}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
           </p>
         )}
