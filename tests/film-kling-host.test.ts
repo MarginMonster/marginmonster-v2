@@ -1,0 +1,40 @@
+/* Kling 3 Omni is the model every approved film was made with. Replicate charges $0.28 a second for it
+ * (pro, with audio); fal sells the same model as "O3" for $0.14. Which host renders a film is the owner's
+ * call by ear, so: Replicate stays the default, FILM_KLING_HOST moves it, the same model on the other host
+ * is the fallback, and an admin ENGINE TEST renders one shot on another host without touching the film. */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+
+const read = (p: string) => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
+
+test("fal's Kling 3 Omni endpoints are the O3 ones, and Replicate stays the default host", () => {
+  const src = read("app/lib/film-dialogue.server.ts");
+  assert.ok(src.includes('const FAL_KLING3_OMNI = "fal-ai/kling-video/o3/pro/image-to-video";'));
+  assert.ok(src.includes('const FAL_KLING3_OMNI_STD = "fal-ai/kling-video/o3/standard/image-to-video";'));
+  const fn = src.slice(src.indexOf("export function filmKlingHost"), src.indexOf("export function filmKlingHost") + 400);
+  assert.ok(fn.includes('process.env.FILM_KLING_HOST'), "read from the environment");
+  assert.ok(/: "replicate";\s*\n\}/.test(fn), "anything but fal / fal-std means Replicate");
+});
+
+test("each host falls back to the same model on the other host before fal's different Kling 3 Pro", () => {
+  const src = read("app/lib/film-dialogue.server.ts");
+  const body = src.slice(src.indexOf("async function klingDialogueClip"), src.indexOf("async function dialogueClip"));
+  const rep = body.slice(body.indexOf('host === "replicate"'), body.indexOf(": ["));
+  const a = body.indexOf('name: "replicate kling 3 omni"'), b = body.indexOf('name: "fal kling 3 omni"'), c = body.indexOf('name: "fal kling 3 pro"');
+  assert.ok(a > 0 && b > a && c > b, "replicate host: replicate omni → fal omni → fal kling 3 pro");
+  assert.ok(rep.length > 0);
+  assert.ok(body.includes('mode: "pro"'), "Replicate keeps the pro mode every approved film used");
+  assert.ok(body.includes("generateAudio: true"), "fal renders with native audio");
+});
+
+test("the engine test never re-cuts the film it was taken from", () => {
+  const src = read("app/lib/film-edit.server.ts");
+  const fn = src.slice(src.indexOf("export async function engineTestFilmShot"));
+  assert.ok(fn.length > 100);
+  assert.ok(!fn.includes("saveCut("), "the film is not touched");
+  assert.ok(fn.includes('kind: "enginetest"'), "kept as its own piece");
+  const route = read("app/routes/web.filmedit.$id.tsx");
+  const op = route.slice(route.indexOf('if (op === "enginetest")'), route.indexOf('if (op === "regen")'));
+  assert.ok(op.includes("isAdminEmail(account.email)"), "admins only");
+});

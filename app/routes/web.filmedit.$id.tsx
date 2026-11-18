@@ -13,6 +13,7 @@ import { useState, useEffect, useRef } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { editFilmShot, type ShotOp } from "../lib/film-edit.server";
+import { isAdminEmail } from "../lib/admin.server";
 
 export const meta: MetaFunction = () => [{ title: "Shot Editor · EasyMode" }];
 
@@ -50,12 +51,23 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  const { shop } = await requireWebIdentity(request);
+  const { shop, account } = await requireWebIdentity(request);
   const form = await request.formData();
   const op = String(form.get("op") || "");
   const shotIndex = parseInt(String(form.get("shotIndex") || "-1"), 10);
   // Phase 3 — regenerate: an AI re-render is too slow for a web request, so queue a worker
   // job (free during the build) and let the editor poll until the re-stitched film lands.
+  // ENGINE TEST (admins only, no button): render this shot again on another Kling host and keep it as
+  // its own archive piece beside the film, to judge by ear whether fal's half-price copy of the model
+  // matches. The film is not changed.
+  if (op === "enginetest") {
+    if (!isAdminEmail(account.email)) return json({ ok: false, error: "Unknown edit." });
+    const host = String(form.get("host") || "");
+    if (host !== "fal" && host !== "fal-std" && host !== "replicate") return json({ ok: false, error: "Pick fal, fal-std or replicate." });
+    const { enqueueJob } = await import("../lib/job-queue.server");
+    await enqueueJob(shop.id, "REGEN_SHOT", { assetId: params.id || "", shotIndex, abHost: host });
+    return json({ ok: true, queued: true });
+  }
   if (op === "regen") {
     const { enqueueJob } = await import("../lib/job-queue.server");
     await enqueueJob(shop.id, "REGEN_SHOT", { assetId: params.id || "", shotIndex });

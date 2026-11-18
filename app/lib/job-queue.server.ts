@@ -516,6 +516,20 @@ async function runJob(
     // Section editor Phase 3: re-roll ONE shot of a finished film via the dialogue engine,
     // then re-stitch. Free (no tokens) during the build; updates the asset in place.
     case "REGEN_SHOT": {
+      // ENGINE TEST (admin): the same shot on another Kling host, saved as its own piece — the film
+      // is left exactly as it is.
+      const abHost = payload.abHost === "fal" || payload.abHost === "fal-std" || payload.abHost === "replicate" ? payload.abHost : null;
+      if (abHost) {
+        const { engineTestFilmShot } = await import("./film-edit.server");
+        const t = await engineTestFilmShot({
+          assetId: String(payload.assetId || ""),
+          shopId,
+          shotIndex: typeof payload.shotIndex === "number" ? payload.shotIndex : parseInt(String(payload.shotIndex ?? "-1"), 10),
+          host: abHost,
+        });
+        if (!t.ok) throw new Error(`[NO-RETRY] ${t.error || "Engine test failed"}`);
+        break;
+      }
       const { regenerateFilmShot } = await import("./film-edit.server");
       const r = await regenerateFilmShot({
         assetId: String(payload.assetId || ""),

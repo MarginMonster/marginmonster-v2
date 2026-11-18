@@ -95,6 +95,26 @@ async function veoDialogueClip(seedAbs: string, prompt: string, stage: string, a
 const FAL_KLING3 = "fal-ai/kling-video/v3/pro/image-to-video";
 const REP_KLING3 = "kwaivgi/kling-v3-omni-video";
 const KLING_DUR = 10;
+// The SAME Kling 3 Omni model on fal, where it is called "O3". Read off the providers' own pages
+// 2026-11-18, per second of video with audio: Replicate pro $0.28 · fal O3 pro $0.14 · fal O3 standard
+// (720p) $0.112. Replicate is 95% of what an acted film costs us, so the host is the biggest money lever
+// in Movie Maker — and it is the owner's call by ear, not a silent swap (see filmKlingHost).
+const FAL_KLING3_OMNI = "fal-ai/kling-video/o3/pro/image-to-video";
+const FAL_KLING3_OMNI_STD = "fal-ai/kling-video/o3/standard/image-to-video";
+/** Where a Kling 3 Omni dialogue shot is rendered. */
+export type KlingHost = "replicate" | "fal" | "fal-std";
+export const KLING_HOST_LABEL: Record<KlingHost, string> = {
+  replicate: "Replicate · Kling 3 Omni pro ($0.28/s)",
+  fal: "fal · Kling 3 Omni pro ($0.14/s)",
+  "fal-std": "fal · Kling 3 Omni standard ($0.112/s)",
+};
+/** The host acted films render on. Replicate — the one every owner-approved film came from — until the
+ *  owner has heard the same shot from fal and says otherwise; FILM_KLING_HOST=fal (or fal-std) in the
+ *  environment then moves every film there, with the other host still behind it as the fallback. */
+export function filmKlingHost(): KlingHost {
+  const v = (process.env.FILM_KLING_HOST || "").trim().toLowerCase();
+  return v === "fal" ? "fal" : v === "fal-std" ? "fal-std" : "replicate";
+}
 
 /** A Kling 3 Omni dialogue clip (native lip-synced audio) — byte-for-byte the same role
  *  as veoDialogueClip, only the renderer differs. Returns the clip URL.
@@ -105,23 +125,47 @@ const KLING_DUR = 10;
  *  fits, putting fal first would silently swap the model under the flagship — so the proven renderer
  *  stays first and fal is a real, working fallback. `mode` is pinned to the default the approved films
  *  used, so a provider-side default change can't alter the look either. */
-async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: string, durationSec = KLING_DUR): Promise<string> {
+async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: string, durationSec = KLING_DUR, host: KlingHost = filmKlingHost()): Promise<string> {
   const dur = Math.max(5, Math.min(KLING_DUR, Math.round(durationSec) || KLING_DUR));
   const prompt = clampKlingPrompt(rawPrompt);
-  try {
+  const viaReplicate = async () => {
     const id = await repCreate(REP_KLING3, { prompt, start_image: seedAbs, generate_audio: true, duration: dur, mode: "pro" });
     return await repPoll(id, VEO_POLL_MS, stage);
-  } catch (e) {
-    if (!falEnabled()) throw e;
-    console.error(`[testmovie] replicate kling failed, trying fal: ${e instanceof Error ? e.message.slice(0, 360) : e}`);
+  };
+  const viaFal = async (model: string) => {
+    const rid = await falVideoSubmit(model, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur });
+    return await falVideoPoll(model, rid, VEO_POLL_MS);
+  };
+  // The picked host first; then the SAME model on the other host; fal's Kling 3 Pro (a different model)
+  // only as the last resort, as before. A refused or failed render is not billed, so a fallback never
+  // pays twice for one shot.
+  const omniOnFal = host === "fal-std" ? FAL_KLING3_OMNI_STD : FAL_KLING3_OMNI;
+  const order: Array<{ name: string; fal: boolean; run: () => Promise<string> }> = host === "replicate"
+    ? [
+        { name: "replicate kling 3 omni", fal: false, run: viaReplicate },
+        { name: "fal kling 3 omni", fal: true, run: () => viaFal(FAL_KLING3_OMNI) },
+        { name: "fal kling 3 pro", fal: true, run: () => viaFal(FAL_KLING3) },
+      ]
+    : [
+        { name: `fal kling 3 omni${host === "fal-std" ? " standard" : ""}`, fal: true, run: () => viaFal(omniOnFal) },
+        { name: "replicate kling 3 omni", fal: false, run: viaReplicate },
+        { name: "fal kling 3 pro", fal: true, run: () => viaFal(FAL_KLING3) },
+      ];
+  let lastErr: unknown = new Error("[testmovie] no Kling host is configured");
+  for (const step of order) {
+    if (step.fal && !falEnabled()) continue;
+    try { return await step.run(); }
+    catch (e) {
+      lastErr = e;
+      console.error(`[testmovie] ${step.name} failed (${stage}): ${e instanceof Error ? e.message.slice(0, 360) : e}`);
+    }
   }
-  const rid = await falVideoSubmit(FAL_KLING3, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur });
-  return await falVideoPoll(FAL_KLING3, rid, VEO_POLL_MS);
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 /** Route a dialogue clip to the chosen engine — the ONE line that differs between the
  *  identical Veo and Kling pipelines. */
-async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string, durationSec?: number, aspect?: "9:16" | "16:9" | "1:1"): Promise<string> {
+async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string, durationSec?: number, aspect?: "9:16" | "16:9" | "1:1", host?: KlingHost): Promise<string> {
   // Only Kling takes a per-clip length; Veo keeps its native clip. Kling inherits the seed's
   // aspect (the seed is rendered at the chosen ratio); Veo-Replicate takes it explicitly.
   // RETRY the whole render a few times: each clip already falls back fal→Replicate, but when
@@ -132,7 +176,7 @@ async function dialogueClip(engine: string, seedAbs: string, prompt: string, sta
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return engine === "kling3"
-        ? await klingDialogueClip(seedAbs, prompt, stage, durationSec)
+        ? await klingDialogueClip(seedAbs, prompt, stage, durationSec, host)
         : await veoDialogueClip(seedAbs, prompt, stage, aspect);
     } catch (e) {
       lastErr = e;
@@ -145,8 +189,8 @@ async function dialogueClip(engine: string, seedAbs: string, prompt: string, sta
 /** Render ONE dialogue clip end-to-end (render + download + head/tail + interior-pause trims)
  *  → a local file path. The render loop does this inline; the SECTION EDITOR's regenerate
  *  reuses it to re-roll a single shot from its stored seed + prompt. */
-export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: string, prompt: string, durSec: number, aspect: "9:16" | "16:9" | "1:1", stage: string, chained = false): Promise<string> {
-  const clipUrl = await dialogueClip(engine, seedAbs, prompt, stage, durSec, aspect);
+export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: string, prompt: string, durSec: number, aspect: "9:16" | "16:9" | "1:1", stage: string, chained = false, host?: KlingHost): Promise<string> {
+  const clipUrl = await dialogueClip(engine, seedAbs, prompt, stage, durSec, aspect, host);
   const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
   await download(clipUrl, rawPath);
   if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error("[regen] clip did not download");
@@ -1005,6 +1049,7 @@ export async function generateTestMovie(opts: {
       metaJson: JSON.stringify({
         kind: "testmovie", template: tmpl.key, section: opts.section || "creator",
         scenes: clips.length, aspect, engine: dialogueEngine, voicesLocked, captions: captioned,
+        ...(dialogueEngine === "kling3" ? { host: filmKlingHost() } : {}),
         // Per-shot timeline for the section editor: each rendered shot's /renders URL +
         // the line it speaks, so the editor can list, preview and (later) re-edit each one.
         shots: clips.map((c, i) => ({

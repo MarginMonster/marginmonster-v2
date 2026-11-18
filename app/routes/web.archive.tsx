@@ -82,6 +82,11 @@ function recipeLabel(metaJson: string | null, bodyJson: string | null): string |
   try { meta = JSON.parse(metaJson || "{}"); } catch { /* ignore */ }
   try { body = JSON.parse(bodyJson || "{}"); } catch { /* ignore */ }
   const pretty = (k: string) => k.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  // An engine test (one film shot rendered again on another Kling host): say which host made it.
+  if (meta.kind === "enginetest") {
+    const h = meta.host === "fal" ? "fal · ½ price" : meta.host === "fal-std" ? "fal standard · ⅖ price" : "Replicate";
+    return `Engine test · ${h}`;
+  }
   // Test Movie A/B: label each film with the ENGINE that rendered it, so the merchant
   // can tell Veo from Kling at a glance when judging the same scene across models.
   if (meta.kind === "testmovie" || body.style === "TESTMOVIE") {

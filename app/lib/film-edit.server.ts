@@ -20,7 +20,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
 import { runFfmpeg, ffprobeDuration } from "./ugc-ad-pipeline.server";
-import { assembleTestMovie, renderDialogueClipTo } from "./film-dialogue.server";
+import { assembleTestMovie, renderDialogueClipTo, KLING_HOST_LABEL, type KlingHost } from "./film-dialogue.server";
 import { ensureVoiceModel, revoiceClip } from "./singing-voice.server";
 import { characterVoice } from "./character-voices";
 import { chainClipVoice } from "./character-voice.server";
@@ -202,4 +202,47 @@ export async function regenerateFilmShot(opts: { assetId: string; shopId: string
     return next;
   });
   return { ok: r.ok, videoUrl: r.videoUrl, error: r.error };
+}
+
+/** ENGINE TEST — one shot of a finished Kling film rendered again from exactly what it was made from
+ *  (its stored seed, prompt and length) on another host, and kept as its OWN archive piece next to the
+ *  film so the two can be watched and heard side by side. The film itself is never touched (no saveCut).
+ *  Admin-only, queued from the shot editor. It exists to answer one question by ear: does fal's copy of
+ *  Kling 3 Omni (half the price) sound and look like the Replicate one every approved film came from?
+ *  No cast voice is laid over the new take — the comparison is of what each host's model performs. */
+export async function engineTestFilmShot(opts: { assetId: string; shopId: string; shotIndex: number; host: KlingHost }): Promise<{ ok: boolean; assetId?: string; error?: string }> {
+  const film = await loadFilm(opts.assetId, opts.shopId);
+  if (!film) return { ok: false, error: "Film not found." };
+  if (film.meta.engine === "veo") return { ok: false, error: "That film was made on Veo — the engine test compares Kling hosts." };
+  const i = opts.shotIndex;
+  const shot = film.shots[i];
+  if (!shot) return { ok: false, error: "That shot no longer exists." };
+  if (!shot.seed || !shot.prompt) return { ok: false, error: "This shot predates regenerate — it has no stored seed and prompt." };
+  const dur = typeof shot.dur === "number" && shot.dur > 0 ? shot.dur : 8;
+  const t0 = Date.now();
+  let clip: string;
+  try {
+    clip = await renderDialogueClipTo("kling3", shot.seed, shot.prompt, dur, film.aspect, `enginetest-${i}`, !!shot.chained, opts.host);
+  } catch (e) {
+    return { ok: false, error: `Engine test render failed: ${e instanceof Error ? e.message.slice(0, 120) : "unknown"}` };
+  }
+  const clipName = path.basename(clip);
+  try { await mirrorRender(clipName, fs.readFileSync(clip)); } catch { /* non-fatal */ }
+  const filmTitle = (await db.asset.findFirst({ where: { id: opts.assetId, shopId: opts.shopId }, select: { title: true } }))?.title || "a film";
+  const a = await db.asset.create({
+    data: {
+      shopId: opts.shopId,
+      type: "VIDEO_AD",
+      status: "PENDING",
+      title: `Engine test · ${KLING_HOST_LABEL[opts.host]} · shot ${i + 1} of ${filmTitle}`.slice(0, 190),
+      bodyJson: JSON.stringify({ style: "ENGINETEST", videoUrl: `/renders/${clipName}`, prompt: "" }),
+      metaJson: JSON.stringify({
+        kind: "enginetest", section: "creator", abOf: opts.assetId, shot: i, host: opts.host,
+        original: shot.url, originalWasRevoiced: !!shot.voice, seconds: Math.round(ffprobeDuration(clip) * 10) / 10,
+        renderSeconds: Math.round((Date.now() - t0) / 1000), aspect: film.aspect,
+      }),
+    },
+  });
+  console.log(`[enginetest] shot ${i + 1} of ${opts.assetId} on ${opts.host} → ${clipName} (${Math.round((Date.now() - t0) / 1000)} s) asset ${a.id}`);
+  return { ok: true, assetId: a.id };
 }
