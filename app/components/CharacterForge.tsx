@@ -261,7 +261,8 @@ export function CharacterForge({ open, onClose }: { open: boolean; onClose: () =
 }
 
 export const FORGE_CSS = `
-.cf-scrim{display:grid;place-items:center;padding:14px;}
+/* Drawn on <body>, outside the app shell that sets the type: it must bring its own font and ink (the first deploy showed the whole dialog in the browser's serif). */
+.cf-scrim{display:grid;place-items:center;padding:14px;font-family:Inter,-apple-system,sans-serif;color:var(--ink,#14201A);}
 .cf{position:relative;width:min(430px,100%);max-height:min(92vh,92dvh);overflow:auto;background:var(--card,#FDFCF7);border-radius:20px;padding:24px 22px 22px;box-shadow:0 30px 80px rgba(8,12,10,.45),inset 0 0 0 1px rgba(255,255,255,.6);animation:cfin .18s ease;}
 .cf.wide{width:min(860px,100%);}
 @keyframes cfin{from{opacity:0;transform:translateY(8px) scale(.985);}to{opacity:1;transform:none;}}
