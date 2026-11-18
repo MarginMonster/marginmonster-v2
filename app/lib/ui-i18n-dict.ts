@@ -2541,6 +2541,7 @@ const es: Record<string, string> = {
   "pictures": "imágenes",
   "Start creating": "Empieza a crear",
   "Nothing made this week yet — your next piece is one click away.": "Aún no has creado nada esta semana — tu próxima pieza está a un clic.",
+  "Your linked accounts": "Tus cuentas vinculadas",
 };
 
 const fr: Record<string, string> = {
@@ -5054,6 +5055,7 @@ const fr: Record<string, string> = {
   "pictures": "images",
   "Start creating": "Commence à créer",
   "Nothing made this week yet — your next piece is one click away.": "Rien de créé cette semaine — ta prochaine création est à un clic.",
+  "Your linked accounts": "Tes comptes liés",
 };
 
 const de: Record<string, string> = {
@@ -7576,6 +7578,7 @@ const de: Record<string, string> = {
   "pictures": "Bilder",
   "Start creating": "Jetzt erstellen",
   "Nothing made this week yet — your next piece is one click away.": "Diese Woche noch nichts erstellt — dein nächstes Stück ist nur einen Klick entfernt.",
+  "Your linked accounts": "Deine verknüpften Konten",
 };
 
 const zh: Record<string, string> = {
@@ -10160,6 +10163,7 @@ const zh: Record<string, string> = {
   "pictures": "张图片",
   "Start creating": "开始创作",
   "Nothing made this week yet — your next piece is one click away.": "本周还没有作品 — 下一件作品只差一次点击。",
+  "Your linked accounts": "你关联的账号",
 };
 
 const ur: Record<string, string> = {
@@ -12734,6 +12738,7 @@ const ur: Record<string, string> = {
   "pictures": "تصاویر",
   "Start creating": "تخلیق شروع کریں",
   "Nothing made this week yet — your next piece is one click away.": "اس ہفتے ابھی کچھ نہیں بنایا — آپ کی اگلی تخلیق بس ایک کلک دور ہے۔",
+  "Your linked accounts": "آپ کے منسلک اکاؤنٹس",
 };
 
 export const UI_DICT: Partial<Record<UiLang, Record<string, string>>> = { es, fr, de, zh, ur };

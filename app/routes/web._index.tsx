@@ -670,7 +670,9 @@ export default function WebDashboard() {
         ].filter(Boolean).slice(0, 4) as { n: number; k: string }[];
         return (
           <div className="wd-wins">
-            <div className="wdn-tag" style={{ marginBottom: 8 }}><Ico n="trend" /> {t("Your content is working")}</div>
+            {/* Profile totals of the linked accounts (followers, reach…), not results of pieces made here —
+                so the label says whose numbers they are. */}
+            <div className="wdn-tag" style={{ marginBottom: 8 }}><Ico n="trend" /> {t("Your linked accounts")}</div>
             <div className="wdw-grid">
               {tiles.map((t) => (
                 <div className="wdw-tile" key={t.k}><b>{fmtK(t.n)}</b><span>{t.k}</span></div>

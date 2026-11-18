@@ -346,10 +346,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     shown: Math.min(show, totalAll),
     totalAll,
     nextShow: totalAll > show ? Math.min(SHOW_MAX, show + SHOW_STEP) : null,
-    assets: assets.map(mapAsset),
-    stills: stills.map(mapAsset),
+    assets: numberRepeats(assets.map(mapAsset)),
+    stills: numberRepeats(stills.map(mapAsset)),
   });
 };
+
+/** RE-RENDERS SHARE A TITLE. Making a film again gives the new one the same name, so the shelf showed
+ *  "Short Film — The Last Slice" three times with nothing to tell them apart. Number repeats oldest
+ *  first — the first keeps its name, later ones read "(2)", "(3)" — within what the page shows. */
+function numberRepeats<T extends { title: string; when: string }>(list: T[]): T[] {
+  const seen = new Map<string, number>();
+  const oldestFirst = [...list].sort((a, b) => a.when.localeCompare(b.when));
+  const label = new Map<T, string>();
+  for (const x of oldestFirst) {
+    const n = (seen.get(x.title) || 0) + 1;
+    seen.set(x.title, n);
+    if (n > 1) label.set(x, `${x.title} (${n})`);
+  }
+  return list.map((x) => (label.has(x) ? { ...x, title: label.get(x)! } : x));
+}
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
