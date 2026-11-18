@@ -786,10 +786,36 @@ async function runJob(
         // testmovie (Short Film), moral, horror, kidstv (Kids Cartoon · talk), and the sung
         // ports musicvideo + kidsmusic. The cartoon/sing switches live inside the engine, so
         // generateFilm only still serves legacy narrated/sung-over-stills (non-dialogue) ones.
-        const { filmTemplate: ftLookup } = await import("./film-engine.server");
+        const { filmTemplate: ftLookup, canNarrate } = await import("./film-engine.server");
         const isDialogueFilm = !!ft && !!ftLookup(ft).dialogue;
         const isLipSyncMusicVideo = !!ft && !!ftLookup(ft).lipSyncSinger;
-        if (isLipSyncMusicVideo) {
+        if (payload.filmMode === "narrated" && canNarrate(ft)) {
+          // NARRATED: one storyteller over illustrated scenes, words on screen — the story formats'
+          // second way of being told (the first is acted, below). Its own pipeline.
+          const { generateNarratedStory } = await import("./narrated-story.server");
+          filmAssetId = await generateNarratedStory({
+            shopId,
+            template: ft,
+            topic: (payload.filmTopic as string) || (payload.topic as string) || "",
+            sceneCount: typeof payload.filmScenes === "number" ? payload.filmScenes : undefined,
+            narrator: typeof payload.filmNarrator === "string" ? payload.filmNarrator : undefined,
+            captions: typeof payload.filmCaptions === "string" ? payload.filmCaptions : undefined,
+            aspect: (payload.filmAspect as string | undefined) || undefined,
+            cast: Array.isArray(payload.cast) ? (payload.cast as Array<{ name: string; faceUrl?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string }>) : undefined,
+            approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined,
+            section: (payload.section as string) || "creator",
+            jobId: payload.__jobId as string | undefined,
+            resume: {
+              ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
+              ckApproved: payload.ckApproved as string | undefined,
+              ckVoPath: payload.ckVoPath as string | undefined,
+              ckVoUrl: payload.ckVoUrl as string | undefined,
+              ckWords: payload.ckWords as string | undefined,
+              ckImages: payload.ckImages as string | undefined,
+              ckMusic: payload.ckMusic as string | undefined,
+            },
+          });
+        } else if (isLipSyncMusicVideo) {
           // ISOLATED lip-sync Music Video engine: full genre song + OmniHuman singer.
           const { generateMusicVideo } = await import("./music-video-pipeline.server");
           filmAssetId = await generateMusicVideo({
@@ -851,6 +877,8 @@ async function runJob(
             cast: payload.cast as Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }> | undefined,
             // "Lock these voices": re-voice each line with the voice picked for that character.
             lockVoices: payload.filmLockVoices === true,
+            // Captions on the finished film: "bold" / "subtitles" (unset = none).
+            captions: typeof payload.filmCaptions === "string" ? payload.filmCaptions : undefined,
             // Swappable renderer: Kling 3 Omni is the DEFAULT (owner A/B win); "veo"
             // switches to premium Veo 3. Identical pipeline either way.
             dialogueEngine: payload.dialogueEngine === "veo" ? "veo" : "kling3",

@@ -24,6 +24,7 @@ import { externalOrigin } from "../lib/origin.server";
 import { AVATAR_VOICES, AVATAR_VOICE_IDS, autoCastVoices } from "../lib/avatar-voice-catalog";
 import { CHARACTER_VOICES, characterVoiceSample, isCharacterVoice } from "../lib/character-voices";
 import { GENRE_PACE, PACES, PACE_KEYS, cutCount, isPace, paceFor, type Pace } from "../lib/mv-pace";
+import { CAPTION_STYLES, captionStyleOf, type CaptionStyle } from "../lib/narrated-core";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
@@ -72,9 +73,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // `kind` — a person, or one of the stock CHARACTERS (cartoon characters, monsters). The characters
   // are offered only where a character belongs: the cast step of the story formats (see rosterFor).
   const roster = [
-    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null, kind: (c.kind || "person") as "person" | "cartoon" | "monster" })),
-    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null, kind: "person" as const })),
-    ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || a.voiceId || null, kind: (a.kind || "person") as "person" | "cartoon" | "monster" })),
+    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null, kind: (c.kind || "person") as "person" | "cartoon" | "monster", look: (c.desc || "").slice(0, 220) })),
+    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null, kind: "person" as const, look: (a.desc || "").slice(0, 220) })),
+    ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || a.voiceId || null, kind: (a.kind || "person") as "person" | "cartoon" | "monster", look: (a.desc || "").slice(0, 220) })),
   ].slice(0, 70);
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
@@ -93,6 +94,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     myVoices: await (await import("../lib/voice-clone.server")).shopVoiceClones(shop.id),
     perScene: FILM_PER_SCENE,
     base: FILM_BASE,
+    // NARRATED stories: which formats can be told by a narrator, and how long one may be
+    narratable: (await import("../lib/film-engine.server")).NARRATABLE_KEYS,
+    narratedScenes: { min: 3, max: 12, def: 6 },
+    defaultNarrator: (await import("../lib/narrated-story.server")).DEFAULT_NARRATOR,
   });
 };
 
@@ -152,6 +157,25 @@ function parseOutfits(raw: string | null): Record<string, string> | undefined {
   } catch { return undefined; }
 }
 
+/** The cast the maker PICKED for a story (before a word was written): who they are, their picture, what
+ *  kind of character they are and what they look like. At most 4; a face must be a site path or http(s). */
+type StoryCastIn = { name: string; faceUrl: string | null; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null };
+function parseStoryCast(raw: string | null): StoryCastIn[] {
+  if (!raw) return [];
+  try {
+    const a = JSON.parse(raw);
+    if (!Array.isArray(a)) return [];
+    return a
+      .filter((x) => x && typeof x.name === "string" && x.name.trim())
+      .map((x) => {
+        const face = typeof x.faceUrl === "string" && /^(https?:\/\/|\/)/i.test(x.faceUrl.trim()) ? x.faceUrl.trim().slice(0, 2000) : null;
+        const kind: StoryCastIn["kind"] = x.kind === "cartoon" || x.kind === "monster" ? x.kind : "person";
+        return { name: String(x.name).trim().slice(0, 40), faceUrl: face, kind, look: typeof x.look === "string" ? x.look.replace(/\s+/g, " ").trim().slice(0, 220) : "", voiceId: typeof x.voiceId === "string" && x.voiceId ? x.voiceId.slice(0, 80) : null };
+      })
+      .slice(0, 4);
+  } catch { return []; }
+}
+
 /** The lead's gender (drives the sung voice + casting) and each named co-star's known gender. */
 function parseArtistGender(raw: string | null): "m" | "f" | undefined { return raw === "f" ? "f" : raw === "m" ? "m" : undefined; }
 function parseCastGenders(raw: string | null): Array<{ name: string; gender: "m" | "f" }> | undefined {
@@ -169,7 +193,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const form = await request.formData();
   const intent = ((form.get("intent") as string) || "").trim();
-  const { filmTemplate, previewFilmTreatment } = await import("../lib/film-engine.server");
+  const { filmTemplate, previewFilmTreatment, canNarrate, clampNarrated } = await import("../lib/film-engine.server");
 
   if (!shop.activePlan?.active) return json({ error: tr(lang, "Pick a plan on the Dashboard first — film runs on tokens.") });
   if (!capabilitiesFor(shop.activePlan).has("creatorvideo")) {
@@ -178,7 +202,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const tmpl = filmTemplate((form.get("template") as string) || undefined);
   const topic = ((form.get("filmTopic") as string) || "").trim().slice(0, 300);
-  const clampScenes = (n: number) => Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, Math.round(n || tmpl.defaultScenes)));
+  // NARRATED: a storyteller's voice over pictures instead of the cast acting it (story formats only).
+  const narrated = ((form.get("filmMode") as string) || "").trim() === "narrated" && canNarrate(tmpl.key);
+  const clampScenes = (n: number) => (narrated ? clampNarrated(n) : Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, Math.round(n || tmpl.defaultScenes))));
+  // The cast the maker picked before the script was written (story formats).
+  const storyCast = tmpl.lipSyncSinger ? [] : parseStoryCast(form.get("filmCast") as string);
 
   // Product (skit): title + photo required for product templates.
   const productTitle = ((form.get("filmProductTitle") as string) || "").trim().slice(0, 120);
@@ -197,7 +225,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const castNamesRaw = ((form.get("filmCastNames") as string) || "").trim();
     if (castNamesRaw) { try { const a = JSON.parse(castNamesRaw); if (Array.isArray(a)) castNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     try {
-      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string) });
+      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) } : {}) });
       return json({ treatment });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't write that treatment — give it another go, or tweak the premise a little (for Horror, a spookier / less-graphic angle writes more reliably)."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
@@ -349,6 +377,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (pvCastRaw) { try { const a = JSON.parse(pvCastRaw); if (Array.isArray(a)) pvCastNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     const filmAspect = ((form.get("filmAspect") as string) || "").trim();
     try {
+      if (narrated) {
+        // NARRATED: one picture a scene; picked cast are drawn from their own pictures.
+        let tr0 = approvedTreatment as unknown as import("../lib/film-engine.server").FilmTreatment | undefined;
+        if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) });
+        const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
+        const r = await narratedSceneSeeds({ template: tmpl.key, treatment: tr0, cast: storyCast, aspect: filmAspect });
+        if (!r.sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
+        return json({ ok: true, sceneImgs: r.sceneImgs, treatment: tr0, propForScene: {}, castRef: r.castRef });
+      }
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
@@ -389,7 +426,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!sceneVisual) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
     try {
       let img: string | null = null;
-      if (tmpl.lipSyncSinger) {
+      if (narrated) {
+        // the scene as it reads NOW (the maker may have edited the words), drawn again on its own
+        let scenesNow: Array<{ visual: string; caption?: string }> = [];
+        let castBible: string[] = [];
+        try { const tObj = JSON.parse(((form.get("approvedTreatment") as string) || "").trim() || "{}"); if (Array.isArray(tObj.scenes)) scenesNow = tObj.scenes; if (Array.isArray(tObj.cast)) castBible = tObj.cast.filter((x: unknown) => typeof x === "string"); } catch { /* fall back to the one scene */ }
+        if (!scenesNow[sceneIndex]) { scenesNow = []; scenesNow[sceneIndex] = { visual: sceneVisual }; for (let k = 0; k < sceneIndex; k++) scenesNow[k] = { visual: "" }; }
+        else scenesNow[sceneIndex] = { ...scenesNow[sceneIndex], visual: sceneVisual };
+        const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
+        const r = await narratedSceneSeeds({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, scenes: scenesNow.map((x) => ({ visual: String(x?.visual || ""), caption: String(x?.caption || "") })) }, cast: storyCast, aspect: rerollAspect, only: sceneIndex, castRef: castRef || null });
+        img = r.sceneImgs[sceneIndex] || null;
+      } else if (tmpl.lipSyncSinger) {
         if (!artistRef) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
         const { rerollMusicVideoScene } = await import("../lib/music-video-pipeline.server");
         img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect, customProps: rerollCustomProps, kind: rerollKind, sceneCount: rerollSceneCount });
@@ -428,7 +475,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     // Locked cast (name + face + voice per character) the merchant cast in the UI —
     // drives per-shot identity conditioning and the voice pin in the render.
-    let cast: Array<{ name: string; faceUrl: string | null; voiceId: string | null }> | undefined;
+    let cast: Array<{ name: string; faceUrl: string | null; voiceId: string | null; kind?: "person" | "cartoon" | "monster"; look?: string }> | undefined;
     const castRaw = ((form.get("cast") as string) || "").trim();
     if (castRaw) {
       try {
@@ -448,6 +495,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const { shopVoiceClones } = await import("../lib/voice-clone.server");
       const mine = new Set((await shopVoiceClones(shop.id)).map((v) => v.voiceId));
       cast = cast.map((c) => ({ ...c, voiceId: c.voiceId && (AVATAR_VOICE_IDS.has(c.voiceId) || isCharacterVoice(c.voiceId) || mine.has(c.voiceId)) ? c.voiceId : null }));
+    }
+    // NARRATED: who tells it, and how the words are put on screen. A narrator is a stock voice, a
+    // character voice, or one of THIS shop's own voices — anything else falls back to the format's own.
+    let filmNarrator = "";
+    const filmCaptions: CaptionStyle = captionStyleOf(((form.get("filmCaptions") as string) || "").trim(), narrated ? "bold" : "off");
+    if (narrated) {
+      const want = ((form.get("filmNarrator") as string) || "").trim().slice(0, 80);
+      if (want && (AVATAR_VOICE_IDS.has(want) || isCharacterVoice(want))) filmNarrator = want;
+      else if (want) {
+        const { shopVoiceClones } = await import("../lib/voice-clone.server");
+        if ((await shopVoiceClones(shop.id)).some((v) => v.voiceId === want)) filmNarrator = want;
+      }
+    }
+    // The picked cast rides along with what each one IS and looks like (a creature stays a creature).
+    if (storyCast.length) {
+      const byName = new Map(storyCast.map((c) => [c.name.toLowerCase(), c]));
+      if (cast) cast = cast.map((c) => { const p = byName.get(c.name.toLowerCase()); return p ? { ...c, kind: p.kind, look: p.look } : c; });
+      else if (narrated) cast = storyCast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: null, kind: c.kind, look: c.look }));
     }
     // "Lock these voices" (dialogue films): every character speaks in exactly the voice picked for them.
     const filmLockVoices = ((form.get("filmLockVoices") as string) || "") === "1";
@@ -505,6 +570,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(approvedFrames ? { approvedFrames } : {}),
         ...(cast ? { cast } : {}),
         ...(cast && filmLockVoices ? { filmLockVoices: true } : {}),
+        ...(narrated ? { filmMode: "narrated", ...(filmNarrator ? { filmNarrator } : {}) } : {}),
+        ...(filmCaptions !== "off" || narrated ? { filmCaptions } : {}),
         ...(filmGenre ? { filmGenre } : {}),
         ...(filmPace ? { filmPace } : {}),
         ...(filmSongUrl ? { filmSongUrl } : {}),
@@ -965,10 +1032,55 @@ export default function FilmStudio() {
   const [prodImage, setProdImage] = useState("");
   const [prodDesc, setProdDesc] = useState("");
 
+  // ───── The STORY builder (Short Film · Moral Story · Horror Story · Kids Cartoon) ─────
+  // The same tap-a-card flow as the Music Video (the owner: "we need the other film creators to have
+  // the same setup as music video with all of the bells and whistle pickers").
+  type StoryCard = "cast" | "told" | "length" | "shape" | "captions" | "voice";
+  const [storyCard, setStoryCard] = useState<StoryCard | null>(null);
+  const [storyDone, setStoryDone] = useState<Record<string, boolean>>({});
+  const tapStory = (key: StoryCard) => { setStoryCard((cur) => (cur === key ? null : key)); setStoryDone((sd) => (sd[key] ? sd : { ...sd, [key]: true })); };
+  // HOW IT'S TOLD: acted (the cast speak on camera) or narrated (a storyteller's voice over a picture
+  // for every scene, the words on screen — quick, and the format story channels are built on).
+  const [told, setTold] = useState<"acted" | "narrated">("acted");
+  const canTell = !!tmpl?.dialogue && (d.narratable || []).includes(template);
+  const narrated = canTell && told === "narrated";
+  // WHO'S IN IT: picked from the cast BEFORE a word is written, so the story is written FOR them.
+  const [storyPick, setStoryPick] = useState<string[]>([]);
+  const maxPick = narrated ? 3 : 2; // three pictures is the most a scene can be drawn from; a spoken scene is two people
+  const pickedCast = storyPick.map((id) => d.roster.find((r) => r.id === id)).filter((r): r is (typeof d.roster)[number] => !!r);
+  const filmCastJson = JSON.stringify(pickedCast.map((r) => ({ name: r.name, faceUrl: r.img, kind: r.kind, look: r.look, voiceId: r.voiceId })));
+  const toggleStoryPick = (id: string) => setStoryPick((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= maxPick ? p : [...p, id]));
+  // THE NARRATOR ("" = the format's own: a hollow voice for horror, a warm one for a moral…)
+  const [narrPick, setNarrPick] = useState("");
+  const narratorId = narrPick || (d.defaultNarrator as Record<string, string>)[template] || "English_Trustworth_Man";
+  const narratorName = CHARACTER_VOICES.find((v) => v.id === narratorId)?.label || d.voices.find((v) => v.id === narratorId)?.label || d.myVoices.find((v) => v.voiceId === narratorId)?.label || "";
+  // CAPTIONS ("" = the usual for the way it is told: big words on a narrated story, none on an acted film)
+  const [capPick, setCapPick] = useState<CaptionStyle | "">("");
+  const captions: CaptionStyle = capPick || (narrated ? "bold" : "off");
+  // a different cast, or a different way of telling it, is a different story: script and pictures start over
+  useEffect(() => { setTreatment(null); setSeeds(null); setFrames([]); setCast([]); }, [told, storyPick.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!tmpl?.dialogue) return;
+    setScenes(told === "narrated" && canTell ? d.narratedScenes.def : (tmpl?.defaultScenes || 4));
+    setStoryPick((p) => p.slice(0, told === "narrated" ? 3 : 2));
+    // a narrated story is made for a phone, an acted film for a wide screen — until the maker picks a shape
+    if (!storyDone.shape) setFilmAspect(told === "narrated" && canTell ? "9:16" : "16:9");
+  }, [told]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** The characters the maker picked arrive in the cast stage already wearing their own face and voice. */
+  const castFromPicked = (list: CastMember[]): CastMember[] => {
+    if (!pickedCast.length) return list;
+    const tok = (n: string) => (n || "").toLowerCase().split(/[\s,]/)[0];
+    return rebalanceVoices(list.map((c) => {
+      const p = pickedCast.find((r) => tok(r.name) === tok(c.name));
+      return p ? { ...c, faceUrl: p.img, ...(p.voiceId ? { voiceId: p.voiceId, autoVoice: false } : {}) } : c;
+    }));
+  };
+  const setStoryLen = (n: number) => { setScenes(n); if (treatment && treatment.scenes.length !== n) { setTreatment(null); setFrames([]); setCast([]); } };
+
   // When a fresh treatment arrives, adopt it (and lock the scene count to it) + cast.
   useEffect(() => {
     const tr2 = treatmentFetcher.data?.treatment;
-    if (tr2 && tr2.scenes?.length) { setTreatment(tr2); setScenes(tr2.scenes.length); setFrames([]); setCast(deriveCast(tr2)); }
+    if (tr2 && tr2.scenes?.length) { setTreatment(tr2); setScenes(tr2.scenes.length); setFrames([]); setCast(castFromPicked(deriveCast(tr2))); }
   }, [treatmentFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Store each actor's portrait as it's cast; clear the busy flag.
@@ -1008,6 +1120,7 @@ export default function FilmStudio() {
   const switchTemplate = (key: string) => {
     const nt = d.templates.find((x) => x.key === key);
     setTemplate(key); setScenes(nt?.defaultScenes || 6); setTreatment(null); setFrames([]); setCast([]);
+    setTold("acted"); setStoryPick([]); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({});
   };
   // Cinematic format entry: you land on the poster GRID; tap a card and IT zooms in while the
   // other cards are thrown away, then it becomes that format's builder. Back reverses it.
@@ -1036,7 +1149,7 @@ export default function FilmStudio() {
   };
   const writeTreatment = () => {
     treatmentFetcher.submit(
-      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}) },
+      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}) },
       { method: "post" }
     );
   };
@@ -1044,7 +1157,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: mvAspect, ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
       { method: "post" }
     );
   };
@@ -1077,14 +1190,14 @@ export default function FilmStudio() {
   }, [sceneSeedsFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Re-roll ONE storyboard scene (reusing the hero / cast ref) when it came back wrong; swap that still.
   const rerollScene = (i: number, propOverride?: string, castOverride?: string[]) => {
-    if (!seeds || (!seeds.artistRef && !seeds.castRef)) return;
+    if (!seeds || (!narrated && !seeds.artistRef && !seeds.castRef)) return;
     const pk = propOverride !== undefined ? propOverride : (seeds.propForScene[i] || "");
     // Resolve THIS scene's co-stars → their styled refs so the re-roll composes the right faces.
     const costarImgs = castOverride !== undefined ? castOverride : sceneCostars(seeds.treatment.scenes, i);
     const sceneCastRefs = costarImgs.map((img) => costarImgToRef(img)).filter(Boolean) as string[];
     setRerollingScene(i);
     rerollSceneFetcher.submit(
-      { intent: "rerollFilmScene", template, filmGenre, filmAspect: mvAspect, artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}) },
+      { intent: "rerollFilmScene", template, filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated", approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}) } : {}), artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}) },
       { method: "post" }
     );
   };
@@ -1122,6 +1235,7 @@ export default function FilmStudio() {
   // Any setup change invalidates the preview — the stills would no longer match the new settings
   // (the artist too: a different face means the stills show the wrong person).
   useEffect(() => { setSeeds(null); setCastForScene({}); setSceneCastPick(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick, mvAspect]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!tmpl?.lipSyncSinger) setSeeds(null); }, [filmAspect]); // eslint-disable-line react-hooks/exhaustive-deps
   // Artist or cast CHANGED → clear the SCRIPT too so it re-writes with the picked names. Fixes the
   // "Kazon" AI-slop name persisting from a treatment that was written before the cast was set.
   useEffect(() => { setTreatment(null); }, [artistPick, castExtra.map((m) => m.img).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1336,9 +1450,10 @@ export default function FilmStudio() {
     const busy = writing || seedBusy || chainToScenes;
     return (<>
       <button type="button" className="mm-preview-btn" onClick={makeStoryboard} disabled={busy || !d.hasPlan}>
-        {busy ? (writing ? <>… {t("Writing your song")}</> : <>… {t("Building the scenes")}</>)
-          : hasStills ? <><Ico n="refresh" size={13} /> {t("Start over — new song + scenes")}</>
-          : <><Ico n="wand" size={14} /> {t("Make the scenes — free")}</>}
+        {busy ? (writing ? <>… {tmpl?.lipSyncSinger ? t("Writing your song") : t("Writing your story")}</> : <>… {tmpl?.lipSyncSinger ? t("Building the scenes") : t("Drawing the scenes")}</>)
+          : hasStills ? <><Ico n="refresh" size={13} /> {tmpl?.lipSyncSinger ? t("Start over — new song + scenes") : t("Start over — a new story")}</>
+          : tmpl?.lipSyncSinger ? <><Ico n="wand" size={14} /> {t("Make the scenes — free")}</>
+          : <><Ico n="wand" size={14} /> {t("Write it and draw it — free")}</>}
       </button>
       {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
       {seedBusy && !hasStills && seedProgressUI()}
@@ -1382,10 +1497,10 @@ export default function FilmStudio() {
             ? t("Here's your video, shot by shot — every scene's right here. Tap any line to change it. A green Performance is sung to camera; a purple Cut scene breaks to props or scenery with no singing (tap the pill to switch). Happy with it? Hit Generate.")
             : (hasStills
               ? t("Swipe through your story — this is exactly what renders. Re-roll any scene that's off, then Generate.")
-              : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life."))}</div>
+              : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life."))}{narrated && seeds ? <> {t("The narrator reads each scene's words over its picture.")}</> : null}</div>
           {/* Pre-editor: a vertical list of scene cards (not a cramped strip) — each with its still, an
               editable "what we see" + "words", and a Performance/Cut-scene type you can flip. */}
-          <div className={`mm-sb-list${isMv ? " is-mv" : ""}`}>
+          <div className={`mm-sb-list${isMv ? " is-mv" : ""}${narrated ? " is-told" : ""}`}>
             {strip.scenes.map((sc, i) => {
               const u = seeds?.imgs[i] ?? null;
               const pk = seeds?.propForScene[i];
@@ -1393,12 +1508,12 @@ export default function FilmStudio() {
               const perform = !isMv || sceneKind(sc, i, strip.scenes.length) === "perform";
               return (
                 <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i}>
-                  <div className="mm-sc-frame" style={isMv && mvAspect !== "9:16" ? { aspectRatio: mvAspect === "16:9" ? "16 / 9" : "1 / 1" } : undefined}>
+                  <div className="mm-sc-frame" style={(isMv ? mvAspect : narrated ? filmAspect : "9:16") !== "9:16" ? { aspectRatio: (isMv ? mvAspect : filmAspect) === "16:9" ? "16 / 9" : "1 / 1" } : undefined}>
                     {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" className="mm-sc-zoomable" onClick={() => setZoomImg(u)} /> : <span className="mm-sc-load wb-cookimg" aria-hidden="true"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     {rerollingScene === i && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     <span className="mm-sb-num">{i + 1}</span>
                     <button type="button" className="mm-sc-x" onClick={() => sbRemoveScene(i)} disabled={strip.scenes.length <= 1} title={t("Remove this scene")} aria-label={t("Remove scene {n}", { n: i + 1 })}>✕</button>
-                    {seeds && (seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={12} /></button>}
+                    {seeds && (narrated || seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={12} /></button>}
                   </div>
                   <div className="mm-sc-bd">
                     {isMv
@@ -1407,6 +1522,8 @@ export default function FilmStudio() {
                     <textarea className="mm-sc-what" value={sc?.visual || ""} onChange={(e) => editSceneText(i, "visual", e.target.value)} rows={2} maxLength={400} placeholder={t("what we see in this scene…")} aria-label={t("Scene {n} — what we see", { n: i + 1 })} />
                     {isMv
                       ? (perform && <div className="mm-sc-lyr"><span className="mm-sc-lyr-ico" aria-hidden="true">♪</span><textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the words sung here…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} /></div>)
+                      : narrated
+                      ? <div className="mm-sc-lyr mm-sc-told"><span className="mm-sc-lyr-ico" aria-hidden="true"><Ico n="mic" size={12} /></span><textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={4} maxLength={480} placeholder={t("what the narrator says over this picture…")} aria-label={t("Scene {n} — the narrator's words", { n: i + 1 })} /></div>
                       : ((sc?.caption != null) && <div className="mm-sc-lyr"><span className="mm-sc-lyr-ico" aria-hidden="true">♪</span><textarea className="mm-sc-words" value={sc?.caption || ""} onChange={(e) => editSceneText(i, "caption", e.target.value)} rows={1} maxLength={300} placeholder={t("the words / lyrics…")} aria-label={t("Scene {n} — the words", { n: i + 1 })} /></div>)}
                     {isMv ? (
                       <>
@@ -2131,6 +2248,7 @@ export default function FilmStudio() {
         <label htmlFor="fs-topic-in">{tmpl?.needsProduct ? t("What's the gag?") : t("What's your movie about?")}</label>
         <textarea id="fs-topic-in" rows={3} value={topic} onChange={(e) => setTopic(e.target.value)}
           placeholder={tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={300} />
+        {!isStoryboard && (
         <div className="fs-len fs-len-topic">
           <span>{t("Scenes")}</span>
           <div className="fs-stepper">
@@ -2140,15 +2258,221 @@ export default function FilmStudio() {
           </div>
           <span className="fs-len-note">{t("≈ {sec}s · {n} AI clips", { sec: scenes * 5, n: scenes })}</span>
         </div>
+        )}
       </div>
-      <div className="mm-hint"><span aria-hidden="true">✎</span> {t("Tell us the idea — we write it and film it. Set anything below, or just hit the button.")}</div>
+      <div className="mm-hint"><span aria-hidden="true">✎</span> {isStoryboard ? t("Tap each step to set it — we've filled in smart defaults, so you can breeze through and just make it.") : t("Tell us the idea — we write it and film it. Set anything below, or just hit the button.")}</div>
+
+      {/* ───────── The STORY builder — the Music Video's card flow, for the story formats ───────── */}
+      {isStoryboard && (() => {
+        const lens = narrated ? [3, 4, 5, 6, 8, 10, 12] : Array.from({ length: Math.max(1, tmpl.maxScenes - tmpl.minScenes + 1) }, (_, k) => tmpl.minScenes + k);
+        const lenLabel = (n: number) => (narrated ? `≈ ${mvLenLabel(n)}` : `≈ ${n * 8}s`);
+        const shapeName = filmAspect === "16:9" ? t("Wide") : filmAspect === "9:16" ? t("Vertical") : t("Square");
+        const capName = t(CAPTION_STYLES.find((c) => c.key === captions)?.label || "Off");
+        const voiceTile = (id: string, label: string, blurb: string) => (
+          <div className={`mm-vo${narratorId === id ? " on" : ""}`} key={id}>
+            <button type="button" className="mm-vo-pick" aria-pressed={narratorId === id} onClick={() => setNarrPick(id)}><b>{label}</b><small>{blurb}</small></button>
+            <button type="button" className="mm-vo-play" onClick={() => playVoice(id)} aria-label={t("Hear {name}", { name: label })} title={t("Hear this voice")}><Ico n="sound" size={15} /></button>
+          </div>
+        );
+        return (
+        <div className="mm mm-story">
+          <div className="mm-grid">
+            {/* 1 · Cast */}
+            <button type="button" style={{ order: 1 }} className={`mm-card${storyCard === "cast" ? " on" : ""}${storyDone.cast ? " done" : ""}`} onClick={() => tapStory("cast")}>
+              <span className="mm-step" aria-hidden="true">{storyDone.cast ? <Ico n="check" size={13} /> : 1}</span>
+              <span className="mm-card-top">
+                {pickedCast[0]
+                  ? <span className="mm-card-face" style={{ backgroundImage: `url(${pickedCast[0].img})` }} aria-hidden="true" />
+                  : <span className="mm-card-ico c5"><Ico n="presenter" size={20} /></span>}
+                <span className="mm-card-ttl"><span className="mm-card-kick">{t("The stars")}</span><b>{t("Cast")}</b></span>
+              </span>
+              <span className="mm-val">{pickedCast.length ? <><Ico n="check" size={12} /> {pickedCast.map((r) => r.name).join(" + ")}</> : t("We invent them · or pick your own")}</span>
+              {pickedCast.length > 1 && (
+                <span className="mm-card-cast" aria-hidden="true">
+                  {pickedCast.map((r, k) => <span key={r.id} className={`mm-card-castface${k === 0 ? " lead" : ""}`} style={{ backgroundImage: `url(${r.img})` }} title={r.name} />)}
+                </span>
+              )}
+            </button>
+            {/* 2 · How it's told */}
+            <button type="button" style={{ order: 3 }} className={`mm-card${storyCard === "told" ? " on" : ""}${storyDone.told ? " done" : ""}`} onClick={() => tapStory("told")}>
+              <span className="mm-step" aria-hidden="true">{storyDone.told ? <Ico n="check" size={13} /> : 2}</span>
+              <span className="mm-card-top"><span className="mm-card-ico c2"><Ico n={narrated ? "mic" : "video"} size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The style")}</span><b>{narrated ? t("Narrated") : t("Acted")}</b></span></span>
+              <span className="mm-val">{narrated ? t("A storyteller over pictures") : t("Your cast speak on camera")}</span>
+            </button>
+            {/* 3 · Length */}
+            <button type="button" style={{ order: 5 }} className={`mm-card${storyCard === "length" ? " on" : ""}${storyDone.length ? " done" : ""}`} onClick={() => tapStory("length")}>
+              <span className="mm-step" aria-hidden="true">{storyDone.length ? <Ico n="check" size={13} /> : 3}</span>
+              <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
+              <span className="mm-val">{lenLabel(scenes)} · {narrated ? (scenes === 1 ? t("1 scene") : t("{n} scenes", { n: scenes })) : (scenes === 1 ? t("1 shot") : t("{n} shots", { n: scenes }))}</span>
+            </button>
+            {/* 4 · Shape */}
+            <button type="button" style={{ order: 7 }} className={`mm-card${storyCard === "shape" ? " on" : ""}${storyDone.shape ? " done" : ""}`} onClick={() => tapStory("shape")}>
+              <span className="mm-step" aria-hidden="true">{storyDone.shape ? <Ico n="check" size={13} /> : 4}</span>
+              <span className="mm-card-top"><span className="mm-card-ico c3"><Ico n="expand" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The frame")}</span><b>{t("Shape")}</b></span></span>
+              <span className="mm-val">{shapeName} · {filmAspect}</span>
+            </button>
+            {/* 5 · Captions */}
+            <button type="button" style={{ order: 9 }} className={`mm-card${storyCard === "captions" ? " on" : ""}${storyDone.captions ? " done" : ""}`} onClick={() => tapStory("captions")}>
+              <span className="mm-step" aria-hidden="true">{storyDone.captions ? <Ico n="check" size={13} /> : 5}</span>
+              <span className="mm-card-top"><span className="mm-card-ico c1"><Ico n="article" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The words")}</span><b>{t("Captions")}</b></span></span>
+              <span className="mm-val">{capName}{captions !== "off" ? <> · {t(captions === "bold" ? "big words, in time" : "a line along the bottom")}</> : null}</span>
+            </button>
+            {/* 6 · Narrator (narrated) or Engine (acted) */}
+            <button type="button" style={{ order: 11 }} className={`mm-card${storyCard === "voice" ? " on" : ""}${storyDone.voice ? " done" : ""}`} onClick={() => tapStory("voice")}>
+              <span className="mm-step" aria-hidden="true">{storyDone.voice ? <Ico n="check" size={13} /> : 6}</span>
+              {narrated
+                ? <><span className="mm-card-top"><span className="mm-card-ico c5"><Ico n="headphones" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The voice")}</span><b>{t("Narrator")}</b></span></span>
+                    <span className="mm-val">{narratorName ? t(narratorName) : t("Our pick")}{!narrPick ? <> · {t("our pick for this format")}</> : null}</span></>
+                : <><span className="mm-card-top"><span className="mm-card-ico c5"><Ico n="sliders" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The lens")}</span><b>{t("Engine")}</b></span></span>
+                    <span className="mm-val">{dialogueEngine === "veo" ? t("Veo 3 · premium") : t("Kling 3 · recommended")}</span></>}
+            </button>
+
+            {storyCard === "cast" && (
+              <div className="mm-opts mm-opts-grid" style={{ order: 2 }}>
+                <div className="mm-opts-h">{t("Who's in it?")}</div>
+                <div className="mm-opts-sub">{narrated
+                  ? t("Pick up to 3 from your cast and the story is written for them — each one drawn from their own picture in every scene they are in. Pick nobody and we invent the characters.")
+                  : t("Pick up to 2 from your cast and the story is written for them — their own face in every shot, and their own voice if they have one. Pick nobody and we invent the characters.")}</div>
+                <div className="mm-artistpick">
+                  <button type="button" className={`fs-rface mm-autoface${storyPick.length === 0 ? " on" : ""}`} onClick={() => setStoryPick([])} title={t("We invent the characters")}>
+                    <span className="fs-rface-img mm-autoface-img" aria-hidden="true"><Ico n="wand" size={20} /></span>
+                    {storyPick.length === 0 && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                    <span className="fs-rface-name">{t("We cast it")}</span>
+                  </button>
+                  {rosterFor(template).map((r) => {
+                    const on = storyPick.includes(r.id);
+                    return (
+                      <button type="button" key={r.id} className={`fs-rface${on ? " on" : ""}`} title={r.name} aria-pressed={on} disabled={!on && storyPick.length >= maxPick} onClick={() => toggleStoryPick(r.id)}>
+                        <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
+                        {on && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                        <span className="fs-rface-name">{r.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <a className="mm-pace-auto" href="/web/presenters?forge=1"><Ico n="wand" size={12} /> {t("Create a new character")}</a>
+              </div>
+            )}
+            {storyCard === "told" && (
+              <div className="mm-opts mm-opts-grid" style={{ order: 4 }}>
+                <div className="mm-opts-h">{t("How should it be told?")}</div>
+                <div className="mm-opts-sub">{t("The same story, two ways of telling it.")}</div>
+                <div className="mm-toldpick" role="group" aria-label={t("How it's told")}>
+                  <button type="button" className={`mm-told${!narrated ? " on" : ""}`} aria-pressed={!narrated} onClick={() => setTold("acted")}>
+                    <b><Ico n="video" size={15} /> {t("Acted")}</b>
+                    <small>{t("Your cast speak their lines on camera, shot by shot — a real little film.")}</small>
+                    <em>{t("a few minutes a shot")}</em>
+                  </button>
+                  <button type="button" className={`mm-told${narrated ? " on" : ""}`} aria-pressed={narrated} disabled={!canTell} onClick={() => setTold("narrated")}>
+                    <b><Ico n="mic" size={15} /> {t("Narrated")}</b>
+                    <small>{t("A storyteller's voice over a picture for every scene, with the words on screen — the story format feeds are full of.")}</small>
+                    <em>{t("ready in a couple of minutes")}</em>
+                  </button>
+                </div>
+              </div>
+            )}
+            {storyCard === "length" && (
+              <div className="mm-opts mm-opts-grid" style={{ order: 6 }}>
+                <div className="mm-opts-h">{t("How long?")}</div>
+                <div className="mm-opts-sub">{narrated
+                  ? t("Each scene is one picture and two or three spoken sentences — about ten seconds. A slow, spooky narrator takes a little longer.")
+                  : t("Each shot is one spoken line on camera, up to about ten seconds. More shots, longer film — and a longer render.")}</div>
+                <div className="mm-lenpick" role="group" aria-label={t("Length")}>
+                  {lens.map((n) => (
+                    <button type="button" key={n} className={`mm-lenopt${scenes === n ? " on" : ""}`} aria-pressed={scenes === n} onClick={() => setStoryLen(n)}>
+                      <b>{lenLabel(n)}</b>
+                      <small>{narrated ? t("{n} scenes", { n }) : n === 1 ? t("1 shot") : t("{n} shots", { n })}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {storyCard === "shape" && (
+              <div className="mm-opts mm-opts-grid" style={{ order: 8 }}>
+                <div className="mm-opts-h">{t("What shape?")}</div>
+                <div className="mm-opts-sub">{t("Wide for YouTube and TV; Vertical for Shorts, Reels and TikTok; Square for a feed.")}</div>
+                <div className="mm-lenpick mm-shapepick" role="group" aria-label={t("Shape")}>
+                  {([["16:9", "Wide"], ["9:16", "Vertical"], ["1:1", "Square"]] as const).map(([a, name]) => (
+                    <button type="button" key={a} className={`mm-lenopt${filmAspect === a ? " on" : ""}`} aria-pressed={filmAspect === a} onClick={() => setFilmAspect(a)}>
+                      <span className={`mm-shape s${a.replace(":", "x")}`} aria-hidden="true" />
+                      <b>{t(name)}</b>
+                      <small>{a}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {storyCard === "captions" && (
+              <div className="mm-opts mm-opts-grid" style={{ order: 10 }}>
+                <div className="mm-opts-h">{t("Words on screen")}</div>
+                <div className="mm-opts-sub">{narrated
+                  ? t("Most people watch with the sound off — captions keep them watching. They say exactly what you wrote, in time with the voice.")
+                  : t("Put the spoken lines on screen — exactly as you wrote them, in time with each voice.")}</div>
+                <div className="mm-cappick" role="group" aria-label={t("Captions")}>
+                  {CAPTION_STYLES.map((c) => (
+                    <button type="button" key={c.key} className={`mm-cap${captions === c.key ? " on" : ""}`} aria-pressed={captions === c.key} onClick={() => setCapPick(c.key)}>
+                      <span className="mm-cap-demo" style={{ backgroundImage: `linear-gradient(180deg,rgba(8,20,15,.15),rgba(8,20,15,.55)),url(${stillOf(template)})` }} aria-hidden="true">
+                        {c.key === "bold" && <i className="bold">{t("the door opened")}</i>}
+                        {c.key === "subtitles" && <i className="sub">{t("The door opened before his hand came down.")}</i>}
+                      </span>
+                      <b>{t(c.label)}</b>
+                      <small>{t(c.blurb)}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {storyCard === "voice" && narrated && (
+              <div className="mm-opts mm-opts-grid" style={{ order: 12 }}>
+                <div className="mm-opts-h">{t("Who tells it?")}</div>
+                <div className="mm-opts-sub">{t("Tap a voice to pick it, the play button to hear it. A character voice is performed — a hollow whisper for a ghost story, a giggle for a bedtime one.")}</div>
+                {d.myVoices.length > 0 && <><div className="mm-vo-h">{t("My voices")}</div><div className="mm-vopick">{d.myVoices.map((v) => voiceTile(v.voiceId, v.label, t("your own voice")))}</div></>}
+                <div className="mm-vo-h">{t("Character voices")}</div>
+                <div className="mm-vopick">{CHARACTER_VOICES.map((v) => voiceTile(v.id, t(v.label), t(v.blurb)))}</div>
+                <div className="mm-vo-h">{t("People's voices")}</div>
+                <div className="mm-vopick">{d.voices.map((v) => voiceTile(v.id, v.label, v.blurb))}</div>
+                {narrPick && <button type="button" className="mm-pace-auto" onClick={() => setNarrPick("")}><Ico n="refresh" size={12} /> {t("Back to our pick for this format")}</button>}
+              </div>
+            )}
+            {storyCard === "voice" && !narrated && (
+              <div className="mm-opts mm-opts-grid" style={{ order: 12 }}>
+                <div className="mm-opts-h">{t("Which camera?")}</div>
+                <div className="mm-opts-sub">{t("Same film, a different AI behind the lens. Each one is tagged in your Archive, so you can run both and compare.")}</div>
+                <div className="mm-toldpick" role="group" aria-label={t("Render engine")}>
+                  <button type="button" className={`mm-told${dialogueEngine === "kling3" ? " on" : ""}`} aria-pressed={dialogueEngine === "kling3"} onClick={() => setDialogueEngine("kling3")}>
+                    <b>{t("Kling 3")}</b><small>{t("Long single takes with natural lip-sync. What we recommend.")}</small><em>{t("recommended")}</em>
+                  </button>
+                  <button type="button" className={`mm-told${dialogueEngine === "veo" ? " on" : ""}`} aria-pressed={dialogueEngine === "veo"} onClick={() => setDialogueEngine("veo")}>
+                    <b>{t("Veo 3")}</b><small>{t("Short, glossy, cinematic beats.")}</small><em>{t("premium")}</em>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        );
+      })()}
 
       {/* Step 2 — write + edit the scene FREE. Dialogue (Test Movie) gets the COMBINED
           conversation flow (one place, chat-style); other templates keep the classic
           treatment preview. */}
-      {isStoryboard ? (
+      {isStoryboard && narrated ? (
+        <div className="fs-card fs-narr">
+          <div className="fs-lbl"><span className="fs-n"><Ico n="pencil" size={13} /></span> {t("Your story")} <span className="fs-free">{t("free")}</span></div>
+          <p className="fs-hint">{t("We write the story and draw a picture for every scene. Read it, change any line, re-draw any picture — nothing is spent until you Generate.")}</p>
+          {makeBtn()}
+          {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
+          {treatment && treatment.title && (
+            <div className="fs-treat">
+              <div className="fs-treat-ttl">{treatment.title}</div>
+              {treatment.musicMood && <div className="fs-treat-mood"><Ico n="music" size={12} /> {treatment.musicMood}</div>}
+            </div>
+          )}
+          {storyboard(true, undefined, true)}
+        </div>
+      ) : isStoryboard ? (
         <div className="fs-card fs-scenecard">
-          <div className="fs-lbl"><span className="fs-n">2</span> {t("Your scene")} <span className="fs-free">{t("free")}</span>{treatment && treatment.scenes.length > 0 && (() => { const fs = treatment.scenes.reduce((a, s) => a + estimateSpeakSeconds(parseBeat(s.caption).line), 0); return fs > 0 ? <span className="fs-filmlen" title={t("Estimated spoken length of the whole film")}>≈ {secondsLabel(fs)} {t("film")}</span> : null; })()}</div>
+          <div className="fs-lbl"><span className="fs-n"><Ico n="pencil" size={13} /></span> {t("Your scene")} <span className="fs-free">{t("free")}</span>{treatment && treatment.scenes.length > 0 && (() => { const fs = treatment.scenes.reduce((a, s) => a + estimateSpeakSeconds(parseBeat(s.caption).line), 0); return fs > 0 ? <span className="fs-filmlen" title={t("Estimated spoken length of the whole film")}>≈ {secondsLabel(fs)} {t("film")}</span> : null; })()}</div>
           {!treatment ? (
             <>
               <p className="fs-hint">{t("We'll write the dialogue — then edit it like a text thread: tweak lines, swap who talks, add a scene. No tokens until you Generate.")}</p>
@@ -2299,7 +2623,7 @@ export default function FilmStudio() {
       )}
 
       {/* Step 2.5 — storyboard: approve a photo per scene before paying (dialogue only) */}
-      {treatment && isStoryboard && cast.length > 0 && (() => {
+      {treatment && isStoryboard && !narrated && cast.length > 0 && (() => {
         const castCount = cast.filter((c) => c.faceUrl).length;
         const allCast = castCount === cast.length;
         return (
@@ -2418,49 +2742,16 @@ export default function FilmStudio() {
 
       {/* Step 3 — generate (the only paid step) */}
       <div className="fs-card fs-go-card">
-        <div className="fs-lbl"><span className="fs-n">3</span> {t("Generate")}</div>
-        {/* Test Movie only: choose which engine renders the spoken dialogue. */}
-        {isStoryboard && (
-          <div className="fs-engine" role="group" aria-label={t("Render engine")}>
-            <span className="fs-engine-cap">{t("Render engine")}</span>
-            <div className="fs-engine-seg">
-              <button type="button" className={`fs-engine-opt${dialogueEngine === "kling3" ? " on" : ""}`}
-                aria-pressed={dialogueEngine === "kling3"} onClick={() => setDialogueEngine("kling3")}>
-                {t("Kling 3")}<small>{t("recommended · default")}</small>
-              </button>
-              <button type="button" className={`fs-engine-opt${dialogueEngine === "veo" ? " on" : ""}`}
-                aria-pressed={dialogueEngine === "veo"} onClick={() => setDialogueEngine("veo")}>
-                {t("Veo 3")}<small>{t("premium · pricier")}</small>
-              </button>
-            </div>
-            <p className="fs-engine-note">{t("Same film, different AI. Run both and compare — each is tagged by model in your Archive.")}</p>
-          </div>
-        )}
-        {isStoryboard && (
-          <div className="fs-engine" role="group" aria-label={t("Aspect ratio")}>
-            <span className="fs-engine-cap">{t("Shape")}</span>
-            <div className="fs-engine-seg">
-              <button type="button" className={`fs-engine-opt${filmAspect === "16:9" ? " on" : ""}`}
-                aria-pressed={filmAspect === "16:9"} onClick={() => setFilmAspect("16:9")}>
-                {t("Wide")}<small>{t("16:9 · default")}</small>
-              </button>
-              <button type="button" className={`fs-engine-opt${filmAspect === "9:16" ? " on" : ""}`}
-                aria-pressed={filmAspect === "9:16"} onClick={() => setFilmAspect("9:16")}>
-                {t("Vertical")}<small>{t("9:16 · mobile")}</small>
-              </button>
-              <button type="button" className={`fs-engine-opt${filmAspect === "1:1" ? " on" : ""}`}
-                aria-pressed={filmAspect === "1:1"} onClick={() => setFilmAspect("1:1")}>
-                {t("Square")}<small>{t("1:1 · feed")}</small>
-              </button>
-            </div>
-            <p className="fs-engine-note">{t("Wide for YouTube, TV episodes and roomier multi-character scenes; Vertical for mobile Shorts & Reels.")}</p>
-          </div>
-        )}
+        <div className="fs-lbl"><span className="fs-n">{isStoryboard ? <Ico n="film" size={13} /> : 3}</span> {t("Generate")}</div>
         <Form method="post">
           <input type="hidden" name="intent" value="film" />
           <input type="hidden" name="template" value={template} />
           {isStoryboard && <input type="hidden" name="dialogueEngine" value={dialogueEngine} />}
           {isStoryboard && <input type="hidden" name="filmAspect" value={filmAspect} />}
+          {narrated && <input type="hidden" name="filmMode" value="narrated" />}
+          {narrated && <input type="hidden" name="filmNarrator" value={narratorId} />}
+          {isStoryboard && <input type="hidden" name="filmCaptions" value={captions} />}
+          {isStoryboard && pickedCast.length > 0 && <input type="hidden" name="filmCast" value={filmCastJson} />}
           {tmpl?.lipSyncSinger && <input type="hidden" name="filmGenre" value={filmGenre} />}
           {tmpl?.lipSyncSinger && songSource === "upload" && filmSongUrl && <input type="hidden" name="filmSongUrl" value={filmSongUrl} />}
           {tmpl?.lipSyncSinger && filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}
@@ -2470,15 +2761,15 @@ export default function FilmStudio() {
           {tmpl?.needsProduct && <input type="hidden" name="filmProductImageUrl" value={prodImage} />}
           {tmpl?.needsProduct && <input type="hidden" name="filmProductDescription" value={prodDesc} />}
           {(seeds?.treatment || treatment) && <input type="hidden" name="approvedTreatment" value={JSON.stringify(seeds?.treatment || treatment)} />}
-          {!isStoryboard && seeds && <input type="hidden" name="approvedSceneImgs" value={JSON.stringify(seeds.imgs)} />}
-          {isStoryboard && frames.some(Boolean) && <input type="hidden" name="approvedFrames" value={JSON.stringify(frames)} />}
-          {isStoryboard && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId })))} />}
-          {isStoryboard && lockVoices && cast.some((c) => c.voiceId) && <input type="hidden" name="filmLockVoices" value="1" />}
+          {(!isStoryboard || narrated) && seeds && <input type="hidden" name="approvedSceneImgs" value={JSON.stringify(seeds.imgs)} />}
+          {isStoryboard && !narrated && frames.some(Boolean) && <input type="hidden" name="approvedFrames" value={JSON.stringify(frames)} />}
+          {isStoryboard && !narrated && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId })))} />}
+          {isStoryboard && !narrated && lockVoices && cast.some((c) => c.voiceId) && <input type="hidden" name="filmLockVoices" value="1" />}
           <button type="submit" className="fs-go" disabled={!canGo}>
             {generating ? <>… {t("Starting your film")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost }) : t("Generate {name} · Free", { name: t(tmpl?.name || "Film") })}</>}
           </button>
           <div className="fs-eta" aria-live="polite" title={t("A rough estimate — longer films and lip-sync take more time.")}>
-            <span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, scenes, engine: dialogueEngine })}</b>
+            <span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, narrated, scenes, engine: dialogueEngine })}</b>
           </div>
         </Form>
         <p className="fs-cost">
@@ -2486,7 +2777,7 @@ export default function FilmStudio() {
             ? <>{t("{base} + {per}/scene × {n} = {cost} Tokens", { base: d.base, per: d.perScene, n: scenes, cost })}{" · "}<span className={affordable ? "fs-bal" : "fs-bal low"}>{t("you have {n}", { n: d.tokens })}</span></>
             : t("Free while we get this section dialed in — pricing comes later")}
         </p>
-        {!treatment && <p className="fs-hint">{t("Tip: write the treatment above first so you see exactly what renders — but you can Generate straight away and we'll script it for you.")}</p>}
+        {!treatment && <p className="fs-hint">{narrated ? t("Tip: write and draw it above first so you see exactly what renders — or Generate straight away and we'll write it, draw it and tell it for you.") : t("Tip: write the treatment above first so you see exactly what renders — but you can Generate straight away and we'll script it for you.")}</p>}
         {!d.hasPlan && <p className="fs-err">{t("Pick a plan on the Dashboard first — film runs on tokens.")}</p>}
         {d.hasPlan && !affordable && <p className="fs-err">{t("Not enough tokens for this length — shorten it, or top up on the Plans page.")}</p>}
         {d.hasPlan && tmpl?.needsProduct && !productReady && <p className="fs-err">{t("Add your product above to generate a skit.")}</p>}
@@ -2508,10 +2799,12 @@ export default function FilmStudio() {
  *  by engine: lip-sync Music Video (OmniHuman, ~2 clips at a time — the slow lane),
  *  dialogue films (per-beat Kling/Veo clips), and sung/other (parallel i2v). Returns a
  *  friendly range string; recomputed live from scene count + template + engine. */
-function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; scenes: number; engine: "veo" | "kling3" }): string {
+function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; narrated?: boolean; scenes: number; engine: "veo" | "kling3" }): string {
   const n = Math.max(1, opts.scenes || 1);
   let lo: number, hi: number;
-  if (opts.lipSyncSinger) {
+  if (opts.narrated) {
+    lo = 2; hi = n > 8 ? 5 : 4; // a narration, an alignment pass, a picture a scene, one cut
+  } else if (opts.lipSyncSinger) {
     const waves = Math.ceil(n / 2);            // OmniHuman lip-sync runs ~2 at a time
     lo = 6 + waves * 6; hi = 9 + waves * 9;     // + song + artist + scene-image overhead
   } else if (opts.dialogue) {
@@ -2961,6 +3254,58 @@ const FS_STYLE = `
 .mm-pace-n{font-weight:800;color:var(--green,#0C7A46);}
 .mm-pace-auto{display:inline-flex;align-items:center;gap:6px;margin-top:10px;border:0;background:transparent;color:var(--green,#0C7A46);font:inherit;font-size:12.5px;font-weight:800;cursor:pointer;padding:6px 2px;}
 .mm-pace-auto:hover{text-decoration:underline;}
+a.mm-pace-auto{text-decoration:none;}
+/* The STORY builder's own pickers (it shares the cards, panels and length tiles with the Music Video). */
+.mm-story{margin-top:0;}
+.mm-toldpick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:4px;}
+.mm-told{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:14px 15px;cursor:pointer;font-family:Poppins,sans-serif;transition:border-color .14s,background .14s,box-shadow .14s;}
+.mm-told b{display:flex;align-items:center;gap:7px;font-size:15px;font-weight:800;color:var(--ink,#14201A);}
+.mm-told b svg{stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-told small{font-size:12px;line-height:1.45;color:var(--ink2,#4A554E);}
+.mm-told em{font-style:normal;font-size:11px;font-weight:800;color:var(--green,#0C7A46);background:var(--mint,#EAF6EF);border-radius:999px;padding:3px 9px;}
+.mm-told.on{border-color:var(--green,#0C7A46);background:#F0F8F3;box-shadow:0 0 0 1px var(--green,#0C7A46);}
+.mm-told.on b{color:var(--green,#0C7A46);}
+.mm-told:disabled{opacity:.5;cursor:default;}
+@media(max-width:520px){.mm-toldpick{grid-template-columns:1fr;}}
+.mm-shapepick .mm-lenopt{gap:5px;}
+.mm-shapepick .mm-lenopt b{font-size:14.5px;}
+.mm-shape{display:block;border:2px solid currentColor;border-radius:4px;color:var(--ink3,#9AA39B);background:rgba(20,32,26,.04);}
+.mm-shape.s16x9{width:44px;height:25px;margin:9px 0;}
+.mm-shape.s9x16{width:25px;height:43px;}
+.mm-shape.s1x1{width:34px;height:34px;margin:4.5px 0;}
+.mm-lenopt.on .mm-shape{color:var(--green,#0C7A46);background:rgba(12,122,70,.1);}
+.mm-cappick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:4px;}
+.mm-cap{display:flex;flex-direction:column;align-items:center;gap:6px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:10px 8px 12px;cursor:pointer;font-family:Poppins,sans-serif;transition:border-color .14s,background .14s,box-shadow .14s;}
+.mm-cap b{font-size:13.5px;font-weight:800;color:var(--ink,#14201A);}
+.mm-cap small{font-size:11px;line-height:1.35;color:var(--ink2,#4A554E);text-align:center;}
+.mm-cap.on{border-color:var(--green,#0C7A46);background:#F0F8F3;box-shadow:0 0 0 1px var(--green,#0C7A46);}
+.mm-cap.on b{color:var(--green,#0C7A46);}
+.mm-cap-demo{position:relative;display:block;width:100%;max-width:132px;aspect-ratio:4 / 5;border-radius:10px;overflow:hidden;background:#12241D center/cover no-repeat;}
+.mm-cap-demo i{position:absolute;left:7%;right:7%;text-align:center;font-style:normal;color:#fff;}
+.mm-cap-demo .bold{top:54%;font-size:15px;font-weight:900;line-height:1.08;letter-spacing:.01em;text-transform:uppercase;text-shadow:-1.5px -1.5px 0 #000,1.5px -1.5px 0 #000,-1.5px 1.5px 0 #000,1.5px 1.5px 0 #000,0 2.5px 0 #000;}
+.mm-cap-demo .sub{bottom:8%;font-size:8.5px;font-weight:600;line-height:1.3;text-shadow:0 1px 2px #000,0 0 3px #000;}
+.mm-vo-h{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3,#9AA39B);margin:14px 0 7px;}
+.mm-vopick{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;}
+.mm-vo{display:flex;align-items:stretch;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:12px;overflow:hidden;transition:border-color .14s,background .14s,box-shadow .14s;}
+.mm-vo.on{border-color:var(--green,#0C7A46);background:#F0F8F3;box-shadow:0 0 0 1px var(--green,#0C7A46);}
+.mm-vo-pick{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;border:0;background:transparent;padding:10px 12px;min-height:48px;font-family:Poppins,sans-serif;cursor:pointer;}
+.mm-vo-pick b{font-size:13.5px;font-weight:800;color:var(--ink,#14201A);}
+.mm-vo.on .mm-vo-pick b{color:var(--green,#0C7A46);}
+.mm-vo-pick small{font-size:11px;line-height:1.3;color:var(--ink2,#4A554E);}
+.mm-vo-play{flex:none;width:46px;border:0;border-left:1.5px solid var(--line,#E4DFCF);background:transparent;color:var(--green,#0C7A46);cursor:pointer;display:grid;place-items:center;}
+.mm-vo-play:hover{background:var(--mint,#EAF6EF);}
+.mm-vo-play svg{stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.fs-narr .mm-preview-btn{width:100%;justify-content:center;padding:13px 16px;font-size:14px;}
+.fs-narr .mm-storyboard{margin-top:12px;}
+.mm-sc-told .mm-sc-lyr-ico{display:grid;place-items:center;}
+.mm-sc-told .mm-sc-lyr-ico svg{stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-sc-told .mm-sc-words{min-height:74px;line-height:1.45;}
+@media(max-width:560px){
+  .mm-sb-list.is-told{grid-template-columns:1fr;}
+  .mm-sb-list.is-told .mm-sc{flex-direction:row;}
+  .mm-sb-list.is-told .mm-sc-frame{flex:0 0 36%;width:36%;aspect-ratio:auto !important;min-height:176px;}
+  .mm-sb-list.is-told .mm-sc-bd{flex:1;min-width:0;}
+}
 .mm-card:hover{border-color:var(--green2,#1EA85C);box-shadow:0 10px 26px -18px rgba(20,32,26,.26);}
 .mm-card.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 14px 30px -20px rgba(12,122,70,.4);}
 /* a step's options open full-width right after its card (the order property places it there), so the

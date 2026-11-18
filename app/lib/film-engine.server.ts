@@ -326,6 +326,24 @@ const TREATMENT_SCHEMA = {
   required: ["scenes", "musicMood"],
 } as const;
 
+/* NARRATED stories — one storyteller, illustrated scenes. Each scene is 2-3 spoken sentences (about ten
+ * seconds), so the length is the scene count: 4 ≈ 45 s, 6 ≈ a minute, 9 ≈ 1:30, 12 ≈ 2 minutes. */
+export const NARRATED_MIN_SCENES = 3;
+export const NARRATED_MAX_SCENES = 12;
+export const NARRATED_DEFAULT_SCENES = 6;
+export const clampNarrated = (n: number): number => Math.max(NARRATED_MIN_SCENES, Math.min(NARRATED_MAX_SCENES, Math.round(n || NARRATED_DEFAULT_SCENES)));
+/** What the writer is asked for when a story format is NARRATED rather than acted. */
+const NARRATED_BRIEF: Record<string, string> = {
+  horror: "a short NARRATED HORROR STORY — the kind a scary-story channel tells: one creepy, atmospheric tale in a storyteller's voice, dread building line by line to a chilling twist",
+  moral: "a short NARRATED MORAL STORY: a relatable everyday situation told by a storyteller, building to a clear, uplifting life lesson",
+  kidstv: "a gentle NARRATED STORY for little ones — a storybook read aloud: a small cast of cute characters, one simple happy adventure, warm and G-rated, with a cosy ending",
+  testmovie: "a short NARRATED STORY on the given theme — a storyteller's voice, a clear beginning, middle and end, and an ending that lands",
+};
+/** The templates that can be told by a narrator (for the page that offers the choice). */
+export const NARRATABLE_KEYS: string[] = Object.keys(NARRATED_BRIEF);
+/** Which templates can be told by a narrator instead of acted. */
+export const canNarrate = (key: string | undefined): boolean => !!key && Object.prototype.hasOwnProperty.call(NARRATED_BRIEF, key);
+
 function clampScenes(t: FilmTemplate, n: number): number {
   return Math.max(t.minScenes, Math.min(t.maxScenes, Math.round(n || t.defaultScenes)));
 }
@@ -356,9 +374,20 @@ export async function previewFilmTreatment(opts: {
   /** The lead's gender + each known co-star's — so the writer never casts a man in a woman's role/dress. */
   artistGender?: "m" | "f";
   castGenders?: Array<{ name: string; gender: "m" | "f" }>;
+  /** NARRATED: a storyteller tells the story over illustrated scenes — nobody speaks on camera —
+   *  whatever the template's own way of telling it. (The cheap, quick, popular kind of story video.) */
+  mode?: "narrated";
+  /** The cast the maker PICKED for a story format, before a word was written: each one's name and what
+   *  they are. The writer writes FOR them instead of inventing a cast of its own. */
+  cast?: Array<{ name: string; desc?: string }>;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
-  const scenes = clampScenes(tmpl, opts.sceneCount ?? tmpl.defaultScenes);
+  const narrated = opts.mode === "narrated" && !tmpl.lipSyncSinger && !tmpl.sung;
+  const scenes = narrated ? clampNarrated(opts.sceneCount ?? NARRATED_DEFAULT_SCENES) : clampScenes(tmpl, opts.sceneCount ?? tmpl.defaultScenes);
+  // who the maker cast (story formats only — a music video names its artist its own way)
+  const picked = tmpl.lipSyncSinger ? [] : (opts.cast || [])
+    .map((c) => ({ name: (c?.name || "").trim().slice(0, 40), desc: (c?.desc || "").trim().replace(/\s+/g, " ").slice(0, 220) }))
+    .filter((c) => c.name).slice(0, 4);
   const topic = (opts.topic || "").trim();
   // Lip-sync Music Video: the chosen genre drives the song style, the artist and
   // every setting; folded into the writer prompt so lyrics + visuals match it.
@@ -383,7 +412,10 @@ export async function previewFilmTreatment(opts: {
   // Kill "AI slop" names/pets WITHOUT banning atmosphere: the writer kept inventing a dog + NAMED
   // extras nobody asked for, but a crowd at a show or passersby on a street are fine and wanted.
   const noSlop = " Do NOT invent any uninvited NAMED or featured characters, or animals/pets (no dogs, cats) — the only recurring, named people are the cast above. Incidental UNNAMED background people (a crowd at a show, dancers, passersby on a street) are fine and encouraged where the setting calls for them.";
-  const castLine = tmpl.castBible
+  const pickedLine = picked.length
+    ? `\nTHE CAST IS ALREADY CHOSEN — write the story for exactly these characters: ${picked.map((c) => `${c.name}${c.desc ? ` — ${c.desc}` : ""}`).join("; ")}. Return them as "cast": ONE entry each, in this order, EACH STARTING WITH THE CHARACTER'S EXACT NAME followed by that fixed look (e.g. "${picked[0].name}, …"). Use these exact names in every scene and never rename them. A character who is a creature or a cartoon stays exactly that — never turn them into a person.${narrated ? " If the story needs someone else who comes back (a victim, a friend, a parent), you may add up to TWO more recurring characters: give each a simple first name and add them to \"cast\" after the chosen ones, each entry starting with the name followed by one fixed, vivid look." : picked.length < 2 ? " The story needs a second voice: invent ONE more character with a simple first name, described just as vividly, and add them to \"cast\" after the first." : " Do NOT add any other named character."}${noSlop}`
+    : "";
+  const castLine = pickedLine ? pickedLine : tmpl.castBible
     ? (tmpl.sing && !tmpl.childSafe
       ? (artistName
         ? `\nThe artist is named "${artistName}" — use THIS EXACT name everywhere; do NOT give them a stage name, alias, rap name or ANY other name. Return "cast" as an array of vivid FIXED visual descriptions, EACH STARTING WITH THE PERSON'S EXACT NAME: the FIRST entry is ${artistName} (e.g. "${artistName}, a singer with long dark wavy hair and a black leather jacket")${castNames.length ? `, then ONE entry for EACH co-star, in this order and with these EXACT names — ${castNames.map((n) => `"${n}"`).join(", ")} (e.g. "${castNames[0]}, …")` : ""}. Every scene's VISUAL and caption must use ONLY these exact names — NEVER a made-up or stage name.${coStars} Every scene's VISUAL features this SAME performer.${noSlop}`
@@ -425,6 +457,11 @@ export async function previewFilmTreatment(opts: {
       `• VISUAL — the SAME artist performing to camera in a DISTINCT ${genreLabel} setting (${tmpl.sceneHint}); a different vivid location each scene for visual variety; NO on-screen text, logos or real named people.\n` +
       captionShape +
       `RENDER-SAFE — these scenes become AI video and some things glitch badly when animated. UNLESS the theme above explicitly calls for it, AVOID: fire, flames, bonfires, sparks or embers; riding in the BED of a moving truck or any fast open-air wind (the wind + flames warp into a mess); extreme tight face-filling close-ups; and exaggerated or extreme facial emotions (screaming, sobbing, snarling). Prefer steady medium and wide shots, grounded settings, gentle believable motion, and natural, genuine expressions.\n`
+    : narrated
+    ? `\nWrite it as a NARRATED STORY: a storyteller's voice tells it over illustrated scenes — nobody speaks on camera. Return EXACTLY ${scenes} scenes. Each scene has TWO fields:\n` +
+      `• VISUAL — the ONE picture we see while that part is told, in at most 45 words: a single vivid, specific moment (${tmpl.sceneHint}) — who is in it, where, doing what, the light and the mood. Call every character who is IN the picture by their NAME exactly as in "cast" (never just "he", "she", "the creature" or "the clerk"); a picture nobody is in names nobody. Anything that is seen in more than one picture (a kite, a car, a house, a toy) is described with the SAME few words every time, so it is drawn the same. A different moment every scene, and no readable text anywhere in it.\n` +
+      `• CAPTION — the NARRATOR'S words for that scene, written to be READ ALOUD: 2-3 sentences, about 25-35 words. Plain, vivid, concrete storytelling — no "NAME:" labels, no stage directions, no headings. The FIRST scene opens with a hook that makes a viewer stay. Each scene picks up exactly where the last one left off. The LAST scene lands the ending${tmpl.key === "moral" ? " and says the lesson in one clear closing line" : tmpl.key === "horror" ? " on the chilling twist — the last line should make the skin crawl" : ""}.\n` +
+      `Read in order, the captions are the whole story, start to finish, in one voice.\n`
     : tmpl.dialogue
     ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FIVE fields:\n` +
       `• VISUAL — what we SEE: a TWO-SHOT framing BOTH characters together in the place; they STAY put (NO standing up, sitting down, walking, turning away or crossing — big moves make the AI morph faces/clothing); a still, tense TALKING beat with only small gestures and changing expressions; keep hands EMPTY by default — do NOT add cigarettes, drinks, phones or handheld props for flavour (they warp badly in AI video), only include one if the user's theme specifically involves it; NO readable text, documents, papers, boards, signage or screens in view.\n` +
@@ -447,6 +484,7 @@ export async function previewFilmTreatment(opts: {
   // short cut actually is, so the brief doesn't fight the hook-sized lyric budget above.
   const brief = tmpl.lipSyncSinger && shortCut
     ? `a SHORT ${scenes * 10}-second MUSIC VIDEO cut — ONE artist actually sings a real genre hook on camera (lip-synced) ${scenes === 1 ? "in one vivid setting" : "across two vivid settings"}`
+    : narrated ? (NARRATED_BRIEF[tmpl.key] || NARRATED_BRIEF.testmovie)
     : tmpl.brief;
   const prompt =
     `Write ${brief}.\n` +
@@ -461,7 +499,7 @@ export async function previewFilmTreatment(opts: {
   const write = async (p: string): Promise<FilmTreatment> => {
     const raw = await anthropicText(p, {
       model: "claude-sonnet-5",
-      maxTokens: tmpl.lipSyncSinger ? 2600 : 1500, // a full ~2-min song's lyrics run long
+      maxTokens: tmpl.lipSyncSinger ? 2600 : narrated ? 2400 : 1500, // a full ~2-min song's lyrics — and a narrated story's every word — run long
       jsonSchema: { name: "film_treatment", schema: TREATMENT_SCHEMA as unknown as Record<string, unknown> },
     });
     return JSON.parse(raw) as FilmTreatment;
@@ -499,11 +537,11 @@ export async function previewFilmTreatment(opts: {
   // despite being told the EXACT names. So read the name it ACTUALLY used for each cast slot (the leading
   // token of that cast description) and HARD-SUBSTITUTE it with the provided name across the whole
   // treatment — the only thing that reliably kills "AI slop" names + lets the per-scene cast match.
-  if (cast && cast.length && (artistName || castNames.length)) {
+  if (cast && cast.length && (artistName || castNames.length || picked.length)) {
     const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const subs: Array<{ from: string; to: string }> = [];
     cast.forEach((desc, i) => {
-      const want = i === 0 ? artistName : castNames[i - 1];
+      const want = picked.length ? picked[i]?.name : i === 0 ? artistName : castNames[i - 1];
       if (!want) return;
       const used = (desc.split(/[,—:–(-]/)[0] || "").trim();
       // Only treat the leading token as a name to swap if it LOOKS like one (1-3 capitalised words) and differs.

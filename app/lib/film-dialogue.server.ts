@@ -36,6 +36,8 @@ import { letterboxCrop, parseCropdetect } from "./letterbox";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { clipSecondsFor } from "./speech-meter";
+import { captionStyleOf } from "./narrated-core";
+import { normalizeContentLang } from "./content-lang";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -499,6 +501,9 @@ export async function generateTestMovie(opts: {
    *  character's trained voice model — same performance, same lip-sync, their voice. A character on the
    *  merchant's OWN cloned voice is re-voiced regardless of this flag (that is why they picked it). */
   lockVoices?: boolean;
+  /** CAPTIONS: put the spoken lines on screen ("bold" big words in time, or "subtitles" along the
+   *  bottom) — exactly as written, timed to each voice. Unset / "off" = none. */
+  captions?: string;
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
   // Style/mode switches so the ONE dialogue pipeline serves photoreal talking films
@@ -955,6 +960,19 @@ export async function generateTestMovie(opts: {
   const outName = `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
   await assembleTestMovie(clips, outPath, jobId, softSeams, aspect);
+  // 4b) CAPTIONS (the maker's choice): each shot's line, as written, in time with its voice. A sung
+  // film has its own lyric treatment; this is for spoken ones. It can never cost the film.
+  let captioned: string = "off";
+  const wantCaptions = captionStyleOf(opts.captions, "off");
+  if (wantCaptions !== "off" && !sing) {
+    const { captionFilm } = await import("./film-captions.server");
+    const lang = (await db.shop.findUnique({ where: { id: opts.shopId }, select: { contentLang: true } }))?.contentLang;
+    captioned = await captionFilm({
+      filmPath: outPath, style: wantCaptions, jobId, english: normalizeContentLang(lang) === "en",
+      lines: treatment.scenes.slice(0, clips.length).map((sc) => splitExchange(sc.caption || "").map((t) => t.line).join(" ")),
+      clipDurs: clips.map((c) => { try { return ffprobeDuration(c); } catch { return 0; } }),
+    });
+  }
   const outBuf = fs.readFileSync(outPath);
   try { await mirrorRender(outName, outBuf); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;
@@ -968,7 +986,7 @@ export async function generateTestMovie(opts: {
       bodyJson: JSON.stringify({ style: "TESTMOVIE", videoUrl: storedUrl, prompt: opts.topic || "", treatment }),
       metaJson: JSON.stringify({
         kind: "testmovie", template: tmpl.key, section: opts.section || "creator",
-        scenes: clips.length, aspect, engine: dialogueEngine, voicesLocked,
+        scenes: clips.length, aspect, engine: dialogueEngine, voicesLocked, captions: captioned,
         // Per-shot timeline for the section editor: each rendered shot's /renders URL +
         // the line it speaks, so the editor can list, preview and (later) re-edit each one.
         shots: clips.map((c, i) => ({

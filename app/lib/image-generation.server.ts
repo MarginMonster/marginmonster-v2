@@ -4183,7 +4183,7 @@ async function fluxToDisk(prompt: string): Promise<string> {
 
 /** Download a finished remote render to the durable disk and mirror it, like
  *  fluxToDisk's tail. Returns the public /renders/<file> path. */
-async function persistRemote(url: string, ext: "jpg" | "png"): Promise<string> {
+export async function persistRemote(url: string, ext: "jpg" | "png"): Promise<string> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`edit fetch ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
@@ -4697,7 +4697,7 @@ export async function renderStyledSeed(prompt: string, refImageUrl: string, aspe
  *  is how Runway References / Flow Ingredients / Kling Elements lock identity; here
  *  nano-banana's native multi-image input composes the shot from the supplied faces.
  *  Up to 3 refs (nano-banana's sweet spot). Durable /renders URL, or null. */
-export async function renderStyledSeedMulti(prompt: string, refImageUrls: (string | null | undefined)[], aspect = "9:16"): Promise<string | null> {
+export async function renderStyledSeedMulti(prompt: string, refImageUrls: (string | null | undefined)[], aspect = "9:16", lockNote?: string): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN) return null;
     const refs = (refImageUrls || []).filter((u): u is string => !!u).slice(0, 3);
@@ -4705,7 +4705,10 @@ export async function renderStyledSeedMulti(prompt: string, refImageUrls: (strin
     const ar = CREATE_ASPECT_VALUES.includes(aspect) ? aspect : "9:16";
     // Hard identity lock — close-up / emotional prompts otherwise drift the faces
     // younger and more generic, dropping the reference likeness. Pin it explicitly.
-    const full = `${(prompt || "").trim().slice(0, 460)}. CRITICAL: the people in this image must be the EXACT same individuals as in the reference images — identical faces, same age, same skin, same hair, same wardrobe. Do NOT make them younger, do NOT beautify, restyle or swap them for different people. Match the reference faces precisely. No watermark, no signature.`;
+    // `lockNote` replaces the wording when the cast is not all PEOPLE: told "the people … same age,
+    // same skin, same hair", the model gives a monster a human face (2026-11-17, characters in films).
+    const lock = (lockNote || "").trim() || "CRITICAL: the people in this image must be the EXACT same individuals as in the reference images — identical faces, same age, same skin, same hair, same wardrobe. Do NOT make them younger, do NOT beautify, restyle or swap them for different people. Match the reference faces precisely.";
+    const full = `${(prompt || "").trim().slice(0, 460)}. ${lock} No watermark, no signature.`;
     const url = await repRun("google/nano-banana", { prompt: full, image_input: refs, aspect_ratio: ar, output_format: "jpg" });
     const durable = await persistRemote(url, "jpg");
     artLog("image-ad", `styled seed rendered (cast x${refs.length}, ${ar})`);
