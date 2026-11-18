@@ -23,6 +23,7 @@ import { capabilitiesFor } from "../lib/capabilities.server";
 import { refundTokens, spendTokens } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { TOKEN_COST } from "../lib/plan-config";
+import { uprightPhoto } from "../lib/upright-photo.server";
 import { CHAR_DESC_MAX, charKindOf } from "../lib/character-prompts";
 import { DEFAULT_CHARACTER_VOICE, isCharacterVoice } from "../lib/character-voices";
 
@@ -81,7 +82,7 @@ export async function action({ request }: ActionFunctionArgs) {
     let ext: ReturnType<typeof pv.sniffImage> = null;
     if (hasPhoto && typeof photo !== "string" && photo) {
       if (photo.size > 8 * 1024 * 1024) return json({ error: tr(lang, "Image too large — keep it under 8 MB.") });
-      upload = Buffer.from(await photo.arrayBuffer());
+      upload = await uprightPhoto(Buffer.from(await photo.arrayBuffer()));
       ext = pv.sniffImage(upload); // what the bytes are, not what the browser called them
       if (!ext) return json({ error: tr(lang, "That file isn't an image — use a JPG, PNG or WebP.") });
     }

@@ -30,9 +30,20 @@ const EMPTY_HUD = {
   unlockedKeys: [] as string[],
 };
 
+/** Creator ("casual") or Ad Maker ("marketing"), as last chosen in this browser — null when never chosen. */
+type ShellMode = "marketing" | "casual";
+const readModeCookie = (cookie: string | null): ShellMode | null => {
+  const m = /(?:^|;\s*)emMode=(casual|marketing)(?:;|$)/.exec(cookie || "");
+  return m ? (m[1] as ShellMode) : null;
+};
+const writeModeCookie = (m: ShellMode) => {
+  try { document.cookie = `emMode=${m}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`; } catch { /* a nicety */ }
+};
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const id = await getWebIdentity(request);
-  if (!id) return json({ authed: false, hud: EMPTY_HUD, isAdmin: false });
+  const savedMode = readModeCookie(request.headers.get("Cookie"));
+  if (!id) return json({ authed: false, hud: EMPTY_HUD, isAdmin: false, savedMode });
   const { account, shop } = id;
   const lang = readUiLang(request);
   const plan = shop.activePlan;
@@ -59,6 +70,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const unlockedRows = await db.shopAchievement.findMany({ where: { shopId: shop.id }, select: { key: true } });
   return json({
     authed: true,
+    savedMode,
     isAdmin: isAdminEmail(account.email),
     hud: {
       name: account.name?.trim() || account.email.split("@")[0],
@@ -103,7 +115,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 const AUTOPOST_PATHS = ["/web/autopost", "/web/connect", "/web/channels", "/web/product-channels", "/web/campaigns"];
 
 export default function WebLayout() {
-  const { authed, hud, isAdmin } = useLoaderData<typeof loader>();
+  const { authed, hud, isAdmin, savedMode } = useLoaderData<typeof loader>();
   const loc = useLocation();
   const tab = (p: string) => (loc.pathname === p ? "wb-tab on" : "wb-tab");
   // UI display language — the header pill. t() translates chrome; the pill
@@ -113,15 +125,27 @@ export default function WebLayout() {
   const uiLang = useUiLang();
   const submitLang = useSubmit();
 
-  // Creation mode — "marketing" (sell your products) vs "casual" (just make cool
-  // stuff + edit photos). A pure front-end reframe: it swaps copy and hides the
-  // merchant-only surfaces, never touching billing or capability gates. Read
-  // after mount so SSR + first paint stay on the default 'marketing' and the
-  // live paid experience never flips under a merchant mid-hydration. Persisted
-  // per browser; see [emMode].
-  const [mode, setMode] = useState<"marketing" | "casual">("marketing");
-  useEffect(() => { try { const m = localStorage.getItem("emMode"); if (m === "casual" || m === "marketing") setMode(m); } catch { /* storage is a nicety */ } }, []);
-  const chooseMode = (m: "marketing" | "casual") => { setMode(m); try { localStorage.setItem("emMode", m); } catch { /* ignore */ } };
+  // Creation mode — "marketing" (Ad Maker: sell your products) vs "casual" (Creator: just make cool
+  // stuff + edit photos). A pure front-end reframe: it swaps copy and hides the merchant-only surfaces,
+  // never touching billing or capability gates. Both live at /web/studio, so the mode is the only thing
+  // that says which one you are in.
+  //
+  // It used to live only in localStorage, read AFTER the first paint — so every server render of the
+  // Studio was the Ad Maker, and anything that rebuilt the page mid-Creator-edit (a reload, an app update
+  // landing) put the merchant on the VIDEO section of the wrong maker before the saved mode caught up
+  // (owner report 2026-11-18: "it shows loading on video section instead of the actual image section").
+  // Now a cookie carries it, so the server renders the right maker from the first paint; localStorage
+  // stays as the fallback for browsers that chose a mode before the cookie existed.
+  const [mode, setMode] = useState<ShellMode>(savedMode || "marketing");
+  useEffect(() => {
+    if (savedMode) { try { localStorage.setItem("emMode", savedMode); } catch { /* */ } return; }
+    try {
+      const m = localStorage.getItem("emMode");
+      if (m === "casual" || m === "marketing") { setMode(m); writeModeCookie(m); }
+    } catch { /* storage is a nicety */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const chooseMode = (m: ShellMode) => { setMode(m); writeModeCookie(m); try { localStorage.setItem("emMode", m); } catch { /* ignore */ } };
 
   // The front door is the DASHBOARD HERO (web._index.tsx) — the old full-screen
   // Creator/Social mode gate AND the header mode toggle were retired; the app is

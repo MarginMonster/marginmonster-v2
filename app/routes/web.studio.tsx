@@ -23,6 +23,7 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { screenCreatePrompt } from "../lib/prompt-safety.server";
 import { TOKEN_COST, CREATOR_PRICE, CREATOR_SURCHARGE_MULT, DURATION_SURCHARGE_10S } from "../lib/plan-config";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
+import { uprightPhoto } from "../lib/upright-photo.server";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
 import { AVATAR_VOICES, DEFAULT_AVATAR_VOICE, safeVoiceId } from "../lib/avatar-voice-catalog";
@@ -287,14 +288,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       where: { shopId: shop.id, type: { in: ["IMAGE_AD", "VIDEO_AD", "AUDIO"] }, metaJson: { contains: '"section":"creator"' } },
       orderBy: { createdAt: "desc" },
       take: 8,
-      select: { id: true, type: true, bodyJson: true, title: true },
+      select: { id: true, type: true, bodyJson: true, title: true, createdAt: true },
     }),
   ]);
   const recent = recentRows
     .map((a) => {
       let b: { videoUrl?: string; imageUrl?: string; audioUrl?: string; url?: string } = {};
       try { b = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
-      return { id: a.id, isVideo: a.type === "VIDEO_AD", isAudio: a.type === "AUDIO", media: b.videoUrl || b.imageUrl || b.audioUrl || b.url || null, title: a.title || "Untitled" };
+      return { id: a.id, isVideo: a.type === "VIDEO_AD", isAudio: a.type === "AUDIO", media: b.videoUrl || b.imageUrl || b.audioUrl || b.url || null, title: a.title || "Untitled", at: a.createdAt.toISOString() };
     })
     .filter((p) => !!p.media)
     .slice(0, 6);
@@ -333,9 +334,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const lastGenRow = await db.job.findFirst({
     where: { shopId: shop.id, type: { in: ["GENERATE_IMAGE_AD", "GENERATE_VIDEO_AD", "GENERATE_SONG"] }, payload: { contains: '"section":"creator"' } },
     orderBy: { createdAt: "desc" },
-    select: { status: true, createdAt: true, lastError: true },
+    select: { id: true, type: true, status: true, createdAt: true, lastError: true, payload: true },
   });
   const lastGen = lastGenRow ? { status: lastGenRow.status as string, at: lastGenRow.createdAt.toISOString(), error: lastGenRow.lastError || null } : null;
+  // A Creator piece STILL COOKING — so the Stage can pick it back up after anything that rebuilt the page
+  // (a reload, an app update landing mid-edit, leaving and coming back). Before this, the Stage only knew
+  // about a job it had queued in this very page: after a reload the photo vanished and the edit landed
+  // in the gallery while the Stage sat empty (owner report 2026-11-18). An edit carries the photo it is
+  // editing, so the Stage can show that photo cooking.
+  const inFlight = (() => {
+    if (!lastGenRow || (lastGenRow.status !== "PENDING" && lastGenRow.status !== "IN_PROGRESS")) return null;
+    if (Date.now() - lastGenRow.createdAt.getTime() > 20 * 60_000) return null; // a stuck job is not "cooking"
+    let p: { editOp?: string; sourceImageUrl?: string; contentType?: string } = {};
+    try { p = JSON.parse(lastGenRow.payload || "{}"); } catch { /* ignore */ }
+    const kind = lastGenRow.type === "GENERATE_SONG" ? "song"
+      : lastGenRow.type === "GENERATE_VIDEO_AD" ? (p.contentType === "faceless" ? "faceless" : "video")
+      : p.editOp ? "photo" : "image";
+    const source = kind === "photo" && typeof p.sourceImageUrl === "string" && /^https?:\/\//.test(p.sourceImageUrl) ? p.sourceImageUrl : null;
+    return { id: lastGenRow.id, kind, source, at: lastGenRow.createdAt.toISOString() };
+  })();
   // ---- Combine-step status (polled by ?combineJob=<id>) ----
   // The Combine step runs in MARKETING mode, so its presenter image is tagged
   // section:"marketing" and never appears in the creator-only `recent`/`lastGen`
@@ -394,6 +411,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({
     combineResult,
     lastGen,
+    inFlight,
     recent,
     frameChoices,
     catalog,
@@ -658,7 +676,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
     fsMod.mkdirSync(dir, { recursive: true });
     const name = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext as UploadExt);
-    fsMod.writeFileSync(pathMod.join(dir, name), Buffer.from(await bgPhoto.arrayBuffer()));
+    fsMod.writeFileSync(pathMod.join(dir, name), await uprightPhoto(Buffer.from(await bgPhoto.arrayBuffer())));
     const url = `${base}/uploads/${name}`;
     const row = await db.backdrop.create({ data: { shopId: shop.id, url, label: ((form.get("label") as string) || "").trim().slice(0, 24) || "Uploaded" } });
     // Cap the saved set — keep the newest 12, delete older rows + their files.
@@ -721,7 +739,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
     fsMod.mkdirSync(dir, { recursive: true });
     const name = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext as UploadExt);
-    fsMod.writeFileSync(pathMod.join(dir, name), Buffer.from(await frame.arrayBuffer()));
+    fsMod.writeFileSync(pathMod.join(dir, name), await uprightPhoto(Buffer.from(await frame.arrayBuffer())));
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     if (!base) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet.") });
     return json({ frameUrl: `${base}/uploads/${name}` });
@@ -815,7 +833,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const dir = pathMod.join(process.cwd(), "data", "renders", "uploads");
     fsMod.mkdirSync(dir, { recursive: true });
     const name = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext as UploadExt);
-    fsMod.writeFileSync(pathMod.join(dir, name), Buffer.from(await photo.arrayBuffer()));
+    fsMod.writeFileSync(pathMod.join(dir, name), await uprightPhoto(Buffer.from(await photo.arrayBuffer())));
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     if (!base) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet — paste an image URL instead.") });
     productImageUrl = `${base}/uploads/${name}`;
@@ -1205,7 +1223,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             const dirB = pathMod.join(process.cwd(), "data", "renders", "uploads");
             fsMod.mkdirSync(dirB, { recursive: true });
             const nameB = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), extB as UploadExt);
-            fsMod.writeFileSync(pathMod.join(dirB, nameB), Buffer.from(await bgPhoto.arrayBuffer()));
+            fsMod.writeFileSync(pathMod.join(dirB, nameB), await uprightPhoto(Buffer.from(await bgPhoto.arrayBuffer())));
             if (!baseB) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet — describe the background instead.") });
             backgroundImageUrl = `${baseB}/uploads/${nameB}`;
           }
@@ -1309,7 +1327,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const dir2 = pathMod.join(process.cwd(), "data", "renders", "uploads");
         fsMod.mkdirSync(dir2, { recursive: true });
         const name2 = uploadFileName(shop.id, crypto.randomBytes(8).toString("hex"), ext2 as UploadExt);
-        fsMod.writeFileSync(pathMod.join(dir2, name2), Buffer.from(await photo2.arrayBuffer()));
+        fsMod.writeFileSync(pathMod.join(dir2, name2), await uprightPhoto(Buffer.from(await photo2.arrayBuffer())));
         const base2 = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
         if (!base2) return json({ error: tr(lang, "Photo uploads aren't configured on this server yet.") });
         sourceImageUrl2 = `${base2}/uploads/${name2}`;
@@ -1336,7 +1354,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         prePaid: true, chargedTokens: editEach, chargedFromExtra: editFromExtra,
       });
       backed(editEach, editFromExtra);
-      return json({ ok: true, queued: "image", count: 1 });
+      // editSource: the photo being edited, as saved (upright) — the Stage shows it cooking under the
+      // rosette until the edit lands, even if the page was rebuilt in between.
+      return json({ ok: true, queued: "image", count: 1, editSource: productImageUrl });
     }
     if (intent === "quickedit") {
       // One-tap post-generation edit of a finished Creator image (Enhance /
@@ -1363,7 +1383,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         prePaid: true, chargedTokens: TOKEN_COST.quickEdit, chargedFromExtra: quickFromExtra,
       });
       backed(TOKEN_COST.quickEdit, quickFromExtra);
-      return json({ ok: true, queued: "image", count: 1 });
+      return json({ ok: true, queued: "image", count: 1, editSource: productImageUrl });
     }
     if (intent === "create") {
       // Creator "Make an image" — text-to-image in an art style. No product.
@@ -2608,6 +2628,11 @@ export default function WebStudio() {
   const [stageAspect, setStageAspect] = useState<number | null>(null);
   useEffect(() => { setStageAspect(null); }, [stageResult?.media, editPreview]);
   const [making, setMaking] = useState(false);
+  // The photo being edited while the edit cooks, shown on the Stage under the rosette. From the edit's
+  // own response (editSource) or, after the page was rebuilt, from the job itself (d.inFlight.source).
+  const [editingSrc, setEditingSrc] = useState<string | null>(null);
+  useEffect(() => { if (editingSrc) setStageAspect(null); }, [editingSrc]); // a new photo: re-measure it
+  const queuedAtRef = useRef(0);
   // A generation that FAILED or was BLOCKED — shown on the Stage instead of
   // spinning forever. `kind` splits an unsafe/guideline block from a general
   // technical failure so the message (and tone) can differ.
@@ -2623,6 +2648,16 @@ export default function WebStudio() {
   const stageRev = useRevalidator();
   // Enter "making" on the Stage when a casual generation is queued; remember
   // what's already there so we can spot the fresh piece when it lands.
+  // On a phone the Stage sits ABOVE the form, so the Make button is a long scroll below it — bring the
+  // Stage into view when something starts cooking, or the merchant sees nothing happen where they tapped.
+  const showStage = () => {
+    try {
+      const el = document.querySelector(".ws-stage");
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.top < 0 || r.top > window.innerHeight * 0.6) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch { /* */ }
+  };
   useEffect(() => {
     if (casual && actionData && "queued" in actionData) {
       preIdsRef.current = d.recent.map((p) => p.id);
@@ -2630,7 +2665,10 @@ export default function WebStudio() {
       makingStartedRef.current = Date.now();
       setGenError(null);
       setStageResult(null);
+      setEditingSrc((actionData as { editSource?: string }).editSource || null);
       setMaking(true);
+      queuedAtRef.current = Date.now();
+      showStage();
     } else if (casual && actionData && "unsafe" in actionData && (actionData as { unsafe?: boolean }).unsafe) {
       // The prompt was blocked BEFORE the pipeline — show it on the Stage as a
       // guidelines block (distinct from a technical failure), no spinner.
@@ -2639,6 +2677,34 @@ export default function WebStudio() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionData]);
+  // PICK A COOKING PIECE BACK UP. The Stage used to know only about a job queued from this very page, so
+  // anything that rebuilt the page mid-edit (a reload, an app update landing, leaving and coming back)
+  // dropped the photo: the Stage sat blank while the edit landed in the gallery (owner report
+  // 2026-11-18). The loader now says what is still cooking; show it on the Stage — the photo being
+  // edited under the rosette — and land the result there as usual.
+  const resumedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const f = d.inFlight;
+    if (!casual || !f || making || stageResult || resumedRef.current === f.id) return;
+    // Queued from this very page a moment ago (the action and the reloaded data land together): the
+    // effect above is already watching it.
+    if (Date.now() - queuedAtRef.current < 15_000) { resumedRef.current = f.id; return; }
+    const wantTab: Tab = f.kind === "song" ? "music" : f.kind === "faceless" ? "faceless" : f.kind === "video" ? "video" : "image";
+    if (initTab && initTab !== wantTab) return; // a deep link asked for something else — leave the Stage to it
+    resumedRef.current = f.id;
+    const startedAt = new Date(f.at).getTime();
+    // Pieces made before this job are "already there"; one made after it is its result.
+    preIdsRef.current = d.recent.filter((p) => new Date(p.at).getTime() < startedAt - 1000).map((p) => p.id);
+    makingNounRef.current = f.kind === "song" ? "song" : f.kind === "photo" ? "photo" : f.kind === "image" ? "image" : "video";
+    makingStartedRef.current = startedAt;
+    setGenError(null);
+    setEditingSrc(f.source);
+    setTab(wantTab);
+    if (f.kind === "photo") setImageMode("product");
+    else if (f.kind === "image") setImageMode("create");
+    setMaking(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [casual, d.inFlight?.id]);
   // While making, quietly revalidate so d.recent refreshes; stop after a cap so a
   // stuck render never polls forever.
   useEffect(() => {
@@ -2651,6 +2717,7 @@ export default function WebStudio() {
     const iv = setInterval(() => {
       if (Date.now() - started > capMs) {
         setMaking(false);
+        setEditingSrc(null);
         setGenError({ kind: "failed", message: t("This is taking longer than usual. It may still land in your gallery shortly — or try again.") });
         return;
       }
@@ -2665,6 +2732,7 @@ export default function WebStudio() {
     if (fresh && fresh.media) {
       setStageResult({ id: fresh.id, isVideo: fresh.isVideo, isAudio: fresh.isAudio, media: fresh.media, title: fresh.title });
       setMaking(false);
+      setEditingSrc(null);
       // The edit is done — drop the loaded source photo so it doesn't linger on
       // the Stage behind the result or get re-submitted on the next Make.
       setEditPreview((p) => { if (p) { try { URL.revokeObjectURL(p); } catch { /* */ } } return null; });
@@ -2688,6 +2756,7 @@ export default function WebStudio() {
         ? { kind: "unsafe", message: t("Sorry — this one looks like it touches on something we can’t create, so the model held back. You’ve been refunded, no worries. Try rewording it or a different idea and we’ll get right on it.") }
         : { kind: "failed", message: t("That one didn’t come through — it may have hit a snag. Your tokens were refunded; try again.") });
       setMaking(false);
+      setEditingSrc(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.recent, d.lastGen, making]);
@@ -2747,11 +2816,23 @@ export default function WebStudio() {
   // Clear the pending selection whenever the staged image changes — after an
   // edit lands (new media), when a different creation is loaded, or on clear.
   useEffect(() => { setQuickSel(null); }, [stageResult?.media]);
+  // The saved photo cooking on the Stage when there is no local preview of it (see the resume above).
+  const cookingPhoto = making && editingSrc && !(isEdit && editPreview) ? editingSrc : null;
+  // Over the photo while it is being worked on: dimmed, a slow light sweep, the rosette spinning on top.
+  const workingVeil = (
+    <div className="ws-working" role="status" aria-live="polite">
+      <span className="ws-working-sweep" aria-hidden="true" />
+      <span className="ws-working-disc" aria-hidden="true"><span className="ws-rose" /></span>
+      <b>{t("Editing your photo…")}</b>
+      <span className="ws-working-sub">{t("About a minute — it lands right here.")}</span>
+    </div>
+  );
   // Click a creation in the shelf → bring it back UP onto the Stage (for viewing
   // + quick edits), instead of leaving to the gallery.
   const loadToStage = (p: StagePiece) => {
     setGenError(null);
     setMaking(false);
+    setEditingSrc(null);
     setEditPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return null; });
     setEditFile(null);
     setStageResult(p);
@@ -5498,8 +5579,8 @@ export default function WebStudio() {
        </div>
        {casual && (
          <aside className="ws-stage">
-           <div className={`ws-stage-frame${stageResult || (isEdit && editPreview) ? " has-result" : ""}`}
-             style={(stageResult || (isEdit && editPreview)) && stageAspect ? ({ ["--stage-ar" as string]: String(stageAspect) } as React.CSSProperties) : undefined}>
+           <div className={`ws-stage-frame${stageResult || (isEdit && editPreview) || cookingPhoto ? " has-result" : ""}`}
+             style={(stageResult || (isEdit && editPreview) || cookingPhoto) && stageAspect ? ({ ["--stage-ar" as string]: String(stageAspect) } as React.CSSProperties) : undefined}>
              {stageResult ? (
                <div className="ws-stageresult">
                  <div className="ws-stagemedia">
@@ -5529,6 +5610,7 @@ export default function WebStudio() {
                    onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !(making || busy)) { e.preventDefault(); stageUploadRef.current?.click(); } }}>
                    <img src={editPreview} alt={t("Your photo")}
                      onLoad={(e) => { const el = e.currentTarget; if (el.naturalWidth && el.naturalHeight) setStageAspect(el.naturalWidth / el.naturalHeight); }} />
+                   {(making || busy) && workingVeil}
                  </div>
                  <div className="ws-verbs">
                    <span className="ws-editcap">{making || busy ? t("Editing your photo…") : editPreview2 ? t("Describe how to combine them, then Make") : t("Describe your edits, then Make")}</span>
@@ -5554,6 +5636,18 @@ export default function WebStudio() {
                      )}
                    </div>
                  )}
+               </div>
+             ) : cookingPhoto ? (
+               /* The photo being edited, from the server — after the page was rebuilt mid-edit, or a quick
+                  edit of the piece that was on the Stage. Same look as the live edit: it cooks under the
+                  rosette, then the result replaces it. */
+               <div className="ws-stageresult">
+                 <div className="ws-stagemedia ws-stagemedia-working">
+                   <img src={cookingPhoto} alt={t("Your photo")}
+                     onLoad={(e) => { const el = e.currentTarget; if (el.naturalWidth && el.naturalHeight) setStageAspect(el.naturalWidth / el.naturalHeight); }} />
+                   {workingVeil}
+                 </div>
+                 <div className="ws-verbs"><span className="ws-editcap">{t("Editing your photo…")}</span></div>
                </div>
              ) : (casual && tab === "video" && uploadPreview) ? (
                /* A photo attached in the VIDEO flow SEEDS the video (image-to-
@@ -6342,7 +6436,7 @@ ${FORGE_CSS}
 .ws-casual .ws-tab{justify-content:flex-start;width:100%;border-radius:12px;padding:11px 13px;font-size:14px;gap:11px;border:1px solid transparent}
 .ws-casual .ws-tab.on{color:#fff;background:linear-gradient(100deg,#12A85E 40%,#0A6A3D 84%);box-shadow:0 4px 12px rgba(12,122,70,.26);border-color:transparent}
 /* the Stage */
-.ws-stage{position:sticky;top:14px;min-width:0;display:flex;flex-direction:column;align-items:center}
+.ws-stage{position:sticky;top:14px;min-width:0;display:flex;flex-direction:column;align-items:center;scroll-margin-top:72px}
 .ws-stage-frame{position:relative;width:100%;min-height:470px;height:100%;display:grid;place-items:center;border-radius:20px;overflow:hidden;border:1px dashed #DED7C2;background:repeating-linear-gradient(135deg,rgba(12,122,70,.018) 0 2px,transparent 2px 22px),radial-gradient(90% 80% at 50% 35%,#FFFEF9,#F6F1E4)}
 .ws-stage-frame::after{content:"";position:absolute;inset:10px;border-radius:14px;border:1px solid rgba(199,154,46,.18);pointer-events:none}
 .ws-easelph{display:flex;flex-direction:column;align-items:center;gap:13px;text-align:center;padding:24px}
@@ -6385,6 +6479,17 @@ ${FORGE_CSS}
 .ws-verb:hover{background:rgba(18,168,94,.22);border-color:rgba(18,168,94,.5);color:#fff}
 .ws-verb.gold{color:#2a2008;background:linear-gradient(180deg,#FFD873,#F3B63E);border-color:#E7A92f}
 .ws-stagemedia-edit{cursor:pointer}
+/* A photo being worked on: it stays visible, dimmed, with a light sweep and the rosette spinning on top. */
+.ws-stagemedia{position:relative}
+.ws-stagemedia-working{cursor:default}
+.ws-working{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:18px;text-align:center;color:#fff;background:radial-gradient(70% 60% at 50% 50%,rgba(10,22,15,.30),rgba(10,22,15,.56));-webkit-backdrop-filter:saturate(.7) blur(1.5px);backdrop-filter:saturate(.7) blur(1.5px);overflow:hidden;pointer-events:none}
+/* a frosted disc behind the rosette so its fine lines read on any photo, busy or dark */
+.ws-working-disc{position:relative;display:grid;place-items:center;width:132px;height:132px;border-radius:50%;background:radial-gradient(circle,rgba(255,252,240,.30),rgba(255,252,240,.12) 70%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28),0 10px 30px rgba(0,0,0,.35);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.ws-working .ws-rose{width:118px;height:118px;background:conic-gradient(from 0deg,#0A6A3D,#12A85E 30%,#FFD24A 52%,#12A85E 74%,#0A6A3D);opacity:1;animation:wsrosespin 2.4s linear infinite}
+.ws-working b{font-size:15px;font-weight:800;letter-spacing:.01em;margin-top:4px;text-shadow:0 1px 8px rgba(0,0,0,.55)}
+.ws-working-sub{font-size:12px;opacity:.9;max-width:28ch;line-height:1.4;text-shadow:0 1px 6px rgba(0,0,0,.5)}
+.ws-working-sweep{position:absolute;inset:-40% -60%;background:linear-gradient(105deg,transparent 42%,rgba(255,236,170,.16) 50%,transparent 58%);animation:wssweep 2.8s ease-in-out infinite}
+@keyframes wssweep{from{transform:translateX(-35%)}to{transform:translateX(35%)}}
 .ws-editcap{margin-right:auto;align-self:center;padding-left:4px;font-size:12px;font-weight:700;color:#d9f3e5}
 /* Two-photo combine slot — sits under the primary edit photo on the Stage. */
 .ws-combine2{margin-top:9px;padding-left:4px}
@@ -6617,7 +6722,7 @@ ${FORGE_CSS}
 }
 /* The Stage rose — idle AND the making spinner (the .making selector is more
    specific than .ws-rose, so it needs naming to actually stop). */
-@media (prefers-reduced-motion:reduce){.ws-rose,.ws-easelph.making .ws-rose{animation:none}}
+@media (prefers-reduced-motion:reduce){.ws-rose,.ws-easelph.making .ws-rose,.ws-working .ws-rose,.ws-working-sweep{animation:none}}
 /* ── 44px tap-target floor (mobile touch). Appended so source order wins; only
    hit boxes grow, glyph sizes unchanged. ── */
 .ws-vx{width:44px;height:44px}

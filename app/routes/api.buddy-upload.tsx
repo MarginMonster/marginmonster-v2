@@ -16,6 +16,7 @@ import { json, type ActionFunctionArgs } from "@remix-run/node";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { externalOrigin } from "../lib/origin.server";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
+import { uprightPhoto } from "../lib/upright-photo.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   const id = await getWebIdentity(request);
@@ -33,7 +34,7 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     fs.mkdirSync(dir, { recursive: true });
     const name = uploadFileName(id.shop.id, crypto.randomBytes(8).toString("hex"), ext);
-    fs.writeFileSync(path.join(dir, name), Buffer.from(await photo.arrayBuffer()));
+    fs.writeFileSync(path.join(dir, name), await uprightPhoto(Buffer.from(await photo.arrayBuffer())));
     // externalOrigin (not request.url, which is http:// behind Render's TLS edge)
     // → an https URL that renders without mixed-content and that safeEditSource
     // rebuilds to the same way. editImage requires an http(s) URL.
