@@ -23,6 +23,7 @@ import { estimateFilmTokens, FILM_PER_SCENE, FILM_BASE } from "../lib/plan-confi
 import { externalOrigin } from "../lib/origin.server";
 import { AVATAR_VOICES, AVATAR_VOICE_IDS, autoCastVoices } from "../lib/avatar-voice-catalog";
 import { CHARACTER_VOICES, characterVoiceSample, isCharacterVoice } from "../lib/character-voices";
+import { GENRE_PACE, PACES, PACE_KEYS, cutCount, isPace, paceFor, type Pace } from "../lib/mv-pace";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
@@ -457,6 +458,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const filmAspect = filmAspectRaw === "16:9" || filmAspectRaw === "1:1" ? filmAspectRaw : "9:16";
     // Music Video genre (rap/pop/rock/rnb/country) — only the lip-sync Music Video reads it.
     const filmGenre = ((form.get("filmGenre") as string) || "").trim();
+    // …and how fast it is CUT. Unset = the genre's own pace; anything that isn't a pace is dropped.
+    const filmPaceRaw = ((form.get("filmPace") as string) || "").trim();
+    const filmPace = isPace(filmPaceRaw) ? filmPaceRaw : "";
     // BYO-song: a merchant-uploaded track URL (from /api/film-song-upload) used INSTEAD of generating one.
     const filmSongUrl = ((form.get("filmSongUrl") as string) || "").trim();
     // Artist (Music Video) — the merchant picked one of their avatars to BE the star (empty = auto-cast).
@@ -502,6 +506,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(cast ? { cast } : {}),
         ...(cast && filmLockVoices ? { filmLockVoices: true } : {}),
         ...(filmGenre ? { filmGenre } : {}),
+        ...(filmPace ? { filmPace } : {}),
         ...(filmSongUrl ? { filmSongUrl } : {}),
         ...(filmHeroUrl ? { filmHeroUrl } : {}),
         ...(filmCastExtra ? { filmCastExtra } : {}),
@@ -816,6 +821,10 @@ export default function FilmStudio() {
   const [mvAspect, setMvAspect] = useState<"9:16" | "16:9" | "1:1">("9:16");
   // Music Video genre (lip-sync lane only) — drives the song + the artist/settings.
   const [filmGenre, setFilmGenre] = useState<string>(d.genres?.[0]?.key || "rap");
+  // PACE — how fast the video is cut. "" = whatever the genre is cut at (rap fast, country slow); picking
+  // one here holds it, whatever genre is chosen afterwards.
+  const [pacePick, setPacePick] = useState<Pace | "">("");
+  const mvPace: Pace = paceFor(filmGenre, pacePick);
   // BYO-song (Music Video): "write" = auto-generate the song, "upload" = merchant's own track.
   const [songSource, setSongSource] = useState<"write" | "upload">("write");
   const [filmSongUrl, setFilmSongUrl] = useState("");
@@ -920,7 +929,7 @@ export default function FilmStudio() {
     else if (artistMakerFetcher.data?.error) { artistPendingRef.current = false; }
   }, [artistMakerFetcher.state, artistMakerFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Music Video card-builder: which summary step is expanded for editing (null = all collapsed).
-  type CardKey = "artist" | "genre" | "song" | "props" | "length";
+  type CardKey = "artist" | "genre" | "song" | "props" | "length" | "pace";
   const [openCard, setOpenCard] = useState<CardKey | null>(null);
   // A numbered step flow: each step turns green once you've set it, so you move through 1→5 like a
   // guided checklist. Opening a step (and it already has a smart default) counts it as done.
@@ -1778,16 +1787,22 @@ export default function FilmStudio() {
             {/* 4 · Props */}
             <button type="button" style={{ order: 7 }} className={`mm-card${openCard === "props" ? " on" : ""}${stepsDone.props ? " done" : ""}`} onClick={() => tapCard("props")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.props ? <Ico n="check" size={13} /> : 4}</span>
-              <span className="mm-card-top">{filmProps.length > 0 ? <span className="mm-card-face" style={{ backgroundImage: `url(${propThumb(filmProps[0])})` }} aria-hidden="true" /> : <span className="mm-card-ico c3"><Ico n="gem" size={20} /></span>}<span className="mm-card-ttl"><span className="mm-card-kick">{t("Cool shit")}</span><b>{t("Props")}</b></span></span>
+              <span className="mm-card-top">{filmProps.length > 0 ? <span className="mm-card-face" style={{ backgroundImage: `url(${propThumb(filmProps[0])})` }} aria-hidden="true" /> : <span className="mm-card-ico c3"><Ico n="gem" size={20} /></span>}<span className="mm-card-ttl"><span className="mm-card-kick">{t("The extras")}</span><b>{t("Props")}</b></span></span>
               {filmProps.length > 0 ? (
                 <span className="mm-vchips">{filmProps.slice(0, 3).map((k) => { const p = (d.props || []).find((x) => x.key === k); const cp = customProps.find((x) => x.key === k); return <span className="mm-chip" key={k}>{cp ? cp.label : t(p?.name || k)}</span>; })}{filmProps.length > 3 && <span className="mm-chip">+{filmProps.length - 3}</span>}</span>
               ) : <span className="mm-val mm-muted">{t("none yet · tap to add tigers, cars, chains…")}</span>}
             </button>
-            {/* 5 · Length (spans the row — it's the last, simple step) */}
-            <button type="button" style={{ order: 9 }} className={`mm-card mm-card-wide${openCard === "length" ? " on" : ""}${stepsDone.length ? " done" : ""}`} onClick={() => tapCard("length")}>
+            {/* 5 · Length */}
+            <button type="button" style={{ order: 9 }} className={`mm-card${openCard === "length" ? " on" : ""}${stepsDone.length ? " done" : ""}`} onClick={() => tapCard("length")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.length ? <Ico n="check" size={13} /> : 5}</span>
               <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
               <span className="mm-val">{scenes === 1 ? t("{len} · 1 sung shot", { len: mvLenLabel(scenes) }) : t("{len} · {n} sung shots", { len: mvLenLabel(scenes), n: scenes })}</span>
+            </button>
+            {/* 6 · Pace — how fast it is cut. Rap cuts fast, a country ballad lingers; the genre picks, you can overrule. */}
+            <button type="button" style={{ order: 11 }} className={`mm-card${openCard === "pace" ? " on" : ""}${stepsDone.pace ? " done" : ""}`} onClick={() => tapCard("pace")}>
+              <span className="mm-step" aria-hidden="true">{stepsDone.pace ? <Ico n="check" size={13} /> : 6}</span>
+              <span className="mm-card-top"><span className="mm-card-ico c1"><Ico n="scissors" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The edit")}</span><b>{t("Pace")}</b></span></span>
+              <span className="mm-val">{t(PACES[mvPace].label)} · {pacePick ? t("your pick") : t("set by the genre")}</span>
             </button>
 
             {/* Each step's options live INSIDE the grid, full-width right after its own card (via CSS
@@ -1981,6 +1996,31 @@ export default function FilmStudio() {
               <div className="mm-opts-sub mm-lentip">{t("Longer = more scenes to shoot, so it takes a bit longer to render (and will cost a little more once pricing's on).")}</div>
             </div>
           )}
+          {openCard === "pace" && (() => {
+            // how many times the picture changes at each pace, for THIS video (its scenes as they stand)
+            const n = seeds?.treatment.scenes.length || scenes;
+            const roles = Array.from({ length: n }, (_, i) => (seeds ? sceneKind(seeds.treatment.scenes[i], i, n) : defaultSceneRole(i, n)));
+            return (
+              <div className="mm-opts mm-opts-grid" style={{ order: 12 }}>
+                <div className="mm-opts-h">{t("How fast should it cut?")}</div>
+                <div className="mm-opts-sub">{t("The genre sets the pace — rap and pop cut fast, a country ballad lingers. Pick one to overrule it. The song and the scenes stay the same; this is the edit.")}</div>
+                <div className="mm-lenpick mm-pacepick" role="group" aria-label={t("Pace")}>
+                  {PACE_KEYS.map((p) => {
+                    const cuts = cutCount(roles, 10, p);
+                    return (
+                      <button type="button" key={p} className={`mm-lenopt${mvPace === p ? " on" : ""}`} aria-pressed={mvPace === p} onClick={() => setPacePick(p)}>
+                        <b>{t(PACES[p].label)}</b>
+                        <small>{t(PACES[p].blurb)}</small>
+                        <small className="mm-pace-n">{cuts === 0 ? t("one shot") : cuts === 1 ? t("1 cut") : t("{n} cuts", { n: cuts })}{GENRE_PACE[filmGenre] === p ? ` · ${t("this genre's own")}` : ""}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+                {pacePick && <button type="button" className="mm-pace-auto" onClick={() => setPacePick("")}><Ico n="refresh" size={12} /> {t("Let the genre decide")}</button>}
+                {n < 2 && <div className="mm-opts-sub mm-lentip">{t("A 10-second video is a single shot — pace starts to matter from 20 seconds up.")}</div>}
+              </div>
+            );
+          })()}
           </div>{/* /mm-grid — cards + their inline option panels */}
 
           {/* ONE button does it all (below) — writes the song AND builds the scenes. Here we just show
@@ -2024,6 +2064,7 @@ export default function FilmStudio() {
               <input type="hidden" name="intent" value="film" />
               <input type="hidden" name="template" value={template} />
               <input type="hidden" name="filmGenre" value={filmGenre} />
+              <input type="hidden" name="filmPace" value={mvPace} />
               {songSource === "upload" && filmSongUrl && <input type="hidden" name="filmSongUrl" value={filmSongUrl} />}
               {filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}
               {customProps.length > 0 && <input type="hidden" name="filmCustomProps" value={JSON.stringify(customProps)} />}
@@ -2221,7 +2262,7 @@ export default function FilmStudio() {
               )}
               <div className="fs-propsbox">
                 <span className="fs-songsrc-cap">{t("Props")} <span className="fs-free" style={{ marginLeft: 4 }}>{t("optional")}</span></span>
-                <p className="fs-hint" style={{ margin: "6px 0 0" }}>{t("Cool shit to weave into the scenes — pick a few.")}</p>
+                <p className="fs-hint" style={{ margin: "6px 0 0" }}>{t("Extras to weave into the scenes — pick a few.")}</p>
                 <div className="fs-genres" style={{ marginTop: 9 }}>
                   {(d.props || []).map((pr) => (
                     <button type="button" key={pr.key} className={`fs-genre${filmProps.includes(pr.key) ? " on" : ""}`}
@@ -2915,6 +2956,11 @@ const FS_STYLE = `
 .mm-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;grid-auto-flow:row dense;}
 .mm-card{position:relative;text-align:left;cursor:pointer;background:#fff;border:1.5px solid var(--line,#E4DFCF);border-radius:18px;padding:15px 16px;box-shadow:0 1px 2px rgba(20,32,26,.04);transition:transform .16s cubic-bezier(.2,.7,.2,1),box-shadow .16s,border-color .16s,background .2s;font-family:Poppins,sans-serif;}
 .mm-card-wide{grid-column:1 / -1;}
+.mm-pacepick .mm-lenopt{flex:1 1 150px;align-items:flex-start;text-align:left;gap:3px;padding:12px 14px;}
+.mm-pacepick .mm-lenopt small{font-size:11.5px;line-height:1.35;}
+.mm-pace-n{font-weight:800;color:var(--green,#0C7A46);}
+.mm-pace-auto{display:inline-flex;align-items:center;gap:6px;margin-top:10px;border:0;background:transparent;color:var(--green,#0C7A46);font:inherit;font-size:12.5px;font-weight:800;cursor:pointer;padding:6px 2px;}
+.mm-pace-auto:hover{text-decoration:underline;}
 .mm-card:hover{border-color:var(--green2,#1EA85C);box-shadow:0 10px 26px -18px rgba(20,32,26,.26);}
 .mm-card.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 14px 30px -20px rgba(12,122,70,.4);}
 /* a step's options open full-width right after its card (the order property places it there), so the

@@ -30,6 +30,7 @@ import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, PROPS, type FilmTreatment } from "./film-engine.server";
 import { singToDisk } from "./music-generation.server";
 import { ensureVoiceModel, coverSongInVoice, matchLoudness } from "./singing-voice.server";
+import { editPlan, paceFor, planFilter, type Cut, type Pace } from "./mv-pace";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -197,9 +198,11 @@ async function stillClip(imgPath: string, segAudioPath: string, dur: number, W: 
  *  continuous song over the whole thing. Continuous music carries across each cut so it reads smooth
  *  (how real music videos cut), and because every clip sits at its exact song position the lip-sync
  *  stays aligned. Falls back to a plain per-clip concat if anything here fails, so it never dies. */
-async function assembleMusicVideo(clips: string[], songPath: string, D: number, outPath: string, W: number, H: number): Promise<void> {
+async function assembleMusicVideo(clips: string[], songPath: string, D: number, outPath: string, W: number, H: number, cuts?: Cut[]): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[musicvideo] no clips to assemble");
+  // a cut list that is just "every clip whole, in order" is the plain join below
+  const edit = cuts && cuts.length > N && cuts.every((c) => c.src >= 0 && c.src < N && c.start >= 0 && c.dur > 0 && c.start + c.dur <= D + 1e-6) ? cuts : null;
 
   try {
     // 1) each clip → EXACTLY D sec, silent, uniform WxH/fps (tpad clones the last frame if a clip came
@@ -213,13 +216,26 @@ async function assembleMusicVideo(clips: string[], songPath: string, D: number, 
       if (r.status === 0 && fs.existsSync(o) && ffprobeDuration(o) > 0.5) norm.push(o);
       else throw new Error(`[musicvideo] clip ${i} normalise failed`);
     }
-    // 2) hard-join the uniform clips (exact timeline, no overlap).
-    const listPath = path.join(RENDERS(), `mvlist-${Date.now()}-${rid()}.txt`);
-    fs.writeFileSync(listPath, norm.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"));
+    // 2) hard-join the uniform clips (exact timeline, no overlap) — or, at a faster PACE, cut them to the
+    //    edit: the same footage, more scene changes, every performance shot still at its own place in the
+    //    song (see mv-pace.ts). If that edit cannot be made the plain join below still makes the video.
     const silent = path.join(RENDERS(), `mvcat-${Date.now()}-${rid()}.mp4`);
-    const rc = await runFfmpeg(["-y", "-f", "concat", "-safe", "0", "-i", listPath,
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-an", silent]);
-    if (rc.status !== 0 || !fs.existsSync(silent)) throw new Error("[musicvideo] concat failed");
+    let joined = false;
+    if (edit) {
+      const args = ["-y"];
+      norm.forEach((p) => args.push("-i", p));
+      const re = await runFfmpeg([...args, "-filter_complex", planFilter(edit, N, 30), "-map", "[v]", "-an",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", silent]);
+      joined = re.status === 0 && fs.existsSync(silent) && Math.abs(ffprobeDuration(silent) - N * D) < 0.5;
+      if (!joined) console.error(`[musicvideo] the paced edit (${edit.length} cuts) could not be made — joining the clips whole: ${(re.stderr || "").slice(-200)}`);
+    }
+    if (!joined) {
+      const listPath = path.join(RENDERS(), `mvlist-${Date.now()}-${rid()}.txt`);
+      fs.writeFileSync(listPath, norm.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"));
+      const rc = await runFfmpeg(["-y", "-f", "concat", "-safe", "0", "-i", listPath,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-an", silent]);
+      if (rc.status !== 0 || !fs.existsSync(silent)) throw new Error("[musicvideo] concat failed");
+    }
     // 3) lay the ORIGINAL continuous song over the whole cut (no seam, no per-slice crossfade). End on
     //    the music (trim to the shorter of the video grid and the real song) so there's no dead air.
     //    The song was FIT to the grid upstream; a re-encoded or re-voiced track can land a few ms short of
@@ -588,6 +604,9 @@ export async function generateMusicVideo(opts: {
   artistVoiceId?: string;
   /** Output shape — "9:16" (default), "16:9" or "1:1". */
   aspect?: string;
+  /** How fast the video is CUT — "slow" | "medium" | "fast". Unset = the genre's own pace (rap is cut
+   *  fast, country slow). It changes the edit, not what is generated: see mv-pace.ts. */
+  pace?: string;
   /** Owner PREVIEWED + approved these exact per-scene stills — render them, don't re-seed (no surprise).
    *  Index-aligned with scenes; a null entry means that scene fell back and should seed fresh. */
   approvedSceneImgs?: (string | null)[];
@@ -765,6 +784,13 @@ export async function generateMusicVideo(opts: {
     return null;
   });
   const good = clips.filter((c): c is string => !!c);
+  // PACE — cut what was rendered to the genre's pace (or the maker's pick). Roles are read off the scenes
+  // that actually made it, in order, so the list always describes the clips being joined.
+  const pace: Pace = paceFor(genre, opts.pace);
+  const keptRoles = clips.map((c, i) => (c ? shotFor(scenes[i], i, scenes.length).role : null)).filter((r): r is "perform" | "broll" => !!r);
+  // only when nothing was dropped: with a scene missing, later performance clips no longer sit at their
+  // own place in the song, and an edit built on "its own place" would be built on sand
+  const cuts = good.length === scenes.length ? editPlan(keptRoles, D, pace) : undefined;
   if (!good.length) {
     const nullImgs = sceneImgs.filter((x) => !x).length;
     throw new Error(`[musicvideo] every scene failed to render (nullSceneImgs=${nullImgs}/${N}, approved=${opts.approvedSceneImgs ? "yes" : "no"}, fal=${falEnabled() ? "on" : "off"})`);
@@ -773,7 +799,7 @@ export async function generateMusicVideo(opts: {
   // 7) ASSEMBLE — hard-cut concat keeping audio → the full song under the performance.
   const outName = `mv-${Date.now()}-${rid()}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleMusicVideo(good, songPath, D, outPath, W, H);
+  await assembleMusicVideo(good, songPath, D, outPath, W, H, cuts);
   const finalDur = ffprobeDuration(outPath);
   try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;
@@ -789,6 +815,7 @@ export async function generateMusicVideo(opts: {
         kind: "musicvideo", template: "musicvideo", section: opts.section || "creator",
         genre, genreLabel: g.label, scenes: good.length, lipSynced: good.length, aspect: (opts.aspect === "16:9" || opts.aspect === "1:1") ? opts.aspect : "9:16",
         targetSeconds: targetLen, songSeconds: Math.round(songDur), seconds: Math.round(finalDur), voiceMatched, engine: "kling2.5+synclipsync",
+        pace, cuts: cuts ? Math.max(0, cuts.length - 1) : Math.max(0, good.length - 1),
       }),
     },
   });

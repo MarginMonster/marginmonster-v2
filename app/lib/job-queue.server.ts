@@ -811,6 +811,7 @@ async function runJob(
             artistGender: payload.filmArtistGender === "f" ? "f" : payload.filmArtistGender === "m" ? "m" : undefined, // drives the sung VOICE + casting
             castGenders: Array.isArray(payload.filmCastGenders) ? (payload.filmCastGenders as Array<{ name: string; gender: "m" | "f" }>) : undefined,
             aspect: (payload.filmAspect as string | undefined) || undefined, // output shape 9:16 / 16:9 / 1:1
+            pace: typeof payload.filmPace === "string" ? payload.filmPace : undefined, // how fast it is cut (unset = the genre's pace)
             approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined, // storyboard-approved stills
             singVoice: payload.filmSingVoice === true, // opt-in: sing in the avatar's OWN voice (seed-vc)
             artistVoiceId: typeof payload.filmArtistVoiceId === "string" ? payload.filmArtistVoiceId : undefined,
