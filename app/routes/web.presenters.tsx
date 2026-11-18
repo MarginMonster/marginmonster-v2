@@ -314,6 +314,21 @@ export default function PresenterHub() {
   const list = who && shown.some((c) => c.id === who) ? shown : cast;
   const openIdx = who ? list.findIndex((c) => c.id === who) : -1;
   const open = openIdx >= 0 ? list[openIdx] : null;
+  // Hear a presenter from the grid without opening them. One player for the page; a second tap (or
+  // another card, or opening someone) stops it.
+  const hearRef = useRef<HTMLAudioElement | null>(null);
+  const [hearing, setHearing] = useState<string | null>(null);
+  const hearCard = (id: string, sample: string) => {
+    const a = hearRef.current;
+    if (!a) return;
+    if (hearing === id) { a.pause(); setHearing(null); return; }
+    a.pause();
+    a.src = sample;
+    a.currentTime = 0;
+    setHearing(id);
+    a.play().catch(() => setHearing(null));
+  };
+  useEffect(() => { if (open) { hearRef.current?.pause(); setHearing(null); } }, [open]);
   const row = lineupOf(cast, d.brandFaceId);
   const cleanup = useFetcher<Saved>();
   // The character view is portaled to <body> (below), which only exists in the browser.
@@ -410,6 +425,7 @@ export default function PresenterHub() {
           </div>
         )}
       </div>
+      <audio ref={hearRef} preload="none" onEnded={() => setHearing(null)} onError={() => setHearing(null)} />
       <div className="ph-grid">
         {/* Making your own leads the grid — it is the first thing a new merchant should see they can do. */}
         {(show === "all" || show === "mine") && (
@@ -423,7 +439,8 @@ export default function PresenterHub() {
         {shown.map((c) => {
           const isBf = c.id === d.brandFaceId;
           return (
-            <Link key={c.id} to={`/web/presenters?who=${encodeURIComponent(c.id)}`} state={{ hub: true }} preventScrollReset className={`ph-face${isBf ? " bf" : ""}`}>
+            <div key={c.id} className={`ph-facewrap${c.voiceSample ? " can-hear" : ""}`}>
+            <Link to={`/web/presenters?who=${encodeURIComponent(c.id)}`} state={{ hub: true }} preventScrollReset className={`ph-face${isBf ? " bf" : ""}`}>
               {isBf && <span className="ph-bfbadge"><Ico n="star" size={10} /> {t("Brand Face")}</span>}
               {c.custom && !isBf && <span className="ph-yoursbadge">{t("Yours")}</span>}
               {c.kind !== "person" && <span className={`ph-kind ${c.kind}`}>{t(c.kind === "cartoon" ? "Cartoon" : "Monster")}</span>}
@@ -437,6 +454,13 @@ export default function PresenterHub() {
                 <span className={`ph-face-voice${c.voiceOwn ? " own" : ""}`}><Ico n="mic" size={10} /> {c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.signature ? t("Signature") : t("Automatic")}</span>
               </span>
             </Link>
+            {c.voiceSample ? (
+              <button type="button" className={`ph-hear${hearing === c.id ? " on" : ""}`} onClick={() => hearCard(c.id, c.voiceSample)}
+                aria-label={hearing === c.id ? t("Stop") : t("Hear {name}'s voice", { name: c.name })} aria-pressed={hearing === c.id}>
+                {hearing === c.id ? <i className="ph-hear-eq" aria-hidden="true"><i /><i /><i /></i> : <span aria-hidden="true">▶</span>}
+              </button>
+            ) : null}
+            </div>
           );
         })}
       </div>
@@ -821,7 +845,19 @@ ${SPIN_STAGE_CSS}
 @media(pointer:coarse){.ph-filters button{min-height:44px;}}
 .ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:16px;}
 .ph-face{position:relative;display:flex;flex-direction:column;border-radius:18px;overflow:hidden;border:1px solid var(--line,#E1DECD);background:#fff;box-shadow:0 1px 2px rgba(20,32,26,.04),0 10px 24px -16px rgba(20,32,26,.24);cursor:pointer;text-decoration:none;transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s,border-color .2s;}
-.ph-face:hover{transform:translateY(-4px);box-shadow:0 2px 4px rgba(20,32,26,.05),0 24px 40px -20px rgba(20,32,26,.4);border-color:#9CCBB1;}
+.ph-facewrap{position:relative;display:grid;transition:transform .2s cubic-bezier(.2,.8,.2,1);}
+.ph-facewrap:hover{transform:translateY(-4px);}
+.ph-facewrap:hover .ph-face{box-shadow:0 2px 4px rgba(20,32,26,.05),0 24px 40px -20px rgba(20,32,26,.4);border-color:#9CCBB1;}
+.ph-facewrap.can-hear .ph-face-meta{padding-right:44px;}
+.ph-hear{position:absolute;right:10px;bottom:12px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;padding:0;border:1px solid #BFE2CD;background:#EAF6EF;color:var(--green,#0C7A46);font-size:11px;line-height:1;cursor:pointer;transition:background .15s,transform .15s;}
+.ph-hear:hover{background:#D5EEDF;transform:scale(1.06);}
+.ph-hear.on{background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);color:#fff;}
+.ph-hear:focus-visible{outline:2px solid var(--green,#0C7A46);outline-offset:2px;}
+.ph-hear-eq{display:inline-flex;align-items:flex-end;gap:2px;height:11px;}
+.ph-hear-eq i{display:block;width:2.5px;background:currentColor;border-radius:1px;animation:phEq .8s ease-in-out infinite;}
+.ph-hear-eq i:nth-child(2){animation-delay:.15s}.ph-hear-eq i:nth-child(3){animation-delay:.3s}
+@keyframes phEq{0%,100%{height:3px}50%{height:11px}}
+@media (prefers-reduced-motion:reduce){.ph-facewrap,.ph-facewrap:hover{transform:none}.ph-hear-eq i{animation:none;height:8px}}
 .ph-face-img{display:block;position:relative;width:100%;aspect-ratio:3/4;overflow:hidden;}
 .ph-face-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 18%;display:block;transition:transform .35s cubic-bezier(.2,.8,.2,1);}
 .ph-face:hover .ph-face-img img{transform:scale(1.045);}
@@ -879,6 +915,8 @@ ${SPIN_STAGE_CSS}
   .ph-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
   .ph-face{border-radius:14px;}
   .ph-face-meta{padding:7px 8px 9px;}
+  .ph-facewrap.can-hear .ph-face-meta{padding-right:34px;}
+  .ph-hear{width:26px;height:26px;right:6px;bottom:8px;font-size:9.5px;}
   .ph-face-nm{font-size:12px;}
   .ph-face-voice{font-size:10.5px;}
   .ph-face-go{display:none;}

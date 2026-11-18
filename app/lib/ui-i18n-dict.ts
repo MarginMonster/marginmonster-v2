@@ -2542,6 +2542,9 @@ const es: Record<string, string> = {
   "Start creating": "Empieza a crear",
   "Nothing made this week yet — your next piece is one click away.": "Aún no has creado nada esta semana — tu próxima pieza está a un clic.",
   "Your linked accounts": "Tus cuentas vinculadas",
+  "Search your pieces": "Busca tus piezas",
+  "Results for “{q}”": "Resultados para “{q}”",
+  "Nothing here matches “{q}”.": "Nada aquí coincide con “{q}”.",
 };
 
 const fr: Record<string, string> = {
@@ -5056,6 +5059,9 @@ const fr: Record<string, string> = {
   "Start creating": "Commence à créer",
   "Nothing made this week yet — your next piece is one click away.": "Rien de créé cette semaine — ta prochaine création est à un clic.",
   "Your linked accounts": "Tes comptes liés",
+  "Search your pieces": "Cherche dans tes créations",
+  "Results for “{q}”": "Résultats pour « {q} »",
+  "Nothing here matches “{q}”.": "Rien ici ne correspond à « {q} ».",
 };
 
 const de: Record<string, string> = {
@@ -7579,6 +7585,9 @@ const de: Record<string, string> = {
   "Start creating": "Jetzt erstellen",
   "Nothing made this week yet — your next piece is one click away.": "Diese Woche noch nichts erstellt — dein nächstes Stück ist nur einen Klick entfernt.",
   "Your linked accounts": "Deine verknüpften Konten",
+  "Search your pieces": "Deine Stücke durchsuchen",
+  "Results for “{q}”": "Ergebnisse für „{q}“",
+  "Nothing here matches “{q}”.": "Hier passt nichts zu „{q}“.",
 };
 
 const zh: Record<string, string> = {
@@ -10164,6 +10173,9 @@ const zh: Record<string, string> = {
   "Start creating": "开始创作",
   "Nothing made this week yet — your next piece is one click away.": "本周还没有作品 — 下一件作品只差一次点击。",
   "Your linked accounts": "你关联的账号",
+  "Search your pieces": "搜索你的作品",
+  "Results for “{q}”": "“{q}”的搜索结果",
+  "Nothing here matches “{q}”.": "这里没有与“{q}”匹配的内容。",
 };
 
 const ur: Record<string, string> = {
@@ -12739,6 +12751,9 @@ const ur: Record<string, string> = {
   "Start creating": "تخلیق شروع کریں",
   "Nothing made this week yet — your next piece is one click away.": "اس ہفتے ابھی کچھ نہیں بنایا — آپ کی اگلی تخلیق بس ایک کلک دور ہے۔",
   "Your linked accounts": "آپ کے منسلک اکاؤنٹس",
+  "Search your pieces": "اپنی تخلیقات تلاش کریں",
+  "Results for “{q}”": "“{q}” کے نتائج",
+  "Nothing here matches “{q}”.": "یہاں “{q}” سے کچھ نہیں ملتا۔",
 };
 
 export const UI_DICT: Partial<Record<UiLang, Record<string, string>>> = { es, fr, de, zh, ur };
