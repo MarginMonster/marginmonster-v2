@@ -5149,7 +5149,7 @@ export default function WebStudio() {
                         enough — tap to fill, tap again to clear. */}
                     <div className="ws-chips" style={{ marginTop: 8 }}>
                       {["golden-hour rooftop, confident and premium", "fast + funny, lead with the price", "cozy at home, make it feel like a gift"].map((ex) => (
-                        <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {t(ex)}</button>
+                        <button type="button" key={ex} className={`ws-chip${direction === t(ex) ? " sel" : ""}`} onClick={() => setDirection(direction === t(ex) ? "" : t(ex))}><Ico n="sparkle" /> {t(ex)}</button>
                       ))}
                     </div>
                   </>
@@ -5291,7 +5291,7 @@ export default function WebStudio() {
                 {isFaceless && (
                   <div className="ws-chips" style={{ marginTop: 8 }}>
                     {["5 mind-blowing facts about the deep ocean", "a 30-second motivational pep talk", "storytime: the day everything changed"].map((ex) => (
-                      <button type="button" key={ex} className={`ws-chip${direction === ex ? " sel" : ""}`} onClick={() => setDirection(direction === ex ? "" : ex)}><Ico n="sparkle" /> {t(ex)}</button>
+                      <button type="button" key={ex} className={`ws-chip${direction === t(ex) ? " sel" : ""}`} onClick={() => setDirection(direction === t(ex) ? "" : t(ex))}><Ico n="sparkle" /> {t(ex)}</button>
                     ))}
                   </div>
                 )}
