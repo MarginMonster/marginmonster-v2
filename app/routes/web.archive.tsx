@@ -5,7 +5,7 @@
 
 import { HeroVideo } from "../components/HeroVideo";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
+import { Form, Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
@@ -193,6 +193,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // Scene stills + avatar/wardrobe portraits (from the Movie Maker) get their OWN archive section,
   // so they don't crowd the ad Images tab or dominate pagination. They're marked by metaJson.kind.
+  // SEARCH. A library of hundreds had no way to find one piece but scrolling (and "show older").
+  // Matched on the title across the whole library, not the loaded page, so an old piece is findable;
+  // every count below is narrowed the same way so "Showing X of Y" stays true.
+  const q = (new URL(request.url).searchParams.get("q") || "").trim().slice(0, 80);
+  const titleWhere = q ? { title: { contains: q, mode: "insensitive" as const } } : {};
   const GALLERY_KINDS = ['"kind":"musicvideo-scene"', '"kind":"wardrobe"'];
   const galleryWhere = { OR: GALLERY_KINDS.map((k) => ({ metaJson: { contains: k } })) };
 
@@ -200,7 +205,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // counting the truncated page and therefore under-reported the library.
   const totalsRaw = await db.asset.groupBy({
     by: ["type"],
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere },
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere, ...titleWhere },
     _count: { _all: true },
   });
   const totals = { video: 0, image: 0, music: 0, blog: 0, stills: 0 };
@@ -210,17 +215,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     else if (t.type === "AUDIO") totals.music = t._count._all;
     else if (t.type === "BLOG_POST") totals.blog = t._count._all;
   }
-  totals.stills = await db.asset.count({ where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere } });
+  totals.stills = await db.asset.count({ where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere, ...titleWhere } });
   const totalAll = totals.video + totals.image + totals.music + totals.blog;
 
   const assets = await db.asset.findMany({
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere },
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere, ...titleWhere },
     orderBy: { createdAt: "desc" },
     take: show,
   });
   // Separate fetch for the Scenes & Portraits section (its own pagination so neither crowds the other).
   const stills = await db.asset.findMany({
-    where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere },
+    where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere, ...titleWhere },
     orderBy: { createdAt: "desc" },
     take: 180,
   });
@@ -333,6 +338,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
   return json({
     section,
+    q,
     canPost: socialProviderEnabled() && linked.length > 0,
     linkedCount: linked.length,
     linked,
@@ -1065,6 +1071,14 @@ const WA_CSS = `
 .ws-tabs.wa-typebar::-webkit-scrollbar{display:none;}
 .wa-typebar .ws-tab{flex:0 0 auto;white-space:nowrap;}
 .wa-bar{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;margin:0 0 10px;min-height:0;}
+.wa-search{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line,#E1DECD);border-radius:999px;padding:0 12px;min-height:36px;color:var(--ink2,#5b6b61);}
+.wa-search:focus-within{border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.wa-search input{border:0;outline:0;background:transparent;font:inherit;font-size:13px;color:var(--ink,#14201A);width:190px;min-width:0;}
+.wa-qchip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--green,#0C7A46);background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:5px 8px 5px 12px;}
+.wa-qchip a{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:999px;color:inherit;}
+.wa-qchip a:hover{background:#D5EEDF;}
+.wa-noq{font-size:14px;color:var(--ink2,#5b6b61);margin:6px 0 18px;}
+@media(max-width:640px){.wa-search{flex:1 1 100%;min-height:44px;}.wa-search input{width:100%;}}
 .wa-bar:empty{display:none;}
 .wa-autonote{display:flex;align-items:flex-start;gap:7px;margin:-4px 2px 14px;font-size:12.5px;line-height:1.45;color:var(--ink2,#5b6b61);}
 .wa-autonote svg{flex:0 0 auto;margin-top:3px;color:var(--green,#0C7A46);}
@@ -1133,7 +1147,7 @@ const WA_CSS = `
 
 export default function WebArchive() {
   const t = useT();
-  const { section, assets, stills, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
+  const { section, q, assets, stills, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
   const isCreator = section === "creator";
   // Preserve the section across tab links, "show more", and revalidation so the
   // Gallery stays the Gallery.
@@ -1407,6 +1421,18 @@ export default function WebArchive() {
       {/* One line under the tabs: the quick filters on the left, how much is showing (and the way to
           older pieces) on the right — they used to be four separate rows stacked down the page. */}
       <div className="wa-bar">
+        <Form method="get" className="wa-search" role="search" preventScrollReset>
+          {isCreator && <input type="hidden" name="section" value="creator" />}
+          <input type="hidden" name="tab" value={tab} />
+          <Ico n="search" />
+          <input type="search" name="q" defaultValue={q} key={q} maxLength={80} placeholder={t("Search your pieces")} aria-label={t("Search your pieces")} />
+        </Form>
+        {q && (
+          <span className="wa-qchip">
+            {t("Results for “{q}”", { q })}
+            <Link to={`?tab=${tab}${isCreator ? "&section=creator" : ""}`} preventScrollReset aria-label={t("Clear")}><Ico n="x" size={12} /></Link>
+          </span>
+        )}
         {canFilter && (
           <div className="wa-filters" role="group" aria-label={t("Filter pieces")}>
             <button type="button" className={`wa-filterchip${filter === "all" ? " on" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>{t("All")} · {shelf.length}</button>
@@ -1437,7 +1463,7 @@ export default function WebArchive() {
               // (the word was built as tab + "s", which on the Scenes & Portraits tab read "stillss")
               ? <>{t("Your")} <b>{tabTotal}</b> {t(TAB_PLURAL[tab])} {t("are further back.")}{" "}</>
               : <>{t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}{t(TAB_PLURAL[tab])}.{" "}</>}
-            <Link to={`?show=${nextShow}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
+            <Link to={`?show=${nextShow}&tab=${tab}${q ? `&q=${encodeURIComponent(q)}` : ""}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
           </p>
         )}
       </div>
@@ -1447,7 +1473,10 @@ export default function WebArchive() {
       {/* "Yet — make one" only when there are GENUINELY none of this type —
           tabTotal === 0 — not merely none in the current page (which is the
           "are further back" note above). */}
-      {shelf.length === 0 && tabTotal === 0 && genCards.length === 0 && failCards.length === 0 && (
+      {q && shelf.length === 0 && tabTotal === 0 && (
+        <p className="wa-noq">{t("Nothing here matches “{q}”.", { q })} <Link to={`?tab=${tab}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Clear")}</Link></p>
+      )}
+      {!q && shelf.length === 0 && tabTotal === 0 && genCards.length === 0 && failCards.length === 0 && (
         // A real empty state: an icon, one line of encouragement, and a bold
         // deep-link into the Studio — not a bare inline text link.
         <div className="wa-empty">
