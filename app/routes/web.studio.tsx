@@ -2103,6 +2103,15 @@ export default function WebStudio() {
   // casual lands on the image tab with no mode (tab click, back button, pre-
   // hydration), default to create.
   useEffect(() => { if (casual && tab === "image" && imageMode === null) setImageMode("create"); }, [casual, tab, imageMode]);
+  const wasCasualRef = useRef(casual);
+  useEffect(() => {
+    if (wasCasualRef.current && !casual) {
+      if (imageMode === "create") setImageMode(null);
+      if (contentType === "highlight") setContentType(null);
+    }
+    wasCasualRef.current = casual;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [casual]);
   // Casual video likewise skips the Showcase/Cartoon picker — it leads with the
   // describe box; default to the cinematic "highlight" path (describe -> make, or
   // upload a video to edit it). Uploading a video switches to the edit flow.
@@ -3616,7 +3625,7 @@ export default function WebStudio() {
         </span>
         <div className="ws-cinehead-copy">
           <span className="ws-cinehead-eyebrow"><Ico n={casual ? "palette" : "trend"} size={13} /> {t("EasyMode Studio")}</span>
-          <h1 className="wb-h1">{casual ? t("Create") : t("Social Marketing")}</h1>
+          <h1 className="wb-h1">{casual ? t("Create") : t("Ad Maker")}</h1>
           <p className="wb-sub">
             {casual
               ? <>{t("Upload a photo to edit, or make an image or video to share — it lands in your ")}<Link to="/web/archive?section=creator">{t("gallery")}</Link>.</>
@@ -6429,6 +6438,8 @@ ${FORGE_CSS}
    render in the old flow. All rules below are scoped to .ws-casual. */
 .ws-flow{display:contents}
 .ws-casual .ws-easel{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start;margin-top:6px}
+@media (min-width:1180px){.ws-casual .ws-easel{grid-template-columns:350px minmax(0,1fr);gap:20px}}
+@media (min-width:1440px){.ws-casual .ws-easel{grid-template-columns:380px minmax(0,1fr)}}
 .ws-casual .ws-easel-left{display:flex;flex-direction:column;gap:14px;min-width:0}
 .ws-casual .ws-easel-left .ws-card{margin:0}
 /* tab bar → vertical instrument rail */

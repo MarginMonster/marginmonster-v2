@@ -598,7 +598,7 @@ export default function WebDashboard() {
                 <p className="ws-mp">{t("They're landing on your balance now — spend them on anything your plan unlocks.")}</p>
               </>
             )}
-            <Link ref={successCtaRef} className="wb-btn ws-mcta" to="/web/studio" onClick={closeSuccess}>{t("Open the Studio")} →</Link>
+            <Link ref={successCtaRef} className="wb-btn ws-mcta" to="/web/studio" onClick={closeSuccess}>{t("Start creating")} →</Link>
             <button type="button" className="ws-mclose" onClick={closeSuccess}>{t("Not now")}</button>
           </div>
         </div>
@@ -644,7 +644,7 @@ export default function WebDashboard() {
           <div className="wdw-big">
             {d.week.made > 0
               ? <>{t("This week you made")} <b>{d.week.made}</b> {d.week.made === 1 ? t("piece") : t("pieces")}{d.week.posted > 0 ? <> {t("and posted")} <b>{d.week.posted}</b></> : null}.</>
-              : <>{t("Nothing made this week yet — the Studio is one click away.")}{" "}<Link className="wdw-review" to="/web/studio">{t("Open the Studio")} →</Link></>}
+              : <>{t("Nothing made this week yet — your next piece is one click away.")}{" "}<Link className="wdw-review" to="/web/studio">{t("Start creating")} →</Link></>}
           </div>
           <div className="wdw-row">
             <div className="wdw-st"><div className="n">{d.week.made}</div><div className="k">{t("Made")}</div></div>
@@ -920,7 +920,7 @@ export default function WebDashboard() {
       )}
 
       <p className="wb-note" style={{ marginTop: 26 }}>
-        {t("Ready to create?")} <Link to="/web/studio">{t("Open the Studio")} →</Link>
+        {t("Ready to create?")} <Link to="/web/studio">{t("Start creating")} →</Link>
       </p>
     </div>
   );

@@ -1308,6 +1308,8 @@ const CSS = `
 /* Keyboard focus ring — the shell had no :focus-visible at all, so tabbing
    through it was invisible. One token-based ring for every focusable control
    (outline follows each element's own radius; no layout shift). */
+:where(.wb) a:not([class]){color:var(--green,#0C7A46);text-underline-offset:2px}
+:where(.wb) a:not([class]):hover{color:var(--green2,#12A85E)}
 .wb a:focus-visible,.wb button:focus-visible,.wb input:focus-visible,.wb select:focus-visible,.wb textarea:focus-visible,.wb [tabindex]:focus-visible{
   outline:2px solid var(--green2,#12A85E);outline-offset:2px;
 }

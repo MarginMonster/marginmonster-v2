@@ -2539,6 +2539,8 @@ const es: Record<string, string> = {
   "Colorize this photo": "Colorea esta foto",
   "Sharpen this photo": "Mejora la nitidez de esta foto",
   "pictures": "imágenes",
+  "Start creating": "Empieza a crear",
+  "Nothing made this week yet — your next piece is one click away.": "Aún no has creado nada esta semana — tu próxima pieza está a un clic.",
 };
 
 const fr: Record<string, string> = {
@@ -5050,6 +5052,8 @@ const fr: Record<string, string> = {
   "Colorize this photo": "Coloriser cette photo",
   "Sharpen this photo": "Rendre cette photo plus nette",
   "pictures": "images",
+  "Start creating": "Commence à créer",
+  "Nothing made this week yet — your next piece is one click away.": "Rien de créé cette semaine — ta prochaine création est à un clic.",
 };
 
 const de: Record<string, string> = {
@@ -7570,6 +7574,8 @@ const de: Record<string, string> = {
   "Colorize this photo": "Dieses Foto kolorieren",
   "Sharpen this photo": "Dieses Foto schärfen",
   "pictures": "Bilder",
+  "Start creating": "Jetzt erstellen",
+  "Nothing made this week yet — your next piece is one click away.": "Diese Woche noch nichts erstellt — dein nächstes Stück ist nur einen Klick entfernt.",
 };
 
 const zh: Record<string, string> = {
@@ -10152,6 +10158,8 @@ const zh: Record<string, string> = {
   "Colorize this photo": "给这张照片上色",
   "Sharpen this photo": "让这张照片更清晰",
   "pictures": "张图片",
+  "Start creating": "开始创作",
+  "Nothing made this week yet — your next piece is one click away.": "本周还没有作品 — 下一件作品只差一次点击。",
 };
 
 const ur: Record<string, string> = {
@@ -12724,6 +12732,8 @@ const ur: Record<string, string> = {
   "Colorize this photo": "اس تصویر میں رنگ بھریں",
   "Sharpen this photo": "اس تصویر کو مزید واضح کریں",
   "pictures": "تصاویر",
+  "Start creating": "تخلیق شروع کریں",
+  "Nothing made this week yet — your next piece is one click away.": "اس ہفتے ابھی کچھ نہیں بنایا — آپ کی اگلی تخلیق بس ایک کلک دور ہے۔",
 };
 
 export const UI_DICT: Partial<Record<UiLang, Record<string, string>>> = { es, fr, de, zh, ur };
