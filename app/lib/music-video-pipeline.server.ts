@@ -30,7 +30,7 @@ import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, PROPS, type FilmTreatment } from "./film-engine.server";
 import { singToDisk } from "./music-generation.server";
 import { ensureVoiceModel, coverSongInVoice, matchLoudness } from "./singing-voice.server";
-import { editPlan, paceFor, planFilter, type Cut, type Pace } from "./mv-pace";
+import { beatTimes, editPlan, paceFor, planFilter, type Cut, type Pace } from "./mv-pace";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -198,6 +198,25 @@ async function stillClip(imgPath: string, segAudioPath: string, dur: number, W: 
  *  continuous song over the whole thing. Continuous music carries across each cut so it reads smooth
  *  (how real music videos cut), and because every clip sits at its exact song position the lip-sync
  *  stays aligned. Falls back to a plain per-clip concat if anything here fails, so it never dies. */
+/** The beats of the finished song, found by listening to it — so a paced edit can cut on them. Never
+ *  fatal: no beats (a song with no steady pulse, a decode that fails) means the cuts stay on the grid. */
+async function songBeats(songPath: string): Promise<number[]> {
+  const raw = path.join(RENDERS(), `beats-${Date.now()}-${rid()}.f32`);
+  try {
+    const r = await runFfmpeg(["-y", "-i", songPath, "-ac", "1", "-ar", "11025", "-f", "f32le", raw]);
+    if (r.status !== 0 || !fs.existsSync(raw)) return [];
+    const buf = fs.readFileSync(raw);
+    const pcm = new Float32Array(buf.byteLength >> 2);
+    for (let i = 0; i < pcm.length; i++) pcm[i] = buf.readFloatLE(i * 4);
+    const beats = beatTimes(pcm, 11025);
+    if (beats.length > 2) console.log(`[musicvideo] the song's beat: about ${Math.round(60 / ((beats[beats.length - 1] - beats[0]) / (beats.length - 1)))} a minute (${beats.length} beats)`);
+    return beats;
+  } catch (e) {
+    console.error(`[musicvideo] could not find the song's beat — cuts stay on the grid: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return [];
+  } finally { try { fs.unlinkSync(raw); } catch { /* nothing to clean */ } }
+}
+
 async function assembleMusicVideo(clips: string[], songPath: string, D: number, outPath: string, W: number, H: number, cuts?: Cut[]): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[musicvideo] no clips to assemble");
@@ -790,7 +809,9 @@ export async function generateMusicVideo(opts: {
   const keptRoles = clips.map((c, i) => (c ? shotFor(scenes[i], i, scenes.length).role : null)).filter((r): r is "perform" | "broll" => !!r);
   // only when nothing was dropped: with a scene missing, later performance clips no longer sit at their
   // own place in the song, and an edit built on "its own place" would be built on sand
-  const cuts = good.length === scenes.length ? editPlan(keptRoles, D, pace) : undefined;
+  // …and a paced edit cuts ON the song's beat (slow keeps every clip whole, so there is nothing to move)
+  const onBeat = good.length === scenes.length && pace !== "slow" ? await songBeats(songPath) : [];
+  const cuts = good.length === scenes.length ? editPlan(keptRoles, D, pace, onBeat) : undefined;
   if (!good.length) {
     const nullImgs = sceneImgs.filter((x) => !x).length;
     throw new Error(`[musicvideo] every scene failed to render (nullSceneImgs=${nullImgs}/${N}, approved=${opts.approvedSceneImgs ? "yes" : "no"}, fal=${falEnabled() ? "on" : "off"})`);
@@ -815,7 +836,7 @@ export async function generateMusicVideo(opts: {
         kind: "musicvideo", template: "musicvideo", section: opts.section || "creator",
         genre, genreLabel: g.label, scenes: good.length, lipSynced: good.length, aspect: (opts.aspect === "16:9" || opts.aspect === "1:1") ? opts.aspect : "9:16",
         targetSeconds: targetLen, songSeconds: Math.round(songDur), seconds: Math.round(finalDur), voiceMatched, engine: "kling2.5+synclipsync",
-        pace, cuts: cuts ? Math.max(0, cuts.length - 1) : Math.max(0, good.length - 1),
+        pace, cuts: cuts ? Math.max(0, cuts.length - 1) : Math.max(0, good.length - 1), cutOnBeat: onBeat.length > 2,
       }),
     },
   });

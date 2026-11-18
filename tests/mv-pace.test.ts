@@ -15,7 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { GENRE_PACE, PACES, PACE_KEYS, cutCount, editPlan, isPace, paceFor, planFilter, type Cut, type Pace, type ShotRole } from "../app/lib/mv-pace.ts";
+import { GENRE_PACE, PACES, PACE_KEYS, beatTimes, cutCount, editPlan, isPace, paceFor, planFilter, snapToBeats, type Cut, type Pace, type ShotRole } from "../app/lib/mv-pace.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const D = 10;
@@ -161,4 +161,99 @@ test("the edit ffmpeg makes is the picked length to the frame", { skip: spawnSyn
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- on the beat ------------------------------------------------------------------------------------
+
+/** A click track: a short burst every beat at `bpm`, starting `offset` seconds in, over quiet noise. */
+function clicks(bpm: number, seconds: number, offset = 0.2, sr = 11025): Float32Array {
+  const pcm = new Float32Array(Math.round(seconds * sr));
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5);
+  for (let i = 0; i < pcm.length; i++) pcm[i] = rnd() * 0.01;
+  for (let t = offset; t < seconds; t += 60 / bpm) {
+    const a = Math.round(t * sr);
+    for (let k = 0; k < 400 && a + k < pcm.length; k++) pcm[a + k] += Math.sin(k * 0.9) * 0.8 * Math.exp(-k / 90);
+  }
+  return pcm;
+}
+
+test("the beats of a song are found by listening to it", () => {
+  for (const [bpm, offset] of [[90, 0.2], [120, 0.31], [140, 0.05]] as const) {
+    const beats = beatTimes(clicks(bpm, 40, offset), 11025);
+    assert.ok(beats.length > 30, `${bpm}: ${beats.length} beats`);
+    const gap = (beats[beats.length - 1] - beats[0]) / (beats.length - 1);
+    const found = 60 / gap;
+    // the same pulse at half or double time is still the song's pulse — a cut on it is on the beat
+    assert.ok([0.5, 1, 2].some((m) => Math.abs(found - bpm * m) < 2.5), `${bpm} a minute heard as ${found.toFixed(1)}`);
+    // and every beat found sits on a real click (no drift by the end of the song)
+    const period = 60 / bpm;
+    for (const b of beats) { const off = (((b - offset) % (period / 2)) + period / 2) % (period / 2); assert.ok(Math.min(off, period / 2 - off) < 0.06, `${bpm}: a beat ${Math.min(off, period / 2 - off).toFixed(3)}s off the pulse at ${b.toFixed(2)}s`); }
+  }
+  // no pulse to find: silence, and noise
+  assert.deepEqual(beatTimes(new Float32Array(11025 * 20), 11025), []);
+  assert.deepEqual(beatTimes(new Float32Array(2000), 11025), []);
+});
+
+test("cuts move onto the beat — and everything the plan promised still holds", () => {
+  for (const n of [2, 3, 5, 6, 9, 12]) {
+    const roles = rolesFor(n);
+    for (const pace of ["medium", "fast"] as Pace[]) {
+      for (const bpm of [84, 97, 128, 143]) {
+        const beats: number[] = [];
+        for (let t = 0.13; t < n * D; t += 60 / bpm) beats.push(t);
+        const grid = editPlan(roles, D, pace);
+        const cuts = editPlan(roles, D, pace, beats);
+        assert.equal(cuts.length, grid.length, "the same shots, moved — none added or dropped");
+        const total = cuts.reduce((a, c) => a + c.dur, 0);
+        assert.ok(Math.abs(total - n * D) < 1e-6, `${n} scenes ${pace} ${bpm}: ${total}`);
+        let onBeat = 0, moved = 0;
+        for (const c of onTimeline(cuts)) {
+          assert.ok(c.dur >= 1 - 1e-9, `a piece of ${c.dur.toFixed(2)}s`);
+          assert.ok(c.start >= -1e-9 && c.start + c.dur <= D + 1e-6, `footage that exists: ${c.start.toFixed(2)}+${c.dur.toFixed(2)}`);
+          if (roles[c.src] === "perform") assert.ok(Math.abs(c.src * D + c.start - c.at) < 1e-6, "the singer is where the song is");
+          if (c.at > 0) { moved++; if (beats.some((b) => Math.abs(b - c.at) < 1e-6)) onBeat++; }
+        }
+        // most cuts can move (the ones pinned by a singing shot's own ten seconds stay)
+        if (grid.length > 3) assert.ok(onBeat >= Math.floor(moved * 0.5), `${n} scenes ${pace} ${bpm}: only ${onBeat} of ${moved} cuts on a beat`);
+        // nothing moved further than a cut may
+        // no piece asks for a frame past the end of its clip once the cuts are rounded to frames (the
+        // real 110-a-minute test video came out one frame short before this was pinned)
+        let tt = 0;
+        for (const c of cuts) {
+          const first = Math.round(c.start * 30);
+          const frames = Math.round((tt + c.dur) * 30) - Math.round(tt * 30);
+          assert.ok(first + frames <= D * 30, `${n} scenes ${pace} ${bpm}: a piece wants frames ${first}–${first + frames} of a ${D * 30}-frame clip`);
+          tt += c.dur;
+        }
+        const a = onTimeline(grid), b2 = onTimeline(cuts);
+        for (let k = 0; k < a.length; k++) assert.ok(Math.abs(a[k].at - b2[k].at) <= 0.6 + 1e-9);
+      }
+    }
+  }
+  // slow, and no beats heard, are exactly the plain plan
+  assert.deepEqual(editPlan(rolesFor(6), D, "slow", [0.5, 1, 1.5]), editPlan(rolesFor(6), D, "slow"));
+  assert.deepEqual(editPlan(rolesFor(6), D, "fast", []), editPlan(rolesFor(6), D, "fast"));
+  assert.deepEqual(snapToBeats(editPlan(rolesFor(6), D, "fast"), rolesFor(6), D, []), editPlan(rolesFor(6), D, "fast"));
+});
+
+test("ffmpeg cuts an on-the-beat plan to exactly the right number of frames", { skip: spawnSync("ffmpeg", ["-version"]).status !== 0 }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mvbeat-"));
+  try {
+    const n = 3, roles = rolesFor(n);
+    const beats: number[] = [];
+    for (let t = 0.2; t < n * D; t += 60 / 97) beats.push(t);
+    const cuts = editPlan(roles, D, "fast", beats);
+    const args: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const f = path.join(dir, `c${i}.mp4`);
+      assert.equal(spawnSync("ffmpeg", ["-y", "-f", "lavfi", "-i", `testsrc2=s=180x320:r=30:d=${D}`, "-frames:v", String(D * 30), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", f], { encoding: "utf8" }).status, 0);
+      args.push("-i", f);
+    }
+    const out = path.join(dir, "o.mp4");
+    const r = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args, "-filter_complex", planFilter(cuts, n, 30), "-map", "[v]", "-an", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", out], { encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr.slice(-300));
+    const frames = Number(spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", out], { encoding: "utf8" }).stdout.trim());
+    assert.equal(frames, n * D * 30);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

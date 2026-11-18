@@ -45,8 +45,9 @@ export type Cut = { src: number; start: number; dur: number };
 /** The cut list for a video whose scenes have these roles, each clip `D` seconds long, in timeline order.
  *  It always adds up to exactly roles.length × D, and a performance clip only ever appears at its own
  *  position (start === where it falls in its own scene). Slow — and any video with nothing to cut away
- *  to — is every clip whole, exactly as before pace existed. */
-export function editPlan(roles: ShotRole[], D: number, pace: Pace): Cut[] {
+ *  to — is every clip whole, exactly as before pace existed.
+ *  With `songBeats` (the song's own beat times — see beatTimes) each cut is moved onto the nearest beat. */
+export function editPlan(roles: ShotRole[], D: number, pace: Pace, songBeats?: number[]): Cut[] {
   const n = roles.length;
   const beats = PACES[pace].beats;
   const whole = (): Cut[] => roles.map((_, i) => ({ src: i, start: 0, dur: D }));
@@ -91,7 +92,127 @@ export function editPlan(roles: ShotRole[], D: number, pace: Pace): Cut[] {
     if (last && last.src === cut.src && Math.abs(last.start + last.dur - cut.start) < 1e-6) last.dur += cut.dur;
     else merged.push({ ...cut });
   }
-  return merged;
+  return songBeats && songBeats.length ? snapToBeats(merged, roles, D, songBeats, Math.min(0.6, c * 0.4)) : merged;
+}
+
+/* ---- on the beat ----
+ * The grid above cuts every D/beats seconds whatever the song is doing. An editor cuts ON the beat: the
+ * song is listened to, and each cut is moved to the nearest beat — a fraction of a second at most. */
+
+/** Move each cut of a plan onto the nearest beat (within `maxShift` seconds), keeping everything the plan
+ *  promised: the same total length; every piece at least `minPiece` long; a shot of the singer still at
+ *  exactly its own place in the song, inside its own clip; no cut scene asked for more footage than its
+ *  clip has. A cut that cannot move without breaking one of those stays where it was. */
+export function snapToBeats(cuts: Cut[], roles: ShotRole[], D: number, beats: number[], maxShift = 0.6, minPiece = 1): Cut[] {
+  if (cuts.length < 2 || !beats.length) return cuts;
+  const B: number[] = [0];
+  for (const c of cuts) B.push(B[B.length - 1] + c.dur);
+  const sorted = [...beats].sort((a, b) => a - b);
+  /** The beats either side of a time, nearest first. */
+  const around = (t: number): number[] => {
+    let lo = 0, hi = sorted.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (sorted[mid] < t) lo = mid; else hi = mid; }
+    const pair = lo === hi ? [sorted[lo]] : [sorted[lo], sorted[hi]];
+    return pair.sort((x, y) => Math.abs(x - t) - Math.abs(y - t));
+  };
+  for (let k = 1; k < cuts.length; k++) {
+    const left = cuts[k - 1], right = cuts[k];
+    for (const b of around(B[k])) {
+      if (Math.abs(b - B[k]) > maxShift) break;
+      if (Math.abs(b - B[k]) < 1e-6) break; // already on a beat
+      // each side keeps a watchable length…
+      if (b - B[k - 1] < minPiece || B[k + 1] - b < minPiece) continue;
+      // …a shot of the singer stays inside its own ten seconds of the song…
+      if (roles[left.src] === "perform" && b > (left.src + 1) * D + 1e-9) continue;
+      if (roles[right.src] === "perform" && b < right.src * D - 1e-9) continue;
+      // …and a cut scene is never asked for more footage than its clip has
+      if (roles[left.src] !== "perform" && b - B[k - 1] > D + 1e-9) continue;
+      if (roles[right.src] !== "perform" && B[k + 1] - b > D + 1e-9) continue;
+      B[k] = b;
+      break;
+    }
+  }
+  return cuts.map((c, q) => {
+    const dur = B[q + 1] - B[q];
+    // the singer's footage is never moved in time: where it starts is where it falls in the song
+    // (a cut scene's piece is kept a frame and a half clear of the end of its clip: boundaries that are
+    // no longer on round numbers get rounded to frames, and a piece that rounds one frame past the clip
+    // comes back a frame short — the real 50-second test video was 1499 frames, not 1500)
+    const start = roles[c.src] === "perform" ? B[q] - c.src * D : Math.max(0, Math.min(c.start, D - dur - 0.05));
+    return { src: c.src, start, dur };
+  });
+}
+
+/** The beats of a song, from its samples (mono PCM at `sr` Hz): how suddenly the sound gets louder is
+ *  measured frame by frame (drums and strummed chords are spikes), the tempo is the gap at which those
+ *  spikes line up with themselves best (70–180 a minute), and the song is then walked beat by beat,
+ *  each one settling on the spike nearest to where it was expected (so a tempo that is a hair off does
+ *  not drift over two minutes). Returns [] when no steady pulse can be heard — then cuts stay on the grid. */
+export function beatTimes(pcm: Float32Array, sr: number): number[] {
+  const hop = Math.max(1, Math.round(sr * 0.0116));
+  const win = hop * 2;
+  const n = Math.floor((pcm.length - win) / hop);
+  if (n < 430) return []; // under about five seconds there is no tempo to find
+  const fps = sr / hop;
+  const env = new Float32Array(n);
+  let prev = 0;
+  for (let i = 0; i < n; i++) {
+    let e = 0;
+    const o = i * hop;
+    for (let k = 0; k < win; k++) { const x = pcm[o + k]; e += x * x; }
+    const l = Math.log(1e-8 + e / win);
+    env[i] = i ? Math.max(0, l - prev) : 0;
+    prev = l;
+  }
+  // take the slow swell out, keep the spikes
+  const span = Math.max(2, Math.round(fps * 0.5));
+  const flat = new Float32Array(n);
+  let acc = 0;
+  for (let i = 0; i < n; i++) {
+    acc += env[i];
+    if (i >= span) acc -= env[i - span];
+    flat[i] = Math.max(0, env[i] - acc / Math.min(i + 1, span));
+  }
+  const score = (bpm: number): number => {
+    const lag = (60 / bpm) * fps;
+    let sc = 0;
+    for (let i = 0; i + 2 * lag + 1 < n; i++) {
+      const x = flat[i];
+      if (x) sc += x * (flat[Math.round(i + lag)] + 0.5 * flat[Math.round(i + 2 * lag)]);
+    }
+    return sc * Math.exp(-0.5 * Math.pow(Math.log2(bpm / 115) / 0.8, 2)); // most songs sit near the middle
+  };
+  let best = 0, bestBpm = 0, total = 0, tried = 0;
+  for (let bpm = 70; bpm <= 180; bpm += 0.5) {
+    const sc = score(bpm);
+    total += sc; tried++;
+    if (sc > best) { best = sc; bestBpm = bpm; }
+  }
+  if (!(best > 0) || best < 1.5 * (total / tried)) return [];
+  // the tempo to a twentieth of a beat a minute: half a beat-per-minute out is a tenth of a second by the end
+  for (let bpm = bestBpm - 0.45; bpm <= bestBpm + 0.45; bpm += 0.05) { const sc = score(bpm); if (sc > best) { best = sc; bestBpm = bpm; } }
+  const bestLag = (60 / bestBpm) * fps;
+  // where the first beats fall: the offset that catches the most spikes in the opening twelve seconds
+  const opening = Math.min(n, Math.round(fps * 12));
+  let phase = 0, top = -1;
+  for (let ph = 0; ph < bestLag; ph++) {
+    let sum = 0;
+    for (let t = ph; t < opening; t += bestLag) sum += flat[Math.round(t)] || 0;
+    if (sum > top) { top = sum; phase = ph; }
+  }
+  // …then the song is walked beat by beat, each one settling towards the spike nearest where it was expected
+  const out: number[] = [];
+  const reach = Math.max(1, Math.round(bestLag * 0.2));
+  let t = phase;
+  while (t < n) {
+    const c0 = Math.round(t);
+    let at = c0, peak = 0;
+    for (let k = Math.max(0, c0 - reach); k <= Math.min(n - 1, c0 + reach); k++) if (flat[k] > peak) { peak = flat[k]; at = k; }
+    const settled = peak > 0 ? t + 0.6 * (at - t) : t;
+    out.push((settled * hop + win / 2) / sr);
+    t = settled + bestLag;
+  }
+  return out;
 }
 
 /** The ffmpeg filter graph that edits `n` clips (inputs 0…n-1, each already exactly the same length and

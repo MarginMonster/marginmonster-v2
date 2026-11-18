@@ -682,14 +682,14 @@ function HeroReel({ clips, onShow }: { clips: ReelClip[]; onShow: (key: string) 
   const [slot, setSlot] = useState<[number, number]>([0, clips.length > 1 ? 1 : 0]);
   const [front, setFront] = useState(0);
   const vids = useRef<[HTMLVideoElement | null, HTMLVideoElement | null]>([null, null]);
-  const live = useRef({ front: 0, slot: [0, 0] as [number, number], still: false });
+  const live = useRef({ front: 0, slot: [0, 0] as [number, number], still: false, away: false });
   live.current.front = front;
   live.current.slot = slot;
   const swap = useRef<number | null>(null);
 
   const advance = (from: number) => {
     const st = live.current;
-    if (from !== st.front || clips.length < 2 || st.still) return;
+    if (from !== st.front || clips.length < 2 || st.still || st.away) return;
     const back = 1 - from;
     const v = vids.current[back];
     if (!v) return;
@@ -710,7 +710,21 @@ function HeroReel({ clips, onShow }: { clips: ReelClip[]; onShow: (key: string) 
     const first = vids.current[0];
     if (first && !live.current.still) { first.muted = true; first.play().catch(() => undefined); }
     onShow(clips[0].key);
-    return () => { if (swap.current) window.clearTimeout(swap.current); };
+    // it plays only while it can be seen: scrolled away, the clip in front is paused, and picks up on the way back
+    const host = first?.closest(".fs-head") || null;
+    let io: IntersectionObserver | null = null;
+    if (host && typeof IntersectionObserver !== "undefined" && !live.current.still) {
+      io = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          live.current.away = !e.isIntersecting;
+          const v = vids.current[live.current.front];
+          if (!v) continue;
+          if (e.isIntersecting) v.play().catch(() => undefined); else v.pause();
+        }
+      }, { threshold: 0.05 });
+      io.observe(host);
+    }
+    return () => { if (swap.current) window.clearTimeout(swap.current); io?.disconnect(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // a clip that never reports its end (it failed to load, or stalled) must not freeze the reel
   useEffect(() => {
@@ -1785,10 +1799,12 @@ export default function FilmStudio() {
     // system by name — two of these said "Peppa / Bluey" and "CoComelon" (owner, 2026-11-17: "they
     // can't say those things").
     musicvideo: { tint: "t-mv", kick: "Your artist sings on camera", meta: "up to 2 min" },
-    moral: { tint: "t-moral", kick: "A story with a lesson", meta: "about 45 sec" },
-    horror: { tint: "t-horror", kick: "A scare that builds", meta: "about 45 sec" },
-    testmovie: { tint: "t-film", kick: "Your story, acted out", meta: "about 1 min" },
-    kidstv: { tint: "t-kids", kick: "A cartoon for little ones", meta: "about 40 sec" },
+    // the four story formats can be told two ways (Style card): say so where a format is picked, or
+    // nobody finds the narrated one
+    moral: { tint: "t-moral", kick: "A story with a lesson", meta: "acted or narrated" },
+    horror: { tint: "t-horror", kick: "A scare that builds", meta: "acted or narrated" },
+    testmovie: { tint: "t-film", kick: "Your story, on screen", meta: "acted or narrated" },
+    kidstv: { tint: "t-kids", kick: "A cartoon for little ones", meta: "acted or narrated" },
     kidsmusicvideo: { tint: "t-kmv", kick: "A sing-along for little ones", meta: "about 30 sec" },
   };
   const fmtIcon = (key: string) => {

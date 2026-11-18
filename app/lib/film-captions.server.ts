@@ -17,7 +17,7 @@ import crypto from "node:crypto";
 import { checkpointJob, ffprobeDuration, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { mirrorRender } from "./object-storage.server";
-import { boldCards, captionFilters, sceneWindows, scriptWordTimes, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
+import { boldCards, captionFilters, scriptWordTimes, subtitleCards, subtitleChars, trimToSound, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 
@@ -57,15 +57,18 @@ export async function captionFilm(o: {
       await beat();
     }
 
-    // 2) each shot's line over its own part of the film
-    let windows: Window[];
-    if (words.length) windows = sceneWindows(lines, words, total);
-    else {
-      const sum = o.clipDurs.reduce((a, b) => a + (b > 0 ? b : 0), 0) || total;
-      let t = 0;
-      windows = lines.map((_, i) => { const d = ((o.clipDurs[i] > 0 ? o.clipDurs[i] : sum / lines.length) / sum) * total; const w = { t0: t, t1: Math.min(total, t + d) }; t += d; return w; });
-    }
-    const timed = words.length ? scriptWordTimes(lines, words, windows) : scriptWordTimes(lines, [], windows);
+    // 2) each shot's line over its OWN stretch of the film: the clips' lengths say where the shots are
+    //    (scaled to the finished film, whose dissolves shave a little off each cut). Inside a shot the
+    //    heard words time the line — when most of it was heard. A voice the aligner could barely follow
+    //    (the first real film had a snarling werewolf: 4 of his 15 words) starts at its first heard word
+    //    and stays to the end of the shot, instead of vanishing while he is still talking.
+    const sum = o.clipDurs.reduce((a2, d) => a2 + (d > 0 ? d : 0), 0) || total;
+    let t = 0;
+    const windows: Window[] = lines.map((_, i) => { const d = ((o.clipDurs[i] > 0 ? o.clipDurs[i] : sum / lines.length) / sum) * total; const w = { t0: t, t1: i === lines.length - 1 ? total : Math.min(total, t + d) }; t += d; return w; });
+    // …and where a shot ends in quiet, its line's words stop when the sound does
+    let said = windows;
+    try { said = trimToSound(windows, (await runFfmpeg(["-i", o.filmPath, "-vn", "-af", "silencedetect=noise=-30dB:d=0.6", "-f", "null", "-"])).stderr); } catch { /* the whole shot */ }
+    const timed = scriptWordTimes(lines, words, said, { minHeard: 0.6, lead: 0.25, tail: 0.3 });
     const cards: Card[] = o.style === "bold" ? boldCards(timed) : subtitleCards(lines, windows, subtitleChars(W, H), timed);
     let font = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
     try { font = await resolveTextFont(lines.join(" ")); } catch { /* keep Poppins */ }

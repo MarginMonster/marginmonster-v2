@@ -69,6 +69,19 @@ export function keepToldScenes<S extends { caption?: string }>(scenes: S[], appr
   return { scenes: kept.map((x) => x.s), approved: kept.map((x) => x.img) };
 }
 
+/** Where the talking stops inside each window, read from ffmpeg's `silencedetect` report of the film's
+ *  sound: a window that ENDS in quiet is cut back to where that quiet begins (plus a breath). Windows
+ *  that do not end in quiet are returned as they are. */
+export function trimToSound(windows: Window[], silenceReport: string): Window[] {
+  const starts = [...(silenceReport || "").matchAll(/silence_start:\s*(-?[\d.]+)/g)].map((m) => Number(m[1]));
+  const ends = [...(silenceReport || "").matchAll(/silence_end:\s*(-?[\d.]+)/g)].map((m) => Number(m[1]));
+  const quiet = starts.map((s0, i) => ({ s: Math.max(0, s0), e: i < ends.length ? ends[i] : Infinity }));
+  return windows.map((w) => {
+    const q = quiet.find((x) => x.s > w.t0 + 1 && x.s < w.t1 - 0.4 && x.e >= w.t1 - 0.3);
+    return q ? { t0: w.t0, t1: Math.min(w.t1, q.s + 0.5) } : w;
+  });
+}
+
 /** Letters, digits and the punctuation that can be drawn without quoting trouble. An apostrophe becomes
  *  the typographic one: a straight one would end the text inside the filter. A dash between words
  *  becomes a space, so "door—open" does not close up into one word. */
@@ -78,8 +91,11 @@ export const drawable = (s: string): string => s.replace(/[']/g, "’").replace(
  *  captions say exactly what was written (a name spelt right, "1981" as written, nothing a transcriber
  *  misheard) and still move in step with the voice. Inside a scene's window the script's words and the
  *  heard words are matched by position; a scene in which nothing was heard spreads its words evenly.
- *  The words are returned as they will be drawn (see drawable), in order, scene after scene. */
-export function scriptWordTimes(lines: string[], words: WordT[], windows: Window[]): WordT[] {
+ *  The words are returned as they will be drawn (see drawable), in order, scene after scene.
+ *  With `sparse`, a window in which fewer than minHeard of the line's words were heard is not timed by
+ *  them: its words run from the first heard word (or `lead` after the window opens) to `tail` before
+ *  it closes. */
+export function scriptWordTimes(lines: string[], words: WordT[], windows: Window[], sparse?: { minHeard: number; lead: number; tail: number }): WordT[] {
   const out: WordT[] = [];
   lines.forEach((line, k) => {
     const win = windows[k];
@@ -87,7 +103,22 @@ export function scriptWordTimes(lines: string[], words: WordT[], windows: Window
     if (!win || !toks.length) return;
     const last = k === lines.length - 1;
     const heard = words.filter((w) => w.start >= win.t0 - 1e-6 && (last || w.start < win.t1 - 1e-6));
-    const M = toks.length, Hn = heard.length;
+    const M = toks.length;
+    // `sparse` (acted films): a voice the aligner could barely follow — a snarling creature, a whisper —
+    // gives a few early words and then nothing, and timing the whole line by those would take it off
+    // screen while it is still being said. Heard too little of it? The line starts at the first heard
+    // word (or just after the cut) and runs to the end of its window.
+    const thin = !!sparse && heard.length < sparse.minHeard * M;
+    if (thin) {
+      // just after the cut — unless the first word that WAS heard comes well into the shot (a late entrance)
+      const late = heard.length && heard[0].start - win.t0 > 1.5 ? heard[0].start - 0.2 : win.t0 + sparse!.lead;
+      const t0 = Math.min(Math.max(win.t0, late), win.t1 - 0.5);
+      const t1 = Math.max(t0 + 0.4, win.t1 - sparse!.tail);
+      const per = (t1 - t0) / M;
+      toks.forEach((word, j) => out.push({ word, start: t0 + j * per, end: t0 + (j + 1) * per, ...(j === M - 1 ? { last: true } : {}) }));
+      return;
+    }
+    const Hn = heard.length;
     toks.forEach((word, j) => {
       const fin = j === M - 1 ? { last: true } : {};
       if (Hn) {
@@ -273,8 +304,12 @@ export function captionFilters(cards: Card[], style: CaptionStyle, font: string,
         out.push(`drawtext=fontfile='${f}':text='${ln}':fontsize=${size}:fontcolor=white:borderw=${Math.max(4, Math.round(8 * u))}:bordercolor=black:x=(w-text_w)/2:y=${y}:${when}`);
       } else {
         const size = Math.round(34 * u);
-        const y = `h-${Math.round((W > H ? 70 : 150) * u)}-${fromBottom * Math.round(size * 1.3)}`;
-        out.push(`drawtext=fontfile='${f}':text='${ln}':fontsize=${size}:fontcolor=white:borderw=${Math.max(2, Math.round(3 * u))}:bordercolor=black@0.9:shadowcolor=black@0.55:shadowx=${Math.max(1, Math.round(2 * u))}:shadowy=${Math.max(1, Math.round(2 * u))}:x=(w-text_w)/2:y=${y}:${when}`);
+        // a wide frame keeps them low, like a film; a tall or square one lifts them clear of the strip
+        // where a phone feed draws its own caption and buttons (about the bottom fifth)
+        const base = W > H ? Math.round(70 * u) : W === H ? Math.round(H * 0.12) : Math.round(H * 0.2);
+        const y = `h-${base}-${fromBottom * Math.round(size * 1.42)}`;
+        // a soft dark backing behind each line: readable over a bright cartoon and a dark cellar alike
+        out.push(`drawtext=fontfile='${f}':text='${ln}':fontsize=${size}:fontcolor=white:borderw=${Math.max(1, Math.round(1.5 * u))}:bordercolor=black@0.85:box=1:boxcolor=black@0.45:boxborderw=${Math.max(6, Math.round(9 * u))}:x=(w-text_w)/2:y=${y}:${when}`);
       }
     });
   }

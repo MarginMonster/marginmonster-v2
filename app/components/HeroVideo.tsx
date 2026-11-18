@@ -24,12 +24,22 @@ export function HeroVideo({ name, still, clip, className }: {
     if (!v) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     v.muted = true;
-    const start = () => { v.play().catch(() => undefined); };
+    // It plays only while it can be seen: a header that has been scrolled away keeps decoding video for
+    // nobody (battery on a phone, and it competes with whatever the page is doing below).
+    let seen = true;
+    const start = () => { if (seen && document.visibilityState === "visible") v.play().catch(() => undefined); };
     start();
     // a phone pauses background video when the tab is hidden and does not always resume it
     const onShow = () => { if (document.visibilityState === "visible") start(); };
     document.addEventListener("visibilitychange", onShow);
-    return () => document.removeEventListener("visibilitychange", onShow);
+    let io: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== "undefined") {
+      io = new IntersectionObserver((entries) => {
+        for (const e of entries) { seen = e.isIntersecting; if (seen) start(); else v.pause(); }
+      }, { threshold: 0.05 });
+      io.observe(v);
+    }
+    return () => { document.removeEventListener("visibilitychange", onShow); io?.disconnect(); };
   }, [name]);
   return (
     <video ref={ref} key={name} className={className} muted loop playsInline preload="metadata" poster={`/landing/${name}-hero.jpg?v=${still}`} aria-hidden="true" tabIndex={-1}>

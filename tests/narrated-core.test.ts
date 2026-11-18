@@ -9,7 +9,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   BOLD_LINE, MIN_SCENE_S, barBox, barsIn, boldCards, captionFilters, captionStyleOf, drawable, entryName, evenParts, frameWords, kenBurns, namedIn, nameWords, wrapEven,
-  keepToldScenes, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, wrapLines, type WordT,
+  keepToldScenes, sceneCast, sceneWindows, trimToSound, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, wrapLines, type WordT,
 } from "../app/lib/narrated-core.ts";
 
 /** A narration "heard" word for word: `gap` seconds of silence between scenes. */
@@ -97,6 +97,47 @@ test("a scene nothing was heard in still gets its words, spread across its windo
   const second = timed.slice(3);
   assert.equal(second.length, 5);
   assert.ok(Math.abs(second[0].start - 2) < 1e-9 && Math.abs(second[4].end - 7) < 1e-9);
+});
+
+test("an acted shot whose voice was barely understood keeps its line up for the whole of its speech", () => {
+  // the first real acted film with a creature: the hiker's line was heard in full, the werewolf's
+  // snarled line only as its first four words — and his subtitle left the screen while he was talking
+  const lines = ["Hello? Ranger station, is anybody here, I just need shelter from this storm.", "Nobody's here but me, and I live here, you should not have come inside."];
+  const windows = [{ t0: 0, t1: 6.1 }, { t0: 6.1, t1: 13.27 }];
+  const heardW: WordT[] = [
+    ...["Hello?", "Ranger", "Station,", "is", "anybody", "here?", "I", "just", "need", "shelter", "from", "the", "storm."].map((w, i) => ({ word: w, start: 0.8 + i * 0.36, end: 1.0 + i * 0.36 })),
+    { word: "here", start: 7.38, end: 7.56 }, { word: "but", start: 7.58, end: 7.64 }, { word: "me.", start: 7.66, end: 7.72 },
+  ];
+  const sparse = { minHeard: 0.6, lead: 0.25, tail: 0.3 };
+  const timed = scriptWordTimes(lines, heardW, windows, sparse);
+  const n1 = drawable(lines[0]).split(" ").length;
+  const his = timed.slice(n1);
+  // her line is timed by what was heard
+  assert.ok(Math.abs(timed[0].start - 0.8) < 1e-9);
+  // his line comes up just after the cut (the first word the aligner caught was 1.3 s into his shot)
+  assert.ok(Math.abs(his[0].start - 6.35) < 1e-9, String(his[0].start));
+  assert.ok(Math.abs(his[his.length - 1].end - (13.27 - 0.3)) < 1e-6, String(his[his.length - 1].end));
+  const cards = subtitleCards(lines, windows, 52, timed);
+  const hisCards = cards.filter((c) => c.t0 >= 6.1);
+  assert.ok(hisCards.length >= 1 && hisCards[0].t0 >= 6.1, "his subtitle does not come up over her line");
+  // a speaker who clearly enters late: the line waits for them
+  const lateHeard = [...heardW.slice(0, 13), { word: "me.", start: 9.5, end: 9.7 }];
+  assert.ok(Math.abs(scriptWordTimes(lines, lateHeard, windows, sparse).slice(n1)[0].start - 9.3) < 1e-9);
+  // the shot ends in quiet from 11.1 s: his words stop there, not at the end of the picture
+  const said = trimToSound(windows, "[silencedetect @ 0x1] silence_start: 11.1\n[silencedetect @ 0x1] silence_end: 13.27 | silence_duration: 2.17\n");
+  assert.deepEqual(said[0], windows[0]);
+  assert.ok(Math.abs(said[1].t1 - 11.6) < 1e-9);
+  const quietEnd = scriptWordTimes(lines, heardW, said, sparse).slice(n1);
+  assert.ok(quietEnd[quietEnd.length - 1].end <= 11.6 - 0.3 + 1e-9);
+  // quiet in the MIDDLE of a shot (a pause) trims nothing; quiet that never ends (to the end of the file) does
+  assert.deepEqual(trimToSound(windows, "silence_start: 8.0\nsilence_end: 9.0\n")[1], windows[1]);
+  assert.ok(Math.abs(trimToSound(windows, "silence_start: 12.0\n")[1].t1 - 12.5) < 1e-9);
+  assert.ok(hisCards[hisCards.length - 1].t1 >= 12.9, "and is still up while he is speaking");
+  // nothing heard at all in a shot: the line comes up just after the cut
+  const none = scriptWordTimes(lines, heardW.slice(0, 13), windows, sparse).slice(n1);
+  assert.ok(Math.abs(none[0].start - 6.35) < 1e-9);
+  // without the option (a narrated story) nothing changes: words follow what was heard
+  assert.ok(scriptWordTimes(lines, heardW, windows).slice(n1)[his.length - 1].end < 8);
 });
 
 test("BOLD cards: a few words on one line, upper case, each up while it is said, none overlapping", () => {
