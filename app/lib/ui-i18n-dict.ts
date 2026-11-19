@@ -2550,6 +2550,18 @@ const es: Record<string, string> = {
   "Keep all {n}": "Guardar los {n}",
   "Kept {n} pieces — they won't clear.": "Se guardaron {n} piezas: no se borrarán.",
   "Nothing of that kind on this page.": "No hay nada de ese tipo en esta página.",
+  "Every size": "Todos los tamaños",
+  "One video in every shape ads use. Nothing is cut off — the space around it is filled with a soft blur of the video.": "Un video en todos los formatos que usan los anuncios. No se recorta nada: el espacio alrededor se rellena con un desenfoque suave del propio video.",
+  "Vertical": "Vertical",
+  "Feed": "Feed",
+  "Reels · TikTok · Shorts": "Reels · TikTok · Shorts",
+  "Instagram & Facebook feed": "Feed de Instagram y Facebook",
+  "Feeds · Marketplace": "Feeds · Marketplace",
+  "YouTube · X · websites": "YouTube · X · sitios web",
+  "Save {ratio}": "Guardar {ratio}",
+  "That size didn't render — try again.": "Ese tamaño no se generó: inténtalo de nuevo.",
+  "This video is no longer on our storage — make it again first.": "Este video ya no está en nuestro almacenamiento: vuelve a crearlo primero.",
+  "Videos longer than five minutes can't be resized here.": "Los videos de más de cinco minutos no se pueden redimensionar aquí.",
 };
 
 const fr: Record<string, string> = {
@@ -5072,6 +5084,18 @@ const fr: Record<string, string> = {
   "Keep all {n}": "Tout garder ({n})",
   "Kept {n} pieces — they won't clear.": "{n} créations gardées — elles ne seront pas effacées.",
   "Nothing of that kind on this page.": "Rien de ce type sur cette page.",
+  "Every size": "Tous les formats",
+  "One video in every shape ads use. Nothing is cut off — the space around it is filled with a soft blur of the video.": "Une vidéo dans tous les formats des pubs. Rien n'est coupé — l'espace autour est rempli d'un flou doux de la vidéo.",
+  "Vertical": "Vertical",
+  "Feed": "Fil",
+  "Reels · TikTok · Shorts": "Reels · TikTok · Shorts",
+  "Instagram & Facebook feed": "Fil Instagram et Facebook",
+  "Feeds · Marketplace": "Fils · Marketplace",
+  "YouTube · X · websites": "YouTube · X · sites web",
+  "Save {ratio}": "Enregistrer {ratio}",
+  "That size didn't render — try again.": "Ce format n'a pas pu être créé — réessaie.",
+  "This video is no longer on our storage — make it again first.": "Cette vidéo n'est plus sur notre stockage — refais-la d'abord.",
+  "Videos longer than five minutes can't be resized here.": "Les vidéos de plus de cinq minutes ne peuvent pas être redimensionnées ici.",
 };
 
 const de: Record<string, string> = {
@@ -7603,6 +7627,17 @@ const de: Record<string, string> = {
   "Keep all {n}": "Alle {n} behalten",
   "Kept {n} pieces — they won't clear.": "{n} Stücke behalten — sie werden nicht gelöscht.",
   "Nothing of that kind on this page.": "Nichts dieser Art auf dieser Seite.",
+  "Every size": "Alle Formate",
+  "One video in every shape ads use. Nothing is cut off — the space around it is filled with a soft blur of the video.": "Ein Video in jedem Format, das Anzeigen nutzen. Nichts wird abgeschnitten — der Platz drumherum wird mit einer weichen Unschärfe des Videos gefüllt.",
+  "Feed": "Feed",
+  "Reels · TikTok · Shorts": "Reels · TikTok · Shorts",
+  "Instagram & Facebook feed": "Instagram- und Facebook-Feed",
+  "Feeds · Marketplace": "Feeds · Marketplace",
+  "YouTube · X · websites": "YouTube · X · Websites",
+  "Save {ratio}": "{ratio} speichern",
+  "That size didn't render — try again.": "Dieses Format wurde nicht erstellt — versuch es noch mal.",
+  "This video is no longer on our storage — make it again first.": "Dieses Video ist nicht mehr in unserem Speicher — erstelle es zuerst neu.",
+  "Videos longer than five minutes can't be resized here.": "Videos über fünf Minuten können hier nicht umformatiert werden.",
 };
 
 const zh: Record<string, string> = {
@@ -10196,6 +10231,17 @@ const zh: Record<string, string> = {
   "Keep all {n}": "全部保留（{n}）",
   "Kept {n} pieces — they won't clear.": "已保留 {n} 个作品，它们不会被清除。",
   "Nothing of that kind on this page.": "本页没有这类作品。",
+  "Every size": "所有尺寸",
+  "One video in every shape ads use. Nothing is cut off — the space around it is filled with a soft blur of the video.": "一个视频，适配广告所需的所有比例。画面不会被裁掉——四周的空白用视频本身的柔和模糊填充。",
+  "Feed": "信息流",
+  "Reels · TikTok · Shorts": "Reels · TikTok · Shorts",
+  "Instagram & Facebook feed": "Instagram 和 Facebook 信息流",
+  "Feeds · Marketplace": "信息流 · Marketplace",
+  "YouTube · X · websites": "YouTube · X · 网站",
+  "Save {ratio}": "保存 {ratio}",
+  "That size didn't render — try again.": "这个尺寸没有生成成功，请重试。",
+  "This video is no longer on our storage — make it again first.": "这个视频已不在我们的存储中——请先重新制作。",
+  "Videos longer than five minutes can't be resized here.": "超过五分钟的视频无法在这里调整尺寸。",
 };
 
 const ur: Record<string, string> = {
@@ -12779,6 +12825,17 @@ const ur: Record<string, string> = {
   "Keep all {n}": "تمام {n} محفوظ کریں",
   "Kept {n} pieces — they won't clear.": "{n} چیزیں محفوظ ہو گئیں — یہ صاف نہیں ہوں گی۔",
   "Nothing of that kind on this page.": "اس صفحے پر اس قسم کی کوئی چیز نہیں۔",
+  "Every size": "ہر سائز",
+  "One video in every shape ads use. Nothing is cut off — the space around it is filled with a soft blur of the video.": "ایک ویڈیو، اشتہارات کی ہر شکل میں۔ کچھ نہیں کٹتا — اردگرد کی جگہ ویڈیو ہی کے ہلکے دھندلے پن سے بھری جاتی ہے۔",
+  "Feed": "فیڈ",
+  "Reels · TikTok · Shorts": "Reels · TikTok · Shorts",
+  "Instagram & Facebook feed": "Instagram اور Facebook فیڈ",
+  "Feeds · Marketplace": "فیڈز · Marketplace",
+  "YouTube · X · websites": "YouTube · X · ویب سائٹس",
+  "Save {ratio}": "{ratio} محفوظ کریں",
+  "That size didn't render — try again.": "یہ سائز نہیں بنا — دوبارہ کوشش کریں۔",
+  "This video is no longer on our storage — make it again first.": "یہ ویڈیو اب ہمارے اسٹوریج میں نہیں — پہلے اسے دوبارہ بنائیں۔",
+  "Videos longer than five minutes can't be resized here.": "پانچ منٹ سے لمبی ویڈیوز کا سائز یہاں نہیں بدلا جا سکتا۔",
 };
 
 export const UI_DICT: Partial<Record<UiLang, Record<string, string>>> = { es, fr, de, zh, ur };

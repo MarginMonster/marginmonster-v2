@@ -5,7 +5,14 @@
 
 import { HeroVideo } from "../components/HeroVideo";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Form, Link, useActionData, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
+import { Form, Link, useActionData, useFetcher, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
+import type { ShouldRevalidateFunction } from "@remix-run/react";
+import { AD_SIZES, AD_SIZE_KEYS, isAdSize, type AdSize } from "../lib/ad-sizes";
+
+// Making a video in another size changes nothing in the library, so it must not reload the whole shelf
+// (hundreds of pieces) every time a size lands.
+export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultShouldRevalidate }) =>
+  formData?.get("intent") === "adsize" ? false : defaultShouldRevalidate;
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
@@ -394,6 +401,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const lang = readUiLang(request);
   const form = await request.formData();
   const intent = form.get("intent") as string;
+
+  // EVERY SIZE: the open video in another ad shape (no crop, blur fill), made on this server with ffmpeg
+  // once and kept beside the original. No tokens — it is the merchant's own video, reshaped.
+  if (intent === "adsize") {
+    const size = String(form.get("size") || "");
+    if (!isAdSize(size)) return json({ adsize: { ok: false as const, size, error: tr(lang, "That size didn't render — try again.") } });
+    const a = await db.asset.findFirst({ where: { id: String(form.get("assetId") || ""), shopId: shop.id, type: "VIDEO_AD" }, select: { bodyJson: true } });
+    let videoUrl = "";
+    try { videoUrl = String(JSON.parse(a?.bodyJson || "{}").videoUrl || ""); } catch { /* none */ }
+    const { sizedVideo } = await import("../lib/ad-sizes.server");
+    const { mirrorRender } = await import("../lib/object-storage.server");
+    const r = a ? await sizedVideo(videoUrl, size, { mirror: mirrorRender }) : { ok: false as const, error: "missing" };
+    if (r.ok) return json({ adsize: { ok: true as const, size, url: r.url } });
+    const why = r.error === "not-local" || r.error === "missing" ? tr(lang, "This video is no longer on our storage — make it again first.")
+      : r.error === "too-long" ? tr(lang, "Videos longer than five minutes can't be resized here.")
+      : tr(lang, "That size didn't render — try again.");
+    return json({ adsize: { ok: false as const, size, error: why } });
+  }
 
   if (intent === "retryJob") {
     // Same economics as the embedded app: interrupted failure = free retry;
@@ -994,6 +1019,24 @@ const WA_CSS = `
 .wa-vacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
 .wa-vacts > .wa-vbtn{flex:1 1 calc(50% - 4px);min-width:0;}
 .wa-vacts > .wa-vbtn.full{flex-basis:100%;}
+.wa-vbtn.ghost.on{background:#EAF6EF;border-color:#BFE2CD;color:var(--green,#0C7A46);}
+.wa-sizes{flex-basis:100%;border:1px solid var(--line,#E1DECD);border-radius:14px;padding:12px;background:#FBFAF4;}
+.wa-sizes-h{margin:0 0 10px;font-size:12.5px;line-height:1.45;color:var(--ink2,#4A554E);}
+.wa-sizes-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.wa-size{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 10px;border-radius:12px;border:1px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);font:inherit;text-align:left;text-decoration:none;cursor:pointer;box-sizing:border-box;transition:border-color .12s,background .12s;}
+.wa-size:hover{border-color:#BFE2CD;}
+.wa-size:disabled{cursor:progress;}
+.wa-size.ready{background:#EAF6EF;border-color:#BFE2CD;}
+.wa-size.ready b{color:var(--green,#0C7A46);}
+.wa-size.err small{color:#B4532A;}
+.wa-size-shape{flex:0 0 auto;height:30px;max-width:44px;border:2px solid currentColor;border-radius:4px;opacity:.55;box-sizing:border-box;}
+.wa-size.making .wa-size-shape{animation:waSizePulse 1s ease-in-out infinite;}
+@keyframes waSizePulse{0%,100%{opacity:.25}50%{opacity:.8}}
+@media (prefers-reduced-motion:reduce){.wa-size.making .wa-size-shape{animation:none;}}
+.wa-size-txt{display:flex;flex-direction:column;min-width:0;gap:2px;}
+.wa-size-txt b{font-family:Poppins,sans-serif;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:4px;}
+.wa-size-txt small{font-size:11.5px;color:var(--ink2,#4A554E);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+@media(max-width:420px){.wa-sizes-grid{grid-template-columns:minmax(0,1fr);}}
 /* Two-layer premium gradient baked into the base rule: the viewer is portaled to
    document.body (outside .wb-main), so the .wb-main-scoped two-layer in web.tsx no
    longer reaches these CTAs. This block renders after web.tsx, so at equal 0,1,0
@@ -1173,6 +1216,35 @@ const WA_CSS = `
 @media(prefers-reduced-motion:reduce){.ar-cinehead-rose{animation:none;}}
 `;
 
+/** One shape in the viewer's "Every size" panel: tap → made on the server → a Save link. */
+function SizeTile({ assetId, size, title }: { assetId: string; size: AdSize; title: string }) {
+  const t = useT();
+  const f = useFetcher<{ adsize?: { ok: boolean; size: string; url?: string; error?: string } }>();
+  const spec = AD_SIZES[size];
+  const res = f.data?.adsize && f.data.adsize.size === size ? f.data.adsize : null;
+  const making = f.state !== "idle";
+  const fileName = `${(title || "video").replace(/[^\p{L}\p{N} _-]+/gu, "").trim().replace(/\s+/g, "-").slice(0, 60) || "video"}-${size}.mp4`;
+  const shape = <span className="wa-size-shape" style={{ aspectRatio: `${spec.w} / ${spec.h}` }} aria-hidden />;
+  if (res?.ok && res.url && !making) {
+    return (
+      <a className="wa-size ready" href={res.url} download={fileName}>
+        {shape}
+        <span className="wa-size-txt"><b><Ico n="download" size={13} /> {t("Save {ratio}", { ratio: spec.ratio })}</b><small>{t(spec.where)}</small></span>
+      </a>
+    );
+  }
+  return (
+    <button type="button" className={`wa-size${making ? " making" : ""}${res && !res.ok ? " err" : ""}`} disabled={making}
+      onClick={() => f.submit({ intent: "adsize", assetId, size }, { method: "post" })}>
+      {shape}
+      <span className="wa-size-txt">
+        <b>{making ? t("Making…") : res && !res.ok ? t("Try again") : `${t(spec.label)} ${spec.ratio}`}</b>
+        <small>{res && !res.ok && !making ? res.error : t(spec.where)}</small>
+      </span>
+    </button>
+  );
+}
+
 export default function WebArchive() {
   const t = useT();
   const { section, q, assets, stills, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
@@ -1195,6 +1267,8 @@ export default function WebArchive() {
   type AFilter = "all" | "clearing" | "kept" | "films" | "faceless";
   const [filter, setFilter] = useState<AFilter>("all");
   const [viewer, setViewer] = useState<(typeof assets)[number] | null>(null);
+  // "Every size" panel — closed again whenever a different piece opens
+  const [sizesFor, setSizesFor] = useState<string | null>(null);
   const vfullRef = useRef<HTMLVideoElement | null>(null);
   const [needsUnmute, setNeedsUnmute] = useState(false);
   // Landscape (16:9) / square videos need a WIDE viewer, not the portrait stage. Seed from the stored
@@ -1839,6 +1913,20 @@ export default function WebArchive() {
                     )}
                     {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}><Ico n="download" /> {t("Download")}</a>}
                     {viewer.hasShots && viewer.media && <a className="wa-vbtn ghost" href={`/web/filmedit/${viewer.id}`} title={t("Open the shot timeline — preview and edit each shot")}><Ico n="video" /> {t("Edit shots")}</a>}
+                    {viewer.isVideo && viewer.media && (
+                      <button type="button" className={`wa-vbtn ghost${sizesFor === viewer.id ? " on" : ""}`} aria-expanded={sizesFor === viewer.id}
+                        onClick={() => setSizesFor((cur) => (cur === viewer.id ? null : viewer.id))}>
+                        <Ico n="grid" /> {t("Every size")}
+                      </button>
+                    )}
+                    {viewer.isVideo && viewer.media && sizesFor === viewer.id && (
+                      <div className="wa-sizes" role="group" aria-label={t("Every size")}>
+                        <p className="wa-sizes-h">{t("One video in every shape ads use. Nothing is cut off — the space around it is filled with a soft blur of the video.")}</p>
+                        <div className="wa-sizes-grid">
+                          {AD_SIZE_KEYS.map((k) => <SizeTile key={`${viewer.id}-${k}`} assetId={viewer.id} size={k} title={viewer.title} />)}
+                        </div>
+                      </div>
+                    )}
                     {/* CROSS-SECTION BRIDGE — "edit my own content": open this
                         image in the Creator editor (seeds ?src=; the full
                         describe-first edit flow runs on it). Image-only — the
