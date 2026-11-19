@@ -10,6 +10,7 @@ import { trimToWord } from "./text-trim";
 import { CREATE_STYLE_BY_KEY } from "./create-styles";
 import { CREATE_MODEL_BY_KEY, DEFAULT_CREATE_MODEL, CREATE_ASPECT_VALUES, DEFAULT_CREATE_ASPECT } from "./create-models";
 import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
+import { paletteLine } from "./brand-kit";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { characterInRef } from "./character-prompts";
@@ -5242,6 +5243,11 @@ export async function generateImageAd(
   }
 
   const visual = JSON.parse(brandProfile.visualJson);
+  // The Brand Kit's colours (web.brand.tsx), as accents for the set — "" without a kit, leaving every
+  // prompt exactly as it was.
+  const palette = paletteLine(visual);
+  // (the prompt puts its own ". " after this, so the palette's closing full stop is dropped here)
+  const withPalette = (style: string) => (palette ? `${style}. ${palette.replace(/\.$/, "")}` : style);
 
   // THE MERCHANT'S BRIEF, BOUNDED.
   //
@@ -5284,7 +5290,7 @@ export async function generateImageAd(
     // ends with "Absolutely NO text", so "clean product on white" and "sale
     // badge aesthetic" would both be instructions to do the opposite of what
     // the rest of the sentence asks for.
-    usedPrompt = `${styleBrief ? `${styleBrief}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${styleBrief ? "" : `${moodDirection}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, bright warm natural lighting (never dark or moody unless the style asks for it). ${visual.imageStyle || "clean modern commercial photography"}. Poster-ready composition: subject in the lower two-thirds with clean uncluttered space across the top of the frame for a headline. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
+    usedPrompt = `${styleBrief ? `${styleBrief}. ` : ""}Premium lifestyle advertising photograph that sells the OUTCOME of "${productTitle}". ${styleBrief ? "" : `${moodDirection}. `}Show a happy, successful person clearly enjoying the benefit or result — aspirational, authentic, relatable, bright warm natural lighting (never dark or moody unless the style asks for it). ${withPalette(visual.imageStyle || "clean modern commercial photography")}.Poster-ready composition: subject in the lower two-thirds with clean uncluttered space across the top of the frame for a headline. Photorealistic, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality. Absolutely NO text, letters, words, watermarks, logos, charts, graphs or app screenshots.`;
     // Only rung on this path — an unretried blip here terminal-failed a paid ad.
     imageUrl = await fluxDevStill(usedPrompt, "service-outcome");
     genMeta.method = "lifestyle";
@@ -5580,14 +5586,14 @@ export async function generateImageAd(
         if (!localFileName) {
           // Nothing product-true available. A clean generated poster still beats
           // a terminal failure; if THIS throws the job fails and refunds.
-          usedPrompt = `${styleBrief ? `${styleBrief}. ` : `${pickBackdrop()}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, sharp focus, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
+          usedPrompt = `${styleBrief ? `${styleBrief}. ` : `${pickBackdrop()}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${withPalette(visual.imageStyle || "clean professional product photography")}.Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, sharp focus, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
           imageUrl = await fluxDevStill(usedPrompt, "scene-degrade-poster");
           genMeta.method = "text2img-degraded";
         }
       }
     }
   } else {
-    usedPrompt = `${styleBrief ? `${styleBrief}. ` : `${BRIGHT_DEFAULT}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${visual.imageStyle || "clean professional product photography"}. Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, ultra high resolution, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
+    usedPrompt = `${styleBrief ? `${styleBrief}. ` : `${BRIGHT_DEFAULT}. `}Premium advertising poster photograph of ${productTitle}. ${direction}. ${withPalette(visual.imageStyle || "clean professional product photography")}.Print-ad composition: the product commanding the lower two-thirds of the frame, clean uncluttered space across the top for a headline. Photorealistic, ultra high resolution, sharp focus, natural realistic human anatomy and faces, flawless proportions, magazine-quality commercial photography, no text, no watermark, no logo, no distortion.`;
     // Only rung on this path (no product photo) — retry rather than fail the job.
     imageUrl = await fluxDevStill(usedPrompt, "text2img");
     genMeta.method = "text2img";

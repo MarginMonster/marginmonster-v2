@@ -701,6 +701,8 @@ export default function WebDashboard() {
       <div id="brand" className="wb-card" style={{ marginBottom: 22, scrollMarginTop: 80 }}>
         <div className="wb-price-name" role="heading" aria-level={2}>{t("1 · Brand voice")} {d.hasBrand && "✓"}</div>
         <p className="wb-note" style={{ margin: "6px 0 0" }}>{t("Every script, caption and article is written in your voice.")}</p>
+        {/* the whole kit — logo, colours, fonts, read off the store in seconds — lives on its own page */}
+        <Link to="/web/brand" className="wd-kitlink"><Ico n="palette" size={14} /> {t("Open your Brand Kit — logo, colours and fonts from your store")} →</Link>
         {d.hasBrand && d.brand && (d.brand.tagline || d.brand.tone || d.brand.about) && (
           <div className="wd-voice">
             {d.brand.tagline && <div className="wdv-quote">“{d.brand.tagline}”</div>}
@@ -1141,6 +1143,8 @@ const DASH_CSS = `
 /* brand voice readout */
 .wd-voice{margin:12px 0 2px;}
 .wdv-quote{font-family:Poppins,sans-serif;font-weight:700;font-size:15px;color:var(--ink);margin-bottom:8px;}
+.wd-kitlink{display:inline-flex;align-items:center;gap:6px;margin:10px 0 2px;min-height:40px;padding:0 14px;border-radius:999px;background:#EAF6EF;border:1px solid #BFE2CD;color:var(--green,#0C7A46);font:700 13px/1.2 Poppins,sans-serif;text-decoration:none;}
+.wd-kitlink:hover{background:#DDF0E5;}
 .wdv-chips{display:flex;gap:8px;flex-wrap:wrap;}
 .wdv-chip{font-size:12px;color:var(--ink2);background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-weight:600;
   max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
