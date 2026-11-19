@@ -1022,7 +1022,7 @@ const WA_CSS = `
 .wa-vbtn.ghost.on{background:#EAF6EF;border-color:#BFE2CD;color:var(--green,#0C7A46);}
 .wa-sizes{flex-basis:100%;border:1px solid var(--line,#E1DECD);border-radius:14px;padding:12px;background:#FBFAF4;}
 .wa-sizes-h{margin:0 0 10px;font-size:12.5px;line-height:1.45;color:var(--ink2,#4A554E);}
-.wa-sizes-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.wa-sizes-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:7px;} /* one per row: the viewer rail is narrow, and two across cut the labels */
 .wa-size{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 10px;border-radius:12px;border:1px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);font:inherit;text-align:left;text-decoration:none;cursor:pointer;box-sizing:border-box;transition:border-color .12s,background .12s;}
 .wa-size:hover{border-color:#BFE2CD;}
 .wa-size:disabled{cursor:progress;}
@@ -1036,7 +1036,7 @@ const WA_CSS = `
 .wa-size-txt{display:flex;flex-direction:column;min-width:0;gap:2px;}
 .wa-size-txt b{font-family:Poppins,sans-serif;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:4px;}
 .wa-size-txt small{font-size:11.5px;color:var(--ink2,#4A554E);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-@media(max-width:420px){.wa-sizes-grid{grid-template-columns:minmax(0,1fr);}}
+
 /* Two-layer premium gradient baked into the base rule: the viewer is portaled to
    document.body (outside .wb-main), so the .wb-main-scoped two-layer in web.tsx no
    longer reaches these CTAs. This block renders after web.tsx, so at equal 0,1,0

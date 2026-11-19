@@ -1273,6 +1273,10 @@ const CSS = `
    .wb-main stacking context) still inherits the palette. Additive only — the
    .wb rule below keeps its own copy and its cream background/positioning. */
 :root{--paper:#F4F1E6;--card:#FDFCF7;--ink:#14201A;--ink2:#4A554E;--line:#E1DECD;--line2:#D7DCCB;--green:#0C7A46;--green2:#12A85E;--gold:#B08526;--gold-deep:#7E5E13;}
+/* …and the FONT, for the same reason: the page body sets none, so every line in the archive viewer that
+   didn't name a font ("Clears in 30 days…", "AI-generated · review before posting", the Every-size notes)
+   fell back to the browser's Times New Roman. Same face as .wb. */
+body{font-family:Inter,-apple-system,sans-serif;}
 .wb{--paper:#F4F1E6;--card:#FDFCF7;--ink:#14201A;--ink2:#4A554E;--line:#E1DECD;--line2:#D7DCCB;--green:#0C7A46;--green2:#12A85E;--gold:#B08526;--gold-deep:#7E5E13;
   position:relative;min-height:100vh;color:var(--ink);font-family:Inter,-apple-system,sans-serif;
   /* A green field instead of flat cream: three soft washes give the page a
