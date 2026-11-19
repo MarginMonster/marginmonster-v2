@@ -5998,7 +5998,8 @@ ${FORGE_CSS}
 .ws-artip-bub::after{content:"";position:absolute;left:-6px;bottom:8px;width:0;height:0;border:6px solid transparent;border-right-color:#F0F7F2;border-left:0}
 .ws-artip-bub::before{content:"";position:absolute;left:-7px;bottom:7px;width:0;height:0;border:7px solid transparent;border-right-color:#D4E8DC;border-left:0}
 .ws-req{font-weight:700;font-size:11px;color:var(--green,#0C7A46)}
-@media(max-width:560px){.ws-artip-pet{width:48px;height:48px}.ws-artip-arw{min-width:30px;min-height:30px}}
+@media(max-width:560px){.ws-artip-pet{width:48px;height:48px}.ws-artip-arw{min-width:30px;min-height:30px;position:relative}.ws-artip-arw::after{content:"";position:absolute;inset:-7px}}
+@media(max-width:640px){.ws-shelf-all{padding-block:12px;margin-block:-12px}}
 /* Create → two generate CTAs (Pro gold / Ultra green), each with a slowly
    spinning gold rosette and the model's description + cost. */
 /* The two make buttons are ONE pair: two equal columns at every width. They used to stack on a phone

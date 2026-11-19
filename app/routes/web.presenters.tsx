@@ -853,6 +853,7 @@ ${SPIN_STAGE_CSS}
 .ph-hear:hover{background:#D5EEDF;transform:scale(1.06);}
 .ph-hear.on{background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);color:#fff;}
 .ph-hear:focus-visible{outline:2px solid var(--green,#0C7A46);outline-offset:2px;}
+.ph-hear::before{content:"";position:absolute;inset:-7px;border-radius:50%;} /* a 44px thumb target round the 30px dot */
 .ph-hear-eq{display:inline-flex;align-items:flex-end;gap:2px;height:11px;}
 .ph-hear-eq i{display:block;width:2.5px;background:currentColor;border-radius:1px;animation:phEq .8s ease-in-out infinite;}
 .ph-hear-eq i:nth-child(2){animation-delay:.15s}.ph-hear-eq i:nth-child(3){animation-delay:.3s}
@@ -917,6 +918,7 @@ ${SPIN_STAGE_CSS}
   .ph-face-meta{padding:7px 8px 9px;}
   .ph-facewrap.can-hear .ph-face-meta{padding-right:34px;}
   .ph-hear{width:26px;height:26px;right:6px;bottom:8px;font-size:9.5px;}
+  .ph-hear::before{inset:-9px;}
   .ph-face-nm{font-size:12px;}
   .ph-face-voice{font-size:10.5px;}
   .ph-face-go{display:none;}

@@ -1314,6 +1314,7 @@ body{font-family:Inter,-apple-system,sans-serif;}
    (outline follows each element's own radius; no layout shift). */
 :where(.wb) a:not([class]){color:var(--green,#0C7A46);text-underline-offset:2px}
 :where(.wb) a:not([class]):hover{color:var(--green2,#12A85E)}
+@media (max-width:640px){:where(.wb) a:not([class]){padding-block:10px;margin-block:-10px}}
 .wb a:focus-visible,.wb button:focus-visible,.wb input:focus-visible,.wb select:focus-visible,.wb textarea:focus-visible,.wb [tabindex]:focus-visible{
   outline:2px solid var(--green2,#12A85E);outline-offset:2px;
 }
