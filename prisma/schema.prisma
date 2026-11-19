@@ -614,6 +614,8 @@ enum JobType {
   SEND_POST_PURCHASE
   SEND_WINBACK
   IMPORT_CATALOG
+  // re-roll one shot of a finished film (shot editor) — and the admin engine test
+  REGEN_SHOT
 }
 
 enum JobStatus {
