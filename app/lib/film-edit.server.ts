@@ -20,11 +20,15 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
 import { runFfmpeg, ffprobeDuration } from "./ugc-ad-pipeline.server";
-import { assembleTestMovie, renderDialogueClipTo, KLING_HOST_LABEL, type KlingHost } from "./film-dialogue.server";
+import { assembleTestMovie, renderDialogueClipTo, extractLastFrame, splitExchange, KLING_HOST_LABEL, type KlingHost } from "./film-dialogue.server";
 import { ensureVoiceModel, revoiceClip } from "./singing-voice.server";
 import { characterVoice } from "./character-voices";
 import { chainClipVoice } from "./character-voice.server";
 import { mirrorRender } from "./object-storage.server";
+import { levelFilm } from "./film-loudness.server";
+import { captionFilm } from "./film-captions.server";
+import { captionStyleOf, type CaptionStyle } from "./narrated-core";
+import { normalizeContentLang } from "./content-lang";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const toLocal = (u: string) => path.join(RENDERS(), path.basename((u || "").split("?")[0]));
@@ -62,22 +66,57 @@ async function loadFilm(assetId: string, shopId: string): Promise<Film | null> {
   return { id: a.id, bodyJson: a.bodyJson, metaJson: a.metaJson, body, meta, shots, aspect };
 }
 
+/** What shot `s` SAYS, without speaker labels, for its captions. A shot keeps its first 200 characters of
+ *  the scene's caption; when that was cut short, the film's own script has the whole of it. */
+function spokenLine(s: Shot, film: Film): string {
+  let cap = s.caption || "";
+  if (cap.length >= 200) {
+    const scenes = (film.body.treatment as { scenes?: Array<{ caption?: string }> } | undefined)?.scenes;
+    const full = Array.isArray(scenes) ? scenes.map((sc) => sc?.caption || "").find((c) => c.length > cap.length && c.startsWith(cap)) : undefined;
+    if (full) cap = full;
+  }
+  return splitExchange(cap).map((t) => t.line).join(" ").replace(/\s+/g, " ").trim();
+}
+
+/** Cut the film from its shots the way the render does: the crossfade assembler (a shot that continues
+ *  the last one gets the invisible short dissolve, a new picture the softer one), the film levelled to
+ *  the catalogue's loudness, and — when the film was made with captions — its captions drawn again,
+ *  in time with the voices. Edits used to re-assemble the clips only, so trimming or re-rolling one shot
+ *  quietly took the film's captions off, made it ~8 dB quieter and hardened every soft seam.
+ *  Returns the caption style the new cut carries. */
+async function finishCut(film: Film, shopId: string, parts: Array<{ shot: Shot; path: string }>, outPath: string, opts: { listenMs?: number } = {}): Promise<CaptionStyle> {
+  const soft = new Set<number>();
+  parts.forEach((p, i) => { if (i > 0 && !p.shot.chained) soft.add(i); });
+  await assembleTestMovie(parts.map((p) => p.path), outPath, undefined, soft, film.aspect);
+  if (!(fs.existsSync(outPath) && ffprobeDuration(outPath) > 1)) return "off";
+  try { await levelFilm(outPath); } catch { /* left as it was */ }
+  const style = captionStyleOf(film.meta.captions, "off");
+  if (style === "off") return "off";
+  const lang = (await db.shop.findFirst({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
+  return captionFilm({
+    filmPath: outPath, style, english: normalizeContentLang(lang) === "en", listenMs: opts.listenMs,
+    lines: parts.map((p) => spokenLine(p.shot, film)),
+    clipDurs: parts.map((p) => { try { return ffprobeDuration(p.path); } catch { return 0; } }),
+  });
+}
+
 /** Re-cut the film with `change` applied to its CURRENT shot list and save it — without overwriting
- *  an edit that landed while this one was working. `change` returns the new list, or an error to stop. */
-async function saveCut(assetId: string, shopId: string, change: (shots: Shot[]) => Shot[] | { error: string }): Promise<CutResult> {
+ *  an edit that landed while this one was working. `change` returns the new list, or an error to stop.
+ *  `listenMs` = how long the captions may wait to hear the voices (the quick edits answer a request). */
+async function saveCut(assetId: string, shopId: string, change: (shots: Shot[]) => Shot[] | { error: string }, opts: { listenMs?: number } = {}): Promise<CutResult> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const film = await loadFilm(assetId, shopId);
     if (!film) return { ok: false, error: "Film not found." };
     const next = change(film.shots);
     if (!Array.isArray(next)) return { ok: false, error: next.error };
 
-    // Re-assemble the film from the updated shots (same crossfade assembler as the render).
-    const clipPaths = next.map((s) => toLocal(s.url)).filter((p) => fs.existsSync(p));
-    if (!clipPaths.length) return { ok: false, error: "No shot media left to assemble." };
+    // Re-assemble the film from the updated shots, finished the way the render finishes it.
+    const parts = next.map((shot) => ({ shot, path: toLocal(shot.url) })).filter((p) => fs.existsSync(p.path));
+    if (!parts.length) return { ok: false, error: "No shot media left to assemble." };
     const outName = newName("");
     const outPath = path.join(RENDERS(), outName);
     try {
-      await assembleTestMovie(clipPaths, outPath, undefined, undefined, film.aspect);
+      await finishCut(film, shopId, parts, outPath, opts);
     } catch (e) {
       return { ok: false, error: `Re-assembly failed: ${e instanceof Error ? e.message.slice(0, 80) : "unknown"}` };
     }
@@ -116,13 +155,16 @@ export async function editFilmShot(opts: {
   // the shot the merchant was looking at, wherever it sits by the time we save
   const find = (cur: Shot[]) => (cur[i]?.url === target.url ? i : cur.findIndex((s) => s.url === target.url));
 
+  // These answer the editor's request directly, so the captions wait at most this long to hear the voices
+  // (then they are timed by shot length) — a minute-long spinner on a trim is not "quick".
+  const QUICK = { listenMs: 40_000 };
   if (opts.op === "delete") {
     return saveCut(opts.assetId, opts.shopId, (cur) => {
       const k = find(cur);
       if (k < 0) return { error: "That shot no longer exists." };
       if (cur.length <= 1) return { error: "Can't delete the only shot." };
       return cur.filter((_, j) => j !== k);
-    });
+    }, QUICK);
   }
 
   const inLocal = toLocal(target.url);
@@ -151,7 +193,24 @@ export async function editFilmShot(opts: {
     const next = cur.slice();
     next[k] = { ...cur[k], url: edited };
     return next;
-  });
+  }, QUICK);
+}
+
+/** The cast voice a shot carried, put on a new take of it: a creature's line goes through its creature
+ *  chain (never the re-voice trainer), a cast member's through their re-voice. Fails open, like the
+ *  render: a voice that can't be applied keeps the take as it is. */
+async function applyShotVoice(clip: string, shot: Shot): Promise<string> {
+  const creature = characterVoice(shot.voice);
+  if (creature) return chainClipVoice(clip, creature.acting.chain);
+  if (!shot.voice) return clip;
+  try {
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    const model = await ensureVoiceModel(shot.voice, base);
+    return await revoiceClip(clip, model.url, base, { voiceId: shot.voice });
+  } catch (e) {
+    console.error(`[regen] cast voice not applied to the new take: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+    return clip;
+  }
 }
 
 /** Phase 3: RE-ROLL one shot via the dialogue engine (its stored seed + prompt), then
@@ -168,27 +227,16 @@ export async function regenerateFilmShot(opts: { assetId: string; shopId: string
 
   let newClip: string;
   try {
-    // a shot that continues the previous one keeps its opening frames, exactly as in the first render
-    newClip = await renderDialogueClipTo(engine, shot.seed, shot.prompt, dur, film.aspect, `regen-${i}`, !!shot.chained);
+    // a shot that continues the previous one keeps its opening frames, exactly as in the first render,
+    // and the film's last shot keeps its beat of quiet after the line
+    newClip = await renderDialogueClipTo(engine, shot.seed, shot.prompt, dur, film.aspect, `regen-${i}`, !!shot.chained, undefined, { last: i === film.shots.length - 1 });
   } catch (e) {
     return { ok: false, error: `Shot re-render failed: ${e instanceof Error ? e.message.slice(0, 80) : "unknown"}` };
   }
   // The video model acts every take in a voice of its own. If this shot carried a cast voice, the new
   // take gets the same one — otherwise the re-rolled shot would be the only line in the film spoken by
-  // a stranger. Fails open, like the render: a voice that can't be applied keeps the take as it is.
-  const creature = characterVoice(shot.voice);
-  if (creature) {
-    // a creature's line: the same chain the first render laid over it (never the re-voice trainer)
-    newClip = await chainClipVoice(newClip, creature.acting.chain);
-  } else if (shot.voice) {
-    try {
-      const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-      const model = await ensureVoiceModel(shot.voice, base);
-      newClip = await revoiceClip(newClip, model.url, base, { voiceId: shot.voice });
-    } catch (e) {
-      console.error(`[regen] cast voice not applied to the new take: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
-    }
-  }
+  // a stranger.
+  newClip = await applyShotVoice(newClip, shot);
   const clipName = path.basename(newClip);
   try { await mirrorRender(clipName, fs.readFileSync(newClip)); } catch { /* non-fatal */ }
 
@@ -244,5 +292,69 @@ export async function engineTestFilmShot(opts: { assetId: string; shopId: string
     },
   });
   console.log(`[enginetest] shot ${i + 1} of ${opts.assetId} on ${opts.host} → ${clipName} (${Math.round((Date.now() - t0) / 1000)} s) asset ${a.id}`);
+  return { ok: true, assetId: a.id };
+}
+
+/** ENGINE TEST · WHOLE FILM — every shot of a finished Kling film made again on another host from exactly
+ *  what it was made from (stored seed, prompt and length; a shot that continued the previous one continues
+ *  THIS version's previous take, from its real last frame, as the render chains), with the film's cast
+ *  voices, then cut, levelled and captioned the way the render finishes a film. Kept as its own film in the
+ *  Archive, editable like any other; the original is never touched. It answers the question one shot
+ *  can't: does a whole film still come out right on the cheaper host? Admin-only, on the worker. */
+export async function engineTestFilm(opts: { assetId: string; shopId: string; host: KlingHost }): Promise<{ ok: boolean; assetId?: string; error?: string }> {
+  const film = await loadFilm(opts.assetId, opts.shopId);
+  if (!film) return { ok: false, error: "Film not found." };
+  if (film.meta.engine === "veo") return { ok: false, error: "That film was made on Veo — the engine test compares Kling hosts." };
+  if (!film.shots.length) return { ok: false, error: "This film has no shots to render." };
+  if (film.shots.some((s) => !s.seed || !s.prompt)) return { ok: false, error: "This film predates regenerate — its shots have no stored seed and prompt." };
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  const t0 = Date.now();
+  const parts: Array<{ shot: Shot; path: string }> = [];
+  let prevLast: string | undefined;
+  for (let i = 0; i < film.shots.length; i++) {
+    const shot = film.shots[i];
+    const dur = typeof shot.dur === "number" && shot.dur > 0 ? shot.dur : 8;
+    const seed = shot.chained && prevLast ? prevLast : (shot.seed as string);
+    let clip: string;
+    try {
+      clip = await renderDialogueClipTo("kling3", seed, shot.prompt as string, dur, film.aspect, `enginefilm-${i}`, !!shot.chained, opts.host, { last: i === film.shots.length - 1 });
+    } catch (e) {
+      return { ok: false, error: `Shot ${i + 1} did not render: ${e instanceof Error ? e.message.slice(0, 120) : "unknown"}` };
+    }
+    clip = await applyShotVoice(clip, shot);
+    try { await mirrorRender(path.basename(clip), fs.readFileSync(clip)); } catch { /* non-fatal */ }
+    const last = await extractLastFrame(clip);
+    prevLast = last && base ? `${base}${last}` : undefined;
+    parts.push({ shot: { ...shot, url: `/renders/${path.basename(clip)}`, ...(shot.chained ? { seed } : {}) }, path: clip });
+    console.log(`[enginetest] film ${opts.assetId} shot ${i + 1}/${film.shots.length} on ${opts.host} → ${path.basename(clip)} (${Math.round((Date.now() - t0) / 1000)} s)`);
+  }
+  const outName = newName("-engine");
+  const outPath = path.join(RENDERS(), outName);
+  let captions: CaptionStyle = "off";
+  try {
+    captions = await finishCut(film, opts.shopId, parts, outPath);
+  } catch (e) {
+    return { ok: false, error: `The cut failed: ${e instanceof Error ? e.message.slice(0, 100) : "unknown"}` };
+  }
+  if (!(fs.existsSync(outPath) && ffprobeDuration(outPath) > 1)) return { ok: false, error: "The cut produced no film." };
+  try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
+  const filmTitle = (await db.asset.findFirst({ where: { id: opts.assetId, shopId: opts.shopId }, select: { title: true } }))?.title || "a film";
+  const a = await db.asset.create({
+    data: {
+      shopId: opts.shopId,
+      type: "VIDEO_AD",
+      status: "PENDING",
+      title: `Engine test · ${KLING_HOST_LABEL[opts.host]} · ${filmTitle}`.slice(0, 190),
+      bodyJson: JSON.stringify({ style: "ENGINETEST", videoUrl: `/renders/${outName}`, prompt: "", ...(film.body.treatment ? { treatment: film.body.treatment } : {}) }),
+      metaJson: JSON.stringify({
+        kind: "enginetest", whole: true, section: "creator", abOf: opts.assetId, host: opts.host,
+        original: typeof film.body.videoUrl === "string" ? film.body.videoUrl : null,
+        seconds: Math.round(ffprobeDuration(outPath) * 10) / 10, renderSeconds: Math.round((Date.now() - t0) / 1000),
+        aspect: film.aspect, engine: "kling3", captions, scenes: parts.length,
+        shots: parts.map((p) => p.shot),
+      }),
+    },
+  });
+  console.log(`[enginetest] whole film ${opts.assetId} on ${opts.host} → ${outName} (${Math.round((Date.now() - t0) / 1000)} s, captions ${captions}) asset ${a.id}`);
   return { ok: true, assetId: a.id };
 }

@@ -23,9 +23,10 @@ const RENDERS = () => path.join(process.cwd(), "data", "renders");
 
 /** Burn captions into the film at `filmPath` (replacing it). `lines[i]` is what is SAID in shot i, with no
  *  speaker labels; `clipDurs[i]` how long shot i runs. Returns the style that was drawn, or "off" when the
- *  film was left as it was. */
+ *  film was left as it was. `listenMs` caps the wait for the word timings (a quick edit in the shot editor
+ *  can't hold its request open for minutes); past it the lines are timed by shot length instead. */
 export async function captionFilm(o: {
-  filmPath: string; lines: string[]; clipDurs: number[]; style: CaptionStyle; english: boolean; jobId?: string;
+  filmPath: string; lines: string[]; clipDurs: number[]; style: CaptionStyle; english: boolean; jobId?: string; listenMs?: number;
 }): Promise<CaptionStyle> {
   if (o.style === "off" || !fs.existsSync(o.filmPath)) return "off";
   const lines = o.lines.map((l) => (l || "").replace(/\s+/g, " ").trim());
@@ -51,7 +52,7 @@ export async function captionFilm(o: {
         const ex = await runFfmpeg(["-y", "-i", o.filmPath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", audio]);
         if (ex.status === 0 && fs.existsSync(audio)) {
           try { await mirrorRender(path.basename(audio), fs.readFileSync(audio)); } catch { /* the disk copy is served */ }
-          words = wordsFromWhisperx(await repPoll(await createWhisperx(`${base}/renders/${path.basename(audio)}`), 5 * 60_000, "film-captions"));
+          words = wordsFromWhisperx(await repPoll(await createWhisperx(`${base}/renders/${path.basename(audio)}`), Math.max(10_000, Math.min(5 * 60_000, o.listenMs ?? 5 * 60_000)), "film-captions"));
         }
       } catch (e) { console.error(`[captions] could not listen to the film — timing the lines by shot length: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
       await beat();

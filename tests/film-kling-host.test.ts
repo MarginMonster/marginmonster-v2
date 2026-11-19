@@ -38,3 +38,24 @@ test("the engine test never re-cuts the film it was taken from", () => {
   const op = route.slice(route.indexOf('if (op === "enginetest")'), route.indexOf('if (op === "regen")'));
   assert.ok(op.includes("isAdminEmail(account.email)"), "admins only");
 });
+
+test("fal standard falls back to fal's pro tier (still half Replicate's price) before Replicate", () => {
+  const src = read("app/lib/film-dialogue.server.ts");
+  const body = src.slice(src.indexOf("async function klingDialogueClip"), src.indexOf("async function dialogueClip"));
+  const std = body.slice(body.indexOf('host === "fal-std"'));
+  const a = std.indexOf('name: "fal kling 3 omni standard"'), b = std.indexOf('name: "fal kling 3 omni"'), c = std.indexOf('name: "replicate kling 3 omni"'), d = std.indexOf('name: "fal kling 3 pro"');
+  assert.ok(a > 0 && b > a && c > b && d > c, "fal-std: standard → fal pro → Replicate → fal kling 3 pro");
+});
+
+test("the whole-film engine test is cut like a render and never touches the film it came from", () => {
+  const src = read("app/lib/film-edit.server.ts");
+  const fn = src.slice(src.indexOf("export async function engineTestFilm("));
+  assert.ok(fn.length > 100);
+  assert.ok(!fn.includes("saveCut("), "the original film is not touched");
+  assert.ok(fn.includes("finishCut("), "cut, levelled and captioned the way the render finishes a film");
+  assert.ok(fn.includes("shot.chained && prevLast ? prevLast"), "a continuing shot continues THIS version's previous take");
+  assert.ok(fn.includes("applyShotVoice("), "the film's cast voices go on its new takes");
+  assert.ok(fn.includes('kind: "enginetest", whole: true'), "kept as its own film");
+  const q = read("app/lib/job-queue.server.ts");
+  assert.ok(q.includes("abHost && payload.whole === true"), "queued as the whole-film variant of the engine test");
+});

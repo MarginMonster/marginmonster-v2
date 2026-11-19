@@ -65,7 +65,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const host = String(form.get("host") || "");
     if (host !== "fal" && host !== "fal-std" && host !== "replicate") return json({ ok: false, error: "Pick fal, fal-std or replicate." });
     const { enqueueJob } = await import("../lib/job-queue.server");
-    await enqueueJob(shop.id, "REGEN_SHOT", { assetId: params.id || "", shotIndex, abHost: host });
+    // whole=1: every shot, cut and finished like a render (engineTestFilm) — not just the one shot
+    const whole = form.get("whole") === "1";
+    await enqueueJob(shop.id, "REGEN_SHOT", { assetId: params.id || "", shotIndex, abHost: host, ...(whole ? { whole: true } : {}) });
     return json({ ok: true, queued: true });
   }
   if (op === "regen") {

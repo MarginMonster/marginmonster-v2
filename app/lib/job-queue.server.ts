@@ -519,6 +519,13 @@ async function runJob(
       // ENGINE TEST (admin): the same shot on another Kling host, saved as its own piece — the film
       // is left exactly as it is.
       const abHost = payload.abHost === "fal" || payload.abHost === "fal-std" || payload.abHost === "replicate" ? payload.abHost : null;
+      if (abHost && payload.whole === true) {
+        // …or the WHOLE film on that host, cut and finished like a render, kept as its own film
+        const { engineTestFilm } = await import("./film-edit.server");
+        const t = await engineTestFilm({ assetId: String(payload.assetId || ""), shopId, host: abHost });
+        if (!t.ok) throw new Error(`[NO-RETRY] ${t.error || "Engine test failed"}`);
+        break;
+      }
       if (abHost) {
         const { engineTestFilmShot } = await import("./film-edit.server");
         const t = await engineTestFilmShot({

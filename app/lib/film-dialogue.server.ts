@@ -54,7 +54,7 @@ const REP_VEO = "google/veo-3";
  *  single-line <input> that strips newlines, so we split on the speaker LABELS (a
  *  capitalized name + colon), not on newlines. The caller takes the first speaker
  *  and joins the lines, so a clip always voices a single character. */
-function splitExchange(caption: string): Array<{ speaker: string; line: string }> {
+export function splitExchange(caption: string): Array<{ speaker: string; line: string }> {
   const c = (caption || "").replace(/\s+/g, " ").trim();
   if (!c) return [{ speaker: "", line: "" }];
   // A speaker label = one capitalized word (any script) + colon. Single-word +
@@ -136,18 +136,25 @@ async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: stri
     const rid = await falVideoSubmit(model, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur });
     return await falVideoPoll(model, rid, VEO_POLL_MS);
   };
-  // The picked host first; then the SAME model on the other host; fal's Kling 3 Pro (a different model)
-  // only as the last resort, as before. A refused or failed render is not billed, so a fallback never
-  // pays twice for one shot.
-  const omniOnFal = host === "fal-std" ? FAL_KLING3_OMNI_STD : FAL_KLING3_OMNI;
+  // The picked host first; then the SAME model elsewhere, cheapest first; fal's Kling 3 Pro (a different
+  // model) only as the last resort, as before. A refused or failed render is not billed, so a fallback
+  // never pays twice for one shot.
   const order: Array<{ name: string; fal: boolean; run: () => Promise<string> }> = host === "replicate"
     ? [
         { name: "replicate kling 3 omni", fal: false, run: viaReplicate },
         { name: "fal kling 3 omni", fal: true, run: () => viaFal(FAL_KLING3_OMNI) },
         { name: "fal kling 3 pro", fal: true, run: () => viaFal(FAL_KLING3) },
       ]
+    : host === "fal-std"
+    ? [
+        { name: "fal kling 3 omni standard", fal: true, run: () => viaFal(FAL_KLING3_OMNI_STD) },
+        // the same model's pro tier on fal is still half of Replicate's price
+        { name: "fal kling 3 omni", fal: true, run: () => viaFal(FAL_KLING3_OMNI) },
+        { name: "replicate kling 3 omni", fal: false, run: viaReplicate },
+        { name: "fal kling 3 pro", fal: true, run: () => viaFal(FAL_KLING3) },
+      ]
     : [
-        { name: `fal kling 3 omni${host === "fal-std" ? " standard" : ""}`, fal: true, run: () => viaFal(omniOnFal) },
+        { name: "fal kling 3 omni", fal: true, run: () => viaFal(FAL_KLING3_OMNI) },
         { name: "replicate kling 3 omni", fal: false, run: viaReplicate },
         { name: "fal kling 3 pro", fal: true, run: () => viaFal(FAL_KLING3) },
       ];
@@ -188,13 +195,14 @@ async function dialogueClip(engine: string, seedAbs: string, prompt: string, sta
 
 /** Render ONE dialogue clip end-to-end (render + download + head/tail + interior-pause trims)
  *  → a local file path. The render loop does this inline; the SECTION EDITOR's regenerate
- *  reuses it to re-roll a single shot from its stored seed + prompt. */
-export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: string, prompt: string, durSec: number, aspect: "9:16" | "16:9" | "1:1", stage: string, chained = false, host?: KlingHost): Promise<string> {
+ *  reuses it to re-roll a single shot from its stored seed + prompt. `last` = the film's final
+ *  shot, which keeps a beat of quiet after its line exactly as in the first render. */
+export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: string, prompt: string, durSec: number, aspect: "9:16" | "16:9" | "1:1", stage: string, chained = false, host?: KlingHost, opts: { last?: boolean } = {}): Promise<string> {
   const clipUrl = await dialogueClip(engine, seedAbs, prompt, stage, durSec, aspect, host);
   const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
   await download(clipUrl, rawPath);
   if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error("[regen] clip did not download");
-  const trimmed = await trimTrailingSilence(rawPath, { chained });
+  const trimmed = await trimTrailingSilence(rawPath, { chained, last: !!opts.last });
   return await collapseInteriorPause(trimmed);
 }
 
@@ -228,7 +236,7 @@ async function removeLetterbox(relUrl: string | null): Promise<string | null> {
  *  room and everyone's FINAL positions carry forward (the owner's "reuse the last
  *  frame" idea) — without feeding the blurry frame straight into Veo (which, on a
  *  speaker switch, made the audio gibberish). Returns a relative /renders URL. */
-async function extractLastFrame(videoPath: string): Promise<string | null> {
+export async function extractLastFrame(videoPath: string): Promise<string | null> {
   try {
     const name = `tmf-${Date.now()}-${crypto.randomBytes(5).toString("hex")}.jpg`;
     const out = path.join(RENDERS(), name);
