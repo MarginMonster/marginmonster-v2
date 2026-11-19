@@ -100,6 +100,18 @@ async function usableVoice(shopId: string, voiceId: string): Promise<boolean> {
 }
 
 /** Every stock presenter this shop has re-voiced: presenter id → voice id. */
+/** The presenters this shop starred, oldest star first (see favourites.ts for how they're used). */
+export async function favouritesFor(shopId: string): Promise<string[]> {
+  const rows = await db.presenterFavourite.findMany({ where: { shopId }, select: { avatarId: true }, orderBy: { createdAt: "asc" } });
+  return rows.map((r) => r.avatarId);
+}
+
+/** Star (or un-star) a presenter for this shop. The caller checks the id is one the shop can cast. */
+export async function setFavourite(shopId: string, avatarId: string, on: boolean): Promise<void> {
+  if (on) await db.presenterFavourite.upsert({ where: { shopId_avatarId: { shopId, avatarId } }, create: { shopId, avatarId }, update: {} });
+  else await db.presenterFavourite.deleteMany({ where: { shopId, avatarId } });
+}
+
 export async function stockVoicesFor(shopId: string): Promise<Record<string, string>> {
   const rows = await db.presenterVoice.findMany({ where: { shopId }, select: { avatarId: true, voiceId: true } });
   return Object.fromEntries(rows.map((r) => [r.avatarId, r.voiceId]));
@@ -137,6 +149,8 @@ export async function deleteCustomAvatar(shopId: string, publicOrRowId: string):
   // the kit: kit<id>-o0..3.webp + kit<id>-s00..NN.webp
   try { for (const x of fs.readdirSync(dir)) if (x.startsWith(`kit${row.id}-`)) gone(x); } catch { /* nothing to clean */ }
   await db.customAvatar.delete({ where: { id: row.id } });
+  // its star goes with it (the public id is what was starred)
+  await db.presenterFavourite.deleteMany({ where: { shopId, avatarId: `${CUSTOM_PREFIX}${row.id}` } }).catch(() => { /* a stale star is skipped anyway */ });
   return row.name;
 }
 

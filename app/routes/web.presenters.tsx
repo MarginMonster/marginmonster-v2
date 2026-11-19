@@ -16,6 +16,7 @@ import { VoicePicker, VOICE_UI_CSS, type MyVoiceT } from "../components/VoicePic
 import { CharacterForge, FORGE_CSS } from "../components/CharacterForge";
 import { DEFAULT_CHARACTER_VOICE, characterVoice, characterVoiceSample } from "../lib/character-voices";
 import { SpinStage, SPIN_STAGE_CSS } from "../components/SpinStage";
+import { favouritesFirst, passes, NO_FILTER, type CastFilter } from "../lib/favourites";
 
 export const meta: MetaFunction = () => [{ title: "Your cast · EasyMode" }];
 
@@ -61,7 +62,7 @@ const sentence = (s: string) => { const x = s.trim().replace(/\.$/, "").replace(
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { account, shop } = await requireWebIdentity(request);
-  const { customCastFor, stockVoicesFor } = await import("../lib/custom-avatars.server");
+  const { customCastFor, stockVoicesFor, favouritesFor } = await import("../lib/custom-avatars.server");
   const { shopVoiceClones, canCloneVoice } = await import("../lib/voice-clone.server");
   const { spinsAreFree, ensureKits } = await import("../lib/presenter-kit.server");
   // Bring this shop's presenters' kits up to date in the background: any cut-out still missing, any 3D
@@ -71,7 +72,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     console.error(`[kit] ensureKits: ${e instanceof Error ? e.message : e}`);
     return new Set<string>();
   });
-  const [custom, myVoices, stockVoice] = await Promise.all([customCastFor(shop.id), shopVoiceClones(shop.id), stockVoicesFor(shop.id)]);
+  const [custom, myVoices, stockVoice, favs] = await Promise.all([customCastFor(shop.id), shopVoiceClones(shop.id), stockVoicesFor(shop.id), favouritesFor(shop.id)]);
 
   const voiceInfo = (voiceId: string | null | undefined, stockId?: string) => {
     const mine = myVoices.find((v) => v.voiceId === voiceId);
@@ -142,11 +143,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const retrying = new Set(forgeJobs.map((j) => { try { return String((JSON.parse(j.payload) as { customAvatarId?: string }).customAvatarId || ""); } catch { return ""; } }));
   const stillForging = (c: { status: string; rowId: string }) => c.status === "forging" || (c.status === "failed" && retrying.has(c.rowId));
   const brandFaceId = shop.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
-  // Brand Face leads the grid (your face, front and center), then everyone else.
+  // Brand Face leads the grid (your face, front and center), then the ones you starred, then everyone else.
   const bf = cast.find((c) => c.id === brandFaceId);
-  const ordered = bf ? [bf, ...cast.filter((c) => c.id !== brandFaceId)] : cast;
+  const ordered = bf ? [bf, ...favouritesFirst(cast.filter((c) => c.id !== brandFaceId), favs)] : favouritesFirst(cast, favs);
   return json({
     cast: ordered,
+    favs: favs.filter((id) => cast.some((c) => c.id === id)),
     brandFaceId,
     // "forging" means forging. A forge that had FAILED for good used to be counted here too, so one
     // bad upload left "1 presenter still forging" on this page forever.
@@ -206,6 +208,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
+  // A star: this presenter sits first here and in every picker. Only someone this shop can cast.
+  if (intent === "fav") {
+    const castable = cav.isCustomAvatarId(avatarId)
+      ? !!(await ownRow())
+      : [...privateCastFor(account.email, shop.id, shop.domain), ...LIVE_AVATARS, ...STOCK_CHARACTERS].some((a) => a.id === avatarId);
+    if (!castable) return gone();
+    await cav.setFavourite(shop.id, avatarId, form.get("on") === "1");
+    return json({ ok: "fav" });
+  }
+
   if (intent === "rename") {
     const row = await ownRow();
     if (!row) return gone();
@@ -249,7 +261,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 /* Opening, closing and paging through presenters only changes ?who= — the cast itself hasn't changed,
  * so don't refetch it on every arrow press. Saves (a form method) and the kit polling still reload. */
-export const shouldRevalidate: ShouldRevalidateFunction = ({ currentUrl, nextUrl, formMethod, defaultShouldRevalidate }) => {
+export const shouldRevalidate: ShouldRevalidateFunction = ({ currentUrl, nextUrl, formMethod, formData, defaultShouldRevalidate }) => {
+  // A star is shown at once on the page (kept locally); reloading would re-sort the grid under the
+  // finger that just tapped it. The new order shows next time the cast is opened.
+  if (formMethod && formData?.get("intent") === "fav") return false;
   if (formMethod) return defaultShouldRevalidate;
   if (currentUrl.pathname === nextUrl.pathname && currentUrl.search !== nextUrl.search) return false;
   return defaultShouldRevalidate;
@@ -284,7 +299,7 @@ function lineupOf(cast: Member[], brandFaceId: string | null): Standing[] {
   return row;
 }
 
-type Show = "all" | "mine" | CharacterKind;
+type Show = "all" | "fav" | "mine" | CharacterKind;
 
 export default function PresenterHub() {
   const d = useLoaderData<typeof loader>();
@@ -295,11 +310,29 @@ export default function PresenterHub() {
   const location = useLocation();
   const revalidator = useRevalidator();
   const who = sp.get("who");
-  const [picked, setShow] = useState<Show>(() => { const v = sp.get("show"); return v === "mine" || v === "person" || v === "cartoon" || v === "monster" ? v : "all"; });
+  const [picked, setShow] = useState<Show>(() => { const v = sp.get("show"); return v === "fav" || v === "mine" || v === "person" || v === "cartoon" || v === "monster" ? v : "all"; });
   // "Create your own character" opens here, in place (?forge=1 opens it straight away)
   const [forgeOpen, setForgeOpen] = useState(sp.get("forge") === "1");
+  // STARS. Shown the moment they're tapped (the save doesn't reload the cast — see shouldRevalidate);
+  // the grid puts starred presenters first the next time it is opened.
+  const [favs, setFavs] = useState<Set<string>>(() => new Set(d.favs));
+  const favKey = (d.favs as string[]).join("|");
+  useEffect(() => { setFavs(new Set(d.favs)); }, [favKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const favF = useFetcher<Saved>();
+  useEffect(() => { if (favF.state === "idle" && favF.data?.error) revalidator.revalidate(); }, [favF.state, favF.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleFav = (id: string) => {
+    const on = !favs.has(id);
+    setFavs((prev) => { const n = new Set(prev); if (on) n.add(id); else n.delete(id); return n; });
+    const fd = new FormData();
+    fd.set("intent", "fav"); fd.set("avatarId", id); fd.set("on", on ? "1" : "0");
+    favF.submit(fd, { method: "post" });
+  };
+  // The refine chips: who they are (women · men), their age, their energy. Unset = everyone.
+  const [filt, setFilt] = useState<CastFilter>(NO_FILTER);
+  const refining = !!(filt.sex || filt.age || filt.energy);
   const tabs = ([
     { id: "all", label: "All", n: cast.length },
+    { id: "fav", label: "Favourites", n: cast.filter((c) => favs.has(c.id)).length },
     { id: "mine", label: "Yours", n: cast.filter((c) => c.custom).length },
     { id: "person", label: "People", n: cast.filter((c) => c.kind === "person").length },
     { id: "cartoon", label: "Cartoons", n: cast.filter((c) => c.kind === "cartoon").length },
@@ -308,7 +341,8 @@ export default function PresenterHub() {
   // A tab that no longer exists (you deleted your last character while on "Yours") must not leave an
   // empty grid with no chip lit.
   const show: Show = tabs.some((x) => x.id === picked) ? picked : "all";
-  const shown = show === "all" ? cast : cast.filter((c) => (show === "mine" ? c.custom : c.kind === show));
+  const shown = (show === "all" ? cast : cast.filter((c) => (show === "fav" ? favs.has(c.id) : show === "mine" ? c.custom : c.kind === show)))
+    .filter((c) => passes(c, filt));
   // ← → in the character view page through what the grid is showing — unless the presenter that is
   // open isn't among them (a link straight to someone the filter hides), then through everyone
   const list = who && shown.some((c) => c.id === who) ? shown : cast;
@@ -419,12 +453,34 @@ export default function PresenterHub() {
           <div className="ph-filters" role="group" aria-label={t("Show")}>
             {tabs.map((f) => (
               <button type="button" key={f.id} className={show === f.id ? "on" : ""} aria-pressed={show === f.id} onClick={() => setShow(f.id)}>
-                {t(f.label)}<i>{f.n}</i>
+                {f.id === "fav" ? <Ico n="star" size={11} /> : null}{t(f.label)}<i>{f.n}</i>
               </button>
             ))}
           </div>
         )}
       </div>
+      {/* Refine: by who they are, their age and their energy — one chip per group at a time; tap a lit
+          chip again to let that group go. */}
+      <div className="ph-refine" role="group" aria-label={t("Refine")}>
+        {([
+          ["sex", "f", "Women"], ["sex", "m", "Men"],
+          ["age", "20", "20s"], ["age", "30", "30s"], ["age", "40", "40s+"],
+          ["energy", "hype", "Upbeat"], ["energy", "warm", "Warm"], ["energy", "calm", "Calm"],
+        ] as Array<[keyof CastFilter, string, string]>).map(([k, v, label], i, all) => {
+          const on = filt[k] === v;
+          const groupStart = i > 0 && all[i - 1][0] !== k;
+          return (
+            <button type="button" key={`${k}-${v}`} className={`${on ? "on" : ""}${groupStart ? " gap" : ""}`} aria-pressed={on}
+              onClick={() => setFilt((f) => ({ ...f, [k]: on ? "" : v }))}>{t(label)}</button>
+          );
+        })}
+        {refining && <button type="button" className="ph-refine-clear" onClick={() => setFilt(NO_FILTER)}>{t("Clear")}</button>}
+      </div>
+      {shown.length === 0 && (
+        <p className="ph-none">{show === "fav" && !refining ? t("Tap the ☆ on a presenter to keep them here — and first in every picker.") : t("No one in the cast matches all of these.")}{" "}
+          {refining && <button type="button" className="ph-linkbtn" onClick={() => setFilt(NO_FILTER)}>{t("Clear the filters")}</button>}
+        </p>
+      )}
       <audio ref={hearRef} preload="none" onEnded={() => setHearing(null)} onError={() => setHearing(null)} />
       <div className="ph-grid">
         {/* Making your own leads the grid — it is the first thing a new merchant should see they can do. */}
@@ -444,9 +500,10 @@ export default function PresenterHub() {
               {isBf && <span className="ph-bfbadge"><Ico n="star" size={10} /> {t("Brand Face")}</span>}
               {c.custom && !isBf && <span className="ph-yoursbadge">{t("Yours")}</span>}
               {c.kind !== "person" && <span className={`ph-kind ${c.kind}`}>{t(c.kind === "cartoon" ? "Cartoon" : "Monster")}</span>}
-              {c.looks.some((l) => !!l.spin) && <span className="ph-3d" aria-hidden="true"><Ico n="sphere" size={10} /> {t("3D")}</span>}
               <span className={`ph-face-img ph-bd${c.cut ? "" : " raw"}`}>
                 <img src={c.cut || c.img} alt={c.name} loading="lazy" draggable={false} />
+                {/* bottom-left of the picture: the top-right corner is the star's */}
+                {c.looks.some((l) => !!l.spin) && <span className="ph-3d" aria-hidden="true"><Ico n="sphere" size={10} /> {t("3D")}</span>}
                 <span className="ph-face-go" aria-hidden="true"><Ico n="arrow" size={15} /></span>
               </span>
               <span className="ph-face-meta">
@@ -460,6 +517,10 @@ export default function PresenterHub() {
                 {hearing === c.id ? <i className="ph-hear-eq" aria-hidden="true"><i /><i /><i /></i> : <span aria-hidden="true">▶</span>}
               </button>
             ) : null}
+            <button type="button" className={`ph-fav${favs.has(c.id) ? " on" : ""}`} onClick={() => toggleFav(c.id)} aria-pressed={favs.has(c.id)}
+              aria-label={favs.has(c.id) ? t("Remove {name} from favourites", { name: c.name }) : t("Add {name} to favourites", { name: c.name })}>
+              <span aria-hidden="true">{favs.has(c.id) ? "★" : "☆"}</span>
+            </button>
             </div>
           );
         })}
@@ -473,6 +534,8 @@ export default function PresenterHub() {
           key={open.id}
           c={open}
           isBrandFace={open.id === d.brandFaceId}
+          fav={favs.has(open.id)}
+          onFav={() => toggleFav(open.id)}
           myVoices={d.myVoices as MyVoiceT[]}
           canMakeVoice={d.canMakeVoice}
           spinCost={d.spinCost}
@@ -493,8 +556,10 @@ const ENERGY: Record<Member["energy"], string> = { hype: "High energy", warm: "W
 /* One presenter, up close. Left: the stage — the outfit you picked as a full-body figure to turn
  * around (its "3D view"), or as its portrait. Right: who they are, their voice, their outfits, and
  * what to do with them. */
-function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, position, onClose, onPrev, onNext }: {
+function CharacterView({ c, isBrandFace, fav, onFav, myVoices, canMakeVoice, spinCost, position, onClose, onPrev, onNext }: {
   c: Member; isBrandFace: boolean; myVoices: MyVoiceT[]; canMakeVoice: boolean;
+  /** Starred by this shop (sits first in the cast and in every picker), and the toggle. */
+  fav: boolean; onFav: () => void;
   /** Tokens to add one outfit's 3D view to a presenter that doesn't have it (0 = free for this viewer). */
   spinCost: number;
   position: string;
@@ -677,7 +742,13 @@ function CharacterView({ c, isBrandFace, myVoices, canMakeVoice, spinCost, posit
               <button type="button" className="pc-textbtn" onClick={() => { setRenaming(false); setNewName(c.name); }}>{t("Cancel")}</button>
             </form>
           ) : (
-            <h2 className="pc-name">{c.name}{c.custom && <button type="button" className="pc-pencil" onClick={() => setRenaming(true)} aria-label={t("Rename {name}", { name: c.name })}><Ico n="pencil" size={14} /></button>}</h2>
+            <h2 className="pc-name">{c.name}{c.custom && <button type="button" className="pc-pencil" onClick={() => setRenaming(true)} aria-label={t("Rename {name}", { name: c.name })}><Ico n="pencil" size={14} /></button>}
+              <button type="button" className={`pc-star${fav ? " on" : ""}`} onClick={onFav} aria-pressed={fav}
+                aria-label={fav ? t("Remove {name} from favourites", { name: c.name }) : t("Add {name} to favourites", { name: c.name })}
+                title={fav ? t("In your favourites — first in every picker") : t("Add to favourites — first in every picker")}>
+                <span aria-hidden="true">{fav ? "★" : "☆"}</span>
+              </button>
+            </h2>
           )}
           <p className="pc-vibe">{c.custom ? t(c.vibe) : c.vibe}</p>
           <div className="pc-facts">
@@ -876,6 +947,25 @@ ${SPIN_STAGE_CSS}
 .ph-bfbadge{left:9px;background:#E7C879;color:#3A2C06;box-shadow:0 2px 6px rgba(0,0,0,.18);}
 .ph-yoursbadge{left:9px;background:var(--green,#0C7A46);color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.18);}
 .ph-3d{right:9px;background:rgba(20,32,26,.62);color:#fff;letter-spacing:.03em;}
+.ph-face-img .ph-3d{top:auto;right:auto;left:9px;bottom:9px;}
+.ph-fav{position:absolute;top:7px;right:7px;z-index:3;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;padding:0;border:1px solid rgba(20,32,26,.10);background:rgba(255,255,255,.92);color:#6F7972;font-size:16px;line-height:1;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.14);transition:transform .12s,color .12s,background .12s;}
+.ph-fav::before{content:"";position:absolute;inset:-7px;border-radius:50%;} /* a 44px thumb target round the 30px dot */
+.ph-fav:hover{transform:scale(1.08);color:#A87A08;}
+.ph-fav.on{background:#FFF4D0;border-color:#E7C879;color:#A87A08;}
+.ph-fav:focus-visible{outline:2px solid var(--green,#0C7A46);outline-offset:2px;}
+.ph-refine{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-4px 2px 16px;}
+.ph-refine button{min-height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line,#E1DECD);background:#fff;font:inherit;font-size:12px;font-weight:700;color:var(--ink2,#4A554E);cursor:pointer;transition:background .12s,border-color .12s,color .12s;}
+.ph-refine button:hover{border-color:#9CCBB1;color:var(--ink,#14201A);}
+.ph-refine button.gap{margin-left:8px;}
+.ph-refine button.on{background:#EAF6EF;border-color:#9CCBB1;color:var(--green,#0C7A46);}
+.ph-refine .ph-refine-clear{border-color:transparent;background:transparent;color:var(--green,#0C7A46);text-decoration:underline;text-underline-offset:2px;}
+@media(pointer:coarse){.ph-refine button{min-height:40px;}}
+.ph-none{margin:0 2px 16px;font-size:13.5px;line-height:1.5;color:var(--ink2,#4A554E);}
+@media(max-width:640px){.ph-refine{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;margin:-6px 0 14px;padding:2px 0;}.ph-refine::-webkit-scrollbar{display:none;}.ph-refine button{flex:0 0 auto;}}
+.pc-star{position:relative;display:inline-grid;place-items:center;width:34px;height:34px;margin-left:8px;padding:0;vertical-align:middle;border-radius:50%;border:1px solid var(--line,#E1DECD);background:#fff;color:#6F7972;font-size:18px;line-height:1;cursor:pointer;transition:color .12s,background .12s;}
+.pc-star::before{content:"";position:absolute;inset:-5px;border-radius:50%;}
+.pc-star:hover{color:#A87A08;}
+.pc-star.on{background:#FFF4D0;border-color:#E7C879;color:#A87A08;}
 .ph-kind{position:absolute;top:9px;left:9px;z-index:2;display:inline-flex;align-items:center;font-size:10px;font-weight:800;border-radius:999px;padding:3px 8px;line-height:1.2;box-shadow:0 2px 6px rgba(0,0,0,.18);}
 .ph-kind.cartoon{background:#FFD45C;color:#4A3300;}
 .ph-kind.monster{background:#2B2140;color:#E9DEFF;}

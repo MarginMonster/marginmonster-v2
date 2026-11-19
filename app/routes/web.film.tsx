@@ -27,6 +27,7 @@ import { CHARACTER_VOICES, characterVoiceSample, isCharacterVoice } from "../lib
 import { GENRE_PACE, PACES, PACE_KEYS, cutCount, isPace, paceFor, type Pace } from "../lib/mv-pace";
 import { CAPTION_STYLES, captionStyleOf, type CaptionStyle } from "../lib/narrated-core";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
+import { favouritesFirst } from "../lib/favourites";
 import { nameTok } from "../lib/character-prompts";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
@@ -67,18 +68,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // The merchant's PRESENTER ROSTER (same faces as /web/presenters) — any one can be
   // cast as a character's locked face in a dialogue film. Their forged customs first,
   // then the premium-voiced built-in presenters.
-  const { customCastFor, stockVoicesFor } = await import("../lib/custom-avatars.server");
+  const { customCastFor, stockVoicesFor, favouritesFor } = await import("../lib/custom-avatars.server");
   const custom = await customCastFor(shop.id);
+  // the presenters and characters this shop starred (Presenters → ☆) lead the roster
+  const favs = await favouritesFor(shop.id);
   // A stock presenter the shop gave a voice of its own (Presenters → open one → Voice) brings that
   // voice into the part, exactly like a custom presenter does; otherwise the film auto-casts a voice.
   const stockVoice = await stockVoicesFor(shop.id);
   // `kind` — a person, or one of the stock CHARACTERS (cartoon characters, monsters). The characters
   // are offered only where a character belongs: the cast step of the story formats (see rosterFor).
-  const roster = [
+  const roster = favouritesFirst([
     ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null, kind: (c.kind || "person") as "person" | "cartoon" | "monster", look: (c.desc || "").slice(0, 220) })),
     ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null, kind: "person" as const, look: (a.desc || "").slice(0, 220) })),
     ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || a.voiceId || null, kind: (a.kind || "person") as "person" | "cartoon" | "monster", look: (a.desc || "").slice(0, 220) })),
-  ].slice(0, 70);
+  ], favs).slice(0, 70);
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
     roster,

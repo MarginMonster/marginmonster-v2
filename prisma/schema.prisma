@@ -161,6 +161,7 @@ model Shop {
   customAvatars      CustomAvatar[]
   voiceClones        VoiceClone[]
   presenterVoices    PresenterVoice[]
+  presenterFavourites PresenterFavourite[]
   /// The storefront this shop's catalogue was mirrored from (web accounts).
   storeUrl           String?
   catalog            CatalogProduct[]
@@ -328,6 +329,18 @@ model PresenterVoice {
   voiceId   String // a catalog voice, or one of this shop's own cloned voices
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([shopId, avatarId])
+}
+
+/// A presenter or character the shop starred: they sit first in the cast (Presenters) and in every
+/// picker that casts one (the Studio's presenters, the Movie Maker's roster).
+model PresenterFavourite {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  avatarId  String // a stock id ("mei", "pip") or one of the shop's own ("custom:…")
+  createdAt DateTime @default(now())
 
   @@unique([shopId, avatarId])
 }

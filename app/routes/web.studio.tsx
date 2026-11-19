@@ -26,6 +26,7 @@ import { uploadFileName, type UploadExt } from "../lib/upload-names";
 import { uprightPhoto } from "../lib/upright-photo.server";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
+import { favouritesFirst } from "../lib/favourites";
 import { AVATAR_VOICES, DEFAULT_AVATAR_VOICE, safeVoiceId } from "../lib/avatar-voice-catalog";
 import { VoicePicker, VoiceMaker, VOICE_UI_CSS, type MyVoiceT } from "../components/VoicePicker";
 import { CharacterForge, FORGE_CSS } from "../components/CharacterForge";
@@ -220,15 +221,16 @@ const decodeEntities = (s: string) => s
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const lang = readUiLang(request);
   const { account, shop } = await requireWebIdentity(request);
-  const { customCastFor } = await import("../lib/custom-avatars.server");
-  const custom = await customCastFor(shop.id);
-  const cast = [
+  const { customCastFor, favouritesFor } = await import("../lib/custom-avatars.server");
+  const [custom, favs] = await Promise.all([customCastFor(shop.id), favouritesFor(shop.id)]);
+  // the presenters this shop starred (Presenters → ☆) come first
+  const cast = favouritesFirst([
     // People only. A cartoon or a creature is cast in FILMS (Movie Maker has its own roster): the ad
     // pipelines are built around a waist-up human who can hold a product, and a head-to-feet creature
     // breaks their framing and their hand checks.
     ...custom.filter((c) => c.status === "ready" && (c.kind || "person") === "person").map((c) => ({ id: c.id, name: c.name, img: c.img, designed: false })),
     ...[...privateCastFor(account.email, shop.id, shop.domain), ...LIVE_AVATARS].map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), designed: DESIGNED_VOICES.has(a.id) })),
-  ];
+  ], favs);
   const forgingAvatars = custom
     .filter((c) => c.status !== "ready")
     .map((c) => ({ name: c.name, status: c.status, startedAt: c.createdAt.toISOString() }));
