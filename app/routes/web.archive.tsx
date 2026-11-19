@@ -580,6 +580,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const r = await db.asset.updateMany({ where: { id: { in: ids }, shopId: shop.id, status: "PENDING" }, data: { status: "APPROVED" } });
     return json({ keptMany: r.count });
   }
+  if (intent === "deleteMany") {
+    // Select mode's Delete: the picked pieces, this shop's only, never more than a page — and never a
+    // POSTED piece (its click tracking and boost links live on it; those are deleted one at a time).
+    const ids = String(form.get("assetIds") || "").split(",").map((x) => x.trim()).filter((x) => /^[a-z0-9]{10,40}$/i.test(x)).slice(0, 300);
+    if (!ids.length) return json({ deletedMany: 0, skippedPosted: 0 });
+    const skippedPosted = await db.asset.count({ where: { id: { in: ids }, shopId: shop.id, status: "PUBLISHED" } });
+    const r = await db.asset.deleteMany({ where: { id: { in: ids }, shopId: shop.id, status: { not: "PUBLISHED" } } });
+    return json({ deletedMany: r.count, skippedPosted });
+  }
   if (intent === "unkeep") {
     // Toggle Keep back off — the heart is a switch, so a second tap un-saves the
     // piece (it rejoins the 30-day auto-clear). Scoped to APPROVED so a tap can
@@ -1248,6 +1257,20 @@ const WA_CSS = `
 .wa-filterchip:hover{color:var(--ink,#14201A);border-color:#CFD6C5;}
 .wa-filterchip.on{background:#EAF6EF;color:var(--green,#0C7A46);border-color:#BFE2CD;}
 .wa-pick{margin-top:-2px;}
+.wa-selbtn{align-self:flex-start;}
+.wb-asset.wa-picked{box-shadow:0 0 0 3px var(--green,#0C7A46),0 10px 24px -14px rgba(12,122,70,.55);}
+.wa-sel{position:absolute;top:8px;right:8px;z-index:3;width:28px;height:28px;border-radius:50%;border:2px solid #fff;background:rgba(20,32,26,.38);display:grid;place-items:center;color:transparent;box-shadow:0 2px 8px rgba(0,0,0,.3);transition:background .12s,color .12s;}
+.wa-sel.on{background:var(--green,#0C7A46);color:#fff;}
+.wa-bulk{position:fixed;left:50%;transform:translateX(-50%);bottom:max(16px,env(safe-area-inset-bottom,0px));z-index:10650;display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:min(720px,calc(100vw - 32px));box-sizing:border-box;padding:10px 12px;border-radius:18px;background:#14201A;color:#fff;box-shadow:0 18px 40px -16px rgba(0,0,0,.55);}
+.wa-bulk-n{font:800 13.5px/1 Poppins,sans-serif;padding-left:4px;font-variant-numeric:tabular-nums;}
+.wa-bulk-link{border:0;background:none;color:#8FE3B4;font:700 12.5px/1 Inter,sans-serif;text-decoration:underline;text-underline-offset:2px;cursor:pointer;min-height:36px;padding:0 4px;}
+.wa-bulk-sp{flex:1 1 auto;}
+.wa-bulk-btn{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font:700 13px/1 Poppins,sans-serif;cursor:pointer;}
+.wa-bulk-btn:disabled{opacity:.45;cursor:default;}
+.wa-bulk-btn.keep:not(:disabled):hover{background:rgba(143,227,180,.18);}
+.wa-bulk-btn.del.armed{background:#B4532A;border-color:#B4532A;}
+.wa-bulk-done{min-height:40px;padding:0 14px;border-radius:999px;border:0;background:#fff;color:#14201A;font:800 13px/1 Poppins,sans-serif;cursor:pointer;}
+@media(max-width:640px){.wa-bulk{left:16px;right:16px;transform:none;width:auto;}.wa-bulk-sp{display:none;}.wa-bulk-btn,.wa-bulk-done{flex:1 1 auto;justify-content:center;}}
 .wa-select{position:relative;padding-right:30px;}
 .wa-select select{appearance:none;-webkit-appearance:none;border:0;background:transparent;font:inherit;color:inherit;padding:0;margin:0;max-width:220px;cursor:pointer;outline:none;}
 .wa-select::after{content:"";position:absolute;right:12px;top:50%;width:6px;height:6px;margin-top:-5px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);opacity:.6;pointer-events:none;}
@@ -1570,6 +1593,27 @@ export default function WebArchive() {
   // nothing destructive to reverse, just a "back in the oven" acknowledgement).
   const retryWithToast = (jobId: string) => { retryJob(jobId); setToast({ msg: t("Retrying — back in the oven.") }); };
 
+  // SELECT MODE — review many pieces at once (the Dashboard's "256 to review" had no fast way through):
+  // tap pieces to pick them, then Keep or Delete them together. Delete is armed (a second tap) and held
+  // behind the same Undo window as a single delete; posted pieces are never bulk-deleted (the server
+  // skips them — their click tracking and boost links live on them).
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [armBulk, setArmBulk] = useState(false);
+  useEffect(() => { if (!armBulk) return; const tm = setTimeout(() => setArmBulk(false), 4000); return () => clearTimeout(tm); }, [armBulk]);
+  const togglePick = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const endSelect = () => { setSelecting(false); setPicked(new Set()); setArmBulk(false); };
+  const keepPicked = () => { const ids = [...picked]; if (!ids.length) return; submit({ intent: "keepMany", assetIds: ids.join(",") }, { method: "post" }); setToast({ msg: ids.length === 1 ? t("Kept 1 piece.") : t("Kept {n} pieces.", { n: ids.length }) }); setPicked(new Set()); };
+  const deletePicked = () => {
+    const ids = [...picked];
+    if (!ids.length) return;
+    if (!armBulk) { setArmBulk(true); return; }
+    setArmBulk(false);
+    setPicked(new Set());
+    const pending = setTimeout(() => { setToast(null); submit({ intent: "deleteMany", assetIds: ids.join(",") }, { method: "post" }); }, 5000);
+    setToast({ msg: ids.length === 1 ? t("Deleted 1 piece.") : t("Deleted {n} pieces.", { n: ids.length }), pending, undo: () => { clearTimeout(pending); setPicked(new Set(ids)); setToast({ msg: t("Restored.") }); } });
+  };
+
   // Editable caption preview: "Post to socials" opens one caption box pre-filled
   // with an AI suggestion (intent "draft") the merchant can tweak or post as-is.
   const [capOpen, setCapOpen] = useState(false);
@@ -1661,6 +1705,11 @@ export default function WebArchive() {
   const clearingIds = shelf.filter((a) => a.daysLeft != null).map((a) => a.id);
   const keepAll = () => submit({ intent: "keepMany", assetIds: clearingIds.join(",") }, { method: "post" });
   const keptManyN = actionData && "keptMany" in actionData ? Number((actionData as { keptMany?: unknown }).keptMany) || 0 : 0;
+  // a bulk delete never takes a posted piece — say so when some were left
+  const skippedPosted = actionData && "skippedPosted" in actionData ? Number((actionData as { skippedPosted?: unknown }).skippedPosted) || 0 : 0;
+  useEffect(() => {
+    if (skippedPosted > 0) setToast({ msg: skippedPosted === 1 ? t("1 posted piece was kept — delete posted pieces one at a time.") : t("{n} posted pieces were kept — delete posted pieces one at a time.", { n: skippedPosted }) });
+  }, [actionData]); // eslint-disable-line react-hooks/exhaustive-deps
   const vIdx = viewer ? visibleShelf.findIndex((c) => c.id === viewer.id) : -1;
   const openAt = (idx: number) => { const n = visibleShelf[(idx % visibleShelf.length + visibleShelf.length) % visibleShelf.length]; if (n) setViewer(n); };
   // Keyboard: Escape closes, arrows cycle the current tab's pieces.
@@ -1746,7 +1795,7 @@ export default function WebArchive() {
           const n = (totals?.[k] ?? assets.filter((a) => A_KIND[a.type] === k).length)
             + cookingCards.filter((j) => j.kind === k && j.status === "generating").length;
           return (
-            <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setFilter("all"); setWho(""); setProd(""); }}>
+            <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setFilter("all"); setWho(""); setProd(""); endSelect(); }}>
               <Ico n={icon} /> {label} · {n}
             </button>
           );
@@ -1810,6 +1859,12 @@ export default function WebArchive() {
               </label>
             )}
           </div>
+        )}
+        {/* Select mode: tap pieces, then Keep or Delete them together */}
+        {tab !== "blog" && visibleShelf.length >= 2 && (
+          <button type="button" className={`wa-filterchip wa-selbtn${selecting ? " on" : ""}`} aria-pressed={selecting} onClick={() => (selecting ? endSelect() : setSelecting(true))}>
+            <Ico n="check" /> {selecting ? t("Done selecting") : t("Select")}
+          </button>
         )}
         {/* Only when there is genuinely more of THIS type to load. The library
             can be past the page size while the open tab is already complete —
@@ -1931,8 +1986,11 @@ export default function WebArchive() {
           {visibleShelf.map((a) => {
             const [cc, cl] = chipFor(a);
             return (
-              <div className="wb-asset" key={a.id}>
-                <button type="button" className="wa-poster" onClick={() => setViewer(a)} title={a.isAudio ? t("Open & play") : t("Open it big")}>
+              <div className={`wb-asset${selecting && picked.has(a.id) ? " wa-picked" : ""}`} key={a.id}>
+                <button type="button" className="wa-poster" onClick={() => (selecting ? togglePick(a.id) : setViewer(a))}
+                  title={selecting ? (picked.has(a.id) ? t("Unselect") : t("Select")) : a.isAudio ? t("Open & play") : t("Open it big")}
+                  aria-pressed={selecting ? picked.has(a.id) : undefined}>
+                  {selecting && <span className={`wa-sel${picked.has(a.id) ? " on" : ""}`} aria-hidden="true"><Ico n="check" size={14} /></span>}
                   {/* A cached first-frame JPG, NOT the video — iOS won't paint a <video>
                       frame unprompted, so loading videos just to show a poster made the
                       grid sit black and feel broken. The real <video> loads in the viewer. */}
@@ -2250,12 +2308,28 @@ export default function WebArchive() {
           fixed position + z-index clear any stacking context and it shows
           whether or not the viewer is open. */}
       {toast && mounted ? createPortal(
-        <div className="wa-toast" role="status" aria-live="polite">
+        <div className="wa-toast" role="status" aria-live="polite" style={selecting ? { bottom: 96 } : undefined}>
           <span className="wa-toast-ic"><Ico n={toast.undo ? "trash" : "check"} /></span>
           <span>{toast.msg}</span>
           {toast.undo && <button type="button" className="wa-toast-undo" onClick={toast.undo}>{t("Undo")}</button>}
         </div>
       , document.body) : null}
+
+      {/* Select mode's action bar, pinned to the bottom of the screen while picking */}
+      {selecting && (
+        <div className="wa-bulk" role="toolbar" aria-label={t("Selected pieces")}>
+          <span className="wa-bulk-n">{picked.size === 1 ? t("1 selected") : t("{n} selected", { n: picked.size })}</span>
+          <button type="button" className="wa-bulk-link" onClick={() => setPicked(picked.size >= visibleShelf.length ? new Set() : new Set(visibleShelf.map((a) => a.id)))}>
+            {picked.size >= visibleShelf.length ? t("Clear") : t("Select all {n}", { n: visibleShelf.length })}
+          </button>
+          <span className="wa-bulk-sp" />
+          <button type="button" className="wa-bulk-btn keep" disabled={!picked.size || busy} onClick={keepPicked}><Ico n="heart" /> {t("Keep")}</button>
+          <button type="button" className={`wa-bulk-btn del${armBulk ? " armed" : ""}`} disabled={!picked.size || busy} onClick={deletePicked}>
+            <Ico n="trash" /> {armBulk ? t("Tap again to delete {n}", { n: picked.size }) : t("Delete")}
+          </button>
+          <button type="button" className="wa-bulk-done" onClick={endSelect}>{t("Done")}</button>
+        </div>
+      )}
     </div>
   );
 }

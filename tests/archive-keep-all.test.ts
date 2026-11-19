@@ -33,3 +33,13 @@ test("the Films chip knows every kind a Movie Maker pipeline records", () => {
     assert.ok(kinds.has(kind), `Films chip includes "${kind}"`);
   }
 });
+
+test("select mode: many pieces kept or deleted at once — never a posted one, never another shop's", () => {
+  const src = fs.readFileSync(new URL("../app/routes/web.archive.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const act = src.slice(src.indexOf('if (intent === "deleteMany")'), src.indexOf('if (intent === "unkeep")'));
+  assert.ok(act.includes("shopId: shop.id") && act.includes('status: { not: "PUBLISHED" }'), "scoped to the shop, posted pieces skipped");
+  assert.ok(act.includes(".slice(0, 300)"), "never more than a page");
+  const ui = src.slice(src.indexOf("const deletePicked"), src.indexOf("const deletePicked") + 800);
+  assert.ok(ui.includes("if (!armBulk) { setArmBulk(true); return; }"), "armed: a second tap deletes");
+  assert.ok(ui.includes("setTimeout(") && ui.includes("undo:"), "held behind an Undo window like a single delete");
+});
