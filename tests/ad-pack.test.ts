@@ -62,7 +62,7 @@ test("copy is held to its field without cutting a word", () => {
 test("the pack is wired: captions + copy intents, kept files, grounded copy", () => {
   const route = read("app/routes/web.archive.tsx");
   assert.ok(route.includes('intent === "adsrt"') && route.includes('intent === "adcopy"'));
-  assert.ok(route.includes('new Set(["adsize", "adsrt", "adcopy"])'), "no shelf reload for any part of the pack");
+  assert.ok(/new Set\(\["adsize", "adsrt", "adcopy"[^\]]*\]\)/.test(route), "no shelf reload for any part of the pack");
   const srv = read("app/lib/ad-pack.server.ts");
   assert.ok(srv.includes("CLAIMS_GUARDRAIL"), "copy follows the shared claims guardrail");
   assert.ok(srv.includes("createWhisperx(`${base}/renders/${audioName}`, null)"), "the language is heard, not assumed");

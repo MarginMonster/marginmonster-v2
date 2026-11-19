@@ -977,7 +977,7 @@ ${SPIN_STAGE_CSS}
 .ph-new-ico{flex:0 0 auto;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#12A85E,#0A5F38);color:#fff;display:grid;place-items:center;box-shadow:0 10px 20px -8px rgba(12,122,70,.65);}
 .ph-new b{font-family:Poppins,sans-serif;font-weight:800;font-size:15px;line-height:1.2;}
 .ph-new-sub{font-size:11.5px;line-height:1.42;color:var(--ink2,#4A554E);}
-.ph-new i{font-style:normal;display:inline-flex;align-items:center;gap:5px;margin-top:4px;padding:7px 13px;border-radius:999px;background:#fff;border:1px solid #BFE0CD;color:var(--green,#0C7A46);font-size:12px;font-weight:800;white-space:nowrap;}
+.ph-new i{font-style:normal;display:inline-flex;align-items:center;justify-content:center;gap:5px;margin-top:4px;padding:7px 13px;border-radius:999px;background:#fff;border:1px solid #BFE0CD;color:var(--green,#0C7A46);font-size:12px;font-weight:800;line-height:1.25;max-width:100%;box-sizing:border-box;text-align:center;} /* wraps inside the tile (one line spilled out of a 178px column) */
 
 @media(max-width:1179px){.ph-lineup{--fit:72cqw;}.ph-lu.r3{display:none;}}
 @media(max-width:899px){

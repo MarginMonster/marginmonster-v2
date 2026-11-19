@@ -11,7 +11,7 @@ import { AD_SIZES, AD_SIZE_KEYS, isAdSize, type AdSize } from "../lib/ad-sizes";
 
 // The ad pack (a size, the captions file, the ad copy) changes nothing in the library, so it must not
 // reload the whole shelf (hundreds of pieces) every time a part of it lands.
-const AD_PACK_INTENTS = new Set(["adsize", "adsrt", "adcopy"]);
+const AD_PACK_INTENTS = new Set(["adsize", "adsrt", "adcopy", "share", "unshare"]);
 export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultShouldRevalidate }) =>
   AD_PACK_INTENTS.has(String(formData?.get("intent") || "")) ? false : defaultShouldRevalidate;
 import { useEffect, useRef, useState } from "react";
@@ -342,6 +342,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           } catch { return null; }
         })(),
         missed: pickedButMissed(a.metaJson, a.bodyJson),
+        // The share link's token while the piece is shared (the owner's own page — never on the public one).
+        shareToken: (() => { try { const s = JSON.parse(a.metaJson || "{}").share; return s && typeof s.token === "string" ? (s.token as string) : null; } catch { return null; } })(),
         // The ad pack's copy, once written for this piece (kept on it), so it shows the moment the pack opens.
         adCopy: (() => {
           try {
@@ -442,6 +444,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       : r.error === "no-speech" ? tr(lang, "No one speaks in this video, so there are no captions to make.")
       : tr(lang, "The captions didn't come out — try again.");
     return json({ adsrt: { ok: false as const, error: why } });
+  }
+
+  // SHARE LINK: a public page for this one piece — its media and title, nothing else of the account —
+  // made when asked for. The token lives on the piece, so "Stop sharing" kills every copy of the link.
+  if (intent === "share" || intent === "unshare") {
+    const a = await db.asset.findFirst({ where: { id: String(form.get("assetId") || ""), shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO"] } }, select: { id: true, metaJson: true } });
+    if (!a) return json({ share: { ok: false as const, error: tr(lang, "That piece is gone.") } });
+    let meta: Record<string, unknown> = {};
+    try { meta = JSON.parse(a.metaJson || "{}"); } catch { /* none */ }
+    const cur = (meta.share as { token?: string } | undefined)?.token || "";
+    const linkFor = (tok: string) => `${externalOrigin(request)}/s/${a.id}/${tok}`;
+    if (intent === "share") {
+      if (cur) return json({ share: { ok: true as const, url: linkFor(cur) } });
+      const { randomBytes } = await import("node:crypto");
+      const token = randomBytes(12).toString("base64url");
+      const saved = await db.asset.updateMany({ where: { id: a.id, shopId: shop.id, metaJson: a.metaJson }, data: { metaJson: JSON.stringify({ ...meta, share: { token, at: new Date().toISOString() } }) } });
+      if (saved.count !== 1) return json({ share: { ok: false as const, error: tr(lang, "That didn't save — try again.") } });
+      return json({ share: { ok: true as const, url: linkFor(token) } });
+    }
+    if (cur) {
+      const rest = Object.fromEntries(Object.entries(meta).filter(([k]) => k !== "share"));
+      const saved = await db.asset.updateMany({ where: { id: a.id, shopId: shop.id, metaJson: a.metaJson }, data: { metaJson: JSON.stringify(rest) } });
+      if (saved.count !== 1) return json({ share: { ok: false as const, error: tr(lang, "That didn't save — try again.") } });
+    }
+    return json({ share: { ok: true as const, url: null } });
   }
 
   // AD PACK · AD COPY: a headline and primary text to run the piece with, grounded only in what the piece
@@ -1084,6 +1111,14 @@ const WA_CSS = `
 .wa-copy-again{align-self:flex-start;min-height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);font:700 12.5px/1 Poppins,sans-serif;cursor:pointer;}
 .wa-copy-again:disabled{cursor:progress;opacity:.7;}
 .wa-copy-err{margin:0;font-size:12px;color:#B4532A;}
+.wa-share{display:flex;flex-direction:column;gap:8px;}
+.wa-share-url{width:100%;box-sizing:border-box;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line,#E1DECD);background:#fff;font:500 12.5px/1.2 Inter,sans-serif;color:var(--ink,#14201A);}
+.wa-share-url:focus{outline:2px solid var(--green,#0C7A46);outline-offset:1px;}
+.wa-share-acts{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+.wa-share-acts .wa-share-btn{position:static;min-height:36px;}
+.wa-share-acts a.wa-copy-again{display:inline-flex;align-items:center;text-decoration:none;}
+.wa-share-stop{min-height:36px;padding:0 10px;border:0;background:transparent;color:#B4532A;font:700 12.5px/1 Poppins,sans-serif;text-decoration:underline;text-underline-offset:2px;cursor:pointer;margin-left:auto;}
+.wa-share-stop:disabled{opacity:.6;cursor:progress;}
 
 /* Two-layer premium gradient baked into the base rule: the viewer is portaled to
    document.body (outside .wb-main), so the .wb-main-scoped two-layer in web.tsx no
@@ -1212,6 +1247,13 @@ const WA_CSS = `
 .wa-filterchip{display:inline-flex;align-items:center;gap:5px;font-family:Poppins,sans-serif;font-weight:700;font-size:12.5px;color:var(--ink2,#4A554E);background:#fff;border:1px solid var(--line,#E1DECD);border-radius:999px;padding:6px 13px;cursor:pointer;line-height:1;transition:background .12s,color .12s,border-color .12s;}
 .wa-filterchip:hover{color:var(--ink,#14201A);border-color:#CFD6C5;}
 .wa-filterchip.on{background:#EAF6EF;color:var(--green,#0C7A46);border-color:#BFE2CD;}
+.wa-pick{margin-top:-2px;}
+.wa-select{position:relative;padding-right:30px;}
+.wa-select select{appearance:none;-webkit-appearance:none;border:0;background:transparent;font:inherit;color:inherit;padding:0;margin:0;max-width:220px;cursor:pointer;outline:none;}
+.wa-select::after{content:"";position:absolute;right:12px;top:50%;width:6px;height:6px;margin-top:-5px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);opacity:.6;pointer-events:none;}
+.wa-select:focus-within{border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.wa-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
+@media(max-width:640px){.wa-select select{max-width:150px;}}
 .wa-keepall{display:inline-flex;align-items:center;gap:4px;font-weight:700;color:var(--green,#0C7A46);}
 .wa-keepall:disabled{opacity:.55;cursor:default;}
 .wa-keptmany{color:var(--green,#0C7A46);}
@@ -1367,6 +1409,49 @@ function AdCopyBlock({ assetId, initial }: { assetId: string; initial: { headlin
   );
 }
 
+/** Share link: a public page for this one piece. Made on request; Copy, the phone's own share sheet,
+ *  Open, and Stop sharing (which kills every copy of the link). */
+function ShareLink({ assetId, title, token }: { assetId: string; title: string; token: string | null }) {
+  const t = useT();
+  const f = useFetcher<{ share?: { ok: boolean; url?: string | null; error?: string } }>();
+  const [copied, setCopied] = useState(false);
+  const [origin, setOrigin] = useState("");
+  const [canShare, setCanShare] = useState(false);
+  useEffect(() => { setOrigin(window.location.origin); setCanShare(typeof navigator !== "undefined" && typeof navigator.share === "function"); }, []);
+  const got = f.data?.share;
+  const busy = f.state !== "idle";
+  const url = got?.ok ? (got.url ?? null) : token && origin ? `${origin}/s/${assetId}/${token}` : null;
+  const err = got && !got.ok ? got.error : null;
+  const copy = async () => {
+    if (!url) return;
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* the field is selectable */ }
+  };
+  if (!url) {
+    return (
+      <button type="button" className={`wa-size${busy ? " making" : ""}${err ? " err" : ""}`} disabled={busy}
+        onClick={() => f.submit({ intent: "share", assetId }, { method: "post" })}>
+        <span className="wa-size-shape wa-badge" aria-hidden="true"><Ico n="link" size={14} /></span>
+        <span className="wa-size-txt">
+          <b>{busy ? t("Making the link…") : err ? t("Try again") : t("Make a share link")}</b>
+          <small>{err && !busy ? err : t("Anyone with the link can watch it — nothing else of yours")}</small>
+        </span>
+      </button>
+    );
+  }
+  return (
+    <div className="wa-share">
+      <input className="wa-share-url" readOnly value={url} aria-label={t("Share link")} onFocus={(e) => e.currentTarget.select()} />
+      <div className="wa-share-acts">
+        <button type="button" className="wa-copy-btn wa-share-btn" onClick={copy}>{copied ? t("Copied ✓") : t("Copy link")}</button>
+        {canShare && <button type="button" className="wa-copy-again" onClick={() => { navigator.share({ title, url }).catch(() => { /* closed */ }); }}>{t("Share…")}</button>}
+        <a className="wa-copy-again" href={url} target="_blank" rel="noreferrer">{t("Open")} ↗</a>
+        <button type="button" className="wa-share-stop" disabled={busy} onClick={() => f.submit({ intent: "unshare", assetId }, { method: "post" })}>{busy ? t("Stopping…") : t("Stop sharing")}</button>
+      </div>
+      {err && !busy && <p className="wa-copy-err">{err}</p>}
+    </div>
+  );
+}
+
 export default function WebArchive() {
   const t = useT();
   const { section, q, assets, stills, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
@@ -1388,9 +1473,14 @@ export default function WebArchive() {
   // "all" is the default; the chips only render when there's something to sift.
   type AFilter = "all" | "clearing" | "kept" | "films" | "faceless";
   const [filter, setFilter] = useState<AFilter>("all");
+  // …and by who is in it / what it's for (the menus beside the chips); "" = any
+  const [who, setWho] = useState("");
+  const [prod, setProd] = useState("");
   const [viewer, setViewer] = useState<(typeof assets)[number] | null>(null);
   // "Every size" panel — closed again whenever a different piece opens
   const [sizesFor, setSizesFor] = useState<string | null>(null);
+  // the Share link panel, the same way
+  const [shareFor, setShareFor] = useState<string | null>(null);
   const vfullRef = useRef<HTMLVideoElement | null>(null);
   const [needsUnmute, setNeedsUnmute] = useState(false);
   // Landscape (16:9) / square videos need a WIDE viewer, not the portrait stage. Seed from the stored
@@ -1549,7 +1639,15 @@ export default function WebArchive() {
   // the empty state stay on the unfiltered `shelf` — they describe the library,
   // not the chip. Oldest-first would bury the nearest-purge pieces, so the
   // default desc order already puts "clearing soon" where the merchant expects.
-  const visibleShelf = !canFilter || filter === "all"
+  // Who's in it / what it's for: the presenters and products this tab holds, most-used first.
+  const optsOf = (key: "presenter" | "product"): Array<[string, number]> => {
+    const m = new Map<string, number>();
+    for (const a of shelf) { const v = a.details?.[key]; if (v) m.set(v, (m.get(v) || 0) + 1); }
+    return [...m.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]));
+  };
+  const whoOpts = optsOf("presenter");
+  const prodOpts = optsOf("product");
+  const visibleShelf = (!canFilter || filter === "all"
     ? shelf
     : filter === "clearing"
       ? shelf.filter((a) => a.daysLeft != null)
@@ -1557,7 +1655,8 @@ export default function WebArchive() {
         ? shelf.filter((a) => a.group === "film")
         : filter === "faceless"
           ? shelf.filter((a) => a.group === "faceless")
-          : shelf.filter((a) => isKept(a));
+          : shelf.filter((a) => isKept(a)))
+    .filter((a) => (!who || a.details?.presenter === who) && (!prod || a.details?.product === prod));
   // "Keep all": what is on the clock in the open tab, saved in one tap.
   const clearingIds = shelf.filter((a) => a.daysLeft != null).map((a) => a.id);
   const keepAll = () => submit({ intent: "keepMany", assetIds: clearingIds.join(",") }, { method: "post" });
@@ -1647,7 +1746,7 @@ export default function WebArchive() {
           const n = (totals?.[k] ?? assets.filter((a) => A_KIND[a.type] === k).length)
             + cookingCards.filter((j) => j.kind === k && j.status === "generating").length;
           return (
-            <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setFilter("all"); }}>
+            <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setFilter("all"); setWho(""); setProd(""); }}>
               <Ico n={icon} /> {label} · {n}
             </button>
           );
@@ -1686,6 +1785,29 @@ export default function WebArchive() {
             )}
             {keptCount > 0 && (
               <button type="button" className={`wa-filterchip${filter === "kept" ? " on" : ""}`} aria-pressed={filter === "kept"} onClick={() => setFilter("kept")}><Ico n="heart" /> {t("Kept")} · {keptCount}</button>
+            )}
+          </div>
+        )}
+        {/* Who's in it and what it's for — a menu each, when the open tab has more than one of them. */}
+        {(whoOpts.length > 1 || prodOpts.length > 1 || who || prod) && (
+          <div className="wa-filters wa-pick" role="group" aria-label={t("Filter by presenter or product")}>
+            {(whoOpts.length > 1 || who) && (
+              <label className={`wa-filterchip wa-select${who ? " on" : ""}`}>
+                <Ico n="presenter" /> <span className="wa-sr">{t("Presenter")}</span>
+                <select value={who} onChange={(e) => setWho(e.target.value)} aria-label={t("Presenter")}>
+                  <option value="">{t("Any presenter")}</option>
+                  {whoOpts.map(([v, n]) => <option key={v} value={v}>{v} · {n}</option>)}
+                </select>
+              </label>
+            )}
+            {(prodOpts.length > 1 || prod) && (
+              <label className={`wa-filterchip wa-select${prod ? " on" : ""}`}>
+                <Ico n="box" /> <span className="wa-sr">{t("Product")}</span>
+                <select value={prod} onChange={(e) => setProd(e.target.value)} aria-label={t("Product")}>
+                  <option value="">{t("Any product")}</option>
+                  {prodOpts.map(([v, n]) => <option key={v} value={v}>{v.length > 42 ? `${v.slice(0, 40)}…` : v} · {n}</option>)}
+                </select>
+              </label>
             )}
           </div>
         )}
@@ -2034,6 +2156,18 @@ export default function WebArchive() {
                       <button type="button" className="wa-vbtn full" disabled={busy} onClick={() => startPost(viewer.id)}>{isCreator ? t("Share to socials") : t("Post to socials")}</button>
                     )}
                     {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}><Ico n="download" /> {t("Download")}</a>}
+                    {viewer.media && !viewer.expired && (
+                      <button type="button" className={`wa-vbtn ghost${shareFor === viewer.id ? " on" : ""}`} aria-expanded={shareFor === viewer.id}
+                        onClick={() => setShareFor((cur) => (cur === viewer.id ? null : viewer.id))}>
+                        <Ico n="link" /> {t("Share link")}
+                      </button>
+                    )}
+                    {viewer.media && !viewer.expired && shareFor === viewer.id && (
+                      <div className="wa-sizes" role="group" aria-label={t("Share link")}>
+                        <p className="wa-sizes-h">{t("A page with just this piece on it, to send to anyone — a client, a friend, a group chat.")}</p>
+                        <ShareLink key={`${viewer.id}-share`} assetId={viewer.id} title={viewer.title} token={viewer.shareToken} />
+                      </div>
+                    )}
                     {viewer.hasShots && viewer.media && <a className="wa-vbtn ghost" href={`/web/filmedit/${viewer.id}`} title={t("Open the shot timeline — preview and edit each shot")}><Ico n="video" /> {t("Edit shots")}</a>}
                     {(viewer.isVideo || viewer.type === "IMAGE_AD") && viewer.media && (
                       <button type="button" className={`wa-vbtn ghost${sizesFor === viewer.id ? " on" : ""}`} aria-expanded={sizesFor === viewer.id}
