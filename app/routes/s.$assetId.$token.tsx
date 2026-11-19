@@ -6,7 +6,7 @@
  * Every shared piece is also an ad for us: the people a merchant sends their ad or film to are other
  * makers and other shop owners — the badge is tracked (utm_source=share). */
 
-import { json, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
+import { json, type HeadersFunction, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import crypto from "node:crypto";
 import path from "node:path";
@@ -48,6 +48,10 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     { headers: { "Cache-Control": "public, max-age=120", "X-Robots-Tag": "noindex" } },
   );
 };
+
+// The loader's headers on the PAGE itself too (Remix only sends them on data requests otherwise):
+// noindex + a short public cache — and the "not shared any more" answer's own.
+export const headers: HeadersFunction = ({ loaderHeaders, errorHeaders }) => errorHeaders ?? loaderHeaders;
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   if (!data) return [{ title: "Not shared · EasyMode" }, { name: "robots", content: "noindex" }];

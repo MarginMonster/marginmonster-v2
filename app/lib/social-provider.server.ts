@@ -187,6 +187,13 @@ export async function publishPost(
     form.append("user", username);
     form.append("title", title);
     for (const p of params.platforms) form.append("platform[]", p);
+    // THE PLATFORMS' OWN "AI-GENERATED" LABEL. Everything EasyMode posts is made with AI, and the caption
+    // already says so (#EasyModeAi); this sets each platform's native disclosure as well — TikTok's
+    // "Creator labeled as AI-generated" (is_aigc), Instagram's AI info, YouTube's synthetic-media flag,
+    // X's made_with_ai — through upload-post's one alias (docs.upload-post.com/guides/ai-content-labeling).
+    // Facebook Reels take their own field; a Facebook photo or Page post has no API label (a no-op).
+    form.append("is_ai_generated", "true");
+    if (params.isVideo && params.platforms.includes("facebook")) form.append("facebook_is_ai_generated", "true");
 
     if (params.isVideo) {
       // video accepts a URL string — provider fetches it directly

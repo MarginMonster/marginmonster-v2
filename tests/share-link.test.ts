@@ -23,3 +23,8 @@ test("sharing is the owner's, per piece, and stopping it kills the link", () => 
   assert.ok(/updateMany\(\{ where: \{ id: a\.id, shopId: shop\.id, metaJson: a\.metaJson \}/.test(act), "pinned writes");
   assert.ok(act.includes('filter(([k]) => k !== "share")'), "unshare removes the token");
 });
+
+test("the page itself carries noindex (not only its data requests)", () => {
+  const src = read("app/routes/s.$assetId.$token.tsx");
+  assert.ok(src.includes("export const headers: HeadersFunction"), "document headers exported");
+});
