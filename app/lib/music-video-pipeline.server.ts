@@ -629,6 +629,8 @@ export async function generateMusicVideo(opts: {
   /** Owner PREVIEWED + approved these exact per-scene stills — render them, don't re-seed (no surprise).
    *  Index-aligned with scenes; a null entry means that scene fell back and should seed fresh. */
   approvedSceneImgs?: (string | null)[];
+  /** LYRICS ON SCREEN — "bold" (big words in time) | "subtitles" (each line along the bottom) | "off". */
+  captions?: "off" | "bold" | "subtitles";
   resume?: { ckTreatment?: string; ckSong?: string; ckArtist?: string; [k: string]: string | undefined };
 }): Promise<string> {
   const tmpl = filmTemplate("musicvideo");
@@ -821,6 +823,14 @@ export async function generateMusicVideo(opts: {
   const outName = `mv-${Date.now()}-${rid()}.mp4`;
   const outPath = path.join(RENDERS(), outName);
   await assembleMusicVideo(good, songPath, D, outPath, W, H, cuts);
+  // 7a) LYRICS ON SCREEN (the maker's choice): the lyric lines, timed to the singing as it was actually
+  //     sung — the song engine decides when each line comes, so the scenes can't say. Never costs the video.
+  let captions: string = "off";
+  if (opts.captions && opts.captions !== "off") {
+    const { captionLyrics } = await import("./film-captions.server");
+    const { lyricLinesOf } = await import("./lyric-sync");
+    captions = await captionLyrics({ filmPath: outPath, lyricLines: opts.songUrl ? [] : lyricLinesOf(scenes), style: opts.captions, jobId });
+  }
   const finalDur = ffprobeDuration(outPath);
   try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;
@@ -837,6 +847,7 @@ export async function generateMusicVideo(opts: {
         genre, genreLabel: g.label, scenes: good.length, lipSynced: good.length, aspect: (opts.aspect === "16:9" || opts.aspect === "1:1") ? opts.aspect : "9:16",
         targetSeconds: targetLen, songSeconds: Math.round(songDur), seconds: Math.round(finalDur), voiceMatched, engine: "kling2.5+synclipsync",
         pace, cuts: cuts ? Math.max(0, cuts.length - 1) : Math.max(0, good.length - 1), cutOnBeat: onBeat.length > 2,
+        captions,
       }),
     },
   });

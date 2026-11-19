@@ -934,6 +934,9 @@ export default function FilmStudio() {
   // one here holds it, whatever genre is chosen afterwards.
   const [pacePick, setPacePick] = useState<Pace | "">("");
   const mvPace: Pace = paceFor(filmGenre, pacePick);
+  // LYRICS ON SCREEN for the music video. Off unless picked: the format is a performance video, not a
+  // karaoke one (film-engine: captions:false) — the lyrics are an option the maker turns on.
+  const [mvLyrics, setMvLyrics] = useState<CaptionStyle>("off");
   // BYO-song (Music Video): "write" = auto-generate the song, "upload" = merchant's own track.
   const [songSource, setSongSource] = useState<"write" | "upload">("write");
   const [filmSongUrl, setFilmSongUrl] = useState("");
@@ -2210,6 +2213,18 @@ export default function FilmStudio() {
                 <button type="button" className={`mm-aspect-opt${mvAspect === "1:1" ? " on" : ""}`} aria-pressed={mvAspect === "1:1"} onClick={() => setMvAspect("1:1")}>{t("Square")}<small>1:1</small></button>
               </div>
             </div>
+            {/* the song's own lyrics on screen, timed to the singing as it was sung */}
+            <div className="mm-aspect" role="group" aria-label={t("Lyrics on screen")}>
+              <span className="mm-aspect-lbl">{t("Lyrics on screen")}</span>
+              <div className="mm-aspect-seg">
+                {(["off", "bold", "subtitles"] as const).map((k) => (
+                  <button type="button" key={k} className={`mm-aspect-opt${mvLyrics === k ? " on" : ""}`} aria-pressed={mvLyrics === k} onClick={() => setMvLyrics(k)}>
+                    {k === "bold" ? t("Big words") : k === "subtitles" ? t("Subtitles") : t("Off")}
+                    <small>{k === "bold" ? t("in time") : k === "subtitles" ? t("each line") : t("none")}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
             {tmpl?.lipSyncSinger && artistPick && artistVoiceId && (
               <label className="mm-voicetog">
                 <input type="checkbox" checked={singVoice} onChange={(e) => setSingVoice(e.target.checked)} />
@@ -2225,6 +2240,7 @@ export default function FilmStudio() {
               <input type="hidden" name="template" value={template} />
               <input type="hidden" name="filmGenre" value={filmGenre} />
               <input type="hidden" name="filmPace" value={mvPace} />
+              <input type="hidden" name="filmCaptions" value={mvLyrics} />
               {songSource === "upload" && filmSongUrl && <input type="hidden" name="filmSongUrl" value={filmSongUrl} />}
               {filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}
               {customProps.length > 0 && <input type="hidden" name="filmCustomProps" value={JSON.stringify(customProps)} />}

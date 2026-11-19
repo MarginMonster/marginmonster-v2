@@ -71,23 +71,74 @@ export async function captionFilm(o: {
     try { said = trimToSound(windows, (await runFfmpeg(["-i", o.filmPath, "-vn", "-af", "silencedetect=noise=-30dB:d=0.6", "-f", "null", "-"])).stderr); } catch { /* the whole shot */ }
     const timed = scriptWordTimes(lines, words, said, { minHeard: 0.6, lead: 0.25, tail: 0.3 });
     const cards: Card[] = o.style === "bold" ? boldCards(timed) : subtitleCards(lines, windows, subtitleChars(W, H), timed);
-    let font = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-    try { font = await resolveTextFont(lines.join(" ")); } catch { /* keep Poppins */ }
-    const filters = captionFilters(cards, o.style, font, W, H);
-    if (!filters.length) return "off";
-
     // 3) burn them in; the sound is not touched
-    const run = await runFfmpeg(["-y", "-i", o.filmPath, "-vf", filters.join(","), "-threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", tmp]);
+    const drawn = await burnCards(o.filmPath, tmp, cards, o.style, lines.join(" "), W, H, total);
     await beat();
-    if (run.status !== 0 || !fs.existsSync(tmp) || Math.abs(ffprobeDuration(tmp) - total) > 0.5) {
-      console.error(`[captions] the captions could not be drawn — the film ships without them: ${(run.stderr || "").slice(-200)}`);
-      return "off";
-    }
-    fs.renameSync(tmp, o.filmPath);
+    if (!drawn) return "off";
     console.log(`[captions] ${o.style}: ${cards.length} cards on a ${Math.round(total)}s film (${words.length ? "timed to the voices" : "timed by shot length"})`);
     return o.style;
   } catch (e) {
     console.error(`[captions] failed — the film ships without captions: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+    return "off";
+  } finally {
+    for (const f of [audio, tmp]) { try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* best effort */ } }
+  }
+}
+
+/** Draw caption cards onto the film (via `tmp`, then over it). The font follows the text (a script
+ *  Poppins can't draw gets a font that can). False — and the film untouched — when it can't be drawn. */
+async function burnCards(filmPath: string, tmp: string, cards: Card[], style: CaptionStyle, sample: string, W: number, H: number, total: number): Promise<boolean> {
+  let font = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  try { font = await resolveTextFont(sample); } catch { /* keep Poppins */ }
+  const filters = captionFilters(cards, style, font, W, H);
+  if (!filters.length) return false;
+  const run = await runFfmpeg(["-y", "-i", filmPath, "-vf", filters.join(","), "-threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", tmp]);
+  if (run.status !== 0 || !fs.existsSync(tmp) || Math.abs(ffprobeDuration(tmp) - total) > 0.5) {
+    console.error(`[captions] the captions could not be drawn — the film ships without them: ${(run.stderr || "").slice(-200)}`);
+    return false;
+  }
+  fs.renameSync(tmp, filmPath);
+  return true;
+}
+
+/** LYRICS ON SCREEN for a music video: the song is heard (whisperx, language detected), the heard words
+ *  are matched to the lyric lines (lyric-sync.ts), and each line shows in its own words, in time with the
+ *  singing. A song whose words barely match the lyrics (a merchant's own track) is captioned from what is
+ *  heard instead. Never costs the video: anything that goes wrong leaves it as it was ("off"). */
+export async function captionLyrics(o: { filmPath: string; lyricLines: string[]; style: CaptionStyle; jobId?: string }): Promise<CaptionStyle> {
+  if (o.style === "off" || !fs.existsSync(o.filmPath)) return "off";
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if (!base) return "off";
+  const id = `${Date.now()}-${crypto.randomBytes(5).toString("hex")}`;
+  const audio = path.join(RENDERS(), `lyr-${id}.mp3`);
+  const tmp = path.join(RENDERS(), `lyr-${id}.mp4`);
+  try {
+    const total = ffprobeDuration(o.filmPath);
+    if (!(total > 1)) return "off";
+    const probe = await runFfmpeg(["-i", o.filmPath, "-frames:v", "1", "-f", "null", "-"]);
+    const size = /Video:[^\n]*?\b(\d{3,5})x(\d{3,5})\b/.exec(probe.stderr);
+    if (!size) return "off";
+    const W = Number(size[1]), H = Number(size[2]);
+    const ex = await runFfmpeg(["-y", "-i", o.filmPath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", audio]);
+    if (ex.status !== 0 || !fs.existsSync(audio)) return "off";
+    try { await mirrorRender(path.basename(audio), fs.readFileSync(audio)); } catch { /* the disk copy is served */ }
+    const heard = wordsFromWhisperx(await repPoll(await createWhisperx(`${base}/renders/${path.basename(audio)}`, null), 5 * 60_000, "lyrics"));
+    if (o.jobId) await checkpointJob(o.jobId, { ckBeat: Date.now() });
+    if (heard.length < 3) { console.log("[lyrics] too little was heard in the song — no lyrics on screen"); return "off"; }
+    const { lyricWordTimes } = await import("./lyric-sync");
+    let r = lyricWordTimes(o.lyricLines, heard);
+    if (r.total === 0 || r.matched / r.total < 0.3) {
+      // not the song these lyrics were written for: caption what is sung
+      const { srtCues } = await import("./ad-pack");
+      r = lyricWordTimes(srtCues(heard, { maxChars: 42, maxDur: 5, pause: 0.8 }).map((c) => c.text), heard);
+    }
+    if (!r.lines.length) return "off";
+    const cards: Card[] = o.style === "bold" ? boldCards(r.timed) : subtitleCards(r.lines, r.windows, subtitleChars(W, H), r.timed);
+    if (!(await burnCards(o.filmPath, tmp, cards, o.style, r.lines.join(" "), W, H, total))) return "off";
+    console.log(`[lyrics] ${o.style}: ${cards.length} cards, ${r.matched}/${r.total} lyric words heard, ${r.lines.length} lines on a ${Math.round(total)}s video`);
+    return o.style;
+  } catch (e) {
+    console.error(`[lyrics] failed — the video ships without lyrics on screen: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     return "off";
   } finally {
     for (const f of [audio, tmp]) { try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* best effort */ } }
