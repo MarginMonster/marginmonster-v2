@@ -129,3 +129,65 @@ test("a line that ends close to the end of the clip keeps its last word", () => 
   const plan = planClipTrim(parseSilences("silence_start: 7.85\nsilence_end: 8.04 | silence_duration: 0.19"), 8.04, { chained: false });
   assert.equal(plan.endAt, 8.04);
 });
+
+// ── Trimming on the heard words ────────────────────────────────────────────────────────────────────
+// fal "standard" take of "The Watch in Her Hands", shot 1 (2026-11-19): a breath at the top, then quiet
+// split by a 60 ms click, and the line starts at 2.25 s. Measured with the film's own SILENCE_FILTER;
+// the words are whisperx's.
+import { silencesFromWords, quietShare, planFromWords, interiorCutFromWords, planShift, QUIET_CONFIRM, PAUSE_KEEP } from "../app/lib/clip-trim.ts";
+const WATCH_DUR = 8.0;
+const WATCH_QUIET = parseSilences(`
+silence_start: 0.418299
+silence_end: 1.32188 | silence_duration: 0.903583
+silence_start: 1.37971
+silence_end: 2.24349 | silence_duration: 0.863787
+silence_start: 7.51977
+silence_end: 7.98764 | silence_duration: 0.467868`);
+const WATCH_WORDS = [
+  { start: 2.248, end: 2.549 }, { start: 2.589, end: 2.669 }, { start: 2.689, end: 2.829 }, { start: 2.869, end: 2.929 },
+  { start: 2.949, end: 3.09 }, { start: 3.11, end: 3.19 }, { start: 3.23, end: 3.47 }, { start: 3.49, end: 3.55 },
+  { start: 3.6, end: 7.48 },
+];
+
+test("silence alone misses a lead-in that opens on a breath", () => {
+  const plan = planClipTrim(WATCH_QUIET, WATCH_DUR, { chained: false });
+  assert.equal(plan.cutHead, 0, "the quiet doesn't start at the top, so no lead-in is seen — 2.2 s of dead air stayed");
+});
+
+test("the heard words find it, and the measured quiet confirms it", () => {
+  assert.ok(quietShare(WATCH_QUIET, 0, 2.128, WATCH_DUR) >= QUIET_CONFIRM);
+  const plan = planFromWords(WATCH_WORDS, WATCH_QUIET, WATCH_DUR, { chained: false });
+  assert.ok(plan, "a plan from the words");
+  assert.ok(Math.abs(plan!.cutHead - (2.248 - LEAD_PAD_FOR_TEST)) < 1e-6, "cut to just before the first word");
+  assert.ok(Math.abs(planShift(plan!) - plan!.cutHead) < 1e-9, "the line moves earlier by the cut");
+});
+
+test("a sound the transcriber didn't write down (a growl, a laugh) is never cut", () => {
+  const loud = parseSilences("silence_start: 0\nsilence_end: 0.3 | silence_duration: 0.3\nsilence_start: 7.5\nsilence_end: 8 | silence_duration: 0.5");
+  assert.equal(planFromWords(WATCH_WORDS, loud, WATCH_DUR, { chained: false }), null, "words alone don't get to cut 2 s of sound");
+});
+
+test("a continuing shot plays its word-found lead-in fast instead of cutting it", () => {
+  const plan = planFromWords(WATCH_WORDS, WATCH_QUIET, WATCH_DUR, { chained: true });
+  assert.ok(plan && plan.cutHead === 0 && plan.retime, "never cut — re-timed");
+  assert.ok(planShift(plan!) > 1.0, "and the line arrives over a second sooner");
+});
+
+test("words → quiet runs: before the first word, between words, after the last", () => {
+  const runs = silencesFromWords([{ start: 1, end: 2 }, { start: 3, end: 4 }], 6);
+  assert.deepEqual(runs, [{ start: 0, end: 1 }, { start: 2, end: 3 }, { start: 4, end: 6 }]);
+  assert.deepEqual(silencesFromWords([], 5), []);
+});
+
+test("a long pause between words is one pause even with a click inside it", () => {
+  const words = [{ start: 0.2, end: 1.4 }, { start: 3.3, end: 6.0 }];
+  const quiet = parseSilences("silence_start: 1.45\nsilence_end: 2.3 | silence_duration: 0.85\nsilence_start: 2.36\nsilence_end: 3.25 | silence_duration: 0.89");
+  const cut = interiorCutFromWords(words, quiet, 6.5);
+  assert.ok(cut, "the 1.9 s gap is found though each silent half is under a second");
+  assert.equal(cut!.keep1, +(1.4 + PAUSE_KEEP).toFixed(2));
+  assert.ok(cut!.start2 < 3.3, "resumes just before the next word");
+  assert.equal(interiorCutFromWords([{ start: 0.2, end: 1.4 }, { start: 2.2, end: 6 }], quiet, 6.5), null, "a 0.8 s pause is a natural beat");
+  const noisy = parseSilences("silence_start: 1.5\nsilence_end: 1.7 | silence_duration: 0.2");
+  assert.equal(interiorCutFromWords(words, noisy, 6.5), null, "a gap full of sound we can't name stays");
+});
+const LEAD_PAD_FOR_TEST = 0.12;

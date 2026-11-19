@@ -31,7 +31,8 @@ import { ensureVoiceModel, revoiceClip } from "./singing-voice.server";
 import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { clampKlingPrompt, clipRules, fitClipPrompt } from "./clip-prompt";
-import { isNoopTrim, parseSilences, planClipTrim, SILENCE_FILTER } from "./clip-trim";
+import { interiorCutFromWords, isNoopTrim, parseSilences, planClipTrim, planFromWords, planShift, SILENCE_FILTER, type TimedWord } from "./clip-trim";
+import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { letterboxCrop, parseCropdetect } from "./letterbox";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
@@ -119,12 +120,11 @@ export function filmKlingHost(): KlingHost {
 /** A Kling 3 Omni dialogue clip (native lip-synced audio) — byte-for-byte the same role
  *  as veoDialogueClip, only the renderer differs. Returns the clip URL.
  *
- *  Replicate's Kling 3 Omni (pro mode) goes FIRST: it is the renderer every owner-approved Short Film
- *  actually came from. fal's Kling 3 Pro used to be listed first, but it refused every shot (the prompt
- *  was over its 2,500-character cap) and the film always fell through to Replicate. Now that the prompt
- *  fits, putting fal first would silently swap the model under the flagship — so the proven renderer
- *  stays first and fal is a real, working fallback. `mode` is pinned to the default the approved films
- *  used, so a provider-side default change can't alter the look either. */
+ *  The host comes from filmKlingHost() (fal standard since the owner's pick). History: fal's Kling 3 Pro
+ *  — a DIFFERENT model — was once listed first and refused every shot (the prompt was over its 2,500-
+ *  character cap), so every approved film really came from Replicate's Kling 3 Omni; the same Omni model
+ *  on fal ("O3") was then A/B'd by ear before it was allowed to lead. On Replicate `mode` stays pinned to
+ *  the default the approved films used, so a provider-side default change can't alter the look. */
 async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: string, durationSec = KLING_DUR, host: KlingHost = filmKlingHost()): Promise<string> {
   const dur = Math.max(5, Math.min(KLING_DUR, Math.round(durationSec) || KLING_DUR));
   const prompt = clampKlingPrompt(rawPrompt);
@@ -202,8 +202,31 @@ export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: st
   const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
   await download(clipUrl, rawPath);
   if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error("[regen] clip did not download");
-  const trimmed = await trimTrailingSilence(rawPath, { chained, last: !!opts.last });
-  return await collapseInteriorPause(trimmed);
+  return trimClip(rawPath, { chained, last: !!opts.last });
+}
+
+/** What a rendered take SAYS, word by word with times — heard by whisperx (it hears the language too), so
+ *  the trims below cut on the line itself rather than guessing from silence. Null when it can't be heard
+ *  in time (the trims then fall back to silence, exactly as before); a third of a cent a take. */
+async function heardWords(clipPath: string): Promise<TimedWord[] | null> {
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if (!base || !process.env.REPLICATE_API_TOKEN) return null;
+  try {
+    const words = wordsFromWhisperx(await repPoll(await createWhisperx(`${base}/renders/${path.basename(clipPath)}`, null), 45_000, "clip-words"));
+    return words.length >= 2 ? words : null;
+  } catch (e) {
+    console.error(`[testmovie] words not heard — trimming on silence: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return null;
+  }
+}
+
+/** A raw take → the clip that goes in the film: dead air off both ends, then the one long mid-line pause
+ *  taken down to a beat — both decided on the heard words where they come back. */
+async function trimClip(rawPath: string, opts: { chained: boolean; last: boolean }): Promise<string> {
+  const words = await heardWords(rawPath);
+  const t = await trimTrailingSilence(rawPath, { ...opts, words });
+  const moved = words ? words.map((w) => ({ start: w.start - t.shift, end: w.end - t.shift })).filter((w) => w.end > 0) : null;
+  return collapseInteriorPause(t.path, moved);
 }
 
 /** An image model asked for a "cinematic" frame sometimes returns it with black bars baked in, and a
@@ -271,19 +294,24 @@ async function cropPanelSeed(panelRelUrl: string, side: "left" | "right"): Promi
  *  FAST rather than cut off; a clip that opens on a new picture just has the lead-in cut. `last` = the
  *  film's final shot: it keeps a full beat after its line, holding its last frame if the take ran out
  *  first. Re-encodes for frame-accurate edits. Returns a NEW path, or the original if nothing changes. */
-async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; last?: boolean } = {}): Promise<string> {
+async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; last?: boolean; words?: TimedWord[] | null } = {}): Promise<{ path: string; shift: number }> {
   const ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"];
   const usable = (p: string) => { try { return fs.existsSync(p) && ffprobeDuration(p) > 0.8; } catch { return false; } };
   let result = inPath;
   let holdEnd = 0;
+  // how far the line moved earlier in the clip (the cut head, or what the sped-up lead-in saved)
+  let shift = 0;
   try {
     const dur = ffprobeDuration(inPath);
-    if (!(dur > 2)) return inPath;
+    if (!(dur > 2)) return { path: inPath, shift: 0 };
     const probe = await runFfmpeg(["-i", inPath, "-af", SILENCE_FILTER, "-f", "null", "-"]);
     const err = probe.stderr || "";
-    const plan = planClipTrim(parseSilences(err), dur, { chained: !!opts.chained, last: !!opts.last });
+    const measured = parseSilences(err);
+    const how = { chained: !!opts.chained, last: !!opts.last };
+    // the heard words decide where the line is, when the measured quiet backs them up; else silence alone
+    const plan = (opts.words && planFromWords(opts.words, measured, dur, how)) || planClipTrim(measured, dur, how);
     holdEnd = plan.holdEnd;
-    if (isNoopTrim(plan, dur)) return inPath;
+    if (isNoopTrim(plan, dur)) return { path: inPath, shift: 0 };
     const out = inPath.replace(/\.mp4$/i, "-trim.mp4");
     let done = false;
     if (plan.retime) {
@@ -304,6 +332,7 @@ async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; la
       ].join(";");
       const r = await runFfmpeg(["-y", "-i", inPath, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", ...ENC, out]);
       done = r.status === 0 && usable(out);
+      if (done) shift = planShift(plan);
       // couldn't re-time it: still never cut the head of a continuing clip — fall through to the tail only
     }
     const startAt = plan.cutHead;
@@ -313,6 +342,7 @@ async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; la
       args.push("-t", Math.max(0.8, plan.endAt - startAt).toFixed(2), ...ENC, out);
       const r = await runFfmpeg(args);
       done = r.status === 0 && usable(out);
+      if (done) shift = startAt > 0.15 ? startAt : 0;
     }
     if (done) result = out;
   } catch { /* keep the original clip */ }
@@ -328,7 +358,7 @@ async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; la
       if (r.status === 0 && usable(held) && ffprobeDuration(held) > d + 0.1) result = held;
     } catch { /* the film just ends where the take does */ }
   }
-  return result;
+  return { path: result, shift };
 }
 
 /** Collapse ONE long pause in the MIDDLE of a clip (dead air between words where the
@@ -338,24 +368,30 @@ async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; la
  *  BOTH video and audio at the same points so lip-sync holds. The clip's LAST frame is
  *  unchanged (the span removed is in the middle), so the seamless chain is unaffected.
  *  Conservative on purpose: one clearly-long (>1s) interior pause per clip, and only if the
- *  result stays valid. Returns a NEW path, or the original if there's nothing to do. */
-async function collapseInteriorPause(inPath: string): Promise<string> {
+ *  result stays valid. Returns a NEW path, or the original if there's nothing to do.
+ *  `words` = the line's heard words on THIS clip's timeline: the pause is then the longest gap between
+ *  two words (a breath or a click inside it no longer splits it into two "short" pauses). */
+async function collapseInteriorPause(inPath: string, words?: TimedWord[] | null): Promise<string> {
   try {
     const dur = ffprobeDuration(inPath);
     if (!(dur > 3)) return inPath; // too short for a mid-clip pause to matter
-    const probe = await runFfmpeg(["-i", inPath, "-af", "silencedetect=noise=-33dB:d=0.7", "-f", "null", "-"]);
-    const err = probe.stderr || "";
-    // silencedetect prints "silence_end: <end> | silence_duration: <len>" for each COMPLETE
-    // silence run; start = end - len. (A run with no end ran to EOF = trailing — not here.)
-    const runs = [...err.matchAll(/silence_end:\s*([\d.]+)\s*\|\s*silence_duration:\s*([\d.]+)/g)]
-      .map((m) => { const end = parseFloat(m[1]); const len = parseFloat(m[2]); return { start: end - len, end, len }; })
-      // interior only: clear of the head and tail (those are trimTrailingSilence's job)
-      .filter((r) => r.len > 1.0 && r.start > 0.8 && r.end < dur - 0.8)
-      .sort((a, b) => b.len - a.len);
-    if (!runs.length) return inPath;
-    const { start, end } = runs[0];
-    const keep1 = +(start + 0.22).toFixed(2); // leave a short natural beat of the pause
-    const start2 = +end.toFixed(2);
+    let cut = words && words.length >= 2
+      ? interiorCutFromWords(words, parseSilences((await runFfmpeg(["-i", inPath, "-af", SILENCE_FILTER, "-f", "null", "-"])).stderr || ""), dur)
+      : null;
+    if (!cut) {
+      const probe = await runFfmpeg(["-i", inPath, "-af", "silencedetect=noise=-33dB:d=0.7", "-f", "null", "-"]);
+      const err = probe.stderr || "";
+      // silencedetect prints "silence_end: <end> | silence_duration: <len>" for each COMPLETE
+      // silence run; start = end - len. (A run with no end ran to EOF = trailing — not here.)
+      const runs = [...err.matchAll(/silence_end:\s*([\d.]+)\s*\|\s*silence_duration:\s*([\d.]+)/g)]
+        .map((m) => { const end = parseFloat(m[1]); const len = parseFloat(m[2]); return { start: end - len, end, len }; })
+        // interior only: clear of the head and tail (those are trimTrailingSilence's job)
+        .filter((r) => r.len > 1.0 && r.start > 0.8 && r.end < dur - 0.8)
+        .sort((a, b) => b.len - a.len);
+      if (runs.length) cut = { keep1: +(runs[0].start + 0.22).toFixed(2), start2: +runs[0].end.toFixed(2) }; // a short natural beat of the pause stays
+    }
+    if (!cut) return inPath;
+    const { keep1, start2 } = cut;
     // Both kept halves must be substantial, and the excised span worth cutting.
     if (keep1 < 0.6 || dur - start2 < 0.6 || start2 - keep1 < 0.5) return inPath;
     const out = inPath.replace(/\.mp4$/i, "-nogap.mp4");
@@ -997,9 +1033,9 @@ export async function generateTestMovie(opts: {
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, rawPath);
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
-    // dead air off both ends (a continuing shot keeps its opening frames; the film's last shot holds a beat longer)
-    const trimmed = await trimTrailingSilence(rawPath, { chained, last: i === treatment.scenes.length - 1 });
-    const dry = await collapseInteriorPause(trimmed); // and collapse a long mid-line pause
+    // dead air off both ends (a continuing shot keeps its opening frames; the film's last shot holds a beat
+    // longer), and a long mid-line pause taken down to a beat — on the heard words where they come back
+    const dry = await trimClip(rawPath, { chained, last: i === treatment.scenes.length - 1 });
     // A CREATURE'S LINES get its creature chain — the same one its voice-over goes through — laid over
     // this clip's own audio, in sync with the picture. Only on a shot where the creature is the ONE who
     // speaks: the chain is over the whole track, and a second speaker would be dragged through it too.

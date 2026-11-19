@@ -113,6 +113,89 @@ export function planClipTrim(runs: SilenceRun[], dur: number, opts: { chained: b
   return { cutHead: 0, retime, endAt, holdEnd };
 }
 
+// ── TRIMMING ON THE WORDS ───────────────────────────────────────────────────────────────────────────
+// Silence alone can't tell a breath from a word. A fal take of "The Watch in Her Hands" (2026-11-19)
+// opened on a 0.4 s breath, then 0.9 s of quiet, a 60 ms click, and 0.9 s more before "Grandpa," — the
+// lead-in test wants quiet from the top of the clip, so it saw no lead-in, and the film opened on 2.2 s of
+// a girl standing silent. The heard words (whisperx) say exactly where the line starts and ends; the
+// measured silence then CONFIRMS that what the words would cut is really quiet, so a growl, a laugh or a
+// gasp the transcriber didn't write down is never cut away.
+
+export type TimedWord = { start: number; end: number };
+
+/** Heard words → the quiet around them, as the runs planClipTrim reads: before the first word, the gaps
+ *  between words, and after the last one. */
+export function silencesFromWords(words: TimedWord[], dur: number, minGap = 0.35): SilenceRun[] {
+  const w = words
+    .filter((x) => Number.isFinite(x.start) && Number.isFinite(x.end) && x.end > x.start && x.start >= 0 && x.start < dur)
+    .sort((a, b) => a.start - b.start);
+  if (!w.length) return [];
+  const runs: SilenceRun[] = [];
+  if (w[0].start >= minGap) runs.push({ start: 0, end: w[0].start });
+  let lastEnd = w[0].end;
+  for (let i = 1; i < w.length; i++) {
+    if (w[i].start - lastEnd >= minGap) runs.push({ start: lastEnd, end: w[i].start });
+    lastEnd = Math.max(lastEnd, w[i].end);
+  }
+  if (dur - lastEnd >= minGap) runs.push({ start: lastEnd, end: dur });
+  return runs;
+}
+
+/** How much of [a, b] the measured silence covers, 0–1. */
+export function quietShare(runs: SilenceRun[], a: number, b: number, dur: number): number {
+  if (!(b > a)) return 1;
+  let q = 0;
+  for (const r of runs) {
+    const s = Math.max(a, r.start), e = Math.min(b, r.end ?? dur);
+    if (e > s) q += e - s;
+  }
+  return Math.min(1, q / (b - a));
+}
+
+/** Below this share of measured quiet, a stretch the words call empty is treated as sound we can't name. */
+export const QUIET_CONFIRM = 0.6;
+
+/** The trim from the heard words — or null when the measured silence doesn't back it up (then the caller
+ *  trims on silence alone, as before). `measured` = silencedetect runs of the same clip. */
+export function planFromWords(words: TimedWord[], measured: SilenceRun[], dur: number, opts: { chained: boolean; last?: boolean }): TrimPlan | null {
+  if (words.length < 2) return null;
+  const plan = planClipTrim(silencesFromWords(words, dur), dur, opts);
+  const head = plan.retime ? plan.retime.leadEnd : plan.cutHead;
+  if (head > 0.15 && quietShare(measured, 0, head, dur) < QUIET_CONFIRM) return null;
+  if (plan.endAt < dur - 0.2 && quietShare(measured, plan.endAt, dur, dur) < QUIET_CONFIRM) return null;
+  return plan;
+}
+
+/** A long pause between two words is taken down to this beat. */
+export const PAUSE_KEEP = 0.22;
+/** …when it is longer than this. */
+export const PAUSE_MIN = 1.0;
+
+/** The ONE longest pause between two heard words (over PAUSE_MIN, confirmed quiet), as the span to cut:
+ *  keep [0, keep1], resume at start2. Null when there's none, or a side would be left too short. */
+export function interiorCutFromWords(words: TimedWord[], measured: SilenceRun[], dur: number): { keep1: number; start2: number } | null {
+  const w = words.filter((x) => Number.isFinite(x.start) && Number.isFinite(x.end) && x.end > x.start).sort((a, b) => a.start - b.start);
+  let best: { a: number; b: number } | null = null;
+  let lastEnd = w.length ? w[0].end : 0;
+  for (let i = 1; i < w.length; i++) {
+    const a = lastEnd, b = w[i].start;
+    if (b - a > PAUSE_MIN && quietShare(measured, a, b, dur) >= 0.7 && (!best || b - a > best.b - best.a)) best = { a, b };
+    lastEnd = Math.max(lastEnd, w[i].end);
+  }
+  if (!best) return null;
+  const keep1 = +(best.a + PAUSE_KEEP).toFixed(2);
+  const start2 = +Math.max(keep1, best.b - LEAD_PAD).toFixed(2);
+  if (keep1 < 0.6 || dur - start2 < 0.6 || start2 - keep1 < 0.5) return null;
+  return { keep1, start2 };
+}
+
+/** How far a word heard at time t in the raw clip moves once the plan is applied (it moves earlier by
+ *  the cut head, or by what the sped-up lead-in saved). Words are all after the lead-in. */
+export function planShift(plan: TrimPlan): number {
+  const squeezed = plan.retime ? (plan.retime.leadEnd - plan.retime.hold) * (1 - 1 / plan.retime.speed) : 0;
+  return plan.cutHead + squeezed;
+}
+
 /** How long the clip is once the plan is applied. */
 export function plannedSeconds(plan: TrimPlan): number {
   const squeezed = plan.retime ? (plan.retime.leadEnd - plan.retime.hold) * (1 - 1 / plan.retime.speed) : 0;
