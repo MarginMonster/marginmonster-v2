@@ -76,6 +76,9 @@ function pickedButMissed(metaJson: string | null, bodyJson: string | null): stri
   return key.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** The kinds every Movie Maker pipeline writes on its finished film. */
+const FILM_KINDS = new Set(["testmovie", "narrated", "musicvideo", "film", "avatardialogue", "enginetest"]);
+
 function recipeLabel(metaJson: string | null, bodyJson: string | null): string | null {
   let meta: Record<string, unknown> = {};
   let body: Record<string, unknown> = {};
@@ -321,6 +324,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // Does this film carry a per-shot timeline (dialogue pipeline)? Gates the "Edit
         // shots" link into the section editor.
         hasShots: (() => { try { const m = JSON.parse(a.metaJson || "{}"); return Array.isArray(m.shots) && m.shots.length > 0; } catch { return false; } })(),
+        // Which kind of video it is, for the Films / Faceless chips: every Movie Maker pipeline records its
+        // own kind (acted, narrated, music video, the older stills-and-clips engine, engine tests).
+        group: (() => {
+          if (a.type !== "VIDEO_AD") return null;
+          try {
+            const k = String(JSON.parse(a.metaJson || "{}").kind || "");
+            return FILM_KINDS.has(k) ? "film" : k === "faceless" ? "faceless" : null;
+          } catch { return null; }
+        })(),
         missed: pickedButMissed(a.metaJson, a.bodyJson),
         // The "receipt" for the viewer's right rail — selections + the script.
         details: buildDetails(a.type, a.metaJson, a.bodyJson),
@@ -474,6 +486,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "keep") {
     await db.asset.updateMany({ where: { id: (form.get("assetId") as string) || "", shopId: shop.id }, data: { status: "APPROVED" } });
     return json({ kept: true });
+  }
+  if (intent === "keepMany") {
+    // "Keep all" on the Clearing-soon shelf: every piece on the 30-day clock, saved in one tap. Only
+    // un-kept ones change (a posted piece stays posted), only this shop's, and never more than a page.
+    const ids = String(form.get("assetIds") || "").split(",").map((x) => x.trim()).filter((x) => /^[a-z0-9]{10,40}$/i.test(x)).slice(0, 300);
+    if (!ids.length) return json({ keptMany: 0 });
+    const r = await db.asset.updateMany({ where: { id: { in: ids }, shopId: shop.id, status: "PENDING" }, data: { status: "APPROVED" } });
+    return json({ keptMany: r.count });
   }
   if (intent === "unkeep") {
     // Toggle Keep back off — the heart is a switch, so a second tap un-saves the
@@ -1101,6 +1121,9 @@ const WA_CSS = `
 .wa-filterchip{display:inline-flex;align-items:center;gap:5px;font-family:Poppins,sans-serif;font-weight:700;font-size:12.5px;color:var(--ink2,#4A554E);background:#fff;border:1px solid var(--line,#E1DECD);border-radius:999px;padding:6px 13px;cursor:pointer;line-height:1;transition:background .12s,color .12s,border-color .12s;}
 .wa-filterchip:hover{color:var(--ink,#14201A);border-color:#CFD6C5;}
 .wa-filterchip.on{background:#EAF6EF;color:var(--green,#0C7A46);border-color:#BFE2CD;}
+.wa-keepall{display:inline-flex;align-items:center;gap:4px;font-weight:700;color:var(--green,#0C7A46);}
+.wa-keepall:disabled{opacity:.55;cursor:default;}
+.wa-keptmany{color:var(--green,#0C7A46);}
 /* An inline text button that reads as a link — for the "Show all" reset on an
    empty filtered view, so it matches the Link styling the notes use. */
 .wa-linkbtn{border:0;background:none;padding:0;font:inherit;color:var(--green,#0C7A46);text-decoration:underline;cursor:pointer;}
@@ -1169,7 +1192,7 @@ export default function WebArchive() {
   // merchant actually hunts for are "what's about to be deleted" (un-kept media
   // on the 30-day clock — oldest = nearest purge) and "what I already saved".
   // "all" is the default; the chips only render when there's something to sift.
-  type AFilter = "all" | "clearing" | "kept";
+  type AFilter = "all" | "clearing" | "kept" | "films" | "faceless";
   const [filter, setFilter] = useState<AFilter>("all");
   const [viewer, setViewer] = useState<(typeof assets)[number] | null>(null);
   const vfullRef = useRef<HTMLVideoElement | null>(null);
@@ -1320,7 +1343,12 @@ export default function WebArchive() {
   const isKept = (a: { status: string }) => a.status === "APPROVED" || a.status === "PUBLISHED";
   const clearingCount = shelf.filter((a) => a.daysLeft != null).length;
   const keptCount = shelf.filter((a) => isKept(a)).length;
-  const canFilter = (tab === "video" || tab === "image" || tab === "stills") && (clearingCount > 0 || keptCount > 0);
+  // Films / Faceless only when the Videos tab holds a MIX (a chip that matches everything is noise).
+  const filmCount = tab === "video" ? shelf.filter((a) => a.group === "film").length : 0;
+  const facelessCount = tab === "video" ? shelf.filter((a) => a.group === "faceless").length : 0;
+  const showFilms = filmCount > 0 && filmCount < shelf.length;
+  const showFaceless = facelessCount > 0 && facelessCount < shelf.length;
+  const canFilter = (tab === "video" || tab === "image" || tab === "stills") && (clearingCount > 0 || keptCount > 0 || showFilms || showFaceless);
   // What actually renders + what the viewer arrows cycle through. Pagination and
   // the empty state stay on the unfiltered `shelf` — they describe the library,
   // not the chip. Oldest-first would bury the nearest-purge pieces, so the
@@ -1329,7 +1357,15 @@ export default function WebArchive() {
     ? shelf
     : filter === "clearing"
       ? shelf.filter((a) => a.daysLeft != null)
-      : shelf.filter((a) => isKept(a));
+      : filter === "films"
+        ? shelf.filter((a) => a.group === "film")
+        : filter === "faceless"
+          ? shelf.filter((a) => a.group === "faceless")
+          : shelf.filter((a) => isKept(a));
+  // "Keep all": what is on the clock in the open tab, saved in one tap.
+  const clearingIds = shelf.filter((a) => a.daysLeft != null).map((a) => a.id);
+  const keepAll = () => submit({ intent: "keepMany", assetIds: clearingIds.join(",") }, { method: "post" });
+  const keptManyN = actionData && "keptMany" in actionData ? Number((actionData as { keptMany?: unknown }).keptMany) || 0 : 0;
   const vIdx = viewer ? visibleShelf.findIndex((c) => c.id === viewer.id) : -1;
   const openAt = (idx: number) => { const n = visibleShelf[(idx % visibleShelf.length + visibleShelf.length) % visibleShelf.length]; if (n) setViewer(n); };
   // Keyboard: Escape closes, arrows cycle the current tab's pieces.
@@ -1443,6 +1479,12 @@ export default function WebArchive() {
         {canFilter && (
           <div className="wa-filters" role="group" aria-label={t("Filter pieces")}>
             <button type="button" className={`wa-filterchip${filter === "all" ? " on" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>{t("All")} · {shelf.length}</button>
+            {showFilms && (
+              <button type="button" className={`wa-filterchip${filter === "films" ? " on" : ""}`} aria-pressed={filter === "films"} onClick={() => setFilter("films")}><Ico n="film" /> {t("Films")} · {filmCount}</button>
+            )}
+            {showFaceless && (
+              <button type="button" className={`wa-filterchip${filter === "faceless" ? " on" : ""}`} aria-pressed={filter === "faceless"} onClick={() => setFilter("faceless")}><Ico n="mic" /> {t("Faceless")} · {facelessCount}</button>
+            )}
             {clearingCount > 0 && (
               <button type="button" className={`wa-filterchip${filter === "clearing" ? " on" : ""}`} aria-pressed={filter === "clearing"} onClick={() => setFilter("clearing")}><Ico n="hourglass" /> {t("Clearing soon")} · {clearingCount}</button>
             )}
@@ -1475,7 +1517,14 @@ export default function WebArchive() {
         )}
       </div>
       {(tab === "video" || tab === "image") && shelf.some((a) => a.daysLeft != null) && (
-        <p className="wa-shelfnote"><Ico n="hourglass" /> {t("Un-kept videos & photos clear after 30 days — open a piece and hit")} <b>{t("Keep")}</b> {t("to save it for good.")}</p>
+        <p className="wa-shelfnote"><Ico n="hourglass" /> {t("Un-kept videos & photos clear after 30 days — open a piece and hit")} <b>{t("Keep")}</b> {t("to save it for good.")}
+          {filter === "clearing" && clearingIds.length > 1 && (
+            <>{" "}<button type="button" className="wa-linkbtn wa-keepall" onClick={keepAll} disabled={nav.state !== "idle"}><Ico n="heart" /> {t("Keep all {n}", { n: clearingIds.length })}</button></>
+          )}
+        </p>
+      )}
+      {keptManyN > 0 && (
+        <p className="wa-shelfnote wa-keptmany" role="status"><Ico n="check" /> {t("Kept {n} pieces — they won't clear.", { n: keptManyN })}</p>
       )}
       {/* "Yet — make one" only when there are GENUINELY none of this type —
           tabTotal === 0 — not merely none in the current page (which is the
@@ -1511,7 +1560,7 @@ export default function WebArchive() {
           way back, rather than leaving an empty grid that reads as broken. */}
       {canFilter && filter !== "all" && visibleShelf.length === 0 && shelf.length > 0 && (
         <p className="wa-shelfnote">
-          {filter === "clearing" ? t("Nothing's clearing soon — everything here is kept or still fresh.") : t("Nothing kept in this tab yet.")}{" "}
+          {filter === "clearing" ? t("Nothing's clearing soon — everything here is kept or still fresh.") : filter === "kept" ? t("Nothing kept in this tab yet.") : t("Nothing of that kind on this page.")}{" "}
           <button type="button" className="wa-linkbtn" onClick={() => setFilter("all")}>{t("Show all")}</button>
         </p>
       )}

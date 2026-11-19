@@ -2546,6 +2546,10 @@ const es: Record<string, string> = {
   "Results for “{q}”": "Resultados para “{q}”",
   "Nothing here matches “{q}”.": "Nada aquí coincide con “{q}”.",
   "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.": "Has creado {n} películas en las últimas 24 horas. Movie Maker es gratis mientras lo terminamos, así que por ahora el límite es de {n} al día — vuelve mañana para hacer más.",
+  "Films": "Películas",
+  "Keep all {n}": "Guardar los {n}",
+  "Kept {n} pieces — they won't clear.": "Se guardaron {n} piezas: no se borrarán.",
+  "Nothing of that kind on this page.": "No hay nada de ese tipo en esta página.",
 };
 
 const fr: Record<string, string> = {
@@ -5064,6 +5068,10 @@ const fr: Record<string, string> = {
   "Results for “{q}”": "Résultats pour « {q} »",
   "Nothing here matches “{q}”.": "Rien ici ne correspond à « {q} ».",
   "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.": "Tu as fait {n} films ces dernières 24 heures. Movie Maker est gratuit le temps qu'on le termine, donc c'est limité à {n} par jour pour l'instant — reviens demain pour en faire d'autres.",
+  "Films": "Films",
+  "Keep all {n}": "Tout garder ({n})",
+  "Kept {n} pieces — they won't clear.": "{n} créations gardées — elles ne seront pas effacées.",
+  "Nothing of that kind on this page.": "Rien de ce type sur cette page.",
 };
 
 const de: Record<string, string> = {
@@ -7591,6 +7599,10 @@ const de: Record<string, string> = {
   "Results for “{q}”": "Ergebnisse für „{q}“",
   "Nothing here matches “{q}”.": "Hier passt nichts zu „{q}“.",
   "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.": "Du hast in den letzten 24 Stunden {n} Filme gemacht. Movie Maker ist kostenlos, solange wir ihn fertigstellen, deshalb gilt vorerst ein Limit von {n} pro Tag — morgen geht es weiter.",
+  "Films": "Filme",
+  "Keep all {n}": "Alle {n} behalten",
+  "Kept {n} pieces — they won't clear.": "{n} Stücke behalten — sie werden nicht gelöscht.",
+  "Nothing of that kind on this page.": "Nichts dieser Art auf dieser Seite.",
 };
 
 const zh: Record<string, string> = {
@@ -10180,6 +10192,10 @@ const zh: Record<string, string> = {
   "Results for “{q}”": "“{q}”的搜索结果",
   "Nothing here matches “{q}”.": "这里没有与“{q}”匹配的内容。",
   "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.": "过去 24 小时内你已制作了 {n} 部影片。Movie Maker 在完善期间免费，因此目前每天限 {n} 部 — 明天再来制作更多。",
+  "Films": "影片",
+  "Keep all {n}": "全部保留（{n}）",
+  "Kept {n} pieces — they won't clear.": "已保留 {n} 个作品，它们不会被清除。",
+  "Nothing of that kind on this page.": "本页没有这类作品。",
 };
 
 const ur: Record<string, string> = {
@@ -12759,6 +12775,10 @@ const ur: Record<string, string> = {
   "Results for “{q}”": "“{q}” کے نتائج",
   "Nothing here matches “{q}”.": "یہاں “{q}” سے کچھ نہیں ملتا۔",
   "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.": "آپ نے پچھلے 24 گھنٹوں میں {n} فلمیں بنائی ہیں۔ Movie Maker مکمل ہونے تک مفت ہے، اس لیے فی الحال روزانہ {n} کی حد ہے — مزید کے لیے کل واپس آئیں۔",
+  "Films": "فلمیں",
+  "Keep all {n}": "تمام {n} محفوظ کریں",
+  "Kept {n} pieces — they won't clear.": "{n} چیزیں محفوظ ہو گئیں — یہ صاف نہیں ہوں گی۔",
+  "Nothing of that kind on this page.": "اس صفحے پر اس قسم کی کوئی چیز نہیں۔",
 };
 
 export const UI_DICT: Partial<Record<UiLang, Record<string, string>>> = { es, fr, de, zh, ur };
