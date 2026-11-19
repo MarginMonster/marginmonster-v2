@@ -76,13 +76,15 @@ function captionSafe(s: string): string {
 }
 
 /** Start a WhisperX prediction by version; returns the prediction id. */
-export async function createWhisperx(audioUrl: string): Promise<string> {
+/** `language` null = let the model hear which language it is (measured 2026-11-19: a known English take
+ *  came back "en", every word timed) — for a finished piece whose language we don't know. */
+export async function createWhisperx(audioUrl: string, language: string | null = "en"): Promise<string> {
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) throw new Error("REPLICATE_API_TOKEN not set");
   const res = await fetch("https://api.replicate.com/v1/predictions", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ version: WHISPERX_VERSION, input: { audio_file: audioUrl, align_output: true, language: "en", batch_size: 16 } }),
+    body: JSON.stringify({ version: WHISPERX_VERSION, input: { audio_file: audioUrl, align_output: true, ...(language ? { language } : {}), batch_size: 16 } }),
   });
   if (!res.ok) throw new Error(`whisperx create ${res.status}: ${(await res.text()).slice(0, 160)}`);
   return ((await res.json()) as { id: string }).id;

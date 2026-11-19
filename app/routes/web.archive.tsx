@@ -9,10 +9,11 @@ import { Form, Link, useActionData, useFetcher, useLoaderData, useNavigation, us
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { AD_SIZES, AD_SIZE_KEYS, isAdSize, type AdSize } from "../lib/ad-sizes";
 
-// Making a video in another size changes nothing in the library, so it must not reload the whole shelf
-// (hundreds of pieces) every time a size lands.
+// The ad pack (a size, the captions file, the ad copy) changes nothing in the library, so it must not
+// reload the whole shelf (hundreds of pieces) every time a part of it lands.
+const AD_PACK_INTENTS = new Set(["adsize", "adsrt", "adcopy"]);
 export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultShouldRevalidate }) =>
-  formData?.get("intent") === "adsize" ? false : defaultShouldRevalidate;
+  AD_PACK_INTENTS.has(String(formData?.get("intent") || "")) ? false : defaultShouldRevalidate;
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
@@ -341,6 +342,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           } catch { return null; }
         })(),
         missed: pickedButMissed(a.metaJson, a.bodyJson),
+        // The ad pack's copy, once written for this piece (kept on it), so it shows the moment the pack opens.
+        adCopy: (() => {
+          try {
+            const c = JSON.parse(a.metaJson || "{}").adCopy;
+            return c && typeof c.headline === "string" && typeof c.primary === "string" && c.headline && c.primary ? { headline: c.headline as string, primary: c.primary as string } : null;
+          } catch { return null; }
+        })(),
         // The "receipt" for the viewer's right rail — selections + the script.
         details: buildDetails(a.type, a.metaJson, a.bodyJson),
         when: a.createdAt.toISOString(),
@@ -418,6 +426,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       : r.error === "too-long" ? tr(lang, "Videos longer than five minutes can't be resized here.")
       : tr(lang, "That size didn't render — try again.");
     return json({ adsize: { ok: false as const, size, error: why } });
+  }
+
+  // AD PACK · CAPTIONS FILE: what the video says, timed to the word, as the .srt every ad manager and
+  // YouTube take. Free; made once and kept beside the video.
+  if (intent === "adsrt") {
+    const a = await db.asset.findFirst({ where: { id: String(form.get("assetId") || ""), shopId: shop.id, type: "VIDEO_AD" }, select: { bodyJson: true } });
+    let videoUrl = "";
+    try { videoUrl = String(JSON.parse(a?.bodyJson || "{}").videoUrl || ""); } catch { /* none */ }
+    const { srtForVideo } = await import("../lib/ad-pack.server");
+    const { mirrorRender } = await import("../lib/object-storage.server");
+    const r = a ? await srtForVideo(videoUrl, { mirror: mirrorRender }) : { ok: false as const, error: "missing" as const };
+    if (r.ok) return json({ adsrt: { ok: true as const, url: r.url } });
+    const why = r.error === "not-local" || r.error === "missing" ? tr(lang, "This video is no longer on our storage — make it again first.")
+      : r.error === "no-speech" ? tr(lang, "No one speaks in this video, so there are no captions to make.")
+      : tr(lang, "The captions didn't come out — try again.");
+    return json({ adsrt: { ok: false as const, error: why } });
+  }
+
+  // AD PACK · AD COPY: a headline and primary text to run the piece with, grounded only in what the piece
+  // and the store say. Free; kept on the piece (fresh=1 writes another).
+  if (intent === "adcopy") {
+    const { writeAdCopy } = await import("../lib/ad-pack.server");
+    const r = await writeAdCopy({ shopId: shop.id, assetId: String(form.get("assetId") || ""), fresh: form.get("fresh") === "1" });
+    if (r.ok) return json({ adcopy: { ok: true as const, ...r.copy } });
+    return json({ adcopy: { ok: false as const, error: r.error === "missing" ? tr(lang, "That piece is gone.") : tr(lang, "The copy didn't come out — try again.") } });
   }
 
   if (intent === "retryJob") {
@@ -1036,6 +1069,21 @@ const WA_CSS = `
 .wa-size-txt{display:flex;flex-direction:column;min-width:0;gap:2px;}
 .wa-size-txt b{font-family:Poppins,sans-serif;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:4px;}
 .wa-size-txt small{font-size:11.5px;color:var(--ink2,#4A554E);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.wa-pack-h{margin:12px 0 6px;font-family:Poppins,sans-serif;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--green,#0C7A46);}
+.wa-pack-h:first-child{margin-top:0;}
+.wa-size-shape.wa-badge{width:34px;max-width:none;display:inline-flex;align-items:center;justify-content:center;font:800 10.5px/1 Poppins,sans-serif;letter-spacing:.02em;}
+.wa-copy{display:flex;flex-direction:column;gap:8px;transition:opacity .15s;}
+.wa-copy.making{opacity:.55;}
+.wa-copy-row{position:relative;border:1px solid var(--line,#E1DECD);border-radius:12px;background:#fff;padding:9px 11px 10px;}
+.wa-copy-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding-right:64px;}
+.wa-copy-lbl{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2,#4A554E);}
+.wa-copy-n{font-size:11px;color:#8A938D;font-variant-numeric:tabular-nums;}
+.wa-copy-v{margin:5px 0 0;font-size:14px;line-height:1.45;color:var(--ink,#14201A);user-select:text;-webkit-user-select:text;overflow-wrap:anywhere;}
+.wa-copy-btn{position:absolute;top:6px;right:6px;min-height:32px;padding:0 12px;border-radius:999px;border:1px solid #BFE2CD;background:#EAF6EF;color:var(--green,#0C7A46);font:700 12px/1 Poppins,sans-serif;cursor:pointer;}
+.wa-copy-btn:hover{background:#DDF0E5;}
+.wa-copy-again{align-self:flex-start;min-height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);font:700 12.5px/1 Poppins,sans-serif;cursor:pointer;}
+.wa-copy-again:disabled{cursor:progress;opacity:.7;}
+.wa-copy-err{margin:0;font-size:12px;color:#B4532A;}
 
 /* Two-layer premium gradient baked into the base rule: the viewer is portaled to
    document.body (outside .wb-main), so the .wb-main-scoped two-layer in web.tsx no
@@ -1242,6 +1290,80 @@ function SizeTile({ assetId, size, title }: { assetId: string; size: AdSize; tit
         <small>{res && !res.ok && !making ? res.error : t(spec.where)}</small>
       </span>
     </button>
+  );
+}
+
+/** A file name from a piece's title (letters, digits, spaces → dashes). */
+const safeFileBase = (title: string) => (title || "video").replace(/[^\p{L}\p{N} _-]+/gu, "").trim().replace(/\s+/g, "-").slice(0, 60) || "video";
+
+/** The ad pack's captions file: tap → heard and timed on the server → a Save link. */
+function CaptionsTile({ assetId, title }: { assetId: string; title: string }) {
+  const t = useT();
+  const f = useFetcher<{ adsrt?: { ok: boolean; url?: string; error?: string } }>();
+  const res = f.data?.adsrt || null;
+  const making = f.state !== "idle";
+  const badge = <span className="wa-size-shape wa-badge" aria-hidden>CC</span>;
+  if (res?.ok && res.url && !making) {
+    return (
+      <a className="wa-size ready" href={res.url} download={`${safeFileBase(title)}.srt`}>
+        {badge}
+        <span className="wa-size-txt"><b><Ico n="download" size={13} /> {t("Save captions (.srt)")}</b><small>{t("Upload it with the video on YouTube, Meta or TikTok")}</small></span>
+      </a>
+    );
+  }
+  return (
+    <button type="button" className={`wa-size${making ? " making" : ""}${res && !res.ok ? " err" : ""}`} disabled={making}
+      onClick={() => f.submit({ intent: "adsrt", assetId }, { method: "post" })}>
+      {badge}
+      <span className="wa-size-txt">
+        <b>{making ? t("Listening…") : res && !res.ok ? t("Try again") : t("Captions file (.srt)")}</b>
+        <small>{res && !res.ok && !making ? res.error : t("Every word, timed to the voice")}</small>
+      </span>
+    </button>
+  );
+}
+
+/** The ad pack's words: a headline and the primary text written for this piece (free, kept on it), each
+ *  with its own Copy, and "Write another" for a different take. */
+function AdCopyBlock({ assetId, initial }: { assetId: string; initial: { headline: string; primary: string } | null }) {
+  const t = useT();
+  const f = useFetcher<{ adcopy?: { ok: boolean; headline?: string; primary?: string; error?: string } }>();
+  const writing = f.state !== "idle";
+  const got = f.data?.adcopy;
+  const copy = got?.ok && got.headline && got.primary ? { headline: got.headline, primary: got.primary } : initial;
+  const failed = got && !got.ok ? got.error : null;
+  const [copied, setCopied] = useState<string | null>(null);
+  const copyText = async (k: string, v: string) => {
+    try { await navigator.clipboard.writeText(v); setCopied(k); setTimeout(() => setCopied((c) => (c === k ? null : c)), 1600); } catch { /* clipboard blocked — the text is selectable */ }
+  };
+  const write = (fresh: boolean) => f.submit({ intent: "adcopy", assetId, ...(fresh ? { fresh: "1" } : {}) }, { method: "post" });
+  if (!copy) {
+    return (
+      <button type="button" className={`wa-size${writing ? " making" : ""}${failed ? " err" : ""}`} disabled={writing} onClick={() => write(false)}>
+        <span className="wa-size-shape wa-badge" aria-hidden>Aa</span>
+        <span className="wa-size-txt">
+          <b>{writing ? t("Writing…") : failed ? t("Try again") : t("Write the ad copy")}</b>
+          <small>{failed && !writing ? failed : t("A headline and the main text — free")}</small>
+        </span>
+      </button>
+    );
+  }
+  const rows = [
+    { k: "h", label: t("Headline"), v: copy.headline, max: 40 },
+    { k: "p", label: t("Primary text"), v: copy.primary, max: 125 },
+  ];
+  return (
+    <div className={`wa-copy${writing ? " making" : ""}`} aria-busy={writing}>
+      {rows.map((r) => (
+        <div key={r.k} className="wa-copy-row">
+          <div className="wa-copy-top"><span className="wa-copy-lbl">{r.label}</span><span className="wa-copy-n">{r.v.length}/{r.max}</span></div>
+          <p className="wa-copy-v">{r.v}</p>
+          <button type="button" className="wa-copy-btn" onClick={() => copyText(r.k, r.v)}>{copied === r.k ? t("Copied ✓") : t("Copy")}</button>
+        </div>
+      ))}
+      {failed && !writing && <p className="wa-copy-err">{failed}</p>}
+      <button type="button" className="wa-copy-again" disabled={writing} onClick={() => write(true)}>↻ {writing ? t("Writing…") : t("Write another")}</button>
+    </div>
   );
 }
 
@@ -1913,18 +2035,27 @@ export default function WebArchive() {
                     )}
                     {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}><Ico n="download" /> {t("Download")}</a>}
                     {viewer.hasShots && viewer.media && <a className="wa-vbtn ghost" href={`/web/filmedit/${viewer.id}`} title={t("Open the shot timeline — preview and edit each shot")}><Ico n="video" /> {t("Edit shots")}</a>}
-                    {viewer.isVideo && viewer.media && (
+                    {(viewer.isVideo || viewer.type === "IMAGE_AD") && viewer.media && (
                       <button type="button" className={`wa-vbtn ghost${sizesFor === viewer.id ? " on" : ""}`} aria-expanded={sizesFor === viewer.id}
                         onClick={() => setSizesFor((cur) => (cur === viewer.id ? null : viewer.id))}>
-                        <Ico n="grid" /> {t("Every size")}
+                        <Ico n="grid" /> {t("Ad pack")}
                       </button>
                     )}
-                    {viewer.isVideo && viewer.media && sizesFor === viewer.id && (
-                      <div className="wa-sizes" role="group" aria-label={t("Every size")}>
-                        <p className="wa-sizes-h">{t("One video in every shape ads use. Nothing is cut off — the space around it is filled with a soft blur of the video.")}</p>
-                        <div className="wa-sizes-grid">
-                          {AD_SIZE_KEYS.map((k) => <SizeTile key={`${viewer.id}-${k}`} assetId={viewer.id} size={k} title={viewer.title} />)}
-                        </div>
+                    {(viewer.isVideo || viewer.type === "IMAGE_AD") && viewer.media && sizesFor === viewer.id && (
+                      <div className="wa-sizes" role="group" aria-label={t("Ad pack")}>
+                        {viewer.isVideo && (
+                          <>
+                            <p className="wa-pack-h">{t("Every size")}</p>
+                            <p className="wa-sizes-h">{t("One video in every shape ads use. Nothing is cut off — the space around it is filled with a soft blur of the video.")}</p>
+                            <div className="wa-sizes-grid">
+                              {AD_SIZE_KEYS.map((k) => <SizeTile key={`${viewer.id}-${k}`} assetId={viewer.id} size={k} title={viewer.title} />)}
+                            </div>
+                            <p className="wa-pack-h">{t("Captions")}</p>
+                            <div className="wa-sizes-grid"><CaptionsTile key={`${viewer.id}-srt`} assetId={viewer.id} title={viewer.title} /></div>
+                          </>
+                        )}
+                        <p className="wa-pack-h">{t("Ad copy")}</p>
+                        <AdCopyBlock key={`${viewer.id}-copy`} assetId={viewer.id} initial={viewer.adCopy} />
                       </div>
                     )}
                     {/* CROSS-SECTION BRIDGE — "edit my own content": open this

@@ -27,7 +27,8 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     // dataset it hands the RVC trainer and the trained voice model the cover model downloads. Their
     // names carry an HMAC of the voice id, so they can't be guessed.
     const isVoiceZip = /^rvc(voice|data)-[a-zA-Z0-9_-]+\.zip$/.test(name);
-    if (!isVoiceZip && !/^[a-zA-Z0-9_-]+\.(mp4|mp3|jpe?g|png|webp)$/.test(name)) {
+    // .srt = a video's captions file from the Archive's ad pack (ad-pack.server.ts), named after its video.
+    if (!isVoiceZip && !/^[a-zA-Z0-9_-]+\.(mp4|mp3|jpe?g|png|webp|srt)$/.test(name)) {
       return new Response("Not found", { status: 404 });
     }
     const filePath = path.join(process.cwd(), "data", "renders", name);
@@ -102,11 +103,13 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     }
     const size = fs.statSync(filePath).size;
     const ext = name.split(".").pop() as string;
-    const mime = ext === "mp4" ? "video/mp4" : ext === "mp3" ? "audio/mpeg" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+    const mime = ext === "mp4" ? "video/mp4" : ext === "mp3" ? "audio/mpeg" : ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "srt" ? "application/x-subrip; charset=utf-8" : "image/jpeg";
     const baseHeaders: Record<string, string> = {
       "Content-Type": mime,
       "Accept-Ranges": "bytes",
       "Cache-Control": "public, max-age=31536000, immutable",
+      // a captions file is saved, not shown as a page of text (iPhone Safari opens text inline otherwise)
+      ...(ext === "srt" ? { "Content-Disposition": `attachment; filename="${name}"` } : {}),
     };
 
     // Range request (video scrubbing, iOS/Safari) → 206 with just that slice.
