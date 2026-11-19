@@ -109,12 +109,16 @@ export const KLING_HOST_LABEL: Record<KlingHost, string> = {
   fal: "fal · Kling 3 Omni pro ($0.14/s)",
   "fal-std": "fal · Kling 3 Omni standard ($0.112/s)",
 };
-/** The host acted films render on. Replicate — the one every owner-approved film came from — until the
- *  owner has heard the same shot from fal and says otherwise; FILM_KLING_HOST=fal (or fal-std) in the
- *  environment then moves every film there, with the other host still behind it as the fallback. */
+/** The host acted films render on: fal "standard" — the same Kling 3 Omni, 720p (films are cut at 720p
+ *  anyway), $0.112/s, 60% under Replicate. The owner picked it by ear on 2026-11-19 from one shot rendered
+ *  on all three hosts ("C sounded the best"), and a whole film re-made on it then spoke every scripted word
+ *  with no extras, kept each voice where it belongs (girl 222–246 Hz, old man 111 Hz), levelled the same
+ *  and cut a little smoother than Replicate's (SSIM 0.967 / 0.924 against 0.947 / 0.910).
+ *  FILM_KLING_HOST=replicate (or fal, for fal's pro tier) moves every film back; whichever host leads, the
+ *  others stay behind it as the fallback. */
 export function filmKlingHost(): KlingHost {
   const v = (process.env.FILM_KLING_HOST || "").trim().toLowerCase();
-  return v === "fal" ? "fal" : v === "fal-std" ? "fal-std" : "replicate";
+  return v === "replicate" ? "replicate" : v === "fal" ? "fal" : "fal-std";
 }
 
 /** A Kling 3 Omni dialogue clip (native lip-synced audio) — byte-for-byte the same role

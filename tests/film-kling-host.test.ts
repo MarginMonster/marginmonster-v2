@@ -1,20 +1,22 @@
 /* Kling 3 Omni is the model every approved film was made with. Replicate charges $0.28 a second for it
- * (pro, with audio); fal sells the same model as "O3" for $0.14. Which host renders a film is the owner's
- * call by ear, so: Replicate stays the default, FILM_KLING_HOST moves it, the same model on the other host
- * is the fallback, and an admin ENGINE TEST renders one shot on another host without touching the film. */
+ * (pro, with audio); fal sells the same model as "O3" for $0.14 (pro) and $0.112 (standard). The owner
+ * picked fal standard by ear (2026-11-19), so it is the default; FILM_KLING_HOST moves it back, the same
+ * model on the other hosts is the fallback, and an admin ENGINE TEST renders a shot or a whole film on
+ * another host without touching the film. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const read = (p: string) => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
-test("fal's Kling 3 Omni endpoints are the O3 ones, and Replicate stays the default host", () => {
+test("fal's Kling 3 Omni endpoints are the O3 ones, and fal standard is the default host", () => {
   const src = read("app/lib/film-dialogue.server.ts");
   assert.ok(src.includes('const FAL_KLING3_OMNI = "fal-ai/kling-video/o3/pro/image-to-video";'));
   assert.ok(src.includes('const FAL_KLING3_OMNI_STD = "fal-ai/kling-video/o3/standard/image-to-video";'));
   const fn = src.slice(src.indexOf("export function filmKlingHost"), src.indexOf("export function filmKlingHost") + 400);
   assert.ok(fn.includes('process.env.FILM_KLING_HOST'), "read from the environment");
-  assert.ok(/: "replicate";\s*\n\}/.test(fn), "anything but fal / fal-std means Replicate");
+  assert.ok(/: "fal-std";\s*\n\}/.test(fn), "unset (or anything unknown) means fal standard");
+  assert.ok(fn.includes('v === "replicate" ? "replicate"'), "FILM_KLING_HOST=replicate still moves films back");
 });
 
 test("each host falls back to the same model on the other host before fal's different Kling 3 Pro", () => {
