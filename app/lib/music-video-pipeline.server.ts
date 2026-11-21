@@ -748,7 +748,9 @@ async function alignTake(songPath: string, takePath: string): Promise<string> {
  *  takes could not be made (the caller keeps the song as it was). */
 async function mixFeaturedVoices(o: {
   songPath: string; base: string; singers: number[]; roles: Array<"perform" | "broll">; D: number;
-  featured: Array<{ who: number; name: string; voiceId: string; pitch: "no-change" | "male-to-female" | "female-to-male" }>;
+  /** `pitch` = how the VOCAL moves for this singer (an octave, or not); `speechPitch` = the speaking
+   *  signature their voice is cast at, which their voice model is learned at */
+  featured: Array<{ who: number; name: string; voiceId: string; pitch: "no-change" | "male-to-female" | "female-to-male"; speechPitch?: number }>;
 }): Promise<{ path: string; names: string[]; windows: VoiceWindow[] } | null> {
   const total = o.singers.length * o.D;
   const songUrl = await hostRender(o.base, o.songPath);
@@ -763,7 +765,7 @@ async function mixFeaturedVoices(o: {
   // 2) each co-star's take of the whole song, side by side (a voice is learned once, then kept)
   const takes = (await Promise.all(singing.map(async (f) => {
     try {
-      const model = await ensureVoiceModel(f.voiceId, o.base);
+      const model = await ensureVoiceModel(f.voiceId, o.base, { pitch: f.speechPitch });
       const covered = await coverSongInVoice(songUrl, model.url, { pitchChange: f.pitch });
       const level = await matchLoudness(covered, o.songPath);
       return { ...f, file: await alignTake(o.songPath, level), trained: model.trained };
@@ -819,7 +821,7 @@ export async function generateMusicVideo(opts: {
   /** A FEATURED VERSE: the voice of each co-star who sings one (by name — the scenes they sing are
    *  marked in the treatment, `scene.singer`). Their gender decides whether the vocal moves an octave.
    *  A featured co-star with no voice here is not heard: the artist sings their scenes. */
-  featureVoices?: Array<{ name: string; voiceId: string; gender?: "m" | "f" }>;
+  featureVoices?: Array<{ name: string; voiceId: string; /** the speaking pitch the voice is cast at */ pitch?: number; gender?: "m" | "f" }>;
   /** Output shape — "9:16" (default), "16:9" or "1:1". */
   aspect?: string;
   /** How fast the video is CUT — "slow" | "medium" | "fast". Unset = the genre's own pace (rap is cut
@@ -948,7 +950,7 @@ export async function generateMusicVideo(opts: {
     else {
       const voiceFor = (name: string) => (opts.featureVoices || []).find((v) => v && v.voiceId && singerOf({ singer: v.name }, [name]) === 0);
       const genderFor = (name: string): "m" | "f" | undefined => voiceFor(name)?.gender || (opts.castGenders || []).find((c) => c && singerOf({ singer: c.name }, [name]) === 0)?.gender;
-      const cast = featuredWho.map((who) => ({ who, name: extraNames[who], voiceId: voiceFor(extraNames[who])?.voiceId || "", pitch: pitchChangeFor(opts.artistGender, genderFor(extraNames[who])) })).filter((f) => f.voiceId);
+      const cast = featuredWho.map((who) => ({ who, name: extraNames[who], voiceId: voiceFor(extraNames[who])?.voiceId || "", speechPitch: voiceFor(extraNames[who])?.pitch || 0, pitch: pitchChangeFor(opts.artistGender, genderFor(extraNames[who])) })).filter((f) => f.voiceId);
       if (!cast.length) console.error(`[musicvideo] a featured verse was written for ${featuredWho.map((w) => extraNames[w]).join(", ")} but no voice came with them — the artist sings it`);
       for (let attempt = 0; attempt < 2 && cast.length && !featuredNames.length; attempt++) {
         try {

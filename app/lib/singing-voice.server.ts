@@ -131,12 +131,25 @@ const VOICE_SCRIPT: string[] = [
   "Alright team, quick update! We launched on Thursday, and the response has been unreal. Orders tripled overnight, the reviews are glowing, and our inbox is overflowing with thank-you notes. Huge shout-out to everybody who stayed late, fixed the bugs, packed the boxes, and answered the phones. You are the reason this works. Next week we roll out two new colors, a bigger size, and free shipping for our loyal customers. Exciting, right? Let's keep that momentum going. High five, everyone!",
 ];
 
-/** One clip of speech in the avatar's voice → `out` (mp3). speech-02-hd, then turbo if hd blips. */
-async function synthSpeech(voiceId: string, text: string, out: string): Promise<void> {
+/** One clip of speech in the avatar's voice → `out` (mp3). speech-02-hd, then turbo if hd blips.
+ *
+ *  A DESIGNED voice (`ttv-…` — the built-in presenters' own voices) lives on the fal MiniMax account and
+ *  can only be spoken there (the same rule the talking-ad pipeline follows), so it is read through fal.
+ *  `pitch` is the presenter's own speaking signature (MiniMax semitones): a presenter cast a couple of
+ *  semitones up IS that voice at that pitch, so their singing voice is learned from speech read the same
+ *  way. */
+async function synthSpeech(voiceId: string, text: string, out: string, pitch = 0): Promise<void> {
+  if (voiceId.startsWith("ttv-")) {
+    const { falTts } = await import("./fal-video.server");
+    const url = await falTts(text, voiceId, 1, { pitch: pitch || undefined, emotion: "happy", lang: "en" });
+    if (typeof url !== "string" || !/^https?:\/\//.test(url)) throw new Error("[voice] designed voice returned no audio");
+    await download(url, out);
+    return;
+  }
   let lastErr: unknown = null;
   for (const model of ["minimax/speech-02-hd", "minimax/speech-02-turbo"]) {
     try {
-      const url = await repPoll(await repCreate(model, { text, voice_id: voiceId }), 4 * 60_000, "voice-train-tts");
+      const url = await repPoll(await repCreate(model, { text, voice_id: voiceId, ...(pitch ? { pitch } : {}) }), 4 * 60_000, "voice-train-tts");
       if (typeof url === "string" && /^https?:\/\//.test(url)) { await download(url, out); return; }
     } catch (e) { lastErr = e; }
   }
@@ -148,7 +161,7 @@ function voiceKey(voiceId: string): string {
   return crypto.createHmac("sha256", process.env.SESSION_SECRET || "easymode-voice").update(voiceId).digest("hex").slice(0, 24);
 }
 
-async function trainVoiceModel(voiceId: string, key: string, base: string, finalPath: string): Promise<void> {
+async function trainVoiceModel(voiceId: string, key: string, base: string, finalPath: string, pitch = 0): Promise<void> {
   const work = path.join(RENDERS(), `rvcwork-${key}-${rid()}`);
   const dataZip = path.join(RENDERS(), `rvcdata-${key}-${rid()}.zip`);
   fs.mkdirSync(path.join(work, "split"), { recursive: true });
@@ -157,7 +170,7 @@ async function trainVoiceModel(voiceId: string, key: string, base: string, final
     const clips = VOICE_SCRIPT.map((_, i) => path.join(work, `speech_${i}.mp3`));
     let next = 0;
     await Promise.all(Array.from({ length: 3 }, async () => {
-      while (next < VOICE_SCRIPT.length) { const i = next++; await synthSpeech(voiceId, VOICE_SCRIPT[i], clips[i]); }
+      while (next < VOICE_SCRIPT.length) { const i = next++; await synthSpeech(voiceId, VOICE_SCRIPT[i], clips[i], pitch); }
     }));
     // b) one take → 8-second mono 40 kHz WAV clips
     const list = path.join(work, "concat.txt");
@@ -197,18 +210,21 @@ const training = new Map<string, Promise<void>>();
 
 /** The public URL of this voice's trained model, training it first if it doesn't exist yet. `base` is the
  *  app's public origin (Replicate downloads the dataset + model from /renders). */
-export async function ensureVoiceModel(voiceId: string, base: string): Promise<{ url: string; trained: boolean }> {
+export async function ensureVoiceModel(voiceId: string, base: string, opts: { pitch?: number } = {}): Promise<{ url: string; trained: boolean }> {
   const vid = (voiceId || "").trim();
   if (!vid) throw new Error("[voice] no voice id");
   if (!base) throw new Error("[voice] no public base url");
-  const key = voiceKey(vid);
+  // `pitch`: the speaking signature the voice is cast at (a built-in presenter's — see synthSpeech). The
+  // same voice at another pitch is another model; with none it is the model it always was.
+  const pitch = Math.max(-6, Math.min(6, Math.round(opts.pitch || 0)));
+  const key = voiceKey(pitch ? `${vid}@p${pitch}` : vid);
   const file = path.join(RENDERS(), `rvcvoice-${key}.zip`);
   const url = `${base}/renders/${path.basename(file)}`;
   if (fs.existsSync(file) && fs.statSync(file).size > 5_000_000) return { url, trained: false };
   let job = training.get(key);
   if (!job) {
     fs.mkdirSync(RENDERS(), { recursive: true });
-    job = trainVoiceModel(vid, key, base, file).finally(() => training.delete(key));
+    job = trainVoiceModel(vid, key, base, file, pitch).finally(() => training.delete(key));
     training.set(key, job);
   }
   await job;

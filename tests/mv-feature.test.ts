@@ -325,7 +325,7 @@ test("the render: the verse is re-voiced and mixed, the co-star leads their shot
   // lined up) → one track of exactly the song's length
   assert.match(mix, /vocalGaps\(wordsFromWhisperx\(/);
   assert.match(mix, /const windows = voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps \}\);/);
-  assert.match(mix, /const model = await ensureVoiceModel\(f\.voiceId, o\.base\);/);
+  assert.match(mix, /const model = await ensureVoiceModel\(f\.voiceId, o\.base, \{ pitch: f\.speechPitch \}\);/);
   assert.match(mix, /coverSongInVoice\(songUrl, model\.url, \{ pitchChange: f\.pitch \}\)/);
   assert.match(mix, /matchLoudness\(covered, o\.songPath\)/);
   assert.match(mix, /alignTake\(o\.songPath, level\)/);
@@ -344,7 +344,11 @@ test("the page: a co-star is given a verse with one tap, and their voice must be
   const ui = read("app", "routes", "web.film.tsx");
   // one tap on the co-star; only a co-star with a voice of their own; not in a video too short to share
   assert.match(ui, /const \[featPick, setFeatPick\] = useState<string\[\]>\(\[\]\);/);
-  assert.match(ui, /const singable = castExtra\.filter\(\(m\) => !!voiceOfImg\(m\.img\) && !!\(m\.name \|\| ""\)\.trim\(\)\);/);
+  assert.match(ui, /const singable = castExtra\.filter\(\(m\) => canSingImg\(m\.img\) && !!\(m\.name \|\| ""\)\.trim\(\)\);/);
+  // the page knows only WHETHER someone can sing, and says only WHO — never a voice id
+  assert.match(ui, /sing: builtInCanSing\(a\),/);
+  assert.match(ui, /const featureJson = JSON\.stringify\(featured\.map\(\(m\) => \(\{ name: m\.name\.trim\(\) \}\)\)\);/);
+  assert.doesNotMatch(ui, /voiceOfImg/);
   assert.match(ui, /const tooShortToFeature = mvSceneCount \* mvSceneSec < FEATURE_MIN_SECONDS;/);
   assert.match(ui, /className=\{`mm-castmem-feat\$\{featPick\.includes\(m\.img\) \? " on" : ""\}`\}/);
   // a different singer is a different song: the words and the pictures start over
@@ -360,12 +364,36 @@ test("the page: a co-star is given a verse with one tap, and their voice must be
   assert.match(ui, /className="mm-sc-chip mm-chip-av mm-chip-lead mm-chip-sings"/);
   assert.match(ui, /const setSceneSinger = \(i: number, name: string\) => \{/);
   assert.match(ui, /\.\.\.\(leadRef \? \{ sceneLeadRef: leadRef \} : \{\}\)/);
-  // THE ACTION: a voice is a stock voice or one of this shop's own — never an id the page made up —
-  // and the singer must be one of this video's co-stars
+  // THE ACTION: whose voice it is, is decided on the server from the co-star's own picture — never from
+  // an id the page sends — and the singer must be one of this video's co-stars
   const act = ui.slice(ui.indexOf("let filmFeatureVoices"), ui.indexOf("let filmFeatureVoices") + 900);
-  assert.match(act, /filmCastExtra\.some\(\(m\) => nameTok\(m\.name\) === nameTok\(f\.name\)\)/);
-  assert.match(act, /asked\.filter\(\(f\) => AVATAR_VOICE_IDS\.has\(f\.voiceId\) \|\| isCharacterVoice\(f\.voiceId\) \|\| mine\.has\(f\.voiceId\)\)/);
+  assert.match(act, /for \(const m of filmCastExtra\) \{/);
+  assert.match(act, /if \(!asked\.some\(\(f\) => nameTok\(f\.name\) === nameTok\(m\.name\)\)\) continue;/);
+  assert.match(act, /const v = await singVoiceForImg\(shop\.id, m\.img\);/);
   assert.match(ui, /\.\.\.\(filmFeatureVoices\.length \? \{ filmFeatureVoices \} : \{\}\),/);
+  const parse = ui.slice(ui.indexOf("function parseFeature"), ui.indexOf("function parseFeature") + 600);
+  assert.doesNotMatch(parse, /voiceId/, "a voice id sent by the page is not even read");
+  // WHOSE voice: a built-in presenter's is the one they were cast with (or the one this shop gave them),
+  // one of the shop's own presenters' is the one picked for them, and a character voice is not a singing voice
+  const voices = read("app", "lib", "mv-voices.server.ts");
+  assert.match(voices, /const own = \(await stockVoicesFor\(shopId\)\)\[a\.id\];/);
+  assert.match(voices, /const cast = castFor\(a\);/);
+  assert.match(voices, /\{ voiceId: cast\.voice, pitch: cast\.pitch \|\| 0, gender: a\.gender \}/);
+  assert.match(voices, /\(await customCastFor\(shopId\)\)\.find\(\(c\) => !!c\.img && bare\(c\.img\) === bare\(img\)\)/);
+  assert.equal(voices.split("isCharacterVoice(").length - 1, 4, "every way to a voice refuses a character voice");
+  // a built-in presenter's picture is recognised whatever origin or cache-buster it carries
+  const builtIn = /^\/avatars\/([a-z0-9-]+)_\d+\.(?:jpe?g|png|webp)$/i;
+  const bare = (u: string) => u.split("?")[0].split("#")[0].replace(/^https?:\/\/[^/]+/i, "");
+  assert.equal(builtIn.exec(bare("/avatars/keiko_0.jpg?v=3"))?.[1], "keiko");
+  assert.equal(builtIn.exec(bare("https://easymodeapp.com/avatars/omar_2.jpg"))?.[1], "omar");
+  assert.equal(builtIn.exec(bare("/renders/custom-abc_0.jpg")), null);
+  assert.ok(voices.includes(String(builtIn).slice(1, String(builtIn).lastIndexOf("/"))), "the test's pattern is the module's");
+  // THE VOICE MODEL: a built-in presenter's designed voice lives on another account and is read there,
+  // at the pitch they are cast at — and that pitch is part of which model it is
+  const sv = read("app", "lib", "singing-voice.server.ts");
+  assert.match(sv, /if \(voiceId\.startsWith\("ttv-"\)\) \{\s+const \{ falTts \} = await import\("\.\/fal-video\.server"\);/);
+  assert.match(sv, /const key = voiceKey\(pitch \? `\$\{vid\}@p\$\{pitch\}` : vid\);/);
+  assert.match(sv, /export async function ensureVoiceModel\(voiceId: string, base: string, opts: \{ pitch\?: number \} = \{\}\)/);
   // a scene that is still off after the check is flagged on the still itself
   assert.match(ui, /const flagged = isMv && !!seeds && \(\(seeds\.faults \|\| \[\]\)\[i\] \|\| 0\) > 0 && rerollingScene !== i;/);
   // a writer error no longer leaves the button stuck on "Building the scenes"

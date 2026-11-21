@@ -868,7 +868,7 @@ async function runJob(
             singVoice: payload.filmSingVoice === true, // opt-in: sing in the avatar's OWN voice (seed-vc)
             artistVoiceId: typeof payload.filmArtistVoiceId === "string" ? payload.filmArtistVoiceId : undefined,
             // a featured verse: the voice of each co-star who sings one (validated when the job was queued)
-            featureVoices: Array.isArray(payload.filmFeatureVoices) ? (payload.filmFeatureVoices as Array<{ name: string; voiceId: string; gender?: "m" | "f" }>) : undefined,
+            featureVoices: Array.isArray(payload.filmFeatureVoices) ? (payload.filmFeatureVoices as Array<{ name: string; voiceId: string; pitch?: number; gender?: "m" | "f" }>) : undefined,
 
             resume: {
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),

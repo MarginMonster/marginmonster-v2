@@ -79,10 +79,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const stockVoice = await stockVoicesFor(shop.id);
   // `kind` — a person, or one of the stock CHARACTERS (cartoon characters, monsters). The characters
   // are offered only where a character belongs: the cast step of the story formats (see rosterFor).
+  // `sing` — can this one be given a FEATURED VERSE in a music video (sing part of the song in their own
+  // voice)? A built-in presenter can: they were cast with a voice. One of the shop's own can if a voice
+  // was picked for them. Only a yes/no goes to the page — WHICH voice is decided on the server when the
+  // video is made (mv-voices.server.ts).
+  const { builtInCanSing } = await import("../lib/mv-voices.server");
   const roster = favouritesFirst([
-    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null, kind: (c.kind || "person") as "person" | "cartoon" | "monster", look: (c.desc || "").slice(0, 220) })),
-    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null, kind: "person" as const, look: (a.desc || "").slice(0, 220) })),
-    ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || a.voiceId || null, kind: (a.kind || "person") as "person" | "cartoon" | "monster", look: (a.desc || "").slice(0, 220) })),
+    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null, sing: !!c.voiceId && !isCharacterVoice(c.voiceId), kind: (c.kind || "person") as "person" | "cartoon" | "monster", look: (c.desc || "").slice(0, 220) })),
+    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null, sing: builtInCanSing(a), kind: "person" as const, look: (a.desc || "").slice(0, 220) })),
+    ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || a.voiceId || null, sing: false, kind: (a.kind || "person") as "person" | "cartoon" | "monster", look: (a.desc || "").slice(0, 220) })),
   ], favs).slice(0, 70);
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
@@ -136,16 +141,16 @@ function parseCastExtra(raw: string | null): Array<{ img: string; name: string }
   } catch { return undefined; }
 }
 
-/** A FEATURED VERSE (Music Video): the co-stars who sing a verse of their own — name, the voice they sing
- *  it in, and their gender (it decides whether the vocal moves an octave). Two at most. */
-function parseFeature(raw: string | null): Array<{ name: string; voiceId: string; gender?: "m" | "f" }> {
+/** A FEATURED VERSE (Music Video): the co-stars who sing a verse of their own, by NAME. Two at most.
+ *  (Only who — the voice each sings in is decided on the server: mv-voices.server.ts.) */
+function parseFeature(raw: string | null): Array<{ name: string }> {
   if (!raw) return [];
   try {
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
     return arr
       .filter((x) => x && typeof x.name === "string" && x.name.trim())
-      .map((x) => ({ name: String(x.name).trim().slice(0, 40), voiceId: typeof x.voiceId === "string" ? x.voiceId.trim().slice(0, 80) : "", ...(x.gender === "f" || x.gender === "m" ? { gender: x.gender as "m" | "f" } : {}) }))
+      .map((x) => ({ name: String(x.name).trim().slice(0, 40) }))
       .slice(0, 2);
   } catch { return []; }
 }
@@ -606,16 +611,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Avatar-voice singing (opt-in beta) — sing the song in the picked avatar's OWN voice (seed-vc).
     const genSingVoice = ((form.get("filmSingVoice") as string) || "") === "1";
     const genArtistVoiceId = ((form.get("filmArtistVoiceId") as string) || "").trim().slice(0, 80);
-    // A FEATURED VERSE (Music Video) — the co-stars who sing a verse in their OWN voice. A voice must be
-    // a stock voice or one of THIS shop's own (never an id the client made up), and the singer must be
-    // one of the co-stars actually in this video.
-    let filmFeatureVoices: Array<{ name: string; voiceId: string; gender?: "m" | "f" }> = [];
+    // A FEATURED VERSE (Music Video) — the co-stars who sing a verse in their OWN voice. The page says
+    // only WHO; whose voice that is, is decided here from the co-star's own picture (the voice they were
+    // cast with, or the one this shop gave them — mv-voices.server.ts), never from an id the page sends.
+    // The singer must be one of the co-stars actually in this video.
+    let filmFeatureVoices: Array<{ name: string; voiceId: string; pitch: number; gender: "m" | "f" }> = [];
     if (tmpl.lipSyncSinger && filmCastExtra?.length) {
-      const asked = parseFeature(form.get("filmFeature") as string).filter((f) => f.voiceId && filmCastExtra.some((m) => nameTok(m.name) === nameTok(f.name)));
+      const asked = parseFeature(form.get("filmFeature") as string);
       if (asked.length) {
-        const { shopVoiceClones } = await import("../lib/voice-clone.server");
-        const mine = new Set((await shopVoiceClones(shop.id)).map((v) => v.voiceId));
-        filmFeatureVoices = asked.filter((f) => AVATAR_VOICE_IDS.has(f.voiceId) || isCharacterVoice(f.voiceId) || mine.has(f.voiceId));
+        const { singVoiceForImg } = await import("../lib/mv-voices.server");
+        for (const m of filmCastExtra) {
+          if (!asked.some((f) => nameTok(f.name) === nameTok(m.name))) continue;
+          const v = await singVoiceForImg(shop.id, m.img);
+          if (v) filmFeatureVoices.push({ name: m.name, ...v });
+        }
       }
     }
     // Pre-approved per-scene STILLS (Music Video storyboard) — render these EXACT images, no re-seed.
@@ -1129,12 +1138,13 @@ export default function FilmStudio() {
   // song as them and puts them on camera for it (mv-feature.ts). A co-star can be featured when they have
   // a voice of their own — every presenter does; a face that was only uploaded or drawn has none.
   const [featPick, setFeatPick] = useState<string[]>([]);
-  const voiceOfImg = (img: string): string => (d.roster.find((r) => r.img === img) as { voiceId?: string | null } | undefined)?.voiceId || "";
+  /** does the person in this picture have a voice of their own to sing in? (which voice is the server's business) */
+  const canSingImg = (img: string): boolean => !!(d.roster.find((r) => r.img === img) as { sing?: boolean } | undefined)?.sing;
   /** who CAN sing a verse: a co-star with a name and a voice of their own */
-  const singable = castExtra.filter((m) => !!voiceOfImg(m.img) && !!(m.name || "").trim());
+  const singable = castExtra.filter((m) => canSingImg(m.img) && !!(m.name || "").trim());
   const featured = singable.filter((m) => featPick.includes(m.img));
   const featKey = featured.map((m) => m.img).join(",");
-  const featureJson = JSON.stringify(featured.map((m) => { const g = genderOfImg(m.img); return { name: m.name.trim(), voiceId: voiceOfImg(m.img), ...(g ? { gender: g } : {}) }; }));
+  const featureJson = JSON.stringify(featured.map((m) => ({ name: m.name.trim() })));
   const toggleFeat = (img: string) => setFeatPick((p) => (p.includes(img) ? p.filter((x) => x !== img) : [...p, img]));
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
@@ -1240,7 +1250,7 @@ export default function FilmStudio() {
   // gave a scene to in the storyboard. Their voices ride with the render.
   const scenesNow: Scene[] = seeds?.treatment.scenes || treatment?.scenes || [];
   const singingNow = singable.filter((m) => featPick.includes(m.img) || scenesNow.some((s) => singerOf(s, [m.name]) === 0));
-  const featureAllJson = JSON.stringify(singingNow.map((m) => { const g = genderOfImg(m.img); return { name: m.name.trim(), voiceId: voiceOfImg(m.img), ...(g ? { gender: g } : {}) }; }));
+  const featureAllJson = JSON.stringify(singingNow.map((m) => ({ name: m.name.trim() })));
   /** a video this short has no room to share (the artist needs a turn too) */
   const tooShortToFeature = mvSceneCount * mvSceneSec < FEATURE_MIN_SECONDS;
   // (a music video is priced by its length: two five-second scenes are one ten-second scene's worth)
@@ -1588,18 +1598,24 @@ export default function FilmStudio() {
   // Loading as a PROCESS (not an all-at-once "sketching"): a determinate bar + "scene N of M" + ETA
   // that advances while the stills render, so the wait reads like Archive loading, with an end in sight.
   const [seedPct, setSeedPct] = useState(0);
+  // How long the stills take, roughly: dressing the cast for the genre first (the star, and the co-stars
+  // beside them — measured on the live site at about half a minute), then three scenes at a time; a scene
+  // with co-stars in it is drawn AND checked, and sometimes drawn again. (It said "about 3s left" for a
+  // minute and a half on the first storyboard with two co-stars.)
+  const mvCast = !!tmpl?.lipSyncSinger && castExtra.length > 0;
+  const seedEstSec = Math.max(14, (tmpl?.lipSyncSinger ? (mvCast ? 30 : artistPick ? 20 : 12) : 0) + Math.ceil(scenes / 3) * (mvCast ? 22 : 9));
   useEffect(() => {
     if (!seedBusy) { setSeedPct(0); return; }
-    const estMs = Math.max(14, Math.ceil(scenes / 3) * 9) * 1000;
+    const estMs = seedEstSec * 1000;
     const start = Date.now();
     const id = window.setInterval(() => {
       const el = Date.now() - start;
       setSeedPct(Math.min(92, (1 - Math.exp(-el / (estMs * 0.6))) * 100));
     }, 350);
     return () => window.clearInterval(id);
-  }, [seedBusy, scenes]);
+  }, [seedBusy, scenes, seedEstSec]);
   const seedProgressUI = () => {
-    const estSec = Math.max(14, Math.ceil(scenes / 3) * 9);
+    const estSec = seedEstSec;
     const cur = Math.min(scenes, Math.floor((seedPct / 100) * scenes) + 1);
     const left = Math.max(3, Math.ceil((1 - seedPct / 100) * estSec));
     return (
@@ -2190,7 +2206,7 @@ export default function FilmStudio() {
                           </button>
                           <input className="mm-castmem-name" value={m.name} onChange={(e) => renameCastMemberMv(m.img, e.target.value)} maxLength={24} aria-label={t("Cast member name")} />
                           {/* A FEATURED VERSE: this co-star sings part of the song, in their own voice */}
-                          {voiceOfImg(m.img)
+                          {canSingImg(m.img)
                             ? <button type="button" className={`mm-castmem-feat${featPick.includes(m.img) ? " on" : ""}`} aria-pressed={featPick.includes(m.img)} disabled={tooShortToFeature && !featPick.includes(m.img)} onClick={() => toggleFeat(m.img)}
                                 title={tooShortToFeature ? t("A verse needs a video of 20 seconds or more") : t("{name} sings a verse of the song in their own voice — like a featured artist", { name: m.name || t("This co-star") })}>
                                 <Ico n="mic" size={12} /> {featPick.includes(m.img) ? t("Sings a verse") : t("Give a verse")}
