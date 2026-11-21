@@ -859,6 +859,9 @@ async function runJob(
             castGenders: Array.isArray(payload.filmCastGenders) ? (payload.filmCastGenders as Array<{ name: string; gender: "m" | "f" }>) : undefined,
             aspect: (payload.filmAspect as string | undefined) || undefined, // output shape 9:16 / 16:9 / 1:1
             pace: typeof payload.filmPace === "string" ? payload.filmPace : undefined, // how fast it is cut (unset = the genre's pace)
+            // how long each scene is (5 or 10): the length is picked in seconds and the pace decides this.
+            // A job queued before this existed has none → 10, which is what it was made of.
+            sceneSeconds: payload.filmSceneSeconds === 5 ? 5 : 10,
             // lyrics on screen (the maker's pick; a job queued before this existed has none → off)
             captions: payload.filmCaptions === "bold" || payload.filmCaptions === "subtitles" ? payload.filmCaptions : "off",
             approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined, // storyboard-approved stills

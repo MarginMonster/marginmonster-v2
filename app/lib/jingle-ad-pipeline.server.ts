@@ -46,6 +46,7 @@ import { langDirective } from "./content-lang";
 import { capScript } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
 import { CLAIMS_GUARDRAIL, dropOrgEndorsementPossessive } from "./ad-claims";
+import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 import { reconcileEngineSurcharge } from "./engine-reconcile.server";
 import { createWhisperx, wordsFromWhisperx, groupCaptions } from "./faceless-video.server";
 import { falEnabled, submitAvatar, pollAvatar, falQueueHandleFor, FalRenderFailed } from "./fal-video.server";
@@ -278,6 +279,8 @@ function jingleLyricsPrompt(p: JingleLyricInputs, productRef: string, debranded:
     `or count, or a region/language tag ("S-Chinese", "2-Pack", "OEM", "V2").`,
     `If the title has no sayable name in it, sing the plain product category.`,
     ``,
+    // "to the tune of …" in a merchant's direction is a style hint, never a lyric sheet to copy
+    ORIGINAL_LYRICS_RULE,
     CLAIMS_GUARDRAIL,
   ].filter(Boolean).join("\n");
 }

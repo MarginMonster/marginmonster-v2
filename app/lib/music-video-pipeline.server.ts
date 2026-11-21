@@ -30,7 +30,12 @@ import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, PROPS, type FilmTreatment } from "./film-engine.server";
 import { singToDisk } from "./music-generation.server";
 import { ensureVoiceModel, coverSongInVoice, matchLoudness } from "./singing-voice.server";
-import { beatTimes, editPlan, paceFor, planFilter, type Cut, type Pace } from "./mv-pace";
+import { MV_MAX_SECONDS, beatTimes, defaultRole, editPlan, paceFor, planFilter, sceneSecondsOf, shotSlot, type Cut, type Pace } from "./mv-pace";
+import {
+  CAST_PROMPT_MAX, MAX_COSTARS, MIC_MOTION_LINE, NO_NEW_MIC_LINE, SOLO_EDIT_MAX,
+  castCheckPrompt, castFaults, castFix, castMotionLine, castStillPrompt, defaultCostars, micFits, parseCastCheck, soloEditPrompt, soloStillPrompt,
+  type CastCheck,
+} from "./mv-cast";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -57,38 +62,29 @@ const CLIP_MAX = 10; // the i2v clip length cap (Kling 2.x); segments are sliced
 // mistakes. `propOk` marks shots where a big prop (a car, a tiger, chains) actually FITS and should be
 // FEATURED — a performance medium/wide or the dedicated prop-hero cutaway. Tight face close-ups and
 // distant atmospheric b-roll are propOk:false (a horse shoved into a face close-up just gets cropped).
-const SHOTLIST: Array<{ role: "perform" | "broll"; frame: string; cam: string; propOk?: boolean }> = [
-  { role: "broll",   frame: "a cinematic WIDE ESTABLISHING shot of the whole location that sets the mood — the artist is small in the frame or walking through it, NOT facing camera", cam: "a slow cinematic push-in" },
-  { role: "perform", frame: "a MEDIUM shot of the artist performing straight to camera, framed from the waist up", cam: "a smooth handheld sway", propOk: true },
-  { role: "broll",   frame: "a dynamic, energetic B-ROLL shot of DANCING or movement — backup dancers or the artist moving stylishly through the scene, full of rhythm, NOT facing camera and NOT singing", cam: "a sweeping pan that follows the movement" },
-  { role: "perform", frame: "a MEDIUM CLOSE-UP of the artist performing to camera — head and shoulders in frame, NOT a tight face-filling extreme close-up, a natural relaxed expression, shallow depth of field", cam: "a slow subtle drift-in" },
-  { role: "broll",   frame: "a cinematic HERO B-ROLL shot that FEATURES the prop in action — e.g. the car rolling, the chains gleaming, the motorcycle revving, the animal prowling — the artist near it but NOT singing to camera", cam: "a slow orbit showing it off", propOk: true },
-  { role: "broll",   frame: "a stylish LIFESTYLE / NARRATIVE cutaway that tells the story — the artist walking, riding, arriving or living the moment, cinematic and aspirational, NOT facing camera singing", cam: "a smooth handheld follow" },
-  { role: "perform", frame: "a cool, composed WIDE shot of the artist performing to camera, full body, confident and stylish", cam: "a slow orbit around the artist", propOk: true },
-  { role: "broll",   frame: "an atmospheric detail B-ROLL shot — striking textures, the scenery in motion or a moody cinematic flourish, premium and filmic — the artist a small part of the frame or absent", cam: "a slow tracking move" },
+// `short` = the same framing in a few words, for a shot that has CO-STARS in it: that prompt has to say
+// who everyone is before it says anything else, and the picture model reads a limited length (mv-cast.ts).
+const SHOTLIST: Array<{ role: "perform" | "broll"; frame: string; short: string; cam: string; propOk?: boolean }> = [
+  { role: "broll",   frame: "a cinematic WIDE ESTABLISHING shot of the whole location that sets the mood — the artist is small in the frame or walking through it, NOT facing camera", short: "Wide establishing shot of the whole place, the people small in it and not looking at the camera", cam: "a slow cinematic push-in" },
+  { role: "perform", frame: "a MEDIUM shot of the artist performing straight to camera, framed from the waist up", short: "Medium-wide shot, everyone visible from the knees up", cam: "a smooth handheld sway", propOk: true },
+  { role: "broll",   frame: "a dynamic, energetic B-ROLL shot of DANCING or movement — backup dancers or the artist moving stylishly through the scene, full of rhythm, NOT facing camera and NOT singing", short: "Wide dynamic shot of all of them dancing, not looking at the camera", cam: "a sweeping pan that follows the movement" },
+  { role: "perform", frame: "a MEDIUM CLOSE-UP of the artist performing to camera — head and shoulders in frame, NOT a tight face-filling extreme close-up, a natural relaxed expression, shallow depth of field", short: "Medium shot, everyone visible from the waist up", cam: "a slow subtle drift-in" },
+  { role: "broll",   frame: "a cinematic HERO B-ROLL shot that FEATURES the prop in action — e.g. the car rolling, the chains gleaming, the motorcycle revving, the animal prowling — the artist near it but NOT singing to camera", short: "Cinematic hero shot of them in the place, not looking at the camera", cam: "a slow orbit showing it off", propOk: true },
+  { role: "broll",   frame: "a stylish LIFESTYLE / NARRATIVE cutaway that tells the story — the artist walking, riding, arriving or living the moment, cinematic and aspirational, NOT facing camera singing", short: "Lifestyle shot of them walking through the scene together, not looking at the camera", cam: "a smooth handheld follow" },
+  { role: "perform", frame: "a cool, composed WIDE shot of the artist performing to camera, full body, confident and stylish", short: "Wide full-body shot", cam: "a slow orbit around the artist", propOk: true },
+  { role: "broll",   frame: "an atmospheric detail B-ROLL shot — striking textures, the scenery in motion or a moody cinematic flourish, premium and filmic — the artist a small part of the frame or absent", short: "Atmospheric wide shot, the people a small part of it", cam: "a slow tracking move" },
 ];
 
-/** Default role for scene i of an n-scene video. The SHOTLIST opens on a wide establishing cutaway, which
- *  is right for a full edit but wrong for the short exact-length cuts: a 1-scene (10s) music video must BE
- *  the artist singing, not a lone establishing wide with no one on the mic (found on the first 10s prod
- *  test), and a 2-scene (20s) cut leads with the performance then cuts away. Keep in sync with
- *  defaultSceneRole() in web.film.tsx. */
-function defaultRole(i: number, n: number): "perform" | "broll" {
-  if (n <= 1) return "perform";
-  if (n === 2) return i === 0 ? "perform" : "broll";
-  return SHOTLIST[i % SHOTLIST.length].role;
-}
+type Shot = (typeof SHOTLIST)[number] & { slot: number };
 
-/** The shot for scene i of n — honoring the pre-editor's per-scene Performance/Cut-scene override
- *  (scene.kind) over the default cadence. Flipping a scene swaps in a role-appropriate
- *  generic framing so a performance beat doesn't get stuck with a b-roll frame (or vice versa). */
-function shotFor(s: { kind?: "perform" | "broll" } | undefined, i: number, n: number): { role: "perform" | "broll"; frame: string; cam: string; propOk?: boolean } {
-  const base = SHOTLIST[i % SHOTLIST.length];
-  const role = (s && s.kind) || defaultRole(i, n);
-  if (role === base.role) return base;
-  return role === "perform"
-    ? { role: "perform", frame: "a MEDIUM shot of the artist performing to camera, waist up, confident and stylish", cam: "a smooth handheld sway", propOk: true }
-    : { role: "broll", frame: "a cinematic B-ROLL cutaway (no singer performing) — props, movement or scenery, premium and filmic", cam: "a slow cinematic move", propOk: true };
+/** The shot for scene i of n: what the scene was written or set as (scene.kind), else the default for
+ *  its place (mv-pace.ts defaultRole — a short video leads with the performance), framed by the shot-list
+ *  slot of that kind (mv-pace.ts shotSlot — a flipped scene gets a real framing of its own kind, where it
+ *  used to get one generic "medium shot" or "b-roll cutaway" however many were flipped). */
+function shotFor(s: { kind?: "perform" | "broll" } | undefined, i: number, n: number, sceneSec: number = 10): Shot {
+  const role = (s && s.kind) || defaultRole(i, n, sceneSec);
+  const slot = shotSlot(role, i);
+  return { ...SHOTLIST[slot], slot };
 }
 
 /** Run async work over items with a bounded number in flight. */
@@ -303,6 +299,63 @@ async function sceneShowsProp(imgUrl: string, noun: string): Promise<boolean> {
   } catch { return true; }
 }
 
+/** What the checker sees in a cast still: how many people, who holds a microphone, whether the prop is
+ *  there. Null when it cannot be read — a vision outage never blocks a render. sonnet-4-6, the strict
+ *  reader (the same model as the prop gate above). */
+async function readCast(imgUrl: string, prop?: string): Promise<CastCheck | null> {
+  try {
+    return parseCastCheck(await anthropicVision(castCheckPrompt(prop), [imgUrl], { maxTokens: 60, model: "claude-sonnet-4-6" }));
+  } catch { return null; }
+}
+
+/** ONE still with more than one of the cast in it. A tester picked a star and two back characters and
+ *  got one back character, holding the microphone (2026-11-21) — so this picture is no longer taken on
+ *  trust. The prompt says who is who before anything else (mv-cast.ts), and the result is LOOKED AT: the
+ *  right number of people, a microphone only where one belongs and only in the singer's hand, the prop
+ *  if the scene has one. A wrong picture is made again (twice at most) with the fault named; the best of
+ *  the tries is kept, so a check that keeps failing still never costs the scene. */
+async function castStill(o: {
+  /** the genre's label ("Rap / Hip-Hop") */
+  genre: string;
+  shot: Shot;
+  visual: string;
+  /** who leads the shot — front and centre, and the one singing in a performance — then everyone else */
+  leadRef: string;
+  otherRefs: string[];
+  asp: string;
+  prop?: { noun: string; phrase: string; ref?: string | null; animal?: boolean };
+  abs: (u: string | null | undefined) => string | null;
+  tag?: string;
+}): Promise<string | null> {
+  const others = o.otherRefs.filter((r) => r && r !== o.leadRef).slice(0, MAX_COSTARS);
+  const k = others.length;
+  const performing = o.shot.role === "perform";
+  const micOk = micFits(o.visual);
+  // three reference pictures at most: the cast first, the prop when there is room for it
+  const refs = [o.leadRef, ...others];
+  const propRefIn = !!(o.prop && o.prop.ref && refs.length < 3);
+  if (propRefIn) refs.push(o.prop!.ref!);
+  const propLine = !o.prop ? "" : `Also in the shot: ${propRefIn ? `the ${o.prop.noun} from the 3rd reference image` : o.prop.phrase} — exactly one${o.prop.animal ? ", and no other animal" : ""}`;
+  // the establishing wide and the atmosphere shot have the people small in the frame: nobody to count
+  const expect = o.shot.slot === 0 || o.shot.slot === 7 ? null : k + 1;
+  let best: { img: string; faults: number } | null = null;
+  let fix = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const prompt = castStillPrompt({ genre: o.genre, role: o.shot.role, frame: o.shot.short, visual: o.visual, costars: k, micOk, extra: [propLine, fix].filter(Boolean).join(". ") });
+    let img: string | null = null;
+    try { img = await renderStyledSeedMulti(prompt, refs, o.asp, undefined, CAST_PROMPT_MAX); } catch { img = null; }
+    if (!img) continue;
+    const seen = await readCast(o.abs(img) || img, o.prop?.noun);
+    if (!seen) return img; // the checker is out: the picture is taken as it is
+    const faults = castFaults(seen, expect, micOk, performing, !!o.prop);
+    if (!best || faults < best.faults) best = { img, faults };
+    if (!faults) break;
+    fix = castFix(seen, expect, micOk, performing, o.prop?.noun);
+    console.log(`[musicvideo] ${o.tag || "cast shot"}: try ${attempt + 1} had ${seen.people} of ${expect ?? "any"} people, mic=${seen.mic}${o.prop ? `, prop=${seen.prop}` : ""}${attempt < 2 ? " — making it again" : " — keeping the best of three"}`);
+  }
+  return best ? best.img : null;
+}
+
 /** Build the per-scene SEED stills (the storyboard): the hero portrait → a locked single-animal
  *  reference + an artist-anchor per prop → one edited, vision-gated still per scene. SHARED by
  *  generateMusicVideo and the FREE pre-seed PREVIEW, so what the owner approves in the storyboard is
@@ -331,6 +384,8 @@ async function buildMusicVideoSeeds(p: {
   outfits?: Record<string, string>;
   /** Output shape — "9:16" (default), "16:9" or "1:1". Drives the seed render aspect (clips follow). */
   aspect?: string;
+  /** How long each scene is (5 or 10) — a short video leads with the performance (mv-pace.ts defaultRole). */
+  sceneSeconds?: number;
   jobId?: string;
   resume?: Record<string, string | undefined>;
   base: string;
@@ -391,14 +446,14 @@ async function buildMusicVideoSeeds(p: {
     }
     if (cref) castRefs.push(cref);
   }
-  const castNames = castExtra.map((m) => (m.name || "").trim()).filter(Boolean).join(", ");
-  // Map each cast MEMBER'S source image → its styled ref + name, so a per-scene cast list (which
-  // stores imgs) can resolve to the right styled faces. The artist's hero img maps to artistRef.
+  const castNameList = castExtra.map((m) => (m.name || "").trim());
+  const sceneSec = sceneSecondsOf(p.sceneSeconds);
+  // Map each cast MEMBER'S source image → its styled ref, so a per-scene cast list (which stores imgs)
+  // can resolve to the right styled faces. The artist's hero img maps to artistRef.
   const imgToRef = new Map<string, string>();
-  const imgToName = new Map<string, string>();
   const heroAbs = abs(p.heroUrl);
   if (artistRef && heroAbs) imgToRef.set(heroAbs, artistRef);
-  castExtra.forEach((m, ci) => { const src = abs(m.img); if (src && castRefs[ci]) { imgToRef.set(src, castRefs[ci]); imgToName.set(src, (m.name || "").trim()); } });
+  castExtra.forEach((m, ci) => { const src = abs(m.img); if (src && castRefs[ci]) imgToRef.set(src, castRefs[ci]); });
 
   // PROP references + artist-anchors — the robust "props must actually show" path (single locked
   // animal per prop + an artist+prop anchor; every prompt says this is the ONLY animal, no dog).
@@ -423,34 +478,36 @@ async function buildMusicVideoSeeds(p: {
   // PER-SCENE stills — edit the hero (or the artist+prop anchor) into each setting; VISION-GATE props
   // (if the picked prop didn't survive the edit, force it in with a hard-locked [artist, prop] compose).
   const sceneImgs = await mapLimit(scenes, 3, async (s, i) => {
-    const shot = shotFor(s, i, scenes.length);
+    const shot = shotFor(s, i, scenes.length, sceneSec);
     const propKey = propForScene[i];
     const noun = propKey ? propNoun(propKey) : "";
-    // Resolve THIS scene's CO-STARS (owner per-scene edit) → styled refs. castForScene stores the
-    // co-star imgs featured in the scene; the artist ALWAYS leads a perform scene (lip-sync target).
-    // No explicit list → fall back to "all co-stars" (legacy). De-dupe + cap at 2 co-stars (+ artist = 3).
+    // WHO is in this scene beside the artist → styled refs. castForScene (the maker's per-scene pick)
+    // stores the co-star imgs; with no pick it is the shared default (mv-cast.ts defaultCostars): every
+    // co-star in a performance, the ones the scene names — or all of them, in the dance scene — in a cut
+    // scene. The artist ALWAYS leads a performance (lip-sync target). De-duped, two co-stars at most.
     const definedCostars = p.castForScene ? p.castForScene[i] : undefined;
     const rawCostarRefs = definedCostars
       ? (definedCostars.map((img) => imgToRef.get(abs(img) || "")).filter(Boolean) as string[])
-      : [...castRefs];
-    const sceneCostarRefs = Array.from(new Set(artistRef ? rawCostarRefs.filter((r) => r !== artistRef) : rawCostarRefs)).slice(0, 2);
-    const sceneCastNames = definedCostars
-      ? (definedCostars.map((img) => imgToName.get(abs(img) || "")).filter(Boolean).join(", ") || castNames)
-      : castNames;
+      : defaultCostars(s, shot.role, shot.slot, castNameList).map((k) => castRefs[k]).filter(Boolean);
+    const sceneCostarRefs = Array.from(new Set(artistRef ? rawCostarRefs.filter((r) => r !== artistRef) : rawCostarRefs)).slice(0, MAX_COSTARS);
     const srcRef = (propKey && propAnchors[propKey]) || artistRef;
+    const micOk = micFits(s.visual);
     const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, no duplicates.${animalGuard(propKey, noun)}` : "";
     const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
-    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${s.visual}.${propClause}${performNote} ${g.look}. ${REALISM} ${ONE_PERSON}`;
-    // Compose the scene still. 9:16 single-subject keeps the proven edit-into-scene path; multi-cast OR a
-    // non-vertical aspect routes through renderStyledSeedMulti, which reframes the refs to any aspect.
-    const multiCast = sceneCostarRefs.length > 0 && !!artistRef; // compose the scene's cast in ANY scene (barn band, truck riders), not just perform
-    const multiPrompt = `A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${s.visual}. Feature the artist together with ${sceneCastNames || "the co-stars"} — keep EACH person's face and identity EXACTLY as in their reference photo; do NOT blend, merge, duplicate or swap faces.${propClause}${performNote} ${g.look}. ${REALISM}`;
-    const singlePrompt = `A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${s.visual}. Keep this EXACT person's face and identity — do not swap them.${propClause}${performNote} ${g.look}. ${REALISM}`;
+    // Compose the scene still, three ways (the prompts are built in mv-cast.ts — who is in the shot and
+    // the microphone rule come FIRST there, because each picture call reads a limited length):
+    //   · the artist WITH co-stars  → composed from everyone's reference, then checked by eye (castStill);
+    //   · the artist alone, wide or square → composed from their reference at that shape;
+    //   · the artist alone, upright → their own picture edited into the scene (the proven path).
+    const multiCast = sceneCostarRefs.length > 0 && !!artistRef; // the scene's cast in ANY scene (barn band, truck riders), not just a performance
     const genPrimary = (): Promise<string | null> => {
-      if (multiCast || (asp !== "9:16" && srcRef)) {
-        return renderStyledSeedMulti(multiCast ? multiPrompt : singlePrompt, (multiCast ? [artistRef, ...sceneCostarRefs] : [srcRef]).filter(Boolean).slice(0, 3) as string[], asp);
+      if (multiCast && artistRef) {
+        return castStill({ genre: g.label, shot, visual: s.visual, leadRef: artistRef, otherRefs: sceneCostarRefs, asp, abs, tag: `scene ${i + 1}`,
+          prop: propKey ? { noun, phrase: propPhrase(propKey), ref: propRefs[propKey], animal: !customOf(propKey) } : undefined });
       }
-      return srcRef ? editSubjectIntoScene(srcRef, prompt) : renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, asp);
+      if (srcRef && asp !== "9:16") return renderStyledSeedMulti(soloStillPrompt({ genre: g.label, role: shot.role, frame: shot.frame, visual: s.visual, micOk, extra: propClause }), [srcRef], asp, undefined, CAST_PROMPT_MAX);
+      if (srcRef) return editSubjectIntoScene(srcRef, soloEditPrompt({ role: shot.role, frame: shot.frame, visual: s.visual, micOk, extra: `${propClause}${performNote}` }), SOLO_EDIT_MAX);
+      return renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, asp);
     };
     // RETRY before giving up — a transient gen blip otherwise fell back to the raw artist portrait, which
     // came out IDENTICAL across failed scenes AND in the portrait's 9:16 (ignoring the chosen shape).
@@ -462,10 +519,14 @@ async function buildMusicVideoSeeds(p: {
     // Last resort = a scene-only render at the CHOSEN aspect (distinct per scene, correct shape) — NEVER
     // the portrait fallback that produced the duplicate 9:16 stills.
     if (!img) { try { img = await renderCreativeSeed(`A cinematic ${g.label} music-video shot: ${shot.frame}, ${s.visual}. ${g.look}. ${REALISM}`, asp); } catch { /* keep null */ } }
-    if (propKey && artistRef && propRefs[propKey]) {
+    // (a shot with co-stars has already had its prop checked, in castStill — and the forced compose
+    //  below is the artist and the prop ONLY, which would throw the co-stars out of their own scene)
+    if (propKey && artistRef && propRefs[propKey] && !multiCast) {
       const cur = img ? abs(img) : null;
       if (!cur || !(await sceneShowsProp(cur, noun))) {
-        const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${s.visual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, no duplicates.${animalGuard(propKey, noun)} ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRefs[propKey]], asp);
+        // (what must be in the picture is said first — it used to come after the setting, past where the
+        //  picture call stops reading)
+        const forced = await renderStyledSeedMulti(`The artist (the person in the 1st reference image) with exactly ONE ${noun} beside them (the ${noun} in the 2nd reference image) — a single ${noun}, no duplicates.${animalGuard(propKey, noun)} ${ONE_PERSON} Composed as ${shot.frame}, in this setting: ${s.visual}`, [artistRef, propRefs[propKey]], asp, undefined, CAST_PROMPT_MAX);
         if (forced) img = forced;
       }
     }
@@ -481,28 +542,31 @@ async function buildMusicVideoSeeds(p: {
  *  generateMusicVideo as `approvedSceneImgs` so it renders EXACTLY what was previewed. */
 export async function previewMusicVideoScenes(opts: {
   shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>; castForScene?: Record<number, string[]>; outfits?: Record<string, string>; aspect?: string; artistName?: string; castNames?: string[]; artistGender?: "m" | "f"; castGenders?: Array<{ name: string; gender: "m" | "f" }>;
+  /** How long each scene is — 5 or 10 seconds (the pace decides; unset = 10, as every video was before). */
+  sceneSeconds?: number;
 }): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; propForScene: Record<number, string>; artistRef: string | null; castRefs: string[] }> {
   const tmpl = filmTemplate("musicvideo");
   const genre = genreOrDefault(opts.genre);
   const g = GENRES[genre];
-  const N = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, opts.sceneCount ?? tmpl.defaultScenes));
+  const D = sceneSecondsOf(opts.sceneSeconds);
+  const N = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, Math.floor(MV_MAX_SECONDS / D), opts.sceneCount ?? tmpl.defaultScenes));
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   const propList = (opts.props || []).filter((k) => PROPS[k] || (opts.customProps || []).some((c) => c.key === k));
 
   let treatment: FilmTreatment = opts.treatment && opts.treatment.scenes?.length
     ? opts.treatment
-    : await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, genre, artistName: opts.artistName, castNames: opts.castNames, artistGender: opts.artistGender, castGenders: opts.castGenders });
+    : await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, sceneSeconds: D, genre, artistName: opts.artistName, castNames: opts.castNames, artistGender: opts.artistGender, castGenders: opts.castGenders });
   treatment.scenes = treatment.scenes.slice(0, N);
   const scenes = treatment.scenes;
 
   const propForScene: Record<number, string> = {};
   if (propList.length) {
-    const propScenes = scenes.map((_, i) => i).filter((i) => shotFor(scenes[i], i, scenes.length).propOk);
+    const propScenes = scenes.map((_, i) => i).filter((i) => shotFor(scenes[i], i, scenes.length, D).propOk);
     propScenes.forEach((sceneI, k) => { propForScene[sceneI] = propList[k % propList.length]; });
   }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
 
-  const { sceneImgs, artistRef, castRefs } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, aspect: opts.aspect, resume: {}, base });
+  const { sceneImgs, artistRef, castRefs } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, aspect: opts.aspect, sceneSeconds: D, resume: {}, base });
   // Archive every scene still the owner generates here, so their scene generations are saved (not just
   // ephemeral preview frames). Best-effort + parallel — never block or fail the preview on it.
   try {
@@ -535,6 +599,8 @@ export async function rerollMusicVideoScene(opts: {
    *  Performance, re-roll, and you got another establishing wide.) */
   kind?: "perform" | "broll";
   sceneCount?: number;
+  /** How long each scene of this video is (5 or 10) — with the count, it sets the scene's default kind. */
+  sceneSeconds?: number;
 }): Promise<string | null> {
   const g = GENRES[genreOrDefault(opts.genre)];
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -543,45 +609,46 @@ export async function rerollMusicVideoScene(opts: {
   const propNoun = (k: string): string => (PROPS[k]?.label || k).replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || k;
   const artistRef = abs(opts.artistRef);
   if (!artistRef) return null;
-  const shot = shotFor({ kind: opts.kind }, opts.sceneIndex, opts.sceneCount && opts.sceneCount > 0 ? opts.sceneCount : SHOTLIST.length);
+  const shot = shotFor({ kind: opts.kind }, opts.sceneIndex, opts.sceneCount && opts.sceneCount > 0 ? opts.sceneCount : SHOTLIST.length, sceneSecondsOf(opts.sceneSeconds));
+  const micOk = micFits(opts.sceneVisual);
   // Accept a CATALOG prop OR one of the merchant's OWN custom props (which seed from their photo).
   const custom = (opts.customProps || []).find((c) => c.key === opts.propKey && c.img);
   const propKey = opts.propKey && (PROPS[opts.propKey] || custom) ? opts.propKey : undefined;
   const noun = !propKey ? "" : (custom ? ((custom.label || "").replace(/^[^\p{L}]+/u, "").trim().toLowerCase() || "prop") : propNoun(propKey));
   const propPhrase = !propKey ? "" : (custom ? `the ${custom.label}` : (PROPS[propKey].phrase || `a ${noun}`));
   const animalG = (custom || !propKey) ? "" : ` The ONLY animal in the image is this one ${noun}: do NOT include a dog or any other animal.`;
-  const costarRefs = (opts.castRefs || []).map((r) => abs(r)).filter((r): r is string => !!r && r !== artistRef).slice(0, 2);
+  const costarRefs = (opts.castRefs || []).map((r) => abs(r)).filter((r): r is string => !!r && r !== artistRef).slice(0, MAX_COSTARS);
+  const multiCast = costarRefs.length > 0; // the scene's cast in ANY scene type, not just a performance
 
-  // For a prop scene, rebuild its locked single-subject ref + artist-anchor so the one prop lands. A
-  // custom prop IS its own photo; a catalog prop renders one locked single-subject shot.
+  // For a prop scene, rebuild its locked single-subject ref so the one prop lands (a custom prop IS its
+  // own photo; a catalog prop renders one locked single-subject shot) — and, for a shot of the artist
+  // alone, the artist-with-prop anchor the scene is edited from.
   let srcRef: string | null = artistRef;
   let propRef: string | null = null;
   if (propKey) {
     propRef = custom ? abs(custom.img) : abs(await renderCreativeSeed(`A single real ${noun} — exactly ONE ${noun}, full body, photorealistic, plain neutral background. The only subject is this one ${noun}. ${REALISM}`, "9:16"));
-    const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${propPhrase} — a SINGLE ${noun}, only one.${animalG} Full body, neutral studio backdrop. ${REALISM}`);
-    srcRef = a ? (abs(a) || artistRef) : artistRef;
+    if (!multiCast) {
+      const a = await editSubjectIntoScene(artistRef, `Keep this EXACT person identical. Place them together with exactly ONE ${propPhrase} — a SINGLE ${noun}, only one.${animalG} Full body, neutral studio backdrop. ${REALISM}`);
+      srcRef = a ? (abs(a) || artistRef) : artistRef;
+    }
   }
-  const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, no duplicates.${custom ? "" : ` The ONLY animal in frame is this one ${noun}; do NOT add a dog or any other animal.`}` : "";
+  const animalNote = custom || !propKey ? "" : ` The ONLY animal in frame is this one ${noun}; do NOT add a dog or any other animal.`;
+  const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, no duplicates.${animalNote}` : "";
   const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
-  // Multi-cast OR a non-vertical aspect → compose via the multi-ref seed (identity-locked faces, reframed
-  // to the chosen shape). A single 9:16 subject keeps the proven edit-into-scene path.
-  const multiCast = costarRefs.length > 0; // compose the scene's cast in ANY scene type, not just perform
+  // The same three ways a scene still is made in buildMusicVideoSeeds — and the same prompts (mv-cast.ts).
   let img: string | null;
-  if (multiCast || asp !== "9:16") {
-    const refs = (multiCast ? [artistRef, ...costarRefs, ...(propRef ? [propRef] : [])] : [srcRef || artistRef]).filter(Boolean).slice(0, 3) as string[];
-    img = await renderStyledSeedMulti(
-      multiCast
-        ? `A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${opts.sceneVisual}. Feature the artist together with the co-stars — keep EACH person's face and identity EXACTLY as in their reference photo; do NOT blend, merge, duplicate or swap faces.${propClause}${performNote} ${g.look}. ${REALISM}`
-        : `A cinematic ${g.label} music-video shot. Compose it as ${shot.frame}, in this setting: ${opts.sceneVisual}. Keep this EXACT person's face and identity — do not swap them.${propClause}${performNote} ${g.look}. ${REALISM}`,
-      refs, asp);
+  if (multiCast) {
+    img = await castStill({ genre: g.label, shot, visual: opts.sceneVisual, leadRef: artistRef, otherRefs: costarRefs, asp, abs, tag: `scene ${opts.sceneIndex + 1} (again)`,
+      prop: propKey ? { noun, phrase: propPhrase, ref: propRef, animal: !custom } : undefined });
+  } else if (asp !== "9:16") {
+    img = await renderStyledSeedMulti(soloStillPrompt({ genre: g.label, role: shot.role, frame: shot.frame, visual: opts.sceneVisual, micOk, extra: propClause }), [srcRef || artistRef], asp, undefined, CAST_PROMPT_MAX);
   } else {
-    const prompt = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT change who they are or swap them for a different person. Compose the shot as ${shot.frame}, in this setting: ${opts.sceneVisual}.${propClause}${performNote} ${g.look}. ${REALISM} ${ONE_PERSON}`;
-    img = srcRef ? await editSubjectIntoScene(srcRef, prompt) : null;
+    img = srcRef ? await editSubjectIntoScene(srcRef, soloEditPrompt({ role: shot.role, frame: shot.frame, visual: opts.sceneVisual, micOk, extra: `${propClause}${performNote}` }), SOLO_EDIT_MAX) : null;
   }
   if (propKey && propRef && !multiCast) {
     const cur = img ? abs(img) : null;
     if (!cur || !(await sceneShowsProp(cur, noun))) {
-      const forced = await renderStyledSeedMulti(`${shot.frame}, in this setting: ${opts.sceneVisual}. The artist with exactly ONE ${noun} beside them — a single ${noun}, no duplicates.${custom ? "" : " The ONLY animal in frame, no dog or other animals."} ${g.look}. ${REALISM} ${ONE_PERSON}`, [artistRef, propRef], asp);
+      const forced = await renderStyledSeedMulti(`The artist (the person in the 1st reference image) with exactly ONE ${noun} beside them (the ${noun} in the 2nd reference image) — a single ${noun}, no duplicates.${animalNote} ${ONE_PERSON} Composed as ${shot.frame}, in this setting: ${opts.sceneVisual}`, [artistRef, propRef], asp, undefined, CAST_PROMPT_MAX);
       if (forced) img = forced;
     }
   }
@@ -626,6 +693,10 @@ export async function generateMusicVideo(opts: {
   /** How fast the video is CUT — "slow" | "medium" | "fast". Unset = the genre's own pace (rap is cut
    *  fast, country slow). It changes the edit, not what is generated: see mv-pace.ts. */
   pace?: string;
+  /** How long each scene is — 5 or 10 seconds. The length is picked in seconds and the pace decides this
+   *  (a slow video is ten-second scenes, a medium or fast one five — mv-pace.ts). Unset = 10, which is
+   *  what every video queued before 2026-11-21 was made of. */
+  sceneSeconds?: number;
   /** Owner PREVIEWED + approved these exact per-scene stills — render them, don't re-seed (no surprise).
    *  Index-aligned with scenes; a null entry means that scene fell back and should seed fresh. */
   approvedSceneImgs?: (string | null)[];
@@ -648,7 +719,10 @@ export async function generateMusicVideo(opts: {
   // It was hardcoded 720×1280, so a 16:9 pick still rendered a 9:16 video (the wide scene got cropped).
   const vidAspect = (opts.aspect === "16:9" || opts.aspect === "1:1") ? opts.aspect : "9:16";
   const [W, H] = vidAspect === "16:9" ? [1280, 720] : vidAspect === "1:1" ? [1080, 1080] : [720, 1280];
-  const N = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, opts.sceneCount ?? tmpl.defaultScenes));
+  // Every scene is ONE clip from the video model, which makes clips of 5 or 10 seconds. The video is
+  // N × D seconds exactly (two minutes at most), and the song is fit to that.
+  const D = sceneSecondsOf(opts.sceneSeconds);
+  const N = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, Math.floor(MV_MAX_SECONDS / D), opts.sceneCount ?? tmpl.defaultScenes));
   const jobId = opts.jobId;
   const resume = opts.resume || {};
   const ckpt = async (patch: Record<string, unknown>) => { if (jobId) await checkpointJob(jobId, patch); };
@@ -661,7 +735,7 @@ export async function generateMusicVideo(opts: {
   let treatment: FilmTreatment;
   if (resume.ckTreatment) treatment = JSON.parse(resume.ckTreatment);
   else if (opts.treatment && opts.treatment.scenes?.length) treatment = opts.treatment;
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, genre, artistName: opts.artistName, castNames: opts.castNames, artistGender: opts.artistGender, castGenders: opts.castGenders });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: "musicvideo", topic: opts.topic, sceneCount: N, sceneSeconds: D, genre, artistName: opts.artistName, castNames: opts.castNames, artistGender: opts.artistGender, castGenders: opts.castGenders });
   treatment.scenes = treatment.scenes.slice(0, N);
   await ckpt({ ckTreatment: JSON.stringify(treatment) });
   const scenes = treatment.scenes;
@@ -671,7 +745,7 @@ export async function generateMusicVideo(opts: {
   // naturally limits how often each prop appears, so it reads as a recurring motif, not a herd.
   const propForScene: Record<number, string> = {};
   if (propList.length) {
-    const propScenes = scenes.map((_, i) => i).filter((i) => shotFor(scenes[i], i, scenes.length).propOk);
+    const propScenes = scenes.map((_, i) => i).filter((i) => shotFor(scenes[i], i, scenes.length, D).propOk);
     propScenes.forEach((sceneI, k) => { propForScene[sceneI] = propList[k % propList.length]; });
   }
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
@@ -695,15 +769,15 @@ export async function generateMusicVideo(opts: {
     const voiceSex = opts.artistGender === "f" ? "female vocals, a woman singing lead. " : opts.artistGender === "m" ? "male vocals, a man singing lead. " : "";
     // 1:00 and longer → the full-length song engine: one real track sized to the video, sent as a tagged
     // sheet, instead of a one-minute song repeated to fill the time.
-    const fullLength = N * 10 >= 60;
-    songPath = await singToDisk(fullLength ? fullSongSheet(scenes) : lyrics, `${voiceSex}${g.song}. ${treatment.musicMood || ""}`.slice(0, 300), { fullLength, minSeconds: N * 10 });
+    const fullLength = N * D >= 60;
+    songPath = await singToDisk(fullLength ? fullSongSheet(scenes) : lyrics, `${voiceSex}${g.song}. ${treatment.musicMood || ""}`.slice(0, 300), { fullLength, minSeconds: N * D });
     await ckpt({ ckSong: songPath });
   }
   // EXACT LENGTH — the finished video must be the length the merchant PICKED (and was billed for), not
-  // whatever minimax happened to sing (the "set 20s, got 40s" bug). Every scene is one 10-second Kling
-  // clip, so the target is N×10s; fit the song to exactly that grid (trim-long / loop-short), cached so a
-  // resume doesn't re-fit. BYO songs are fit too, so an uploaded track also honours the picked length.
-  const D = 10; // Kling image-to-video only accepts "5" or "10"; we standardise on 10s/scene for exact math
+  // whatever minimax happened to sing (the "set 20s, got 40s" bug). Every scene is one Kling clip of D
+  // seconds (it only makes 5 or 10), so the target is N×D; fit the song to exactly that grid (trim-long /
+  // loop-short), cached so a resume doesn't re-fit. BYO songs are fit too, so an uploaded track also
+  // honours the picked length.
   const targetLen = N * D;
   if (resume.ckSongFit && fs.existsSync(resume.ckSongFit)) songPath = resume.ckSongFit;
   else { songPath = await fitSongToLength(songPath, targetLen); await ckpt({ ckSongFit: songPath }); }
@@ -737,7 +811,20 @@ export async function generateMusicVideo(opts: {
   //      SHARED seed path the preview uses (hero + prop anchors + vision-gated per-scene edits).
   const sceneImgs = opts.approvedSceneImgs && opts.approvedSceneImgs.length === N
     ? opts.approvedSceneImgs.map((u) => abs(u))
-    : (await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, aspect: opts.aspect, jobId, resume, base })).sceneImgs;
+    : (await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, aspect: opts.aspect, sceneSeconds: D, jobId, resume, base })).sceneImgs;
+
+  // WHO is in each scene's picture beside the artist (the maker's per-scene cast, else the shared
+  // default) — the video model is told how many people there are and that only the artist sings.
+  const extras = (opts.castExtra || []).filter((m) => m && m.img).slice(0, MAX_COSTARS);
+  const extraUrls = extras.map((m) => abs(m.img));
+  const extraNames = extras.map((m) => (m.name || "").trim());
+  const costarsIn = (i: number): number => {
+    if (!extras.length) return 0;
+    const listed = opts.castForScene ? opts.castForScene[i] : undefined;
+    if (listed) return Math.min(MAX_COSTARS, new Set(listed.map((u) => abs(u)).filter((u) => !!u && extraUrls.includes(u))).size);
+    const shot = shotFor(scenes[i], i, scenes.length, D);
+    return defaultCostars(scenes[i], shot.role, shot.slot, extraNames).length;
+  };
 
   // 5) song SEGMENTS (local mp3 + hosted url for the lip-sync model to drive the mouth to).
   const segs: Array<{ localPath: string; url: string }> = [];
@@ -753,17 +840,27 @@ export async function generateMusicVideo(opts: {
   const clips = await mapLimit(scenes, 3, async (_s, i) => {
     const imgAbs = sceneImgs[i];
     const seg = segs[i];
-    const shot = shotFor(_s, i, scenes.length);
+    const shot = shotFor(_s, i, scenes.length, D);
     if (!imgAbs) return null;
     const imgLocal = path.join(RENDERS(), path.basename(imgAbs));
     const pKey = propForScene[i];
     // Reference the prop already baked into the seed image — never "add a tiger" (which spawns new
     // ones); just hold the single one in frame and forbid duplicates as the clip animates.
     const keepProp = pKey ? ` The single ${propNoun(pKey)} already in the shot stays in frame — exactly one; do NOT add or duplicate any ${propNoun(pKey)}, a dog, or any other animal.` : "";
-    const closeupSteady = /close-?up/i.test(shot.frame) ? " This is a TIGHT CLOSE-UP on the face: keep the head and camera almost perfectly still — only subtle, natural micro-motion — so the mouth stays crisp and the lip-sync reads cleanly; NO fast head turns or large moves." : "";
+    // The PEOPLE in the picture. Alone, the artist is told to stay one person (wide shots grew a twin).
+    // With co-stars in the still, the model is told how many there are, that they all stay, and that only
+    // the artist sings — it used to be told "exactly ONE artist … a single person" over a picture of three.
+    const k = costarsIn(i);
+    const who = k ? castMotionLine(k, shot.role === "perform") : ` ${ONE_PERSON}`;
+    const framing = k ? shot.short : shot.frame;
+    const same = k ? "Keep the SAME people identical" : "Keep the SAME person identical";
+    const closeupSteady = !k && /close-?up/i.test(shot.frame) ? " This is a TIGHT CLOSE-UP on the face: keep the head and camera almost perfectly still — only subtle, natural micro-motion — so the mouth stays crisp and the lip-sync reads cleanly; NO fast head turns or large moves." : "";
+    // MICROPHONES: the still decides (a mic is in it only where one belongs — mv-cast.ts micFits); the
+    // video model must neither hand the singer one nor take theirs away. (It used to be told flatly
+    // "there is NO microphone", which fought a stage scene whose still showed one.)
     const motionPrompt = shot.role === "perform"
-      ? `A premium ${g.label} music video. ${shot.frame}. The camera does ${shot.cam}. The artist ${g.perform}. Keep the movement NATURAL and VARIED — do NOT repeat the same gesture over and over, no exaggerated or aggressive motions, and no angry or snarling faces. Keep the head mostly steady and facing camera so the singing reads clearly and the lips stay in sync with the vocals.${closeupSteady}${keepProp} There is NO microphone — the artist never holds a mic. Keep the SAME person identical; photoreal, cinematic, high-production. ${ONE_PERSON}`
-      : `A premium ${g.label} music video — cinematic B-ROLL. ${shot.frame}. The camera does ${shot.cam}; the scene is alive with natural, flowing motion (no repeated or jittery movement).${keepProp} Keep the SAME person identical; photoreal, cinematic, high-production. ${ONE_PERSON}`;
+      ? `A premium ${g.label} music video. ${framing}. The camera does ${shot.cam}. The artist ${g.perform}. Keep the movement NATURAL and VARIED — do NOT repeat the same gesture over and over, no exaggerated or aggressive motions, and no angry or snarling faces. Keep the artist's head mostly steady and facing camera so the singing reads clearly and the lips stay in sync with the vocals.${closeupSteady}${keepProp}${MIC_MOTION_LINE} ${same}; photoreal, cinematic, high-production.${who}`
+      : `A premium ${g.label} music video — cinematic B-ROLL. ${framing}. The camera does ${shot.cam}; the scene is alive with natural, flowing motion (no repeated or jittery movement).${keepProp}${NO_NEW_MIC_LINE} ${same}; photoreal, cinematic, high-production.${who}`;
     for (const i2vModel of [I2V_MODEL, I2V_FALLBACK, I2V_MODEL, I2V_FALLBACK]) { // TWO passes — a transient i2v/mux blip shouldn't drop a whole scene to a static still (owner: "first cutscene is a still not video")
       try {
         // silent motion clip — primary engine, then the backup if it blips (so a provider outage
@@ -808,7 +905,7 @@ export async function generateMusicVideo(opts: {
   // PACE — cut what was rendered to the genre's pace (or the maker's pick). Roles are read off the scenes
   // that actually made it, in order, so the list always describes the clips being joined.
   const pace: Pace = paceFor(genre, opts.pace);
-  const keptRoles = clips.map((c, i) => (c ? shotFor(scenes[i], i, scenes.length).role : null)).filter((r): r is "perform" | "broll" => !!r);
+  const keptRoles = clips.map((c, i) => (c ? shotFor(scenes[i], i, scenes.length, D).role : null)).filter((r): r is "perform" | "broll" => !!r);
   // only when nothing was dropped: with a scene missing, later performance clips no longer sit at their
   // own place in the song, and an edit built on "its own place" would be built on sand
   // …and a paced edit cuts ON the song's beat (slow keeps every clip whole, so there is nothing to move)
@@ -845,7 +942,7 @@ export async function generateMusicVideo(opts: {
       metaJson: JSON.stringify({
         kind: "musicvideo", template: "musicvideo", section: opts.section || "creator",
         genre, genreLabel: g.label, scenes: good.length, lipSynced: good.length, aspect: (opts.aspect === "16:9" || opts.aspect === "1:1") ? opts.aspect : "9:16",
-        targetSeconds: targetLen, songSeconds: Math.round(songDur), seconds: Math.round(finalDur), voiceMatched, engine: "kling2.5+synclipsync",
+        targetSeconds: targetLen, sceneSeconds: D, songSeconds: Math.round(songDur), seconds: Math.round(finalDur), voiceMatched, engine: "kling2.5+synclipsync",
         pace, cuts: cuts ? Math.max(0, cuts.length - 1) : Math.max(0, good.length - 1), cutOnBeat: onBeat.length > 2,
         captions,
       }),

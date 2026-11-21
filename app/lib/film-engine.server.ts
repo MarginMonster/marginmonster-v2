@@ -32,6 +32,8 @@ import { renderCreativeSeed, renderStyledSeed } from "./image-generation.server"
 import { musicBedToDisk, singToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
+import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds } from "./mv-pace";
+import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -143,12 +145,13 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     brief: "a full ~2-minute MUSIC VIDEO — ONE artist actually sings a real genre song on camera (lip-synced) across several vivid settings, like a real DaBaby / Oliver Tree video",
     sceneHint: "a vivid, cinematic, stylized music-video scene full of energy and mood, featuring the SAME artist performing to camera — dynamic lighting, strong composition; NO on-screen text, logos or real named people",
     musicHint: "a catchy full-length genre song with clear sung/rapped vocals, real music-video energy",
-    // EXACT-LENGTH tiers: each scene renders as one 10-second sung clip, so the merchant picks a length
-    // (10s→2:00) and N = seconds/10. min 1 (a 10s single-shot video is valid), max 12 (the full 2-minute
-    // song spec). The song is fit to EXACTLY N×10s so the finished video lands on the picked length.
+    // EXACT LENGTH, PICKED IN SECONDS (10s→2:00). Each scene is one generated clip of 10 seconds (a slow
+    // video) or 5 (a medium or fast one — see SCENE_SECONDS in mv-pace.ts), so N = seconds ÷ scene length:
+    // min 1 (a 10s single-shot video is valid), max 24 (two minutes of five-second scenes). The song is fit
+    // to EXACTLY that many seconds, so the finished video lands on the picked length.
     defaultScenes: 3,
     minScenes: 1,
-    maxScenes: 12,
+    maxScenes: 24,
     captions: false, // a performance music video, not a lyric/karaoke video
     castBible: true,
     referenceSeed: true,
@@ -380,10 +383,19 @@ export async function previewFilmTreatment(opts: {
   /** The cast the maker PICKED for a story format, before a word was written: each one's name and what
    *  they are. The writer writes FOR them instead of inventing a cast of its own. */
   cast?: Array<{ name: string; desc?: string }>;
+  /** Music Video: how long each scene is — 10 seconds (the default) or 5. The video runs
+   *  sceneCount × this many seconds, and the song is written for THAT length. */
+  sceneSeconds?: SceneSeconds;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const narrated = opts.mode === "narrated" && !tmpl.lipSyncSinger && !tmpl.sung;
-  const scenes = narrated ? clampNarrated(opts.sceneCount ?? NARRATED_DEFAULT_SCENES) : clampScenes(tmpl, opts.sceneCount ?? tmpl.defaultScenes);
+  // a music video is never longer than two minutes, however short its scenes
+  const sceneSec: SceneSeconds = tmpl.lipSyncSinger && opts.sceneSeconds === 5 ? 5 : 10;
+  const scenes = narrated ? clampNarrated(opts.sceneCount ?? NARRATED_DEFAULT_SCENES)
+    : tmpl.lipSyncSinger ? Math.min(clampScenes(tmpl, opts.sceneCount ?? tmpl.defaultScenes), Math.floor(MV_MAX_SECONDS / sceneSec))
+    : clampScenes(tmpl, opts.sceneCount ?? tmpl.defaultScenes);
+  /** how long the finished music video runs */
+  const videoSecs = scenes * sceneSec;
   // who the maker cast (story formats only — a music video names its artist its own way)
   const picked = tmpl.lipSyncSinger ? [] : (opts.cast || [])
     .map((c) => ({ name: (c?.name || "").trim().slice(0, 40), desc: (c?.desc || "").trim().replace(/\s+/g, " ").slice(0, 220) }))
@@ -431,31 +443,46 @@ export async function previewFilmTreatment(opts: {
   // engine sings roughly ONE lyric line every 5 seconds then stops (measured on music-1.5: 2 lines → 11s,
   // 4 → 20s, 6 → 26s, 8 → 34s). A full verse-chorus song written for a 10-second video just gets chopped
   // off mid-verse, so the short cuts get a hook sized to their length instead.
-  const shortCut = scenes <= 2;
-  const hookLines = scenes === 1 ? 2 : 5;
+  // (All of this goes by the video's length in SECONDS — a 20-second video is a short cut whether it is
+  // two ten-second scenes or four five-second ones.)
+  const shortCut = videoSecs <= 20;
+  const hookLines = videoSecs <= 10 ? 2 : 5;
   // FULL-LENGTH videos (1:00 and up) are sung by the full-length engine (music-2.5 — see singToDisk),
   // which takes a whole lyric sheet and sings it as one track. So write a song sized to the video rather
   // than the 560-character sheet the short engine is capped at (which ran out at about a minute and left
   // the 1:30 / 2:00 videos repeating themselves). Keep this threshold in step with `fullLength` in the
   // music-video pipeline.
-  const fullSong = scenes >= 6;
+  const fullSong = videoSecs >= 60;
   // ~4.2 s per line leaves the song a little LONGER than the video (measured 4.6–5.5 s per line), so it
   // is trimmed to length with a fade rather than repeated: 1:00 → 14 lines, 1:30 → 21, 2:00 → 29.
-  const fullLines = Math.round((scenes * 10) / 4.2);
+  const fullLines = Math.round(videoSecs / 4.2);
+  // how many lyric lines fall in one scene: a ten-second scene hears two or three, a five-second one
+  // hears one (the engine sings about a line every five seconds)
+  const perScene = sceneSec === 5 ? "1 line, 2 at the very most" : "2-3 lines";
   const songShape = shortCut
-    ? `This is a SHORT ${scenes * 10}-second cut, so write ONLY the HOOK: EXACTLY ${hookLines} short, punchy lyric lines in TOTAL — no verses and no repeated lines. (The music engine sings about one line every 5 seconds and everything after ${scenes * 10} seconds is cut off, so extra lines would never be heard.)`
+    ? `This is a SHORT ${videoSecs}-second cut, so write ONLY the HOOK: EXACTLY ${hookLines} short, punchy lyric lines in TOTAL — no verses and no repeated lines. (The music engine sings about one line every 5 seconds and everything after ${videoSecs} seconds is cut off, so extra lines would never be heard.)`
     : fullSong
-    ? `This video runs ${scenes * 10} seconds and the music engine sings about one line every 4-5 seconds, so write a FULL song of about ${fullLines} short lyric lines in TOTAL (2-3 per scene): verses that carry the story forward and a catchy chorus hook that comes back two or three times — WRITE THE CHORUS LINES OUT again every time they are sung. Keep every line short (10 words or fewer).`
+    ? `This video runs ${videoSecs} seconds and the music engine sings about one line every 4-5 seconds, so write a FULL song of about ${fullLines} short lyric lines in TOTAL (${perScene} per scene): verses that carry the story forward and a catchy chorus hook that comes back two or three times — WRITE THE CHORUS LINES OUT again every time they are sung. Keep every line short (10 words or fewer).`
     : `Keep the song TIGHT: a short verse, a REPEATING chorus hook, a second short verse, then the chorus again. HARD LIMIT — the complete lyrics (ALL ${scenes} scene captions joined together) MUST total UNDER 560 characters (roughly 95 words); lean on the repeating chorus. The music engine expands these lyrics into a full-length track, so short and punchy is exactly right.`;
   const captionShape = shortCut
-    ? `• CAPTION — the lyric lines sung in THIS scene (${scenes === 1 ? "both lines" : "2-3 lines each"}), separated by " / ". Read in order, the captions ARE the complete ${hookLines}-line ${genreLabel} hook. Authentic to ${genreLabel}.\n`
+    ? `• CAPTION — the lyric line${hookLines > scenes ? "s" : ""} sung in THIS scene (${scenes === 1 ? "all of them" : sceneSec === 5 ? "1-2 lines each" : "2-3 lines each"}), separated by " / ". Read in order, the captions ARE the complete ${hookLines}-line ${genreLabel} hook. Authentic to ${genreLabel}.\n`
     : fullSong
-    ? `• CAPTION — the 2-3 SHORT lyric lines sung in THIS scene, separated by " / ". Read in order, all ${scenes} captions joined ARE the complete ${genreLabel} song, with the chorus written out each time it returns. Authentic to ${genreLabel}.\n`
-    : `• CAPTION — the 2-3 SHORT lyric lines sung in THIS scene, separated by " / ". Read in order, all ${scenes} captions joined ARE the complete (short, catchy) ${genreLabel} song with the chorus repeating. Authentic to ${genreLabel}; keep it well within the character limit.\n`;
+    ? `• CAPTION — the SHORT lyric line${sceneSec === 5 ? "" : "s"} sung in THIS scene (${perScene}), separated by " / ". Read in order, all ${scenes} captions joined ARE the complete ${genreLabel} song, with the chorus written out each time it returns. Authentic to ${genreLabel}.\n`
+    : `• CAPTION — the SHORT lyric line${sceneSec === 5 ? "" : "s"} sung in THIS scene (${perScene}), separated by " / ". Read in order, all ${scenes} captions joined ARE the complete (short, catchy) ${genreLabel} song with the chorus repeating. Authentic to ${genreLabel}; keep it well within the character limit.\n`;
+  // WHAT EACH SCENE IS FILMED AS. A music video is a few performances intercut with cut scenes, and which
+  // is which is decided by the shot list — so the writer is told, scene by scene, and writes a scene that
+  // fits its shot (see SHOT_NOTES).
+  const shotPlan = tmpl.lipSyncSinger
+    ? Array.from({ length: scenes }, (_, i) => `  ${i + 1}. ${SHOT_NOTES[shotSlot(defaultRole(i, scenes, sceneSec), i)]}`).join("\n")
+    : "";
+  const hasCoStars = castNames.length > 0;
   const captionLine = tmpl.lipSyncSinger
-    ? `\nWrite a catchy ${genreLabel} SONG for ONE artist, plus ${scenes} VIDEO SCENE${scenes === 1 ? "" : "S"}. ${songShape} Return EXACTLY ${scenes} scene${scenes === 1 ? "" : "s"}. Each scene has TWO fields:\n` +
-      `• VISUAL — the SAME artist performing to camera in a DISTINCT ${genreLabel} setting (${tmpl.sceneHint}); a different vivid location each scene for visual variety; NO on-screen text, logos or real named people.\n` +
+    ? `\nWrite a catchy ${genreLabel} SONG for ONE artist, plus ${scenes} VIDEO SCENE${scenes === 1 ? "" : "S"} of ${sceneSec} seconds each. ${songShape} Return EXACTLY ${scenes} scene${scenes === 1 ? "" : "s"}. Each scene has TWO fields:\n` +
+      `• VISUAL — what we SEE in that scene, in at most 40 words: a vivid ${genreLabel} setting (${tmpl.sceneHint}) and what happens in it. A different location in every scene for visual variety; NO on-screen text, logos or real named people.\n` +
       captionShape +
+      `THE SHOT LIST — scene by scene, this is what each one is filmed as; write each VISUAL to fit its line:\n${shotPlan}\n` +
+      `WHO DOES WHAT — only the ARTIST ever sings.${hasCoStars ? ` In every PERFORMANCE the co-stars are in the shot WITH the artist: beside or just behind them, dancing or moving to the music — never singing, never the centre of the shot.` : ""} In a CUT SCENE nobody sings to camera.\n` +
+      `MICROPHONES — most music videos have none: the song is mimed. Do NOT put a microphone or mic stand in a VISUAL unless that scene is a live stage show or a recording booth — and then ONLY the artist has one.\n` +
       `RENDER-SAFE — these scenes become AI video and some things glitch badly when animated. UNLESS the theme above explicitly calls for it, AVOID: fire, flames, bonfires, sparks or embers; riding in the BED of a moving truck or any fast open-air wind (the wind + flames warp into a mess); extreme tight face-filling close-ups; and exaggerated or extreme facial emotions (screaming, sobbing, snarling). Prefer steady medium and wide shots, grounded settings, gentle believable motion, and natural, genuine expressions.\n`
     : narrated
     ? `\nWrite it as a NARRATED STORY: a storyteller's voice tells it over illustrated scenes — nobody speaks on camera. Return EXACTLY ${scenes} scenes. Each scene has TWO fields:\n` +
@@ -483,12 +510,14 @@ export async function previewFilmTreatment(opts: {
   // The template brief says "a full ~2-minute MUSIC VIDEO … across several vivid settings" — say what a
   // short cut actually is, so the brief doesn't fight the hook-sized lyric budget above.
   const brief = tmpl.lipSyncSinger && shortCut
-    ? `a SHORT ${scenes * 10}-second MUSIC VIDEO cut — ONE artist actually sings a real genre hook on camera (lip-synced) ${scenes === 1 ? "in one vivid setting" : "across two vivid settings"}`
+    ? `a SHORT ${videoSecs}-second MUSIC VIDEO cut — ONE artist actually sings a real genre hook on camera (lip-synced) ${scenes === 1 ? "in one vivid setting" : `across ${scenes} vivid settings`}`
     : narrated ? (NARRATED_BRIEF[tmpl.key] || NARRATED_BRIEF.testmovie)
     : tmpl.brief;
   const prompt =
     `Write ${brief}.\n` +
     (topic ? `THEME / what it's about: "${topic.slice(0, 300)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n` : `Pick a fun, broadly-appealing theme.\n`) +
+    // a sung piece: the words are ours, whatever song the theme names
+    (tmpl.lipSyncSinger || tmpl.sung ? `${ORIGINAL_LYRICS_RULE}\n` : "") +
     genreLine +
     castLine +
     genderLine +
@@ -499,7 +528,9 @@ export async function previewFilmTreatment(opts: {
   const write = async (p: string): Promise<FilmTreatment> => {
     const raw = await anthropicText(p, {
       model: "claude-sonnet-5",
-      maxTokens: tmpl.lipSyncSinger ? 2600 : narrated ? 2400 : 1500, // a full ~2-min song's lyrics — and a narrated story's every word — run long
+      // a full ~2-min song's lyrics — and a narrated story's every word — run long; a music video of
+      // five-second scenes has up to 24 scenes to describe
+      maxTokens: tmpl.lipSyncSinger ? (scenes > 12 ? 4400 : 2600) : narrated ? 2400 : 1500,
       jsonSchema: { name: "film_treatment", schema: TREATMENT_SCHEMA as unknown as Record<string, unknown> },
     });
     return JSON.parse(raw) as FilmTreatment;
@@ -520,15 +551,29 @@ export async function previewFilmTreatment(opts: {
     try { parsed = await write(prompt + extra); break; } catch (e) { lastErr = e; }
   }
   if (!parsed) throw lastErr instanceof Error ? lastErr : new Error("[film] treatment writer refused");
+  // A music video is EXACTLY the picked number of scenes (its length was picked to the second, and with
+  // five-second scenes there can be 24 of them). A writer that came back short is asked once more, told
+  // so; if it is short again the fuller answer is kept and the video is that much shorter.
+  const usable = (t: FilmTreatment | null): number => (t?.scenes || []).filter((s) => s && s.visual).length;
+  if (tmpl.lipSyncSinger && usable(parsed) < scenes) {
+    try {
+      const again = await write(`${prompt}\nIMPORTANT: your last answer had ${usable(parsed)} scenes. Return EXACTLY ${scenes} scenes — count them before you answer.`);
+      if (usable(again) > usable(parsed)) parsed = again;
+    } catch { /* keep the first answer */ }
+  }
   let list = (parsed.scenes || []).filter((s) => s && s.visual).slice(0, scenes);
   // FTC backstop (captions are burned on screen): strip an endorsement
   // possessive from a third-party trademark the writer may have slipped in.
-  list = list.map((s) => ({
+  list = list.map((s, i, all) => ({
     visual: s.visual,
     caption: s.caption ? dropOrgEndorsementPossessive(s.caption) : undefined,
     where: typeof s.where === "string" && s.where.trim() ? s.where.trim().slice(0, 120) : undefined,
     shot: typeof s.shot === "string" && s.shot.trim() ? s.shot.trim().slice(0, 60) : undefined,
     tone: typeof s.tone === "string" && s.tone.trim() ? s.tone.trim().slice(0, 100) : undefined,
+    // A music-video scene carries what it was WRITTEN as (performance or cut scene): the role then
+    // travels with the scene when the maker reorders or removes scenes, instead of being re-dealt by
+    // position — which turned a scene written as a performance into a cut scene.
+    ...(tmpl.lipSyncSinger ? { kind: defaultRole(i, all.length, sceneSec) } : {}),
   }));
   if (list.length < 1) throw new Error("[film] treatment came back empty");
   const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 5) : undefined;

@@ -5,8 +5,12 @@
  * genre sets the pace, and a Pace control overrides it.
  *
  * A music video here is N scenes of exactly D seconds each (one generated clip a scene), joined on the
- * song. That is ONE cut every ten seconds whatever the song — right for a country ballad, wrong for rap.
- * A faster pace does not generate more footage; it EDITS what was generated the way an editor would:
+ * song. At ten seconds a scene that is ONE cut every ten seconds whatever the song — right for a country
+ * ballad, wrong for rap. A faster pace does two things:
+ *
+ *   1. MORE SCENES (since 2026-11-21): the length is picked in seconds, and a medium or fast video is made
+ *      of five-second scenes — twice as many pictures for the same length (see SCENE_SECONDS below);
+ *   2. THE EDIT: what was generated is cut the way an editor would:
  *
  *   - a CUT SCENE trades beats with the other cut scenes (its own shot, another's, back to its own…);
  *   - a PERFORMANCE holds on the singer, and on a fast cut drops away for one beat and comes back.
@@ -23,12 +27,81 @@ export type ShotRole = "perform" | "broll";
 
 export const PACE_KEYS: Pace[] = ["slow", "medium", "fast"];
 
-/** `beats` = how many beats a ten-second scene is cut into. */
+/** `beats` = how many beats TEN SECONDS of video are cut into (a five-second scene gets half as many). */
 export const PACES: Record<Pace, { label: string; blurb: string; beats: number }> = {
   slow: { label: "Slow", blurb: "Long, lingering shots", beats: 1 },
-  medium: { label: "Medium", blurb: "Cut scenes trade places every few seconds", beats: 2 },
+  medium: { label: "Medium", blurb: "A new scene every few seconds", beats: 2 },
   fast: { label: "Fast", blurb: "Quick cuts, lots of scene changes", beats: 4 },
 };
+
+/* ---- length is picked in SECONDS; the pace decides how many scenes that is ----
+ * The owner, 2026-11-21: "we have it by seconds and not scenes — that way there could potentially be many
+ * scenes to come out and it works better with pace". The video model renders a clip of 5 or 10 seconds,
+ * so a slow video is made of ten-second scenes and a medium or fast one of five-second scenes: the same
+ * 30 seconds is 3 scenes slow, 6 scenes medium or fast. */
+
+/** How long one generated scene is. */
+export type SceneSeconds = 5 | 10;
+export const SCENE_SECONDS: Record<Pace, SceneSeconds> = { slow: 10, medium: 5, fast: 5 };
+export const sceneSecondsFor = (pace: Pace): SceneSeconds => SCENE_SECONDS[pace];
+export const sceneSecondsOf = (v: unknown): SceneSeconds => (v === 5 || v === "5" ? 5 : 10);
+
+/** The lengths a music video can be picked at, in seconds. */
+export const MV_SECONDS = [10, 20, 30, 60, 90, 120];
+export const MV_MAX_SECONDS = 120;
+export const MV_DEFAULT_SECONDS = 30;
+
+/** How many scenes make a video of `seconds` out of scenes `sceneSec` long (never fewer than one, never
+ *  more than two minutes' worth). */
+export const sceneCountFor = (seconds: number, sceneSec: number): number =>
+  Math.max(1, Math.round(Math.max(sceneSec, Math.min(MV_MAX_SECONDS, seconds || 0)) / sceneSec));
+
+/** What a music video is PRICED as: its length, in ten-second scenes — two five-second scenes are one
+ *  ten-second scene's worth, so 30 seconds costs the same at any pace. */
+export const mvBillScenes = (scenes: number, sceneSec: number): number => Math.max(1, Math.ceil((Math.max(1, scenes) * sceneSec) / 10));
+
+/** "30s" / "1:30" / "2:00". */
+export const lengthLabel = (seconds: number): string => (seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`);
+
+/** The director's cadence, as roles (the pipeline's SHOTLIST carries the framing for each slot — a test
+ *  holds the two in step): a few performances intercut with cut scenes. */
+export const SHOT_ROLES: ShotRole[] = ["broll", "perform", "broll", "perform", "broll", "broll", "perform", "broll"];
+
+/** The role of scene i of an n-scene video whose scenes are `sceneSec` long, unless the maker flips it.
+ *  A SHORT video (20 seconds or less) leads with the performance and alternates: a 10-second video must
+ *  BE the artist singing, not a lone establishing wide. Anything longer follows the director's cadence. */
+export function defaultRole(i: number, n: number, sceneSec: number = 10): ShotRole {
+  if (n <= 1) return "perform";
+  if (n * sceneSec <= 20) return i % 2 === 0 ? "perform" : "broll";
+  return SHOT_ROLES[((i % SHOT_ROLES.length) + SHOT_ROLES.length) % SHOT_ROLES.length];
+}
+
+/** What each slot of the shot list IS, in the words the song WRITER is given — so the scene it writes
+ *  for that slot is the kind of shot it will be filmed as. (It used to be told every scene was "the
+ *  artist performing to camera", and then two scenes in three were filmed as cut scenes: an establishing
+ *  wide of a scene written as a close performance.) */
+export const SHOT_NOTES: string[] = [
+  "CUT SCENE — a wide establishing shot of a striking place; the artist small in it or walking through it, not singing",
+  "PERFORMANCE — the artist sings straight to camera, medium shot",
+  "CUT SCENE — dancing and movement, full of rhythm; nobody sings to camera",
+  "PERFORMANCE — the artist sings to camera, a closer shot",
+  "CUT SCENE — a hero moment that shows off the place or the prop; the artist near it, not singing",
+  "CUT SCENE — lifestyle: the artist walking, riding, arriving, living the moment; not singing",
+  "PERFORMANCE — the artist sings to camera, a wide full-body shot",
+  "CUT SCENE — atmosphere and detail: textures, scenery in motion; the artist a small part of it or absent",
+];
+
+const SLOTS_OF = (role: ShotRole): number[] => SHOT_ROLES.map((r, k) => (r === role ? k : -1)).filter((k) => k >= 0);
+/** Which slot of the shot list FRAMES scene i when it plays `role`. On the director's cadence that is
+ *  simply slot i; a scene whose role is not the cadence's (a flipped scene, a short performance-first
+ *  video) takes the next framing of its own kind instead of a generic one — so two performances in a
+ *  row are a medium and then a wide, not the same shot twice. */
+export function shotSlot(role: ShotRole, i: number): number {
+  const at = ((i % SHOT_ROLES.length) + SHOT_ROLES.length) % SHOT_ROLES.length;
+  if (SHOT_ROLES[at] === role) return at;
+  const pool = SLOTS_OF(role);
+  return pool[(((i >> 1) % pool.length) + pool.length) % pool.length];
+}
 
 /** The pace each genre is cut at unless the maker picks another. Country keeps the long shots its
  *  approved videos were cut with. */
@@ -49,7 +122,10 @@ export type Cut = { src: number; start: number; dur: number };
  *  With `songBeats` (the song's own beat times — see beatTimes) each cut is moved onto the nearest beat. */
 export function editPlan(roles: ShotRole[], D: number, pace: Pace, songBeats?: number[]): Cut[] {
   const n = roles.length;
-  const beats = PACES[pace].beats;
+  // the pace is a number of beats per TEN seconds; a five-second scene is cut into half as many — so a
+  // medium video of five-second scenes plays each scene whole (the scene changes ARE its cuts), and a
+  // fast one splits its cut scenes in two
+  const beats = Math.max(1, Math.round((PACES[pace].beats * D) / 10));
   const whole = (): Cut[] => roles.map((_, i) => ({ src: i, start: 0, dur: D }));
   const cutScenes = roles.map((r, i) => (r === "broll" ? i : -1)).filter((i) => i >= 0);
   if (beats <= 1 || n < 2 || !cutScenes.length) return whole();
@@ -71,9 +147,10 @@ export function editPlan(roles: ShotRole[], D: number, pace: Pace, songBeats?: n
     for (let j = 0; j < beats; j++) {
       const own: Cut = { src: i, start: j * c, dur: c };
       if (role === "perform") {
-        // The singer holds the shot. On a fast cut the second-to-last beat drops away to a cut scene and
-        // the last beat comes back — still in sync, because the performance was never moved.
-        if (pace === "fast" && j === beats - 2) {
+        // The singer holds the shot. On a fast cut of a ten-second scene the second-to-last beat drops
+        // away to a cut scene and the last beat comes back — still in sync, because the performance was
+        // never moved. (A five-second performance is too short to leave: it is held whole.)
+        if (pace === "fast" && beats >= 4 && j === beats - 2) {
           // a window HALF a beat off the grid: never the same frames another cut of that clip shows
           plan.push({ src: cutawayFor(i), start: ((lent++ % (beats - 1)) + 0.5) * c, dur: c });
         } else plan.push(own);

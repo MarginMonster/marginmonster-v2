@@ -24,7 +24,8 @@ import { estimateFilmTokens, FILM_PER_SCENE, FILM_BASE } from "../lib/plan-confi
 import { externalOrigin } from "../lib/origin.server";
 import { AVATAR_VOICES, AVATAR_VOICE_IDS, autoCastVoices } from "../lib/avatar-voice-catalog";
 import { CHARACTER_VOICES, characterVoiceSample, isCharacterVoice } from "../lib/character-voices";
-import { GENRE_PACE, PACES, PACE_KEYS, cutCount, isPace, paceFor, type Pace } from "../lib/mv-pace";
+import { GENRE_PACE, MV_DEFAULT_SECONDS, MV_MAX_SECONDS, MV_SECONDS, PACES, PACE_KEYS, cutCount, defaultRole, isPace, lengthLabel, mvBillScenes, paceFor, sceneCountFor, sceneSecondsFor, sceneSecondsOf, shotSlot, type Pace } from "../lib/mv-pace";
+import { defaultCostars } from "../lib/mv-cast";
 import { CAPTION_STYLES, captionStyleOf, type CaptionStyle } from "../lib/narrated-core";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
 import { favouritesFirst } from "../lib/favourites";
@@ -209,7 +210,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const topic = ((form.get("filmTopic") as string) || "").trim().slice(0, 300);
   // NARRATED: a storyteller's voice over pictures instead of the cast acting it (story formats only).
   const narrated = ((form.get("filmMode") as string) || "").trim() === "narrated" && canNarrate(tmpl.key);
-  const clampScenes = (n: number) => (narrated ? clampNarrated(n) : Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, Math.round(n || tmpl.defaultScenes))));
+  // MUSIC VIDEO: the length is picked in seconds and the pace decides how long a scene is — 5 or 10
+  // seconds (mv-pace.ts). Anything else, and every older form, is 10.
+  const filmSceneSeconds = tmpl.lipSyncSinger ? sceneSecondsOf(((form.get("filmSceneSeconds") as string) || "").trim()) : 10;
+  const maxScenes = tmpl.lipSyncSinger ? Math.min(tmpl.maxScenes, Math.floor(MV_MAX_SECONDS / filmSceneSeconds)) : tmpl.maxScenes;
+  const clampScenes = (n: number) => (narrated ? clampNarrated(n) : Math.max(tmpl.minScenes, Math.min(maxScenes, Math.round(n || tmpl.defaultScenes))));
   // The cast the maker picked before the script was written (story formats).
   const storyCast = tmpl.lipSyncSinger ? [] : parseStoryCast(form.get("filmCast") as string);
 
@@ -230,7 +235,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const castNamesRaw = ((form.get("filmCastNames") as string) || "").trim();
     if (castNamesRaw) { try { const a = JSON.parse(castNamesRaw); if (Array.isArray(a)) castNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     try {
-      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) } : {}) });
+      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, sceneSeconds: filmSceneSeconds, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) } : {}) });
       return json({ treatment });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't write that treatment — give it another go, or tweak the premise a little (for Horror, a spookier / less-graphic angle writes more reliably)."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
@@ -394,7 +399,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, props: filmProps, customProps, heroUrl, castExtra, castForScene, outfits, artistName: pvArtistName, castNames: pvCastNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, sceneSeconds: filmSceneSeconds, props: filmProps, customProps, heroUrl, castExtra, castForScene, outfits, artistName: pvArtistName, castNames: pvCastNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
         return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef, castRefs: r.castRefs });
@@ -444,7 +449,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       } else if (tmpl.lipSyncSinger) {
         if (!artistRef) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
         const { rerollMusicVideoScene } = await import("../lib/music-video-pipeline.server");
-        img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect, customProps: rerollCustomProps, kind: rerollKind, sceneCount: rerollSceneCount });
+        img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect, customProps: rerollCustomProps, kind: rerollKind, sceneCount: rerollSceneCount, sceneSeconds: filmSceneSeconds });
       } else {
         const { rerollFilmSceneSeed } = await import("../lib/film-engine.server");
         img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined });
@@ -577,7 +582,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let approvedSceneImgs: (string | null)[] | undefined;
     const seedsRaw = ((form.get("approvedSceneImgs") as string) || "").trim();
     if (seedsRaw) { try { const s = JSON.parse(seedsRaw); if (Array.isArray(s) && s.length) approvedSceneImgs = s.map((x) => (typeof x === "string" && x ? x.slice(0, 2000) : null)); } catch { /* ignore malformed */ } }
-    const cost = estimateFilmTokens(scenes);
+    // A music video is priced by its LENGTH: two five-second scenes are one ten-second scene's worth,
+    // so the same 30 seconds costs the same whatever the pace (mvBillScenes — the builder quotes with it).
+    const cost = estimateFilmTokens(tmpl.lipSyncSinger ? mvBillScenes(scenes, filmSceneSeconds) : scenes);
 
     let unbacked = 0, unbackedFromExtra = 0;
     try {
@@ -594,6 +601,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(filmCaptions !== "off" || narrated ? { filmCaptions } : {}),
         ...(filmGenre ? { filmGenre } : {}),
         ...(filmPace ? { filmPace } : {}),
+        ...(tmpl.lipSyncSinger ? { filmSceneSeconds } : {}),
         ...(filmSongUrl ? { filmSongUrl } : {}),
         ...(filmHeroUrl ? { filmHeroUrl } : {}),
         ...(filmCastExtra ? { filmCastExtra } : {}),
@@ -653,14 +661,9 @@ const FILM_BACKDROPS: Array<{ key: string; label: string; where: string }> = [
   { key: "warehouse", label: "Warehouse", where: "a cold empty warehouse at night, shafts of moonlight" },
 ];
 
-// EXACT-length tiers for the Music Video. Each scene is one 10-second sung Kling clip, so N = seconds/10
-// and the engine fits the song to EXACTLY N×10s — the picked length is what renders (and what's billed).
-const MV_LENGTHS: Array<{ sec: number; n: number }> = [
-  { sec: 10, n: 1 }, { sec: 20, n: 2 }, { sec: 30, n: 3 },
-  { sec: 60, n: 6 }, { sec: 90, n: 9 }, { sec: 120, n: 12 },
-];
-/** "30s" / "1:30" / "2:00" from a scene count (10s each). */
-const mvLenLabel = (n: number) => { const s = n * 10; return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+// The Music Video's EXACT-length tiers are picked in SECONDS (MV_SECONDS in mv-pace.ts); each scene is
+// one generated clip of 5 or 10 seconds (the pace decides), and the engine fits the song to EXACTLY
+// scenes × that — the picked length is what renders (and what's billed).
 
 /* ---------- the landing's moving pictures ----------
  * Real renders made on this page — one short clip per format (public/landing/film-loop-<key>.mp4, a
@@ -934,6 +937,11 @@ export default function FilmStudio() {
   // one here holds it, whatever genre is chosen afterwards.
   const [pacePick, setPacePick] = useState<Pace | "">("");
   const mvPace: Pace = paceFor(filmGenre, pacePick);
+  // LENGTH — picked in SECONDS (the owner: "by seconds and not scenes — that way there could potentially
+  // be many scenes to come out and it works better with pace"). How many scenes that is follows from the
+  // pace: a slow video is made of ten-second scenes, a medium or fast one of five-second scenes.
+  const [mvSeconds, setMvSeconds] = useState<number>(MV_DEFAULT_SECONDS);
+  const mvSceneSec = sceneSecondsFor(mvPace);
   // LYRICS ON SCREEN for the music video. Off unless picked: the format is a performance video, not a
   // karaoke one (film-engine: captions:false) — the lyrics are an option the maker turns on.
   const [mvLyrics, setMvLyrics] = useState<CaptionStyle>("off");
@@ -1072,6 +1080,15 @@ export default function FilmStudio() {
   useEffect(() => { setSingVoice(!!artistVoiceId && d.myVoices.some((v) => v.voiceId === artistVoiceId)); }, [artistVoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
+  // MUSIC VIDEO: the scene count is the picked seconds ÷ the pace's scene length. A song written for a
+  // different number of scenes is a different song, so it is cleared with the count (the stills go with
+  // `scenes`, in the effect further down).
+  useEffect(() => {
+    if (!tmpl?.lipSyncSinger) return;
+    const n = sceneCountFor(mvSeconds, mvSceneSec);
+    setScenes(n);
+    setTreatment((cur) => (cur && cur.scenes.length !== n ? null : cur));
+  }, [mvSeconds, mvSceneSec, tmpl?.lipSyncSinger]); // eslint-disable-line react-hooks/exhaustive-deps
   // Product (skit): title + photo + (catalog) description.
   const [prodTitle, setProdTitle] = useState("");
   const [prodImage, setProdImage] = useState("");
@@ -1151,7 +1168,11 @@ export default function FilmStudio() {
 
   const writing = treatmentFetcher.state !== "idle";
   const generating = nav.state !== "idle" && nav.formData?.get("intent") === "film";
-  const cost = estimateFilmTokens(scenes);
+  // How many scenes the music video has RIGHT NOW: the storyboard's own count once it exists (the maker
+  // can add and remove scenes there), else the song's, else what the picked length works out to.
+  const mvSceneCount = seeds?.treatment.scenes.length || treatment?.scenes.length || scenes;
+  // (a music video is priced by its length: two five-second scenes are one ten-second scene's worth)
+  const cost = estimateFilmTokens(tmpl?.lipSyncSinger ? mvBillScenes(mvSceneCount, mvSceneSec) : scenes);
   const affordable = d.tokens >= cost;
   const productReady = !tmpl?.needsProduct || !!prodImage.trim();
   const canGo = d.hasPlan && d.canFilm && affordable && productReady && !generating;
@@ -1193,7 +1214,7 @@ export default function FilmStudio() {
   };
   const writeTreatment = () => {
     treatmentFetcher.submit(
-      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}) },
+      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}) },
       { method: "post" }
     );
   };
@@ -1201,7 +1222,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
       { method: "post" }
     );
   };
@@ -1241,7 +1262,7 @@ export default function FilmStudio() {
     const sceneCastRefs = costarImgs.map((img) => costarImgToRef(img)).filter(Boolean) as string[];
     setRerollingScene(i);
     rerollSceneFetcher.submit(
-      { intent: "rerollFilmScene", template, filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated", approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}) } : {}), artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}) },
+      { intent: "rerollFilmScene", template, filmGenre, ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated", approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}) } : {}), artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}) },
       { method: "post" }
     );
   };
@@ -1283,6 +1304,9 @@ export default function FilmStudio() {
   // Artist or cast CHANGED → clear the SCRIPT too so it re-writes with the picked names. Fixes the
   // "Kazon" AI-slop name persisting from a treatment that was written before the cast was set.
   useEffect(() => { setTreatment(null); }, [artistPick, castExtra.map((m) => m.img).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  // MUSIC VIDEO: a different idea is a different song. (Editing the idea cleared the stills but kept the
+  // song, and "Make the scenes" then drew new pictures for the OLD song — "song already written".)
+  useEffect(() => { if (tmpl?.lipSyncSinger) setTreatment(null); }, [topic]); // eslint-disable-line react-hooks/exhaustive-deps
   // Click-to-edit the storyboard text — polish a scene's "what happens" or its words in place; the
   // render reads the edited treatment. Editing the VISUAL marks the still stale (re-roll to match).
   // Writes to the stills' snapshot once they exist, otherwise to the autopopulated story treatment.
@@ -1294,34 +1318,26 @@ export default function FilmStudio() {
     }
   };
   // Each scene is a PERFORMANCE shot (the artist sings, lip-synced) or a CUT SCENE / b-roll (cars,
-  // props, dancing — no lip-sync). Default cadence mirrors the pipeline SHOTLIST (cycles every 8) so
-  // the pre-editor shows a sensible type per scene; the merchant can flip any scene.
-  const DEFAULT_ROLES: Array<"perform" | "broll"> = ["broll", "perform", "broll", "perform", "broll", "broll", "perform", "broll"];
-  // Short exact-length cuts LEAD with the performance: a 1-scene (10s) video is the artist singing (not a
-  // lone establishing wide), 2 scenes = performance then a cutaway. Mirrors defaultRole() in the pipeline.
-  const defaultSceneRole = (i: number, n: number): "perform" | "broll" => (n <= 1 ? "perform" : n === 2 ? (i === 0 ? "perform" : "broll") : DEFAULT_ROLES[i % DEFAULT_ROLES.length]);
+  // props, dancing — no lip-sync). The default is the director's cadence the pipeline films by — ONE
+  // function for both (mv-pace.ts defaultRole): a short video leads with the performance, a longer one
+  // intercuts. The song writer now sets each scene's kind as it writes; the merchant can flip any scene.
+  const defaultSceneRole = (i: number, n: number): "perform" | "broll" => defaultRole(i, n, mvSceneSec);
   const sceneKind = (sc: Scene, i: number, n: number): "perform" | "broll" => sc?.kind || defaultSceneRole(i, n);
   const setSceneKind = (i: number, kind: "perform" | "broll") => {
     if (seeds) setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) } } : prev));
     else if (treatment) setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) });
   };
   // ---- Per-scene CO-STAR cast (owner edit) ---------------------------------
-  // Intelligent default: the artist leads EVERY perform scene; each co-star rotates through the perform
-  // scenes (one per scene) so the whole roster isn't crammed onto every card. A broll/cut scene carries
-  // no featured co-star. Owner overrides (castForScene) win.
+  // The default (mv-cast.ts defaultCostars — the SAME function the render uses when no cast is sent):
+  // the artist leads every performance with EVERY picked co-star beside them, dancing; a cut scene has
+  // the co-stars its words name, the dance cut scene has them all, and any other cut scene is the
+  // artist's or the scenery's. (It used to put ONE co-star, in rotation, in each performance — so a
+  // short video could never show the second: the tester's "they only show one back character".)
+  // Owner overrides (castForScene) win.
   const defaultSceneCostars = (scenesArr: Scene[], i: number): string[] => {
     if (!castExtra.length) return [];
-    const sc = scenesArr[i];
-    // Cast whose NAME the writer put in THIS scene's description appear here (the band in the barn, the
-    // riders in the truck) — this is the "intelligent per scene" bit: it follows what the song describes.
-    const text = `${sc?.visual || ""} ${sc?.caption || ""}`.toLowerCase();
-    const mentioned = castExtra.filter((m) => m.name && m.name.length > 1 && text.includes(m.name.toLowerCase())).map((m) => m.img);
-    if (mentioned.length) return mentioned.slice(0, 2);
-    // No one named → a PERFORM scene gets one rotating co-star for variety; a solo/cut scene stays solo.
-    if (sceneKind(sc, i, scenesArr.length) !== "perform") return [];
-    const performIdxs = scenesArr.map((s, j) => (sceneKind(s, j, scenesArr.length) === "perform" ? j : -1)).filter((j) => j >= 0);
-    const pOrder = Math.max(0, performIdxs.indexOf(i));
-    return [castExtra[pOrder % castExtra.length].img];
+    const role = sceneKind(scenesArr[i], i, scenesArr.length);
+    return defaultCostars(scenesArr[i], role, shotSlot(role, i), castExtra.map((m) => m.name || "")).map((k) => castExtra[k]?.img).filter(Boolean);
   };
   const sceneCostars = (scenesArr: Scene[], i: number): string[] => castForScene[i] ?? defaultSceneCostars(scenesArr, i);
   // The whole scene→co-stars map (defaults + overrides) — what the preview + the render receive.
@@ -1959,7 +1975,7 @@ export default function FilmStudio() {
             <button type="button" style={{ order: 9 }} className={`mm-card${openCard === "length" ? " on" : ""}${stepsDone.length ? " done" : ""}`} onClick={() => tapCard("length")}>
               <span className="mm-step" aria-hidden="true">{stepsDone.length ? <Ico n="check" size={13} /> : 5}</span>
               <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
-              <span className="mm-val">{scenes === 1 ? t("{len} · 1 sung shot", { len: mvLenLabel(scenes) }) : t("{len} · {n} sung shots", { len: mvLenLabel(scenes), n: scenes })}</span>
+              <span className="mm-val">{mvSceneCount === 1 ? t("{len} · 1 scene", { len: lengthLabel(mvSceneCount * mvSceneSec) }) : t("{len} · {n} scenes", { len: lengthLabel(mvSceneCount * mvSceneSec), n: mvSceneCount })}</span>
             </button>
             {/* 6 · Pace — how fast it is cut. Rap cuts fast, a country ballad lingers; the genre picks, you can overrule. */}
             <button type="button" style={{ order: 11 }} className={`mm-card${openCard === "pace" ? " on" : ""}${stepsDone.pace ? " done" : ""}`} onClick={() => tapCard("pace")}>
@@ -2147,40 +2163,49 @@ export default function FilmStudio() {
           {openCard === "length" && (
             <div className="mm-opts mm-opts-grid" style={{ order: 10 }}>
               <div className="mm-opts-h">{t("How long?")}</div>
-              <div className="mm-opts-sub">{t("Pick the exact length — your video comes out this long, to the second. Each 10 seconds is one sung shot.")}</div>
+              <div className="mm-opts-sub">{t("Pick the exact length — your video comes out this long, to the second. How many scenes that is follows from the pace: the faster the cut, the more scenes.")}</div>
               <div className="mm-lenpick" role="group" aria-label={t("Video length")}>
-                {MV_LENGTHS.filter((L) => L.n >= tmpl.minScenes && L.n <= tmpl.maxScenes).map((L) => (
-                  <button type="button" key={L.sec} className={`mm-lenopt${scenes === L.n ? " on" : ""}`} aria-pressed={scenes === L.n} onClick={() => setScenes(L.n)}>
-                    <b>{mvLenLabel(L.n)}</b>
-                    <small>{L.n === 1 ? t("1 shot") : t("{n} shots", { n: L.n })}</small>
-                  </button>
-                ))}
+                {MV_SECONDS.filter((s) => s <= MV_MAX_SECONDS).map((s) => {
+                  const n = sceneCountFor(s, mvSceneSec);
+                  return (
+                    <button type="button" key={s} className={`mm-lenopt${mvSeconds === s ? " on" : ""}`} aria-pressed={mvSeconds === s} onClick={() => setMvSeconds(s)}>
+                      <b>{lengthLabel(s)}</b>
+                      <small>{n === 1 ? t("1 scene") : t("{n} scenes", { n })}</small>
+                    </button>
+                  );
+                })}
               </div>
               <div className="mm-opts-sub mm-lentip">{t("Longer = more scenes to shoot, so it takes a bit longer to render (and will cost a little more once pricing's on).")}</div>
             </div>
           )}
           {openCard === "pace" && (() => {
-            // how many times the picture changes at each pace, for THIS video (its scenes as they stand)
-            const n = seeds?.treatment.scenes.length || scenes;
-            const roles = Array.from({ length: n }, (_, i) => (seeds ? sceneKind(seeds.treatment.scenes[i], i, n) : defaultSceneRole(i, n)));
+            // what each pace makes of THIS video: how many scenes its length is, and how many times the
+            // picture changes (the pace it is at now is counted from its scenes as they stand)
+            const paceShape = (p: Pace): { n: number; cuts: number } => {
+              const sec = sceneSecondsFor(p);
+              const mine = sec === mvSceneSec && !!seeds;
+              const n = mine && seeds ? seeds.treatment.scenes.length : sceneCountFor(mvSeconds, sec);
+              const roles = Array.from({ length: n }, (_, i) => (mine && seeds ? sceneKind(seeds.treatment.scenes[i], i, n) : defaultRole(i, n, sec)));
+              return { n, cuts: cutCount(roles, sec, p) };
+            };
             return (
               <div className="mm-opts mm-opts-grid" style={{ order: 12 }}>
                 <div className="mm-opts-h">{t("How fast should it cut?")}</div>
-                <div className="mm-opts-sub">{t("The genre sets the pace — rap and pop cut fast, a country ballad lingers. Pick one to overrule it. The song and the scenes stay the same; this is the edit.")}</div>
+                <div className="mm-opts-sub">{t("The genre sets the pace — rap and pop cut fast, a country ballad lingers. Pick one to overrule it. A faster pace is more scenes in the same length.")}</div>
                 <div className="mm-lenpick mm-pacepick" role="group" aria-label={t("Pace")}>
                   {PACE_KEYS.map((p) => {
-                    const cuts = cutCount(roles, 10, p);
+                    const { n, cuts } = paceShape(p);
                     return (
                       <button type="button" key={p} className={`mm-lenopt${mvPace === p ? " on" : ""}`} aria-pressed={mvPace === p} onClick={() => setPacePick(p)}>
                         <b>{t(PACES[p].label)}</b>
                         <small>{t(PACES[p].blurb)}</small>
-                        <small className="mm-pace-n">{cuts === 0 ? t("one shot") : cuts === 1 ? t("1 cut") : t("{n} cuts", { n: cuts })}{GENRE_PACE[filmGenre] === p ? ` · ${t("this genre's own")}` : ""}</small>
+                        <small className="mm-pace-n">{n === 1 ? t("1 scene") : t("{n} scenes", { n })} · {cuts === 0 ? t("one shot") : cuts === 1 ? t("1 cut") : t("{n} cuts", { n: cuts })}{GENRE_PACE[filmGenre] === p ? ` · ${t("this genre's own")}` : ""}</small>
                       </button>
                     );
                   })}
                 </div>
                 {pacePick && <button type="button" className="mm-pace-auto" onClick={() => setPacePick("")}><Ico n="refresh" size={12} /> {t("Let the genre decide")}</button>}
-                {n < 2 && <div className="mm-opts-sub mm-lentip">{t("A 10-second video is a single shot — pace starts to matter from 20 seconds up.")}</div>}
+                {seeds && <div className="mm-opts-sub mm-lentip">{t("Slow is made of longer scenes, so switching to or from Slow makes the scenes again. Medium and Fast share the same scenes.")}</div>}
               </div>
             );
           })()}
@@ -2240,6 +2265,7 @@ export default function FilmStudio() {
               <input type="hidden" name="template" value={template} />
               <input type="hidden" name="filmGenre" value={filmGenre} />
               <input type="hidden" name="filmPace" value={mvPace} />
+              <input type="hidden" name="filmSceneSeconds" value={String(mvSceneSec)} />
               <input type="hidden" name="filmCaptions" value={mvLyrics} />
               {songSource === "upload" && filmSongUrl && <input type="hidden" name="filmSongUrl" value={filmSongUrl} />}
               {filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}
@@ -2268,8 +2294,8 @@ export default function FilmStudio() {
               </button>
             </Form>
             {!seeds && <p className="mm-note mm-note-req"><Ico n="wand" size={12} /> {t("Script out your scenes first — tap “Make the scenes” above, check the storyboard, then render.")}</p>}
-            <div className="mm-eta"><span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: true, dialogue: false, scenes, engine: dialogueEngine })}</b></div>
-            <p className="mm-note">{cost > 0 ? <>{t("{base} + {per}/scene × {n} = {cost} Tokens", { base: d.base, per: d.perScene, n: scenes, cost })} · <span className={affordable ? "fs-bal" : "fs-bal low"}>{t("you have {n}", { n: d.tokens })}</span></> : t("Free while we dial this in — pricing comes later.")}</p>
+            <div className="mm-eta"><span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: true, dialogue: false, scenes: mvSceneCount, sceneSec: mvSceneSec, engine: dialogueEngine })}</b></div>
+            <p className="mm-note">{cost > 0 ? <>{t("{base} + {per}/scene × {n} = {cost} Tokens", { base: d.base, per: d.perScene, n: mvBillScenes(mvSceneCount, mvSceneSec), cost })} · <span className={affordable ? "fs-bal" : "fs-bal low"}>{t("you have {n}", { n: d.tokens })}</span></> : t("Free while we dial this in — pricing comes later.")}</p>
             {!d.hasPlan && <p className="fs-err">{t("Pick a plan on the Dashboard first — film runs on tokens.")}</p>}
             {d.hasPlan && !affordable && <p className="fs-err">{t("Not enough tokens for this length — shorten it, or top up on the Plans page.")}</p>}
             {actionData?.error && <p className="fs-err">{actionData.error}</p>}
@@ -2862,14 +2888,15 @@ export default function FilmStudio() {
  *  by engine: lip-sync Music Video (OmniHuman, ~2 clips at a time — the slow lane),
  *  dialogue films (per-beat Kling/Veo clips), and sung/other (parallel i2v). Returns a
  *  friendly range string; recomputed live from scene count + template + engine. */
-function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; narrated?: boolean; scenes: number; engine: "veo" | "kling3" }): string {
+function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; narrated?: boolean; scenes: number; sceneSec?: number; engine: "veo" | "kling3" }): string {
   const n = Math.max(1, opts.scenes || 1);
   let lo: number, hi: number;
   if (opts.narrated) {
     lo = 2; hi = n > 8 ? 5 : 4; // a narration, an alignment pass, a picture a scene, one cut
   } else if (opts.lipSyncSinger) {
-    const waves = Math.ceil(n / 2);            // OmniHuman lip-sync runs ~2 at a time
-    lo = 6 + waves * 6; hi = 9 + waves * 9;     // + song + artist + scene-image overhead
+    const waves = Math.ceil(n / 2);            // the scenes are filmed a few at a time
+    const half = opts.sceneSec === 5;          // a five-second scene films in about half the time of a ten
+    lo = Math.round(6 + waves * (half ? 3.5 : 6)); hi = Math.round(9 + waves * (half ? 5.5 : 9)); // + song + artist + scene-image overhead
   } else if (opts.dialogue) {
     const per = opts.engine === "veo" ? 4 : 3.5;
     lo = Math.round(3 + n * per * 0.8); hi = Math.round(5 + n * per * 1.3);

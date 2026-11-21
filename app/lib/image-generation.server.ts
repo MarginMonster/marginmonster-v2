@@ -4347,10 +4347,12 @@ async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/n
  *  "match_input_image", kontext fallback) instead of re-generating — so the FACE does not drift
  *  across scenes, which re-generating from a mere reference does (the "it changes the singer"
  *  bug). pro @2K also reads far more photoreal than base nano-banana. Durable /renders URL or null. */
-export async function editSubjectIntoScene(subjectUrl: string, prompt: string): Promise<string | null> {
+export async function editSubjectIntoScene(subjectUrl: string, prompt: string, maxPrompt = 480): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN || !subjectUrl) return null;
-    const { url } = await editImg2Img(subjectUrl, (prompt || "").trim().slice(0, 480), "google/nano-banana-pro");
+    // `maxPrompt`: the prompt is cut here. A caller that builds its prompt to a known length (the music
+    // video's scene stills, mv-cast.ts) asks for the room, so the setting is not lost mid-sentence.
+    const { url } = await editImg2Img(subjectUrl, (prompt || "").trim().slice(0, Math.max(200, Math.min(900, maxPrompt))), "google/nano-banana-pro");
     return await persistRemote(url, "jpg");
   } catch (e) {
     artLog("image-ad", `subject-into-scene failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
@@ -4699,7 +4701,7 @@ export async function renderStyledSeed(prompt: string, refImageUrl: string, aspe
  *  is how Runway References / Flow Ingredients / Kling Elements lock identity; here
  *  nano-banana's native multi-image input composes the shot from the supplied faces.
  *  Up to 3 refs (nano-banana's sweet spot). Durable /renders URL, or null. */
-export async function renderStyledSeedMulti(prompt: string, refImageUrls: (string | null | undefined)[], aspect = "9:16", lockNote?: string): Promise<string | null> {
+export async function renderStyledSeedMulti(prompt: string, refImageUrls: (string | null | undefined)[], aspect = "9:16", lockNote?: string, maxPrompt = 460): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN) return null;
     const refs = (refImageUrls || []).filter((u): u is string => !!u).slice(0, 3);
@@ -4710,7 +4712,10 @@ export async function renderStyledSeedMulti(prompt: string, refImageUrls: (strin
     // `lockNote` replaces the wording when the cast is not all PEOPLE: told "the people … same age,
     // same skin, same hair", the model gives a monster a human face (2026-11-17, characters in films).
     const lock = (lockNote || "").trim() || "CRITICAL: the people in this image must be the EXACT same individuals as in the reference images — identical faces, same age, same skin, same hair, same wardrobe. Do NOT make them younger, do NOT beautify, restyle or swap them for different people. Match the reference faces precisely.";
-    const full = `${(prompt || "").trim().slice(0, 460)}. ${lock} No watermark, no signature.`;
+    // `maxPrompt`: the prompt is cut here, so whatever must be read has to come FIRST. (A music-video
+    // cast shot used to put "feature the artist together with …" after the setting — past the cut — and
+    // the model was never told who was in the picture. Its caller now leads with that and asks for room.)
+    const full = `${(prompt || "").trim().slice(0, Math.max(200, Math.min(900, maxPrompt)))}. ${lock} No watermark, no signature.`;
     const url = await repRun("google/nano-banana", { prompt: full, image_input: refs, aspect_ratio: ar, output_format: "jpg" });
     const durable = await persistRemote(url, "jpg");
     artLog("image-ad", `styled seed rendered (cast x${refs.length}, ${ar})`);
