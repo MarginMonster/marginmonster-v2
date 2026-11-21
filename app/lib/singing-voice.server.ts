@@ -293,13 +293,17 @@ export function voicePitch(voiceId: string): Promise<number | null> {
  *  of the new mix (mp3, same duration as the input). `speech` = spoken dialogue rather than a song: the
  *  model's default studio reverb on the converted voice is right for a sung vocal and wrong for a line
  *  spoken in a room (the room's own sound stays in the untouched background track), so it's switched off. */
-export async function coverSongInVoice(songUrl: string, modelUrl: string, opts: { speech?: boolean; semitones?: number } = {}): Promise<string> {
+export async function coverSongInVoice(songUrl: string, modelUrl: string, opts: { speech?: boolean; semitones?: number; pitchChange?: "no-change" | "male-to-female" | "female-to-male" } = {}): Promise<string> {
   // `semitones` moves the whole track (voice and background alike) — right for a spoken line, whose
   // background is only room tone; a SONG keeps its key, so the singing path never passes it.
+  // `pitchChange` moves the VOCAL ALONE by an octave and leaves the music where it is: for a singer of
+  // the other sex than the one the song was sung by (a featured verse — mv-feature.ts). An octave keeps
+  // the song in key.
   const semitones = Math.max(-12, Math.min(12, Math.round(opts.semitones || 0)));
+  const pitchChange = opts.pitchChange === "male-to-female" || opts.pitchChange === "female-to-male" ? opts.pitchChange : "no-change";
   const id = await createCommunity(COVER_MODEL, {
     song_input: songUrl, rvc_model: "CUSTOM", custom_rvc_model_download_url: modelUrl,
-    pitch_change: "no-change", output_format: "mp3",
+    pitch_change: pitchChange, output_format: "mp3",
     ...(semitones ? { pitch_change_all: semitones } : {}),
     ...(opts.speech ? { reverb_wetness: 0, reverb_dryness: 1 } : {}),
   });

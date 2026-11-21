@@ -32,7 +32,9 @@ import { renderCreativeSeed, renderStyledSeed } from "./image-generation.server"
 import { musicBedToDisk, singToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
-import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds } from "./mv-pace";
+import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds, type ShotRole } from "./mv-pace";
+import { MAX_COSTARS, singerOf } from "./mv-cast";
+import { FEATURE_MIN_SECONDS, defaultFeaturePlan, featureRoles, planIsSound } from "./mv-feature";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -308,6 +310,9 @@ export interface FilmScene {
   /** Music Video pre-editor override: "perform" = the artist sings (lip-synced); "broll" = a cut
    *  scene (props/dancing/scenery, no lip-sync). Absent → the pipeline's SHOTLIST cadence decides. */
   kind?: "perform" | "broll";
+  /** Music Video FEATURED VERSE: the NAME of the co-star who sings this scene's lines, in their own
+   *  voice (mv-feature.ts). Absent → the artist sings it, as in every video before 2026-11-21. */
+  singer?: string;
 }
 export interface FilmTreatment { title?: string; scenes: FilmScene[]; musicMood: string; cast?: string[] }
 
@@ -321,7 +326,7 @@ const TREATMENT_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        properties: { visual: { type: "string" }, caption: { type: "string" }, where: { type: "string" }, shot: { type: "string" }, tone: { type: "string" } },
+        properties: { visual: { type: "string" }, caption: { type: "string" }, where: { type: "string" }, shot: { type: "string" }, tone: { type: "string" }, singer: { type: "string" } },
         required: ["visual"],
       },
     },
@@ -386,6 +391,9 @@ export async function previewFilmTreatment(opts: {
   /** Music Video: how long each scene is — 10 seconds (the default) or 5. The video runs
    *  sceneCount × this many seconds, and the song is written for THAT length. */
   sceneSeconds?: SceneSeconds;
+  /** Music Video FEATURED VERSE: the names of the co-stars (from castNames) who sing a verse of their
+   *  own. The writer gives each one a verse and marks its scenes with "singer". */
+  featureNames?: string[];
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const narrated = opts.mode === "narrated" && !tmpl.lipSyncSinger && !tmpl.sung;
@@ -472,16 +480,37 @@ export async function previewFilmTreatment(opts: {
   // WHAT EACH SCENE IS FILMED AS. A music video is a few performances intercut with cut scenes, and which
   // is which is decided by the shot list — so the writer is told, scene by scene, and writes a scene that
   // fits its shot (see SHOT_NOTES).
+  // A FEATURED VERSE (mv-feature.ts): co-stars the maker asked to SING part of the song, in their own
+  // voice. Only a picked co-star can be featured, and only in a video long enough to share. With one,
+  // the roles are dealt so there is a second performance for them to be seen singing.
+  const castList = castNames.slice(0, MAX_COSTARS);
+  const featured = tmpl.lipSyncSinger && videoSecs >= FEATURE_MIN_SECONDS
+    ? castList.filter((n) => (opts.featureNames || []).some((f) => singerOf({ singer: f }, [n]) === 0))
+    : [];
+  const rolesFor = (n: number): ShotRole[] => {
+    const cadence = Array.from({ length: n }, (_, i) => defaultRole(i, n, sceneSec));
+    return featured.length ? featureRoles(cadence) : cadence;
+  };
+  const roles = rolesFor(scenes);
   const shotPlan = tmpl.lipSyncSinger
-    ? Array.from({ length: scenes }, (_, i) => `  ${i + 1}. ${SHOT_NOTES[shotSlot(defaultRole(i, scenes, sceneSec), i)]}`).join("\n")
+    ? Array.from({ length: scenes }, (_, i) => `  ${i + 1}. ${SHOT_NOTES[shotSlot(roles[i], i)]}`).join("\n")
     : "";
   const hasCoStars = castNames.length > 0;
+  const featNames = featured.join(" and ");
+  const featLine = featured.length
+    ? `A FEATURED VERSE — ${featNames} ${featured.length === 1 ? "sings" : "each sing"} part of this song, like a featured artist on a real record. Give ${featured.length === 1 ? featNames : "each of them"} ONE verse of their own: two or three scenes in a row, after the artist has opened the song, with a PERFORMANCE scene among them — and in EVERY scene of that verse set "singer" to their exact name. The lyric lines of those scenes are THEIR words, in their own voice: their side of the story, answering the artist. In their PERFORMANCE scene the VISUAL shows THEM singing to camera, on their own (the artist is not in that shot). Every other scene is the artist's — leave "singer" out of it — and the artist sings the FIRST performance. End the title with "(feat. ${featNames})".\n`
+    : "";
   const captionLine = tmpl.lipSyncSinger
-    ? `\nWrite a catchy ${genreLabel} SONG for ONE artist, plus ${scenes} VIDEO SCENE${scenes === 1 ? "" : "S"} of ${sceneSec} seconds each. ${songShape} Return EXACTLY ${scenes} scene${scenes === 1 ? "" : "s"}. Each scene has TWO fields:\n` +
-      `• VISUAL — what we SEE in that scene, in at most 40 words: a vivid ${genreLabel} setting (${tmpl.sceneHint}) and what happens in it. A different location in every scene for visual variety; NO on-screen text, logos or real named people.\n` +
+    ? `\nWrite a catchy ${genreLabel} SONG for ONE artist${featured.length ? `, with a featured verse by ${featNames}` : ""}, plus ${scenes} VIDEO SCENE${scenes === 1 ? "" : "S"} of ${sceneSec} seconds each. ${songShape} Return EXACTLY ${scenes} scene${scenes === 1 ? "" : "s"}. Each scene has TWO fields${featured.length ? ` (and "singer" where it is not the artist)` : ""}:\n` +
+      // (ONE moment: "OMAR steps out of the car … all walking toward the entrance" was drawn as OMAR
+      //  twice — once getting out, once walking — on the first live storyboard, 2026-11-21)
+      `• VISUAL — what we SEE in that scene, in at most 40 words: a vivid ${genreLabel} setting (${tmpl.sceneHint}) and what is happening in it. ONE moment — a single frame of film, never a sequence of actions (not "steps out of the car and walks in"). A different location in every scene for visual variety; NO on-screen text, logos or real named people.\n` +
       captionShape +
       `THE SHOT LIST — scene by scene, this is what each one is filmed as; write each VISUAL to fit its line:\n${shotPlan}\n` +
-      `WHO DOES WHAT — only the ARTIST ever sings.${hasCoStars ? ` In every PERFORMANCE the co-stars are in the shot WITH the artist: beside or just behind them, dancing or moving to the music — never singing, never the centre of the shot.` : ""} In a CUT SCENE nobody sings to camera.\n` +
+      featLine +
+      (featured.length
+        ? `WHO DOES WHAT — the ARTIST sings the song; ${featNames} sing${featured.length === 1 ? "s" : ""} ONLY in ${featured.length === 1 ? "their" : "their own"} verse. Nobody else ever sings. In the artist's PERFORMANCES the co-stars are in the shot WITH the artist: beside or just behind them, dancing or moving to the music — never singing, never the centre of the shot. In a CUT SCENE nobody sings to camera.\n`
+        : `WHO DOES WHAT — only the ARTIST ever sings.${hasCoStars ? ` In every PERFORMANCE the co-stars are in the shot WITH the artist: beside or just behind them, dancing or moving to the music — never singing, never the centre of the shot.` : ""} In a CUT SCENE nobody sings to camera.\n`) +
       `MICROPHONES — most music videos have none: the song is mimed. Do NOT put a microphone or mic stand in a VISUAL unless that scene is a live stage show or a recording booth — and then ONLY the artist has one.\n` +
       `RENDER-SAFE — these scenes become AI video and some things glitch badly when animated. UNLESS the theme above explicitly calls for it, AVOID: fire, flames, bonfires, sparks or embers; riding in the BED of a moving truck or any fast open-air wind (the wind + flames warp into a mess); extreme tight face-filling close-ups; and exaggerated or extreme facial emotions (screaming, sobbing, snarling). Prefer steady medium and wide shots, grounded settings, gentle believable motion, and natural, genuine expressions.\n`
     : narrated
@@ -562,9 +591,17 @@ export async function previewFilmTreatment(opts: {
     } catch { /* keep the first answer */ }
   }
   let list = (parsed.scenes || []).filter((s) => s && s.visual).slice(0, scenes);
+  // WHO SINGS EACH SCENE (a featured verse). The writer's marks are kept when they make a verse that can
+  // be filmed — every featured co-star has a scene they are SEEN singing, and the artist still has one;
+  // otherwise the verse is dealt by rule (mv-feature.ts defaultFeaturePlan). A "singer" that is not a
+  // featured co-star's name is the artist.
+  const outRoles = tmpl.lipSyncSinger ? rolesFor(list.length) : [];
+  const featIdx = featured.map((n) => castList.indexOf(n));
+  let singers: number[] = list.map((s) => { const k = singerOf(s, castList); return featIdx.includes(k) ? k : -1; });
+  if (featured.length && !(planIsSound(singers, outRoles) && featIdx.every((k) => singers.includes(k)))) singers = defaultFeaturePlan(outRoles, sceneSec, featIdx);
   // FTC backstop (captions are burned on screen): strip an endorsement
   // possessive from a third-party trademark the writer may have slipped in.
-  list = list.map((s, i, all) => ({
+  list = list.map((s, i) => ({
     visual: s.visual,
     caption: s.caption ? dropOrgEndorsementPossessive(s.caption) : undefined,
     where: typeof s.where === "string" && s.where.trim() ? s.where.trim().slice(0, 120) : undefined,
@@ -573,7 +610,8 @@ export async function previewFilmTreatment(opts: {
     // A music-video scene carries what it was WRITTEN as (performance or cut scene): the role then
     // travels with the scene when the maker reorders or removes scenes, instead of being re-dealt by
     // position — which turned a scene written as a performance into a cut scene.
-    ...(tmpl.lipSyncSinger ? { kind: defaultRole(i, all.length, sceneSec) } : {}),
+    ...(tmpl.lipSyncSinger ? { kind: outRoles[i] } : {}),
+    ...(featured.length && singers[i] >= 0 ? { singer: castList[singers[i]] } : {}),
   }));
   if (list.length < 1) throw new Error("[film] treatment came back empty");
   const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 5) : undefined;

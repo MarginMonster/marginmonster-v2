@@ -867,12 +867,17 @@ async function runJob(
             approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined, // storyboard-approved stills
             singVoice: payload.filmSingVoice === true, // opt-in: sing in the avatar's OWN voice (seed-vc)
             artistVoiceId: typeof payload.filmArtistVoiceId === "string" ? payload.filmArtistVoiceId : undefined,
+            // a featured verse: the voice of each co-star who sings one (validated when the job was queued)
+            featureVoices: Array.isArray(payload.filmFeatureVoices) ? (payload.filmFeatureVoices as Array<{ name: string; voiceId: string; gender?: "m" | "f" }>) : undefined,
 
             resume: {
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
               ckSong: payload.ckSong as string | undefined,
               ckSongFit: payload.ckSongFit as string | undefined,
               ckSongVoice: payload.ckSongVoice as string | undefined,
+              // the song with the featured verse already mixed in, and who sings it
+              ckSongFeat: payload.ckSongFeat as string | undefined,
+              ckFeatNames: payload.ckFeatNames as string | undefined,
               ckArtist: payload.ckArtist as string | undefined,
             },
           });

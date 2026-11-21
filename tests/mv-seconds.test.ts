@@ -225,7 +225,10 @@ test("the song writer is told what each scene is filmed as, who sings, and when 
   const engine = read("app", "lib", "film-engine.server.ts");
   const fn = engine.slice(engine.indexOf("export async function previewFilmTreatment"), engine.indexOf("// ---- Assembly"));
   // the shot list, scene by scene, from the same notes the roles come from
-  assert.match(fn, /SHOT_NOTES\[shotSlot\(defaultRole\(i, scenes, sceneSec\), i\)\]/);
+  assert.match(fn, /SHOT_NOTES\[shotSlot\(roles\[i\], i\)\]/);
+  assert.match(fn, /const cadence = Array\.from\(\{ length: n \}, \(_, i\) => defaultRole\(i, n, sceneSec\)\);/);
+  // one moment a scene: a sequence of actions was drawn as the artist twice
+  assert.match(fn, /ONE moment — a single frame of film, never a sequence of actions/);
   assert.match(fn, /THE SHOT LIST — scene by scene, this is what each one is filmed as; write each VISUAL to fit its line/);
   // it used to be told every scene was the artist performing to camera
   assert.doesNotMatch(fn, /the place and the artist performing to camera/);
@@ -240,7 +243,7 @@ test("the song writer is told what each scene is filmed as, who sings, and when 
   assert.match(fn, /const fullSong = videoSecs >= 60;/);
   assert.match(fn, /const fullLines = Math\.round\(videoSecs \/ 4\.2\);/);
   // each scene comes back carrying what it was written as
-  assert.match(fn, /\.\.\.\(tmpl\.lipSyncSinger \? \{ kind: defaultRole\(i, all\.length, sceneSec\) \} : \{\}\),/);
+  assert.match(fn, /\.\.\.\(tmpl\.lipSyncSinger \? \{ kind: outRoles\[i\] \} : \{\}\),/);
   // the pipeline's own threshold for the full-length song engine is the same one
   assert.match(read("app", "lib", "music-video-pipeline.server.ts"), /const fullLength = N \* D >= 60;/);
 });

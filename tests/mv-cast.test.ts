@@ -87,7 +87,7 @@ test("the cast picture is told who is who FIRST, inside the length the picture c
   assert.ok(setting > 0);
   const lead = p.slice(0, setting);
   // how many people, each once
-  assert.match(lead, /EXACTLY three people, each shown ONCE/);
+  assert.match(lead, /EXACTLY three DIFFERENT people, each shown ONCE/);
   // the artist is the 1st reference, front and centre, the one singing
   assert.match(lead, /ARTIST \(the person in the 1st reference image\) is front and centre, nearest the camera, facing it and singing/);
   // the others are the 2nd and 3rd, behind, dancing, NOT singing
@@ -104,7 +104,7 @@ test("the cast picture is told who is who FIRST, inside the length the picture c
 
   // one co-star: two people, singular wording
   const one = castStillPrompt({ genre: "Pop", role: "perform", frame: "Wide full-body shot", visual: "A beach at dawn", costars: 1, micOk: false });
-  assert.match(one, /EXACTLY two people/);
+  assert.match(one, /EXACTLY two DIFFERENT people/);
   assert.match(one, /the other person \(the 2nd reference image\) is beside and a step behind the artist, dancing to the music, mouth closed, NOT singing/);
   // on a stage the artist — and only the artist — may hold one
   const stage = castStillPrompt({ genre: "Rock", role: "perform", frame: "Wide full-body shot", visual: "On stage at a packed arena", costars: 2, micOk: true });
@@ -119,7 +119,9 @@ test("the cast picture is told who is who FIRST, inside the length the picture c
   assert.ok(withProp.length <= CAST_PROMPT_MAX);
   assert.match(withProp, /Also in the shot: the tiger from the 3rd reference image — exactly one, and no other animal$/);
   // the count is clamped to what a shot can hold
-  assert.match(castStillPrompt({ genre: "Pop", role: "perform", frame: "Wide", visual: "x", costars: 9, micOk: false }), /EXACTLY three people/);
+  assert.match(castStillPrompt({ genre: "Pop", role: "perform", frame: "Wide", visual: "x", costars: 9, micOk: false }), /EXACTLY three DIFFERENT people/);
+  // a cut scene with the cast in it says they are different people too (two co-stars came back blended into one)
+  assert.match(cut, /all moving together, each with their own face, hair and clothes/);
 });
 
 test("a shot of the artist alone says the microphone rule before the setting, and keeps the setting", () => {
@@ -155,9 +157,35 @@ test("the picture is looked at: the right people, a microphone only where it bel
     assert.equal(parseCastCheck(junk), null, junk);
   }
   // the question asks about the prop only when there is one
-  assert.doesNotMatch(castCheckPrompt(), /"prop"/);
-  assert.match(castCheckPrompt("tiger"), /recognisable tiger is clearly visible/);
-  assert.match(castCheckPrompt("tiger"), /"prop": true \| false/);
+  assert.doesNotMatch(castCheckPrompt(), /"prop"|"seen"|"twin"/);
+  assert.match(castCheckPrompt({ prop: "tiger" }), /recognisable tiger is clearly visible/);
+  assert.match(castCheckPrompt({ prop: "tiger" }), /"prop": true \| false/);
+  // WHO is there, not only how many: shown the cast's reference pictures after the frame, the checker
+  // says which of them it can see and whether anyone is doubled or blended
+  const q3 = castCheckPrompt({ refs: 3 });
+  assert.match(q3, /The FIRST image is a frame from a music video\. The three images after it are the three people who must be in it \(person 1 is the 2nd image, person 2 the 3rd, person 3 the 4th\)/);
+  assert.match(q3, /Go only by what can be seen: hair \(colour, length, style\), facial hair, build, apparent age and clothing/);
+  assert.match(q3, /is someone matching them in the frame\?/);
+  assert.match(q3, /TWICE \(a twin or copy of the same person\), or a BLEND of two of them/);
+  assert.match(q3, /"seen": \[true \| false, true \| false, true \| false\], "twin": true \| false/);
+  assert.match(castCheckPrompt({ refs: 2 }), /"seen": \[true \| false, true \| false\], "twin"/);
+  assert.match(castCheckPrompt({ refs: 1 }), /The image after it is the one person who must be in it/);
+  assert.deepEqual(parseCastCheck('{"people": 3, "seen": [true, false, true], "twin": true, "mic": "none"}'), { people: 3, mic: "none", seen: [true, false, true], twin: true });
+  assert.deepEqual(parseCastCheck('{"people": 3, "seen": "all", "twin": "no", "mic": "none"}'), { people: 3, mic: "none" }, "an answer that is not the shape asked for is left out, not trusted");
+  // THE FIRST LIVE STORYBOARD (2026-11-21): three people in the picture — the artist twice, a co-star
+  // missing. The count is right; the picture is not.
+  const doubled = { people: 3, mic: "none" as const, seen: [true, true, false], twin: true };
+  assert.ok(castFaults(doubled, 3, false, false) >= 6, "a missing person and a double both count");
+  assert.ok(castFaults({ people: 3, mic: "none", seen: [true, true, false] }, 3, false, false) > 0, "someone missing, though the count is right");
+  assert.ok(castFaults({ people: 3, mic: "none", seen: [true, true, true], twin: true }, 3, false, false) > 0, "two co-stars blended into one");
+  assert.equal(castFaults({ people: 3, mic: "none", seen: [true, true, true], twin: false }, 3, false, true), 0);
+  // …and what the next try is told names who is missing, by their reference picture
+  assert.match(castFix(doubled, 3, false, false), /The person in the 3rd reference image is MISSING — put them in, with their own face, hair and clothes/);
+  assert.match(castFix(doubled, 3, false, false), /Nobody appears twice and no two people are blended into one — three DIFFERENT people/);
+  assert.match(castFix({ people: 2, mic: "none", seen: [true, false, false] }, 3, false, true), /The person in the 2nd and 3rd reference image is MISSING/);
+  // a wide shot where the people are too small to tell apart is not failed on who is there
+  assert.equal(castFaults({ people: 1, mic: "none", seen: [true, false, false], twin: true }, null, false, false), 0);
+  assert.equal(castFix({ people: 1, mic: "none", seen: [true, false, false], twin: true }, null, false, false), "");
 
   // RIGHT: three people, nobody with a microphone, on a rooftop
   assert.equal(castFaults({ people: 3, mic: "none" }, 3, false, true), 0);
@@ -220,7 +248,7 @@ test("the pipeline and the builder make cast shots one way — the shared defaul
   const reroll = pipe.slice(pipe.indexOf("export async function rerollMusicVideoScene"), pipe.indexOf("export async function generateMusicVideo"));
   // no pick for a scene → the shared default (it used to be "all co-stars in every scene" here and "one
   // in rotation" in the builder: two answers to one question)
-  assert.match(seeds, /defaultCostars\(s, shot\.role, shot\.slot, castNameList\)/);
+  assert.match(seeds, /sceneCast\(\{ scene: s, role: shot\.role, slot: shot\.slot, names: castNameList, listed: /);
   // a shot with co-stars goes through the checked path, in the storyboard and in a re-roll alike
   for (const [name, src] of [["storyboard", seeds], ["re-roll", reroll]] as const) {
     assert.match(src, /castStill\(\{/, `${name}: the checked cast still`);
@@ -235,7 +263,14 @@ test("the pipeline and the builder make cast shots one way — the shared defaul
   // lets a failed check cost the scene
   const still = pipe.slice(pipe.indexOf("async function castStill"), pipe.indexOf("/** Build the per-scene SEED stills"));
   assert.match(still, /renderStyledSeedMulti\(prompt, refs, o\.asp, undefined, CAST_PROMPT_MAX\)/);
-  assert.match(still, /if \(!seen\) return img;/, "a vision outage takes the picture as it is");
+  assert.match(still, /if \(!seen\) return \{ img, faults: null \};/, "a vision outage takes the picture as it is");
+  // the checker is shown the cast's reference pictures, so it can say WHO is there
+  assert.match(still, /readCast\(o\.abs\(img\) \|\| img, people\.map\(\(r\) => o\.abs\(r\) \|\| r\), o\.prop\?\.noun\)/);
+  assert.match(pipe, /anthropicVision\(castCheckPrompt\(\{ refs: refs\.length, prop \}\), \[imgUrl, \.\.\.refs\]/);
+  // what the check found rides back to the storyboard, which flags a scene that is still off
+  assert.match(seeds, /sceneFaults: made\.map\(\(m\) => m\.faults\)/);
+  // the star and the co-stars are dressed at the same time, not one after another
+  assert.match(seeds, /await Promise\.all\(\[styleArtist\(\), \.\.\.castExtra\.map\(\(m, ci\) => styleCostar\(m, ci\)/);
   assert.match(still, /attempt < 3/);
   assert.match(still, /best\.faults/);
   // the picture calls really do read that far
@@ -246,8 +281,8 @@ test("the pipeline and the builder make cast shots one way — the shared defaul
 
   // the builder shows the same default the render uses
   const ui = read("app", "routes", "web.film.tsx");
-  assert.match(ui, /import \{ defaultCostars \} from "\.\.\/lib\/mv-cast"/);
-  assert.match(ui, /defaultCostars\(scenesArr\[i\], role, shotSlot\(role, i\), castExtra\.map\(\(m\) => m\.name \|\| ""\)\)/);
+  assert.match(ui, /import \{ sceneCast, singerOf \} from "\.\.\/lib\/mv-cast"/);
+  assert.match(ui, /sceneCast\(\{ scene: scenesArr\[i\], role, slot: shotSlot\(role, i\), names: castNamesAll \}\)/);
   assert.doesNotMatch(ui, /pOrder % castExtra\.length/, "one co-star in rotation is gone");
   // and the slot it is given is the slot the pipeline frames the scene with
   for (let i = 0; i < 24; i++) for (const role of ["perform", "broll"] as const) assert.equal(SHOT_ROLES[shotSlot(role, i)], role);

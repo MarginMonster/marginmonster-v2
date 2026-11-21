@@ -25,7 +25,8 @@ import { externalOrigin } from "../lib/origin.server";
 import { AVATAR_VOICES, AVATAR_VOICE_IDS, autoCastVoices } from "../lib/avatar-voice-catalog";
 import { CHARACTER_VOICES, characterVoiceSample, isCharacterVoice } from "../lib/character-voices";
 import { GENRE_PACE, MV_DEFAULT_SECONDS, MV_MAX_SECONDS, MV_SECONDS, PACES, PACE_KEYS, cutCount, defaultRole, isPace, lengthLabel, mvBillScenes, paceFor, sceneCountFor, sceneSecondsFor, sceneSecondsOf, shotSlot, type Pace } from "../lib/mv-pace";
-import { defaultCostars } from "../lib/mv-cast";
+import { sceneCast, singerOf } from "../lib/mv-cast";
+import { FEATURE_MIN_SECONDS } from "../lib/mv-feature";
 import { CAPTION_STYLES, captionStyleOf, type CaptionStyle } from "../lib/narrated-core";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
 import { favouritesFirst } from "../lib/favourites";
@@ -135,6 +136,20 @@ function parseCastExtra(raw: string | null): Array<{ img: string; name: string }
   } catch { return undefined; }
 }
 
+/** A FEATURED VERSE (Music Video): the co-stars who sing a verse of their own — name, the voice they sing
+ *  it in, and their gender (it decides whether the vocal moves an octave). Two at most. */
+function parseFeature(raw: string | null): Array<{ name: string; voiceId: string; gender?: "m" | "f" }> {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((x) => x && typeof x.name === "string" && x.name.trim())
+      .map((x) => ({ name: String(x.name).trim().slice(0, 40), voiceId: typeof x.voiceId === "string" ? x.voiceId.trim().slice(0, 80) : "", ...(x.gender === "f" || x.gender === "m" ? { gender: x.gender as "m" | "f" } : {}) }))
+      .slice(0, 2);
+  } catch { return []; }
+}
+
 /** Per-scene cast (owner edit): scene index → the cast IMAGES featured in that scene. */
 function parseCastForScene(raw: string | null): Record<number, string[]> | undefined {
   if (!raw) return undefined;
@@ -235,7 +250,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const castNamesRaw = ((form.get("filmCastNames") as string) || "").trim();
     if (castNamesRaw) { try { const a = JSON.parse(castNamesRaw); if (Array.isArray(a)) castNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     try {
-      const treatment = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, sceneSeconds: filmSceneSeconds, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) } : {}) });
+      const args = { shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, sceneSeconds: filmSceneSeconds, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(tmpl.lipSyncSinger ? { featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name) } : {}), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) } : {}) };
+      let treatment;
+      // One more go before the maker is told it failed: the first write after a restart failed once on
+      // the live site (2026-11-21) and the very same request then succeeded twelve times running.
+      try { treatment = await previewFilmTreatment(args); }
+      catch (first) {
+        console.error(`[film] treatment write failed, trying once more: ${first instanceof Error ? first.message.slice(0, 200) : first}`);
+        await new Promise((r) => setTimeout(r, 1200));
+        treatment = await previewFilmTreatment(args);
+      }
       return json({ treatment });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't write that treatment — give it another go, or tweak the premise a little (for Horror, a spookier / less-graphic angle writes more reliably)."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
@@ -399,10 +423,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, sceneSeconds: filmSceneSeconds, props: filmProps, customProps, heroUrl, castExtra, castForScene, outfits, artistName: pvArtistName, castNames: pvCastNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, sceneSeconds: filmSceneSeconds, props: filmProps, customProps, heroUrl, castExtra, castForScene, outfits, artistName: pvArtistName, castNames: pvCastNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name), aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
-        return json({ ok: true, sceneImgs, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef, castRefs: r.castRefs });
+        // sceneFaults: how each cast picture fared when it was looked at (0 = right, more = worth a re-roll)
+        return json({ ok: true, sceneImgs, sceneFaults: r.sceneFaults, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef, castRefs: r.castRefs });
       }
       // generateFilm engine (Kids Music Video / narrated story formats) — cast-locked scene seeds.
       const { previewFilmSceneSeeds } = await import("../lib/film-engine.server");
@@ -433,9 +458,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const rerollKindRaw = ((form.get("sceneKind") as string) || "").trim();
     const rerollKind = rerollKindRaw === "perform" || rerollKindRaw === "broll" ? rerollKindRaw : undefined;
     const rerollSceneCount = parseInt((form.get("sceneCount") as string) || "", 10) || undefined;
+    // A featured verse: the co-star who LEADS this scene (their own performance), as their styled picture.
+    const rerollLeadRef = ((form.get("sceneLeadRef") as string) || "").trim().slice(0, 2000) || undefined;
     if (!sceneVisual) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
     try {
       let img: string | null = null;
+      let faults: number | null = null;
       if (narrated) {
         // the scene as it reads NOW (the maker may have edited the words), drawn again on its own
         let scenesNow: Array<{ visual: string; caption?: string }> = [];
@@ -449,13 +477,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       } else if (tmpl.lipSyncSinger) {
         if (!artistRef) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
         const { rerollMusicVideoScene } = await import("../lib/music-video-pipeline.server");
-        img = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect, customProps: rerollCustomProps, kind: rerollKind, sceneCount: rerollSceneCount, sceneSeconds: filmSceneSeconds });
+        const r = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect, customProps: rerollCustomProps, kind: rerollKind, sceneCount: rerollSceneCount, sceneSeconds: filmSceneSeconds, leadRef: rerollLeadRef });
+        img = r.img; faults = r.faults;
       } else {
         const { rerollFilmSceneSeed } = await import("../lib/film-engine.server");
         img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined });
       }
       if (!img) return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex });
-      return json({ ok: true, sceneIndex, img });
+      return json({ ok: true, sceneIndex, img, faults });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
     }
@@ -577,6 +606,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Avatar-voice singing (opt-in beta) — sing the song in the picked avatar's OWN voice (seed-vc).
     const genSingVoice = ((form.get("filmSingVoice") as string) || "") === "1";
     const genArtistVoiceId = ((form.get("filmArtistVoiceId") as string) || "").trim().slice(0, 80);
+    // A FEATURED VERSE (Music Video) — the co-stars who sing a verse in their OWN voice. A voice must be
+    // a stock voice or one of THIS shop's own (never an id the client made up), and the singer must be
+    // one of the co-stars actually in this video.
+    let filmFeatureVoices: Array<{ name: string; voiceId: string; gender?: "m" | "f" }> = [];
+    if (tmpl.lipSyncSinger && filmCastExtra?.length) {
+      const asked = parseFeature(form.get("filmFeature") as string).filter((f) => f.voiceId && filmCastExtra.some((m) => nameTok(m.name) === nameTok(f.name)));
+      if (asked.length) {
+        const { shopVoiceClones } = await import("../lib/voice-clone.server");
+        const mine = new Set((await shopVoiceClones(shop.id)).map((v) => v.voiceId));
+        filmFeatureVoices = asked.filter((f) => AVATAR_VOICE_IDS.has(f.voiceId) || isCharacterVoice(f.voiceId) || mine.has(f.voiceId));
+      }
+    }
     // Pre-approved per-scene STILLS (Music Video storyboard) — render these EXACT images, no re-seed.
     // Keep positions (a null = that scene seeds fresh), so the index stays aligned with the scenes.
     let approvedSceneImgs: (string | null)[] | undefined;
@@ -612,6 +653,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(genArtistGender ? { filmArtistGender: genArtistGender } : {}),
         ...(genCastGenders?.length ? { filmCastGenders: genCastGenders } : {}),
         ...(genSingVoice && genArtistVoiceId ? { filmSingVoice: true, filmArtistVoiceId: genArtistVoiceId } : {}),
+        ...(filmFeatureVoices.length ? { filmFeatureVoices } : {}),
         ...(filmProps?.length ? { filmProps } : {}),
         ...(filmCustomProps.length ? { filmCustomProps } : {}),
         ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
@@ -636,7 +678,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json({ error: tr(lang, "Unknown action.") });
 };
 
-type Scene = { visual: string; caption?: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll" };
+// (`singer`: Music Video featured verse — the NAME of the co-star who sings this scene; absent = the artist)
+type Scene = { visual: string; caption?: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll"; singer?: string };
 type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: string[] };
 // A locked "actor": one character's reusable face + pinned voice, cast once and
 // reused as the identity reference for every shot they appear in.
@@ -841,15 +884,17 @@ export default function FilmStudio() {
   const treatmentFetcher = useFetcher<{ treatment?: Treatment; error?: string }>();
   // Music Video STORYBOARD: pre-seed every scene's still (props placed) BEFORE paying for the video,
   // so the owner checks accuracy + the prop per scene and the render uses those EXACT stills (no surprise).
-  const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; treatment?: Treatment; propForScene?: Record<number, string>; artistRef?: string | null; castRef?: string | null; error?: string }>();
-  const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; error?: string }>();
+  const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; sceneFaults?: (number | null)[]; treatment?: Treatment; propForScene?: Record<number, string>; artistRef?: string | null; castRef?: string | null; error?: string }>();
+  const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; faults?: number | null; error?: string }>();
   // Make-your-own prop: describe it → we generate a studio photo of it (free).
   const propMakerFetcher = useFetcher<{ img?: string; error?: string }>();
   // Make-your-own artist: describe a face → we generate a portrait (free), like the presenter forge.
   const artistMakerFetcher = useFetcher<{ img?: string; error?: string }>();
   // Wardrobe: generate the SAME avatar wearing a chosen outfit (identity locked), saved as a style.
   const outfitFetcher = useFetcher<{ img?: string; error?: string }>();
-  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null; castRefs: string[] } | null>(null);
+  // (`faults`: how each cast picture fared when it was looked at — more than 0 = something was still off
+  //  in the best of the tries, and the scene is flagged as worth a re-roll)
+  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null; castRefs: string[]; faults?: (number | null)[] } | null>(null);
   // Per-scene CO-STAR edit (owner): scene index → the co-star imgs featured in that scene (the artist
   // always leads a perform scene). Unset scenes fall back to an intelligent default (one rotating
   // co-star per perform scene) so the roster isn't crammed into every card.
@@ -1078,6 +1123,19 @@ export default function FilmStudio() {
   // A star on YOUR OWN voice sings in it by default (that's what the voice is for); a star on a stock
   // voice starts with the toggle off, as before. Either way it stays a switch the merchant can flip.
   useEffect(() => { setSingVoice(!!artistVoiceId && d.myVoices.some((v) => v.voiceId === artistVoiceId)); }, [artistVoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A FEATURED VERSE — a co-star SINGS part of the song, in their own voice (the owner: "another cast
+  // member sings that part of the song in their voice like real music"). The maker turns it on for a
+  // co-star; the writer gives them a verse and marks its scenes; the render re-voices that stretch of the
+  // song as them and puts them on camera for it (mv-feature.ts). A co-star can be featured when they have
+  // a voice of their own — every presenter does; a face that was only uploaded or drawn has none.
+  const [featPick, setFeatPick] = useState<string[]>([]);
+  const voiceOfImg = (img: string): string => (d.roster.find((r) => r.img === img) as { voiceId?: string | null } | undefined)?.voiceId || "";
+  /** who CAN sing a verse: a co-star with a name and a voice of their own */
+  const singable = castExtra.filter((m) => !!voiceOfImg(m.img) && !!(m.name || "").trim());
+  const featured = singable.filter((m) => featPick.includes(m.img));
+  const featKey = featured.map((m) => m.img).join(",");
+  const featureJson = JSON.stringify(featured.map((m) => { const g = genderOfImg(m.img); return { name: m.name.trim(), voiceId: voiceOfImg(m.img), ...(g ? { gender: g } : {}) }; }));
+  const toggleFeat = (img: string) => setFeatPick((p) => (p.includes(img) ? p.filter((x) => x !== img) : [...p, img]));
   const [scenes, setScenes] = useState(tmpl?.defaultScenes || 6);
   const [treatment, setTreatment] = useState<Treatment | null>(null);
   // MUSIC VIDEO: the scene count is the picked seconds ÷ the pace's scene length. A song written for a
@@ -1178,6 +1236,13 @@ export default function FilmStudio() {
   // How many scenes the music video has RIGHT NOW: the storyboard's own count once it exists (the maker
   // can add and remove scenes there), else the song's, else what the picked length works out to.
   const mvSceneCount = seeds?.treatment.scenes.length || treatment?.scenes.length || scenes;
+  // Everyone who SINGS a verse in the video as it stands — the co-stars asked for one, and any the maker
+  // gave a scene to in the storyboard. Their voices ride with the render.
+  const scenesNow: Scene[] = seeds?.treatment.scenes || treatment?.scenes || [];
+  const singingNow = singable.filter((m) => featPick.includes(m.img) || scenesNow.some((s) => singerOf(s, [m.name]) === 0));
+  const featureAllJson = JSON.stringify(singingNow.map((m) => { const g = genderOfImg(m.img); return { name: m.name.trim(), voiceId: voiceOfImg(m.img), ...(g ? { gender: g } : {}) }; }));
+  /** a video this short has no room to share (the artist needs a turn too) */
+  const tooShortToFeature = mvSceneCount * mvSceneSec < FEATURE_MIN_SECONDS;
   // (a music video is priced by its length: two five-second scenes are one ten-second scene's worth)
   const cost = estimateFilmTokens(tmpl?.lipSyncSinger ? mvBillScenes(mvSceneCount, mvSceneSec) : scenes);
   const affordable = d.tokens >= cost;
@@ -1221,7 +1286,7 @@ export default function FilmStudio() {
   };
   const writeTreatment = () => {
     treatmentFetcher.submit(
-      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}) },
+      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}) },
       { method: "post" }
     );
   };
@@ -1229,7 +1294,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
       { method: "post" }
     );
   };
@@ -1248,28 +1313,37 @@ export default function FilmStudio() {
     writeTreatment();
   };
   // When the song lands during a chain, auto-continue into the stills (with the fresh treatment).
+  // If the writer came back with an ERROR instead, the chain ends there and the button comes back: it
+  // used to stay "Building the scenes…", disabled, until the page was reloaded — one failed write was a
+  // dead end (seen on the live site, 2026-11-21).
   useEffect(() => {
     if (!chainToScenes || writing) return;
     const tr2 = treatmentFetcher.data?.treatment;
     if (tr2 && tr2.scenes?.length) { setChainToScenes(false); firePreviewScenes(tr2); }
+    else if (treatmentFetcher.data?.error) setChainToScenes(false);
   }, [treatmentFetcher.data, writing, chainToScenes]); // eslint-disable-line react-hooks/exhaustive-deps
   // Capture the previewed stills + the hero; the render then uses these EXACT images (no surprise),
   // and the hero lets a single scene be re-rolled without changing the artist.
   useEffect(() => {
     const sd = sceneSeedsFetcher.data;
     const crefs = (sd as { castRefs?: string[] } | undefined)?.castRefs;
-    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null, castRef: sd.castRef || null, castRefs: Array.isArray(crefs) ? crefs : [] });
+    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null, castRef: sd.castRef || null, castRefs: Array.isArray(crefs) ? crefs : [], faults: Array.isArray(sd.sceneFaults) ? sd.sceneFaults : [] });
   }, [sceneSeedsFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Re-roll ONE storyboard scene (reusing the hero / cast ref) when it came back wrong; swap that still.
-  const rerollScene = (i: number, propOverride?: string, castOverride?: string[]) => {
+  const rerollScene = (i: number, propOverride?: string, castOverride?: string[], singerOverride?: string) => {
     if (!seeds || (!narrated && !seeds.artistRef && !seeds.castRef)) return;
     const pk = propOverride !== undefined ? propOverride : (seeds.propForScene[i] || "");
-    // Resolve THIS scene's co-stars → their styled refs so the re-roll composes the right faces.
+    // Resolve THIS scene's co-stars → their styled refs so the re-roll composes the right faces. (In a
+    // co-star's own performance the list may hold the ARTIST — beside them — whose picture is the hero's.)
     const costarImgs = castOverride !== undefined ? castOverride : sceneCostars(seeds.treatment.scenes, i);
-    const sceneCastRefs = costarImgs.map((img) => costarImgToRef(img)).filter(Boolean) as string[];
+    const sceneCastRefs = costarImgs.map((img) => (img === artistPick ? seeds.artistRef : costarImgToRef(img))).filter(Boolean) as string[];
+    // who LEADS it: the co-star whose verse it is, when it is a performance — else the artist
+    const sc = singerOverride !== undefined ? { ...seeds.treatment.scenes[i], singer: singerOverride } : seeds.treatment.scenes[i];
+    const leadImg = sceneLeadImg(sc, i, seeds.treatment.scenes.length);
+    const leadRef = leadImg ? costarImgToRef(leadImg) : null;
     setRerollingScene(i);
     rerollSceneFetcher.submit(
-      { intent: "rerollFilmScene", template, filmGenre, ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated", approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}) } : {}), artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}) },
+      { intent: "rerollFilmScene", template, filmGenre, ...(leadRef ? { sceneLeadRef: leadRef } : {}), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated", approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}) } : {}), artistRef: seeds.artistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}) },
       { method: "post" }
     );
   };
@@ -1298,19 +1372,20 @@ export default function FilmStudio() {
     const rd = rerollSceneFetcher.data;
     if (rerollSceneFetcher.state === "idle" && rd) {
       if (rd.ok && typeof rd.sceneIndex === "number" && rd.img) {
-        const idx = rd.sceneIndex, nimg = rd.img;
-        setSeeds((prev) => (prev ? { ...prev, imgs: prev.imgs.map((u, j) => (j === idx ? nimg : u)) } : prev));
+        const idx = rd.sceneIndex, nimg = rd.img, nf = rd.faults ?? null;
+        setSeeds((prev) => (prev ? { ...prev, imgs: prev.imgs.map((u, j) => (j === idx ? nimg : u)), faults: prev.imgs.map((_, j) => (j === idx ? nf : (prev.faults || [])[j] ?? null)) } : prev));
       }
       setRerollingScene(null);
     }
   }, [rerollSceneFetcher.state, rerollSceneFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Any setup change invalidates the preview — the stills would no longer match the new settings
   // (the artist too: a different face means the stills show the wrong person).
-  useEffect(() => { setSeeds(null); setCastForScene({}); setSceneCastPick(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick, mvAspect]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setSeeds(null); setCastForScene({}); setSceneCastPick(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick, mvAspect, featKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!tmpl?.lipSyncSinger) setSeeds(null); }, [filmAspect]); // eslint-disable-line react-hooks/exhaustive-deps
   // Artist or cast CHANGED → clear the SCRIPT too so it re-writes with the picked names. Fixes the
   // "Kazon" AI-slop name persisting from a treatment that was written before the cast was set.
-  useEffect(() => { setTreatment(null); }, [artistPick, castExtra.map((m) => m.img).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (…and so does who SINGS: a featured verse is written into the song)
+  useEffect(() => { setTreatment(null); }, [artistPick, castExtra.map((m) => m.img).join(","), featKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // MUSIC VIDEO: a different idea is a different song. (Editing the idea cleared the stills but kept the
   // song, and "Make the scenes" then drew new pictures for the OLD song — "song already written".)
   useEffect(() => { if (tmpl?.lipSyncSinger) setTreatment(null); }, [topic]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1341,10 +1416,33 @@ export default function FilmStudio() {
   // artist's or the scenery's. (It used to put ONE co-star, in rotation, in each performance — so a
   // short video could never show the second: the tester's "they only show one back character".)
   // Owner overrides (castForScene) win.
+  // A FEATURED VERSE changes one thing here: a PERFORMANCE in a co-star's own verse is LED by that
+  // co-star (it is their voice, so their mouth), and by default they have the shot to themselves.
+  const castNamesAll = castExtra.map((m) => m.name || "");
+  /** The co-star (their picture) who leads scene i — a performance in their own verse — or "" for the artist. */
+  const sceneLeadImg = (sc: Scene | undefined, i: number, n: number): string => {
+    if (!sc || !castExtra.length || sceneKind(sc, i, n) !== "perform") return "";
+    const k = singerOf(sc, castNamesAll);
+    return k >= 0 ? castExtra[k]?.img || "" : "";
+  };
+  /** The co-star whose VOICE is heard over scene i (their verse — a performance or a cut scene), or "". */
+  const sceneVoiceName = (sc: Scene | undefined): string => { const k = singerOf(sc, castNamesAll); return k >= 0 ? (castExtra[k]?.name || "").trim() : ""; };
   const defaultSceneCostars = (scenesArr: Scene[], i: number): string[] => {
     if (!castExtra.length) return [];
     const role = sceneKind(scenesArr[i], i, scenesArr.length);
-    return defaultCostars(scenesArr[i], role, shotSlot(role, i), castExtra.map((m) => m.name || "")).map((k) => castExtra[k]?.img).filter(Boolean);
+    return sceneCast({ scene: scenesArr[i], role, slot: shotSlot(role, i), names: castNamesAll }).others.map((w) => (w < 0 ? artistPick : castExtra[w]?.img)).filter(Boolean);
+  };
+  /** Give scene i to a singer (a co-star's name, or "" for the artist) and draw it again with them in front. */
+  const setSceneSinger = (i: number, name: string) => {
+    if (!seeds) return;
+    setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => { if (j !== i) return s; const { singer: _drop, ...rest } = s; return name ? { ...rest, singer: name } : rest; }) } } : prev));
+    // whoever now leads is not also "beside" themselves; the old picks for the scene start over
+    setCastForScene((prev) => { const next = { ...prev }; delete next[i]; return next; });
+    setSceneCastPick(null);
+    const sc = { ...seeds.treatment.scenes[i], singer: name || undefined };
+    const role = sceneKind(sc, i, seeds.treatment.scenes.length);
+    const beside = sceneCast({ scene: sc, role, slot: shotSlot(role, i), names: castNamesAll }).others.map((w) => (w < 0 ? artistPick : castExtra[w]?.img)).filter(Boolean);
+    rerollScene(i, undefined, beside, name);
   };
   const sceneCostars = (scenesArr: Scene[], i: number): string[] => castForScene[i] ?? defaultSceneCostars(scenesArr, i);
   // The whole scene→co-stars map (defaults + overrides) — what the preview + the render receive.
@@ -1573,12 +1671,19 @@ export default function FilmStudio() {
               const pk = seeds?.propForScene[i];
               const pl = pk ? ((d.props || []).find((pp) => pp.key === pk)?.label || customProps.find((c) => c.key === pk)?.label || pk) : "";
               const perform = !isMv || sceneKind(sc, i, strip.scenes.length) === "perform";
+              // a featured verse: who leads this shot (a co-star, in their own performance) and whose
+              // voice is heard over it
+              const leadImg = isMv ? sceneLeadImg(sc, i, strip.scenes.length) : "";
+              const voiceName = isMv ? sceneVoiceName(sc) : "";
+              const flagged = isMv && !!seeds && ((seeds.faults || [])[i] || 0) > 0 && rerollingScene !== i;
               return (
                 <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i}>
                   <div className="mm-sc-frame" style={(isMv ? mvAspect : narrated ? filmAspect : "9:16") !== "9:16" ? { aspectRatio: (isMv ? mvAspect : filmAspect) === "16:9" ? "16 / 9" : "1 / 1" } : undefined}>
                     {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" className="mm-sc-zoomable" onClick={() => setZoomImg(u)} /> : <span className="mm-sc-load wb-cookimg" aria-hidden="true"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     {rerollingScene === i && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     <span className="mm-sb-num">{i + 1}</span>
+                    {/* the picture was looked at and something was still off (someone missing, doubled, or a stray microphone) */}
+                    {flagged && <button type="button" className="mm-sb-flag" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("We checked this picture and something looks off — someone missing or doubled, or a stray microphone. Tap to draw it again.")}><Ico n="refresh" size={11} /> {t("Worth a re-roll")}</button>}
                     <button type="button" className="mm-sc-x" onClick={() => sbRemoveScene(i)} disabled={strip.scenes.length <= 1} title={t("Remove this scene")} aria-label={t("Remove scene {n}", { n: i + 1 })}>✕</button>
                     {seeds && (narrated || seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={12} /></button>}
                   </div>
@@ -1595,15 +1700,34 @@ export default function FilmStudio() {
                     {isMv ? (
                       <>
                         <div className="mm-sc-chips">
-                          {artistName && <span className="mm-sc-chip mm-chip-av mm-chip-lead">{artistPick ? <img src={avatarFace(artistPick)} alt="" /> : null}{artistName}</span>}
-                          {sceneCostars(strip.scenes, i).map((img) => <span className="mm-sc-chip mm-chip-av" key={img}><img src={avatarFace(img)} alt="" />{castMemberName(img) || t("Cast")}</span>)}
+                          {leadImg
+                            ? <span className="mm-sc-chip mm-chip-av mm-chip-lead mm-chip-sings" title={t("{name} sings this part — in their own voice", { name: castMemberName(leadImg) || t("Cast") })}><img src={avatarFace(leadImg)} alt="" /><Ico n="mic" size={10} /> {castMemberName(leadImg) || t("Cast")}</span>
+                            : (artistName && <span className="mm-sc-chip mm-chip-av mm-chip-lead">{artistPick ? <img src={avatarFace(artistPick)} alt="" /> : null}{artistName}</span>)}
+                          {sceneCostars(strip.scenes, i).filter((img) => img !== leadImg).map((img) => <span className="mm-sc-chip mm-chip-av" key={img}><img src={avatarFace(img)} alt="" />{castMemberName(img) || t("Cast")}</span>)}
+                          {voiceName && !leadImg && <span className="mm-sc-chip mm-chip-voice" title={t("{name} sings this part — in their own voice", { name: voiceName })}><Ico n="mic" size={10} /> {t("{name}'s verse", { name: voiceName })}</span>}
                           {seeds && <button type="button" className="mm-sc-chip mm-chip-cast" onClick={() => openSceneCastPick(i)} disabled={rerollingScene !== null} aria-label={t("Edit who's in this scene")}><Ico n="star" size={11} /> {t("Cast")}</button>}
                           {seeds && <button type="button" className={`mm-sc-chip mm-chip-prop${pl ? "" : " empty"}`} onClick={() => openScenePropPick(i)} disabled={rerollingScene !== null} aria-label={t("Props in this scene")}><Ico n="gem" size={11} /> {pl || t("No props")}</button>}
                         </div>
                         {seeds && sceneCastPick === i && (
                           <div className="mm-sc-castedit">
+                            {/* WHO SINGS a performance: the star, or a co-star with a voice of their own (a featured verse) */}
+                            {perform && singable.length > 0 && (
+                              <div className="mm-sc-singer" role="group" aria-label={t("Who sings this scene?")}>
+                                <span className="mm-sc-singer-lbl"><Ico n="mic" size={11} /> {t("Who sings this scene?")}</span>
+                                <button type="button" className={`mm-sc-singer-opt${!leadImg ? " on" : ""}`} aria-pressed={!leadImg} disabled={rerollingScene !== null} onClick={() => { if (leadImg) setSceneSinger(i, ""); }}>{artistName || t("The star")}</button>
+                                {singable.map((m) => (
+                                  <button type="button" key={m.img} className={`mm-sc-singer-opt${leadImg === m.img ? " on" : ""}`} aria-pressed={leadImg === m.img} disabled={rerollingScene !== null} onClick={() => { if (leadImg !== m.img) setSceneSinger(i, m.name.trim()); }}>{m.name}</button>
+                                ))}
+                              </div>
+                            )}
                             <div className="mm-sc-castpick">
-                              {castExtra.map((m) => (
+                              {/* in a co-star's own performance the STAR is someone who can stand beside them */}
+                              {leadImg && artistPick && (
+                                <button type="button" className={`mm-cp-opt${sceneCastDraft.includes(artistPick) ? " on" : ""}`} onClick={() => toggleSceneCastDraft(artistPick)} title={artistName}>
+                                  <span className="mm-cp-img" style={{ backgroundImage: `url(${artistPick})` }} aria-hidden="true" />{artistName || t("The star")}
+                                </button>
+                              )}
+                              {castExtra.filter((m) => m.img !== leadImg).map((m) => (
                                 <button type="button" key={m.img} className={`mm-cp-opt${sceneCastDraft.includes(m.img) ? " on" : ""}`} onClick={() => toggleSceneCastDraft(m.img)} title={m.name}>
                                   <span className="mm-cp-img" style={{ backgroundImage: `url(${m.img})` }} aria-hidden="true" />{m.name || t("Cast")}
                                 </button>
@@ -1614,7 +1738,9 @@ export default function FilmStudio() {
                                 </button>
                               ))}
                             </div>
-                            <div className="mm-cp-hint">{t("The star always leads. Add up to 2 co-stars for this scene — or pick a face from your cast / the roster.")}</div>
+                            <div className="mm-cp-hint">{leadImg
+                              ? t("{name} sings this one, so they lead the shot. Add who stands beside them — up to 2.", { name: castMemberName(leadImg) || t("This co-star") })
+                              : t("The star always leads. Add up to 2 co-stars for this scene — or pick a face from your cast / the roster.")}</div>
                             <div className="mm-sc-propcta">
                               <button type="button" className="mm-sp-confirm" onClick={() => confirmSceneCastMv(i)} disabled={rerollingScene !== null}><Ico n="refresh" size={12} /> {t("Regenerate scene {n}", { n: i + 1 })}</button>
                               <button type="button" className="mm-sp-cancel" onClick={() => setSceneCastPick(null)}>{t("Cancel")}</button>
@@ -2063,6 +2189,13 @@ export default function FilmStudio() {
                             <span className="mm-castmem-wd" aria-hidden="true"><Ico n="shirt" size={10} /></span>
                           </button>
                           <input className="mm-castmem-name" value={m.name} onChange={(e) => renameCastMemberMv(m.img, e.target.value)} maxLength={24} aria-label={t("Cast member name")} />
+                          {/* A FEATURED VERSE: this co-star sings part of the song, in their own voice */}
+                          {voiceOfImg(m.img)
+                            ? <button type="button" className={`mm-castmem-feat${featPick.includes(m.img) ? " on" : ""}`} aria-pressed={featPick.includes(m.img)} disabled={tooShortToFeature && !featPick.includes(m.img)} onClick={() => toggleFeat(m.img)}
+                                title={tooShortToFeature ? t("A verse needs a video of 20 seconds or more") : t("{name} sings a verse of the song in their own voice — like a featured artist", { name: m.name || t("This co-star") })}>
+                                <Ico n="mic" size={12} /> {featPick.includes(m.img) ? t("Sings a verse") : t("Give a verse")}
+                              </button>
+                            : null}
                           <button type="button" className="mm-castmem-del" onClick={() => addCastMemberMv(m.img, m.name)} aria-label={t("Remove from cast")}>✕</button>
                         </div>
                         {wardrobeOpen === m.img && outfitSlider(m.img, m.name || t("co-star"))}
@@ -2288,6 +2421,7 @@ export default function FilmStudio() {
               {tmpl?.lipSyncSinger && <input type="hidden" name="filmAspect" value={mvAspect} />}
               {tmpl?.lipSyncSinger && singVoice && artistVoiceId && <input type="hidden" name="filmSingVoice" value="1" />}
               {tmpl?.lipSyncSinger && singVoice && artistVoiceId && <input type="hidden" name="filmArtistVoiceId" value={artistVoiceId} />}
+              {tmpl?.lipSyncSinger && singingNow.length > 0 && <input type="hidden" name="filmFeature" value={featureAllJson} />}
               <input type="hidden" name="filmTopic" value={topic} />
               <input type="hidden" name="filmScenes" value={String(scenes)} />
               {(seeds?.treatment || treatment) && <input type="hidden" name="approvedTreatment" value={JSON.stringify(seeds?.treatment || treatment)} />}
@@ -3485,6 +3619,13 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-castmem-name:focus{outline:0;background:#FCFBF7;border-color:var(--green2,#1EA85C);box-shadow:0 0 0 2px rgba(12,122,70,.1);}
 .mm-castmem-del{flex:none;width:28px;height:28px;border-radius:8px;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink3,#9AA39B);font-size:12px;cursor:pointer;display:grid;place-items:center;transition:background .14s,color .14s;}
 .mm-castmem-del:hover{background:#FBEEEC;color:#B4463A;border-color:#F2D6D1;}
+/* A FEATURED VERSE — the co-star sings part of the song in their own voice. */
+.mm-castmem-feat{flex:none;display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);font-family:Poppins,sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .14s,color .14s,border-color .14s,box-shadow .14s;}
+.mm-castmem-feat svg{stroke:currentColor;stroke-width:2;fill:none;}
+.mm-castmem-feat:hover:not(:disabled){border-color:var(--green2,#1EA85C);color:var(--green-d,#0A5E37);background:#F2FAF5;}
+.mm-castmem-feat.on{background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);color:#fff;box-shadow:0 4px 12px -6px rgba(12,122,70,.7);}
+.mm-castmem-feat:disabled{opacity:.5;cursor:default;}
+.mm-castmem-feat:focus-visible{outline:2px solid var(--green2,#1EA85C);outline-offset:2px;}
 .mm-castpick{margin-top:4px;}
 /* Wardrobe — folded INTO the avatar picker (no doomscroll): an outfit slider opens under the selected
    avatar; presets + your SAVED generated outfits (each a thumbnail); picking GENERATES + saves it. */
@@ -3661,6 +3802,23 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-sc-chip img{width:17px;height:17px;border-radius:50%;object-fit:cover;flex:none;}
 .mm-chip-av{background:#EAF2FB;border-color:#D4E4F5;color:#1A4E85;}
 .mm-chip-lead{background:#E7EEFA;border-color:#C7D9F0;font-weight:800;box-shadow:inset 0 0 0 1px #C7D9F0;}
+/* a featured verse: the co-star who sings this shot, and a cut scene their voice is heard over */
+.mm-chip-sings{background:#E4F4EA;border-color:#B9E0C8;color:#0A5E37;box-shadow:inset 0 0 0 1px #B9E0C8;}
+.mm-chip-sings svg,.mm-chip-voice svg{stroke:currentColor;stroke-width:2;fill:none;flex:none;}
+.mm-chip-voice{background:#F2FAF5;border-color:#CFE8D9;color:#0A5E37;padding:2px 9px;}
+/* "who sings this scene?" in the per-scene cast editor */
+.mm-sc-singer{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 1px 0;}
+.mm-sc-singer-lbl{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:var(--ink2,#55605A);margin-right:2px;}
+.mm-sc-singer-lbl svg{stroke:currentColor;stroke-width:2;fill:none;}
+.mm-sc-singer-opt{min-height:28px;padding:0 11px;border-radius:999px;border:1.5px solid var(--line,#E4DFCF);background:#fff;font-family:Poppins,sans-serif;font-size:11px;font-weight:700;color:var(--ink2,#55605A);cursor:pointer;transition:border-color .14s,background .14s,color .14s;}
+.mm-sc-singer-opt:hover:not(:disabled){border-color:var(--green2,#1EA85C);}
+.mm-sc-singer-opt.on{border-color:var(--green,#0C7A46);background:#E4F4EA;color:#0A5E37;}
+.mm-sc-singer-opt:disabled{opacity:.55;cursor:default;}
+/* the picture check found something off: a nudge to draw it again, on the still itself */
+.mm-sb-flag{position:absolute;left:7px;bottom:7px;display:inline-flex;align-items:center;gap:5px;min-height:24px;padding:0 9px;border-radius:999px;border:0;background:rgba(199,154,58,.95);color:#1A1407;font-family:Poppins,sans-serif;font-size:10.5px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px -5px rgba(0,0,0,.6);}
+.mm-sb-flag svg{stroke:currentColor;stroke-width:2.2;fill:none;}
+.mm-sb-flag:hover:not(:disabled){background:#E7C879;}
+.mm-sb-flag:disabled{opacity:.6;cursor:default;}
 .mm-chip-cast{background:#F3EEFB;border-color:#E0D4F3;color:#5B3A99;padding:2px 9px;cursor:pointer;transition:background .14s;}
 .mm-chip-cast:hover:not(:disabled){background:#EBE2F7;}
 .mm-chip-cast:disabled{opacity:.5;cursor:default;}

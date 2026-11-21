@@ -49,6 +49,32 @@ export function defaultCostars(scene: { visual?: string; caption?: string } | un
   return ((slot % 8) + 8) % 8 === DANCE_SLOT ? all : [];
 }
 
+const sameName = (s: string | null | undefined): string => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
+
+/** WHO SINGS a scene: the index of the co-star whose verse it is, or -1 for the artist. A scene's
+ *  "singer" is a NAME — the song writer's mark, or the maker's pick (a featured verse: mv-feature.ts) —
+ *  and a name that is nobody's in the cast is the artist. */
+export function singerOf(scene: { singer?: string } | null | undefined, names: string[]): number {
+  const want = sameName(scene?.singer);
+  if (!want) return -1;
+  return names.slice(0, MAX_COSTARS).findIndex((n) => sameName(n) === want);
+}
+
+/** WHO IS IN A SHOT: who leads it and who is beside them (-1 = the artist, 0… = a co-star by index).
+ *
+ *  The artist leads every scene but one kind: a PERFORMANCE in a co-star's own verse, which the co-star
+ *  leads — it is their voice at that moment, so it is their mouth on camera. By default they have that
+ *  shot to themselves (one face is what the lip-sync does best); the maker can put others beside them.
+ *  `listed` is the maker's pick for the scene, already resolved to who (it may name the artist, -1);
+ *  with no pick it is the default (defaultCostars). */
+export function sceneCast(o: { scene: { visual?: string; caption?: string; singer?: string } | undefined; role: ShotRole; slot: number; names: string[]; listed?: number[] }): { lead: number; others: number[] } {
+  const uniq = (xs: number[]): number[] => Array.from(new Set(xs.filter((x) => Number.isInteger(x) && x >= -1 && x < MAX_COSTARS)));
+  const k = o.role === "perform" ? singerOf(o.scene || undefined, o.names) : -1;
+  if (k >= 0) return { lead: k, others: uniq(o.listed || []).filter((w) => w !== k).slice(0, MAX_COSTARS) };
+  const beside = o.listed ?? defaultCostars(o.scene, o.role, o.slot, o.names);
+  return { lead: -1, others: uniq(beside).filter((w) => w >= 0).slice(0, MAX_COSTARS) };
+}
+
 /** Cut `s` to at most `max` characters at a word. */
 export function cutAtWord(s: string, max: number): string {
   const t = (s || "").replace(/\s+/g, " ").trim();
@@ -93,8 +119,10 @@ export function castStillPrompt(o: {
   const performing = o.role === "perform";
   const roles = performing
     ? `the ARTIST (the person in the ${ORDINALS[0]} reference image) is front and centre, nearest the camera, facing it and singing; ${others} ${k === 1 ? "is" : "are"} beside and a step behind the artist, dancing to the music, mouth${k === 1 ? "" : "s"} closed, NOT singing`
-    : `the artist (the person in the ${ORDINALS[0]} reference image) with ${others}, all moving together`;
-  const head = `A photoreal frame from a real ${o.genre} music video. EXACTLY ${COUNT_WORD[n]} people, each shown ONCE: ${roles}. ${micLine(o.micOk, performing)} ${o.frame.replace(/[.\s]+$/, "")}.`;
+    : `the artist (the person in the ${ORDINALS[0]} reference image) with ${others}, all moving together, each with their own face, hair and clothes`;
+  // ("DIFFERENT": told only the count, the model made the count with the artist twice and a co-star
+  //  missing, and with two co-stars blended into one — the first live storyboard, 2026-11-21)
+  const head = `A photoreal frame from a real ${o.genre} music video. EXACTLY ${COUNT_WORD[n]} DIFFERENT people, each shown ONCE: ${roles}. ${micLine(o.micOk, performing)} ${o.frame.replace(/[.\s]+$/, "")}.`;
   const tail = (o.extra || "").trim().replace(/[.\s]+$/, "");
   const room = Math.max(80, CAST_PROMPT_MAX - head.length - tail.length - 12);
   // (no closing full stop: the picture call adds its own before the identity lock)
@@ -127,18 +155,30 @@ export function soloEditPrompt(o: { role: ShotRole; frame: string; visual: strin
   return `${head}${cutAtWord(o.visual, room).replace(/[.\s]+$/, "")}.${tail ? ` ${tail}` : ""}`.slice(0, SOLO_EDIT_MAX);
 }
 
-/** What the vision check read off a still: people in the foreground, who holds a microphone, and — when
- *  the scene has a prop — whether the prop can be seen. */
-export type CastCheck = { people: number; mic: "none" | "front" | "other" | "several"; prop?: boolean };
+/** What the vision check read off a still: people in the foreground; for each cast member in the order
+ *  of their reference pictures, whether someone matching them is there (`seen`); whether anyone is in it
+ *  twice or is a blend of two of them (`twin`); who holds a microphone; and — when the scene has a prop —
+ *  whether the prop can be seen. */
+export type CastCheck = { people: number; mic: "none" | "front" | "other" | "several"; seen?: boolean[]; twin?: boolean; prop?: boolean };
 
-/** The question put to the vision model about a cast still (`prop` = the thing that must also be in it). */
-export function castCheckPrompt(prop?: string): string {
-  const p = (prop || "").trim();
+/** The question put to the vision model about a cast still. The frame is the FIRST image it is shown;
+ *  `refs` more follow — the cast's reference pictures, in order — when the check is to say WHO is there
+ *  and not only how many (a count of three passed a picture with the artist in it twice and a co-star
+ *  missing, and another where two co-stars had been blended into one woman: the first live storyboard,
+ *  2026-11-21). `prop` = the thing that must also be in the picture. */
+export function castCheckPrompt(o: { refs?: number; prop?: string } = {}): string {
+  const p = (o.prop || "").trim();
+  const n = Math.max(0, Math.min(3, Math.round(o.refs || 0)));
+  const who = n
+    ? `The FIRST image is a frame from a music video. The ${n === 1 ? "image after it is the one person" : `${COUNT_WORD[n]} images after it are the ${COUNT_WORD[n]} people`} who must be in it (person 1 is the 2nd image${n > 1 ? ", person 2 the 3rd" : ""}${n > 2 ? ", person 3 the 4th" : ""}). Go only by what can be seen: hair (colour, length, style), facial hair, build, apparent age and clothing.\n`
+    : `Look at this music-video frame.\n`;
   return (
-    `Look at this music-video frame. Count the people who are clearly IN the shot as its subjects — in the foreground or mid-ground, recognisable. Do NOT count an audience, a crowd, silhouettes, or small blurred figures far in the background.\n` +
-    `Then say who is HOLDING a microphone (a mic on an empty stand that nobody holds counts as none).\n` +
-    (p ? `Then say whether a real, recognisable ${p} is clearly visible.\n` : "") +
-    `Reply with ONLY this JSON: {"people": <number>, "mic": "none" | "front" | "other" | "several"${p ? `, "prop": true | false` : ""}}\n` +
+    who +
+    `Count the people who are clearly IN the frame as its subjects — in the foreground or mid-ground, recognisable. Do NOT count an audience, a crowd, silhouettes, or small blurred figures far in the background.\n` +
+    (n ? `For each of the ${COUNT_WORD[n]} people, in order: is someone matching them in the frame?\nIs anyone in the frame there TWICE (a twin or copy of the same person), or a BLEND of two of them (one person's hair on another's clothes)?\n` : "") +
+    `Say who is HOLDING a microphone (a mic on an empty stand that nobody holds counts as none).\n` +
+    (p ? `Say whether a real, recognisable ${p} is clearly visible.\n` : "") +
+    `Reply with ONLY this JSON: {"people": <number>${n ? `, "seen": [${Array.from({ length: n }, () => "true | false").join(", ")}], "twin": true | false` : ""}, "mic": "none" | "front" | "other" | "several"${p ? `, "prop": true | false` : ""}}\n` +
     `"front" = only the person who is front-and-centre / nearest the camera holds one. "other" = someone else holds one and the front person does not. "several" = more than one person holds one.`
   );
 }
@@ -148,29 +188,36 @@ export function parseCastCheck(raw: string): CastCheck | null {
   const m = /\{[^{}]*\}/.exec(raw || "");
   if (!m) return null;
   try {
-    const j = JSON.parse(m[0]) as { people?: unknown; mic?: unknown; prop?: unknown };
+    const j = JSON.parse(m[0]) as { people?: unknown; mic?: unknown; prop?: unknown; seen?: unknown; twin?: unknown };
     const people = Number(j.people);
     const mic = String(j.mic || "").toLowerCase();
     if (j.people == null || !Number.isFinite(people) || people < 0 || people > 20) return null;
     if (mic !== "none" && mic !== "front" && mic !== "other" && mic !== "several") return null;
-    return { people: Math.round(people), mic, ...(typeof j.prop === "boolean" ? { prop: j.prop } : {}) };
+    const seen = Array.isArray(j.seen) && j.seen.length <= 3 && j.seen.every((x) => typeof x === "boolean") ? (j.seen as boolean[]) : undefined;
+    return { people: Math.round(people), mic, ...(seen ? { seen } : {}), ...(typeof j.twin === "boolean" ? { twin: j.twin } : {}), ...(typeof j.prop === "boolean" ? { prop: j.prop } : {}) };
   } catch { return null; }
 }
 
 /** How wrong a still is, 0 = right: the people it should have (`expectPeople` null = a wide shot where
- *  they are too small to count), a microphone only where one belongs and only in the artist's hand, and
- *  the prop when the scene has one. The wrong head-count is worse than a stray mic. */
+ *  they are too small to count); every cast member there, each once and nobody blended; a microphone
+ *  only where one belongs and only in the singer's hand; and the prop when the scene has one. A missing
+ *  or doubled person is worse than a stray mic. */
 export function castFaults(c: CastCheck, expectPeople: number | null, micOk: boolean, performing: boolean, wantProp = false): number {
   const count = expectPeople == null || c.people === expectPeople ? 0 : 2 + Math.min(3, Math.abs(c.people - expectPeople));
+  const missing = expectPeople == null ? 0 : 3 * (c.seen || []).filter((s) => s === false).length;
+  const twin = expectPeople != null && c.twin === true ? 3 : 0;
   const micWrong = c.mic === "none" ? 0 : c.mic === "front" && micOk && performing ? 0 : c.mic === "front" ? 1 : 2;
   const propGone = wantProp && c.prop === false ? 2 : 0;
-  return count + micWrong + propGone;
+  return count + missing + twin + micWrong + propGone;
 }
 
 /** What to tell the picture model when a still came back wrong and is being made again: the fault, named. */
 export function castFix(c: CastCheck, expectPeople: number | null, micOk: boolean, performing: boolean, prop?: string): string {
   const out: string[] = [];
-  if (expectPeople != null && c.people < expectPeople) out.push(`ALL ${COUNT_WORD[expectPeople] || expectPeople} people must be clearly visible — leave nobody out`);
+  const gone = expectPeople == null ? [] : (c.seen || []).map((s, k) => (s === false ? ORDINALS[k] : "")).filter(Boolean);
+  if (gone.length) out.push(`The person in the ${gone.join(" and ")} reference image is MISSING — put them in, with their own face, hair and clothes`);
+  if (expectPeople != null && c.twin === true) out.push(`Nobody appears twice and no two people are blended into one — ${COUNT_WORD[expectPeople] || expectPeople} DIFFERENT people`);
+  if (!gone.length && expectPeople != null && c.people < expectPeople) out.push(`ALL ${COUNT_WORD[expectPeople] || expectPeople} people must be clearly visible — leave nobody out`);
   if (expectPeople != null && c.people > expectPeople) out.push(`ONLY ${COUNT_WORD[expectPeople] || expectPeople} people — no extra person and no copy of anyone`);
   if (c.mic !== "none" && !(c.mic === "front" && micOk && performing)) out.push(micOk && performing ? "ONLY the artist holds a microphone — nobody else" : "Remove every microphone");
   if (prop && c.prop === false) out.push(`The ${prop} must be clearly visible`);
