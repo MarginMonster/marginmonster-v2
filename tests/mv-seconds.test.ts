@@ -182,6 +182,10 @@ test("the scene length rides from the page to the render, and an old job is stil
   assert.match(ui, /const mvSceneSec = sceneSecondsFor\(mvPace\);/);
   assert.match(ui, /const n = sceneCountFor\(mvSeconds, mvSceneSec\);\s+setScenes\(n\);/);
   assert.match(ui, /onClick=\{\(\) => setMvSeconds\(s\)\}/);
+  // …and nothing else may leave the count at the format's default: opening the format card did, and the
+  // page read "15s · 3 scenes" beside a picker that said 30 seconds (seen on the live site, 2026-11-21)
+  assert.match(ui, /setScenes\(nt\?\.lipSyncSinger \? mvWant : \(nt\?\.defaultScenes \|\| 6\)\);/);
+  assert.match(ui, /if \(tmpl\?\.lipSyncSinger && !treatment && !seeds && scenes !== mvWant\) setScenes\(mvWant\);/);
   // …it goes with the song request, the storyboard request, a re-roll, and the render
   for (const intent of ["previewFilmTreatment", "previewFilmScenes", "rerollFilmScene"]) {
     const at = ui.indexOf(`{ intent: "${intent}"`);

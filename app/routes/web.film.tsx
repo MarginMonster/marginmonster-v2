@@ -1083,12 +1083,19 @@ export default function FilmStudio() {
   // MUSIC VIDEO: the scene count is the picked seconds ÷ the pace's scene length. A song written for a
   // different number of scenes is a different song, so it is cleared with the count (the stills go with
   // `scenes`, in the effect further down).
+  const mvWant = sceneCountFor(mvSeconds, mvSceneSec);
   useEffect(() => {
     if (!tmpl?.lipSyncSinger) return;
     const n = sceneCountFor(mvSeconds, mvSceneSec);
     setScenes(n);
     setTreatment((cur) => (cur && cur.scenes.length !== n ? null : cur));
   }, [mvSeconds, mvSceneSec, tmpl?.lipSyncSinger]); // eslint-disable-line react-hooks/exhaustive-deps
+  // …and it STAYS that until a song exists. (Opening the format card reset the count to the format's
+  // default — three — while the picker still said 30 seconds: "15s · 3 scenes", seen live 2026-11-21.
+  // Whatever sets the count, with no song written it is the picked length's.)
+  useEffect(() => {
+    if (tmpl?.lipSyncSinger && !treatment && !seeds && scenes !== mvWant) setScenes(mvWant);
+  }, [tmpl?.lipSyncSinger, treatment, seeds, scenes, mvWant]);
   // Product (skit): title + photo + (catalog) description.
   const [prodTitle, setProdTitle] = useState("");
   const [prodImage, setProdImage] = useState("");
@@ -1184,7 +1191,7 @@ export default function FilmStudio() {
   };
   const switchTemplate = (key: string) => {
     const nt = d.templates.find((x) => x.key === key);
-    setTemplate(key); setScenes(nt?.defaultScenes || 6); setTreatment(null); setFrames([]); setCast([]);
+    setTemplate(key); setScenes(nt?.lipSyncSinger ? mvWant : (nt?.defaultScenes || 6)); setTreatment(null); setFrames([]); setCast([]);
     setTold("acted"); setStoryPick([]); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({});
   };
   // Cinematic format entry: you land on the poster GRID; tap a card and IT zooms in while the
