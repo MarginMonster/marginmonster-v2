@@ -54,6 +54,8 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { AI_DISCLOSURE_TAG, buildPostTitle, fallbackCaption, getOrMakeCaptions, trialCredit } from "../lib/social-caption.server";
 import { catalogImageFor, productLinkFor } from "../lib/catalog-import.server";
 import { externalOrigin } from "../lib/origin.server";
+// (2026-11-22) the "Today" of the When filter starts at midnight where the shop is
+import { isValidTimeZone, zonedDateString, zonedInstant } from "../lib/timezone";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
 export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }> }) => {
@@ -214,6 +216,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // every count below is narrowed the same way so "Showing X of Y" stays true.
   const q = (new URL(request.url).searchParams.get("q") || "").trim().slice(0, 80);
   const titleWhere = q ? { title: { contains: q, mode: "insensitive" as const } } : {};
+  // WHEN (2026-11-22) — "All time · Today · This week · This month". Like the search it lives in the URL
+  // (?when=) and is applied HERE, because here is where the paging is: the page holds only the newest
+  // `show` pieces, so a filter over what was loaded would quietly leave out this month's 61st. Today
+  // starts at midnight where the shop is (the zone its posts are scheduled by); a shop with no zone on
+  // file gets the last 24 hours (whenSince, below).
+  const when = parseWhen(new URL(request.url).searchParams.get("when"));
+  const whenNowMs = Date.now();
+  const dayStartMs = isValidTimeZone(shop.timezone)
+    ? zonedInstant(zonedDateString(new Date(whenNowMs), shop.timezone), "00:00", shop.timezone).getTime()
+    : null;
+  const since = whenSince(when, whenNowMs, dayStartMs);
+  const whenWhere = since ? { createdAt: { gte: since } } : {};
   const GALLERY_KINDS = ['"kind":"musicvideo-scene"', '"kind":"wardrobe"'];
   const galleryWhere = { OR: GALLERY_KINDS.map((k) => ({ metaJson: { contains: k } })) };
 
@@ -232,16 +246,34 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     else if (t.type === "BLOG_POST") totals.blog = t._count._all;
   }
   totals.stills = await db.asset.count({ where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere, ...titleWhere } });
-  const totalAll = totals.video + totals.image + totals.music + totals.blog;
+  // WHEN (2026-11-22): what each window holds, tab by tab — the number on each of its chips. The three
+  // windows nest (today is inside this week is inside this month), so ONE lean read of the last 30 days
+  // — two small columns, the search still applied — counts all three. `totals` above is "All time".
+  const monthSince = whenSince("month", whenNowMs)!;
+  const [recentPieces, recentStills] = await Promise.all([
+    db.asset.findMany({ where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere, ...titleWhere, createdAt: { gte: monthSince } }, select: { type: true, createdAt: true } }),
+    db.asset.findMany({ where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere, ...titleWhere, createdAt: { gte: monthSince } }, select: { createdAt: true } }),
+  ]);
+  const whenCounts = {
+    all: totals,
+    ...tallyWhen([
+      ...recentPieces.map((p) => ({ tab: A_KIND[p.type], at: p.createdAt.getTime() })),
+      ...recentStills.map((p) => ({ tab: "stills" as const, at: p.createdAt.getTime() })),
+    ], whenNowMs, dayStartMs),
+  };
+  // Every count the page shows is the OPEN window's — narrowed exactly as the search narrows them — so
+  // the numbers on the tabs and "Showing X of Y" stay true, and "Show older pieces" pages inside the window.
+  const inWhen = whenCounts[when];
+  const totalAll = inWhen.video + inWhen.image + inWhen.music + inWhen.blog;
 
   const assets = await db.asset.findMany({
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere, ...titleWhere },
+    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere, ...titleWhere, ...whenWhere },
     orderBy: { createdAt: "desc" },
     take: show,
   });
   // Separate fetch for the Scenes & Portraits section (its own pagination so neither crowds the other).
   const stills = await db.asset.findMany({
-    where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere, ...titleWhere },
+    where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere, ...titleWhere, ...whenWhere },
     orderBy: { createdAt: "desc" },
     take: 180,
   });
@@ -414,7 +446,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     cost: TOKEN_COST,
     cooking: cookingCards.filter((c) => c.status === "generating").length,
     cookingCards,
-    totals,
+    totals: inWhen,
+    // WHEN (2026-11-22): the open window, and what every window holds (the numbers on its chips)
+    when,
+    whenCounts,
     // Whether anything is still hidden, and how to ask for more of it.
     shown: Math.min(show, totalAll),
     totalAll,
@@ -971,6 +1006,129 @@ type ATab = "video" | "image" | "music" | "blog" | "stills";
 const TAB_PLURAL: Record<ATab, string> = { video: "videos", image: "images", music: "tracks", blog: "articles", stills: "pictures" };
 const A_KIND: Record<string, ATab> = { VIDEO_AD: "video", IMAGE_AD: "image", AUDIO: "music", BLOG_POST: "blog" };
 
+/* ── ARCHIVE FEATURES · THE PURE PART (2026-11-22) ────────────────────────────────────────────────────
+ * Two things customers of rival tools ask for, and this Archive had neither: a WHEN filter (to find last
+ * week's piece) and DOWNLOAD for a whole selection (to take several pieces out at once). What decides
+ * them is kept in this one block — no React, no database, nothing imported — so that
+ * tests/archive-features.test.ts can lift the block out of this file and run it exactly as written.
+ * Keep it that way: plain values in, plain values out, between here and the closing rule. */
+
+/** WHEN — the date filter's windows. "all" is no filter, and is the default. */
+const WHEN_KEYS = ["all", "today", "week", "month"] as const;
+type AWhen = (typeof WHEN_KEYS)[number];
+type AWindow = Exclude<AWhen, "all">;
+/** What each chip reads (English source strings; the page runs them through t()). */
+const WHEN_LABEL: Record<AWhen, string> = { all: "All time", today: "Today", week: "This week", month: "This month" };
+/** …and what the shelf says when a window holds nothing (whole sentences, so they translate whole). */
+const WHEN_EMPTY: Record<AWindow, string> = {
+  today: "Nothing from today yet.",
+  week: "Nothing from this week yet.",
+  month: "Nothing from this month yet.",
+};
+const DAY_MS = 86_400_000;
+
+/** ?when= → a window this page knows. Anything else (a hand-edited link) is all time — never an error. */
+function parseWhen(v: unknown): AWhen {
+  return typeof v === "string" && (WHEN_KEYS as readonly string[]).includes(v) ? (v as AWhen) : "all";
+}
+
+/** The oldest moment a window reaches back to; null = no limit. This week is the last 7 days and this
+ *  month the last 30. Today starts at `dayStartMs` — midnight where the shop is, which the loader works
+ *  out from the shop's time zone. With no zone on file (or a midnight that cannot be right: ahead of
+ *  now, or more than a 25-hour day behind it) it is the last 24 hours instead, which is wider than any
+ *  calendar day — so nothing made today can be left out. */
+function whenSince(when: AWhen, nowMs: number, dayStartMs?: number | null): Date | null {
+  if (when === "week") return new Date(nowMs - 7 * DAY_MS);
+  if (when === "month") return new Date(nowMs - 30 * DAY_MS);
+  if (when !== "today") return null;
+  const sane = typeof dayStartMs === "number" && Number.isFinite(dayStartMs) && dayStartMs <= nowMs && nowMs - dayStartMs <= 25 * 3_600_000;
+  return new Date(sane ? (dayStartMs as number) : nowMs - DAY_MS);
+}
+
+/** How many pieces each window holds, tab by tab — the number on each chip. One pass over the pieces of
+ *  the widest window is enough, because the windows nest. */
+function tallyWhen(pieces: Array<{ tab: ATab; at: number }>, nowMs: number, dayStartMs?: number | null): Record<AWindow, Record<ATab, number>> {
+  const zero = (): Record<ATab, number> => ({ video: 0, image: 0, music: 0, blog: 0, stills: 0 });
+  const out: Record<AWindow, Record<ATab, number>> = { today: zero(), week: zero(), month: zero() };
+  const windows = (["today", "week", "month"] as const).map((k) => [k, whenSince(k, nowMs, dayStartMs)!.getTime()] as const);
+  for (const p of pieces) {
+    if (!(p.tab in out.month)) continue; // a kind this page has no tab for
+    for (const [k, from] of windows) if (p.at >= from) out[k][p.tab]++;
+  }
+  return out;
+}
+
+/** DOWNLOAD SEVERAL — one tap of the select bar saves this many files at most, this far apart (browsers
+ *  swallow downloads fired in the same instant). */
+const DL_CAP = 20;
+const DL_GAP_MS = 400;
+type DlPiece = { id: string; type: string; title: string; media: string | null; isVideo: boolean; isAudio: boolean };
+type DlFile = { id: string; url: string; name: string };
+
+/** A clean file name from the piece's title — letters and digits of any alphabet, spaces to dashes — with
+ *  the file's OWN extension when its address shows one (a .png is saved as .png), else its kind's usual one.
+ *  (The single Download's dlName, above, keeps unaccented Latin letters only — a title in any other script
+ *  comes out "easymode" — and calls every image .jpg, a PNG included. It is left as it was.) */
+function dlFileName(title: string, url: string, isVideo: boolean, isAudio: boolean): string {
+  const clean = (title || "").replace(/[^\p{L}\p{M}\p{N} _-]+/gu, "").trim().replace(/[\s-]+/g, "-").replace(/^[-_]+/, "");
+  const base = Array.from(clean).slice(0, 60).join("").replace(/[-_]+$/, "") || "easymode";
+  const real = /^(data|blob):/i.test(url) ? null : url.split(/[?#]/)[0].match(/\.(mp4|webm|mov|png|jpe?g|webp|gif|mp3|wav|m4a)$/i);
+  return `${base}.${real ? real[1].toLowerCase() : isAudio ? "mp3" : isVideo ? "mp4" : "jpg"}`;
+}
+
+/** Is this address the page's own? The browser obeys <a download> for the page's own files only: another
+ *  site's file it would OPEN instead — in this tab, taking the page and the rest of the downloads with it. */
+function dlSameOrigin(url: string, pageOrigin: string): boolean {
+  if (/^(data|blob):/i.test(url)) return true;
+  try { return new URL(url, pageOrigin).origin === pageOrigin; } catch { return false; }
+}
+
+/** What one go will save: every picked piece that HAS a media file, in the order given (the order the
+ *  page shows them), `cap` at most — the rest are `over`. A piece with no file is `skipped`: its render
+ *  is gone, or it is an article. (Select mode does not reach the Articles tab today; if it ever does,
+ *  give an article its own words — the page says "its render is gone" for everything skipped.) Two
+ *  pieces that would be saved under one name are numbered, so neither overwrites the other. */
+function downloadPlan(pieces: DlPiece[], cap: number = DL_CAP): { files: DlFile[]; skipped: number; over: number } {
+  const files: DlFile[] = [];
+  const taken = new Set<string>();
+  let skipped = 0;
+  let over = 0;
+  for (const p of pieces) {
+    if (p.type === "BLOG_POST" || !p.media) { skipped++; continue; }
+    if (files.length >= cap) { over++; continue; }
+    const first = dlFileName(p.title, p.media, p.isVideo, p.isAudio);
+    let name = first;
+    for (let n = 2; taken.has(name.toLowerCase()); n++) name = first.replace(/(\.[^.]+)$/, `-${n}$1`);
+    taken.add(name.toLowerCase());
+    files.push({ id: p.id, url: p.media, name });
+  }
+  return { files, skipped, over };
+}
+
+/** What a go says when it is over: how many were handed to the browser, how many were skipped and why,
+ *  how many did not come. English source strings and their {n}; the page runs each through t().
+ *  ("Started", not "saved": the page hands the files over — the browser is still writing a long video
+ *  when this is said, and may ask before it takes several.) */
+function dlSummary(started: number, skipped: number, failed: number): Array<{ s: string; n: number }> {
+  const out: Array<{ s: string; n: number }> = [];
+  if (started > 0) out.push({ s: started === 1 ? "1 download started." : "{n} downloads started.", n: started });
+  if (skipped > 0) out.push({ s: skipped === 1 ? "1 skipped — its render is gone." : "{n} skipped — their renders are gone.", n: skipped });
+  if (failed > 0) out.push({ s: failed === 1 ? "1 didn't download — open it and use its own Download." : "{n} didn't download — open each one and use its own Download.", n: failed });
+  return out;
+}
+/* ── end of the pure part ─────────────────────────────────────────────────────────────────────────── */
+
+/** The browser's own download for one file: an <a download> made for it and clicked (2026-11-22). */
+function clickDownload(href: string, name: string) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 // Route-local styles for everything the parity pass added (viewer, badges,
 // chips, caption box, failed section). Matches the web front-door look:
 // paper #F4F1E6 / card #FDFCF7 / ink #14201A / green #0C7A46 / gold #B08526.
@@ -1293,6 +1451,13 @@ const WA_CSS = `
 .wa-filterchip{display:inline-flex;align-items:center;gap:5px;font-family:Poppins,sans-serif;font-weight:700;font-size:12.5px;color:var(--ink2,#4A554E);background:#fff;border:1px solid var(--line,#E1DECD);border-radius:999px;padding:6px 13px;cursor:pointer;line-height:1;transition:background .12s,color .12s,border-color .12s;}
 .wa-filterchip:hover{color:var(--ink,#14201A);border-color:#CFD6C5;}
 .wa-filterchip.on{background:#EAF6EF;color:var(--green,#0C7A46);border-color:#BFE2CD;}
+/* WHEN chips (2026-11-22) — the date filter. They are links (the window lives in the URL), dressed as the
+   chips beside them. The row never wraps: where it is too wide — a phone — it scrolls by ITSELF, edge to
+   edge like the tabs above, so the page never scrolls sideways. */
+.wa-when{flex-wrap:nowrap;min-width:0;max-width:100%;overflow-x:auto;padding:2px 0;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.wa-when::-webkit-scrollbar{display:none;}
+.wa-when .wa-filterchip{flex:0 0 auto;white-space:nowrap;text-decoration:none;font-variant-numeric:tabular-nums;min-height:30px;box-sizing:border-box;} /* 30px: as tall as the chips beside them, which an icon makes 30 */
+@media(max-width:640px){.wa-when{flex:1 1 100%;max-width:none;margin-inline:-16px;padding-inline:16px;}.wa-when .wa-filterchip{min-height:44px;}}
 .wa-pick{margin-top:-2px;}
 .wa-selbtn{align-self:flex-start;}
 .wb-asset.wa-picked{box-shadow:0 0 0 3px var(--green,#0C7A46),0 10px 24px -14px rgba(12,122,70,.55);}
@@ -1308,6 +1473,24 @@ const WA_CSS = `
 .wa-bulk-btn.del.armed{background:#B4532A;border-color:#B4532A;}
 .wa-bulk-done{min-height:40px;padding:0 14px;border-radius:999px;border:0;background:#fff;color:#14201A;font:800 13px/1 Poppins,sans-serif;cursor:pointer;}
 @media(max-width:640px){.wa-bulk{left:16px;right:16px;transform:none;width:auto;}.wa-bulk-sp{display:none;}.wa-bulk-btn,.wa-bulk-done{flex:1 1 auto;justify-content:center;min-height:44px;}}
+/* DOWNLOAD in the select bar (2026-11-22). While a go runs the button cannot be tapped, but it is showing
+   the progress, so it must stay readable: it takes a lit look, not the dimmed :disabled one. */
+.wa-bulk-btn.dl:not(:disabled):hover{background:rgba(143,227,180,.18);}
+.wa-bulk-btn.dl.busy:disabled{opacity:1;cursor:progress;color:#8FE3B4;border-color:rgba(143,227,180,.45);background:rgba(143,227,180,.14);}
+.wa-bulk-lbl{font-variant-numeric:tabular-nums;}
+.wa-bulk-lbl.busy .wa-bulk-idle,.wa-bulk-short{display:none;}
+/* On a phone the bar wraps, and a label that changed width when a go started re-wrapped it: the short
+   count made Download narrow, Keep slid up beside it — under the thumb that had just tapped Download
+   (measured at 390: a second tap on the same spot kept the selection instead). So here the word and the
+   count ("3 / 8") share ONE cell, sized by the wider of the two whichever is showing: the button is the
+   same width idle and running, and nothing in the bar moves. */
+@media(max-width:640px){
+  .wa-bulk-lbl{display:inline-grid;justify-items:center;}
+  .wa-bulk-lbl > span{grid-area:1/1;}
+  .wa-bulk-lbl .wa-bulk-long{display:none;}
+  .wa-bulk-lbl .wa-bulk-idle,.wa-bulk-lbl.busy .wa-bulk-idle,.wa-bulk-lbl .wa-bulk-short{display:block;}
+  .wa-bulk-lbl.busy .wa-bulk-idle,.wa-bulk-lbl:not(.busy) .wa-bulk-short{visibility:hidden;}
+}
 .wa-select{position:relative;padding-right:30px;}
 .wa-select select{appearance:none;-webkit-appearance:none;border:0;background:transparent;font:inherit;color:inherit;padding:0;margin:0;max-width:220px;cursor:pointer;outline:none;}
 .wa-select::after{content:"";position:absolute;right:12px;top:50%;width:6px;height:6px;margin-top:-5px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);opacity:.6;pointer-events:none;}
@@ -1527,7 +1710,7 @@ function ShareLink({ assetId, title, token }: { assetId: string; title: string; 
 
 export default function WebArchive() {
   const t = useT();
-  const { section, q, assets, stills, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
+  const { section, q, when, whenCounts, assets, stills, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
   const isCreator = section === "creator";
   // Preserve the section across tab links, "show more", and revalidation so the
   // Gallery stays the Gallery.
@@ -1549,6 +1732,17 @@ export default function WebArchive() {
   // …and by who is in it / what it's for (the menus beside the chips); "" = any
   const [who, setWho] = useState("");
   const [prod, setProd] = useState("");
+  // WHEN (2026-11-22): the date filter. The window is the LOADER's — it is applied where the paging is —
+  // so its chips are links, and it survives a reload the way the search does. `whenLit` is the chip to
+  // light: the one just tapped, at once, not a beat later when the loader has answered.
+  const whenOpen = parseWhen(when);
+  const whenGoing = nav.state === "loading" && nav.location && typeof window !== "undefined" && nav.location.pathname === window.location.pathname
+    ? parseWhen(new URLSearchParams(nav.location.search).get("when"))
+    : null;
+  const whenLit = whenGoing ?? whenOpen;
+  // …and every link that reloads the shelf (search, clear, show older) carries it, so none of them drops it
+  const whenQ = whenOpen !== "all" ? `&when=${whenOpen}` : "";
+  const whenHref = (k: AWhen) => `?tab=${tab}${k !== "all" ? `&when=${k}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}${isCreator ? "&section=creator" : ""}`;
   const [viewer, setViewer] = useState<(typeof assets)[number] | null>(null);
   // "Every size" panel — closed again whenever a different piece opens
   const [sizesFor, setSizesFor] = useState<string | null>(null);
@@ -1615,12 +1809,14 @@ export default function WebArchive() {
   // A small confirmation that fades, with an Undo for delete while the piece is
   // still recoverable. `undo` runs on the Undo tap; `pending` is the timer that
   // fires the real server delete once the window closes un-undone.
-  const [toast, setToast] = useState<{ msg: string; undo?: () => void; pending?: ReturnType<typeof setTimeout> } | null>(null);
+  // (`ms`, 2026-11-22: a toast with more to read — the select bar's Download — says how long it stays;
+  //  every toast that does not, stays exactly as long as it did.)
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void; pending?: ReturnType<typeof setTimeout>; ms?: number } | null>(null);
   useEffect(() => {
     if (!toast) return;
     // Undo-able toasts linger until their delete actually commits (6s); plain
     // confirmations clear on their own after 3s.
-    const timer = setTimeout(() => setToast(null), toast.undo ? 6200 : 3000);
+    const timer = setTimeout(() => setToast(null), toast.ms ?? (toast.undo ? 6200 : 3000));
     return () => clearTimeout(timer);
   }, [toast]);
   // DELETE WITH UNDO. The grid/viewer trash is permanent, so the second ("armed")
@@ -1655,6 +1851,23 @@ export default function WebArchive() {
   useEffect(() => { if (!armBulk) return; const tm = setTimeout(() => setArmBulk(false), 4000); return () => clearTimeout(tm); }, [armBulk]);
   const togglePick = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const endSelect = () => { setSelecting(false); setPicked(new Set()); setArmBulk(false); };
+  // THE TOAST CLEARS THE SELECT BAR, HOWEVER TALL THE BAR IS (2026-11-22). It sat a fixed 96px up, which
+  // clears a bar of one row — a wide screen. On a phone the bar wraps to two rows, and the toast landed ON
+  // its first row (measured at 390: "Kept 1 piece." over "N selected · Select all · Keep") — which is now
+  // where Download shows its progress. So the bar's top edge is measured, and the toast sits 16px above
+  // it; where 96px already cleared the bar, it is 96px still.
+  const bulkRef = useRef<HTMLDivElement | null>(null);
+  const [bulkTop, setBulkTop] = useState(0); // px from the bottom of the screen to the top of the bar
+  useEffect(() => {
+    const el = bulkRef.current;
+    if (!selecting || !el) { setBulkTop(0); return; }
+    const measure = () => setBulkTop(Math.round(window.innerHeight - el.getBoundingClientRect().top));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [selecting]);
   const keepPicked = () => { const ids = [...picked]; if (!ids.length) return; submit({ intent: "keepMany", assetIds: ids.join(",") }, { method: "post" }); setToast({ msg: ids.length === 1 ? t("Kept 1 piece.") : t("Kept {n} pieces.", { n: ids.length }) }); setPicked(new Set()); };
   const deletePicked = () => {
     const ids = [...picked];
@@ -1774,6 +1987,55 @@ export default function WebArchive() {
   useEffect(() => {
     if (skippedPosted > 0) setToast({ msg: skippedPosted === 1 ? t("1 posted piece was kept — delete posted pieces one at a time.") : t("{n} posted pieces were kept — delete posted pieces one at a time.", { n: skippedPosted }) });
   }, [actionData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // DOWNLOAD THE SELECTION (2026-11-22) — the select bar's third thing to do with what is picked. No zip
+  // and no server route: the browser's own download, one file after another (an <a download> clicked for
+  // each, DL_GAP_MS apart so none is swallowed), named from the piece's title. What is saved, what is
+  // skipped and where one go stops is downloadPlan's call (the pure part, above). The selection is NOT
+  // cleared: people download, then keep or delete the same pieces.
+  const [dl, setDl] = useState<{ i: number; n: number } | null>(null);
+  const dlRunning = useRef(false);
+  const dlSay = (parts: Array<{ s: string; n: number }>) => parts.map((p) => t(p.s, { n: p.n })).join(" ");
+  const downloadPicked = async () => {
+    if (dlRunning.current || !picked.size) return;
+    // in the order the page shows them, so "the first 20" are the 20 nearest the top
+    const plan = downloadPlan(shelf.filter((a) => picked.has(a.id)));
+    if (!plan.files.length) {
+      if (plan.skipped) setToast({ msg: dlSay(dlSummary(0, plan.skipped, 0)), ms: 6000 });
+      return;
+    }
+    dlRunning.current = true;
+    // more picked than one go takes: say so now, and leave it up for as long as the go runs
+    if (plan.over > 0) setToast({ msg: t("Downloading the first {n} — select fewer to get the rest.", { n: plan.files.length }), ms: 600_000 });
+    let started = 0;
+    let failed = 0;
+    try {
+      for (let i = 0; i < plan.files.length; i++) {
+        const f = plan.files[i];
+        setDl({ i: i + 1, n: plan.files.length });
+        try {
+          if (dlSameOrigin(f.url, window.location.origin)) clickDownload(f.url, f.name);
+          else {
+            // ANOTHER SITE'S FILE (a fresh render still at its provider's address). An <a download> to it
+            // is not obeyed: the browser OPENS the file — in this tab, which ends the go and the page. So
+            // its bytes are pulled first and saved from memory, the way the Studio saves a staged result.
+            // A host that will not hand them over is counted and said; it is never opened in a tab.
+            const res = await fetch(f.url, { mode: "cors", signal: typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(300_000) : undefined });
+            if (!res.ok) throw new Error(String(res.status));
+            const blobUrl = URL.createObjectURL(await res.blob());
+            clickDownload(blobUrl, f.name);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
+          }
+          started++;
+        } catch { failed++; }
+        await new Promise((r) => setTimeout(r, DL_GAP_MS));
+      }
+    } finally {
+      dlRunning.current = false;
+      setDl(null);
+    }
+    setToast({ msg: dlSay(dlSummary(started, plan.skipped, failed)), ms: 6000 });
+  };
   const vIdx = viewer ? visibleShelf.findIndex((c) => c.id === viewer.id) : -1;
   const openAt = (idx: number) => { const n = visibleShelf[(idx % visibleShelf.length + visibleShelf.length) % visibleShelf.length]; if (n) setViewer(n); };
   // Keyboard: Escape closes, arrows cycle the current tab's pieces.
@@ -1819,6 +2081,16 @@ export default function WebArchive() {
   const genCards = cookingCards.filter((j) => j.kind === tab && j.status === "generating" && qMatch(j.productTitle));
   const failCards = cookingCards.filter((j) => j.kind === tab && j.status === "failed" && qMatch(j.productTitle));
 
+  // WHEN, and a window with nothing in it (2026-11-22). An empty WINDOW is not an empty library: where
+  // the open tab has pieces from other days, the shelf says which window is empty and offers the way back
+  // — not "No videos yet", and not "Nothing here matches" when it is the day, not the search word, that
+  // leaves it bare. `tabEver` is this tab's count whatever the window (the search still applied). A piece
+  // being made right now is about to land in every window, so nothing is said over a cooking tile.
+  const tabEver = whenCounts?.all?.[tab] ?? tabTotal;
+  const whenEmpty = whenOpen !== "all" && shelf.length === 0 && tabTotal === 0 && tabEver > 0 && genCards.length === 0;
+  // The chips show wherever the open tab has something to sift by date — and while a window is on (the way back).
+  const showWhen = whenOpen !== "all" || tabEver > 0;
+
   return (
     <div className={isCreator ? "wa-creator" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WA_CSS }} />
@@ -1850,7 +2122,9 @@ export default function WebArchive() {
         </div>
       )}
       <div className="ws-tabs wa-typebar">
-        {([["video", "video", t("Videos")], ["image", "image", t("Images")], ["music", "music", t("Music")], ["blog", "article", t("Articles")], ...((totals?.stills ?? 0) > 0 ? [["stills", "film", t("Scenes & Portraits")]] : [])] as [ATab, string, string][]).map(([k, icon, label]) => {
+        {/* (2026-11-22: the Scenes & Portraits tab is there whenever the library has any — counted for ALL
+            time, so an empty window reads "· 0" on it instead of taking the tab away from under the reader) */}
+        {([["video", "video", t("Videos")], ["image", "image", t("Images")], ["music", "music", t("Music")], ["blog", "article", t("Articles")], ...((whenCounts?.all?.stills ?? totals?.stills ?? 0) > 0 ? [["stills", "film", t("Scenes & Portraits")]] : [])] as [ATab, string, string][]).map(([k, icon, label]) => {
           // Count the whole library, not the slice we happened to render —
           // this used to read off `assets`, so a truncated page under-reported
           // how much the merchant actually owned.
@@ -1875,14 +2149,33 @@ export default function WebArchive() {
         <Form method="get" className="wa-search" role="search" preventScrollReset>
           {isCreator && <input type="hidden" name="section" value="creator" />}
           <input type="hidden" name="tab" value={tab} />
+          {/* (2026-11-22) a search keeps the open When window — and clearing the search keeps it too */}
+          {whenOpen !== "all" && <input type="hidden" name="when" value={whenOpen} />}
           <Ico n="search" />
           <input type="search" name="q" defaultValue={q} key={q} maxLength={80} placeholder={t("Search your pieces")} aria-label={t("Search your pieces")} />
         </Form>
         {q && (
           <span className="wa-qchip">
             {t("Results for “{q}”", { q })}
-            <Link to={`?tab=${tab}${isCreator ? "&section=creator" : ""}`} preventScrollReset aria-label={t("Clear")}><Ico n="x" size={12} /></Link>
+            <Link to={`?tab=${tab}${whenQ}${isCreator ? "&section=creator" : ""}`} preventScrollReset aria-label={t("Clear")}><Ico n="x" size={12} /></Link>
           </span>
+        )}
+        {/* WHEN (2026-11-22) — All time · Today · This week · This month, each with how many of the open
+            tab's pieces it holds. Links, not buttons: the window lives in the URL and the loader applies
+            it (where the paging is), so it combines with the search and the chips beside it and survives
+            a reload. A new window is a new shelf from the server, so — like changing tab — it ends a
+            selection rather than leave pieces picked that are no longer on the page. */}
+        {showWhen && (
+          <div className="wa-filters wa-when" role="group" aria-label={t("Filter by date")}>
+            {WHEN_KEYS.map((k) => {
+              const n = whenCounts?.[k]?.[tab];
+              return (
+                <Link key={k} to={whenHref(k)} preventScrollReset className={`wa-filterchip${whenLit === k ? " on" : ""}`} aria-current={whenLit === k ? "true" : undefined} onClick={endSelect}>
+                  {t(WHEN_LABEL[k])}{n != null ? ` · ${n}` : ""}
+                </Link>
+              );
+            })}
+          </div>
         )}
         {canFilter && (
           <div className="wa-filters" role="group" aria-label={t("Filter pieces")}>
@@ -1949,7 +2242,7 @@ export default function WebArchive() {
               // (the word was built as tab + "s", which on the Scenes & Portraits tab read "stillss")
               ? <>{t("Your")} <b>{tabTotal}</b> {t(TAB_PLURAL[tab])} {t("are further back.")}{" "}</>
               : <>{t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}{t(TAB_PLURAL[tab])}.{" "}</>}
-            <Link to={`?show=${nextShow}&tab=${tab}${q ? `&q=${encodeURIComponent(q)}` : ""}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
+            <Link to={`?show=${nextShow}&tab=${tab}${whenQ}${q ? `&q=${encodeURIComponent(q)}` : ""}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
           </p>
         )}
       </div>
@@ -1968,10 +2261,21 @@ export default function WebArchive() {
       {/* "Yet — make one" only when there are GENUINELY none of this type —
           tabTotal === 0 — not merely none in the current page (which is the
           "are further back" note above). */}
-      {q && shelf.length === 0 && tabTotal === 0 && (
-        <p className="wa-noq">{t("Nothing here matches “{q}”.", { q })} <Link to={`?tab=${tab}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Clear")}</Link></p>
+      {/* (2026-11-22: neither of the next two speaks for an empty When WINDOW — `whenEmpty`, which has its
+          own words just below them. With no window on, both are exactly what they were.) */}
+      {!whenEmpty && q && shelf.length === 0 && tabTotal === 0 && (
+        <p className="wa-noq">{t("Nothing here matches “{q}”.", { q })} <Link to={`?tab=${tab}${whenQ}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Clear")}</Link></p>
       )}
-      {!q && shelf.length === 0 && tabTotal === 0 && genCards.length === 0 && failCards.length === 0 && (
+      {/* WHEN, and nothing in the window: the page's own empty state — an icon, one line, one button —
+          saying which window is empty, with the way back to everything. */}
+      {whenEmpty && (
+        <div className="wa-empty">
+          <span className="wa-empty-ic"><Ico n={tab === "blog" ? "article" : tab === "music" ? "music" : tab === "image" ? "image" : tab === "stills" ? "film" : "video"} size={26} /></span>
+          <p className="wa-empty-ln">{t(WHEN_EMPTY[whenOpen])}</p>
+          <Link to={whenHref("all")} preventScrollReset className="wb-btn wa-empty-cta" onClick={endSelect}>{t("Show all")}</Link>
+        </div>
+      )}
+      {!whenEmpty && !q && shelf.length === 0 && tabTotal === 0 && genCards.length === 0 && failCards.length === 0 && (
         // A real empty state: an icon, one line of encouragement, and a bold
         // deep-link into the Studio — not a bare inline text link.
         <div className="wa-empty">
@@ -2387,7 +2691,7 @@ export default function WebArchive() {
           fixed position + z-index clear any stacking context and it shows
           whether or not the viewer is open. */}
       {toast && mounted ? createPortal(
-        <div className="wa-toast" role="status" aria-live="polite" style={selecting ? { bottom: 96 } : undefined}>
+        <div className="wa-toast" role="status" aria-live="polite" style={selecting ? { bottom: Math.max(96, bulkTop + 16) } : undefined}>
           <span className="wa-toast-ic"><Ico n={toast.undo ? "trash" : "check"} /></span>
           <span>{toast.msg}</span>
           {toast.undo && <button type="button" className="wa-toast-undo" onClick={toast.undo}>{t("Undo")}</button>}
@@ -2396,12 +2700,28 @@ export default function WebArchive() {
 
       {/* Select mode's action bar, pinned to the bottom of the screen while picking */}
       {selecting && (
-        <div className="wa-bulk" role="toolbar" aria-label={t("Selected pieces")}>
+        <div className="wa-bulk" ref={bulkRef} role="toolbar" aria-label={t("Selected pieces")}>
           <span className="wa-bulk-n">{picked.size === 1 ? t("1 selected") : t("{n} selected", { n: picked.size })}</span>
           <button type="button" className="wa-bulk-link" onClick={() => setPicked(picked.size >= visibleShelf.length ? new Set() : new Set(visibleShelf.map((a) => a.id)))}>
             {picked.size >= visibleShelf.length ? t("Clear") : t("Select all {n}", { n: visibleShelf.length })}
           </button>
           <span className="wa-bulk-sp" />
+          {/* DOWNLOAD (2026-11-22): the media file of every picked piece that has one, one after another.
+              While a go runs the button shows how far it is and cannot be tapped again; what happened is
+              said in the toast when it ends. (First of the three, so on a wide screen its growing label
+              pushes into the spacer and Keep / Delete / Done stay where they are.) */}
+          <button type="button" className={`wa-bulk-btn dl${dl ? " busy" : ""}`} disabled={!picked.size || !!dl} aria-busy={dl ? true : undefined}
+            aria-label={dl ? t("Downloading {i} of {n}…", { i: dl.i, n: dl.n }) : undefined} onClick={downloadPicked}>
+            <Ico n="download" />{" "}
+            {/* Three faces of one label: the word, the sentence (wide screens) and the short count (phones).
+                On a phone the word and the count are stacked in one cell — see .wa-bulk-lbl — so the button
+                is the same width idle and running, and nothing in the bar moves when a go starts. */}
+            <span className={`wa-bulk-lbl${dl ? " busy" : ""}`}>
+              <span className="wa-bulk-idle">{t("Download")}</span>
+              {dl && <span className="wa-bulk-long">{t("Downloading {i} of {n}…", { i: dl.i, n: dl.n })}</span>}
+              <span className="wa-bulk-short" aria-hidden="true">{dl ? `${dl.i} / ${dl.n}` : `${DL_CAP} / ${DL_CAP}`}</span>
+            </span>
+          </button>
           <button type="button" className="wa-bulk-btn keep" disabled={!picked.size || busy} onClick={keepPicked}><Ico n="heart" /> {t("Keep")}</button>
           <button type="button" className={`wa-bulk-btn del${armBulk ? " armed" : ""}`} disabled={!picked.size || busy} onClick={deletePicked}>
             <Ico n="trash" /> {armBulk ? t("Tap again to delete {n}", { n: picked.size }) : t("Delete")}
