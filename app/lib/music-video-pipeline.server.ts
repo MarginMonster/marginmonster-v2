@@ -34,7 +34,7 @@ import { ensureVoiceModel, coverSongInVoice, matchLoudness, revoiceSongVocals } 
 import { MV_MAX_SECONDS, beatTimes, defaultRole, editPlan, paceFor, planFilter, sceneSecondsOf, shotSlot, shotTimes, type Cut, type Pace } from "./mv-pace";
 import {
   CAST_PROMPT_MAX, MAX_COSTARS, MIC_MOTION_LINE, NO_NEW_MIC_LINE, SOLO_EDIT_MAX,
-  STYLE_PROMPT_MAX, castCheckPrompt, castFaults, castFix, castMotionLine, castStillPrompt, castStylePrompt, micFits, parseCastCheck, sceneCast, singerOf, soloEditPrompt, soloStillPrompt,
+  MOUTH_CHECK_PROMPT, STYLE_PROMPT_MAX, castCheckPrompt, castFaults, castFix, castMotionLine, castStillPrompt, castStylePrompt, micFits, parseCastCheck, parseMouthCheck, pictureFile, sceneCast, singerOf, soloEditPrompt, soloStillPrompt,
   type CastCheck,
 } from "./mv-cast";
 import { FEATURE_VOCAL_TRIM_DB, bestLag, featureMixFilter, featuredIn, octaveShiftFor, pitchChangeOf, vocalGaps, voiceWindows, wordJoins, type Gap, type VoiceWindow } from "./mv-feature";
@@ -1244,6 +1244,35 @@ export async function generateMusicVideo(opts: {
     return sceneCast({ scene: scenes[i], role: shot.role, slot: shot.slot, names: extraNames, listed: picked ? picked.map(whoOfImg).filter((w): w is number => w != null) : undefined }).others.length;
   };
 
+  // WHOSE MOUTH the lip-sync model may drive (mv-cast.ts MOUTH_CHECK_PROMPT). A person's, always. A
+  // CHARACTER'S — a cartoon or a monster, as the app itself knows them (cast-kinds.server.ts) — only when a
+  // look at its picture says the mouth is a human one. Looked at once per character, alongside the first
+  // clips; anything that goes wrong here leaves things as they were (the lip-sync model is run).
+  const characterFiles = await (async () => {
+    try { return await (await import("./cast-kinds.server")).characterPictureFiles(opts.shopId); } catch { return new Set<string>(); }
+  })();
+  const mouthLooks = new Map<string, Promise<boolean>>();
+  const lipSyncFits = (i: number): Promise<boolean> => {
+    const k = singers[i];
+    const img = k >= 0 ? extraUrls[k] : heroAbs;
+    if (!img || !characterFiles.has(pictureFile(img))) return Promise.resolve(true);
+    let look = mouthLooks.get(img);
+    if (!look) {
+      look = (async () => {
+        try {
+          const said = parseMouthCheck(String(await anthropicVision(MOUTH_CHECK_PROMPT, [img], { maxTokens: 60, model: "claude-sonnet-4-6" })));
+          console.log(`[musicvideo] ${pictureFile(img)} is a character — its mouth reads as ${said || "unclear"}${said === "other" ? ": the lip-sync model is not run on it, the motion clip's own singing is kept" : ""}`);
+          return said !== "other";
+        } catch (e) {
+          console.error(`[musicvideo] could not look at a character's mouth, lip-sync runs as usual: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+          return true;
+        }
+      })();
+      mouthLooks.set(img, look);
+    }
+    return look;
+  };
+
   // 5) song SEGMENTS (local mp3 + hosted url for the lip-sync model to drive the mouth to).
   const segs: Array<{ localPath: string; url: string }> = [];
   for (let i = 0; i < N; i++) {
@@ -1298,7 +1327,7 @@ export async function generateMusicVideo(opts: {
         const reqId = await falVideoSubmit(i2vModel, { startImage: imgAbs, prompt: motionPrompt, durationSec: D, generateAudio: false, ...(quietFaces ? { negativePrompt: quietFaces } : {}) });
         const motionUrl = await falVideoPoll(i2vModel, reqId, 12 * 60_000);
         const out = path.join(RENDERS(), `mv-${Date.now()}-${i}-${rid()}.mp4`);
-        if (shot.role === "perform") {
+        if (shot.role === "perform" && await lipSyncFits(i)) {
           // PERFORMANCE: dedicated lip-sync drives the mouth to this song segment. RETRY it — a single
           // transient fal hiccup used to drop the whole clip to "motion-only", where the mouth keeps the
           // i2v's generic singing motion that matches NOTHING (owner: "moving lips but not with the words
@@ -1315,6 +1344,8 @@ export async function generateMusicVideo(opts: {
         } else {
           // B-ROLL: lay the song segment over the silent motion clip (no mouth to sync). If the mux
           // fails, `out` stays invalid and the still fallback (which has audio) takes over.
+          // (…and a PERFORMANCE by a character whose mouth the lip-sync model cannot drive — lipSyncFits:
+          //  its motion clip was made with the singing prompt, so the jaw already works with the song.)
           const vtmp = path.join(RENDERS(), `mvv-${Date.now()}-${i}-${rid()}.mp4`);
           await download(motionUrl, vtmp);
           await runFfmpeg(["-y", "-i", vtmp, "-i", seg.localPath, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", out]);

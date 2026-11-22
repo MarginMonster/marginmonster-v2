@@ -356,3 +356,21 @@ export function castMotionLine(costars: number, performing: boolean): string {
 export const MIC_MOTION_LINE = " Do NOT add a microphone: if none is visible in the first frame, there is none in the whole shot. If the singer already holds one, they keep holding it the same way, low and clear of the mouth.";
 /** The same rule for a cut scene, where nobody sings. */
 export const NO_NEW_MIC_LINE = " Do NOT add a microphone that is not already in the first frame.";
+
+/* ── WHOSE MOUTH THE LIP-SYNC MODEL MAY DRIVE ──────────────────────────────────────────────────────────
+ * The lip-sync model is built for a human face. On a creature it mostly finds no face and leaves the clip
+ * as it was — and now and then it finds one for a few frames and pastes a blurred human mouth onto a
+ * muzzle (a werewolf's music video, 2026-11-22: three frames at 8.2 s, the rest of both performances
+ * untouched). So a singer whose mouth is not a human one keeps the motion clip's own singing — the video
+ * model already moves the jaw with the performance — and the lip-sync model is not run on them at all.
+ * People are never asked about; a character is looked at once (a ghost bride has a human mouth, a
+ * werewolf, a skull and a cartoon puppy do not). */
+export const MOUTH_CHECK_PROMPT = `Look at the character in this image. Does it have a HUMAN mouth — human lips on a human-shaped face (a person, or a human-like character such as a ghost, a vampire, a zombie, an elf or a doll)? Answer "other" for an animal's muzzle, snout or beak, a bare skull, a mask or a robot's faceplate, a cartoon animal's mouth, or a face whose mouth cannot be seen. Reply with ONLY this JSON: {"mouth":"human"} or {"mouth":"other"}.`;
+/** What the look said — null when it said nothing usable (the caller then changes nothing). */
+export function parseMouthCheck(raw: string): "human" | "other" | null {
+  const m = /"mouth"\s*:\s*"(human|other)"/i.exec(String(raw || ""));
+  return m ? (m[1].toLowerCase() as "human" | "other") : null;
+}
+/** The file a picture address ends in — how a cast picture is recognised whether it is written as a path
+ *  or as a whole address ("/avatars/howl_0.jpg", "https://…/avatars/howl_0.jpg?v=3"). */
+export const pictureFile = (u: string | null | undefined): string => String(u || "").split(/[?#]/)[0].split("/").pop() || "";
