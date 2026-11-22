@@ -418,10 +418,14 @@ test("DOWNLOAD: the file's name is the piece's title, cleaned, with the file's o
   assert.equal(img("测试 图片"), "测试-图片.jpg");
   assert.equal(img("ٹیسٹ تصویر"), "ٹیسٹ-تصویر.jpg");
   assert.equal(img("हिंदी विज्ञापन"), "हिंदी-विज्ञापन.jpg", "with its vowel signs, which are marks, not letters");
-  // 60 characters at most, never ending on a dash, never half of a character
+  // 60 characters at most, never ending on a dash, never half of a character — and a name that had to
+  // be cut ends at a whole word (seen live: "…two-night-cleaners-at-an-old-theatre-find-a-bri.mp4")
   const long = img("The quick brown fox jumps over the lazy dog and keeps on running far away");
-  assert.equal(long, "The-quick-brown-fox-jumps-over-the-lazy-dog-and-keeps-on-run.jpg");
-  assert.equal(long.length, 60 + 4);
+  assert.equal(long, "The-quick-brown-fox-jumps-over-the-lazy-dog-and-keeps-on.jpg");
+  assert.ok(long.length <= 60 + 4);
+  assert.equal(img("Horror Story — two night cleaners at an old theatre find a bright door"), "Horror-Story-two-night-cleaners-at-an-old-theatre-find-a.jpg");
+  assert.equal(img(`${"a".repeat(20)} ${"b".repeat(60)}`), `${"a".repeat(20)}-${"b".repeat(39)}.jpg`, "one very long word is cut where it must be, not thrown away");
+  assert.equal(img(`${"a".repeat(60)} tail`), `${"a".repeat(60)}.jpg`, "a cut that lands exactly between two words takes nothing more off");
   assert.equal(img(`${"a".repeat(59)} b`), `${"a".repeat(59)}.jpg`);
   assert.equal(img("𝒜".repeat(70)), `${"𝒜".repeat(60)}.jpg`);
   // the extension is the FILE's when its address shows one…

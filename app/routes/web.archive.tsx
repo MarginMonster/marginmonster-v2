@@ -1071,7 +1071,11 @@ type DlFile = { id: string; url: string; name: string };
  *  comes out "easymode" — and calls every image .jpg, a PNG included. It is left as it was.) */
 function dlFileName(title: string, url: string, isVideo: boolean, isAudio: boolean): string {
   const clean = (title || "").replace(/[^\p{L}\p{M}\p{N} _-]+/gu, "").trim().replace(/[\s-]+/g, "-").replace(/^[-_]+/, "");
-  const base = Array.from(clean).slice(0, 60).join("").replace(/[-_]+$/, "") || "easymode";
+  const chars = Array.from(clean);
+  let cut = chars.slice(0, 60).join("");
+  // a name that had to be cut ends at a whole word (seen live: "…find-a-bri.mp4") when that keeps most of it
+  if (chars.length > 60 && chars[60] !== "-") { const at = cut.lastIndexOf("-"); if (at >= 30) cut = cut.slice(0, at); }
+  const base = cut.replace(/[-_]+$/, "") || "easymode";
   const real = /^(data|blob):/i.test(url) ? null : url.split(/[?#]/)[0].match(/\.(mp4|webm|mov|png|jpe?g|webp|gif|mp3|wav|m4a)$/i);
   return `${base}.${real ? real[1].toLowerCase() : isAudio ? "mp3" : isVideo ? "mp4" : "jpg"}`;
 }
