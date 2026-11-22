@@ -31,7 +31,8 @@ export type FilmHero = {
   /** key of its poster media in public/landing */
   media: string;
   name: string;
-  /** the line under the name, and the note after it */
+  /** the line under the name, and the note after it — together they must fit two lines of a phone card
+   *  (about 45 characters: "…your cast on…" was cut off on a 390-px screen, seen 2026-11-22) */
   kick: string;
   meta: string;
   tint: string;
@@ -39,13 +40,13 @@ export type FilmHero = {
 
 export const FILM_HEROES: FilmHero[] = [
   { id: "musicvideo", tmpl: "musicvideo", told: null, media: "musicvideo", name: "Music Video", kick: "Your artist sings on camera", meta: "up to 2 min", tint: "t-mv" },
-  { id: "kidstv", tmpl: "kidstv", told: "acted", media: "kidstv", name: "Kids Cartoon", kick: "A cartoon for little ones", meta: "the characters talk", tint: "t-kids" },
+  { id: "kidstv", tmpl: "kidstv", told: "acted", media: "kidstv", name: "Kids Cartoon", kick: "A cartoon for little ones", meta: "acted out", tint: "t-kids" },
   { id: "kidsmusicvideo", tmpl: "kidsmusicvideo", told: null, media: "kidsmusicvideo", name: "Kids Music Video", kick: "A sing-along for little ones", meta: "about 30 sec", tint: "t-kmv" },
-  { id: "moral", tmpl: "moral", told: "narrated", media: "moralstory", name: "Moral Story", kick: "A story with a lesson", meta: "narrated · ready in minutes", tint: "t-moral" },
-  { id: "horror", tmpl: "horror", told: "narrated", media: "horrorstory", name: "Horror Story", kick: "A scary story, told", meta: "narrated · ready in minutes", tint: "t-horror" },
-  { id: "horrorfilm", tmpl: "horror", told: "acted", media: "horror", name: "Horror Film", kick: "A scare, scripted and acted out", meta: "your cast on camera", tint: "t-horror" },
-  { id: "shortstory", tmpl: "testmovie", told: "narrated", media: "shortstory", name: "Short Story", kick: "Your story, told", meta: "narrated · ready in minutes", tint: "t-film" },
-  { id: "testmovie", tmpl: "testmovie", told: "acted", media: "testmovie", name: "Short Film", kick: "Your story, scripted and acted out", meta: "your cast on camera", tint: "t-film" },
+  { id: "moral", tmpl: "moral", told: "narrated", media: "moralstory", name: "Moral Story", kick: "A story with a lesson", meta: "narrated in minutes", tint: "t-moral" },
+  { id: "horror", tmpl: "horror", told: "narrated", media: "horrorstory", name: "Horror Story", kick: "A scary story", meta: "narrated in minutes", tint: "t-horror" },
+  { id: "horrorfilm", tmpl: "horror", told: "acted", media: "horror", name: "Horror Film", kick: "A scare, scripted and acted out", meta: "", tint: "t-horror" },
+  { id: "shortstory", tmpl: "testmovie", told: "narrated", media: "shortstory", name: "Short Story", kick: "Your story", meta: "narrated in minutes", tint: "t-film" },
+  { id: "testmovie", tmpl: "testmovie", told: "acted", media: "testmovie", name: "Short Film", kick: "Your story, scripted and acted out", meta: "", tint: "t-film" },
 ];
 
 export const heroById = (id: string | null | undefined): FilmHero | undefined => FILM_HEROES.find((h) => h.id === id);

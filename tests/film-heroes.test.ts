@@ -118,5 +118,7 @@ test("every hero has its poster files, and every name and line is translated", (
     if (h.told === "narrated") assert.ok(talls.includes(`"${h.media}"`), `${h.id}: a strip of three upright pictures cannot be centre-cropped for a phone card`);
   }
   const dict = read("app", "lib", "ui-i18n-dict.ts");
-  for (const h of FILM_HEROES) for (const k of [h.name, h.kick, h.meta]) assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
+  for (const h of FILM_HEROES) for (const k of [h.name, h.kick, h.meta].filter(Boolean)) assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
+  // a poster's two lines fit a phone card (about 45 characters): "…your cast on…" was cut off at 390 px
+  for (const h of FILM_HEROES) assert.ok((h.kick + (h.meta ? ` · ${h.meta}` : "")).length <= 45, `${h.name}: ${h.kick} · ${h.meta}`);
 });
