@@ -30,6 +30,7 @@ import { MAX_COSTARS, sceneCast, singerOf } from "../lib/mv-cast";
 import { FEATURE_MIN_SECONDS } from "../lib/mv-feature";
 import type { Recast } from "../lib/mv-recast";
 import { MV_DRAFT_KEY, draftScenes, packDraft, readDraft, type MvDraft } from "../lib/mv-draft";
+import { FILM_HEROES, heroById, heroesFor } from "../lib/film-heroes";
 import { CAPTION_STYLES, captionStyleOf, type CaptionStyle } from "../lib/narrated-core";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
 import { favouritesFirst } from "../lib/favourites";
@@ -119,7 +120,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     base: FILM_BASE,
     // NARRATED stories: which formats can be told by a narrator, and how long one may be
     narratable: (await import("../lib/film-engine.server")).NARRATABLE_KEYS,
-    narratedFirst: (await import("../lib/film-engine.server")).NARRATED_FIRST_KEYS,
     narratedScenes: { min: 3, max: 12, def: 6 },
     defaultNarrator: (await import("../lib/narrated-story.server")).DEFAULT_NARRATOR,
   });
@@ -823,6 +823,46 @@ const FILM_BACKDROPS: Array<{ key: string; label: string; where: string }> = [
   { key: "park", label: "Park", where: "a quiet park bench at dusk, soft golden light" },
   { key: "warehouse", label: "Warehouse", where: "a cold empty warehouse at night, shafts of moonlight" },
 ];
+// …and each story format has its OWN places. The list above was offered everywhere: a Kids Cartoon about
+// a lost bandana was asked whether it happens in a Bar, a Diner or a Warehouse, and a horror story was
+// offered an Office (seen making both as a customer, 2026-11-22). `key` must be a word of its `where`
+// (that is how the chip of the place a scene is in lights up).
+const BACKDROPS_BY_FORMAT: Record<string, Array<{ key: string; label: string; where: string }>> = {
+  kidstv: [
+    { key: "park", label: "Park", where: "a sunny park with a big green lawn and a red slide" },
+    { key: "playground", label: "Playground", where: "a bright playground with swings and a sandbox under a blue sky" },
+    { key: "bedroom", label: "Bedroom", where: "a cozy bedroom full of toys, warm morning light through the curtains" },
+    { key: "classroom", label: "Classroom", where: "a cheerful classroom with crayon drawings on the walls" },
+    { key: "backyard", label: "Backyard", where: "a leafy backyard with a treehouse in the afternoon sun" },
+    { key: "beach", label: "Beach", where: "a sandy beach with gentle waves and a bright blue sky" },
+    { key: "farm", label: "Farm", where: "a friendly farm with a red barn and a white fence" },
+    { key: "forest", label: "Forest", where: "a sunlit forest clearing with tall trees and wildflowers" },
+    { key: "kitchen", label: "Kitchen", where: "a bright family kitchen in the morning, sunlight through the window" },
+  ],
+  horror: [
+    { key: "house", label: "Old house", where: "the hallway of an old house at night, wallpaper peeling, one bulb flickering" },
+    { key: "woods", label: "Woods", where: "dark woods at night, thin fog between the trees, a pale moon" },
+    { key: "hospital", label: "Hospital", where: "an empty hospital corridor at night, one fluorescent light flickering" },
+    { key: "basement", label: "Basement", where: "a damp basement lit by a single bare bulb" },
+    { key: "cemetery", label: "Cemetery", where: "an old cemetery at night, mist low over the headstones" },
+    { key: "motel", label: "Motel", where: "a highway motel room at night, the neon sign buzzing behind thin curtains" },
+    { key: "attic", label: "Attic", where: "a dusty attic at night, moonlight through a round window" },
+    { key: "road", label: "Empty road", where: "an empty country road at night, headlights fading into fog" },
+    { key: "chapel", label: "Chapel", where: "an abandoned chapel at night, candles guttering in the draft" },
+  ],
+  moral: [
+    { key: "home", label: "At home", where: "a modest family home in the evening, warm lamplight" },
+    { key: "school", label: "School", where: "a school corridor after the bell, lockers along the wall" },
+    { key: "market", label: "Market", where: "a lively open-air market in the morning, stalls of fruit and bread" },
+    { key: "office", label: "Office", where: "a small open office in the afternoon, desks by the window" },
+    { key: "park", label: "Park", where: "a quiet park bench at dusk, soft golden light" },
+    { key: "kitchen", label: "Kitchen", where: "a small family kitchen at dinner time, steam rising from a pot" },
+    { key: "shop", label: "Corner shop", where: "a small corner shop, shelves to the ceiling, a bell on the door" },
+    { key: "bus", label: "Bus stop", where: "a bus stop in the rain, one shelter light on" },
+    { key: "street", label: "Street", where: "a neighbourhood street in the late afternoon, long shadows" },
+  ],
+};
+const backdropsFor = (format: string) => BACKDROPS_BY_FORMAT[format] || FILM_BACKDROPS;
 
 // The Music Video's EXACT-length tiers are picked in SECONDS (MV_SECONDS in mv-pace.ts); each scene is
 // one generated clip of 5 or 10 seconds (the pace decides), and the engine fits the song to EXACTLY
@@ -843,12 +883,17 @@ const FILM_BACKDROPS: Array<{ key: string; label: string; where: string }> = [
  * owner, 11-17). Their clips and covers are now from films made after the acted films' two-shot was
  * opened up — both faces toward the camera, the story's object in the picture (the neon OPEN sign, the
  * broken pocket watch) — and they have their own 4:5 covers, since a centre crop of a two-shot on a
- * phone card cut both faces in half. */
-const LOOP_V = 3;
-const STILL_V = 6;
-const LOOP_KEYS = ["musicvideo", "testmovie", "kidstv", "moral", "horror", "kidsmusicvideo"];
+ * phone card cut both faces in half.
+ *
+ * v4 (2026-11-22): the NARRATED heroes (film-heroes.ts) have posters of their own, cut from narrated
+ * stories made that day with stock presenters and a stock character: three scenes side by side, each a
+ * whole upright picture with its caption burned in — the poster looks like what the hero makes. Keyed by a
+ * hero's `media` ("horrorstory", "shortstory", "moralstory"); the acted heroes keep the earlier files. */
+const LOOP_V = 4;
+const STILL_V = 7;
+const LOOP_KEYS = ["musicvideo", "testmovie", "shortstory", "kidstv", "moralstory", "horrorstory", "horror", "kidsmusicvideo"];
 /** Formats whose cover has its own 4:5 picture for phones (the rest are one picture cropped both ways). */
-const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo", "testmovie", "moral"]);
+const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo", "testmovie", "moral", "horrorstory", "shortstory", "moralstory"]);
 const stillOf = (key: string) => `/landing/film-still-${key}.jpg?v=${STILL_V}`;
 const stillFallback = (e: React.SyntheticEvent<HTMLImageElement>) => {
   const el = e.currentTarget;
@@ -1117,6 +1162,11 @@ export default function FilmStudio() {
 
   const [template, setTemplate] = useState(d.templates[0]?.key || "musicvideo");
   const tmpl = d.templates.find((x) => x.key === template) || d.templates[0];
+  // …and the HERO it was opened as (film-heroes.ts): the template plus the way it is told. The heroes this
+  // account is offered are the ones whose template it has (and, for a narrated one, that can be narrated).
+  const heroes = heroesFor(d.templates.map((x) => x.key), d.narratable || []);
+  const [heroId, setHeroId] = useState(() => FILM_HEROES.find((h) => h.tmpl === (d.templates[0]?.key || "musicvideo"))?.id || "musicvideo");
+  const hero = heroById(heroId);
   // The Veo dialogue pipeline supports the per-scene storyboard (approve each frame).
   const isStoryboard = !!tmpl?.dialogue; // any dialogue card (Short Film, Moral, Horror) → the chat-flow UI + dialogue engine
   // Test Movie can render its spoken dialogue on either engine: Veo (default,
@@ -1485,7 +1535,7 @@ export default function FilmStudio() {
     if (!k) return;
     restoring.current = true;
     window.setTimeout(() => { restoring.current = false; }, 600);
-    setTemplate(k.template); setEntered(true); setAnim(""); setZoomKey(null);
+    setTemplate(k.template); setHeroId(FILM_HEROES.find((h) => h.tmpl === k.template)?.id || k.template); setEntered(true); setAnim(""); setZoomKey(null);
     setTopic(k.topic); if (k.genre) setFilmGenre(k.genre); setPacePick(isPace(k.pace) ? k.pace : ""); if (k.seconds) setMvSeconds(k.seconds); setScenes(k.scenes);
     setMvAspect(k.aspect); setMvLyrics(k.lyrics === "bold" || k.lyrics === "subtitles" ? k.lyrics : "off");
     setCustomArtists((cur) => [...cur, ...k.customArtists.filter((c) => !cur.some((x) => x.img === c.img))]);
@@ -1502,14 +1552,18 @@ export default function FilmStudio() {
     setScenes(n);
     if (treatment && treatment.scenes.length !== n) { setTreatment(null); setFrames([]); setCast([]); }
   };
-  const switchTemplate = (key: string) => {
-    const nt = d.templates.find((x) => x.key === key);
-    // HOW IT OPENS: a scary story and a story with a lesson open NARRATED (NARRATED_FIRST_KEYS — the form
-    // story channels post: longer, quicker and far cheaper than the acted one); the rest open acted. Either
-    // way The Style card switches it. Length and shape are set HERE for the way it opens: the effect that
-    // follows `told` does not run when two formats in a row open the same way.
-    const openNarrated = !!nt?.dialogue && (d.narratedFirst || []).includes(key) && (d.narratable || []).includes(key);
-    setTemplate(key); setScenes(nt?.lipSyncSinger ? mvWant : openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)); setTreatment(null); setFrames([]); setCast([]);
+  // A HERO is a format AS IT IS TOLD (film-heroes.ts): the way a story is told — acted, or narrated — is
+  // part of what was picked on the grid, not a switch in here (the owner, 2026-11-22: "we don't use a
+  // toggle but create a new hero"). Opening one sets the engine's template AND how it is told; the length
+  // and the shape that go with that way of telling are set here too, since the effect that follows `told`
+  // does not run when two heroes in a row are told the same way.
+  const switchHero = (id: string) => {
+    const h = heroById(id);
+    if (!h) return;
+    const nt = d.templates.find((x) => x.key === h.tmpl);
+    const openNarrated = !!nt?.dialogue && h.told === "narrated" && (d.narratable || []).includes(h.tmpl);
+    setHeroId(h.id);
+    setTemplate(h.tmpl); setScenes(nt?.lipSyncSinger ? mvWant : openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)); setTreatment(null); setFrames([]); setCast([]);
     setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({});
     if (nt?.dialogue) setFilmAspect(openNarrated ? "9:16" : "16:9");
   };
@@ -1528,7 +1582,9 @@ export default function FilmStudio() {
     setZoomKey(key); setAnim("in");
     // (going back to the posters and into the SAME format again keeps what was being made there: it used to
     //  come back blank — script, cast and pictures gone — because every entry reset the builder)
-    window.setTimeout(() => { if (key !== template) switchTemplate(key); setEntered(true); setAnim(""); setZoomKey(null); }, reduce ? 0 : 400);
+    // (`key` is a hero's id; two heroes can share a template — Horror Story and Horror Film — so the test
+    //  is on the hero, not the template)
+    window.setTimeout(() => { if (key !== heroId) switchHero(key); setEntered(true); setAnim(""); setZoomKey(null); }, reduce ? 0 : 400);
   };
   const exitFormat = () => {
     setAnim("out");
@@ -2448,23 +2504,13 @@ export default function FilmStudio() {
     );
   };
 
-  // Per-format identity for the picker — accent tint, a one-word "kicker", and a
-  // length/voice chip. The cover is the format's real AI still (/landing/film-still-*).
-  const FMT: Record<string, { tint: string; kick: string; meta: string }> = {
-    // What you get, in our own words, then how long. Never another company's show, artist or rating
-    // system by name — two of these said "Peppa / Bluey" and "CoComelon" (owner, 2026-11-17: "they
-    // can't say those things").
-    musicvideo: { tint: "t-mv", kick: "Your artist sings on camera", meta: "up to 2 min" },
-    // the four story formats can be told two ways (Style card): say so where a format is picked, or
-    // nobody finds the narrated one
-    // (these two OPEN narrated — NARRATED_FIRST_KEYS — so the poster says that, and how quick it is)
-    moral: { tint: "t-moral", kick: "A story with a lesson", meta: "narrated · ready in minutes" },
-    horror: { tint: "t-horror", kick: "A scare that builds", meta: "narrated · ready in minutes" },
-    testmovie: { tint: "t-film", kick: "Your story, on screen", meta: "acted or narrated" },
-    kidstv: { tint: "t-kids", kick: "A cartoon for little ones", meta: "acted or narrated" },
-    kidsmusicvideo: { tint: "t-kmv", kick: "A sing-along for little ones", meta: "about 30 sec" },
-  };
-  const fmtIcon = (key: string) => {
+  // (Each poster's identity — name, line, note, tint, media — lives with its HERO in film-heroes.ts.
+  //  What a poster says is in our own words: never another company's show, artist or rating system by
+  //  name — two of them once said "Peppa / Bluey" and "CoComelon"; the owner, 2026-11-17: "they can't
+  //  say those things".)
+  const heroTitle = hero?.name || tmpl?.name || "Film";
+  const fmtIcon = (key: string, told = false) => {
+    if (told) return <svg viewBox="0 0 24 24"><path d="M2 5.5A2.5 2.5 0 0 1 4.5 3H10a2 2 0 0 1 2 2v15a2 2 0 0 0-2-2H2z" /><path d="M22 5.5A2.5 2.5 0 0 0 19.5 3H14a2 2 0 0 0-2 2v15a2 2 0 0 1 2-2h8z" /></svg>;
     if (key === "musicvideo" || key === "kidsmusicvideo") return <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>;
     if (key === "moral") return <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>;
     if (key === "horror") return <svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7v12l2.5-2 2.5 2 2-2 2 2 2.5-2 2.5 2V9a7 7 0 0 0-7-7z" /><circle cx="9.5" cy="10" r="1" /><circle cx="14.5" cy="10" r="1" /></svg>;
@@ -2481,7 +2527,7 @@ export default function FilmStudio() {
       {!entered && (
       <div className={`fs-head${anim === "in" ? " throw" : ""}`}>
         {/* A reel of real renders, one per format, instead of one clip on a loop. */}
-        <HeroReel clips={HERO_REEL.filter((c) => !c.key || d.templates.some((x) => x.key === c.key))} onShow={setReelKey} />
+        <HeroReel clips={HERO_REEL.filter((c) => !c.key || heroes.some((h) => h.media === c.key))} onShow={setReelKey} />
         <span className="fs-head-scrim" aria-hidden="true" />
         <div className="fs-head-copy">
           <span className="fs-head-eyebrow"><span className="fs-head-dot" aria-hidden="true" /> {t("Easymode Studio")}</span>
@@ -2490,9 +2536,10 @@ export default function FilmStudio() {
         </div>
         {/* what is playing — and a way straight into making one */}
         {(() => {
-          const playing = reelKey ? d.templates.find((x) => x.key === reelKey) : null;
+          // (a reel clip is keyed by its poster media; the hero it shows off is the one with that media)
+          const playing = reelKey ? heroes.find((h) => h.media === reelKey) : null;
           return playing ? (
-            <button type="button" className="fs-head-tag" key={reelKey} onClick={() => enterFormat(reelKey)}>
+            <button type="button" className="fs-head-tag" key={reelKey} onClick={() => enterFormat(playing.id)}>
               <i aria-hidden="true" />{t(playing.name)}<em> · {t("made here")}</em>
             </button>
           ) : null;
@@ -2519,32 +2566,31 @@ export default function FilmStudio() {
       <div className="fs-switch">
         {!entered && (
           <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t("Movie formats")}>
-            {d.templates.map((x) => {
-              const m = FMT[x.key] || { tint: "t-film", kick: "", meta: "" };
-              return (
-                <button type="button" role="tab" key={x.key} className={`fs-fmt${zoomKey === x.key ? " zoom" : ""}`}
-                  aria-selected={template === x.key} onClick={() => enterFormat(x.key)}>
-                  <span className="fs-fmt-cover">
-                    <LoopCover k={x.key} />
-                    <span className={`fs-fmt-ico ${m.tint}`} aria-hidden="true">{fmtIcon(x.key)}</span>
-                    <span className="fs-fmt-label"><b>{t(x.name)}</b></span>
-                  </span>
-                  {m.kick ? <span className="fs-fmt-sub">{t(m.kick)}{m.meta ? <em> · {t(m.meta)}</em> : null}</span> : null}
-                </button>
-              );
-            })}
+            {/* one poster per HERO (film-heroes.ts): a format as it is told. A narrated hero's poster is a
+                strip of three upright pictures with their captions — it looks like what it makes. */}
+            {heroes.map((h) => (
+              <button type="button" role="tab" key={h.id} className={`fs-fmt${zoomKey === h.id ? " zoom" : ""}${h.told === "narrated" ? " is-told" : ""}`}
+                aria-selected={heroId === h.id} onClick={() => enterFormat(h.id)}>
+                <span className="fs-fmt-cover">
+                  <LoopCover k={h.media} />
+                  <span className={`fs-fmt-ico ${h.tint}`} aria-hidden="true">{fmtIcon(h.tmpl, h.told === "narrated")}</span>
+                  <span className="fs-fmt-label"><b>{t(h.name)}</b></span>
+                </span>
+                {h.kick ? <span className="fs-fmt-sub">{t(h.kick)}{h.meta ? <em> · {t(h.meta)}</em> : null}</span> : null}
+              </button>
+            ))}
           </div>
         )}
 
         {entered && (
           <div className={`fs-stage${anim === "out" ? " out" : ""}`}>
             <div className="fs-hero">
-              <img className="fs-hero-blur" src={stillOf(template)} alt="" aria-hidden="true" onError={stillFallback} />
-              <img className="fs-hero-art" src={stillOf(template)} alt="" onError={stillFallback} />
+              <img className="fs-hero-blur" src={stillOf(hero?.media || template)} alt="" aria-hidden="true" onError={stillFallback} />
+              <img className="fs-hero-art" src={stillOf(hero?.media || template)} alt="" onError={stillFallback} />
               <div className="fs-hero-scrim" aria-hidden="true" />
               <button type="button" className="fs-hero-back" onClick={exitFormat}><span aria-hidden="true">‹</span> {t("Formats")}</button>
-              <div className="fs-hero-ttl">{t(tmpl?.name || "Film")}</div>
-              <div className="fs-hero-sub">{t(FMT[template]?.kick || "")}{FMT[template]?.meta ? ` · ${t(FMT[template].meta)}` : ""}</div>
+              <div className="fs-hero-ttl">{t(heroTitle)}</div>
+              <div className="fs-hero-sub">{t(hero?.kick || "")}{hero?.meta ? ` · ${t(hero.meta)}` : ""}</div>
             </div>
             <div className="fs-stepsin" key={template}>
 
@@ -3060,33 +3106,28 @@ export default function FilmStudio() {
                 </span>
               )}
             </button>
-            {/* 2 · How it's told */}
-            <button type="button" style={{ order: 3 }} className={`mm-card${storyCard === "told" ? " on" : ""}${storyDone.told ? " done" : ""}`} onClick={() => tapStory("told")}>
-              <span className="mm-step" aria-hidden="true">{storyDone.told ? <Ico n="check" size={13} /> : 2}</span>
-              <span className="mm-card-top"><span className="mm-card-ico c2"><Ico n={narrated ? "mic" : "video"} size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The style")}</span><b>{narrated ? t("Narrated") : t("Acted")}</b></span></span>
-              <span className="mm-val">{narrated ? t("A storyteller over pictures") : t("Your cast speak on camera")}</span>
-            </button>
-            {/* 3 · Length */}
+            {/* (How it's told is not a step any more: it is the HERO that was picked — film-heroes.ts) */}
+            {/* 2 · Length */}
             <button type="button" style={{ order: 5 }} className={`mm-card${storyCard === "length" ? " on" : ""}${storyDone.length ? " done" : ""}`} onClick={() => tapStory("length")}>
-              <span className="mm-step" aria-hidden="true">{storyDone.length ? <Ico n="check" size={13} /> : 3}</span>
+              <span className="mm-step" aria-hidden="true">{storyDone.length ? <Ico n="check" size={13} /> : 2}</span>
               <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
               <span className="mm-val">{lenLabel(scenes)} · {narrated ? (scenes === 1 ? t("1 scene") : t("{n} scenes", { n: scenes })) : (scenes === 1 ? t("1 shot") : t("{n} shots", { n: scenes }))}</span>
             </button>
-            {/* 4 · Shape */}
+            {/* 3 · Shape */}
             <button type="button" style={{ order: 7 }} className={`mm-card${storyCard === "shape" ? " on" : ""}${storyDone.shape ? " done" : ""}`} onClick={() => tapStory("shape")}>
-              <span className="mm-step" aria-hidden="true">{storyDone.shape ? <Ico n="check" size={13} /> : 4}</span>
+              <span className="mm-step" aria-hidden="true">{storyDone.shape ? <Ico n="check" size={13} /> : 3}</span>
               <span className="mm-card-top"><span className="mm-card-ico c3"><Ico n="expand" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The frame")}</span><b>{t("Shape")}</b></span></span>
               <span className="mm-val">{shapeName} · {filmAspect}</span>
             </button>
-            {/* 5 · Captions */}
+            {/* 4 · Captions */}
             <button type="button" style={{ order: 9 }} className={`mm-card${storyCard === "captions" ? " on" : ""}${storyDone.captions ? " done" : ""}`} onClick={() => tapStory("captions")}>
-              <span className="mm-step" aria-hidden="true">{storyDone.captions ? <Ico n="check" size={13} /> : 5}</span>
+              <span className="mm-step" aria-hidden="true">{storyDone.captions ? <Ico n="check" size={13} /> : 4}</span>
               <span className="mm-card-top"><span className="mm-card-ico c1"><Ico n="article" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The words")}</span><b>{t("Captions")}</b></span></span>
               <span className="mm-val">{capName}{captions !== "off" ? <> · {t(captions === "bold" ? "big words, in time" : "a line along the bottom")}</> : null}</span>
             </button>
-            {/* 6 · Narrator (narrated) or Engine (acted) */}
+            {/* 5 · Narrator (narrated) or Engine (acted) */}
             <button type="button" style={{ order: 11 }} className={`mm-card${storyCard === "voice" ? " on" : ""}${storyDone.voice ? " done" : ""}`} onClick={() => tapStory("voice")}>
-              <span className="mm-step" aria-hidden="true">{storyDone.voice ? <Ico n="check" size={13} /> : 6}</span>
+              <span className="mm-step" aria-hidden="true">{storyDone.voice ? <Ico n="check" size={13} /> : 5}</span>
               {narrated
                 ? <><span className="mm-card-top"><span className="mm-card-ico c5"><Ico n="headphones" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The voice")}</span><b>{t("Narrator")}</b></span></span>
                     <span className="mm-val">{narratorName ? t(narratorName) : t("Our pick")}{!narrPick ? <> · {t("our pick for this format")}</> : null}</span></>
@@ -3119,25 +3160,6 @@ export default function FilmStudio() {
                 </div>
                 {wipeNote("cast:")}
                 <a className="mm-pace-auto" href="/web/presenters?forge=1"><Ico n="wand" size={12} /> {t("Create a new character")}</a>
-              </div>
-            )}
-            {storyCard === "told" && (
-              <div className="mm-opts mm-opts-grid" style={{ order: 4 }}>
-                <div className="mm-opts-h">{t("How should it be told?")}</div>
-                <div className="mm-opts-sub">{t("The same story, two ways of telling it.")}</div>
-                <div className="mm-toldpick" role="group" aria-label={t("How it's told")}>
-                  <button type="button" className={`mm-told${!narrated ? " on" : ""}${wipeArm === "told:acted" ? " is-arm" : ""}`} aria-pressed={!narrated} onClick={() => orArm("told:acted", told !== "acted", () => setTold("acted"))}>
-                    <b><Ico n="video" size={15} /> {t("Acted")}</b>
-                    <small>{t("Your cast speak their lines on camera, shot by shot — a real little film.")}</small>
-                    <em>{t("a few minutes a shot")}</em>
-                  </button>
-                  <button type="button" className={`mm-told${narrated ? " on" : ""}${wipeArm === "told:narrated" ? " is-arm" : ""}`} aria-pressed={narrated} disabled={!canTell} onClick={() => orArm("told:narrated", told !== "narrated", () => setTold("narrated"))}>
-                    <b><Ico n="mic" size={15} /> {t("Narrated")}</b>
-                    <small>{t("A storyteller's voice over a picture for every scene, with the words on screen — the story format feeds are full of.")}</small>
-                    <em>{t("ready in a couple of minutes")}</em>
-                  </button>
-                </div>
-                {wipeNote("told:")}
               </div>
             )}
             {storyCard === "length" && (
@@ -3276,7 +3298,7 @@ export default function FilmStudio() {
                       </div>
                       <div className="fs-backdrops" role="group" aria-label={t("Backdrop")}>
                         <span className="fs-backdrops-lbl">{t("backdrop")}</span>
-                        {FILM_BACKDROPS.map((bd) => (
+                        {backdropsFor(template).map((bd) => (
                           <button type="button" key={bd.key} className={`fs-bchip${loc.where.toLowerCase().includes(bd.key) ? " on" : ""}`} onClick={() => setWhere(loc, bd.where)}>{t(bd.label)}</button>
                         ))}
                       </div>
@@ -3538,7 +3560,7 @@ export default function FilmStudio() {
           {isStoryboard && !narrated && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId, ...(c.faceUrl && c.kind && c.kind !== "person" ? { kind: c.kind, look: c.look || "" } : {}) })))} />}
           {isStoryboard && !narrated && lockVoices && cast.some((c) => c.voiceId) && <input type="hidden" name="filmLockVoices" value="1" />}
           <button type="submit" className={`fs-go${storySent ? " is-sent" : ""}`} disabled={!canGo || storySent}>
-            {generating ? <>… {t("Starting your film")}</> : storySent ? <><Ico n="check" size={16} /> {t("Rendering — it lands in your Archive")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost }) : t("Generate {name} · Free", { name: t(tmpl?.name || "Film") })}</>}
+            {generating ? <>… {t("Starting your film")}</> : storySent ? <><Ico n="check" size={16} /> {t("Rendering — it lands in your Archive")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(heroTitle), cost }) : t("Generate {name} · Free", { name: t(heroTitle) })}</>}
           </button>
           <div className="fs-eta" aria-live="polite" title={t("A rough estimate — longer films and lip-sync take more time.")}>
             <span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, narrated, scenes, engine: dialogueEngine })}</b>

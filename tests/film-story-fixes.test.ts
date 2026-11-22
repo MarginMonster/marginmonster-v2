@@ -29,8 +29,9 @@ test("a tap that would start the story over is armed first, and done on the seco
   // every control that starts the script over goes through it
   assert.ok(ui.includes("onClick={() => orArm(\"cast:\", storyPick.length > 0, () => setStoryPick([]))}"));
   assert.ok(ui.includes("onClick={() => orArm(`cast:${r.id}`, true, () => toggleStoryPick(r.id))}"));
-  assert.ok(ui.includes("onClick={() => orArm(\"told:acted\", told !== \"acted\", () => setTold(\"acted\"))}"));
-  assert.ok(ui.includes("onClick={() => orArm(\"told:narrated\", told !== \"narrated\", () => setTold(\"narrated\"))}"));
+  // (Acted | Narrated is not one of them any more: how a story is told is the HERO that was picked —
+  //  tests/film-heroes.test.ts — so there is no switch in the builder to arm)
+  assert.ok(!ui.includes("orArm(\"told:") && !ui.includes("storyCard === \"told\""));
   assert.ok(ui.includes("onClick={() => orArm(`len:${n}`, !!treatment && treatment.scenes.length !== n, () => setStoryLen(n))}"));
   assert.ok(ui.includes("onClick={() => orArm(\"bump:-1\", !!treatment, () => bump(-1))}") && ui.includes("onClick={() => orArm(\"bump:1\", !!treatment, () => bump(1))}"));
   assert.ok(ui.includes("onClick={() => orArm(\"rewrite\", true, writeTreatment)}"));
@@ -39,7 +40,7 @@ test("a tap that would start the story over is armed first, and done on the seco
     assert.ok(!ui.includes(direct), direct);
   }
   // it SAYS what the second tap does, beside the control
-  for (const prefix of ["cast:", "told:", "len:", "bump:"]) assert.ok(ui.includes(`{wipeNote(${JSON.stringify(prefix)})}`), prefix);
+  for (const prefix of ["cast:", "len:", "bump:"]) assert.ok(ui.includes(`{wipeNote(${JSON.stringify(prefix)})}`), prefix);
   assert.ok(ui.includes("{wipeArm === \"rewrite\" ? t(\"Tap again to rewrite\") : t(\"Rewrite\")}"));
   assert.ok(ui.includes("{wipeArm === \"rewrite\" && <p className=\"mm-note mm-shape-warn\" role=\"status\">{t(\"A rewrite replaces every line, your edits too. The cast you picked stays.\")}</p>}"));
 });
@@ -94,7 +95,8 @@ test("Generate says the film was sent, and stays sent until something in the fil
 });
 
 test("back to the posters and into the same format again keeps what was being made", () => {
-  assert.ok(ui.includes("window.setTimeout(() => { if (key !== template) switchTemplate(key); setEntered(true); setAnim(\"\"); setZoomKey(null); }, reduce ? 0 : 400);"));
+  // (judged on the HERO since 2026-11-22: two heroes can share a template — tests/film-heroes.test.ts)
+  assert.ok(ui.includes("window.setTimeout(() => { if (key !== heroId) switchHero(key); setEntered(true); setAnim(\"\"); setZoomKey(null); }, reduce ? 0 : 400);"));
 });
 
 test("phone: the story editor's small controls have a full-size place to tap", () => {
@@ -139,23 +141,22 @@ test("every new line is translated", () => {
   }
 });
 
-test("a scary story and a story with a lesson OPEN narrated; the others open acted — one list decides", () => {
-  const engine = read("app", "lib", "film-engine.server.ts");
-  assert.ok(engine.includes("export const NARRATED_FIRST_KEYS: string[] = [\"horror\", \"moral\"];"));
-  const briefs = engine.slice(engine.indexOf("const NARRATED_BRIEF: Record<string, string> = {"), engine.indexOf("export const NARRATABLE_KEYS"));
-  for (const k of ["horror", "moral"]) assert.ok(briefs.includes(`\n  ${k}: "`), `${k} can be narrated at all`);
-  assert.ok(ui.includes("narratedFirst: (await import(\"../lib/film-engine.server\")).NARRATED_FIRST_KEYS,"));
-  const sw = ui.slice(ui.indexOf("const switchTemplate = (key: string) => {"), ui.indexOf("const switchTemplate = (key: string) => {") + 1500);
-  assert.ok(sw.includes("const openNarrated = !!nt?.dialogue && (d.narratedFirst || []).includes(key) && (d.narratable || []).includes(key);"));
-  assert.ok(sw.includes("setTold(openNarrated ? \"narrated\" : \"acted\");"));
-  // its length and shape are set with it: the effect that follows `told` does not run when two formats in a row open the same way
-  assert.ok(sw.includes("openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)"));
-  assert.ok(sw.includes("if (nt?.dialogue) setFilmAspect(openNarrated ? \"9:16\" : \"16:9\");"));
-  // the poster says how it opens; Acted is still one tap away in The Style
-  assert.ok(ui.includes("horror: { tint: \"t-horror\", kick: \"A scare that builds\", meta: \"narrated · ready in minutes\" },"));
-  assert.ok(ui.includes("moral: { tint: \"t-moral\", kick: \"A story with a lesson\", meta: \"narrated · ready in minutes\" },"));
-  assert.ok(ui.includes("testmovie: { tint: \"t-film\", kick: \"Your story, on screen\", meta: \"acted or narrated\" },"));
-  assert.ok(ui.includes("orArm(\"told:acted\", told !== \"acted\", () => setTold(\"acted\"))"));
+test("each story format offers its own places — a kids' cartoon is not asked about a Bar", () => {
+  const lists = ui.slice(ui.indexOf("const BACKDROPS_BY_FORMAT:"), ui.indexOf("const backdropsFor ="));
+  const of = (fmt: string) => lists.slice(lists.indexOf(`\n  ${fmt}: [`), lists.indexOf("\n  ],", lists.indexOf(`\n  ${fmt}: [`)));
+  const rows = (fmt: string) => [...of(fmt).matchAll(/\{ key: "([^"]+)", label: "([^"]+)", where: "([^"]+)" \}/g)].map((m) => ({ key: m[1], label: m[2], where: m[3] }));
+  for (const fmt of ["kidstv", "horror", "moral"]) {
+    const list = rows(fmt);
+    assert.equal(list.length, 9, fmt);
+    // the chip of the place a scene is in lights up by finding its key in the scene's `where`
+    for (const b of list) assert.ok(b.where.toLowerCase().includes(b.key), `${fmt}: ${b.key}`);
+    // …and no other chip of the same format lights up with it
+    for (const b of list) assert.equal(list.filter((o) => b.where.toLowerCase().includes(o.key)).length, 1, `${fmt}: ${b.where}`);
+  }
+  for (const grown of ["Bar", "Diner", "Warehouse", "Office"]) assert.ok(!rows("kidstv").some((b) => b.label === grown), grown);
+  for (const b of rows("horror")) assert.ok(/night|bare bulb/.test(b.where), `a horror place is dark: ${b.where}`);
+  assert.ok(ui.includes("const backdropsFor = (format: string) => BACKDROPS_BY_FORMAT[format] || FILM_BACKDROPS;"), "Short Film keeps the general list");
+  assert.ok(ui.includes("{backdropsFor(template).map((bd) => (") && !ui.includes("{FILM_BACKDROPS.map((bd) => ("));
   const dict = read("app", "lib", "ui-i18n-dict.ts");
-  assert.equal(count(dict, "\n  \"narrated · ready in minutes\":"), 5);
+  for (const fmt of ["kidstv", "horror", "moral"]) for (const b of rows(fmt)) assert.equal(count(dict, `\n  ${JSON.stringify(b.label)}:`), 5, b.label);
 });

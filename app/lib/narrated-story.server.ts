@@ -29,6 +29,7 @@ import { mirrorRender } from "./object-storage.server";
 import { voiceLangOpts, normalizeContentLang } from "./content-lang";
 import { AVATAR_VOICE_IDS } from "./avatar-voice-catalog";
 import { characterVoice, isCharacterVoice } from "./character-voices";
+import { heroName } from "./film-heroes";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
@@ -368,7 +369,8 @@ export async function generateNarratedStory(opts: {
       shopId: opts.shopId,
       type: "VIDEO_AD",
       status: "PENDING",
-      title: `${tmpl.name} — ${(treatment.title || opts.topic || "a story").slice(0, 60)}`,
+      // (named after the HERO it was made as — a narrated Short Film is a "Short Story": film-heroes.ts)
+      title: `${heroName(tmpl.key, true, tmpl.name)} — ${(treatment.title || opts.topic || "a story").slice(0, 60)}`,
       bodyJson: JSON.stringify({ style: "NARRATED", videoUrl: `/renders/${outName}`, prompt: opts.topic || "", script: lines.join(" "), treatment }),
       metaJson: JSON.stringify({
         kind: "narrated", template: tmpl.key, section: opts.section || "creator", scenes: stills.length,

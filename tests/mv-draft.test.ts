@@ -112,7 +112,8 @@ test("the page: kept as it changes, offered on arrival, put back on one tap — 
   // cast or the shape is changed by hand stand down while it happens
   const resume = ui.slice(ui.indexOf("const resumeDraft = () => {"), ui.indexOf("const resumeDraft = () => {") + 1500);
   assert.ok(resume.includes("restoring.current = true;") && resume.includes("window.setTimeout(() => { restoring.current = false; }, 600);"));
-  for (const set of ["setTemplate(k.template); setEntered(true);", "setTopic(k.topic);", "setArtistPick(k.artist);", "setCastExtra(k.cast);", "setMvAspect(k.aspect);", "setSeeds(k.seeds as unknown as NonNullable<typeof seeds>);", "setCastForScene(k.castForScene); setSceneOutfits(k.sceneOutfits);", "setDraft(null);"]) {
+  // (…and the HERO it is: the grid is a poster per hero since 2026-11-22 — tests/film-heroes.test.ts)
+  for (const set of ["setTemplate(k.template); setHeroId(FILM_HEROES.find((h) => h.tmpl === k.template)?.id || k.template); setEntered(true);", "setTopic(k.topic);", "setArtistPick(k.artist);", "setCastExtra(k.cast);", "setMvAspect(k.aspect);", "setSeeds(k.seeds as unknown as NonNullable<typeof seeds>);", "setCastForScene(k.castForScene); setSceneOutfits(k.sceneOutfits);", "setDraft(null);"]) {
     assert.ok(resume.includes(set), set);
   }
   assert.ok(resume.indexOf("restoring.current = true;") < resume.indexOf("setTopic("), "the guard is up before anything is set");

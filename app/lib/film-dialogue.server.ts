@@ -40,6 +40,7 @@ import { clipSecondsFor } from "./speech-meter";
 import { captionStyleOf } from "./narrated-core";
 import { MIXED_CAST_LOCK, nameTok } from "./character-prompts";
 import { normalizeContentLang } from "./content-lang";
+import { heroName } from "./film-heroes";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -1092,7 +1093,8 @@ export async function generateTestMovie(opts: {
       shopId: opts.shopId,
       type: "VIDEO_AD",
       status: "PENDING",
-      title: `${tmpl.name} — ${(treatment.title || opts.topic || "dialogue scene").slice(0, 60)}`,
+      // (named after the HERO it was made as — an acted horror story is a "Horror Film": film-heroes.ts)
+      title: `${heroName(tmpl.key, false, tmpl.name)} — ${(treatment.title || opts.topic || "dialogue scene").slice(0, 60)}`,
       bodyJson: JSON.stringify({ style: "TESTMOVIE", videoUrl: storedUrl, prompt: opts.topic || "", treatment }),
       metaJson: JSON.stringify({
         kind: "testmovie", template: tmpl.key, section: opts.section || "creator",

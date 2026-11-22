@@ -357,12 +357,11 @@ const NARRATED_BRIEF: Record<string, string> = {
 };
 /** The templates that can be told by a narrator (for the page that offers the choice). */
 export const NARRATABLE_KEYS: string[] = Object.keys(NARRATED_BRIEF);
-/** The formats that OPEN narrated — the maker can still switch to Acted in The Style. A scary story and a
- *  story with a lesson are TOLD: it is the form story channels post. Made side by side on 2026-11-22, the
- *  narrated horror story was 83 s of six pictures with captions, ready in about two minutes for a few
- *  cents; the acted one was 28 s of a single two-shot, eleven minutes and about $3 of video model.
- *  (Owner, same day: "Should horror story be narrated?" — one list, so it is one line to change back.) */
-export const NARRATED_FIRST_KEYS: string[] = ["horror", "moral"];
+/* (HOW a format is told is no longer a default plus a switch: it is the HERO that was picked — one format
+ *  told one way, each with its own poster. See film-heroes.ts; the owner, 2026-11-22: "we don't use a toggle
+ *  but create a new hero". Made side by side that day, a narrated horror story was 83 s of six pictures
+ *  with captions, ready in about two minutes for a few cents; the acted one was 28 s of a single two-shot,
+ *  eleven minutes and about $3 of video model.) */
 /** Which templates can be told by a narrator instead of acted. */
 export const canNarrate = (key: string | undefined): boolean => !!key && Object.prototype.hasOwnProperty.call(NARRATED_BRIEF, key);
 
