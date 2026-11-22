@@ -406,7 +406,17 @@ test("one scene can break from the locked wardrobe — inside the scene's Cast e
   // …the Cast button carries a mark when the scene has an outfit of its own
   assert.ok(acts.includes("{sceneWearChanged(i) ? <span className=\"mm-sc-act-tag\" title={t(\"Outfit changed\")}><Ico n=\"shirt\" size={10} /></span> : null}"));
   const castEditor = ui.slice(ui.indexOf("<div className=\"mm-sc-castedit\">"), ui.indexOf("{seeds && scenePropPick === i && ("));
-  assert.ok(castEditor.includes("{t(\"What they wear in this scene\")}") && castEditor.includes("{sceneDraftPeople(strip.scenes, i).map((img) => {"));
+  // ONE LIST of the people in the scene — each with what they wear beside them, whoever leads tagged,
+  // anyone else removable — and under it the people who are NOT in it yet. (It used to be a strip of faces
+  // and then the same people again as outfit rows.)
+  assert.ok(castEditor.includes("{sceneDraftPeople(strip.scenes, i).map((img, pi) => {"));
+  assert.ok(castEditor.includes("? <span className=\"mm-sw-tag\">{leadImg ? t(\"Sings a verse\") : t(\"Lead\")}</span>"));
+  assert.ok(castEditor.includes(": <button type=\"button\" className=\"mm-sw-rm\" onClick={() => toggleSceneCastDraft(img)}"));
+  assert.equal(castEditor.split("<div className=\"mm-sc-castpick\">").length - 1, 1, "one strip, and it only ADDS");
+  const addStrip = castEditor.slice(castEditor.indexOf("<div className=\"mm-sw-add\">"));
+  assert.ok(addStrip.includes("{t(\"Add to this scene\")}"));
+  assert.ok(addStrip.includes("castExtra.filter((m) => m.img !== leadImg && !sceneCastDraft.includes(m.img)).map((m) => ("), "only people who are not in the scene");
+  assert.ok(!addStrip.includes("mm-cp-opt${"), "nothing in it is a toggle");
   assert.ok(castEditor.includes("{t(\"Only this scene changes. Everywhere else they keep the look you picked.\")}"));
   // the people being dressed are the ones in the editor's DRAFT, so a co-star just added can be dressed at once
   assert.ok(ui.includes("return [...new Set([lead, ...sceneCastDraft].filter((x): x is string => !!x))];"));
@@ -448,7 +458,7 @@ test("one scene can break from the locked wardrobe — inside the scene's Cast e
 
   // every new line is in all five languages
   const dict = read("app", "lib", "ui-i18n-dict.ts");
-  for (const k of ["Outfit changed", "Video look", "New look", "What they wear in this scene", "What {name} wears in this scene", "An outfit just for this scene — a white tux, a red dress…", "Only this scene changes. Everywhere else they keep the look you picked.", "The look you pick is what they wear in every scene.", "Edit scene {n}", "Who's in this scene", "Edit who's in this scene and what they wear", "Made in Movie Maker"]) {
+  for (const k of ["Outfit changed", "Video look", "New look", "Lead", "Add to this scene", "Remove {name} from this scene", "Free — you see and edit every scene before anything is rendered.", "What {name} wears in this scene", "An outfit just for this scene — a white tux, a red dress…", "Only this scene changes. Everywhere else they keep the look you picked.", "The look you pick is what they wear in every scene.", "Edit scene {n}", "Who's in this scene", "Edit who's in this scene and what they wear", "Made in Movie Maker"]) {
     assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5, k);
   }
 });
@@ -502,4 +512,21 @@ test("a look made in the Movie Maker is kept on the presenter, and shows on thei
   assert.equal(pres.split("{c.custom && cur && !cur.extra && !cur.spin && cur.spinState").length - 1, 2);
   // its name is the outfit's own words — never run through the translator as if it were a label of ours
   assert.ok(pres.includes("<span className=\"pc-look-nm\">{l.extra ? l.label : t(l.label)}</span>"));
+});
+
+test("the music video's setup ends in ONE button: it makes the scenes, then it renders them", () => {
+  // (seen in the pane, 2026-11-22: a dashed "Make the scenes — free", a disabled "Make the scenes first ↑"
+  //  under it, and a note saying the same again — three things for one step)
+  const ui = read("app", "routes", "web.film.tsx");
+  assert.ok(!ui.includes("t(\"Make the scenes first"), "no button that only points at another button");
+  assert.ok(!ui.includes("Script out your scenes first"));
+  const card = ui.slice(ui.indexOf("<div className=\"mm-gen mm-makegen\">"), ui.indexOf("{actionData?.ok && <p className=\"fs-ok\">"));
+  // before there is a storyboard the big button MAKES it…
+  assert.ok(card.includes("<button type=\"button\" className=\"mm-go\" onClick={makeStoryboard} disabled={writing || seedBusy || chainToScenes || !d.hasPlan}>"));
+  assert.ok(card.includes(": <><Ico n=\"wand\" size={17} /> {t(\"Make the scenes — free\")}</>}"));
+  // …and once there is one it renders it, with "Start over" as the small button
+  assert.ok(card.includes("<button type=\"submit\" className=\"mm-go\" disabled={!canGo}>"));
+  assert.ok(card.includes("{seeds ? makeBtn() : (<>"));
+  assert.equal(card.split("className=\"mm-go\"").length - 1, 2, "one or the other, never both");
+  assert.ok(card.includes("{t(\"Free — you see and edit every scene before anything is rendered.\")}"));
 });

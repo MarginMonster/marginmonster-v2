@@ -1903,32 +1903,11 @@ export default function FilmStudio() {
                                 ))}
                               </div>
                             )}
-                            <div className="mm-sc-castpick">
-                              {/* in a co-star's own performance the STAR is someone who can stand beside them */}
-                              {leadImg && artistPick && (
-                                <button type="button" className={`mm-cp-opt${sceneCastDraft.includes(artistPick) ? " on" : ""}`} onClick={() => toggleSceneCastDraft(artistPick)} title={artistName}>
-                                  <span className="mm-cp-img" style={{ backgroundImage: `url(${artistPick})` }} aria-hidden="true" />{artistName || t("The star")}
-                                </button>
-                              )}
-                              {castExtra.filter((m) => m.img !== leadImg).map((m) => (
-                                <button type="button" key={m.img} className={`mm-cp-opt${sceneCastDraft.includes(m.img) ? " on" : ""}`} onClick={() => toggleSceneCastDraft(m.img)} title={m.name}>
-                                  <span className="mm-cp-img" style={{ backgroundImage: `url(${m.img})` }} aria-hidden="true" />{m.name || t("Cast")}
-                                </button>
-                              ))}
-                              {[...customArtists.map((c) => ({ img: c.img, name: c.name })), ...people.map((r) => ({ img: r.img, name: r.name }))].filter((r) => r.img && !castExtra.some((m) => m.img === r.img)).slice(0, 14).map((r) => (
-                                <button type="button" key={`pool-${r.img}`} className="mm-cp-opt mm-cp-add" onClick={() => { addCastMemberMv(r.img, r.name); toggleSceneCastDraft(r.img); }} title={r.name}>
-                                  <span className="mm-cp-img" style={{ backgroundImage: `url(${r.img})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{r.name}
-                                </button>
-                              ))}
-                            </div>
-                            <div className="mm-cp-hint">{leadImg
-                              ? t("{name} sings this one, so they lead the shot. Add who stands beside them — up to 2.", { name: castMemberName(leadImg) || t("This co-star") })
-                              : t("The star always leads. Add up to 2 co-stars for this scene — or pick a face from your cast / the roster.")}</div>
-                            {/* WHAT THEY WEAR IN THIS SCENE — bundled with who is in it (the owner: "leave the
-                                wardrobe stuff inside of the avatar edit option … no extra button") */}
-                            <div className="mm-sw-label"><Ico n="shirt" size={12} /> {t("What they wear in this scene")}</div>
+                            {/* THE PEOPLE IN THIS SCENE — one list: who is in it, and beside each what they wear in it
+                                (the owner: "leave the wardrobe stuff inside of the avatar edit option … no extra
+                                button"). It used to be a strip of faces and then the same people again as rows. */}
                             <div className="mm-sw-people">
-                              {sceneDraftPeople(strip.scenes, i).map((img) => {
+                              {sceneDraftPeople(strip.scenes, i).map((img, pi) => {
                                 const cur = sceneWearDraft[img]; // undefined = the look they have for the whole video
                                 const videoDesc = outfits[img] || "";
                                 const saved = (outfitStyles[img] || []).filter((s) => s.desc !== videoDesc);
@@ -1937,7 +1916,12 @@ export default function FilmStudio() {
                                 const nm = castMemberName(img) || t("Cast");
                                 return (
                                   <div className="mm-sw-row" key={img} role="group" aria-label={t("What {name} wears in this scene", { name: nm })}>
-                                    <div className="mm-sw-name">{nm}</div>
+                                    <div className="mm-sw-name">
+                                      <span>{nm}</span>
+                                      {pi === 0
+                                        ? <span className="mm-sw-tag">{leadImg ? t("Sings a verse") : t("Lead")}</span>
+                                        : <button type="button" className="mm-sw-rm" onClick={() => toggleSceneCastDraft(img)} aria-label={t("Remove {name} from this scene", { name: nm })} title={t("Remove {name} from this scene", { name: nm })}>✕</button>}
+                                    </div>
                                     <div className="mm-sw-looks">
                                       <button type="button" className={`mm-sw-look${cur === undefined ? " on" : ""}`} aria-pressed={cur === undefined} onClick={() => setWearDraft(img, undefined)} title={t("Video look")}><img src={avatarFace(img)} alt="" /><span>{t("Video look")}</span></button>
                                       {videoDesc && <button type="button" className={`mm-sw-look${cur === "" ? " on" : ""}`} aria-pressed={cur === ""} onClick={() => setWearDraft(img, "")} title={t("Own look")}><img src={img} alt="" /><span>{t("Own look")}</span></button>}
@@ -1960,6 +1944,31 @@ export default function FilmStudio() {
                               })}
                             </div>
                             <div className="mm-cp-hint">{t("Only this scene changes. Everywhere else they keep the look you picked.")}</div>
+                            {/* …and whoever is NOT in it yet: the rest of the cast first, then faces from the roster */}
+                            <div className="mm-sw-add">
+                              <div className="mm-sw-name"><span>{t("Add to this scene")}</span></div>
+                              <div className="mm-sc-castpick">
+                                {/* in a co-star's own performance the STAR is someone who can stand beside them */}
+                                {leadImg && artistPick && !sceneCastDraft.includes(artistPick) && (
+                                  <button type="button" className="mm-cp-opt mm-cp-add" onClick={() => toggleSceneCastDraft(artistPick)} title={artistName}>
+                                    <span className="mm-cp-img" style={{ backgroundImage: `url(${artistPick})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{artistName || t("The star")}
+                                  </button>
+                                )}
+                                {castExtra.filter((m) => m.img !== leadImg && !sceneCastDraft.includes(m.img)).map((m) => (
+                                  <button type="button" key={m.img} className="mm-cp-opt mm-cp-add" onClick={() => toggleSceneCastDraft(m.img)} title={m.name}>
+                                    <span className="mm-cp-img" style={{ backgroundImage: `url(${m.img})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{m.name || t("Cast")}
+                                  </button>
+                                ))}
+                                {[...customArtists.map((c) => ({ img: c.img, name: c.name })), ...people.map((r) => ({ img: r.img, name: r.name }))].filter((r) => r.img && !castExtra.some((m) => m.img === r.img)).slice(0, 14).map((r) => (
+                                  <button type="button" key={`pool-${r.img}`} className="mm-cp-opt mm-cp-add" onClick={() => { addCastMemberMv(r.img, r.name); toggleSceneCastDraft(r.img); }} title={r.name}>
+                                    <span className="mm-cp-img" style={{ backgroundImage: `url(${r.img})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{r.name}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="mm-cp-hint">{leadImg
+                                ? t("{name} sings this one, so they lead the shot. Add who stands beside them — up to 2.", { name: castMemberName(leadImg) || t("This co-star") })
+                                : t("The star always leads. Add up to 2 co-stars for this scene — or pick a face from your cast / the roster.")}</div>
+                            </div>
                             <div className="mm-sc-propcta">
                               <button type="button" className="mm-sp-confirm" onClick={() => confirmSceneCastMv(i)} disabled={rerollingScene !== null || !!outfitBusyFor}><Ico n="refresh" size={12} /> {t("Regenerate scene {n}", { n: i + 1 })}</button>
                               <button type="button" className="mm-sp-cancel" onClick={() => setSceneCastPick(null)}>{t("Cancel")}</button>
@@ -2634,7 +2643,13 @@ export default function FilmStudio() {
                 </span>
               </label>
             )}
-            {makeBtn()}
+            {/* ONE BUTTON FOR ONE STEP. Before there is a storyboard the big button MAKES it (it used to be a
+                dashed button, a disabled "Make the scenes first ↑" under it, and a note saying so again).
+                Once there is one, the big button renders it and "Start over" is the small one. */}
+            {seeds ? makeBtn() : (<>
+              {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
+              {seedBusy && seedProgressUI()}
+            </>)}
             <Form method="post">
               <input type="hidden" name="intent" value="film" />
               <input type="hidden" name="template" value={template} />
@@ -2664,13 +2679,20 @@ export default function FilmStudio() {
               {seeds && <input type="hidden" name="approvedSceneImgs" value={JSON.stringify(seeds.imgs)} />}
               {/* Generating is GATED on making the scenes first — you must script + preview the
                   storyboard (above) before you can spend tokens on the render. */}
-              <button type="submit" className="mm-go" disabled={!canGo || !seeds}>
-                {generating ? <>… {t("Starting your video")}</>
-                  : !seeds ? <><Ico n="wand" size={17} /> {t("Make the scenes first ↑")}</>
-                  : <><Ico n="film" size={17} /> {cost > 0 ? t("Render these scenes · {cost} Tokens", { cost }) : t("Render these scenes")}</>}
-              </button>
+              {seeds ? (
+                <button type="submit" className="mm-go" disabled={!canGo}>
+                  {generating ? <>… {t("Starting your video")}</>
+                    : <><Ico n="film" size={17} /> {cost > 0 ? t("Render these scenes · {cost} Tokens", { cost }) : t("Render these scenes")}</>}
+                </button>
+              ) : (
+                <button type="button" className="mm-go" onClick={makeStoryboard} disabled={writing || seedBusy || chainToScenes || !d.hasPlan}>
+                  {writing ? <>… {t("Writing your song")}</>
+                    : (seedBusy || chainToScenes) ? <>… {t("Building the scenes")}</>
+                    : <><Ico n="wand" size={17} /> {t("Make the scenes — free")}</>}
+                </button>
+              )}
             </Form>
-            {!seeds && <p className="mm-note mm-note-req"><Ico n="wand" size={12} /> {t("Script out your scenes first — tap “Make the scenes” above, check the storyboard, then render.")}</p>}
+            {!seeds && <p className="mm-note mm-note-req"><Ico n="check" size={12} /> {t("Free — you see and edit every scene before anything is rendered.")}</p>}
             <div className="mm-eta"><span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: true, dialogue: false, scenes: mvSceneCount, sceneSec: mvSceneSec, engine: dialogueEngine })}</b></div>
             <p className="mm-note">{cost > 0 ? <>{t("{base} + {per}/scene × {n} = {cost} Tokens", { base: d.base, per: d.perScene, n: mvBillScenes(mvSceneCount, mvSceneSec), cost })} · <span className={affordable ? "fs-bal" : "fs-bal low"}>{t("you have {n}", { n: d.tokens })}</span></> : t("Free while we dial this in — pricing comes later.")}</p>
             {!d.hasPlan && <p className="fs-err">{t("Pick a plan on the Dashboard first — film runs on tokens.")}</p>}
@@ -4134,7 +4156,13 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-chip-wear svg{stroke:currentColor;stroke-width:2;fill:none;}
 .mm-sc-wear{display:flex;flex-direction:column;gap:10px;}
 .mm-sw-row{display:flex;flex-direction:column;gap:6px;}
-.mm-sw-name{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2,#4B5A51);}
+.mm-sw-name{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2,#4B5A51);min-height:22px;}
+/* who they are in the scene: whoever leads it is tagged; anyone else can be taken out of it */
+.mm-sw-tag{font-size:9.5px;font-weight:800;letter-spacing:.03em;text-transform:none;border-radius:999px;padding:2px 7px;background:#E4F4EA;color:#0A5E37;}
+.mm-sw-rm{flex:none;width:22px;height:22px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);font-size:10px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;position:relative;}
+.mm-sw-rm::after{content:"";position:absolute;inset:-9px;}
+.mm-sw-rm:hover{background:#FBEDEA;border-color:#E9B8AE;color:#A2321C;}
+.mm-sw-add{display:flex;flex-direction:column;gap:5px;padding-top:10px;border-top:1px dashed var(--line,#E4DFCF);}
 .mm-sw-looks{display:flex;gap:8px;overflow-x:auto;padding:3px 2px 4px;scrollbar-width:thin;}
 .mm-sw-look{flex:0 0 auto;width:64px;min-height:44px;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:0;padding:0;cursor:pointer;font-family:Poppins,sans-serif;color:var(--ink2,#4B5A51);}
 .mm-sw-look img,.mm-sw-cook{width:58px;height:58px;border-radius:12px;object-fit:cover;object-position:top;border:2px solid transparent;background:#EEF1EC;display:block;box-sizing:border-box;}
