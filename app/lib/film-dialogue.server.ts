@@ -756,7 +756,7 @@ export async function generateTestMovie(opts: {
     let url: string | null = null;
     let castOk = true;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), action, setting: cleanSetting(where), style: twoStyle, aspect }));
+      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), action, mood: tmpl.faceMood, setting: cleanSetting(where), style: twoStyle, aspect }));
       if (!tryUrl) continue;
       url = tryUrl;
       castOk = true;

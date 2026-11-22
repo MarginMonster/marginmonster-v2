@@ -122,3 +122,15 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   const w = read("app", "lib", "film-engine.server.ts");
   assert.ok(w.includes("It is ONE moment only — a picture cannot show two times") && w.includes("at most ONE other person") && w.includes("nothing in it is WRITTEN"));
 });
+
+test("a horror cast does not grin: the format's own line reaches the narrated pictures and the acted two-shot", () => {
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.ok(engine.includes("faceMood: \"Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs.\","));
+  // only horror has a say (a kids' cartoon, a moral story and a short film keep whatever the scene calls for)
+  assert.equal(engine.split("\n    faceMood: ").length - 1, 1);
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : \"\"} ${notes.join(\" \")}"));
+  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("action, mood: tmpl.faceMood, setting: cleanSetting(where), style: twoStyle, aspect }));"));
+  const img = read("app", "lib", "image-generation.server.ts");
+  assert.ok(img.includes("const mood = (opts.mood || \"\").replace(/\\s+/g, \" \").trim().slice(0, 160);"));
+  assert.ok(img.includes("${moment}${mood ? ` ${mood}` : \"\"} ${consistencyNote}"));
+});

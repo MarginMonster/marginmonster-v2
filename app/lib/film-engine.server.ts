@@ -63,6 +63,10 @@ export interface FilmTemplate {
   brief: string;
   /** Per-scene visual hint appended to the writer's instruction + the seed/motion prompts. */
   sceneHint: string;
+  /** How the PEOPLE in a picture look, where the format has a say. A cast drawn from smiling portraits
+   *  smiles: both horror films made on 2026-11-22 opened with someone grinning through a frightened
+   *  line (the acted one) or pushing a mop through a haunted theatre beaming (the narrated one). */
+  faceMood?: string;
   /** Music mood the track generator falls back to. */
   musicHint: string;
   defaultScenes: number;
@@ -218,6 +222,7 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     brief: "a short SUSPENSEFUL HORROR STORY: a creepy, atmospheric scene where a small cast speak their own tense dialogue, building dread to a chilling twist; unsettling and spooky, NOT gory or graphically violent",
     sceneHint: "a dark, moody, cinematic horror scene — deep shadows, eerie atmosphere, cold desaturated color grade, suspenseful; unsettling but not graphically gory",
     musicHint: "tense, eerie, suspenseful horror score — low drones, uneasy strings",
+    faceMood: "Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs.",
     defaultScenes: 4,
     minScenes: 2,
     maxScenes: 6,
