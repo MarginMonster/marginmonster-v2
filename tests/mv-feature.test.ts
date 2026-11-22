@@ -68,7 +68,7 @@ test("a co-star leads their own performance — alone unless the maker puts some
   // the page and the pipeline ask the same question
   const ui = read("app", "routes", "web.film.tsx");
   const pipe = read("app", "lib", "music-video-pipeline.server.ts");
-  assert.match(ui, /sceneCast\(\{ scene: scenesArr\[i\], role, slot: shotSlot\(role, i\), names: castNamesAll \}\)/);
+  assert.match(ui, /sceneCast\(\{ scene: sc, role, slot: shotSlot\(role, i\), names: castNamesAll \}\)/);
   assert.match(pipe, /const cast = sceneCast\(\{ scene: s, role: shot\.role, slot: shot\.slot, names: castNameList, listed: /);
   assert.match(pipe, /return sceneCast\(\{ scene: scenes\[i\], role: shot\.role, slot: shot\.slot, names: extraNames, listed: /);
 });
@@ -461,7 +461,9 @@ test("the page: a co-star is given a verse with one tap, and their voice must be
   assert.match(ui, /<input type="hidden" name="filmFeature" value=\{featureAllJson\} \/>/);
   // the storyboard says who sings each scene, and lets the maker change it
   assert.match(ui, /className="mm-sc-chip mm-chip-av mm-chip-lead mm-chip-sings"/);
-  assert.match(ui, /const setSceneSinger = \(i: number, name: string\) => \{/);
+  // (…STAGED in the scene's Cast editor like everything else in it — tests/mv-cast.test.ts)
+  assert.match(ui, /const stageSceneSinger = \(i: number, name: string\) => \{/);
+  assert.ok(!ui.includes("setSceneSinger("), "nothing draws the scene again the moment a singer is tapped");
   assert.match(ui, /\.\.\.\(leadRef \? \{ sceneLeadRef: leadRef \} : \{\}\)/);
   // THE ACTION: whose voice it is, is decided on the server from the co-star's own picture — never from
   // an id the page sends — and the singer must be one of this video's co-stars

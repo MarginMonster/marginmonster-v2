@@ -294,8 +294,8 @@ test("the pipeline and the builder make cast shots one way — the shared defaul
 
   // the builder shows the same default the render uses
   const ui = read("app", "routes", "web.film.tsx");
-  assert.match(ui, /import \{ sceneCast, singerOf \} from "\.\.\/lib\/mv-cast"/);
-  assert.match(ui, /sceneCast\(\{ scene: scenesArr\[i\], role, slot: shotSlot\(role, i\), names: castNamesAll \}\)/);
+  assert.match(ui, /import \{ MAX_COSTARS, sceneCast, singerOf \} from "\.\.\/lib\/mv-cast"/);
+  assert.match(ui, /sceneCast\(\{ scene: sc, role, slot: shotSlot\(role, i\), names: castNamesAll \}\)/);
   assert.doesNotMatch(ui, /pOrder % castExtra\.length/, "one co-star in rotation is gone");
   // and the slot it is given is the slot the pipeline frames the scene with
   for (let i = 0; i < 24; i++) for (const role of ["perform", "broll"] as const) assert.equal(SHOT_ROLES[shotSlot(role, i)], role);
@@ -409,13 +409,14 @@ test("one scene can break from the locked wardrobe — inside the scene's Cast e
   // ONE LIST of the people in the scene — each with what they wear beside them, whoever leads tagged,
   // anyone else removable — and under it the people who are NOT in it yet. (It used to be a strip of faces
   // and then the same people again as outfit rows.)
-  assert.ok(castEditor.includes("{sceneDraftPeople(strip.scenes, i).map((img, pi) => {"));
-  assert.ok(castEditor.includes("? <span className=\"mm-sw-tag\">{leadImg ? t(\"Sings a verse\") : t(\"Lead\")}</span>"));
-  assert.ok(castEditor.includes(": <button type=\"button\" className=\"mm-sw-rm\" onClick={() => toggleSceneCastDraft(img)}"));
+  assert.ok(castEditor.includes("{sceneDraftPeople(strip.scenes, i).map((img) => {"));
+  assert.ok(castEditor.includes("const leads = img === (draftLead || artistPick);"), "whoever leads is known by who they are, not by where they sit in the list");
+  assert.ok(castEditor.includes("? (leads ? <span className=\"mm-sw-tag\">{t(\"Lead\")}</span> : null)"));
+  assert.ok(castEditor.includes("{!leads && <button type=\"button\" className=\"mm-sw-rm\" onClick={() => toggleSceneCastDraft(img)}"));
   assert.equal(castEditor.split("<div className=\"mm-sc-castpick\">").length - 1, 1, "one strip, and it only ADDS");
   const addStrip = castEditor.slice(castEditor.indexOf("<div className=\"mm-sw-add\">"));
   assert.ok(addStrip.includes("{t(\"Add to this scene\")}"));
-  assert.ok(addStrip.includes("castExtra.filter((m) => m.img !== leadImg && !sceneCastDraft.includes(m.img)).map((m) => ("), "only people who are not in the scene");
+  assert.ok(addStrip.includes("castExtra.filter((m) => m.img !== draftLead && !sceneCastDraft.includes(m.img)).map((m) => ("), "only people who are not in the scene");
   assert.ok(!addStrip.includes("mm-cp-opt${"), "nothing in it is a toggle");
   assert.ok(castEditor.includes("{t(\"Only this scene changes. Everywhere else they keep the look you picked.\")}"));
   // the people being dressed are the ones in the editor's DRAFT, so a co-star just added can be dressed at once
@@ -425,7 +426,7 @@ test("one scene can break from the locked wardrobe — inside the scene's Cast e
   const confirm = ui.slice(ui.indexOf("const confirmSceneCastMv"), ui.indexOf("// ---- Wardrobe (owner edit)"));
   assert.ok(confirm.includes("for (const k of Object.keys(sceneWearDraft)) if (inScene.has(k)) wear[k] = sceneWearDraft[k];"), "only people in the scene keep an outfit for it");
   assert.ok(confirm.includes("if (Object.keys(wear).length) n[i] = wear; else delete n[i];"), "back to the video look = no entry");
-  assert.ok(confirm.includes("rerollScene(i, undefined, sceneCastDraft, undefined, wear);"));
+  assert.ok(confirm.includes("rerollScene(i, undefined, sceneCastDraft, newSinger ? singer : undefined, wear);"));
   assert.equal(castEditor.split("mm-sp-confirm").length - 1, 1, "one Regenerate button");
   // a scene is drawn from the picture of what each person wears IN IT
   assert.ok(ui.includes("if (w === undefined) return videoRef;") && ui.includes("if (w === \"\") return img;") && ui.includes("return styleFor(img, w) || videoRef;"));
@@ -529,4 +530,110 @@ test("the music video's setup ends in ONE button: it makes the scenes, then it r
   assert.ok(card.includes("{seeds ? makeBtn() : (<>"));
   assert.equal(card.split("className=\"mm-go\"").length - 1, 2, "one or the other, never both");
   assert.ok(card.includes("{t(\"Free — you see and edit every scene before anything is rendered.\")}"));
+});
+
+test("who sings a scene is picked on that person's own row — staged, like everything else in the editor", () => {
+  // Seen on the live site at phone width, 2026-11-22: a row of "Who sings this scene?" pills listed the
+  // same people as the rows under it, and it was the one control in the editor that acted AT ONCE — it
+  // drew the scene again and closed the editor, throwing away an outfit picked in it a moment before.
+  const ui = read("app", "routes", "web.film.tsx");
+  assert.ok(!ui.includes("mm-sc-singer") && !ui.includes("t(\"Who sings this scene?\")"), "no second list of the same people");
+  const castEditor = ui.slice(ui.indexOf("<div className=\"mm-sc-castedit\">"), ui.indexOf("{seeds && scenePropPick === i && ("));
+  // the mic is on the row: a tag on whoever sings it, a button on anyone it can be handed to
+  assert.ok(castEditor.includes("<span className=\"mm-sw-tag\"><Ico n=\"mic\" size={10} /> {t(\"Sings this scene\")}</span>"));
+  assert.ok(castEditor.includes("className=\"mm-sw-mic\" aria-pressed={false} onClick={() => stageSceneSinger(i, micName)}"));
+  // a co-star who has the scene can hand it back to the star, and so can the star standing beside them
+  assert.equal(castEditor.split("onClick={() => stageSceneSinger(i, \"\")}").length - 1, 2);
+  // only in a performance, and only when a co-star has a voice of their own
+  assert.ok(ui.includes("const canPickSinger = isMv && perform && singable.length > 0;"));
+  // a scene is given by NAME, so the mic is offered only to someone their name leads back to
+  assert.ok(ui.includes("return m && castExtra[singerOf({ singer: name }, castNamesAll)]?.img === img ? name : \"\";"));
+  // STAGED: tapping a mic changes the editor's draft and nothing else…
+  const stage = ui.slice(ui.indexOf("const stageSceneSinger"), ui.indexOf("const micNameOf"));
+  assert.ok(stage.includes("setSceneSingerDraft(name);"));
+  assert.ok(stage.includes("setSceneCastDraft(costarsByDefault(sungBy(seeds.treatment.scenes[i], name), i, seeds.treatment.scenes.length));"), "a verse of one's own is a shot of one's own until people are added");
+  assert.ok(!stage.includes("rerollScene(") && !stage.includes("setSeeds(") && !stage.includes("setSceneCastPick("), "nothing is drawn, written or closed");
+  // …the editor shows who leads AS STAGED…
+  assert.ok(ui.includes("const draftLead = isMv && sceneCastPick === i ? sceneLeadImg(draftScene(strip.scenes, i), i, strip.scenes.length) : leadImg;"));
+  assert.ok(ui.includes("const lead = sceneLeadImg(draftScene(scenesArr, i), i, scenesArr.length) || artistPick;"));
+  // …opening it loads who sings the scene now…
+  assert.ok(ui.includes("setSceneSingerDraft(seeds ? sceneSingerName(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length) : \"\");"));
+  // …and the ONE button writes the new singer into the scene and draws it once, with the outfits kept
+  const confirm = ui.slice(ui.indexOf("const confirmSceneCastMv"), ui.indexOf("// ---- Wardrobe (owner edit)"));
+  assert.ok(confirm.includes("const newSinger = singer !== sceneSingerName(scenesArr[i], i, scenesArr.length);"));
+  assert.ok(confirm.includes("if (newSinger) setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? sungBy(s, singer) : s)) } } : prev));"));
+  assert.ok(ui.includes("const sungBy = (s: Scene, name: string): Scene => { const { singer: _drop, ...rest } = s; return name ? { ...rest, singer: name } : rest; };"));
+});
+
+test("a full scene says it is full — a third face is never let in by pushing somebody out", () => {
+  // (seen on the live site, 2026-11-22: with the star and two co-stars in a scene, tapping "+" on another
+  //  face silently dropped the first co-star)
+  const ui = read("app", "routes", "web.film.tsx");
+  assert.ok(ui.includes("prev.includes(img) ? prev.filter((x) => x !== img) : prev.length >= MAX_COSTARS ? prev : [...prev, img]"));
+  assert.ok(!ui.includes("[...prev, img].slice(-2)"));
+  const toggle = (prev: string[], img: string): string[] => (prev.includes(img) ? prev.filter((x) => x !== img) : prev.length >= MAX_COSTARS ? prev : [...prev, img]);
+  assert.deepEqual(toggle(["a", "b"], "c"), ["a", "b"], "full: nobody is pushed out");
+  assert.deepEqual(toggle(["a", "b"], "a"), ["b"]);
+  assert.deepEqual(toggle(["b"], "c"), ["b", "c"]);
+  const castEditor = ui.slice(ui.indexOf("<div className=\"mm-sc-castedit\">"), ui.indexOf("{seeds && scenePropPick === i && ("));
+  assert.ok(castEditor.includes("{sceneCastDraft.length >= MAX_COSTARS ? ("));
+  assert.ok(castEditor.includes("<div className=\"mm-sw-add mm-sw-full\"><div className=\"mm-cp-hint\">{t(\"This scene is full. Take someone out to add another.\")}</div></div>"));
+  // a face from the roster JOINS the cast, so it is offered only while the cast has room for it
+  assert.ok(castEditor.includes("{(castExtra.length < MAX_COSTARS ? [...customArtists.map((c) => ({ img: c.img, name: c.name })), ...people.map((r) => ({ img: r.img, name: r.name }))] : [])"));
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  for (const k of ["Sings this scene", "Sing this scene", "Give this scene back to {name}", "This scene is full. Take someone out to add another."]) {
+    assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5, k);
+  }
+});
+
+test("once the scenes are drawn, another shape is asked for twice — it draws them all again", () => {
+  // Seen on the live site, 2026-11-22: the Shape buttons sit right above "Render these scenes", and one tap
+  // on another shape wiped the storyboard and every edit made on it (words, cast, outfits, props,
+  // re-rolls) without a word — the pictures are drawn IN a shape.
+  const ui = read("app", "routes", "web.film.tsx");
+  assert.ok(ui.includes("artistPick, mvAspect, featKey, JSON.stringify(outfits)]"), "a new shape does start the storyboard over");
+  const pick = ui.slice(ui.indexOf("const pickMvAspect"), ui.indexOf("const pickMvAspect") + 260);
+  assert.ok(pick.includes("if (a === mvAspect) { setShapeArm(\"\"); return; }"));
+  assert.ok(pick.includes("if (seedsDrawn && shapeArm !== a) { setShapeArm(a); return; }"), "with scenes drawn the first tap only asks");
+  assert.ok(pick.includes("setMvAspect(a);"));
+  assert.ok(ui.includes("const seedsDrawn = !!seeds;") && ui.includes("useEffect(() => { setShapeArm(\"\"); }, [seedsDrawn, mvAspect]);"));
+  // the buttons go through it — nothing sets the shape directly any more
+  assert.equal(ui.split("setMvAspect(").length - 1, 1, "only inside pickMvAspect");
+  assert.ok(ui.includes("onClick={() => pickMvAspect(a)}>{shapeArm === a ? t(\"Tap again to redraw\") : t(name)}<small>{a}</small></button>"));
+  assert.ok(ui.includes("{shapeArm && <p className=\"mm-note mm-shape-warn\" role=\"status\">{t(\"A new shape draws every scene again, and your scene edits start over.\")}</p>}"));
+  // the same rule, run: no scenes yet → one tap; scenes drawn → the second tap
+  const run = (drawn: boolean, taps: string[]) => {
+    let shape = "9:16", arm = "";
+    for (const a of taps) { if (a === shape) { arm = ""; continue; } if (drawn && arm !== a) { arm = a; continue; } shape = a; arm = ""; }
+    return { shape, arm };
+  };
+  assert.deepEqual(run(false, ["16:9"]), { shape: "16:9", arm: "" });
+  assert.deepEqual(run(true, ["16:9"]), { shape: "9:16", arm: "16:9" });
+  assert.deepEqual(run(true, ["16:9", "16:9"]), { shape: "16:9", arm: "" });
+  assert.deepEqual(run(true, ["16:9", "1:1"]), { shape: "9:16", arm: "1:1" }, "asking for a different one starts the asking over");
+  assert.deepEqual(run(true, ["16:9", "9:16"]), { shape: "9:16", arm: "" }, "tapping the shape it already has backs out");
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  for (const k of ["Tap again to redraw", "A new shape draws every scene again, and your scene edits start over."]) {
+    assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5, k);
+  }
+});
+
+test("the storyboard on a phone: the note names the real button, the edit buttons line up, faces not name stacks", () => {
+  // (looked at on the live site at 390 px, 2026-11-22)
+  const ui = read("app", "routes", "web.film.tsx");
+  // the note above it ended "Happy with it? Hit Generate." — the button says "Render these scenes"
+  assert.ok(!ui.includes("Hit Generate."));
+  assert.ok(ui.includes("t(\"Here's your video, shot by shot. Tap any line to change it. A green Performance is sung to camera; a purple Cut scene breaks to props or scenery with no singing (tap the pill to switch).\")"));
+  // the people and the two edit buttons sit at the bottom of every card, in line across a row
+  assert.ok(ui.includes(".mm-sb-list.is-mv .mm-sc-bd{flex:1 1 auto;}") && ui.includes(".mm-sb-list.is-mv .mm-sc-chips{margin-top:auto;padding-top:2px;}"));
+  // whoever leads keeps their name; on a phone the people beside them are their faces — the name is
+  // still in the page for a screen reader (clipped, not removed)
+  assert.ok(ui.includes("<span className=\"mm-sc-chip mm-chip-av\" key={img} title={castMemberName(img) || t(\"Cast\")}><img src={sceneFace(i, img)} alt=\"\" /><span className=\"mm-chip-nm\">{castMemberName(img) || t(\"Cast\")}</span></span>"));
+  const phone = ui.slice(ui.indexOf("@media(max-width:639px){\n  .mm-sb-list.is-mv .mm-chip-av:not(.mm-chip-lead)"));
+  assert.ok(phone.startsWith("@media(max-width:639px){"));
+  assert.ok(phone.slice(0, 420).includes(".mm-chip-av:not(.mm-chip-lead) .mm-chip-nm{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}"));
+  assert.ok(!phone.slice(0, 420).includes("display:none"));
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  const k = "Here's your video, shot by shot. Tap any line to change it. A green Performance is sung to camera; a purple Cut scene breaks to props or scenery with no singing (tap the pill to switch).";
+  assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5);
 });

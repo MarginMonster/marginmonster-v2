@@ -26,7 +26,7 @@ import { externalOrigin } from "../lib/origin.server";
 import { AVATAR_VOICES, AVATAR_VOICE_IDS, autoCastVoices } from "../lib/avatar-voice-catalog";
 import { CHARACTER_VOICES, characterVoiceSample, isCharacterVoice } from "../lib/character-voices";
 import { GENRE_PACE, MV_DEFAULT_SECONDS, MV_MAX_SECONDS, MV_SECONDS, PACES, PACE_KEYS, cutCount, defaultRole, isPace, lengthLabel, mvBillScenes, paceFor, sceneCountFor, sceneSecondsFor, sceneSecondsOf, shotSlot, type Pace } from "../lib/mv-pace";
-import { sceneCast, singerOf } from "../lib/mv-cast";
+import { MAX_COSTARS, sceneCast, singerOf } from "../lib/mv-cast";
 import { FEATURE_MIN_SECONDS } from "../lib/mv-feature";
 import { CAPTION_STYLES, captionStyleOf, type CaptionStyle } from "../lib/narrated-core";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
@@ -963,6 +963,8 @@ export default function FilmStudio() {
   const [castForScene, setCastForScene] = useState<Record<number, string[]>>({});
   const [sceneCastPick, setSceneCastPick] = useState<number | null>(null);
   const [sceneCastDraft, setSceneCastDraft] = useState<string[]>([]);
+  // …and WHO SINGS it, staged the same way: the name of the co-star whose scene it becomes ("" = the star)
+  const [sceneSingerDraft, setSceneSingerDraft] = useState<string>("");
   // PER-SCENE WARDROBE: scene index → cast member img → what they wear in THAT scene ("" = their own
   // look; a description = one of their saved outfits). No entry = their look for the whole video.
   const [sceneOutfits, setSceneOutfits] = useState<Record<number, Record<string, string>>>({});
@@ -1059,6 +1061,19 @@ export default function FilmStudio() {
   // Music Video output shape — its OWN state (defaults to the owner-validated 9:16; the picker lets them
   // choose 16:9 / 1:1). Kept separate from the dialogue-flow filmAspect so neither changes the other.
   const [mvAspect, setMvAspect] = useState<"9:16" | "16:9" | "1:1">("9:16");
+  // …ONCE THE SCENES ARE DRAWN the shape is not a free choice any more: the pictures are drawn IN a
+  // shape, so another one draws them all again and the storyboard's edits (words, cast, outfits, props,
+  // re-rolls) start over. The buttons sit right above "Render", and one tap used to wipe the storyboard
+  // without a word (seen on the live site, 2026-11-22). The first tap now says so and the second does
+  // it — the app's own "Tap again to …" way of asking. With no scenes drawn yet it is one tap, as before.
+  const [shapeArm, setShapeArm] = useState<"" | "9:16" | "16:9" | "1:1">("");
+  const seedsDrawn = !!seeds;
+  useEffect(() => { setShapeArm(""); }, [seedsDrawn, mvAspect]);
+  const pickMvAspect = (a: "9:16" | "16:9" | "1:1") => {
+    if (a === mvAspect) { setShapeArm(""); return; }
+    if (seedsDrawn && shapeArm !== a) { setShapeArm(a); return; }
+    setMvAspect(a);
+  };
   // Music Video genre (lip-sync lane only) — drives the song + the artist/settings.
   const [filmGenre, setFilmGenre] = useState<string>(d.genres?.[0]?.key || "rap");
   // PACE — how fast the video is cut. "" = whatever the genre is cut at (rap fast, country slow); picking
@@ -1522,22 +1537,35 @@ export default function FilmStudio() {
     const k = singerOf(sc, castNamesAll);
     return k >= 0 ? castExtra[k]?.img || "" : "";
   };
-  const defaultSceneCostars = (scenesArr: Scene[], i: number): string[] => {
+  const costarsByDefault = (sc: Scene, i: number, n: number): string[] => {
     if (!castExtra.length) return [];
-    const role = sceneKind(scenesArr[i], i, scenesArr.length);
-    return sceneCast({ scene: scenesArr[i], role, slot: shotSlot(role, i), names: castNamesAll }).others.map((w) => (w < 0 ? artistPick : castExtra[w]?.img)).filter(Boolean);
+    const role = sceneKind(sc, i, n);
+    return sceneCast({ scene: sc, role, slot: shotSlot(role, i), names: castNamesAll }).others.map((w) => (w < 0 ? artistPick : castExtra[w]?.img)).filter(Boolean);
   };
-  /** Give scene i to a singer (a co-star's name, or "" for the artist) and draw it again with them in front. */
-  const setSceneSinger = (i: number, name: string) => {
+  const defaultSceneCostars = (scenesArr: Scene[], i: number): string[] => costarsByDefault(scenesArr[i], i, scenesArr.length);
+  /** The same scene, sung by `name` (a co-star's name, or "" for the artist). */
+  const sungBy = (s: Scene, name: string): Scene => { const { singer: _drop, ...rest } = s; return name ? { ...rest, singer: name } : rest; };
+  /** Whose scene i is as it stands: the co-star's name, or "" for the artist. */
+  const sceneSingerName = (sc: Scene | undefined, i: number, n: number): string => { const img = sceneLeadImg(sc, i, n); return img ? (castExtra.find((m) => m.img === img)?.name || "").trim() : ""; };
+  /** Scene i as the OPEN EDITOR has it — sung by whoever is staged to sing it. */
+  const draftScene = (scenesArr: Scene[], i: number): Scene => (sceneCastPick === i && scenesArr[i] ? sungBy(scenesArr[i], sceneSingerDraft) : scenesArr[i]);
+  /** STAGE who sings scene i (a co-star's name, or "" for the artist) — nothing is drawn until
+   *  "Regenerate scene". Whoever now leads is not also "beside" themselves, and a verse of one's own is
+   *  a shot of one's own until people are added: the default the song's own featured verse gets
+   *  (mv-cast.ts sceneCast). It used to be a row of pills that drew the scene again at once and closed
+   *  the editor — throwing away an outfit picked in it a moment before. */
+  const stageSceneSinger = (i: number, name: string) => {
     if (!seeds) return;
-    setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => { if (j !== i) return s; const { singer: _drop, ...rest } = s; return name ? { ...rest, singer: name } : rest; }) } } : prev));
-    // whoever now leads is not also "beside" themselves; the old picks for the scene start over
-    setCastForScene((prev) => { const next = { ...prev }; delete next[i]; return next; });
-    setSceneCastPick(null);
-    const sc = { ...seeds.treatment.scenes[i], singer: name || undefined };
-    const role = sceneKind(sc, i, seeds.treatment.scenes.length);
-    const beside = sceneCast({ scene: sc, role, slot: shotSlot(role, i), names: castNamesAll }).others.map((w) => (w < 0 ? artistPick : castExtra[w]?.img)).filter(Boolean);
-    rerollScene(i, undefined, beside, name);
+    setSceneSingerDraft(name);
+    setSceneCastDraft(costarsByDefault(sungBy(seeds.treatment.scenes[i], name), i, seeds.treatment.scenes.length));
+  };
+  /** The name that hands a scene to this co-star — "" unless they have a voice of their own AND the
+   *  name leads back to them (a scene is given by NAME: with two co-stars of one name it would go to
+   *  the first, so the second is not offered a mic that would light someone else's row). */
+  const micNameOf = (img: string): string => {
+    const m = singable.find((x) => x.img === img);
+    const name = (m?.name || "").trim();
+    return m && castExtra[singerOf({ singer: name }, castNamesAll)]?.img === img ? name : "";
   };
   const sceneCostars = (scenesArr: Scene[], i: number): string[] => castForScene[i] ?? defaultSceneCostars(scenesArr, i);
   // The whole scene→co-stars map (defaults + overrides) — what the preview + the render receive.
@@ -1560,19 +1588,28 @@ export default function FilmStudio() {
     setScenePropPick(null);
     setSceneWearDraft({ ...(sceneOutfits[i] || {}) }); setSceneWearText({}); setSceneWearNewFor(null);
     setSceneCastDraft(seeds ? sceneCostars(seeds.treatment.scenes, i) : []);
+    setSceneSingerDraft(seeds ? sceneSingerName(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length) : "");
     setSceneCastPick(i);
   };
-  const toggleSceneCastDraft = (img: string) => setSceneCastDraft((prev) => (prev.includes(img) ? prev.filter((x) => x !== img) : [...prev, img].slice(-2)));
-  // ONE button for the whole editor: who is in the scene AND what each of them wears in it (staged, then
-  // drawn once). Only people who are in the scene keep an outfit of their own for it.
+  // (a scene holds whoever leads it and MAX_COSTARS more. A full one is not changed by adding: it used to
+  //  push the first co-star out, unasked, to let a third in — the editor says it is full instead)
+  const toggleSceneCastDraft = (img: string) => setSceneCastDraft((prev) => (prev.includes(img) ? prev.filter((x) => x !== img) : prev.length >= MAX_COSTARS ? prev : [...prev, img]));
+  // ONE button for the whole editor: who SINGS the scene, who is in it AND what each of them wears in it
+  // (staged, then drawn once). Only people who are in the scene keep an outfit of their own for it.
   const confirmSceneCastMv = (i: number) => {
-    const inScene = new Set(seeds ? sceneDraftPeople(seeds.treatment.scenes, i) : []);
+    if (!seeds) return;
+    const scenesArr = seeds.treatment.scenes;
+    const inScene = new Set(sceneDraftPeople(scenesArr, i));
     const wear: Record<string, string> = {};
     for (const k of Object.keys(sceneWearDraft)) if (inScene.has(k)) wear[k] = sceneWearDraft[k];
+    // a new singer is written into the scene itself: the name rides with the song and the render
+    const singer = sceneSingerDraft;
+    const newSinger = singer !== sceneSingerName(scenesArr[i], i, scenesArr.length);
+    if (newSinger) setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? sungBy(s, singer) : s)) } } : prev));
     setCastForScene((prev) => ({ ...prev, [i]: sceneCastDraft }));
     setSceneOutfits((prev) => { const n = { ...prev }; if (Object.keys(wear).length) n[i] = wear; else delete n[i]; return n; });
     setSceneCastPick(null);
-    rerollScene(i, undefined, sceneCastDraft, undefined, wear);
+    rerollScene(i, undefined, sceneCastDraft, newSinger ? singer : undefined, wear);
   };
   // ---- Wardrobe (owner edit) ------------------------------------------------
   // Folded INTO the avatar picker: select an avatar → an outfit slider opens under it (presets + your
@@ -1640,7 +1677,7 @@ export default function FilmStudio() {
   /** Who is in the scene AS THE EDITOR HAS IT NOW and has a picture to dress: whoever leads it, then
    *  whoever has been put beside them (the draft — so a co-star just added can be dressed at once). */
   const sceneDraftPeople = (scenesArr: Scene[], i: number): string[] => {
-    const lead = sceneLeadImg(scenesArr[i], i, scenesArr.length) || artistPick;
+    const lead = sceneLeadImg(draftScene(scenesArr, i), i, scenesArr.length) || artistPick;
     return [...new Set([lead, ...sceneCastDraft].filter((x): x is string => !!x))];
   };
   const sceneWearChanged = (i: number): boolean => !!sceneOutfits[i] && Object.keys(sceneOutfits[i]).length > 0;
@@ -1826,7 +1863,7 @@ export default function FilmStudio() {
         return (
         <>
           <div className="mm-sb-head"><Ico n="check" size={13} /> {isMv
-            ? t("Here's your video, shot by shot — every scene's right here. Tap any line to change it. A green Performance is sung to camera; a purple Cut scene breaks to props or scenery with no singing (tap the pill to switch). Happy with it? Hit Generate.")
+            ? t("Here's your video, shot by shot. Tap any line to change it. A green Performance is sung to camera; a purple Cut scene breaks to props or scenery with no singing (tap the pill to switch).")
             : (hasStills
               ? t("Swipe through your story — this is exactly what renders. Re-roll any scene that's off, then Generate.")
               : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life."))}{narrated && seeds ? <> {t("The narrator reads each scene's words over its picture.")}</> : null}</div>
@@ -1841,6 +1878,10 @@ export default function FilmStudio() {
               // a featured verse: who leads this shot (a co-star, in their own performance) and whose
               // voice is heard over it
               const leadImg = isMv ? sceneLeadImg(sc, i, strip.scenes.length) : "";
+              // …and as the OPEN EDITOR has it: a singer can be staged there before anything is drawn
+              const draftLead = isMv && sceneCastPick === i ? sceneLeadImg(draftScene(strip.scenes, i), i, strip.scenes.length) : leadImg;
+              // (there is a choice of singer only in a performance, and only with a co-star who has a voice)
+              const canPickSinger = isMv && perform && singable.length > 0;
               const flagged = isMv && !!seeds && ((seeds.faults || [])[i] || 0) > 0 && rerollingScene !== i;
               // one editor at a time, opened as a drawer that spans the whole row under this card
               const editing = isMv && !!seeds && (sceneCastPick === i || scenePropPick === i);
@@ -1872,7 +1913,7 @@ export default function FilmStudio() {
                           {leadImg
                             ? <span className="mm-sc-chip mm-chip-av mm-chip-lead mm-chip-sings" title={t("{name} sings this part — in their own voice", { name: castMemberName(leadImg) || t("Cast") })}><img src={sceneFace(i, leadImg)} alt="" /><Ico n="mic" size={10} /> {castMemberName(leadImg) || t("Cast")}</span>
                             : (artistName && <span className="mm-sc-chip mm-chip-av mm-chip-lead">{artistPick ? <img src={sceneFace(i, artistPick)} alt="" /> : null}{artistName}</span>)}
-                          {sceneCostars(strip.scenes, i).filter((img) => img !== leadImg).map((img) => <span className="mm-sc-chip mm-chip-av" key={img}><img src={sceneFace(i, img)} alt="" />{castMemberName(img) || t("Cast")}</span>)}
+                          {sceneCostars(strip.scenes, i).filter((img) => img !== leadImg).map((img) => <span className="mm-sc-chip mm-chip-av" key={img} title={castMemberName(img) || t("Cast")}><img src={sceneFace(i, img)} alt="" /><span className="mm-chip-nm">{castMemberName(img) || t("Cast")}</span></span>)}
                         </div>
                         {/* EDIT THIS SCENE: who is in it (and what they wear), and what is in it — each opens a drawer under the row */}
                         {seeds && (
@@ -1893,34 +1934,38 @@ export default function FilmStudio() {
                     </div>
                         {seeds && sceneCastPick === i && (
                           <div className="mm-sc-castedit">
-                            {/* WHO SINGS a performance: the star, or a co-star with a voice of their own (a featured verse) */}
-                            {perform && singable.length > 0 && (
-                              <div className="mm-sc-singer" role="group" aria-label={t("Who sings this scene?")}>
-                                <span className="mm-sc-singer-lbl"><Ico n="mic" size={11} /> {t("Who sings this scene?")}</span>
-                                <button type="button" className={`mm-sc-singer-opt${!leadImg ? " on" : ""}`} aria-pressed={!leadImg} disabled={rerollingScene !== null} onClick={() => { if (leadImg) setSceneSinger(i, ""); }}>{artistName || t("The star")}</button>
-                                {singable.map((m) => (
-                                  <button type="button" key={m.img} className={`mm-sc-singer-opt${leadImg === m.img ? " on" : ""}`} aria-pressed={leadImg === m.img} disabled={rerollingScene !== null} onClick={() => { if (leadImg !== m.img) setSceneSinger(i, m.name.trim()); }}>{m.name}</button>
-                                ))}
-                              </div>
-                            )}
-                            {/* THE PEOPLE IN THIS SCENE — one list: who is in it, and beside each what they wear in it
-                                (the owner: "leave the wardrobe stuff inside of the avatar edit option … no extra
-                                button"). It used to be a strip of faces and then the same people again as rows. */}
+                            {/* THE PEOPLE IN THIS SCENE — one list: who is in it, who SINGS it, and beside each what
+                                they wear in it (the owner: "leave the wardrobe stuff inside of the avatar edit
+                                option … no extra button"). It used to be a row of "who sings" pills, a strip of
+                                faces, and then the same people a third time as outfit rows. */}
                             <div className="mm-sw-people">
-                              {sceneDraftPeople(strip.scenes, i).map((img, pi) => {
+                              {sceneDraftPeople(strip.scenes, i).map((img) => {
                                 const cur = sceneWearDraft[img]; // undefined = the look they have for the whole video
                                 const videoDesc = outfits[img] || "";
                                 const saved = (outfitStyles[img] || []).filter((s) => s.desc !== videoDesc);
                                 const making = outfitBusyFor && outfitBusyFor.img === img ? outfitBusyFor.desc : null;
                                 const text = sceneWearText[img] || "";
                                 const nm = castMemberName(img) || t("Cast");
+                                const leads = img === (draftLead || artistPick);
+                                // WHO SINGS a performance — the star, or a co-star with a voice of their own (a
+                                // featured verse): the mic on their own row. Staged like everything else here.
+                                const micName = micNameOf(img);
                                 return (
                                   <div className="mm-sw-row" key={img} role="group" aria-label={t("What {name} wears in this scene", { name: nm })}>
                                     <div className="mm-sw-name">
                                       <span>{nm}</span>
-                                      {pi === 0
-                                        ? <span className="mm-sw-tag">{leadImg ? t("Sings a verse") : t("Lead")}</span>
-                                        : <button type="button" className="mm-sw-rm" onClick={() => toggleSceneCastDraft(img)} aria-label={t("Remove {name} from this scene", { name: nm })} title={t("Remove {name} from this scene", { name: nm })}>✕</button>}
+                                      {!canPickSinger
+                                        ? (leads ? <span className="mm-sw-tag">{t("Lead")}</span> : null)
+                                        : leads
+                                          ? (draftLead
+                                              ? <button type="button" className="mm-sw-mic on" aria-pressed={true} onClick={() => stageSceneSinger(i, "")} title={t("Give this scene back to {name}", { name: artistName || t("The star") })}><Ico n="mic" size={10} /> {t("Sings this scene")}</button>
+                                              : <span className="mm-sw-tag"><Ico n="mic" size={10} /> {t("Sings this scene")}</span>)
+                                          : img === artistPick
+                                            ? <button type="button" className="mm-sw-mic" aria-pressed={false} onClick={() => stageSceneSinger(i, "")} title={t("Give this scene back to {name}", { name: nm })}><Ico n="mic" size={10} /> {t("Sing this scene")}</button>
+                                            : micName
+                                              ? <button type="button" className="mm-sw-mic" aria-pressed={false} onClick={() => stageSceneSinger(i, micName)} title={t("{name} sings this part — in their own voice", { name: nm })}><Ico n="mic" size={10} /> {t("Sing this scene")}</button>
+                                              : null}
+                                      {!leads && <button type="button" className="mm-sw-rm" onClick={() => toggleSceneCastDraft(img)} aria-label={t("Remove {name} from this scene", { name: nm })} title={t("Remove {name} from this scene", { name: nm })}>✕</button>}
                                     </div>
                                     <div className="mm-sw-looks">
                                       <button type="button" className={`mm-sw-look${cur === undefined ? " on" : ""}`} aria-pressed={cur === undefined} onClick={() => setWearDraft(img, undefined)} title={t("Video look")}><img src={avatarFace(img)} alt="" /><span>{t("Video look")}</span></button>
@@ -1944,31 +1989,39 @@ export default function FilmStudio() {
                               })}
                             </div>
                             <div className="mm-cp-hint">{t("Only this scene changes. Everywhere else they keep the look you picked.")}</div>
-                            {/* …and whoever is NOT in it yet: the rest of the cast first, then faces from the roster */}
+                            {/* …and whoever is NOT in it yet: the rest of the cast first, then faces from the roster.
+                                A scene holds whoever leads it and two more — a FULL one says so, instead of offering
+                                faces that would push somebody out of it unasked. */}
+                            {sceneCastDraft.length >= MAX_COSTARS ? (
+                              <div className="mm-sw-add mm-sw-full"><div className="mm-cp-hint">{t("This scene is full. Take someone out to add another.")}</div></div>
+                            ) : (
                             <div className="mm-sw-add">
                               <div className="mm-sw-name"><span>{t("Add to this scene")}</span></div>
                               <div className="mm-sc-castpick">
                                 {/* in a co-star's own performance the STAR is someone who can stand beside them */}
-                                {leadImg && artistPick && !sceneCastDraft.includes(artistPick) && (
+                                {draftLead && artistPick && !sceneCastDraft.includes(artistPick) && (
                                   <button type="button" className="mm-cp-opt mm-cp-add" onClick={() => toggleSceneCastDraft(artistPick)} title={artistName}>
                                     <span className="mm-cp-img" style={{ backgroundImage: `url(${artistPick})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{artistName || t("The star")}
                                   </button>
                                 )}
-                                {castExtra.filter((m) => m.img !== leadImg && !sceneCastDraft.includes(m.img)).map((m) => (
+                                {castExtra.filter((m) => m.img !== draftLead && !sceneCastDraft.includes(m.img)).map((m) => (
                                   <button type="button" key={m.img} className="mm-cp-opt mm-cp-add" onClick={() => toggleSceneCastDraft(m.img)} title={m.name}>
                                     <span className="mm-cp-img" style={{ backgroundImage: `url(${m.img})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{m.name || t("Cast")}
                                   </button>
                                 ))}
-                                {[...customArtists.map((c) => ({ img: c.img, name: c.name })), ...people.map((r) => ({ img: r.img, name: r.name }))].filter((r) => r.img && !castExtra.some((m) => m.img === r.img)).slice(0, 14).map((r) => (
+                                {/* (a face from the roster JOINS the cast — so it is offered only while the cast has room:
+                                    a third co-star is never added, and the tile used to put them in the picture anyway) */}
+                                {(castExtra.length < MAX_COSTARS ? [...customArtists.map((c) => ({ img: c.img, name: c.name })), ...people.map((r) => ({ img: r.img, name: r.name }))] : []).filter((r) => r.img && !castExtra.some((m) => m.img === r.img)).slice(0, 14).map((r) => (
                                   <button type="button" key={`pool-${r.img}`} className="mm-cp-opt mm-cp-add" onClick={() => { addCastMemberMv(r.img, r.name); toggleSceneCastDraft(r.img); }} title={r.name}>
                                     <span className="mm-cp-img" style={{ backgroundImage: `url(${r.img})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{r.name}
                                   </button>
                                 ))}
                               </div>
-                              <div className="mm-cp-hint">{leadImg
-                                ? t("{name} sings this one, so they lead the shot. Add who stands beside them — up to 2.", { name: castMemberName(leadImg) || t("This co-star") })
+                              <div className="mm-cp-hint">{draftLead
+                                ? t("{name} sings this one, so they lead the shot. Add who stands beside them — up to 2.", { name: castMemberName(draftLead) || t("This co-star") })
                                 : t("The star always leads. Add up to 2 co-stars for this scene — or pick a face from your cast / the roster.")}</div>
                             </div>
+                            )}
                             <div className="mm-sc-propcta">
                               <button type="button" className="mm-sp-confirm" onClick={() => confirmSceneCastMv(i)} disabled={rerollingScene !== null || !!outfitBusyFor}><Ico n="refresh" size={12} /> {t("Regenerate scene {n}", { n: i + 1 })}</button>
                               <button type="button" className="mm-sp-cancel" onClick={() => setSceneCastPick(null)}>{t("Cancel")}</button>
@@ -2617,11 +2670,13 @@ export default function FilmStudio() {
             <div className="mm-aspect" role="group" aria-label={t("Shape")}>
               <span className="mm-aspect-lbl">{t("Shape")}</span>
               <div className="mm-aspect-seg">
-                <button type="button" className={`mm-aspect-opt${mvAspect === "9:16" ? " on" : ""}`} aria-pressed={mvAspect === "9:16"} onClick={() => setMvAspect("9:16")}>{t("Vertical")}<small>9:16</small></button>
-                <button type="button" className={`mm-aspect-opt${mvAspect === "16:9" ? " on" : ""}`} aria-pressed={mvAspect === "16:9"} onClick={() => setMvAspect("16:9")}>{t("Wide")}<small>16:9</small></button>
-                <button type="button" className={`mm-aspect-opt${mvAspect === "1:1" ? " on" : ""}`} aria-pressed={mvAspect === "1:1"} onClick={() => setMvAspect("1:1")}>{t("Square")}<small>1:1</small></button>
+                {([["9:16", "Vertical"], ["16:9", "Wide"], ["1:1", "Square"]] as const).map(([a, name]) => (
+                  <button type="button" key={a} className={`mm-aspect-opt${mvAspect === a ? " on" : ""}${shapeArm === a ? " arm" : ""}`} aria-pressed={mvAspect === a} onClick={() => pickMvAspect(a)}>{shapeArm === a ? t("Tap again to redraw") : t(name)}<small>{a}</small></button>
+                ))}
               </div>
             </div>
+            {/* (the scenes are drawn IN a shape: once they exist, another shape draws them all again) */}
+            {shapeArm && <p className="mm-note mm-shape-warn" role="status">{t("A new shape draws every scene again, and your scene edits start over.")}</p>}
             {/* the song's own lyrics on screen, timed to the singing as it was sung */}
             <div className="mm-aspect" role="group" aria-label={t("Lyrics on screen")}>
               <span className="mm-aspect-lbl">{t("Lyrics on screen")}</span>
@@ -4074,6 +4129,17 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-sc-lyr-ico{flex:none;font-size:12px;line-height:1;color:#1EA85C;padding:5px 0 0;}
 .mm-sc-words{font-size:12.5px;line-height:1.38;color:var(--green-d,#0A5E37);font-style:italic;font-weight:600;}
 .mm-sc-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px;}
+/* a row of cards is as tall as its tallest: the people and the two edit buttons sit at the BOTTOM of each,
+   in line across the row (they floated at different heights, with a blank under the shorter card) */
+.mm-sb-list.is-mv .mm-sc-bd{flex:1 1 auto;}
+.mm-sb-list.is-mv .mm-sc-chips{margin-top:auto;padding-top:2px;}
+/* a phone's card is 170px wide — three name chips stacked three deep. Whoever leads keeps their name; the
+   people beside them are their faces (the name is still there for a screen reader, and in the Cast editor) */
+@media(max-width:639px){
+  .mm-sb-list.is-mv .mm-chip-av:not(.mm-chip-lead){padding:2px;}
+  .mm-sb-list.is-mv .mm-chip-av:not(.mm-chip-lead) img{width:20px;height:20px;}
+  .mm-sb-list.is-mv .mm-chip-av:not(.mm-chip-lead) .mm-chip-nm{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+}
 .mm-sc-chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 8px 2px 3px;border:1px solid;}
 .mm-sc-chip img{width:17px;height:17px;border-radius:50%;object-fit:cover;flex:none;}
 .mm-chip-av{background:#EAF2FB;border-color:#D4E4F5;color:#1A4E85;}
@@ -4081,14 +4147,6 @@ a.mm-pace-auto{text-decoration:none;}
 /* a featured verse: the co-star who sings this shot, and a cut scene their voice is heard over */
 .mm-chip-sings{background:#E4F4EA;border-color:#B9E0C8;color:#0A5E37;box-shadow:inset 0 0 0 1px #B9E0C8;}
 .mm-chip-sings svg{stroke:currentColor;stroke-width:2;fill:none;flex:none;}
-/* "who sings this scene?" in the per-scene cast editor */
-.mm-sc-singer{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 1px 0;}
-.mm-sc-singer-lbl{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:var(--ink2,#55605A);margin-right:2px;}
-.mm-sc-singer-lbl svg{stroke:currentColor;stroke-width:2;fill:none;}
-.mm-sc-singer-opt{min-height:28px;padding:0 11px;border-radius:999px;border:1.5px solid var(--line,#E4DFCF);background:#fff;font-family:Poppins,sans-serif;font-size:11px;font-weight:700;color:var(--ink2,#55605A);cursor:pointer;transition:border-color .14s,background .14s,color .14s;}
-.mm-sc-singer-opt:hover:not(:disabled){border-color:var(--green2,#1EA85C);}
-.mm-sc-singer-opt.on{border-color:var(--green,#0C7A46);background:#E4F4EA;color:#0A5E37;}
-.mm-sc-singer-opt:disabled{opacity:.55;cursor:default;}
 /* the picture check found something off: a nudge to draw it again, on the still itself */
 .mm-sb-flag{position:absolute;left:7px;bottom:7px;display:inline-flex;align-items:center;gap:5px;min-height:24px;padding:0 9px;border-radius:999px;border:0;background:rgba(199,154,58,.95);color:#1A1407;font-family:Poppins,sans-serif;font-size:10.5px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px -5px rgba(0,0,0,.6);}
 .mm-sb-flag svg{stroke:currentColor;stroke-width:2.2;fill:none;}
@@ -4158,9 +4216,15 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-sw-row{display:flex;flex-direction:column;gap:6px;}
 .mm-sw-name{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2,#4B5A51);min-height:22px;}
 /* who they are in the scene: whoever leads it is tagged; anyone else can be taken out of it */
-.mm-sw-tag{font-size:9.5px;font-weight:800;letter-spacing:.03em;text-transform:none;border-radius:999px;padding:2px 7px;background:#E4F4EA;color:#0A5E37;}
-.mm-sw-rm{flex:none;width:22px;height:22px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);font-size:10px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;position:relative;}
-.mm-sw-rm::after{content:"";position:absolute;inset:-9px;}
+.mm-sw-tag{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:800;letter-spacing:.03em;text-transform:none;border-radius:999px;padding:2px 7px;background:#E4F4EA;color:#0A5E37;}
+.mm-sw-tag svg,.mm-sw-mic svg{stroke:currentColor;stroke-width:2;fill:none;flex:none;}
+/* who SINGS the scene: the mic on their own row. Outlined = tap to hand it to them; filled = it is theirs */
+.mm-sw-mic{position:relative;display:inline-flex;align-items:center;gap:4px;min-height:22px;padding:0 8px;border-radius:999px;border:1.5px solid var(--line,#E4DFCF);background:#fff;font-family:Poppins,sans-serif;font-size:9.5px;font-weight:800;letter-spacing:.03em;text-transform:none;color:var(--ink2,#55605A);cursor:pointer;transition:border-color .14s,background .14s,color .14s;}
+.mm-sw-mic::after{content:"";position:absolute;inset:-11px -2px;}
+.mm-sw-mic:hover{border-color:var(--green2,#1EA85C);color:#0A5E37;}
+.mm-sw-mic.on{border-color:var(--green,#0C7A46);background:#E4F4EA;color:#0A5E37;}
+.mm-sw-rm{flex:none;margin-left:5px;width:22px;height:22px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);font-size:10px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;position:relative;}
+.mm-sw-rm::after{content:"";position:absolute;inset:-11px -9px;}
 .mm-sw-rm:hover{background:#FBEDEA;border-color:#E9B8AE;color:#A2321C;}
 .mm-sw-add{display:flex;flex-direction:column;gap:5px;padding-top:10px;border-top:1px dashed var(--line,#E4DFCF);}
 .mm-sw-looks{display:flex;gap:8px;overflow-x:auto;padding:3px 2px 4px;scrollbar-width:thin;}
@@ -4213,6 +4277,10 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-aspect-opt small{font-size:9.5px;font-weight:700;color:var(--ink3,#9AA39B);}
 .mm-aspect-opt.on{border-color:var(--green,#0C7A46);background:#F0F8F3;color:var(--green,#0C7A46);box-shadow:0 0 0 1px var(--green,#0C7A46);}
 .mm-aspect-opt.on small{color:var(--green,#0C7A46);}
+/* a shape that would draw the scenes again: asked for once, done on the second tap */
+.mm-aspect-opt.arm{border-color:#C79A3A;background:#FFF7E3;color:#7A5A12;box-shadow:0 0 0 1px #C79A3A;text-align:center;line-height:1.2;}
+.mm-aspect-opt.arm small{color:#7A5A12;}
+.mm-shape-warn{font-size:11.5px;font-weight:600;color:#7A5A12;background:#FFF7E3;border:1px solid #EBD9A8;border-radius:10px;padding:8px 11px;}
 .mm-lenpick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;}
 .mm-lenopt{display:flex;flex-direction:column;align-items:center;gap:2px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:12px;padding:12px 6px;cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s;}
 .mm-lenopt b{font-size:18px;font-weight:900;color:var(--ink,#14201A);font-variant-numeric:tabular-nums;}
