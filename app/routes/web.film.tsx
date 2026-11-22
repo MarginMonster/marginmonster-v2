@@ -1602,8 +1602,11 @@ export default function FilmStudio() {
   // beside them — measured on the live site at about half a minute), then three scenes at a time; a scene
   // with co-stars in it is drawn AND checked, and sometimes drawn again. (It said "about 3s left" for a
   // minute and a half on the first storyboard with two co-stars.)
+  // MEASURED on the live site, 2026-11-21/22: six scenes with two co-stars ≈ 90 s; twenty-four upright
+  // scenes of one artist ≈ 230 s (the upright picture is the slower, sharper kind: ~25 s a wave of three).
   const mvCast = !!tmpl?.lipSyncSinger && castExtra.length > 0;
-  const seedEstSec = Math.max(14, (tmpl?.lipSyncSinger ? (mvCast ? 30 : artistPick ? 20 : 12) : 0) + Math.ceil(scenes / 3) * (mvCast ? 22 : 9));
+  const seedWaveSec = !tmpl?.lipSyncSinger ? 9 : mvCast ? 27 : mvAspect === "9:16" ? 25 : 12;
+  const seedEstSec = Math.max(14, (tmpl?.lipSyncSinger ? (mvCast ? 30 : artistPick ? 25 : 12) : 0) + Math.ceil(scenes / 3) * seedWaveSec);
   useEffect(() => {
     if (!seedBusy) { setSeedPct(0); return; }
     const estMs = seedEstSec * 1000;
@@ -3051,9 +3054,12 @@ function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; narrated?:
   if (opts.narrated) {
     lo = 2; hi = n > 8 ? 5 : 4; // a narration, an alignment pass, a picture a scene, one cut
   } else if (opts.lipSyncSinger) {
-    const waves = Math.ceil(n / 2);            // the scenes are filmed a few at a time
-    const half = opts.sceneSec === 5;          // a five-second scene films in about half the time of a ten
-    lo = Math.round(6 + waves * (half ? 3.5 : 6)); hi = Math.round(9 + waves * (half ? 5.5 : 9)); // + song + artist + scene-image overhead
+    // The scenes are filmed three at a time. MEASURED 2026-11-21: a 30-second video of six five-second
+    // scenes took 11 min 46 s start to finish (about four minutes a wave of three, plus the song, the
+    // segments and the cut); ten-second scenes have run about nine minutes a wave (a 2:00 video ≈ 40 min).
+    const waves = Math.ceil(n / 3);
+    const half = opts.sceneSec === 5;
+    lo = Math.round((half ? 4 : 5) + waves * (half ? 3 : 7)); hi = Math.round((half ? 6 : 8) + waves * (half ? 4.5 : 10));
   } else if (opts.dialogue) {
     const per = opts.engine === "veo" ? 4 : 3.5;
     lo = Math.round(3 + n * per * 0.8); hi = Math.round(5 + n * per * 1.3);

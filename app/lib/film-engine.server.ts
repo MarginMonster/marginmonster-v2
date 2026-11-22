@@ -35,6 +35,7 @@ import { dropOrgEndorsementPossessive } from "./ad-claims";
 import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds, type ShotRole } from "./mv-pace";
 import { MAX_COSTARS, singerOf } from "./mv-cast";
 import { FEATURE_MIN_SECONDS, defaultFeaturePlan, featureRoles, planIsSound } from "./mv-feature";
+import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLines } from "./mv-song";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -454,29 +455,29 @@ export async function previewFilmTreatment(opts: {
   // (All of this goes by the video's length in SECONDS — a 20-second video is a short cut whether it is
   // two ten-second scenes or four five-second ones.)
   const shortCut = videoSecs <= 20;
-  const hookLines = videoSecs <= 10 ? 2 : 5;
-  // FULL-LENGTH videos (1:00 and up) are sung by the full-length engine (music-2.5 — see singToDisk),
-  // which takes a whole lyric sheet and sings it as one track. So write a song sized to the video rather
-  // than the 560-character sheet the short engine is capped at (which ran out at about a minute and left
-  // the 1:30 / 2:00 videos repeating themselves). Keep this threshold in step with `fullLength` in the
-  // music-video pipeline.
-  const fullSong = videoSecs >= 60;
-  // ~4.2 s per line leaves the song a little LONGER than the video (measured 4.6–5.5 s per line), so it
-  // is trimmed to length with a fade rather than repeated: 1:00 → 14 lines, 1:30 → 21, 2:00 → 29.
-  const fullLines = Math.round(videoSecs / 4.2);
-  // how many lyric lines fall in one scene: a ten-second scene hears two or three, a five-second one
-  // hears one (the engine sings about a line every five seconds)
-  const perScene = sceneSec === 5 ? "1 line, 2 at the very most" : "2-3 lines";
-  const songShape = shortCut
-    ? `This is a SHORT ${videoSecs}-second cut, so write ONLY the HOOK: EXACTLY ${hookLines} short, punchy lyric lines in TOTAL — no verses and no repeated lines. (The music engine sings about one line every 5 seconds and everything after ${videoSecs} seconds is cut off, so extra lines would never be heard.)`
-    : fullSong
+  // THE SONG IS WRITTEN TO THE LENGTH ITS ENGINE WILL SING IT AT (mv-song.ts — measured, and shared with
+  // the render so the song that is written is the song the engine it is given to can sing):
+  //  · the FULL-LENGTH engine (a minute and up) arranges a whole song at a line every 4-5 seconds: about
+  //    videoSecs ÷ 4.2 lines — a little LONGER than the video, so it is trimmed with a fade rather than
+  //    repeated;
+  //  · the SHORT engine sings the sheet once at the genre's pace (rap and rock about 3.2 words a second,
+  //    pop 2.2, country 2.0) and stops: about that many words for every second of video, up to what the
+  //    engine takes. (It used to be given "a line a scene" — six lines for 30 seconds — and had sung them
+  //    all by 15–17 s: the first live videos of five-second scenes repeated their first half.)
+  const fullSong = songEngineFor(videoSecs) === "full";
+  const fullLines = fullSongLines(videoSecs);
+  const songWords = songWordsFor(genreKey, videoSecs);
+  const sceneWords = sceneWordsFor(genreKey, sceneSec, videoSecs);
+  // how much lyric falls in one scene
+  const perScene = fullSong
+    ? (sceneSec === 5 ? "1 line, 2 at the very most" : "2-3 lines")
+    : `about ${sceneWords} words — ${wordsAsLines(sceneWords)}`;
+  const songShape = fullSong
     ? `This video runs ${videoSecs} seconds and the music engine sings about one line every 4-5 seconds, so write a FULL song of about ${fullLines} short lyric lines in TOTAL (${perScene} per scene): verses that carry the story forward and a catchy chorus hook that comes back two or three times — WRITE THE CHORUS LINES OUT again every time they are sung. Keep every line short (10 words or fewer).`
-    : `Keep the song TIGHT: a short verse, a REPEATING chorus hook, a second short verse, then the chorus again. HARD LIMIT — the complete lyrics (ALL ${scenes} scene captions joined together) MUST total UNDER 560 characters (roughly 95 words); lean on the repeating chorus. The music engine expands these lyrics into a full-length track, so short and punchy is exactly right.`;
-  const captionShape = shortCut
-    ? `• CAPTION — the lyric line${hookLines > scenes ? "s" : ""} sung in THIS scene (${scenes === 1 ? "all of them" : sceneSec === 5 ? "1-2 lines each" : "2-3 lines each"}), separated by " / ". Read in order, the captions ARE the complete ${hookLines}-line ${genreLabel} hook. Authentic to ${genreLabel}.\n`
-    : fullSong
+    : `This video runs ${videoSecs} seconds. In this genre the music engine sings about ${SING_RATE[genreKey] || 2.2} words a second and STOPS when the words run out, so the lyrics must be the right LENGTH: about ${songWords} words in TOTAL (${wordsAsLines(songWords)}), spread evenly — ${perScene} in every scene. Count them. Too few and the song ends before the video does; and never more than ${Math.min(SHORT_ENGINE_WORDS + 3, Math.round(songWords * 1.12))} words or 570 characters (the engine takes no more). ${shortCut ? "It is a short cut: one hook, with no verse to set it up." : "A short verse, a hook that comes back, a second short verse, the hook again — WRITE THE HOOK OUT each time it is sung."}`;
+  const captionShape = fullSong
     ? `• CAPTION — the SHORT lyric line${sceneSec === 5 ? "" : "s"} sung in THIS scene (${perScene}), separated by " / ". Read in order, all ${scenes} captions joined ARE the complete ${genreLabel} song, with the chorus written out each time it returns. Authentic to ${genreLabel}.\n`
-    : `• CAPTION — the SHORT lyric line${sceneSec === 5 ? "" : "s"} sung in THIS scene (${perScene}), separated by " / ". Read in order, all ${scenes} captions joined ARE the complete (short, catchy) ${genreLabel} song with the chorus repeating. Authentic to ${genreLabel}; keep it well within the character limit.\n`;
+    : `• CAPTION — the lyric sung in THIS scene (${perScene}), its lines separated by " / ". EVERY scene has one — a cut scene too: the song does not stop for it. Read in order, all ${scenes} captions joined ARE the complete ${genreLabel} ${shortCut ? "hook" : "song"}. Authentic to ${genreLabel}.\n`;
   // WHAT EACH SCENE IS FILMED AS. A music video is a few performances intercut with cut scenes, and which
   // is which is decided by the shot list — so the writer is told, scene by scene, and writes a scene that
   // fits its shot (see SHOT_NOTES).

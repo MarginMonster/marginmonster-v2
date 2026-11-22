@@ -205,7 +205,7 @@ test("the scene length rides from the page to the render, and an old job is stil
   const gen = pipe.slice(pipe.indexOf("export async function generateMusicVideo"));
   assert.match(gen, /const D = sceneSecondsOf\(opts\.sceneSeconds\);/);
   assert.match(gen, /Math\.floor\(MV_MAX_SECONDS \/ D\)/);
-  assert.match(gen, /const fullLength = N \* D >= 60;/);
+  assert.match(gen, /const fullLength = songEngineFor\(N \* D\) === "full";/);
   assert.match(gen, /minSeconds: N \* D/);
   assert.match(gen, /const targetLen = N \* D;/);
   assert.match(gen, /durationSec: D,/);
@@ -240,12 +240,84 @@ test("the song writer is told what each scene is filmed as, who sings, and when 
   // the lyric budget goes by the video's length in seconds, not by a count of ten-second scenes
   assert.match(fn, /const videoSecs = scenes \* sceneSec;/);
   assert.match(fn, /const shortCut = videoSecs <= 20;/);
-  assert.match(fn, /const fullSong = videoSecs >= 60;/);
-  assert.match(fn, /const fullLines = Math\.round\(videoSecs \/ 4\.2\);/);
+  assert.match(fn, /const fullSong = songEngineFor\(videoSecs\) === "full";/);
+  assert.match(fn, /const fullLines = fullSongLines\(videoSecs\);/);
   // each scene comes back carrying what it was written as
   assert.match(fn, /\.\.\.\(tmpl\.lipSyncSinger \? \{ kind: outRoles\[i\] \} : \{\}\),/);
-  // the pipeline's own threshold for the full-length song engine is the same one
-  assert.match(read("app", "lib", "music-video-pipeline.server.ts"), /const fullLength = N \* D >= 60;/);
+  // the pipeline picks its song engine with the SAME function the writer wrote the song for
+  assert.match(read("app", "lib", "music-video-pipeline.server.ts"), /const fullLength = songEngineFor\(N \* D\) === "full";/);
+});
+
+test("the song is written to the length its engine will sing it at", async () => {
+  const { FULL_LINE_SECONDS, FULL_SONG_SECONDS, INTRO_KEEP_SECONDS, INTRO_MAX_SECONDS, SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, introCut, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLines } = await import("../app/lib/mv-song.ts");
+  // MEASURED 2026-11-22 (the same nine-word lines in each genre's own style, timed word by word, the
+  // short engine): rap 54 words in 17 s and 108 in 31 s; rock 78 in 24 s; pop 54 in 26 s, 81 in 37 s,
+  // 108 in 46 s; R&B 78 in 33 s; country 54 in 34 s and 57 in 26 s. The first live 30-second videos were
+  // given six lines and were out of words by 15–17 s — their second half repeated the first.
+  assert.ok(SING_RATE.rap >= 3 && SING_RATE.rap <= 3.6);
+  assert.ok(SING_RATE.rock >= 3 && SING_RATE.rock <= 3.4);
+  assert.ok(SING_RATE.pop >= 2 && SING_RATE.pop <= 2.4);
+  assert.ok(SING_RATE.rnb >= 2.1 && SING_RATE.rnb <= 2.5);
+  assert.ok(SING_RATE.country >= 1.7 && SING_RATE.country <= 2.2);
+  // 30 seconds of pop needs about 70 words — not the 45 or so of "a line a scene"
+  assert.ok(songWordsFor("pop", 30) >= 66 && songWordsFor("pop", 30) <= 76, String(songWordsFor("pop", 30)));
+  assert.ok(songWordsFor("pop", 20) >= 44 && songWordsFor("pop", 20) <= 52);
+  assert.ok(songWordsFor("country", 30) >= 60);
+  // every short-engine length: the words fit the engine, and — unless the engine's limit is what stops
+  // them — last to the end of the video at the genre's pace
+  for (const g of Object.keys(SING_RATE)) for (const s of MV_SECONDS) {
+    if (songEngineFor(s) !== "short") continue;
+    const w = songWordsFor(g, s);
+    assert.ok(w <= SHORT_ENGINE_WORDS, `${g} ${s}s: ${w} words do not fit the short engine`);
+    if (w < SHORT_ENGINE_WORDS) assert.ok(w / SING_RATE[g] >= s, `${g} ${s}s: ${w} words run out before the video ends`);
+  }
+  // rap and rock fill the engine at about half a minute
+  assert.equal(songWordsFor("rap", 30), SHORT_ENGINE_WORDS);
+  assert.ok(songWordsFor("rap", 20) < SHORT_ENGINE_WORDS);
+  // WHICH ENGINE: the full-length one always opens on about fifteen seconds of music (15.0 s without an
+  // [Intro] tag, 16.8 s with one), so it is for a minute and up only
+  assert.equal(FULL_SONG_SECONDS, 60);
+  for (const s of MV_SECONDS) assert.equal(songEngineFor(s), s >= 60 ? "full" : "short", `${s}s`);
+  // …at a line every 4-5 seconds, a touch generous so the song is trimmed, not repeated
+  assert.equal(fullSongLines(60), Math.round(60 / FULL_LINE_SECONDS));
+  assert.equal(fullSongLines(120), 29);
+  // a scene's share
+  assert.equal(sceneWordsFor("pop", 5), 11);
+  assert.equal(sceneWordsFor("rap", 5), 16);
+  assert.equal(sceneWordsFor("country", 10), 20);
+  // …which, where the engine's limit caps the song, is its share of what fits (30 s of rap: 95 words over six scenes)
+  assert.equal(sceneWordsFor("rap", 5, 30), 16);
+  assert.ok(sceneWordsFor("rap", 5, 45) <= 11, "45 s of rap cannot have 16 words a scene: the engine takes 95 in all");
+  assert.equal(wordsAsLines(11), "1–2 short lines");
+  assert.equal(wordsAsLines(30), "3–5 short lines");
+  // the writer is told the words, per video and per scene, and that the engine stops when they run out
+  const engine = read("app", "lib", "film-engine.server.ts");
+  const fn = engine.slice(engine.indexOf("export async function previewFilmTreatment"), engine.indexOf("// ---- Assembly"));
+  assert.match(fn, /about \$\{songWords\} words in TOTAL \(\$\{wordsAsLines\(songWords\)\}\), spread evenly — \$\{perScene\} in every scene/);
+  assert.match(fn, /STOPS when the words run out/);
+  assert.match(fn, /EVERY scene has one — a cut scene too: the song does not stop for it/);
+  assert.doesNotMatch(fn, /The music engine expands these lyrics into a full-length track/, "it does not — it stops, plays on without words, or makes words up");
+  assert.match(fn, /const sceneWords = sceneWordsFor\(genreKey, sceneSec, videoSecs\);/);
+
+  // THE OPENING: a song whose first word comes late is started a few seconds before it
+  assert.equal(introCut(0.6), 0, "a song that starts singing at once is left alone");
+  assert.equal(introCut(INTRO_MAX_SECONDS), 0);
+  assert.ok(Math.abs(introCut(15) - (15 - INTRO_KEEP_SECONDS)) < 1e-9, "the full-length engine's fifteen seconds become three and a half");
+  assert.ok(Math.abs(introCut(12.6) - (12.6 - INTRO_KEEP_SECONDS)) < 1e-9);
+  assert.equal(introCut(null), 0, "no words heard: nothing is cut");
+  assert.equal(introCut(NaN), 0);
+  const pipe = read("app", "lib", "music-video-pipeline.server.ts");
+  const gen = pipe.slice(pipe.indexOf("export async function generateMusicVideo"));
+  // …only a song WE made (never a track the maker brought), before it is fit to the video's length
+  assert.match(gen, /songPath = await trimSongIntro\(songPath, base\);\s+await ckpt\(\{ ckSong: songPath \}\);/);
+  assert.ok(gen.indexOf("if (!songPath && opts.songUrl)") < gen.indexOf("trimSongIntro(songPath, base)"));
+  assert.ok(gen.indexOf("trimSongIntro(songPath, base)") < gen.indexOf("fitSongToLength(songPath, targetLen)"));
+  const trim = pipe.slice(pipe.indexOf("async function trimSongIntro"), pipe.indexOf("/** Force the song to EXACTLY"));
+  assert.match(trim, /const cut = introCut\(first\);\s+if \(!\(cut > 0\.3\)\) return songPath;/);
+  assert.match(trim, /return songPath;\s+\}\s*$/, "anything that goes wrong leaves the song as it was");
+  // the full-length take is asked to be long enough to lose its opening and still cover the video
+  assert.match(gen, /minSeconds: N \* D \+ \(fullLength \? 12 : 0\)/);
+  assert.match(gen, /Vocals start right away — no instrumental intro\./);
 });
 
 test("lyrics are always new words — even when the brief names a famous song", () => {

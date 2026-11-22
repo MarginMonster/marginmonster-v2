@@ -37,7 +37,10 @@ import {
   castCheckPrompt, castFaults, castFix, castMotionLine, castStillPrompt, micFits, parseCastCheck, sceneCast, singerOf, soloEditPrompt, soloStillPrompt,
   type CastCheck,
 } from "./mv-cast";
-import { bestLag, featureMixFilter, featuredIn, pitchChangeFor, vocalGaps, voiceWindows, type Gap, type VoiceWindow } from "./mv-feature";
+import { bestLag, featureMixFilter, featuredIn, octaveShiftFor, pitchChangeOf, vocalGaps, voiceWindows, type Gap, type VoiceWindow } from "./mv-feature";
+import { medianHz, trackF0 } from "./pitch";
+import { sceneLineTimes } from "./lyric-sync";
+import { introCut, songEngineFor } from "./mv-song";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -158,6 +161,27 @@ function fullSongSheet(scenes: Array<{ caption?: string }>): string {
   }
   out.push("[Outro]");
   return out.join("\n");
+}
+
+/** CUT A LONG OPENING DOWN. The song engines often play ten to fifteen seconds of music before the first
+ *  word (the full-length one always does), and a video's singer is on camera within the first few
+ *  seconds — with nothing to sing. The words are heard (whisperx), and if the first one comes later than
+ *  a few seconds the song is started a few seconds before it, with a quick fade in. Anything that goes
+ *  wrong leaves the song as it was. */
+async function trimSongIntro(songPath: string, base: string): Promise<string> {
+  try {
+    const heard = wordsFromWhisperx(await repPoll(await createWhisperx(await hostRender(base, songPath), null), 4 * 60_000, "song-intro"));
+    const first = heard.length ? Math.min(...heard.map((w) => w.start)) : null;
+    const cut = introCut(first);
+    if (!(cut > 0.3)) return songPath;
+    const out = path.join(RENDERS(), `mvintro-${Date.now()}-${rid()}.mp3`);
+    const r = await runFfmpeg(["-y", "-ss", cut.toFixed(2), "-i", songPath, "-af", "afade=t=in:st=0:d=0.35", "-c:a", "libmp3lame", "-q:a", "2", out]);
+    if (r.status === 0 && fs.existsSync(out) && ffprobeDuration(out) > 5) {
+      console.log(`[musicvideo] the song opened on ${first!.toFixed(1)}s of music — started ${cut.toFixed(1)}s in, so the first word comes at ${(first! - cut).toFixed(1)}s`);
+      return out;
+    }
+  } catch (e) { console.error(`[musicvideo] could not check the song's opening — it is used as it came: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+  return songPath;
 }
 
 /** Force the song to EXACTLY `targetSec` seconds so the finished video lands on the length the merchant
@@ -741,32 +765,74 @@ async function alignTake(songPath: string, takePath: string): Promise<string> {
   return takePath;
 }
 
+/** WHERE THE LEAD VOCAL SITS (median Hz) in these stretches of a song — read off the finished mix, with
+ *  no separation: the mix is cut to the band a sung voice lives in and pitch-tracked. Measured against
+ *  the separated vocal of a real song it agreed to 1 Hz (261 vs 262), window by window. Null when there
+ *  is too little singing to tell. Works through the song in slices, yielding between them (the worker
+ *  shares its event loop with every request). */
+async function songVocalPitch(songPath: string, windows: Array<{ start: number; end: number }>): Promise<number | null> {
+  const raw = path.join(RENDERS(), `vp-${Date.now()}-${rid()}.raw`);
+  try {
+    const r = await runFfmpeg(["-y", "-i", songPath, "-vn", "-af", "highpass=f=180,lowpass=f=1200", "-ac", "1", "-ar", "16000", "-f", "s16le", raw]);
+    if (r.status !== 0 || !fs.existsSync(raw)) return null;
+    const b = fs.readFileSync(raw);
+    const n = b.length >> 1;
+    const f0s: number[] = [];
+    const SLICE = 16000 * 2;
+    for (const w of windows) {
+      const to = Math.min(n, Math.round(w.end * 16000));
+      for (let at = Math.max(0, Math.round(w.start * 16000)); at < to; at += SLICE) {
+        const len = Math.min(SLICE, to - at);
+        if (len < 4000) break;
+        const x = new Float32Array(len);
+        for (let i = 0; i < len; i++) x[i] = b.readInt16LE((at + i) * 2) / 32768;
+        for (const f of trackF0(x, 16000)) f0s.push(f);
+        await new Promise<void>((res) => setImmediate(res));
+      }
+    }
+    return medianHz(f0s);
+  } catch { return null; } finally { try { fs.rmSync(raw, { force: true }); } catch { /* temp file */ } }
+}
+
 /** THE FEATURED VERSE, as sound (mv-feature.ts has the rules): find the breaths in the song, decide
  *  when each co-star's voice is heard, make each one's take of the whole song (their voice model, then
- *  the re-voice — an octave up or down when they are not the lead's sex), and cross-fade the takes into
- *  one track of exactly the song's length. Null when no co-star has a stretch to sing; throws when the
- *  takes could not be made (the caller keeps the song as it was). */
+ *  the re-voice — moved an octave only when that brings it into their own range), and cross-fade the
+ *  takes into one track of exactly the song's length. Null when no co-star has a stretch to sing; throws
+ *  when the takes could not be made (the caller keeps the song as it was). */
 async function mixFeaturedVoices(o: {
   songPath: string; base: string; singers: number[]; roles: Array<"perform" | "broll">; D: number;
-  /** `pitch` = how the VOCAL moves for this singer (an octave, or not); `speechPitch` = the speaking
-   *  signature their voice is cast at, which their voice model is learned at */
-  featured: Array<{ who: number; name: string; voiceId: string; pitch: "no-change" | "male-to-female" | "female-to-male"; speechPitch?: number }>;
+  /** the scenes (for their lyric lines) — absent for a track the maker brought, whose words are not ours */
+  scenes?: Array<{ caption?: string }>;
+  /** `gender` decides which octave their verse is sung in (with where the song sits); `speechPitch` =
+   *  the speaking signature their voice is cast at, which their voice model is learned at */
+  featured: Array<{ who: number; name: string; voiceId: string; gender?: "m" | "f"; speechPitch?: number }>;
 }): Promise<{ path: string; names: string[]; windows: VoiceWindow[] } | null> {
   const total = o.singers.length * o.D;
   const songUrl = await hostRender(o.base, o.songPath);
-  // 1) the breaths — so one voice hands over to the other between words. Not finding any is no failure:
-  //    the voice then changes exactly where the scenes do.
+  // 1) the words as they are sung: the breaths between them (so one voice hands over to the other
+  //    between words), and where each scene's own lines fall (so a co-star comes in on THEIR first
+  //    line). Not hearing them is no failure: the voice then changes exactly where the scenes do.
   let gaps: Gap[] = [];
-  try { gaps = vocalGaps(wordsFromWhisperx(await repPoll(await createWhisperx(songUrl, null), 4 * 60_000, "feature-words"))); }
-  catch (e) { console.error(`[musicvideo] could not hear the words for the featured verse — the voice changes on the scene: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
-  const windows = voiceWindows({ singers: o.singers, roles: o.roles, D: o.D, gaps });
+  let sung: Array<{ scene: number; start: number; end: number }> = [];
+  try {
+    const heard = wordsFromWhisperx(await repPoll(await createWhisperx(songUrl, null), 4 * 60_000, "feature-words"));
+    gaps = vocalGaps(heard);
+    sung = sceneLineTimes(o.scenes || [], heard);
+  } catch (e) { console.error(`[musicvideo] could not hear the words for the featured verse — the voice changes on the scene: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+  const windows = voiceWindows({ singers: o.singers, roles: o.roles, D: o.D, gaps, sung });
   const singing = o.featured.filter((f) => windows.some((w) => w.who === f.who));
   if (!singing.length) return null;
   // 2) each co-star's take of the whole song, side by side (a voice is learned once, then kept)
   const takes = (await Promise.all(singing.map(async (f) => {
     try {
+      // which octave: where the song's vocal sits in THEIR stretches (the whole song if that cannot be
+      // read), against where their own voice sits
+      const mine = windows.filter((w) => w.who === f.who);
+      const leadHz = (await songVocalPitch(o.songPath, mine)) ?? (await songVocalPitch(o.songPath, [{ start: 0, end: total }]));
+      const shift = octaveShiftFor(leadHz, f.gender);
+      console.log(`[musicvideo] ${f.name}'s verse: the song's vocal sits at ${leadHz ? `${Math.round(leadHz)} Hz` : "an unknown pitch"} → ${shift ? `sung an octave ${shift > 0 ? "up" : "down"}` : "sung where it is"}`);
       const model = await ensureVoiceModel(f.voiceId, o.base, { pitch: f.speechPitch });
-      const covered = await coverSongInVoice(songUrl, model.url, { pitchChange: f.pitch });
+      const covered = await coverSongInVoice(songUrl, model.url, { pitchChange: pitchChangeOf(shift) });
       const level = await matchLoudness(covered, o.songPath);
       return { ...f, file: await alignTake(o.songPath, level), trained: model.trained };
     } catch (e) {
@@ -900,10 +966,18 @@ export async function generateMusicVideo(opts: {
     // Lead the style with the singer's gender so the VOICE matches the avatar (tester: a female
     // character was singing in a male voice). Empty when unknown → minimax picks as before.
     const voiceSex = opts.artistGender === "f" ? "female vocals, a woman singing lead. " : opts.artistGender === "m" ? "male vocals, a man singing lead. " : "";
+    // WHICH ENGINE (mv-song.ts — the same answer the writer was given, so the song was written for it):
     // 1:00 and longer → the full-length song engine: one real track sized to the video, sent as a tagged
     // sheet, instead of a one-minute song repeated to fill the time.
-    const fullLength = N * D >= 60;
-    songPath = await singToDisk(fullLength ? fullSongSheet(scenes) : lyrics, `${voiceSex}${g.song}. ${treatment.musicMood || ""}`.slice(0, 300), { fullLength, minSeconds: N * D });
+    const fullLength = songEngineFor(N * D) === "full";
+    // the short engine usually starts singing at once, but not always (measured: a country and an R&B
+    // song opened on 10–12 s of music) — asked not to, and trimmed below if it does anyway
+    const noIntro = fullLength ? "" : " Vocals start right away — no instrumental intro.";
+    songPath = await singToDisk(fullLength ? fullSongSheet(scenes) : lyrics, `${voiceSex}${g.song}.${noIntro} ${treatment.musicMood || ""}`.slice(0, 300), { fullLength, minSeconds: N * D + (fullLength ? 12 : 0) });
+    // THE OPENING: the full-length engine always plays about fifteen seconds of music before the first
+    // word, and the short one sometimes ten — and a singer on camera in those seconds has nothing to
+    // sing. Cut the opening down to a few seconds of pick-up (mv-song.ts introCut).
+    songPath = await trimSongIntro(songPath, base);
     await ckpt({ ckSong: songPath });
   }
   // EXACT LENGTH — the finished video must be the length the merchant PICKED (and was billed for), not
@@ -950,12 +1024,12 @@ export async function generateMusicVideo(opts: {
     else {
       const voiceFor = (name: string) => (opts.featureVoices || []).find((v) => v && v.voiceId && singerOf({ singer: v.name }, [name]) === 0);
       const genderFor = (name: string): "m" | "f" | undefined => voiceFor(name)?.gender || (opts.castGenders || []).find((c) => c && singerOf({ singer: c.name }, [name]) === 0)?.gender;
-      const cast = featuredWho.map((who) => ({ who, name: extraNames[who], voiceId: voiceFor(extraNames[who])?.voiceId || "", speechPitch: voiceFor(extraNames[who])?.pitch || 0, pitch: pitchChangeFor(opts.artistGender, genderFor(extraNames[who])) })).filter((f) => f.voiceId);
+      const cast = featuredWho.map((who) => ({ who, name: extraNames[who], voiceId: voiceFor(extraNames[who])?.voiceId || "", speechPitch: voiceFor(extraNames[who])?.pitch || 0, gender: genderFor(extraNames[who]) })).filter((f) => f.voiceId);
       if (!cast.length) console.error(`[musicvideo] a featured verse was written for ${featuredWho.map((w) => extraNames[w]).join(", ")} but no voice came with them — the artist sings it`);
       for (let attempt = 0; attempt < 2 && cast.length && !featuredNames.length; attempt++) {
         try {
           const t0 = Date.now();
-          const mixed = await mixFeaturedVoices({ songPath, base, singers, roles, D, featured: cast });
+          const mixed = await mixFeaturedVoices({ songPath, base, singers, roles, D, featured: cast, scenes: opts.songUrl ? undefined : scenes });
           if (!mixed) break; // nothing of theirs to hear (their scenes were removed)
           songPath = mixed.path;
           featuredNames = mixed.names;

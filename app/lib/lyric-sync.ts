@@ -111,6 +111,35 @@ export function lyricWordTimes(lyricLines: string[], heard: WordT[]): LyricTimin
   return { lines: outLines, windows, timed, matched, total: n };
 }
 
+/** WHEN each scene's own lyric lines are actually sung: for every line the song really sings, the scene
+ *  it was written for and the time of its first and last word. (For a featured verse — mv-feature.ts —
+ *  so a co-star's voice comes in on THEIR first line rather than on the scene.) Lines the song never
+ *  reached are simply absent. */
+export function sceneLineTimes(scenes: Array<{ caption?: string }>, heard: WordT[]): Array<{ scene: number; start: number; end: number }> {
+  const all: Array<{ line: string; scene: number }> = [];
+  scenes.forEach((s, i) => (s?.caption || "").split(/\s*\/\s*|\n/).map((l) => drawable(l.replace(/\s+/g, " ").trim())).filter(Boolean).forEach((line) => all.push({ line, scene: i })));
+  const t = lyricWordTimes(all.map((x) => x.line), heard);
+  // the timed words come line by line, `last` closing each kept line
+  const spans: Array<{ start: number; end: number }> = [];
+  let open: { start: number; end: number } | null = null;
+  for (const w of t.timed) {
+    if (!open) open = { start: w.start, end: w.end };
+    open.start = Math.min(open.start, w.start);
+    open.end = Math.max(open.end, w.end);
+    if (w.last) { spans.push(open); open = null; }
+  }
+  // the kept lines are, in order, some of the written ones: walk both to find which scene each belongs to
+  const out: Array<{ scene: number; start: number; end: number }> = [];
+  let k = 0;
+  for (let q = 0; q < t.lines.length && q < spans.length; q++) {
+    while (k < all.length && all[k].line !== t.lines[q]) k++;
+    if (k >= all.length) break;
+    out.push({ scene: all[k].scene, start: spans[q].start, end: spans[q].end });
+    k++;
+  }
+  return out;
+}
+
 /** The lyric lines of a music video, from its scenes: each scene's lyric chunk, its lines split on " / ". */
 export function lyricLinesOf(scenes: Array<{ caption?: string }>): string[] {
   return scenes.flatMap((s) => (s.caption || "").split(/\s*\/\s*|\n/)).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);

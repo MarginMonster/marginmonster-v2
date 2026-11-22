@@ -50,8 +50,13 @@ export function vocalGaps(words: Array<{ start: number; end: number }>, minGap =
  *  is a performance, `D` the length of a scene. Scenes sung by the same person in a row are one stretch;
  *  between two stretches the voice changes ONCE, at the breath nearest to where the scenes change — but
  *  only inside the cut scenes between the two singers' performances, so nobody is ever seen singing in
- *  somebody else's voice. With no breath to be found there it changes exactly where the scenes do. */
-export function voiceWindows(o: { singers: Who[]; roles: ShotRole[]; D: number; gaps?: Gap[] }): VoiceWindow[] {
+ *  somebody else's voice. With no breath to be found there it changes exactly where the scenes do.
+ *
+ *  `sung` (optional) is where each scene's WRITTEN lines were actually sung — the song engine keeps its
+ *  own time, so a scene's lyric rarely starts on the scene. When a co-star's first line (or last) falls
+ *  inside the cut scenes where the voice is free to change, the change is aimed THERE instead of at the
+ *  scene: they sing the verse that was written for them, whole, and not the tail of someone else's line. */
+export function voiceWindows(o: { singers: Who[]; roles: ShotRole[]; D: number; gaps?: Gap[]; sung?: Array<{ scene: number; start: number; end: number }> }): VoiceWindow[] {
   const n = Math.min(o.singers.length, o.roles.length);
   const D = o.D;
   if (!n || !(D > 0)) return [];
@@ -65,21 +70,34 @@ export function voiceWindows(o: { singers: Who[]; roles: ShotRole[]; D: number; 
   }
   if (runs.length < 2) return runs[0] && runs[0].who >= 0 ? [{ who: runs[0].who, start: 0, end: total }] : [];
   const gaps = (o.gaps || []).filter((g) => g && Number.isFinite(g.t)).sort((a, b) => a.t - b.t);
+  /** where a stretch's own written lines are sung: from the first line's start to the last line's end */
+  const sungSpan = (run: { from: number; to: number }): { start: number; end: number } | null => {
+    const mine = (o.sung || []).filter((s) => s && s.scene >= run.from && s.scene <= run.to && Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start);
+    return mine.length ? { start: Math.min(...mine.map((s) => s.start)), end: Math.max(...mine.map((s) => s.end)) } : null;
+  };
   const switches: number[] = [];
   let prev = 0;
   for (let r = 0; r + 1 < runs.length; r++) {
     const a = runs[r], b = runs[r + 1];
-    const T = b.from * D;
+    const edge = b.from * D;
     // the last moment the outgoing singer is SEEN singing, and the first moment the incoming one is
     let lo = a.from * D;
     for (let i = a.to; i >= a.from; i--) if (o.roles[i] === "perform") { lo = (i + 1) * D; break; }
     let hi = (b.to + 1) * D;
     for (let i = b.from; i <= b.to; i++) if (o.roles[i] === "perform") { hi = i * D; break; }
     // two performances back to back leave no cut scene to change in: look a little either side
-    if (hi - lo < 0.5) { lo = T - 0.75; hi = T + 0.75; }
+    if (hi - lo < 0.5) { lo = edge - 0.75; hi = edge + 0.75; }
     // never further than one scene from where the scenes change, never before the last change
-    lo = Math.max(lo, T - D, prev + 1, 0.2);
-    hi = Math.min(hi, T + D, total - 0.2);
+    lo = Math.max(lo, edge - D, prev + 1, 0.2);
+    hi = Math.min(hi, edge + D, total - 0.2);
+    // WHERE to aim: where the scenes change — or, when the co-star's own lines are sung inside the
+    // stretch the voice is free to change in, at the start of their first line (coming in) or the end
+    // of their last (going out)
+    let T = edge;
+    const comingIn = b.who >= 0 ? sungSpan(b) : null;
+    const goingOut = a.who >= 0 ? sungSpan(a) : null;
+    if (comingIn && comingIn.start - 0.1 >= lo && comingIn.start - 0.1 <= hi) T = comingIn.start - 0.1;
+    else if (goingOut && goingOut.end + 0.1 >= lo && goingOut.end + 0.1 <= hi) T = goingOut.end + 0.1;
     let at = Math.max(lo, Math.min(hi, T));
     if (hi > lo) {
       let best = -1;
@@ -134,13 +152,41 @@ export function featureMixFilter(voices: Array<Array<{ start: number; end: numbe
   return f.join(";");
 }
 
-/** How the re-voice should move the VOCAL (never the music) when the co-star is not the lead's sex: the
- *  song was sung in the lead's range, and a woman's voice an octave down — or a man's an octave up — is
- *  not their voice. An octave keeps the song in key. */
-export function pitchChangeFor(lead: "m" | "f" | undefined, featured: "m" | "f" | undefined): "no-change" | "male-to-female" | "female-to-male" {
-  if (!lead || !featured || lead === featured) return "no-change";
-  return lead === "m" ? "male-to-female" : "female-to-male";
+/* ---- which octave the co-star sings in ----
+ * The re-voice keeps whatever pitch the song was sung at, and can move the VOCAL (never the music) by an
+ * octave — an octave keeps the song in key. The first cut of this moved it by the two singers' sexes: a
+ * woman's verse on a man's song went UP an octave. Then the songs were measured (2026-11-22, six finished
+ * videos): the music engine's lead sits at about 250–280 Hz WHATEVER its sex — a tenor's range, and a
+ * comfortable one for a woman. An octave up from there is over 500 Hz. So the octave is chosen from where
+ * the song actually is and where the co-star's voice naturally sits: it moves only when that is clearly
+ * the better fit. */
+
+/** Where a sung voice is comfortable, by the singer's sex (Hz — the middle of an everyday pop range). */
+export const SING_CENTRE: Record<"m" | "f", number> = { f: 290, m: 165 };
+/** Where the music engine's lead vocal has sat when measured (see above) — the stand-in when a song's
+ *  own pitch cannot be read. */
+export const TYPICAL_LEAD_HZ = 265;
+
+/** A move must be better than staying by this much (in octaves) — a near-tie never moves the verse. Small
+ *  enough that a man's verse comes down across the whole range the engine's leads were measured at
+ *  (247–281 Hz), so two songs a few hertz apart are not treated differently. */
+export const OCTAVE_MARGIN = 0.1;
+
+/** How far to move the co-star's VOCAL, in semitones: -12, 0 or +12. `leadHz` is where the song's vocal
+ *  sits (null = could not be read). The verse stays where the song is unless an octave away is closer to
+ *  the singer's own range by OCTAVE_MARGIN. */
+export function octaveShiftFor(leadHz: number | null | undefined, singer: "m" | "f" | undefined): -12 | 0 | 12 {
+  if (singer !== "m" && singer !== "f") return 0;
+  const f = leadHz && leadHz > 60 && leadHz < 900 ? leadHz : TYPICAL_LEAD_HZ;
+  const off = (s: number): number => Math.abs(Math.log2((f * Math.pow(2, s / 12)) / SING_CENTRE[singer]));
+  const down = off(-12), stay = off(0), up = off(12);
+  if (down < up) return stay - down > OCTAVE_MARGIN ? -12 : 0;
+  return stay - up > OCTAVE_MARGIN ? 12 : 0;
 }
+
+/** That move, in the words the re-voice model takes (its two settings are simply an octave up and an
+ *  octave down, whoever is singing). */
+export const pitchChangeOf = (shift: number): "no-change" | "male-to-female" | "female-to-male" => (shift > 0 ? "male-to-female" : shift < 0 ? "female-to-male" : "no-change");
 
 /** How far take `b` runs BEHIND take `a` of the same song, in seconds (negative = ahead): the shift at
  *  which they line up best. The re-voice hands back the same song, but re-encoded, and an encoder may add

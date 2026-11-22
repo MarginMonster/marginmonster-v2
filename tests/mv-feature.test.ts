@@ -20,11 +20,12 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  ARTIST, FEATURE_MIN_SECONDS,
-  bestLag, defaultFeaturePlan, envelopeExpr, featureMixFilter, featureRoles, featuredIn, pitchChangeFor, planIsSound, vocalGaps, voiceWindows,
+  ARTIST, FEATURE_MIN_SECONDS, OCTAVE_MARGIN, SING_CENTRE, TYPICAL_LEAD_HZ,
+  bestLag, defaultFeaturePlan, envelopeExpr, featureMixFilter, featureRoles, featuredIn, octaveShiftFor, pitchChangeOf, planIsSound, vocalGaps, voiceWindows,
   type Gap,
 } from "../app/lib/mv-feature.ts";
 import { sceneCast, singerOf } from "../app/lib/mv-cast.ts";
+import { sceneLineTimes } from "../app/lib/lyric-sync.ts";
 import { SHOT_ROLES, defaultRole, sceneCountFor, shotSlot, type ShotRole } from "../app/lib/mv-pace.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -127,6 +128,65 @@ test("the voice changes between the two singers' performances, in a breath — n
       }
     }
   }
+});
+
+test("the co-star comes in on their own first line when it is sung where the voice is free to change", () => {
+  // 30 seconds fast: cut, PERFORM (artist), cut, PERFORM (co-star), cut (co-star), cut
+  const roles: ShotRole[] = [B, P, B, P, B, B];
+  const singers = [ARTIST, ARTIST, ARTIST, 0, 0, ARTIST];
+  const gaps = breaths(0.7, 30, 2.3); // …9.9, 12.2, 14.5, 16.8, 19.1, 21.4, 23.7, 26.0…
+  // with nothing known about the lines: the breath nearest the scene change (14.5 in, 26.0 or 23.7 out)
+  assert.ok(Math.abs(voiceWindows({ singers, roles, D: 5, gaps })[0].start - 14.5) < 1e-9);
+  // THEIR first line is sung from 12.4 s — in the cut scene before their shot — so they come in there
+  // (at the breath just before it), not two seconds into their own line
+  const early = voiceWindows({ singers, roles, D: 5, gaps, sung: [{ scene: 1, start: 5.2, end: 9.6 }, { scene: 3, start: 12.4, end: 16.5 }, { scene: 4, start: 17.0, end: 21.2 }, { scene: 5, start: 26.2, end: 29.0 }] });
+  assert.ok(Math.abs(early[0].start - 12.2) < 1e-9, `in at ${early[0].start}`);
+  // …and go out when their LAST line ends (21.2 s → the breath at 21.4), not at the scene edge
+  assert.ok(Math.abs(early[0].end - 21.4) < 1e-9, `out at ${early[0].end}`);
+  // their performance (15–20 s) is still wholly theirs
+  assert.ok(early[0].start <= 15 && early[0].end >= 20);
+  // a first line sung while the ARTIST is still on camera (8 s) cannot pull the voice into the artist's
+  // shot: the change stays where the scenes do
+  const tooEarly = voiceWindows({ singers, roles, D: 5, gaps, sung: [{ scene: 3, start: 8.0, end: 11.0 }] });
+  assert.ok(tooEarly[0].start >= 10 && Math.abs(tooEarly[0].start - 14.5) < 1e-9, `in at ${tooEarly[0].start}`);
+  // a last line that ends inside their own shot cannot cut the voice off mid-shot either
+  const shortVerse = voiceWindows({ singers, roles, D: 5, gaps, sung: [{ scene: 3, start: 14.6, end: 18.0 }] });
+  assert.ok(shortVerse[0].end >= 20, `out at ${shortVerse[0].end}`);
+  // lines the song never sang (cut by the length fit) simply are not there
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, gaps, sung: [] }), voiceWindows({ singers, roles, D: 5, gaps }));
+  // junk is ignored
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, gaps, sung: [{ scene: 3, start: NaN, end: 4 }, { scene: 3, start: 9, end: 2 }] as never }), voiceWindows({ singers, roles, D: 5, gaps }));
+});
+
+test("where a scene's own lines are sung is read off the song", () => {
+  const scenes = [
+    { caption: "City lights are calling tonight" },
+    { caption: "We keep driving / can't let go" },
+    { caption: "" },
+    { caption: "I keep circling back to your name" },
+  ];
+  // the song as heard: line 1 at 1 s, scene 2's two lines at 4 s and 6.5 s, scene 4's at 11 s
+  const w = (word: string, start: number) => ({ word, start, end: start + 0.3 });
+  const heard = [
+    w("City", 1.0), w("lights", 1.4), w("are", 1.8), w("calling", 2.1), w("tonight", 2.6),
+    w("We", 4.0), w("keep", 4.3), w("driving", 4.7),
+    w("can't", 6.5), w("let", 6.9), w("go", 7.2),
+    w("I", 11.0), w("keep", 11.3), w("circling", 11.6), w("back", 12.0), w("to", 12.3), w("your", 12.6), w("name", 12.9),
+  ];
+  const t = sceneLineTimes(scenes, heard);
+  assert.deepEqual(t.map((x) => x.scene), [0, 1, 1, 3]);
+  assert.ok(Math.abs(t[0].start - 1.0) < 1e-9 && Math.abs(t[0].end - 2.9) < 1e-9);
+  assert.ok(Math.abs(t[3].start - 11.0) < 1e-9 && Math.abs(t[3].end - 13.2) < 1e-9);
+  // a line the song never reached is absent, and the ones after it are still placed on their own scenes
+  const cut = sceneLineTimes(scenes, heard.slice(0, 11));
+  assert.deepEqual(cut.map((x) => x.scene), [0, 1, 1]);
+  assert.deepEqual(sceneLineTimes(scenes, []), []);
+  assert.deepEqual(sceneLineTimes([], heard), []);
+  // the pipeline hands these to the voice windows — and not for a track the maker brought
+  const pipe = read("app", "lib", "music-video-pipeline.server.ts");
+  assert.match(pipe, /sung = sceneLineTimes\(o\.scenes \|\| \[\], heard\);/);
+  assert.match(pipe, /voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps, sung \}\)/);
+  assert.match(pipe, /scenes: opts\.songUrl \? undefined : scenes \}\)/);
 });
 
 test("with no breath to be found the voice changes exactly where the scenes do", () => {
@@ -246,13 +306,39 @@ test("ffmpeg makes that mix: the co-star's take for their verse, the lead's ever
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("a singer of the other sex is moved an octave — the vocal alone, so the song stays in key", () => {
-  assert.equal(pitchChangeFor("m", "f"), "male-to-female");
-  assert.equal(pitchChangeFor("f", "m"), "female-to-male");
-  assert.equal(pitchChangeFor("m", "m"), "no-change");
-  assert.equal(pitchChangeFor("f", "f"), "no-change");
-  assert.equal(pitchChangeFor(undefined, "f"), "no-change", "not knowing is no reason to move anything");
-  assert.equal(pitchChangeFor("m", undefined), "no-change");
+test("the co-star's verse is sung where the song is — moved an octave only when that is clearly their range", () => {
+  // MEASURED 2026-11-22 on six finished videos: the engine's lead vocal sat at 247–281 Hz in five of
+  // them (418 in one), men and women alike. The first cut moved a woman's verse on a man's song UP an
+  // octave — to over 500 Hz.
+  for (const hz of [247, 261, 276, 281]) {
+    assert.equal(octaveShiftFor(hz, "f"), 0, `a woman's verse at ${hz} Hz stays where it is`);
+    assert.equal(octaveShiftFor(hz, "m"), -12, `a man's verse at ${hz} Hz comes down an octave to his own range`);
+  }
+  // a genuinely low lead (a deep rap voice) → a woman's verse goes up
+  assert.equal(octaveShiftFor(125, "f"), 12);
+  assert.equal(octaveShiftFor(125, "m"), 0);
+  // a high lead → a man's verse comes down; a woman's stays (a near-tie never moves it)
+  assert.equal(octaveShiftFor(418, "m"), -12);
+  assert.equal(octaveShiftFor(418, "f"), 0);
+  assert.equal(octaveShiftFor(560, "f"), -12, "…until it is clearly out of her range");
+  // the pitch could not be read → what the engine usually sings at
+  assert.equal(TYPICAL_LEAD_HZ, 265);
+  assert.equal(octaveShiftFor(null, "f"), octaveShiftFor(TYPICAL_LEAD_HZ, "f"));
+  assert.equal(octaveShiftFor(undefined, "m"), octaveShiftFor(TYPICAL_LEAD_HZ, "m"));
+  assert.equal(octaveShiftFor(0, "f"), 0);
+  // not knowing who is singing is no reason to move anything
+  assert.equal(octaveShiftFor(265, undefined), 0);
+  // every move lands nearer the singer's own range than staying would have
+  for (const who of ["m", "f"] as const) for (let hz = 90; hz <= 700; hz += 7) {
+    const s = octaveShiftFor(hz, who);
+    const off = (x: number) => Math.abs(Math.log2((hz * Math.pow(2, x / 12)) / SING_CENTRE[who]));
+    if (s !== 0) assert.ok(off(s) < off(0) - OCTAVE_MARGIN + 1e-9, `${who} at ${hz} Hz moved ${s}`);
+    else assert.ok(Math.min(off(-12), off(12)) >= off(0) - OCTAVE_MARGIN - 1e-9, `${who} at ${hz} Hz should have moved`);
+  }
+  // the re-voice model's two settings are simply an octave up and an octave down
+  assert.equal(pitchChangeOf(12), "male-to-female");
+  assert.equal(pitchChangeOf(-12), "female-to-male");
+  assert.equal(pitchChangeOf(0), "no-change");
   const voice = read("app", "lib", "singing-voice.server.ts");
   assert.match(voice, /pitchChange\?: "no-change" \| "male-to-female" \| "female-to-male"/);
   assert.match(voice, /pitch_change: pitchChange, output_format: "mp3",/);
@@ -323,10 +409,15 @@ test("the render: the verse is re-voiced and mixed, the co-star leads their shot
   assert.match(queue, /featureVoices: Array\.isArray\(payload\.filmFeatureVoices\)/);
   // the mix: breaths → stretches → each co-star's take (their model, an octave if need be, levelled,
   // lined up) → one track of exactly the song's length
-  assert.match(mix, /vocalGaps\(wordsFromWhisperx\(/);
-  assert.match(mix, /const windows = voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps \}\);/);
+  assert.match(mix, /const heard = wordsFromWhisperx\(await repPoll\(await createWhisperx\(songUrl, null\)/);
+  assert.match(mix, /gaps = vocalGaps\(heard\);/);
+  assert.match(mix, /const windows = voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps, sung \}\);/);
   assert.match(mix, /const model = await ensureVoiceModel\(f\.voiceId, o\.base, \{ pitch: f\.speechPitch \}\);/);
-  assert.match(mix, /coverSongInVoice\(songUrl, model\.url, \{ pitchChange: f\.pitch \}\)/);
+  assert.match(mix, /coverSongInVoice\(songUrl, model\.url, \{ pitchChange: pitchChangeOf\(shift\) \}\)/);
+  // …the octave coming from where the song's vocal sits in THEIR stretches, read off the mix
+  assert.match(mix, /const leadHz = \(await songVocalPitch\(o\.songPath, mine\)\) \?\? \(await songVocalPitch\(o\.songPath, \[\{ start: 0, end: total \}\]\)\);/);
+  assert.match(mix, /const shift = octaveShiftFor\(leadHz, f\.gender\);/);
+  assert.match(pipe, /"-af", "highpass=f=180,lowpass=f=1200", "-ac", "1", "-ar", "16000", "-f", "s16le", raw\]/);
   assert.match(mix, /matchLoudness\(covered, o\.songPath\)/);
   assert.match(mix, /alignTake\(o\.songPath, level\)/);
   assert.match(mix, /featureMixFilter\(takes\.map\(\(t\) => windows\.filter\(\(w\) => w\.who === t\.who\)\), total\)/);
