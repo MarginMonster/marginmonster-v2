@@ -282,7 +282,7 @@ test("the song is written to the length its engine will sing it at", async () =>
   assert.equal(fullSongLines(60), Math.round(60 / FULL_LINE_SECONDS));
   assert.equal(fullSongLines(120), 29);
   // a scene's share
-  assert.equal(sceneWordsFor("pop", 5), 11);
+  assert.equal(sceneWordsFor("pop", 5), 10);
   assert.equal(sceneWordsFor("rap", 5), 16);
   assert.equal(sceneWordsFor("country", 10), 20);
   // …which, where the engine's limit caps the song, is its share of what fits (30 s of rap: 95 words over six scenes)
@@ -347,7 +347,7 @@ test("lyrics are always new words — even when the brief names a famous song", 
 test("a scene's lyric is a range with both ends, and a sheet that misses it is counted and rewritten", async () => {
   const { lyricFit, lyricWords, sceneWordRange, sceneWordsFor, wordsAsLineCount } = await import("../app/lib/mv-song.ts");
   // the range: a word either side of what fits in the scene
-  assert.deepEqual(sceneWordRange("pop", 5, 30), { lo: 10, hi: 12 });
+  assert.deepEqual(sceneWordRange("pop", 5, 30), { lo: 9, hi: 11 });
   assert.deepEqual(sceneWordRange("rap", 5, 30), { lo: 15, hi: 17 });
   assert.deepEqual(sceneWordRange("country", 10, 30), { lo: 19, hi: 21 });
   // …said as lines the writer can count to
@@ -361,7 +361,8 @@ test("a scene's lyric is a range with both ends, and a sheet that misses it is c
   assert.equal(lyricWords(" / "), 0);
   assert.equal(lyricWords(undefined), 0);
 
-  // THE THREE LIVE SHEETS for a 30-second pop video of six five-second scenes (about 66 words fit):
+  // THE LIVE SHEETS for a 30-second pop video of six five-second scenes (about 60 words fit — pop is
+  // sung at 2.0 words a second on the live videos: 59 in 29.0 s, 60 in 29.3 s, 55 in 28.8 s):
   // 1) 2026-11-22, asked for "about 11 words": 13,13,13,14,7,14 — the song ran a scene late
   const long = ["City lights spinning, we keep driving slow / Can't let go, can't let go", "Windows down, your hand in mine tonight / Streetlights kiss your eyes so bright", "Engine hums, the night won't let us sleep / This feeling's ours to keep", "I keep circling back to you, my love / Can't let go, can't let go", "Two hearts stuck in a midnight glow", "So drive with me till the morning shows / Can't let go, can't let go"];
   // 2) the same day, asked for "about 11, never more than 13": 8,9,7,9,9,8 — out of words at 23 seconds
@@ -374,9 +375,9 @@ test("a scene's lyric is a range with both ends, and a sheet that misses it is c
   assert.equal(fitShort.total, 50);
   assert.ok(fitShort.off > 0, "too short: under nine-tenths of what the video needs");
   // 3) a sheet inside the range fits
-  const right = ["City lights blur past as we roll / we won't go home tonight", "Every single mile we drive tonight / keeps pulling you and I", "Two hearts racing fast and free / under the neon sky", "I keep your name inside my chest / lit up behind my eyes", "I can't let you go tonight / can't let this feeling die", "It's a late night and we ride / forever, you and I"];
+  const right = ["City lights blur past the glass / we won't go home tonight", "Every single mile we drive / keeps pulling you and I", "Two hearts racing fast and free / under the neon sky", "I keep your name inside me / lit up behind my eyes", "I can't let you go tonight / can't let this feeling die", "It's a late night, we ride / forever, you and I"];
   const fitRight = lyricFit(right, "pop", 5, 30);
-  assert.ok(right.every((c) => lyricWords(c) >= 10 && lyricWords(c) <= 13), right.map(lyricWords).join(","));
+  assert.ok(right.every((c) => lyricWords(c) >= 9 && lyricWords(c) <= 12), right.map(lyricWords).join(","));
   assert.equal(fitRight.off, 0, `${fitRight.total} words`);
   assert.ok(fitRight.off < fitShort.off && fitRight.off < fitLong.off, "a rewrite that fits better is the one that is kept");
 
@@ -395,7 +396,7 @@ test("a scene's lyric is a range with both ends, and a sheet that misses it is c
   assert.equal(lyricAsk(14, 10, 12), "14 words — needs 2 to 4 FEWER");
   assert.equal(lyricAsk(11, 10, 12), "11 words — the right length, leave it as it is");
   const third = ["Late night lights / keep pulling us in", "We keep on driving / can't let this go", "Hearts racing wild / under neon skies", "I hear you calling / out my name", "Streetlights flicker / hold on tight", "Two hearts drifting / never letting go"];
-  assert.ok(lyricFit(third, "pop", 5, 30).off >= 15, "well short of the sixty a 30-second pop video needs at the least");
+  assert.ok(lyricFit(third, "pop", 5, 30).off >= 10, "well short of the fifty-four a 30-second pop video needs at the least");
   assert.match(fn, /while \(sung\.length && now\.off > 0 && rounds < 2\) \{/);
   assert.match(fn, /`\$\{i \+ 1\}\. \[\$\{lyricAsk\(lyricWords\(s\.caption\), now\.lo, now\.hi\)\}\] \$\{s\.caption \|\| ""\}`/);
   // (4) asked to add "3 to 5 MORE" words to each scene of a fifty-word sheet, it came back with NINETY-FOUR.

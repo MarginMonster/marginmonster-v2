@@ -29,8 +29,11 @@
 
 export type SongEngine = "short" | "full";
 
-/** Words a second the SHORT engine sings, by genre (measured — see above). */
-export const SING_RATE: Record<string, number> = { rap: 3.2, rock: 3.2, pop: 2.2, rnb: 2.3, country: 2.0 };
+/** Words a second the SHORT engine sings, by genre (measured — see above).
+ *  POP is set from the live videos, not the bench: three finished 30-second pop videos sang 59 words in
+ *  29.0 s, 60 in 29.3 s and 55 in 28.8 s — 2.0 a second, where the long bench sheets gave 2.1-2.3. At 2.2
+ *  each scene's words ran half a second late and the song's last line was cut by the end of the video. */
+export const SING_RATE: Record<string, number> = { rap: 3.2, rock: 3.2, pop: 2.05, rnb: 2.3, country: 2.0 };
 const DEFAULT_RATE = 2.2;
 
 /** The most words the short engine's lyric limit holds (590 characters ≈ 6 a word with its space). */
