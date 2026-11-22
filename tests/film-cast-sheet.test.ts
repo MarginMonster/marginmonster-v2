@@ -61,6 +61,19 @@ test("with no sheet to draw from, the cast is in the words — in full", () => {
   assert.ok(!sceneInWordsPrompt({ visual: "An empty field at dawn", cast: [], style: STYLE }).includes("Recurring cast"), "a film with no cast says nothing about one");
 });
 
+test("no writer or picture brief names somebody else's show", () => {
+  // The kids sing-along's WRITER brief said "a CoComelon-style kids SING-ALONG" — an instruction to imitate
+  // a real programme, in a format whose whole promise is the customer's OWN characters. (The on-screen copy
+  // lost such names on 2026-11-17; this was the brief behind it.)
+  for (const f of ["film-engine.server.ts", "film-dialogue.server.ts", "narrated-story.server.ts", "film-cast-sheet.ts", "story-picture.ts"]) {
+    const src = read("app", "lib", f);
+    for (const name of ["CoComelon", "Peppa", "Bluey", "Pixar", "Disney", "Paw Patrol", "Sesame"]) {
+      assert.ok(!new RegExp(name, "i").test(src), `${f} names ${name}`);
+    }
+  }
+  assert.ok(read("app", "lib", "film-engine.server.ts").includes("cute ORIGINAL cartoon characters (never a character from an existing show)"));
+});
+
 test("the engine uses them in all three places, and the picture calls are given the room", () => {
   const eng = read("app", "lib", "film-engine.server.ts");
   assert.equal(eng.split("renderCreativeSeed(castSheetPrompt({ safe: safePhrase, cast: treatment.cast || [], style: tmpl.sceneHint }), \"9:16\", SHEET_PROMPT_MAX)").length - 1, 2, "the preview's sheet and the render's");

@@ -4,7 +4,7 @@
 // STILLS, each scene is a real AI i2v CLIP (the quality upgrade the owner asked
 // for — "high budget, not cheap"). One engine, many TEMPLATES:
 //   musicvideo — sung/instrumental track + beat-synced visual scenes   (Film tab)
-//   kidstv     — CoComelon-style bright cartoon, recurring characters  (Film tab)
+//   kidstv     — bright preschool cartoon, recurring characters  (Film tab)
 //   movie      — Dhar Mann-style NARRATED dramatic short + moral       (Film tab)
 //   skit       — funny product skit, real product pin-sharp            (marketing flow)
 //   youtube    — long-form narrative                                   (planned)
@@ -188,7 +188,7 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
   kidsmusicvideo: {
     key: "kidsmusicvideo",
     name: "Kids Music Video",
-    brief: "a CoComelon-style kids SING-ALONG — cute cartoon characters sing one simple, catchy, wholesome song with a hook a toddler can sing along to",
+    brief: "a preschool nursery-rhyme SING-ALONG — cute ORIGINAL cartoon characters (never a character from an existing show) sing one simple, catchy, wholesome song with a hook a toddler can sing along to",
     sceneHint: "bright glossy 3D-animated cartoon, rounded friendly character designs, big expressive eyes, soft candy colors, simple cheerful backgrounds, wholesome child-safe (G-rated), like a modern preschool sing-along cartoon",
     musicHint: "cheerful bouncy nursery-rhyme sing-along, upbeat sweet and simple, clear child-friendly vocals with a catchy repeating hook",
     defaultScenes: 4,

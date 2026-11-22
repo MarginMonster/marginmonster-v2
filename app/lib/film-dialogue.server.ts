@@ -603,8 +603,8 @@ export async function generateTestMovie(opts: {
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
   // Style/mode switches so the ONE dialogue pipeline serves photoreal talking films
-  // (Short Film / Moral / Horror), cartoon talking films (Kids Cartoon · Peppa/Bluey) and
-  // sung films (Music Video, Kids Music Video · CoComelon). Everything else is identical.
+  // (Short Film / Moral / Horror), cartoon talking films (Kids Cartoon) and
+  // sung films (Music Video, Kids Music Video). Everything else is identical.
   const cartoon = !!tmpl.cartoon;
   const sing = !!tmpl.sing;
   const twoStyle: "photoreal" | "cartoon" = cartoon ? "cartoon" : "photoreal";
