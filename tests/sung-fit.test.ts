@@ -104,6 +104,8 @@ test("the engine fits a SUNG film's scenes to its song before assembling — and
   assert.ok(block.includes("console.error(\"[film] could not fit the scenes to the song (keeping five seconds a scene):\"") && block.includes("      filmClips = clips;\n      // (a fit that stopped half-way leaves nothing behind)"));
   assert.ok(block.includes("  await assembleFilm({\n    clips: filmClips,"));
   assert.ok(block.includes("for (const f of filmClips) { if (!clips.includes(f)) { try { fs.unlinkSync(f); } catch { /* best effort */ } } }"), "the fitted copies are cleared; the filmed clips are kept for a resume");
+  // …and the finished film is levelled to where the music videos play (two songs made the same hour: -14.5 and -10.8 LUFS)
+  assert.ok(block.includes("if (musicIsSung) { try { const { levelFilm } = await import(\"./film-loudness.server\"); await levelFilm(outPath, -14); } catch { /* left as it was */ } }"));
   // the song is heard the way a song is: softly first, the stock settings when that catches little
   const cap = read("app", "lib", "film-captions.server.ts");
   const hear = cap.slice(cap.indexOf("export async function hearSong("), cap.indexOf("/** LYRICS ON SCREEN for a music video"));

@@ -1173,6 +1173,9 @@ export async function generateFilm(opts: {
     musicPath, musicIsSung, voPath, fontFile, outPath, jobId,
   });
   for (const f of filmClips) { if (!clips.includes(f)) { try { fs.unlinkSync(f); } catch { /* best effort */ } } }
+  // ONE LOUDNESS: a sung film plays where the music videos do. (Two kids' songs made within the hour came
+  // out at -14.5 and -10.8 LUFS — the song engine's own level, passed straight through.) Never costs the film.
+  if (musicIsSung) { try { const { levelFilm } = await import("./film-loudness.server"); await levelFilm(outPath, -14); } catch { /* left as it was */ } }
   const outBuf = fs.readFileSync(outPath);
   try { await mirrorRender(outName, outBuf); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;
