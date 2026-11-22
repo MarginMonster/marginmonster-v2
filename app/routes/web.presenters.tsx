@@ -16,6 +16,7 @@ import { VoicePicker, VOICE_UI_CSS, type MyVoiceT } from "../components/VoicePic
 import { CharacterForge, FORGE_CSS } from "../components/CharacterForge";
 import { DEFAULT_CHARACTER_VOICE, characterVoice, characterVoiceSample } from "../lib/character-voices";
 import { SpinStage, SPIN_STAGE_CSS } from "../components/SpinStage";
+import { CastIdCard, CastFigure, CastHoverCard, useCastHover, CAST_ID_CSS } from "../components/CastIdCard";
 import { favouritesFirst, passes, NO_FILTER, type CastFilter } from "../lib/favourites";
 
 export const meta: MetaFunction = () => [{ title: "Your cast · EasyMode" }];
@@ -376,6 +377,11 @@ export default function PresenterHub() {
     a.play().catch(() => setHearing(null));
   };
   useEffect(() => { if (open) { hearRef.current?.pause(); setHearing(null); } }, [open]);
+  // Point at a cast card (or tab to it) and its ID card comes up beside it, their figure turning on it.
+  // One at a time, only where there is a mouse, and never while a character or the forge is open.
+  const hover = useCastHover(!open && !forgeOpen);
+  const hoverAt = hover.at;
+  const pointed = hoverAt ? shown.find((c) => c.id === hoverAt.id) || null : null;
   const row = lineupOf(cast, d.brandFaceId);
   const cleanup = useFetcher<Saved>();
   // The character view is portaled to <body> (below), which only exists in the browser.
@@ -508,7 +514,7 @@ export default function PresenterHub() {
         {shown.map((c) => {
           const isBf = c.id === d.brandFaceId;
           return (
-            <div key={c.id} className={`ph-facewrap${c.voiceSample ? " can-hear" : ""}`}>
+            <div key={c.id} className={`ph-facewrap${c.voiceSample ? " can-hear" : ""}`} {...hover.bind(c.id)}>
             <Link to={`/web/presenters?who=${encodeURIComponent(c.id)}`} state={{ hub: true }} preventScrollReset className={`ph-face${isBf ? " bf" : ""}`}>
               {isBf && <span className="ph-bfbadge"><Ico n="star" size={10} /> {t("Brand Face")}</span>}
               {c.custom && !isBf && <span className="ph-yoursbadge">{t("Yours")}</span>}
@@ -523,7 +529,7 @@ export default function PresenterHub() {
               </span>
               <span className="ph-face-meta">
                 <span className="ph-face-nm">{c.name}</span>
-                <span className={`ph-face-voice${c.voiceOwn ? " own" : ""}`}><Ico n="mic" size={10} /> {c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.signature ? t("Signature") : t("Automatic")}</span>
+                <span className={`ph-face-voice${c.voiceOwn ? " own" : ""}`}><Ico n="mic" size={10} /> {voiceWord(c, t)}</span>
               </span>
             </Link>
             {c.voiceSample ? (
@@ -540,6 +546,16 @@ export default function PresenterHub() {
           );
         })}
       </div>
+
+      {/* The ID card of the cast card that is pointed at: the card the character view shows, small, with
+          their figure turning on it. It is mounted HERE, once, and portals itself to <body> — not inside
+          the cast card, which clips its contents, lifts on hover and is itself the link. */}
+      {pointed && hoverAt ? (
+        <CastHoverCard key={pointed.id} anchor={hoverAt.anchor}>
+          <CastIdCard size="mini" {...idCardOf(pointed, t)} lead={pointed.id === d.brandFaceId}
+            figure={<CastFigure spin={pointed.looks[0]?.spin} img={pointed.cut || pointed.img} name={pointed.name} />} />
+        </CastHoverCard>
+      ) : null}
 
       {/* Portaled to document.body so it escapes .wb-main's stacking context: inside it, the scrim's
           z-index only counts against the page, and the site header (z-index 30) showed through the top
@@ -566,7 +582,20 @@ export default function PresenterHub() {
   );
 }
 
-const ENERGY: Record<Member["energy"], string> = { hype: "High energy", warm: "Warm", calm: "Calm" };
+// Under the card's own "Energy" label, so the words are the Refine chips' ("High energy" there would say it twice).
+const ENERGY: Record<Member["energy"], string> = { hype: "Upbeat", warm: "Warm", calm: "Calm" };
+type T = ReturnType<typeof useT>;
+/** The name of the voice a member speaks with, as their cast card and their ID card give it. */
+const voiceWord = (c: Member, t: T): string => (c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.signature ? t("Signature") : t("Automatic"));
+/** What a member's ID card says — the same in the character view and on the card that floats beside
+ *  their cast card. Whoever they are: a person, a cartoon character, a creature. */
+const idCardOf = (c: Member, t: T) => ({
+  id: c.id, name: c.name, kind: c.kind,
+  role: c.custom ? t(c.vibe) : c.vibe,
+  age: c.age, energy: t(ENERGY[c.energy]), voice: voiceWord(c, t),
+  outfits: c.looks.length, has3d: c.looks.some((l) => !!l.spin),
+  about: c.about,
+});
 
 /* One presenter, up close. Left: the stage — the outfit you picked as a full-body figure to turn
  * around (its "3D view"), or as its portrait. Right: who they are, their voice, their outfits, and
@@ -653,7 +682,6 @@ function CharacterView({ c, isBrandFace, fav, onFav, myVoices, canMakeVoice, spi
   };
 
   const cur = c.looks[Math.min(look, c.looks.length - 1)];
-  const has3d = c.looks.some((l) => !!l.spin);
   // outfits of one of YOUR presenters that have no 3D view and none on the way
   const missing3d = c.custom ? c.looks.filter((l) => !l.extra && !l.spin && l.spinState !== "building").length : 0;
   const voiceName = c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.signature ? t("Signature voice") : t("Automatic");
@@ -750,29 +778,27 @@ function CharacterView({ c, isBrandFace, fav, onFav, myVoices, canMakeVoice, spi
          </>) : (<>
          <div className="pc-scroll">
           <span className={`pc-badge${isBrandFace ? " bf" : c.custom ? " own" : c.kind !== "person" ? ` ${c.kind}` : ""}`}>{isBrandFace ? <Ico n="star" size={11} /> : null}{badge}</span>
-          {renaming ? (
-            <form className="pc-rename" onSubmit={(e) => { e.preventDefault(); if (newName.trim()) post({ intent: "rename", name: newName.trim() }); }}>
-              <input className="wb-in" value={newName} maxLength={40} onChange={(e) => setNewName(e.target.value)} aria-label={t("Presenter name")} autoFocus />
-              <button type="submit" className="wb-btn" disabled={busy || !newName.trim() || newName.trim() === c.name}>{busy ? t("Saving…") : t("Save")}</button>
-              <button type="button" className="pc-textbtn" onClick={() => { setRenaming(false); setNewName(c.name); }}>{t("Cancel")}</button>
-            </form>
-          ) : (
-            <h2 className="pc-name">{c.name}{c.custom && <button type="button" className="pc-pencil" onClick={() => setRenaming(true)} aria-label={t("Rename {name}", { name: c.name })}><Ico n="pencil" size={14} /></button>}
+          {/* Their ID card: who they are, beside the figure (under it on a phone). The same card floats
+              beside their cast card in the grid — see idCardOf. The pencil and the star ride on the name. */}
+          <CastIdCard
+            {...idCardOf(c, t)}
+            lead={isBrandFace}
+            nameSlot={renaming ? (
+              <form className="pc-rename" onSubmit={(e) => { e.preventDefault(); if (newName.trim()) post({ intent: "rename", name: newName.trim() }); }}>
+                <input className="wb-in" value={newName} maxLength={40} onChange={(e) => setNewName(e.target.value)} aria-label={t("Presenter name")} autoFocus />
+                <button type="submit" className="wb-btn" disabled={busy || !newName.trim() || newName.trim() === c.name}>{busy ? t("Saving…") : t("Save")}</button>
+                <button type="button" className="pc-textbtn" onClick={() => { setRenaming(false); setNewName(c.name); }}>{t("Cancel")}</button>
+              </form>
+            ) : undefined}
+            actions={<>
+              {c.custom && <button type="button" className="pc-pencil" onClick={() => setRenaming(true)} aria-label={t("Rename {name}", { name: c.name })}><Ico n="pencil" size={14} /></button>}
               <button type="button" className={`pc-star${fav ? " on" : ""}`} onClick={onFav} aria-pressed={fav}
                 aria-label={fav ? t("Remove {name} from favourites", { name: c.name }) : t("Add {name} to favourites", { name: c.name })}
                 title={fav ? t("In your favourites — first in every picker") : t("Add to favourites — first in every picker")}>
                 <span aria-hidden="true">{fav ? "★" : "☆"}</span>
               </button>
-            </h2>
-          )}
-          <p className="pc-vibe">{c.custom ? t(c.vibe) : c.vibe}</p>
-          <div className="pc-facts">
-            <span><Ico n="bolt" size={12} /> {t(ENERGY[c.energy])}</span>
-            {c.age ? <span><Ico n="hourglass" size={12} /> {c.age}</span> : null}
-            {c.looks.length > 1 ? <span><Ico n="shirt" size={12} /> {t("{n} outfits", { n: c.looks.length })}</span> : null}
-            {has3d ? <span><Ico n="sphere" size={12} /> {t("3D view")}</span> : null}
-          </div>
-          {c.about ? <p className="pc-about">{c.about}</p> : null}
+            </>}
+          />
           {fetcher.data?.error ? <p className="pc-err" role="alert">{fetcher.data.error}</p> : null}
 
           {/* Outfits */}
@@ -868,6 +894,7 @@ const PH_STYLE = `
 ${VOICE_UI_CSS}
 ${FORGE_CSS}
 ${SPIN_STAGE_CSS}
+${CAST_ID_CSS}
 .ph-wrap{max-width:1360px;margin:0 auto;}
 /* THE backdrop every presenter stands on — grid cards, outfit tiles, the stage and the hero's line-up.
    One soft studio wall, lit from the top: light enough for dark hair and dark clothes to read, deep
@@ -983,8 +1010,8 @@ ${SPIN_STAGE_CSS}
 @media(pointer:coarse){.ph-refine button{min-height:40px;}}
 .ph-none{margin:0 2px 16px;font-size:13.5px;line-height:1.5;color:var(--ink2,#4A554E);}
 @media(max-width:640px){.ph-refine{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;margin:-6px 0 14px;padding:2px 0;}.ph-refine::-webkit-scrollbar{display:none;}.ph-refine button{flex:0 0 auto;}}
-.pc-star{position:relative;display:inline-grid;place-items:center;width:34px;height:34px;margin-left:8px;padding:0;vertical-align:middle;border-radius:50%;border:1px solid var(--line,#E1DECD);background:#fff;color:#6F7972;font-size:18px;line-height:1;cursor:pointer;transition:color .12s,background .12s;}
-.pc-star::before{content:"";position:absolute;inset:-5px;border-radius:50%;}
+.pc-star{position:relative;flex:0 0 auto;display:inline-grid;place-items:center;width:34px;height:34px;margin-left:8px;padding:0;vertical-align:middle;border-radius:50%;border:1px solid var(--line,#E1DECD);background:#fff;color:#6F7972;font-size:18px;line-height:1;cursor:pointer;transition:color .12s,background .12s;}
+.pc-star::before{content:"";position:absolute;inset:-6px;border-radius:50%;} /* 44px to the thumb (-5px measured 42) */
 .pc-star:hover{color:#A87A08;}
 .pc-star.on{background:#FFF4D0;border-color:#E7C879;color:#A87A08;}
 .ph-kind{position:absolute;top:9px;left:9px;z-index:2;display:inline-flex;align-items:center;font-size:10px;font-weight:800;border-radius:999px;padding:3px 8px;line-height:1.2;box-shadow:0 2px 6px rgba(0,0,0,.18);}
@@ -1091,15 +1118,14 @@ ${SPIN_STAGE_CSS}
 .pc-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:#EAF0E6;color:var(--ink2,#4A554E);font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;}
 .pc-badge.own{background:#E3F3EA;color:var(--green,#0C7A46);}
 .pc-badge.bf{background:#F6E9BF;color:#5C4508;}
-.pc-name{display:flex;align-items:center;gap:8px;margin:9px 44px 0 0;font-family:Poppins,sans-serif;font-weight:800;font-size:32px;line-height:1.08;letter-spacing:-.02em;color:var(--ink,#14201A);overflow-wrap:anywhere;}
-.pc-pencil{flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:1px solid var(--line,#E1DECD);background:transparent;color:var(--ink2,#4A554E);display:grid;place-items:center;cursor:pointer;}
+/* Their ID card (the card itself: CAST_ID_CSS) hangs under the badge, as wide as the column. The name,
+   the line under it, the facts and the description used to be loose lines here; the pencil and the
+   star now ride on the card's name, and the rename form takes the name's place. */
+.pc-scroll>.pc-id{margin-top:10px;}
+.pc-pencil{position:relative;flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:1px solid var(--line,#E1DECD);background:transparent;color:var(--ink2,#4A554E);display:grid;place-items:center;cursor:pointer;}
 .pc-pencil:hover{border-color:var(--green2,#12A85E);color:var(--green,#0C7A46);}
-.pc-rename{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 44px 0 0;}
+.pc-rename{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0;}
 .pc-rename .wb-in{flex:1 1 160px;min-width:0;}
-.pc-vibe{margin:4px 0 0;font-size:14px;font-weight:700;color:var(--green,#0C7A46);}
-.pc-facts{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;}
-.pc-facts span{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;border:1px solid var(--line,#E1DECD);background:#fff;font-size:12px;font-weight:700;color:var(--ink,#14201A);}
-.pc-about{margin:12px 0 0;font-size:13.5px;line-height:1.5;color:var(--ink2,#4A554E);max-width:46ch;}
 .pc-err{margin:12px 0 0;padding:8px 11px;border-radius:10px;background:#FCF1F0;color:#B3261E;font-size:12.5px;font-weight:700;}
 .pc-sec{margin-top:18px;padding-top:16px;border-top:1px solid var(--line,#E1DECD);}
 .pc-h-act{margin-left:auto;display:inline-flex;align-items:center;gap:4px;border:1.5px solid var(--line,#E1DECD);background:#fff;border-radius:999px;padding:4px 10px;font:inherit;font-size:11px;font-weight:800;letter-spacing:0;text-transform:none;color:var(--green,#0C7A46);cursor:pointer;}
@@ -1200,19 +1226,25 @@ ${SPIN_STAGE_CSS}
   .pc-vtitle{font-size:23px;}
   .pc-info>.pc-acts.pc-vfoot{position:sticky;bottom:0;z-index:3;margin-top:14px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));box-shadow:0 -12px 22px -16px rgba(20,32,26,.4);}
   .pc-danger.out{display:flex;margin-top:14px;padding:0 16px;border-top:0;}
-  .pc-name{font-size:27px;margin-right:0;}
   .pc-x{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:10px;}
+  /* a thumb's worth of target for what the 44px floor had missed here. The rename pencil (30px) and the
+     "3D view for all" pill (24px) keep their look and grow an unseen hit box — the pill's reaches up into
+     the section's own padding rather than down onto the outfits; the three text buttons simply get taller. */
+  .pc-pencil::before{content:"";position:absolute;inset:-8px;border-radius:50%;}
+  .pc-h-act{position:relative;}
+  .pc-h-act::before{content:"";position:absolute;inset:-15px 0 -8px;}
+  .pc-buildbtn,.pc-del,.pc-textbtn{min-height:44px;}
+  .pc-textbtn{min-width:44px;}
 }
 /* a desktop has room for a bigger figure and a calmer column beside it */
 @media(min-width:1180px) and (min-height:600px){
   .pc{width:min(1140px,100%);height:min(760px,calc(100dvh - 44px));grid-template-columns:minmax(0,47fr) minmax(0,53fr);border-radius:26px;}
   .pc-scroll{padding:30px 40px 22px;}
   .pc-info>.pc-acts{padding:16px 40px 22px;}
-  .pc-name{font-size:38px;margin-top:10px;}
-  .pc-vibe{font-size:15.5px;margin-top:5px;}
-  .pc-facts{margin-top:14px;gap:7px;}
-  .pc-facts span{padding:6px 12px;font-size:12.5px;}
-  .pc-about{font-size:14.5px;margin-top:14px;max-width:52ch;}
+  .pc-scroll>.pc-id{margin-top:12px;}
+  .pc-scroll .pc-id-name{font-size:38px;}
+  .pc-scroll .pc-id-role{font-size:15.5px;margin-top:5px;}
+  .pc-scroll .pc-id-about{font-size:14.5px;}
   .pc-scroll .pc-sec{margin-top:19px;padding-top:17px;}
   .pc-look{width:86px;}
   .pc-x{top:16px;right:16px;width:40px;height:40px;}
