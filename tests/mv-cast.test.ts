@@ -35,6 +35,11 @@ test("a microphone belongs on a stage or in a booth — and nowhere else unless 
     "A neon-lit corner store at midnight",
     "Backstage corridor, flickering lights",           // backstage is not the stage
     "A dusty country road, golden hour",
+    // a "stage" that is a SET, not a show (2026-11-22: the pop look offers "a sleek stage", so nearly
+    // every pop performance was written on one — and handed a microphone the owner had asked to lose)
+    "OMAR sings straight to camera on a sleek rooftop stage with bright synth lighting, city skyline glowing behind them",
+    "Medium shot of OMAR singing straight to camera on a bright rooftop stage, VALENTINA dancing softly beside him",
+    "A sound stage dressed as a neon alley",
   ]) assert.equal(micFits(v), false, v);
   for (const v of [
     "On stage at a packed arena, lights sweeping the crowd",
@@ -44,6 +49,9 @@ test("a microphone belongs on a stage or in a booth — and nowhere else unless 
     "A live show in a sweaty basement venue",
     "Karaoke night in a tiny bar",
     "She grips a vintage chrome microphone in the hallway",   // the scene's own words ask for it
+    "A packed concert stage washed in red and blue lights and haze",
+    "A stage in front of a roaring crowd, hands in the air",
+    "Onstage at the end of the tour, confetti still falling",
   ]) assert.equal(micFits(v), true, v);
   // a scene that says there is none has none, even on a stage
   assert.equal(micFits("An empty stage, no microphone, just her and the lights"), false);
@@ -266,7 +274,7 @@ test("the pipeline and the builder make cast shots one way — the shared defaul
   // lets a failed check cost the scene
   const still = pipe.slice(pipe.indexOf("async function castStill"), pipe.indexOf("/** Build the per-scene SEED stills"));
   assert.match(still, /renderStyledSeedMulti\(prompt, refs, o\.asp, undefined, CAST_PROMPT_MAX\)/);
-  assert.match(still, /if \(!seen && !bars\) return \{ img, faults: null \};/, "a vision outage takes the picture as it is (unless it has black bars round it — tests/mv-sense.test.ts)");
+  assert.match(still, /if \(!seen && !bars\) return \{ img, faults: null, reading: null \};/, "a vision outage takes the picture as it is (unless it has black bars round it — tests/mv-sense.test.ts)");
   // the checker is shown the cast's reference pictures, so it can say WHO is there
   assert.match(still, /readCast\(o\.abs\(img\) \|\| img, people\.map\(\(r\) => o\.abs\(r\) \|\| r\), o\.prop\?\.noun\)/);
   assert.match(pipe, /anthropicVision\(castCheckPrompt\(\{ refs: refs\.length, prop \}\), \[imgUrl, \.\.\.refs\]/);

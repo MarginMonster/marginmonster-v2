@@ -126,6 +126,21 @@ export function fitLyricLines(sheet: string, max: number): string {
   return (at > max * 0.5 ? cut.slice(0, at) : out.slice(0, max)).trim();
 }
 
+/** HOW LOUD THE FINISHED VIDEO IS. The song engine hands back whatever level it likes, and a re-voiced
+ *  take is level-matched to that: the four live test videos measured -16.2, -11.3, -12.3 and -10.2 LUFS,
+ *  two of them with peaks 1.6-1.7 dB OVER full scale (which a phone simply clips). One plain gain — never
+ *  a compressor, so the song's own dynamics are untouched — brings the track to the level the platforms
+ *  play at (about -14 LUFS) or as near as its peaks allow, and always leaves the peaks room for the
+ *  final encode. `loudness` = the track's integrated loudness (LUFS), `peak` its highest peak (dBFS).
+ *  Returns the gain in dB (0 = leave it: it is already there, or it could not be measured). */
+export const TARGET_LUFS = -14;
+export const PEAK_CEILING_DB = -1.5;
+export function levelGain(loudness: number | null | undefined, peak: number | null | undefined): number {
+  if (loudness == null || peak == null || !Number.isFinite(loudness) || !Number.isFinite(peak) || loudness < -60) return 0;
+  const g = Math.max(-12, Math.min(6, Math.min(TARGET_LUFS - loudness, PEAK_CEILING_DB - peak)));
+  return Math.abs(g) < 0.5 ? 0 : Math.round(g * 10) / 10;
+}
+
 /** WHERE TO START a song whose first word comes late: `firstWord` seconds in (null = no words were
  *  heard). Returns how many seconds to cut off the front — 0 when the song already starts soon enough. */
 export function introCut(firstWord: number | null | undefined): number {

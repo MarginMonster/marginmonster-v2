@@ -395,3 +395,34 @@ test("a scene's lyric is a range with both ends, and a sheet that misses it is c
   assert.match(fn, /the lyric could not be refit — kept as written/);
   assert.match(fn, /if \(tmpl\.lipSyncSinger && !fullSong\) \{\s+const sung = /);
 });
+
+test("the finished video plays at one level, with its peaks under full scale", async () => {
+  const { PEAK_CEILING_DB, TARGET_LUFS, levelGain } = await import("../app/lib/mv-song.ts");
+  assert.equal(TARGET_LUFS, -14);
+  assert.ok(PEAK_CEILING_DB <= -1 && PEAK_CEILING_DB >= -2);
+  // THE FOUR LIVE TEST VIDEOS (integrated loudness, highest peak):
+  //   -16.2 LUFS / -2.3 dBFS   quiet: turned up as far as its peaks allow
+  assert.equal(levelGain(-16.2, -2.3), 0.8);
+  //   -11.3 / +1.7 and -10.2 / +1.6   hot, peaking OVER full scale: turned down to the target
+  assert.equal(levelGain(-11.3, 1.7), -3.2);
+  assert.equal(levelGain(-10.2, 1.6), -3.8);
+  //   -12.3 / -0.3
+  assert.equal(levelGain(-12.3, -0.3), -1.7);
+  for (const [i, p] of [[-16.2, -2.3], [-11.3, 1.7], [-10.2, 1.6], [-12.3, -0.3], [-22, -9], [-8, 0], [-14, -6]] as const) {
+    const g = levelGain(i, p);
+    assert.ok(p + g <= PEAK_CEILING_DB + 0.05, `${i}/${p}: the peak ends at ${p + g}`);
+    assert.ok(i + g <= TARGET_LUFS + 0.05, `${i}/${p}: never louder than the target`);
+  }
+  // already there, or within half a decibel: left alone; a very quiet song is not turned up without limit
+  assert.equal(levelGain(-14.2, -3), 0);
+  assert.equal(levelGain(-30, -20), 6);
+  // what cannot be measured is left as it came
+  for (const bad of [[null, -1], [-14, null], [NaN, -1], [-14, Infinity], [-80, -70]] as const) assert.equal(levelGain(bad[0], bad[1]), 0);
+  const pipe = read("app", "lib", "music-video-pipeline.server.ts");
+  // measured on the finished song (after the fit, the own voice and the featured verse), one plain gain
+  assert.match(pipe, /"-af", "ebur128=peak=true", "-f", "null", "-"\]/);
+  assert.match(pipe, /const at = err\.lastIndexOf\("Summary:"\);\s+if \(at < 0\) return 0;/);
+  assert.match(pipe, /const gain = await songLevelGain\(songPath\);/);
+  assert.match(pipe, /"-af", gain \? `volume=\$\{gain\.toFixed\(1\)\}dB,apad` : "apad", "-t", total\.toFixed\(2\),/);
+  assert.doesNotMatch(pipe.slice(pipe.indexOf("async function songLevelGain"), pipe.indexOf("async function assembleMusicVideo")), /compand|acompressor|loudnorm/, "a gain, never a compressor: the song's own dynamics are untouched");
+});

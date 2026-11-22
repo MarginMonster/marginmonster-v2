@@ -36,7 +36,7 @@ import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds, t
 import { MAX_COSTARS, singerOf } from "./mv-cast";
 import { FEATURE_MIN_SECONDS, defaultFeaturePlan, featureRoles, planIsSound } from "./mv-feature";
 import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, lyricFit, lyricWords, sceneWordRange, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLineCount, wordsAsLines } from "./mv-song";
-import { SENSE_RULES } from "./mv-sense";
+import { SENSE_RULES, sameCar } from "./mv-sense";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -674,6 +674,13 @@ export async function previewFilmTreatment(opts: {
       for (let i = 0; i < cast.length; i++) cast[i] = apply(cast[i]);
       outTitle = apply(outTitle);
     }
+  }
+  // ONE CAR, the same in every scene it is in (mv-sense.ts sameCar): each picture is drawn from its own
+  // scene's words, and "the Mustang convertible" two scenes after "a black 1969 Mustang convertible" was
+  // drawn red.
+  if (tmpl.lipSyncSinger) {
+    const carried = sameCar(list.map((s) => s.visual));
+    list = list.map((s, i) => ({ ...s, visual: carried[i] || s.visual }));
   }
   return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast };
 }

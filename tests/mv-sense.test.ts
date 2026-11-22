@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FILL_FRAME, RIDE_CAM, RIDE_MAX_COSTARS, SENSE_RULES, carInScene, hasBars, momentLine, rideFrame, rideScene, senseMotion, senseStill } from "../app/lib/mv-sense.ts";
+import { FILL_FRAME, RIDE_CAM, RIDE_MAX_COSTARS, SENSE_RULES, carInScene, hasBars, momentLine, rideFrame, rideScene, sameCar, senseMotion, senseStill } from "../app/lib/mv-sense.ts";
 import { CAST_PROMPT_MAX, SOLO_EDIT_MAX, castCheckPrompt, castFaults, castFix, castStillPrompt, defaultCostars, parseCastCheck, sceneCast, soloEditPrompt } from "../app/lib/mv-cast.ts";
 import { SHOT_NOTES } from "../app/lib/mv-pace.ts";
 import { FEATURE_VOCAL_TRIM_DB } from "../app/lib/mv-feature.ts";
@@ -173,7 +173,9 @@ test("the video model is told what is happening in the scene, and what real peop
   const gen = pipe.slice(pipe.indexOf("export async function generateMusicVideo"));
   // a cut scene's motion is the scene's own words, the camera and the rule — not the slot's action
   assert.match(gen, /cinematic B-ROLL: \$\{fr\.ride \? "a close shot from inside the car" : shot\.kind\}\.\$\{momentLine\(_s\.visual\)\} The camera does \$\{fr\.cam\}\.\$\{senseMotion\(_s\.visual\)\}/);
-  assert.match(gen, /Nobody sings or mouths words\./);
+  // …and every mouth stays shut: the first re-made video opened on a co-star turning to the camera and
+  // talking, with nothing synced to her
+  assert.match(gen, /Nobody sings, talks or mouths words: every mouth stays closed or in a quiet smile\./);
   assert.doesNotMatch(gen, /cinematic B-ROLL\. \$\{framing\}/, "the slot's framing — and the action it carried — is no longer what the video model is told");
   // a performance in a car is told to stay seated too
   assert.match(gen, /\$\{fr\.ride \? senseMotion\(_s\.visual\) : ""\}/);
@@ -206,7 +208,7 @@ test("the writer is told the same rules before a scene is written", () => {
   assert.match(SENSE_RULES, /^REAL-WORLD SENSE — every VISUAL must be something a real crew could film with real people/);
   assert.match(SENSE_RULES, /people in it SIT in its seats — nobody stands, dances or walks in or on a vehicle/);
   assert.match(SENSE_RULES, /Film it PARKED .* or from INSIDE, close on the faces with the lights passing — never a wide shot of people riding along in an open car/);
-  assert.match(SENSE_RULES, /Say what KIND of car it is .* and use those SAME words every time it appears; the same person drives it throughout/);
+  assert.match(SENSE_RULES, /Say what KIND of car it is .* and use those SAME words every time it appears — never shortened to "the Mustang" or "the car"; the same person drives it throughout/);
   assert.match(SENSE_RULES, /DANCING happens on foot, where there is room to dance/);
   assert.match(SENSE_RULES, /Each person does ONE simple, natural thing/);
   assert.ok(SENSE_RULES.endsWith("\n"));
@@ -257,4 +259,55 @@ test("a featured take keeps the balance of the song it is cut into, and its peak
   assert.equal(pipe.split("vocalsDb:").length - 1, 1, "only the featured take is trimmed");
   // the limiter catches peaks and nothing else: left to itself it turned the take up 0.45 dB, to full scale
   assert.match(voice, /`volume=\$\{gain\.toFixed\(1\)\}dB,alimiter=limit=0\.95:level=0`/);
+});
+
+test("one car, described the same way in every scene it is in", () => {
+  // THE STORYBOARD (2026-11-22): a black Mustang in scenes 1 and 5 — and "the Mustang convertible" in
+  // scene 6, which was drawn red
+  const scenes = [
+    "Wide shot of a glowing city skyline at night; OMAR stands small on a rooftop edge, VALENTINA blurred behind him near a parked black 1969 Mustang convertible.",
+    "Medium shot of OMAR singing straight to camera on a bright rooftop, VALENTINA dancing softly beside him.",
+    "Hero shot of the black 1969 Mustang convertible parked beneath glowing city lights, KEIKO leaning against its hood.",
+    "Lifestyle shot of OMAR walking toward the Mustang convertible, leaning back against it beside VALENTINA.",
+    "KEIKO sits on the hood of the car, the city behind her.",
+    "A taxi idles at the kerb while the three of them cross the street.",
+  ];
+  const out = sameCar(scenes);
+  assert.equal(out[0], scenes[0], "said in full already (with 'parked' left where it was)");
+  assert.equal(out[1], scenes[1], "no car in it");
+  assert.equal(out[2], scenes[2]);
+  assert.match(out[3], /walking toward the black 1969 Mustang convertible, leaning back against it/);
+  assert.match(out[4], /on the hood of the black 1969 Mustang convertible, the city behind her/);
+  assert.equal(out[5], scenes[5], "a different vehicle is left alone");
+  // a state word stays with the scene it was said in, and the article still reads
+  assert.deepEqual(sameCar(["A matte black lowrider rolls up.", "They lean on a parked lowrider at dusk."]), ["A matte black lowrider rolls up.", "They lean on a parked matte black lowrider at dusk."]);
+  assert.deepEqual(sameCar(["An emerald green convertible under the bridge.", "She waits by a convertible."]), ["An emerald green convertible under the bridge.", "She waits by an emerald green convertible."]);
+  // joining words are not a description: this is not a car called "glow of his black"
+  assert.deepEqual(sameCar(["Caught in the glow of his black car.", "He opens the door of the car."]), ["Caught in the glow of his black car.", "He opens the door of the black car."]);
+  // nothing to carry: no car is described, or there is no car at all; traffic is not a car
+  assert.deepEqual(sameCar(["They get in the car.", "The car pulls away."]), ["They get in the car.", "The car pulls away."]);
+  assert.deepEqual(sameCar(["A rooftop at sunset.", "The cars stream by below."]), ["A rooftop at sunset.", "The cars stream by below."]);
+  assert.deepEqual(sameCar([]), []);
+  // the writer is told not to shorten it, and what comes back is carried through anyway
+  assert.match(SENSE_RULES, /use those SAME words every time it appears — never shortened to "the Mustang" or "the car"/);
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.match(engine, /const carried = sameCar\(list\.map\(\(s\) => s\.visual\)\);\s+list = list\.map\(\(s, i\) => \(\{ \.\.\.s, visual: carried\[i\] \|\| s\.visual \}\)\);/);
+});
+
+test("a check that cannot be read is asked for again, said so, and what it saw rides back to the page", () => {
+  const pipe = read("app", "lib", "music-video-pipeline.server.ts");
+  const fn = pipe.slice(pipe.indexOf("async function readCast"), pipe.indexOf("/** A cast still and how it fared"));
+  // (a re-rolled performance came back with a microphone its scene ruled out and no flag on it —
+  //  and nothing recorded whether the check had looked at it)
+  assert.match(fn, /for \(let attempt = 0; attempt < 2; attempt\+\+\) \{/);
+  assert.match(fn, /maxTokens: 300, model: "claude-sonnet-4-6"/);
+  assert.match(fn, /the cast check's answer could not be read/);
+  assert.match(fn, /the cast check could not be made/);
+  // what the check read off the kept picture goes back with the storyboard and with a re-roll
+  assert.match(pipe, /best = \{ img, faults, reading: \{ \.\.\.\(seen \|\| \{\}\), bars \} \};/);
+  assert.match(pipe, /if \(!seen && !bars\) return \{ img, faults: null, reading: null \};/);
+  assert.match(pipe, /sceneChecks: made\.map\(\(m\) => m\.reading \?\? null\)/);
+  const ui = read("app", "routes", "web.film.tsx");
+  assert.match(ui, /sceneFaults: r\.sceneFaults, sceneChecks: r\.sceneChecks,/);
+  assert.match(ui, /return json\(\{ ok: true, sceneIndex, img, faults, check \}\);/);
 });

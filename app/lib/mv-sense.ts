@@ -134,9 +134,49 @@ export function momentLine(visual: string | null | undefined, max = 240): string
   return ` What is happening: ${cut}.`;
 }
 
+/** ONE CAR, described the same way in every scene it is in.
+ *
+ *  The writer is told to (SENSE_RULES) and mostly does — then shortens it: "a parked black 1969 Mustang
+ *  convertible" in scenes 1 and 5, "the Mustang convertible" in scene 6, which was drawn RED (the first
+ *  storyboard written under the rules, 2026-11-22). Each scene's picture is made on its own, from its own
+ *  words, so the words have to carry the car: the fullest description found in the scenes is put wherever
+ *  the same car is named in fewer words ("the Mustang", "the car"). A different vehicle — a taxi, when
+ *  the car is a Mustang — is left alone, and so are scenes with no car in them. */
+export function sameCar(visuals: string[]): string[] {
+  const NOUN = "(?:car|convertible|cabriolet|coupe|sedan|truck|pickup|suv|jeep|van|limo|limousine|taxi|cab|lowrider|roadster|hatchback|mustang|cadillac|impala|camaro|corvette|bronco|bentley)";
+  // (a describing word is never a joining one: "the glow of his black car" is not a car called "glow of his black")
+  const WORD = "(?!(?:of|in|on|at|and|or|with|near|by|to|from|into|onto|beside|behind|against|toward|towards|a|an|the|his|her|their|its)\\b)[\\w'-]+";
+  const find = () => new RegExp(`\\b(a|an|the|his|her|their)\\s+((?:${WORD}\\s+){0,4}?)(${NOUN}(?:\\s+${NOUN})?)\\b(?!s\\b)`, "gi");
+  const STATE = /^(?:parked|waiting|idling|gleaming|shining|glowing|open|open-top|polished)$/i;
+  type Hit = { desc: string[]; nouns: string[] };
+  const read = (m: RegExpExecArray): Hit => ({ desc: m[2].trim().split(/\s+/).filter(Boolean).filter((w) => !STATE.test(w)), nouns: m[3].trim().split(/\s+/) });
+  let best: Hit | null = null;
+  for (const v of visuals) {
+    const re = find();
+    for (let m = re.exec(v || ""); m; m = re.exec(v || "")) {
+      const h = read(m);
+      if (h.desc.length && (!best || h.desc.length + h.nouns.length > best.desc.length + best.nouns.length)) best = h;
+    }
+  }
+  if (!best) return visuals.slice();
+  const car = best;
+  const full = [...car.desc, ...car.nouns].join(" ");
+  const mine = new Set([...car.nouns.map((n) => n.toLowerCase()), "car"]);
+  return visuals.map((v) => (v || "").replace(find(), (whole: string, art: string, desc: string, nouns: string) => {
+    const words = nouns.trim().split(/\s+/);
+    if (!words.every((w) => mine.has(w.toLowerCase()))) return whole;               // another vehicle
+    const d = desc.trim().split(/\s+/).filter(Boolean);
+    const said = [...d.filter((w) => !STATE.test(w)), ...words].join(" ");
+    if (said.toLowerCase() === full.toLowerCase()) return whole;                      // already said in full
+    const state = d.filter((w) => STATE.test(w)).join(" ");
+    const article = /^an?$/i.test(art) ? (/^[aeiou]/i.test(state || full) ? (art[0] === "A" ? "An" : "an") : (art[0] === "A" ? "A" : "a")) : art;
+    return `${article} ${state ? `${state} ` : ""}${full}`;
+  }));
+}
+
 /** The same rules as the song WRITER is given them — before a scene is written. */
 export const SENSE_RULES =
   `REAL-WORLD SENSE — every VISUAL must be something a real crew could film with real people. The AI video model animates exactly what you write, so anything that makes no physical sense comes out absurd:\n` +
-  `  • A CAR (or truck, bike…): people in it SIT in its seats — nobody stands, dances or walks in or on a vehicle. Film it PARKED (leaning on it, sitting on the hood, stepping out of it) or from INSIDE, close on the faces with the lights passing — never a wide shot of people riding along in an open car. Say what KIND of car it is (e.g. "a black 1969 Mustang convertible") and use those SAME words every time it appears; the same person drives it throughout.\n` +
+  `  • A CAR (or truck, bike…): people in it SIT in its seats — nobody stands, dances or walks in or on a vehicle. Film it PARKED (leaning on it, sitting on the hood, stepping out of it) or from INSIDE, close on the faces with the lights passing — never a wide shot of people riding along in an open car. Say what KIND of car it is (e.g. "a black 1969 Mustang convertible") and use those SAME words every time it appears — never shortened to "the Mustang" or "the car"; the same person drives it throughout.\n` +
   `  • DANCING happens on foot, where there is room to dance — a rooftop, an empty street, a parking garage, a club floor. Never in a vehicle, never sitting down.\n` +
   `  • Each person does ONE simple, natural thing: walking, leaning, sitting, looking out over the view, dancing. No stunts, no acrobatics, nothing fiddly done with the hands.\n`;

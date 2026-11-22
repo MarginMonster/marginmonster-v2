@@ -28,7 +28,13 @@ export function micFits(visual: string | null | undefined): boolean {
   const v = visual || "";
   // "no microphone", "without a mic" — the scene says there is none
   if (/\b(?:no|without|never)\b[^.;]{0,24}\bmic(?:rophone)?s?\b/i.test(v)) return false;
-  return /\b(?:on ?stage|stage|concert|live (?:show|set|gig|band|performance)|gig|festival|karaoke|(?:recording|vocal|sound) booth|mic(?:rophone)?s?)\b/i.test(v);
+  // a LIVE show, a booth, or the scene's own words
+  if (/\b(?:on ?stage|concert|live (?:show|set|gig|band|performance)|gig|festival|karaoke|(?:recording|vocal|sound) booth|mic(?:rophone)?s?)\b/i.test(v)) return true;
+  // a "stage" on its own is a SET — "a sleek rooftop stage with bright lighting" is where a video is
+  // filmed, not a concert — and is only a live one with a crowd or a venue in the scene. (The pop look
+  // offers "a sleek stage", so nearly every pop performance was written on one and handed a microphone:
+  // the owner's "most music videos don't use a mic" was being lost to one word, 2026-11-22.)
+  return /\bstage\b/i.test(v) && /\b(?:crowd|audience|fans|packed|sold[- ]out|arena|stadium|venue|club|theat(?:er|re)|tour)\b/i.test(v);
 }
 
 /** The SHOTLIST slot that is the dance cut scene (see music-video-pipeline.server.ts). */

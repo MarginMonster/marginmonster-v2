@@ -41,7 +41,7 @@ import { FEATURE_VOCAL_TRIM_DB, bestLag, featureMixFilter, featuredIn, octaveShi
 import { FILL_FRAME, RIDE_CAM, hasBars, momentLine, rideFrame, rideScene, senseMotion, senseStill } from "./mv-sense";
 import { medianHz, trackF0 } from "./pitch";
 import { sceneLineTimes } from "./lyric-sync";
-import { fitLyricLines, introCut, songEngineFor } from "./mv-song";
+import { fitLyricLines, introCut, levelGain, songEngineFor } from "./mv-song";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -292,6 +292,25 @@ async function songBeats(songPath: string): Promise<number[]> {
   } finally { try { fs.unlinkSync(raw); } catch { /* nothing to clean */ } }
 }
 
+/** How far to turn the finished song up or down (dB) — measured, never guessed: its integrated loudness
+ *  and its highest peak, read by ffmpeg, into mv-song.ts levelGain. 0 when it cannot be measured (the
+ *  song then plays at the level it came at, as every video did before). */
+async function songLevelGain(songPath: string): Promise<number> {
+  try {
+    const r = await runFfmpeg(["-hide_banner", "-nostats", "-i", songPath, "-vn", "-af", "ebur128=peak=true", "-f", "null", "-"]);
+    // (the filter also logs a running reading ten times a second: only its closing Summary is read)
+    const err = r.stderr || "";
+    const at = err.lastIndexOf("Summary:");
+    if (at < 0) return 0;
+    const tail = err.slice(at);
+    const i = /I:\s*(-?[\d.]+)\s*LUFS/.exec(tail);
+    const p = /Peak:\s*(-?[\d.]+)\s*dBFS/.exec(tail);
+    const gain = levelGain(i ? parseFloat(i[1]) : null, p ? parseFloat(p[1]) : null);
+    if (i && p) console.log(`[musicvideo] the song is at ${i[1]} LUFS, peak ${p[1]} dBFS → ${gain ? `${gain > 0 ? "+" : ""}${gain} dB` : "left as it is"}`);
+    return gain;
+  } catch { return 0; }
+}
+
 async function assembleMusicVideo(clips: string[], songPath: string, D: number, outPath: string, W: number, H: number, cuts?: Cut[]): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[musicvideo] no clips to assemble");
@@ -338,8 +357,11 @@ async function assembleMusicVideo(clips: string[], songPath: string, D: number, 
     const songLen = ffprobeDuration(songPath);
     const grid = N * D;
     const total = songLen > 1 ? (songLen >= grid - 0.5 ? grid : Math.min(grid, songLen)) : grid;
+    // THE LEVEL: one plain gain to where the platforms play (mv-song.ts levelGain) — the song engine's
+    // own level swings ten decibels from song to song, and a hot one peaked over full scale.
+    const gain = await songLevelGain(songPath);
     const ra = await runFfmpeg(["-y", "-i", silent, "-i", songPath,
-      "-map", "0:v", "-map", "1:a", "-af", "apad", "-t", total.toFixed(2),
+      "-map", "0:v", "-map", "1:a", "-af", gain ? `volume=${gain.toFixed(1)}dB,apad` : "apad", "-t", total.toFixed(2),
       "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outPath]);
     if (ra.status === 0 && fs.existsSync(outPath) && ffprobeDuration(outPath) > 1) return;
   } catch { /* fall through to the per-clip concat */ }
@@ -383,16 +405,31 @@ async function sceneShowsProp(imgUrl: string, noun: string): Promise<boolean> {
  *  microphone, whether the prop is there. Null when it cannot be read — a vision outage never blocks a
  *  render. sonnet-4-6, the strict reader (the same model as the prop gate above). */
 async function readCast(imgUrl: string, castRefs: string[], prop?: string): Promise<CastCheck | null> {
-  try {
-    const refs = castRefs.slice(0, 3);
-    return parseCastCheck(await anthropicVision(castCheckPrompt({ refs: refs.length, prop }), [imgUrl, ...refs], { maxTokens: 110, model: "claude-sonnet-4-6" }));
-  } catch { return null; }
+  const refs = castRefs.slice(0, 3);
+  // An answer that cannot be read is asked for once more before the picture is let through unlooked-at —
+  // and it is SAID when that happens: a re-rolled performance came back with a microphone its scene
+  // ruled out and no flag on it (2026-11-22), and nothing recorded whether the check had seen it. Room
+  // for a sentence before the JSON, too: the reply is found wherever it sits in the answer.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const raw = await anthropicVision(castCheckPrompt({ refs: refs.length, prop }), [imgUrl, ...refs], { maxTokens: 300, model: "claude-sonnet-4-6" });
+      const read = parseCastCheck(raw);
+      if (read) return read;
+      console.error(`[musicvideo] the cast check's answer could not be read${attempt ? " — the picture is taken as it is" : " — asking again"}: ${String(raw).replace(/\s+/g, " ").slice(0, 160)}`);
+    } catch (e) {
+      console.error(`[musicvideo] the cast check could not be made${attempt ? " — the picture is taken as it is" : " — trying again"}: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+    }
+  }
+  return null;
 }
 
 /** A cast still and how it fared when it was looked at: `faults` 0 = right, more = what was still wrong
  *  with the best of the tries (the storyboard flags that scene for a re-roll); null = it could not be
- *  checked. */
-type CheckedStill = { img: string | null; faults: number | null };
+ *  checked. `reading` = what the check saw in the picture that was kept (who, a microphone, anything
+ *  impossible, black bars) — null when it was not looked at; it rides back with the storyboard so a flag
+ *  can be explained, and a picture that was let through unlooked-at can be told from one that passed. */
+type StillReading = (Partial<CastCheck> & { bars?: boolean }) | null;
+type CheckedStill = { img: string | null; faults: number | null; reading?: StillReading };
 
 /** ONE still with more than one of the cast in it. A tester picked a star and two back characters and
  *  got one back character, holding the microphone (2026-11-21) — so this picture is no longer taken on
@@ -428,7 +465,7 @@ async function castStill(o: {
   // the establishing wide and the atmosphere shot have the people small in the frame: nobody to count
   // (inside a car they are close whatever the slot)
   const expect = !fr.ride && (o.shot.slot === 0 || o.shot.slot === 7) ? null : k + 1;
-  let best: { img: string; faults: number } | null = null;
+  let best: { img: string; faults: number; reading: StillReading } | null = null;
   let fix = "";
   for (let attempt = 0; attempt < 3; attempt++) {
     const prompt = castStillPrompt({ genre: o.genre, role: o.shot.role, frame: fr.frame, visual: o.visual, costars: k, micOk, extra: [propLine, fr.sense.replace(/[.\s]+$/, ""), fix].filter(Boolean).join(". ") });
@@ -438,9 +475,9 @@ async function castStill(o: {
     // looked at two ways: WHO is in it and what they are doing (the vision check), and whether the
     // picture fills its frame (a wide composition asked for upright sometimes comes back with black bars)
     const [seen, bars] = await Promise.all([readCast(o.abs(img) || img, people.map((r) => o.abs(r) || r), o.prop?.noun), stillHasBars(img)]);
-    if (!seen && !bars) return { img, faults: null }; // the checker is out: the picture is taken as it is
+    if (!seen && !bars) return { img, faults: null, reading: null }; // the checker is out: the picture is taken as it is
     const faults = (seen ? castFaults(seen, expect, micOk, performing, !!o.prop) : 0) + (bars ? 2 : 0);
-    if (!best || faults < best.faults) best = { img, faults };
+    if (!best || faults < best.faults) best = { img, faults, reading: { ...(seen || {}), bars } };
     if (!faults) break;
     fix = [seen ? castFix(seen, expect, micOk, performing, o.prop?.noun) : "", bars ? FILL_FRAME : ""].filter(Boolean).join(". ");
     console.log(`[musicvideo] ${o.tag || "cast shot"}: try ${attempt + 1} had ${seen ? `${seen.people} of ${expect ?? "any"} people, seen=${JSON.stringify(seen.seen || null)}, twin=${seen.twin ?? "?"}, odd=${seen.odd ?? "?"}, mic=${seen.mic}${o.prop ? `, prop=${seen.prop}` : ""}` : "no reading"}${bars ? ", black bars round the picture" : ""}${attempt < 2 ? " — making it again" : " — keeping the best of three"}`);
@@ -481,7 +518,7 @@ async function buildMusicVideoSeeds(p: {
   jobId?: string;
   resume?: Record<string, string | undefined>;
   base: string;
-}): Promise<{ artistRef: string | null; sceneImgs: (string | null)[]; sceneFaults: (number | null)[]; castRefs: string[] }> {
+}): Promise<{ artistRef: string | null; sceneImgs: (string | null)[]; sceneFaults: (number | null)[]; sceneChecks: StillReading[]; castRefs: string[] }> {
   const g = GENRES[genreOrDefault(p.genre)];
   const custom = p.customProps || [];
   const customOf = (k: string) => custom.find((c) => c.key === k);
@@ -608,11 +645,13 @@ async function buildMusicVideoSeeds(p: {
     const fr = framingOf(shot, s.visual, 0);
     const senseNote = fr.sense ? ` ${fr.sense}` : "";
     let faults: number | null = null;
+    let reading: StillReading | undefined;
     const genPrimary = async (fill = false): Promise<string | null> => {
       if (multiCast && leadRef) {
         const r = await castStill({ genre: g.label, shot, visual: s.visual, leadRef, otherRefs, asp, abs, tag: `scene ${i + 1}`,
           prop: propKey ? { noun, phrase: propPhrase(propKey), ref: propRefs[propKey], animal: !customOf(propKey) } : undefined });
         faults = r.faults;
+        reading = r.reading;
         return r.img;
       }
       const fillNote = fill ? ` ${FILL_FRAME}.` : "";
@@ -633,7 +672,7 @@ async function buildMusicVideoSeeds(p: {
       let again: string | null = null;
       try { again = await genPrimary(true); } catch { again = null; }
       if (again && !(await stillHasBars(again))) img = again;
-      else { faults = 2; console.log(`[musicvideo] scene ${i + 1}: the still has black bars round it, and so did a second try`); }
+      else { faults = 2; reading = { bars: true }; console.log(`[musicvideo] scene ${i + 1}: the still has black bars round it, and so did a second try`); }
     }
     // Last resort = a scene-only render at the CHOSEN aspect (distinct per scene, correct shape) — NEVER
     // the portrait fallback that produced the duplicate 9:16 stills.
@@ -649,10 +688,10 @@ async function buildMusicVideoSeeds(p: {
         if (forced) img = forced;
       }
     }
-    return { img: img ? abs(img) : srcRef, faults };
+    return { img: img ? abs(img) : srcRef, faults, reading };
   });
 
-  return { artistRef, sceneImgs: made.map((m) => m.img), sceneFaults: made.map((m) => m.faults), castRefs };
+  return { artistRef, sceneImgs: made.map((m) => m.img), sceneFaults: made.map((m) => m.faults), sceneChecks: made.map((m) => m.reading ?? null), castRefs };
 }
 
 /** FREE pre-seed PREVIEW: generate the storyboard stills (one per scene, props placed) WITHOUT
@@ -665,7 +704,7 @@ export async function previewMusicVideoScenes(opts: {
   sceneSeconds?: number;
   /** A FEATURED VERSE: the names of the co-stars who sing a verse of their own (mv-feature.ts). */
   featureNames?: string[];
-}): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; sceneFaults: (number | null)[]; propForScene: Record<number, string>; artistRef: string | null; castRefs: string[] }> {
+}): Promise<{ treatment: FilmTreatment; sceneImgs: (string | null)[]; sceneFaults: (number | null)[]; sceneChecks: StillReading[]; propForScene: Record<number, string>; artistRef: string | null; castRefs: string[] }> {
   const tmpl = filmTemplate("musicvideo");
   const genre = genreOrDefault(opts.genre);
   const g = GENRES[genre];
@@ -683,7 +722,7 @@ export async function previewMusicVideoScenes(opts: {
   const propForScene = placeProps(scenes, propList, D, (opts.castExtra || []).map((m) => (m?.name || "").trim()));
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
 
-  const { sceneImgs, sceneFaults, artistRef, castRefs } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, aspect: opts.aspect, sceneSeconds: D, resume: {}, base });
+  const { sceneImgs, sceneFaults, sceneChecks, artistRef, castRefs } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, aspect: opts.aspect, sceneSeconds: D, resume: {}, base });
   // Archive every scene still the owner generates here, so their scene generations are saved (not just
   // ephemeral preview frames). Best-effort + parallel — never block or fail the preview on it.
   try {
@@ -697,7 +736,7 @@ export async function previewMusicVideoScenes(opts: {
         } }).catch(() => null)
       : Promise.resolve(null))));
   } catch { /* archive is best-effort */ }
-  return { treatment, sceneImgs, sceneFaults, propForScene, artistRef, castRefs };
+  return { treatment, sceneImgs, sceneFaults, sceneChecks, propForScene, artistRef, castRefs };
 }
 
 /** Re-roll ONE storyboard scene — regenerate just that still, reusing the SAME artist hero so the
@@ -766,6 +805,7 @@ export async function rerollMusicVideoScene(opts: {
   const senseNote = fr.sense ? ` ${fr.sense}` : "";
   let img: string | null;
   let faults: number | null = null;
+  let reading: StillReading | undefined;
   const solo = async (fill = false): Promise<string | null> => {
     const fillNote = fill ? ` ${FILL_FRAME}.` : "";
     if (asp !== "9:16") return renderStyledSeedMulti(soloStillPrompt({ genre: g.label, role: shot.role, frame: fr.frame, visual: opts.sceneVisual, micOk, extra: `${propClause}${senseNote}${fillNote}` }), [srcRef || leadRef], asp, undefined, CAST_PROMPT_MAX);
@@ -774,14 +814,14 @@ export async function rerollMusicVideoScene(opts: {
   if (multiCast) {
     const r = await castStill({ genre: g.label, shot, visual: opts.sceneVisual, leadRef, otherRefs: costarRefs, asp, abs, tag: `scene ${opts.sceneIndex + 1} (again)`,
       prop: propKey ? { noun, phrase: propPhrase, ref: propRef, animal: !custom } : undefined });
-    img = r.img; faults = r.faults;
+    img = r.img; faults = r.faults; reading = r.reading;
   } else {
     img = await solo();
     // black bars round the picture: once more, told to fill the frame (as in the storyboard)
     if (img && (await stillHasBars(img))) {
       const again = await solo(true).catch(() => null);
       if (again && !(await stillHasBars(again))) img = again;
-      else faults = 2;
+      else { faults = 2; reading = { bars: true }; }
     }
   }
   if (propKey && propRef && !multiCast) {
@@ -791,7 +831,7 @@ export async function rerollMusicVideoScene(opts: {
       if (forced) img = forced;
     }
   }
-  return { img: img ? abs(img) : null, faults };
+  return { img: img ? abs(img) : null, faults, reading };
 }
 
 /** A song (or a take of one) as mono samples at `sr` Hz — the first `seconds` of it. Null if it cannot
@@ -1181,7 +1221,7 @@ export async function generateMusicVideo(opts: {
     // "there is NO microphone", which fought a stage scene whose still showed one.)
     const motionPrompt = shot.role === "perform"
       ? `A premium ${g.label} music video. ${fr.frame}. The camera does ${fr.cam}. The artist ${g.perform}. Keep the movement NATURAL and VARIED — do NOT repeat the same gesture over and over, no exaggerated or aggressive motions, and no angry or snarling faces. Keep the artist's head mostly steady and facing camera so the singing reads clearly and the lips stay in sync with the vocals.${closeupSteady}${fr.ride ? senseMotion(_s.visual) : ""}${keepProp}${MIC_MOTION_LINE} ${same}; photoreal, cinematic, high-production.${who}`
-      : `A premium ${g.label} music video — cinematic B-ROLL: ${fr.ride ? "a close shot from inside the car" : shot.kind}.${momentLine(_s.visual)} The camera does ${fr.cam}.${senseMotion(_s.visual)} The motion is natural and flowing — nothing repeated, nothing jittery. Nobody sings or mouths words.${keepProp}${NO_NEW_MIC_LINE} ${same}; photoreal, cinematic, high-production.${who}`;
+      : `A premium ${g.label} music video — cinematic B-ROLL: ${fr.ride ? "a close shot from inside the car" : shot.kind}.${momentLine(_s.visual)} The camera does ${fr.cam}.${senseMotion(_s.visual)} The motion is natural and flowing — nothing repeated, nothing jittery. Nobody sings, talks or mouths words: every mouth stays closed or in a quiet smile.${keepProp}${NO_NEW_MIC_LINE} ${same}; photoreal, cinematic, high-production.${who}`;
     for (const i2vModel of [I2V_MODEL, I2V_FALLBACK, I2V_MODEL, I2V_FALLBACK]) { // TWO passes — a transient i2v/mux blip shouldn't drop a whole scene to a static still (owner: "first cutscene is a still not video")
       try {
         // silent motion clip — primary engine, then the backup if it blips (so a provider outage

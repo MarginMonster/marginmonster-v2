@@ -432,7 +432,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
         // sceneFaults: how each cast picture fared when it was looked at (0 = right, more = worth a re-roll)
-        return json({ ok: true, sceneImgs, sceneFaults: r.sceneFaults, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef, castRefs: r.castRefs });
+        // sceneChecks: what the check read off each kept picture (null = it was not looked at)
+        return json({ ok: true, sceneImgs, sceneFaults: r.sceneFaults, sceneChecks: r.sceneChecks, treatment: r.treatment, propForScene: r.propForScene, artistRef: r.artistRef, castRefs: r.castRefs });
       }
       // generateFilm engine (Kids Music Video / narrated story formats) — cast-locked scene seeds.
       const { previewFilmSceneSeeds } = await import("../lib/film-engine.server");
@@ -469,6 +470,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     try {
       let img: string | null = null;
       let faults: number | null = null;
+      // what the check read off the picture (a music video's cast still) — null = it was not looked at
+      let check: unknown = null;
       if (narrated) {
         // the scene as it reads NOW (the maker may have edited the words), drawn again on its own
         let scenesNow: Array<{ visual: string; caption?: string }> = [];
@@ -483,13 +486,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (!artistRef) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
         const { rerollMusicVideoScene } = await import("../lib/music-video-pipeline.server");
         const r = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect, customProps: rerollCustomProps, kind: rerollKind, sceneCount: rerollSceneCount, sceneSeconds: filmSceneSeconds, leadRef: rerollLeadRef });
-        img = r.img; faults = r.faults;
+        img = r.img; faults = r.faults; check = r.reading ?? null;
       } else {
         const { rerollFilmSceneSeed } = await import("../lib/film-engine.server");
         img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined });
       }
       if (!img) return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex });
-      return json({ ok: true, sceneIndex, img, faults });
+      return json({ ok: true, sceneIndex, img, faults, check });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
     }

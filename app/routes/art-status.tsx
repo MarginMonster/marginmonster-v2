@@ -112,6 +112,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const keyed = hasDiagKey(request);
   const body = {
     now: new Date().toISOString(),
+    // WHICH BUILD IS RUNNING, and since when: the commit the host deployed (Render sets it) and when this
+    // process started. A deploy that changes only server code leaves the page's own fingerprint (its
+    // asset manifest) exactly as it was, so there was no way to tell from outside that it had landed —
+    // 2026-11-22, a lyric fix had to be confirmed by writing a song and counting its words. A commit id
+    // says nothing to anyone without the repository.
+    build: (process.env.RENDER_GIT_COMMIT || "").slice(0, 8) || null,
+    startedAt: new Date(Date.now() - Math.round(process.uptime() * 1000)).toISOString(),
     env: {
       REPLICATE_API_TOKEN: !!process.env.REPLICATE_API_TOKEN,
       ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
