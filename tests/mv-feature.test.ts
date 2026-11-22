@@ -451,7 +451,8 @@ test("the page: a co-star is given a verse with one tap, and their voice must be
   assert.match(ui, /className=\{`mm-castmem-feat\$\{featPick\.includes\(m\.img\) \? " on" : ""\}`\}/);
   // a different singer is a different song: the words and the pictures start over
   assert.match(ui, /\[artistPick, castExtra\.map\(\(m\) => m\.img\)\.join\(","\), featKey\]/);
-  assert.match(ui, /songSource, filmSongUrl, artistPick, mvAspect, featKey\]/);
+  // (…and so is a different LOOK for anyone, now the wardrobe is locked — tests/mv-cast.test.ts)
+  assert.ok(ui.includes("songSource, filmSongUrl, artistPick, mvAspect, featKey, JSON.stringify(outfits)]"));
   // it rides with the song request, the storyboard request and the render
   for (const intent of ["previewFilmTreatment", "previewFilmScenes"]) {
     const at = ui.indexOf(`{ intent: "${intent}"`);
@@ -625,7 +626,9 @@ test("a co-star's take is the WHOLE vocal in their voice — the cover is only t
   assert.ok(fn.length > 400, "revoiceSongVocals is there");
   // our own split, two stems only: the vocal, and everything else
   assert.ok(voice.includes('const SPLIT_MODEL = "cjwbw/demucs";') && voice.includes('const VOICE_MODEL = "pseudoram/rvc-v2";'));
-  assert.ok(fn.includes('createCommunity(SPLIT_MODEL, { audio: songUrl, stem: "vocals", output_format: "mp3" })'));
+  assert.ok(voice.includes('createCommunity(SPLIT_MODEL, { audio: songUrl, stem: "vocals", output_format: "mp3" })'));
+  assert.ok(voice.includes("export async function separateSong(songUrl: string): Promise<{ vocals: string; music: string }> {"));
+  assert.ok(fn.includes("const { vocals: vocalsUrl, music: musicUrl } = await separateSong(songUrl);"));
   // the whole vocal goes to the voice model, plain voice-to-voice; an octave moves the vocal alone
   assert.ok(fn.includes('input_audio: vocalsUrl, rvc_model: "CUSTOM", custom_rvc_model_download_url: modelUrl, pitch_change: semitones, output_format: "mp3"'));
   assert.ok(fn.includes("const semitones = Math.max(-12, Math.min(12, Math.round(opts.semitones || 0)));"));
@@ -634,7 +637,7 @@ test("a co-star's take is the WHOLE vocal in their voice — the cover is only t
   assert.ok(fn.includes("const gain = was != null && is != null ? Math.max(-3, Math.min(3, Math.round((was - is) * 10) / 10)) : 0;"));
   assert.ok(fn.includes("amix=inputs=2:normalize=0:dropout_transition=0,apad[a]"));
   // any failure throws, so the caller can fall back
-  assert.ok(fn.includes('throw new Error("[voice] the song could not be separated into vocal and music")'));
+  assert.ok(voice.includes('throw new Error("[voice] the song could not be separated into vocal and music")'));
   assert.ok(fn.includes('throw new Error("[voice] the converted vocal came back without audio")'));
 
   const pipe = read("app", "lib", "music-video-pipeline.server.ts");

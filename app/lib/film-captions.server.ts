@@ -107,10 +107,11 @@ async function burnCards(filmPath: string, tmp: string, cards: Card[], style: Ca
  *  singing. A song whose words barely match the lyrics (a merchant's own track) is captioned from what is
  *  heard instead. Never costs the video: anything that goes wrong leaves it as it was ("off").
  *
- *  HOW IT LISTENS (lyric-sync.ts has the measurements): the sound goes over at full rate, and for a song
- *  we wrote the voice detector is set softer — a first video came out with no words for its first
- *  sixteen seconds because a 16 kHz copy lost the singing. A listen that catches too little of the lyrics
- *  gets a second one on the stock settings, and the better of the two is kept. */
+ *  HOW IT LISTENS (lyric-sync.ts has the measurements): the sound goes over at full rate — a first video
+ *  came out with no words for its first sixteen seconds because a 16 kHz copy lost the singing. A song
+ *  we wrote is heard on its VOCAL ALONE (the song is separated first): the whole mix hid the last line
+ *  of another video under a busy outro. The mix is the way back, heard softly and then on the stock
+ *  settings, and the best listen is kept. */
 export async function captionLyrics(o: { filmPath: string; lyricLines: string[]; style: CaptionStyle; jobId?: string }): Promise<CaptionStyle> {
   if (o.style === "off" || !fs.existsSync(o.filmPath)) return "off";
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -129,22 +130,46 @@ export async function captionLyrics(o: { filmPath: string; lyricLines: string[];
     if (ex.status !== 0 || !fs.existsSync(audio)) return "off";
     try { await mirrorRender(path.basename(audio), fs.readFileSync(audio)); } catch { /* the disk copy is served */ }
     const ours = o.lyricLines.some((l) => (l || "").trim());
-    const listen = async (sung: boolean): Promise<WordT[]> => {
-      const words = wordsFromWhisperx(await repPoll(await createWhisperx(`${base}/renders/${path.basename(audio)}`, null, { sung }), 5 * 60_000, "lyrics"));
+    const mixUrl = `${base}/renders/${path.basename(audio)}`;
+    const listen = async (src: string, sung: boolean): Promise<WordT[]> => {
+      const words = wordsFromWhisperx(await repPoll(await createWhisperx(src, null, { sung }), 5 * 60_000, "lyrics"));
       if (o.jobId) await checkpointJob(o.jobId, { ckBeat: Date.now() });
       return words;
     };
-    // our own song: softer voice detection first (words it over-hears match no lyric and are dropped);
-    // somebody's own track is captioned from what is heard, so it gets the stock, stricter listen
-    let heard = await listen(ours);
+    let heard: WordT[] = [];
     let r = lyricWordTimes(o.lyricLines, heard);
-    if (ours && heardTooLittle(r)) {
+    if (ours) {
+      // OUR OWN SONG — THE VOCAL ALONE FIRST. Even at full rate the whole mix can hide a line: on a real
+      // video the last line (nine seconds of singing over a busy outro) was not heard at all on the mix,
+      // and every word of it was on the separated vocal (55 of 55 against 42). Words the transcriber
+      // invents in the vocal's silences match no lyric and are dropped.
       try {
-        const again = await listen(false);
-        const r2 = lyricWordTimes(o.lyricLines, again);
-        console.log(`[lyrics] the first listen caught ${r.matched}/${r.total} lyric words — a second caught ${r2.matched}`);
-        if (r2.matched > r.matched) { heard = again; r = r2; }
-      } catch (e) { console.error(`[lyrics] the second listen failed — keeping the first: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+        const { separateSong } = await import("./singing-voice.server");
+        const stems = await separateSong(mixUrl);
+        if (o.jobId) await checkpointJob(o.jobId, { ckBeat: Date.now() });
+        heard = await listen(stems.vocals, true);
+        r = lyricWordTimes(o.lyricLines, heard);
+        console.log(`[lyrics] on the vocal alone: ${r.matched}/${r.total} lyric words heard`);
+      } catch (e) { console.error(`[lyrics] the vocal could not be separated — listening to the whole mix: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+    }
+    if (!ours || heardTooLittle(r) || heard.length < 3) {
+      // THE WHOLE MIX: somebody's own track is captioned from what is HEARD, so it gets the stock,
+      // stricter listen (on a vocal alone the transcriber writes a "thank you" into the quiet); for our
+      // own song it is the way back — softer detection first, the stock settings if that catches little.
+      try {
+        const mix = await listen(mixUrl, ours);
+        const r1 = lyricWordTimes(o.lyricLines, mix);
+        if (!ours || heard.length < 3 || r1.matched > r.matched) { heard = mix; r = r1; }
+        if (ours && heardTooLittle(r)) {
+          const again = await listen(mixUrl, false);
+          const r2 = lyricWordTimes(o.lyricLines, again);
+          console.log(`[lyrics] the mix caught ${r.matched}/${r.total} lyric words — a second listen caught ${r2.matched}`);
+          if (r2.matched > r.matched) { heard = again; r = r2; }
+        }
+      } catch (e) {
+        if (heard.length < 3) throw e;
+        console.error(`[lyrics] listening to the mix failed — keeping what the vocal gave: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+      }
     }
     if (heard.length < 3) { console.log("[lyrics] too little was heard in the song — no lyrics on screen"); return "off"; }
     if (r.total === 0 || r.matched / r.total < 0.3) {

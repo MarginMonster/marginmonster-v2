@@ -351,6 +351,20 @@ async function loudnessLufs(file: string): Promise<number | null> {
   return Number.isFinite(v) && v > -60 ? v : null;
 }
 
+const isUrl = (v: unknown): v is string => typeof v === "string" && /^https?:\/\//.test(v);
+
+/** A SONG SPLIT IN TWO — its vocal, and everything else — as addresses the provider keeps for about an
+ *  hour. `songUrl` is a public mp3. Used to re-voice a whole vocal (below) and to hear a song's words
+ *  clear of its music (film-captions.server.ts). Throws when it cannot be split. */
+export async function separateSong(songUrl: string): Promise<{ vocals: string; music: string }> {
+  const stems = (await repPoll(await createCommunity(SPLIT_MODEL, { audio: songUrl, stem: "vocals", output_format: "mp3" }), SPLIT_MAX_MS, "voice-split")) as unknown as Record<string, unknown> | null;
+  const vocals = stems && isUrl(stems.vocals) ? stems.vocals : "";
+  // two stems come back: the vocal, and one other holding everything else (whatever the model names it)
+  const music = stems ? Object.entries(stems).filter(([k, v]) => k !== "vocals" && isUrl(v)).map(([, v]) => v as string)[0] : undefined;
+  if (!vocals || !music) throw new Error("[voice] the song could not be separated into vocal and music");
+  return { vocals, music };
+}
+
 /** A TAKE OF A SONG WITH ALL OF ITS SINGING IN THE VOICE.
  *
  *  coverSongInVoice hands the song to a "cover" model that splits the singing into a LEAD and BACKING
@@ -369,12 +383,7 @@ async function loudnessLufs(file: string): Promise<number | null> {
  *  (±12 keeps the song in key). */
 export async function revoiceSongVocals(songUrl: string, modelUrl: string, opts: { semitones?: number; seconds?: number } = {}): Promise<string> {
   const semitones = Math.max(-12, Math.min(12, Math.round(opts.semitones || 0)));
-  const stems = (await repPoll(await createCommunity(SPLIT_MODEL, { audio: songUrl, stem: "vocals", output_format: "mp3" }), SPLIT_MAX_MS, "voice-split")) as unknown as Record<string, unknown> | null;
-  const isUrl = (v: unknown): v is string => typeof v === "string" && /^https?:\/\//.test(v);
-  const vocalsUrl = stems && isUrl(stems.vocals) ? stems.vocals : "";
-  // two stems come back: the vocal, and one other holding everything else (whatever the model names it)
-  const musicUrl = stems ? Object.entries(stems).filter(([k, v]) => k !== "vocals" && isUrl(v)).map(([, v]) => v as string)[0] : undefined;
-  if (!vocalsUrl || !musicUrl) throw new Error("[voice] the song could not be separated into vocal and music");
+  const { vocals: vocalsUrl, music: musicUrl } = await separateSong(songUrl);
   const converted: unknown = await repPoll(await createCommunity(VOICE_MODEL, {
     input_audio: vocalsUrl, rvc_model: "CUSTOM", custom_rvc_model_download_url: modelUrl, pitch_change: semitones, output_format: "mp3",
   }), CONVERT_MAX_MS, "voice-convert");

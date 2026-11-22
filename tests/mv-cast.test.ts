@@ -388,3 +388,45 @@ test("the wardrobe is locked: what is picked is what is worn, in every scene", (
   for (const bad of ["https://elsewhere.example/steal.jpg", "/avatars/omar_0.jpg", "/renders/../secrets.jpg", "/renders/a/b.jpg", "/renders/x.svg", "file:///etc/passwd"]) assert.ok(!ours.test(pathOf(bad)), bad);
   assert.ok(ui.includes("const outfitImgs = parseOutfitImgs(form.get(\"filmOutfitImgs\") as string);") && ui.includes("...(filmOutfitImgs ? { filmOutfitImgs } : {}),"));
 });
+
+test("one scene can break from the locked wardrobe — picked on the storyboard, before the render", () => {
+  // The owner, 2026-11-22: "need to make per scene outfit editable on the seed revision system before
+  // final video generate cta".
+  const ui = read("app", "routes", "web.film.tsx");
+  // scene → person → what they wear THERE ("" = their own look); no entry = their look for the video
+  assert.ok(ui.includes("const [sceneOutfits, setSceneOutfits] = useState<Record<number, Record<string, string>>>({});"));
+  // a scene is drawn from the picture of what each person wears IN IT
+  assert.ok(ui.includes("if (w === undefined) return videoRef;") && ui.includes("if (w === \"\") return img;") && ui.includes("return styleFor(img, w) || videoRef;"));
+  assert.ok(ui.includes("const sceneCastRefs = costarImgs.map((img) => sceneRefOf(i, img, img === artistPick ? seeds.artistRef : costarImgToRef(img), wearOverride)).filter(Boolean) as string[];"));
+  assert.ok(ui.includes("const sceneArtistRef = artistPick ? sceneRefOf(i, artistPick, seeds.artistRef, wearOverride) : seeds.artistRef;"));
+  assert.ok(ui.includes("const leadRef = leadImg ? sceneRefOf(i, leadImg, costarImgToRef(leadImg), wearOverride) : null;"));
+  assert.ok(ui.includes("artistRef: sceneArtistRef || \"\","));
+  // staged, then drawn on an explicit button — like the scene's cast and its props
+  const confirm = ui.slice(ui.indexOf("const confirmSceneWear"), ui.indexOf("const makeSceneOutfit"));
+  assert.ok(confirm.includes("rerollScene(i, undefined, undefined, undefined, draft);"));
+  assert.ok(confirm.includes("if (Object.keys(draft).length) n[i] = draft; else delete n[i];"), "back to the video look = no entry");
+  // a NEW outfit made from a scene is saved beside their looks — it does not become the video's look
+  const make = ui.slice(ui.indexOf("const makeSceneOutfit"), ui.indexOf("const reindexWear"));
+  assert.ok(make.includes("outfitFetcher.submit({ intent: \"styleOutfit\", outfitImg: img, outfitDesc: dsc }, { method: \"post\" });"));
+  assert.ok(!make.includes("setOutfits("));
+  assert.ok(ui.includes("if (r.img && sceneWearPick !== null) setSceneWearDraft((dd) => ({ ...dd, [img]: desc }));"), "…and is picked for that scene once it exists");
+  // changing a look for the VIDEO redraws the storyboard: the wardrobe is locked, so stills drawn in the
+  // old look would be rendered in it
+  assert.ok(ui.includes("mvAspect, featKey, JSON.stringify(outfits)]);"));
+  assert.ok(ui.includes("setSeeds(null); setCastForScene({}); setSceneCastPick(null); setSceneOutfits({}); setSceneWearPick(null); }"));
+  // removing a scene keeps the other scenes' outfits on the right scenes
+  assert.ok(ui.includes("setSceneOutfits((prev) => reindexWear(prev, i)); setSceneWearPick(null);"));
+  // the card says so, its faces show the scene's look, and the panel explains what changes
+  assert.ok(ui.includes("{sceneWearChanged(i) ? t(\"Outfit changed\") : t(\"Wardrobe\")}"));
+  assert.ok(ui.includes("<img src={sceneFace(i, img)} alt=\"\" />"));
+  assert.ok(ui.includes("{t(\"Only this scene changes. Everywhere else they keep the look you picked.\")}"));
+  // the re-roll's pictures are read by the pipeline as it reads any reference (a site path is made whole)
+  const pipe = read("app", "lib", "music-video-pipeline.server.ts");
+  const reroll = pipe.slice(pipe.indexOf("export async function rerollMusicVideoScene"));
+  assert.ok(reroll.includes("const abs = (u: string | null | undefined): string | null => (u ? (u.startsWith(\"http\") ? u : `${base}${u}`) : null);"));
+  // every new line is in all five languages
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  for (const k of ["Wardrobe", "Outfit changed", "Video look", "What they wear in this scene", "What {name} wears in this scene", "An outfit just for this scene — a white tux, a red dress…", "Only this scene changes. Everywhere else they keep the look you picked.", "The look you pick is what they wear in every scene."]) {
+    assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5, k);
+  }
+});

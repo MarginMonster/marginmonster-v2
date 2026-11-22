@@ -68,10 +68,10 @@ test("a music video can carry its lyrics, off unless the maker picks a style", (
   const ui = read("app/routes/web.film.tsx");
   assert.ok(ui.includes('useState<CaptionStyle>("off")') && ui.includes('name="filmCaptions" value={mvLyrics}'), "off by default, sent with the video");
   const cap = read("app/lib/film-captions.server.ts");
-  assert.ok(cap.includes("createWhisperx(`${base}/renders/${path.basename(audio)}`, null, { sung })"), "the song's language is heard, not assumed");
+  assert.ok(cap.includes("createWhisperx(src, null, { sung })"), "the song's language is heard, not assumed");
 });
 
-test("a song is listened to at full rate, softly, and twice when the first listen caught too little", () => {
+test("a song is listened to at full rate, on its vocal alone first, and again when a listen caught too little", () => {
   // (a real video, 2026-11-22: no words on screen for its first sixteen seconds. The transcriber had been
   //  sent a 16 kHz / 64k copy of the mix and heard nine "oh"s; the same sound at full rate: 52 of 56 words)
   assert.deepEqual([...LISTEN_AUDIO], ["-ac", "1", "-ar", "44100", "-b:a", "192k"]);
@@ -92,9 +92,20 @@ test("a song is listened to at full rate, softly, and twice when the first liste
   // our own song is heard softly first; a merchant's own track (captioned from what is heard) is not
   assert.ok(fn.includes(`const ours = o.lyricLines.some((l) => (l || "").trim());`));
   assert.ok(fn.includes("null, { sung }), 5 * 60_000, \"lyrics\")"));
-  assert.ok(fn.includes("let heard = await listen(ours);"));
-  // …and a poor first listen gets a second on the stock settings; the better is kept
-  assert.match(fn, /if \(ours && heardTooLittle\(r\)\) \{[\s\S]{0,200}const again = await listen\(false\);[\s\S]{0,320}if \(r2\.matched > r\.matched\) \{ heard = again; r = r2; \}/);
+  // OUR OWN SONG IS HEARD ON ITS VOCAL ALONE FIRST (a real video, 2026-11-22: the last line — nine
+  // seconds of singing over a busy outro — was not heard at all on the mix; on the separated vocal
+  // every word of it was: 55 of 55 lyric words against 42)
+  const vocalFirst = fn.indexOf("const stems = await separateSong(mixUrl);");
+  const mixAfter = fn.indexOf("const mix = await listen(mixUrl, ours);");
+  assert.ok(vocalFirst > 0 && mixAfter > vocalFirst, "the vocal alone, then the mix");
+  assert.ok(fn.includes("heard = await listen(stems.vocals, true);"));
+  // the mix is for somebody's own track, or the way back when the vocal gave too little
+  assert.ok(fn.includes("if (!ours || heardTooLittle(r) || heard.length < 3) {"));
+  assert.ok(fn.includes("if (!ours || heard.length < 3 || r1.matched > r.matched) { heard = mix; r = r1; }"));
+  // …and a poor listen to the mix gets a second on the stock settings; the better is kept
+  assert.ok(fn.includes("const again = await listen(mixUrl, false);") && fn.includes("if (r2.matched > r.matched) { heard = again; r = r2; }"));
+  // a split that fails costs nothing: the mix is listened to instead
+  assert.ok(fn.includes("the vocal could not be separated — listening to the whole mix"));
   // the softer detector is only ever asked for by name
   const fv = read("app", "lib", "faceless-video.server.ts");
   assert.ok(fv.includes(`export async function createWhisperx(audioUrl: string, language: string | null = "en", opts: { sung?: boolean } = {})`));
