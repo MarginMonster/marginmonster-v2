@@ -99,7 +99,8 @@ test("a ride is framed from inside the car, everyone in a seat — and the bonne
   assert.ok(cast.length <= CAST_PROMPT_MAX, `${cast.length}`);
   const kept = cast.slice(cast.indexOf("Setting: ") + 9, cast.indexOf(". Everyone SITS"));
   assert.ok(SETTING.startsWith(kept) && kept.length >= 120, `the setting keeps at least 120 characters (${kept.length})`);
-  assert.match(cast, /Everyone SITS — nobody stands in or on the car$/);
+  // (this ride is "at night": the place rule, then the three-word sky line — and it all still fits, above)
+  assert.match(cast, /Everyone SITS — nobody stands in or on the car\. A black night sky$/);
   const solo = soloEditPrompt({ role: "broll", frame: rideFrame({ costars: 0, performing: false }), visual: SETTING, micOk: false, extra: ` ${senseStill(SETTING)}` });
   assert.ok(solo.length <= SOLO_EDIT_MAX, `${solo.length}`);
   assert.ok(solo.includes(SETTING), "the whole setting is in the solo picture's prompt");
@@ -358,9 +359,14 @@ test("up high, people stand on solid floor back from the edge", () => {
   for (const v of ["An empty street at night, the skyline glowing behind them", "Under a streetlamp, skyscrapers towering in the distance", "An empty parking garage lit by neon strips", "", null, undefined]) assert.equal(highScene(v), false, String(v));
 
   const still = senseStill("Medium shot on a rooftop terrace at night, string lights overhead");
-  assert.match(still, /solid floor, well back from the edge, with a wall or railing at the edge — nobody on a ledge or on glass over a drop\.$/);
-  assert.ok(still.length <= 140, "short: the picture calls read a limited length");
-  assert.equal(senseStill("An empty street at night, the skyline behind"), "");
+  // (a NIGHT scene is also told its sky is black — three words beside a place rule: a "night" skyline was
+  //  drawn with a sunset still glowing, beside five black-sky scenes, 2026-11-22)
+  assert.match(still, /solid floor, well back from the edge, with a wall or railing at the edge — nobody on a ledge or on glass over a drop\. A black night sky\.$/);
+  assert.ok(still.length <= 160, "short: the picture calls read a limited length");
+  assert.match(senseStill("Medium shot on a rooftop terrace at golden hour"), /nobody on a ledge or on glass over a drop\.$/, "no night, no sky line");
+  assert.equal(senseStill("An empty street at night, the skyline behind"), "FULL NIGHT: a black sky, no sunset or twilight glow.");
+  assert.equal(senseStill("An empty street, the skyline behind"), "", "a scene that names no time is told nothing");
+  assert.equal(senseStill("A neon nightclub dance floor"), "", "a nightclub is not a time of day");
   // a car on a roof keeps the car's rule (one line, not two: the prompt has a budget)
   assert.match(senseStill("A black 1969 Mustang convertible parked on a rooftop car park"), /^The car is a real production model/);
   assert.match(senseMotion("On a rooftop terrace at night"), /Nobody goes to the edge or climbs anything\.$/);

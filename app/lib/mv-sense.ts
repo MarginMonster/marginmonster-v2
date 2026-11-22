@@ -94,11 +94,20 @@ export const RIDE_CAM = "a gentle handheld drift, as if filmed from the next sea
 
 /** The rule a STILL is given (short — the picture calls read a limited length). */
 export function senseStill(visual: string | null | undefined): string {
-  if (rideScene(visual)) return "Everyone SITS — nobody stands in or on the car.";
-  if (carInScene(visual)) return "The car is a real production model with true proportions, wheels on the ground; nobody stands or walks on it.";
-  if (highScene(visual)) return "Everyone is on solid floor, well back from the edge, with a wall or railing at the edge — nobody on a ledge or on glass over a drop.";
-  return "";
+  const place = rideScene(visual) ? "Everyone SITS — nobody stands in or on the car."
+    : carInScene(visual) ? "The car is a real production model with true proportions, wheels on the ground; nobody stands or walks on it."
+    : highScene(visual) ? "Everyone is on solid floor, well back from the edge, with a wall or railing at the edge — nobody on a ledge or on glass over a drop."
+    : "";
+  // NIGHT IS NIGHT. A scene whose words say "at night" was drawn with a sunset still glowing on the horizon
+  // — an outdoor skyline is where a picture model reaches for golden hour — beside scenes that were black
+  // (a rap video's storyboard, 2026-11-22: five night scenes and one dusk). Said only for a night scene.
+  // (The prompt has a budget: beside a place rule it is three words, on its own a short sentence.)
+  const night = timeOf(visual) === "night" ? (place ? NIGHT_TAG : NIGHT_SKY) : "";
+  return [place, night].filter(Boolean).join(" ");
 }
+/** What a night scene's still is told about its sky — on its own, and beside a place rule. */
+export const NIGHT_SKY = "FULL NIGHT: a black sky, no sunset or twilight glow.";
+export const NIGHT_TAG = "A black night sky.";
 
 /** The rule the VIDEO model is given for the people in a shot. */
 export function senseMotion(visual: string | null | undefined): string {
