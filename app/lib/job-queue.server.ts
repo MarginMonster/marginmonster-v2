@@ -622,24 +622,36 @@ async function runJob(
         // "Create a background": remember the generated scene as a reusable
         // Backdrop (shows as a "Created" card, feeds the backdrop-compose combine).
         // Non-fatal — the image still generated even if the bookkeeping fails.
-        if (payload.saveAsBackdrop && typeof createdAssetId === "string") {
-          try {
-            const a = await db.asset.findUnique({ where: { id: createdAssetId }, select: { bodyJson: true } });
-            let u = "";
-            try { const b = JSON.parse(a?.bodyJson || "{}") as { imageUrl?: string; url?: string }; u = b.imageUrl || b.url || ""; } catch { /* */ }
-            const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-            const abs = u.startsWith("/") && base ? base + u : u;
-            if (/^https?:\/\//.test(abs)) {
-              await db.backdrop.create({ data: { shopId, url: abs, label: "Created" } });
-              const extra = await db.backdrop.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, skip: 12, select: { id: true } });
-              if (extra.length) await db.backdrop.deleteMany({ where: { id: { in: extra.map((e) => e.id) } } });
+        if (payload.saveAsBackdrop) {
+          // PAID FOR A BACKGROUND, GOT NONE. The save used to be "non-fatal": when it failed — or the
+          // picture's address could not be read — the job still COMPLETED, the tokens stayed spent, and no
+          // background card ever appeared (the page waited, then said "That didn't finish"). A background
+          // that is not saved was not delivered: the job now fails, which is what returns the tokens
+          // (refundPrepaidOnce) and what the page reports ("…Your tokens were refunded; try again.").
+          // Found in the Studio audit, 2026-11-22. Only the SAVE decides it: trimming the older cards and
+          // tagging the picture can still fail quietly.
+          let saved = false;
+          if (typeof createdAssetId === "string") {
+            try {
+              const a = await db.asset.findUnique({ where: { id: createdAssetId }, select: { bodyJson: true } });
+              let u = "";
+              try { const b = JSON.parse(a?.bodyJson || "{}") as { imageUrl?: string; url?: string }; u = b.imageUrl || b.url || ""; } catch { /* */ }
+              const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+              const abs = u.startsWith("/") && base ? base + u : u;
+              if (/^https?:\/\//.test(abs)) {
+                await db.backdrop.create({ data: { shopId, url: abs, label: "Created" } });
+                saved = true;
+                const extra = await db.backdrop.findMany({ where: { shopId }, orderBy: { createdAt: "desc" }, skip: 12, select: { id: true } });
+                if (extra.length) await db.backdrop.deleteMany({ where: { id: { in: extra.map((e) => e.id) } } });
+              }
+              // Keep the raw scene out of the creator gallery — it's a backdrop, not
+              // a deliverable the merchant asked to post.
+              await tagAssetSection(createdAssetId, "backdrop");
+            } catch (e) {
+              console.error(`[createBackdrop] ${saved ? "tidying after the save failed (the background is saved)" : "backdrop save failed"}:`, e instanceof Error ? e.message : String(e));
             }
-            // Keep the raw scene out of the creator gallery — it's a backdrop, not
-            // a deliverable the merchant asked to post.
-            await tagAssetSection(createdAssetId, "backdrop");
-          } catch (e) {
-            console.error("[createBackdrop] backdrop save failed (non-fatal):", e instanceof Error ? e.message : String(e));
           }
+          if (!saved) throw new Error("The background was made but could not be saved, so it was not charged — try again.");
         }
         break;
       }
