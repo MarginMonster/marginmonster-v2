@@ -126,3 +126,12 @@ test("the Stage says an edit was not made, and that the tokens came back", () =>
   assert.equal(dict.split("  \"The model didn’t make that change, so this one is on us — your {n} tokens are back. Try saying it another way.\": ").length - 1, 5);
   assert.equal(dict.split("  \"The model didn’t make that change. Try saying it another way.\": ").length - 1, 5);
 });
+
+test("…and the Archive's viewer says the same, for a piece opened later", () => {
+  const arc = read("app", "routes", "web.archive.tsx");
+  assert.ok(arc.includes("import { editNote } from \"../lib/edit-check\";"));
+  assert.ok(arc.includes("        ...editNote(a.metaJson),"), "every card carries it from the loader");
+  const note = arc.slice(arc.indexOf("{viewer.notMade && ("), arc.indexOf("{viewer.missed && ("));
+  assert.ok(note.includes("className=\"wa-vmissed\"") && note.includes("{ n: viewer.returned }"), "the note the viewer already has a place and a look for");
+  assert.ok(note.includes("t(\"The model didn’t make that change. Try saying it another way.\")"), "the same two sentences as the Stage — translated once");
+});

@@ -17,6 +17,8 @@ export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultSh
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
+// (2026-11-22) a photo edit the model did not make: said in the viewer, as on the Studio's Stage
+import { editNote } from "../lib/edit-check";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -430,6 +432,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // failure is not a thing this app should do. One free replacement per
         // dead piece; the stamp lives on the asset so it cannot be farmed.
         freeRemake: expired && !(() => { try { return JSON.parse(a.metaJson || "{}").freeReplacedAt; } catch { return false; } })(),
+        // an edit the model did not make, and the tokens that came back for it (edit-check.ts editNote)
+        ...editNote(a.metaJson),
         // Whether the remix action would take this piece at all (remixBasis, above). The viewer shows
         // Remix — and the free "Make it again" — only then: a button that can only refuse is a dead end.
         canRemix: remixable(a),
@@ -2514,6 +2518,11 @@ export default function WebArchive() {
                   : err && actedId === viewer.id ? <span className="wa-verr">{err}</span>
                   : <span className={`wa-chip ${chipFor(viewer)[0]}`}>{chipFor(viewer)[1]}</span>}
               </div>
+              {viewer.notMade && (
+                <span className="wa-vmissed">
+                  <Ico n={viewer.returned ? "coin" : "bulb"} /> {viewer.returned ? t("The model didn’t make that change, so this one is on us — your {n} tokens are back. Try saying it another way.", { n: viewer.returned }) : t("The model didn’t make that change. Try saying it another way.")}
+                </span>
+              )}
               {viewer.missed && (
                 <span className="wa-vmissed">
                   {/* (Remix is named only where the button is there — canRemix) */}
