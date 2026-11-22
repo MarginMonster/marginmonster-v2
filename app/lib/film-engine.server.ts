@@ -35,7 +35,7 @@ import { dropOrgEndorsementPossessive } from "./ad-claims";
 import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds, type ShotRole } from "./mv-pace";
 import { MAX_COSTARS, singerOf } from "./mv-cast";
 import { FEATURE_MIN_SECONDS, defaultFeaturePlan, featureRoles, planIsSound } from "./mv-feature";
-import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLines } from "./mv-song";
+import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, lyricFit, lyricWords, sceneWordRange, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLineCount, wordsAsLines } from "./mv-song";
 import { SENSE_RULES } from "./mv-sense";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 
@@ -469,18 +469,20 @@ export async function previewFilmTreatment(opts: {
   const fullLines = fullSongLines(videoSecs);
   const songWords = songWordsFor(genreKey, videoSecs);
   const sceneWords = sceneWordsFor(genreKey, sceneSec, videoSecs);
-  // how much lyric falls in one scene
+  // how much lyric falls in one scene — on the short engine a RANGE with both ends, said as lines too
+  // (mv-song.ts sceneWordRange: "about 11 words" got 13-14, "about 11, never more than 13" got 7-9)
+  const sceneRange = sceneWordRange(genreKey, sceneSec, videoSecs);
   const perScene = fullSong
     ? (sceneSec === 5 ? "1 line, 2 at the very most" : "2-3 lines")
-    : `about ${sceneWords} words — ${wordsAsLines(sceneWords)}`;
+    : `between ${sceneRange.lo} and ${sceneRange.hi} words (${wordsAsLineCount(sceneWords)})`;
   const songShape = fullSong
     ? `This video runs ${videoSecs} seconds and the music engine sings about one line every 4-5 seconds, so write a FULL song of about ${fullLines} short lyric lines in TOTAL (${perScene} per scene): verses that carry the story forward and a catchy chorus hook that comes back two or three times — WRITE THE CHORUS LINES OUT again every time they are sung. Keep every line short (10 words or fewer).`
     : `This video runs ${videoSecs} seconds. In this genre the music engine sings about ${SING_RATE[genreKey] || 2.2} words a second and STOPS when the words run out, so the lyrics must be the right LENGTH: about ${songWords} words in TOTAL (${wordsAsLines(songWords)}), spread evenly — ${perScene} in every scene. Count them. Too few and the song ends before the video does; and never more than ${Math.min(SHORT_ENGINE_WORDS + 3, Math.round(songWords * 1.12))} words or 570 characters (the engine takes no more). ${shortCut ? "It is a short cut: one hook, with no verse to set it up." : "A short verse, a hook that comes back, a second short verse, the hook again — WRITE THE HOOK OUT each time it is sung."}`;
   const captionShape = fullSong
     ? `• CAPTION — the SHORT lyric line${sceneSec === 5 ? "" : "s"} sung in THIS scene (${perScene}), separated by " / ". Read in order, all ${scenes} captions joined ARE the complete ${genreLabel} song, with the chorus written out each time it returns. Authentic to ${genreLabel}.\n`
-    // (a ceiling as well as a target: asked for "about 11 words" a scene, the writer gave 14-15 — a third
-    //  too many, so each scene's words were sung a scene late: seen on the second featured test)
-    : `• CAPTION — the lyric sung in THIS scene (${perScene}; NEVER more than ${sceneWords + 2} words — that is all that can be sung while the scene is on screen), its lines separated by " / ". EVERY scene has one — a cut scene too: the song does not stop for it. Read in order, all ${scenes} captions joined ARE the complete ${genreLabel} ${shortCut ? "hook" : "song"}. Authentic to ${genreLabel}.\n`;
+    // (both ends of the range are said: fewer and the song runs out before the video, more and each
+    //  scene's words are sung a scene late — both seen on live featured tests)
+    : `• CAPTION — the lyric sung in THIS scene: ${perScene}, its lines separated by " / ". COUNT the words of every caption — fewer than ${sceneRange.lo} and the song runs out before the video ends, more than ${sceneRange.hi} and they cannot be sung while the scene is on screen. EVERY scene has one — a cut scene too: the song does not stop for it. Read in order, all ${scenes} captions joined ARE the complete ${genreLabel} ${shortCut ? "hook" : "song"}. Authentic to ${genreLabel}.\n`;
   // WHAT EACH SCENE IS FILMED AS. A music video is a few performances intercut with cut scenes, and which
   // is which is decided by the shot list — so the writer is told, scene by scene, and writes a scene that
   // fits its shot (see SHOT_NOTES).
@@ -596,6 +598,35 @@ export async function previewFilmTreatment(opts: {
       const again = await write(`${prompt}\nIMPORTANT: your last answer had ${usable(parsed)} scenes. Return EXACTLY ${scenes} scenes — count them before you answer.`);
       if (usable(again) > usable(parsed)) parsed = again;
     } catch { /* keep the first answer */ }
+  }
+  // THE LYRIC MUST FIT ITS VIDEO (the short engine sings the sheet once, at the genre's pace, and stops).
+  // The writer is told the range and still misses it — long on one live test (13-14 words a scene where
+  // 11 fit: the song ran a scene late), short on the next (7-9: it would have run out at 23 seconds of
+  // 30). So the sheet is COUNTED, and one that is off is rewritten once — the lyrics only, each scene
+  // shown its own count — and the rewrite is kept only if it fits better (mv-song.ts lyricFit).
+  if (tmpl.lipSyncSinger && !fullSong) {
+    const sung = (parsed.scenes || []).filter((s) => s && s.visual).slice(0, scenes);
+    const before = lyricFit(sung.map((s) => s.caption), genreKey, sceneSec, videoSecs);
+    if (sung.length && before.off > 0) {
+      try {
+        const sheet = sung.map((s, i) => `${i + 1}. [${lyricWords(s.caption)} words] ${s.caption || ""}`).join("\n");
+        const refit =
+          `These are the lyrics of a ${genreLabel} song for a ${videoSecs}-second music video — one entry for each of its ${sung.length} scenes (${sceneSec} seconds each), a scene's lines separated by " / ":\n${sheet}\n` +
+          `In this genre the song is sung at about ${SING_RATE[genreKey] || 2.2} words a second, so EVERY scene needs between ${before.lo} and ${before.hi} words (${wordsAsLineCount(sceneWords)}). As written the song has ${before.total} words and needs about ${before.want} — ${before.total < before.want ? "it would run out before the video ends" : "its words could not all be sung in time"}.\n` +
+          `Rewrite it so that every scene has between ${before.lo} and ${before.hi} words — COUNT each one. Keep the same story, the same order, the same hook and rhymes and each scene's meaning: lengthen or tighten the lines, do not swap them for new ones. ${ORIGINAL_LYRICS_RULE}${langLine}\n` +
+          `Return "captions": exactly ${sung.length} strings, in scene order, each scene's lines separated by " / ".`;
+        const raw = await anthropicText(refit, {
+          model: "claude-sonnet-5", maxTokens: scenes > 12 ? 2400 : 1200,
+          jsonSchema: { name: "lyric_fit", schema: { type: "object", properties: { captions: { type: "array", items: { type: "string" } } }, required: ["captions"], additionalProperties: false } },
+        });
+        const caps = (JSON.parse(raw) as { captions?: unknown }).captions;
+        if (Array.isArray(caps) && caps.length === sung.length && caps.every((c) => typeof c === "string" && c.trim())) {
+          const after = lyricFit(caps as string[], genreKey, sceneSec, videoSecs);
+          if (after.off < before.off) sung.forEach((s, i) => { s.caption = (caps[i] as string).trim(); });
+          console.log(`[film] the lyric had ${before.total} words for about ${before.want} — rewritten to ${after.total}${after.off < before.off ? "" : " (no better: the first is kept)"}`);
+        }
+      } catch (e) { console.error(`[film] the lyric could not be refit — kept as written: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+    }
   }
   let list = (parsed.scenes || []).filter((s) => s && s.visual).slice(0, scenes);
   // WHO SINGS EACH SCENE (a featured verse). The writer's marks are kept when they make a verse that can

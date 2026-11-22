@@ -71,6 +71,42 @@ export function sceneWordsFor(genre: string | null | undefined, sceneSec: number
   return Math.max(4, Math.min(even, capped));
 }
 
+/** A scene's lyric as a RANGE of words, and as lines — how the writer is told it.
+ *
+ *  Told "about 11 words — 1–2 short lines" the writer gave 13–14 a scene (the song ran a scene late and
+ *  its last lines were never sung). Told that AND "never more than 13" it gave 7–9 — fifty words for a
+ *  song that needs about seventy, which would have run out at 23 seconds of a 30-second video. A range
+ *  with both ends, said as lines of so-many words, is what it can count to. */
+export function sceneWordRange(genre: string | null | undefined, sceneSec: number, videoSecs?: number): { lo: number; hi: number } {
+  const w = sceneWordsFor(genre, sceneSec, videoSecs);
+  return { lo: Math.max(4, w - 1), hi: w + 1 };
+}
+
+const NUMBER_WORD = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight"];
+/** "two lines of 5–6 words": a scene's words as lines of about seven words or fewer. */
+export function wordsAsLineCount(words: number): string {
+  const lines = Math.max(1, Math.round(words / 7));
+  const lo = Math.floor(words / lines), hi = Math.ceil(words / lines);
+  return `${NUMBER_WORD[lines] || lines} line${lines === 1 ? "" : "s"} of ${lo === hi ? lo : `${lo}–${hi}`} words`;
+}
+
+/** How many words are in a lyric (its " / " line breaks and punctuation are not words). */
+export const lyricWords = (caption: string | null | undefined): number => (caption || "").replace(/[^\p{L}\p{N}' ]+/gu, " ").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+
+/** DOES A SHEET FIT ITS VIDEO (short engine)? `captions` = each scene's lyric. `total` words against the
+ *  `want` the scenes add up to; `off` = how far it is from fitting (0 = fits): words short of nine-tenths
+ *  of what is wanted, words over a tenth more, and every word a scene runs past its own ceiling. */
+export function lyricFit(captions: Array<string | null | undefined>, genre: string | null | undefined, sceneSec: number, videoSecs?: number): { total: number; want: number; lo: number; hi: number; off: number } {
+  const { lo, hi } = sceneWordRange(genre, sceneSec, videoSecs);
+  const counts = captions.map(lyricWords);
+  const total = counts.reduce((a, b) => a + b, 0);
+  const want = captions.length * sceneWordsFor(genre, sceneSec, videoSecs);
+  const short = Math.max(0, Math.ceil(want * 0.9) - total);
+  const long = Math.max(0, total - Math.floor(want * 1.1));
+  const over = counts.reduce((a, c) => a + Math.max(0, c - (hi + 1)), 0);
+  return { total, want, lo, hi, off: short + long + over };
+}
+
 /** A count of words as the writer is told it: "3–5 short lines". */
 export function wordsAsLines(words: number): string {
   const lo = Math.max(1, Math.floor(words / 10)), hi = Math.max(1, Math.ceil(words / 7));
