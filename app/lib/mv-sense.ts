@@ -107,10 +107,13 @@ export function senseMotion(visual: string | null | undefined): string {
     : ` Everyone moves the way real people would in this exact place — natural, physically possible motion. Nobody walks or steps on the spot, nobody floats or slides, and nobody stands in or on a vehicle.${highScene(visual) ? " Nobody goes to the edge or climbs anything." : ""}`;
 }
 
-/** Did a picture come back LETTERBOXED — a wide picture with black bars above and below it (or an upright
- *  one with bars either side)? `gray` is the picture as w×h brightness values (0–255), small (48×48 is
- *  plenty). Bars are pure black, edge to edge, on BOTH sides, with a real picture between them: a night
- *  sky is dark but never one flat black from corner to corner. */
+/** Did a picture come back LETTERBOXED — a wide picture with bars above and below it (or an upright one
+ *  with bars either side)? `gray` is the picture as w×h brightness values (0–255), small (48×48 is
+ *  plenty). Two kinds of bar are known, and both are a PAIR, edge to edge, with a real picture between:
+ *   · pure black (a night sky is dark but never one flat black from corner to corner);
+ *   · one flat shade that is NOT black — a storyboard still came back with grey-brown bands top and
+ *     bottom (75 and 86 of 255, each within 3 along its whole length, 10 % of the height each) and went
+ *     through as a good picture, 2026-11-22. */
 export function hasBars(gray: ArrayLike<number>, w: number, h: number): boolean {
   if (!(w >= 16 && h >= 16) || gray.length < w * h) return false;
   // (the bars on the real pictures measured 0–7 of 255, flat; the darkest real edge — a night sky — 5–15)
@@ -127,7 +130,37 @@ export function hasBars(gray: ArrayLike<number>, w: number, h: number): boolean 
   const lit = mean(Math.round(w * 0.25), Math.round(w * 0.75), Math.round(h * 0.4), Math.round(h * 0.6)) > 18;
   if (!lit) return false;
   const bh = band(h), bw = band(w);
-  return (flat(0, w, 0, bh) && flat(0, w, h - bh, h)) || (flat(0, bw, 0, h) && flat(w - bw, w, 0, h));
+  if ((flat(0, w, 0, bh) && flat(0, w, h - bh, h)) || (flat(0, bw, 0, h) && flat(w - bw, w, 0, h))) return true;
+
+  // FLAT BANDS OF ANY SHADE. One line of the picture (a row, or a column when `upright`): its mean, and
+  // how far it varies along its length. A bar is a run of lines in from an edge that are each one shade
+  // along their whole length and all the same shade as the first — and where it ends, the picture starts:
+  // within two lines something varies or is plainly another shade. A clear sky drifts from line to line;
+  // a road or a floor has texture; neither is flat BOTH ways, on BOTH sides, to the same depth.
+  const FLAT = 4, DRIFT = 4, EDGE = 12;
+  const line = (i: number, upright: boolean): { mean: number; range: number } => {
+    let mn = 255, mx = 0, s = 0;
+    const n = upright ? h : w;
+    for (let k = 0; k < n; k++) { const v = upright ? gray[k * w + i] : gray[i * w + k]; if (v < mn) mn = v; if (v > mx) mx = v; s += v; }
+    return { mean: s / n, range: mx - mn };
+  };
+  const run = (count: number, at: (k: number) => { mean: number; range: number }): { lines: number; edge: boolean } => {
+    const first = at(0);
+    if (first.range > FLAT) return { lines: 0, edge: false };
+    let k = 1;
+    while (k < count && at(k).range <= FLAT && Math.abs(at(k).mean - first.mean) <= DRIFT) k++;
+    let edge = false;
+    for (let j = k; j < Math.min(count, k + 2); j++) { const l = at(j); if (l.range >= EDGE || Math.abs(l.mean - first.mean) >= EDGE) edge = true; }
+    return { lines: k, edge };
+  };
+  const pair = (count: number, upright: boolean): boolean => {
+    const a = run(count, (k) => line(k, upright)), b = run(count, (k) => line(count - 1 - k, upright));
+    const least = band(count);
+    if (a.lines < least || b.lines < least || !a.edge || !b.edge) return false;
+    if (a.lines + b.lines > count * 0.4) return false; // most of the picture one shade is not a picture with bars
+    return Math.abs(a.lines - b.lines) <= Math.max(2, 0.4 * Math.max(a.lines, b.lines)); // a matching pair
+  };
+  return pair(h, false) || pair(w, true);
 }
 
 /** WHAT IS HAPPENING in the scene, for the video model: the scene's own words, cut at a word. (It used
@@ -142,6 +175,50 @@ export function momentLine(visual: string | null | undefined, max = 240): string
     cut = (at > max * 0.6 ? head.slice(0, at) : t.slice(0, max)).replace(/[\s,;:.—–-]+$/, "");
   }
   return ` What is happening: ${cut}.`;
+}
+
+/** ONE TIME OF DAY, said in every scene.
+ *
+ *  The writer is told to keep one world — the same time of day in every scene, "said in each VISUAL" — and
+ *  mostly does, then leaves it out of one: "OMAR leans back against the Mustang under warm city lights …
+ *  all taking in the glowing skyline" was drawn at SUNSET in a video that is night everywhere else (a
+ *  re-roll on a live storyboard, 2026-11-22). Each picture is made on its own, from its own words; so the
+ *  time the video is set at is written into any scene that does not say one. A scene that names ANOTHER
+ *  time is left alone — that is the writer's choice, or the maker's. */
+export type DayTime = "night" | "dusk" | "dawn" | "day";
+const TIME_WORDS: Array<[DayTime, RegExp]> = [
+  ["night", /\b(?:night|nights|nighttime|night-time|midnight|moonlit|moonlight|after dark)\b/i],
+  ["dusk", /\b(?:dusk|sunset|sundown|twilight|golden hour|blue hour)\b/i],
+  ["dawn", /\b(?:dawn|sunrise|daybreak|first light)\b/i],
+  ["day", /\b(?:daylight|daytime|midday|noon|afternoon|morning|sunlit|sunny|sunshine)\b/i],
+];
+const TIME_PHRASE: Record<DayTime, string> = { night: "at night", dusk: "at dusk", dawn: "at dawn", day: "in daylight" };
+
+/** The time of day a scene's words say — the first one they name — or null when they name none.
+ *  ("tonight" in a lyric and a "nightclub" are not a time of day; "night-lit" and "midnight" are.) */
+export function timeOf(visual: string | null | undefined): DayTime | null {
+  let best: { time: DayTime; at: number } | null = null;
+  for (const [time, re] of TIME_WORDS) { const m = re.exec(visual || ""); if (m && (!best || m.index < best.at)) best = { time, at: m.index }; }
+  return best ? best.time : null;
+}
+
+/** Every scene's words, each saying the video's time of day: the one most scenes name (a tie goes to the
+ *  one named first). `max` = the most a scene's words may run to — one that has no room is left as it is. */
+export function sameTime(visuals: string[], max = 400): string[] {
+  const said = visuals.map(timeOf);
+  const count = new Map<DayTime, number>();
+  for (const t of said) if (t) count.set(t, (count.get(t) || 0) + 1);
+  let video: DayTime | null = null;
+  for (const t of said) if (t && (!video || (count.get(t) || 0) > (count.get(video) || 0))) video = t;
+  if (!video) return visuals.slice();
+  const phrase = TIME_PHRASE[video];
+  return visuals.map((v, i) => {
+    const text = (v || "").replace(/\s+/g, " ").trim();
+    if (!text || said[i]) return v;
+    const end = /[.!?]$/.test(text) ? text.slice(-1) : ".";
+    const out = `${text.replace(/[.!?,;:\s]+$/, "")}, ${phrase}${end}`;
+    return out.length <= max ? out : v;
+  });
 }
 
 /** ONE CAR, described the same way in every scene it is in.

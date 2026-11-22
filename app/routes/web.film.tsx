@@ -1530,7 +1530,7 @@ export default function FilmStudio() {
     if (c.twin === true) return t("Someone doubled");
     if ((c.dressed || []).some((x) => x === false)) return t("Wrong clothes");
     if (c.odd === true) return t("Looks impossible");
-    if (c.bars === true) return t("Black bars");
+    if (c.bars === true) return t("Bars round the picture");
     if (c.mic && c.mic !== "none") return t("Stray microphone");
     return t("Worth a re-roll");
   };

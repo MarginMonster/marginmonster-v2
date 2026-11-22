@@ -137,6 +137,28 @@ test("a picture that comes back with black bars round it is found, and made agai
   assert.equal(hasBars(pic(() => 3), W, H), false, "a black frame is not a letterboxed picture");
   assert.equal(hasBars(pic((x, y) => 40 + ((x + y) % 60)), W, H), false);
   assert.equal(hasBars(new Uint8Array(10), W, H), false, "too little to tell");
+
+  // BARS THAT ARE NOT BLACK. A storyboard still came back with flat grey-brown bands above and below it
+  // (2026-11-22) and went through as a good picture: the detector knew only black. Row by row, as the
+  // pipeline sees it (48×48 grey; mean and how far the row varies along its length), it measured
+  //   top:    75(1) 74(1) 73(1) 73(1) 74(2) | 67(4) 49(21) 53(50) …
+  //   bottom: … 72(23) 81(8) | 86(3) 85(1) 86(3) 87(2) 87(1)
+  const noise = (x: number, y: number, by: number) => ((x * 37 + y * 91) % by) - by / 2;
+  const greyBars = pic((x, y) => (y < 5 ? 74 + (x % 2) : y >= 43 ? 86 + (x % 3) : 70 + noise(x, y, 80)));
+  assert.equal(hasBars(greyBars, W, H), true, "the live still");
+  // a matching pair either side, too
+  assert.equal(hasBars(pic((x, y) => (x < 6 ? 200 : x >= 42 ? 196 : 90 + noise(x, y, 90))), W, H), true, "pale bars left and right");
+  // NOT bars — the real pictures it must leave alone (45 real stills run through it: one flagged, the live one)
+  //  · a night sky above, a road below: the sky is flat, the road is not  [measured: top 11(2) 9(3) 8(5), bottom 93(29)…]
+  assert.equal(hasBars(pic((x, y) => (y < 3 ? 10 - y + (x % 3) : y < 40 ? 60 + noise(x, y, 100) : 100 + noise(x, y, 30))), W, H), false, "flat above only");
+  //  · a clear sky and a calm floor that each DRIFT from line to line (a gradient is not a bar)
+  assert.equal(hasBars(pic((x, y) => (y < 8 ? 180 - y * 6 : y >= 40 ? 60 + (y - 40) * 6 : 110 + noise(x, y, 70))), W, H), false, "gradients top and bottom");
+  //  · a flat band above and a far deeper one below: not a matching pair
+  assert.equal(hasBars(pic((x, y) => (y < 3 ? 150 : y >= 34 ? 150 : 90 + noise(x, y, 90))), W, H), false, "3 lines above, 14 below");
+  //  · one flat shade nearly everywhere is not a picture with bars
+  assert.equal(hasBars(pic((x, y) => (y >= 22 && y < 26 ? 90 + noise(x, y, 90) : 128)), W, H), false);
+  //  · bands that are flat but that the picture simply continues from (no edge where they end)
+  assert.equal(hasBars(pic((_x, y) => 100 + Math.round(y * 0.4)), W, H), false);
   const pipe = read("app", "lib", "music-video-pipeline.server.ts");
   // looked at small and in grey; a check that cannot be made never costs a picture
   assert.match(pipe, /"-vf", "scale=48:48,format=gray", "-f", "rawvideo", raw\]/);
@@ -349,6 +371,68 @@ test("up high, people stand on solid floor back from the edge", () => {
   assert.match(castCheckPrompt({ refs: 2 }), /or standing on a ledge, an unrailed roof edge or a glass floor over a drop\?/);
   assert.match(castFix({ people: 3, mic: "none", odd: true }, 3, false, false), /up high, everyone is on solid floor back from the edge, behind a wall or railing/);
   // both still prompts stay inside their budgets with the rule in
+  // (the time-of-day and who-is-named rules have their own test, below)
   const visual = "Wide lifestyle shot on a glowing rooftop terrace at night, the three of them walking toward the camera, laughing, the city lights spread out far below and behind them";
   assert.ok(castStillPrompt({ genre: "pop", role: "broll", frame: "a wide lifestyle shot", visual, costars: 2, micOk: false, extra: senseStill(visual).replace(/[.\s]+$/, "") }).length <= CAST_PROMPT_MAX);
+});
+
+import { sameTime, timeOf } from "../app/lib/mv-sense.ts";
+
+test("one time of day, said in every scene — a scene that left it out was drawn at sunset in a night video", () => {
+  // A live storyboard, 2026-11-22: five scenes said "night"; the sixth — "OMAR leans back against the black
+  // 1969 Mustang convertible under warm city lights … all taking in the glowing skyline, calm and
+  // unhurried." — did not, and its re-roll came back under a golden sunset sky. Each picture is made on
+  // its own, from its own words.
+  const live = [
+    "A wide shot of a glowing city skyline at night, neon reflections shimmering on wet asphalt, OMAR walking small and distant beneath towering lit buildings.",
+    "OMAR sings straight to camera under a glowing streetlamp on a quiet night street, KEIKO swaying gently to the beat nearby.",
+    "On an empty night-lit rooftop with a low railing, KEIKO and OMAR dance freely under string lights.",
+    "A closer shot of OMAR singing directly to camera on a rooftop terrace at night.",
+    "A hero shot of the black 1969 Mustang convertible parked beneath glowing city lights, chrome catching the neon.",
+    "OMAR leans back against the black 1969 Mustang convertible under warm city lights, VALENTINA beside him and KEIKO walking up to join them, all taking in the glowing skyline, calm and unhurried.",
+  ];
+  assert.deepEqual(live.map(timeOf), ["night", "night", "night", "night", null, null]);
+  const out = sameTime(live);
+  assert.deepEqual(out.slice(0, 4), live.slice(0, 4), "a scene that says it is left exactly as written");
+  assert.equal(out[4], "A hero shot of the black 1969 Mustang convertible parked beneath glowing city lights, chrome catching the neon, at night.");
+  assert.ok(out[5].endsWith("all taking in the glowing skyline, calm and unhurried, at night."));
+  assert.deepEqual(sameTime(out), out, "said once: doing it again changes nothing");
+  // what is and is not a time of day
+  assert.equal(timeOf("Midnight on the pier"), "night");
+  assert.equal(timeOf("Golden hour on the boardwalk"), "dusk");
+  assert.equal(timeOf("The diner at first light"), "dawn");
+  assert.equal(timeOf("A sunlit beach road"), "day");
+  assert.equal(timeOf("We're not done with tonight"), null, "a lyric's \"tonight\" is not the scene's time");
+  assert.equal(timeOf("Outside the nightclub, a queue"), null);
+  assert.equal(timeOf("At dusk, heading into the night"), "dusk", "the first one named");
+  // the video's time is the one MOST scenes name; a tie goes to the one named first
+  assert.equal(sameTime(["Sunset over the bay.", "The bridge at night.", "Neon signs at night.", "An empty lot."])[3], "An empty lot, at night.");
+  assert.equal(sameTime(["The pier at dawn.", "The bridge at night.", "An empty lot."])[2], "An empty lot, at dawn.");
+  // a scene that names ANOTHER time is the writer's choice — left alone
+  assert.equal(sameTime(["Sunset over the bay.", "The bridge at night.", "Neon signs at night."])[0], "Sunset over the bay.");
+  // nobody says a time: nothing is invented
+  assert.deepEqual(sameTime(["A rooftop.", "A street."]), ["A rooftop.", "A street."]);
+  // no room: left as it is (the card holds 400 characters)
+  const long = `${"A very long street scene, ".repeat(15)}ending here.`;
+  assert.equal(sameTime([long, "The bridge at night."], 400)[0], long);
+  assert.equal(sameTime(["No full stop", "The bridge at night."])[0], "No full stop, at night.");
+  // it is applied where the song is written, with the one-car rule — so the card shows it and a re-roll has it
+  const eng = read("app", "lib", "film-engine.server.ts");
+  assert.ok(eng.includes("const timed = sameTime(list.map((s) => s.visual));") && eng.includes("list = list.map((s, i) => ({ ...s, visual: timed[i] || s.visual }));"));
+  assert.ok(eng.indexOf("const carried = sameCar(") < eng.indexOf("const timed = sameTime("));
+});
+
+test("everyone a scene names is drawn — so the writer names nobody as the owner of a thing", () => {
+  // The same storyboard: "VALENTINA's black 1969 Mustang convertible parked along the curb" put VALENTINA
+  // in the cut scene (a cut scene has the co-stars its words name) — and she was drawn sitting in the
+  // car, twice. Whether "X's …" means X is there cannot be told by rule ("VALENTINA's hand on his
+  // shoulder" does), so the writer is told; the maker can still take her out, and the words follow.
+  assert.deepEqual(defaultCostars({ visual: "OMAR walking small and distant, VALENTINA's black 1969 Mustang convertible parked along the curb." }, "broll", 0, ["VALENTINA", "KEIKO"]), [0], "a name in the words is a person in the picture");
+  const eng = read("app", "lib", "film-engine.server.ts");
+  assert.ok(eng.includes("Everyone a VISUAL names is DRAWN in that picture: name someone only when they are IN the shot — never as the owner of a thing (\"${castNames[0]}'s car\"; say \"a car\")."));
+  // and the flag for bars no longer calls them black
+  const ui = read("app", "routes", "web.film.tsx");
+  assert.ok(ui.includes("if (c.bars === true) return t(\"Bars round the picture\");") && !ui.includes("t(\"Black bars\")"));
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  assert.equal(dict.split(`\n  ${JSON.stringify("Bars round the picture")}:`).length - 1, 5);
 });

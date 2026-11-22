@@ -36,7 +36,7 @@ import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds, t
 import { MAX_COSTARS, singerOf } from "./mv-cast";
 import { FEATURE_MIN_SECONDS, defaultFeaturePlan, featureRoles } from "./mv-feature";
 import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, lyricAsk, lyricFit, lyricWords, pickLyric, sceneWordRange, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLineCount, wordsAsLines } from "./mv-song";
-import { SENSE_RULES, sameCar } from "./mv-sense";
+import { SENSE_RULES, sameCar, sameTime } from "./mv-sense";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -427,7 +427,7 @@ export async function previewFilmTreatment(opts: {
   const artistName = (opts.artistName || "").trim().slice(0, 60);
   const castNames = (opts.castNames || []).map((n) => (n || "").trim()).filter(Boolean).slice(0, 4);
   const coStars = castNames.length
-    ? ` Named co-stars who ALSO appear — use THESE EXACT names and NEVER invent other named people: ${castNames.join(", ")}. In every scene where more than the singer appears (a band, friends, a dance, a crowd of known faces), NAME which of them is there IN that scene's visual (e.g. "${castNames[0]} plays guitar beside ${artistName || "the singer"}"), so those scenes feature the real cast — not strangers.`
+    ? ` Named co-stars who ALSO appear — use THESE EXACT names and NEVER invent other named people: ${castNames.join(", ")}. In every scene where more than the singer appears (a band, friends, a dance, a crowd of known faces), NAME which of them is there IN that scene's visual (e.g. "${castNames[0]} plays guitar beside ${artistName || "the singer"}"), so those scenes feature the real cast — not strangers. Everyone a VISUAL names is DRAWN in that picture: name someone only when they are IN the shot — never as the owner of a thing ("${castNames[0]}'s car"; say "a car").`
     // No co-stars picked = a SOLO artist. The old wording ("you may add ONE unnamed bandmate") still got a
     // NAMED stranger written into the cast and the lyrics ("Treyvon on the beat" in a solo video).
     : " You may put ONE unnamed bandmate or dancer in a scene's visual — but NEVER give them a name, NEVER list them in \"cast\" and NEVER mention them in the lyrics: \"cast\" has exactly ONE entry, the artist.";
@@ -715,6 +715,10 @@ export async function previewFilmTreatment(opts: {
   if (tmpl.lipSyncSinger) {
     const carried = sameCar(list.map((s) => s.visual));
     list = list.map((s, i) => ({ ...s, visual: carried[i] || s.visual }));
+    // …and ONE TIME OF DAY, said in every scene (mv-sense.ts sameTime): a scene whose words left it out
+    // was drawn at sunset in a night video
+    const timed = sameTime(list.map((s) => s.visual));
+    list = list.map((s, i) => ({ ...s, visual: timed[i] || s.visual }));
   }
   return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast, ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
