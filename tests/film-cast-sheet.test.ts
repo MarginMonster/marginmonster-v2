@@ -144,7 +144,9 @@ test("…and WHERE the scene is, with the scene's own words whole and the style 
 });
 
 test("the WRITER is told each picture stands alone — names, the same words for the same thing, a where", () => {
-  for (const must of ["drawn ON ITS OWN", "called by NAME exactly as in \"cast\"", "ITS COLOURS INCLUDED", "never just \"the umbrella\"", "return \"where\" for every scene", "a rainy-day story is raining in every scene", "Nothing in a picture is WRITTEN"]) {
+  // (names ALONE: told to use a name "exactly as in cast", the writer of the next film pasted each
+  //  character's whole description into every scene — four near-identical paragraphs for the customer to read)
+  for (const must of ["drawn ON ITS OWN", "called by their NAME alone, spelt as in \"cast\" (the name only — never their description again: the artist has the cast sheet)", "ITS COLOURS INCLUDED", "never just \"the umbrella\"", "return \"where\" for every scene", "a rainy-day story is raining in every scene", "Nothing in a picture is WRITTEN"]) {
     assert.ok(VISUAL_STANDS_ALONE.includes(must), must);
   }
   const eng = read("app", "lib", "film-engine.server.ts");

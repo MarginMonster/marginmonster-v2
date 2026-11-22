@@ -102,6 +102,35 @@ async function burnCards(filmPath: string, tmp: string, cards: Card[], style: Ca
   return true;
 }
 
+/** The words of a song WE made, with the time each is sung — for a film that has to follow its song
+ *  (sung-fit.ts). Heard softly first, as singing is; on the stock settings too when that catches little
+ *  of the lyrics, and the better listen is kept. Throws when the song cannot be heard at all: the
+ *  caller keeps the film as it was. */
+export async function hearSong(o: { songPath: string; lyricLines: string[]; jobId?: string }): Promise<WordT[]> {
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if (!base || !fs.existsSync(o.songPath)) throw new Error("no song to hear");
+  const audio = path.join(RENDERS(), `lyr-${Date.now()}-${crypto.randomBytes(5).toString("hex")}.mp3`);
+  try {
+    const ex = await runFfmpeg(["-y", "-i", o.songPath, "-vn", ...LISTEN_AUDIO, audio]);
+    if (ex.status !== 0 || !fs.existsSync(audio)) throw new Error("the song could not be read");
+    try { await mirrorRender(path.basename(audio), fs.readFileSync(audio)); } catch { /* the disk copy is served */ }
+    const url = `${base}/renders/${path.basename(audio)}`;
+    const listen = async (sung: boolean): Promise<WordT[]> => {
+      const words = wordsFromWhisperx(await repPoll(await createWhisperx(url, null, { sung }), 5 * 60_000, "song"));
+      if (o.jobId) await checkpointJob(o.jobId, { ckBeat: Date.now() });
+      return words;
+    };
+    let heard = await listen(true);
+    if (heardTooLittle(lyricWordTimes(o.lyricLines, heard))) {
+      const again = await listen(false);
+      if (lyricWordTimes(o.lyricLines, again).matched > lyricWordTimes(o.lyricLines, heard).matched) heard = again;
+    }
+    return heard;
+  } finally {
+    try { if (fs.existsSync(audio)) fs.unlinkSync(audio); } catch { /* best effort */ }
+  }
+}
+
 /** LYRICS ON SCREEN for a music video: the song is heard (whisperx, language detected), the heard words
  *  are matched to the lyric lines (lyric-sync.ts), and each line shows in its own words, in time with the
  *  singing. A song whose words barely match the lyrics (a merchant's own track) is captioned from what is

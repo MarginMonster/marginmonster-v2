@@ -38,6 +38,8 @@ import { MAX_COSTARS, singerOf } from "./mv-cast";
 import { FEATURE_MIN_SECONDS, defaultFeaturePlan, featureRoles } from "./mv-feature";
 import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, lyricAsk, lyricFit, lyricWords, pickLyric, sceneWordRange, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLineCount, wordsAsLines } from "./mv-song";
 import { SENSE_RULES, sameCar, sameTime } from "./mv-sense";
+import { MOTION_GENTLE, MOTION_KEEPS_CAST, MOTION_NEGATIVE, fitFilter, fitScenesToSong, sceneSpans } from "./sung-fit";
+import { lyricLinesOf, sceneLineTimes } from "./lyric-sync";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -1038,10 +1040,11 @@ export async function generateFilm(opts: {
 
     let made = false;
     if (seedAbs) {
-      const motion = `${safePhrase}${scene.visual}. ${castBible}${productLine} ${tmpl.sceneHint}. Smooth, confident cinematic camera motion, vertical 9:16. Add no text, caption, logo or watermark of your own.`;
+      // (sung-fit.ts MOTION_KEEPS_CAST: a duckling that "leaps into a puddle" sank into it and was gone)
+      const motion = `${safePhrase}${MOTION_KEEPS_CAST}${tmpl.childSafe ? MOTION_GENTLE : ""}${scene.visual}. ${castBible}${productLine} ${tmpl.sceneHint}. Smooth, confident cinematic camera motion, vertical 9:16. Add no text, caption, logo or watermark of your own.`;
       for (let a = 0; a < 2 && !made; a++) {
         try {
-          const created = await animateCreate(undefined, { startImage: seedAbs, prompt: motion, durationSec: CLIP_SECONDS });
+          const created = await animateCreate(undefined, { startImage: seedAbs, prompt: motion, negativePrompt: MOTION_NEGATIVE, durationSec: CLIP_SECONDS });
           const clipUrl = await animatePoll(created.id, CLIP_POLL_MS, `film-clip-${i}`);
           await download(clipUrl, outPath);
           made = fs.existsSync(outPath) && ffprobeDuration(outPath) > 1;
@@ -1135,11 +1138,41 @@ export async function generateFilm(opts: {
   try { fontFile = await resolveTextFont(treatment.scenes.map((s) => s.caption || "").join(" ")); } catch { /* keep Poppins */ }
   const outName = `film-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
+  // A SUNG FILM FOLLOWS ITS SONG (sung-fit.ts): the song is listened to and every scene is on screen
+  // exactly while its own line is sung — a clip cut short for a quick line, slowed a little or held
+  // for a slow one — so the words on a scene are the words being sung, and the song never loops.
+  // Anything that goes wrong here leaves the film as it always was: five seconds a scene.
+  let filmClips = clips;
+  if (tmpl.sung && musicIsSung && musicPath && clips.length === treatment.scenes.length) {
+    try {
+      const { hearSong } = await import("./film-captions.server");
+      const heard = await hearSong({ songPath: musicPath, lyricLines: lyricLinesOf(treatment.scenes), jobId });
+      const fit = fitScenesToSong(sceneSpans(clips.length, sceneLineTimes(treatment.scenes, heard)), ffprobeDuration(musicPath), CLIP_SECONDS);
+      if (!fit) console.log("[film] the song could not be followed line by line — scenes keep their own length");
+      else {
+        const fitted: string[] = [];
+        for (let i = 0; i < clips.length; i++) {
+          const out = clips[i].replace(/\.mp4$/i, "") + "-fit.mp4";
+          const run = await runFfmpeg(["-y", "-i", clips[i], "-vf", fitFilter(fit[i]), "-t", fit[i].dur.toFixed(2), "-an", "-threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", out]);
+          if (run.status !== 0 || !fs.existsSync(out) || Math.abs(ffprobeDuration(out) - fit[i].dur) > 0.4) throw new Error(`scene ${i + 1} could not be fitted: ${(run.stderr || "").slice(-160)}`);
+          fitted.push(out);
+        }
+        filmClips = fitted;
+        console.log(`[film] scenes fitted to the song: ${fit.map((f) => `${f.dur}s${f.slow > 1 ? ` (slowed ${f.slow}x${f.hold ? `, held ${f.hold}s` : ""})` : ""}`).join(" · ")}`);
+      }
+    } catch (e) {
+      console.error("[film] could not fit the scenes to the song (keeping five seconds a scene):", e instanceof Error ? e.message.slice(0, 200) : e);
+      filmClips = clips;
+      // (a fit that stopped half-way leaves nothing behind)
+      for (const c of clips) { try { const half = c.replace(/\.mp4$/i, "") + "-fit.mp4"; if (fs.existsSync(half)) fs.unlinkSync(half); } catch { /* best effort */ } }
+    }
+  }
   await assembleFilm({
-    clips,
+    clips: filmClips,
     captions: tmpl.captions ? treatment.scenes.map((s) => s.caption) : treatment.scenes.map(() => undefined),
     musicPath, musicIsSung, voPath, fontFile, outPath, jobId,
   });
+  for (const f of filmClips) { if (!clips.includes(f)) { try { fs.unlinkSync(f); } catch { /* best effort */ } } }
   const outBuf = fs.readFileSync(outPath);
   try { await mirrorRender(outName, outBuf); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;
