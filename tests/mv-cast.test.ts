@@ -714,7 +714,8 @@ test("the cast check can be asked by hand — by an admin, about our own picture
   assert.ok(fn.includes("castCheckPrompt({ refs: refs.length, prop: o.prop })"));
   assert.ok(fn.includes("anthropicVision(question, [abs(o.img), ...refs], { maxTokens: CAST_CHECK_TOKENS, model: \"claude-sonnet-4-6\" })"));
   assert.ok(lib.includes("anthropicVision(castCheckPrompt({ refs: refs.length, prop }), [imgUrl, ...refs], { maxTokens: CAST_CHECK_TOKENS, model: \"claude-sonnet-4-6\" })"), "…which is what the storyboard's own check does");
-  assert.ok(lib.includes("const CAST_CHECK_TOKENS = 450;"), "room for the garments it writes down before it answers");
+  // room to think: at 450 one answer in three about the re-dressed scene ran out before its JSON
+  assert.ok(lib.includes("const CAST_CHECK_TOKENS = 1000;"));
 });
 
 test("the Render button says it worked — and the same storyboard is not sent twice", () => {

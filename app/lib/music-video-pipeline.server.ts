@@ -403,7 +403,10 @@ async function sceneShowsProp(imgUrl: string, noun: string): Promise<boolean> {
  *  reference pictures after the frame), whether anyone is in it twice or blended, who holds a
  *  microphone, whether the prop is there. Null when it cannot be read — a vision outage never blocks a
  *  render. sonnet-4-6, the strict reader (the same model as the prop gate above). */
-const CAST_CHECK_TOKENS = 450;
+// (ROOM TO THINK: asked for "ONLY this JSON", the reader still sometimes writes a paragraph of what it
+//  sees first — and is the more right for it. At 450 tokens one answer in three about a re-dressed scene
+//  ran out before its JSON and could not be read, 2026-11-22; a picture nobody could read is let through.)
+const CAST_CHECK_TOKENS = 1000;
 async function readCast(imgUrl: string, castRefs: string[], prop?: string): Promise<CastCheck | null> {
   const refs = castRefs.slice(0, 3);
   // An answer that cannot be read is asked for once more before the picture is let through unlooked-at —
