@@ -9,6 +9,7 @@ import { db } from "../db.server";
 import { runFfmpeg, repPoll } from "./ugc-ad-pipeline.server";
 import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { srtCues, toSrt, fitCopy, AD_COPY_LIMITS } from "./ad-pack";
+import { LISTEN_AUDIO } from "./lyric-sync";
 import { anthropicText } from "./anthropic.server";
 import { CLAIMS_GUARDRAIL, dropOrgEndorsementPossessive, stripPromoTag } from "./ad-claims";
 import { tidyAdCopy } from "./ad-copy-tidy";
@@ -33,7 +34,8 @@ export async function srtForVideo(srcRel: string, opts: { mirror?: (name: string
   const audioName = `srt-${id}.mp3`;
   const audio = path.join(RENDERS(), audioName);
   try {
-    const ex = await runFfmpeg(["-y", "-i", src, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", audio]);
+    // (full rate: a 16 kHz copy lost whole stretches of a sung video — lyric-sync.ts LISTEN_AUDIO)
+    const ex = await runFfmpeg(["-y", "-i", src, "-vn", ...LISTEN_AUDIO, audio]);
     if (ex.status !== 0 || !fs.existsSync(audio) || fs.statSync(audio).size < 1000) return { ok: false, error: "unreadable" };
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     if (!base) return { ok: false, error: "listen" };

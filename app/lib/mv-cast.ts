@@ -198,7 +198,7 @@ export function castCheckPrompt(o: { refs?: number; prop?: string } = {}): strin
     `Count the people who are clearly IN the frame as its subjects — in the foreground or mid-ground, recognisable. Do NOT count an audience, a crowd, silhouettes, or small blurred figures far in the background.\n` +
     (n ? `For each of the ${COUNT_WORD[n]} people, in order: is someone matching them in the frame?\nIs anyone in the frame there TWICE (a twin or copy of the same person), or a BLEND of two of them (one person's hair on another's clothes)?\n` : "") +
     `Say who is HOLDING a microphone (a mic on an empty stand that nobody holds counts as none).\n` +
-    `Is anybody doing something a real person could NOT really be filmed doing there — standing, walking or dancing in or on a car or other vehicle (people in a vehicle sit in its seats), floating, or a body passing through something solid?\n` +
+    `Is anybody doing something a real person could NOT really be filmed doing there — standing, walking or dancing in or on a car or other vehicle (people in a vehicle sit in its seats), floating, a body passing through something solid, or standing on a ledge, an unrailed roof edge or a glass floor over a drop?\n` +
     (p ? `Say whether a real, recognisable ${p} is clearly visible.\n` : "") +
     `Reply with ONLY this JSON: {"people": <number>${n ? `, "seen": [${Array.from({ length: n }, () => "true | false").join(", ")}], "twin": true | false` : ""}, "mic": "none" | "front" | "other" | "several", "odd": true | false${p ? `, "prop": true | false` : ""}}\n` +
     `"front" = only the person who is front-and-centre / nearest the camera holds one. "other" = someone else holds one and the front person does not. "several" = more than one person holds one.`
@@ -243,7 +243,7 @@ export function castFix(c: CastCheck, expectPeople: number | null, micOk: boolea
   if (expectPeople != null && c.twin === true) out.push(`Nobody appears twice and no two people are blended into one — ${COUNT_WORD[expectPeople] || expectPeople} DIFFERENT people`);
   if (!gone.length && expectPeople != null && c.people < expectPeople) out.push(`ALL ${COUNT_WORD[expectPeople] || expectPeople} people must be clearly visible — leave nobody out`);
   if (expectPeople != null && c.people > expectPeople) out.push(`ONLY ${COUNT_WORD[expectPeople] || expectPeople} people — no extra person and no copy of anyone`);
-  if (c.odd === true) out.push("Everyone does something a real person could really be filmed doing: people in a vehicle SIT in its seats — nobody stands, walks or dances in or on it");
+  if (c.odd === true) out.push("Everyone does something a real person could really be filmed doing: people in a vehicle SIT in its seats — nobody stands, walks or dances in or on it; up high, everyone is on solid floor back from the edge, behind a wall or railing");
   if (c.mic !== "none" && !(c.mic === "front" && micOk && performing)) out.push(micOk && performing ? "ONLY the artist holds a microphone — nobody else" : "Remove every microphone");
   if (prop && c.prop === false) out.push(`The ${prop} must be clearly visible`);
   return out.join(". ");

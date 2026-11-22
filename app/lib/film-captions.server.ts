@@ -17,6 +17,7 @@ import crypto from "node:crypto";
 import { checkpointJob, ffprobeDuration, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { mirrorRender } from "./object-storage.server";
+import { LISTEN_AUDIO, heardTooLittle, lyricWordTimes } from "./lyric-sync";
 import { boldCards, captionFilters, scriptWordTimes, subtitleCards, subtitleChars, trimToSound, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -104,7 +105,12 @@ async function burnCards(filmPath: string, tmp: string, cards: Card[], style: Ca
 /** LYRICS ON SCREEN for a music video: the song is heard (whisperx, language detected), the heard words
  *  are matched to the lyric lines (lyric-sync.ts), and each line shows in its own words, in time with the
  *  singing. A song whose words barely match the lyrics (a merchant's own track) is captioned from what is
- *  heard instead. Never costs the video: anything that goes wrong leaves it as it was ("off"). */
+ *  heard instead. Never costs the video: anything that goes wrong leaves it as it was ("off").
+ *
+ *  HOW IT LISTENS (lyric-sync.ts has the measurements): the sound goes over at full rate, and for a song
+ *  we wrote the voice detector is set softer — a first video came out with no words for its first
+ *  sixteen seconds because a 16 kHz copy lost the singing. A listen that catches too little of the lyrics
+ *  gets a second one on the stock settings, and the better of the two is kept. */
 export async function captionLyrics(o: { filmPath: string; lyricLines: string[]; style: CaptionStyle; jobId?: string }): Promise<CaptionStyle> {
   if (o.style === "off" || !fs.existsSync(o.filmPath)) return "off";
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -119,14 +125,28 @@ export async function captionLyrics(o: { filmPath: string; lyricLines: string[];
     const size = /Video:[^\n]*?\b(\d{3,5})x(\d{3,5})\b/.exec(probe.stderr);
     if (!size) return "off";
     const W = Number(size[1]), H = Number(size[2]);
-    const ex = await runFfmpeg(["-y", "-i", o.filmPath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", audio]);
+    const ex = await runFfmpeg(["-y", "-i", o.filmPath, "-vn", ...LISTEN_AUDIO, audio]);
     if (ex.status !== 0 || !fs.existsSync(audio)) return "off";
     try { await mirrorRender(path.basename(audio), fs.readFileSync(audio)); } catch { /* the disk copy is served */ }
-    const heard = wordsFromWhisperx(await repPoll(await createWhisperx(`${base}/renders/${path.basename(audio)}`, null), 5 * 60_000, "lyrics"));
-    if (o.jobId) await checkpointJob(o.jobId, { ckBeat: Date.now() });
-    if (heard.length < 3) { console.log("[lyrics] too little was heard in the song — no lyrics on screen"); return "off"; }
-    const { lyricWordTimes } = await import("./lyric-sync");
+    const ours = o.lyricLines.some((l) => (l || "").trim());
+    const listen = async (sung: boolean): Promise<WordT[]> => {
+      const words = wordsFromWhisperx(await repPoll(await createWhisperx(`${base}/renders/${path.basename(audio)}`, null, { sung }), 5 * 60_000, "lyrics"));
+      if (o.jobId) await checkpointJob(o.jobId, { ckBeat: Date.now() });
+      return words;
+    };
+    // our own song: softer voice detection first (words it over-hears match no lyric and are dropped);
+    // somebody's own track is captioned from what is heard, so it gets the stock, stricter listen
+    let heard = await listen(ours);
     let r = lyricWordTimes(o.lyricLines, heard);
+    if (ours && heardTooLittle(r)) {
+      try {
+        const again = await listen(false);
+        const r2 = lyricWordTimes(o.lyricLines, again);
+        console.log(`[lyrics] the first listen caught ${r.matched}/${r.total} lyric words — a second caught ${r2.matched}`);
+        if (r2.matched > r.matched) { heard = again; r = r2; }
+      } catch (e) { console.error(`[lyrics] the second listen failed — keeping the first: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+    }
+    if (heard.length < 3) { console.log("[lyrics] too little was heard in the song — no lyrics on screen"); return "off"; }
     if (r.total === 0 || r.matched / r.total < 0.3) {
       // not the song these lyrics were written for: caption what is sung
       const { srtCues } = await import("./ad-pack");

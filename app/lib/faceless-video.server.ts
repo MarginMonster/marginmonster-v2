@@ -18,6 +18,7 @@ import { musicBedToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
 import { ownNarratorVoice } from "./voice-clone.server";
+import { SUNG_VAD } from "./lyric-sync";
 
 // Truncate on a sentence boundary so a hard char-cap never feeds the writer a
 // dangling half-spec ("…holds up to 2L and is made from"). Falls back to the
@@ -78,13 +79,15 @@ function captionSafe(s: string): string {
 /** Start a WhisperX prediction by version; returns the prediction id. */
 /** `language` null = let the model hear which language it is (measured 2026-11-19: a known English take
  *  came back "en", every word timed) — for a finished piece whose language we don't know. */
-export async function createWhisperx(audioUrl: string, language: string | null = "en"): Promise<string> {
+/** `sung` = this is SINGING over music: the voice detector is set softer (lyric-sync.ts SUNG_VAD), or
+ *  whole stretches of a song are passed over as "not speech" and never transcribed. */
+export async function createWhisperx(audioUrl: string, language: string | null = "en", opts: { sung?: boolean } = {}): Promise<string> {
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) throw new Error("REPLICATE_API_TOKEN not set");
   const res = await fetch("https://api.replicate.com/v1/predictions", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ version: WHISPERX_VERSION, input: { audio_file: audioUrl, align_output: true, ...(language ? { language } : {}), batch_size: 16 } }),
+    body: JSON.stringify({ version: WHISPERX_VERSION, input: { audio_file: audioUrl, align_output: true, ...(language ? { language } : {}), batch_size: 16, ...(opts.sung ? SUNG_VAD : {}) } }),
   });
   if (!res.ok) throw new Error(`whisperx create ${res.status}: ${(await res.text()).slice(0, 160)}`);
   return ((await res.json()) as { id: string }).id;

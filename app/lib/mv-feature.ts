@@ -44,6 +44,10 @@ export function vocalGaps(words: Array<{ start: number; end: number }>, minGap =
   return out;
 }
 
+/** Every place one sung word ends and the next begins — where a voice can change without splitting a
+ *  word when there is no real breath close enough. */
+export const wordJoins = (words: Array<{ start: number; end: number }>): Gap[] => vocalGaps(words, 0);
+
 /** How far from a cut the hand-over may move to land in a breath (seconds) — on the side of the cut
  *  where NOBODY is seen singing. On a side where someone is, it may only move a hair. */
 export const HANDOVER_REACH = 0.45;
@@ -56,7 +60,8 @@ const HANDOVER_HAIR = 0.12;
  *  is the artist's voice, whoever's verse it sits in. The voice changes at the cut into and out of their
  *  shot, moved to a breath when there is one within HANDOVER_REACH on the cut-scene side (so one singer
  *  does not hand over mid-word) and never further — and no more than a hair into a shot where the OTHER
- *  singer is seen singing.
+ *  singer is seen singing. With no breath in reach it moves to the nearest place BETWEEN two words
+ *  (`joins`) inside that same reach: a line may be shared, a word is not split between two voices.
  *
  *  It used to be wider: the voice changed anywhere in the cut scenes between the two singers'
  *  performances, aimed at where the co-star's written lines were sung, and the cut scene after their
@@ -67,6 +72,8 @@ const HANDOVER_HAIR = 0.12;
  *  You hear a singer when you see them sing. */
 export function voiceWindows(o: {
   singers: Who[]; roles: ShotRole[]; D: number; gaps?: Gap[];
+  /** every boundary between two sung words (wordJoins) — the fallback when no breath is in reach */
+  joins?: Gap[];
   /** WHEN each scene's own clip is really on screen (mv-pace.ts shotTimes) — a paced edit moves its cuts
    *  onto the beat, so a performance dealt 15–20 s may run 15.0–19.75. Without it a scene is its slot. */
   shots?: Array<{ start: number; end: number } | null | undefined>;
@@ -78,19 +85,27 @@ export function voiceWindows(o: {
   const performs = (i: number): boolean => i >= 0 && i < n && o.roles[i] === "perform";
   // whose voice each scene is: a co-star's only in a performance that is theirs
   const voice: Who[] = Array.from({ length: n }, (_, i) => (performs(i) && Number.isInteger(o.singers[i]) && o.singers[i] >= 0 ? o.singers[i] : ARTIST));
-  const gaps = (o.gaps || []).filter((g) => g && Number.isFinite(g.t)).sort((a, b) => a.t - b.t);
+  const tidy = (l?: Gap[]): Gap[] => (l || []).filter((g) => g && Number.isFinite(g.t)).sort((a, b) => a.t - b.t);
+  const gaps = tidy(o.gaps), joins = tidy(o.joins);
   const shotOf = (i: number): { start: number; end: number } => {
     const s = o.shots ? o.shots[i] : null;
     return s && Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start ? { start: Math.max(0, s.start), end: Math.min(total, s.end) } : { start: i * D, end: (i + 1) * D };
   };
-  /** the breath nearest a cut, no further from it than [lo, hi] — else the cut itself */
-  const nearBreath = (cut: number, lo: number, hi: number): number => {
+  const nearest = (list: Gap[], cut: number, lo: number, hi: number): number => {
     let best = -1;
-    for (const g of gaps) {
+    for (const g of list) {
       if (g.t < lo || g.t > hi) continue;
       if (best < 0 || Math.abs(g.t - cut) < Math.abs(best - cut)) best = g.t;
     }
-    return best >= 0 ? best : cut;
+    return best;
+  };
+  /** the breath nearest a cut, no further from it than [lo, hi] — else the nearest place between two
+   *  words in that reach — else the cut itself */
+  const nearBreath = (cut: number, lo: number, hi: number): number => {
+    const breath = nearest(gaps, cut, lo, hi);
+    if (breath >= 0) return breath;
+    const join = nearest(joins, cut, lo, hi);
+    return join >= 0 ? join : cut;
   };
   const out: VoiceWindow[] = [];
   for (let i = 0; i < n; i++) {

@@ -37,7 +37,7 @@ import {
   castCheckPrompt, castFaults, castFix, castMotionLine, castStillPrompt, micFits, parseCastCheck, sceneCast, singerOf, soloEditPrompt, soloStillPrompt,
   type CastCheck,
 } from "./mv-cast";
-import { FEATURE_VOCAL_TRIM_DB, bestLag, featureMixFilter, featuredIn, octaveShiftFor, pitchChangeOf, vocalGaps, voiceWindows, type Gap, type VoiceWindow } from "./mv-feature";
+import { FEATURE_VOCAL_TRIM_DB, bestLag, featureMixFilter, featuredIn, octaveShiftFor, pitchChangeOf, vocalGaps, voiceWindows, wordJoins, type Gap, type VoiceWindow } from "./mv-feature";
 import { FILL_FRAME, RIDE_CAM, hasBars, momentLine, rideFrame, rideScene, senseMotion, senseStill } from "./mv-sense";
 import { medianHz, trackF0 } from "./pitch";
 import { fitLyricLines, introCut, levelGain, songEngineFor } from "./mv-song";
@@ -920,12 +920,13 @@ async function mixFeaturedVoices(o: {
   //    voiceWindows). Not hearing them is no failure: the voice then changes exactly on the cut.
   //    (Where the co-star's WRITTEN lines fell used to steer this too. It no longer does: a song that
   //    ran behind its scenes pulled her voice out over eleven seconds of the artist's face.)
-  let gaps: Gap[] = [];
+  let gaps: Gap[] = [], joins: Gap[] = [];
   try {
     const heard = wordsFromWhisperx(await repPoll(await createWhisperx(songUrl, null), 4 * 60_000, "feature-words"));
     gaps = vocalGaps(heard);
+    joins = wordJoins(heard);
   } catch (e) { console.error(`[musicvideo] could not hear the words for the featured verse — the voice changes on the cut: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
-  const windows = voiceWindows({ singers: o.singers, roles: o.roles, D: o.D, gaps, shots: o.shots });
+  const windows = voiceWindows({ singers: o.singers, roles: o.roles, D: o.D, gaps, joins, shots: o.shots });
   console.log(`[musicvideo] featured voice: ${windows.map((w) => `co-star ${w.who + 1} ${w.start.toFixed(2)}–${w.end.toFixed(2)} s`).join(", ") || "nobody is seen singing a verse"}`);
   const singing = o.featured.filter((f) => windows.some((w) => w.who === f.who));
   if (!singing.length) return null;

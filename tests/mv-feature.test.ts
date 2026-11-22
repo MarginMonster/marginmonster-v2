@@ -21,7 +21,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   ARTIST, FEATURE_MIN_SECONDS, HANDOVER_REACH, OCTAVE_MARGIN, SING_CENTRE, TYPICAL_LEAD_HZ,
-  bestLag, defaultFeaturePlan, envelopeExpr, featureMixFilter, featureRoles, featuredIn, octaveShiftFor, pitchChangeOf, planIsSound, vocalGaps, voiceWindows,
+  bestLag, defaultFeaturePlan, envelopeExpr, featureMixFilter, featureRoles, featuredIn, octaveShiftFor, pitchChangeOf, planIsSound, vocalGaps, voiceWindows, wordJoins,
   type Gap,
 } from "../app/lib/mv-feature.ts";
 import { sceneCast, singerOf } from "../app/lib/mv-cast.ts";
@@ -168,7 +168,7 @@ test("where a scene's own lines are sung is read off the song", () => {
   // the picture (a song that ran behind its scenes had pulled her voice over eleven seconds of the artist)
   const pipe = read("app", "lib", "music-video-pipeline.server.ts");
   assert.doesNotMatch(pipe, /sceneLineTimes/);
-  assert.match(pipe, /const windows = voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps, shots: o\.shots \}\);/);
+  assert.match(pipe, /const windows = voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps, joins, shots: o\.shots \}\);/);
 });
 
 test("with no breath to be found the voice changes exactly on the cut", () => {
@@ -415,7 +415,7 @@ test("the render: the verse is re-voiced and mixed, the co-star leads their shot
   // lined up) → one track of exactly the song's length
   assert.match(mix, /const heard = wordsFromWhisperx\(await repPoll\(await createWhisperx\(songUrl, null\)/);
   assert.match(mix, /gaps = vocalGaps\(heard\);/);
-  assert.match(mix, /const windows = voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps, shots: o\.shots \}\);/);
+  assert.match(mix, /const windows = voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps, joins, shots: o\.shots \}\);/);
   // …and it says where it put each voice (there are no logs to read on the host without the owner's sign-in)
   assert.match(mix, /console\.log\(`\[musicvideo\] featured voice: /);
   assert.match(mix, /const model = await ensureVoiceModel\(f\.voiceId, o\.base, \{ pitch: f\.speechPitch \}\);/);
@@ -588,4 +588,30 @@ test("the voice follows the cut the edit really makes, not the grid it was dealt
   assert.match(gen, /const onBeat = good\.length === scenes\.length && pace !== "slow" \? beats : \[\];/);
   assert.equal(gen.split("await songBeats(songPath)").length - 1, 1, "the beats are found once");
   assert.ok(gen.indexOf("await songBeats(songPath)") < gen.indexOf("mixFeaturedVoices({"), "before the verse is mixed");
+});
+
+test("with no breath in reach the voice changes between two words — a word is never split", () => {
+  const roles: ShotRole[] = [B, P, B, P, B, B];
+  const singers = [ARTIST, ARTIST, ARTIST, 0, ARTIST, ARTIST];
+  // words run on without a breath across both cuts of her shot (15–20 s)
+  const words = [{ start: 14.2, end: 14.75 }, { start: 14.78, end: 15.3 }, { start: 15.32, end: 15.8 }, { start: 19.1, end: 19.62 }, { start: 19.64, end: 20.4 }, { start: 20.42, end: 21 }];
+  assert.deepEqual(vocalGaps(words).filter((g) => g.t > 14 && g.t < 16), [], "no breath near the cut in");
+  const joins = wordJoins(words);
+  assert.ok(joins.some((j) => Math.abs(j.t - 14.765) < 1e-6) && joins.some((j) => Math.abs(j.t - 19.63) < 1e-6));
+  const [w] = voiceWindows({ singers, roles, D: 5, gaps: vocalGaps(words), joins });
+  // in: the join 0.235 s before the cut (the cut-scene side reaches 0.45 s) — not 15.31, further into
+  // her shot than a hair
+  assert.ok(Math.abs(w.start - 14.765) < 1e-6, String(w.start));
+  // out: nothing between words within a hair before the cut; 20.41 is 0.41 s after it, in reach
+  assert.ok(Math.abs(w.end - 20.41) < 1e-6, String(w.end));
+  // a real breath in reach still wins over a nearer join
+  const [b] = voiceWindows({ singers, roles, D: 5, gaps: [{ t: 14.6, gap: 0.4 }], joins: [{ t: 14.9, gap: 0.02 }] });
+  assert.equal(b.start, 14.6);
+  // nothing between words in reach → exactly on the cut, as before
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, gaps: [], joins: [{ t: 13.9, gap: 0 }, { t: 15.6, gap: 0 }, { t: 21, gap: 0 }] }), [{ who: 0, start: 15, end: 20 }]);
+  // beside another singer's performance the reach is a hair on both sides
+  assert.deepEqual(voiceWindows({ singers: [ARTIST, 0], roles: [P, P], D: 10, joins: [{ t: 9.7, gap: 0 }, { t: 10.3, gap: 0 }] }), [{ who: 0, start: 10, end: 20 }]);
+  assert.deepEqual(voiceWindows({ singers: [ARTIST, 0], roles: [P, P], D: 10, joins: [{ t: 9.93, gap: 0 }] }), [{ who: 0, start: 9.93, end: 20 }]);
+  const pipe = read("app", "lib", "music-video-pipeline.server.ts");
+  assert.match(pipe, /gaps = vocalGaps\(heard\);\s+joins = wordJoins\(heard\);/);
 });

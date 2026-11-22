@@ -9,6 +9,26 @@
 
 import type { WordT, Window } from "./narrated-core";
 
+/* ---- HOW A SONG IS LISTENED TO ----
+ * Measured 2026-11-22 on four finished music videos, after one came out with no words on screen for its
+ * first sixteen seconds: the copy of the sound sent to the transcriber was 16 kHz at 64 kbps, and on a
+ * full mix that was enough to lose the singing —
+ *     16 kHz / 64k, stock settings   0 of 56 lyric words heard (one "oh, oh, oh"); another song lost its last 5 s
+ *     44.1 kHz / 192k, stock          52 of 56, every line
+ *     either, with the voice detector set softer   52 of 56, every line, on all four songs
+ * (the transcriber's "prompt" — handing it the lyrics — made it WORSE: 14 of 56). So a song goes over at
+ * full rate, the voice detector is set softer for singing, and a first listen that catches under
+ * LISTEN_AGAIN_BELOW of the lyrics gets a second one on the stock settings; the better of the two is kept. */
+
+/** ffmpeg output options for the copy of a video's sound that is sent to be heard. */
+export const LISTEN_AUDIO: readonly string[] = ["-ac", "1", "-ar", "44100", "-b:a", "192k"];
+/** The transcriber's voice detector, set softer: singing over a band is quieter "speech" than talking. */
+export const SUNG_VAD = { vad_onset: 0.2, vad_offset: 0.15 } as const;
+/** A listen that matched less of the lyrics than this is worth a second one. */
+export const LISTEN_AGAIN_BELOW = 0.6;
+/** Did this listen catch too little of the lyrics to trust (so: listen again)? */
+export const heardTooLittle = (r: { matched: number; total: number }): boolean => r.total > 0 && r.matched / r.total < LISTEN_AGAIN_BELOW;
+
 /** EXACTLY narrated-core's drawable() (the caption cards split lines with it, so the timed words must be
  *  cut the same way) — kept here so this module has no runtime import; tests/lyric-sync.test.ts holds the
  *  two equal. */

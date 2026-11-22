@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FILL_FRAME, RIDE_CAM, RIDE_MAX_COSTARS, SENSE_RULES, carInScene, hasBars, momentLine, rideFrame, rideScene, sameCar, senseMotion, senseStill } from "../app/lib/mv-sense.ts";
+import { FILL_FRAME, RIDE_CAM, RIDE_MAX_COSTARS, SENSE_RULES, carInScene, hasBars, highScene, momentLine, rideFrame, rideScene, sameCar, senseMotion, senseStill } from "../app/lib/mv-sense.ts";
 import { CAST_PROMPT_MAX, SOLO_EDIT_MAX, castCheckPrompt, castFaults, castFix, castStillPrompt, defaultCostars, parseCastCheck, sceneCast, soloEditPrompt } from "../app/lib/mv-cast.ts";
 import { SHOT_NOTES } from "../app/lib/mv-pace.ts";
 import { FEATURE_VOCAL_TRIM_DB } from "../app/lib/mv-feature.ts";
@@ -90,7 +90,8 @@ test("a ride is framed from inside the car, everyone in a seat — and the bonne
   // the stills are told the rule in a sentence
   assert.equal(senseStill("Cruising downtown in a convertible with the top down"), "Everyone SITS — nobody stands in or on the car.");
   assert.match(senseStill("Leaning on a parked Mustang under the bridge"), /real production model with true proportions, wheels on the ground/);
-  assert.equal(senseStill("A rooftop at sunset"), "", "a scene with no car in it is told nothing extra");
+  assert.equal(senseStill("An empty street at sunset"), "", "a scene with no car in it, on the ground, is told nothing extra");
+  assert.match(senseStill("A rooftop at sunset"), /well back from the edge/, "up high has a rule of its own (below)");
   // …and both still fit the length the picture calls read, with (nearly) all of a 40-word setting
   const SETTING = "OMAR drives a silver 1965 convertible down a neon-lit avenue at night, KEIKO beside him, both laughing, magenta and teal signs sliding across the windshield, wet asphalt shining under the streetlights";
   assert.ok(SETTING.split(/\s+/).length >= 30);
@@ -208,7 +209,10 @@ test("the writer is told the same rules before a scene is written", () => {
   assert.match(SENSE_RULES, /^REAL-WORLD SENSE — every VISUAL must be something a real crew could film with real people/);
   assert.match(SENSE_RULES, /people in it SIT in its seats — nobody stands, dances or walks in or on a vehicle/);
   assert.match(SENSE_RULES, /Film it PARKED .* or from INSIDE, close on the faces with the lights passing — never a wide shot of people riding along in an open car/);
-  assert.match(SENSE_RULES, /Say what KIND of car it is .* and use those SAME words every time it appears — never shortened to "the Mustang" or "the car"; the same person drives it throughout/);
+  assert.match(SENSE_RULES, /Say what KIND of car it is .* and use those SAME words every time it appears in a VISUAL — never shortened to "the Mustang" or "the car"; the same person drives it throughout/);
+  // …in the pictures, not the song: told to use the same words "every time it appears", the writer SANG
+  // them ("Headlights glowing bright, that black 1969 Mustang convertible waits for…")
+  assert.match(SENSE_RULES, /\(That is for the pictures: the LYRICS never need to name the car at all\.\)/);
   assert.match(SENSE_RULES, /DANCING happens on foot, where there is room to dance/);
   assert.match(SENSE_RULES, /Each person does ONE simple, natural thing/);
   assert.ok(SENSE_RULES.endsWith("\n"));
@@ -289,7 +293,7 @@ test("one car, described the same way in every scene it is in", () => {
   assert.deepEqual(sameCar(["A rooftop at sunset.", "The cars stream by below."]), ["A rooftop at sunset.", "The cars stream by below."]);
   assert.deepEqual(sameCar([]), []);
   // the writer is told not to shorten it, and what comes back is carried through anyway
-  assert.match(SENSE_RULES, /use those SAME words every time it appears — never shortened to "the Mustang" or "the car"/);
+  assert.match(SENSE_RULES, /use those SAME words every time it appears in a VISUAL — never shortened to "the Mustang" or "the car"/);
   const engine = read("app", "lib", "film-engine.server.ts");
   assert.match(engine, /const carried = sameCar\(list\.map\(\(s\) => s\.visual\)\);\s+list = list\.map\(\(s, i\) => \(\{ \.\.\.s, visual: carried\[i\] \|\| s\.visual \}\)\);/);
 });
@@ -314,4 +318,35 @@ test("a check that cannot be read is asked for again, said so, and what it saw r
   assert.match(ui, /checks: Array\.isArray\(sd\.sceneChecks\) \? sd\.sceneChecks : \[\] \}\);/);
   assert.match(ui, /checks: prev\.imgs\.map\(\(_, j\) => \(j === idx \? nc : \(prev\.checks \|\| \[\]\)\[j\] \?\? null\)\)/);
   assert.match(ui, /data-check=\{isMv && seeds && \(seeds\.checks \|\| \[\]\)\[i\] != null \? JSON\.stringify\(\(seeds\.checks \|\| \[\]\)\[i\]\) : undefined\}/);
+});
+
+test("up high, people stand on solid floor back from the edge", () => {
+  // (a later video, 2026-11-22: it opened on the artist strolling along the unrailed edge of a skyscraper
+  //  roof and closed on the cast walking a glass floor hung over the city)
+  for (const v of [
+    "Wide establishing shot of a glittering night city skyline from a high rooftop, OMAR small at the edge",
+    "The three of them walking along a glowing glass skywalk high above the city",
+    "On a penthouse terrace at night, string lights overhead",
+    "Standing on the ledge of a tower, wind in his jacket",
+    "A balcony over the boulevard", "an observation deck at dusk", "walking a sky bridge between two towers", "a glass floor over the street",
+  ]) assert.equal(highScene(v), true, v);
+  // a skyline or a tower in the distance is a backdrop, not a place to fall from
+  for (const v of ["An empty street at night, the skyline glowing behind them", "Under a streetlamp, skyscrapers towering in the distance", "An empty parking garage lit by neon strips", "", null, undefined]) assert.equal(highScene(v), false, String(v));
+
+  const still = senseStill("Medium shot on a rooftop terrace at night, string lights overhead");
+  assert.match(still, /solid floor, well back from the edge, with a wall or railing at the edge — nobody on a ledge or on glass over a drop\.$/);
+  assert.ok(still.length <= 140, "short: the picture calls read a limited length");
+  assert.equal(senseStill("An empty street at night, the skyline behind"), "");
+  // a car on a roof keeps the car's rule (one line, not two: the prompt has a budget)
+  assert.match(senseStill("A black 1969 Mustang convertible parked on a rooftop car park"), /^The car is a real production model/);
+  assert.match(senseMotion("On a rooftop terrace at night"), /Nobody goes to the edge or climbs anything\.$/);
+  assert.doesNotMatch(senseMotion("An empty street at night"), /edge/);
+  assert.doesNotMatch(senseMotion("Driving through the city in a black convertible, top down"), /edge/);
+  // the writer is told before a scene is written; the check asks; a redraw is told what was wrong
+  assert.match(SENSE_RULES, /UP HIGH \(a rooftop, a terrace, a balcony\): it has a wall or a railing, and people stay well back from the edge\. Nobody stands or walks on a ledge, a beam, or a glass floor over a drop\./);
+  assert.match(castCheckPrompt({ refs: 2 }), /or standing on a ledge, an unrailed roof edge or a glass floor over a drop\?/);
+  assert.match(castFix({ people: 3, mic: "none", odd: true }, 3, false, false), /up high, everyone is on solid floor back from the edge, behind a wall or railing/);
+  // both still prompts stay inside their budgets with the rule in
+  const visual = "Wide lifestyle shot on a glowing rooftop terrace at night, the three of them walking toward the camera, laughing, the city lights spread out far below and behind them";
+  assert.ok(castStillPrompt({ genre: "pop", role: "broll", frame: "a wide lifestyle shot", visual, costars: 2, micOk: false, extra: senseStill(visual).replace(/[.\s]+$/, "") }).length <= CAST_PROMPT_MAX);
 });

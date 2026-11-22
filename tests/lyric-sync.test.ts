@@ -1,7 +1,13 @@
 /* Lyrics on screen: the lyric lines, in their own spelling, timed by the words heard in the song. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lyricWordTimes, lyricLinesOf } from "../app/lib/lyric-sync.ts";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { LISTEN_AGAIN_BELOW, LISTEN_AUDIO, SUNG_VAD, heardTooLittle, lyricWordTimes, lyricLinesOf } from "../app/lib/lyric-sync.ts";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8");
 
 const w = (word: string, start: number, end: number) => ({ word, start, end });
 
@@ -52,7 +58,6 @@ test("lyric words are cut exactly as the caption cards cut lines", () => {
   for (const s of ["Don't stop — believin'!", "Hey, hey; HEY: 100% $5 tonight…", "café – naïve résumé"]) assert.equal(drawable(s), cardsDrawable(s));
 });
 
-import fs from "node:fs";
 test("a music video can carry its lyrics, off unless the maker picks a style", () => {
   const read = (p: string) => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
   const mv = read("app/lib/music-video-pipeline.server.ts");
@@ -63,5 +68,37 @@ test("a music video can carry its lyrics, off unless the maker picks a style", (
   const ui = read("app/routes/web.film.tsx");
   assert.ok(ui.includes('useState<CaptionStyle>("off")') && ui.includes('name="filmCaptions" value={mvLyrics}'), "off by default, sent with the video");
   const cap = read("app/lib/film-captions.server.ts");
-  assert.ok(cap.includes("createWhisperx(`${base}/renders/${path.basename(audio)}`, null)"), "the song's language is heard, not assumed");
+  assert.ok(cap.includes("createWhisperx(`${base}/renders/${path.basename(audio)}`, null, { sung })"), "the song's language is heard, not assumed");
+});
+
+test("a song is listened to at full rate, softly, and twice when the first listen caught too little", () => {
+  // (a real video, 2026-11-22: no words on screen for its first sixteen seconds. The transcriber had been
+  //  sent a 16 kHz / 64k copy of the mix and heard nine "oh"s; the same sound at full rate: 52 of 56 words)
+  assert.deepEqual([...LISTEN_AUDIO], ["-ac", "1", "-ar", "44100", "-b:a", "192k"]);
+  assert.ok(!LISTEN_AUDIO.includes("16000") && !LISTEN_AUDIO.includes("64k"));
+  // softer than the transcriber's own voice detector (0.5 / 0.363)
+  assert.ok(SUNG_VAD.vad_onset < 0.5 && SUNG_VAD.vad_offset < 0.363 && SUNG_VAD.vad_offset < SUNG_VAD.vad_onset);
+  // what that video's first listen caught, and what a good one catches
+  assert.equal(heardTooLittle({ matched: 0, total: 56 }), true);
+  assert.equal(heardTooLittle({ matched: 14, total: 56 }), true);
+  assert.equal(heardTooLittle({ matched: 52, total: 56 }), false);
+  assert.equal(heardTooLittle({ matched: Math.ceil(56 * LISTEN_AGAIN_BELOW), total: 56 }), false);
+  assert.equal(heardTooLittle({ matched: 0, total: 0 }), false, "no lyrics of ours to match: nothing to listen again for");
+
+  const cap = read("app", "lib", "film-captions.server.ts");
+  const fn = cap.slice(cap.indexOf("export async function captionLyrics"));
+  assert.ok(fn.includes(`runFfmpeg(["-y", "-i", o.filmPath, "-vn", ...LISTEN_AUDIO, audio])`));
+  assert.ok(!fn.includes(`"16000"`));
+  // our own song is heard softly first; a merchant's own track (captioned from what is heard) is not
+  assert.ok(fn.includes(`const ours = o.lyricLines.some((l) => (l || "").trim());`));
+  assert.ok(fn.includes("null, { sung }), 5 * 60_000, \"lyrics\")"));
+  assert.ok(fn.includes("let heard = await listen(ours);"));
+  // …and a poor first listen gets a second on the stock settings; the better is kept
+  assert.match(fn, /if \(ours && heardTooLittle\(r\)\) \{[\s\S]{0,200}const again = await listen\(false\);[\s\S]{0,320}if \(r2\.matched > r\.matched\) \{ heard = again; r = r2; \}/);
+  // the softer detector is only ever asked for by name
+  const fv = read("app", "lib", "faceless-video.server.ts");
+  assert.ok(fv.includes(`export async function createWhisperx(audioUrl: string, language: string | null = "en", opts: { sung?: boolean } = {})`));
+  assert.ok(fv.includes("batch_size: 16, ...(opts.sung ? SUNG_VAD : {}) }"));
+  // the SRT that rides with a video listens to the same full-rate copy
+  assert.ok(read("app", "lib", "ad-pack.server.ts").includes(`runFfmpeg(["-y", "-i", src, "-vn", ...LISTEN_AUDIO, audio])`));
 });

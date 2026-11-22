@@ -24,7 +24,10 @@
  *   3. both models are told the plain rule (SENSE_STILL / senseMotion): everybody does something a real
  *      person could be filmed doing there, and people in a vehicle sit in its seats;
  *   4. the writer is told the same before a scene is ever written (SENSE_RULES), and a cast picture that
- *      comes back with somebody doing the impossible is drawn again (mv-cast.ts — the check's "odd").
+ *      comes back with somebody doing the impossible is drawn again (mv-cast.ts — the check's "odd");
+ *   5. UP HIGH (highScene): a later video opened on the artist strolling along the unrailed edge of a
+ *      skyscraper roof and closed on the cast walking a glass floor hung over the city — pictures no crew
+ *      would film. A rooftop has a wall or a railing and people stand back from it.
  *
  * Pure and import-free: the writer, the pipeline and the tests share it. */
 
@@ -57,6 +60,12 @@ export function carInScene(visual: string | null | undefined): boolean {
   return new RegExp(`\\b${CAR}s?\\b`, "i").test(visual || "") || rideScene(visual);
 }
 
+/** Is the scene set UP HIGH, where there is an edge to fall off — a rooftop, a terrace, a balcony, a
+ *  skywalk? (A skyline or a skyscraper in the distance is only a backdrop.) */
+export function highScene(visual: string | null | undefined): boolean {
+  return /\b(?:roof(?:top|line)?s?|ledge|parapet|penthouse|terrace|balcony|helipad|sky[ -]?(?:walk|bridge|deck)|observation deck|glass (?:floor|bridge|walkway)|cliff(?:top|side)?|high above|above the (?:city|street|skyline))\b/i.test(visual || "");
+}
+
 /** How many co-stars ride beside the artist unless the maker picks more. Drawn on the real picture model
  *  (2026-11-22): the artist and ONE other in the front seats came out right every time; three people in a
  *  car came back with somebody twice, or a fourth person, in four tries of six. */
@@ -87,6 +96,7 @@ export const RIDE_CAM = "a gentle handheld drift, as if filmed from the next sea
 export function senseStill(visual: string | null | undefined): string {
   if (rideScene(visual)) return "Everyone SITS — nobody stands in or on the car.";
   if (carInScene(visual)) return "The car is a real production model with true proportions, wheels on the ground; nobody stands or walks on it.";
+  if (highScene(visual)) return "Everyone is on solid floor, well back from the edge, with a wall or railing at the edge — nobody on a ledge or on glass over a drop.";
   return "";
 }
 
@@ -94,7 +104,7 @@ export function senseStill(visual: string | null | undefined): string {
 export function senseMotion(visual: string | null | undefined): string {
   return rideScene(visual)
     ? " They are riding in a moving car: everyone STAYS SEATED the whole shot — heads nod to the music, hair moves in the breeze, lights sweep across their faces, the city slides past outside. Nobody stands up, climbs, walks or dances, and whoever drives keeps their hands on the wheel."
-    : " Everyone moves the way real people would in this exact place — natural, physically possible motion. Nobody walks or steps on the spot, nobody floats or slides, and nobody stands in or on a vehicle.";
+    : ` Everyone moves the way real people would in this exact place — natural, physically possible motion. Nobody walks or steps on the spot, nobody floats or slides, and nobody stands in or on a vehicle.${highScene(visual) ? " Nobody goes to the edge or climbs anything." : ""}`;
 }
 
 /** Did a picture come back LETTERBOXED — a wide picture with black bars above and below it (or an upright
@@ -177,6 +187,7 @@ export function sameCar(visuals: string[]): string[] {
 /** The same rules as the song WRITER is given them — before a scene is written. */
 export const SENSE_RULES =
   `REAL-WORLD SENSE — every VISUAL must be something a real crew could film with real people. The AI video model animates exactly what you write, so anything that makes no physical sense comes out absurd:\n` +
-  `  • A CAR (or truck, bike…): people in it SIT in its seats — nobody stands, dances or walks in or on a vehicle. Film it PARKED (leaning on it, sitting on the hood, stepping out of it) or from INSIDE, close on the faces with the lights passing — never a wide shot of people riding along in an open car. Say what KIND of car it is (e.g. "a black 1969 Mustang convertible") and use those SAME words every time it appears — never shortened to "the Mustang" or "the car"; the same person drives it throughout.\n` +
+  `  • A CAR (or truck, bike…): people in it SIT in its seats — nobody stands, dances or walks in or on a vehicle. Film it PARKED (leaning on it, sitting on the hood, stepping out of it) or from INSIDE, close on the faces with the lights passing — never a wide shot of people riding along in an open car. Say what KIND of car it is (e.g. "a black 1969 Mustang convertible") and use those SAME words every time it appears in a VISUAL — never shortened to "the Mustang" or "the car"; the same person drives it throughout. (That is for the pictures: the LYRICS never need to name the car at all.)\n` +
+  `  • UP HIGH (a rooftop, a terrace, a balcony): it has a wall or a railing, and people stay well back from the edge. Nobody stands or walks on a ledge, a beam, or a glass floor over a drop.\n` +
   `  • DANCING happens on foot, where there is room to dance — a rooftop, an empty street, a parking garage, a club floor. Never in a vehicle, never sitting down.\n` +
   `  • Each person does ONE simple, natural thing: walking, leaning, sitting, looking out over the view, dancing. No stunts, no acrobatics, nothing fiddly done with the hands.\n`;
