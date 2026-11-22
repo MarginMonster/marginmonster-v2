@@ -41,7 +41,7 @@ export type FilmHero = {
 export const FILM_HEROES: FilmHero[] = [
   { id: "musicvideo", tmpl: "musicvideo", told: null, media: "musicvideo", name: "Music Video", kick: "Your artist sings on camera", meta: "up to 2 min", tint: "t-mv" },
   { id: "kidstv", tmpl: "kidstv", told: "acted", media: "kidstv", name: "Kids Cartoon", kick: "A cartoon for little ones", meta: "acted out", tint: "t-kids" },
-  { id: "kidsmusicvideo", tmpl: "kidsmusicvideo", told: null, media: "kidsmusicvideo", name: "Kids Music Video", kick: "A sing-along for little ones", meta: "about 30 sec", tint: "t-kmv" },
+  { id: "kidsmusicvideo", tmpl: "kidsmusicvideo", told: null, media: "kidsmusicvideo", name: "Kids Music Video", kick: "A sing-along for little ones", meta: "about 20 sec", tint: "t-kmv" },
   { id: "moral", tmpl: "moral", told: "narrated", media: "moralstory", name: "Moral Story", kick: "A story with a lesson", meta: "narrated in minutes", tint: "t-moral" },
   { id: "horror", tmpl: "horror", told: "narrated", media: "horrorstory", name: "Horror Story", kick: "A scary story", meta: "narrated in minutes", tint: "t-horror" },
   { id: "horrorfilm", tmpl: "horror", told: "acted", media: "horror", name: "Horror Film", kick: "A scare, scripted and acted out", meta: "", tint: "t-horror" },

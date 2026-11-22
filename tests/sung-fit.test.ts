@@ -121,3 +121,11 @@ test("the animator is told FIRST that whoever is in the picture stays in it", ()
   assert.ok(eng.includes("const motion = `${safePhrase}${MOTION_KEEPS_CAST}${tmpl.childSafe ? MOTION_GENTLE : \"\"}${scene.visual}. ${castBible}${productLine} ${tmpl.sceneHint}."), "before the scene's own words, which may be cut by the engine's limit");
   assert.ok(eng.includes("animateCreate(undefined, { startImage: seedAbs, prompt: motion, negativePrompt: MOTION_NEGATIVE, durationSec: CLIP_SECONDS })"));
 });
+
+test("the poster promises what is made: four sung lines are about twenty seconds, not thirty", () => {
+  // (the poster said "about 30 sec" over a builder that said "≈ 20s · 4 AI clips"; a film is now as long as
+  //  its song — the two made this way ran 15.6 and 17.5 seconds)
+  const heroes = read("app", "lib", "film-heroes.ts");
+  assert.ok(heroes.includes('kick: "A sing-along for little ones", meta: "about 20 sec"'));
+  assert.equal(read("app", "lib", "ui-i18n-dict.ts").split('  "about 20 sec": ').length - 1, 5, "in all five languages");
+});
