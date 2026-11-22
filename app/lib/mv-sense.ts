@@ -190,4 +190,8 @@ export const SENSE_RULES =
   `  • A CAR (or truck, bike…): people in it SIT in its seats — nobody stands, dances or walks in or on a vehicle. Film it PARKED (leaning on it, sitting on the hood, stepping out of it) or from INSIDE, close on the faces with the lights passing — never a wide shot of people riding along in an open car. Say what KIND of car it is (e.g. "a black 1969 Mustang convertible") and use those SAME words every time it appears in a VISUAL — never shortened to "the Mustang" or "the car"; the same person drives it throughout. (That is for the pictures: the LYRICS never need to name the car at all.)\n` +
   `  • UP HIGH (a rooftop, a terrace, a balcony): it has a wall or a railing, and people stay well back from the edge. Nobody stands or walks on a ledge, a beam, or a glass floor over a drop.\n` +
   `  • DANCING happens on foot, where there is room to dance — a rooftop, an empty street, a parking garage, a club floor. Never in a vehicle, never sitting down.\n` +
-  `  • Each person does ONE simple, natural thing: walking, leaning, sitting, looking out over the view, dancing. No stunts, no acrobatics, nothing fiddly done with the hands.\n`;
+  `  • Each person does ONE simple, natural thing: walking, leaning, sitting, looking out over the view, dancing. No stunts, no acrobatics, nothing fiddly done with the hands.\n` +
+  // (the wardrobe is locked — mv-cast.ts castStylePrompt — and a scene is drawn from its own words: a
+  //  VISUAL that said "silver jacket catching the glow" put a co-star in a silver jacket for that one
+  //  scene, over the look that had been picked for her; seen in the storyboard, 2026-11-22)
+  `  • CLOTHES: never write what anyone is WEARING — no jackets, dresses, fabrics, jewellery or colours of clothing. Everyone's outfit is already chosen and is drawn from their own picture; a VISUAL that dresses them changes it.\n`;

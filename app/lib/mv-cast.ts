@@ -211,7 +211,9 @@ export function soloEditPrompt(o: { role: ShotRole; frame: string; visual: strin
   // (on a stage the model, left to itself, holds the microphone right at the mouth — and the mouth is what
   //  the lip-sync has to move; seen on the first test still, 2026-11-21)
   const mic = o.micOk && performing ? " If they hold a microphone it stays LOW at the chest — the mouth fully visible." : " NO microphone anywhere.";
-  const head = `Keep this EXACT person identical — same face, hair, skin, build, wardrobe and jewelry; do NOT swap them for a different person.${mic} Compose the shot as ${o.frame.replace(/[.\s]+$/, "")}, in this setting: `;
+  // ("whatever the setting says": the wardrobe is locked, and a setting that mentioned a jacket had dressed
+  //  the singer in it)
+  const head = `Keep this EXACT person identical — same face, hair, skin, build, and the clothes and jewelry of this picture whatever the setting says they wear; do NOT swap them for a different person.${mic} Compose the shot as ${o.frame.replace(/[.\s]+$/, "")}, in this setting: `;
   const tail = (o.extra || "").trim();
   const room = Math.max(90, Math.min(300, SOLO_EDIT_MAX - head.length - tail.length - 4));
   return `${head}${cutAtWord(o.visual, room).replace(/[.\s]+$/, "")}.${tail ? ` ${tail}` : ""}`.slice(0, SOLO_EDIT_MAX);

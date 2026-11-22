@@ -33,7 +33,14 @@ export const meta: MetaFunction = () => [{ title: "Your cast · EasyMode" }];
 
 /** One outfit: its portrait, the same portrait cut out of its background, and its 3D view (a full-body
  *  rotation) when it has one. `spinState` says where a custom presenter's 3D view is when it isn't there yet. */
-type Look = { label: string; img: string; cut: string | null; spin: Spin | null; spinState: "none" | "building" | "failed" };
+type Look = {
+  label: string; img: string; cut: string | null; spin: Spin | null; spinState: "none" | "building" | "failed";
+  /** A look SAVED for them outside the outfits they came with — made in the Movie Maker's wardrobe
+   *  (avatar-looks.ts). It is a portrait: it has no cut-out and no 3D view, and none can be added. */
+  extra?: boolean;
+  /** …and the words it was made from, in full. */
+  made?: string;
+};
 type Member = {
   id: string; rowId: string; name: string; custom: boolean;
   /** A person, or a character that is not one (the stock cartoon characters and monsters). */
@@ -65,6 +72,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { customCastFor, stockVoicesFor, favouritesFor } = await import("../lib/custom-avatars.server");
   const { shopVoiceClones, canCloneVoice } = await import("../lib/voice-clone.server");
   const { spinsAreFree, ensureKits } = await import("../lib/presenter-kit.server");
+  const { avatarLooksFor } = await import("../lib/avatar-looks.server");
+  const { lookLabel } = await import("../lib/avatar-looks");
   // Bring this shop's presenters' kits up to date in the background: any cut-out still missing, any 3D
   // view its creation paid for that hasn't started, any build a deploy interrupted. First, so what is
   // read next already shows them as under way; the page polls below until they land.
@@ -72,7 +81,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     console.error(`[kit] ensureKits: ${e instanceof Error ? e.message : e}`);
     return new Set<string>();
   });
-  const [custom, myVoices, stockVoice, favs] = await Promise.all([customCastFor(shop.id), shopVoiceClones(shop.id), stockVoicesFor(shop.id), favouritesFor(shop.id)]);
+  const [custom, myVoices, stockVoice, favs, savedLooks] = await Promise.all([customCastFor(shop.id), shopVoiceClones(shop.id), stockVoicesFor(shop.id), favouritesFor(shop.id), avatarLooksFor(shop.id)]);
+  // THE LOOKS SAVED FOR A PRESENTER (outfits made for them in the Movie Maker) stand after the ones they
+  // came with — the owner: "the outfit changes will need to be saved to each avatars cast card also in
+  // the presenters section and appear there".
+  const extraLooks = (id: string): Look[] => (savedLooks[id] || []).map((l) => ({ label: lookLabel(l.desc) || "Look", img: l.img, cut: null, spin: null, spinState: "none" as const, extra: true, made: l.desc }));
 
   const voiceInfo = (voiceId: string | null | undefined, stockId?: string) => {
     const mine = myVoices.find((v) => v.voiceId === voiceId);
@@ -100,7 +113,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       vibe: c.kind === "monster" ? "Your creature" : c.kind === "cartoon" ? "Your cartoon" : "Your character", about: /the brand's own presenter character$/.test(c.desc) ? "" : sentence(c.desc),
       gender: c.gender, age: "", energy: c.energy,
       img: c.img, cut: cutAt(0),
-      looks,
+      looks: [...looks, ...extraLooks(c.id)],
       cutsPending: cutting.has(c.rowId),
       ...voiceInfo(c.voiceId), signature: null,
     };
@@ -115,7 +128,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return {
       id: a.id, rowId: "", name: a.name, custom: false, kind: a.kind || "person",
       vibe: a.vibe, about: sentence(a.desc), gender: a.gender, age: ageText(a), energy: a.energy,
-      img, cut, looks,
+      img, cut, looks: [...looks, ...extraLooks(a.id)],
       cutsPending: false,
       // the shop's own choice for them, else the voice they come with (the stock characters have one)
       ...voiceInfo(stockVoice[a.id] || a.voiceId, a.id),
@@ -504,6 +517,8 @@ export default function PresenterHub() {
                 <img src={c.cut || c.img} alt={c.name} loading="lazy" draggable={false} />
                 {/* bottom-left of the picture: the top-right corner is the star's */}
                 {c.looks.some((l) => !!l.spin) && <span className="ph-3d" aria-hidden="true"><Ico n="sphere" size={10} /> {t("3D")}</span>}
+                {/* looks saved for them from the Movie Maker's wardrobe — they are in the card's Outfits */}
+                {c.looks.some((l) => l.extra) && <span className="ph-lk" title={t("Made in Movie Maker")}><Ico n="shirt" size={10} /> +{c.looks.filter((l) => l.extra).length}</span>}
                 <span className="ph-face-go" aria-hidden="true"><Ico n="arrow" size={15} /></span>
               </span>
               <span className="ph-face-meta">
@@ -640,7 +655,7 @@ function CharacterView({ c, isBrandFace, fav, onFav, myVoices, canMakeVoice, spi
   const cur = c.looks[Math.min(look, c.looks.length - 1)];
   const has3d = c.looks.some((l) => !!l.spin);
   // outfits of one of YOUR presenters that have no 3D view and none on the way
-  const missing3d = c.custom ? c.looks.filter((l) => !l.spin && l.spinState !== "building").length : 0;
+  const missing3d = c.custom ? c.looks.filter((l) => !l.extra && !l.spin && l.spinState !== "building").length : 0;
   const voiceName = c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.signature ? t("Signature voice") : t("Automatic");
   const voiceNote = c.voiceOwn ? t("Your own voice")
     : c.voice ? t(characterVoice(c.voiceId)?.blurb || AVATAR_VOICES.find((v) => v.id === c.voiceId)?.blurb || "")
@@ -686,7 +701,7 @@ function CharacterView({ c, isBrandFace, fav, onFav, myVoices, canMakeVoice, spi
           {cur?.spin && !flat ? (
             <SpinStage key={look} spin={cur.spin} name={c.name} label={t("Turn {name} around", { name: c.name })} hint={t("Drag to turn")} loadingLabel={t("Loading 3D view")} />
           ) : cur ? (
-            <img className={`pc-still${cur.cut ? "" : " raw"}`} src={cur.cut || cur.img} alt={`${c.name} — ${t(cur.label)}`} draggable={false} />
+            <img className={`pc-still${cur.cut ? "" : " raw"}`} src={cur.cut || cur.img} alt={`${c.name} — ${cur.extra ? cur.label : t(cur.label)}`} draggable={false} />
           ) : null}
           <span className="pc-count" aria-hidden="true">{position}</span>
           {cur?.spin && (
@@ -697,10 +712,10 @@ function CharacterView({ c, isBrandFace, fav, onFav, myVoices, canMakeVoice, spi
           )}
           <button type="button" className="pc-nav prev" onClick={onPrev} aria-label={t("Previous presenter")}><Ico n="arrow" size={16} style={{ transform: "rotate(180deg)" }} /></button>
           <button type="button" className="pc-nav next" onClick={onNext} aria-label={t("Next presenter")}><Ico n="arrow" size={16} /></button>
-          {c.custom && cur && !cur.spin && cur.spinState === "building" && (
+          {c.custom && cur && !cur.extra && !cur.spin && cur.spinState === "building" && (
             <span className="pc-build" role="status"><i className="pc-build-spin" aria-hidden="true" />{t("Building this outfit's 3D view — a few minutes. You can keep browsing.")}</span>
           )}
-          {c.custom && cur && !cur.spin && cur.spinState !== "building" && (
+          {c.custom && cur && !cur.extra && !cur.spin && cur.spinState !== "building" && (
             <button type="button" className="pc-buildbtn" disabled={busy} onClick={() => post({ intent: "buildSpin", look: String(look) })}>
               <Ico n="sphere" size={14} />
               {cur.spinState === "failed"
@@ -773,13 +788,15 @@ function CharacterView({ c, isBrandFace, fav, onFav, myVoices, canMakeVoice, spi
               </h3>
               <div className="pc-looks">
                 {c.looks.map((l, i) => (
-                  <button type="button" key={i} className={`pc-look${look === i ? " on" : ""}`} onClick={() => { setLook(i); setFlat(false); }} aria-pressed={look === i}>
+                  <button type="button" key={i} className={`pc-look${look === i ? " on" : ""}${l.extra ? " extra" : ""}`} onClick={() => { setLook(i); setFlat(false); }} aria-pressed={look === i} title={l.extra ? l.made : undefined}>
                     <span className={`pc-look-img ph-bd${l.cut ? "" : " raw"}`}>
                       <img src={l.cut || l.img} alt="" loading="lazy" draggable={false} />
                       {/* which outfits can be turned around — and which one is being made right now */}
                       {l.spin ? <i className="pc-look-3d">{t("3D")}</i> : l.spinState === "building" ? <i className="pc-look-3d busy" aria-label={t("3D view being built")}><b className="pc-build-spin" aria-hidden="true" /></i> : null}
+                      {/* a look made for them in the Movie Maker's wardrobe */}
+                      {l.extra ? <i className="pc-look-mk" aria-label={t("Made in Movie Maker")} title={t("Made in Movie Maker")}><Ico n="film" size={10} /></i> : null}
                     </span>
-                    <span className="pc-look-nm">{t(l.label)}</span>
+                    <span className="pc-look-nm">{l.extra ? l.label : t(l.label)}</span>
                   </button>
                 ))}
               </div>
@@ -948,6 +965,10 @@ ${SPIN_STAGE_CSS}
 .ph-yoursbadge{left:9px;background:var(--green,#0C7A46);color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.18);}
 .ph-3d{right:9px;background:rgba(20,32,26,.62);color:#fff;letter-spacing:.03em;}
 .ph-face-img .ph-3d{top:auto;right:auto;left:9px;bottom:9px;}
+/* looks saved from the Movie Maker's wardrobe: a count beside "3D" (or in its place) */
+.ph-lk{position:absolute;left:9px;bottom:9px;z-index:2;display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:800;border-radius:999px;padding:3px 8px;line-height:1.2;background:rgba(122,79,194,.92);color:#fff;}
+.ph-lk svg{stroke:#fff;stroke-width:2;fill:none;}
+.ph-face-img .ph-3d + .ph-lk{left:54px;}
 .ph-fav{position:absolute;top:7px;right:7px;z-index:3;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;padding:0;border:1px solid rgba(20,32,26,.10);background:rgba(255,255,255,.92);color:#6F7972;font-size:16px;line-height:1;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.14);transition:transform .12s,color .12s,background .12s;}
 .ph-fav::before{content:"";position:absolute;inset:-7px;border-radius:50%;} /* a 44px thumb target round the 30px dot */
 .ph-fav:hover{transform:scale(1.08);color:#A87A08;}
@@ -1140,6 +1161,10 @@ ${SPIN_STAGE_CSS}
 .pc-look.on .pc-look-img{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1px var(--green,#0C7A46);}
 .pc-look:hover .pc-look-img{box-shadow:0 0 0 1px var(--green2,#12A85E);}
 .pc-look-nm{display:block;margin-top:5px;font-size:11.5px;font-weight:700;color:var(--ink,#14201A);}
+/* a look saved from the Movie Maker's wardrobe: its name is the outfit's own words (cut to two lines), and a film mark sits on the tile */
+.pc-look.extra .pc-look-nm{font-weight:600;font-size:10.5px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.pc-look-mk{position:absolute;top:4px;left:4px;z-index:1;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#7A4FC2;color:#fff;font-style:normal;}
+.pc-look-mk svg{stroke:#fff;stroke-width:2;fill:none;}
 .pc-info>.pc-acts{flex:0 0 auto;display:flex;flex-direction:column;gap:9px;margin-top:0;padding:14px 26px 18px;background:var(--card,#FDFCF7);}
 .pc-act-main{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;text-align:center;}
 .pc-act-row{display:grid;grid-template-columns:1fr 1fr;gap:9px;}

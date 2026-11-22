@@ -359,7 +359,10 @@ test("the wardrobe is locked: what is picked is what is worn, in every scene", (
   assert.match(castStillPrompt({ genre: "Pop", role: "perform", frame: "a medium-wide shot", visual: "A rooftop at night", costars: 2, micOk: false }), /NOT singing; everyone dressed exactly as in their reference image\. /);
   assert.match(castStillPrompt({ genre: "Pop", role: "broll", frame: "a wide shot", visual: "A rooftop at night", costars: 1, micOk: false }), /each with their own face, hair and clothes\. /);
   assert.match(soloStillPrompt({ genre: "Pop", role: "broll", frame: "a wide shot", visual: "A street at night", micOk: false }), /the artist \(the person in the reference image, dressed exactly as in it\)/);
-  assert.match(soloEditPrompt({ role: "perform", frame: "a medium shot", visual: "A street at night", micOk: false }), /same face, hair, skin, build, wardrobe and jewelry/);
+  assert.match(soloEditPrompt({ role: "perform", frame: "a medium shot", visual: "A street at night", micOk: false }), /same face, hair, skin, build, and the clothes and jewelry of this picture whatever the setting says they wear;/);
+  // …and the writer no longer dresses anyone: a VISUAL that said "silver jacket catching the glow" put a
+  // co-star in a silver jacket for that one scene, over the look picked for her (seen 2026-11-22)
+  assert.match(read("app", "lib", "mv-sense.ts"), /CLOTHES: never write what anyone is WEARING — no jackets, dresses, fabrics, jewellery or colours of clothing\./);
 
   // the pipeline styles each cast member FROM the picture that shows what they wear…
   const pipe = read("app", "lib", "music-video-pipeline.server.ts");
@@ -389,44 +392,114 @@ test("the wardrobe is locked: what is picked is what is worn, in every scene", (
   assert.ok(ui.includes("const outfitImgs = parseOutfitImgs(form.get(\"filmOutfitImgs\") as string);") && ui.includes("...(filmOutfitImgs ? { filmOutfitImgs } : {}),"));
 });
 
-test("one scene can break from the locked wardrobe — picked on the storyboard, before the render", () => {
+test("one scene can break from the locked wardrobe — inside the scene's Cast editor, before the render", () => {
   // The owner, 2026-11-22: "need to make per scene outfit editable on the seed revision system before
-  // final video generate cta".
+  // final video generate cta" — then, looking at it: "What if we leave the wardrobe stuff inside of the
+  // avatar edit option (bundled them) no extra button?"
   const ui = read("app", "routes", "web.film.tsx");
   // scene → person → what they wear THERE ("" = their own look); no entry = their look for the video
   assert.ok(ui.includes("const [sceneOutfits, setSceneOutfits] = useState<Record<number, Record<string, string>>>({});"));
+  // NO button and NO editor of its own: two edit buttons on a card, and the outfits live under the cast
+  assert.ok(!ui.includes("is-wear") && !ui.includes("sceneWearPick") && !ui.includes("openSceneWearPick"));
+  const acts = ui.slice(ui.indexOf("<div className=\"mm-sc-acts\">"), ui.indexOf("{editing && ("));
+  assert.equal(acts.split("className={`mm-sc-act ").length - 1, 2, "Cast and Props");
+  // …the Cast button carries a mark when the scene has an outfit of its own
+  assert.ok(acts.includes("{sceneWearChanged(i) ? <span className=\"mm-sc-act-tag\" title={t(\"Outfit changed\")}><Ico n=\"shirt\" size={10} /></span> : null}"));
+  const castEditor = ui.slice(ui.indexOf("<div className=\"mm-sc-castedit\">"), ui.indexOf("{seeds && scenePropPick === i && ("));
+  assert.ok(castEditor.includes("{t(\"What they wear in this scene\")}") && castEditor.includes("{sceneDraftPeople(strip.scenes, i).map((img) => {"));
+  assert.ok(castEditor.includes("{t(\"Only this scene changes. Everywhere else they keep the look you picked.\")}"));
+  // the people being dressed are the ones in the editor's DRAFT, so a co-star just added can be dressed at once
+  assert.ok(ui.includes("return [...new Set([lead, ...sceneCastDraft].filter((x): x is string => !!x))];"));
+  // opening the editor loads both drafts; ONE button applies both, and draws the scene once
+  assert.ok(ui.includes("setSceneWearDraft({ ...(sceneOutfits[i] || {}) }); setSceneWearText({}); setSceneWearNewFor(null);"));
+  const confirm = ui.slice(ui.indexOf("const confirmSceneCastMv"), ui.indexOf("// ---- Wardrobe (owner edit)"));
+  assert.ok(confirm.includes("for (const k of Object.keys(sceneWearDraft)) if (inScene.has(k)) wear[k] = sceneWearDraft[k];"), "only people in the scene keep an outfit for it");
+  assert.ok(confirm.includes("if (Object.keys(wear).length) n[i] = wear; else delete n[i];"), "back to the video look = no entry");
+  assert.ok(confirm.includes("rerollScene(i, undefined, sceneCastDraft, undefined, wear);"));
+  assert.equal(castEditor.split("mm-sp-confirm").length - 1, 1, "one Regenerate button");
   // a scene is drawn from the picture of what each person wears IN IT
   assert.ok(ui.includes("if (w === undefined) return videoRef;") && ui.includes("if (w === \"\") return img;") && ui.includes("return styleFor(img, w) || videoRef;"));
   assert.ok(ui.includes("const sceneCastRefs = costarImgs.map((img) => sceneRefOf(i, img, img === artistPick ? seeds.artistRef : costarImgToRef(img), wearOverride)).filter(Boolean) as string[];"));
   assert.ok(ui.includes("const sceneArtistRef = artistPick ? sceneRefOf(i, artistPick, seeds.artistRef, wearOverride) : seeds.artistRef;"));
   assert.ok(ui.includes("const leadRef = leadImg ? sceneRefOf(i, leadImg, costarImgToRef(leadImg), wearOverride) : null;"));
   assert.ok(ui.includes("artistRef: sceneArtistRef || \"\","));
-  // staged, then drawn on an explicit button — like the scene's cast and its props
-  const confirm = ui.slice(ui.indexOf("const confirmSceneWear"), ui.indexOf("const makeSceneOutfit"));
-  assert.ok(confirm.includes("rerollScene(i, undefined, undefined, undefined, draft);"));
-  assert.ok(confirm.includes("if (Object.keys(draft).length) n[i] = draft; else delete n[i];"), "back to the video look = no entry");
-  // a NEW outfit made from a scene is saved beside their looks — it does not become the video's look
+  // a NEW outfit made from a scene: one "New look" tile opens the one box; it is saved beside their looks
+  // and does not become the video's look
+  assert.ok(castEditor.includes("mm-sw-look mm-sw-new") && castEditor.includes("{sceneWearNewFor === img && ("));
   const make = ui.slice(ui.indexOf("const makeSceneOutfit"), ui.indexOf("const reindexWear"));
-  assert.ok(make.includes("outfitFetcher.submit({ intent: \"styleOutfit\", outfitImg: img, outfitDesc: dsc }, { method: \"post\" });"));
+  assert.ok(make.includes("outfitFetcher.submit({ intent: \"styleOutfit\", outfitImg: img, outfitDesc: dsc, outfitAvatarId: rosterIdOf(img) }, { method: \"post\" });"));
   assert.ok(!make.includes("setOutfits("));
-  assert.ok(ui.includes("if (r.img && sceneWearPick !== null) setSceneWearDraft((dd) => ({ ...dd, [img]: desc }));"), "…and is picked for that scene once it exists");
-  // changing a look for the VIDEO redraws the storyboard: the wardrobe is locked, so stills drawn in the
-  // old look would be rendered in it
+  assert.ok(ui.includes("if (r.img && sceneCastPick !== null) setSceneWearDraft((dd) => ({ ...dd, [img]: desc }));"), "…and is picked for that scene once it exists");
+  // changing a look for the VIDEO redraws the storyboard: stills drawn in the old look would be rendered in it
   assert.ok(ui.includes("mvAspect, featKey, JSON.stringify(outfits)]);"));
-  assert.ok(ui.includes("setSeeds(null); setCastForScene({}); setSceneCastPick(null); setSceneOutfits({}); setSceneWearPick(null); }"));
   // removing a scene keeps the other scenes' outfits on the right scenes
-  assert.ok(ui.includes("setSceneOutfits((prev) => reindexWear(prev, i)); setSceneWearPick(null);"));
-  // the card says so, its faces show the scene's look, and the panel explains what changes
-  assert.ok(ui.includes("{sceneWearChanged(i) ? t(\"Outfit changed\") : t(\"Wardrobe\")}"));
+  assert.ok(ui.includes("setSceneOutfits((prev) => reindexWear(prev, i));"));
+  // the faces on a scene's card show that scene's look
   assert.ok(ui.includes("<img src={sceneFace(i, img)} alt=\"\" />"));
-  assert.ok(ui.includes("{t(\"Only this scene changes. Everywhere else they keep the look you picked.\")}"));
-  // the re-roll's pictures are read by the pipeline as it reads any reference (a site path is made whole)
-  const pipe = read("app", "lib", "music-video-pipeline.server.ts");
-  const reroll = pipe.slice(pipe.indexOf("export async function rerollMusicVideoScene"));
-  assert.ok(reroll.includes("const abs = (u: string | null | undefined): string | null => (u ? (u.startsWith(\"http\") ? u : `${base}${u}`) : null);"));
+
+  // THE EDITORS OPEN AS A DRAWER under the card's row, full width (a card is 174 px wide on a phone: inside
+  // it the outfit box was 62 px and the chips wrapped onto five lines — seen in the pane, 2026-11-22)
+  assert.ok(ui.includes("<Fragment key={i}>") && ui.includes("<div className=\"mm-sc-drawer\" role=\"group\""));
+  assert.ok(ui.includes(".mm-sc-drawer{grid-column:1/-1;"));
+  assert.ok(ui.includes("grid-auto-flow:row dense;}"), "the cards after it keep their places in the row above");
+  assert.ok(ui.includes("const editing = isMv && !!seeds && (sceneCastPick === i || scenePropPick === i);"));
+  // one editor at a time
+  assert.ok(ui.includes("if (scenePropPick === i) { setScenePropPick(null); return; }\n    setSceneCastPick(null);") || ui.includes("if (scenePropPick === i) { setScenePropPick(null); return; }\r\n    setSceneCastPick(null);"));
+
   // every new line is in all five languages
   const dict = read("app", "lib", "ui-i18n-dict.ts");
-  for (const k of ["Wardrobe", "Outfit changed", "Video look", "What they wear in this scene", "What {name} wears in this scene", "An outfit just for this scene — a white tux, a red dress…", "Only this scene changes. Everywhere else they keep the look you picked.", "The look you pick is what they wear in every scene."]) {
+  for (const k of ["Outfit changed", "Video look", "New look", "What they wear in this scene", "What {name} wears in this scene", "An outfit just for this scene — a white tux, a red dress…", "Only this scene changes. Everywhere else they keep the look you picked.", "The look you pick is what they wear in every scene.", "Edit scene {n}", "Who's in this scene", "Edit who's in this scene and what they wear", "Made in Movie Maker"]) {
     assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5, k);
   }
+});
+
+test("a look made in the Movie Maker is kept on the presenter, and shows on their card in Presenters", async () => {
+  // The owner, 2026-11-22: "the outfit changes will need to be saved to each avatars cast card also in
+  // the presenters section and appear there".
+  const { lookAvatarKey, lookImgPath, lookDesc, lookLabel, LOOKS_PER_AVATAR } = await import("../app/lib/avatar-looks.ts");
+  // WHO: a presenter's id as the pickers carry it
+  for (const id of ["omar", "valentina", "cav_cmwabc123", "mm-monster"]) assert.equal(lookAvatarKey(id), id);
+  for (const bad of ["", " ", "a", "../etc", "omar/../x", "o m a r", 12, null, undefined, "x".repeat(80)]) assert.equal(lookAvatarKey(bad), "", String(bad));
+  // THE PICTURE: only one on our own render disk — whatever host the address names, only the path is kept
+  assert.equal(lookImgPath("https://easymodeapp.com/renders/img-1795-ab12.jpg"), "/renders/img-1795-ab12.jpg");
+  assert.equal(lookImgPath("https://elsewhere.example/renders/x.webp"), "/renders/x.webp");
+  assert.equal(lookImgPath("/renders/a.png?v=3"), "/renders/a.png");
+  for (const bad of ["https://elsewhere.example/steal.jpg", "/avatars/omar_0.jpg", "/renders/../secrets.jpg", "/renders/a/b.jpg", "/renders/x.svg", "", null, 7]) assert.equal(lookImgPath(bad), "", String(bad));
+  // the outfit's words, tidied; and the short name it goes by on a card
+  assert.equal(lookDesc("  a red   sequin\nevening dress "), "a red sequin evening dress");
+  assert.equal(lookDesc("x".repeat(300)).length, 160);
+  assert.equal(lookLabel("a red sequin evening dress"), "Red sequin evening dress");
+  assert.equal(lookLabel("an edgy black leather jacket look"), "Edgy black leather jacket look");
+  assert.ok(lookLabel("a very long description of an outfit that goes on and on and on").length <= 34);
+  assert.equal(lookLabel(""), "");
+  assert.ok(LOOKS_PER_AVATAR >= 12);
+
+  // the table, and the two ways a look gets there
+  const schema = read("prisma", "schema.prisma");
+  assert.match(schema, /model AvatarLook \{[\s\S]*?avatarKey String[\s\S]*?@@unique\(\[shopId, avatarKey, desc\]\)[\s\S]*?\}/);
+  assert.ok(schema.includes("avatarLooks        AvatarLook[]"));
+  const srv = read("app", "lib", "avatar-looks.server.ts");
+  assert.ok(srv.includes("if (!shopId || !avatarKey || !d || !path) return false;"), "nothing is kept that is not a presenter, an outfit and a picture of ours");
+  assert.ok(srv.includes("where: { shopId_avatarKey_desc: { shopId, avatarKey, desc: d } },"), "the same outfit made again replaces its picture");
+  const ui = read("app", "routes", "web.film.tsx");
+  // 1) made now: the request says who it is for, and the server keeps it on them
+  assert.ok(ui.includes("const rosterIdOf = (img: string): string => d.roster.find((r) => r.img === img)?.id || \"\";"));
+  assert.equal(ui.split("outfitAvatarId: rosterIdOf(img) }, { method: \"post\" });").length - 1, 2, "from the wardrobe row and from a scene");
+  assert.ok(ui.includes("if (outfitAvatarId) { const { saveAvatarLook } = await import(\"../lib/avatar-looks.server\"); await saveAvatarLook(shop.id, outfitAvatarId, desc, img); }"));
+  // 2) made before looks were kept: this browser hands its own over, once
+  assert.ok(ui.includes("if (adopt.length) lookSyncFetcher.submit({ intent: \"adoptOutfitLooks\", looks: JSON.stringify(adopt.slice(0, 40)) }, { method: \"post\" });"));
+  assert.ok(ui.includes("if (await saveAvatarLook(shop.id, o.avatarId, o.desc, o.img)) kept++;"));
+  // saved looks come back to the wardrobe on any device
+  assert.ok(ui.includes("const savedLooks = await avatarLooksFor(shop.id);") && ui.includes("const kept = (d.savedLooks || {})[r.id] || [];"));
+
+  // THE PRESENTERS SECTION: the looks stand after the outfits they came with, on the card and inside it
+  const pres = read("app", "routes", "web.presenters.tsx");
+  assert.ok(pres.includes("const extraLooks = (id: string): Look[] => (savedLooks[id] || []).map((l) => ({ label: lookLabel(l.desc) || \"Look\", img: l.img, cut: null, spin: null, spinState: \"none\" as const, extra: true, made: l.desc }));"));
+  assert.ok(pres.includes("looks: [...looks, ...extraLooks(c.id)],") && pres.includes("looks: [...looks, ...extraLooks(a.id)],"));
+  assert.ok(pres.includes("{c.looks.some((l) => l.extra) && <span className=\"ph-lk\""), "said on the card in the grid");
+  // a saved look is a portrait: no 3D view is offered for it, nor counted as missing
+  assert.ok(pres.includes("c.looks.filter((l) => !l.extra && !l.spin && l.spinState !== \"building\").length"));
+  assert.equal(pres.split("{c.custom && cur && !cur.extra && !cur.spin && cur.spinState").length - 1, 2);
+  // its name is the outfit's own words — never run through the translator as if it were a label of ours
+  assert.ok(pres.includes("<span className=\"pc-look-nm\">{l.extra ? l.label : t(l.label)}</span>"));
 });

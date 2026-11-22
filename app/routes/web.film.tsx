@@ -7,7 +7,8 @@
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { Form, useActionData, useFetcher, useLoaderData, useNavigation } from "@remix-run/react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { lookLabel } from "../lib/avatar-looks";
 import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
@@ -84,6 +85,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // was picked for them. Only a yes/no goes to the page — WHICH voice is decided on the server when the
   // video is made (mv-voices.server.ts).
   const { builtInCanSing } = await import("../lib/mv-voices.server");
+  // the looks saved for this shop's presenters (outfits made in the wardrobe, here or on another device)
+  const { avatarLooksFor } = await import("../lib/avatar-looks.server");
+  const savedLooks = await avatarLooksFor(shop.id);
   const roster = favouritesFirst([
     ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null, sing: !!c.voiceId && !isCharacterVoice(c.voiceId), kind: (c.kind || "person") as "person" | "cartoon" | "monster", look: (c.desc || "").slice(0, 220) })),
     ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null, sing: builtInCanSing(a), kind: "person" as const, look: (a.desc || "").slice(0, 220) })),
@@ -92,6 +96,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
     roster,
+    savedLooks,
     hasPlan: !!shop.activePlan?.active,
     trialing: planTrialing(shop.activePlan),
     canFilm: capabilitiesFor(shop.activePlan).has("creatorvideo"),
@@ -393,9 +398,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // FREE — WARDROBE: generate the SAME avatar wearing a chosen outfit (identity locked). The merchant
   // saves it as that avatar's "style"; the picked outfit also rides the render as a description.
+  // LOOKS THIS BROWSER MADE BEFORE LOOKS WERE KEPT ON THE PRESENTER (they lived in its storage only):
+  // handed over once, so they show on the presenter's card too. Nothing is generated or charged.
+  if (intent === "adoptOutfitLooks") {
+    let list: unknown = [];
+    try { list = JSON.parse(((form.get("looks") as string) || "[]").slice(0, 60_000)); } catch { /* nothing to adopt */ }
+    const { saveAvatarLook } = await import("../lib/avatar-looks.server");
+    const { LOOKS_PER_REQUEST } = await import("../lib/avatar-looks");
+    let kept = 0;
+    for (const x of (Array.isArray(list) ? list : []).slice(0, LOOKS_PER_REQUEST)) {
+      const o = (x && typeof x === "object" ? x : {}) as { avatarId?: unknown; desc?: unknown; img?: unknown };
+      if (await saveAvatarLook(shop.id, o.avatarId, o.desc, o.img)) kept++;
+    }
+    return json({ ok: true, kept });
+  }
   if (intent === "styleOutfit") {
     const src = ((form.get("outfitImg") as string) || "").trim().slice(0, 2000);
     const desc = ((form.get("outfitDesc") as string) || "").trim().slice(0, 160);
+    // WHO it is for (their id in the roster): the look is kept on that presenter
+    const outfitAvatarId = ((form.get("outfitAvatarId") as string) || "").trim();
     if (!src || !desc) return json({ error: tr(lang, "Pick an avatar and an outfit first.") });
     try {
       const { editSubjectIntoScene } = await import("../lib/image-generation.server");
@@ -411,6 +432,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           metaJson: JSON.stringify({ kind: "wardrobe", section: "creator", outfit: desc.slice(0, 120) }),
         } });
       } catch { /* archive is best-effort — never fail the gen on it */ }
+      // …and KEPT ON THE PRESENTER: it shows on their card in Presenters and is offered again wherever
+      // they are dressed (avatar-looks.ts). A look that cannot be kept never costs the picture.
+      if (outfitAvatarId) { const { saveAvatarLook } = await import("../lib/avatar-looks.server"); await saveAvatarLook(shop.id, outfitAvatarId, desc, img); }
       return json({ img: /^https?:\/\//i.test(img) ? img : `${externalOrigin(request)}${img.startsWith("/") ? "" : "/"}${img}` });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't make that outfit — give it another go."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
@@ -929,6 +953,7 @@ export default function FilmStudio() {
   const artistMakerFetcher = useFetcher<{ img?: string; error?: string }>();
   // Wardrobe: generate the SAME avatar wearing a chosen outfit (identity locked), saved as a style.
   const outfitFetcher = useFetcher<{ img?: string; error?: string }>();
+  const lookSyncFetcher = useFetcher<{ ok?: boolean; kept?: number }>(); // hands this browser's older looks to the server, once
   // (`faults`: how each cast picture fared when it was looked at — more than 0 = something was still off
   //  in the best of the tries, and the scene is flagged as worth a re-roll)
   const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null; castRefs: string[]; faults?: (number | null)[]; checks?: unknown[] } | null>(null);
@@ -941,9 +966,9 @@ export default function FilmStudio() {
   // PER-SCENE WARDROBE: scene index → cast member img → what they wear in THAT scene ("" = their own
   // look; a description = one of their saved outfits). No entry = their look for the whole video.
   const [sceneOutfits, setSceneOutfits] = useState<Record<number, Record<string, string>>>({});
-  const [sceneWearPick, setSceneWearPick] = useState<number | null>(null);
   const [sceneWearDraft, setSceneWearDraft] = useState<Record<string, string>>({});
   const [sceneWearText, setSceneWearText] = useState<Record<string, string>>({}); // describe-an-outfit text, per person
+  const [sceneWearNewFor, setSceneWearNewFor] = useState<string | null>(null); // whose "New look" box is open
   // Wardrobe (owner edit): cast member IMG → an outfit description. Applied when they're styled into
   // the genre, so they wear it for the whole video. Empty = keep their own look. The render keys on
   // this desc; `outfitPreview` holds a GENERATED thumbnail of the avatar wearing it (display + "saved
@@ -960,8 +985,23 @@ export default function FilmStudio() {
   const wardrobeFirstPersist = useRef(true);
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
-    try { const o = JSON.parse(localStorage.getItem("mm-wardrobe-v1") || "{}"); if (o && typeof o === "object") { if (o.outfitStyles && typeof o.outfitStyles === "object") setOutfitStyles(o.outfitStyles); if (o.outfits && typeof o.outfits === "object") setOutfits(o.outfits); } } catch { /* ignore */ }
-  }, []);
+    let local: Record<string, Array<{ desc: string; img: string }>> = {};
+    try { const o = JSON.parse(localStorage.getItem("mm-wardrobe-v1") || "{}"); if (o && typeof o === "object") { if (o.outfitStyles && typeof o.outfitStyles === "object") local = o.outfitStyles; if (o.outfits && typeof o.outfits === "object") setOutfits(o.outfits); } } catch { /* ignore */ }
+    // SAVED LOOKS (kept on the presenter — avatar-looks.ts) join the ones this browser holds: a look made
+    // on another device, or in the Presenters section's own cast, is here too. This browser's own that
+    // the server has never seen are handed over once, so they show on the presenter's card.
+    const merged: Record<string, Array<{ desc: string; img: string }>> = { ...local };
+    const adopt: Array<{ avatarId: string; desc: string; img: string }> = [];
+    for (const r of d.roster) {
+      const mine = (merged[r.img] || []).filter((s) => s && typeof s.desc === "string" && typeof s.img === "string");
+      const kept = (d.savedLooks || {})[r.id] || [];
+      for (const s of mine) if (!kept.some((k) => k.desc === s.desc)) adopt.push({ avatarId: r.id, desc: s.desc, img: s.img });
+      const extra = kept.filter((k) => !mine.some((s) => s.desc === k.desc));
+      if (mine.length || extra.length) merged[r.img] = [...mine, ...extra];
+    }
+    setOutfitStyles(merged);
+    if (adopt.length) lookSyncFetcher.submit({ intent: "adoptOutfitLooks", looks: JSON.stringify(adopt.slice(0, 40)) }, { method: "post" });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (wardrobeFirstPersist.current) { wardrobeFirstPersist.current = false; return; } // skip the initial empty write (would clobber the restore)
     if (typeof localStorage === "undefined") return;
@@ -1400,8 +1440,14 @@ export default function FilmStudio() {
   // "Regenerate this scene" CTA re-rolls just that scene with it.
   const [scenePropPick, setScenePropPick] = useState<number | null>(null);
   const [scenePropDraft, setScenePropDraft] = useState<string>("");
+  useEffect(() => {
+    if (sceneCastPick === null && scenePropPick === null) return;
+    const el = typeof document !== "undefined" ? document.querySelector(".mm-sc-drawer") : null;
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [sceneCastPick, scenePropPick]);
   const openScenePropPick = (i: number) => {
     if (scenePropPick === i) { setScenePropPick(null); return; }
+    setSceneCastPick(null);
     setScenePropDraft(seeds?.propForScene[i] || "");
     setScenePropPick(i);
   };
@@ -1428,7 +1474,7 @@ export default function FilmStudio() {
   // Any setup change invalidates the preview — the stills would no longer match the new settings
   // (the artist too: a different face means the stills show the wrong person).
   // (…and the LOOK picked for anyone: the wardrobe is locked, so stills drawn in the old look would be rendered in it)
-  useEffect(() => { setSeeds(null); setCastForScene({}); setSceneCastPick(null); setSceneOutfits({}); setSceneWearPick(null); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick, mvAspect, featKey, JSON.stringify(outfits)]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setSeeds(null); setCastForScene({}); setSceneCastPick(null); setSceneOutfits({}); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick, mvAspect, featKey, JSON.stringify(outfits)]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!tmpl?.lipSyncSinger) setSeeds(null); }, [filmAspect]); // eslint-disable-line react-hooks/exhaustive-deps
   // Artist or cast CHANGED → clear the SCRIPT too so it re-writes with the picked names. Fixes the
   // "Kazon" AI-slop name persisting from a treatment that was written before the cast was set.
@@ -1511,14 +1557,22 @@ export default function FilmStudio() {
   const castMemberName = (img: string): string => (img === artistPick ? artistName : (castExtra.find((m) => m.img === img)?.name || ""));
   const openSceneCastPick = (i: number) => {
     if (sceneCastPick === i) { setSceneCastPick(null); return; }
+    setScenePropPick(null);
+    setSceneWearDraft({ ...(sceneOutfits[i] || {}) }); setSceneWearText({}); setSceneWearNewFor(null);
     setSceneCastDraft(seeds ? sceneCostars(seeds.treatment.scenes, i) : []);
     setSceneCastPick(i);
   };
   const toggleSceneCastDraft = (img: string) => setSceneCastDraft((prev) => (prev.includes(img) ? prev.filter((x) => x !== img) : [...prev, img].slice(-2)));
+  // ONE button for the whole editor: who is in the scene AND what each of them wears in it (staged, then
+  // drawn once). Only people who are in the scene keep an outfit of their own for it.
   const confirmSceneCastMv = (i: number) => {
+    const inScene = new Set(seeds ? sceneDraftPeople(seeds.treatment.scenes, i) : []);
+    const wear: Record<string, string> = {};
+    for (const k of Object.keys(sceneWearDraft)) if (inScene.has(k)) wear[k] = sceneWearDraft[k];
     setCastForScene((prev) => ({ ...prev, [i]: sceneCastDraft }));
+    setSceneOutfits((prev) => { const n = { ...prev }; if (Object.keys(wear).length) n[i] = wear; else delete n[i]; return n; });
     setSceneCastPick(null);
-    rerollScene(i, undefined, sceneCastDraft);
+    rerollScene(i, undefined, sceneCastDraft, undefined, wear);
   };
   // ---- Wardrobe (owner edit) ------------------------------------------------
   // Folded INTO the avatar picker: select an avatar → an outfit slider opens under it (presets + your
@@ -1536,6 +1590,9 @@ export default function FilmStudio() {
     { k: "formal", label: "Formal", desc: "elegant formal evening wear" },
   ];
   const styleFor = (img: string, desc: string): string | undefined => (outfitStyles[img] || []).find((s) => s.desc === desc)?.img;
+  /** WHO a picture is, as the roster knows them ("" for a face that is not a presenter) — a look made
+   *  for a presenter is kept on them (avatar-looks.ts). */
+  const rosterIdOf = (img: string): string => d.roster.find((r) => r.img === img)?.id || "";
   // Select an outfit for an avatar (sets the render desc) and GENERATE it if not already saved. Clearing
   // returns to their own look. A generated outfit is appended to outfitStyles[img] so it stays saved.
   const applyOutfit = (img: string, desc: string) => {
@@ -1544,14 +1601,14 @@ export default function FilmStudio() {
     if (styleFor(img, desc)) return; // already generated + saved — selecting is enough
     setOutfitDrafts((d) => ({ ...d, [img]: "" }));
     setOutfitBusyFor({ img, desc });
-    outfitFetcher.submit({ intent: "styleOutfit", outfitImg: img, outfitDesc: desc }, { method: "post" });
+    outfitFetcher.submit({ intent: "styleOutfit", outfitImg: img, outfitDesc: desc, outfitAvatarId: rosterIdOf(img) }, { method: "post" });
   };
   useEffect(() => {
     const r = outfitFetcher.data;
     if (outfitFetcher.state === "idle" && r && outfitBusyFor) {
       const { img, desc } = outfitBusyFor;
       if (r.img) { const im = r.img; setOutfitStyles((p) => ({ ...p, [img]: [...(p[img] || []).filter((s) => s.desc !== desc), { desc, img: im }] })); }
-      if (r.img && sceneWearPick !== null) setSceneWearDraft((dd) => ({ ...dd, [img]: desc }));
+      if (r.img && sceneCastPick !== null) setSceneWearDraft((dd) => ({ ...dd, [img]: desc }));
       setOutfitBusyFor(null);
     }
   }, [outfitFetcher.state, outfitFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1563,10 +1620,12 @@ export default function FilmStudio() {
   for (const img of Object.keys(outfits)) { const pic = styleFor(img, outfits[img]); if (pic) outfitImgs[img] = pic; }
   // ---- PER-SCENE WARDROBE ------------------------------------------------------------------------
   // The owner, 2026-11-22: "need to make per scene outfit editable on the seed revision system before
-  // final video generate cta". The wardrobe is locked for the whole video (above); here ONE scene can
-  // break from it — a deliberate change of look, the way a real video has them. A scene is drawn from
-  // each person's reference picture, so a scene's outfit is simply a different picture of them: their
-  // own (Own look) or the saved picture of an outfit. Nothing else about the scene changes.
+  // final video generate cta" — and then: "leave the wardrobe stuff inside of the avatar edit option
+  // (bundled them) no extra button". So it lives in the scene's CAST editor: who is in the scene, and
+  // under them what each one wears in it. The wardrobe is locked for the whole video (above); here ONE
+  // scene can break from it — a deliberate change of look, the way a real video has them. A scene is
+  // drawn from each person's reference picture, so a scene's outfit is simply a different picture of
+  // them: their own (Own look) or the saved picture of an outfit. Nothing else about the scene changes.
   const sceneWearOf = (i: number, img: string, draft?: Record<string, string>): string | undefined => (draft ?? sceneOutfits[i] ?? {})[img];
   /** The picture of a cast member a scene is drawn from: `videoRef` (their look for the whole video)
    *  unless this scene has an outfit of its own for them. */
@@ -1578,35 +1637,24 @@ export default function FilmStudio() {
   };
   /** The face to show for them on a scene's card. */
   const sceneFace = (i: number, img: string): string => { const w = sceneWearOf(i, img); return w === undefined ? avatarFace(img) : w === "" ? img : (styleFor(img, w) || avatarFace(img)); };
-  /** Who is in a scene and has a picture to dress: whoever leads it, then whoever is beside them. */
-  const scenePeople = (scenesArr: Scene[], i: number): string[] => {
+  /** Who is in the scene AS THE EDITOR HAS IT NOW and has a picture to dress: whoever leads it, then
+   *  whoever has been put beside them (the draft — so a co-star just added can be dressed at once). */
+  const sceneDraftPeople = (scenesArr: Scene[], i: number): string[] => {
     const lead = sceneLeadImg(scenesArr[i], i, scenesArr.length) || artistPick;
-    return [...new Set([lead, ...sceneCostars(scenesArr, i)].filter((x): x is string => !!x))];
+    return [...new Set([lead, ...sceneCastDraft].filter((x): x is string => !!x))];
   };
   const sceneWearChanged = (i: number): boolean => !!sceneOutfits[i] && Object.keys(sceneOutfits[i]).length > 0;
-  const openSceneWearPick = (i: number) => {
-    if (sceneWearPick === i) { setSceneWearPick(null); return; }
-    setSceneWearDraft({ ...(sceneOutfits[i] || {}) });
-    setSceneWearText({});
-    setSceneWearPick(i);
-  };
   const setWearDraft = (img: string, v: string | undefined) => setSceneWearDraft((d) => { const n = { ...d }; if (v === undefined) delete n[img]; else n[img] = v; return n; });
-  // STAGED like the scene's cast and props: pick, then an explicit "Regenerate scene" draws it.
-  const confirmSceneWear = (i: number) => {
-    const draft = { ...sceneWearDraft };
-    setSceneOutfits((prev) => { const n = { ...prev }; if (Object.keys(draft).length) n[i] = draft; else delete n[i]; return n; });
-    setSceneWearPick(null);
-    rerollScene(i, undefined, undefined, undefined, draft);
-  };
   // A NEW outfit made from a scene: generated and saved beside their other looks (it does NOT become
   // their look for the whole video), then picked for this scene.
   const makeSceneOutfit = (img: string, desc: string) => {
     const dsc = desc.replace(/\s+/g, " ").trim().slice(0, 160);
     if (!dsc || outfitBusyFor) return;
     setSceneWearText((d) => ({ ...d, [img]: "" }));
+    setSceneWearNewFor(null);
     if (styleFor(img, dsc)) { setWearDraft(img, dsc); return; }
     setOutfitBusyFor({ img, desc: dsc });
-    outfitFetcher.submit({ intent: "styleOutfit", outfitImg: img, outfitDesc: dsc }, { method: "post" });
+    outfitFetcher.submit({ intent: "styleOutfit", outfitImg: img, outfitDesc: dsc, outfitAvatarId: rosterIdOf(img) }, { method: "post" });
   };
   const reindexWear = (m: Record<number, Record<string, string>>, removed: number): Record<number, Record<string, string>> => {
     const out: Record<number, Record<string, string>> = {};
@@ -1686,7 +1734,7 @@ export default function FilmStudio() {
   };
   const sbAddScene = () => structEditScenes(({ scenes, imgs, prop }) => ({ scenes: [...scenes, { visual: "", caption: "", kind: "broll" }], imgs: [...imgs, null], prop }));
   const sbRemoveScene = (i: number) => {
-    setSceneOutfits((prev) => reindexWear(prev, i)); setSceneWearPick(null);
+    setSceneOutfits((prev) => reindexWear(prev, i));
     structEditScenes(({ scenes, imgs, prop }) => ({ scenes: scenes.filter((_, j) => j !== i), imgs: imgs.filter((_, j) => j !== i), prop: reindexProp(prop, i) }));
   };
 
@@ -1794,8 +1842,11 @@ export default function FilmStudio() {
               // voice is heard over it
               const leadImg = isMv ? sceneLeadImg(sc, i, strip.scenes.length) : "";
               const flagged = isMv && !!seeds && ((seeds.faults || [])[i] || 0) > 0 && rerollingScene !== i;
+              // one editor at a time, opened as a drawer that spans the whole row under this card
+              const editing = isMv && !!seeds && (sceneCastPick === i || scenePropPick === i);
               return (
-                <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i} data-check={isMv && seeds && (seeds.checks || [])[i] != null ? JSON.stringify((seeds.checks || [])[i]) : undefined}>
+                <Fragment key={i}>
+                <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}${editing ? " is-editing" : ""}`} data-check={isMv && seeds && (seeds.checks || [])[i] != null ? JSON.stringify((seeds.checks || [])[i]) : undefined}>
                   <div className="mm-sc-frame" style={(isMv ? mvAspect : narrated ? filmAspect : "9:16") !== "9:16" ? { aspectRatio: (isMv ? mvAspect : filmAspect) === "16:9" ? "16 / 9" : "1 / 1" } : undefined}>
                     {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" className="mm-sc-zoomable" onClick={() => setZoomImg(u)} /> : <span className="mm-sc-load wb-cookimg" aria-hidden="true"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     {rerollingScene === i && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
@@ -1822,10 +1873,24 @@ export default function FilmStudio() {
                             ? <span className="mm-sc-chip mm-chip-av mm-chip-lead mm-chip-sings" title={t("{name} sings this part — in their own voice", { name: castMemberName(leadImg) || t("Cast") })}><img src={sceneFace(i, leadImg)} alt="" /><Ico n="mic" size={10} /> {castMemberName(leadImg) || t("Cast")}</span>
                             : (artistName && <span className="mm-sc-chip mm-chip-av mm-chip-lead">{artistPick ? <img src={sceneFace(i, artistPick)} alt="" /> : null}{artistName}</span>)}
                           {sceneCostars(strip.scenes, i).filter((img) => img !== leadImg).map((img) => <span className="mm-sc-chip mm-chip-av" key={img}><img src={sceneFace(i, img)} alt="" />{castMemberName(img) || t("Cast")}</span>)}
-                          {seeds && <button type="button" className="mm-sc-chip mm-chip-cast" onClick={() => openSceneCastPick(i)} disabled={rerollingScene !== null} aria-label={t("Edit who's in this scene")}><Ico n="star" size={11} /> {t("Cast")}</button>}
-                          {seeds && <button type="button" className={`mm-sc-chip mm-chip-prop${pl ? "" : " empty"}`} onClick={() => openScenePropPick(i)} disabled={rerollingScene !== null} aria-label={t("Props in this scene")}><Ico n="gem" size={11} /> {pl || t("No props")}</button>}
-                          {seeds && scenePeople(strip.scenes, i).length > 0 && <button type="button" className={`mm-sc-chip mm-chip-wear${sceneWearChanged(i) ? " on" : ""}`} onClick={() => openSceneWearPick(i)} disabled={rerollingScene !== null} aria-expanded={sceneWearPick === i} aria-label={t("What they wear in this scene")}><Ico n="shirt" size={11} /> {sceneWearChanged(i) ? t("Outfit changed") : t("Wardrobe")}</button>}
                         </div>
+                        {/* EDIT THIS SCENE: who is in it (and what they wear), and what is in it — each opens a drawer under the row */}
+                        {seeds && (
+                          <div className="mm-sc-acts">
+                            <button type="button" className={`mm-sc-act is-cast${sceneCastPick === i ? " open" : ""}`} onClick={() => openSceneCastPick(i)} disabled={rerollingScene !== null} aria-expanded={sceneCastPick === i} aria-label={t("Edit who's in this scene and what they wear")}><Ico n="star" size={12} /> {t("Cast")}{sceneWearChanged(i) ? <span className="mm-sc-act-tag" title={t("Outfit changed")}><Ico n="shirt" size={10} /></span> : null}</button>
+                            <button type="button" className={`mm-sc-act is-prop${pl ? "" : " empty"}${scenePropPick === i ? " open" : ""}`} onClick={() => openScenePropPick(i)} disabled={rerollingScene !== null} aria-expanded={scenePropPick === i} aria-label={t("Props in this scene")}><Ico n="gem" size={12} /> {pl || t("No props")}</button>
+                          </div>
+                        )}
+                      </>
+                    ) : (pl && <div className="mm-sc-chips"><span className="mm-sc-chip mm-chip-pr">{t(pl)}</span></div>)}
+                  </div>
+                </div>
+                {editing && (
+                  <div className="mm-sc-drawer" role="group" aria-label={t("Edit scene {n}", { n: i + 1 })}>
+                    <div className="mm-sd-head">
+                      <span className="mm-sd-title"><span className="mm-sd-num">{i + 1}</span>{sceneCastPick === i ? t("Who's in this scene") : t("Props in this scene")}</span>
+                      <button type="button" className="mm-sd-x" onClick={() => { setSceneCastPick(null); setScenePropPick(null); }} aria-label={t("Close")}>✕</button>
+                    </div>
                         {seeds && sceneCastPick === i && (
                           <div className="mm-sc-castedit">
                             {/* WHO SINGS a performance: the star, or a co-star with a voice of their own (a featured verse) */}
@@ -1859,44 +1924,45 @@ export default function FilmStudio() {
                             <div className="mm-cp-hint">{leadImg
                               ? t("{name} sings this one, so they lead the shot. Add who stands beside them — up to 2.", { name: castMemberName(leadImg) || t("This co-star") })
                               : t("The star always leads. Add up to 2 co-stars for this scene — or pick a face from your cast / the roster.")}</div>
-                            <div className="mm-sc-propcta">
-                              <button type="button" className="mm-sp-confirm" onClick={() => confirmSceneCastMv(i)} disabled={rerollingScene !== null}><Ico n="refresh" size={12} /> {t("Regenerate scene {n}", { n: i + 1 })}</button>
-                              <button type="button" className="mm-sp-cancel" onClick={() => setSceneCastPick(null)}>{t("Cancel")}</button>
+                            {/* WHAT THEY WEAR IN THIS SCENE — bundled with who is in it (the owner: "leave the
+                                wardrobe stuff inside of the avatar edit option … no extra button") */}
+                            <div className="mm-sw-label"><Ico n="shirt" size={12} /> {t("What they wear in this scene")}</div>
+                            <div className="mm-sw-people">
+                              {sceneDraftPeople(strip.scenes, i).map((img) => {
+                                const cur = sceneWearDraft[img]; // undefined = the look they have for the whole video
+                                const videoDesc = outfits[img] || "";
+                                const saved = (outfitStyles[img] || []).filter((s) => s.desc !== videoDesc);
+                                const making = outfitBusyFor && outfitBusyFor.img === img ? outfitBusyFor.desc : null;
+                                const text = sceneWearText[img] || "";
+                                const nm = castMemberName(img) || t("Cast");
+                                return (
+                                  <div className="mm-sw-row" key={img} role="group" aria-label={t("What {name} wears in this scene", { name: nm })}>
+                                    <div className="mm-sw-name">{nm}</div>
+                                    <div className="mm-sw-looks">
+                                      <button type="button" className={`mm-sw-look${cur === undefined ? " on" : ""}`} aria-pressed={cur === undefined} onClick={() => setWearDraft(img, undefined)} title={t("Video look")}><img src={avatarFace(img)} alt="" /><span>{t("Video look")}</span></button>
+                                      {videoDesc && <button type="button" className={`mm-sw-look${cur === "" ? " on" : ""}`} aria-pressed={cur === ""} onClick={() => setWearDraft(img, "")} title={t("Own look")}><img src={img} alt="" /><span>{t("Own look")}</span></button>}
+                                      {saved.map((s) => {
+                                        const label = presetLabel(s.desc) ? t(presetLabel(s.desc) as string) : (lookLabel(s.desc) || s.desc);
+                                        return <button type="button" key={s.desc} className={`mm-sw-look${cur === s.desc ? " on" : ""}`} aria-pressed={cur === s.desc} onClick={() => setWearDraft(img, s.desc)} title={label}><img src={s.img} alt="" /><span>{label}</span></button>;
+                                      })}
+                                      {making && <span className="mm-sw-look is-making" aria-live="polite"><span className="mm-sw-cook wb-cookimg"><span className="wb-bufwrap"><span className="wb-spin" /></span></span><span>{t("Making…")}</span></span>}
+                                      {/* a look that does not exist yet: one tile, which opens the one box to describe it */}
+                                      <button type="button" className={`mm-sw-look mm-sw-new${sceneWearNewFor === img ? " on" : ""}`} aria-expanded={sceneWearNewFor === img} onClick={() => setSceneWearNewFor(sceneWearNewFor === img ? null : img)} disabled={!!outfitBusyFor} title={t("New look")}><span className="mm-sw-plus" aria-hidden="true">＋</span><span>{t("New look")}</span></button>
+                                    </div>
+                                    {sceneWearNewFor === img && (
+                                      <div className="mm-sw-make">
+                                        <input className="mm-wardrobe-input" autoFocus value={text} onChange={(e) => setSceneWearText((d) => ({ ...d, [img]: e.target.value }))} placeholder={t("An outfit just for this scene — a white tux, a red dress…")} maxLength={160} onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) { e.preventDefault(); makeSceneOutfit(img, text); } }} aria-label={t("Describe an outfit for {name}", { name: nm })} />
+                                        <button type="button" className="mm-wd2-gen" onClick={() => makeSceneOutfit(img, text)} disabled={!text.trim() || !!outfitBusyFor}><Ico n="wand" size={13} /> {t("Make it")}</button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
-                          </div>
-                        )}
-                        {seeds && sceneWearPick === i && (
-                          <div className="mm-sc-wear">
-                            {scenePeople(strip.scenes, i).map((img) => {
-                              const cur = sceneWearDraft[img]; // undefined = the look they have for the whole video
-                              const videoDesc = outfits[img] || "";
-                              const saved = (outfitStyles[img] || []).filter((s) => s.desc !== videoDesc);
-                              const making = outfitBusyFor && outfitBusyFor.img === img ? outfitBusyFor.desc : null;
-                              const text = sceneWearText[img] || "";
-                              const nm = castMemberName(img) || t("Cast");
-                              return (
-                                <div className="mm-sw-row" key={img} role="group" aria-label={t("What {name} wears in this scene", { name: nm })}>
-                                  <div className="mm-sw-name">{nm}</div>
-                                  <div className="mm-sw-looks">
-                                    <button type="button" className={`mm-sw-look${cur === undefined ? " on" : ""}`} aria-pressed={cur === undefined} onClick={() => setWearDraft(img, undefined)} title={t("Video look")}><img src={avatarFace(img)} alt="" /><span>{t("Video look")}</span></button>
-                                    {videoDesc && <button type="button" className={`mm-sw-look${cur === "" ? " on" : ""}`} aria-pressed={cur === ""} onClick={() => setWearDraft(img, "")} title={t("Own look")}><img src={img} alt="" /><span>{t("Own look")}</span></button>}
-                                    {saved.map((s) => {
-                                      const label = presetLabel(s.desc) ? t(presetLabel(s.desc) as string) : s.desc;
-                                      return <button type="button" key={s.desc} className={`mm-sw-look${cur === s.desc ? " on" : ""}`} aria-pressed={cur === s.desc} onClick={() => setWearDraft(img, s.desc)} title={label}><img src={s.img} alt="" /><span>{label}</span></button>;
-                                    })}
-                                    {making && <span className="mm-sw-look is-making" aria-live="polite"><span className="mm-sw-cook wb-cookimg"><span className="wb-bufwrap"><span className="wb-spin" /></span></span><span>{t("Making…")}</span></span>}
-                                  </div>
-                                  <div className="mm-sw-make">
-                                    <input className="mm-wardrobe-input" value={text} onChange={(e) => setSceneWearText((d) => ({ ...d, [img]: e.target.value }))} placeholder={t("An outfit just for this scene — a white tux, a red dress…")} maxLength={160} onKeyDown={(e) => { if (e.key === "Enter" && text.trim()) { e.preventDefault(); makeSceneOutfit(img, text); } }} aria-label={t("Describe an outfit for {name}", { name: nm })} />
-                                    <button type="button" className="mm-wd2-gen" onClick={() => makeSceneOutfit(img, text)} disabled={!text.trim() || !!outfitBusyFor}><Ico n="wand" size={13} /> {t("Make it")}</button>
-                                  </div>
-                                </div>
-                              );
-                            })}
                             <div className="mm-cp-hint">{t("Only this scene changes. Everywhere else they keep the look you picked.")}</div>
                             <div className="mm-sc-propcta">
-                              <button type="button" className="mm-sp-confirm" onClick={() => confirmSceneWear(i)} disabled={rerollingScene !== null || !!outfitBusyFor}><Ico n="refresh" size={12} /> {t("Regenerate scene {n}", { n: i + 1 })}</button>
-                              <button type="button" className="mm-sp-cancel" onClick={() => setSceneWearPick(null)}>{t("Cancel")}</button>
+                              <button type="button" className="mm-sp-confirm" onClick={() => confirmSceneCastMv(i)} disabled={rerollingScene !== null || !!outfitBusyFor}><Ico n="refresh" size={12} /> {t("Regenerate scene {n}", { n: i + 1 })}</button>
+                              <button type="button" className="mm-sp-cancel" onClick={() => setSceneCastPick(null)}>{t("Cancel")}</button>
                             </div>
                           </div>
                         )}
@@ -1924,10 +1990,9 @@ export default function FilmStudio() {
                             </div>
                           </div>
                         )}
-                      </>
-                    ) : (pl && <div className="mm-sc-chips"><span className="mm-sc-chip mm-chip-pr">{t(pl)}</span></div>)}
                   </div>
-                </div>
+                )}
+                </Fragment>
               );
             })}
           </div>
@@ -3946,7 +4011,7 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-sb-reroll svg{stroke:#fff;stroke-width:2;fill:none;}
 /* ── Scene PRE-EDITOR: a 2-up GRID of REVIEWABLE cards (big still + editable text); the loading
      state reuses the Archive's rosette-green cook tile (.wb-cookimg/.wb-bufwrap/.wb-spin). ── */
-.mm-sb-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:2px 0 4px;}
+.mm-sb-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:2px 0 4px;grid-auto-flow:row dense;}
 @media(min-width:640px){.mm-sb-list{grid-template-columns:repeat(3,minmax(0,1fr));}}
 @media(min-width:1120px){.mm-sb-list{grid-template-columns:repeat(4,minmax(0,1fr));}}
 @media(min-width:1680px){.mm-sb-list{grid-template-columns:repeat(5,minmax(0,1fr));}}
@@ -4024,7 +4089,44 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-chip-prop.empty{background:#F3F1EA;border-color:#E4DFCF;color:#8A8577;}
 .mm-chip-prop svg{stroke:currentColor;stroke-width:2;fill:none;}
 .mm-chip-prop:disabled{opacity:.5;cursor:default;}
+/* EDIT A SCENE: three buttons in a row of their own under the people; each opens a DRAWER that spans the
+   whole row under the card (a card is 174px wide on a phone — far too narrow to edit inside). */
+.mm-sc-acts{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}
+.mm-sc-act{flex:1 1 auto;display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:32px;padding:5px 9px;border-radius:9px;border:1px solid;font-family:Poppins,sans-serif;font-size:10.5px;font-weight:700;line-height:1.1;white-space:nowrap;cursor:pointer;transition:background .14s,box-shadow .14s,transform .08s;}
+.mm-sc-act svg{stroke:currentColor;stroke-width:2;fill:none;flex:none;}
+.mm-sc-act:active:not(:disabled){transform:scale(.97);}
+.mm-sc-act:disabled{opacity:.5;cursor:default;}
+.mm-sc-act:focus-visible{outline:2px solid #0C7A46;outline-offset:2px;}
+.mm-sc-act.is-cast{background:#F3EEFB;border-color:#E0D4F3;color:#5B3A99;}
+.mm-sc-act.is-cast:hover:not(:disabled){background:#EBE2F7;}
+.mm-sc-act.is-prop{background:#F0F8F3;border-color:#CFE8DB;color:#0A5E37;}
+.mm-sc-act.is-prop:hover:not(:disabled){background:#E4F2EA;}
+.mm-sc-act.is-prop.empty{background:#F3F1EA;border-color:#E4DFCF;color:#6F6A5C;}
+/* the scene has an outfit of its own: a small mark on the Cast button (the outfits live in that editor) */
+.mm-sc-act-tag{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;margin-left:1px;}
+.mm-sc-act-tag svg{stroke:#fff;}
+.mm-sc-act.open{box-shadow:0 0 0 2px rgba(12,122,70,.35);}
+.mm-sc.is-editing{border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.14);}
+.mm-sc-drawer{grid-column:1/-1;display:flex;flex-direction:column;gap:10px;border:1.5px solid var(--green,#0C7A46);border-radius:14px;background:#FFFDF7;padding:11px 13px 13px;box-shadow:0 8px 22px rgba(20,32,26,.09);animation:mmDrawerIn .18s ease-out;}
+@keyframes mmDrawerIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+@media(prefers-reduced-motion:reduce){.mm-sc-drawer{animation:none;}}
+.mm-sd-head{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.mm-sd-title{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:var(--ink,#14201A);}
+.mm-sd-num{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--green,#0C7A46);color:#fff;font-size:11.5px;font-weight:800;}
+.mm-sd-x{flex:none;width:32px;height:32px;border-radius:50%;border:1.5px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);font-size:13px;cursor:pointer;line-height:1;}
+.mm-sd-x:hover{background:#F3F1EA;}
+.mm-sc-drawer .mm-sc-propcta{flex-wrap:wrap;}
+.mm-sc-drawer .mm-sp-confirm{flex:1 1 190px;max-width:320px;min-height:40px;}
+.mm-sc-drawer .mm-sp-cancel{min-height:40px;}
 /* PER-SCENE WARDROBE: what each person wears in THIS scene (their look for the video unless changed) */
+/* …bundled into the scene's Cast editor, under who is in it */
+.mm-sw-label{display:flex;align-items:center;gap:6px;margin-top:4px;padding-top:10px;border-top:1px dashed var(--line,#E4DFCF);font-size:12px;font-weight:800;color:var(--ink,#14201A);}
+.mm-sw-label svg{stroke:currentColor;stroke-width:2;fill:none;}
+.mm-sw-people{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px 18px;}
+.mm-sw-new{color:#5B3A99;}
+.mm-sw-plus{width:58px;height:58px;border-radius:12px;border:2px dashed #C9B6EA;background:#FAF7FE;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:600;color:#7A4FC2;box-sizing:border-box;}
+.mm-sw-new.on .mm-sw-plus{border-style:solid;border-color:#7A4FC2;background:#F3EEFB;}
+.mm-sw-new:disabled{opacity:.5;cursor:default;}
 .mm-chip-wear{background:#FBF4E6;border-color:#EBD9B4;color:#7A5A12;padding:2px 9px;cursor:pointer;transition:background .14s;}
 .mm-chip-wear:hover:not(:disabled){background:#F6EAD0;}
 .mm-chip-wear.on{background:#0C7A46;border-color:#0C7A46;color:#fff;}
@@ -4037,10 +4139,10 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-sw-look{flex:0 0 auto;width:64px;min-height:44px;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:0;padding:0;cursor:pointer;font-family:Poppins,sans-serif;color:var(--ink2,#4B5A51);}
 .mm-sw-look img,.mm-sw-cook{width:58px;height:58px;border-radius:12px;object-fit:cover;object-position:top;border:2px solid transparent;background:#EEF1EC;display:block;box-sizing:border-box;}
 .mm-sw-cook{display:flex;align-items:center;justify-content:center;}
-.mm-sw-look.on img{border-color:var(--green,#0C7A46);box-shadow:0 0 0 2px rgba(12,122,70,.18);}
-.mm-sw-look span:last-child{font-size:10px;font-weight:700;line-height:1.2;max-width:64px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.mm-sw-look.on span:last-child{color:var(--green,#0C7A46);}
-.mm-sw-look:focus-visible{outline:2px solid #0C7A46;outline-offset:2px;border-radius:12px;}
+.mm-sw-look.on img{border-color:#7A4FC2;box-shadow:0 0 0 2px rgba(122,79,194,.2);}
+.mm-sw-look span:last-child{font-size:10px;font-weight:700;line-height:1.2;max-width:66px;text-align:center;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.mm-sw-look.on span:last-child{color:#5B3A99;}
+.mm-sw-look:focus-visible{outline:2px solid #7A4FC2;outline-offset:2px;border-radius:12px;}
 .mm-sw-make{display:flex;gap:6px;align-items:center;}
 .mm-sw-make .mm-wardrobe-input{min-width:0;padding:8px 10px;font-size:12px;}
 .mm-sw-make .mm-wd2-gen{padding:8px 11px;}

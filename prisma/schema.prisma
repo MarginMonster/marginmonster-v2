@@ -159,6 +159,7 @@ model Shop {
   tokenPurchases     TokenPurchase[]
   presenterShots     PresenterShot[]
   customAvatars      CustomAvatar[]
+  avatarLooks        AvatarLook[]
   voiceClones        VoiceClone[]
   presenterVoices    PresenterVoice[]
   presenterFavourites PresenterFavourite[]
@@ -291,6 +292,23 @@ model CustomAvatar {
   spins     PresenterSpin[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// A LOOK saved for a presenter outside the four they were forged with: an outfit made in the Movie
+// Maker wardrobe, for a whole video or for one scene (app/lib/avatar-looks.ts). It belongs to the
+// PRESENTER — a stock one ("omar") or one of the shop’s own ("cav…") — so it shows on their card in
+// the Presenters section and is offered again wherever they are dressed.
+model AvatarLook {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  avatarKey String // the presenter’s id as the pickers carry it
+  desc      String // the outfit, in the words it was made from
+  img       String // site path of its picture on the renders disk (/renders/…)
+  createdAt DateTime @default(now())
+
+  @@unique([shopId, avatarKey, desc])
+  @@index([shopId, avatarKey])
 }
 
 // The full-body rotation of ONE outfit of a custom presenter — what turns when you drag them in the
