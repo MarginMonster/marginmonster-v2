@@ -79,14 +79,16 @@ export function defaultRole(i: number, n: number, sceneSec: number = 10): ShotRo
 /** What each slot of the shot list IS, in the words the song WRITER is given — so the scene it writes
  *  for that slot is the kind of shot it will be filmed as. (It used to be told every scene was "the
  *  artist performing to camera", and then two scenes in three were filmed as cut scenes: an establishing
- *  wide of a scene written as a close performance.) */
+ *  wide of a scene written as a close performance.) The dance scene says WHERE dancing can happen and
+ *  the lifestyle scene no longer says "riding": a song about a night drive had its dance scene written
+ *  in a moving convertible, and the cast was drawn standing up in it (mv-sense.ts). */
 export const SHOT_NOTES: string[] = [
   "CUT SCENE — a wide establishing shot of a striking place; the artist small in it or walking through it, not singing",
   "PERFORMANCE — the artist sings straight to camera, medium shot",
-  "CUT SCENE — dancing and movement, full of rhythm; nobody sings to camera",
+  "CUT SCENE — dancing and movement, full of rhythm: on foot, somewhere with room to dance (never in a vehicle, never sitting); nobody sings to camera",
   "PERFORMANCE — the artist sings to camera, a closer shot",
   "CUT SCENE — a hero moment that shows off the place or the prop; the artist near it, not singing",
-  "CUT SCENE — lifestyle: the artist walking, riding, arriving, living the moment; not singing",
+  "CUT SCENE — lifestyle: the artist walking, arriving, leaning back and taking in the place — living the moment; not singing",
   "PERFORMANCE — the artist sings to camera, a wide full-body shot",
   "CUT SCENE — atmosphere and detail: textures, scenery in motion; the artist a small part of it or absent",
 ];

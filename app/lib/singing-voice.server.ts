@@ -309,18 +309,22 @@ export function voicePitch(voiceId: string): Promise<number | null> {
  *  of the new mix (mp3, same duration as the input). `speech` = spoken dialogue rather than a song: the
  *  model's default studio reverb on the converted voice is right for a sung vocal and wrong for a line
  *  spoken in a room (the room's own sound stays in the untouched background track), so it's switched off. */
-export async function coverSongInVoice(songUrl: string, modelUrl: string, opts: { speech?: boolean; semitones?: number; pitchChange?: "no-change" | "male-to-female" | "female-to-male" } = {}): Promise<string> {
+export async function coverSongInVoice(songUrl: string, modelUrl: string, opts: { speech?: boolean; semitones?: number; pitchChange?: "no-change" | "male-to-female" | "female-to-male"; vocalsDb?: number } = {}): Promise<string> {
   // `semitones` moves the whole track (voice and background alike) — right for a spoken line, whose
   // background is only room tone; a SONG keeps its key, so the singing path never passes it.
   // `pitchChange` moves the VOCAL ALONE by an octave and leaves the music where it is: for a singer of
   // the other sex than the one the song was sung by (a featured verse — mv-feature.ts). An octave keeps
   // the song in key.
+  // `vocalsDb` turns the new VOCAL ALONE up or down against the music (dB): a featured take is asked for
+  // a little lower, so it keeps the balance of the song it is cut into (mv-feature FEATURE_VOCAL_TRIM_DB).
   const semitones = Math.max(-12, Math.min(12, Math.round(opts.semitones || 0)));
   const pitchChange = opts.pitchChange === "male-to-female" || opts.pitchChange === "female-to-male" ? opts.pitchChange : "no-change";
+  const vocalsDb = Number.isFinite(opts.vocalsDb) ? Math.max(-12, Math.min(12, Math.round((opts.vocalsDb as number) * 10) / 10)) : 0;
   const id = await createCommunity(COVER_MODEL, {
     song_input: songUrl, rvc_model: "CUSTOM", custom_rvc_model_download_url: modelUrl,
     pitch_change: pitchChange, output_format: "mp3",
     ...(semitones ? { pitch_change_all: semitones } : {}),
+    ...(vocalsDb ? { main_vocals_volume_change: vocalsDb } : {}),
     ...(opts.speech ? { reverb_wetness: 0, reverb_dryness: 1 } : {}),
   });
   const url = await repPoll(id, COVER_MAX_MS, "voice-cover");
@@ -380,7 +384,11 @@ async function meanVolumeDb(file: string): Promise<number | null> {
 
 /** The cover model's remix comes back ~7 dB quieter than the song it was given (measured). Bring it back
  *  to the reference's level so a voice-matched video isn't noticeably quieter than a normal one. Fails
- *  open — returns the input path untouched. */
+ *  open — returns the input path untouched.
+ *
+ *  The limiter only catches the peaks the gain pushes over (`level=0`: left to itself it also turns the
+ *  whole take UP until those peaks touch full scale — 0.45 dB over the level just matched, measured —
+ *  and the second featured-verse test then peaked 1.7 dB over full scale once it was encoded). */
 export async function matchLoudness(file: string, reference: string): Promise<string> {
   try {
     const [a, b] = [await meanVolumeDb(file), await meanVolumeDb(reference)];
@@ -388,7 +396,7 @@ export async function matchLoudness(file: string, reference: string): Promise<st
     const gain = Math.max(-6, Math.min(12, b - a));
     if (Math.abs(gain) < 1) return file;
     const out = path.join(RENDERS(), `vcoverl-${Date.now()}-${rid()}.mp3`);
-    const r = await runFfmpeg(["-y", "-i", file, "-af", `volume=${gain.toFixed(1)}dB,alimiter=limit=0.95`, "-c:a", "libmp3lame", "-q:a", "2", out]);
+    const r = await runFfmpeg(["-y", "-i", file, "-af", `volume=${gain.toFixed(1)}dB,alimiter=limit=0.95:level=0`, "-c:a", "libmp3lame", "-q:a", "2", out]);
     if (r.status === 0 && fs.existsSync(out) && fs.statSync(out).size > 2_000) return out;
   } catch { /* keep the unmatched cover */ }
   return file;

@@ -12,9 +12,11 @@
  *     one singing, the others dancing with their mouths closed, and whether a microphone belongs at all
  *     (the owner: "Mics only if necessary or fitting, most music videos don't use a mic").
  *
- * Pure and import-free (types aside): the builder, the pipeline and the tests share it. */
+ * Pure (its one import, mv-sense.ts, is pure too): the builder, the pipeline and the tests share it. */
 
 import type { ShotRole } from "./mv-pace";
+// (an explicit .ts: node --test loads this file directly and resolves like a browser — see tsconfig.json)
+import { RIDE_MAX_COSTARS, rideScene } from "./mv-sense.ts";
 
 /** The most co-stars one shot holds beside the artist (three faces is what the picture model keeps apart). */
 export const MAX_COSTARS = 2;
@@ -37,7 +39,10 @@ export const DANCE_SLOT = 2;
  *   - a CUT SCENE: whoever the writer named in it; the dance cut scene has them all (they ARE the
  *     dancers); any other cut scene belongs to the artist or the scenery. */
 export function defaultCostars(scene: { visual?: string; caption?: string } | undefined, role: ShotRole, slot: number, names: string[]): number[] {
-  const all = names.map((_, k) => k).slice(0, MAX_COSTARS);
+  // a ride in a car holds the artist and ONE other (mv-sense.ts RIDE_MAX_COSTARS — three in a car came
+  // back with somebody doubled more often than not); the maker can still put more in
+  const cap = rideScene(scene?.visual) ? RIDE_MAX_COSTARS : MAX_COSTARS;
+  const all = names.map((_, k) => k).slice(0, cap);
   if (!names.length) return [];
   if (role === "perform") return all;
   const text = `${scene?.visual || ""} ${scene?.caption || ""}`;
@@ -45,7 +50,7 @@ export function defaultCostars(scene: { visual?: string; caption?: string } | un
     .map((n, k) => ({ n: (n || "").trim(), k }))
     .filter((x) => x.n.length > 1 && new RegExp(`(^|[^\\p{L}])${x.n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\p{L}]|$)`, "iu").test(text))
     .map((x) => x.k);
-  if (named.length) return named.slice(0, MAX_COSTARS);
+  if (named.length) return named.slice(0, cap);
   return ((slot % 8) + 8) % 8 === DANCE_SLOT ? all : [];
 }
 
@@ -97,8 +102,10 @@ export function micLine(micOk: boolean, performing: boolean): string {
 
 /** The still for a shot that has the artist AND co-stars in it. Reference image 1 is the artist; 2 (and
  *  3) the co-stars, in that order. Everything the model must get right comes before the setting, and the
- *  whole thing stays under CAST_PROMPT_MAX so none of it is cut off. */
-export const CAST_PROMPT_MAX = 760;
+ *  whole thing stays under CAST_PROMPT_MAX so none of it is cut off. (880: a ride in a car needs its own
+ *  longer framing and the sit-in-your-seat rule, and at 760 they left the setting 110 characters; the
+ *  picture call itself reads up to 900.) */
+export const CAST_PROMPT_MAX = 880;
 export function castStillPrompt(o: {
   /** e.g. "Rap / Hip-Hop" */
   genre: string;
@@ -119,7 +126,9 @@ export function castStillPrompt(o: {
   const performing = o.role === "perform";
   const roles = performing
     ? `the ARTIST (the person in the ${ORDINALS[0]} reference image) is front and centre, nearest the camera, facing it and singing; ${others} ${k === 1 ? "is" : "are"} beside and a step behind the artist, dancing to the music, mouth${k === 1 ? "" : "s"} closed, NOT singing`
-    : `the artist (the person in the ${ORDINALS[0]} reference image) with ${others}, all moving together, each with their own face, hair and clothes`;
+    // ("each doing what the setting describes": it used to say "all moving together", and with a framing
+    //  of "all of them dancing" a scene set in a car came back with the cast standing up in it — mv-sense.ts)
+    : `the artist (the person in the ${ORDINALS[0]} reference image) with ${others}, each doing what the setting describes, each with their own face, hair and clothes`;
   // ("DIFFERENT": told only the count, the model made the count with the artist twice and a co-star
   //  missing, and with two co-stars blended into one — the first live storyboard, 2026-11-21)
   const head = `A photoreal frame from a real ${o.genre} music video. EXACTLY ${COUNT_WORD[n]} DIFFERENT people, each shown ONCE: ${roles}. ${micLine(o.micOk, performing)} ${o.frame.replace(/[.\s]+$/, "")}.`;
@@ -143,7 +152,7 @@ export function soloStillPrompt(o: { genre: string; role: ShotRole; frame: strin
 /** The same shot made the other way: the artist's own picture EDITED into the scene (the upright path the
  *  approved videos were made on). Who they are, the microphone rule, the framing, then as much of the
  *  setting as fits — it used to lose most of a long setting to the length limit, mid-sentence. */
-export const SOLO_EDIT_MAX = 700;
+export const SOLO_EDIT_MAX = 860;
 export function soloEditPrompt(o: { role: ShotRole; frame: string; visual: string; micOk: boolean; extra?: string }): string {
   const performing = o.role === "perform";
   // (on a stage the model, left to itself, holds the microphone right at the mouth — and the mouth is what
@@ -157,9 +166,11 @@ export function soloEditPrompt(o: { role: ShotRole; frame: string; visual: strin
 
 /** What the vision check read off a still: people in the foreground; for each cast member in the order
  *  of their reference pictures, whether someone matching them is there (`seen`); whether anyone is in it
- *  twice or is a blend of two of them (`twin`); who holds a microphone; and — when the scene has a prop —
- *  whether the prop can be seen. */
-export type CastCheck = { people: number; mic: "none" | "front" | "other" | "several"; seen?: boolean[]; twin?: boolean; prop?: boolean };
+ *  twice or is a blend of two of them (`twin`); who holds a microphone; whether anybody is doing
+ *  something no real person could be filmed doing there (`odd` — two of the cast were drawn standing up
+ *  in the back of a moving convertible: the first featured-verse video, 2026-11-22); and — when the scene
+ *  has a prop — whether the prop can be seen. */
+export type CastCheck = { people: number; mic: "none" | "front" | "other" | "several"; seen?: boolean[]; twin?: boolean; odd?: boolean; prop?: boolean };
 
 /** The question put to the vision model about a cast still. The frame is the FIRST image it is shown;
  *  `refs` more follow — the cast's reference pictures, in order — when the check is to say WHO is there
@@ -177,8 +188,9 @@ export function castCheckPrompt(o: { refs?: number; prop?: string } = {}): strin
     `Count the people who are clearly IN the frame as its subjects — in the foreground or mid-ground, recognisable. Do NOT count an audience, a crowd, silhouettes, or small blurred figures far in the background.\n` +
     (n ? `For each of the ${COUNT_WORD[n]} people, in order: is someone matching them in the frame?\nIs anyone in the frame there TWICE (a twin or copy of the same person), or a BLEND of two of them (one person's hair on another's clothes)?\n` : "") +
     `Say who is HOLDING a microphone (a mic on an empty stand that nobody holds counts as none).\n` +
+    `Is anybody doing something a real person could NOT really be filmed doing there — standing, walking or dancing in or on a car or other vehicle (people in a vehicle sit in its seats), floating, or a body passing through something solid?\n` +
     (p ? `Say whether a real, recognisable ${p} is clearly visible.\n` : "") +
-    `Reply with ONLY this JSON: {"people": <number>${n ? `, "seen": [${Array.from({ length: n }, () => "true | false").join(", ")}], "twin": true | false` : ""}, "mic": "none" | "front" | "other" | "several"${p ? `, "prop": true | false` : ""}}\n` +
+    `Reply with ONLY this JSON: {"people": <number>${n ? `, "seen": [${Array.from({ length: n }, () => "true | false").join(", ")}], "twin": true | false` : ""}, "mic": "none" | "front" | "other" | "several", "odd": true | false${p ? `, "prop": true | false` : ""}}\n` +
     `"front" = only the person who is front-and-centre / nearest the camera holds one. "other" = someone else holds one and the front person does not. "several" = more than one person holds one.`
   );
 }
@@ -188,27 +200,29 @@ export function parseCastCheck(raw: string): CastCheck | null {
   const m = /\{[^{}]*\}/.exec(raw || "");
   if (!m) return null;
   try {
-    const j = JSON.parse(m[0]) as { people?: unknown; mic?: unknown; prop?: unknown; seen?: unknown; twin?: unknown };
+    const j = JSON.parse(m[0]) as { people?: unknown; mic?: unknown; prop?: unknown; seen?: unknown; twin?: unknown; odd?: unknown };
     const people = Number(j.people);
     const mic = String(j.mic || "").toLowerCase();
     if (j.people == null || !Number.isFinite(people) || people < 0 || people > 20) return null;
     if (mic !== "none" && mic !== "front" && mic !== "other" && mic !== "several") return null;
     const seen = Array.isArray(j.seen) && j.seen.length <= 3 && j.seen.every((x) => typeof x === "boolean") ? (j.seen as boolean[]) : undefined;
-    return { people: Math.round(people), mic, ...(seen ? { seen } : {}), ...(typeof j.twin === "boolean" ? { twin: j.twin } : {}), ...(typeof j.prop === "boolean" ? { prop: j.prop } : {}) };
+    return { people: Math.round(people), mic, ...(seen ? { seen } : {}), ...(typeof j.twin === "boolean" ? { twin: j.twin } : {}), ...(typeof j.odd === "boolean" ? { odd: j.odd } : {}), ...(typeof j.prop === "boolean" ? { prop: j.prop } : {}) };
   } catch { return null; }
 }
 
 /** How wrong a still is, 0 = right: the people it should have (`expectPeople` null = a wide shot where
- *  they are too small to count); every cast member there, each once and nobody blended; a microphone
- *  only where one belongs and only in the singer's hand; and the prop when the scene has one. A missing
- *  or doubled person is worse than a stray mic. */
+ *  they are too small to count); every cast member there, each once and nobody blended; nobody doing the
+ *  physically impossible; a microphone only where one belongs and only in the singer's hand; and the prop
+ *  when the scene has one. A missing or doubled person — or one standing up in a moving car — is worse
+ *  than a stray mic. */
 export function castFaults(c: CastCheck, expectPeople: number | null, micOk: boolean, performing: boolean, wantProp = false): number {
   const count = expectPeople == null || c.people === expectPeople ? 0 : 2 + Math.min(3, Math.abs(c.people - expectPeople));
   const missing = expectPeople == null ? 0 : 3 * (c.seen || []).filter((s) => s === false).length;
   const twin = expectPeople != null && c.twin === true ? 3 : 0;
+  const odd = c.odd === true ? 3 : 0;
   const micWrong = c.mic === "none" ? 0 : c.mic === "front" && micOk && performing ? 0 : c.mic === "front" ? 1 : 2;
   const propGone = wantProp && c.prop === false ? 2 : 0;
-  return count + missing + twin + micWrong + propGone;
+  return count + missing + twin + odd + micWrong + propGone;
 }
 
 /** What to tell the picture model when a still came back wrong and is being made again: the fault, named. */
@@ -219,6 +233,7 @@ export function castFix(c: CastCheck, expectPeople: number | null, micOk: boolea
   if (expectPeople != null && c.twin === true) out.push(`Nobody appears twice and no two people are blended into one — ${COUNT_WORD[expectPeople] || expectPeople} DIFFERENT people`);
   if (!gone.length && expectPeople != null && c.people < expectPeople) out.push(`ALL ${COUNT_WORD[expectPeople] || expectPeople} people must be clearly visible — leave nobody out`);
   if (expectPeople != null && c.people > expectPeople) out.push(`ONLY ${COUNT_WORD[expectPeople] || expectPeople} people — no extra person and no copy of anyone`);
+  if (c.odd === true) out.push("Everyone does something a real person could really be filmed doing: people in a vehicle SIT in its seats — nobody stands, walks or dances in or on it");
   if (c.mic !== "none" && !(c.mic === "front" && micOk && performing)) out.push(micOk && performing ? "ONLY the artist holds a microphone — nobody else" : "Remove every microphone");
   if (prop && c.prop === false) out.push(`The ${prop} must be clearly visible`);
   return out.join(". ");

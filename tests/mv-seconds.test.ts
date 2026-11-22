@@ -98,7 +98,7 @@ test("the roles, the writer's notes and the pipeline's shot list are one list", 
   // the pipeline's SHOTLIST (the framing for each slot) is in the same order
   const pipe = read("app", "lib", "music-video-pipeline.server.ts");
   const list = pipe.slice(pipe.indexOf("const SHOTLIST"), pipe.indexOf("type Shot ="));
-  const roles = [...list.matchAll(/\{ role: "(perform|broll)",\s+frame: "/g)].map((m) => m[1]);
+  const roles = [...list.matchAll(/\{ role: "(perform|broll)",\s+kind: "[^"]{6,60}", frame: "/g)].map((m) => m[1]);
   assert.deepEqual(roles, SHOT_ROLES);
   // every slot has the short framing a cast shot is given
   assert.equal([...list.matchAll(/short: "[^"]{8,120}"/g)].length, SHOT_ROLES.length);
@@ -249,7 +249,7 @@ test("the song writer is told what each scene is filmed as, who sings, and when 
 });
 
 test("the song is written to the length its engine will sing it at", async () => {
-  const { FULL_LINE_SECONDS, FULL_SONG_SECONDS, INTRO_KEEP_SECONDS, INTRO_MAX_SECONDS, SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, introCut, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLines } = await import("../app/lib/mv-song.ts");
+  const { FULL_LINE_SECONDS, FULL_SONG_SECONDS, INTRO_KEEP_SECONDS, INTRO_MAX_SECONDS, SHORT_ENGINE_WORDS, SING_RATE, fitLyricLines, fullSongLines, introCut, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLines } = await import("../app/lib/mv-song.ts");
   // MEASURED 2026-11-22 (the same nine-word lines in each genre's own style, timed word by word, the
   // short engine): rap 54 words in 17 s and 108 in 31 s; rock 78 in 24 s; pop 54 in 26 s, 81 in 37 s,
   // 108 in 46 s; R&B 78 in 33 s; country 54 in 34 s and 57 in 26 s. The first live 30-second videos were
@@ -318,6 +318,16 @@ test("the song is written to the length its engine will sing it at", async () =>
   // the full-length take is asked to be long enough to lose its opening and still cover the video
   assert.match(gen, /minSeconds: N \* D \+ \(fullLength \? 12 : 0\)/);
   assert.match(gen, /Vocals start right away — no instrumental intro\./);
+
+  // a sheet over the short engine's limit loses whole lines from the end, never half a word
+  const sheet = ["one two three four", "five six seven eight", "nine ten eleven twelve"].join("\n");
+  assert.equal(fitLyricLines(sheet, 100), sheet);
+  assert.equal(fitLyricLines(sheet, 45), "one two three four\nfive six seven eight");
+  assert.equal(fitLyricLines(sheet, 20), "one two three four");
+  assert.equal(fitLyricLines("supercalifragilistic expialidocious again", 25), "supercalifragilistic");
+  assert.equal(fitLyricLines("", 50), "");
+  assert.equal(fitLyricLines(" a \n\n b ", 50), "a\nb");
+  assert.match(gen, /const shortSheet = fitLyricLines\(lyrics, 585\);/);
 });
 
 test("lyrics are always new words — even when the brief names a famous song", () => {

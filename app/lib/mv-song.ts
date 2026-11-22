@@ -77,6 +77,19 @@ export function wordsAsLines(words: number): string {
   return lo === hi ? `${lo} short line${lo === 1 ? "" : "s"}` : `${lo}–${hi} short lines`;
 }
 
+/** A lyric sheet cut to at most `max` characters by dropping whole LINES from the end (never half a
+ *  word): what the short engine is sent when the writer ran over its limit. A single line longer than
+ *  the limit is cut at a word. */
+export function fitLyricLines(sheet: string, max: number): string {
+  const lines = (sheet || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  while (lines.length > 1 && lines.join("\n").length > max) lines.pop();
+  const out = lines.join("\n");
+  if (out.length <= max) return out;
+  const cut = out.slice(0, max + 1);
+  const at = cut.lastIndexOf(" ");
+  return (at > max * 0.5 ? cut.slice(0, at) : out.slice(0, max)).trim();
+}
+
 /** WHERE TO START a song whose first word comes late: `firstWord` seconds in (null = no words were
  *  heard). Returns how many seconds to cut off the front — 0 when the song already starts soon enough. */
 export function introCut(firstWord: number | null | undefined): number {

@@ -188,6 +188,20 @@ export function octaveShiftFor(leadHz: number | null | undefined, singer: "m" | 
  *  octave down, whoever is singing). */
 export const pitchChangeOf = (shift: number): "no-change" | "male-to-female" | "female-to-male" => (shift > 0 ? "male-to-female" : shift < 0 ? "female-to-male" : "no-change");
 
+/** HOW LOUD the co-star's vocal is asked for, against the re-voice model's own setting (dB).
+ *
+ *  The re-voice hands back the song with its vocal further FORWARD than it was. Measured 2026-11-22, each
+ *  song split into its vocal and its music before and after: a custom-trained voice on a pop song — vocal
+ *  5.6 dB down, music 7.4 dB down; the model's stand-in voice on a rap song — vocal 2.7 down, music 4.3
+ *  down. Either way the vocal comes back 1.6–1.8 dB hotter against the music than the song had it. Once
+ *  the take is brought back to the song's level, a co-star's verse is that much louder than the lead's
+ *  either side of it (the first live featured verse: the guest about 2 dB over the lead where she handed
+ *  back). Asked for 1.7 dB lower, the take came back with the song's own balance to 0.2 dB (vocal against
+ *  music +1.0 dB, the song +0.8) — so across a hand-over neither the voice nor the music changes level.
+ *  Only a featured take is asked for this way: a video sung whole in one voice has no other voice to be
+ *  level with, and keeps the balance it was approved at. */
+export const FEATURE_VOCAL_TRIM_DB = -1.7;
+
 /** How far take `b` runs BEHIND take `a` of the same song, in seconds (negative = ahead): the shift at
  *  which they line up best. The re-voice hands back the same song, but re-encoded, and an encoder may add
  *  a few hundredths of a second at the front — enough to hear as a flutter while two takes are faded

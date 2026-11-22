@@ -121,7 +121,10 @@ test("the cast picture is told who is who FIRST, inside the length the picture c
   // the count is clamped to what a shot can hold
   assert.match(castStillPrompt({ genre: "Pop", role: "perform", frame: "Wide", visual: "x", costars: 9, micOk: false }), /EXACTLY three DIFFERENT people/);
   // a cut scene with the cast in it says they are different people too (two co-stars came back blended into one)
-  assert.match(cut, /all moving together, each with their own face, hair and clothes/);
+  // — and that what they DO is the setting's business: it said "all moving together", and a scene set in a
+  // car came back with the cast on their feet in it (tests/mv-sense.test.ts)
+  assert.match(cut, /each doing what the setting describes, each with their own face, hair and clothes/);
+  assert.doesNotMatch(cut, /all moving together/);
 });
 
 test("a shot of the artist alone says the microphone rule before the setting, and keeps the setting", () => {
@@ -263,7 +266,7 @@ test("the pipeline and the builder make cast shots one way — the shared defaul
   // lets a failed check cost the scene
   const still = pipe.slice(pipe.indexOf("async function castStill"), pipe.indexOf("/** Build the per-scene SEED stills"));
   assert.match(still, /renderStyledSeedMulti\(prompt, refs, o\.asp, undefined, CAST_PROMPT_MAX\)/);
-  assert.match(still, /if \(!seen\) return \{ img, faults: null \};/, "a vision outage takes the picture as it is");
+  assert.match(still, /if \(!seen && !bars\) return \{ img, faults: null \};/, "a vision outage takes the picture as it is (unless it has black bars round it — tests/mv-sense.test.ts)");
   // the checker is shown the cast's reference pictures, so it can say WHO is there
   assert.match(still, /readCast\(o\.abs\(img\) \|\| img, people\.map\(\(r\) => o\.abs\(r\) \|\| r\), o\.prop\?\.noun\)/);
   assert.match(pipe, /anthropicVision\(castCheckPrompt\(\{ refs: refs\.length, prop \}\), \[imgUrl, \.\.\.refs\]/);

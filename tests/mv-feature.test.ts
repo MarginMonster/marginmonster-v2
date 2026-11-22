@@ -413,7 +413,8 @@ test("the render: the verse is re-voiced and mixed, the co-star leads their shot
   assert.match(mix, /gaps = vocalGaps\(heard\);/);
   assert.match(mix, /const windows = voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps, sung \}\);/);
   assert.match(mix, /const model = await ensureVoiceModel\(f\.voiceId, o\.base, \{ pitch: f\.speechPitch \}\);/);
-  assert.match(mix, /coverSongInVoice\(songUrl, model\.url, \{ pitchChange: pitchChangeOf\(shift\) \}\)/);
+  // …asked for with the vocal a little lower, so the take keeps the balance of the song it is cut into
+  assert.match(mix, /coverSongInVoice\(songUrl, model\.url, \{ pitchChange: pitchChangeOf\(shift\), vocalsDb: FEATURE_VOCAL_TRIM_DB \}\)/);
   // …the octave coming from where the song's vocal sits in THEIR stretches, read off the mix
   assert.match(mix, /const leadHz = \(await songVocalPitch\(o\.songPath, mine\)\) \?\? \(await songVocalPitch\(o\.songPath, \[\{ start: 0, end: total \}\]\)\);/);
   assert.match(mix, /const shift = octaveShiftFor\(leadHz, f\.gender\);/);

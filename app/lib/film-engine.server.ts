@@ -36,6 +36,7 @@ import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds, t
 import { MAX_COSTARS, singerOf } from "./mv-cast";
 import { FEATURE_MIN_SECONDS, defaultFeaturePlan, featureRoles, planIsSound } from "./mv-feature";
 import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLines } from "./mv-song";
+import { SENSE_RULES } from "./mv-sense";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -477,7 +478,9 @@ export async function previewFilmTreatment(opts: {
     : `This video runs ${videoSecs} seconds. In this genre the music engine sings about ${SING_RATE[genreKey] || 2.2} words a second and STOPS when the words run out, so the lyrics must be the right LENGTH: about ${songWords} words in TOTAL (${wordsAsLines(songWords)}), spread evenly — ${perScene} in every scene. Count them. Too few and the song ends before the video does; and never more than ${Math.min(SHORT_ENGINE_WORDS + 3, Math.round(songWords * 1.12))} words or 570 characters (the engine takes no more). ${shortCut ? "It is a short cut: one hook, with no verse to set it up." : "A short verse, a hook that comes back, a second short verse, the hook again — WRITE THE HOOK OUT each time it is sung."}`;
   const captionShape = fullSong
     ? `• CAPTION — the SHORT lyric line${sceneSec === 5 ? "" : "s"} sung in THIS scene (${perScene}), separated by " / ". Read in order, all ${scenes} captions joined ARE the complete ${genreLabel} song, with the chorus written out each time it returns. Authentic to ${genreLabel}.\n`
-    : `• CAPTION — the lyric sung in THIS scene (${perScene}), its lines separated by " / ". EVERY scene has one — a cut scene too: the song does not stop for it. Read in order, all ${scenes} captions joined ARE the complete ${genreLabel} ${shortCut ? "hook" : "song"}. Authentic to ${genreLabel}.\n`;
+    // (a ceiling as well as a target: asked for "about 11 words" a scene, the writer gave 14-15 — a third
+    //  too many, so each scene's words were sung a scene late: seen on the second featured test)
+    : `• CAPTION — the lyric sung in THIS scene (${perScene}; NEVER more than ${sceneWords + 2} words — that is all that can be sung while the scene is on screen), its lines separated by " / ". EVERY scene has one — a cut scene too: the song does not stop for it. Read in order, all ${scenes} captions joined ARE the complete ${genreLabel} ${shortCut ? "hook" : "song"}. Authentic to ${genreLabel}.\n`;
   // WHAT EACH SCENE IS FILMED AS. A music video is a few performances intercut with cut scenes, and which
   // is which is decided by the shot list — so the writer is told, scene by scene, and writes a scene that
   // fits its shot (see SHOT_NOTES).
@@ -513,6 +516,9 @@ export async function previewFilmTreatment(opts: {
         ? `WHO DOES WHAT — the ARTIST sings the song; ${featNames} sing${featured.length === 1 ? "s" : ""} ONLY in ${featured.length === 1 ? "their" : "their own"} verse. Nobody else ever sings. In the artist's PERFORMANCES the co-stars are in the shot WITH the artist: beside or just behind them, dancing or moving to the music — never singing, never the centre of the shot. In a CUT SCENE nobody sings to camera.\n`
         : `WHO DOES WHAT — only the ARTIST ever sings.${hasCoStars ? ` In every PERFORMANCE the co-stars are in the shot WITH the artist: beside or just behind them, dancing or moving to the music — never singing, never the centre of the shot.` : ""} In a CUT SCENE nobody sings to camera.\n`) +
       `MICROPHONES — most music videos have none: the song is mimed. Do NOT put a microphone or mic stand in a VISUAL unless that scene is a live stage show or a recording booth — and then ONLY the artist has one.\n` +
+      // (a song about a night drive had its dance scene written in a moving convertible, and the cast
+      //  was drawn — and animated — on their feet in it: the owner's "walking in place in car", 2026-11-22)
+      SENSE_RULES +
       `RENDER-SAFE — these scenes become AI video and some things glitch badly when animated. UNLESS the theme above explicitly calls for it, AVOID: fire, flames, bonfires, sparks or embers; riding in the BED of a moving truck or any fast open-air wind (the wind + flames warp into a mess); extreme tight face-filling close-ups; and exaggerated or extreme facial emotions (screaming, sobbing, snarling). Prefer steady medium and wide shots, grounded settings, gentle believable motion, and natural, genuine expressions.\n`
     : narrated
     ? `\nWrite it as a NARRATED STORY: a storyteller's voice tells it over illustrated scenes — nobody speaks on camera. Return EXACTLY ${scenes} scenes. Each scene has TWO fields:\n` +

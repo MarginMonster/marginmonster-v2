@@ -37,10 +37,11 @@ import {
   castCheckPrompt, castFaults, castFix, castMotionLine, castStillPrompt, micFits, parseCastCheck, sceneCast, singerOf, soloEditPrompt, soloStillPrompt,
   type CastCheck,
 } from "./mv-cast";
-import { bestLag, featureMixFilter, featuredIn, octaveShiftFor, pitchChangeOf, vocalGaps, voiceWindows, type Gap, type VoiceWindow } from "./mv-feature";
+import { FEATURE_VOCAL_TRIM_DB, bestLag, featureMixFilter, featuredIn, octaveShiftFor, pitchChangeOf, vocalGaps, voiceWindows, type Gap, type VoiceWindow } from "./mv-feature";
+import { FILL_FRAME, RIDE_CAM, hasBars, momentLine, rideFrame, rideScene, senseMotion, senseStill } from "./mv-sense";
 import { medianHz, trackF0 } from "./pitch";
 import { sceneLineTimes } from "./lyric-sync";
-import { introCut, songEngineFor } from "./mv-song";
+import { fitLyricLines, introCut, songEngineFor } from "./mv-song";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -69,15 +70,23 @@ const CLIP_MAX = 10; // the i2v clip length cap (Kling 2.x); segments are sliced
 // distant atmospheric b-roll are propOk:false (a horse shoved into a face close-up just gets cropped).
 // `short` = the same framing in a few words, for a shot that has CO-STARS in it: that prompt has to say
 // who everyone is before it says anything else, and the picture model reads a limited length (mv-cast.ts).
-const SHOTLIST: Array<{ role: "perform" | "broll"; frame: string; short: string; cam: string; propOk?: boolean }> = [
-  { role: "broll",   frame: "a cinematic WIDE ESTABLISHING shot of the whole location that sets the mood — the artist is small in the frame or walking through it, NOT facing camera", short: "Wide establishing shot of the whole place, the people small in it and not looking at the camera", cam: "a slow cinematic push-in" },
-  { role: "perform", frame: "a MEDIUM shot of the artist performing straight to camera, framed from the waist up", short: "Medium-wide shot, everyone visible from the knees up", cam: "a smooth handheld sway", propOk: true },
-  { role: "broll",   frame: "a dynamic, energetic B-ROLL shot of DANCING or movement — backup dancers or the artist moving stylishly through the scene, full of rhythm, NOT facing camera and NOT singing", short: "Wide dynamic shot of all of them dancing, not looking at the camera", cam: "a sweeping pan that follows the movement" },
-  { role: "perform", frame: "a MEDIUM CLOSE-UP of the artist performing to camera — head and shoulders in frame, NOT a tight face-filling extreme close-up, a natural relaxed expression, shallow depth of field", short: "Medium shot, everyone visible from the waist up", cam: "a slow subtle drift-in" },
-  { role: "broll",   frame: "a cinematic HERO B-ROLL shot that FEATURES the prop in action — e.g. the car rolling, the chains gleaming, the motorcycle revving, the animal prowling — the artist near it but NOT singing to camera", short: "Cinematic hero shot of them in the place, not looking at the camera", cam: "a slow orbit showing it off", propOk: true },
-  { role: "broll",   frame: "a stylish LIFESTYLE / NARRATIVE cutaway that tells the story — the artist walking, riding, arriving or living the moment, cinematic and aspirational, NOT facing camera singing", short: "Lifestyle shot of them walking through the scene together, not looking at the camera", cam: "a smooth handheld follow" },
-  { role: "perform", frame: "a cool, composed WIDE shot of the artist performing to camera, full body, confident and stylish", short: "Wide full-body shot", cam: "a slow orbit around the artist", propOk: true },
-  { role: "broll",   frame: "an atmospheric detail B-ROLL shot — striking textures, the scenery in motion or a moody cinematic flourish, premium and filmic — the artist a small part of the frame or absent", short: "Atmospheric wide shot, the people a small part of it", cam: "a slow tracking move" },
+// A `short` says how the shot is FRAMED, never what the people DO — that is the scene's own business
+// (it used to say "all of them dancing" and "walking through the scene together", and a scene set in a
+// car was drawn, and then animated, with the cast on their feet in it — mv-sense.ts).
+// `kind` = what sort of shot it is in three or four words — all the VIDEO model is told of a cut scene's
+// framing (its first frame already IS the framing; what happens in it is the scene's own words).
+// The cut scenes' `frame`s no longer name an action or a thing of their own either: the dance shot said
+// "DANCING … backup dancers", the lifestyle shot "walking, riding, arriving", and the hero shot gave
+// examples — "the car rolling, the chains gleaming, the motorcycle revving" — to scenes that had no car.
+const SHOTLIST: Array<{ role: "perform" | "broll"; kind: string; frame: string; short: string; cam: string; propOk?: boolean }> = [
+  { role: "broll",   kind: "a wide establishing shot of the place", frame: "a cinematic WIDE ESTABLISHING shot of the whole location that sets the mood — the artist is small in the frame or walking through it, NOT facing camera", short: "Wide establishing shot of the whole place, the people small in it and not looking at the camera", cam: "a slow cinematic push-in" },
+  { role: "perform", kind: "a medium performance shot", frame: "a MEDIUM shot of the artist performing straight to camera, framed from the waist up", short: "Medium-wide shot, everyone visible from the knees up", cam: "a smooth handheld sway", propOk: true },
+  { role: "broll",   kind: "an energetic shot, full of rhythm and movement", frame: "a dynamic, energetic B-ROLL shot full of rhythm and movement — the artist moving stylishly through the scene (dancing, where the scene is a dance), NOT facing camera and NOT singing", short: "Wide dynamic shot of all of them, full of rhythm and movement, nobody looking at the camera", cam: "a sweeping pan that follows the movement" },
+  { role: "perform", kind: "a medium close-up performance shot", frame: "a MEDIUM CLOSE-UP of the artist performing to camera — head and shoulders in frame, NOT a tight face-filling extreme close-up, a natural relaxed expression, shallow depth of field", short: "Medium shot, everyone visible from the waist up", cam: "a slow subtle drift-in" },
+  { role: "broll",   kind: "a hero shot", frame: "a cinematic HERO B-ROLL shot — the artist caught in the most striking moment of this scene (with the prop, when the scene has one), NOT singing to camera", short: "Cinematic hero shot of them in the place, not looking at the camera", cam: "a slow orbit showing it off", propOk: true },
+  { role: "broll",   kind: "a lifestyle cutaway", frame: "a stylish LIFESTYLE / NARRATIVE cutaway that tells the story — the artist living the moment the scene describes, cinematic and aspirational, NOT facing camera singing", short: "Lifestyle shot of them together in the moment, nobody looking at the camera", cam: "a smooth handheld follow" },
+  { role: "perform", kind: "a wide performance shot", frame: "a cool, composed WIDE shot of the artist performing to camera, full body, confident and stylish", short: "Wide full-body shot", cam: "a slow orbit around the artist", propOk: true },
+  { role: "broll",   kind: "an atmospheric detail shot", frame: "an atmospheric detail B-ROLL shot — striking textures, the scenery in motion or a moody cinematic flourish, premium and filmic — the artist a small part of the frame or absent", short: "Atmospheric wide shot, the people a small part of it", cam: "a slow tracking move" },
 ];
 
 type Shot = (typeof SHOTLIST)[number] & { slot: number };
@@ -90,6 +99,34 @@ function shotFor(s: { kind?: "perform" | "broll" } | undefined, i: number, n: nu
   const role = (s && s.kind) || defaultRole(i, n, sceneSec);
   const slot = shotSlot(role, i);
   return { ...SHOTLIST[slot], slot };
+}
+
+/** HOW a scene is framed, how the camera moves in it, and the plain-sense rule its picture is given:
+ *  the shot list's — or, when the scene is people riding in a car, the inside-the-car framing a crew
+ *  would use (mv-sense.ts). `cast` = there are co-stars in the shot. One function for the storyboard, a
+ *  re-roll and the render, so all three film the scene the same way. */
+function framingOf(shot: Shot, visual: string | null | undefined, costars: number): { frame: string; cam: string; sense: string; ride: boolean } {
+  const ride = rideScene(visual);
+  return {
+    ride,
+    frame: ride ? rideFrame({ costars, performing: shot.role === "perform" }) : costars > 0 ? shot.short : shot.frame,
+    cam: ride ? RIDE_CAM : shot.cam,
+    sense: senseStill(visual),
+  };
+}
+
+/** Did a still come back with BLACK BARS round the picture (mv-sense.ts hasBars)? Looked at small and in
+ *  grey. False whenever it cannot be told — a check that fails never costs a picture. */
+async function stillHasBars(img: string | null | undefined): Promise<boolean> {
+  if (!img) return false;
+  const file = path.join(RENDERS(), path.basename(img.split("?")[0]));
+  const raw = path.join(RENDERS(), `bars-${Date.now()}-${rid()}.gray`);
+  try {
+    if (!fs.existsSync(file)) return false;
+    const r = await runFfmpeg(["-y", "-i", file, "-frames:v", "1", "-vf", "scale=48:48,format=gray", "-f", "rawvideo", raw]);
+    if (r.status !== 0 || !fs.existsSync(raw)) return false;
+    return hasBars(fs.readFileSync(raw), 48, 48);
+  } catch { return false; } finally { try { fs.rmSync(raw, { force: true }); } catch { /* temp file */ } }
 }
 
 /** WHICH SCENES GET A PROP. Props land only on shots where one fits (propOk — a performance medium or
@@ -348,7 +385,7 @@ async function sceneShowsProp(imgUrl: string, noun: string): Promise<boolean> {
 async function readCast(imgUrl: string, castRefs: string[], prop?: string): Promise<CastCheck | null> {
   try {
     const refs = castRefs.slice(0, 3);
-    return parseCastCheck(await anthropicVision(castCheckPrompt({ refs: refs.length, prop }), [imgUrl, ...refs], { maxTokens: 90, model: "claude-sonnet-4-6" }));
+    return parseCastCheck(await anthropicVision(castCheckPrompt({ refs: refs.length, prop }), [imgUrl, ...refs], { maxTokens: 110, model: "claude-sonnet-4-6" }));
   } catch { return null; }
 }
 
@@ -380,6 +417,8 @@ async function castStill(o: {
   const k = others.length;
   const performing = o.shot.role === "perform";
   const micOk = micFits(o.visual);
+  // how it is framed: the shot list's way — or from inside the car, when the scene is a ride in one
+  const fr = framingOf(o.shot, o.visual, k);
   // three reference pictures at most: the cast first, the prop when there is room for it
   const people = [o.leadRef, ...others];
   const refs = people.slice();
@@ -387,21 +426,24 @@ async function castStill(o: {
   if (propRefIn) refs.push(o.prop!.ref!);
   const propLine = !o.prop ? "" : `Also in the shot: ${propRefIn ? `the ${o.prop.noun} from the 3rd reference image` : o.prop.phrase} — exactly one${o.prop.animal ? ", and no other animal" : ""}`;
   // the establishing wide and the atmosphere shot have the people small in the frame: nobody to count
-  const expect = o.shot.slot === 0 || o.shot.slot === 7 ? null : k + 1;
+  // (inside a car they are close whatever the slot)
+  const expect = !fr.ride && (o.shot.slot === 0 || o.shot.slot === 7) ? null : k + 1;
   let best: { img: string; faults: number } | null = null;
   let fix = "";
   for (let attempt = 0; attempt < 3; attempt++) {
-    const prompt = castStillPrompt({ genre: o.genre, role: o.shot.role, frame: o.shot.short, visual: o.visual, costars: k, micOk, extra: [propLine, fix].filter(Boolean).join(". ") });
+    const prompt = castStillPrompt({ genre: o.genre, role: o.shot.role, frame: fr.frame, visual: o.visual, costars: k, micOk, extra: [propLine, fr.sense.replace(/[.\s]+$/, ""), fix].filter(Boolean).join(". ") });
     let img: string | null = null;
     try { img = await renderStyledSeedMulti(prompt, refs, o.asp, undefined, CAST_PROMPT_MAX); } catch { img = null; }
     if (!img) continue;
-    const seen = await readCast(o.abs(img) || img, people.map((r) => o.abs(r) || r), o.prop?.noun);
-    if (!seen) return { img, faults: null }; // the checker is out: the picture is taken as it is
-    const faults = castFaults(seen, expect, micOk, performing, !!o.prop);
+    // looked at two ways: WHO is in it and what they are doing (the vision check), and whether the
+    // picture fills its frame (a wide composition asked for upright sometimes comes back with black bars)
+    const [seen, bars] = await Promise.all([readCast(o.abs(img) || img, people.map((r) => o.abs(r) || r), o.prop?.noun), stillHasBars(img)]);
+    if (!seen && !bars) return { img, faults: null }; // the checker is out: the picture is taken as it is
+    const faults = (seen ? castFaults(seen, expect, micOk, performing, !!o.prop) : 0) + (bars ? 2 : 0);
     if (!best || faults < best.faults) best = { img, faults };
     if (!faults) break;
-    fix = castFix(seen, expect, micOk, performing, o.prop?.noun);
-    console.log(`[musicvideo] ${o.tag || "cast shot"}: try ${attempt + 1} had ${seen.people} of ${expect ?? "any"} people, seen=${JSON.stringify(seen.seen || null)}, twin=${seen.twin ?? "?"}, mic=${seen.mic}${o.prop ? `, prop=${seen.prop}` : ""}${attempt < 2 ? " — making it again" : " — keeping the best of three"}`);
+    fix = [seen ? castFix(seen, expect, micOk, performing, o.prop?.noun) : "", bars ? FILL_FRAME : ""].filter(Boolean).join(". ");
+    console.log(`[musicvideo] ${o.tag || "cast shot"}: try ${attempt + 1} had ${seen ? `${seen.people} of ${expect ?? "any"} people, seen=${JSON.stringify(seen.seen || null)}, twin=${seen.twin ?? "?"}, odd=${seen.odd ?? "?"}, mic=${seen.mic}${o.prop ? `, prop=${seen.prop}` : ""}` : "no reading"}${bars ? ", black bars round the picture" : ""}${attempt < 2 ? " — making it again" : " — keeping the best of three"}`);
   }
   return best || { img: null, faults: null };
 }
@@ -561,17 +603,22 @@ async function buildMusicVideoSeeds(p: {
     //   · the lead alone, wide or square → composed from their reference at that shape;
     //   · the lead alone, upright → their own picture edited into the scene (the proven path).
     const multiCast = otherRefs.length > 0 && !!leadRef; // the scene's cast in ANY scene (barn band, truck riders), not just a performance
+    // how the lead ALONE is framed here (a shot with co-stars works its own out, in castStill): the shot
+    // list's framing — or from inside the car, when the scene is a ride in one — and the plain-sense rule
+    const fr = framingOf(shot, s.visual, 0);
+    const senseNote = fr.sense ? ` ${fr.sense}` : "";
     let faults: number | null = null;
-    const genPrimary = async (): Promise<string | null> => {
+    const genPrimary = async (fill = false): Promise<string | null> => {
       if (multiCast && leadRef) {
         const r = await castStill({ genre: g.label, shot, visual: s.visual, leadRef, otherRefs, asp, abs, tag: `scene ${i + 1}`,
           prop: propKey ? { noun, phrase: propPhrase(propKey), ref: propRefs[propKey], animal: !customOf(propKey) } : undefined });
         faults = r.faults;
         return r.img;
       }
-      if (srcRef && asp !== "9:16") return renderStyledSeedMulti(soloStillPrompt({ genre: g.label, role: shot.role, frame: shot.frame, visual: s.visual, micOk, extra: propClause }), [srcRef], asp, undefined, CAST_PROMPT_MAX);
-      if (srcRef) return editSubjectIntoScene(srcRef, soloEditPrompt({ role: shot.role, frame: shot.frame, visual: s.visual, micOk, extra: `${propClause}${performNote}` }), SOLO_EDIT_MAX);
-      return renderCreativeSeed(`${shot.frame}. ${s.visual}. ${g.look}. ${REALISM}`, asp);
+      const fillNote = fill ? ` ${FILL_FRAME}.` : "";
+      if (srcRef && asp !== "9:16") return renderStyledSeedMulti(soloStillPrompt({ genre: g.label, role: shot.role, frame: fr.frame, visual: s.visual, micOk, extra: `${propClause}${senseNote}${fillNote}` }), [srcRef], asp, undefined, CAST_PROMPT_MAX);
+      if (srcRef) return editSubjectIntoScene(srcRef, soloEditPrompt({ role: shot.role, frame: fr.frame, visual: s.visual, micOk, extra: `${propClause}${performNote}${senseNote}${fillNote}` }), SOLO_EDIT_MAX);
+      return renderCreativeSeed(`${fr.frame}. ${s.visual}. ${g.look}. ${REALISM}`, asp);
     };
     // RETRY before giving up — a transient gen blip otherwise fell back to the raw artist portrait, which
     // came out IDENTICAL across failed scenes AND in the portrait's 9:16 (ignoring the chosen shape).
@@ -579,6 +626,14 @@ async function buildMusicVideoSeeds(p: {
     for (let attempt = 0; attempt < 2 && !img; attempt++) {
       if (attempt) await new Promise((r) => setTimeout(r, 1500));
       try { img = await genPrimary(); } catch { img = null; }
+    }
+    // BLACK BARS round the picture (a cast still checks its own): made once more, told to fill the frame;
+    // if that does not cure it the scene is flagged for the maker to re-roll
+    if (img && !multiCast && (await stillHasBars(img))) {
+      let again: string | null = null;
+      try { again = await genPrimary(true); } catch { again = null; }
+      if (again && !(await stillHasBars(again))) img = again;
+      else { faults = 2; console.log(`[musicvideo] scene ${i + 1}: the still has black bars round it, and so did a second try`); }
     }
     // Last resort = a scene-only render at the CHOSEN aspect (distinct per scene, correct shape) — NEVER
     // the portrait fallback that produced the duplicate 9:16 stills.
@@ -705,17 +760,29 @@ export async function rerollMusicVideoScene(opts: {
   const animalNote = custom || !propKey ? "" : ` The ONLY animal in frame is this one ${noun}; do NOT add a dog or any other animal.`;
   const propClause = propKey ? ` Keep the SAME single ${noun} from the reference in the shot — exactly one ${noun}, no duplicates.${animalNote}` : "";
   const performNote = shot.role === "perform" ? ` The artist ${g.perform}, with a natural, genuine expression — NOT angry, snarling or aggressive.` : "";
-  // The same three ways a scene still is made in buildMusicVideoSeeds — and the same prompts (mv-cast.ts).
+  // The same three ways a scene still is made in buildMusicVideoSeeds — and the same prompts (mv-cast.ts),
+  // framed the same way (framingOf: a ride in a car is filmed from inside it).
+  const fr = framingOf(shot, opts.sceneVisual, 0);
+  const senseNote = fr.sense ? ` ${fr.sense}` : "";
   let img: string | null;
   let faults: number | null = null;
+  const solo = async (fill = false): Promise<string | null> => {
+    const fillNote = fill ? ` ${FILL_FRAME}.` : "";
+    if (asp !== "9:16") return renderStyledSeedMulti(soloStillPrompt({ genre: g.label, role: shot.role, frame: fr.frame, visual: opts.sceneVisual, micOk, extra: `${propClause}${senseNote}${fillNote}` }), [srcRef || leadRef], asp, undefined, CAST_PROMPT_MAX);
+    return srcRef ? editSubjectIntoScene(srcRef, soloEditPrompt({ role: shot.role, frame: fr.frame, visual: opts.sceneVisual, micOk, extra: `${propClause}${performNote}${senseNote}${fillNote}` }), SOLO_EDIT_MAX) : null;
+  };
   if (multiCast) {
     const r = await castStill({ genre: g.label, shot, visual: opts.sceneVisual, leadRef, otherRefs: costarRefs, asp, abs, tag: `scene ${opts.sceneIndex + 1} (again)`,
       prop: propKey ? { noun, phrase: propPhrase, ref: propRef, animal: !custom } : undefined });
     img = r.img; faults = r.faults;
-  } else if (asp !== "9:16") {
-    img = await renderStyledSeedMulti(soloStillPrompt({ genre: g.label, role: shot.role, frame: shot.frame, visual: opts.sceneVisual, micOk, extra: propClause }), [srcRef || leadRef], asp, undefined, CAST_PROMPT_MAX);
   } else {
-    img = srcRef ? await editSubjectIntoScene(srcRef, soloEditPrompt({ role: shot.role, frame: shot.frame, visual: opts.sceneVisual, micOk, extra: `${propClause}${performNote}` }), SOLO_EDIT_MAX) : null;
+    img = await solo();
+    // black bars round the picture: once more, told to fill the frame (as in the storyboard)
+    if (img && (await stillHasBars(img))) {
+      const again = await solo(true).catch(() => null);
+      if (again && !(await stillHasBars(again))) img = again;
+      else faults = 2;
+    }
   }
   if (propKey && propRef && !multiCast) {
     const cur = img ? abs(img) : null;
@@ -832,7 +899,8 @@ async function mixFeaturedVoices(o: {
       const shift = octaveShiftFor(leadHz, f.gender);
       console.log(`[musicvideo] ${f.name}'s verse: the song's vocal sits at ${leadHz ? `${Math.round(leadHz)} Hz` : "an unknown pitch"} → ${shift ? `sung an octave ${shift > 0 ? "up" : "down"}` : "sung where it is"}`);
       const model = await ensureVoiceModel(f.voiceId, o.base, { pitch: f.speechPitch });
-      const covered = await coverSongInVoice(songUrl, model.url, { pitchChange: pitchChangeOf(shift) });
+      // (asked for with the vocal a little lower: the re-voice pushes it forward — FEATURE_VOCAL_TRIM_DB)
+      const covered = await coverSongInVoice(songUrl, model.url, { pitchChange: pitchChangeOf(shift), vocalsDb: FEATURE_VOCAL_TRIM_DB });
       const level = await matchLoudness(covered, o.songPath);
       return { ...f, file: await alignTake(o.songPath, level), trained: model.trained };
     } catch (e) {
@@ -973,7 +1041,10 @@ export async function generateMusicVideo(opts: {
     // the short engine usually starts singing at once, but not always (measured: a country and an R&B
     // song opened on 10–12 s of music) — asked not to, and trimmed below if it does anyway
     const noIntro = fullLength ? "" : " Vocals start right away — no instrumental intro.";
-    songPath = await singToDisk(fullLength ? fullSongSheet(scenes) : lyrics, `${voiceSex}${g.song}.${noIntro} ${treatment.musicMood || ""}`.slice(0, 300), { fullLength, minSeconds: N * D + (fullLength ? 12 : 0) });
+    // the short engine takes 590 characters and no more: a sheet over that loses whole LINES from the
+    // end here, not half a word wherever the limit happens to fall
+    const shortSheet = fitLyricLines(lyrics, 585);
+    songPath = await singToDisk(fullLength ? fullSongSheet(scenes) : shortSheet, `${voiceSex}${g.song}.${noIntro} ${treatment.musicMood || ""}`.slice(0, 300), { fullLength, minSeconds: N * D + (fullLength ? 12 : 0) });
     // THE OPENING: the full-length engine always plays about fifteen seconds of music before the first
     // word, and the short one sometimes ten — and a singer on camera in those seconds has nothing to
     // sing. Cut the opening down to a few seconds of pick-up (mv-song.ts introCut).
@@ -1096,15 +1167,21 @@ export async function generateMusicVideo(opts: {
     // the artist sings — it used to be told "exactly ONE artist … a single person" over a picture of three.
     const k = besideIn(i);
     const who = k ? castMotionLine(k, shot.role === "perform") : ` ${ONE_PERSON}`;
-    const framing = k ? shot.short : shot.frame;
+    // framed as its still was (framingOf — a ride in a car is filmed from inside it)
+    const fr = framingOf(shot, _s.visual, k);
     const same = k ? "Keep the SAME people identical" : "Keep the SAME person identical";
-    const closeupSteady = !k && /close-?up/i.test(shot.frame) ? " This is a TIGHT CLOSE-UP on the face: keep the head and camera almost perfectly still — only subtle, natural micro-motion — so the mouth stays crisp and the lip-sync reads cleanly; NO fast head turns or large moves." : "";
+    const closeupSteady = !k && !fr.ride && /close-?up/i.test(shot.frame) ? " This is a TIGHT CLOSE-UP on the face: keep the head and camera almost perfectly still — only subtle, natural micro-motion — so the mouth stays crisp and the lip-sync reads cleanly; NO fast head turns or large moves." : "";
+    // WHAT MOVES. A performance is the singer performing — the same in every scene. A CUT SCENE is told
+    // what is happening in IT, in the scene's own words (momentLine), and the plain-sense rule for the
+    // place (senseMotion). It used to be told only the shot list's framing, which carried an action of
+    // its own: over a still of three people in a convertible the video model read "them walking through
+    // the scene together" and walked them on the spot (the owner: "walking in place in car").
     // MICROPHONES: the still decides (a mic is in it only where one belongs — mv-cast.ts micFits); the
     // video model must neither hand the singer one nor take theirs away. (It used to be told flatly
     // "there is NO microphone", which fought a stage scene whose still showed one.)
     const motionPrompt = shot.role === "perform"
-      ? `A premium ${g.label} music video. ${framing}. The camera does ${shot.cam}. The artist ${g.perform}. Keep the movement NATURAL and VARIED — do NOT repeat the same gesture over and over, no exaggerated or aggressive motions, and no angry or snarling faces. Keep the artist's head mostly steady and facing camera so the singing reads clearly and the lips stay in sync with the vocals.${closeupSteady}${keepProp}${MIC_MOTION_LINE} ${same}; photoreal, cinematic, high-production.${who}`
-      : `A premium ${g.label} music video — cinematic B-ROLL. ${framing}. The camera does ${shot.cam}; the scene is alive with natural, flowing motion (no repeated or jittery movement).${keepProp}${NO_NEW_MIC_LINE} ${same}; photoreal, cinematic, high-production.${who}`;
+      ? `A premium ${g.label} music video. ${fr.frame}. The camera does ${fr.cam}. The artist ${g.perform}. Keep the movement NATURAL and VARIED — do NOT repeat the same gesture over and over, no exaggerated or aggressive motions, and no angry or snarling faces. Keep the artist's head mostly steady and facing camera so the singing reads clearly and the lips stay in sync with the vocals.${closeupSteady}${fr.ride ? senseMotion(_s.visual) : ""}${keepProp}${MIC_MOTION_LINE} ${same}; photoreal, cinematic, high-production.${who}`
+      : `A premium ${g.label} music video — cinematic B-ROLL: ${fr.ride ? "a close shot from inside the car" : shot.kind}.${momentLine(_s.visual)} The camera does ${fr.cam}.${senseMotion(_s.visual)} The motion is flowing and unhurried — nothing repeated, nothing jittery. Nobody sings or mouths words.${keepProp}${NO_NEW_MIC_LINE} ${same}; photoreal, cinematic, high-production.${who}`;
     for (const i2vModel of [I2V_MODEL, I2V_FALLBACK, I2V_MODEL, I2V_FALLBACK]) { // TWO passes — a transient i2v/mux blip shouldn't drop a whole scene to a static still (owner: "first cutscene is a still not video")
       try {
         // silent motion clip — primary engine, then the backup if it blips (so a provider outage
