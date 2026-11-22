@@ -29,6 +29,7 @@ import { GENRE_PACE, MV_DEFAULT_SECONDS, MV_MAX_SECONDS, MV_SECONDS, PACES, PACE
 import { MAX_COSTARS, sceneCast, singerOf } from "../lib/mv-cast";
 import { FEATURE_MIN_SECONDS } from "../lib/mv-feature";
 import type { Recast } from "../lib/mv-recast";
+import { MV_DRAFT_KEY, draftScenes, packDraft, readDraft, type MvDraft } from "../lib/mv-draft";
 import { CAPTION_STYLES, captionStyleOf, type CaptionStyle } from "../lib/narrated-core";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
 import { favouritesFirst } from "../lib/favourites";
@@ -1017,6 +1018,10 @@ export default function FilmStudio() {
   const [castForScene, setCastForScene] = useState<Record<number, string[]>>({});
   const [sceneCastPick, setSceneCastPick] = useState<number | null>(null);
   const [sceneCastDraft, setSceneCastDraft] = useState<string[]>([]);
+  // (true for a moment while a KEPT music video is being put back — mv-draft.ts. Putting it back sets the
+  //  idea, the cast, the shape … all at once, and each of those, changed by hand, rightly starts the
+  //  storyboard over; changed by the restore they must not.)
+  const restoring = useRef(false);
   // …and WHO SINGS it, staged the same way: the name of the co-star whose scene it becomes ("" = the star)
   const [sceneSingerDraft, setSceneSingerDraft] = useState<string>("");
   // PER-SCENE WARDROBE: scene index → cast member img → what they wear in THAT scene ("" = their own
@@ -1281,7 +1286,7 @@ export default function FilmStudio() {
   const [singVoice, setSingVoice] = useState(false);
   // A star on YOUR OWN voice sings in it by default (that's what the voice is for); a star on a stock
   // voice starts with the toggle off, as before. Either way it stays a switch the merchant can flip.
-  useEffect(() => { setSingVoice(!!artistVoiceId && d.myVoices.some((v) => v.voiceId === artistVoiceId)); }, [artistVoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (restoring.current) return; setSingVoice(!!artistVoiceId && d.myVoices.some((v) => v.voiceId === artistVoiceId)); }, [artistVoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
   // A FEATURED VERSE — a co-star SINGS part of the song, in their own voice (the owner: "another cast
   // member sings that part of the song in their voice like real music"). The maker turns it on for a
   // co-star; the writer gives them a verse and marks its scenes; the render re-voices that stretch of the
@@ -1417,6 +1422,43 @@ export default function FilmStudio() {
   const [sentSig, setSentSig] = useState("");
   useEffect(() => { if (actionData?.ok && sigAtSubmit.current) setSentSig(sigAtSubmit.current); }, [actionData]);
   const alreadySent = !!renderSig && sentSig === renderSig;
+
+  // A MUSIC VIDEO IN THE MAKING IS KEPT (mv-draft.ts). The song, the pictures, who is in each and what
+  // they wear lived only in the open page: a refresh lost them, and so did every update we shipped (the
+  // next tap landed on "EasyMode just updated", and its reload came back to an empty Movie Maker).
+  //  · written to this browser whenever a storyboard changes — never erased here: a kept video is
+  //    replaced only by the next storyboard, or by its own age;
+  //  · found on arrival and OFFERED (one card) — never put back unasked;
+  //  · "Not now" only puts the card away.
+  const [draft, setDraft] = useState<MvDraft | null>(null);
+  useEffect(() => {
+    if (typeof localStorage === "undefined") return;
+    let kept: MvDraft | null = null;
+    try { kept = readDraft(localStorage.getItem(MV_DRAFT_KEY), Date.now()); } catch { kept = null; }
+    if (kept && d.templates.some((x) => x.key === kept!.template && x.lipSyncSinger)) setDraft(kept);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (typeof localStorage === "undefined" || !tmpl?.lipSyncSinger || !seeds) return;
+    const text = packDraft({ template, topic, genre: filmGenre, pace: pacePick, seconds: mvSeconds, scenes, aspect: mvAspect, lyrics: mvLyrics, artist: artistPick, artistGender, singVoice, customArtists, cast: castExtra, feat: featPick, props: filmProps, customProps, songSource, songUrl: filmSongUrl, seeds, castForScene, sceneOutfits }, Date.now());
+    if (!text) return;
+    try { localStorage.setItem(MV_DRAFT_KEY, text); } catch { /* quota / private mode */ }
+  }, [template, topic, filmGenre, pacePick, mvSeconds, scenes, mvAspect, mvLyrics, artistPick, artistGender, singVoice, customArtists, castExtra, featPick, filmProps, customProps, songSource, filmSongUrl, seeds, castForScene, sceneOutfits]); // eslint-disable-line react-hooks/exhaustive-deps
+  const resumeDraft = () => {
+    const k = draft;
+    if (!k) return;
+    restoring.current = true;
+    window.setTimeout(() => { restoring.current = false; }, 600);
+    setTemplate(k.template); setEntered(true); setAnim(""); setZoomKey(null);
+    setTopic(k.topic); if (k.genre) setFilmGenre(k.genre); setPacePick(isPace(k.pace) ? k.pace : ""); if (k.seconds) setMvSeconds(k.seconds); setScenes(k.scenes);
+    setMvAspect(k.aspect); setMvLyrics(k.lyrics === "bold" || k.lyrics === "subtitles" ? k.lyrics : "off");
+    setCustomArtists((cur) => [...cur, ...k.customArtists.filter((c) => !cur.some((x) => x.img === c.img))]);
+    setArtistPick(k.artist); setArtistGender(k.artistGender); setSingVoice(k.singVoice);
+    setCastExtra(k.cast); setFeatPick(k.feat); setFilmProps(k.props); setCustomProps(k.customProps); setSongSource(k.songSource); setFilmSongUrl(k.songUrl);
+    setTreatment(k.seeds.treatment as unknown as Treatment);
+    setSeeds(k.seeds as unknown as NonNullable<typeof seeds>);
+    setCastForScene(k.castForScene); setSceneOutfits(k.sceneOutfits);
+    setDraft(null);
+  };
 
   const bump = (delta: number) => {
     const n = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, scenes + delta));
@@ -1578,15 +1620,15 @@ export default function FilmStudio() {
   // Any setup change invalidates the preview — the stills would no longer match the new settings
   // (the artist too: a different face means the stills show the wrong person).
   // (…and the LOOK picked for anyone: the wardrobe is locked, so stills drawn in the old look would be rendered in it)
-  useEffect(() => { setSeeds(null); setCastForScene({}); setSceneCastPick(null); setSceneOutfits({}); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick, mvAspect, featKey, JSON.stringify(outfits)]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (restoring.current) return; setSeeds(null); setCastForScene({}); setSceneCastPick(null); setSceneOutfits({}); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick, mvAspect, featKey, JSON.stringify(outfits)]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!tmpl?.lipSyncSinger) setSeeds(null); }, [filmAspect]); // eslint-disable-line react-hooks/exhaustive-deps
   // Artist or cast CHANGED → clear the SCRIPT too so it re-writes with the picked names. Fixes the
   // "Kazon" AI-slop name persisting from a treatment that was written before the cast was set.
   // (…and so does who SINGS: a featured verse is written into the song)
-  useEffect(() => { setTreatment(null); }, [artistPick, castExtra.map((m) => m.img).join(","), featKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (restoring.current) return; setTreatment(null); }, [artistPick, castExtra.map((m) => m.img).join(","), featKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // MUSIC VIDEO: a different idea is a different song. (Editing the idea cleared the stills but kept the
   // song, and "Make the scenes" then drew new pictures for the OLD song — "song already written".)
-  useEffect(() => { if (tmpl?.lipSyncSinger) setTreatment(null); }, [topic]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (restoring.current) return; if (tmpl?.lipSyncSinger) setTreatment(null); }, [topic]); // eslint-disable-line react-hooks/exhaustive-deps
   // Click-to-edit the storyboard text — polish a scene's "what happens" or its words in place; the
   // render reads the edited treatment. Editing the VISUAL marks the still stale (re-roll to match).
   // Writes to the stills' snapshot once they exist, otherwise to the autopopulated story treatment.
@@ -2392,6 +2434,19 @@ export default function FilmStudio() {
       {/* ───────── Pick a format, cinematic ─────────
           Land on a 2-up grid of poster cards. Tap one → the letterbox sweeps shut and it opens, like a
           title card, into THAT format's builder (no doom-scroll past tiles you aren't using). */}
+      {/* A MUSIC VIDEO IN THE MAKING IS KEPT (mv-draft.ts): found in this browser on arrival, offered back
+          with one tap. "Not now" only puts the card away — nothing is thrown out. */}
+      {draft && !seeds && (
+        <div className="mm-kept" role="status">
+          {draft.seeds.imgs.find(Boolean) ? <img className="mm-kept-pic" src={draft.seeds.imgs.find(Boolean) as string} alt="" /> : null}
+          <div className="mm-kept-txt">
+            <b>{t("Your music video is still here")}</b>
+            <span>{t("{n} scenes drawn", { n: draftScenes(draft) })}{draft.topic ? ` · “${draft.topic}”` : ""}</span>
+          </div>
+          <button type="button" className="mm-kept-go" onClick={resumeDraft}>{t("Pick it up")}</button>
+          <button type="button" className="mm-kept-x" onClick={() => setDraft(null)} aria-label={t("Not now")} title={t("Not now")}>✕</button>
+        </div>
+      )}
       <div className="fs-switch">
         {!entered && (
           <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t("Movie formats")}>
@@ -3884,6 +3939,16 @@ const FS_STYLE = `
 .mm-topic textarea.mm-topic-grow{resize:none;overflow:hidden;field-sizing:content;min-height:0;display:block;}
 .mm-topic input:focus,.mm-topic textarea:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
 .mm-topic input::placeholder,.mm-topic textarea::placeholder{color:var(--ink3,#9AA39B);}
+/* a music video kept from last time: one card, one tap to pick it up */
+.mm-kept{display:flex;align-items:center;gap:12px;margin:14px 0 2px;padding:10px 12px;border:1.5px solid #B9E0C8;background:#F0F8F3;border-radius:16px;}
+.mm-kept-pic{flex:none;width:42px;height:56px;border-radius:9px;object-fit:cover;background:#20302A;}
+.mm-kept-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.mm-kept-txt b{font-family:Poppins,sans-serif;font-size:13.5px;font-weight:800;color:#0A5E37;line-height:1.2;}
+.mm-kept-txt span{font-size:11.5px;font-weight:600;color:var(--ink2,#4B5A51);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mm-kept-go{flex:none;min-height:44px;padding:0 16px;border-radius:12px;border:0;background:var(--green,#0C7A46);color:#fff;font-family:Poppins,sans-serif;font-size:13px;font-weight:800;cursor:pointer;}
+.mm-kept-go:hover{filter:brightness(1.07);}
+.mm-kept-x{flex:none;position:relative;width:30px;height:30px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);font-size:11px;cursor:pointer;}
+.mm-kept-x::after{content:"";position:absolute;inset:-7px;}
 /* scene-count row that lives under the describe-first box in the classic (non-MV) builder */
 .fs-len-topic{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#E4DFCF);font-size:13px;font-weight:700;color:var(--ink2,#55605A);flex-wrap:wrap;}
 .mm-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:18px 4px 10px;display:flex;align-items:center;gap:7px;}

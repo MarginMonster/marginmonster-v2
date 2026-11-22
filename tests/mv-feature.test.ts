@@ -510,7 +510,8 @@ test("two voices is a switch the maker turns on — co-stars in the video never 
   const ui = read("app", "routes", "web.film.tsx");
   // OFF to begin with, and nothing but the maker's tap turns it on
   assert.match(ui, /const \[featPick, setFeatPick\] = useState<string\[\]>\(\[\]\);/);
-  assert.equal(ui.split("setFeatPick(").length - 1, 2, "the switch, and the who-sings pill — nothing else sets it");
+  assert.equal(ui.split("setFeatPick(").length - 1, 3, "the switch, and the who-sings pill — nothing else sets it (but a kept video being put back as it was: tests/mv-draft.test.ts)");
+  assert.ok(ui.includes("setCastExtra(k.cast); setFeatPick(k.feat);"));
   assert.match(ui, /<button type="button" role="switch" aria-checked=\{featured\.length > 0\} className=\{`mm-twovoice\$\{featured\.length > 0 \? " on" : ""\}`\}/);
   assert.match(ui, /onClick=\{\(\) => setFeatPick\(featured\.length > 0 \? \[\] : \[singable\[0\]\.img\]\)\}/);
   // it says what each position means, with the names in it

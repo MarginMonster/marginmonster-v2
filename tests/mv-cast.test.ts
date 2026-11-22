@@ -600,7 +600,8 @@ test("once the scenes are drawn, another shape is asked for twice — it draws t
   assert.ok(pick.includes("setMvAspect(a);"));
   assert.ok(ui.includes("const seedsDrawn = !!seeds;") && ui.includes("useEffect(() => { setShapeArm(\"\"); }, [seedsDrawn, mvAspect]);"));
   // the buttons go through it — nothing sets the shape directly any more
-  assert.equal(ui.split("setMvAspect(").length - 1, 1, "only inside pickMvAspect");
+  assert.equal(ui.split("setMvAspect(").length - 1, 2, "only inside pickMvAspect — and where a kept video is put back with its own shape (tests/mv-draft.test.ts)");
+  assert.ok(ui.includes("setMvAspect(k.aspect);"));
   assert.ok(ui.includes("onClick={() => pickMvAspect(a)}>{shapeArm === a ? t(\"Tap again to redraw\") : t(name)}<small>{a}</small></button>"));
   assert.ok(ui.includes("{shapeArm && <p className=\"mm-note mm-shape-warn\" role=\"status\">{t(\"A new shape draws every scene again, and your scene edits start over.\")}</p>}"));
   // the same rule, run: no scenes yet → one tap; scenes drawn → the second tap
