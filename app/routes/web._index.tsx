@@ -27,6 +27,11 @@ export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }
   return [{ title: tr((uiLang || "en") as Parameters<typeof tr>[0], "Dashboard") + " · EasyMode" }];
 };
 
+/** A tier change made mid-trial keeps the trial's end date only while MORE than this much of the trial is
+ *  left. It is createPlanCheckout's own cut (stripe.server.ts: under it no trial is sent at all and Stripe
+ *  bills today) — written out again here because that file does not export it. Keep the two in step. */
+const TRIAL_CARRY_MIN_MS = 49 * 3_600_000;
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const lang = readUiLang(request);
   const { account, shop } = await requireWebIdentity(request);
@@ -35,10 +40,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // ── Real progress numbers (drive the launch tracker + "this week" block) ──
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const [contentCount, madeThisWeek, publishedCount, pendingCount] = await Promise.all([
+  const [contentCount, madeThisWeek, postedThisWeek, pendingCount] = await Promise.all([
     db.asset.count({ where: { shopId: shop.id } }),
     db.asset.count({ where: { shopId: shop.id, createdAt: { gte: weekAgo } } }),
-    db.asset.count({ where: { shopId: shop.id, status: "PUBLISHED" } }),
+    // Posted THIS WEEK, on the same boundary as the count above. This was every piece the shop had ever
+    // published, so the This-week block could read "made 2 pieces and posted 14". (An asset keeps no
+    // published-at time; the last change to a published piece is the nearest thing to one.)
+    db.asset.count({ where: { shopId: shop.id, status: "PUBLISHED", updatedAt: { gte: weekAgo } } }),
     db.asset.count({ where: { shopId: shop.id, status: "PENDING" } }),
   ]);
 
@@ -128,10 +136,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // createPlanCheckout correctly does not attach one, so Stripe charged in
     // full on a page that had just said “7-day free trial”.
     trialAvailable: !trialAlreadyTaken(account),
+    // …and a tier change mid-trial was told "Keeps your current trial end date" right up to the trial's last
+    // minute, when with under 49 h left the checkout charges the card today. True only while the checkout
+    // would really carry the date over — read off the same field the subscribe action hands it.
+    trialCarries: !!shop.activePlan?.trialEndsAt
+      && new Date(shop.activePlan.trialEndsAt).getTime() - Date.now() > TRIAL_CARRY_MIN_MS,
     tokens: tokensRemainingLive(shop.activePlan),
     billingOn: stripeEnabled(),
     launch,
-    week: { made: madeThisWeek, posted: publishedCount, toReview: pendingCount },
+    week: { made: madeThisWeek, posted: postedThisWeek, toReview: pendingCount },
     wins,
     referral,
     nextMove,
@@ -236,7 +249,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Mirror locally for an instant UI update; the subscription.updated webhook
       // re-affirms it from the subscription metadata (the source of truth).
       await db.plan.updateMany({ where: { shopId: shop.id }, data: { creatorAddon: withCreator } }).catch(() => { /* non-fatal */ });
-      return json({ ok: withCreator ? tr(lang, "Creator added to your plan — your Create section is unlocked.") : tr(lang, "Creator removed from your plan.") });
+      // "Creator section": the nav and the plan cards call it Creator — "Create" was its old name.
+      return json({ ok: withCreator ? tr(lang, "Creator added to your plan — your Creator section is unlocked.") : tr(lang, "Creator removed from your plan.") });
     }
     // ...but that guard can only read what the WEBHOOK writes, and Stripe
     // redirects the merchant back the instant checkout completes. For the first
@@ -297,6 +311,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
   }
 
+  // A TRIALIST WHO WANTS TO PAY HAD NOTHING TO TAP.
+  //
+  // The note under the plans (and the pack error below) sent them to start the plan "from the Studio" —
+  // there is no Studio tab, and the one button that does it is drawn there only after a spend has already
+  // failed on the trial cap. Same call as web.studio.tsx's own endTrial: Stripe closes the trial and
+  // raises the first invoice, and endTrialNow refuses anyone who is not on a trial.
+  if (intent === "endTrial") {
+    const { endTrialNow } = await import("../lib/stripe.server");
+    const r = await endTrialNow(account.id);
+    return r.ok
+      ? json({ ok: tr(lang, "You're on the full plan — your whole allowance just unlocked.") })
+      : json({ error: r.error || tr(lang, "Couldn't update your plan just now.") });
+  }
+
   if (intent === "pack") {
     if (!stripeEnabled()) return json({ error: tr(lang, "Billing is coming online — check back shortly.") });
     if (!shop.activePlan?.active) return json({ error: tr(lang, "Pick a plan first — packs top up a plan's balance.") });
@@ -307,14 +335,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // the ceiling is the point of a trial. So a merchant who hit the cap on
     // day one could be shown "Top up tokens", pay $140 for two thousand of
     // them, and watch the balance not move: no error, no explanation, nothing
-    // to spend. Ending the trial is what actually unlocks them, and that
-    // button already exists in the Studio.
+    // to spend. Ending the trial is what actually unlocks them — the
+    // "Start my plan now" button in the note under the plans (endTrial, above).
+    // (This said "from the Studio": no tab has that name, and the button there
+    // shows only after a spend has failed.)
     if (planTrialing(shop.activePlan)) {
       return json({
         error: tr(
           lang,
           "Top-ups unlock when your trial converts — they can't be spent before then. " +
-            "Start your plan now from the Studio and your balance opens up straight away.",
+            "Start your plan now and your balance opens up straight away.",
         ),
       });
     }
@@ -527,9 +557,12 @@ export default function WebDashboard() {
 
   const steps = [
     { key: "brand", label: t("Set your brand voice"), hint: t("So content sounds like you"), done: d.launch.brand, href: "#brand" },
-    { key: "plan", label: t("Pick your plan"), hint: t("Start your 7-day free trial"), done: d.launch.plan, href: "#plans" },
+    // The trial is promised only to an account that still has one (see trialAvailable in the loader) — an
+    // account whose trial is spent read "Start your 7-day free trial" here and "billed today" on the cards.
+    { key: "plan", label: t("Pick your plan"), hint: d.trialAvailable ? t("Start your 7-day free trial") : t("See plans"), done: d.launch.plan, href: "#plans" },
     { key: "social", label: t("Link your socials"), hint: t("So pieces can post themselves"), done: d.launch.social, href: "/web/connect" },
-    { key: "content", label: t("Make your first piece"), hint: t("A video, image ad or article"), done: d.launch.content, href: "/web/studio" },
+    // No "or article": the maker this opens has Video and Image tabs, and no Article tab.
+    { key: "content", label: t("Make your first piece"), hint: t("A video or image ad"), done: d.launch.content, href: "/web/studio" },
   ];
   const doneCount = steps.filter((s) => s.done).length;
   const allDone = doneCount === steps.length;
@@ -555,8 +588,9 @@ export default function WebDashboard() {
         <div className="wd-hero-paths">
           <span className="wd-hero-paths-h">{t("…or drive it yourself")}</span>
           <div className="wd-hero-cards" ref={cardsRef}>
+            {/* The first door's cue said "Open Create" — the section is "Creator" in the nav and on every other door. */}
             {[0, 1, 2].flatMap((set) => [
-              <PathImg key={`${set}-creator`} idx={1} img="creator" v={3} eyebrow={t("Free roam")} title={t("Create anything")} sub={t("Generate images, video & music from a prompt")} cue={t("Open Create")} onClick={() => { setMode("casual"); navigate("/web/studio"); }} />,
+              <PathImg key={`${set}-creator`} idx={1} img="creator" v={3} eyebrow={t("Free roam")} title={t("Create anything")} sub={t("Generate images, video & music from a prompt")} cue={t("Open Creator")} onClick={() => { setMode("casual"); navigate("/web/studio"); }} />,
               <PathImg key={`${set}-marketing`} idx={2} img="marketing" v={2} eyebrow={t("Product ads")} title={t("Ad Maker")} sub={t("Turn your product into a ready-to-post ad")} cue={t("Open Ad Maker")} onClick={() => { setMode("marketing"); navigate("/web/studio"); }} />,
               <PathImg key={`${set}-film`} idx={3} img="film" v={3} eyebrow={t("Entertainment")} title={t("Movie Maker")} sub={t("Films, cartoons, music videos & episodes")} cue={t("Open Movie Maker")} onClick={() => navigate("/web/film")} />,
               <PathImg key={`${set}-presenter`} idx={4} img="presenter" v={3} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Craft avatars, costumes & wardrobes")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />,
@@ -566,10 +600,15 @@ export default function WebDashboard() {
           </div>
         </div>
       </section>
+      {/* One trial per account. This line promised a "free 7-day trial" to everybody without a plan —
+          including an account whose trial is spent, on the page whose plan cards tell that same account
+          "billed today · your free trial is already used". Without a trial left it just points at the plans. */}
       <p className="wb-sub wd-plan-line">
         {d.tierName
           ? <>{t("You're on")} <b>{d.tierName}</b>{d.trialing ? ` ${t("(free trial)")}` : ""} {t("with")} <b>{d.tokens.toLocaleString("en-US")}</b> {t("tokens ready.")}</>
-          : <>{t("Heads up — making anything runs on a plan. Start your ")}<Link to="/web#plans">{t("free 7-day trial")}</Link>{t(" to make your first piece.")}</>}
+          : d.trialAvailable
+            ? <>{t("Heads up — making anything runs on a plan. Start your ")}<Link to="/web#plans">{t("free 7-day trial")}</Link>{t(" to make your first piece.")}</>
+            : <>{t("Heads up — making anything runs on a plan — ")}<Link to="/web#plans">{t("see plans")}</Link>{t(" to make your first piece.")}</>}
       </p>
 
       {success && (
@@ -807,10 +846,14 @@ export default function WebDashboard() {
                 </Form>
                 {/* The trial ceiling is a CAP, not a grant: what a trialist can
                     actually spend is min(the tier’s own allowance, the cap). */}
+                {/* "Keeps your current trial end date" was shown to every trialist. With under 49 h of the
+                    trial left the checkout sends Stripe no trial at all and charges today, so in those
+                    last two days the line was untrue: it shows only while the date really carries over
+                    (trialCarries, from the loader), and otherwise they are told it bills today. */}
                 <div className="wd-trial">
                   {d.trialAvailable
                     ? <>{t("7-day free trial ({tokens} tokens to play) · then {price}", { tokens: Math.min(tier.tokens, TRIAL_TOKEN_CAP).toLocaleString("en-US"), price: annual ? `$${tier.yearly.toLocaleString("en-US")}/yr` : `$${tier.price}/mo` })}</>
-                    : d.trialing
+                    : d.trialCarries
                       ? <>{t("Keeps your current trial end date · then {price}", { price: annual ? `$${tier.yearly.toLocaleString("en-US")}/yr` : `$${tier.price}/mo` })}</>
                       : <>{t("{price}, billed today · your free trial is already used", { price: annual ? `$${tier.yearly.toLocaleString("en-US")}/yr` : `$${tier.price}/mo` })}</>}
                 </div>
@@ -832,7 +875,39 @@ export default function WebDashboard() {
             <b>{t("Creator section — included with your plan")} ✓</b>
             <p>{t("Make AI images, edit your photos and generate music with Helpurr.")}</p>
           </div>
-          <Link to="/web/studio" className="wb-btn ghost wd-solo-cta">{t("Open Creator")} →</Link>
+          {/* Creator and the Ad Maker share /web/studio; the shell's mode says which one opens. Without
+              setting it, "Open Creator" opened the Ad Maker unless Creator was the last one used — the
+              nav tabs and the hero door above set it the same way. */}
+          <Link to="/web/studio" className="wb-btn ghost wd-solo-cta" onClick={() => setMode("casual")}>{t("Open Creator")} →</Link>
+          {/* A subscriber on the STANDALONE Creator plan had no way to cancel anywhere in the app. The
+              cancel / keep-my-plan controls are drawn only inside the marketing-tier card that is the
+              current plan, and Creator is never one of those cards — it is this one. Same controls, same
+              words, same two intents: "Cancel anytime" has to be true on this plan too. */}
+          {d.tier === "CREATOR" && d.billingOn && (
+            <div style={{ flex: "1 1 100%" }}>
+              {d.cancelPending ? (
+                <>
+                  <p className="wb-note" style={{ marginTop: 8 }}>
+                    {t("Cancelled — this plan won't renew. You keep every generator and every token until the period you've paid for ends.")}
+                  </p>
+                  <Form method="post">
+                    <input type="hidden" name="intent" value="resumePlan" />
+                    <button className="wb-btn" disabled={busy}>{t("Keep my plan")}</button>
+                  </Form>
+                </>
+              ) : (
+                <Form
+                  method="post"
+                  onSubmit={(e) => {
+                    if (!confirm(t("Cancel your plan? It stays active — with all your tokens — until the end of the period you've already paid for, then stops renewing."))) e.preventDefault();
+                  }}
+                >
+                  <input type="hidden" name="intent" value="cancelPlan" />
+                  <button className="wb-btn ghost" disabled={busy}>{t("Cancel plan")}</button>
+                </Form>
+              )}
+            </div>
+          )}
         </div>
       ) : !d.tier ? (
         <div className="wb-card wd-solo">
@@ -855,9 +930,23 @@ export default function WebDashboard() {
         {t("Your plan unlocks which generators you can use; tokens meter how much you make — every Make button shows its cost.")}
       </p>
 
+      {/* This sent a trialist who wants to pay to start the plan "from the Studio". No tab is called that,
+          and the only button that did it sits in the maker and is drawn after a spend has already failed
+          on the trial cap — so there was nothing to tap. The button is here now (endTrial in the action).
+          It charges the card today, so it asks first, in the sentence the maker's own button sits under. */}
       {d.tier && d.trialing && (
         <div className="wb-note" style={{ marginBottom: 22 }}>
-          <b>{t("Top-ups unlock when your trial converts.")}</b> {t("Extra tokens can't be spent during the trial, so we don't sell them yet — start your plan from the Studio whenever you're ready and your full balance opens up.")}
+          <b>{t("Top-ups unlock when your trial converts.")}</b> {t("Extra tokens can't be spent during the trial, so we don't sell them yet — start your plan whenever you're ready and your full balance opens up.")}
+          <Form
+            method="post"
+            style={{ marginTop: 10 }}
+            onSubmit={(e) => {
+              if (!confirm(t("Start your plan now and your full monthly allowance unlocks immediately — your card is charged today instead of on day 7."))) e.preventDefault();
+            }}
+          >
+            <input type="hidden" name="intent" value="endTrial" />
+            <button className="wb-btn" disabled={busy || !d.billingOn}>{t("Start my plan now")}</button>
+          </Form>
         </div>
       )}
 
@@ -1155,7 +1244,10 @@ const DASH_CSS = `
 .wd-toast{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:400;margin:0;width:max-content;max-width:min(520px,calc(100vw - 24px));display:flex;align-items:center;gap:10px;box-shadow:0 14px 36px rgba(20,32,26,.2);animation:wdToastIn .22s ease both}
 @keyframes wdToastIn{from{opacity:0;transform:translate(-50%,-10px)}to{opacity:1;transform:translate(-50%,0)}}
 .wd-toast>span{flex:1 1 auto}
-.wd-toast-x{flex:0 0 auto;border:0;background:none;cursor:pointer;color:inherit;opacity:.55;font-size:13px;line-height:1;padding:0;min-width:32px;min-height:32px;display:grid;place-items:center;border-radius:8px}
+/* 44px, the floor every other tap target here keeps: this ✕ is the ONLY way to close an error toast (errors
+   stay until dismissed) and it was a 32px box. The negative margin lets the bigger box sit in the toast's
+   own padding, so the toast is no taller than it was. */
+.wd-toast-x{flex:0 0 auto;border:0;background:none;cursor:pointer;color:inherit;opacity:.55;font-size:13px;line-height:1;padding:0;min-width:44px;min-height:44px;margin-block:-6px;margin-inline-end:-6px;display:grid;place-items:center;border-radius:8px}
 .wd-toast-x:hover{opacity:1}
 @media(prefers-reduced-motion:reduce){.wd-toast{animation:none}}
 /* ── 44px tap-target floor (mobile touch) ── */

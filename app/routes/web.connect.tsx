@@ -60,13 +60,18 @@ export default function WebConnect() {
   return (
     <div>
       <style dangerouslySetInnerHTML={{ __html: CONNECT_CSS }} />
-      <h1 className="wb-h1">{t("Auto-posting")}</h1>
+      {/* The Auto-post hub — the only way in — calls this page "Link your socials"; its own heading said
+          "Auto-posting", so the card you tapped and the page you landed on had different names. */}
+      <h1 className="wb-h1">{t("Link your socials")}</h1>
       <p className="wb-sub">{t("Link your socials once — then every piece can post itself with an AI caption (and the #EasyModeAi disclosure) in one tap from the Archive.")}</p>
+      {/* The section is "Auto-post" in the nav — "Social Marketing" is a name the app no longer uses —
+          and each entry now carries the name of its page: "Channels" opened Product Channels, and this
+          page is Link your socials. */}
       <p style={{ fontSize: "12.5px", color: "#6A756E", margin: "10px 0 0", lineHeight: 1.6 }}>
-        <b style={{ color: "#0C7A46" }}>{t("Social Marketing")}</b>{t(" posts three ways — ")}
+        <b style={{ color: "#0C7A46" }}>{t("Auto-post")}</b>{t(" works three ways — ")}
         <Link to="/web/campaigns" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Campaigns")}</Link>{t(" (a one-month push)")}{" · "}
-        <Link to="/web/product-channels" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Channels")}</Link>{t(" (always-on)")}{" · "}
-        <b style={{ color: "#14201A" }}>{t("Auto-posting")}</b>{t(" (connect accounts)")}
+        <Link to="/web/product-channels" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Product Channels")}</Link>{t(" (always-on)")}{" · "}
+        <b style={{ color: "#14201A" }}>{t("Link your socials")}</b>{t(" (connect accounts)")}
       </p>
       {!enabled && <div className="wb-info">{t("Social posting is coming online — check back shortly.")}</div>}
       {actionError && <div className="wb-err">{actionError}</div>}

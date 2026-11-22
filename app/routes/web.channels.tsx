@@ -112,7 +112,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (shop.activePlan) {
       try { const { assertCapability } = await import("../lib/capabilities.server"); assertCapability(shop.activePlan, "video"); canUse = true; } catch { canUse = false; }
     }
-    if (!canUse) return json({ error: tr(lang, "Channels need a plan with video — upgrade to Studio or Anthem.") }, { status: 400 });
+    // "Legend", not "Anthem": Anthem is only the tier's internal key — the plans page sells Starter, Studio and Legend.
+    if (!canUse) return json({ error: tr(lang, "Channels need a plan with video — upgrade to Studio or Legend.") }, { status: 400 });
 
     const name = ((form.get("name") as string) || "").trim().slice(0, 60);
     const niche = ((form.get("niche") as string) || "").trim().slice(0, 160);
@@ -190,6 +191,15 @@ export default function Channels() {
   const creating = nav.state !== "idle" && nav.formData?.get("intent") === "create";
 
   const [showForm, setShowForm] = useState(series.length === 0);
+  // "Start my channel" redirects the page to itself: no message, and the form stayed open, still filled,
+  // with its button live — so a second tap made a second channel on the same schedule (nothing checks for
+  // a duplicate). When the list grows, the form closes, and what shows is the new card with its
+  // "First video rendering…" line.
+  const seriesCount = useRef(series.length);
+  useEffect(() => {
+    if (series.length > seriesCount.current) setShowForm(false);
+    seriesCount.current = series.length;
+  }, [series.length]);
 
   return (
     <div className="ch">
@@ -215,7 +225,8 @@ export default function Channels() {
           <div className="ch-upsell-ic"><Ico n="film" size={28} /></div>
           <div>
             <b>{t("Channels run on faceless video.")}</b>
-            <p>{t("That's on the Studio & Anthem plans. Upgrade and your channel can start posting today.")}</p>
+            {/* "Legend" is what the plans page calls the top plan; "Anthem" is its internal key */}
+            <p>{t("That's on the Studio & Legend plans. Upgrade and your channel can start posting today.")}</p>
           </div>
           <Link to="/web#plans" className="ch-go sm">{t("See plans")}</Link>
         </div>
@@ -346,6 +357,12 @@ function SetupForm({ linked, tokens, facelessCost, cadences, myVoices, error, cr
       {error && <div className="ch-err">{error}</div>}
       {!canAfford && <div className="ch-err">{t("You need at least {n} tokens to run a channel —", { n: facelessCost })} <Link to="/web#plans" className="ch-link">{t("top up")}</Link>.</div>}
       {canAfford && !coversWeek && <div className="ch-warn">{t("Heads up — your wallet won't cover a full week at this cadence (~{n} tokens/wk). The channel pauses itself when it runs low —", { n: weeklyTokens })} <Link to="/web#plans" className="ch-link">{t("top up")}</Link>.</div>}
+
+      {/* The button below stays off until there is a topic and — when it posts by itself — a place to post.
+          It said neither: a new form simply had a dead "Start my channel". These are the two sentences the
+          server answers with for the same two gaps, shown before the tap instead of never. */}
+      {!niche.trim() && <div className="ch-hint">{t("Give your channel a vibe — what's it about?")}</div>}
+      {autoPost && plats.length === 0 && <div className="ch-hint">{t("Connect a social account first (or switch to “Let me approve each one”).")}</div>}
 
       <button className="ch-go" type="submit" disabled={disabled}>
         <span className="ch-go-flower" aria-hidden="true" />
@@ -491,6 +508,12 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
           {s.pauseReason === "no-accounts" && <> — <Link to="/web/connect" className="ch-link">{t("connect")}</Link></>}
         </div>
       )}
+      {/* Resume (below) is off whenever the wallet cannot pay for one video — but the reason was said only
+          when the engine itself had paused the channel for it. Paused by hand, or for a social, on a low
+          wallet, the button was simply dead. */}
+      {paused && tokens < facelessCost && s.pauseReason !== "out-of-tokens" && (
+        <div className="ch-paused-note">{t("Out of tokens")} — <Link to="/web#plans" className="ch-link">{t("top up")}</Link></div>
+      )}
 
       <div className="ch-card-stats">
         <div><b>{s.dropsMade}</b><span>{t("made")}</span></div>
@@ -633,6 +656,8 @@ const CH_CSS = `
 .ch-go.sm{box-sizing:border-box;min-height:44px}
 @media(max-width:620px){
   .ch-x{box-sizing:border-box;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  /* "All drops →" was a bare 12px line of text; same floor as the Archive link on a product channel's card */
+  .ch-card-gal{min-height:44px;display:inline-flex;align-items:center}
   .ch-chip{box-sizing:border-box;min-height:44px}
   .ch-act{box-sizing:border-box;min-height:44px}
   .ch-newbtn{box-sizing:border-box;min-height:44px}

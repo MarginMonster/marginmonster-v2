@@ -629,7 +629,9 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
         }
       } catch { /* transient — keep polling */ }
       if (tries >= limit) {
-        setMsgs((m) => [...m, { role: "assistant", content: t("Still cooking — it's taking longer than usual. Check your Gallery in a moment; it'll land there when it's done.") }]);
+        // "Check your Gallery" — nothing in the app is called Gallery any more; a finished piece lands in the
+        // ARCHIVE. This is the sentence the server already sends for the same stall (api.buddy, makeStatus).
+        setMsgs((m) => [...m, { role: "assistant", content: t("This is taking longer than usual — it'll show up in your Archive when it's done. Mind checking back there in a bit? 🐾") }]);
         resolve(); return;
       }
       window.setTimeout(tick, 5000);
@@ -976,14 +978,17 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
                 )}
                 {/* Result actions — iterate on what you just made in ONE tap
                     instead of re-typing: edit it, make a fresh variation (same
-                    prompt), or jump to the Archive to post it. */}
+                    prompt), or jump to the Archive to post it.
+                    "Make another" SPENDS on that one tap — the make's full cost again, 150 tokens for a
+                    video — and was the only spending button in the chat with no price on it. It carries
+                    the price now, written the way the "Make it" buttons below write theirs. */}
                 {m.role === "assistant" && m.media && m.media.length > 0 && !busy && !making && (() => {
                   const imgUrl = m.media!.find((x) => x.type !== "VIDEO_AD" && x.type !== "AUDIO")?.url;
                   if (!imgUrl && !m.makeSpec) return null;
                   return (
                     <div className="mm-chips mm-reschips">
                       {imgUrl && <button type="button" onClick={() => { setLastPhoto(imgUrl); setAttach([]); window.setTimeout(() => inputRef.current?.focus(), 30); }}>{t("✎ Edit this")}</button>}
-                      {m.makeSpec && <button type="button" onClick={() => runMakes([{ ...m.makeSpec! }])}>{t("↻ Make another")}</button>}
+                      {m.makeSpec && <button type="button" onClick={() => runMakes([{ ...m.makeSpec! }])}>{t("↻ Make another")} · {m.makeSpec.cost > 0 ? t("{n} tokens →", { n: m.makeSpec.cost }) : t("Free →")}</button>}
                       <button type="button" onClick={() => go("/web/archive")}>{t("↗ Share")}</button>
                     </div>
                   );
@@ -2218,6 +2223,11 @@ video.mm-media-item{width:176px;height:234px;object-fit:cover;}
 @media(max-width:620px){
   .mm-x{min-width:44px;min-height:44px}
   .mm-expand{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  /* The full-screen chat's own header was missed by this floor: ☰ — the ONLY door to your chats on a phone —
+     was about 22px tall and 🏠 about 20px. And the per-message actions (Copy / ↻ Try again / ✎ Edit) were
+     17px lines of text; 40 rather than 44 so a row of them under every reply stays light. */
+  .mm-side-toggle,.mm-homebtn{min-width:44px;min-height:44px}
+  .mm-msgact{min-height:40px}
   .mm-attach-x{width:24px;height:24px}
   .mm-tab{min-height:44px;display:inline-flex;align-items:center}
   .mm-chips button{min-height:44px;display:inline-flex;align-items:center}

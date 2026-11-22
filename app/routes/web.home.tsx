@@ -6,7 +6,7 @@
  *
  * ISOLATED + revertable: this is a new file + a nav condition + the login landing
  * default. Delete this file, undo those two, and the app is exactly as it was. */
-import { json, type LoaderFunctionArgs } from "@remix-run/node";
+import { json, redirect, type LoaderFunctionArgs } from "@remix-run/node";
 import { Link, useLoaderData } from "@remix-run/react";
 import { useEffect, useMemo, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -15,7 +15,17 @@ import { tokensRemainingLive } from "../lib/tokens.server";
 
 export const meta = () => [{ title: "Home · EasyMode" }];
 
+/* RETIRED 2026-11-22 — the page is kept, switched off.
+ *
+ * Nothing links or redirects to /web/home any more: it could be reached only by typing the address, and what
+ * was there had gone stale — a made-up "1,284 clicks 7d" shown as the shop's own number, section names the
+ * app no longer uses ("Create Studio", "Film", "Social"), and no shell header or bottom dock to leave by.
+ * Anyone who still lands on it (an old bookmark) is sent to the real home, /web. Nothing below was deleted;
+ * set this to false and the launcher is back exactly as it was. */
+const RETIRED = true as boolean;
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
+  if (RETIRED) return redirect("/web");
   const { shop } = await requireWebIdentity(request);
   const [videos, images] = await Promise.all([
     db.asset.count({ where: { shopId: shop.id, type: "VIDEO_AD" } }),

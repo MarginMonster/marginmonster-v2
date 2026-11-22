@@ -12,7 +12,7 @@
  * parseSchedule, abandonQuestline all key off shopId, not a Shopify session. */
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { Link, useActionData, useLoaderData, useNavigation, useSearchParams, useSubmit } from "@remix-run/react";
+import { Link, useActionData, useLoaderData, useNavigation, useOutletContext, useSearchParams, useSubmit } from "@remix-run/react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useT, useUiLang } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
@@ -24,6 +24,7 @@ import { SOCIAL_PLAN_DEFS, questlineCostFor } from "../lib/questlines";
 import { acceptQuestline, abandonQuestline } from "../lib/questlines.server";
 import { linkedFromCache } from "../lib/social-provider.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
+import { trialAlreadyTaken } from "../lib/stripe.server";
 import { xpForSpend } from "../lib/achievements";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { CATALOG_CAP } from "../lib/catalog-import.server";
@@ -282,6 +283,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     brandFaceId: full?.brandAvatarId && cast.some((c) => c.id === full.brandAvatarId) ? full.brandAvatarId : null,
     linked: full ? linkedFromCache(full.socialsJson) : [],
     hasPlan: !!full?.activePlan?.active,
+    // A trial is once per ACCOUNT (the Dashboard's loader works it out the same way). The no-plan hint
+    // below offered "your 7-day free trial" to everyone, including accounts that have already had theirs.
+    trialAvailable: !trialAlreadyTaken(account),
     tokens: allowance,
     weeks: monthGrid(year, month0),
     monthLabel: new Intl.DateTimeFormat(loc, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month0, 1))),
@@ -361,6 +365,10 @@ export default function WebCampaigns() {
   const t = useT();
   const uiLang = useUiLang();
   const dow = useMemo(() => weekdayNarrow(localeOf(uiLang)), [uiLang]);
+  // Creator and the Ad Maker share /web/studio, and the shell's mode (web.tsx) is what says which one
+  // opens. A link from here that means one of them sets it on the way, as the nav tabs do — otherwise it
+  // opens whichever was used last. (Named `shell`: this page has a `mode` of its own, new vs. archive.)
+  const shell = useOutletContext<{ setMode: (m: "marketing" | "casual") => void } | null>();
 
   const [planKey, setPlanKey] = useState(d.plans[1]?.key || d.plans[0]?.key || "");
   const plan = d.plans.find((p) => p.key === planKey) || d.plans[0];
@@ -419,6 +427,19 @@ export default function WebCampaigns() {
     if (launchError) errRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
     if (launchError) errRef.current?.focus();
   }, [launchError]);
+  // A launch that WORKED was announced only by a line at the top of the page, while the scroll stayed down
+  // at the button — which had gone back to "Start {name}" with the same products still ticked. The whole
+  // month is charged up front and nothing stops a second launch, so one more tap bought a second month.
+  // Now the launcher closes, the picks are cleared and the confirmation is brought into view, the way the
+  // error is just above. Keyed on actionData rather than the boolean, so a second launch in a row counts.
+  const launched = !!(actionData && "launched" in actionData && actionData.launched);
+  const okRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!launched) return;
+    setShowLaunch(false); setPicked([]); setPickedAssets([]);
+    okRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    okRef.current?.focus();
+  }, [actionData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const needle = castQ.trim().toLowerCase();
   const castShown = needle
@@ -478,11 +499,14 @@ export default function WebCampaigns() {
         <div>
           <h1>{t("Campaigns")}</h1>
           <p>{t("A month of content, created and posted for you. Pick a plan once — it runs itself from there.")}</p>
+          {/* The section is "Auto-post" in the nav — "Social Marketing" is a name the app no longer uses —
+              and each link now carries the name of the page it opens: "Channels" opened Product Channels,
+              and "Auto-posting" opened the page the hub calls Link your socials. */}
           <p style={{ fontSize: "12.5px", color: "#6A756E", margin: "10px 0 0", lineHeight: 1.6 }}>
-            <b style={{ color: "#0C7A46" }}>{t("Social Marketing")}</b>{t(" posts three ways — ")}
+            <b style={{ color: "#0C7A46" }}>{t("Auto-post")}</b>{t(" works three ways — ")}
             <b style={{ color: "#14201A" }}>{t("Campaigns")}</b>{t(" (a one-month push)")}{" · "}
-            <Link to="/web/product-channels" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Channels")}</Link>{t(" (always-on)")}{" · "}
-            <Link to="/web/connect" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Auto-posting")}</Link>{t(" (connect accounts)")}
+            <Link to="/web/product-channels" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Product Channels")}</Link>{t(" (always-on)")}{" · "}
+            <Link to="/web/connect" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Link your socials")}</Link>{t(" (connect accounts)")}
           </p>
         </div>
         {d.campaigns.length > 0 && (
@@ -495,7 +519,7 @@ export default function WebCampaigns() {
       {launchError
         ? <div className="wb-err" role="alert" tabIndex={-1} ref={errRef}>{String(launchError)}</div> : null}
       {actionData && "launched" in actionData && actionData.launched
-        ? <p className="wc-ok">
+        ? <p className="wc-ok" role="status" tabIndex={-1} ref={okRef}>
             {"reposted" in actionData && actionData.reposted
               ? (actionData.reposted === 1
                   ? t("Scheduled {n} post from your Archive — no tokens spent.", { n: actionData.reposted })
@@ -660,9 +684,11 @@ export default function WebCampaigns() {
           {/* Without a plan every "make a month" card reads "unlocks on the
               Studio plan" with a dead Start button and no way forward. Say where
               to go, and that scheduling what they already made is free. */}
+          {/* …and the way forward is a free trial only for an account that still has one: with the trial
+              already spent the plans page charges today, so the link just says where the plans are. */}
           {!d.hasPlan && (
             <p className="wc-hint">
-              {t("A created-and-posted campaign runs on a plan —")} <Link to="/web#plans">{t("start your 7-day free trial")}</Link> {t("to launch one.")}
+              {t("A created-and-posted campaign runs on a plan —")} <Link to="/web#plans">{d.trialAvailable ? t("start your 7-day free trial") : t("see plans")}</Link> {t("to launch one.")}
               {" "}{t("Scheduling pieces you’ve already made is always free.")}
             </p>
           )}
@@ -685,7 +711,8 @@ export default function WebCampaigns() {
               {d.archive.length === 0 ? (
                 <p className="wc-hint">
                   {t("Nothing unscheduled in your Archive yet — anything you make in the")}{" "}
-                  <Link to="/web/studio">{t("Create")}</Link> {t("shows up here to schedule for free.")}
+                  {/* opened the Ad Maker unless Creator was the last maker used — see `shell` above */}
+                  <Link to="/web/studio" onClick={() => shell?.setMode("casual")}>{t("Create")}</Link> {t("shows up here to schedule for free.")}
                 </p>
               ) : (
                 <>
@@ -805,7 +832,8 @@ export default function WebCampaigns() {
           <div className="wc-lbl sm">{t("What it features")} <span className="wc-cap">{t("{n} of {cap}", { n: picked.length, cap })}</span></div>
           {d.catalog.length === 0 ? (
             <p className="wc-hint">
-              {t("No products imported yet —")} <Link to="/web/studio?tab=import">{t("pull your store in")}</Link> {t("and they will appear here.")}
+              {/* "Import your store" is a tab of the Ad Maker only: arriving in Creator, ?tab=import falls back to Image */}
+              {t("No products imported yet —")} <Link to="/web/studio?tab=import" onClick={() => shell?.setMode("marketing")}>{t("pull your store in")}</Link> {t("and they will appear here.")}
             </p>
           ) : (
             <div className="wc-prods">
@@ -853,6 +881,10 @@ export default function WebCampaigns() {
               <Link to="/web#plans">{t("top up")}</Link>.
             </p>
           )}
+          {/* …and the reason EVERY first visit meets: nothing is ticked to begin with (on purpose, see
+              `picked`), so the button was dead with neither of the two reasons above applying. Said in
+              the plain hint colour — it is the next step, not something that went wrong. */}
+          {!picked.length && <p className="wc-hint">{t("Pick at least one product for the campaign to feature.")}</p>}
           <button type="button" className="wb-btn wc-go" disabled={busy || !picked.length || !plan || plan.videoLocked || !plan.affordable} onClick={launch}>
             {busy ? t("Starting…") : t("Start {name}", { name: plan?.name || t("campaign") })}
           </button>

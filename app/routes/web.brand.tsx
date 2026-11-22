@@ -129,14 +129,23 @@ export default function BrandKitPage() {
   const logo = kit?.logoLocal || kit?.logo || "";
   // preview the fonts in themselves (Google Fonts; one that isn't there just shows in the fallback)
   const fontLinks = useMemo(() => fonts.filter(Boolean).map((f) => GOOGLE(f)), [fonts]);
+  // WHAT was saved, not just THAT a save happened. `saver.data` never clears, so after one save the bar went
+  // on saying "Saved" through later colour, font and voice edits and through a fresh "Read my store again" —
+  // and from then on the "check it over… then save" notice and the Save pulse never came back. So the kit as
+  // it stood when Save was pressed is kept (at the press, not when the reply lands: the fields stay live
+  // while it is on its way), and it counts as saved only while what is on the page still equals it.
+  const shown = JSON.stringify({ kit, colors, fonts, voice });
+  const [savedAs, setSavedAs] = useState<string | null>(null);
+  const saved = saver.data?.ok === "save" && saver.state === "idle" && savedAs === shown;
   const save = () => {
+    setSavedAs(shown);
     saver.submit({
       intent: "save", name: kit?.name || "", storeTagline: kit?.tagline || "", logo: kit?.logo || "", logoLocal: kit?.logoLocal || "", from: kit?.from || "",
       colors: colors.join(","), fonts: fonts.filter(Boolean).join("|"), tone: voice.tone, tagline: voice.tagline, about: voice.about,
     }, { method: "post" });
   };
-  // a fresh read is shown, not saved — say so until it is
-  const unsaved = reader.data?.ok === "read" && !(saver.data?.ok === "save" && saver.state === "idle");
+  // a fresh read is shown, not saved — say so until it is (and again once it is changed after saving)
+  const unsaved = reader.data?.ok === "read" && !saved;
   const empty = !kit && !voice.tone && !voice.tagline && !voice.about;
 
   return (
@@ -237,7 +246,7 @@ export default function BrandKitPage() {
 
       <div className="bk-savebar">
         {saver.data?.error && <span className="bk-err" role="alert">{saver.data.error}</span>}
-        {saver.data?.ok === "save" && !saving && <span className="bk-ok" role="status"><Ico n="check" size={13} /> {t("Saved — new content uses it.")}</span>}
+        {saved && <span className="bk-ok" role="status"><Ico n="check" size={13} /> {t("Saved — new content uses it.")}</span>}
         <Link to="/web" className="bk-back">{t("Back to the dashboard")}</Link>
         <button type="button" className={`wb-btn${unsaved ? " bk-pulse" : ""}`} disabled={saving} onClick={save}>{saving ? t("Saving…") : t("Save Brand Kit")}</button>
       </div>
@@ -298,4 +307,10 @@ const CSS = `
 @keyframes bkPulse{to{box-shadow:0 0 0 12px rgba(12,122,70,0);}}
 @media(prefers-reduced-motion:reduce){.bk-pulse{animation:none;}}
 @media(max-width:640px){.bk-read .wb-btn{flex:1 1 100%;}.bk-savebar{justify-content:space-between;}.bk-back{display:none;}}
+/* On a phone the bar stuck 12px from the bottom of the screen — exactly under the shell's fixed bottom dock
+   (z-index 50, over this page's z-index 1) — so "Save Brand Kit" was covered until the page was scrolled to
+   its very end. 98px is the dock clearance the shell itself keeps (.wb-main's bottom padding at this width,
+   web.tsx); the right padding keeps the button out from under Helpurr, who floats in that corner (16px in,
+   56px wide, on a page that is itself 16px in). */
+@media(max-width:760px){.bk-savebar{bottom:calc(98px + env(safe-area-inset-bottom,0px));padding-right:78px;}}
 `;

@@ -6,8 +6,8 @@
  * competitor can make a video about a specific SKU — this is the moat. */
 
 import { json, redirect, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
-import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
-import { useEffect, useMemo, useState } from "react";
+import { Form, Link, useActionData, useLoaderData, useNavigation, useOutletContext } from "@remix-run/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { db } from "../db.server";
 import { tokensRemainingLive } from "../lib/tokens.server";
@@ -103,7 +103,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (shop.activePlan) {
       try { const { assertCapability } = await import("../lib/capabilities.server"); assertCapability(shop.activePlan, "video"); canUse = true; } catch { canUse = false; }
     }
-    if (!canUse) return json({ error: tr(lang, "Product Channels need a plan with video — upgrade to Studio or Anthem.") }, { status: 400 });
+    // "Legend", not "Anthem": Anthem is only the tier's internal key — the plans page sells Starter, Studio and Legend.
+    if (!canUse) return json({ error: tr(lang, "Product Channels need a plan with video — upgrade to Studio or Legend.") }, { status: 400 });
 
     const productCount = await db.catalogProduct.count({ where: { shopId: shop.id } });
     if (productCount === 0) return json({ error: tr(lang, "Import your store first — there are no products to feature yet.") }, { status: 400 });
@@ -163,6 +164,18 @@ export default function ProductChannels() {
   const t = useT();
   const creating = nav.state !== "idle" && nav.formData?.get("intent") === "create";
   const [showForm, setShowForm] = useState(series.length === 0);
+  // "Start my product channel" redirects the page to itself: no message, and the form stayed open with its
+  // button live — so a second tap made a second channel on the same schedule (nothing checks for a
+  // duplicate). When the list grows, the form closes, and what shows is the new card with its
+  // "Making your first video…" line.
+  const seriesCount = useRef(series.length);
+  useEffect(() => {
+    if (series.length > seriesCount.current) setShowForm(false);
+    seriesCount.current = series.length;
+  }, [series.length]);
+  // "Import your store" is a tab of the AD MAKER, which shares /web/studio with Creator; the shell's mode
+  // (web.tsx) says which of the two opens. The import links set it on the way, as the nav tabs do.
+  const shell = useOutletContext<{ setMode: (m: "marketing" | "casual") => void } | null>();
 
   return (
     <div className="pc">
@@ -175,11 +188,14 @@ export default function ProductChannels() {
         <div>
           <h1 className="pc-title">{t("Product Channels")}</h1>
           <p className="pc-sub">{t("Your store, on autopilot — we turn each product into a short video & post it on repeat.")} <span className="pc-accent">{t("Hands off.")}</span></p>
+          {/* The section is "Auto-post" in the nav — "Social Marketing" is a name the app no longer uses —
+              and each entry now carries the name of its page: this one is Product Channels (its own H1),
+              and "Auto-posting" opened the page the hub calls Link your socials. */}
           <p style={{ fontSize: "12.5px", color: "#6A756E", margin: "10px 0 0", lineHeight: 1.6 }}>
-            <b style={{ color: "#0C7A46" }}>{t("Social Marketing")}</b>{t(" posts three ways — ")}
+            <b style={{ color: "#0C7A46" }}>{t("Auto-post")}</b>{t(" works three ways — ")}
             <Link to="/web/campaigns" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Campaigns")}</Link>{t(" (a one-month push)")}{" · "}
-            <b style={{ color: "#14201A" }}>{t("Channels")}</b>{t(" (always-on)")}{" · "}
-            <Link to="/web/connect" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Auto-posting")}</Link>{t(" (connect accounts)")}
+            <b style={{ color: "#14201A" }}>{t("Product Channels")}</b>{t(" (always-on)")}{" · "}
+            <Link to="/web/connect" style={{ color: "#0C7A46", fontWeight: 700 }}>{t("Link your socials")}</Link>{t(" (connect accounts)")}
           </p>
         </div>
         {series.length > 0 && canUse && productCount > 0 && (
@@ -190,7 +206,8 @@ export default function ProductChannels() {
       {!canUse && (
         <div className="pc-upsell">
           <div className="pc-upsell-ic"><Ico n="film" size={30} /></div>
-          <div><b>{t("Product Channels run on video.")}</b><p>{t("That's on the Studio & Anthem plans. Upgrade and your store can start posting today.")}</p></div>
+          {/* "Legend" is what the plans page calls the top plan; "Anthem" is its internal key */}
+          <div><b>{t("Product Channels run on video.")}</b><p>{t("That's on the Studio & Legend plans. Upgrade and your store can start posting today.")}</p></div>
           <Link to="/web#plans" className="pc-go sm">{t("See plans")}</Link>
         </div>
       )}
@@ -199,7 +216,9 @@ export default function ProductChannels() {
         <div className="pc-upsell">
           <div className="pc-upsell-ic"><Ico n="box" size={30} /></div>
           <div><b>{t("Import your store first.")}</b><p>{t("Product Channels feature your real products — bring your catalogue in and you're ready.")}</p></div>
-          <Link to="/web/studio" className="pc-go sm">{t("Import store")}</Link>
+          {/* This opened the maker on its default Video tab — and on Creator, which has no Import tab at all,
+              if that was the maker last used. It now opens the Ad Maker ON "Import your store". */}
+          <Link to="/web/studio?tab=import" className="pc-go sm" onClick={() => shell?.setMode("marketing")}>{t("Import store")}</Link>
         </div>
       )}
 
@@ -310,6 +329,9 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, myVoi
 
       {error && <div className="pc-err">{t(error)}</div>}
       {!canAfford && <div className="pc-err">{t("You need at least {n} tokens to run a channel —", { n: facelessCost })} <Link to="/web#plans" className="pc-link">{t("top up")}</Link>.</div>}
+      {/* The button below is off while it is set to post by itself with nowhere ticked to post — and it
+          did not say so. The sentence the server answers with for the same gap, shown before the tap. */}
+      {autoPost && plats.length === 0 && <div className="pc-hint">{t("Connect a social account first (or switch to “Let me approve each one”).")}</div>}
       </fieldset>
 
       <button className="pc-go" type="submit" disabled={disabled}><span className="pc-go-flower" aria-hidden="true" />{creating ? t("Starting…") : t("Start my product channel")}</button>
@@ -319,6 +341,8 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, myVoi
 
 function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; facelessCost: number }) {
   const t = useT();
+  // for the "import store" link below — it has to open the Ad Maker, where the Import tab is (see ProductChannels)
+  const shell = useOutletContext<{ setMode: (m: "marketing" | "casual") => void } | null>();
   const paused = s.status === "PAUSED";
   const angleLabel = ANGLES.find(([k]) => k === s.format)?.[1] || s.format;
   const reasonText: Record<string, string> = { "out-of-tokens": t("Out of tokens"), "no-accounts": t("No socials linked"), "no-products": t("No products imported"), "needs-plan": t("Plan changed"), user: t("Paused by you") };
@@ -354,8 +378,14 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
         <div className="pc-paused-note">{reasonText[s.pauseReason] || t("Paused")}
           {s.pauseReason === "out-of-tokens" && <> — <Link to="/web#plans" className="pc-link">{t("top up")}</Link></>}
           {s.pauseReason === "no-accounts" && <> — <Link to="/web/connect" className="pc-link">{t("connect")}</Link></>}
-          {s.pauseReason === "no-products" && <> — <Link to="/web/studio" className="pc-link">{t("import store")}</Link></>}
+          {s.pauseReason === "no-products" && <> — <Link to="/web/studio?tab=import" className="pc-link" onClick={() => shell?.setMode("marketing")}>{t("import store")}</Link></>}
         </div>
+      )}
+      {/* Resume (below) is off whenever the wallet cannot pay for one video — but the reason was said only
+          when the engine itself had paused the channel for it. Paused by hand, or for a social, on a low
+          wallet, the button was simply dead. */}
+      {paused && tokens < facelessCost && s.pauseReason !== "out-of-tokens" && (
+        <div className="pc-paused-note">{t("Out of tokens")} — <Link to="/web#plans" className="pc-link">{t("top up")}</Link></div>
       )}
       <div className="pc-card-stats"><div><b>{s.dropsMade}</b><span>{t("made")}</span></div><div><b>{s.dropsPosted}</b><span>{t("posted")}</span></div><Link to={`/web/archive?section=marketing&series=${s.id}`} className="pc-card-gal">{t("Archive")} →</Link></div>
       <div className="pc-card-acts">
@@ -433,6 +463,8 @@ const PC_CSS = `
 .pc-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 4px;font-size:13px;color:var(--ink2);}
 .pc-summary b{color:var(--ink);}.pc-bal{color:var(--ink3);font-size:12px;}
 .pc-err{background:#FDECEC;border:1px solid #F3C9C9;color:#A4342E;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-top:12px;}
+/* why the Start button is off — the same quiet line the Channels page uses (.ch-hint) */
+.pc-hint{margin-top:8px;font-size:12px;color:#8A7A3A;font-weight:600;}
 .pc-go{position:relative;isolation:isolate;overflow:hidden;width:100%;margin-top:14px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;cursor:pointer;font:inherit;font-weight:800;font-size:15px;color:#fff;padding:15px 22px;border-radius:15px;transition:all .1s;background:linear-gradient(100deg,#12A85E 38%,#0A6A3D 78%,#075530);box-shadow:0 4px 14px rgba(12,122,70,.32),inset 0 0 0 1px rgba(231,200,121,.34);}
 .pc-go::before{content:"";position:absolute;inset:4px;border:1px solid rgba(255,210,74,.42);border-radius:11px;pointer-events:none;}
 .pc-go.sm{width:auto;padding:11px 18px;font-size:13.5px;margin:0;text-decoration:none;flex:0 0 auto;}
