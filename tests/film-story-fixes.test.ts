@@ -138,3 +138,24 @@ test("every new line is translated", () => {
     assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
   }
 });
+
+test("a scary story and a story with a lesson OPEN narrated; the others open acted — one list decides", () => {
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.ok(engine.includes("export const NARRATED_FIRST_KEYS: string[] = [\"horror\", \"moral\"];"));
+  const briefs = engine.slice(engine.indexOf("const NARRATED_BRIEF: Record<string, string> = {"), engine.indexOf("export const NARRATABLE_KEYS"));
+  for (const k of ["horror", "moral"]) assert.ok(briefs.includes(`\n  ${k}: "`), `${k} can be narrated at all`);
+  assert.ok(ui.includes("narratedFirst: (await import(\"../lib/film-engine.server\")).NARRATED_FIRST_KEYS,"));
+  const sw = ui.slice(ui.indexOf("const switchTemplate = (key: string) => {"), ui.indexOf("const switchTemplate = (key: string) => {") + 1500);
+  assert.ok(sw.includes("const openNarrated = !!nt?.dialogue && (d.narratedFirst || []).includes(key) && (d.narratable || []).includes(key);"));
+  assert.ok(sw.includes("setTold(openNarrated ? \"narrated\" : \"acted\");"));
+  // its length and shape are set with it: the effect that follows `told` does not run when two formats in a row open the same way
+  assert.ok(sw.includes("openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)"));
+  assert.ok(sw.includes("if (nt?.dialogue) setFilmAspect(openNarrated ? \"9:16\" : \"16:9\");"));
+  // the poster says how it opens; Acted is still one tap away in The Style
+  assert.ok(ui.includes("horror: { tint: \"t-horror\", kick: \"A scare that builds\", meta: \"narrated · ready in minutes\" },"));
+  assert.ok(ui.includes("moral: { tint: \"t-moral\", kick: \"A story with a lesson\", meta: \"narrated · ready in minutes\" },"));
+  assert.ok(ui.includes("testmovie: { tint: \"t-film\", kick: \"Your story, on screen\", meta: \"acted or narrated\" },"));
+  assert.ok(ui.includes("orArm(\"told:acted\", told !== \"acted\", () => setTold(\"acted\"))"));
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  assert.equal(count(dict, "\n  \"narrated · ready in minutes\":"), 5);
+});

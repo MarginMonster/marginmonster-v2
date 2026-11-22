@@ -119,6 +119,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     base: FILM_BASE,
     // NARRATED stories: which formats can be told by a narrator, and how long one may be
     narratable: (await import("../lib/film-engine.server")).NARRATABLE_KEYS,
+    narratedFirst: (await import("../lib/film-engine.server")).NARRATED_FIRST_KEYS,
     narratedScenes: { min: 3, max: 12, def: 6 },
     defaultNarrator: (await import("../lib/narrated-story.server")).DEFAULT_NARRATOR,
   });
@@ -1503,8 +1504,14 @@ export default function FilmStudio() {
   };
   const switchTemplate = (key: string) => {
     const nt = d.templates.find((x) => x.key === key);
-    setTemplate(key); setScenes(nt?.lipSyncSinger ? mvWant : (nt?.defaultScenes || 6)); setTreatment(null); setFrames([]); setCast([]);
-    setTold("acted"); setStoryPick([]); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({});
+    // HOW IT OPENS: a scary story and a story with a lesson open NARRATED (NARRATED_FIRST_KEYS — the form
+    // story channels post: longer, quicker and far cheaper than the acted one); the rest open acted. Either
+    // way The Style card switches it. Length and shape are set HERE for the way it opens: the effect that
+    // follows `told` does not run when two formats in a row open the same way.
+    const openNarrated = !!nt?.dialogue && (d.narratedFirst || []).includes(key) && (d.narratable || []).includes(key);
+    setTemplate(key); setScenes(nt?.lipSyncSinger ? mvWant : openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)); setTreatment(null); setFrames([]); setCast([]);
+    setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({});
+    if (nt?.dialogue) setFilmAspect(openNarrated ? "9:16" : "16:9");
   };
   // Cinematic format entry: you land on the poster GRID; tap a card and IT zooms in while the
   // other cards are thrown away, then it becomes that format's builder. Back reverses it.
@@ -2450,8 +2457,9 @@ export default function FilmStudio() {
     musicvideo: { tint: "t-mv", kick: "Your artist sings on camera", meta: "up to 2 min" },
     // the four story formats can be told two ways (Style card): say so where a format is picked, or
     // nobody finds the narrated one
-    moral: { tint: "t-moral", kick: "A story with a lesson", meta: "acted or narrated" },
-    horror: { tint: "t-horror", kick: "A scare that builds", meta: "acted or narrated" },
+    // (these two OPEN narrated — NARRATED_FIRST_KEYS — so the poster says that, and how quick it is)
+    moral: { tint: "t-moral", kick: "A story with a lesson", meta: "narrated · ready in minutes" },
+    horror: { tint: "t-horror", kick: "A scare that builds", meta: "narrated · ready in minutes" },
     testmovie: { tint: "t-film", kick: "Your story, on screen", meta: "acted or narrated" },
     kidstv: { tint: "t-kids", kick: "A cartoon for little ones", meta: "acted or narrated" },
     kidsmusicvideo: { tint: "t-kmv", kick: "A sing-along for little ones", meta: "about 30 sec" },
