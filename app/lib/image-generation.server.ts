@@ -4695,11 +4695,13 @@ export async function renderFormatFrame(
  *  fallback (nano-banana refuses legit horror/gore a creator may want → flux-dev).
  *  Returns a durable /renders URL, or null so the caller falls back to t2v. Creates
  *  no Asset and charges no tokens — the seed's COGS rides the video's price. */
-export async function renderCreativeSeed(prompt: string, aspect = "9:16"): Promise<string | null> {
+export async function renderCreativeSeed(prompt: string, aspect = "9:16", maxPrompt = 500): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN) return null;
     const ar = CREATE_ASPECT_VALUES.includes(aspect) ? aspect : "9:16";
-    const full = `${(prompt || "").trim().slice(0, 500)}. No watermark, no signature.`;
+    // `maxPrompt`: where the prompt is cut. A caller that builds its prompt to a known length (a film's cast
+    // sheet — film-cast-sheet.ts) asks for the room: at 500 a kids' cast sheet lost its whole cast.
+    const full = `${(prompt || "").trim().slice(0, Math.max(200, Math.min(1400, maxPrompt)))}. No watermark, no signature.`;
     let url: string;
     try {
       url = await repRun("google/nano-banana", { prompt: full, aspect_ratio: ar, output_format: "jpg" });
@@ -4733,11 +4735,11 @@ export async function renderCreativeSeed(prompt: string, aspect = "9:16"): Promi
  *  into a new still that reuses the characters. No flux fallback (wholesome kids
  *  content rarely trips safety); the caller falls back to the text-only
  *  renderCreativeSeed if this returns null. Durable /renders URL, or null. */
-export async function renderStyledSeed(prompt: string, refImageUrl: string, aspect = "9:16"): Promise<string | null> {
+export async function renderStyledSeed(prompt: string, refImageUrl: string, aspect = "9:16", maxPrompt = 500): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN || !refImageUrl) return null;
     const ar = CREATE_ASPECT_VALUES.includes(aspect) ? aspect : "9:16";
-    const full = `${(prompt || "").trim().slice(0, 500)}. No watermark, no signature.`;
+    const full = `${(prompt || "").trim().slice(0, Math.max(200, Math.min(1400, maxPrompt)))}. No watermark, no signature.`;
     const url = await repRun("google/nano-banana", { prompt: full, image_input: [refImageUrl], aspect_ratio: ar, output_format: "jpg" });
     const durable = await persistRemote(url, "jpg");
     artLog("image-ad", `styled seed rendered (${ar})`);

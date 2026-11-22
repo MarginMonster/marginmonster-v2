@@ -29,6 +29,7 @@ import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { animateCreate, animatePoll, checkpointJob, download, downloadBuffer, ffprobeDuration, repCreate, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { renderCreativeSeed, renderStyledSeed } from "./image-generation.server";
+import { SCENE_PROMPT_MAX, SHEET_PROMPT_MAX, castSheetPrompt, sceneFromSheetPrompt, sceneInWordsPrompt } from "./film-cast-sheet";
 import { musicBedToDisk, singToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
@@ -871,6 +872,18 @@ async function stillToClip(stillPath: string, outPath: string): Promise<boolean>
  *  video, so the owner checks accuracy + fixes a bad scene before paying. Mirrors generateFilm's seed
  *  phase (one cast sheet → per-scene renderStyledSeed) — keep in sync. Returns the stills + treatment
  *  + the cast ref (so a single scene can be re-rolled against the same cast). */
+/** ONE SCENE'S STILL for the story engine (film-cast-sheet.ts):
+ *   · a film with a product → drawn from the product photo, with the prompt it always had;
+ *   · a film with a cast sheet → drawn FROM the sheet, and told the sheet is its cast;
+ *   · neither (the sheet could not be made) → the cast in words, in full.
+ *  Each falls back to a picture from words alone, so a scene is never left bare. */
+async function sceneSeed(o: { tmpl: FilmTemplate; safe: string; visual: string; cast: string[]; castSheet?: string; productRef?: string; productPrompt: string }): Promise<string | null> {
+  if (o.productRef) return (await renderStyledSeed(o.productPrompt, o.productRef, "9:16")) || (await renderCreativeSeed(o.productPrompt, "9:16"));
+  const inWords = sceneInWordsPrompt({ safe: o.safe, visual: o.visual, cast: o.cast, style: o.tmpl.sceneHint });
+  if (o.castSheet) return (await renderStyledSeed(sceneFromSheetPrompt({ safe: o.safe, visual: o.visual, style: o.tmpl.sceneHint }), o.castSheet, "9:16", SCENE_PROMPT_MAX)) || (await renderCreativeSeed(inWords, "9:16", SCENE_PROMPT_MAX));
+  return renderCreativeSeed(inWords, "9:16", SCENE_PROMPT_MAX);
+}
+
 export async function previewFilmSceneSeeds(opts: {
   shopId: string; template?: string; topic?: string; sceneCount?: number; treatment?: FilmTreatment;
   product?: { title?: string; imageUrl?: string; description?: string };
@@ -894,7 +907,7 @@ export async function previewFilmSceneSeeds(opts: {
   // path the render uses, so the previewed stills match what will render.
   let castRefAbs: string | undefined;
   if (tmpl.referenceSeed && castBible && !productAbs) {
-    const castRef = await renderCreativeSeed(`${safePhrase}${tmpl.sceneHint}. A group portrait of the recurring cast standing together — full body, clear consistent faces, plain neutral background, IN THE EXACT SAME ART STYLE as the rest of the film. The cast: ${castBible}`, "9:16").catch(() => null);
+    const castRef = await renderCreativeSeed(castSheetPrompt({ safe: safePhrase, cast: treatment.cast || [], style: tmpl.sceneHint }), "9:16", SHEET_PROMPT_MAX).catch(() => null);
     if (castRef) castRefAbs = abs(castRef) || undefined;
   }
   const refAbs = productAbs || castRefAbs;
@@ -909,7 +922,7 @@ export async function previewFilmSceneSeeds(opts: {
       const seedPrompt = `${safePhrase}${scene.visual}. ${castBible}${productLine} ${tmpl.sceneHint}. Richly detailed, high quality.`;
       let seedUrl: string | null = null;
       for (let a = 0; a < 2 && !seedUrl; a++) {
-        try { seedUrl = refAbs ? ((await renderStyledSeed(seedPrompt, refAbs, "9:16")) || (await renderCreativeSeed(seedPrompt, "9:16"))) : await renderCreativeSeed(seedPrompt, "9:16"); } catch { /* retry once */ }
+        try { seedUrl = await sceneSeed({ tmpl, safe: safePhrase, visual: scene.visual, cast: treatment.cast || [], castSheet: productAbs ? undefined : castRefAbs, productRef: productAbs || undefined, productPrompt: seedPrompt }); } catch { /* retry once */ }
       }
       sceneImgs[i] = abs(seedUrl);
     }
@@ -932,7 +945,7 @@ export async function rerollFilmSceneSeed(opts: {
   const seedPrompt = `${safePhrase}${opts.sceneVisual}. ${tmpl.sceneHint}. Richly detailed, high quality.`;
   let seedUrl: string | null = null;
   for (let a = 0; a < 2 && !seedUrl; a++) {
-    try { seedUrl = refAbs ? ((await renderStyledSeed(seedPrompt, refAbs, "9:16")) || (await renderCreativeSeed(seedPrompt, "9:16"))) : await renderCreativeSeed(seedPrompt, "9:16"); } catch { /* retry once */ }
+    try { seedUrl = refAbs ? ((await renderStyledSeed(sceneFromSheetPrompt({ safe: safePhrase, visual: opts.sceneVisual, style: tmpl.sceneHint }), refAbs, "9:16", SCENE_PROMPT_MAX)) || (await renderCreativeSeed(seedPrompt, "9:16"))) : await renderCreativeSeed(seedPrompt, "9:16"); } catch { /* retry once */ }
   }
   return abs(seedUrl);
 }
@@ -986,7 +999,7 @@ export async function generateFilm(opts: {
       // nano-banana draw a flat illustration, so scenes built on it came out
       // cartoonish while the text-fallback scenes came out photoreal → one video,
       // two clashing looks. Lead with the scene style and lock it.
-      try { castRef = await renderCreativeSeed(`${safePhrase}${tmpl.sceneHint}. A group portrait of the recurring cast standing together — full body, clear consistent faces, plain neutral background, IN THE EXACT SAME ART STYLE as the rest of the film. The cast: ${castBible}`, "9:16"); }
+      try { castRef = await renderCreativeSeed(castSheetPrompt({ safe: safePhrase, cast: treatment.cast || [], style: tmpl.sceneHint }), "9:16", SHEET_PROMPT_MAX); }
       catch { castRef = null; }
       if (castRef) await ckpt({ ckCastRef: castRef });
     }
@@ -1015,9 +1028,7 @@ export async function generateFilm(opts: {
     let seedUrl: string | null = opts.approvedSceneImgs?.[i] ?? null;
     for (let a = 0; a < 2 && !seedUrl; a++) {
       try {
-        seedUrl = refAbs
-          ? ((await renderStyledSeed(seedPrompt, refAbs, "9:16")) || (await renderCreativeSeed(seedPrompt, "9:16")))
-          : await renderCreativeSeed(seedPrompt, "9:16");
+        seedUrl = await sceneSeed({ tmpl, safe: safePhrase, visual: scene.visual, cast: treatment.cast || [], castSheet: productAbs ? undefined : castRefAbs, productRef: productAbs || undefined, productPrompt: seedPrompt });
       } catch { /* retry once */ }
     }
     const seedAbs = seedUrl ? (seedUrl.startsWith("http") ? seedUrl : `${base}${seedUrl}`) : undefined;

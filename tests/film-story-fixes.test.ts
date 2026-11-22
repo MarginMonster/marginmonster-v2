@@ -118,7 +118,8 @@ test("a music video's solo scene is drawn in the VIDEO'S shape, not the referenc
   // on the first try, on the retry without the resolution, and on the fallback engine
   assert.equal(count(img, "...shaped }"), 3);
   // a photo EDIT still gives the user their own photo's shape back: no other caller passes one
-  assert.equal(count(img, "await editImg2Img("), 5);
+  // (seven callers since the photo edit's second ask — tests/edit-check.test.ts — and still only one passes a shape)
+  assert.equal(count(img, "await editImg2Img("), 7);
   assert.equal(count(img, ", undefined, shape)"), 1);
   const mv = read("app", "lib", "music-video-pipeline.server.ts");
   assert.equal(count(mv, "${senseNote}${fillNote}` }), SOLO_EDIT_MAX, asp)"), 2, "the storyboard's still and a re-rolled one");
