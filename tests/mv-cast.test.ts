@@ -581,7 +581,10 @@ test("a full scene says it is full — a third face is never let in by pushing s
   assert.ok(castEditor.includes("{sceneCastDraft.length >= MAX_COSTARS ? ("));
   assert.ok(castEditor.includes("<div className=\"mm-sw-add mm-sw-full\"><div className=\"mm-cp-hint\">{t(\"This scene is full. Take someone out to add another.\")}</div></div>"));
   // a face from the roster JOINS the cast, so it is offered only while the cast has room for it
-  assert.ok(castEditor.includes("{(castExtra.length < MAX_COSTARS ? [...customArtists.map((c) => ({ img: c.img, name: c.name })), ...people.map((r) => ({ img: r.img, name: r.name }))] : [])"));
+  assert.ok(castEditor.includes("{(castExtra.length < MAX_COSTARS ? [...customArtists.map((c) => ({ img: c.img, name: c.name })), ...mvRoster.map((r) => ({ img: r.img, name: r.name }))] : [])"));
+  // (who the music video offers: people — and, on the owner's account while it is being tried, monsters)
+  assert.ok(ui.includes("const mvRoster = d.mvCreatures ? d.roster.filter((r) => r.kind === \"person\" || r.kind === \"monster\") : people;"));
+  assert.ok(ui.includes("mvCreatures: isAdminEmail(account.email),"));
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["Sings this scene", "Sing this scene", "Give this scene back to {name}", "This scene is full. Take someone out to add another."]) {
     assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5, k);

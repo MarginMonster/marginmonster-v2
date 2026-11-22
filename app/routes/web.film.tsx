@@ -38,7 +38,7 @@ import { nameTok } from "../lib/character-prompts";
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { shop } = await requireWebIdentity(request);
+  const { shop, account } = await requireWebIdentity(request);
   const { LIVE_FILM_TEMPLATES, GENRES, PROPS } = await import("../lib/film-engine.server");
   const templates = LIVE_FILM_TEMPLATES.map((t) => ({
     key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger, cartoon: !!t.cartoon,
@@ -99,6 +99,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     tokens: tokensRemainingLive(shop.activePlan),
     roster,
     savedLooks,
+    // A TRIAL, for the owner's account only (the owner, 2026-11-22: "test monsters in a music video"): a
+    // monster can be cast as a music video's star or co-star. Nobody else is offered them there until a
+    // finished video has been watched — the music video was built around a real-looking singer.
+    mvCreatures: isAdminEmail(account.email),
     hasPlan: !!shop.activePlan?.active,
     trialing: planTrialing(shop.activePlan),
     canFilm: capabilitiesFor(shop.activePlan).has("creatorvideo"),
@@ -989,6 +993,8 @@ export default function FilmStudio() {
   // lead a Horror Story; a cartoon character is not offered to the live-action formats, which would
   // redraw it as a real animal.
   const people = d.roster.filter((r) => r.kind === "person");
+  // (…and, on the owner's account while it is being tried, monsters too — `mvCreatures` in the loader)
+  const mvRoster = d.mvCreatures ? d.roster.filter((r) => r.kind === "person" || r.kind === "monster") : people;
   const rosterFor = (format: string) => {
     const order: Array<"person" | "cartoon" | "monster"> = format === "kidstv" ? ["cartoon", "person"] : format === "horror" ? ["monster", "person"] : ["person", "monster"];
     return order.flatMap((k) => d.roster.filter((r) => r.kind === k));
@@ -2146,7 +2152,7 @@ export default function FilmStudio() {
                                 ))}
                                 {/* (a face from the roster JOINS the cast — so it is offered only while the cast has room:
                                     a third co-star is never added, and the tile used to put them in the picture anyway) */}
-                                {(castExtra.length < MAX_COSTARS ? [...customArtists.map((c) => ({ img: c.img, name: c.name })), ...people.map((r) => ({ img: r.img, name: r.name }))] : []).filter((r) => r.img && !castExtra.some((m) => m.img === r.img)).slice(0, 14).map((r) => (
+                                {(castExtra.length < MAX_COSTARS ? [...customArtists.map((c) => ({ img: c.img, name: c.name })), ...mvRoster.map((r) => ({ img: r.img, name: r.name }))] : []).filter((r) => r.img && !castExtra.some((m) => m.img === r.img)).slice(0, 14).map((r) => (
                                   <button type="button" key={`pool-${r.img}`} className="mm-cp-opt mm-cp-add" onClick={() => { addCastMemberMv(r.img, r.name); toggleSceneCastDraft(r.img); }} title={r.name}>
                                     <span className="mm-cp-img" style={{ backgroundImage: `url(${r.img})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{r.name}
                                   </button>
@@ -2576,7 +2582,7 @@ export default function FilmStudio() {
                     <span className="fs-rface-name">{ca.name}</span>
                   </button>
                 ))}
-                {people.map((r) => (
+                {mvRoster.map((r) => (
                   <button type="button" key={r.id} className={`fs-rface${artistPick === r.img ? " on" : ""}`} title={r.name} onClick={() => setArtistPick(r.img)}>
                     <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
                     {artistPick === r.img && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
@@ -2659,7 +2665,7 @@ export default function FilmStudio() {
                       <span className="fs-rface-name">{ca.name}</span>
                     </button>
                   ))}
-                  {people.map((r) => (
+                  {mvRoster.map((r) => (
                     <button type="button" key={`cx-${r.id}`} className={`fs-rface${castExtra.some((m) => m.img === r.img) ? " on" : ""}`} title={r.name} onClick={() => addCastMemberMv(r.img, r.name)}>
                       <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
                       {castExtra.some((m) => m.img === r.img) && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
