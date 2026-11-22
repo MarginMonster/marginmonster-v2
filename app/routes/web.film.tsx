@@ -2403,7 +2403,9 @@ export default function FilmStudio() {
   // went straight back to a live "Generate …" the moment the film was queued, and a second tap queued the
   // same film again (audit of the story formats, 2026-11-22). It stays sent for the film that WAS sent and
   // comes back the moment anything in it changes — a line, a face, a shape: that is another film.
-  const storySig = `story:${JSON.stringify([template, topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId])])}`;
+  // (the IDEA counts only while there is no script: once one is written IT is the film, and a letter typed
+  //  in the idea box afterwards changes nothing that renders — it made the button live again, seen 11-22)
+  const storySig = `story:${JSON.stringify([template, treatment ? "" : topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId])])}`;
   const storySent = sentSig === storySig;
   // Make the cast editable + buildable — rename, re-describe, add your own character, or remove one.
   // This is how you "create" a cast member (a cartoon character for Kids Cartoon, an actor for a film):

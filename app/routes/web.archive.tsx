@@ -291,6 +291,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec, elapsedSec, refunded: !!p.refunded, retryCost });
   }
   const linked = linkedFromCache(shop.socialsJson).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
+  // WHICH PIECES CAN BE REMIXED.
+  //
+  // The viewer offered a gold "Remix · N tokens" on every video and image, but the remix action refuses
+  // a piece with no product photo — it would have to invent the product — and every Creator image, photo
+  // edit, Movie Maker film, faceless video and scene still is one. On those the button could only ever
+  // answer "made before we started saving its product photo… Remake it from the Studio". So the action's
+  // own test is run here, and the button is offered only where it passes: a product title, and (videos
+  // and images) service mode, the photo kept on the piece, or the catalogue's photo under that title —
+  // asked of the catalogue ONCE for the whole page, not once per piece. What depends on the account (a
+  // plan, the tier, tokens) is left out on purpose: those refusals say what to do next.
+  const remixBasis = (a: (typeof assets)[number]) => {
+    let m: { productTitle?: unknown; productImageUrl?: unknown; serviceMode?: unknown } = {};
+    try { m = JSON.parse(a.metaJson || "{}") || {}; } catch { /* no meta: the title is all there is */ }
+    const title = ((typeof m.productTitle === "string" && m.productTitle) || a.title || "").trim();
+    // settled = needs nothing from the catalogue: an article takes no photo, a service piece has none
+    return { title, settled: a.type === "BLOG_POST" || !!m.serviceMode || !!m.productImageUrl };
+  };
+  const askCatalogue = [...new Set([...assets, ...stills].filter((a) => a.type !== "AUDIO").map(remixBasis).filter((b) => b.title && !b.settled).map((b) => b.title))];
+  let catalogueHas = new Set<string>();
+  if (askCatalogue.length) {
+    try {
+      const rows = await db.catalogProduct.findMany({ where: { shopId: shop.id, title: { in: askCatalogue }, imageUrl: { not: null } }, select: { title: true, imageUrl: true } });
+      catalogueHas = new Set(rows.filter((r) => r.imageUrl).map((r) => r.title));
+    } catch { /* the action's own lookup fails the same way: no photo, no remix */ }
+  }
+  const remixable = (a: (typeof assets)[number]) => {
+    if (a.type === "AUDIO") return false; // the action takes videos, images and articles only
+    const b = remixBasis(a);
+    return !!b.title && (b.settled || catalogueHas.has(b.title));
+  };
   // Un-kept media (PENDING video/photo) auto-clears at 30 days — surface a
   // per-item countdown so nothing vanishes as a surprise. Blogs never expire.
   const CACHE_DAYS = 30;
@@ -368,6 +398,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // failure is not a thing this app should do. One free replacement per
         // dead piece; the stamp lives on the asset so it cannot be farmed.
         freeRemake: expired && !(() => { try { return JSON.parse(a.metaJson || "{}").freeReplacedAt; } catch { return false; } })(),
+        // Whether the remix action would take this piece at all (remixBasis, above). The viewer shows
+        // Remix — and the free "Make it again" — only then: a button that can only refuse is a dead end.
+        canRemix: remixable(a),
       };
   };
   return json({
@@ -569,7 +602,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({});
   }
   if (intent === "keep") {
-    await db.asset.updateMany({ where: { id: (form.get("assetId") as string) || "", shopId: shop.id }, data: { status: "APPROVED" } });
+    // ONLY AN UN-KEPT PIECE BECOMES KEPT — the guard keepMany has just below. This had no status in
+    // its where, and after "Post now" the open viewer still showed the piece as it was before the post,
+    // heart live: one tap turned a PUBLISHED piece back into APPROVED. It then read "Kept" instead of
+    // "Posted" and lost what protects a posted piece from a bulk delete.
+    await db.asset.updateMany({ where: { id: (form.get("assetId") as string) || "", shopId: shop.id, status: "PENDING" }, data: { status: "APPROVED" } });
     return json({ kept: true });
   }
   if (intent === "keepMany") {
@@ -1270,7 +1307,7 @@ const WA_CSS = `
 .wa-bulk-btn.keep:not(:disabled):hover{background:rgba(143,227,180,.18);}
 .wa-bulk-btn.del.armed{background:#B4532A;border-color:#B4532A;}
 .wa-bulk-done{min-height:40px;padding:0 14px;border-radius:999px;border:0;background:#fff;color:#14201A;font:800 13px/1 Poppins,sans-serif;cursor:pointer;}
-@media(max-width:640px){.wa-bulk{left:16px;right:16px;transform:none;width:auto;}.wa-bulk-sp{display:none;}.wa-bulk-btn,.wa-bulk-done{flex:1 1 auto;justify-content:center;}}
+@media(max-width:640px){.wa-bulk{left:16px;right:16px;transform:none;width:auto;}.wa-bulk-sp{display:none;}.wa-bulk-btn,.wa-bulk-done{flex:1 1 auto;justify-content:center;min-height:44px;}}
 .wa-select{position:relative;padding-right:30px;}
 .wa-select select{appearance:none;-webkit-appearance:none;border:0;background:transparent;font:inherit;color:inherit;padding:0;margin:0;max-width:220px;cursor:pointer;outline:none;}
 .wa-select::after{content:"";position:absolute;right:12px;top:50%;width:6px;height:6px;margin-top:-5px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);opacity:.6;pointer-events:none;}
@@ -1293,6 +1330,19 @@ const WA_CSS = `
   .wa-vx{width:44px;height:44px;font-size:14px}
   .wa-vbtn{min-height:44px;box-sizing:border-box}
   .wa-vnav{width:44px;height:44px;font-size:21px}
+  /* The floor missed these. The Keep heart was 38px and flush against the 44px close
+     button (one ended where the other began) — full size, 6px clear of it, and level
+     with it (the close sits at top:8px on a phone; the heart was left at 10). */
+  .wa-vheart{width:44px;height:44px;right:58px;top:8px}
+  /* The search chip's clear (20px) and the ad pack's Copy (32px) keep their looks and
+     get an unseen hit box out to 44px. (Copy is -7, not -6: inset counts from inside
+     its 1px border, and -6 measured 42px.) */
+  .wa-qchip a{position:relative}
+  .wa-qchip a::before{content:"";position:absolute;inset:-12px}
+  .wa-copy-row .wa-copy-btn::before{content:"";position:absolute;inset:-7px}
+  /* …and the 36px text buttons. (The share Copy is written with its parent: its 36px
+     comes from ".wa-share-acts .wa-share-btn", which a bare class would lose to.) */
+  .wa-copy-again,.wa-share-acts .wa-share-btn,.wa-share-stop,.wa-read-btn,.wa-bulk-link{min-height:44px;box-sizing:border-box}
 }
 @media(max-width:620px){
   .wa-creator .ws-tab{min-height:44px;box-sizing:border-box}
@@ -1578,6 +1628,8 @@ export default function WebArchive() {
   // toast, and only submits the delete after a short window. Undo cancels the
   // pending submit, so nothing is ever lost to a mis-tap. All client-side: the
   // action still hard-deletes, we just hold the trigger for a beat.
+  // (Which is why the armed tooltip on the four trash / Delete buttons that call this no longer
+  //  reads "can't be undone": it was said right above a 5-second Undo.)
   const askDelete = (assetId: string) => {
     if (armedDel !== assetId) { setArmedDel(assetId); return; }
     setArmedDel(null);
@@ -1621,7 +1673,15 @@ export default function WebArchive() {
   const [draftPending, setDraftPending] = useState(false);
   const startPost = (assetId: string) => { setActedId(assetId); setCaption(""); setCapOpen(true); setDraftPending(true); submit({ intent: "draft", assetId }, { method: "post" }); };
   const doPost = (assetId: string) => { setActedId(assetId); submit({ intent: "post", assetId, caption }, { method: "post" }); };
-  useEffect(() => { if (draftText != null) { setCaption(draftText); setDraftPending(false); } }, [draftText]);
+  // KEYED ON THE ANSWER, NOT ON ITS TEXT. Captions are cached per piece, so a second "Post to socials"
+  // on the same piece brings back the identical string: an effect keyed on the string did not run again,
+  // and the box sat disabled on "Writing a caption for you…" with Post now dead. Every answer is a new
+  // object, so the same words still land. A draft that came back as an error stuck the same way — it
+  // ends the wait too: the box opens empty to type in, with the reason shown beside the title.
+  useEffect(() => {
+    if (draftText != null) { setCaption(draftText); setDraftPending(false); }
+    else if (err != null) setDraftPending(false);
+  }, [actionData]); // eslint-disable-line react-hooks/exhaustive-deps
   // Reset per-piece UI when the viewer opens or cycles to another piece. armedDel
   // MUST reset here too: without it, arming a grid tile's trash and then opening
   // that piece left the viewer's full-width Delete already armed — a single tap
@@ -1659,7 +1719,11 @@ export default function WebArchive() {
     if (actionData && ("deleted" in actionData || "remixed" in actionData)) setViewer(null);
     else if (actionData && "kept" in actionData) setViewer((v) => (v ? { ...v, status: "APPROVED" } : v));
     else if (actionData && "unkept" in actionData) setViewer((v) => (v ? { ...v, status: "PENDING" } : v));
-  }, [actionData]);
+    // A POST does not close the viewer either, and the open piece kept the status it was opened with —
+    // so its heart stayed live on a piece that had just gone out (see the "keep" action). Flip it to
+    // posted in place: the heart locks gold and the chip reads Posted. Only the piece the action names.
+    else if (postedAssetId) setViewer((v) => (v && v.id === postedAssetId ? { ...v, status: "PUBLISHED" } : v));
+  }, [actionData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shelf = tab === "stills" ? stills : assets.filter((a) => A_KIND[a.type] === tab);
   // The true library count for the open tab, so the note under the shelf
@@ -1890,7 +1954,9 @@ export default function WebArchive() {
         )}
       </div>
       {(tab === "video" || tab === "image") && shelf.some((a) => a.daysLeft != null) && (
-        <p className="wa-shelfnote"><Ico n="hourglass" /> {t("Un-kept videos & photos clear after 30 days — open a piece and hit")} <b>{t("Keep")}</b> {t("to save it for good.")}
+        // It said to open a piece and hit "Keep" — an opened piece has no button that reads Keep:
+        // keeping is the heart over the clip, and the viewer's own note says "tap the heart".
+        <p className="wa-shelfnote"><Ico n="hourglass" /> {t("Un-kept videos & photos clear after 30 days — open a piece and tap the heart to save it for good.")}
           {filter === "clearing" && clearingIds.length > 1 && (
             <>{" "}<button type="button" className="wa-linkbtn wa-keepall" onClick={keepAll} disabled={nav.state !== "idle"}><Ico n="heart" /> {t("Keep all {n}", { n: clearingIds.length })}</button></>
           )}
@@ -1976,7 +2042,8 @@ export default function WebArchive() {
                     rest of the app instead of a wall of text. Opens the same
                     viewer the row does. */}
                 <button type="button" className="wa-read-btn" onClick={() => setViewer(a)}><Ico n="book" /> {t("Read")}</button>
-                <button type="button" className={`wa-icon${armedDel === a.id ? " armed" : ""}`} title={armedDel === a.id ? t("Tap again to delete — can't be undone") : t("Delete this article")} disabled={busy} onClick={() => askDelete(a.id)}><Ico n="trash" /></button>
+                {/* (armed tooltip: it said "can't be undone" — askDelete gives 5 seconds to Undo) */}
+                <button type="button" className={`wa-icon${armedDel === a.id ? " armed" : ""}`} title={armedDel === a.id ? t("Tap again to delete") : t("Delete this article")} disabled={busy} onClick={() => askDelete(a.id)}><Ico n="trash" /></button>
               </div>
             );
           })}
@@ -2017,7 +2084,9 @@ export default function WebArchive() {
                       the same time — one says it is lost, the other says it is
                       safe for a month. The countdown is about un-kept media
                       clearing; there is nothing here left to clear. */}
-                  {a.daysLeft != null && !a.expired && <span className={`wa-cd${a.daysLeft <= 5 ? " urgent" : ""}`} title={a.daysLeft === 1 ? t("Auto-clears in {n} day — open it and hit Keep", { n: a.daysLeft }) : t("Auto-clears in {n} days — open it and hit Keep", { n: a.daysLeft })}><Ico n="hourglass" /> {a.daysLeft}d</span>}
+                  {/* (the tooltip said "hit Keep" — there is no such button in the
+                      opened piece: keeping is the heart) */}
+                  {a.daysLeft != null && !a.expired && <span className={`wa-cd${a.daysLeft <= 5 ? " urgent" : ""}`} title={a.daysLeft === 1 ? t("Auto-clears in {n} day — open it and tap the heart to keep it", { n: a.daysLeft }) : t("Auto-clears in {n} days — open it and tap the heart to keep it", { n: a.daysLeft })}><Ico n="hourglass" /> {a.daysLeft}d</span>}
                 </button>
                 <div className="m">
                   {a.title}
@@ -2032,7 +2101,8 @@ export default function WebArchive() {
                   <div className="wa-tileacts">
                     <span className={`wa-chip ${cc}`}>{cl}</span>
                     {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo, a.isAudio)} title={t("Download")}><Ico n="download" /></a>}
-                    <button type="button" className={`wa-icon${armedDel === a.id ? " armed" : ""}`} title={armedDel === a.id ? t("Tap again to delete — can't be undone") : t("Delete")} disabled={busy} onClick={() => askDelete(a.id)}><Ico n="trash" /></button>
+                    {/* (armed tooltip: it said "can't be undone" — askDelete gives 5 seconds to Undo) */}
+                    <button type="button" className={`wa-icon${armedDel === a.id ? " armed" : ""}`} title={armedDel === a.id ? t("Tap again to delete") : t("Delete")} disabled={busy} onClick={() => askDelete(a.id)}><Ico n="trash" /></button>
                   </div>
                 </div>
               </div>
@@ -2138,7 +2208,8 @@ export default function WebArchive() {
               </div>
               {viewer.missed && (
                 <span className="wa-vmissed">
-                  <Ico n="warning" /> {t("The")} <b>{viewer.missed}</b> {t("layout didn't render cleanly, so this went out as a plain product ad instead.")} <b>{t("Remix")}</b> {t("re-rolls it.")}
+                  {/* (Remix is named only where the button is there — canRemix) */}
+                  <Ico n="warning" /> {t("The")} <b>{viewer.missed}</b> {t("layout didn't render cleanly, so this went out as a plain product ad instead.")}{viewer.canRemix && <> <b>{t("Remix")}</b> {t("re-rolls it.")}</>}
                 </span>
               )}
               {/* THE RECEIPT — what the merchant picked and what the AI wrote.
@@ -2196,7 +2267,8 @@ export default function WebArchive() {
                   )}
                 </div>
               )}
-              {viewer.daysLeft != null && !posted && !viewer.expired && (
+              {/* (only while it can still clear: a piece just kept or posted was still told it "clears in 12 days") */}
+              {viewer.status === "PENDING" && viewer.daysLeft != null && !posted && !viewer.expired && (
                 <span className={`wa-vcdnote${viewer.daysLeft <= 5 ? " urgent" : ""}`}><Ico n="hourglass" /> {viewer.daysLeft === 1 ? t("Clears in {n} day", { n: viewer.daysLeft }) : t("Clears in {n} days", { n: viewer.daysLeft })} — {t("tap the heart to save it for good.")}</span>
               )}
               {viewer.type !== "BLOG_POST" && <span className="wa-aitag"><Ico n="sparkle" /> {t("AI-generated · review before posting")}</span>}
@@ -2204,8 +2276,10 @@ export default function WebArchive() {
                 <div className="wa-vacts">
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => copyHtml(viewer.html!)}>{copied ? t("Copied ✓") : t("Copy HTML")}</button>}
                   {viewer.html && <button type="button" className="wa-vbtn ghost" onClick={() => downloadHtml(viewer.title, viewer.html!)}><Ico n="download" /> {t("Download")}</button>}
-                  <button type="button" className="wa-vbtn gold" disabled={busy} title={t("Write a fresh article on the same product")} onClick={() => remix(viewer.id)}><Ico n="sparkle" /> {t("Remix")}<span className="c">{t("{n} tokens · +{xp} XP", { n: costOf(viewer.type), xp: xpForSpend(costOf(viewer.type)) })}</span></button>
-                  <button type="button" className={`wa-vbtn danger full${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} title={armedDel === viewer.id ? t("Tap again to delete — can't be undone") : t("Delete")} onClick={() => askDelete(viewer.id)}>{armedDel === viewer.id ? t("Tap again to delete") : t("Delete")}</button>
+                  {/* the same rule as the media Remix below: only where the action will take it (an article needs its product's name) */}
+                  {viewer.canRemix && <button type="button" className="wa-vbtn gold" disabled={busy} title={t("Write a fresh article on the same product")} onClick={() => remix(viewer.id)}><Ico n="sparkle" /> {t("Remix")}<span className="c">{t("{n} tokens · +{xp} XP", { n: costOf(viewer.type), xp: xpForSpend(costOf(viewer.type)) })}</span></button>}
+                  {/* (armed tooltip: it said "can't be undone" — askDelete gives 5 seconds to Undo) */}
+                  <button type="button" className={`wa-vbtn danger full${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} title={armedDel === viewer.id ? t("Tap again to delete") : t("Delete")} onClick={() => askDelete(viewer.id)}>{armedDel === viewer.id ? t("Tap again to delete") : t("Delete")}</button>
                 </div>
               ) : (
                 <>
@@ -2275,10 +2349,15 @@ export default function WebArchive() {
                     )}
                     {/* A piece whose render we lost is replaced on us, so the
                         button must not quote a price the merchant will not pay. */}
-                    {!viewer.isAudio && (
+                    {/* …and only on a piece the remix action will take (canRemix, from
+                        the loader). It showed on everything but audio, so on a Creator
+                        image, a film, a faceless video or a scene still it could only
+                        answer "made before we started saving its product photo". */}
+                    {!viewer.isAudio && viewer.canRemix && (
                       <button type="button" className="wa-vbtn gold" disabled={busy} title={viewer.freeRemake ? t("We lost this render — make it again, on us") : t("Make a fresh variation of this piece")} onClick={() => remix(viewer.id)}>{viewer.freeRemake ? t("Make it again") : t("Remix")}<span className="c">{viewer.freeRemake ? t("free — on us") : t("{n} tokens · +{xp} XP", { n: costOf(viewer.type), xp: xpForSpend(costOf(viewer.type)) })}</span></button>
                     )}
-                    <button type="button" className={`wa-vbtn danger full${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} title={armedDel === viewer.id ? t("Tap again to delete — can't be undone") : t("Delete")} onClick={() => askDelete(viewer.id)}>{armedDel === viewer.id ? t("Tap again to delete") : t("Delete")}</button>
+                    {/* (armed tooltip: it said "can't be undone" — askDelete gives 5 seconds to Undo) */}
+                    <button type="button" className={`wa-vbtn danger full${armedDel === viewer.id ? " armed" : ""}`} disabled={busy} title={armedDel === viewer.id ? t("Tap again to delete") : t("Delete")} onClick={() => askDelete(viewer.id)}>{armedDel === viewer.id ? t("Tap again to delete") : t("Delete")}</button>
                   </div>
                   {capOpen && (
                     <div className="wa-cap">

@@ -97,20 +97,46 @@ export default function FilmEditor() {
   // A successful edit changed the asset — reload the loader so the preview + rail refresh.
   useEffect(() => { if (fx.state === "idle" && fx.data?.ok) rev.revalidate(); }, [fx.state, fx.data]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (sel >= d.shots.length) setSel(-1); }, [d.shots.length, sel]);
-  const submit = (op: string, extra: Record<string, string> = {}) => { if (sel < 0) return; fx.submit({ op, shotIndex: String(sel), ...extra }, { method: "post" }); };
+  // A shot was deleted → nothing is selected. The selection is a position, and it used to stay put: the
+  // same number was now the NEXT shot, with Delete live on it — one more tap cut a second shot out.
+  const shotCount = useRef(d.shots.length);
+  useEffect(() => { if (d.shots.length < shotCount.current) setSel(-1); shotCount.current = d.shots.length; }, [d.shots.length]);
+  // DELETE IS TWO TAPS. One tap used to take the shot out and re-cut the film for good — nothing is kept
+  // to put it back. It is now the app's arm-to-confirm (as in the Archive): the first tap arms the button
+  // for THIS clip, a second within 4 s deletes. It disarms by itself after 4 s, when another shot is
+  // picked, and when any other edit starts (submit and regen, below).
+  const [armedDel, setArmedDel] = useState<string | null>(null);
+  useEffect(() => {
+    if (armedDel === null) return;
+    const timer = setTimeout(() => setArmedDel(null), 4000);
+    return () => clearTimeout(timer);
+  }, [armedDel]);
+  useEffect(() => { setArmedDel(null); }, [sel]);
+  const delArmed = !!cur && armedDel === cur.url;
+  const submit = (op: string, extra: Record<string, string> = {}) => { if (sel < 0) return; setArmedDel(null); fx.submit({ op, shotIndex: String(sel), ...extra }, { method: "post" }); };
+  const askDelete = () => { if (!cur) return; if (armedDel !== cur.url) { setArmedDel(cur.url); return; } submit("delete"); };
   // Regenerate is a slow AI job — poll the loader until the film URL changes (the re-stitch
   // landed). regenBase holds the film URL at queue time; when it differs, the re-roll is done.
   const [regenBase, setRegenBase] = useState<string | null>(null);
   const regenPolls = useRef(0);
+  // A re-roll that outlives the ~9 min of polling is usually just SLOW (the worker renders one thing at a
+  // time). At that cap the progress line used to vanish with no outcome and every button came back to
+  // life; and the count was never reset, so each later Regenerate "timed out" at once — one more queued
+  // job per tap. Now the page says it is slow, KEEPS regenBase (so the job cannot be queued twice: every
+  // edit stays off until the new cut lands or the page is reloaded) and keeps looking, once a minute.
+  // (The page sees only the film's address, never the job: one that FAILED also reads as slow until a reload.)
+  const [regenSlow, setRegenSlow] = useState(false);
   useEffect(() => {
     if (!regenBase) return;
-    if (d.filmUrl !== regenBase) { setRegenBase(null); regenPolls.current = 0; return; }
-    if (regenPolls.current > 45) { setRegenBase(null); return; } // ~9 min safety cap
-    const t = setTimeout(() => { regenPolls.current++; rev.revalidate(); }, 12000);
+    if (d.filmUrl !== regenBase) { setRegenBase(null); setRegenSlow(false); regenPolls.current = 0; return; }
+    const slow = regenPolls.current > 45; // ~9 min
+    if (slow) setRegenSlow(true);
+    const t = setTimeout(() => { regenPolls.current++; rev.revalidate(); }, slow ? 60000 : 12000);
     return () => clearTimeout(t);
   }, [regenBase, d.filmUrl, rev]);
   const regenBusy = !!regenBase;
-  const regen = () => { if (sel < 0) return; setRegenBase(d.filmUrl); fx.submit({ op: "regen", shotIndex: String(sel) }, { method: "post" }); };
+  // (a new re-roll starts its own count — and takes Delete's arming off, like any other edit)
+  const regen = () => { if (sel < 0) return; setArmedDel(null); regenPolls.current = 0; setRegenSlow(false); setRegenBase(d.filmUrl); fx.submit({ op: "regen", shotIndex: String(sel) }, { method: "post" }); };
 
   return (
     <div className="se-wrap">
@@ -142,9 +168,12 @@ export default function FilmEditor() {
                 <button type="button" className="se-op" disabled={busy || regenBusy} onClick={() => submit("speed", { factor: "1.1" })}>🐇 Faster</button>
                 <button type="button" className="se-op" disabled={busy || regenBusy} onClick={() => submit("volume", { deltaDb: "3" })}>🔊 Louder</button>
                 <button type="button" className="se-op" disabled={busy || regenBusy} onClick={() => submit("volume", { deltaDb: "-3" })}>🔉 Quieter</button>
-                <button type="button" className="se-op se-op-del" disabled={busy || regenBusy || d.shots.length <= 1} onClick={() => submit("delete")}>🗑 Delete shot</button>
+                {/* armed = filled red, and it says so (first tap arms, second deletes — askDelete) */}
+                <button type="button" className="se-op se-op-del" style={delArmed ? { background: "#8C2E1B", borderColor: "#8C2E1B", color: "#fff" } : undefined} title={delArmed ? "Tap again to delete — can't be undone" : undefined} disabled={busy || regenBusy || d.shots.length <= 1} onClick={askDelete}>{delArmed ? "Tap again to delete" : "🗑 Delete shot"}</button>
               </div>
-              {regenBusy && <div className="se-busy">Re-rendering this shot with AI (~2–4 min) — the film refreshes when it's done. You can keep this open.</div>}
+              {regenBusy && !regenSlow && <div className="se-busy">Re-rendering this shot with AI (~2–4 min) — the film refreshes when it's done. You can keep this open.</div>}
+              {/* past ~9 min the line above used to just vanish; now it says the job is slow, and the buttons stay off */}
+              {regenBusy && regenSlow && <div className="se-busy">Still working — this one is taking longer than usual. It will appear here when it is done; you can leave this page.</div>}
               {busy && !regenBusy && <div className="se-busy">Applying edit + re-stitching the film…</div>}
               {fx.data && fx.data.ok === false && <div className="se-err">{fx.data.error}</div>}
               <div className="se-soon">Trim handles &amp; “add a shot” land next.</div>

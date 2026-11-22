@@ -80,7 +80,8 @@ test("the idea box does not wipe what is made: it stays until the maker starts i
 });
 
 test("Generate says the film was sent, and stays sent until something in the film changes", () => {
-  assert.ok(ui.includes("const storySig = `story:${JSON.stringify([template, topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId])])}`;"));
+  // (the idea counts only until a script exists: typing in the idea box afterwards must not make the button live again)
+  assert.ok(ui.includes("const storySig = `story:${JSON.stringify([template, treatment ? \"\" : topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId])])}`;"));
   assert.ok(ui.includes("const storySent = sentSig === storySig;"));
   assert.ok(ui.includes("<Form method=\"post\" onSubmit={() => { sigAtSubmit.current = storySig; }}>"));
   assert.ok(ui.includes("<button type=\"submit\" className={`fs-go${storySent ? \" is-sent\" : \"\"}`} disabled={!canGo || storySent}>"));
