@@ -93,6 +93,15 @@ export function wordsAsLineCount(words: number): string {
 /** How many words are in a lyric (its " / " line breaks and punctuation are not words). */
 export const lyricWords = (caption: string | null | undefined): number => (caption || "").replace(/[^\p{L}\p{N}' ]+/gu, " ").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 
+/** What a scene's lyric is told about its own length when the sheet is rewritten: how many words it has,
+ *  and how many to add or lose. (The writer cannot count to a number it is given — asked for 10–12 words
+ *  a scene it wrote 13–14, then 7–9, then 6–8 — but it can add "3 to 5 more words" to a line it is shown.) */
+export function lyricAsk(words: number, lo: number, hi: number): string {
+  if (words < lo) return `${words} words — needs ${lo - words} to ${hi - words} MORE`;
+  if (words > hi) return `${words} words — needs ${words - hi} to ${words - lo} FEWER`;
+  return `${words} words — the right length, leave it as it is`;
+}
+
 /** DOES A SHEET FIT ITS VIDEO (short engine)? `captions` = each scene's lyric. `total` words against the
  *  `want` the scenes add up to; `off` = how far it is from fitting (0 = fits): words short of nine-tenths
  *  of what is wanted, words over a tenth more, and every word a scene runs past its own ceiling. */

@@ -385,15 +385,30 @@ test("a scene's lyric is a range with both ends, and a sheet that misses it is c
   const fn = engine.slice(engine.indexOf("export async function previewFilmTreatment"), engine.indexOf("// ---- Assembly"));
   assert.match(fn, /: `between \$\{sceneRange\.lo\} and \$\{sceneRange\.hi\} words \(\$\{wordsAsLineCount\(sceneWords\)\}\)`;/);
   assert.match(fn, /fewer than \$\{sceneRange\.lo\} and the song runs out before the video ends, more than \$\{sceneRange\.hi\} and they cannot be sung while the scene is on screen/);
-  assert.match(fn, /const before = lyricFit\(sung\.map\(\(s\) => s\.caption\), genreKey, sceneSec, videoSecs\);\s+if \(sung\.length && before\.off > 0\) \{/);
-  // …rewritten once, the lyrics only, each scene shown its own count; kept only if it fits better
-  assert.match(fn, /`\$\{i \+ 1\}\. \[\$\{lyricWords\(s\.caption\)\} words\] \$\{s\.caption \|\| ""\}`/);
-  assert.match(fn, /if \(after\.off < before\.off\) sung\.forEach\(\(s, i\) => \{ s\.caption = \(caps\[i\] as string\)\.trim\(\); \}\);/);
-  assert.match(fn, /caps\.length === sung\.length/);
+  assert.match(fn, /const first = lyricFit\(sung\.map\(\(s\) => s\.caption\), genreKey, sceneSec, videoSecs\);/);
+  // …and while it is off it is rewritten — the lyrics only, twice at most, EVERY SCENE TOLD HOW MANY WORDS
+  // IT IS OVER OR SHORT. (3) the third live sheet, the same day: told the range AND rewritten once with
+  // each scene's count beside it, it still came back 7,8,7,7,6,7 — forty-two words. The writer cannot
+  // count to a number it is given; it can add "3 to 5 more words" to a line it is shown.
+  const { lyricAsk } = await import("../app/lib/mv-song.ts");
+  assert.equal(lyricAsk(7, 10, 12), "7 words — needs 3 to 5 MORE");
+  assert.equal(lyricAsk(14, 10, 12), "14 words — needs 2 to 4 FEWER");
+  assert.equal(lyricAsk(11, 10, 12), "11 words — the right length, leave it as it is");
+  const third = ["Late night lights / keep pulling us in", "We keep on driving / can't let this go", "Hearts racing wild / under neon skies", "I hear you calling / out my name", "Streetlights flicker / hold on tight", "Two hearts drifting / never letting go"];
+  assert.ok(lyricFit(third, "pop", 5, 30).off >= 15, "well short of the sixty a 30-second pop video needs at the least");
+  assert.match(fn, /while \(sung\.length && now\.off > 0 && rounds < 2\) \{/);
+  assert.match(fn, /`\$\{i \+ 1\}\. \[\$\{lyricAsk\(lyricWords\(s\.caption\), now\.lo, now\.hi\)\}\] \$\{s\.caption \|\| ""\}`/);
+  assert.match(fn, /ADD or CUT the number of words its bracket says, by lengthening or tightening its own lines/);
+  // each rewrite is kept only if it fits better, and must be one lyric a scene
+  assert.match(fn, /if \(after\.off < now\.off\) \{ sung\.forEach\(\(s, i\) => \{ s\.caption = caps\[i\]; \}\); now = after; trouble = ""; \}/);
+  assert.match(fn, /caps\.length !== sung\.length/);
   assert.match(fn, /\$\{ORIGINAL_LYRICS_RULE\}\$\{langLine\}/, "the rewrite is held to original words too, in the video's language");
   // a rewrite that cannot be made costs nothing; the full-length engine (counted in lines) is left alone
-  assert.match(fn, /the lyric could not be refit — kept as written/);
+  assert.match(fn, /\} catch \(e\) \{ trouble = `a rewrite could not be made: /);
   assert.match(fn, /if \(tmpl\.lipSyncSinger && !fullSong\) \{\s+const sung = /);
+  // what happened is recorded on the treatment, so a sheet that would not come right can be seen
+  assert.match(fn, /fitNote = \{ words: now\.total, want: now\.want, was: first\.total, rounds, fits: now\.off === 0, \.\.\.\(trouble \? \{ note: trouble \} : \{\}\) \};/);
+  assert.match(fn, /\.\.\.\(fitNote \? \{ lyricFit: fitNote \} : \{\}\) \};/);
 });
 
 test("the finished video plays at one level, with its peaks under full scale", async () => {

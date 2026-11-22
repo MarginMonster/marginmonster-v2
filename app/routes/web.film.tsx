@@ -896,8 +896,8 @@ export default function FilmStudio() {
   const treatmentFetcher = useFetcher<{ treatment?: Treatment; error?: string }>();
   // Music Video STORYBOARD: pre-seed every scene's still (props placed) BEFORE paying for the video,
   // so the owner checks accuracy + the prop per scene and the render uses those EXACT stills (no surprise).
-  const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; sceneFaults?: (number | null)[]; treatment?: Treatment; propForScene?: Record<number, string>; artistRef?: string | null; castRef?: string | null; error?: string }>();
-  const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; faults?: number | null; error?: string }>();
+  const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; sceneFaults?: (number | null)[]; sceneChecks?: unknown[]; treatment?: Treatment; propForScene?: Record<number, string>; artistRef?: string | null; castRef?: string | null; error?: string }>();
+  const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; faults?: number | null; check?: unknown; error?: string }>();
   // Make-your-own prop: describe it → we generate a studio photo of it (free).
   const propMakerFetcher = useFetcher<{ img?: string; error?: string }>();
   // Make-your-own artist: describe a face → we generate a portrait (free), like the presenter forge.
@@ -906,7 +906,7 @@ export default function FilmStudio() {
   const outfitFetcher = useFetcher<{ img?: string; error?: string }>();
   // (`faults`: how each cast picture fared when it was looked at — more than 0 = something was still off
   //  in the best of the tries, and the scene is flagged as worth a re-roll)
-  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null; castRefs: string[]; faults?: (number | null)[] } | null>(null);
+  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null; castRefs: string[]; faults?: (number | null)[]; checks?: unknown[] } | null>(null);
   // Per-scene CO-STAR edit (owner): scene index → the co-star imgs featured in that scene (the artist
   // always leads a perform scene). Unset scenes fall back to an intelligent default (one rotating
   // co-star per perform scene) so the roster isn't crammed into every card.
@@ -1340,7 +1340,7 @@ export default function FilmStudio() {
   useEffect(() => {
     const sd = sceneSeedsFetcher.data;
     const crefs = (sd as { castRefs?: string[] } | undefined)?.castRefs;
-    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null, castRef: sd.castRef || null, castRefs: Array.isArray(crefs) ? crefs : [], faults: Array.isArray(sd.sceneFaults) ? sd.sceneFaults : [] });
+    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null, castRef: sd.castRef || null, castRefs: Array.isArray(crefs) ? crefs : [], faults: Array.isArray(sd.sceneFaults) ? sd.sceneFaults : [], checks: Array.isArray(sd.sceneChecks) ? sd.sceneChecks : [] });
   }, [sceneSeedsFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Re-roll ONE storyboard scene (reusing the hero / cast ref) when it came back wrong; swap that still.
   const rerollScene = (i: number, propOverride?: string, castOverride?: string[], singerOverride?: string) => {
@@ -1385,8 +1385,8 @@ export default function FilmStudio() {
     const rd = rerollSceneFetcher.data;
     if (rerollSceneFetcher.state === "idle" && rd) {
       if (rd.ok && typeof rd.sceneIndex === "number" && rd.img) {
-        const idx = rd.sceneIndex, nimg = rd.img, nf = rd.faults ?? null;
-        setSeeds((prev) => (prev ? { ...prev, imgs: prev.imgs.map((u, j) => (j === idx ? nimg : u)), faults: prev.imgs.map((_, j) => (j === idx ? nf : (prev.faults || [])[j] ?? null)) } : prev));
+        const idx = rd.sceneIndex, nimg = rd.img, nf = rd.faults ?? null, nc = rd.check ?? null;
+        setSeeds((prev) => (prev ? { ...prev, imgs: prev.imgs.map((u, j) => (j === idx ? nimg : u)), faults: prev.imgs.map((_, j) => (j === idx ? nf : (prev.faults || [])[j] ?? null)), checks: prev.imgs.map((_, j) => (j === idx ? nc : (prev.checks || [])[j] ?? null)) } : prev));
       }
       setRerollingScene(null);
     }
@@ -1699,7 +1699,7 @@ export default function FilmStudio() {
               const voiceName = isMv ? sceneVoiceName(sc) : "";
               const flagged = isMv && !!seeds && ((seeds.faults || [])[i] || 0) > 0 && rerollingScene !== i;
               return (
-                <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i}>
+                <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i} data-check={isMv && seeds && (seeds.checks || [])[i] != null ? JSON.stringify((seeds.checks || [])[i]) : undefined}>
                   <div className="mm-sc-frame" style={(isMv ? mvAspect : narrated ? filmAspect : "9:16") !== "9:16" ? { aspectRatio: (isMv ? mvAspect : filmAspect) === "16:9" ? "16 / 9" : "1 / 1" } : undefined}>
                     {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" className="mm-sc-zoomable" onClick={() => setZoomImg(u)} /> : <span className="mm-sc-load wb-cookimg" aria-hidden="true"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     {rerollingScene === i && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}

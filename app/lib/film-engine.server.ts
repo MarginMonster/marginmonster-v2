@@ -35,7 +35,7 @@ import { dropOrgEndorsementPossessive } from "./ad-claims";
 import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds, type ShotRole } from "./mv-pace";
 import { MAX_COSTARS, singerOf } from "./mv-cast";
 import { FEATURE_MIN_SECONDS, defaultFeaturePlan, featureRoles, planIsSound } from "./mv-feature";
-import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, lyricFit, lyricWords, sceneWordRange, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLineCount, wordsAsLines } from "./mv-song";
+import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, lyricAsk, lyricFit, lyricWords, sceneWordRange, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLineCount, wordsAsLines } from "./mv-song";
 import { SENSE_RULES, sameCar } from "./mv-sense";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 
@@ -316,7 +316,13 @@ export interface FilmScene {
    *  voice (mv-feature.ts). Absent → the artist sings it, as in every video before 2026-11-21. */
   singer?: string;
 }
-export interface FilmTreatment { title?: string; scenes: FilmScene[]; musicMood: string; cast?: string[] }
+export interface FilmTreatment {
+  title?: string; scenes: FilmScene[]; musicMood: string; cast?: string[];
+  /** A music video's lyric, counted against what its video needs — set when the sheet had to be rewritten
+   *  to fit (film-engine previewFilmTreatment): how many words it has now, how many are wanted, how many
+   *  it was written with, the rounds of rewriting, whether it fits, and what went wrong if anything did. */
+  lyricFit?: { words: number; want: number; was: number; rounds: number; fits: boolean; note?: string };
+}
 
 const TREATMENT_SCHEMA = {
   type: "object",
@@ -600,32 +606,42 @@ export async function previewFilmTreatment(opts: {
     } catch { /* keep the first answer */ }
   }
   // THE LYRIC MUST FIT ITS VIDEO (the short engine sings the sheet once, at the genre's pace, and stops).
-  // The writer is told the range and still misses it — long on one live test (13-14 words a scene where
-  // 11 fit: the song ran a scene late), short on the next (7-9: it would have run out at 23 seconds of
-  // 30). So the sheet is COUNTED, and one that is off is rewritten once — the lyrics only, each scene
-  // shown its own count — and the rewrite is kept only if it fits better (mv-song.ts lyricFit).
+  // The writer is told the range and misses it either way: 13-14 words a scene where 11 fit (the song ran
+  // a scene late), then 7-9, then 6-8 — forty-two words for a song that needs sixty-six. It cannot count
+  // to a number it is given; it CAN add "3 to 5 more words" to a line it is shown. So the sheet is
+  // COUNTED (mv-song.ts lyricFit), and while it is off it is rewritten — the lyrics only, every scene
+  // told how many words it is over or short — twice at most, each rewrite kept only if it fits better.
+  // What happened rides back on the treatment ("lyricFit"), so a sheet that would not come right is seen.
+  let fitNote: FilmTreatment["lyricFit"];
   if (tmpl.lipSyncSinger && !fullSong) {
     const sung = (parsed.scenes || []).filter((s) => s && s.visual).slice(0, scenes);
-    const before = lyricFit(sung.map((s) => s.caption), genreKey, sceneSec, videoSecs);
-    if (sung.length && before.off > 0) {
+    const first = lyricFit(sung.map((s) => s.caption), genreKey, sceneSec, videoSecs);
+    let now = first;
+    let rounds = 0;
+    let trouble = "";
+    while (sung.length && now.off > 0 && rounds < 2) {
+      rounds++;
       try {
-        const sheet = sung.map((s, i) => `${i + 1}. [${lyricWords(s.caption)} words] ${s.caption || ""}`).join("\n");
+        const sheet = sung.map((s, i) => `${i + 1}. [${lyricAsk(lyricWords(s.caption), now.lo, now.hi)}] ${s.caption || ""}`).join("\n");
         const refit =
-          `These are the lyrics of a ${genreLabel} song for a ${videoSecs}-second music video — one entry for each of its ${sung.length} scenes (${sceneSec} seconds each), a scene's lines separated by " / ":\n${sheet}\n` +
-          `In this genre the song is sung at about ${SING_RATE[genreKey] || 2.2} words a second, so EVERY scene needs between ${before.lo} and ${before.hi} words (${wordsAsLineCount(sceneWords)}). As written the song has ${before.total} words and needs about ${before.want} — ${before.total < before.want ? "it would run out before the video ends" : "its words could not all be sung in time"}.\n` +
-          `Rewrite it so that every scene has between ${before.lo} and ${before.hi} words — COUNT each one. Keep the same story, the same order, the same hook and rhymes and each scene's meaning: lengthen or tighten the lines, do not swap them for new ones. ${ORIGINAL_LYRICS_RULE}${langLine}\n` +
-          `Return "captions": exactly ${sung.length} strings, in scene order, each scene's lines separated by " / ".`;
+          `These are the lyrics of a ${genreLabel} song for a ${videoSecs}-second music video — one entry for each of its ${sung.length} scenes (${sceneSec} seconds each), a scene's lines separated by " / ". In square brackets: how many words that scene has now, and what it needs.\n${sheet}\n` +
+          `In this genre the song is sung at about ${SING_RATE[genreKey] || 2.2} words a second, so EVERY scene needs between ${now.lo} and ${now.hi} words (${wordsAsLineCount(sceneWords)}). As written the song has ${now.total} words and needs about ${now.want} — ${now.total < now.want ? "it would run out before the video ends" : "its words could not all be sung in time"}.\n` +
+          `Rewrite every scene that is not the right length so that it has between ${now.lo} and ${now.hi} words: ADD or CUT the number of words its bracket says, by lengthening or tightening its own lines — keep the story, the order, the hook, the rhymes and each scene's meaning. Then COUNT the words of each scene again before you answer. ${ORIGINAL_LYRICS_RULE}${langLine}\n` +
+          `Return "captions": exactly ${sung.length} strings — ONE per scene, in scene order, that scene's lines joined by " / " — and nothing in them but the lyric (no numbers, no brackets).`;
         const raw = await anthropicText(refit, {
           model: "claude-sonnet-5", maxTokens: scenes > 12 ? 2400 : 1200,
           jsonSchema: { name: "lyric_fit", schema: { type: "object", properties: { captions: { type: "array", items: { type: "string" } } }, required: ["captions"], additionalProperties: false } },
         });
-        const caps = (JSON.parse(raw) as { captions?: unknown }).captions;
-        if (Array.isArray(caps) && caps.length === sung.length && caps.every((c) => typeof c === "string" && c.trim())) {
-          const after = lyricFit(caps as string[], genreKey, sceneSec, videoSecs);
-          if (after.off < before.off) sung.forEach((s, i) => { s.caption = (caps[i] as string).trim(); });
-          console.log(`[film] the lyric had ${before.total} words for about ${before.want} — rewritten to ${after.total}${after.off < before.off ? "" : " (no better: the first is kept)"}`);
-        }
-      } catch (e) { console.error(`[film] the lyric could not be refit — kept as written: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+        const caps = ((JSON.parse(raw) as { captions?: unknown }).captions as unknown[] | undefined)?.map((c) => (typeof c === "string" ? c.replace(/^\s*\d+\.\s*/, "").replace(/^\s*\[[^\]]*\]\s*/, "").trim() : ""));
+        if (!Array.isArray(caps) || caps.length !== sung.length || caps.some((c) => !c)) { trouble = `a rewrite came back as ${Array.isArray(caps) ? caps.length : "no"} lyrics for ${sung.length} scenes`; continue; }
+        const after = lyricFit(caps, genreKey, sceneSec, videoSecs);
+        if (after.off < now.off) { sung.forEach((s, i) => { s.caption = caps[i]; }); now = after; trouble = ""; }
+        else trouble = `a rewrite of ${after.total} words fitted no better`;
+      } catch (e) { trouble = `a rewrite could not be made: ${e instanceof Error ? e.message.slice(0, 100) : e}`; }
+    }
+    if (rounds) {
+      console.log(`[film] the lyric had ${first.total} words for about ${first.want} — ${now.total === first.total ? "kept as written" : `rewritten to ${now.total}`} after ${rounds} round${rounds === 1 ? "" : "s"}${trouble ? ` (${trouble})` : ""}`);
+      fitNote = { words: now.total, want: now.want, was: first.total, rounds, fits: now.off === 0, ...(trouble ? { note: trouble } : {}) };
     }
   }
   let list = (parsed.scenes || []).filter((s) => s && s.visual).slice(0, scenes);
@@ -682,7 +698,7 @@ export async function previewFilmTreatment(opts: {
     const carried = sameCar(list.map((s) => s.visual));
     list = list.map((s, i) => ({ ...s, visual: carried[i] || s.visual }));
   }
-  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast };
+  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast, ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 
 // ---- Assembly ---------------------------------------------------------------
