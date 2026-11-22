@@ -102,6 +102,20 @@ export function lyricAsk(words: number, lo: number, hi: number): string {
   return `${words} words — the right length, leave it as it is`;
 }
 
+/** Of several versions of ONE scene's lyric, the one nearest the length the scene needs (`want` words).
+ *  The first version given wins a tie — pass the lyric the scene has now first, and it is only replaced
+ *  by one that fits better. Empty versions are skipped; "" when there is none. */
+export function pickLyric(versions: Array<string | null | undefined>, want: number): string {
+  let best = "", bestOff = Infinity;
+  for (const v of versions) {
+    const t = (v || "").trim();
+    if (!t) continue;
+    const off = Math.abs(lyricWords(t) - want);
+    if (off < bestOff) { best = t; bestOff = off; }
+  }
+  return best;
+}
+
 /** DOES A SHEET FIT ITS VIDEO (short engine)? `captions` = each scene's lyric. `total` words against the
  *  `want` the scenes add up to; `off` = how far it is from fitting (0 = fits): words short of nine-tenths
  *  of what is wanted, words over a tenth more, and every word a scene runs past its own ceiling. */

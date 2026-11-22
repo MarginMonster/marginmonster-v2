@@ -103,7 +103,11 @@ export function micLine(micOk: boolean, performing: boolean): string {
   if (!performing) return "Nobody sings and there are NO microphones.";
   return micOk
     ? "Only the artist may hold a microphone — low, clear of the mouth; nobody else has one."
-    : "NO microphones or mic stands anywhere — nobody holds one.";
+    // (the hands are given something to do: told only "nobody holds one", the picture model drew a singer
+    //  with a microphone three tries running — a hand at the mouth is how it draws singing. Told this,
+    //  six stills of six had none. Asking it to take one OUT of a finished picture does not work: it
+    //  redrew the singer holding it lower. 2026-11-22)
+    : "NO microphones or mic stands anywhere — the singer's hands are EMPTY, open and gesturing at chest height.";
 }
 
 /** The still for a shot that has the artist AND co-stars in it. Reference image 1 is the artist; 2 (and

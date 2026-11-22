@@ -398,10 +398,27 @@ test("a scene's lyric is a range with both ends, and a sheet that misses it is c
   assert.ok(lyricFit(third, "pop", 5, 30).off >= 15, "well short of the sixty a 30-second pop video needs at the least");
   assert.match(fn, /while \(sung\.length && now\.off > 0 && rounds < 2\) \{/);
   assert.match(fn, /`\$\{i \+ 1\}\. \[\$\{lyricAsk\(lyricWords\(s\.caption\), now\.lo, now\.hi\)\}\] \$\{s\.caption \|\| ""\}`/);
-  assert.match(fn, /ADD or CUT the number of words its bracket says, by lengthening or tightening its own lines/);
-  // each rewrite is kept only if it fits better, and must be one lyric a scene
+  // (4) asked to add "3 to 5 MORE" words to each scene of a fifty-word sheet, it came back with NINETY-FOUR.
+  // It cannot count — the code can: it is asked for every scene at THREE lengths, and each scene keeps
+  // whichever version is nearest the length it needs.
+  const { pickLyric } = await import("../app/lib/mv-song.ts");
+  const versions = ["City lights blur / we drive on", "City lights blur past the glass / we keep on driving on", "City lights blur past the glass tonight / and we just keep on driving on and on"];
+  assert.deepEqual(versions.map(lyricWords), [6, 11, 16]);
+  assert.equal(pickLyric(["City lights blur / we keep driving on", ...versions], 11), versions[1], "the version of eleven words, for a scene that needs eleven");
+  assert.equal(pickLyric(["Eleven words are in this one already and it stays here", ...versions], 11), "Eleven words are in this one already and it stays here", "a scene that already fits keeps its own lyric (first wins a tie)");
+  assert.equal(pickLyric(["", null, undefined, "  "], 11), "");
+  assert.equal(pickLyric(["", "only one"], 11), "only one");
+  // the fifty-word sheet, given three lengths a scene, comes right
+  const fifty = ["City lights blur / we keep driving on", "Can't let you go / tangled in this song", "I keep chasing shadows / of the love we used to know", "Midnight calls your name / heart won't let it show", "Headlights on the glass / we're caught in afterglow", "Can't let you go / this city knows"];
+  assert.equal(lyricFit(fifty, "pop", 5, 30).total, 50);
+  const three = (c: string) => [c.split(" / ")[0], `${c} tonight oh`, `${c} tonight, oh, hold on to me now`];
+  const picked = fifty.map((c) => pickLyric([c, ...three(c)], sceneWordsFor("pop", 5, 30)));
+  assert.equal(lyricFit(picked, "pop", 5, 30).off, 0, picked.map(lyricWords).join(","));
+  assert.match(fn, /For EVERY scene write THREE versions of its lyric — the same meaning and the same rhyme at three LENGTHS: a short one of about \$\{Math\.max\(4, sceneWords - 3\)\} words, a middle one of about \$\{sceneWords\} words, a long one of about \$\{sceneWords \+ 3\} words/);
+  assert.match(fn, /const caps = sung\.map\(\(s, i\) => pickLyric\(\[s\.caption \|\| "", \.\.\.\(vs\[i\] as unknown\[\]\)\.map\(tidy\)\], sceneWords\)\);/);
+  // the picks are kept only if the sheet then fits better, and there must be versions for every scene
   assert.match(fn, /if \(after\.off < now\.off\) \{ sung\.forEach\(\(s, i\) => \{ s\.caption = caps\[i\]; \}\); now = after; trouble = ""; \}/);
-  assert.match(fn, /caps\.length !== sung\.length/);
+  assert.match(fn, /vs\.length !== sung\.length/);
   assert.match(fn, /\$\{ORIGINAL_LYRICS_RULE\}\$\{langLine\}/, "the rewrite is held to original words too, in the video's language");
   // a rewrite that cannot be made costs nothing; the full-length engine (counted in lines) is left alone
   assert.match(fn, /\} catch \(e\) \{ trouble = `a rewrite could not be made: /);

@@ -243,7 +243,9 @@ test("the video model is told who is in the shot, that only the artist sings, an
   assert.match(MIC_MOTION_LINE, /Do NOT add a microphone/);
   assert.match(MIC_MOTION_LINE, /keep holding it the same way/);
   assert.match(NO_NEW_MIC_LINE, /Do NOT add a microphone/);
-  assert.equal(micLine(false, true), "NO microphones or mic stands anywhere — nobody holds one.");
+  // (the hands are given something to do: told only "nobody holds one", the picture model drew the singer
+  //  with a microphone three tries running)
+  assert.equal(micLine(false, true), "NO microphones or mic stands anywhere — the singer's hands are EMPTY, open and gesturing at chest height.");
 
   const pipe = read("app", "lib", "music-video-pipeline.server.ts");
   // it used to say, of every performance, "There is NO microphone" — and, over a picture of three people,

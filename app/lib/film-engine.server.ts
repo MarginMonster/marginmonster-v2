@@ -35,7 +35,7 @@ import { dropOrgEndorsementPossessive } from "./ad-claims";
 import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds, type ShotRole } from "./mv-pace";
 import { MAX_COSTARS, singerOf } from "./mv-cast";
 import { FEATURE_MIN_SECONDS, defaultFeaturePlan, featureRoles, planIsSound } from "./mv-feature";
-import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, lyricAsk, lyricFit, lyricWords, sceneWordRange, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLineCount, wordsAsLines } from "./mv-song";
+import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, lyricAsk, lyricFit, lyricWords, pickLyric, sceneWordRange, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLineCount, wordsAsLines } from "./mv-song";
 import { SENSE_RULES, sameCar } from "./mv-sense";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 
@@ -607,11 +607,12 @@ export async function previewFilmTreatment(opts: {
   }
   // THE LYRIC MUST FIT ITS VIDEO (the short engine sings the sheet once, at the genre's pace, and stops).
   // The writer is told the range and misses it either way: 13-14 words a scene where 11 fit (the song ran
-  // a scene late), then 7-9, then 6-8 — forty-two words for a song that needs sixty-six. It cannot count
-  // to a number it is given; it CAN add "3 to 5 more words" to a line it is shown. So the sheet is
-  // COUNTED (mv-song.ts lyricFit), and while it is off it is rewritten — the lyrics only, every scene
-  // told how many words it is over or short — twice at most, each rewrite kept only if it fits better.
-  // What happened rides back on the treatment ("lyricFit"), so a sheet that would not come right is seen.
+  // a scene late), then 7-9, then 6-8 — forty-two words for a song that needs sixty-six — and, asked to
+  // add "3 to 5 more words" to each scene, came back with ninety-four. It cannot count; the code can.
+  // So the sheet is COUNTED (mv-song.ts lyricFit), and while it is off the writer is asked for every
+  // scene's lyric at THREE lengths and each scene keeps whichever version is nearest the length it needs
+  // (pickLyric) — twice at most, and only if the sheet then fits better. What happened rides back on the
+  // treatment ("lyricFit"), so a sheet that would not come right is seen.
   let fitNote: FilmTreatment["lyricFit"];
   if (tmpl.lipSyncSinger && !fullSong) {
     const sung = (parsed.scenes || []).filter((s) => s && s.visual).slice(0, scenes);
@@ -626,17 +627,22 @@ export async function previewFilmTreatment(opts: {
         const refit =
           `These are the lyrics of a ${genreLabel} song for a ${videoSecs}-second music video — one entry for each of its ${sung.length} scenes (${sceneSec} seconds each), a scene's lines separated by " / ". In square brackets: how many words that scene has now, and what it needs.\n${sheet}\n` +
           `In this genre the song is sung at about ${SING_RATE[genreKey] || 2.2} words a second, so EVERY scene needs between ${now.lo} and ${now.hi} words (${wordsAsLineCount(sceneWords)}). As written the song has ${now.total} words and needs about ${now.want} — ${now.total < now.want ? "it would run out before the video ends" : "its words could not all be sung in time"}.\n` +
-          `Rewrite every scene that is not the right length so that it has between ${now.lo} and ${now.hi} words: ADD or CUT the number of words its bracket says, by lengthening or tightening its own lines — keep the story, the order, the hook, the rhymes and each scene's meaning. Then COUNT the words of each scene again before you answer. ${ORIGINAL_LYRICS_RULE}${langLine}\n` +
-          `Return "captions": exactly ${sung.length} strings — ONE per scene, in scene order, that scene's lines joined by " / " — and nothing in them but the lyric (no numbers, no brackets).`;
+          // THREE LENGTHS of every scene, and the code picks: asked to rewrite to the range it went from 50
+          // words to 94 ("needs 3 to 5 MORE" a scene, and it added eight). It cannot count — we can.
+          `For EVERY scene write THREE versions of its lyric — the same meaning and the same rhyme at three LENGTHS: a short one of about ${Math.max(4, sceneWords - 3)} words, a middle one of about ${sceneWords} words, a long one of about ${sceneWords + 3} words — by tightening or lengthening its own lines. Keep the story, the order and the hook. ${ORIGINAL_LYRICS_RULE}${langLine}\n` +
+          `Return "scenes": exactly ${sung.length} entries in scene order, each a list of that scene's three versions (shortest first), a version's lines joined by " / " — nothing in them but the lyric (no numbers, no brackets).`;
         const raw = await anthropicText(refit, {
-          model: "claude-sonnet-5", maxTokens: scenes > 12 ? 2400 : 1200,
-          jsonSchema: { name: "lyric_fit", schema: { type: "object", properties: { captions: { type: "array", items: { type: "string" } } }, required: ["captions"], additionalProperties: false } },
+          model: "claude-sonnet-5", maxTokens: scenes > 12 ? 3600 : 1600,
+          jsonSchema: { name: "lyric_fit", schema: { type: "object", properties: { scenes: { type: "array", items: { type: "array", items: { type: "string" } } } }, required: ["scenes"], additionalProperties: false } },
         });
-        const caps = ((JSON.parse(raw) as { captions?: unknown }).captions as unknown[] | undefined)?.map((c) => (typeof c === "string" ? c.replace(/^\s*\d+\.\s*/, "").replace(/^\s*\[[^\]]*\]\s*/, "").trim() : ""));
-        if (!Array.isArray(caps) || caps.length !== sung.length || caps.some((c) => !c)) { trouble = `a rewrite came back as ${Array.isArray(caps) ? caps.length : "no"} lyrics for ${sung.length} scenes`; continue; }
+        const vs = (JSON.parse(raw) as { scenes?: unknown }).scenes;
+        const tidy = (c: unknown): string => (typeof c === "string" ? c.replace(/^\s*\d+\.\s*/, "").replace(/^\s*\[[^\]]*\]\s*/, "").trim() : "");
+        if (!Array.isArray(vs) || vs.length !== sung.length || vs.some((v) => !Array.isArray(v))) { trouble = `the versions came back for ${Array.isArray(vs) ? vs.length : "no"} scenes of ${sung.length}`; continue; }
+        // each scene keeps whichever of its versions — the one it has included — is nearest the length it needs
+        const caps = sung.map((s, i) => pickLyric([s.caption || "", ...(vs[i] as unknown[]).map(tidy)], sceneWords));
         const after = lyricFit(caps, genreKey, sceneSec, videoSecs);
         if (after.off < now.off) { sung.forEach((s, i) => { s.caption = caps[i]; }); now = after; trouble = ""; }
-        else trouble = `a rewrite of ${after.total} words fitted no better`;
+        else trouble = `no version of ${(vs as unknown[][]).map((v) => v.map((c) => lyricWords(tidy(c))).join("/")).join(" ").slice(0, 90)} words fitted better`;
       } catch (e) { trouble = `a rewrite could not be made: ${e instanceof Error ? e.message.slice(0, 100) : e}`; }
     }
     if (rounds) {
