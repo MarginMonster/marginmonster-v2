@@ -62,8 +62,20 @@ test("the cast question: write down each character in their own picture and in t
   assert.ok(q2.includes("If your two descriptions differ in hair colour"));
   assert.ok(q2.endsWith(`Reply with ONLY this JSON: {"own": ["…" for each character], "inPicture": ["…" for each], "seen": [true or false for each, in order]}.`));
   assert.ok(!/panel/i.test(q2), "one question, one job");
-  // creatures and cartoons are told apart their own way
-  assert.ok(q2.includes("for a creature or cartoon: what kind of creature, its colours and markings"));
+  // creatures and cartoons are told apart their own way — ears included (a cartoon puppy became a fox-eared
+  // dog between two scenes of a Kids Cartoon, 2026-11-22). This wording, on the real reader: 9 of 9 story
+  // and music-video stills right (people, a ghost, a werewolf), and a werewolf refused as a puppy.
+  assert.ok(q2.includes("for a creature or cartoon: what kind of creature, its colours, the shape of its ears, and its markings"));
+  assert.ok(q2.includes("or, for a creature, in its colour, its ears or its markings — the answer is false"));
+});
+
+test("the FIRST complete answer is the one that is read", () => {
+  // the real reader, asked whether a capybara was the puppy: it answered — rightly — and then kept writing
+  const rambled = "```json\n{\"own\": [\"cartoon puppy, golden fur, one ear up one floppy, white star marking\"], \"inPicture\": [\"nobody — a cartoon capybara with a fruit on its head\"], \"seen\": [false]}\n```\n\nWait, let me re-read the prompt. Character 1 is the 2nd image.\n\n```json\n{\"own\": [\"cartoon capybara\"], \"inPicture\": [\"cartoon capybara\"], \"seen\": [true]}\n```";
+  assert.deepEqual(parseStoryCast(rambled, 1), [false]);
+  // braces and quotes inside the written descriptions do not end the answer early
+  assert.deepEqual(parseStoryCast("{\"own\": [\"a sign that says \\\"{open}\\\"\"], \"inPicture\": [\"same } brace\"], \"seen\": [true]} and then more {\"seen\": [false]}", 1), [true]);
+  assert.equal(parseStoryPanels("{\"top\": \"a } in the text\", \"panels\": true} trailing {\"panels\": false}"), true);
 });
 
 test("the panels question: describe it half by half first", () => {

@@ -36,7 +36,12 @@ test("the dialogue engine treats a cartoon or monster cast member as what it is"
   assert.ok(eng.includes("Describe this character's visible look"));
   // the master two-shot, the cast-is-in-frame check and the which-side question all know
   assert.ok(eng.includes("creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB)"));
-  assert.ok(eng.includes(`castIsIn(abs(tryUrl), castLooks[firstName(sp)] || "", creatureNamed(sp))`));
+  // (…the in-frame check: a PERSON by their look in words, as every approved film was; a CHARACTER by its
+  //  own picture since 2026-11-22 — a cartoon puppy's description also fitted the fox-eared dog one scene
+  //  of a Kids Cartoon drew in his place. The question is story-picture.ts's, tested in tests/story-picture.test.ts.)
+  assert.ok(eng.includes(`const there = creatureNamed(sp) ? await characterIsIn(abs(tryUrl), faceFor(sp)) : await castIsIn(abs(tryUrl), castLooks[firstName(sp)] || "", false);`));
+  assert.ok(eng.includes(`parseStoryCast(String((await anthropicVision(storyCastPrompt(1), [twoShotAbs, picture], { maxTokens: 400, model: "claude-sonnet-4-6" })) || ""), 1)`));
+  assert.ok(eng.includes("return said ? said[0] : true;"), "a look that cannot be read never blocks a film");
   assert.ok(eng.includes("Two characters are together in this image. Character A is:"));
   // a shot composed from cast pictures is locked as a mixed cast
   assert.ok(eng.includes("opts.creatureCast ? MIXED_CAST_LOCK : undefined"));

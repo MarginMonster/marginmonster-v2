@@ -41,6 +41,7 @@ import { captionStyleOf } from "./narrated-core";
 import { MIXED_CAST_LOCK, nameTok } from "./character-prompts";
 import { normalizeContentLang } from "./content-lang";
 import { heroName } from "./film-heroes";
+import { parseStoryCast, storyCastPrompt } from "./story-picture";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -739,6 +740,23 @@ export async function generateTestMovie(opts: {
       return true;
     }
   };
+  /** A CHARACTER — a cartoon, a monster — is checked against its OWN PICTURE, not against a description of
+   *  it: "a marigold-yellow cartoon puppy in a red bandana" also fits an orange fox-eared dog in a bandana,
+   *  and that is who one scene of a Kids Cartoon had (the same puppy, round and floppy-eared, in the scene
+   *  before it — 2026-11-22). The question is the narrated stories' own (story-picture.ts): write down the
+   *  kind of creature, its colours, its ears and its markings for both, compare, then answer. On the real
+   *  reader it passed a werewolf as himself and refused him as a puppy. Can't be checked → true, as above. */
+  const characterIsIn = async (twoShotAbs: string | undefined, picture: string | undefined): Promise<boolean> => {
+    if (!twoShotAbs || !picture) return true;
+    try {
+      const { anthropicVision } = await import("./anthropic.server");
+      const said = parseStoryCast(String((await anthropicVision(storyCastPrompt(1), [twoShotAbs, picture], { maxTokens: 400, model: "claude-sonnet-4-6" })) || ""), 1);
+      return said ? said[0] : true;
+    } catch (e) {
+      console.error(`[testmovie] character check skipped: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+      return true;
+    }
+  };
   type Master = { url: string; aOnLeft: boolean; a: string; b: string };
   const masters: Record<string, Master> = {};
   try { const r = resume.ckMasters ? JSON.parse(resume.ckMasters) : null; if (r && typeof r === "object") Object.assign(masters, r); } catch { /* ignore */ }
@@ -761,7 +779,10 @@ export async function generateTestMovie(opts: {
       url = tryUrl;
       castOk = true;
       for (const sp of [spkA, spkB]) {
-        if (faceFor(sp) && !(await castIsIn(abs(tryUrl), castLooks[firstName(sp)] || "", creatureNamed(sp)))) castOk = false;
+        if (!faceFor(sp)) continue;
+        // a person by their look in words (the check every approved film was made with); a character by its picture
+        const there = creatureNamed(sp) ? await characterIsIn(abs(tryUrl), faceFor(sp)) : await castIsIn(abs(tryUrl), castLooks[firstName(sp)] || "", false);
+        if (!there) castOk = false;
       }
       if (castOk) break;
       console.log(`[testmovie] master two-shot try ${attempt + 1}: a cast member doesn't match their photo — redrawing`);

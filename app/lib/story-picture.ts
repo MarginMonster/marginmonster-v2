@@ -64,7 +64,7 @@ const NTH = ["2nd", "3rd", "4th"];
 export function storyCastPrompt(refs: number): string {
   const n = Math.max(1, Math.min(3, Math.round(refs || 1)));
   const who = `The FIRST image is a picture from an illustrated story. The ${n === 1 ? "image after it is the one character" : `${n} images after it are the ${n} characters`} who must be in it (${Array.from({ length: n }, (_, k) => `character ${k + 1} is the ${NTH[k]} image`).join(", ")}).`;
-  return `${who} For EACH character, first write down in a few words what identifies them in their OWN image — for a person: hair colour, hair length and style, skin tone, apparent age, beard or none; for a creature or cartoon: what kind of creature, its colours and markings — and then the one in the first image who is closest to that, in the same few words (or "nobody"). Then COMPARE the two descriptions you wrote and say whether that character IS in the first image. It is the same individual only if the hair colour, the skin tone and the apparent age all agree (for a creature: the kind of creature, its colours and its markings). Seen from behind, small in the frame or in different clothes still counts — clothes do NOT matter, a story dresses people for the part. If your two descriptions differ in hair colour (silver against brown, red against black), in skin tone or clearly in age, the answer is false. Reply with ONLY this JSON: {"own": ["…" for each character], "inPicture": ["…" for each], "seen": [true or false for each, in order]}.`;
+  return `${who} For EACH character, first write down in a few words what identifies them in their OWN image — for a person: hair colour, hair length and style, skin tone, apparent age, beard or none; for a creature or cartoon: what kind of creature, its colours, the shape of its ears, and its markings — and then the one in the first image who is closest to that, in the same few words (or "nobody"). Then COMPARE the two descriptions you wrote and say whether that character IS in the first image. It is the same individual only if the hair colour, the skin tone and the apparent age all agree (for a creature or cartoon: the kind of creature, its colours, its ears and its markings). Seen from behind, small in the frame or in different clothes still counts — clothes do NOT matter, a story dresses people for the part. If your two descriptions differ in hair colour (silver against brown, red against black), in skin tone or clearly in age — or, for a creature, in its colour, its ears or its markings — the answer is false. Reply with ONLY this JSON: {"own": ["…" for each character], "inPicture": ["…" for each], "seen": [true or false for each, in order]}.`;
 }
 
 /** ONE PICTURE OR SEVERAL. Asked outright ("is it split into panels?") the reader passed a picture that
@@ -74,11 +74,24 @@ export function storyPanelsPrompt(): string {
   return `The first image is a picture from an illustrated story. Check whether it is ONE picture or SEVERAL pictures joined together. Look at it in halves: describe in a few words what the TOP half shows and what the BOTTOM half shows, then what the LEFT half and the RIGHT half show. It is split into panels if a straight edge divides it into separate pictures — for example the same place, object or person drawn TWICE (once in each half), two different camera views stacked or side by side, or a before-and-after. A window, a mirror, a doorway, a table edge or a horizon inside one scene is NOT a split. Reply with ONLY this JSON: {"top": "…", "bottom": "…", "left": "…", "right": "…", "panels": true or false}.`;
 }
 
+/** The FIRST complete JSON object in an answer. A reader sometimes answers, then writes "Wait, let me
+ *  re-read…" and a second block (seen on the real reader, 2026-11-22: its first answer was the right one);
+ *  taking everything from the first "{" to the last "}" then parses nothing at all. */
 const jsonIn = (raw: string): Record<string, unknown> | null => {
   const text = String(raw || "");
-  const a = text.indexOf("{"), b = text.lastIndexOf("}");
-  if (a < 0 || b <= a) return null;
-  try { const j = JSON.parse(text.slice(a, b + 1)); return j && typeof j === "object" ? (j as Record<string, unknown>) : null; } catch { return null; }
+  const a = text.indexOf("{");
+  if (a < 0) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = a; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === "\"") inStr = false; continue; }
+    if (ch === "\"") inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}" && --depth === 0) {
+      try { const j = JSON.parse(text.slice(a, i + 1)); return j && typeof j === "object" ? (j as Record<string, unknown>) : null; } catch { return null; }
+    }
+  }
+  return null;
 };
 /** Who was seen, in the order asked — null when the answer cannot be read (the caller then keeps the
  *  picture: a look that says nothing must never cost a story its picture). */
