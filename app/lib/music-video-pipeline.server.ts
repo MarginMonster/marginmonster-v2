@@ -693,7 +693,7 @@ async function buildMusicVideoSeeds(p: {
       }
       const fillNote = fill ? ` ${FILL_FRAME}.` : "";
       if (srcRef && asp !== "9:16") return renderStyledSeedMulti(soloStillPrompt({ genre: g.label, role: shot.role, frame: fr.frame, visual: s.visual, micOk, extra: `${propClause}${senseNote}${fillNote}` }), [srcRef], asp, undefined, CAST_PROMPT_MAX);
-      if (srcRef) return editSubjectIntoScene(srcRef, soloEditPrompt({ role: shot.role, frame: fr.frame, visual: s.visual, micOk, extra: `${propClause}${performNote}${senseNote}${fillNote}` }), SOLO_EDIT_MAX);
+      if (srcRef) return editSubjectIntoScene(srcRef, soloEditPrompt({ role: shot.role, frame: fr.frame, visual: s.visual, micOk, extra: `${propClause}${performNote}${senseNote}${fillNote}` }), SOLO_EDIT_MAX, asp);
       return renderCreativeSeed(`${fr.frame}. ${s.visual}. ${g.look}. ${REALISM}`, asp);
     };
     // RETRY before giving up — a transient gen blip otherwise fell back to the raw artist portrait, which
@@ -846,7 +846,7 @@ export async function rerollMusicVideoScene(opts: {
   const solo = async (fill = false): Promise<string | null> => {
     const fillNote = fill ? ` ${FILL_FRAME}.` : "";
     if (asp !== "9:16") return renderStyledSeedMulti(soloStillPrompt({ genre: g.label, role: shot.role, frame: fr.frame, visual: opts.sceneVisual, micOk, extra: `${propClause}${senseNote}${fillNote}` }), [srcRef || leadRef], asp, undefined, CAST_PROMPT_MAX);
-    return srcRef ? editSubjectIntoScene(srcRef, soloEditPrompt({ role: shot.role, frame: fr.frame, visual: opts.sceneVisual, micOk, extra: `${propClause}${performNote}${senseNote}${fillNote}` }), SOLO_EDIT_MAX) : null;
+    return srcRef ? editSubjectIntoScene(srcRef, soloEditPrompt({ role: shot.role, frame: fr.frame, visual: opts.sceneVisual, micOk, extra: `${propClause}${performNote}${senseNote}${fillNote}` }), SOLO_EDIT_MAX, asp) : null;
   };
   if (multiCast) {
     const r = await castStill({ genre: g.label, shot, visual: opts.sceneVisual, leadRef, otherRefs: costarRefs, asp, abs, tag: `scene ${opts.sceneIndex + 1} (again)`,

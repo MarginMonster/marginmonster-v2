@@ -1373,11 +1373,41 @@ export default function FilmStudio() {
     }));
   };
   const setStoryLen = (n: number) => { setScenes(n); if (treatment && treatment.scenes.length !== n) { setTreatment(null); setFrames([]); setCast([]); } };
+  // A TAP THAT WOULD THROW THE STORY AWAY ASKS FIRST. Another face, another way of telling it, another
+  // length or "Rewrite" starts the script over — rightly: it is a different story — but it did so on ONE
+  // tap, with a written (and often hand-edited) script, its casting and its drawn pictures on the page, and
+  // not a word said (audit of the story formats, 2026-11-22). The first tap now only says what it will do;
+  // the second does it — the app's own "tap again" way of asking. With nothing written yet it is one tap.
+  const [wipeArm, setWipeArm] = useState("");
+  const storyHasWork = !tmpl?.lipSyncSinger && (!!treatment || !!seeds);
+  useEffect(() => { setWipeArm(""); }, [storyCard, template, storyHasWork]);
+  const orArm = (key: string, wipes: boolean, go: () => void) => {
+    if (!wipes || !storyHasWork || wipeArm === key) { setWipeArm(""); go(); } else setWipeArm(key);
+  };
+  const wipeNote = (prefix: string) => (wipeArm.startsWith(prefix)
+    ? <p className="mm-note mm-shape-warn" role="status">{t("That starts your script over — tap it again to go ahead.")}</p>
+    : null);
+  /** A REWRITE KEEPS ITS CASTING: whoever is still in the story BY NAME keeps the face and the voice the
+   *  maker gave them (a rewrite used to hand back a blank cast, every portrait and voice to be picked again). */
+  const keepCasting = (next: CastMember[], prev: CastMember[]): CastMember[] => {
+    if (!prev.length) return next;
+    return rebalanceVoices(next.map((c) => {
+      const was = prev.find((p) => nameTok(p.name) === nameTok(c.name));
+      if (!was) return c;
+      const face = !c.faceUrl && was.faceUrl ? { faceUrl: was.faceUrl, kind: was.kind, look: was.look } : {};
+      const voice = was.voiceId && was.autoVoice === false && c.autoVoice !== false ? { voiceId: was.voiceId, autoVoice: false } : {};
+      return { ...c, ...face, ...voice };
+    }));
+  };
+  // THE IDEA BOX DOES NOT THROW WORK AWAY. Typing in it wiped the drawn scenes on the first keystroke (and,
+  // in a music video, the song with them): one stray letter cost a storyboard. What is made now stays until
+  // the maker starts it over — a line under the box says so, and starting over uses the new idea.
+  const [ideaChanged, setIdeaChanged] = useState(false);
 
   // When a fresh treatment arrives, adopt it (and lock the scene count to it) + cast.
   useEffect(() => {
     const tr2 = treatmentFetcher.data?.treatment;
-    if (tr2 && tr2.scenes?.length) { setTreatment(tr2); setScenes(tr2.scenes.length); setFrames([]); setCast(castFromPicked(deriveCast(tr2))); }
+    if (tr2 && tr2.scenes?.length) { setTreatment(tr2); setScenes(tr2.scenes.length); setFrames([]); setCast((prev) => keepCasting(castFromPicked(deriveCast(tr2)), prev)); setIdeaChanged(false); }
   }, [treatmentFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Store each actor's portrait as it's cast; clear the busy flag.
@@ -1489,7 +1519,9 @@ export default function FilmStudio() {
     // format's own banner + builder fade in where the hero was. No position math to get wrong.
     const reduce = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     setZoomKey(key); setAnim("in");
-    window.setTimeout(() => { switchTemplate(key); setEntered(true); setAnim(""); setZoomKey(null); }, reduce ? 0 : 400);
+    // (going back to the posters and into the SAME format again keeps what was being made there: it used to
+    //  come back blank — script, cast and pictures gone — because every entry reset the builder)
+    window.setTimeout(() => { if (key !== template) switchTemplate(key); setEntered(true); setAnim(""); setZoomKey(null); }, reduce ? 0 : 400);
   };
   const exitFormat = () => {
     setAnim("out");
@@ -1626,15 +1658,30 @@ export default function FilmStudio() {
   // Any setup change invalidates the preview — the stills would no longer match the new settings
   // (the artist too: a different face means the stills show the wrong person).
   // (…and the LOOK picked for anyone: the wardrobe is locked, so stills drawn in the old look would be rendered in it)
-  useEffect(() => { if (restoring.current) return; setSeeds(null); setCastForScene({}); setSceneCastPick(null); setSceneOutfits({}); }, [filmGenre, JSON.stringify(filmProps), topic, scenes, songSource, filmSongUrl, artistPick, mvAspect, featKey, JSON.stringify(outfits)]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (!tmpl?.lipSyncSinger) setSeeds(null); }, [filmAspect]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (NOT the idea box: what is typed there is used the next time the maker starts over — see `ideaChanged`)
+  useEffect(() => { if (restoring.current) return; setSeeds(null); setCastForScene({}); setSceneCastPick(null); setSceneOutfits({}); }, [filmGenre, JSON.stringify(filmProps), scenes, songSource, filmSongUrl, artistPick, mvAspect, featKey, JSON.stringify(outfits)]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (an acted film's approved frames too: they were drawn in the old shape, and were still sent as the shots' seeds)
+  useEffect(() => { if (!tmpl?.lipSyncSinger) { setSeeds(null); setFrames([]); } }, [filmAspect]); // eslint-disable-line react-hooks/exhaustive-deps
   // Artist or cast CHANGED → clear the SCRIPT too so it re-writes with the picked names. Fixes the
   // "Kazon" AI-slop name persisting from a treatment that was written before the cast was set.
   // (…and so does who SINGS: a featured verse is written into the song)
   useEffect(() => { if (restoring.current) return; setTreatment(null); }, [artistPick, castExtra.map((m) => m.img).join(","), featKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // MUSIC VIDEO: a different idea is a different song. (Editing the idea cleared the stills but kept the
   // song, and "Make the scenes" then drew new pictures for the OLD song — "song already written".)
-  useEffect(() => { if (restoring.current) return; if (tmpl?.lipSyncSinger) setTreatment(null); }, [topic]); // eslint-disable-line react-hooks/exhaustive-deps
+  // …but only while there are no pictures: once the scenes are drawn, the song and the storyboard both stay
+  // (the note under the idea box says so) and "Start over" writes a new song from the new idea.
+  useEffect(() => {
+    if (restoring.current) return;
+    if (seeds || (treatment && !tmpl?.lipSyncSinger)) setIdeaChanged(true);
+    else if (tmpl?.lipSyncSinger) setTreatment(null);
+  }, [topic]); // eslint-disable-line react-hooks/exhaustive-deps
+  // If the pictures then go another way (a new genre, a new star…), a music video's song goes with them —
+  // it was written for the old idea — and the note has nothing left to be about.
+  useEffect(() => {
+    if (seeds || !ideaChanged) return;
+    if (tmpl?.lipSyncSinger) setTreatment(null);
+    if (tmpl?.lipSyncSinger || !treatment) setIdeaChanged(false);
+  }, [!!seeds, !!treatment]); // eslint-disable-line react-hooks/exhaustive-deps
   // Click-to-edit the storyboard text — polish a scene's "what happens" or its words in place; the
   // render reads the edited treatment. Editing the VISUAL marks the still stale (re-roll to match).
   // Writes to the stills' snapshot once they exist, otherwise to the autopopulated story treatment.
@@ -2352,6 +2399,12 @@ export default function FilmStudio() {
   const [lockVoices, setLockVoices] = useState(false);
   const castHasOwnVoice = cast.some((c) => !!c.voiceId && d.myVoices.some((v) => v.voiceId === c.voiceId));
   useEffect(() => { if (castHasOwnVoice) setLockVoices(true); }, [castHasOwnVoice]);
+  // THE OTHER FORMATS' GENERATE BUTTON SAYS IT WORKED, the way the music video's does (`alreadySent`): it
+  // went straight back to a live "Generate …" the moment the film was queued, and a second tap queued the
+  // same film again (audit of the story formats, 2026-11-22). It stays sent for the film that WAS sent and
+  // comes back the moment anything in it changes — a line, a face, a shape: that is another film.
+  const storySig = `story:${JSON.stringify([template, topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId])])}`;
+  const storySent = sentSig === storySig;
   // Make the cast editable + buildable — rename, re-describe, add your own character, or remove one.
   // This is how you "create" a cast member (a cartoon character for Kids Cartoon, an actor for a film):
   // add one, describe it, then Cast a face (cartoon-styled for cartoon templates).
@@ -2497,6 +2550,7 @@ export default function FilmStudio() {
             <textarea id="mm-topic-in" className="mm-topic-grow" rows={1} value={topic} onChange={(e) => setTopic(e.target.value.replace(/[\r\n]+/g, " "))} maxLength={300}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
               placeholder={t("e.g. grinding from nothing, staying loyal, winning big")} />
+            {ideaChanged && seeds && <p className="mm-note mm-idea-kept" role="status">{t("What you've made stays as it is — start over to use the new idea.")}</p>}
           </div>
 
           <div className="mm-hint"><span aria-hidden="true">✎</span> {t("Tap each step to set it — we've filled in smart defaults, so you can breeze through and just Make it.")}</div>
@@ -2945,17 +2999,19 @@ export default function FilmStudio() {
         <label htmlFor="fs-topic-in">{tmpl?.needsProduct ? t("What's the gag?") : t("What's your movie about?")}</label>
         <textarea id="fs-topic-in" rows={3} value={topic} onChange={(e) => setTopic(e.target.value)}
           placeholder={tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={300} />
+        {ideaChanged && (seeds || treatment) && <p className="mm-note mm-idea-kept" role="status">{isStoryboard && !narrated ? t("Your script stays as it is — Rewrite to use the new idea.") : t("What you've made stays as it is — start over to use the new idea.")}</p>}
         {!isStoryboard && (
         <div className="fs-len fs-len-topic">
           <span>{t("Scenes")}</span>
           <div className="fs-stepper">
-            <button type="button" onClick={() => bump(-1)} disabled={scenes <= tmpl.minScenes} aria-label={t("Fewer scenes")}>−</button>
+            <button type="button" className={wipeArm === "bump:-1" ? "is-arm" : undefined} onClick={() => orArm("bump:-1", !!treatment, () => bump(-1))} disabled={scenes <= tmpl.minScenes} aria-label={t("Fewer scenes")}>−</button>
             <b>{scenes}</b>
-            <button type="button" onClick={() => bump(1)} disabled={scenes >= tmpl.maxScenes} aria-label={t("More scenes")}>+</button>
+            <button type="button" className={wipeArm === "bump:1" ? "is-arm" : undefined} onClick={() => orArm("bump:1", !!treatment, () => bump(1))} disabled={scenes >= tmpl.maxScenes} aria-label={t("More scenes")}>+</button>
           </div>
           <span className="fs-len-note">{t("≈ {sec}s · {n} AI clips", { sec: scenes * 5, n: scenes })}</span>
         </div>
         )}
+        {wipeNote("bump:")}
       </div>
       <div className="mm-hint"><span aria-hidden="true">✎</span> {isStoryboard ? t("Tap each step to set it — we've filled in smart defaults, so you can breeze through and just make it.") : t("Tell us the idea — we write it and film it. Set anything below, or just hit the button.")}</div>
 
@@ -3035,7 +3091,7 @@ export default function FilmStudio() {
                   ? t("Pick up to 3 from your cast and the story is written for them — each one drawn from their own picture in every scene they are in. Pick nobody and we invent the characters.")
                   : t("Pick up to 2 from your cast and the story is written for them — their own face in every shot, and their own voice if they have one. Pick nobody and we invent the characters.")}</div>
                 <div className="mm-artistpick">
-                  <button type="button" className={`fs-rface mm-autoface${storyPick.length === 0 ? " on" : ""}`} onClick={() => setStoryPick([])} title={t("We invent the characters")}>
+                  <button type="button" className={`fs-rface mm-autoface${storyPick.length === 0 ? " on" : ""}${wipeArm === "cast:" ? " is-arm" : ""}`} onClick={() => orArm("cast:", storyPick.length > 0, () => setStoryPick([]))} title={t("We invent the characters")}>
                     <span className="fs-rface-img mm-autoface-img" aria-hidden="true"><Ico n="wand" size={20} /></span>
                     {storyPick.length === 0 && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
                     <span className="fs-rface-name">{t("We cast it")}</span>
@@ -3043,7 +3099,7 @@ export default function FilmStudio() {
                   {rosterFor(template).map((r) => {
                     const on = storyPick.includes(r.id);
                     return (
-                      <button type="button" key={r.id} className={`fs-rface${on ? " on" : ""}`} title={r.name} aria-pressed={on} disabled={!on && storyPick.length >= maxPick} onClick={() => toggleStoryPick(r.id)}>
+                      <button type="button" key={r.id} className={`fs-rface${on ? " on" : ""}${wipeArm === `cast:${r.id}` ? " is-arm" : ""}`} title={r.name} aria-pressed={on} disabled={!on && storyPick.length >= maxPick} onClick={() => orArm(`cast:${r.id}`, true, () => toggleStoryPick(r.id))}>
                         <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
                         {on && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
                         <span className="fs-rface-name">{r.name}</span>
@@ -3051,6 +3107,7 @@ export default function FilmStudio() {
                     );
                   })}
                 </div>
+                {wipeNote("cast:")}
                 <a className="mm-pace-auto" href="/web/presenters?forge=1"><Ico n="wand" size={12} /> {t("Create a new character")}</a>
               </div>
             )}
@@ -3059,17 +3116,18 @@ export default function FilmStudio() {
                 <div className="mm-opts-h">{t("How should it be told?")}</div>
                 <div className="mm-opts-sub">{t("The same story, two ways of telling it.")}</div>
                 <div className="mm-toldpick" role="group" aria-label={t("How it's told")}>
-                  <button type="button" className={`mm-told${!narrated ? " on" : ""}`} aria-pressed={!narrated} onClick={() => setTold("acted")}>
+                  <button type="button" className={`mm-told${!narrated ? " on" : ""}${wipeArm === "told:acted" ? " is-arm" : ""}`} aria-pressed={!narrated} onClick={() => orArm("told:acted", told !== "acted", () => setTold("acted"))}>
                     <b><Ico n="video" size={15} /> {t("Acted")}</b>
                     <small>{t("Your cast speak their lines on camera, shot by shot — a real little film.")}</small>
                     <em>{t("a few minutes a shot")}</em>
                   </button>
-                  <button type="button" className={`mm-told${narrated ? " on" : ""}`} aria-pressed={narrated} disabled={!canTell} onClick={() => setTold("narrated")}>
+                  <button type="button" className={`mm-told${narrated ? " on" : ""}${wipeArm === "told:narrated" ? " is-arm" : ""}`} aria-pressed={narrated} disabled={!canTell} onClick={() => orArm("told:narrated", told !== "narrated", () => setTold("narrated"))}>
                     <b><Ico n="mic" size={15} /> {t("Narrated")}</b>
                     <small>{t("A storyteller's voice over a picture for every scene, with the words on screen — the story format feeds are full of.")}</small>
                     <em>{t("ready in a couple of minutes")}</em>
                   </button>
                 </div>
+                {wipeNote("told:")}
               </div>
             )}
             {storyCard === "length" && (
@@ -3080,12 +3138,13 @@ export default function FilmStudio() {
                   : t("Each shot is one spoken line on camera, up to about ten seconds. More shots, longer film — and a longer render.")}</div>
                 <div className="mm-lenpick" role="group" aria-label={t("Length")}>
                   {lens.map((n) => (
-                    <button type="button" key={n} className={`mm-lenopt${scenes === n ? " on" : ""}`} aria-pressed={scenes === n} onClick={() => setStoryLen(n)}>
+                    <button type="button" key={n} className={`mm-lenopt${scenes === n ? " on" : ""}${wipeArm === `len:${n}` ? " is-arm" : ""}`} aria-pressed={scenes === n} onClick={() => orArm(`len:${n}`, !!treatment && treatment.scenes.length !== n, () => setStoryLen(n))}>
                       <b>{lenLabel(n)}</b>
                       <small>{narrated ? t("{n} scenes", { n }) : n === 1 ? t("1 shot") : t("{n} shots", { n })}</small>
                     </button>
                   ))}
                 </div>
+                {wipeNote("len:")}
               </div>
             )}
             {storyCard === "shape" && (
@@ -3094,13 +3153,14 @@ export default function FilmStudio() {
                 <div className="mm-opts-sub">{t("Wide for YouTube and TV; Vertical for Shorts, Reels and TikTok; Square for a feed.")}</div>
                 <div className="mm-lenpick mm-shapepick" role="group" aria-label={t("Shape")}>
                   {([["16:9", "Wide"], ["9:16", "Vertical"], ["1:1", "Square"]] as const).map(([a, name]) => (
-                    <button type="button" key={a} className={`mm-lenopt${filmAspect === a ? " on" : ""}`} aria-pressed={filmAspect === a} onClick={() => setFilmAspect(a)}>
+                    <button type="button" key={a} className={`mm-lenopt${filmAspect === a ? " on" : ""}${wipeArm === `shape:${a}` ? " is-arm" : ""}`} aria-pressed={filmAspect === a} onClick={() => orArm(`shape:${a}`, filmAspect !== a && (!!seeds || frames.some(Boolean)), () => setFilmAspect(a))}>
                       <span className={`mm-shape s${a.replace(":", "x")}`} aria-hidden="true" />
                       <b>{t(name)}</b>
                       <small>{a}</small>
                     </button>
                   ))}
                 </div>
+                {wipeArm.startsWith("shape:") && <p className="mm-note mm-shape-warn" role="status">{t("A new shape draws every scene again, and your scene edits start over.")}</p>}
               </div>
             )}
             {storyCard === "captions" && (
@@ -3186,8 +3246,9 @@ export default function FilmStudio() {
             <>
               <div className="fs-scenetop">
                 <span className="fs-scenetop-hint">{t("Edit any line. Tap a name to swap who talks. Lines in a scene play as one seamless take.")}</span>
-                <button type="button" className="fs-rewrite" onClick={writeTreatment} disabled={writing}>{writing ? "…" : <><Ico n="refresh" size={13} /> {t("Rewrite")}</>}</button>
+                <button type="button" className={`fs-rewrite${wipeArm === "rewrite" ? " is-arm" : ""}`} onClick={() => orArm("rewrite", true, writeTreatment)} disabled={writing}>{writing ? "…" : <><Ico n="refresh" size={13} /> {wipeArm === "rewrite" ? t("Tap again to rewrite") : t("Rewrite")}</>}</button>
               </div>
+              {wipeArm === "rewrite" && <p className="mm-note mm-shape-warn" role="status">{t("A rewrite replaces every line, your edits too. The cast you picked stays.")}</p>}
               <div className="fs-flow">
                 {flow.map((loc, li) => (
                   <div key={li}>
@@ -3444,7 +3505,7 @@ export default function FilmStudio() {
       {/* Step 3 — generate (the only paid step) */}
       <div className="fs-card fs-go-card">
         <div className="fs-lbl"><span className="fs-n">{isStoryboard ? <Ico n="film" size={13} /> : 3}</span> {t("Generate")}</div>
-        <Form method="post">
+        <Form method="post" onSubmit={() => { sigAtSubmit.current = storySig; }}>
           <input type="hidden" name="intent" value="film" />
           <input type="hidden" name="template" value={template} />
           {isStoryboard && <input type="hidden" name="dialogueEngine" value={dialogueEngine} />}
@@ -3466,8 +3527,8 @@ export default function FilmStudio() {
           {isStoryboard && !narrated && frames.some(Boolean) && <input type="hidden" name="approvedFrames" value={JSON.stringify(frames)} />}
           {isStoryboard && !narrated && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId, ...(c.faceUrl && c.kind && c.kind !== "person" ? { kind: c.kind, look: c.look || "" } : {}) })))} />}
           {isStoryboard && !narrated && lockVoices && cast.some((c) => c.voiceId) && <input type="hidden" name="filmLockVoices" value="1" />}
-          <button type="submit" className="fs-go" disabled={!canGo}>
-            {generating ? <>… {t("Starting your film")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost }) : t("Generate {name} · Free", { name: t(tmpl?.name || "Film") })}</>}
+          <button type="submit" className={`fs-go${storySent ? " is-sent" : ""}`} disabled={!canGo || storySent}>
+            {generating ? <>… {t("Starting your film")}</> : storySent ? <><Ico n="check" size={16} /> {t("Rendering — it lands in your Archive")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(tmpl?.name || "Film"), cost }) : t("Generate {name} · Free", { name: t(tmpl?.name || "Film") })}</>}
           </button>
           <div className="fs-eta" aria-live="polite" title={t("A rough estimate — longer films and lip-sync take more time.")}>
             <span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, narrated, scenes, engine: dialogueEngine })}</b>
@@ -4451,6 +4512,23 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-aspect-opt.arm{border-color:#C79A3A;background:#FFF7E3;color:#7A5A12;box-shadow:0 0 0 1px #C79A3A;text-align:center;line-height:1.2;}
 .mm-aspect-opt.arm small{color:#7A5A12;}
 .mm-shape-warn{font-size:11.5px;font-weight:600;color:#7A5A12;background:#FFF7E3;border:1px solid #EBD9A8;border-radius:10px;padding:8px 11px;}
+/* a tap that would start the story over is ARMED first (amber) and done on the second tap */
+.fs-rface.is-arm,.mm-told.is-arm,.mm-lenopt.is-arm,.fs-rewrite.is-arm{border-color:#D9A53A;box-shadow:0 0 0 2px #EBD9A8;background:#FFF7E3;color:#7A5A12;}
+.fs-stepper button.is-arm{background:#FFF1CF;color:#7A5A12;}
+.mm-opts .mm-shape-warn,.mm-topic .mm-shape-warn{text-align:left;margin-top:10px;}
+.fs-scenetop + .mm-shape-warn{text-align:left;margin:-4px 0 12px;}
+.mm-idea-kept{text-align:left;margin-top:7px;font-size:11.5px;font-weight:600;}
+.fs-go.is-sent:disabled{opacity:1;background:#E4F4EA;color:#0A5E37;box-shadow:inset 0 0 0 1.5px #B9E0C8;}
+.fs-go.is-sent svg{stroke:#0A5E37;}
+/* phone: the story editor's small controls get a full-size place to tap — the look stays as it is */
+@media(max-width:640px){
+.fs-stepper button{width:44px;height:44px;}
+.fs-rewrite,.fs-beat-add,.fs-loc-addangle,.fs-bchip,.fs-actor-del,.fs-msg-x,.fs-anglecut-x,.fs-msg-spk,.fs-actor-recast,.fs-shot-own summary{position:relative;}
+.fs-rewrite::after,.fs-beat-add::after,.fs-loc-addangle::after,.fs-bchip::after,.fs-actor-del::after,.fs-msg-spk::after,.fs-actor-recast::after,.fs-shot-own summary::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%);}
+.fs-msg-x::after,.fs-anglecut-x::after{content:"";position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%);}
+.fs-hero-back{min-height:40px;}
+.fs-hero-back::after{content:"";position:absolute;inset:-4px -6px;}
+}
 .mm-lenpick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;}
 .mm-lenopt{display:flex;flex-direction:column;align-items:center;gap:2px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:12px;padding:12px 6px;cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s;}
 .mm-lenopt b{font-size:18px;font-weight:900;color:var(--ink,#14201A);font-variant-numeric:tabular-nums;}

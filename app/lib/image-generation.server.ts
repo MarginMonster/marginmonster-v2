@@ -4300,11 +4300,14 @@ export async function brollStill(prompt: string, quality: "pro" | "ultra" = "pro
  *  a "make it terrifying" edit that nano-banana balks at still ships via the
  *  more-permissive kontext. */
 const KONTEXT_FALLBACK = "black-forest-labs/flux-kontext-pro";
-async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/nano-banana", imageUrl2?: string): Promise<{ url: string; engine: string }> {
+async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/nano-banana", imageUrl2?: string, shape?: "9:16" | "16:9" | "1:1"): Promise<{ url: string; engine: string }> {
   // No aspect_ratio: a photo edit must give the user THEIR photo back, just
   // changed — nano-banana defaults to "match_input_image" and kontext preserves
   // the input aspect, so a portrait/landscape stays its own shape instead of
   // being square-cropped like an ad.
+  // `shape` is for the ONE caller that is drawing a NEW picture from a reference rather than giving a
+  // photo back (a music video's solo scene): the picture is then drawn IN that shape. All three engines
+  // take the same `aspect_ratio` values (schemas read 2026-11-22).
   // Returns the engine that ACTUALLY ran so the caller can stamp it on the asset
   // — otherwise a paid "Ultra" edit that silently fell back to kontext is
   // invisible (same price, weaker render).
@@ -4314,7 +4317,8 @@ async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/n
   // combine THROWS there rather than silently dropping the second photo (the
   // caller refunds on the throw).
   const images = imageUrl2 ? [imageUrl, imageUrl2] : [imageUrl];
-  const input: Record<string, unknown> = { prompt, image_input: images, output_format: "jpg" };
+  const shaped: Record<string, unknown> = shape ? { aspect_ratio: shape } : {};
+  const input: Record<string, unknown> = { prompt, image_input: images, output_format: "jpg", ...shaped };
   if (modelId === "google/nano-banana-pro") input.resolution = "2K";
   try {
     return { url: await repRun(modelId, input), engine: modelId };
@@ -4324,7 +4328,7 @@ async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/n
     // schema quirk shouldn't silently downgrade a paid Ultra edit to kontext.
     if ("resolution" in input) {
       try {
-        return { url: await repRun(modelId, { prompt, image_input: images, output_format: "jpg" }), engine: modelId };
+        return { url: await repRun(modelId, { prompt, image_input: images, output_format: "jpg", ...shaped }), engine: modelId };
       } catch { /* fall through to the kontext fallback */ }
     }
     if (imageUrl2) {
@@ -4337,7 +4341,7 @@ async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/n
     // primary nano-banana may 422 on it, which would force EVERY edit down here
     // — so it stays only on the fallback). This is the path that was shipping
     // the crude, low-quality renders when the primary refused.
-    const url = await repRun(KONTEXT_FALLBACK, { prompt, input_image: imageUrl, output_format: "jpg", output_quality: 92 });
+    const url = await repRun(KONTEXT_FALLBACK, { prompt, input_image: imageUrl, output_format: "jpg", output_quality: 92, ...shaped });
     return { url, engine: KONTEXT_FALLBACK };
   }
 }
@@ -4347,12 +4351,17 @@ async function editImg2Img(imageUrl: string, prompt: string, modelId = "google/n
  *  "match_input_image", kontext fallback) instead of re-generating — so the FACE does not drift
  *  across scenes, which re-generating from a mere reference does (the "it changes the singer"
  *  bug). pro @2K also reads far more photoreal than base nano-banana. Durable /renders URL or null. */
-export async function editSubjectIntoScene(subjectUrl: string, prompt: string, maxPrompt = 480): Promise<string | null> {
+export async function editSubjectIntoScene(subjectUrl: string, prompt: string, maxPrompt = 480, shape?: "9:16" | "16:9" | "1:1"): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN || !subjectUrl) return null;
     // `maxPrompt`: the prompt is cut here. A caller that builds its prompt to a known length (the music
     // video's scene stills, mv-cast.ts) asks for the room, so the setting is not lost mid-sentence.
-    const { url } = await editImg2Img(subjectUrl, (prompt || "").trim().slice(0, Math.max(200, Math.min(900, maxPrompt))), "google/nano-banana-pro");
+    // `shape`: a SCENE is drawn in the video's own shape. Left out, the picture comes back in the shape of
+    // the reference — a 4:5 or 3:4 portrait — and an upright video's solo scenes were then shown in the
+    // storyboard in one shape and cropped to another in the film (seen on a monster's video, 2026-11-22:
+    // five stills 768×1344, the solo one 1792×2400). Measured on the real model: asked for 9:16, 16:9 and
+    // 1:1 from a portrait reference, the person is held exactly and the scene fills the frame (10 of 10).
+    const { url } = await editImg2Img(subjectUrl, (prompt || "").trim().slice(0, Math.max(200, Math.min(900, maxPrompt))), "google/nano-banana-pro", undefined, shape);
     return await persistRemote(url, "jpg");
   } catch (e) {
     artLog("image-ad", `subject-into-scene failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);

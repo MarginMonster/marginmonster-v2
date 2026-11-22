@@ -291,7 +291,8 @@ test("the pipeline and the builder make cast shots one way — the shared defaul
   // the picture calls really do read that far
   const img = read("app", "lib", "image-generation.server.ts");
   assert.match(img, /export async function renderStyledSeedMulti\(prompt: string, refImageUrls: \(string \| null \| undefined\)\[\], aspect = "9:16", lockNote\?: string, maxPrompt = 460\)/);
-  assert.match(img, /export async function editSubjectIntoScene\(subjectUrl: string, prompt: string, maxPrompt = 480\)/);
+  // (…and takes the video's shape since 2026-11-22: tests/film-story-fixes.test.ts)
+  assert.match(img, /export async function editSubjectIntoScene\(subjectUrl: string, prompt: string, maxPrompt = 480, shape\?: "9:16" \| "16:9" \| "1:1"\)/);
   assert.ok(CAST_PROMPT_MAX <= 900 && SOLO_EDIT_MAX <= 900, "both callers ask for no more than the picture calls allow");
 
   // the builder shows the same default the render uses
