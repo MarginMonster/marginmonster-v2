@@ -335,6 +335,76 @@ export async function coverSongInVoice(songUrl: string, modelUrl: string, opts: 
   return out;
 }
 
+// ---- 2b. THE WHOLE VOCAL, in the voice -------------------------------------------------------------------
+
+const SPLIT_MODEL = "cjwbw/demucs";
+const VOICE_MODEL = "pseudoram/rvc-v2";
+const SPLIT_MAX_MS = 6 * 60_000;
+const CONVERT_MAX_MS = 10 * 60_000;
+
+/** How loud a sound is to the ear (LUFS, the broadcast measure — quiet stretches gated out). Null when
+ *  it can't be read. */
+async function loudnessLufs(file: string): Promise<number | null> {
+  const r = await runFfmpeg(["-hide_banner", "-nostats", "-i", file, "-af", "ebur128", "-f", "null", "-"]);
+  const all = [...(r.stderr || "").matchAll(/^\s*I:\s*(-?[\d.]+) LUFS/gm)];
+  const v = all.length ? parseFloat(all[all.length - 1][1]) : NaN;
+  return Number.isFinite(v) && v > -60 ? v : null;
+}
+
+/** A TAKE OF A SONG WITH ALL OF ITS SINGING IN THE VOICE.
+ *
+ *  coverSongInVoice hands the song to a "cover" model that splits the singing into a LEAD and BACKING
+ *  vocals and converts only the lead. Measured on the real takes of two featured-verse videos
+ *  (2026-11-22): whatever it judged "backing" — a held note, a doubled line, a wordless hook — stayed in
+ *  the song's ORIGINAL voice. In one video that was a second inside the co-star's own shot (she mouthed
+ *  the man's "hearts racing") and six seconds further on; in the other, seven. So here the split is
+ *  ours, and it is only vocal / everything else:
+ *    1. the song is separated (demucs, two stems);
+ *    2. the WHOLE vocal is converted with the voice model, plain voice-to-voice;
+ *    3. it is laid back over the untouched music, as loud to the ear as the vocal it replaces (the
+ *       converted one comes back darker and about 2 LU quieter — measured −14.8 against −12.5 LUFS).
+ *  On that same song: no stretch left unconverted, the melody the same window by window, 5 ms of delay,
+ *  the same words heard back. Returns the ABSOLUTE path of the take (mp3, `seconds` long — the song's
+ *  length). THROWS on any failure: the caller falls back to the cover. `semitones` moves the vocal alone
+ *  (±12 keeps the song in key). */
+export async function revoiceSongVocals(songUrl: string, modelUrl: string, opts: { semitones?: number; seconds?: number } = {}): Promise<string> {
+  const semitones = Math.max(-12, Math.min(12, Math.round(opts.semitones || 0)));
+  const stems = (await repPoll(await createCommunity(SPLIT_MODEL, { audio: songUrl, stem: "vocals", output_format: "mp3" }), SPLIT_MAX_MS, "voice-split")) as unknown as Record<string, unknown> | null;
+  const isUrl = (v: unknown): v is string => typeof v === "string" && /^https?:\/\//.test(v);
+  const vocalsUrl = stems && isUrl(stems.vocals) ? stems.vocals : "";
+  // two stems come back: the vocal, and one other holding everything else (whatever the model names it)
+  const musicUrl = stems ? Object.entries(stems).filter(([k, v]) => k !== "vocals" && isUrl(v)).map(([, v]) => v as string)[0] : undefined;
+  if (!vocalsUrl || !musicUrl) throw new Error("[voice] the song could not be separated into vocal and music");
+  const converted: unknown = await repPoll(await createCommunity(VOICE_MODEL, {
+    input_audio: vocalsUrl, rvc_model: "CUSTOM", custom_rvc_model_download_url: modelUrl, pitch_change: semitones, output_format: "mp3",
+  }), CONVERT_MAX_MS, "voice-convert");
+  if (!isUrl(converted)) throw new Error("[voice] the converted vocal came back without audio");
+  const tag = `${Date.now()}-${rid()}`;
+  const vocals = path.join(RENDERS(), `vsplitv-${tag}.mp3`);
+  const music = path.join(RENDERS(), `vsplitm-${tag}.mp3`);
+  const voice = path.join(RENDERS(), `vsplitc-${tag}.mp3`);
+  const out = path.join(RENDERS(), `vtake-${tag}.mp3`);
+  try {
+    await Promise.all([download(vocalsUrl, vocals), download(musicUrl, music), download(converted, voice)]);
+    for (const f of [vocals, music, voice]) if (!fs.existsSync(f) || fs.statSync(f).size < 2_000) throw new Error("[voice] a part of the separated song came back empty");
+    const [was, is] = [await loudnessLufs(vocals), await loudnessLufs(voice)];
+    const gain = was != null && is != null ? Math.max(-3, Math.min(3, Math.round((was - is) * 10) / 10)) : 0;
+    const seconds = opts.seconds && opts.seconds > 1 ? opts.seconds : ffprobeDuration(music);
+    const fmt = "aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo";
+    const r = await runFfmpeg(["-y", "-i", music, "-i", voice, "-filter_complex",
+      `[0:a]${fmt}[m];[1:a]${fmt},volume=${gain.toFixed(1)}dB[v];[m][v]amix=inputs=2:normalize=0:dropout_transition=0,apad[a]`,
+      "-map", "[a]", "-t", seconds.toFixed(3), "-c:a", "libmp3lame", "-q:a", "2", out]);
+    if (r.status !== 0 || !fs.existsSync(out) || fs.statSync(out).size < 2_000) throw new Error(`[voice] the take could not be put together: ${(r.stderr || "").slice(-160)}`);
+    console.log(`[voice] whole vocal re-voiced — the song's vocal sat at ${was?.toFixed(1) ?? "?"} LUFS, the new one came back at ${is?.toFixed(1) ?? "?"}, moved ${gain >= 0 ? "+" : ""}${gain.toFixed(1)} dB`);
+    return out;
+  } catch (e) {
+    try { fs.rmSync(out, { force: true }); } catch { /* nothing to clean */ }
+    throw e;
+  } finally {
+    for (const f of [vocals, music, voice]) { try { fs.rmSync(f, { force: true }); } catch { /* temp file — best-effort */ } }
+  }
+}
+
 /** Re-voice the SPEECH in a finished video clip with a trained voice — the picture, the timing (so the
  *  lip-sync) and the background sound all stay; only the voice's timbre changes. This is how a dialogue
  *  film's character speaks in the voice the merchant gave them: the video model acts the line in a voice

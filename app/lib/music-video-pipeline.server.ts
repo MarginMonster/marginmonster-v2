@@ -30,11 +30,11 @@ import { falVideoSubmit, falVideoPoll, falLipSync, falEnabled } from "./fal-vide
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, PROPS, type FilmTreatment } from "./film-engine.server";
 import { singToDisk } from "./music-generation.server";
-import { ensureVoiceModel, coverSongInVoice, matchLoudness } from "./singing-voice.server";
+import { ensureVoiceModel, coverSongInVoice, matchLoudness, revoiceSongVocals } from "./singing-voice.server";
 import { MV_MAX_SECONDS, beatTimes, defaultRole, editPlan, paceFor, planFilter, sceneSecondsOf, shotSlot, shotTimes, type Cut, type Pace } from "./mv-pace";
 import {
   CAST_PROMPT_MAX, MAX_COSTARS, MIC_MOTION_LINE, NO_NEW_MIC_LINE, SOLO_EDIT_MAX,
-  castCheckPrompt, castFaults, castFix, castMotionLine, castStillPrompt, micFits, parseCastCheck, sceneCast, singerOf, soloEditPrompt, soloStillPrompt,
+  STYLE_PROMPT_MAX, castCheckPrompt, castFaults, castFix, castMotionLine, castStillPrompt, castStylePrompt, micFits, parseCastCheck, sceneCast, singerOf, soloEditPrompt, soloStillPrompt,
   type CastCheck,
 } from "./mv-cast";
 import { FEATURE_VOCAL_TRIM_DB, bestLag, featureMixFilter, featuredIn, octaveShiftFor, pitchChangeOf, vocalGaps, voiceWindows, wordJoins, type Gap, type VoiceWindow } from "./mv-feature";
@@ -510,6 +510,10 @@ async function buildMusicVideoSeeds(p: {
   /** Wardrobe (owner edit): cast member IMG → an outfit description ("a sharp black suit"). Applied when
    *  that member is styled into the genre, so they wear it for the whole video. */
   outfits?: Record<string, string>;
+  /** …and the PICTURE of that outfit the maker approved in the wardrobe row (cast member IMG → the
+   *  picture of them wearing it). When it is there, they are styled FROM it, so what was approved is
+   *  what is worn. */
+  outfitImgs?: Record<string, string>;
   /** Output shape — "9:16" (default), "16:9" or "1:1". Drives the seed render aspect (clips follow). */
   aspect?: string;
   /** How long each scene is (5 or 10) — a short video leads with the performance (mv-pace.ts defaultRole). */
@@ -533,11 +537,26 @@ async function buildMusicVideoSeeds(p: {
   const scenes = p.scenes;
   const propForScene = p.propForScene;
   const asp = (p.aspect === "16:9" || p.aspect === "1:1") ? p.aspect : "9:16";
-  // Wardrobe: an owner-chosen outfit for a cast member rides their genre-styling prompt (kept for the
-  // whole video, since the scenes inherit the styled ref's wardrobe).
-  const outfitClause = (img: string | null | undefined): string => {
-    const o = img && p.outfits ? (p.outfits[img] || "").trim() : "";
-    return o ? ` They are wearing ${o.slice(0, 160)} — keep this outfit consistent in every shot.` : "";
+  // THE WARDROBE IS LOCKED (mv-cast.ts castStylePrompt): a cast member is styled into the genre from the
+  // picture that shows what they WEAR — the approved picture of the outfit the maker picked, else their
+  // own picture ("Own look") — and the styling keeps those clothes. The scenes inherit the styled
+  // picture's wardrobe, so that is what they wear for the whole video. (It used to re-dress everyone
+  // for the genre: a navy suit became a sequin bomber in one video and a black blazer in the next.)
+  const wardrobeOf = (img: string | null | undefined): { src: string | null; outfit: string; pictured: boolean } => {
+    const outfit = img && p.outfits ? (p.outfits[img] || "").trim() : "";
+    const pic = outfit && img && p.outfitImgs ? abs((p.outfitImgs[img] || "").trim() || null) : null;
+    return { src: pic || abs(img), outfit, pictured: !!pic };
+  };
+  /** One cast member styled into the genre, wearing what was picked. `own` is their own picture. An
+   *  approved outfit picture that can no longer be read is not kept as their reference: they are then
+   *  dressed from the outfit's words, from their own picture, as before the lock. */
+  const styleMember = async (ownImg: string | null | undefined, perform?: string): Promise<{ styled: string | null; own: string | null }> => {
+    const own = abs(ownImg);
+    if (!own) return { styled: null, own: null };
+    const w = wardrobeOf(ownImg);
+    let styled = await editSubjectIntoScene(w.src || own, castStylePrompt({ genreLabel: g.label, look: g.look, perform, outfit: w.outfit, outfitPictured: w.pictured, realism: REALISM }), STYLE_PROMPT_MAX);
+    if (!styled && w.pictured) styled = await editSubjectIntoScene(own, castStylePrompt({ genreLabel: g.label, look: g.look, perform, outfit: w.outfit, outfitPictured: false, realism: REALISM }), STYLE_PROMPT_MAX);
+    return { styled, own };
   };
 
   // ARTIST hero — ONE realistic portrait that locks the look (face + wardrobe) for the WHOLE video.
@@ -550,7 +569,7 @@ async function buildMusicVideoSeeds(p: {
     const picked = abs(p.heroUrl);
     let ref: string | null = null;
     if (picked) {
-      const styled = await editSubjectIntoScene(picked, `Keep this EXACT person's face and identity identical — same face, hair, skin and build; do NOT swap them for anyone else. Make it a realistic ${g.label} music-video shot of them, who ${g.perform}, to camera.${outfitClause(p.heroUrl)} ${g.look}. Clear sharp face with a natural, genuine expression that fits the song's emotion — NOT angry, snarling or aggressive. ${REALISM}`);
+      const { styled } = await styleMember(p.heroUrl, g.perform);
       ref = styled || picked;
     } else {
       ref = await renderCreativeSeed(`A realistic ${g.label} music-video shot of the artist, who ${g.perform}, to camera: ${p.artistBible}. ${g.look}. Clear sharp face with a natural, genuine expression that fits the song's emotion — NOT angry, snarling or aggressive. ${REALISM}`, "9:16");
@@ -565,9 +584,8 @@ async function buildMusicVideoSeeds(p: {
   const styleCostar = async (m: { img: string; name: string }, ci: number): Promise<string | null> => {
     const cached = abs(resume[`ckCast_${ci}`]);
     if (cached) return cached;
-    const src = abs(m.img);
+    const { styled, own: src } = await styleMember(m.img);
     if (!src) return null;
-    const styled = await editSubjectIntoScene(src, `Keep this EXACT person's face and identity identical — same face, hair, skin and build; do NOT swap them for anyone else. Make it a realistic ${g.label} music-video shot of them.${outfitClause(m.img)} ${g.look}. Clear sharp face with a natural, genuine expression. ${REALISM}`);
     const cref = abs(styled) || src;
     await ckpt({ [`ckCast_${ci}`]: cref });
     return cref;
@@ -698,7 +716,7 @@ async function buildMusicVideoSeeds(p: {
  *  scene BEFORE committing (the "limit the surprise" ask). The approved stills ride back into
  *  generateMusicVideo as `approvedSceneImgs` so it renders EXACTLY what was previewed. */
 export async function previewMusicVideoScenes(opts: {
-  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>; castForScene?: Record<number, string[]>; outfits?: Record<string, string>; aspect?: string; artistName?: string; castNames?: string[]; artistGender?: "m" | "f"; castGenders?: Array<{ name: string; gender: "m" | "f" }>;
+  shopId: string; topic?: string; genre?: string; sceneCount?: number; props?: string[]; customProps?: Array<{ key: string; label: string; img: string }>; treatment?: FilmTreatment; heroUrl?: string; castExtra?: Array<{ img: string; name: string }>; castForScene?: Record<number, string[]>; outfits?: Record<string, string>; outfitImgs?: Record<string, string>; aspect?: string; artistName?: string; castNames?: string[]; artistGender?: "m" | "f"; castGenders?: Array<{ name: string; gender: "m" | "f" }>;
   /** How long each scene is — 5 or 10 seconds (the pace decides; unset = 10, as every video was before). */
   sceneSeconds?: number;
   /** A FEATURED VERSE: the names of the co-stars who sing a verse of their own (mv-feature.ts). */
@@ -721,7 +739,7 @@ export async function previewMusicVideoScenes(opts: {
   const propForScene = placeProps(scenes, propList, D, (opts.castExtra || []).map((m) => (m?.name || "").trim()));
   const artistBible = (treatment.cast && treatment.cast[0]) || `a charismatic ${g.label} artist`;
 
-  const { sceneImgs, sceneFaults, sceneChecks, artistRef, castRefs } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, aspect: opts.aspect, sceneSeconds: D, resume: {}, base });
+  const { sceneImgs, sceneFaults, sceneChecks, artistRef, castRefs } = await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, outfitImgs: opts.outfitImgs, aspect: opts.aspect, sceneSeconds: D, resume: {}, base });
   // Archive every scene still the owner generates here, so their scene generations are saved (not just
   // ephemeral preview frames). Best-effort + parallel — never block or fail the preview on it.
   try {
@@ -912,7 +930,7 @@ async function mixFeaturedVoices(o: {
   /** `gender` decides which octave their verse is sung in (with where the song sits); `speechPitch` =
    *  the speaking signature their voice is cast at, which their voice model is learned at */
   featured: Array<{ who: number; name: string; voiceId: string; gender?: "m" | "f"; speechPitch?: number }>;
-}): Promise<{ path: string; names: string[]; windows: VoiceWindow[] } | null> {
+}): Promise<{ path: string; names: string[]; windows: VoiceWindow[]; whole: boolean } | null> {
   const total = o.singers.length * o.D;
   const songUrl = await hostRender(o.base, o.songPath);
   // 1) the words as they are sung, for the breaths between them: the voice changes on the cut into and
@@ -940,10 +958,22 @@ async function mixFeaturedVoices(o: {
       const shift = octaveShiftFor(leadHz, f.gender);
       console.log(`[musicvideo] ${f.name}'s verse: the song's vocal sits at ${leadHz ? `${Math.round(leadHz)} Hz` : "an unknown pitch"} → ${shift ? `sung an octave ${shift > 0 ? "up" : "down"}` : "sung where it is"}`);
       const model = await ensureVoiceModel(f.voiceId, o.base, { pitch: f.speechPitch });
-      // (asked for with the vocal a little lower: the re-voice pushes it forward — FEATURE_VOCAL_TRIM_DB)
-      const covered = await coverSongInVoice(songUrl, model.url, { pitchChange: pitchChangeOf(shift), vocalsDb: FEATURE_VOCAL_TRIM_DB });
+      // THE WHOLE VOCAL in their voice (singing-voice revoiceSongVocals). The cover model converts only
+      // what it takes for the lead and leaves "backing" vocals in the song's own voice: on a real take
+      // that was a second inside the co-star's own shot — she mouthed the artist's line in HIS voice.
+      // The cover stays as the way back when separating or converting fails.
+      let covered = "";
+      let whole = true;
+      try {
+        covered = await revoiceSongVocals(songUrl, model.url, { semitones: shift, seconds: total });
+      } catch (e) {
+        whole = false;
+        console.error(`[musicvideo] ${f.name}'s whole-vocal take could not be made — the cover is used instead (its backing vocals stay in the song's voice): ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+        // (asked for with the vocal a little lower: the cover pushes it forward — FEATURE_VOCAL_TRIM_DB)
+        covered = await coverSongInVoice(songUrl, model.url, { pitchChange: pitchChangeOf(shift), vocalsDb: FEATURE_VOCAL_TRIM_DB });
+      }
       const level = await matchLoudness(covered, o.songPath);
-      return { ...f, file: await alignTake(o.songPath, level), trained: model.trained };
+      return { ...f, file: await alignTake(o.songPath, level), trained: model.trained, whole };
     } catch (e) {
       console.error(`[musicvideo] ${f.name}'s take of the song could not be made: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
       return null;
@@ -957,7 +987,7 @@ async function mixFeaturedVoices(o: {
   const filter = featureMixFilter(takes.map((t) => windows.filter((w) => w.who === t.who)), total);
   const r = await runFfmpeg([...args, "-filter_complex", filter, "-map", "[a]", "-t", total.toFixed(2), "-c:a", "libmp3lame", "-q:a", "2", out]);
   if (r.status !== 0 || !fs.existsSync(out) || Math.abs(ffprobeDuration(out) - total) > 0.6) throw new Error(`[musicvideo] the featured mix failed: ${(r.stderr || "").slice(-200)}`);
-  return { path: out, names: takes.map((t) => t.name), windows: windows.filter((w) => takes.some((t) => t.who === w.who)) };
+  return { path: out, names: takes.map((t) => t.name), windows: windows.filter((w) => takes.some((t) => t.who === w.who)), whole: takes.every((t) => t.whole) };
 }
 
 export async function generateMusicVideo(opts: {
@@ -982,6 +1012,8 @@ export async function generateMusicVideo(opts: {
   castForScene?: Record<number, string[]>;
   /** Wardrobe (owner edit): cast member IMG → an outfit description, applied when they're styled. */
   outfits?: Record<string, string>;
+  /** …and the approved PICTURE of each picked outfit (cast member IMG → picture): they are styled from it. */
+  outfitImgs?: Record<string, string>;
   /** The picked avatar's name + co-star names — the writer uses THESE, not invented "AI slop" names. */
   artistName?: string;
   castNames?: string[];
@@ -1131,6 +1163,8 @@ export async function generateMusicVideo(opts: {
   const roles = scenes.map((s, i) => shotFor(s, i, scenes.length, D).role);
   const featuredWho = featuredIn(singers);
   let featuredNames: string[] = [];
+  /** how the featured take was made: the whole vocal converted (true), or the cover fallback (false) */
+  let featuredWhole: boolean | null = null;
   // THE PACE, and the song's beats — found once, here, on the finished lead track, and used twice: for the
   // edit made after the clips are rendered, and (first) to know WHEN each performance will really be on
   // screen. A paced edit moves its cuts onto the beat, so a shot dealt 15–20 s may run 15.0–19.75, and a
@@ -1152,6 +1186,7 @@ export async function generateMusicVideo(opts: {
           if (!mixed) break; // nothing of theirs to hear (their scenes were removed)
           songPath = mixed.path;
           featuredNames = mixed.names;
+          featuredWhole = mixed.whole;
           await ckpt({ ckSongFeat: songPath, ckFeatNames: mixed.names.join("|") });
           console.log(`[musicvideo] featured verse: ${mixed.names.join(", ")} sing${mixed.names.length === 1 ? "s" : ""} ${mixed.windows.map((w) => `${w.start.toFixed(1)}–${w.end.toFixed(1)}s`).join(", ")} (made in ${Math.round((Date.now() - t0) / 1000)}s)`);
         } catch (e) {
@@ -1168,7 +1203,7 @@ export async function generateMusicVideo(opts: {
   //      SHARED seed path the preview uses (hero + prop anchors + vision-gated per-scene edits).
   const sceneImgs = opts.approvedSceneImgs && opts.approvedSceneImgs.length === N
     ? opts.approvedSceneImgs.map((u) => abs(u))
-    : (await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, aspect: opts.aspect, sceneSeconds: D, jobId, resume, base })).sceneImgs;
+    : (await buildMusicVideoSeeds({ genre, props: opts.props, customProps: opts.customProps, scenes, propForScene, artistBible, heroUrl: opts.heroUrl, castExtra: opts.castExtra, castForScene: opts.castForScene, outfits: opts.outfits, outfitImgs: opts.outfitImgs, aspect: opts.aspect, sceneSeconds: D, jobId, resume, base })).sceneImgs;
 
   // WHO is in each scene's picture beside whoever leads it (mv-cast.ts sceneCast — the same answer the
   // storyboard was drawn from): the video model is told how many people there are and that only the one
@@ -1321,7 +1356,7 @@ export async function generateMusicVideo(opts: {
         pace, cuts: cuts ? Math.max(0, cuts.length - 1) : Math.max(0, good.length - 1), cutOnBeat: onBeat.length > 2,
         captions,
         // who sang a verse of their own, in their own voice (empty = one singer, as before)
-        ...(featuredNames.length ? { featured: featuredNames } : {}),
+        ...(featuredNames.length ? { featured: featuredNames, ...(featuredWhole != null ? { featuredTake: featuredWhole ? "whole-vocal" : "cover" } : {}) } : {}),
       }),
     },
   });

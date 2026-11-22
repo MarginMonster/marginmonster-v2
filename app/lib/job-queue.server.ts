@@ -853,6 +853,7 @@ async function runJob(
             castExtra: Array.isArray(payload.filmCastExtra) ? (payload.filmCastExtra as Array<{ img: string; name: string }>) : undefined, // extra named cast beyond the lead
             castForScene: (payload.filmCastForScene && typeof payload.filmCastForScene === "object") ? (payload.filmCastForScene as Record<number, string[]>) : undefined, // per-scene cast (owner edit)
             outfits: (payload.filmOutfits && typeof payload.filmOutfits === "object") ? (payload.filmOutfits as Record<string, string>) : undefined, // wardrobe (owner edit)
+            outfitImgs: (payload.filmOutfitImgs && typeof payload.filmOutfitImgs === "object") ? (payload.filmOutfitImgs as Record<string, string>) : undefined, // …and the approved picture of each outfit
             artistName: (payload.filmArtistName as string | undefined) || undefined, // picked avatar name (no AI-slop names)
             castNames: Array.isArray(payload.filmCastNames) ? (payload.filmCastNames as string[]) : undefined,
             artistGender: payload.filmArtistGender === "f" ? "f" : payload.filmArtistGender === "m" ? "m" : undefined, // drives the sung VOICE + casting

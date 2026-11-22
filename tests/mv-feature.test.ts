@@ -435,7 +435,7 @@ test("the render: the verse is re-voiced and mixed, the co-star leads their shot
   assert.match(pipe, /return !!shot\.propOk && !\(shot\.role === "perform" && singerOf\(scenes\[i\], castNames\) >= 0\);/);
   assert.equal(pipe.split("placeProps(scenes, propList, D,").length - 1, 2, "one rule for the storyboard and the render");
   // what was made is recorded
-  assert.match(gen, /\.\.\.\(featuredNames\.length \? \{ featured: featuredNames \} : \{\}\),/);
+  assert.ok(gen.includes("...(featuredNames.length ? { featured: featuredNames, "), "who sang a verse is kept with the finished video");
 });
 
 test("the page: a co-star is given a verse with one tap, and their voice must be theirs to use", () => {
@@ -614,4 +614,39 @@ test("with no breath in reach the voice changes between two words — a word is 
   assert.deepEqual(voiceWindows({ singers: [ARTIST, 0], roles: [P, P], D: 10, joins: [{ t: 9.93, gap: 0 }] }), [{ who: 0, start: 9.93, end: 20 }]);
   const pipe = read("app", "lib", "music-video-pipeline.server.ts");
   assert.match(pipe, /gaps = vocalGaps\(heard\);\s+joins = wordJoins\(heard\);/);
+});
+
+test("a co-star's take is the WHOLE vocal in their voice — the cover is only the way back", () => {
+  // (the real takes of two featured videos, 2026-11-22: the cover model converts what it takes for the
+  //  lead and leaves "backing" vocals in the song's own voice — a second of that sat inside the
+  //  co-star's own shot, and she mouthed the artist's line in his voice)
+  const voice = read("app", "lib", "singing-voice.server.ts");
+  const fn = voice.slice(voice.indexOf("export async function revoiceSongVocals"), voice.indexOf("/** Re-voice the SPEECH in a finished video clip"));
+  assert.ok(fn.length > 400, "revoiceSongVocals is there");
+  // our own split, two stems only: the vocal, and everything else
+  assert.ok(voice.includes('const SPLIT_MODEL = "cjwbw/demucs";') && voice.includes('const VOICE_MODEL = "pseudoram/rvc-v2";'));
+  assert.ok(fn.includes('createCommunity(SPLIT_MODEL, { audio: songUrl, stem: "vocals", output_format: "mp3" })'));
+  // the whole vocal goes to the voice model, plain voice-to-voice; an octave moves the vocal alone
+  assert.ok(fn.includes('input_audio: vocalsUrl, rvc_model: "CUSTOM", custom_rvc_model_download_url: modelUrl, pitch_change: semitones, output_format: "mp3"'));
+  assert.ok(fn.includes("const semitones = Math.max(-12, Math.min(12, Math.round(opts.semitones || 0)));"));
+  // laid back over the untouched music as loud to the ear as the vocal it replaces (never more than 3 dB moved)
+  assert.ok(fn.includes("const [was, is] = [await loudnessLufs(vocals), await loudnessLufs(voice)];"));
+  assert.ok(fn.includes("const gain = was != null && is != null ? Math.max(-3, Math.min(3, Math.round((was - is) * 10) / 10)) : 0;"));
+  assert.ok(fn.includes("amix=inputs=2:normalize=0:dropout_transition=0,apad[a]"));
+  // any failure throws, so the caller can fall back
+  assert.ok(fn.includes('throw new Error("[voice] the song could not be separated into vocal and music")'));
+  assert.ok(fn.includes('throw new Error("[voice] the converted vocal came back without audio")'));
+
+  const pipe = read("app", "lib", "music-video-pipeline.server.ts");
+  const mix = pipe.slice(pipe.indexOf("async function mixFeaturedVoices"), pipe.indexOf("export async function generateMusicVideo"));
+  const whole = mix.indexOf("covered = await revoiceSongVocals(songUrl, model.url, { semitones: shift, seconds: total });");
+  const cover = mix.indexOf("covered = await coverSongInVoice(songUrl, model.url, { pitchChange: pitchChangeOf(shift), vocalsDb: FEATURE_VOCAL_TRIM_DB });");
+  assert.ok(whole > 0 && cover > whole, "the whole vocal first, the cover in the catch after it");
+  assert.match(mix.slice(whole, cover), /\} catch \(e\) \{\s+whole = false;/);
+  // both routes are levelled to the song and lined up with it before they are cross-faded
+  assert.ok(mix.includes("const level = await matchLoudness(covered, o.songPath);") && mix.includes("file: await alignTake(o.songPath, level), trained: model.trained, whole };"));
+  // which way it was made is kept with the finished video
+  assert.ok(mix.includes("whole: takes.every((t) => t.whole) };"));
+  assert.ok(pipe.includes("featuredWhole = mixed.whole;"));
+  assert.ok(pipe.includes('{ featured: featuredNames, ...(featuredWhole != null ? { featuredTake: featuredWhole ? "whole-vocal" : "cover" } : {}) }'));
 });

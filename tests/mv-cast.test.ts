@@ -309,3 +309,82 @@ test("a long setting is cut at a word", () => {
   // a single word longer than the room is cut hard rather than dropped
   assert.equal(cutAtWord("supercalifragilistic", 5), "super");
 });
+
+import { STYLE_PROMPT_MAX, castStylePrompt, lookWithoutWardrobe } from "../app/lib/mv-cast.ts";
+
+test("the wardrobe is locked: what is picked is what is worn, in every scene", () => {
+  // The owner, 2026-11-22: "outfits are changing but - we made outfits selectable for cast in the setup
+  // and avatar selection … should we lock the selected wardrobe?" — with "Own look" picked, a presenter
+  // in a navy suit came out in a sequin bomber in one video and a black blazer in the next.
+  const LOOKS = {
+    rap: "a PREMIUM, aspirational hip-hop music video — a stylish city rooftop at night, an upscale modern street, a sleek studio or a luxe interior; sharp designer streetwear; high-production and cinematic — NOT run-down, poor, gritty or a 'poverty' setting",
+    pop: "a PREMIUM pop music video — a sleek stage, a bright modern studio, a chic rooftop or a stylish interior; fashionable wardrobe; polished, high-production and cinematic",
+    rock: "a PREMIUM rock music video — a real concert stage, a cool industrial loft or a moody studio; stylish; cinematic and high-production, edgy but never cheap or run-down",
+    rnb: "a PREMIUM R&B music video — a luxe interior, a rooftop at golden hour, a stylish lounge; elegant fashion; a warm, cinematic, high-production look",
+  };
+  // these ARE the looks the genres carry (so the test fails if one changes and nobody reads it for clothes)
+  const engine = read("app", "lib", "film-engine.server.ts");
+  for (const look of Object.values(LOOKS)) assert.ok(engine.includes(`look: "${look}"`), look.slice(0, 50));
+  // the genre no longer says what to wear — the places and the finish stay
+  assert.equal(lookWithoutWardrobe(LOOKS.pop), "a PREMIUM pop music video — a sleek stage, a bright modern studio, a chic rooftop or a stylish interior; polished, high-production and cinematic");
+  assert.equal(lookWithoutWardrobe(LOOKS.rap), "a PREMIUM, aspirational hip-hop music video — a stylish city rooftop at night, an upscale modern street, a sleek studio or a luxe interior; high-production and cinematic — NOT run-down, poor, gritty or a 'poverty' setting");
+  assert.equal(lookWithoutWardrobe(LOOKS.rock), "a PREMIUM rock music video — a real concert stage, a cool industrial loft or a moody studio; cinematic and high-production, edgy but never cheap or run-down");
+  assert.equal(lookWithoutWardrobe(LOOKS.rnb), "a PREMIUM R&B music video — a luxe interior, a rooftop at golden hour, a stylish lounge; a warm, cinematic, high-production look");
+  for (const look of Object.values(LOOKS)) assert.doesNotMatch(lookWithoutWardrobe(look), /wardrobe|streetwear|fashion/i);
+  assert.equal(lookWithoutWardrobe(""), "");
+
+  // OWN LOOK: the clothes in their own picture are kept — said first, then the framing and the face,
+  // all inside the length the styling call reads (the genre's "fashionable wardrobe" used to be the
+  // last thing it read)
+  const own = castStylePrompt({ genreLabel: "Pop / Dance / EDM", look: LOOKS.pop, perform: "sings to camera with bright, upbeat, joyful charisma — lively and fun, warm and smiling, light rhythmic movement", realism: "Photorealistic." });
+  assert.ok(own.startsWith("Keep this EXACT person identical — same face, hair, skin and build — and keep EXACTLY the clothes they wear in this picture: same garments, colours and accessories. Do NOT restyle or re-dress them, and do NOT swap them for anyone else."));
+  const readPart = own.slice(0, STYLE_PROMPT_MAX);
+  assert.equal(STYLE_PROMPT_MAX, 700);
+  assert.ok(readPart.includes("Their hands are empty — no microphone.") && readPart.includes("Make it a realistic Pop / Dance / EDM music-video shot of them, who sings to camera"));
+  assert.ok(readPart.includes("— framed from the knees up, the face clear and sharp, with a natural, genuine expression that fits the song (never angry or snarling)."));
+  assert.ok(readPart.includes("a sleek stage, a bright modern studio"), "the genre's places are read too");
+  assert.doesNotMatch(own, /fashionable wardrobe/);
+  // AN OUTFIT THAT WAS MADE AND APPROVED: the picture being edited already shows it — keep it, named
+  const pictured = castStylePrompt({ genreLabel: "Pop / Dance / EDM", look: LOOKS.pop, outfit: "a sharp tailored suit", outfitPictured: true });
+  assert.ok(pictured.includes("keep EXACTLY the clothes they wear in this picture (a sharp tailored suit): same garments, colours and accessories."));
+  assert.doesNotMatch(pictured, /Dress them in/);
+  // an outfit in words only (its picture is gone, or was never made): dress them from the words
+  const worded = castStylePrompt({ genreLabel: "Rock / Punk / Alt", look: LOOKS.rock, outfit: "an edgy black leather jacket look" });
+  assert.ok(worded.includes("Dress them in an edgy black leather jacket look — that outfit and no other."));
+  assert.doesNotMatch(worded, /keep EXACTLY the clothes/);
+  // a co-star (no performance line) reads the same rule
+  assert.ok(castStylePrompt({ genreLabel: "Country", look: "a PREMIUM country music video — a real honky-tonk stage" }).includes("Make it a realistic Country music-video shot of them — framed from the knees up, the face clear and sharp, with a natural, genuine expression. a PREMIUM country music video"));
+
+  // every scene is drawn from that picture, and says so
+  assert.match(castStillPrompt({ genre: "Pop", role: "perform", frame: "a medium-wide shot", visual: "A rooftop at night", costars: 2, micOk: false }), /NOT singing; everyone dressed exactly as in their reference image\. /);
+  assert.match(castStillPrompt({ genre: "Pop", role: "broll", frame: "a wide shot", visual: "A rooftop at night", costars: 1, micOk: false }), /each with their own face, hair and clothes\. /);
+  assert.match(soloStillPrompt({ genre: "Pop", role: "broll", frame: "a wide shot", visual: "A street at night", micOk: false }), /the artist \(the person in the reference image, dressed exactly as in it\)/);
+  assert.match(soloEditPrompt({ role: "perform", frame: "a medium shot", visual: "A street at night", micOk: false }), /same face, hair, skin, build, wardrobe and jewelry/);
+
+  // the pipeline styles each cast member FROM the picture that shows what they wear…
+  const pipe = read("app", "lib", "music-video-pipeline.server.ts");
+  assert.ok(pipe.includes("const pic = outfit && img && p.outfitImgs ? abs((p.outfitImgs[img] || \"\").trim() || null) : null;"));
+  assert.ok(pipe.includes("let styled = await editSubjectIntoScene(w.src || own, castStylePrompt({ genreLabel: g.label, look: g.look, perform, outfit: w.outfit, outfitPictured: w.pictured, realism: REALISM }), STYLE_PROMPT_MAX);"));
+  // …and an approved picture that can no longer be read is never kept as their reference
+  assert.ok(pipe.includes("if (!styled && w.pictured) styled = await editSubjectIntoScene(own, castStylePrompt({ genreLabel: g.label, look: g.look, perform, outfit: w.outfit, outfitPictured: false, realism: REALISM }), STYLE_PROMPT_MAX);"));
+  assert.ok(pipe.includes("const { styled } = await styleMember(p.heroUrl, g.perform);") && pipe.includes("ref = styled || picked;"));
+  assert.ok(pipe.includes("const { styled, own: src } = await styleMember(m.img);"));
+  assert.equal(pipe.split("castForScene: opts.castForScene, outfits: opts.outfits, outfitImgs: opts.outfitImgs,").length - 1, 2, "the storyboard and the render both hand the pictures on");
+  assert.doesNotMatch(pipe, /keep this outfit consistent in every shot/);
+  assert.ok(read("app", "lib", "job-queue.server.ts").includes("outfitImgs: (payload.filmOutfitImgs && typeof payload.filmOutfitImgs === \"object\") ? (payload.filmOutfitImgs as Record<string, string>) : undefined,"));
+
+  // the page sends the approved picture with the outfit's words, and says the look is kept
+  const ui = read("app", "routes", "web.film.tsx");
+  assert.ok(ui.includes("for (const img of Object.keys(outfits)) { const pic = styleFor(img, outfits[img]); if (pic) outfitImgs[img] = pic; }"));
+  assert.ok(ui.includes("...(Object.keys(outfitImgs).length ? { filmOutfitImgs: JSON.stringify(outfitImgs) } : {})"));
+  assert.ok(ui.includes("<input type=\"hidden\" name=\"filmOutfitImgs\" value={JSON.stringify(outfitImgs)} />"));
+  assert.ok(ui.includes("{t(\"The look you pick is what they wear in every scene.\")}"));
+  // only a picture on our own render disk is accepted, whatever host the address names
+  assert.ok(ui.includes("try { p = new URL(v.trim(), \"https://site.invalid\").pathname; } catch { continue; }"));
+  const ours = /^\/renders\/[\w.-]+\.(?:jpe?g|png|webp)$/i;
+  assert.ok(ui.includes(`if (${String(ours)}.test(p)) out[k.slice(0, 2000)] = p;`));
+  const pathOf = (v: string) => new URL(v.trim(), "https://site.invalid").pathname;
+  for (const good of ["https://easymodeapp.com/renders/img-17953-ab12.jpg", "/renders/img-1.png", "https://elsewhere.example/renders/x.webp"]) assert.ok(ours.test(pathOf(good)), good);
+  for (const bad of ["https://elsewhere.example/steal.jpg", "/avatars/omar_0.jpg", "/renders/../secrets.jpg", "/renders/a/b.jpg", "/renders/x.svg", "file:///etc/passwd"]) assert.ok(!ours.test(pathOf(bad)), bad);
+  assert.ok(ui.includes("const outfitImgs = parseOutfitImgs(form.get(\"filmOutfitImgs\") as string);") && ui.includes("...(filmOutfitImgs ? { filmOutfitImgs } : {}),"));
+});

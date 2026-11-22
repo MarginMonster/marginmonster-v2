@@ -183,6 +183,27 @@ function parseOutfits(raw: string | null): Record<string, string> | undefined {
   } catch { return undefined; }
 }
 
+/** The approved PICTURE of each picked outfit (cast member img → the picture of them wearing it), as the
+ *  wardrobe row made it — they are styled from it, so the look that was tapped is the look that is worn.
+ *  Only pictures on our own render disk count: whatever host an address names, it is read as a site path
+ *  under /renders/, so nothing else can be fetched through it. At most four (a star and their co-stars). */
+function parseOutfitImgs(raw: string | null): Record<string, string> | undefined {
+  if (!raw) return undefined;
+  try {
+    const o = JSON.parse(raw);
+    if (!o || typeof o !== "object") return undefined;
+    const out: Record<string, string> = {};
+    for (const k of Object.keys(o).slice(0, 4)) {
+      const v = o[k];
+      if (typeof v !== "string") continue;
+      let p = "";
+      try { p = new URL(v.trim(), "https://site.invalid").pathname; } catch { continue; }
+      if (/^\/renders\/[\w.-]+\.(?:jpe?g|png|webp)$/i.test(p)) out[k.slice(0, 2000)] = p;
+    }
+    return Object.keys(out).length ? out : undefined;
+  } catch { return undefined; }
+}
+
 /** The cast the maker PICKED for a story (before a word was written): who they are, their picture, what
  *  kind of character they are and what they look like. At most 4; a face must be a site path or http(s). */
 type StoryCastIn = { name: string; faceUrl: string | null; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null };
@@ -410,6 +431,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const castExtra = parseCastExtra(form.get("filmCastExtra") as string);
     const castForScene = parseCastForScene(form.get("filmCastForScene") as string);
     const outfits = parseOutfits(form.get("filmOutfits") as string);
+    const outfitImgs = parseOutfitImgs(form.get("filmOutfitImgs") as string);
     const pvArtistName = ((form.get("filmArtistName") as string) || "").trim().slice(0, 60);
     let pvCastNames: string[] | undefined;
     const pvCastRaw = ((form.get("filmCastNames") as string) || "").trim();
@@ -428,7 +450,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
         const { previewMusicVideoScenes } = await import("../lib/music-video-pipeline.server");
-        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, sceneSeconds: filmSceneSeconds, props: filmProps, customProps, heroUrl, castExtra, castForScene, outfits, artistName: pvArtistName, castNames: pvCastNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name), aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
+        const r = await previewMusicVideoScenes({ shopId: shop.id, topic, genre, sceneCount: scenes, sceneSeconds: filmSceneSeconds, props: filmProps, customProps, heroUrl, castExtra, castForScene, outfits, outfitImgs, artistName: pvArtistName, castNames: pvCastNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name), aspect: filmAspect, treatment: approvedTreatment as unknown as Parameters<typeof previewMusicVideoScenes>[0]["treatment"] });
         const sceneImgs = (r.sceneImgs || []).map((u) => u || null);
         if (!sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
         // sceneFaults: how each cast picture fared when it was looked at (0 = right, more = worth a re-roll)
@@ -604,6 +626,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const filmCastForScene = parseCastForScene(form.get("filmCastForScene") as string);
     // Wardrobe (Music Video owner edit) — cast member img → an outfit description.
     const filmOutfits = parseOutfits(form.get("filmOutfits") as string);
+    // …and the approved picture of each picked outfit: they are styled from it (the wardrobe is locked).
+    const filmOutfitImgs = parseOutfitImgs(form.get("filmOutfitImgs") as string);
     // Names (Music Video) — the picked avatar + co-stars, so the writer never invents "AI slop" names.
     const genArtistName = ((form.get("filmArtistName") as string) || "").trim().slice(0, 60);
     let genCastNames: string[] | undefined;
@@ -660,6 +684,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(filmCastExtra ? { filmCastExtra } : {}),
         ...(filmCastForScene ? { filmCastForScene } : {}),
         ...(filmOutfits ? { filmOutfits } : {}),
+        ...(filmOutfitImgs ? { filmOutfitImgs } : {}),
         ...(genArtistName ? { filmArtistName: genArtistName } : {}),
         ...(genCastNames?.length ? { filmCastNames: genCastNames } : {}),
         ...(genArtistGender ? { filmArtistGender: genArtistGender } : {}),
@@ -1307,7 +1332,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(Object.keys(outfitImgs).length ? { filmOutfitImgs: JSON.stringify(outfitImgs) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
       { method: "post" }
     );
   };
@@ -1521,6 +1546,10 @@ export default function FilmStudio() {
   }, [outfitFetcher.state, outfitFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // The face to SHOW for an avatar — the thumbnail of its selected outfit if generated, else the original.
   const avatarFace = (img: string): string => styleFor(img, outfits[img] || "") || img;
+  // THE WARDROBE IS LOCKED: the approved PICTURE of each picked outfit rides with its description, and
+  // the cast is styled from it — the look that was tapped is the look that is worn, in every scene.
+  const outfitImgs: Record<string, string> = {};
+  for (const img of Object.keys(outfits)) { const pic = styleFor(img, outfits[img]); if (pic) outfitImgs[img] = pic; }
   const presetLabel = (desc: string): string | undefined => OUTFIT_PRESETS.find((o) => o.desc === desc)?.label;
   // The outfit SLIDER (opens under the selected avatar). SAVED looks (Own look + generated outfits, big
   // thumbnails side by side) on top; the preset "suggestions" below are just hints to generate (each
@@ -1544,6 +1573,7 @@ export default function FilmStudio() {
       <div className="mm-wd2">
         <div className="mm-wd2-h"><Ico n="shirt" size={13} /> {t("{name}'s wardrobe", { name })}</div>
         <div className="mm-wd2-hint">{t("Tap a look to use it. Tap a suggestion to generate it — it saves here beside the others. Or describe your own below.")}</div>
+        <div className="mm-wd2-lock"><Ico n="lock" size={11} /> {t("The look you pick is what they wear in every scene.")}</div>
         <div className="mm-wd2-saved">
           {look(img, "", t("Own look"), true)}
           {saved.map((s) => look(s.img, s.desc, presetLabel(s.desc) ? t(presetLabel(s.desc) as string) : (s.desc.length > 18 ? s.desc.slice(0, 18) + "…" : s.desc), false))}
@@ -2452,6 +2482,7 @@ export default function FilmStudio() {
               {castExtra.length > 0 && <input type="hidden" name="filmCastExtra" value={JSON.stringify(castExtra)} />}
               {tmpl?.lipSyncSinger && seeds && castExtra.length > 0 && <input type="hidden" name="filmCastForScene" value={JSON.stringify(resolveCastMap(seeds.treatment.scenes))} />}
               {tmpl?.lipSyncSinger && Object.keys(outfits).length > 0 && <input type="hidden" name="filmOutfits" value={JSON.stringify(outfits)} />}
+              {tmpl?.lipSyncSinger && Object.keys(outfitImgs).length > 0 && <input type="hidden" name="filmOutfitImgs" value={JSON.stringify(outfitImgs)} />}
               {tmpl?.lipSyncSinger && artistName && <input type="hidden" name="filmArtistName" value={artistName} />}
               {tmpl?.lipSyncSinger && castNames.length > 0 && <input type="hidden" name="filmCastNames" value={JSON.stringify(castNames)} />}
               {tmpl?.lipSyncSinger && <input type="hidden" name="filmArtistGender" value={artistGender} />}
@@ -3700,6 +3731,8 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-wd2-h{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;color:var(--ink,#14201A);}
 .mm-wd2-h svg{stroke:currentColor;stroke-width:2;fill:none;}
 .mm-wd2-hint{font-size:11px;font-weight:600;color:var(--ink3,#9AA39B);line-height:1.4;margin:-3px 0 1px;}
+/* the wardrobe is locked: said where the look is picked */
+.mm-wd2-lock{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;font-size:11px;font-weight:700;color:var(--green,#0C7A46);background:rgba(12,122,70,.08);border-radius:999px;padding:3px 9px;line-height:1.3;}
 .mm-wd2-spin{width:24px;height:24px;border:2.5px solid #E0D4F3;border-top-color:#7A4FC2;border-radius:50%;animation:mm-wd2-rot .7s linear infinite;}
 @keyframes mm-wd2-rot{to{transform:rotate(360deg);}}
 /* Generating tile uses the Archive's rosette-green cook spinner (sized to the 78px look tile). */

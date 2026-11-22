@@ -787,7 +787,7 @@ export async function generateTestMovie(opts: {
         );
         let ans = ((await ask()) || "").trim().toUpperCase();
         // anything but a clear A or B is asked once more — guessing here is a coin flip on the whole film
-        if (!/^[AB]/.test(ans)) ans = ((await ask()) || "").trim().toUpperCase();
+        if (!/^[AB]\b/.test(ans)) ans = ((await ask()) || "").trim().toUpperCase();
         if (ans.startsWith("B")) aOnLeft = false;
         console.log(`[testmovie] sides — ${spkA} is on the ${aOnLeft ? "LEFT" : "RIGHT"}, ${spkB} on the ${aOnLeft ? "RIGHT" : "LEFT"} (answer "${ans.slice(0, 12)}"${ans.startsWith("A") || ans.startsWith("B") ? "" : " — NOT a clear answer, left assumed"})`);
       }

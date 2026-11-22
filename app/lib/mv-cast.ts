@@ -110,6 +110,49 @@ export function micLine(micOk: boolean, performing: boolean): string {
     : "NO microphones or mic stands anywhere — the singer's hands are EMPTY, open and gesturing at chest height.";
 }
 
+/* ---- THE WARDROBE IS LOCKED ----
+ * The owner, 2026-11-22: "outfits are changing but - we made outfits selectable for cast in the setup and
+ * avatar selection … should we lock the selected wardrobe?"
+ *
+ * What was happening: every cast member is first "styled into the genre" — one picture of them that all
+ * their scenes are then drawn from. That styling prompt carried the genre's look, and the looks say what
+ * to WEAR ("fashionable wardrobe", "sharp designer streetwear"). So with "Own look" picked, a presenter
+ * in a navy suit came out in a sequin bomber in one video and a black blazer in the next; and an outfit
+ * the maker had generated and approved in the wardrobe row went to the render as its DESCRIPTION only,
+ * to be drawn again from scratch.
+ *
+ * Now what is picked is what is worn: the styling keeps exactly the clothes in the picture it is given —
+ * the presenter's own picture, or the approved picture of the outfit — the genre's look no longer speaks
+ * about clothes, and the scene prompts say each person is dressed as in their reference picture. */
+
+/** A genre's look WITHOUT what it says about clothes: the places and the finish stay. */
+export function lookWithoutWardrobe(look: string): string {
+  const PLACE = /\b(stage|studio|rooftop|interior|street|loft|lounge|club|bar|setting|music video)\b/i;
+  const CLOTHES = /\b(wardrobe|streetwear|fashion\w*|outfits?|attire|dressed|clothes|clothing|stylish)\b/i;
+  return (look || "").split(/\s*;\s*/).filter((part) => part.trim() && (!CLOTHES.test(part) || PLACE.test(part))).join("; ");
+}
+
+/** HOW A CAST MEMBER IS DRESSED INTO THE GENRE — the one picture every scene of theirs is drawn from.
+ *  `outfit` = the outfit the maker picked for them, in words ("" = their own look); `outfitPictured` =
+ *  the picture being edited already shows them in it (the approved outfit picture). The clothes rule
+ *  comes FIRST, then how they are framed (their face has to be big enough to draw every scene from),
+ *  then the genre's places: the picture call reads STYLE_PROMPT_MAX characters, and the end of this
+ *  prompt is what it loses. */
+export const STYLE_PROMPT_MAX = 700;
+export function castStylePrompt(o: { genreLabel: string; look: string; perform?: string; outfit?: string; outfitPictured?: boolean; realism?: string }): string {
+  const outfit = (o.outfit || "").replace(/\s+/g, " ").trim().slice(0, 160);
+  const dressed = outfit && !o.outfitPictured
+    // an outfit that was described but never drawn: the words are all there is to go on
+    ? `Keep this EXACT person's face and identity identical — same face, hair, skin and build; do NOT swap them for anyone else. Dress them in ${outfit} — that outfit and no other.`
+    : `Keep this EXACT person identical — same face, hair, skin and build — and keep EXACTLY the clothes they wear in this picture${outfit ? ` (${outfit})` : ""}: same garments, colours and accessories. Do NOT restyle or re-dress them, and do NOT swap them for anyone else.`;
+  // (hands empty: styled onto "a sleek stage", a co-star came back holding a microphone — and every scene
+  //  of theirs is drawn from this picture; 2026-11-22)
+  // (framed from the knees up: left to itself one styling came back a small figure on a huge stage,
+  //  and a face that small cannot carry a likeness into the scenes)
+  const shot = `Their hands are empty — no microphone. Make it a realistic ${o.genreLabel} music-video shot of them${o.perform ? `, who ${o.perform}, to camera` : ""} — framed from the knees up, the face clear and sharp, with a natural, genuine expression${o.perform ? " that fits the song (never angry or snarling)" : ""}.`;
+  return `${dressed} ${shot} ${lookWithoutWardrobe(o.look)}. ${o.realism || ""}`.replace(/\s+/g, " ").trim();
+}
+
 /** The still for a shot that has the artist AND co-stars in it. Reference image 1 is the artist; 2 (and
  *  3) the co-stars, in that order. Everything the model must get right comes before the setting, and the
  *  whole thing stays under CAST_PROMPT_MAX so none of it is cut off. (880: a ride in a car needs its own
@@ -135,7 +178,7 @@ export function castStillPrompt(o: {
   const others = k === 1 ? `the other person (the ${ORDINALS[1]} reference image)` : `the other two (the ${ORDINALS[1]} and ${ORDINALS[2]} reference images)`;
   const performing = o.role === "perform";
   const roles = performing
-    ? `the ARTIST (the person in the ${ORDINALS[0]} reference image) is front and centre, nearest the camera, facing it and singing; ${others} ${k === 1 ? "is" : "are"} beside and a step behind the artist, dancing to the music, mouth${k === 1 ? "" : "s"} closed, NOT singing`
+    ? `the ARTIST (the person in the ${ORDINALS[0]} reference image) is front and centre, nearest the camera, facing it and singing; ${others} ${k === 1 ? "is" : "are"} beside and a step behind the artist, dancing to the music, mouth${k === 1 ? "" : "s"} closed, NOT singing; everyone dressed exactly as in their reference image`
     // ("each doing what the setting describes": it used to say "all moving together", and with a framing
     //  of "all of them dancing" a scene set in a car came back with the cast standing up in it — mv-sense.ts)
     : `the artist (the person in the ${ORDINALS[0]} reference image) with ${others}, each doing what the setting describes, each with their own face, hair and clothes`;
@@ -153,7 +196,7 @@ export function castStillPrompt(o: {
  *  microphone rule is said before the setting, where it is read. */
 export function soloStillPrompt(o: { genre: string; role: ShotRole; frame: string; visual: string; micOk: boolean; extra?: string }): string {
   const performing = o.role === "perform";
-  const head = `A photoreal frame from a real ${o.genre} music video of the artist (the person in the reference image), who appears ONCE — never a twin or second copy of them${performing ? "; they face the camera, singing" : ""}. ${micLine(o.micOk, performing)} Composed as ${o.frame.replace(/[.\s]+$/, "")}.`;
+  const head = `A photoreal frame from a real ${o.genre} music video of the artist (the person in the reference image, dressed exactly as in it), who appears ONCE — never a twin or second copy of them${performing ? "; they face the camera, singing" : ""}. ${micLine(o.micOk, performing)} Composed as ${o.frame.replace(/[.\s]+$/, "")}.`;
   const tail = (o.extra || "").trim().replace(/[.\s]+$/, "");
   const room = Math.max(80, CAST_PROMPT_MAX - head.length - tail.length - 12);
   return `${head} Setting: ${cutAtWord(o.visual, room).replace(/[.\s]+$/, "")}${tail ? `. ${tail}` : ""}`;
