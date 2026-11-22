@@ -149,7 +149,19 @@ async function returnDeclinedEdit(o: { assetId: string; shopId: string; jobType:
       await refundTokens(o.shopId, charged, typeof p.chargedFromExtra === "number" ? p.chargedFromExtra : 0);
       await checkpointJob(jobId, { ckDeclinedRefundedAmount: charged });
       p.ckDeclinedRefundedAmount = charged;
-      await db.asset.update({ where: { id: o.assetId }, data: { metaJson: JSON.stringify({ ...meta, tokensReturned: charged }) } });
+      // The note on the piece ("tokens returned") is written against the blob it was READ from — the
+      // standing rule (tests/no-blind-writes): a write that lost a race re-reads and tries again, it
+      // never puts an old copy back over somebody else's change (a share link, a keep, a caption).
+      let raw = asset?.metaJson ?? "{}";
+      for (let k = 0; k < 3; k++) {
+        let cur: Record<string, unknown> = {};
+        try { cur = JSON.parse(raw || "{}") as Record<string, unknown>; } catch { /* a blob nobody can read is replaced */ }
+        const noted = await db.asset.updateMany({ where: { id: o.assetId, metaJson: raw }, data: { metaJson: JSON.stringify({ ...cur, tokensReturned: charged }) } });
+        if (noted.count > 0) break;
+        const again = await db.asset.findUnique({ where: { id: o.assetId }, select: { metaJson: true } });
+        if (!again) break; // the piece was deleted meanwhile: the tokens are back, there is nothing to note
+        raw = again.metaJson;
+      }
       console.log(`[photo-edit] edit not made by the model — ${charged} tokens returned to shop ${o.shopId}`);
     } catch (e) {
       console.error(`[photo-edit] DECLINED-EDIT REFUND FAILED after being claimed — shop ${o.shopId} is owed ${charged} tokens: `, e instanceof Error ? e.message.slice(0, 200) : e);
