@@ -12,7 +12,7 @@ import { lookLabel } from "../lib/avatar-looks";
 import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
-import { estimateSpeakSeconds, clipFill, secondsLabel, CLIP_MAX_SECONDS } from "../lib/speech-meter";
+import { estimateSpeakSeconds, clipFill, secondsLabel, CLIP_MAX_SECONDS, TYPICAL_SHOT_SECONDS } from "../lib/speech-meter";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { normalizeContentLang } from "../lib/content-lang";
@@ -3089,7 +3089,8 @@ export default function FilmStudio() {
         // (the first live story, told by the Hollow voice, ran 83 s for six scenes)
         const perScene = ({ "char:keeper": 14, "char:mary": 13, "char:coco": 12, "char:howl": 12 } as Record<string, number>)[narratorId] || 10;
         const secLabel = (sec: number) => { const r = Math.round(sec / 5) * 5; return r < 60 ? `${r}s` : `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`; };
-        const lenLabel = (n: number) => (narrated ? `≈ ${secLabel(n * perScene)}` : `≈ ${n * 8}s`);
+        // (an acted shot is about five seconds, not eight — speech-meter.ts TYPICAL_SHOT_SECONDS)
+        const lenLabel = (n: number) => (narrated ? `≈ ${secLabel(n * perScene)}` : `≈ ${n * TYPICAL_SHOT_SECONDS}s`);
         const shapeName = filmAspect === "16:9" ? t("Wide") : filmAspect === "9:16" ? t("Vertical") : t("Square");
         const capName = t(CAPTION_STYLES.find((c) => c.key === captions)?.label || "Off");
         const voiceTile = (id: string, label: string, blurb: string) => (

@@ -16,6 +16,12 @@ export const SECONDS_PER_WORD = 0.28;
 export const CLIP_MAX_SECONDS = 10;
 /** Floor — a very short line still needs a watchable beat to seed and hold on. */
 export const CLIP_MIN_SECONDS = 5;
+/** WHAT ONE ACTED SHOT COMES TO, for the Length card. A written line is 15–18 words, which the rate above
+ *  puts at about five seconds — and no clip is shorter than that. The card said EIGHT a shot: "≈ 32s · 4
+ *  shots" above a scene whose own meter read "≈ 19s film", and the films made that way ran 19.5 seconds
+ *  (2026-11-22). A film a third shorter than the length that was picked is the complaint rival tools'
+ *  customers make most after billing. tests/speech-meter-length.test.ts keeps this tied to the meter. */
+export const TYPICAL_SHOT_SECONDS = 5;
 
 /** Estimated seconds a spoken line runs: words × rate + a short onset + punctuation
  *  micro-beats (a comma/period is a natural breath). Returns 0 for an empty line. */
