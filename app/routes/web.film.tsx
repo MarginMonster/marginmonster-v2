@@ -3063,7 +3063,7 @@ export default function FilmStudio() {
       {/* Step 1 — the vibe + length */}
       {/* Describe-first entry — same premium look as the Music Video builder's topic box. */}
       <div className="mm-topic mm-topic-film">
-        <label htmlFor="fs-topic-in">{tmpl?.needsProduct ? t("What's the gag?") : narrated ? t("What's your story about?") : t("What's your movie about?")}</label>
+        <label htmlFor="fs-topic-in">{tmpl?.needsProduct ? t("What's the gag?") : narrated ? t("What's your story about?") : tmpl?.sung ? t("What's your song about?") : t("What's your movie about?")}</label>
         <textarea id="fs-topic-in" rows={3} value={topic} onChange={(e) => setTopic(e.target.value)}
           placeholder={tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={300} />
         {ideaChanged && (seeds || treatment) && <p className="mm-note mm-idea-kept" role="status">{isStoryboard && !narrated ? t("Your script stays as it is — Rewrite to use the new idea.") : t("What you've made stays as it is — start over to use the new idea.")}</p>}
