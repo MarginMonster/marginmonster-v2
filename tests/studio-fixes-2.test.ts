@@ -139,7 +139,7 @@ test("6 — a tab change clears an uploaded photo, not a product picked from the
   const preselect = cut("const didPreselectRef = useRef(false);", "// WHAT IS ON SCREEN, NOT WHAT IS IN THE DATABASE.");
   assert.ok(preselect.includes("setProdSource(\"store\");") && preselect.includes("  }, []);"));
   assert.ok(ui.indexOf("const didPreselectRef = useRef(false);") < ui.indexOf("// Casual tabs (Make / Edit / Music / Faceless) toggle in place too"));
-  type Source = "store" | "upload" | null;
+  type Source = "store" | "upload" | "link" | null;
   const after = (start: Source, queue: Array<Source | ((p: Source) => Source)>) => queue.reduce<Source>((s, u) => (typeof u === "function" ? u(s) : u), start);
   const keepStore = (p: Source): Source => (p === "upload" ? null : p);
   assert.equal(after(null, ["store", null]), null, "what it did: the link's product had no source");
@@ -148,7 +148,10 @@ test("6 — a tab change clears an uploaded photo, not a product picked from the
   assert.equal(after("upload", [keepStore]), null, "…and drops the upload source, whose file was just cleared");
   assert.equal(after(null, [keepStore]), null);
   // why a null source mattered: nothing counts as a product without one, and choosing "store" reads as a switch
-  assert.ok(ui.includes("const hasMarketingProduct = (prodSource === \"store\" && !!imageUrl.trim()) || (prodSource === \"upload\" && (hasFile || !!imageUrl.trim()));"));
+  // (a product read from a pasted link is a third source since 2026-11-22 — tests/studio-product-link.test.ts;
+  //  a tab tap keeps it exactly as it keeps a store pick: only the upload source is dropped)
+  assert.equal(after("link", [keepStore]), "link");
+  assert.ok(ui.includes("const hasMarketingProduct = (prodSource === \"store\" && !!imageUrl.trim()) || (prodSource === \"upload\" && (hasFile || !!imageUrl.trim())) || (prodSource === \"link\" && !!imageUrl.trim());"));
   assert.ok(ui.includes("const chooseStore = () => { if (prodSource !== \"store\") { setImageUrl(\"\"); setPickedUrl(\"\"); } setProdSource(\"store\");"));
 
   // AND IN CREATOR: the same effect clears `hasFile`, which the photo editor shares with the upload source —

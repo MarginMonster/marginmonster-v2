@@ -13,6 +13,7 @@ import { Form, Link, useActionData, useFetcher, useLoaderData, useNavigation, us
 import { LangToggle } from "../components/LangToggle";
 import { normalizeContentLang, CONTENT_LANG_NATIVE } from "../lib/content-lang";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Ico } from "../lib/icons";
 import { editNote } from "../lib/edit-check";
 import { useT } from "../lib/ui-lang";
@@ -2194,7 +2195,9 @@ export default function WebStudio() {
   // Marketing product-source chooser: "From your store" (catalogue grid) vs
   // "Upload a photo" (own image). Default null so the merchant meets a clean
   // two-card choice instead of a 200-row grid dumped on them every time.
-  const [prodSource, setProdSource] = useState<"store" | "upload" | null>(null);
+  // (2026-11-22 — three cards: "link" is "Paste a product link", the product's own page, which we read
+  //  the name and the picture from. It is a source like the other two — see chooseLink.)
+  const [prodSource, setProdSource] = useState<"store" | "upload" | "link" | null>(null);
   // A preview thumbnail of the uploaded product photo — they SEE it before
   // confirming (object URL; revoked on change so blob URLs don't leak).
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
@@ -2564,7 +2567,8 @@ export default function WebStudio() {
   useEffect(() => { if (!(casual && tab === "image" && imageMode === "create")) setCreateStyle(null); }, [casual, tab, imageMode]);
   useEffect(() => { if (!(casual && tab === "music")) setMusicStyle(null); }, [casual, tab]);
   // Import-by-URL (works for any storefront).
-  const [showImport, setShowImport] = useState(false);
+  // (2026-11-22: it was a small "＋ Add by URL" toggle beside the Product name box — `showImport`. It is
+  //  the third product-source card now, "Paste a product link": see chooseLink and linkBranchUI.)
   // Catalogue picker: the chosen product's URL rides along so the social
   // post can deep-link shoppers straight to the buy page.
   const [pickedUrl, setPickedUrl] = useState("");
@@ -2659,9 +2663,15 @@ export default function WebStudio() {
     // pick's URL rode along: the ad went out with a caption linking to a
     // different product than the one in the picture. Here the scraped page IS
     // the right destination, so carry it.
-    // Jump to the "store" source so the imported image actually renders + rides
-    // the submit (productImageUrl only exists on the store/upload branches).
-    if (imp) { setProductTitle(imp.title); setImageUrl(imp.image || ""); setPickedUrl(imp.url || ""); setUrlInput(""); setShowImport(false); setProdSource("store"); }
+    // Jump to the "link" source so the imported image actually renders + rides
+    // the submit (productImageUrl only exists on the store/link/upload branches).
+    // (2026-11-22 — this said "store": the import was a small link beside the name box, and its product
+    //  was then shown as a pick from a store grid it might not even be in. It has a card of its own now,
+    //  "Paste a product link", and its product stays under that card — drawn as a store pick is, and
+    //  submitted in the same three fields. With a picture in hand the box is emptied for the next link
+    //  and the hub's product drawer shuts, as it does on a store pick. With NO picture on the page the
+    //  link stays in the box and the drawer stays open, so the line under the box can say what is missing.)
+    if (imp) { setProductTitle(imp.title); setImageUrl(imp.image || ""); setPickedUrl(imp.url || ""); if (imp.image) { setUrlInput(""); setHubPick(null); } setProdSource("link"); }
   }, [actionData]);
   const importErr = actionData && "importError" in actionData ? (actionData as { importError: string }).importError : null;
 
@@ -3158,6 +3168,21 @@ export default function WebStudio() {
   // tapping the card BE the Choose-File action. The in-branch "Choose a photo"
   // button and the "Not in your store" link reuse chooseUpload without the auto-open.
   const chooseUpload = () => { if (prodSource !== "upload") { setImageUrl(""); setPickedUrl(""); } setProdSource("upload"); setShowConnect(false); };
+  // 2026-11-22 — THE THIRD SOURCE: "Paste a product link". It is the import that sat behind the small
+  // "＋ Add by URL" beside the name box, as a card beside the other two — and it keeps their rule.
+  // Arriving from ANOTHER source drops that source's pick (a store product's picture and buy link, or an
+  // image address typed under "Upload a photo"), so nothing of it can ride a submit under this card; a
+  // tap on the card that is already on wipes nothing. The uploaded FILE goes by the [prodSource] effect,
+  // as it does for the store card. LEAVING this card is covered by the two handlers above, unchanged:
+  // each already drops whatever came from any source but its own.
+  const chooseLink = () => { if (prodSource !== "link") { setImageUrl(""); setPickedUrl(""); } setProdSource("link"); setShowConnect(false); };
+  // The card also puts the cursor in the box — one tap, then paste (as the Upload card IS "Choose
+  // File"). flushSync, so the box is on the page before focus() is called and the call is still part of
+  // the tap: iOS only raises the keyboard then.
+  const linkInputRef = useRef<HTMLInputElement>(null);
+  const pickLinkCard = () => { flushSync(chooseLink); linkInputRef.current?.focus(); };
+  // (moved up from beside onFormSubmit: the chooser further down is built before that point, and calls it)
+  const doImport = () => { if (urlInput.trim()) submit({ intent: "importUrl", url: urlInput.trim() }, { method: "post" }); };
   // Combine: submit the presenter-holding-product frame as a normal image gen
   // (1 image charge, lands in the gallery — the user chose this cost model),
   // then poll for the fresh asset and hold its URL to seed the video. We reuse
@@ -3492,7 +3517,9 @@ export default function WebStudio() {
   // mounted matches: store needs imageUrl, upload needs a file. Trusting a bare
   // hasFile/imageUrl let the panel/Generate show a product whose input wasn't
   // rendered (prodSource desync) → "add a photo" on submit.
-  const hasMarketingProduct = (prodSource === "store" && !!imageUrl.trim()) || (prodSource === "upload" && (hasFile || !!imageUrl.trim()));
+  // (2026-11-22 — the third clause: a product read from a pasted link is an image ADDRESS, exactly as a
+  //  store pick is, and it is submitted by the same hidden productImageUrl — mounted for "link" too.)
+  const hasMarketingProduct = (prodSource === "store" && !!imageUrl.trim()) || (prodSource === "upload" && (hasFile || !!imageUrl.trim())) || (prodSource === "link" && !!imageUrl.trim());
   // Content types that use the compact Combine Hub: avatar/review (base avatar)
   // Only AVATAR video and JINGLE use the combine hub (presenter holds the real
   // product → combine → stylize/animate). Commercial has no presenter;
@@ -3581,6 +3608,39 @@ export default function WebStudio() {
       else wantHeroSound.current = true;        // hero will mount → play with sound then
     }
   };
+  // 2026-11-22 — WHAT "PASTE A PRODUCT LINK" OPENS: one box, one button, and then what the page behind
+  // the link gave us. Built once and shown by whichever chooser is on screen (the hub's or the classic
+  // one — never both), so there is one box and one set of rules for it.
+  //  · The button and Return both run the import that was already here (intent "importUrl") and nothing
+  //    else. The box is not one of the Generate form's fields: form="ws-linkform" hands it to the little
+  //    form of that name at the foot of the page. So Return in it cannot reach Generate or Combine
+  //    whatever a phone's keyboard does, and a half-typed link cannot hold Generate up with the
+  //    browser's own "please enter a URL" (unseen, when the box is inside the hub's closed drawer).
+  //  · A link that cannot be read: the action's own reason, under the box — and the box keeps the link.
+  //  · A product that came back is drawn the way a store pick is: the catalogue tile's white card, green
+  //    edge and tick, with its picture and its name.
+  const importNoPhoto = !!(actionData && "imported" in actionData && !(actionData as { imported: { image: string | null } }).imported.image);
+  const linkBranchUI = (
+    <div className="ws-linkbox">
+      <div className="ws-import ws-linkrow">
+        <input ref={linkInputRef} form="ws-linkform" className="wb-in" type="url" inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="go"
+          aria-label={t("Paste a product link")} placeholder={t("Paste a product link…")} value={urlInput}
+          onChange={(e) => setUrlInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (!busy) doImport(); } }} />
+        <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : t("Import")}</button>
+      </div>
+      {importErr && <p className="ws-note ws-err" role="alert">{importErr}</p>}
+      {!importErr && importNoPhoto && !imageUrl.trim() && (
+        <p className="ws-note ws-warn" role="status">{t("We read the name, but that page has no picture we can use. Try another link, or upload a photo instead.")}</p>
+      )}
+      {!!imageUrl.trim() && (
+        <div className="ws-cat sel ws-linkfound" role="status">
+          <span className="ws-cat-img" style={{ backgroundImage: `url(${imageUrl})` }}><span className="ws-chk">✓</span></span>
+          <b>{productTitle.trim() || t("Your product")}</b>
+        </div>
+      )}
+    </div>
+  );
   // The product source chooser (cards + store grid/connect/import + upload box +
   // the hidden productImageUrl). Defined once and rendered in EITHER the classic
   // step-2 layout OR inside the avatar-video Combine panel — exactly one mounts
@@ -3606,8 +3666,16 @@ export default function WebStudio() {
             <b>{t("Upload a photo")}</b>
             <span>{t("Use your own product image")}</span>
           </button>
+          {/* 2026-11-22: the third way in — the product's own page. Tapping it opens the box below with the
+              cursor already in it (pickLinkCard). */}
+          <button type="button" className={`ws-srccard${prodSource === "link" ? " sel" : ""}`} aria-pressed={prodSource === "link"} onClick={pickLinkCard}>
+            <Ico n="link" size={19} />
+            <b>{t("Paste a product link")}</b>
+            <span>{t("We read the name and photo off the page")}</span>
+          </button>
         </div>
       )}
+      {prodSource === "link" && !serviceForced && linkBranchUI}
       {prodSource === "store" && !serviceForced && d.catalog.length > 0 ? (
         <>
           <div className="ws-lbl">
@@ -3659,8 +3727,10 @@ export default function WebStudio() {
         <div className="ws-connect">
           <b><Ico n="box" /> {t("Bring your whole store in")}</b>
           <p>{t("Paste your store address once and we’ll pull your products in — then you pick one from a grid instead of hunting down a link every time. Your product page link rides along to the post, so shoppers land straight on the buy page.")}</p>
+          {/* (2026-11-22: it said "…a single product link below" — the small link beside the name box. That
+              link is the third card above now, so the sentence points there.) */}
           {!d.catalogSyncing && d.catalogFailed && (
-            <div className="wb-err" style={{ marginBottom: 8 }}><b>{t("That import didn’t work.")}</b> {d.catalogFailed} {t("You can paste a single product link below instead.")}</div>
+            <div className="wb-err" style={{ marginBottom: 8 }}><b>{t("That import didn’t work.")}</b> {d.catalogFailed} {t("You can paste a single product link instead — tap “Paste a product link” above.")}</div>
           )}
           {!d.catalogSyncing && (
             <button type="button" className="wb-btn ghost" onClick={() => setShowConnect(true)}>{t("Connect my store")}</button>
@@ -3685,8 +3755,10 @@ export default function WebStudio() {
       {prodSource === "store" && !serviceForced && (actionData as { catalogError?: string } | null)?.catalogError && (
         <div className="wb-err" style={{ marginTop: 8 }}>{(actionData as { catalogError?: string }).catalogError}</div>
       )}
-      {/* The chosen store image rides to the server as productImageUrl. */}
-      {prodSource === "store" && !serviceForced && <input type="hidden" name="productImageUrl" value={imageUrl} />}
+      {/* The chosen store image rides to the server as productImageUrl.
+          (2026-11-22: and so does the picture of a product read from a pasted link — same field, same
+          one mount. Under "Upload a photo" it is not mounted, so neither can ride with an uploaded file.) */}
+      {(prodSource === "store" || prodSource === "link") && !serviceForced && <input type="hidden" name="productImageUrl" value={imageUrl} />}
       {/* No upload box / "Choose a photo" button / big preview: tapping the
           "Upload a photo" card IS the upload (it opens the picker), and the
           chosen photo shows in the larger product HERO tile above. */}
@@ -3721,6 +3793,8 @@ export default function WebStudio() {
   // even though one looks selected). The "Use last" chip / Add-by-URL import /
   // ?product= preselect all flip prodSource to "store" WITHOUT going through
   // chooseStore, so clear the upload state here whenever we are not on upload.
+  // (2026-11-22: the link import flips it to "link" now, and "Paste a product link" is a card — both
+  //  are "not on upload", so this covers them as it stands.)
   useEffect(() => {
     if (prodSource !== "upload") clearUpload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3789,7 +3863,8 @@ export default function WebStudio() {
     }
   };
 
-  const doImport = () => { if (urlInput.trim()) submit({ intent: "importUrl", url: urlInput.trim() }, { method: "post" }); };
+  // (doImport — the link import's submit — is declared with chooseLink now: the product chooser, which
+  //  is built above this point, calls it. 2026-11-22)
 
   // A casual unsafe-prompt block is shown on the Stage card, so don't ALSO
   // repeat it in the form error line.
@@ -4714,13 +4789,17 @@ export default function WebStudio() {
                   </div>
                 )}
                 <input ref={frameUploadRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => doFrameUpload(e.currentTarget.files?.[0])} />
+                {/* (2026-11-22: three ways in now, so the first line names all three — and the link card has
+                    a line of its own, which used to fall through to "Add a photo…".) */}
                 {needsPhoto && (
                   <p className="ws-note ws-warn" style={{ marginTop: 8 }}>
                     {prodSource === null
-                      ? t("Tap “Add your product” above — from your store, or upload a photo.")
+                      ? t("Tap “Add your product” above — from your store, a product link, or a photo.")
                       : prodSource === "store"
                         ? t("Pick a product from your store so the ad features it.")
-                        : <>{t("Add a photo so the ad features ")}<b>{t("your")}</b>{t(" product.")}</>}
+                        : prodSource === "link"
+                          ? t("Paste your product link above so the ad features it.")
+                          : <>{t("Add a photo so the ad features ")}<b>{t("your")}</b>{t(" product.")}</>}
                   </p>
                 )}
                 {/* Commercial-look removed here (owner): the flag was leaking into
@@ -4810,8 +4889,17 @@ export default function WebStudio() {
                   <b>{t("Upload a photo")}</b>
                   <span>{t("Use your own product image")}</span>
                 </button>
+                {/* 2026-11-22: the third way in — the product's own page (the same card, box and rules as
+                    in the hub's chooser: linkBranchUI is built once). It replaces the small "＋ Add by URL"
+                    that sat on the Product name label a little further down this same step. */}
+                <button type="button" className={`ws-srccard${prodSource === "link" ? " sel" : ""}`} aria-pressed={prodSource === "link"} onClick={pickLinkCard}>
+                  <Ico n="link" size={19} />
+                  <b>{t("Paste a product link")}</b>
+                  <span>{t("We read the name and photo off the page")}</span>
+                </button>
               </div>
             )}
+            {prodSource === "link" && !serviceForced && linkBranchUI}
 
             {/* ---- Catalogue picker ----
                 Pasting a link and retyping the title on every generation is a
@@ -4871,9 +4959,11 @@ export default function WebStudio() {
                 <p>{t("Paste your store address once and we’ll pull your products in — then you pick one from a grid instead of hunting down a link every time. Your product page link rides along to the post, so shoppers land straight on the buy page.")}</p>
                 {/* A failed import otherwise showed only on the Import tab, so a
                     merchant who came straight here to generate had no idea why
-                    their store never appeared. */}
+                    their store never appeared.
+                    (2026-11-22: it ended "…a single product link below" — the small link on the Product
+                    name label. That link is the third card above now, so the sentence points there.) */}
                 {!d.catalogSyncing && d.catalogFailed && (
-                  <div className="wb-err" style={{ marginBottom: 8 }}><b>{t("That import didn’t work.")}</b> {d.catalogFailed} {t("You can paste a single product link below instead.")}</div>
+                  <div className="wb-err" style={{ marginBottom: 8 }}><b>{t("That import didn’t work.")}</b> {d.catalogFailed} {t("You can paste a single product link instead — tap “Paste a product link” above.")}</div>
                 )}
                 {!d.catalogSyncing && (
                   <button type="button" className="wb-btn ghost" onClick={() => setShowConnect(true)}>{t("Connect my store")}</button>
@@ -4891,8 +4981,10 @@ export default function WebStudio() {
                 </button>
               </div>
             )}
-            {/* The chosen store image rides to the server as productImageUrl. */}
-            {prodSource === "store" && !serviceForced && <input type="hidden" name="productImageUrl" value={imageUrl} />}
+            {/* The chosen store image rides to the server as productImageUrl.
+                (2026-11-22: and so does the picture of a product read from a pasted link — same field. The
+                upload branch below has its own, visible one, so exactly one is ever on the page.) */}
+            {(prodSource === "store" || prodSource === "link") && !serviceForced && <input type="hidden" name="productImageUrl" value={imageUrl} />}
 
             {/* ---- Upload branch ---- own photo, with a live preview so they SEE
                 it before confirming, plus the "or paste a URL" fallback. The file
@@ -4937,25 +5029,13 @@ export default function WebStudio() {
             )}
             {pickedUrl ? <input type="hidden" name="productUrl" value={pickedUrl} /> : null}
 
-            {/* Product name + "Add by URL" (import a product by link) is a
-                selling/catalogue concept — marketing only. In casual the field
-                above IS the "describe anything" subject box, labelled by its
-                StepHead, so this row would only confuse a creator. */}
-            {!casual && (
-              <>
-                <div className="ws-lbl"><span>{t("Product name")}</span>
-                  <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? t("Cancel") : <>＋ {t("Add by URL")}</>}</button>
-                </div>
-                {showImport && (
-                  <div className="ws-import">
-                    <input className="wb-in" type="url" value={urlInput} placeholder={t("Paste a product link…")} onChange={(e) => setUrlInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && urlInput.trim()) { e.preventDefault(); doImport(); } }} />
-                    <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : t("Import")}</button>
-                  </div>
-                )}
-                {importErr && <p className="ws-note ws-err">{importErr}</p>}
-              </>
-            )}
+            {/* The Product name label is a selling/catalogue concept — marketing
+                only. In casual the field above IS the "describe anything" subject
+                box, labelled by its StepHead, so this row would only confuse a creator.
+                (2026-11-22: a small "＋ Add by URL" sat on this label, with its own box and error line. It
+                is the "Paste a product link" card of the chooser just above now — the same import. Two
+                controls an inch apart were one decision: where the product comes from.) */}
+            {!casual && <div className="ws-lbl"><span>{t("Product name")}</span></div>}
             {/* setPickedUrl("") because no URL is remembered with the last
                 product — the previous pick's link must not survive the swap. */}
             {!casual && prodSource === "store" && lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
@@ -4971,13 +5051,17 @@ export default function WebStudio() {
                 store pick carries its image, the upload card shows a file input
                 + live preview. All that's left here is the nudge for when
                 neither path has produced a photo yet. */}
+            {/* (2026-11-22: three ways in now, so the first line names all three — and the link card has a
+                line of its own, which used to fall through to "Add a photo…".) */}
             {needsPhoto && (
               <p className="ws-note ws-warn">
                 {prodSource === null
-                  ? t("Pick where your product comes from above — choose from your store, or upload a photo.")
+                  ? t("Pick where your product comes from above — your store, a product link, or a photo.")
                   : prodSource === "store"
                     ? t("Pick a product from your store above so the ad features it.")
-                    : <>{t("Add a photo so the ad features ")}<b>{t("your")}</b>{t(" product — without one we’d be inventing a product from the name. Promoting a service? Switch to ")}<b>{t("Service / offer")}</b>{t(" below.")}</>}
+                    : prodSource === "link"
+                      ? t("Paste your product link above so the ad features it.")
+                      : <>{t("Add a photo so the ad features ")}<b>{t("your")}</b>{t(" product — without one we’d be inventing a product from the name. Promoting a service? Switch to ")}<b>{t("Service / offer")}</b>{t(" below.")}</>}
               </p>
             )}
 
@@ -5126,17 +5210,11 @@ export default function WebStudio() {
               )
             ) : (
               <>
-                <div className="ws-lbl"><span>{t("Product name")}</span>
-                  <button type="button" className="ws-addurl" onClick={() => setShowImport((s) => !s)}>{showImport ? t("Cancel") : <>＋ {t("Add by URL")}</>}</button>
-                </div>
-                {showImport && (
-                  <div className="ws-import">
-                    <input className="wb-in" type="url" value={urlInput} placeholder={t("Paste a product link…")} onChange={(e) => setUrlInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && urlInput.trim()) { e.preventDefault(); doImport(); } }} />
-                    <button type="button" className="wb-btn ws-impbtn" disabled={busy || !urlInput.trim()} onClick={doImport}>{busy ? "…" : t("Import")}</button>
-                  </div>
-                )}
-                {importErr && <p className="ws-note ws-err">{importErr}</p>}
+                {/* (2026-11-22: a small "＋ Add by URL" sat on this label too. Down here — under the scene,
+                    beside the NAME — it replaced the whole product, and with it an approved Combine frame.
+                    Changing the product is the product tile's job ("Tap to change"), and the link is the
+                    third card in the chooser that tile opens.) */}
+                <div className="ws-lbl"><span>{t("Product name")}</span></div>
                 {prodSource === "store" && lastProd && lastProd.title && lastProd.title !== productTitle.trim() && (
                   <button type="button" className="ws-chip ws-lastchip" onClick={() => { setProductTitle(lastProd.title); setImageUrl(lastProd.image || ""); setPickedUrl(""); setProdSource("store"); }}>
                     ↺ {t("Use last: {title}", { title: lastProd.title })}
@@ -6067,6 +6145,13 @@ export default function WebStudio() {
         </section>
       )}
 
+      {/* 2026-11-22 — the form the "Paste a product link" box belongs to (its form="ws-linkform"), out here
+          beside the big one rather than inside it. It has no fields of its own and nothing to send: it
+          exists so that the box is NOT a field of the Generate form. Whatever a keyboard does with
+          Return / Go in that box, the only thing it can submit is this — the free import. noValidate:
+          the action reads "yourstore.com/products/mug" without the https://, the browser's check would not. */}
+      <form id="ws-linkform" hidden noValidate onSubmit={(e) => { e.preventDefault(); if (!busy) doImport(); }} />
+
       <CharacterForge open={forgeOpen} onClose={closeForge} />
 
       {manageOpen && <ManagePresenters presenters={d.myPresenters} myVoices={d.myVoices} canMakeVoice={d.canMakeVoice} onClose={() => setManageOpen(false)} />}
@@ -6376,8 +6461,10 @@ ${FORGE_CSS}
 .ws-addurl{border:0;background:none;color:var(--green);font-weight:700;font-size:12px;cursor:pointer;padding:0;margin-left:auto}
 .ws-uploadown{margin:7px 0 2px;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:6px 11px;border:1px dashed #BFE2CD;border-radius:9px;background:#F0FAF4;}
 .ws-uploadown svg{flex:0 0 auto}
-/* Product-source chooser — two side-by-side cards (store vs upload). */
-.ws-srcpick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:4px 0 12px}
+/* Product-source chooser — side-by-side cards. (2026-11-22: three of them — store · photo · link — where
+   there were two. minmax(0,1fr), so a long word in another language wraps inside its card instead of
+   pushing the row wider than the page.) */
+.ws-srcpick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:4px 0 12px}
 .ws-srccard{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:13px 14px;border-radius:14px;border:1.5px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s;min-height:44px}
 .ws-srccard svg{color:var(--green);margin-bottom:3px}
 .ws-srccard b{font-size:14px;color:var(--ink,#14201A);font-weight:700}
@@ -6396,6 +6483,30 @@ ${FORGE_CSS}
 .ws-upclear{position:absolute;top:8px;inset-inline-end:8px;border:0;border-radius:999px;background:rgba(11,18,14,.72);color:#eafff4;font-size:11.5px;font-weight:700;padding:5px 11px;cursor:pointer}
 .ws-upclear:hover{background:rgba(11,18,14,.9)}
 @media (max-width:420px){.ws-srccard span{font-size:11px}}
+/* 2026-11-22 — on a phone three cards across are about 95px each, and their second line breaks into
+   four. One per row instead, the icon beside the words: three equal places to tap, 58px each. (The two
+   side-by-side tiles were held at 76px by the tap-target block near the end of this sheet; three rows
+   of that pushed the picker most of a screen down, so that line is gone and the height is set here.) */
+@media (max-width:620px){
+  .ws-srcpick{grid-template-columns:minmax(0,1fr);gap:8px}
+  .ws-srccard{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:12px;row-gap:1px;align-content:center;align-items:center;min-height:58px;padding:10px 14px}
+  .ws-srccard svg{grid-row:1 / span 2;margin-bottom:0}
+}
+/* "Paste a product link" — the box under the third card, and the product the link gave us. The row is
+   the page's own link row (.ws-import: the box takes the width, .ws-impbtn is 44px tall); the box is a
+   .wb-in, so it is typed in at 16px and iOS does not zoom. The found product borrows the catalogue tile
+   (.ws-cat.sel — white card, green edge, the tick on the picture) so it reads the way a store pick
+   does; it lies on its side, and it is not a button, so it does not lift under the pointer. */
+.ws-linkbox{margin:0 0 6px}
+.ws-linkfound{display:grid;grid-template-columns:76px minmax(0,1fr);align-items:center;column-gap:12px;max-width:420px;padding:0;margin:10px 0 0;cursor:default}
+.ws-linkfound:hover{transform:none;border-color:var(--green2);box-shadow:0 0 0 1px var(--green2),0 6px 16px rgba(12,122,70,.16)}
+.ws-linkfound b{padding:0 12px 0 0;font-size:13px;-webkit-line-clamp:3}
+@media (max-width:620px){
+  /* the link gets the whole row; the button, a full-width place to tap under it */
+  .ws-linkrow{flex-direction:column}
+  .ws-linkrow .wb-in{flex:0 0 auto}
+  .ws-linkrow .ws-impbtn{width:100%}
+}
 /* Avatar-video hub — presenter + product as two tap-tiles; each picker reveals
    inline. .ws-hub-reveal is display:contents so wrapping the chooser changes no
    layout; the [hidden] rule MUST re-assert display:none, because author
@@ -7048,7 +7159,8 @@ ${FORGE_CSS}
   .ws-seg button{min-height:44px;display:inline-flex;align-items:center}
   .ws-model{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
   .ws-upclear{min-height:44px;padding-top:11px;padding-bottom:11px}
-  .ws-srccard{min-height:76px}
+  /* (.ws-srccard was held at 76px here — two tiles side by side. 2026-11-22: there are three source
+     cards now, one per row on a phone at 58px; their phone rule is with the cards' own.) */
   /* Manage presenters — none of it was in this block: Voice / trash / Delete were ~30px tall and Keep
      ~27px, and Close is a 32px disc. The row buttons grow; Close keeps its size and gets a 44px hit area
      (it is already position:absolute, so the ::after anchors to it). */
