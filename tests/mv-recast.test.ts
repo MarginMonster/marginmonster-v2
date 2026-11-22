@@ -146,7 +146,7 @@ test("the page: the Cast editor says who is in the scene, the re-roll rewrites t
   assert.ok(ui.includes("...(who ? { sceneWho: JSON.stringify(who) } : {})"));
   assert.equal(ui.split("sceneWho: JSON.stringify(who)").length - 1, 1);
   // THE ACTION: reads it carefully, rewrites, draws from the NEW words, and hands them back
-  const act = ui.slice(ui.indexOf("if (intent === \"rerollFilmScene\") {"), ui.indexOf("if (intent === \"rerollFilmScene\") {") + 5200);
+  const act = ui.slice(ui.indexOf("if (intent === \"rerollFilmScene\") {"), ui.indexOf("if (intent === \"rerollFilmScene\") {") + 6400); // (6400: the story formats' re-roll now reads its cast words and its place ahead of the return)
   assert.ok(act.includes("const who = parseSceneWho(form.get(\"sceneWho\") as string);"));
   assert.ok(act.includes("const { recastSceneText } = await import(\"../lib/mv-recast.server\");"));
   assert.ok(act.includes("const rc = await recastSceneText(sceneVisual, who, rerollKind === \"perform\");"));
