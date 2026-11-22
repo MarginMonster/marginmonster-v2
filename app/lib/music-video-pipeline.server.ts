@@ -31,7 +31,7 @@ import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, PROPS, type FilmTreatment } from "./film-engine.server";
 import { singToDisk } from "./music-generation.server";
 import { ensureVoiceModel, coverSongInVoice, matchLoudness } from "./singing-voice.server";
-import { MV_MAX_SECONDS, beatTimes, defaultRole, editPlan, paceFor, planFilter, sceneSecondsOf, shotSlot, type Cut, type Pace } from "./mv-pace";
+import { MV_MAX_SECONDS, beatTimes, defaultRole, editPlan, paceFor, planFilter, sceneSecondsOf, shotSlot, shotTimes, type Cut, type Pace } from "./mv-pace";
 import {
   CAST_PROMPT_MAX, MAX_COSTARS, MIC_MOTION_LINE, NO_NEW_MIC_LINE, SOLO_EDIT_MAX,
   castCheckPrompt, castFaults, castFix, castMotionLine, castStillPrompt, micFits, parseCastCheck, sceneCast, singerOf, soloEditPrompt, soloStillPrompt,
@@ -40,7 +40,6 @@ import {
 import { FEATURE_VOCAL_TRIM_DB, bestLag, featureMixFilter, featuredIn, octaveShiftFor, pitchChangeOf, vocalGaps, voiceWindows, type Gap, type VoiceWindow } from "./mv-feature";
 import { FILL_FRAME, RIDE_CAM, hasBars, momentLine, rideFrame, rideScene, senseMotion, senseStill } from "./mv-sense";
 import { medianHz, trackF0 } from "./pitch";
-import { sceneLineTimes } from "./lyric-sync";
 import { fitLyricLines, introCut, levelGain, songEngineFor } from "./mv-song";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -908,25 +907,26 @@ async function songVocalPitch(songPath: string, windows: Array<{ start: number; 
  *  when the takes could not be made (the caller keeps the song as it was). */
 async function mixFeaturedVoices(o: {
   songPath: string; base: string; singers: number[]; roles: Array<"perform" | "broll">; D: number;
-  /** the scenes (for their lyric lines) — absent for a track the maker brought, whose words are not ours */
-  scenes?: Array<{ caption?: string }>;
+  /** when each scene's own clip is really on screen in the finished edit (mv-pace.ts shotTimes) */
+  shots?: Array<{ start: number; end: number } | null>;
   /** `gender` decides which octave their verse is sung in (with where the song sits); `speechPitch` =
    *  the speaking signature their voice is cast at, which their voice model is learned at */
   featured: Array<{ who: number; name: string; voiceId: string; gender?: "m" | "f"; speechPitch?: number }>;
 }): Promise<{ path: string; names: string[]; windows: VoiceWindow[] } | null> {
   const total = o.singers.length * o.D;
   const songUrl = await hostRender(o.base, o.songPath);
-  // 1) the words as they are sung: the breaths between them (so one voice hands over to the other
-  //    between words), and where each scene's own lines fall (so a co-star comes in on THEIR first
-  //    line). Not hearing them is no failure: the voice then changes exactly where the scenes do.
+  // 1) the words as they are sung, for the breaths between them: the voice changes on the cut into and
+  //    out of the co-star's own shot, nudged to a breath when one is close by (mv-feature.ts
+  //    voiceWindows). Not hearing them is no failure: the voice then changes exactly on the cut.
+  //    (Where the co-star's WRITTEN lines fell used to steer this too. It no longer does: a song that
+  //    ran behind its scenes pulled her voice out over eleven seconds of the artist's face.)
   let gaps: Gap[] = [];
-  let sung: Array<{ scene: number; start: number; end: number }> = [];
   try {
     const heard = wordsFromWhisperx(await repPoll(await createWhisperx(songUrl, null), 4 * 60_000, "feature-words"));
     gaps = vocalGaps(heard);
-    sung = sceneLineTimes(o.scenes || [], heard);
-  } catch (e) { console.error(`[musicvideo] could not hear the words for the featured verse — the voice changes on the scene: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
-  const windows = voiceWindows({ singers: o.singers, roles: o.roles, D: o.D, gaps, sung });
+  } catch (e) { console.error(`[musicvideo] could not hear the words for the featured verse — the voice changes on the cut: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+  const windows = voiceWindows({ singers: o.singers, roles: o.roles, D: o.D, gaps, shots: o.shots });
+  console.log(`[musicvideo] featured voice: ${windows.map((w) => `co-star ${w.who + 1} ${w.start.toFixed(2)}–${w.end.toFixed(2)} s`).join(", ") || "nobody is seen singing a verse"}`);
   const singing = o.featured.filter((f) => windows.some((w) => w.who === f.who));
   if (!singing.length) return null;
   // 2) each co-star's take of the whole song, side by side (a voice is learned once, then kept)
@@ -1130,6 +1130,13 @@ export async function generateMusicVideo(opts: {
   const roles = scenes.map((s, i) => shotFor(s, i, scenes.length, D).role);
   const featuredWho = featuredIn(singers);
   let featuredNames: string[] = [];
+  // THE PACE, and the song's beats — found once, here, on the finished lead track, and used twice: for the
+  // edit made after the clips are rendered, and (first) to know WHEN each performance will really be on
+  // screen. A paced edit moves its cuts onto the beat, so a shot dealt 15–20 s may run 15.0–19.75, and a
+  // featured co-star's voice goes with the picture, not the grid. (A re-voiced take is the same music:
+  // the same beats.)
+  const pace: Pace = paceFor(genre, opts.pace);
+  const beats: number[] = pace !== "slow" ? await songBeats(songPath) : [];
   if (featuredWho.length) {
     if (resume.ckSongFeat && fs.existsSync(resume.ckSongFeat)) { songPath = resume.ckSongFeat; featuredNames = (resume.ckFeatNames || "").split("|").filter(Boolean); }
     else {
@@ -1140,7 +1147,7 @@ export async function generateMusicVideo(opts: {
       for (let attempt = 0; attempt < 2 && cast.length && !featuredNames.length; attempt++) {
         try {
           const t0 = Date.now();
-          const mixed = await mixFeaturedVoices({ songPath, base, singers, roles, D, featured: cast, scenes: opts.songUrl ? undefined : scenes });
+          const mixed = await mixFeaturedVoices({ songPath, base, singers, roles, D, featured: cast, shots: shotTimes(editPlan(roles, D, pace, beats), roles.length) });
           if (!mixed) break; // nothing of theirs to hear (their scenes were removed)
           songPath = mixed.path;
           featuredNames = mixed.names;
@@ -1222,11 +1229,17 @@ export async function generateMusicVideo(opts: {
     const motionPrompt = shot.role === "perform"
       ? `A premium ${g.label} music video. ${fr.frame}. The camera does ${fr.cam}. The artist ${g.perform}. Keep the movement NATURAL and VARIED — do NOT repeat the same gesture over and over, no exaggerated or aggressive motions, and no angry or snarling faces. Keep the artist's head mostly steady and facing camera so the singing reads clearly and the lips stay in sync with the vocals.${closeupSteady}${fr.ride ? senseMotion(_s.visual) : ""}${keepProp}${MIC_MOTION_LINE} ${same}; photoreal, cinematic, high-production.${who}`
       : `A premium ${g.label} music video — cinematic B-ROLL: ${fr.ride ? "a close shot from inside the car" : shot.kind}.${momentLine(_s.visual)} The camera does ${fr.cam}.${senseMotion(_s.visual)} The motion is natural and flowing — nothing repeated, nothing jittery. Nobody sings, talks or mouths words: every mouth stays closed or in a quiet smile.${keepProp}${NO_NEW_MIC_LINE} ${same}; photoreal, cinematic, high-production.${who}`;
+    // A CUT SCENE'S FACES DO NOT TALK. The video model moves any mouth it can see: a co-star turned to
+    // camera and talked through the opening shot, and the artist's mouth worked away on a parked car while
+    // the co-star's verse was playing (the owner: "the male singing some of the female lines"). Saying so
+    // in the prompt was not enough; the model's NEGATIVE prompt is where it listens — the cartoon ads keep
+    // their presenters quiet the same way. A performance is left alone: its mouth is re-driven to the song.
+    const quietFaces = shot.role === "perform" ? "" : "talking, speaking, singing, lip sync, lips moving, mouth opening, open mouth, object disappearing, flickering, morphing, distortion, extra fingers, deformed hands, text, watermark";
     for (const i2vModel of [I2V_MODEL, I2V_FALLBACK, I2V_MODEL, I2V_FALLBACK]) { // TWO passes — a transient i2v/mux blip shouldn't drop a whole scene to a static still (owner: "first cutscene is a still not video")
       try {
         // silent motion clip — primary engine, then the backup if it blips (so a provider outage
         // can't still a whole scene the way it once stilled an entire render)
-        const reqId = await falVideoSubmit(i2vModel, { startImage: imgAbs, prompt: motionPrompt, durationSec: D, generateAudio: false });
+        const reqId = await falVideoSubmit(i2vModel, { startImage: imgAbs, prompt: motionPrompt, durationSec: D, generateAudio: false, ...(quietFaces ? { negativePrompt: quietFaces } : {}) });
         const motionUrl = await falVideoPoll(i2vModel, reqId, 12 * 60_000);
         const out = path.join(RENDERS(), `mv-${Date.now()}-${i}-${rid()}.mp4`);
         if (shot.role === "perform") {
@@ -1265,12 +1278,12 @@ export async function generateMusicVideo(opts: {
   const good = clips.filter((c): c is string => !!c);
   // PACE — cut what was rendered to the genre's pace (or the maker's pick). Roles are read off the scenes
   // that actually made it, in order, so the list always describes the clips being joined.
-  const pace: Pace = paceFor(genre, opts.pace);
   const keptRoles = clips.map((c, i) => (c ? shotFor(scenes[i], i, scenes.length, D).role : null)).filter((r): r is "perform" | "broll" => !!r);
   // only when nothing was dropped: with a scene missing, later performance clips no longer sit at their
   // own place in the song, and an edit built on "its own place" would be built on sand
   // …and a paced edit cuts ON the song's beat (slow keeps every clip whole, so there is nothing to move)
-  const onBeat = good.length === scenes.length && pace !== "slow" ? await songBeats(songPath) : [];
+  // (the beats found before the featured verse was mixed: the edit is the one that mix was timed to)
+  const onBeat = good.length === scenes.length && pace !== "slow" ? beats : [];
   const cuts = good.length === scenes.length ? editPlan(keptRoles, D, pace, onBeat) : undefined;
   if (!good.length) {
     const nullImgs = sceneImgs.filter((x) => !x).length;

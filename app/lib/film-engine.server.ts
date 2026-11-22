@@ -511,19 +511,19 @@ export async function previewFilmTreatment(opts: {
   // ("KEIKO sings to camera alone…") and the artist singing in the scene that was dealt to her
   // (2026-11-22). One plan, said before and used after.
   const featPlan: number[] = featured.length ? defaultFeaturePlan(roles, sceneSec, featured.map((n) => castList.indexOf(n))) : [];
+  // (a co-star's verse is a PERFORMANCE of theirs and nothing else — they are heard only while they are
+  //  seen singing: mv-feature.ts voiceWindows)
   const shotLine = (i: number): string => {
-    const note = SHOT_NOTES[shotSlot(roles[i], i)];
-    const who = featPlan[i] >= 0 ? castList[featPlan[i]] : "";
-    if (!who) return `  ${i + 1}. ${note}`;
-    return roles[i] === "perform"
+    const who = roles[i] === "perform" && featPlan[i] >= 0 ? castList[featPlan[i]] : "";
+    return who
       ? `  ${i + 1}. PERFORMANCE — ${who}'S VERSE: ${who} sings straight to camera, ALONE in the shot (the artist is not in it); "singer": "${who}"`
-      : `  ${i + 1}. ${note} — ${who}'S VERSE goes on over it (their voice; nobody sings to camera); "singer": "${who}"`;
+      : `  ${i + 1}. ${SHOT_NOTES[shotSlot(roles[i], i)]}`;
   };
   const shotPlan = tmpl.lipSyncSinger ? Array.from({ length: scenes }, (_, i) => shotLine(i)).join("\n") : "";
   const hasCoStars = castNames.length > 0;
   const featNames = featured.join(" and ");
   const featLine = featured.length
-    ? `A FEATURED VERSE — ${featNames} ${featured.length === 1 ? "sings" : "each sing"} part of this song, like a featured artist on a real record. The scenes marked "…'S VERSE" in the shot list ARE that verse: set "singer" to their exact name in each of them and in no other scene. The lyric lines of those scenes are THEIR words, in their own voice: their side of the story, answering the artist. Every other scene is the artist's — leave "singer" out of it. End the title with "(feat. ${featNames})".\n`
+    ? `A FEATURED VERSE — ${featNames} ${featured.length === 1 ? "sings" : "each sing"} part of this song, like a featured artist on a real record. The scene marked "…'S VERSE" in the shot list IS that verse: set "singer" to their exact name in it and in no other scene. Its lyric lines are THEIR words, in their own voice: their side of the story, answering the artist — a complete thought that starts and ends inside that one scene, because they are heard only while they are on screen. Every other scene is the artist's — leave "singer" out of it. End the title with "(feat. ${featNames})".\n`
     : "";
   const captionLine = tmpl.lipSyncSinger
     ? `\nWrite a catchy ${genreLabel} SONG for ONE artist${featured.length ? `, with a featured verse by ${featNames}` : ""}, plus ${scenes} VIDEO SCENE${scenes === 1 ? "" : "S"} of ${sceneSec} seconds each. ${songShape} Return EXACTLY ${scenes} scene${scenes === 1 ? "" : "s"}. Each scene has TWO fields${featured.length ? ` (and "singer" where it is not the artist)` : ""}:\n` +

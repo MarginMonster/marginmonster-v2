@@ -6,8 +6,8 @@
  * The song is one track. A second take of it is re-voiced as the co-star, and the two are cross-faded so
  * the co-star's take is heard for their verse; in their performance scenes it is the co-star on camera.
  * These pin the rules that make that watchable:
- *   - nobody is ever SEEN singing in somebody else's voice (the voice changes only between the two
- *     singers' performances, and in a breath between words);
+ *   - a singer is HEARD only while they are SEEN singing: a co-star's voice is their own performance
+ *     shot, nudged to a breath when one is close to the cut — and every cut scene is the artist's;
  *   - the music under the voices never dips, doubles or flutters at a hand-over;
  *   - a co-star's verse is one they are seen singing, and the artist still sings their own song;
  *   - the finished track is exactly the length that was picked. */
@@ -20,13 +20,13 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  ARTIST, FEATURE_MIN_SECONDS, OCTAVE_MARGIN, SING_CENTRE, TYPICAL_LEAD_HZ,
+  ARTIST, FEATURE_MIN_SECONDS, HANDOVER_REACH, OCTAVE_MARGIN, SING_CENTRE, TYPICAL_LEAD_HZ,
   bestLag, defaultFeaturePlan, envelopeExpr, featureMixFilter, featureRoles, featuredIn, octaveShiftFor, pitchChangeOf, planIsSound, vocalGaps, voiceWindows,
   type Gap,
 } from "../app/lib/mv-feature.ts";
 import { sceneCast, singerOf } from "../app/lib/mv-cast.ts";
 import { sceneLineTimes } from "../app/lib/lyric-sync.ts";
-import { SHOT_ROLES, defaultRole, sceneCountFor, shotSlot, type ShotRole } from "../app/lib/mv-pace.ts";
+import { SHOT_ROLES, defaultRole, editPlan, sceneCountFor, shotSlot, shotTimes, type ShotRole } from "../app/lib/mv-pace.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8");
@@ -58,7 +58,8 @@ test("a co-star leads their own performance — alone unless the maker puts some
   assert.deepEqual(sceneCast({ scene: { visual: "A rooftop", singer: "KEIKO" }, role: P, slot: 3, names, listed: [-1, 0] }), { lead: 1, others: [-1, 0] });
   // she is never beside herself
   assert.deepEqual(sceneCast({ scene: { singer: "KEIKO" }, role: P, slot: 3, names, listed: [1, 0, 1] }), { lead: 1, others: [0] });
-  // a CUT SCENE in her verse has no singer on camera: the artist's shot as always, her voice over it
+  // a CUT SCENE has no singer on camera, whatever mark it carries: the artist's shot as always (and the
+  // artist's voice — a co-star is heard only in a performance of their own)
   assert.deepEqual(sceneCast({ scene: { visual: "The skyline", singer: "KEIKO" }, role: B, slot: 0, names }), { lead: -1, others: [] });
   assert.deepEqual(sceneCast({ scene: { visual: "KEIKO walks the pier", singer: "KEIKO" }, role: B, slot: 5, names }), { lead: -1, others: [1] });
   // the maker's pick for an artist-led scene never lists the artist beside the artist, never more than two
@@ -84,78 +85,59 @@ test("the breaths in a song are the silences between its words", () => {
   assert.equal(vocalGaps(words, 1.0).length, 1, "a longer breath can be asked for");
 });
 
-test("the voice changes between the two singers' performances, in a breath — never over a singer's shot", () => {
-  // 30 seconds fast: cut, PERFORM (artist), cut, PERFORM (co-star), cut (co-star), cut
+test("a co-star is heard while they are seen singing — and at no other time", () => {
+  // 30 seconds fast: cut, PERFORM (artist), cut, PERFORM (co-star), cut, cut
   const roles: ShotRole[] = [B, P, B, P, B, B];
-  const singers = [ARTIST, ARTIST, ARTIST, 0, 0, ARTIST];
-  const gaps = breaths(0.7, 30, 2.3); // 0.7, 3.0, 5.3, 7.6, 9.9, 12.2, 14.5, 16.8, 19.1, 21.4, 23.7, 26.0, 28.3
-  const w = voiceWindows({ singers, roles, D: 5, gaps });
-  assert.equal(w.length, 1);
-  assert.equal(w[0].who, 0);
-  // IN: after the artist's performance ends (10s), before the co-star's begins (15s), at the breath
-  // nearest to where the scenes change — 14.5
-  assert.ok(Math.abs(w[0].start - 14.5) < 1e-9, `in at ${w[0].start}`);
-  assert.ok(w[0].start >= 10 && w[0].start <= 15);
-  // OUT: after the co-star's performance ends (20s), at the breath nearest the end of their verse (25s)
-  assert.ok(Math.abs(w[0].end - 26.0) < 1e-9 || Math.abs(w[0].end - 23.7) < 1e-9, `out at ${w[0].end}`);
-  assert.ok(w[0].end >= 20);
-  // their whole performance is inside their voice
-  assert.ok(w[0].start <= 15 && w[0].end >= 20);
+  const singers = [ARTIST, ARTIST, ARTIST, 0, ARTIST, ARTIST];
+  // no breaths known: exactly their shot
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5 }), [{ who: 0, start: 15, end: 20 }]);
+  // a breath close to the cut, on the cut-scene side, is taken — so nobody hands over mid-word…
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, gaps: [{ t: 14.7, gap: 0.4 }, { t: 20.3, gap: 0.4 }] }), [{ who: 0, start: 14.7, end: 20.3 }]);
+  // …a breath further off than HANDOVER_REACH is not: the voice changes on the cut
+  assert.equal(HANDOVER_REACH, 0.45);
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, gaps: [{ t: 11.7, gap: 0.5 }, { t: 13.9, gap: 0.5 }, { t: 21.0, gap: 0.5 }, { t: 27.8, gap: 0.5 }] }), [{ who: 0, start: 15, end: 20 }]);
+  // …and one INSIDE their shot may only be a hair in: it is their mouth on screen
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, gaps: [{ t: 15.1, gap: 0.4 }, { t: 15.4, gap: 0.4 }, { t: 19.6, gap: 0.4 }, { t: 19.95, gap: 0.4 }] }), [{ who: 0, start: 15.1, end: 19.95 }]);
 
-  // every length and pace, the verse dealt by rule: nobody is ever SEEN singing in another's voice
+  // THE VIDEO ("Midnight Mile", 2026-11-22): the plan gave her the cut scene after her performance as
+  // well, the change was aimed at where her written lines were sung, and the song — a little behind its
+  // scenes — had breaths at 11.7 s and 27.8 s and few between. Her voice ran from 11.7 s to 27.8 s:
+  // sixteen seconds, under five of them with her on screen. For the rest the picture was the ARTIST, on
+  // a car and walking, his mouth moving — the owner: "the male singing some of the female lines".
+  const thatPlan = [ARTIST, ARTIST, ARTIST, 0, 0, ARTIST];
+  const thatSong = [{ t: 2.4, gap: 0.5 }, { t: 6.2, gap: 0.5 }, { t: 10.2, gap: 0.5 }, { t: 11.7, gap: 0.5 }, { t: 27.8, gap: 0.5 }];
+  assert.deepEqual(voiceWindows({ singers: thatPlan, roles, D: 5, gaps: thatSong }), [{ who: 0, start: 15, end: 20 }], "her shot and only her shot — a cut scene marked as hers is still the artist's voice");
+
+  // every length and pace, the verse dealt by rule: at every moment of every scene the voice heard is
+  // the voice of whoever is SEEN singing — and in a cut scene it is always the artist's
   for (const s of [20, 30, 60, 90, 120]) for (const sec of [5, 10]) {
     const n = sceneCountFor(s, sec);
     const r = featureRoles(cadence(n, sec));
     for (const feat of [[0], [0, 1]]) {
       const plan = defaultFeaturePlan(r, sec, feat);
-      for (const every of [0, 1.7, 2.3, 4.1]) {
+      for (const every of [0, 0.9, 1.7, 2.3, 4.1]) {
         const g = every ? breaths(0.4, s, every) : [];
         const wins = voiceWindows({ singers: plan, roles: r, D: sec, gaps: g });
         const voiceAt = (t: number): number => { const hit = wins.find((x) => t >= x.start && t < x.end); return hit ? hit.who : ARTIST; };
         r.forEach((role, i) => {
-          if (role !== P) return;
-          // sample the scene: the voice heard is the voice of whoever is on camera. (Two singers'
-          // performances BACK TO BACK — only the 20-second video of two ten-second scenes — have no cut
-          // scene to change in: there the voice may change at a breath up to 0.75s either side of the cut.)
-          const tight = (j: number) => j >= 0 && j < r.length && r[j] === P && plan[j] !== plan[i];
-          const from = i * sec + (tight(i - 1) ? 0.76 : 0.02), to = (i + 1) * sec - (tight(i + 1) ? 0.76 : 0.02);
-          for (let k = 0; k <= 10; k++) { const t = from + (k / 10) * (to - from); assert.equal(voiceAt(t), plan[i], `${s}s/${sec}s feat=${feat} every=${every}: scene ${i} at ${t.toFixed(2)}s`); }
+          const want = role === P ? plan[i] : ARTIST;
+          // (a hand-over may sit up to HANDOVER_REACH into a cut scene, and only a hair into a performance)
+          const pad = role === P ? 0.13 : HANDOVER_REACH + 0.01;
+          for (let k = 0; k <= 10; k++) { const t = i * sec + pad + (k / 10) * (sec - 2 * pad); assert.equal(voiceAt(t), want, `${s}s/${sec}s feat=${feat} every=${every}: scene ${i} (${role}) at ${t.toFixed(2)}s`); }
         });
         // the stretches are in order, never overlap, and stay inside the song
         wins.forEach((x, k) => { assert.ok(x.start >= 0 && x.end <= s + 1e-9 && x.end - x.start > 0.25); if (k) assert.ok(x.start >= wins[k - 1].end - 1e-9); });
-        // every featured co-star who has a scene is heard
-        for (const who of featuredIn(plan)) assert.ok(wins.some((x) => x.who === who), `${s}s/${sec}s: co-star ${who} has a verse and no voice`);
+        // every featured co-star who has a performance is heard — for as long as they are seen, no longer
+        for (const who of featuredIn(plan)) {
+          const mine = wins.filter((x) => x.who === who);
+          assert.ok(mine.length > 0, `${s}s/${sec}s: co-star ${who} has a verse and no voice`);
+          const seen = plan.filter((w, i) => w === who && r[i] === P).length * sec;
+          const heard = mine.reduce((a, x) => a + (x.end - x.start), 0);
+          assert.ok(heard <= seen + 2 * HANDOVER_REACH * mine.length + 1e-9, `${s}s/${sec}s: co-star ${who} is heard for ${heard.toFixed(2)}s and seen for ${seen}s`);
+        }
       }
     }
   }
-});
-
-test("the co-star comes in on their own first line when it is sung where the voice is free to change", () => {
-  // 30 seconds fast: cut, PERFORM (artist), cut, PERFORM (co-star), cut (co-star), cut
-  const roles: ShotRole[] = [B, P, B, P, B, B];
-  const singers = [ARTIST, ARTIST, ARTIST, 0, 0, ARTIST];
-  const gaps = breaths(0.7, 30, 2.3); // …9.9, 12.2, 14.5, 16.8, 19.1, 21.4, 23.7, 26.0…
-  // with nothing known about the lines: the breath nearest the scene change (14.5 in, 26.0 or 23.7 out)
-  assert.ok(Math.abs(voiceWindows({ singers, roles, D: 5, gaps })[0].start - 14.5) < 1e-9);
-  // THEIR first line is sung from 12.4 s — in the cut scene before their shot — so they come in there
-  // (at the breath just before it), not two seconds into their own line
-  const early = voiceWindows({ singers, roles, D: 5, gaps, sung: [{ scene: 1, start: 5.2, end: 9.6 }, { scene: 3, start: 12.4, end: 16.5 }, { scene: 4, start: 17.0, end: 21.2 }, { scene: 5, start: 26.2, end: 29.0 }] });
-  assert.ok(Math.abs(early[0].start - 12.2) < 1e-9, `in at ${early[0].start}`);
-  // …and go out when their LAST line ends (21.2 s → the breath at 21.4), not at the scene edge
-  assert.ok(Math.abs(early[0].end - 21.4) < 1e-9, `out at ${early[0].end}`);
-  // their performance (15–20 s) is still wholly theirs
-  assert.ok(early[0].start <= 15 && early[0].end >= 20);
-  // a first line sung while the ARTIST is still on camera (8 s) cannot pull the voice into the artist's
-  // shot: the change stays where the scenes do
-  const tooEarly = voiceWindows({ singers, roles, D: 5, gaps, sung: [{ scene: 3, start: 8.0, end: 11.0 }] });
-  assert.ok(tooEarly[0].start >= 10 && Math.abs(tooEarly[0].start - 14.5) < 1e-9, `in at ${tooEarly[0].start}`);
-  // a last line that ends inside their own shot cannot cut the voice off mid-shot either
-  const shortVerse = voiceWindows({ singers, roles, D: 5, gaps, sung: [{ scene: 3, start: 14.6, end: 18.0 }] });
-  assert.ok(shortVerse[0].end >= 20, `out at ${shortVerse[0].end}`);
-  // lines the song never sang (cut by the length fit) simply are not there
-  assert.deepEqual(voiceWindows({ singers, roles, D: 5, gaps, sung: [] }), voiceWindows({ singers, roles, D: 5, gaps }));
-  // junk is ignored
-  assert.deepEqual(voiceWindows({ singers, roles, D: 5, gaps, sung: [{ scene: 3, start: NaN, end: 4 }, { scene: 3, start: 9, end: 2 }] as never }), voiceWindows({ singers, roles, D: 5, gaps }));
 });
 
 test("where a scene's own lines are sung is read off the song", () => {
@@ -182,29 +164,32 @@ test("where a scene's own lines are sung is read off the song", () => {
   assert.deepEqual(cut.map((x) => x.scene), [0, 1, 1]);
   assert.deepEqual(sceneLineTimes(scenes, []), []);
   assert.deepEqual(sceneLineTimes([], heard), []);
-  // the pipeline hands these to the voice windows — and not for a track the maker brought
+  // …but where a co-star's WRITTEN lines fell no longer steers whose voice is heard: the voice follows
+  // the picture (a song that ran behind its scenes had pulled her voice over eleven seconds of the artist)
   const pipe = read("app", "lib", "music-video-pipeline.server.ts");
-  assert.match(pipe, /sung = sceneLineTimes\(o\.scenes \|\| \[\], heard\);/);
-  assert.match(pipe, /voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps, sung \}\)/);
-  assert.match(pipe, /scenes: opts\.songUrl \? undefined : scenes \}\)/);
+  assert.doesNotMatch(pipe, /sceneLineTimes/);
+  assert.match(pipe, /const windows = voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps, shots: o\.shots \}\);/);
 });
 
-test("with no breath to be found the voice changes exactly where the scenes do", () => {
+test("with no breath to be found the voice changes exactly on the cut", () => {
   const roles: ShotRole[] = [P, B, P, B];
-  const w = voiceWindows({ singers: [ARTIST, ARTIST, 0, 0], roles, D: 5 });
-  assert.deepEqual(w, [{ who: 0, start: 10, end: 20 }]);
-  // two performances back to back (a 20-second video of ten-second scenes): a breath just either side
-  const tight = voiceWindows({ singers: [ARTIST, 0], roles: [P, P], D: 10, gaps: [{ t: 9.6, gap: 0.5 }, { t: 13, gap: 0.5 }] });
-  assert.deepEqual(tight, [{ who: 0, start: 9.6, end: 20 }]);
-  assert.deepEqual(voiceWindows({ singers: [ARTIST, 0], roles: [P, P], D: 10, gaps: [{ t: 6, gap: 0.5 }, { t: 14, gap: 0.5 }] }), [{ who: 0, start: 10, end: 20 }], "no breath near enough: on the scene");
-  // nobody featured → nothing to mix; everybody's the co-star's → the whole song
+  // (the cut scene after their performance is marked theirs here, as plans once were: it is not heard)
+  assert.deepEqual(voiceWindows({ singers: [ARTIST, ARTIST, 0, 0], roles, D: 5 }), [{ who: 0, start: 10, end: 15 }]);
+  // two performances back to back (a 20-second video of ten-second scenes): each mouth is on screen
+  // right up to the cut, so the voice changes ON it — a breath 0.4 s off is too far, one a hair off is not
+  assert.deepEqual(voiceWindows({ singers: [ARTIST, 0], roles: [P, P], D: 10, gaps: [{ t: 9.6, gap: 0.5 }, { t: 13, gap: 0.5 }] }), [{ who: 0, start: 10, end: 20 }]);
+  assert.deepEqual(voiceWindows({ singers: [ARTIST, 0], roles: [P, P], D: 10, gaps: [{ t: 9.92, gap: 0.3 }] }), [{ who: 0, start: 9.92, end: 20 }]);
+  // nobody featured → nothing to mix
   assert.deepEqual(voiceWindows({ singers: [ARTIST, ARTIST], roles: [P, B], D: 10 }), []);
-  assert.deepEqual(voiceWindows({ singers: [1, 1], roles: [P, B], D: 10 }), [{ who: 1, start: 0, end: 20 }]);
+  // a co-star marked on everything is still heard only in the performance
+  assert.deepEqual(voiceWindows({ singers: [1, 1], roles: [P, B], D: 10 }), [{ who: 1, start: 0, end: 10 }]);
+  assert.deepEqual(voiceWindows({ singers: [1, 1], roles: [B, B], D: 10 }), [], "heard, never seen: not heard");
   assert.deepEqual(voiceWindows({ singers: [], roles: [], D: 10 }), []);
-  // two co-stars, one after the other
-  const two = voiceWindows({ singers: [ARTIST, ARTIST, 0, 0, 1, 1, ARTIST, ARTIST], roles: [B, P, B, P, B, B, P, B].map((x, i) => (i === 4 ? P : x)) as ShotRole[], D: 5 });
-  assert.deepEqual(two.map((x) => x.who), [0, 1]);
-  assert.ok(two[0].end <= two[1].start + 1e-9);
+  // two co-stars, one performance after the other
+  const two = voiceWindows({ singers: [ARTIST, ARTIST, 0, 0, 1, 1, ARTIST, ARTIST], roles: [B, P, B, P, P, B, P, B], D: 5 });
+  assert.deepEqual(two, [{ who: 0, start: 15, end: 20 }, { who: 1, start: 20, end: 25 }]);
+  // a co-star with two performances in a row has them both
+  assert.deepEqual(voiceWindows({ singers: [ARTIST, ARTIST, 0, 0, ARTIST], roles: [B, P, P, P, B], D: 5 }), [{ who: 0, start: 10, end: 20 }]);
 });
 
 test("a video with a featured verse has two performances, and the verse is one the co-star is seen singing", () => {
@@ -220,12 +205,15 @@ test("a video with a featured verse has two performances, and the verse is one t
   // the verse, dealt by rule
   assert.deepEqual(defaultFeaturePlan([P, P], 10, [0]), [ARTIST, 0]);
   assert.deepEqual(defaultFeaturePlan([P, B, P], 10, [0]), [ARTIST, ARTIST, 0]);
-  assert.deepEqual(defaultFeaturePlan([P, B, P, B], 5, [0]), [ARTIST, ARTIST, 0, 0]);
-  // 30 seconds fast: the co-star takes the second performance and the cut scene after it
-  assert.deepEqual(defaultFeaturePlan(cadence(6, 5), 5, [0]), [ARTIST, ARTIST, ARTIST, 0, 0, ARTIST]);
+  assert.deepEqual(defaultFeaturePlan([P, B, P, B], 5, [0]), [ARTIST, ARTIST, 0, ARTIST]);
+  // 30 seconds fast: the co-star takes the second performance — and ONLY the performance. (The cut
+  // scene after it used to be theirs too: their voice then played over whoever that cut scene showed.)
+  assert.deepEqual(defaultFeaturePlan(cadence(6, 5), 5, [0]), [ARTIST, ARTIST, ARTIST, 0, ARTIST, ARTIST]);
   // two co-stars each get a performance of their own when there are enough
   const p8 = defaultFeaturePlan(cadence(8, 5), 5, [0, 1]);
-  assert.deepEqual(p8, [ARTIST, ARTIST, ARTIST, 0, 0, ARTIST, 1, 1]);
+  assert.deepEqual(p8, [ARTIST, ARTIST, ARTIST, 0, ARTIST, ARTIST, 1, ARTIST]);
+  // nothing the rule deals is ever a cut scene
+  for (const n of [4, 5, 6, 8, 12, 24]) { const r = featureRoles(cadence(n, 5)); defaultFeaturePlan(r, 5, [0, 1]).forEach((w, i) => { if (w >= 0) assert.equal(r[i], P, `${n} scenes: scene ${i}`); }); }
   // too short to share, or nobody asked: the artist sings it all
   assert.deepEqual(defaultFeaturePlan([P, B], 5, [0]), [ARTIST, ARTIST]);
   assert.deepEqual(defaultFeaturePlan([P], 10, [0]), [ARTIST]);
@@ -384,9 +372,11 @@ test("the co-star's verse is dealt before the song is written, said scene by sce
   // plan and filmed to another). The plan is dealt first and said in the shot list, line by line…
   assert.match(fn, /const featPlan: number\[\] = featured\.length \? defaultFeaturePlan\(roles, sceneSec, featured\.map\(\(n\) => castList\.indexOf\(n\)\)\) : \[\];/);
   assert.match(fn, /PERFORMANCE — \$\{who\}'S VERSE: \$\{who\} sings straight to camera, ALONE in the shot \(the artist is not in it\); "singer": "\$\{who\}"/);
-  assert.match(fn, /\$\{note\} — \$\{who\}'S VERSE goes on over it \(their voice; nobody sings to camera\); "singer": "\$\{who\}"/);
-  assert.match(fn, /The scenes marked "…'S VERSE" in the shot list ARE that verse: set "singer" to their exact name in each of them and in no other scene\./);
-  assert.match(fn, /The lyric lines of those scenes are THEIR words, in their own voice/);
+  // …and it is a PERFORMANCE of theirs, never a cut scene: they are heard only while they are seen singing
+  assert.match(fn, /const who = roles\[i\] === "perform" && featPlan\[i\] >= 0 \? castList\[featPlan\[i\]\] : "";/);
+  assert.doesNotMatch(fn, /VERSE goes on over it/);
+  assert.match(fn, /The scene marked "…'S VERSE" in the shot list IS that verse: set "singer" to their exact name in it and in no other scene\./);
+  assert.match(fn, /Its lyric lines are THEIR words, in their own voice: their side of the story, answering the artist — a complete thought that starts and ends inside that one scene, because they are heard only while they are on screen\./);
   assert.match(fn, /End the title with "\(feat\. \$\{featNames\}\)"/);
   assert.doesNotMatch(fn, /two or three scenes in a row/);
   // …and "only the artist ever sings" is still what every other video is told
@@ -396,9 +386,9 @@ test("the co-star's verse is dealt before the song is written, said scene by sce
   assert.doesNotMatch(fn, /planIsSound\(singers, outRoles\)/);
   assert.match(fn, /\.\.\.\(featured\.length && singers\[i\] >= 0 \? \{ singer: castList\[singers\[i\]\] \} : \{\}\),/);
   // the plan the writer is given for the usual six scenes: the artist opens and has the first
-  // performance; the co-star has the second performance and the cut scene after it
+  // performance; the co-star has the second performance — and nothing else
   const roles = featureRoles(Array.from({ length: 6 }, (_, i) => defaultRole(i, 6, 5)));
-  assert.deepEqual(defaultFeaturePlan(roles, 5, [1]), [-1, -1, -1, 1, 1, -1]);
+  assert.deepEqual(defaultFeaturePlan(roles, 5, [1]), [-1, -1, -1, 1, -1, -1]);
   // one world: a night video never cuts to daylight (the same sheet set its last scene "sunlit")
   assert.match(fn, /but ONE WORLD: the same time of day and the same kind of light in every scene \(a night video never cuts to daylight\), said in each VISUAL/);
 });
@@ -425,7 +415,9 @@ test("the render: the verse is re-voiced and mixed, the co-star leads their shot
   // lined up) → one track of exactly the song's length
   assert.match(mix, /const heard = wordsFromWhisperx\(await repPoll\(await createWhisperx\(songUrl, null\)/);
   assert.match(mix, /gaps = vocalGaps\(heard\);/);
-  assert.match(mix, /const windows = voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps, sung \}\);/);
+  assert.match(mix, /const windows = voiceWindows\(\{ singers: o\.singers, roles: o\.roles, D: o\.D, gaps, shots: o\.shots \}\);/);
+  // …and it says where it put each voice (there are no logs to read on the host without the owner's sign-in)
+  assert.match(mix, /console\.log\(`\[musicvideo\] featured voice: /);
   assert.match(mix, /const model = await ensureVoiceModel\(f\.voiceId, o\.base, \{ pitch: f\.speechPitch \}\);/);
   // …asked for with the vocal a little lower, so the take keeps the balance of the song it is cut into
   assert.match(mix, /coverSongInVoice\(songUrl, model\.url, \{ pitchChange: pitchChangeOf\(shift\), vocalsDb: FEATURE_VOCAL_TRIM_DB \}\)/);
@@ -506,4 +498,94 @@ test("the page: a co-star is given a verse with one tap, and their voice must be
   assert.match(ui, /else if \(treatmentFetcher\.data\?\.error\) setChainToScenes\(false\);/);
   // the slots the page frames a scene with are the pipeline's
   for (let i = 0; i < 12; i++) assert.equal(SHOT_ROLES[shotSlot(P, i)], P);
+});
+
+test("two voices is a switch the maker turns on — co-stars in the video never sing by themselves", () => {
+  // The owner, 2026-11-22: "multiple presenter clips should not mean automatic feature (two voices song)
+  // needs to be toggle". It never was automatic — every test video he was sent had it turned on — but the
+  // control was a small pill on each co-star that read as part of having one. It is a labelled switch now.
+  const ui = read("app", "routes", "web.film.tsx");
+  // OFF to begin with, and nothing but the maker's tap turns it on
+  assert.match(ui, /const \[featPick, setFeatPick\] = useState<string\[\]>\(\[\]\);/);
+  assert.equal(ui.split("setFeatPick(").length - 1, 2, "the switch, and the who-sings pill — nothing else sets it");
+  assert.match(ui, /<button type="button" role="switch" aria-checked=\{featured\.length > 0\} className=\{`mm-twovoice\$\{featured\.length > 0 \? " on" : ""\}`\}/);
+  assert.match(ui, /onClick=\{\(\) => setFeatPick\(featured\.length > 0 \? \[\] : \[singable\[0\]\.img\]\)\}/);
+  // it says what each position means, with the names in it
+  assert.match(ui, /t\("Off — \{star\} sings the whole song\. Turn on to give a co-star a verse\.", \{ star: artistName \|\| t\("The star"\) \}\)/);
+  assert.match(ui, /t\("On — \{name\} sings one verse in their own voice, while they are on screen\. \{star\} sings the rest\."/);
+  // only a co-star with a voice of their own can be given one; the pill that picks WHO shows once it is on
+  assert.match(ui, /\{singable\.length > 0 && \(\s+<button type="button" role="switch"/);
+  assert.match(ui, /\{featured\.length > 0 && singable\.length > 1 && canSingImg\(m\.img\)/);
+  // every word of it is in every language the app speaks
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  for (const k of ["Two voices", "Off — {star} sings the whole song. Turn on to give a co-star a verse.", "On — {name} sings one verse in their own voice, while they are on screen. {star} sings the rest."]) {
+    assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5, `"${k}" in es, fr, de, zh and ur`);
+  }
+  // with no co-star singing, the song has one voice: the writer keeps no "singer" mark and the render mixes nothing
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.match(engine, /\.\.\.\(featured\.length && singers\[i\] >= 0 \? \{ singer: castList\[singers\[i\]\] \} : \{\}\),/);
+  // a scene turned into a cut scene is nobody's to sing
+  assert.match(ui, /const \{ singer: _drop, \.\.\.rest \} = s; return \{ \.\.\.rest, kind \};/);
+  assert.doesNotMatch(ui, /mm-chip-voice/, "no cut scene is shown as a co-star's verse");
+});
+
+test("a cut scene's faces do not talk", () => {
+  // "Midnight Mile", looked at five frames a second: on the parked car and walking the terrace the
+  // artist's mouth opened and closed as if speaking — while the co-star's voice was the one singing.
+  // The prompt already said every mouth stays closed. The model's negative prompt is where it listens.
+  const pipe = read("app", "lib", "music-video-pipeline.server.ts");
+  const gen = pipe.slice(pipe.indexOf("export async function generateMusicVideo"));
+  assert.match(gen, /const quietFaces = shot\.role === "perform" \? "" : "talking, speaking, singing, lip sync, lips moving, mouth opening, open mouth, /);
+  assert.match(gen, /generateAudio: false, \.\.\.\(quietFaces \? \{ negativePrompt: quietFaces \} : \{\}\) \}\);/);
+  // a performance is left alone: its mouth is re-driven to the song afterwards
+  const fal = read("app", "lib", "fal-video.server.ts");
+  assert.match(fal, /negative_prompt: opts\.negativePrompt/);
+});
+
+test("the voice follows the cut the edit really makes, not the grid it was dealt on", () => {
+  // "Midnight Mile": her shot was dealt 15–20 s; the paced edit, cutting on the beat, ran it 15.0–19.75
+  const roles: ShotRole[] = [B, P, B, P, B, B];
+  const singers = [ARTIST, ARTIST, ARTIST, 0, ARTIST, ARTIST];
+  const shots = [null, { start: 5, end: 10 }, null, { start: 15.0, end: 19.75 }, null, null];
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, shots }), [{ who: 0, start: 15, end: 19.75 }]);
+  // a breath just after the real cut is still taken; one that is only near the GRID line is not
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, shots, gaps: [{ t: 19.9, gap: 0.4 }] }), [{ who: 0, start: 15, end: 19.9 }]);
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, shots, gaps: [{ t: 20.4, gap: 0.4 }] }), [{ who: 0, start: 15, end: 19.75 }]);
+  // a shot that starts late (the cut before it moved onto a beat) is not sung over before it starts
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, shots: [null, null, null, { start: 15.4, end: 20 }, null, null] }), [{ who: 0, start: 15.4, end: 20 }]);
+  // junk, or no times for that scene: the grid
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, shots: [null, null, null, { start: NaN, end: 3 }, null, null] as never }), [{ who: 0, start: 15, end: 20 }]);
+  assert.deepEqual(voiceWindows({ singers, roles, D: 5, shots: [] }), [{ who: 0, start: 15, end: 20 }]);
+
+  // WHEN a clip is on screen, read off a cut list
+  assert.deepEqual(shotTimes([{ src: 0, start: 0, dur: 5 }, { src: 1, start: 0, dur: 5 }], 2), [{ start: 0, end: 5 }, { start: 5, end: 10 }]);
+  // a performance that a cutaway interrupts is one stretch: the singer is heard through the cutaway
+  assert.deepEqual(shotTimes([{ src: 0, start: 0, dur: 7.5 }, { src: 1, start: 3.75, dur: 2.5 }, { src: 0, start: 7.5, dur: 2.5 }, { src: 1, start: 0, dur: 10 }], 2)[0], { start: 0, end: 12.5 });
+  assert.deepEqual(shotTimes([{ src: 1, start: 0, dur: 5 }], 3), [null, { start: 0, end: 5 }, null]);
+  assert.deepEqual(shotTimes([], 2), [null, null]);
+  // every length, pace and beat: a co-star's voice sits inside the stretch their own clip is on screen
+  // (give or take the reach to a breath), and the edit that is timed is the edit that is made
+  for (const s of [20, 30, 60, 120]) for (const sec of [5, 10]) for (const pace of ["slow", "medium", "fast"] as const) {
+    const r = featureRoles(cadence(sceneCountFor(s, sec), sec));
+    const plan = defaultFeaturePlan(r, sec, [0]);
+    for (const bpm of [0, 88, 120]) {
+      const beats: number[] = []; if (bpm) for (let t = 0.31; t < s; t += 60 / bpm) beats.push(t);
+      const cuts = editPlan(r, sec, pace, beats);
+      const shown = shotTimes(cuts, r.length);
+      const wins = voiceWindows({ singers: plan, roles: r, D: sec, shots: shown });
+      for (const w of wins) {
+        const i = plan.findIndex((who, k) => who === w.who && r[k] === P && shown[k] && shown[k]!.start <= w.start + 1e-9 && shown[k]!.end >= w.end - 1e-9);
+        assert.ok(i >= 0, `${s}s/${sec}s ${pace} ${bpm}bpm: the voice ${w.start.toFixed(2)}–${w.end.toFixed(2)} is not inside her shot ${JSON.stringify(shown)}`);
+      }
+      assert.equal(wins.length, 1, `${s}s/${sec}s ${pace} ${bpm}bpm`);
+    }
+  }
+  // the pipeline works the edit out BEFORE the mix, from the same roles, pace and beats it cuts with after
+  const pipe = read("app", "lib", "music-video-pipeline.server.ts");
+  const gen = pipe.slice(pipe.indexOf("export async function generateMusicVideo"));
+  assert.match(gen, /const beats: number\[\] = pace !== "slow" \? await songBeats\(songPath\) : \[\];/);
+  assert.match(gen, /shots: shotTimes\(editPlan\(roles, D, pace, beats\), roles\.length\) \}\);/);
+  assert.match(gen, /const onBeat = good\.length === scenes\.length && pace !== "slow" \? beats : \[\];/);
+  assert.equal(gen.split("await songBeats(songPath)").length - 1, 1, "the beats are found once");
+  assert.ok(gen.indexOf("await songBeats(songPath)") < gen.indexOf("mixFeaturedVoices({"), "before the verse is mixed");
 });

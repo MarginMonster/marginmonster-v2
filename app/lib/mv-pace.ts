@@ -117,6 +117,24 @@ export const paceFor = (genre: string | null | undefined, picked?: unknown): Pac
 /** One piece of the finished video: `dur` seconds of scene `src`'s clip, starting `start` seconds in. */
 export type Cut = { src: number; start: number; dur: number };
 
+/** WHEN each scene's own clip is on screen in a cut list: from the first moment of its first piece to
+ *  the last moment of its last (null for a clip the edit never shows). For a PERFORMANCE — which only
+ *  ever plays at its own place in the song — that is the stretch its singer is seen singing, a cutaway
+ *  in the middle included; a featured co-star's voice is heard for exactly that long (mv-feature.ts). */
+export function shotTimes(cuts: Cut[], n: number): Array<{ start: number; end: number } | null> {
+  const out: Array<{ start: number; end: number } | null> = Array.from({ length: Math.max(0, n) }, () => null);
+  let t = 0;
+  for (const c of cuts || []) {
+    const end = t + c.dur;
+    if (c.src >= 0 && c.src < out.length && c.dur > 0) {
+      const have = out[c.src];
+      out[c.src] = have ? { start: Math.min(have.start, t), end: Math.max(have.end, end) } : { start: t, end };
+    }
+    t = end;
+  }
+  return out;
+}
+
 /** The cut list for a video whose scenes have these roles, each clip `D` seconds long, in timeline order.
  *  It always adds up to exactly roles.length × D, and a performance clip only ever appears at its own
  *  position (start === where it falls in its own scene). Slow — and any video with nothing to cut away

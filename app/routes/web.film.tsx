@@ -1419,8 +1419,11 @@ export default function FilmStudio() {
   const defaultSceneRole = (i: number, n: number): "perform" | "broll" => defaultRole(i, n, mvSceneSec);
   const sceneKind = (sc: Scene, i: number, n: number): "perform" | "broll" => sc?.kind || defaultSceneRole(i, n);
   const setSceneKind = (i: number, kind: "perform" | "broll") => {
-    if (seeds) setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) } } : prev));
-    else if (treatment) setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, kind } : s)) });
+    // a scene that becomes a CUT SCENE is nobody's to sing: a co-star is heard only while they are seen
+    // singing (mv-feature.ts voiceWindows), so the mark that made it theirs goes with the performance
+    const as = (s: Scene): Scene => { if (kind === "perform") return { ...s, kind }; const { singer: _drop, ...rest } = s; return { ...rest, kind }; };
+    if (seeds) setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? as(s) : s)) } } : prev));
+    else if (treatment) setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? as(s) : s)) });
   };
   // ---- Per-scene CO-STAR cast (owner edit) ---------------------------------
   // The default (mv-cast.ts defaultCostars — the SAME function the render uses when no cast is sent):
@@ -1438,8 +1441,6 @@ export default function FilmStudio() {
     const k = singerOf(sc, castNamesAll);
     return k >= 0 ? castExtra[k]?.img || "" : "";
   };
-  /** The co-star whose VOICE is heard over scene i (their verse — a performance or a cut scene), or "". */
-  const sceneVoiceName = (sc: Scene | undefined): string => { const k = singerOf(sc, castNamesAll); return k >= 0 ? (castExtra[k]?.name || "").trim() : ""; };
   const defaultSceneCostars = (scenesArr: Scene[], i: number): string[] => {
     if (!castExtra.length) return [];
     const role = sceneKind(scenesArr[i], i, scenesArr.length);
@@ -1696,7 +1697,6 @@ export default function FilmStudio() {
               // a featured verse: who leads this shot (a co-star, in their own performance) and whose
               // voice is heard over it
               const leadImg = isMv ? sceneLeadImg(sc, i, strip.scenes.length) : "";
-              const voiceName = isMv ? sceneVoiceName(sc) : "";
               const flagged = isMv && !!seeds && ((seeds.faults || [])[i] || 0) > 0 && rerollingScene !== i;
               return (
                 <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}`} key={i} data-check={isMv && seeds && (seeds.checks || [])[i] != null ? JSON.stringify((seeds.checks || [])[i]) : undefined}>
@@ -1726,7 +1726,6 @@ export default function FilmStudio() {
                             ? <span className="mm-sc-chip mm-chip-av mm-chip-lead mm-chip-sings" title={t("{name} sings this part — in their own voice", { name: castMemberName(leadImg) || t("Cast") })}><img src={avatarFace(leadImg)} alt="" /><Ico n="mic" size={10} /> {castMemberName(leadImg) || t("Cast")}</span>
                             : (artistName && <span className="mm-sc-chip mm-chip-av mm-chip-lead">{artistPick ? <img src={avatarFace(artistPick)} alt="" /> : null}{artistName}</span>)}
                           {sceneCostars(strip.scenes, i).filter((img) => img !== leadImg).map((img) => <span className="mm-sc-chip mm-chip-av" key={img}><img src={avatarFace(img)} alt="" />{castMemberName(img) || t("Cast")}</span>)}
-                          {voiceName && !leadImg && <span className="mm-sc-chip mm-chip-voice" title={t("{name} sings this part — in their own voice", { name: voiceName })}><Ico n="mic" size={10} /> {t("{name}'s verse", { name: voiceName })}</span>}
                           {seeds && <button type="button" className="mm-sc-chip mm-chip-cast" onClick={() => openSceneCastPick(i)} disabled={rerollingScene !== null} aria-label={t("Edit who's in this scene")}><Ico n="star" size={11} /> {t("Cast")}</button>}
                           {seeds && <button type="button" className={`mm-sc-chip mm-chip-prop${pl ? "" : " empty"}`} onClick={() => openScenePropPick(i)} disabled={rerollingScene !== null} aria-label={t("Props in this scene")}><Ico n="gem" size={11} /> {pl || t("No props")}</button>}
                         </div>
@@ -2211,8 +2210,8 @@ export default function FilmStudio() {
                             <span className="mm-castmem-wd" aria-hidden="true"><Ico n="shirt" size={10} /></span>
                           </button>
                           <input className="mm-castmem-name" value={m.name} onChange={(e) => renameCastMemberMv(m.img, e.target.value)} maxLength={24} aria-label={t("Cast member name")} />
-                          {/* A FEATURED VERSE: this co-star sings part of the song, in their own voice */}
-                          {canSingImg(m.img)
+                          {/* WHO sings the verse — shown once "Two voices" (below) is on and there is a choice to make */}
+                          {featured.length > 0 && singable.length > 1 && canSingImg(m.img)
                             ? <button type="button" className={`mm-castmem-feat${featPick.includes(m.img) ? " on" : ""}`} aria-pressed={featPick.includes(m.img)} disabled={tooShortToFeature && !featPick.includes(m.img)} onClick={() => toggleFeat(m.img)}
                                 title={tooShortToFeature ? t("A verse needs a video of 20 seconds or more") : t("{name} sings a verse of the song in their own voice — like a featured artist", { name: m.name || t("This co-star") })}>
                                 <Ico n="mic" size={12} /> {featPick.includes(m.img) ? t("Sings a verse") : t("Give a verse")}
@@ -2224,6 +2223,23 @@ export default function FilmStudio() {
                       </div>
                     ))}
                   </div>
+                )}
+                {/* TWO VOICES — a plain switch, OFF unless the maker turns it on. Adding co-stars puts them
+                    in the video; it never makes them sing. (The owner, 2026-11-22: "multiple presenter clips
+                    should not mean automatic feature (two voices song) needs to be toggle".) */}
+                {singable.length > 0 && (
+                  <button type="button" role="switch" aria-checked={featured.length > 0} className={`mm-twovoice${featured.length > 0 ? " on" : ""}`} disabled={tooShortToFeature && featured.length === 0}
+                    onClick={() => setFeatPick(featured.length > 0 ? [] : [singable[0].img])}>
+                    <span className="mm-switch" aria-hidden="true" />
+                    <span className="mm-twovoice-txt">
+                      <b>{t("Two voices")}</b>
+                      <span>{featured.length > 0
+                        ? t("On — {name} sings one verse in their own voice, while they are on screen. {star} sings the rest.", { name: featured.map((m) => m.name.trim()).join(" & "), star: artistName || t("The star") })
+                        : tooShortToFeature
+                        ? t("A verse needs a video of 20 seconds or more")
+                        : t("Off — {star} sings the whole song. Turn on to give a co-star a verse.", { star: artistName || t("The star") })}</span>
+                    </span>
+                  </button>
                 )}
                 <div className="mm-artistpick mm-castpick">
                   {customArtists.map((ca, i) => (
@@ -3645,6 +3661,19 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-castmem-del{flex:none;width:28px;height:28px;border-radius:8px;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink3,#9AA39B);font-size:12px;cursor:pointer;display:grid;place-items:center;transition:background .14s,color .14s;}
 .mm-castmem-del:hover{background:#FBEEEC;color:#B4463A;border-color:#F2D6D1;}
 /* A FEATURED VERSE — the co-star sings part of the song in their own voice. */
+.mm-twovoice{display:flex;align-items:center;gap:12px;width:100%;margin:10px 0 2px;padding:11px 14px;min-height:56px;border:1px solid var(--line,#E4DFCF);border-radius:14px;background:#fff;color:var(--ink,#14201A);text-align:left;cursor:pointer;font:inherit;transition:border-color .14s,background .14s;}
+.mm-twovoice:hover:not(:disabled){border-color:var(--green2,#1EA85C);}
+.mm-twovoice.on{border-color:var(--green,#0C7A46);background:#F2FAF5;}
+.mm-twovoice:disabled{opacity:.6;cursor:default;}
+.mm-twovoice:focus-visible{outline:2px solid var(--green2,#1EA85C);outline-offset:2px;}
+.mm-switch{flex:none;position:relative;width:44px;height:26px;border-radius:999px;background:#C8CEC9;transition:background .16s;}
+.mm-switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(20,32,26,.3);transition:transform .16s;}
+.mm-twovoice.on .mm-switch{background:var(--green,#0C7A46);}
+.mm-twovoice.on .mm-switch::after{transform:translateX(18px);}
+.mm-twovoice-txt{display:grid;gap:2px;min-width:0;}
+.mm-twovoice-txt b{font-family:Poppins,sans-serif;font-size:13.5px;font-weight:700;}
+.mm-twovoice-txt span{font-size:12.5px;line-height:1.35;color:var(--ink2,#55605A);}
+@media (prefers-reduced-motion:reduce){.mm-switch,.mm-switch::after,.mm-twovoice{transition:none;}}
 .mm-castmem-feat{flex:none;display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);font-family:Poppins,sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .14s,color .14s,border-color .14s,box-shadow .14s;}
 .mm-castmem-feat svg{stroke:currentColor;stroke-width:2;fill:none;}
 .mm-castmem-feat:hover:not(:disabled){border-color:var(--green2,#1EA85C);color:var(--green-d,#0A5E37);background:#F2FAF5;}
@@ -3829,8 +3858,7 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-chip-lead{background:#E7EEFA;border-color:#C7D9F0;font-weight:800;box-shadow:inset 0 0 0 1px #C7D9F0;}
 /* a featured verse: the co-star who sings this shot, and a cut scene their voice is heard over */
 .mm-chip-sings{background:#E4F4EA;border-color:#B9E0C8;color:#0A5E37;box-shadow:inset 0 0 0 1px #B9E0C8;}
-.mm-chip-sings svg,.mm-chip-voice svg{stroke:currentColor;stroke-width:2;fill:none;flex:none;}
-.mm-chip-voice{background:#F2FAF5;border-color:#CFE8D9;color:#0A5E37;padding:2px 9px;}
+.mm-chip-sings svg{stroke:currentColor;stroke-width:2;fill:none;flex:none;}
 /* "who sings this scene?" in the per-scene cast editor */
 .mm-sc-singer{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 1px 0;}
 .mm-sc-singer-lbl{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:var(--ink2,#55605A);margin-right:2px;}

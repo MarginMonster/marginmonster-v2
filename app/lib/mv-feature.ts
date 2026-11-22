@@ -8,9 +8,9 @@
  *   - the SONG is generated as one track, as always (the music engine has one singer);
  *   - the whole track is then RE-VOICED in the co-star's voice (the same re-voice "sing in my own voice"
  *     uses), giving two takes of one song — the same music, the same timing, two singers;
- *   - the takes are CROSS-FADED: the co-star's is heard during their verse, the lead's everywhere else.
- *     The switch is put in a breath between words and — because footage of someone singing shows their
- *     mouth — never while a performance by the OTHER singer is on screen;
+ *   - the takes are CROSS-FADED: the co-star's is heard while the co-star is SEEN singing — their own
+ *     performance shot — and the lead's everywhere else, cut scenes included. The switch sits on the cut
+ *     into and out of their shot, nudged to a breath between words when one is close by;
  *   - the PICTURE: in the co-star's performance scenes it is the co-star on camera, lip-synced to the
  *     finished track, which at that moment is their own voice.
  *
@@ -44,79 +44,68 @@ export function vocalGaps(words: Array<{ start: number; end: number }>, minGap =
   return out;
 }
 
-/** WHEN each co-star's voice is heard.
+/** How far from a cut the hand-over may move to land in a breath (seconds) — on the side of the cut
+ *  where NOBODY is seen singing. On a side where someone is, it may only move a hair. */
+export const HANDOVER_REACH = 0.45;
+const HANDOVER_HAIR = 0.12;
+
+/** WHEN each co-star's voice is heard: while they are SEEN singing, and at no other time.
  *
- *  `singers[i]` is who sings scene i (the writer's mark, or the maker's), `roles[i]` whether that scene
- *  is a performance, `D` the length of a scene. Scenes sung by the same person in a row are one stretch;
- *  between two stretches the voice changes ONCE, at the breath nearest to where the scenes change — but
- *  only inside the cut scenes between the two singers' performances, so nobody is ever seen singing in
- *  somebody else's voice. With no breath to be found there it changes exactly where the scenes do.
+ *  `singers[i]` is who sings scene i (the plan, or the maker's pick), `roles[i]` whether that scene is a
+ *  performance, `D` the length of a scene. A co-star's voice is their PERFORMANCE shots — every cut scene
+ *  is the artist's voice, whoever's verse it sits in. The voice changes at the cut into and out of their
+ *  shot, moved to a breath when there is one within HANDOVER_REACH on the cut-scene side (so one singer
+ *  does not hand over mid-word) and never further — and no more than a hair into a shot where the OTHER
+ *  singer is seen singing.
  *
- *  `sung` (optional) is where each scene's WRITTEN lines were actually sung — the song engine keeps its
- *  own time, so a scene's lyric rarely starts on the scene. When a co-star's first line (or last) falls
- *  inside the cut scenes where the voice is free to change, the change is aimed THERE instead of at the
- *  scene: they sing the verse that was written for them, whole, and not the tail of someone else's line. */
-export function voiceWindows(o: { singers: Who[]; roles: ShotRole[]; D: number; gaps?: Gap[]; sung?: Array<{ scene: number; start: number; end: number }> }): VoiceWindow[] {
+ *  It used to be wider: the voice changed anywhere in the cut scenes between the two singers'
+ *  performances, aimed at where the co-star's written lines were sung, and the cut scene after their
+ *  performance was theirs too. On a real song that ran a little behind its scenes, with few breaths in
+ *  it, a co-star's voice came in at 11.7 s and went out at 27.8 s of a 30-second video — sixteen seconds,
+ *  of which she was on screen singing for under five. For the rest the picture was the ARTIST, on a car
+ *  and walking, his mouth moving: the owner's "the male singing some of the female lines" (2026-11-22).
+ *  You hear a singer when you see them sing. */
+export function voiceWindows(o: {
+  singers: Who[]; roles: ShotRole[]; D: number; gaps?: Gap[];
+  /** WHEN each scene's own clip is really on screen (mv-pace.ts shotTimes) — a paced edit moves its cuts
+   *  onto the beat, so a performance dealt 15–20 s may run 15.0–19.75. Without it a scene is its slot. */
+  shots?: Array<{ start: number; end: number } | null | undefined>;
+}): VoiceWindow[] {
   const n = Math.min(o.singers.length, o.roles.length);
   const D = o.D;
   if (!n || !(D > 0)) return [];
   const total = n * D;
-  const runs: Array<{ who: Who; from: number; to: number }> = [];
-  for (let i = 0; i < n; i++) {
-    const w = Number.isInteger(o.singers[i]) && o.singers[i] >= 0 ? o.singers[i] : ARTIST;
-    const last = runs[runs.length - 1];
-    if (last && last.who === w) last.to = i;
-    else runs.push({ who: w, from: i, to: i });
-  }
-  if (runs.length < 2) return runs[0] && runs[0].who >= 0 ? [{ who: runs[0].who, start: 0, end: total }] : [];
+  const performs = (i: number): boolean => i >= 0 && i < n && o.roles[i] === "perform";
+  // whose voice each scene is: a co-star's only in a performance that is theirs
+  const voice: Who[] = Array.from({ length: n }, (_, i) => (performs(i) && Number.isInteger(o.singers[i]) && o.singers[i] >= 0 ? o.singers[i] : ARTIST));
   const gaps = (o.gaps || []).filter((g) => g && Number.isFinite(g.t)).sort((a, b) => a.t - b.t);
-  /** where a stretch's own written lines are sung: from the first line's start to the last line's end */
-  const sungSpan = (run: { from: number; to: number }): { start: number; end: number } | null => {
-    const mine = (o.sung || []).filter((s) => s && s.scene >= run.from && s.scene <= run.to && Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start);
-    return mine.length ? { start: Math.min(...mine.map((s) => s.start)), end: Math.max(...mine.map((s) => s.end)) } : null;
+  const shotOf = (i: number): { start: number; end: number } => {
+    const s = o.shots ? o.shots[i] : null;
+    return s && Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start ? { start: Math.max(0, s.start), end: Math.min(total, s.end) } : { start: i * D, end: (i + 1) * D };
   };
-  const switches: number[] = [];
-  let prev = 0;
-  for (let r = 0; r + 1 < runs.length; r++) {
-    const a = runs[r], b = runs[r + 1];
-    const edge = b.from * D;
-    // the last moment the outgoing singer is SEEN singing, and the first moment the incoming one is
-    let lo = a.from * D;
-    for (let i = a.to; i >= a.from; i--) if (o.roles[i] === "perform") { lo = (i + 1) * D; break; }
-    let hi = (b.to + 1) * D;
-    for (let i = b.from; i <= b.to; i++) if (o.roles[i] === "perform") { hi = i * D; break; }
-    // two performances back to back leave no cut scene to change in: look a little either side
-    if (hi - lo < 0.5) { lo = edge - 0.75; hi = edge + 0.75; }
-    // never further than one scene from where the scenes change, never before the last change
-    lo = Math.max(lo, edge - D, prev + 1, 0.2);
-    hi = Math.min(hi, edge + D, total - 0.2);
-    // WHERE to aim: where the scenes change — or, when the co-star's own lines are sung inside the
-    // stretch the voice is free to change in, at the start of their first line (coming in) or the end
-    // of their last (going out)
-    let T = edge;
-    const comingIn = b.who >= 0 ? sungSpan(b) : null;
-    const goingOut = a.who >= 0 ? sungSpan(a) : null;
-    if (comingIn && comingIn.start - 0.1 >= lo && comingIn.start - 0.1 <= hi) T = comingIn.start - 0.1;
-    else if (goingOut && goingOut.end + 0.1 >= lo && goingOut.end + 0.1 <= hi) T = goingOut.end + 0.1;
-    let at = Math.max(lo, Math.min(hi, T));
-    if (hi > lo) {
-      let best = -1;
-      for (const g of gaps) {
-        if (g.t < lo || g.t > hi) continue;
-        if (best < 0 || Math.abs(g.t - T) < Math.abs(best - T)) best = g.t;
-      }
-      if (best >= 0) at = best;
+  /** the breath nearest a cut, no further from it than [lo, hi] — else the cut itself */
+  const nearBreath = (cut: number, lo: number, hi: number): number => {
+    let best = -1;
+    for (const g of gaps) {
+      if (g.t < lo || g.t > hi) continue;
+      if (best < 0 || Math.abs(g.t - cut) < Math.abs(best - cut)) best = g.t;
     }
-    switches.push(at);
-    prev = at;
-  }
+    return best >= 0 ? best : cut;
+  };
   const out: VoiceWindow[] = [];
-  runs.forEach((run, r) => {
-    if (run.who < 0) return;
-    const start = r === 0 ? 0 : switches[r - 1];
-    const end = r === runs.length - 1 ? total : switches[r];
-    if (end - start > 0.25) out.push({ who: run.who, start, end });
-  });
+  for (let i = 0; i < n; i++) {
+    if (voice[i] < 0) continue;
+    let j = i;
+    while (j + 1 < n && voice[j + 1] === voice[i]) j++;
+    // their shot(s), from the cut in to the cut out — a hair inside it at most (their mouth is on
+    // screen), and outside it only as far as a breath close by, less still if the shot next door is
+    // somebody else singing
+    const a = shotOf(i).start, b = shotOf(j).end;
+    const start = a <= 0.05 ? 0 : nearBreath(a, Math.max(0.05, a - (performs(i - 1) ? HANDOVER_HAIR : HANDOVER_REACH)), a + HANDOVER_HAIR);
+    const end = b >= total - 0.05 ? total : nearBreath(b, b - HANDOVER_HAIR, Math.min(total - 0.05, b + (performs(j + 1) ? HANDOVER_HAIR : HANDOVER_REACH)));
+    if (end - start > 0.25) out.push({ who: voice[i], start, end });
+    i = j;
+  }
   return out;
 }
 
@@ -243,11 +232,12 @@ export function featureRoles(cadence: ShotRole[]): ShotRole[] {
   return Array.from({ length: n }, (_, i) => (i % 2 === 0 ? "perform" : "broll")) as ShotRole[];
 }
 
-/** WHO SINGS EACH SCENE when the writer was asked for a featured verse and did not mark one (or marked
- *  one nobody is seen singing): give each featured co-star a verse ourselves. The artist opens. Each
- *  co-star takes one performance that is not the artist's first — the nearest to the middle of the song
- *  first — and the cut scene after it; everything else is the artist's. `roles` should already be
- *  featureRoles(). All the artist's (-1) when the video is too short to share. */
+/** WHO SINGS EACH SCENE of a video with a featured verse. The artist opens. Each featured co-star takes
+ *  one PERFORMANCE that is not the artist's first — the nearest to the middle of the song first — and
+ *  everything else is the artist's. `roles` should already be featureRoles(). All the artist's (-1) when
+ *  the video is too short to share.
+ *  (The cut scene after their performance used to be dealt to them as well. A cut scene shows whoever it
+ *  shows — usually the artist — so their voice played over somebody else's face: see voiceWindows.) */
 export function defaultFeaturePlan(roles: ShotRole[], D: number, featured: Who[]): Who[] {
   const n = roles.length;
   const plan: Who[] = Array.from({ length: n }, () => ARTIST);
@@ -258,9 +248,7 @@ export function defaultFeaturePlan(roles: ShotRole[], D: number, featured: Who[]
   for (const who of featured) {
     if (!free.length) break;
     free.sort((x, y) => Math.abs(x - mid) - Math.abs(y - mid) || x - y);
-    const mine = free.shift() as number;
-    plan[mine] = who;
-    if (mine + 1 < n && roles[mine + 1] === "broll" && plan[mine + 1] === ARTIST) plan[mine + 1] = who;
+    plan[free.shift() as number] = who;
   }
   return plan;
 }
