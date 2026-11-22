@@ -350,7 +350,7 @@ test("what a Creator photo edit shows it costs is what it costs: one edit, and n
   // a "×5" left over from the Ad Maker read "Edit 5 photos · 25 tokens" over an edit made and charged once
   assert.ok(ui.includes("const effBurst = isVideoEdit || isEdit || (casual && tab === \"video\") ? 1 : burst;"));
   // the second photo of a two-photo edit stayed loaded: the next edit went out as two photos (16 tokens, not 5)
-  const landed = ui.slice(ui.indexOf("// The new piece has landed → show it on the Stage."), ui.indexOf("// The new piece has landed → show it on the Stage.") + 1400);
+  const landed = ui.slice(ui.indexOf("// The new piece has landed → show it on the Stage."), ui.indexOf("// The new piece has landed → show it on the Stage.") + 2400); // (2400: the landing now waits a beat for a not-made edit, ahead of these lines)
   assert.ok(landed.includes("setEditFile(null);") && landed.includes("clearPhoto2();"));
   assert.ok(landed.indexOf("clearPhoto2();") > landed.indexOf("setEditFile(null);"));
   assert.ok(ui.indexOf("const clearPhoto2 = () => {") < ui.indexOf("// The new piece has landed → show it on the Stage."), "declared before the effect that calls it");

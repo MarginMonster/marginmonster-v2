@@ -14,6 +14,7 @@ import { LangToggle } from "../components/LangToggle";
 import { normalizeContentLang, CONTENT_LANG_NATIVE } from "../lib/content-lang";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Ico } from "../lib/icons";
+import { editNote } from "../lib/edit-check";
 import { useT } from "../lib/ui-lang";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { readUiLang, tr } from "../lib/ui-i18n";
@@ -290,14 +291,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       where: { shopId: shop.id, type: { in: ["IMAGE_AD", "VIDEO_AD", "AUDIO"] }, metaJson: { contains: '"section":"creator"' } },
       orderBy: { createdAt: "desc" },
       take: 8,
-      select: { id: true, type: true, bodyJson: true, title: true, createdAt: true },
+      select: { id: true, type: true, bodyJson: true, metaJson: true, title: true, createdAt: true },
     }),
   ]);
   const recent = recentRows
     .map((a) => {
       let b: { videoUrl?: string; imageUrl?: string; audioUrl?: string; url?: string } = {};
       try { b = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
-      return { id: a.id, isVideo: a.type === "VIDEO_AD", isAudio: a.type === "AUDIO", media: b.videoUrl || b.imageUrl || b.audioUrl || b.url || null, title: a.title || "Untitled", at: a.createdAt.toISOString() };
+      // (2026-11-22) an edit the model did not make (edit-check.ts): the page says so, and what came back
+      const made = editNote(a.metaJson);
+      return { id: a.id, isVideo: a.type === "VIDEO_AD", isAudio: a.type === "AUDIO", media: b.videoUrl || b.imageUrl || b.audioUrl || b.url || null, title: a.title || "Untitled", at: a.createdAt.toISOString(), ...made };
     })
     .filter((p) => !!p.media)
     .slice(0, 6);
@@ -2732,7 +2735,7 @@ export default function WebStudio() {
   // lands in the gallery minutes later. Here we keep watching, and the moment the
   // new piece appears we render it ON the Stage with verb chips — no leaving the
   // room. Marketing is untouched (it keeps the confirmation modal).
-  type StagePiece = { id: string; isVideo: boolean; isAudio: boolean; media: string; title: string };
+  type StagePiece = { id: string; isVideo: boolean; isAudio: boolean; media: string; title: string; notMade?: boolean; returned?: number };
   const [stageResult, setStageResult] = useState<StagePiece | null>(null);
   // The result's real aspect ratio (w/h), captured on load, so the Stage frame
   // HUGS the image instead of letterboxing it in a wide black box. Reset to
@@ -2755,6 +2758,8 @@ export default function WebStudio() {
   // already be most of the cap ago.)
   const watchStartedRef = useRef<number>(0);
   const preIdsRef = useRef<string[]>([]);
+  // when a not-made edit was first seen without its "tokens returned" note (0 = none waiting)
+  const notMadeSeenRef = useRef(0);
   const makingNounRef = useRef<string>("");
   const makeBtnRef = useRef<HTMLButtonElement>(null);
   // Output-language chip (by the Make button): sets the language the generated
@@ -2854,7 +2859,15 @@ export default function WebStudio() {
     if (!making) return;
     const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id));
     if (fresh && fresh.media) {
-      setStageResult({ id: fresh.id, isVideo: fresh.isVideo, isAudio: fresh.isAudio, media: fresh.media, title: fresh.title });
+      // An edit the model did not make is saved first and its tokens returned a moment later. Landing it
+      // in between would say "not made" and nothing about the tokens — so it waits for the next look (the
+      // quiet revalidation is still running), six seconds at most: a free make has nothing to return.
+      if (fresh.notMade && !fresh.returned) {
+        if (!notMadeSeenRef.current) { notMadeSeenRef.current = Date.now(); return; }
+        if (Date.now() - notMadeSeenRef.current < 6000) return;
+      }
+      notMadeSeenRef.current = 0;
+      setStageResult({ id: fresh.id, isVideo: fresh.isVideo, isAudio: fresh.isAudio, media: fresh.media, title: fresh.title, notMade: fresh.notMade, returned: fresh.returned });
       setMaking(false);
       setEditingSrc(null);
       // The edit is done — drop the loaded source photo so it doesn't linger on
@@ -5975,6 +5988,15 @@ export default function WebStudio() {
            {/* RESULT CONTROLS — everything lives in its OWN area UNDER the photo
                (nothing is painted on top of the image any more): the quick-edit
                picker first, then the download/make-another/clear actions. */}
+           {/* AN EDIT THE MODEL DID NOT MAKE (2026-11-22). The picture came back as it went in; the tokens
+               went back by themselves (job-queue returnDeclinedEdit) — and until now nothing on the page
+               said either, so it read as "it charged me and did nothing". Said here, where they are looking. */}
+           {stageResult?.notMade && (
+             <p className="ws-notmade" role="status">
+               <Ico n={stageResult.returned ? "coin" : "bulb"} size={15} />
+               <span>{stageResult.returned ? t("The model didn’t make that change, so this one is on us — your {n} tokens are back. Try saying it another way.", { n: stageResult.returned }) : t("The model didn’t make that change. Try saying it another way.")}</span>
+             </p>
+           )}
            {stageResult && (
              <div className="ws-resultctl">
                {!stageResult.isVideo && !stageResult.isAudio && (
@@ -6031,7 +6053,7 @@ export default function WebStudio() {
           <div className="ws-shelf-h"><b>{t("Your creations")}</b><Link to="/web/archive?section=creator" className="ws-shelf-all">{t("Open Archive")} ›</Link></div>
           <div className="ws-shelf-strip">
             {d.recent.map((p) => (
-              <button type="button" onClick={() => p.media && loadToStage({ id: p.id, isVideo: p.isVideo, isAudio: p.isAudio, media: p.media, title: p.title })} key={p.id} className="ws-shelf-piece" title={t("{title} — open on the Stage", { title: p.title })}>
+              <button type="button" onClick={() => p.media && loadToStage({ id: p.id, isVideo: p.isVideo, isAudio: p.isAudio, media: p.media, title: p.title, notMade: p.notMade, returned: p.returned })} key={p.id} className="ws-shelf-piece" title={t("{title} — open on the Stage", { title: p.title })}>
                 <span className="ws-shelf-thumb" style={!p.isVideo && !p.isAudio && p.media ? { backgroundImage: `url(${p.media})` } : undefined}>
                   {p.isVideo && p.media ? <video src={`${p.media}#t=0.1`} muted playsInline preload="metadata" /> : null}
                   {p.isAudio ? <span className="ws-shelf-aud" aria-hidden="true"><Ico n="music" size={26} /></span> : null}
@@ -6804,6 +6826,9 @@ ${FORGE_CSS}
    their own area UNDER the photo. The verbs are relit for this light area
    (the base .ws-verbs stays dark for the on-frame edit-preview state). */
 .ws-resultctl{max-width:min(100%,560px);margin:14px auto 0;display:flex;flex-direction:column;gap:10px}
+/* an edit the model did not make: said plainly above the result's controls (2026-11-22) */
+.ws-notmade{max-width:min(100%,560px);margin:12px auto 0;display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid #E7C879;background:#FFF8E1;color:#5C4508;font-size:13.5px;line-height:1.45;font-weight:600;text-align:start;}
+.ws-notmade svg{flex:0 0 auto;margin-top:2px;color:#A87A08;}
 .ws-resultctl .ws-verbs{justify-content:center;background:none;border-top:0;padding:0}
 .ws-resultctl .ws-verb{color:var(--ink2,#4A554E);background:var(--card,#FDFCF7);border-color:var(--line,#E4DFCF)}
 .ws-resultctl .ws-verb:hover{color:var(--green,#0C7A46);background:#EAF6EE;border-color:var(--green2,#12A85E)}

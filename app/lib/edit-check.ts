@@ -33,6 +33,20 @@ export function parseEditCheck(raw: string): EditCheck | null {
 /** How the second ask begins — the same request, said so it cannot be read as "leave it". */
 export const EDIT_RETRY_LEAD = "Apply this change clearly and visibly — the result must look different from the original exactly where the change is asked for: ";
 
+/** WHAT A PAGE SAYS about a finished edit, read off the piece's own metaJson: was it made, and how many
+ *  tokens came back. Until 2026-11-22 the refund was silent — the picture came back as it went in and
+ *  nothing on the page said why, or that it had cost nothing: it read as "it charged me and did nothing".
+ *  `returned` is absent while the refund has not been noted yet (it is written a moment after the piece
+ *  is saved) and for a make that was free. */
+export function editNote(metaJson: string | null | undefined): { notMade?: boolean; returned?: number } {
+  try {
+    const m = JSON.parse(metaJson || "{}") as { declined?: unknown; tokensReturned?: unknown };
+    if (!m || m.declined !== true) return {};
+    const n = typeof m.tokensReturned === "number" && Number.isFinite(m.tokensReturned) && m.tokensReturned > 0 ? Math.round(m.tokensReturned) : 0;
+    return n ? { notMade: true, returned: n } : { notMade: true };
+  } catch { return {}; }
+}
+
 /** Which photo edits are a free-text ask that a model can quietly decline. (Background removal, upscaling
  *  and colourising are mechanical: there is nothing to decline.) */
 export const canBeDeclined = (editOp: string): boolean => editOp === "describe" || editOp === "replace" || editOp === "restyle" || editOp === "cartoonize";

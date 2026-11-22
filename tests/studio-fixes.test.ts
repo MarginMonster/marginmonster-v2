@@ -193,7 +193,7 @@ test("4 — looking at a past creation changes nothing else: the piece that is c
   assert.ok(!load.includes("setMaking(false)"), "the watch keeps running");
   assert.ok(!load.includes("setEditPreview(") && !load.includes("setEditFile(null)"), "the photo stays loaded");
   assert.ok(!load.includes("setEditingSrc(null)"), "…and so does the photo that is cooking");
-  assert.ok(ui.includes("<button type=\"button\" onClick={() => p.media && loadToStage({ id: p.id, isVideo: p.isVideo, isAudio: p.isAudio, media: p.media, title: p.title })} key={p.id} className=\"ws-shelf-piece\""));
+  assert.ok(ui.includes("<button type=\"button\" onClick={() => p.media && loadToStage({ id: p.id, isVideo: p.isVideo, isAudio: p.isAudio, media: p.media, title: p.title, notMade: p.notMade, returned: p.returned })} key={p.id} className=\"ws-shelf-piece\""));
   // WHY NONE OF IT WAS NEEDED: the Stage draws a result above both the photo being edited and the
   // cooking state — so the past piece shows either way, and both are back when it is cleared.
   const stage = cut("<aside className=\"ws-stage\">", "{/* RESULT CONTROLS");

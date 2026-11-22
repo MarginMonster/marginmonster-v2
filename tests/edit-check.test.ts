@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { EDIT_RETRY_LEAD, canBeDeclined, editCheckPrompt, parseEditCheck } from "../app/lib/edit-check.ts";
+import { EDIT_RETRY_LEAD, canBeDeclined, editCheckPrompt, editNote, parseEditCheck } from "../app/lib/edit-check.ts";
 import { firstJson } from "../app/lib/first-json.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -94,4 +94,35 @@ test("the tokens go back once: claimed, credited, recorded — and a free make h
   assert.ok(q.includes("(typeof p.ckDeclinedRefundedAmount === \"number\" && p.ckDeclinedRefundedAmount > 0 ? p.ckDeclinedRefundedAmount : 0);"));
   // and the job is NOT failed for it: no throw in the helper's happy path
   assert.ok(!fn.includes("throw "));
+});
+
+/* …AND THE PAGE SAYS SO (2026-11-22). The refund was silent: the picture came back as it went in, and
+ * nothing on the Stage said why, or that it had cost nothing — it read as "it charged me and did nothing". */
+test("the Stage says an edit was not made, and that the tokens came back", () => {
+  // what is read off the piece
+  assert.deepEqual(editNote(JSON.stringify({ kind: "edit", declined: true, tokensReturned: 5 })), { notMade: true, returned: 5 });
+  assert.deepEqual(editNote(JSON.stringify({ kind: "edit", declined: true })), { notMade: true }, "saved, the refund not noted yet — or a free make");
+  assert.deepEqual(editNote(JSON.stringify({ kind: "edit", declined: true, tokensReturned: 0 })), { notMade: true });
+  assert.deepEqual(editNote(JSON.stringify({ kind: "edit", declined: false, tokensReturned: 5 })), {}, "an edit that was made says nothing");
+  assert.deepEqual(editNote(JSON.stringify({ kind: "edit" })), {});
+  assert.deepEqual(editNote("not json"), {});
+  assert.deepEqual(editNote(null), {});
+  assert.deepEqual(editNote("null"), {});
+  // the Studio: its shelf rows carry it, the Stage piece carries it, and the note is drawn above the controls
+  const ui = read("app", "routes", "web.studio.tsx");
+  assert.ok(ui.includes("select: { id: true, type: true, bodyJson: true, metaJson: true, title: true, createdAt: true },"));
+  assert.ok(ui.includes("const made = editNote(a.metaJson);") && ui.includes("at: a.createdAt.toISOString(), ...made };"));
+  assert.ok(ui.includes("type StagePiece = { id: string; isVideo: boolean; isAudio: boolean; media: string; title: string; notMade?: boolean; returned?: number };"));
+  assert.equal(ui.split("notMade: fresh.notMade, returned: fresh.returned").length - 1, 1, "the piece that just landed");
+  assert.equal(ui.split("notMade: p.notMade, returned: p.returned").length - 1, 1, "…and one opened from the shelf");
+  assert.ok(ui.includes("{stageResult?.notMade && (\n             <p className=\"ws-notmade\" role=\"status\">"));
+  assert.ok(ui.includes("t(\"The model didn’t make that change, so this one is on us — your {n} tokens are back. Try saying it another way.\", { n: stageResult.returned })"));
+  assert.ok(ui.includes(".ws-notmade{"));
+  // the tokens go back a beat AFTER the piece is saved: the note waits for them (six seconds at most)
+  const land = ui.slice(ui.indexOf("const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id));"), ui.indexOf("setStageResult({ id: fresh.id"));
+  assert.ok(land.includes("if (fresh.notMade && !fresh.returned) {") && land.includes("if (!notMadeSeenRef.current) { notMadeSeenRef.current = Date.now(); return; }") && land.includes("if (Date.now() - notMadeSeenRef.current < 6000) return;"));
+  // both sentences in all five languages
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  assert.equal(dict.split("  \"The model didn’t make that change, so this one is on us — your {n} tokens are back. Try saying it another way.\": ").length - 1, 5);
+  assert.equal(dict.split("  \"The model didn’t make that change. Try saying it another way.\": ").length - 1, 5);
 });
