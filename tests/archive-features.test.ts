@@ -175,13 +175,17 @@ test("WHEN is applied in the loader — where the paging is — and every count 
   assert.ok(loader.includes('const when = parseWhen(new URL(request.url).searchParams.get("when"));'));
   assert.ok(loader.includes("const whenWhere = since ? { createdAt: { gte: since } } : {};"));
   // …and put into BOTH shelf queries, before their `take`
+  // (the shelf query is one per KIND since the same day: with the newest `show` of all kinds loaded
+  //  together, an account that had just made sixty videos opened Images to "Showing 3 of 76 images")
   assert.ok(loader.includes([
-    "  const assets = await db.asset.findMany({",
-    '    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere, ...titleWhere, ...whenWhere },',
+    '  const assets = (await Promise.all((["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] as const).map((type) => db.asset.findMany({',
+    "    where: { shopId: shop.id, type, NOT: galleryWhere, ...titleWhere, ...whenWhere },",
     '    orderBy: { createdAt: "desc" },',
     "    take: show,",
-    "  });",
-  ].join("\n")));
+    "  })))).flat().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());",
+  ].join("\n")), "the newest of EACH kind, back in one newest-first list");
+  assert.ok(loader.includes("nextShow: Math.max(inWhen.video, inWhen.image, inWhen.music, inWhen.blog) > show ? Math.min(SHOW_MAX, show + SHOW_STEP) : null,"), "more is offered while any ONE tab holds more than is loaded of its kind");
+  assert.ok(!loader.includes("nextShow: totalAll > show"));
   assert.ok(loader.includes([
     "  const stills = await db.asset.findMany({",
     '    where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere, ...titleWhere, ...whenWhere },',
@@ -204,8 +208,9 @@ test("WHEN is applied in the loader — where the paging is — and every count 
   assert.ok(!loader.includes("const totalAll = totals.video"), "the page's total is no longer the all-time one while a window is open");
   assert.ok(loader.includes("    totals: inWhen,\n"));
   assert.ok(loader.includes("    when,\n    whenCounts,\n"));
-  // "Show older pieces" is offered off that same total, so it pages INSIDE the window
-  assert.ok(loader.includes("nextShow: totalAll > show ? Math.min(SHOW_MAX, show + SHOW_STEP) : null,"));
+  // "Show older pieces" is offered off the open window's own numbers, so it pages INSIDE the window (and
+  // per kind — pinned above with the shelf query)
+  assert.ok(loader.includes("nextShow: Math.max(inWhen.video, inWhen.image, inWhen.music, inWhen.blog) > show ?"));
   // the all-time numbers are still the ones the library was always counted with (the search applied, no window)
   assert.ok(loader.includes('where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere, ...titleWhere },\n    _count: { _all: true },'));
 

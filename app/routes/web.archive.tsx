@@ -268,11 +268,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const inWhen = whenCounts[when];
   const totalAll = inWhen.video + inWhen.image + inWhen.music + inWhen.blog;
 
-  const assets = await db.asset.findMany({
-    where: { shopId: shop.id, type: { in: ["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] }, NOT: galleryWhere, ...titleWhere, ...whenWhere },
+  // EACH TAB HOLDS ITS OWN NEWEST PIECES (2026-11-22). The page used to load the newest `show` pieces of
+  // every kind TOGETHER, and the tabs sifted that one page — so an account that had just made sixty
+  // videos opened Images to "Showing 3 of 76 images" and had to tap "Show older pieces" through its videos
+  // to reach them (seen live, on the owner's own library). Now it is the newest `show` OF EACH KIND, put
+  // back in one newest-first list: same order, same numbering of repeats, and every tab opens full.
+  const assets = (await Promise.all((["VIDEO_AD", "IMAGE_AD", "AUDIO", "BLOG_POST"] as const).map((type) => db.asset.findMany({
+    where: { shopId: shop.id, type, NOT: galleryWhere, ...titleWhere, ...whenWhere },
     orderBy: { createdAt: "desc" },
     take: show,
-  });
+  })))).flat().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   // Separate fetch for the Scenes & Portraits section (its own pagination so neither crowds the other).
   const stills = await db.asset.findMany({
     where: { shopId: shop.id, type: "IMAGE_AD", ...galleryWhere, ...titleWhere, ...whenWhere },
@@ -457,7 +462,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Whether anything is still hidden, and how to ask for more of it.
     shown: Math.min(show, totalAll),
     totalAll,
-    nextShow: totalAll > show ? Math.min(SHOW_MAX, show + SHOW_STEP) : null,
+    // (more to show while ANY tab holds more than is loaded of its kind — each kind is paged on its own)
+    nextShow: Math.max(inWhen.video, inWhen.image, inWhen.music, inWhen.blog) > show ? Math.min(SHOW_MAX, show + SHOW_STEP) : null,
     assets: numberRepeats(assets.map(mapAsset)),
     stills: numberRepeats(stills.map(mapAsset)),
   });
