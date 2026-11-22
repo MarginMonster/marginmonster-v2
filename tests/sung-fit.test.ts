@@ -129,3 +129,10 @@ test("the poster promises what is made: four sung lines are about twenty seconds
   assert.ok(heroes.includes('kick: "A sing-along for little ones", meta: "about 20 sec"'));
   assert.equal(read("app", "lib", "ui-i18n-dict.ts").split('  "about 20 sec": ').length - 1, 5, "in all five languages");
 });
+
+test("in a sung format the line under a scene is called what it is: the lyric sung there", () => {
+  const ui = read("app", "routes", "web.film.tsx");
+  assert.ok(ui.includes("lipSyncSinger: !!t.lipSyncSinger, cartoon: !!t.cartoon, sung: !!t.sung,"), "the page is told which formats are sung");
+  assert.ok(ui.includes("placeholder={tmpl?.sung ? t(\"the line sung in this scene\") : t(\"on-screen line (optional)\")}"));
+  assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("  \"the line sung in this scene\": ").length - 1, 5);
+});

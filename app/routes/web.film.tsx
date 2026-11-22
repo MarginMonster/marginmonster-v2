@@ -42,7 +42,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop, account } = await requireWebIdentity(request);
   const { LIVE_FILM_TEMPLATES, GENRES, PROPS } = await import("../lib/film-engine.server");
   const templates = LIVE_FILM_TEMPLATES.map((t) => ({
-    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger, cartoon: !!t.cartoon,
+    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger, cartoon: !!t.cartoon, sung: !!t.sung,
   }));
   const genres = Object.entries(GENRES).map(([key, g]) => ({ key, label: g.label }));
   // name = the label with its leading emoji stripped ("🐯 Tiger" -> "Tiger"); the picker shows a real
@@ -3418,7 +3418,8 @@ export default function FilmStudio() {
                 {treatment.scenes.map((s, i) => (
                   <li key={i} className="fs-scene">
                     <span className="fs-scene-vis">{s.visual}</span>
-                    <input className="fs-scene-cap" value={s.caption || ""} onChange={(e) => editCaption(i, e.target.value)} placeholder={t("on-screen line (optional)")} maxLength={80} />
+                    {/* (2026-11-22) in a sung format this line is the LYRIC sung over the scene — the film is cut to it */}
+                    <input className="fs-scene-cap" value={s.caption || ""} onChange={(e) => editCaption(i, e.target.value)} placeholder={tmpl?.sung ? t("the line sung in this scene") : t("on-screen line (optional)")} aria-label={tmpl?.sung ? t("the line sung in this scene") : t("on-screen line (optional)")} maxLength={80} />
                   </li>
                 ))}
               </ol>
