@@ -20,6 +20,7 @@ import { hasCJK, langDirective } from "./content-lang";
 import { tidyAdCopy } from "./ad-copy-tidy";
 import { occupiedPlate } from "./plate-scene";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
+import { EDIT_RETRY_LEAD, canBeDeclined, editCheckPrompt, parseEditCheck, type EditCheck } from "./edit-check";
 import { presenterSprayEnabled } from "./feature-flags.server";
 
 /* ── On-image ad copy ──────────────────────────────────────────────────────
@@ -4430,6 +4431,8 @@ export async function editImage(opts: {
   // Which engine actually produced the render (stamped on the asset meta below),
   // so a paid Ultra edit that fell back to kontext is auditable after the fact.
   let usedEngine: string | undefined;
+  // How to ask for the same edit once more, more plainly (set by the edits a model can quietly decline).
+  let redo: (() => Promise<{ localUrl: string; engine: string }>) | null = null;
 
   if (editOp === "bgremove") {
     const cut = await removeBackground(sourceImageUrl);
@@ -4486,6 +4489,7 @@ export async function editImage(opts: {
         : `${prompt}. Keep the original scene, background, framing and lighting intact; blend any new elements in photorealistically with matching perspective, scale, lighting and shadows. Produce a seamless, high-detail, hyper-realistic result — no blurry patches, no dark blobs or smudges, no distorted anatomy, no artifacts, no added text, no watermark.`;
       const r = await editImg2Img(sourceImageUrl, combinePrompt, editModelId, opts.sourceImageUrl2);
       localUrl = await persistRemote(r.url, "jpg"); usedEngine = r.engine;
+      redo = async () => { const again = await editImg2Img(sourceImageUrl, `${EDIT_RETRY_LEAD}${combinePrompt}`, editModelId, opts.sourceImageUrl2); return { localUrl: await persistRemote(again.url, "jpg"), engine: again.engine }; };
     }
     label = opts.sourceImageUrl2 ? "combined" : "edited";
   } else {
@@ -4493,7 +4497,32 @@ export async function editImage(opts: {
       ? `Redraw this exact image as a vibrant, clean cartoon illustration${prompt ? `, ${prompt}` : ""}. Keep the same subject, pose and composition — just stylize it. No added text or watermark.`
       : `${prompt || "Give this photo a clean, premium, eye-catching restyle"}. Keep the same subject and composition; do not add any text or a watermark.`;
     { const r = await editImg2Img(sourceImageUrl, stylePrompt, editModelId); localUrl = await persistRemote(r.url, "jpg"); usedEngine = r.engine; }
+    redo = async () => { const again = await editImg2Img(sourceImageUrl, `${EDIT_RETRY_LEAD}${stylePrompt}`, editModelId); return { localUrl: await persistRemote(again.url, "jpg"), engine: again.engine }; };
     label = editOp === "cartoonize" ? "cartoon" : "restyle";
+  }
+
+  // WAS THE CHANGE MADE? (edit-check.ts) A picture model sometimes hands the photo back as it was, with no
+  // error — and the customer has paid for their own picture. The result is looked at beside the original;
+  // not made → asked once more, more plainly; still not made → kept and shown, marked `declined`, and the
+  // job gives the tokens back (job-queue.server.ts). A look that fails or cannot be read changes nothing.
+  let declined = false;
+  let editCheck = "";
+  if (canBeDeclined(editOp)) {
+    const request = editOp === "cartoonize" ? `redraw it as a cartoon illustration${prompt ? `, ${prompt}` : ""}` : (prompt || "give this photo a clean, premium restyle");
+    let seen = await editWasMade(sourceImageUrl, localUrl, request);
+    if (seen && !seen.made && redo) {
+      try {
+        const again = await redo();
+        const seenAgain = await editWasMade(sourceImageUrl, again.localUrl, request);
+        // the second result replaces the first only when it is not known to be unchanged too
+        if (!seenAgain || seenAgain.made) { localUrl = again.localUrl; usedEngine = again.engine; seen = seenAgain; }
+      } catch (e) {
+        console.log("[photo-edit] the second ask failed, keeping the first result:", e instanceof Error ? e.message.slice(0, 120) : e);
+      }
+    }
+    declined = !!seen && !seen.made;
+    editCheck = seen?.differences || "";
+    if (declined) console.log(`[photo-edit] "${request.slice(0, 80)}" was NOT made by ${usedEngine || editModelId} in two asks — shown, marked declined, not charged`);
   }
 
   const asset = await db.asset.create({
@@ -4501,10 +4530,24 @@ export async function editImage(opts: {
       shopId, type: "IMAGE_AD", status: "PENDING",
       title: `Photo edit — ${label}`,
       bodyJson: JSON.stringify({ imageUrl: localUrl, prompt: prompt || null, method: "edit", editOp }),
-      metaJson: JSON.stringify({ kind: "edit", section: "creator", editOp, sourceImageUrl, requestedEngine: editModelId, usedEngine, downgraded: !!usedEngine && usedEngine === KONTEXT_FALLBACK && editModelId !== KONTEXT_FALLBACK }),
+      metaJson: JSON.stringify({ kind: "edit", section: "creator", editOp, sourceImageUrl, requestedEngine: editModelId, usedEngine, downgraded: !!usedEngine && usedEngine === KONTEXT_FALLBACK && editModelId !== KONTEXT_FALLBACK, ...(declined ? { declined: true } : {}), ...(editCheck ? { editCheck } : {}) }),
     },
   });
   return asset.id;
+}
+
+/** Was the requested change made? Original and result, to the vision reader (edit-check.ts). Null when the
+ *  look cannot be made or read — the caller then changes nothing. */
+async function editWasMade(sourceUrl: string, resultUrl: string, request: string): Promise<EditCheck | null> {
+  try {
+    const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+    const result = resultUrl.startsWith("/") && base ? base + resultUrl : resultUrl;
+    if (!/^https?:\/\//i.test(result) || !/^https?:\/\//i.test(sourceUrl)) return null;
+    return parseEditCheck(String((await anthropicVision(editCheckPrompt(request), [sourceUrl, result], { maxTokens: 300, model: "claude-sonnet-4-6" })) || ""));
+  } catch (e) {
+    console.error("[photo-edit] the result could not be looked at (the edit stands):", e instanceof Error ? e.message.slice(0, 140) : e);
+    return null;
+  }
 }
 
 /** Creator "Make an image" — a text-to-image generation in a chosen art style,

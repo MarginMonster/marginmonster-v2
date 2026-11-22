@@ -13,6 +13,7 @@
  *     is not (storyCheckPrompt / parseStoryCheck / storyFaults / storyFix).
  * Clothes are NOT judged here: a story dresses its people for the part (the baker wears an apron).
  */
+import { firstJson } from "./first-json.ts";
 
 /** Words that start a SECOND moment in a picture's description. */
 const NEXT_MOMENT = /[\s,;—–-]+(?:and then|then|until|moments? later|seconds? later|minutes? later|a (?:moment|beat|second) later|soon after|shortly after|afterwards?|later on|later|before (?:finally|eventually))\b/i;
@@ -74,25 +75,7 @@ export function storyPanelsPrompt(): string {
   return `The first image is a picture from an illustrated story. Check whether it is ONE picture or SEVERAL pictures joined together. Look at it in halves: describe in a few words what the TOP half shows and what the BOTTOM half shows, then what the LEFT half and the RIGHT half show. It is split into panels if a straight edge divides it into separate pictures — for example the same place, object or person drawn TWICE (once in each half), two different camera views stacked or side by side, or a before-and-after. A window, a mirror, a doorway, a table edge or a horizon inside one scene is NOT a split. Reply with ONLY this JSON: {"top": "…", "bottom": "…", "left": "…", "right": "…", "panels": true or false}.`;
 }
 
-/** The FIRST complete JSON object in an answer. A reader sometimes answers, then writes "Wait, let me
- *  re-read…" and a second block (seen on the real reader, 2026-11-22: its first answer was the right one);
- *  taking everything from the first "{" to the last "}" then parses nothing at all. */
-const jsonIn = (raw: string): Record<string, unknown> | null => {
-  const text = String(raw || "");
-  const a = text.indexOf("{");
-  if (a < 0) return null;
-  let depth = 0, inStr = false, esc = false;
-  for (let i = a; i < text.length; i++) {
-    const ch = text[i];
-    if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === "\"") inStr = false; continue; }
-    if (ch === "\"") inStr = true;
-    else if (ch === "{") depth++;
-    else if (ch === "}" && --depth === 0) {
-      try { const j = JSON.parse(text.slice(a, i + 1)); return j && typeof j === "object" ? (j as Record<string, unknown>) : null; } catch { return null; }
-    }
-  }
-  return null;
-};
+const jsonIn = firstJson; // the FIRST complete object in an answer (first-json.ts)
 /** Who was seen, in the order asked — null when the answer cannot be read (the caller then keeps the
  *  picture: a look that says nothing must never cost a story its picture). */
 export function parseStoryCast(raw: string, refs: number): boolean[] | null {

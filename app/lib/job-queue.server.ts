@@ -124,6 +124,41 @@ async function markForgeFailed(job: { type: string; payload: string }, reason: s
   } catch { /* never fatal */ }
 }
 
+/** Give back what a photo edit cost when the model did not make it (the asset is marked `declined` by
+ *  editImage — edit-check.ts). The job itself SUCCEEDS: the result is shown, with the reason.
+ *
+ *  Same order as every other mid-job credit here (engine-reconcile.server.ts): CLAIM in the payload, then
+ *  credit, then record the amount — so a crash between the steps can lose a refund (loud, recoverable) but
+ *  can never pay one twice, and a later terminal failure subtracts what already went back. A free make has
+ *  nothing to return. Never throws: a refund that fails must not fail an edit that was delivered. */
+async function returnDeclinedEdit(o: { assetId: string; shopId: string; jobType: string; payload: Record<string, unknown> }): Promise<void> {
+  try {
+    const p = o.payload;
+    if (p.freeGen || !p.prePaid || p.ckDeclinedRefunded) return;
+    const asset = await db.asset.findUnique({ where: { id: o.assetId }, select: { metaJson: true } });
+    let meta: Record<string, unknown> = {};
+    try { meta = JSON.parse(asset?.metaJson || "{}") as Record<string, unknown>; } catch { /* not ours to judge */ }
+    if (meta.declined !== true) return;
+    const charged = typeof p.chargedTokens === "number" && p.chargedTokens > 0 ? p.chargedTokens : REFUND_BY_TYPE[o.jobType] || 0;
+    const jobId = typeof p.__jobId === "string" ? p.__jobId : "";
+    if (charged <= 0 || !jobId) return;
+    const { checkpointJob } = await import("./ugc-ad-pipeline.server");
+    await checkpointJob(jobId, { ckDeclinedRefunded: true }); // claim BEFORE crediting
+    p.ckDeclinedRefunded = true;
+    try {
+      await refundTokens(o.shopId, charged, typeof p.chargedFromExtra === "number" ? p.chargedFromExtra : 0);
+      await checkpointJob(jobId, { ckDeclinedRefundedAmount: charged });
+      p.ckDeclinedRefundedAmount = charged;
+      await db.asset.update({ where: { id: o.assetId }, data: { metaJson: JSON.stringify({ ...meta, tokensReturned: charged }) } });
+      console.log(`[photo-edit] edit not made by the model — ${charged} tokens returned to shop ${o.shopId}`);
+    } catch (e) {
+      console.error(`[photo-edit] DECLINED-EDIT REFUND FAILED after being claimed — shop ${o.shopId} is owed ${charged} tokens: `, e instanceof Error ? e.message.slice(0, 200) : e);
+    }
+  } catch (e) {
+    console.error("[photo-edit] could not settle a declined edit:", e instanceof Error ? e.message.slice(0, 200) : e);
+  }
+}
+
 /** Refund a terminally-failed pre-paid job EXACTLY ONCE. The payload is
  *  rewritten first (prePaid→false, refunded→true) so a second terminal
  *  failure — or the archive's free retry failing again — can never mint
@@ -179,7 +214,9 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
       // Same subtraction for the aspect-ratio reconcile (video-generation.ts):
       // it also records its amount only after the credit lands, so a video that
       // aspect-refunded and then terminal-failed must not refund it twice.
-      (typeof p.ckAspectRefundedAmount === "number" && p.ckAspectRefundedAmount > 0 ? p.ckAspectRefundedAmount : 0);
+      (typeof p.ckAspectRefundedAmount === "number" && p.ckAspectRefundedAmount > 0 ? p.ckAspectRefundedAmount : 0) +
+      // …and for a photo edit the model did not make (returnDeclinedEdit, above): already given back.
+      (typeof p.ckDeclinedRefundedAmount === "number" && p.ckDeclinedRefundedAmount > 0 ? p.ckDeclinedRefundedAmount : 0);
     const amount = Math.max(0, charged - alreadyRefunded);
     try {
       // chargedFromExtra records which bucket the spend came out of, so the
@@ -587,7 +624,7 @@ async function runJob(
           const { assertCapability } = await import("./capabilities.server");
           assertCapability(shop?.activePlan, "image");
         }
-        await editImage({
+        const editedId = await editImage({
           shopId,
           sourceImageUrl: payload.sourceImageUrl as string,
           sourceImageUrl2: typeof payload.sourceImageUrl2 === "string" ? payload.sourceImageUrl2 : undefined,
@@ -595,6 +632,9 @@ async function runJob(
           prompt: typeof payload.editPrompt === "string" ? payload.editPrompt : undefined,
           model: typeof payload.editModel === "string" ? payload.editModel : undefined,
         });
+        // AN EDIT THE MODEL DID NOT MAKE IS NOT CHARGED (edit-check.ts). The result is kept and shown — it
+        // is what the model gave — and the tokens go back, once.
+        await returnDeclinedEdit({ assetId: editedId, shopId, jobType: type, payload });
         break;
       }
       // Creator "Make an image" — a text-to-image generation (no brand/ad ladder).
