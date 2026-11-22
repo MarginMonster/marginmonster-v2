@@ -2321,9 +2321,17 @@ export default function WebStudio() {
   // put (they just generate the video from it).
   const [combineGenerated, setCombineGenerated] = useState(false);
   // One place to wipe the combine AND its edit context (new presenter/product/tab).
+  //
+  // …BUT NOT THE SETTING (2026-11-22). This blanked the scene text and left settingKey alone: choose
+  // "Kitchen", then change the presenter, the product, the size or hold/wear, and the card still said
+  // Kitchen while the hidden combineScene was empty — the next 16-token Combine was made with no setting.
+  // The scene goes back to what the selected card stands for: a preset's own line (the changes Edit
+  // stacked onto it go, with the frame they were made for), nothing for Auto or a saved backdrop, as
+  // before — and a background that is being typed stays as typed, because that box IS the scene.
   const resetCombine = () => {
     setCombineUrl(null); setCombineErr(null); setCombining(false); setCombineJobId(null);
-    setCombineScene(""); setCombineEdit(""); setCombineGenerated(false);
+    setCombineScene((typed) => (settingKey === "custom" ? typed : COMBINE_SETTINGS.find((s) => s.key === settingKey)?.scene || ""));
+    setCombineEdit(""); setCombineGenerated(false);
   };
   const combineFetcher = useFetcher<{ error?: string; combineJobId?: string }>();
   const statusFetcher = useFetcher<{ combineResult?: { jobId: string; done: boolean; failed: boolean; media: string | null } | null }>();
@@ -2707,7 +2715,14 @@ export default function WebStudio() {
   // Premium "Make an image" model (Genius) adds a token surcharge, like the
   // video engines. Re-derived from the SAME table the server charges from, so
   // the quote, the pill, XP and the Make button can't disagree with the charge.
-  const createFee = (isCreate || isEdit) ? createModelSurcharge(createModel) : 0;
+  //
+  // A SECOND PHOTO IS ALWAYS ULTRA (2026-11-22). Adding a 2nd photo makes the edit a two-photo combine:
+  // the submit sends createModel "ultra" and the action charges it — 16 tokens — whatever the Model pill
+  // says. This fee read the pill alone, so the line under "Edit photo" still said 5, the pill still showed
+  // Pro, and a wallet holding 5–15 tokens was let through to a refusal. One key now prices it, names the
+  // model in the wallet line and lights the pill: the model that will be charged.
+  const feeModel = isEdit && editFile2 ? "ultra" : createModel;
+  const createFee = (isCreate || isEdit) ? createModelSurcharge(feeModel) : 0;
   const facelessFee = isFaceless ? facelessQualitySurcharge(facelessQuality) * CREATOR_SURCHARGE_MULT : 0;
   // A video edit is a flat per-op charge — no engine/model/burst surcharges ride it.
   const cost = isVideoEdit ? d.costs.videoEdit : baseCost + engineFee + createFee + facelessFee;
@@ -2847,6 +2862,9 @@ export default function WebStudio() {
       setEditPreview((p) => { if (p) { try { URL.revokeObjectURL(p); } catch { /* */ } } return null; });
       setEditFile(null);
       setHasFile(false);
+      // …and the SECOND photo with it: it stayed loaded, so the next photo dropped on the Stage was sent as
+      // a two-photo edit again and charged 16 tokens, not 5, with nothing on screen asking for it. 2026-11-22
+      clearPhoto2();
       // Same for a video-edit: drop the loaded clip so the panel resets to the
       // describe->make flow once the edited video lands.
       if (editVideoUploadRef.current) editVideoUploadRef.current.value = "";
@@ -3647,6 +3665,13 @@ export default function WebStudio() {
           </button>
         </div>
       )}
+      {/* 2026-11-22: why the import was refused, HERE. A store address that is not one (or one import too
+          many in an hour) is answered with catalogError, and that was drawn only on the Import tab and in
+          the classic layout — never in this chooser, the one the Avatar hub uses. "Pull my products in"
+          closed its own row and nothing else happened. */}
+      {prodSource === "store" && !serviceForced && (actionData as { catalogError?: string } | null)?.catalogError && (
+        <div className="wb-err" style={{ marginTop: 8 }}>{(actionData as { catalogError?: string }).catalogError}</div>
+      )}
       {/* The chosen store image rides to the server as productImageUrl. */}
       {prodSource === "store" && !serviceForced && <input type="hidden" name="productImageUrl" value={imageUrl} />}
       {/* No upload box / "Choose a photo" button / big preview: tapping the
@@ -3698,9 +3723,18 @@ export default function WebStudio() {
   // Edit tab shares hasFile with the Marketing upload — a photo left on one tab
   // would mis-gate another, enabling Create/Edit with no real photo. Clear the
   // upload AND the source so the submit gate starts honest on every tab switch.
+  //
+  // …THE UPLOAD SOURCE, NOT A STORE PICK (2026-11-22). This set the source to null whatever it was, and it
+  // runs on mount as well — in the same pass as, and after, the ?product= preselect further up, whose
+  // setProdSource("store") it overwrote. Helpurr's "Make an image ad for {product}" link therefore landed
+  // with the product's name and photo filled in, no source selected and Generate off; tapping "From your
+  // store" then blanked the photo (chooseStore reads that as a change of source). And any tap on a tab
+  // dropped a product already picked. Only "upload" is cleared: its file has just been dropped by
+  // clearUpload, so that source would be showing a photo that is no longer there. A store pick is a name,
+  // a link and an image address — nothing a tab can make stale. (The frame still goes, with clearUpload.)
   useEffect(() => {
     clearUpload();
-    setProdSource(null);
+    setProdSource((p) => (p === "upload" ? null : p));
     // Drop any loaded video-to-edit too, so leaving the Video tab returns the
     // describe->make flow and the native productVideo input starts empty.
     if (editVideoUploadRef.current) editVideoUploadRef.current.value = "";
@@ -3762,7 +3796,10 @@ export default function WebStudio() {
     && !(avatarVideoHub && !!combineUrl)
     // Casual uses its own photo flow (no source chooser); marketing must have a
     // product that actually matches its mounted source input.
-    && (casual ? (!hasFile && !imageUrl.trim()) : !hasMarketingProduct);
+    // (2026-11-22 — `isEdit && editFile`: the photo being edited is held in editFile, and it is what the
+    //  submit sends. `hasFile` is shared with the upload source and is cleared by every tab change — tap
+    //  Music and come back, and the photo was still on the Stage with "Edit photo" off and no reason given.)
+    && (casual ? (!hasFile && !(isEdit && editFile) && !imageUrl.trim()) : !hasMarketingProduct);
   // THE WALLET IS PART OF WHETHER THE BUTTON WORKS. Every other precondition
   // (title, photo, presenter, cartoon style) disabled the button; the one that
   // bites a brand-new trialist first did not. A Studio trial spends from a
@@ -3773,7 +3810,9 @@ export default function WebStudio() {
   // of the number they were short by and where to get it.
   // A video edit is always a single flat-cost op — never multiplied by the
   // image/video burst that may be left over from a prior session.
-  const effBurst = isVideoEdit || (casual && tab === "video") ? 1 : burst;
+  // (…and so is a PHOTO edit in Creator: a "×5" left over from the Ad Maker made the button read "Edit 5
+  //  photos" and the wallet "25 tokens · 5 each" over an edit that is made — and charged — once. 2026-11-22)
+  const effBurst = isVideoEdit || isEdit || (casual && tab === "video") ? 1 : burst;
   const shortBy = d.hasPlan ? Math.max(0, cost * effBurst - d.tokens) : 0;
   // Casual video is describe-first (no name field): it needs a description, not
   // a productTitle — same as create/music/faceless. (A loaded video to EDIT is
@@ -3797,7 +3836,12 @@ export default function WebStudio() {
     ? null
     : (!avatarId && !combineUrl) ? t("Pick a presenter up in “Your scene” first.")
     : (!noProduct && needsPhoto) ? t("Add your product photo up in “Your scene” first.")
-    : (!noProduct && !productTitle.trim()) ? t("Add a product name up in “Your scene”.")
+    // (2026-11-22 — two of these pointed the wrong way. The Product name box is not in "Your scene": it
+    //  sits under that panel, and above the button this is shown over. And with "No product" on and "What
+    //  do they say?" empty it said to tap "Write the script" — which refuses, for want of exactly that
+    //  text. Ask for the text, with the line the Write button itself gives.)
+    : (!noProduct && !productTitle.trim()) ? t("Add a product name in the “Product name” box above.")
+    : (noProduct && videoStyle !== "anthem" && !direction.trim()) ? t("Tell me what they talk about first.")
     : !videoStyle ? t("Pick a style above.")
     : !wordsReady ? (videoStyle === "anthem" ? t("Tap “Write the jingle” above to make the words first.") : videoStyle === "talking" ? t("Tap “Write the script” above first.") : t("Tap “Write the commercial” above first."))
     : null;
@@ -3818,9 +3862,10 @@ export default function WebStudio() {
         <div className="ws-cinehead-copy">
           <span className="ws-cinehead-eyebrow"><Ico n={casual ? "palette" : "trend"} size={13} /> {t("EasyMode Studio")}</span>
           <h1 className="wb-h1">{casual ? t("Create") : t("Ad Maker")}</h1>
+          {/* (2026-11-22: Creator said "your gallery" here — the place is called "Archive" in both modes) */}
           <p className="wb-sub">
             {casual
-              ? <>{t("Upload a photo to edit, or make an image or video to share — it lands in your ")}<Link to="/web/archive?section=creator">{t("gallery")}</Link>.</>
+              ? <>{t("Upload a photo to edit, or make an image or video to share — it lands in your ")}<Link to="/web/archive?section=creator">{t("Archive")}</Link>.</>
               : <>{t("Make one piece by hand, in your voice — it lands in your ")}<Link to="/web/archive">{t("Archive")}</Link>.</>}
           </p>
         </div>
@@ -4573,12 +4618,16 @@ export default function WebStudio() {
                         required — no Retry). Either way, 16 tok. */}
                     {combineGenerated ? (
                       <div className="ws-combine-editrow">
+                        {/* 2026-11-22: Return / Done in an EMPTY box does nothing (the combineEdit.trim()
+                            in onKeyDown). With no text applyCombineEdit means Retry — a stray key spent
+                            another 16 tokens and replaced the approved frame. Retry is the button's job;
+                            the box only sends a change that was typed, as its twin below already did. */}
                         <input
                           type="text"
                           className="ws-combine-editbox"
                           value={combineEdit}
                           onChange={(e) => setCombineEdit(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter" && !combining && !busy) { e.preventDefault(); applyCombineEdit(); } }}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !combining && !busy && combineEdit.trim()) { e.preventDefault(); applyCombineEdit(); } }}
                           placeholder={t("Describe a change — e.g. “green shirt”, “put them in an office”")}
                           maxLength={160}
                           disabled={combining || busy}
@@ -5573,15 +5622,18 @@ export default function WebStudio() {
             {isEdit && casual && (
               <div className="ws-genopts">
                 <div className="ws-lbl">{t("Model")}</div>
+                {/* (feeModel, not createModel: with a 2nd photo loaded the edit runs — and is charged — on
+                    Ultra, so that is the pill that is lit. The picked model is kept and comes back when the
+                    2nd photo is removed.) */}
                 <div className="ws-models" role="radiogroup" aria-label={t("AI model")}>
                   {CREATE_MODELS.map((m) => (
-                    <button type="button" key={m.key} role="radio" aria-checked={createModel === m.key}
-                      className={`ws-model${createModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>
+                    <button type="button" key={m.key} role="radio" aria-checked={feeModel === m.key}
+                      className={`ws-model${feeModel === m.key ? " sel" : ""}`} onClick={() => setCreateModel(m.key)}>
                       {t(m.name)}{m.surcharge > 0 && <span className="ws-model-up">+{m.surcharge}</span>}
                     </button>
                   ))}
                 </div>
-                <p className="ws-note" style={{ marginTop: 6 }}>{t(CREATE_MODELS.find((m) => m.key === createModel)?.blurb || "")}</p>
+                <p className="ws-note" style={{ marginTop: 6 }}>{t(CREATE_MODELS.find((m) => m.key === feeModel)?.blurb || "")}</p>
                 <input type="hidden" name="createModel" value={createModel} />
                 <div className="ws-styledisc" style={{ marginTop: 12 }}>
                   <button type="button" className={`ws-styletoggle${showEditOps ? " open" : ""}`}
@@ -5784,7 +5836,7 @@ export default function WebStudio() {
                   ? <>{t("Your 7-day free trial unlocks every generator — ")}<Link to="/web#plans">{t("pick a plan")}</Link>{t(" to begin.")}</>
                   : shortBy > 0
                     ? <>{t("{total} tokens · ", { total: (cost * effBurst).toLocaleString("en-US") })}<Link to="/web#plans">{t("Add tokens")}</Link>{effBurst > 1 ? t(" or make fewer") : ""}</>
-                    : <>{t("{total} tokens", { total: cost * effBurst })}{effBurst > 1 ? t(" · {cost} each", { cost }) : ""}{engineFee ? t(" · incl. {n} engine", { n: engineFee }) : createFee ? t(" · incl. {n} {model}", { n: createFee, model: CREATE_MODELS.find((m) => m.key === createModel)?.name || t("premium") }) : facelessFee ? t(" · incl. {n} Ultra", { n: facelessFee }) : ""}</>}
+                    : <>{t("{total} tokens", { total: cost * effBurst })}{effBurst > 1 ? t(" · {cost} each", { cost }) : ""}{engineFee ? t(" · incl. {n} engine", { n: engineFee }) : createFee ? t(" · incl. {n} {model}", { n: createFee, model: CREATE_MODELS.find((m) => m.key === feeModel)?.name || t("premium") }) : facelessFee ? t(" · incl. {n} Ultra", { n: facelessFee }) : ""}</>}
               </p>
             </div>
           </>
@@ -5956,8 +6008,13 @@ export default function WebStudio() {
                )}
                <div className="ws-verbs">
                  <button type="button" className="ws-verb gold" onClick={() => downloadMedia(stageResult.media)}>⤓ {t("Download")}</button>
-                 <button type="button" className="ws-verb" onClick={() => makeBtnRef.current?.click()}>↻ {t("Make another")}</button>
-                 <Link className="ws-verb" to="/web/archive?section=creator">{t("Open gallery")}</Link>
+                 {/* 2026-11-22: shown only when it can do something. All it does is press the make button,
+                     and a disabled button ignores that — which it is right after an uploaded photo's edit
+                     lands (the photo has been cleared), with an empty describe box, or with too few tokens.
+                     The tap did nothing and said nothing. */}
+                 {!ctaDisabled && <button type="button" className="ws-verb" onClick={() => makeBtnRef.current?.click()}>↻ {t("Make another")}</button>}
+                 {/* (An "Open gallery" link stood here as well — a second copy of the one on the shelf just
+                     below, under a name nothing else has: the tab and the page are "Archive".) */}
                  <button type="button" className="ws-verb" onClick={() => setStageResult(null)}>✕ {t("Clear")}</button>
                </div>
              </div>
@@ -5970,7 +6027,8 @@ export default function WebStudio() {
 
       {casual && d.recent.length > 0 && (
         <section className="ws-shelf">
-          <div className="ws-shelf-h"><b>{t("Your creations")}</b><Link to="/web/archive?section=creator" className="ws-shelf-all">{t("Open gallery")} ›</Link></div>
+          {/* (2026-11-22: "Open Archive" — it said "Open gallery", and there is no gallery: the tab is "Archive") */}
+          <div className="ws-shelf-h"><b>{t("Your creations")}</b><Link to="/web/archive?section=creator" className="ws-shelf-all">{t("Open Archive")} ›</Link></div>
           <div className="ws-shelf-strip">
             {d.recent.map((p) => (
               <button type="button" onClick={() => p.media && loadToStage({ id: p.id, isVideo: p.isVideo, isAudio: p.isAudio, media: p.media, title: p.title })} key={p.id} className="ws-shelf-piece" title={t("{title} — open on the Stage", { title: p.title })}>
@@ -6003,8 +6061,10 @@ export default function WebStudio() {
               <span className="ws-flex-rule" />
             </div>
             <b className="ws-mh">{queuedCount > 1 ? t("Your {n} {queued}s are being made", { n: queuedCount, queued }) : t("Your {queued} is being made", { queued: queued === "faceless" ? t("faceless video") : queued })}</b>
-            <p className="ws-mp">{queuedCount > 1 ? <>{t("They land in your ")}<b>{casual ? t("gallery") : t("Archive")}</b>{t(" over the next few minutes — a set of different takes, all ready to ")}{casual ? t("share") : t("post")}.</> : <>{t("It lands in your ")}<b>{casual ? t("gallery") : t("Archive")}</b>{t(" in a few minutes — along with everything else EasyMode builds for you.")}</>}</p>
-            <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued === "faceless" ? "video" : queued}${casual ? "&section=creator" : ""}`}>{casual ? <>{t("View gallery")} ›</> : <>{t("View Archive")} ›</>}</Link>
+            {/* (2026-11-22: "Archive" in both modes — the Creator wording said "gallery" / "View gallery", a
+                name the tab and the page do not have) */}
+            <p className="ws-mp">{queuedCount > 1 ? <>{t("They land in your ")}<b>{t("Archive")}</b>{t(" over the next few minutes — a set of different takes, all ready to ")}{casual ? t("share") : t("post")}.</> : <>{t("It lands in your ")}<b>{t("Archive")}</b>{t(" in a few minutes — along with everything else EasyMode builds for you.")}</>}</p>
+            <Link className="wb-btn ws-mcta" to={`/web/archive?tab=${queued === "article" ? "blog" : queued === "faceless" ? "video" : queued}${casual ? "&section=creator" : ""}`}>{t("View Archive")} ›</Link>
             <button type="button" className="ws-mclose" onClick={() => setShowDone(false)}>{t("Make another")}</button>
           </div>
         </div>
@@ -6968,6 +7028,26 @@ ${FORGE_CSS}
      (it is already position:absolute, so the ::after anchors to it). */
   .ws-mp-act,.ws-mp-undo{min-height:44px}
   .ws-forgem-x::after{content:"";position:absolute;inset:-6px}
+  /* 2026-11-22 — the rest of the page: nine more controls under 44px on a phone (from the 34px sound
+     button down to the 16px rename pencil), and three boxes that make iOS Safari zoom the page. As
+     above, only the place to tap grows: each gets a see-through ::after anchored to the control itself,
+     so nothing moves and no glyph changes size.
+     · ONE shape for eight of them: 44px tall and at least 44px wide (as wide as the control when that is
+       wider — a back link, the backdrop x once it reads Delete), centred on it. Centred, not an inset:
+       an inset is counted from inside the border and from a height the text decides, and the clear-frame
+       button's 1.5px border alone left a 6px inset at 41px. Three of the eight are not positioned (the
+       back links, the upload-a-video link, the pencil), so they are made relative here.
+     · The backdrop x clips its own children (overflow:hidden, for the slide from x to Delete) and a
+       clipped ::after cannot be tapped — so on a phone it is not clipped, and the swap is instant.
+     · The No-product switch hangs 11px under its tile: its 44px are measured up from just below it,
+       which keeps them clear of the style and setting cards in the next row. */
+  .ws-back,.ws-vedit-entry,.ws-setcard-ren{position:relative}
+  .ws-setcard-x{overflow:visible;transition:background .14s}
+  .ws-hubtile-sound::after,.ws-combine-clear::after,.ws-combine2-x::after,.ws-setcard-x::after,.ws-setcard-ren::after,.ws-setmore::after,.ws-back::after,.ws-vedit-entry::after{content:"";position:absolute;top:50%;left:50%;width:100%;min-width:44px;height:44px;transform:translate(-50%,-50%)}
+  .ws-noprod::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:44px}
+  /* A box typed in at under 16px zooms the whole page when it is focused on iOS, and leaves it zoomed:
+     the two change / background boxes were 13px and the backdrop rename 12px. */
+  .ws-combine-editbox,.ws-setcustom,.ws-setcard-rename{font-size:16px}
 }
 /* Cinematic Studio hero — matches Film Studio: dark, broken up with the app's own
    light rosettes, with a mode-aware still + the artist Helpurr. Scoped so it never
