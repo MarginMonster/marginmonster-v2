@@ -355,3 +355,11 @@ test("what a Creator photo edit shows it costs is what it costs: one edit, and n
   assert.ok(landed.indexOf("clearPhoto2();") > landed.indexOf("setEditFile(null);"));
   assert.ok(ui.indexOf("const clearPhoto2 = () => {") < ui.indexOf("// The new piece has landed → show it on the Stage."), "declared before the effect that calls it");
 });
+
+test("the quick-edit button that spends says what it spends", () => {
+  // made as a customer (2026-11-22): "Apply Zoom out", with the price only in the heading above the options
+  const ui = read("app", "routes", "web.studio.tsx");
+  assert.ok(ui.includes("t(\"Apply {label} · {n} tokens\", { label: QUICK_OPS.find((o) => o.key === quickSel)?.label || \"\", n: d.costs.quickEdit })"));
+  assert.ok(!ui.includes("t(\"Apply {label}\", {"));
+  assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("  \"Apply {label} · {n} tokens\": ").length - 1, 5);
+});

@@ -6023,7 +6023,8 @@ export default function WebStudio() {
                        : making
                          ? t("Making your {noun}…", { noun: t(makingNounRef.current || noun) })
                        : quickSel
-                         ? t("Apply {label}", { label: QUICK_OPS.find((o) => o.key === quickSel)?.label || "" })
+                         // (2026-11-22: the price is ON the button that spends, not only in the heading above it)
+                         ? t("Apply {label} · {n} tokens", { label: QUICK_OPS.find((o) => o.key === quickSel)?.label || "", n: d.costs.quickEdit })
                          : t("Pick an edit above to apply")}
                    </button>
                  </div>
