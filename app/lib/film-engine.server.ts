@@ -29,7 +29,7 @@ import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { animateCreate, animatePoll, checkpointJob, download, downloadBuffer, ffprobeDuration, repCreate, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { renderCreativeSeed, renderStyledSeed } from "./image-generation.server";
-import { SCENE_PROMPT_MAX, SHEET_PROMPT_MAX, castSheetPrompt, sceneFromSheetPrompt, sceneInWordsPrompt } from "./film-cast-sheet";
+import { SCENE_PROMPT_MAX, SHEET_PROMPT_MAX, VISUAL_STANDS_ALONE, castSheetPrompt, sceneFromSheetPrompt, sceneInWordsPrompt } from "./film-cast-sheet";
 import { musicBedToDisk, singToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
@@ -566,10 +566,10 @@ export async function previewFilmTreatment(opts: {
       `• TONE — HOW this exact line is delivered: a short emotional direction for the voice (e.g. "coldly, with quiet menace", "voice rising in anger", "quietly, barely holding it together"). It must MATCH the words so the read is never flat or monotone.\n` +
       `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places.\n`
     : tmpl.sung
-    ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}, featuring the artist/cast performing) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes and flows with the others. Read in order the captions ARE the song's lyrics: give the whole thing a clear, repeating, sing-along HOOK${tmpl.childSafe ? " a toddler can sing along to" : ""}, like a real ${tmpl.childSafe ? "preschool nursery sing-along" : "pop song"}.\n`
+    ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}, featuring the artist/cast performing) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes and flows with the others. Read in order the captions ARE the song's lyrics: give the whole thing a clear, repeating, sing-along HOOK${tmpl.childSafe ? " a toddler can sing along to" : ""}, like a real ${tmpl.childSafe ? "preschool nursery sing-along" : "pop song"}.\n${VISUAL_STANDS_ALONE}\n`
     : tmpl.narrated
-    ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the NARRATOR'S spoken line for that beat — ONE natural sentence, <=14 words, moving the story forward; read in order the captions are a continuous, emotive voiceover that tells the whole story and lands the ending.\n`
-    : `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a short CAPTION (one punchy on-screen line, <=8 words; the hook or the joke's line for that beat).\n`;
+    ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the NARRATOR'S spoken line for that beat — ONE natural sentence, <=14 words, moving the story forward; read in order the captions are a continuous, emotive voiceover that tells the whole story and lands the ending.\n${VISUAL_STANDS_ALONE}\n`
+    : `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a short CAPTION (one punchy on-screen line, <=8 words; the hook or the joke's line for that beat).\n${VISUAL_STANDS_ALONE}\n`;
   const safetyLine = tmpl.childSafe
     ? `SAFETY: this is for very young children — keep it 100% wholesome and G-rated: happy, gentle and safe. NOTHING scary, sad, violent, adult or unsafe; no real named people or brands; invent no claims.`
     : tmpl.key === "horror"
@@ -877,10 +877,10 @@ async function stillToClip(stillPath: string, outPath: string): Promise<boolean>
  *   · a film with a cast sheet → drawn FROM the sheet, and told the sheet is its cast;
  *   · neither (the sheet could not be made) → the cast in words, in full.
  *  Each falls back to a picture from words alone, so a scene is never left bare. */
-async function sceneSeed(o: { tmpl: FilmTemplate; safe: string; visual: string; cast: string[]; castSheet?: string; productRef?: string; productPrompt: string }): Promise<string | null> {
+async function sceneSeed(o: { tmpl: FilmTemplate; safe: string; visual: string; where?: string; cast: string[]; castSheet?: string; productRef?: string; productPrompt: string }): Promise<string | null> {
   if (o.productRef) return (await renderStyledSeed(o.productPrompt, o.productRef, "9:16")) || (await renderCreativeSeed(o.productPrompt, "9:16"));
-  const inWords = sceneInWordsPrompt({ safe: o.safe, visual: o.visual, cast: o.cast, style: o.tmpl.sceneHint });
-  if (o.castSheet) return (await renderStyledSeed(sceneFromSheetPrompt({ safe: o.safe, visual: o.visual, style: o.tmpl.sceneHint }), o.castSheet, "9:16", SCENE_PROMPT_MAX)) || (await renderCreativeSeed(inWords, "9:16", SCENE_PROMPT_MAX));
+  const inWords = sceneInWordsPrompt({ safe: o.safe, visual: o.visual, where: o.where, cast: o.cast, style: o.tmpl.sceneHint });
+  if (o.castSheet) return (await renderStyledSeed(sceneFromSheetPrompt({ safe: o.safe, visual: o.visual, where: o.where, cast: o.cast, style: o.tmpl.sceneHint }), o.castSheet, "9:16", SCENE_PROMPT_MAX)) || (await renderCreativeSeed(inWords, "9:16", SCENE_PROMPT_MAX));
   return renderCreativeSeed(inWords, "9:16", SCENE_PROMPT_MAX);
 }
 
@@ -922,7 +922,7 @@ export async function previewFilmSceneSeeds(opts: {
       const seedPrompt = `${safePhrase}${scene.visual}. ${castBible}${productLine} ${tmpl.sceneHint}. Richly detailed, high quality.`;
       let seedUrl: string | null = null;
       for (let a = 0; a < 2 && !seedUrl; a++) {
-        try { seedUrl = await sceneSeed({ tmpl, safe: safePhrase, visual: scene.visual, cast: treatment.cast || [], castSheet: productAbs ? undefined : castRefAbs, productRef: productAbs || undefined, productPrompt: seedPrompt }); } catch { /* retry once */ }
+        try { seedUrl = await sceneSeed({ tmpl, safe: safePhrase, visual: scene.visual, where: scene.where, cast: treatment.cast || [], castSheet: productAbs ? undefined : castRefAbs, productRef: productAbs || undefined, productPrompt: seedPrompt }); } catch { /* retry once */ }
       }
       sceneImgs[i] = abs(seedUrl);
     }
@@ -936,6 +936,9 @@ export async function previewFilmSceneSeeds(opts: {
  *  story-engine counterpart of rerollMusicVideoScene. */
 export async function rerollFilmSceneSeed(opts: {
   template?: string; sceneVisual: string; castRef?: string;
+  /** the film's cast in the writer's words, and where this scene is — so a re-rolled scene is told who is
+   *  who and where, exactly as a first-drawn one is (film-cast-sheet.ts) */
+  cast?: string[]; where?: string;
 }): Promise<string | null> {
   const tmpl = filmTemplate(opts.template);
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -945,7 +948,7 @@ export async function rerollFilmSceneSeed(opts: {
   const seedPrompt = `${safePhrase}${opts.sceneVisual}. ${tmpl.sceneHint}. Richly detailed, high quality.`;
   let seedUrl: string | null = null;
   for (let a = 0; a < 2 && !seedUrl; a++) {
-    try { seedUrl = refAbs ? ((await renderStyledSeed(sceneFromSheetPrompt({ safe: safePhrase, visual: opts.sceneVisual, style: tmpl.sceneHint }), refAbs, "9:16", SCENE_PROMPT_MAX)) || (await renderCreativeSeed(seedPrompt, "9:16"))) : await renderCreativeSeed(seedPrompt, "9:16"); } catch { /* retry once */ }
+    try { seedUrl = refAbs ? ((await renderStyledSeed(sceneFromSheetPrompt({ safe: safePhrase, visual: opts.sceneVisual, where: opts.where, cast: opts.cast, style: tmpl.sceneHint }), refAbs, "9:16", SCENE_PROMPT_MAX)) || (await renderCreativeSeed(seedPrompt, "9:16"))) : await renderCreativeSeed(seedPrompt, "9:16"); } catch { /* retry once */ }
   }
   return abs(seedUrl);
 }
@@ -1028,7 +1031,7 @@ export async function generateFilm(opts: {
     let seedUrl: string | null = opts.approvedSceneImgs?.[i] ?? null;
     for (let a = 0; a < 2 && !seedUrl; a++) {
       try {
-        seedUrl = await sceneSeed({ tmpl, safe: safePhrase, visual: scene.visual, cast: treatment.cast || [], castSheet: productAbs ? undefined : castRefAbs, productRef: productAbs || undefined, productPrompt: seedPrompt });
+        seedUrl = await sceneSeed({ tmpl, safe: safePhrase, visual: scene.visual, where: scene.where, cast: treatment.cast || [], castSheet: productAbs ? undefined : castRefAbs, productRef: productAbs || undefined, productPrompt: seedPrompt });
       } catch { /* retry once */ }
     }
     const seedAbs = seedUrl ? (seedUrl.startsWith("http") ? seedUrl : `${base}${seedUrl}`) : undefined;

@@ -594,7 +594,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         img = r.img; faults = r.faults; check = r.reading ?? null;
       } else {
         const { rerollFilmSceneSeed } = await import("../lib/film-engine.server");
-        img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined });
+        // (2026-11-22) the cast in the writer's words and where the scene is ride along, so a re-rolled scene is
+        // told who is who and where — as a first-drawn one is
+        let castWords: string[] = [];
+        try { const a = JSON.parse(((form.get("sceneCastWords") as string) || "[]").slice(0, 4000)); if (Array.isArray(a)) castWords = a.filter((x) => typeof x === "string").slice(0, 6); } catch { /* none sent */ }
+        const sceneWhere = ((form.get("sceneWhere") as string) || "").trim().slice(0, 300);
+        img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined, cast: castWords, where: sceneWhere || undefined });
       }
       if (!img) return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex });
       return json({ ok: true, sceneIndex, img, faults, check, ...(visualNow !== sceneVisual ? { visual: visualNow } : {}) });
@@ -1666,7 +1671,7 @@ export default function FilmStudio() {
     const leadRef = leadImg ? sceneRefOf(i, leadImg, costarImgToRef(leadImg), wearOverride) : null;
     setRerollingScene(i);
     rerollSceneFetcher.submit(
-      { intent: "rerollFilmScene", template, filmGenre, ...(leadRef ? { sceneLeadRef: leadRef } : {}), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated", approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}) } : {}), artistRef: sceneArtistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(who ? { sceneWho: JSON.stringify(who) } : {}) },
+      { intent: "rerollFilmScene", template, filmGenre, ...(leadRef ? { sceneLeadRef: leadRef } : {}), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated", approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}) } : {}), artistRef: sceneArtistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneWhere: seeds.treatment.scenes[i]?.where || "", ...(seeds.treatment.cast?.length ? { sceneCastWords: JSON.stringify(seeds.treatment.cast) } : {}), sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(who ? { sceneWho: JSON.stringify(who) } : {}) },
       { method: "post" }
     );
   };

@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { SCENE_PROMPT_MAX, SHEET_LEAD, SHEET_PROMPT_MAX, castSheetPrompt, sceneFromSheetPrompt, sceneInWordsPrompt } from "../app/lib/film-cast-sheet.ts";
+import { SCENE_PROMPT_MAX, SHEET_LEAD, SHEET_PROMPT_MAX, VISUAL_STANDS_ALONE, castSheetPrompt, sceneFromSheetPrompt, sceneInWordsPrompt, whoIsWho } from "../app/lib/film-cast-sheet.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
@@ -78,15 +78,79 @@ test("the engine uses them in all three places, and the picture calls are given 
   const eng = read("app", "lib", "film-engine.server.ts");
   assert.equal(eng.split("renderCreativeSeed(castSheetPrompt({ safe: safePhrase, cast: treatment.cast || [], style: tmpl.sceneHint }), \"9:16\", SHEET_PROMPT_MAX)").length - 1, 2, "the preview's sheet and the render's");
   assert.ok(!eng.includes("A group portrait of the recurring cast standing together"), "the style-first sheet prompt is gone");
-  assert.equal(eng.split("await sceneSeed({ tmpl, safe: safePhrase, visual: scene.visual, cast: treatment.cast || [], castSheet: productAbs ? undefined : castRefAbs, productRef: productAbs || undefined, productPrompt: seedPrompt })").length - 1, 2, "the preview's scenes and the render's");
-  assert.ok(eng.includes("renderStyledSeed(sceneFromSheetPrompt({ safe: safePhrase, visual: opts.sceneVisual, style: tmpl.sceneHint }), refAbs, \"9:16\", SCENE_PROMPT_MAX)"), "a re-rolled scene too");
+  assert.equal(eng.split("await sceneSeed({ tmpl, safe: safePhrase, visual: scene.visual, where: scene.where, cast: treatment.cast || [], castSheet: productAbs ? undefined : castRefAbs, productRef: productAbs || undefined, productPrompt: seedPrompt })").length - 1, 2, "the preview's scenes and the render's");
+  assert.ok(eng.includes("renderStyledSeed(sceneFromSheetPrompt({ safe: safePhrase, visual: opts.sceneVisual, where: opts.where, cast: opts.cast, style: tmpl.sceneHint }), refAbs, \"9:16\", SCENE_PROMPT_MAX)"), "a re-rolled scene too");
   const helper = eng.slice(eng.indexOf("async function sceneSeed("), eng.indexOf("export async function previewFilmSceneSeeds("));
   // a film with a PRODUCT keeps the prompt and the reference it always had (the product photo is not a cast sheet)
   assert.ok(helper.includes("if (o.productRef) return (await renderStyledSeed(o.productPrompt, o.productRef, \"9:16\")) || (await renderCreativeSeed(o.productPrompt, \"9:16\"));"));
-  assert.ok(helper.includes("if (o.castSheet) return (await renderStyledSeed(sceneFromSheetPrompt("));
+  assert.ok(helper.includes("if (o.castSheet) return (await renderStyledSeed(sceneFromSheetPrompt({ safe: o.safe, visual: o.visual, where: o.where, cast: o.cast, style: o.tmpl.sceneHint }), o.castSheet, \"9:16\", SCENE_PROMPT_MAX))"));
+  assert.ok(helper.includes("const inWords = sceneInWordsPrompt({ safe: o.safe, visual: o.visual, where: o.where, cast: o.cast, style: o.tmpl.sceneHint });"));
   assert.ok(helper.trimEnd().endsWith("return renderCreativeSeed(inWords, \"9:16\", SCENE_PROMPT_MAX);\n}"), "never left bare");
   const img = read("app", "lib", "image-generation.server.ts");
   assert.ok(img.includes("export async function renderCreativeSeed(prompt: string, aspect = \"9:16\", maxPrompt = 500): Promise<string | null> {"));
   assert.ok(img.includes("export async function renderStyledSeed(prompt: string, refImageUrl: string, aspect = \"9:16\", maxPrompt = 500): Promise<string | null> {"));
-  assert.equal(img.split(".slice(0, Math.max(200, Math.min(1400, maxPrompt)))}. No watermark, no signature.`;").length - 1, 2, "every other caller still gets the 500 it always had");
+  assert.equal(img.split(".slice(0, Math.max(200, Math.min(2000, maxPrompt)))}. No watermark, no signature.`;").length - 1, 2, "every other caller still gets the 500 it always had");
+  assert.ok(SCENE_PROMPT_MAX <= 2000, "…and a scene's prompt is never longer than the picture call lets through");
+});
+
+/* THE SAME FILM, MADE AGAIN AFTER THE SHEET WAS FIXED ("One Umbrella, Three Little Ducks", 2026-11-22): the
+ * three ducks were the same three in all four scenes. What was still wrong, and why:
+ *   - "Puddleton leaps feet-first into a big round puddle…" — the duck that leapt was Bibbles. The scene
+ *     calls its characters by NAME and a cast sheet has no name tags.
+ *   - a rainy-day song's third scene was drawn on a sunny lawn. The writer's "where" for it ("center of the
+ *     rainy street beside the biggest puddle") was never among the words the picture was drawn from.
+ *   - the "one umbrella" the song is about was blue, yellow and red in one scene and white with red dots in
+ *     the next: the writer called it "one big round polka-dot umbrella" and "the one open polka-dot umbrella".
+ * Drawn again from the same sheet with the prompt below, on the real picture model: Puddleton leapt, and
+ * scene three was on the wet street in the rain. */
+const DUCKS = [
+  "Puddleton, a round cheerful baby duck with bright yellow fluff, an orange beak, big sparkly blue eyes and a tiny red rain boot on each webbed foot",
+  "Quacky, a small blue-fluffed duckling with a daisy-yellow beak, big round brown eyes and a polka-dot bow on her head",
+  "Bibbles, a small green-fluffed duckling with a soft orange beak, big round green eyes and a striped scarf around his neck",
+];
+const LEAP = "Puddleton leaps feet-first into a big round puddle, splashing droplets shaped like tiny hearts, while Quacky and Bibbles clap and bounce beside him with big open-mouthed smiles";
+
+test("a scene drawn from the sheet is told WHO IS WHO — each name with the look the writer gave it", () => {
+  const key = whoIsWho(DUCKS);
+  assert.ok(key.startsWith(" Who is who on the cast sheet (only the ones the scene names are in the picture): "), "a legend, not a guest list");
+  assert.ok(key.includes("Puddleton = a round cheerful baby duck with bright yellow fluff, an orange beak, big sparkly blue eyes and a tiny red rain boot on each webbed foot;"), "whole — the boots are what tell him apart");
+  assert.ok(key.includes("Quacky = a small blue-fluffed duckling") && key.includes("a polka-dot bow on her head;"));
+  assert.ok(key.endsWith("Bibbles = a small green-fluffed duckling with a soft orange beak, big round green eyes and a striped scarf around his neck."));
+  // names are read up to the first comma, dash, colon or bracket; an entry with no look to give is left out
+  assert.ok(whoIsWho(["Nana Quacks — a gentle mama duck in a floral apron", "Mo: a tiny snail", "Just a name"]).includes("Nana Quacks = a gentle mama duck in a floral apron; Mo = a tiny snail."));
+  assert.equal(whoIsWho([]), "");
+  assert.equal(whoIsWho(["no look given here at all"]), "");
+  // a cast too long for the room: the short looks stay whole, the long ones share what is left, and
+  // nothing ends on a joining word
+  const long = whoIsWho(["Ada, a tall heron", `Bo, a bear ${"with very thick brown fur and ".repeat(12)}a hat`, `Cy, a cat ${"with long white whiskers and ".repeat(12)}a bell`]);
+  assert.ok(long.includes("Ada = a tall heron;"));
+  assert.ok(long.length < 560, `${long.length}`);
+  for (const part of long.split(";")) assert.ok(!/\b(?:and|with|a|the|of)\s*\.?$/i.test(part.trim()), part.slice(-30));
+  // six at most
+  assert.equal(whoIsWho(Array.from({ length: 9 }, (_, k) => `N${k}, a duck`)).split(" = ").length - 1, 6);
+});
+
+test("…and WHERE the scene is, with the scene's own words whole and the style never cut off the end", () => {
+  const p = sceneFromSheetPrompt({ safe: SAFE, visual: LEAP, where: "the same candy-colored rainy street, closer on the biggest puddle.", cast: DUCKS, style: STYLE });
+  assert.ok(p.startsWith(`${SAFE}${SHEET_LEAD}${LEAP}. Where: the same candy-colored rainy street, closer on the biggest puddle. Who is who on the cast sheet`));
+  assert.ok(p.endsWith(` Style: ${STYLE}.`) && p.length <= SCENE_PROMPT_MAX, `${p.length}`);
+  // no where, no cast: exactly the prompt it was before
+  assert.equal(sceneFromSheetPrompt({ safe: SAFE, visual: VISUAL, style: STYLE }), `${SAFE}${SHEET_LEAD}${VISUAL} Style: ${STYLE}.`);
+  // room runs short → it is the scene's own words that give, at a whole word — never the style
+  const crowded = sceneFromSheetPrompt({ safe: SAFE, visual: `${"A very long scene description that goes on and on. ".repeat(20)}`, where: "a rainy street", cast: Array.from({ length: 6 }, (_, k) => `Name${k}, ${"a duck with a hat and ".repeat(8)}boots`), style: STYLE });
+  assert.ok(crowded.length <= SCENE_PROMPT_MAX && crowded.endsWith(` Style: ${STYLE}.`) && crowded.includes(" Where: a rainy street."));
+  // the picture from words alone (no sheet) says where too
+  assert.ok(sceneInWordsPrompt({ safe: SAFE, visual: LEAP, where: "a rainy street", cast: DUCKS, style: STYLE }).includes("smiles. Where: a rainy street. Recurring cast"));
+});
+
+test("the WRITER is told each picture stands alone — names, the same words for the same thing, a where", () => {
+  for (const must of ["drawn ON ITS OWN", "called by NAME exactly as in \"cast\"", "ITS COLOURS INCLUDED", "never just \"the umbrella\"", "return \"where\" for every scene", "a rainy-day story is raining in every scene", "Nothing in a picture is WRITTEN"]) {
+    assert.ok(VISUAL_STANDS_ALONE.includes(must), must);
+  }
+  const eng = read("app", "lib", "film-engine.server.ts");
+  assert.equal(eng.split("${VISUAL_STANDS_ALONE}").length - 1, 3, "the sung, the told and the plain story formats (music videos, narrated stories and acted films have rules of their own)");
+  // a re-rolled scene is told who is who and where as well: the page sends them, the action passes them on
+  const ui = read("app", "routes", "web.film.tsx");
+  assert.ok(ui.includes("sceneWhere: seeds.treatment.scenes[i]?.where || \"\", ...(seeds.treatment.cast?.length ? { sceneCastWords: JSON.stringify(seeds.treatment.cast) } : {}),"));
+  assert.ok(ui.includes("img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined, cast: castWords, where: sceneWhere || undefined });"));
 });
