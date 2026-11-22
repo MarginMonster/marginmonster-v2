@@ -157,6 +157,14 @@ test("each story format offers its own places — a kids' cartoon is not asked a
   for (const b of rows("horror")) assert.ok(/night|bare bulb/.test(b.where), `a horror place is dark: ${b.where}`);
   assert.ok(ui.includes("const backdropsFor = (format: string) => BACKDROPS_BY_FORMAT[format] || FILM_BACKDROPS;"), "Short Film keeps the general list");
   assert.ok(ui.includes("{backdropsFor(template).map((bd) => (") && !ui.includes("{FILM_BACKDROPS.map((bd) => ("));
+  // the chip that lights is the place's key as a WHOLE WORD: a lighthouse lit "Old house" (seen 2026-11-22)
+  assert.ok(ui.includes("const backdropIs = (where: string, key: string): boolean => new RegExp(`(^|[^a-z])${key}([^a-z]|$)`, \"i\").test(where || \"\");"));
+  assert.ok(ui.includes("className={`fs-bchip${backdropIs(loc.where, bd.key) ? \" on\" : \"\"}`}") && !ui.includes("loc.where.toLowerCase().includes(bd.key)"));
+  const is = (where: string, key: string) => new RegExp(`(^|[^a-z])${key}([^a-z]|$)`, "i").test(where);
+  assert.equal(is("a lighthouse lamp room at night, the sea black beyond the glass", "house"), false);
+  assert.equal(is("the hallway of an old house at night", "house"), true);
+  assert.equal(is("a multi-storey carpark at night", "car"), false);
+  assert.equal(is("Inside a parked car at night", "car"), true);
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const fmt of ["kidstv", "horror", "moral"]) for (const b of rows(fmt)) assert.equal(count(dict, `\n  ${JSON.stringify(b.label)}:`), 5, b.label);
 });

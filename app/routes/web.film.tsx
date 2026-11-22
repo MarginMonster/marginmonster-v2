@@ -863,6 +863,9 @@ const BACKDROPS_BY_FORMAT: Record<string, Array<{ key: string; label: string; wh
   ],
 };
 const backdropsFor = (format: string) => BACKDROPS_BY_FORMAT[format] || FILM_BACKDROPS;
+/** Is this the place a scene is in? Its key as a WHOLE WORD of the scene's `where` — a lighthouse lit up
+ *  the "Old house" chip, and a carpark would have lit "Car" and "Park" (seen 2026-11-22). */
+const backdropIs = (where: string, key: string): boolean => new RegExp(`(^|[^a-z])${key}([^a-z]|$)`, "i").test(where || "");
 
 // The Music Video's EXACT-length tiers are picked in SECONDS (MV_SECONDS in mv-pace.ts); each scene is
 // one generated clip of 5 or 10 seconds (the pace decides), and the engine fits the song to EXACTLY
@@ -3302,7 +3305,7 @@ export default function FilmStudio() {
                       <div className="fs-backdrops" role="group" aria-label={t("Backdrop")}>
                         <span className="fs-backdrops-lbl">{t("backdrop")}</span>
                         {backdropsFor(template).map((bd) => (
-                          <button type="button" key={bd.key} className={`fs-bchip${loc.where.toLowerCase().includes(bd.key) ? " on" : ""}`} onClick={() => setWhere(loc, bd.where)}>{t(bd.label)}</button>
+                          <button type="button" key={bd.key} className={`fs-bchip${backdropIs(loc.where, bd.key) ? " on" : ""}`} onClick={() => setWhere(loc, bd.where)}>{t(bd.label)}</button>
                         ))}
                       </div>
                       {loc.angles.map((ang, ai) => (
