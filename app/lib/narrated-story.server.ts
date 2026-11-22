@@ -30,6 +30,7 @@ import { voiceLangOpts, normalizeContentLang } from "./content-lang";
 import { AVATAR_VOICE_IDS } from "./avatar-voice-catalog";
 import { characterVoice, isCharacterVoice } from "./character-voices";
 import { heroName } from "./film-heroes";
+import { NOTHING_WRITTEN, ONE_PICTURE, noLettering, oneMoment, parseStoryCast, parseStoryPanels, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCheck } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
@@ -120,17 +121,53 @@ export async function narratedSceneSeeds(o: {
       here.forEach((c, n) => notes.push(`${c.name} is the character in reference image ${n + 1}${c.look ? ` (${c.look.slice(0, 160)})` : ""}.`));
       if (sheet) notes.push(`Reference image ${here.length + 1} is a sheet of other characters: from it take ONLY ${who[k].others.map((e) => e.slice(0, 200)).join("; and ")}.`);
       else if (who[k].others.length) notes.push(`In this picture: ${who[k].others.map((e) => e.slice(0, 200)).join("; and ")}.`);
-      const prompt = `${safe}${(scene.visual || "").slice(0, 600)}. Style: ${tmpl.sceneHint}. ${notes.join(" ")}${refs.length ? ` ${CAST_LOCK}` : ""} No readable text, captions or lettering anywhere.`;
-      // up to three goes: a failed draw is tried again, and so is a picture that came back letterboxed
-      // (kept only if every go did, and then the cut crops into it)
+      // THE WORDS THE PICTURE IS DRAWN FROM are tidied first (story-picture.ts): one moment, nothing written.
+      const written = (scene.visual || "").replace(/\s+/g, " ").trim();
+      const visual = oneMoment(noLettering(written));
+      const twoMoments = oneMoment(written) !== written;
+      const prompt = `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}. ${notes.join(" ")}${refs.length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NOTHING_WRITTEN}`;
+      // …and THE PICTURE IS LOOKED AT before it is kept: is each of the maker's cast in it (never asked
+      // about clothes — a story dresses people for the part), and is it one picture. The cast is looked for
+      // whenever the scene has any; panels only where the words described two moments (that is when a
+      // picture model stacks two views). A look that cannot be made, or says nothing, keeps the picture.
+      const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
+      const lookAt = async (got: string): Promise<StoryCheck | null> => {
+        const pic = abs(got);
+        if (!pic || (!castPics.length && !twoMoments)) return null;
+        try {
+          const { anthropicVision } = await import("./anthropic.server");
+          const [castRaw, panelsRaw] = await Promise.all([
+            castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
+            twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
+          ]);
+          const seen = castPics.length ? parseStoryCast(String(castRaw || ""), castPics.length) : [];
+          const panels = twoMoments ? parseStoryPanels(String(panelsRaw || "")) : false;
+          if (seen == null && panels == null) return null;
+          return { seen: seen || castPics.map(() => true), panels: panels === true };
+        } catch (e) {
+          console.error(`[narrated] scene ${i + 1}: the picture could not be looked at, keeping it: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+          return null;
+        }
+      };
+      // up to three goes: a failed draw is tried again, so is a picture that came back letterboxed (kept
+      // only if every go did, and then the cut crops into it), and so is one the look found wrong — told
+      // what was wrong. The best of the goes is kept, so a picky look can never leave a scene bare.
       let img: string | null = null;
       let barred: string | null = null;
+      let best: { img: string; faults: number } | null = null;
+      let fix = "";
       for (let a = 0; a < 3 && !img; a++) {
-        const got = await drawScene(prompt, refs, aspect);
+        const got = await drawScene(`${prompt}${fix}`, refs, aspect);
         if (got && (await letterboxed(got))) { barred = got; console.error(`[narrated] scene ${i + 1} came back letterboxed — drawing it again`); continue; }
-        img = got;
-        if (!got && a >= 1) break; // two plain failures: stop asking this way
+        if (!got) { if (a >= 1) break; continue; } // two plain failures: stop asking this way
+        const seenAs = await lookAt(got);
+        const faults = seenAs ? storyFaults(seenAs) : 0;
+        if (!faults) { img = got; break; }
+        if (!best || faults < best.faults) best = { img: got, faults };
+        fix = storyFix(seenAs!, here.map((c) => c.name));
+        console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${seenAs!.panels ? "split into panels" : ""}${seenAs!.panels && seenAs!.seen.includes(false) ? ", " : ""}${seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : ""} — drawing it again`);
       }
+      if (!img && best) img = best.img;
       if (!img) img = barred;
       // the lenient path last: its safety and outage fallbacks still get a picture (without the cast's own looks)
       if (!img) { try { img = await renderCreativeSeed(`${safe}${(scene.visual || "").slice(0, 300)}. ${tmpl.sceneHint}`, aspect); } catch { img = null; } }
