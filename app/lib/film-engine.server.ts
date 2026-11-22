@@ -34,7 +34,7 @@ import { mirrorRender } from "./object-storage.server";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
 import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds, type ShotRole } from "./mv-pace";
 import { MAX_COSTARS, singerOf } from "./mv-cast";
-import { FEATURE_MIN_SECONDS, defaultFeaturePlan, featureRoles, planIsSound } from "./mv-feature";
+import { FEATURE_MIN_SECONDS, defaultFeaturePlan, featureRoles } from "./mv-feature";
 import { SHORT_ENGINE_WORDS, SING_RATE, fullSongLines, lyricAsk, lyricFit, lyricWords, pickLyric, sceneWordRange, sceneWordsFor, songEngineFor, songWordsFor, wordsAsLineCount, wordsAsLines } from "./mv-song";
 import { SENSE_RULES, sameCar } from "./mv-sense";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
@@ -504,19 +504,32 @@ export async function previewFilmTreatment(opts: {
     return featured.length ? featureRoles(cadence) : cadence;
   };
   const roles = rolesFor(scenes);
-  const shotPlan = tmpl.lipSyncSinger
-    ? Array.from({ length: scenes }, (_, i) => `  ${i + 1}. ${SHOT_NOTES[shotSlot(roles[i], i)]}`).join("\n")
-    : "";
+  // WHO SINGS EACH SCENE is dealt BEFORE the song is written (mv-feature.ts defaultFeaturePlan) and the
+  // writer is told it scene by scene, in the shot list. It used to be left to the writer ("give them two
+  // or three scenes in a row…") and re-dealt by rule when its marks could not be filmed — which left the
+  // PICTURES behind: a sheet came back with the co-star's performance written into the last cut scene
+  // ("KEIKO sings to camera alone…") and the artist singing in the scene that was dealt to her
+  // (2026-11-22). One plan, said before and used after.
+  const featPlan: number[] = featured.length ? defaultFeaturePlan(roles, sceneSec, featured.map((n) => castList.indexOf(n))) : [];
+  const shotLine = (i: number): string => {
+    const note = SHOT_NOTES[shotSlot(roles[i], i)];
+    const who = featPlan[i] >= 0 ? castList[featPlan[i]] : "";
+    if (!who) return `  ${i + 1}. ${note}`;
+    return roles[i] === "perform"
+      ? `  ${i + 1}. PERFORMANCE — ${who}'S VERSE: ${who} sings straight to camera, ALONE in the shot (the artist is not in it); "singer": "${who}"`
+      : `  ${i + 1}. ${note} — ${who}'S VERSE goes on over it (their voice; nobody sings to camera); "singer": "${who}"`;
+  };
+  const shotPlan = tmpl.lipSyncSinger ? Array.from({ length: scenes }, (_, i) => shotLine(i)).join("\n") : "";
   const hasCoStars = castNames.length > 0;
   const featNames = featured.join(" and ");
   const featLine = featured.length
-    ? `A FEATURED VERSE — ${featNames} ${featured.length === 1 ? "sings" : "each sing"} part of this song, like a featured artist on a real record. Give ${featured.length === 1 ? featNames : "each of them"} ONE verse of their own: two or three scenes in a row, after the artist has opened the song, with a PERFORMANCE scene among them — and in EVERY scene of that verse set "singer" to their exact name. The lyric lines of those scenes are THEIR words, in their own voice: their side of the story, answering the artist. In their PERFORMANCE scene the VISUAL shows THEM singing to camera, on their own (the artist is not in that shot). Every other scene is the artist's — leave "singer" out of it — and the artist sings the FIRST performance. End the title with "(feat. ${featNames})".\n`
+    ? `A FEATURED VERSE — ${featNames} ${featured.length === 1 ? "sings" : "each sing"} part of this song, like a featured artist on a real record. The scenes marked "…'S VERSE" in the shot list ARE that verse: set "singer" to their exact name in each of them and in no other scene. The lyric lines of those scenes are THEIR words, in their own voice: their side of the story, answering the artist. Every other scene is the artist's — leave "singer" out of it. End the title with "(feat. ${featNames})".\n`
     : "";
   const captionLine = tmpl.lipSyncSinger
     ? `\nWrite a catchy ${genreLabel} SONG for ONE artist${featured.length ? `, with a featured verse by ${featNames}` : ""}, plus ${scenes} VIDEO SCENE${scenes === 1 ? "" : "S"} of ${sceneSec} seconds each. ${songShape} Return EXACTLY ${scenes} scene${scenes === 1 ? "" : "s"}. Each scene has TWO fields${featured.length ? ` (and "singer" where it is not the artist)` : ""}:\n` +
       // (ONE moment: "OMAR steps out of the car … all walking toward the entrance" was drawn as OMAR
       //  twice — once getting out, once walking — on the first live storyboard, 2026-11-21)
-      `• VISUAL — what we SEE in that scene, in at most 40 words: a vivid ${genreLabel} setting (${tmpl.sceneHint}) and what is happening in it. ONE moment — a single frame of film, never a sequence of actions (not "steps out of the car and walks in"). A different location in every scene for visual variety; NO on-screen text, logos or real named people.\n` +
+      `• VISUAL — what we SEE in that scene, in at most 40 words: a vivid ${genreLabel} setting (${tmpl.sceneHint}) and what is happening in it. ONE moment — a single frame of film, never a sequence of actions (not "steps out of the car and walks in"). A different location in every scene for visual variety — but ONE WORLD: the same time of day and the same kind of light in every scene (a night video never cuts to daylight), said in each VISUAL; NO on-screen text, logos or real named people.\n` +
       captionShape +
       `THE SHOT LIST — scene by scene, this is what each one is filmed as; write each VISUAL to fit its line:\n${shotPlan}\n` +
       featLine +
@@ -651,14 +664,13 @@ export async function previewFilmTreatment(opts: {
     }
   }
   let list = (parsed.scenes || []).filter((s) => s && s.visual).slice(0, scenes);
-  // WHO SINGS EACH SCENE (a featured verse). The writer's marks are kept when they make a verse that can
-  // be filmed — every featured co-star has a scene they are SEEN singing, and the artist still has one;
-  // otherwise the verse is dealt by rule (mv-feature.ts defaultFeaturePlan). A "singer" that is not a
-  // featured co-star's name is the artist.
+  // WHO SINGS EACH SCENE (a featured verse): the plan the writer was given (featPlan above) — the same
+  // rule, dealt again for the scenes that actually came back, so it is the plan even if the writer
+  // returned a scene short. The writer's own "singer" marks are not what decides it: when they differed
+  // from the plan, the scenes had been WRITTEN to one and were filmed to the other.
   const outRoles = tmpl.lipSyncSinger ? rolesFor(list.length) : [];
   const featIdx = featured.map((n) => castList.indexOf(n));
-  let singers: number[] = list.map((s) => { const k = singerOf(s, castList); return featIdx.includes(k) ? k : -1; });
-  if (featured.length && !(planIsSound(singers, outRoles) && featIdx.every((k) => singers.includes(k)))) singers = defaultFeaturePlan(outRoles, sceneSec, featIdx);
+  const singers: number[] = featured.length ? defaultFeaturePlan(outRoles, sceneSec, featIdx) : list.map(() => -1);
   // FTC backstop (captions are burned on screen): strip an endorsement
   // possessive from a third-party trademark the writer may have slipped in.
   list = list.map((s, i) => ({

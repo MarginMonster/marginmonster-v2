@@ -365,7 +365,7 @@ test("a take that came back a few hundredths of a second off is found, and a tak
   assert.equal(bestLag(new Float32Array(n), new Float32Array(n), sr), 0);
 });
 
-test("the song writer gives the co-star a verse, and a verse nobody could be seen singing is dealt again", () => {
+test("the co-star's verse is dealt before the song is written, said scene by scene, and filmed to the same plan", () => {
   const engine = read("app", "lib", "film-engine.server.ts");
   const fn = engine.slice(engine.indexOf("export async function previewFilmTreatment"), engine.indexOf("// ---- Assembly"));
   // a scene can carry who sings it
@@ -378,15 +378,29 @@ test("the song writer gives the co-star a verse, and a verse nobody could be see
   assert.match(fn, /return featured\.length \? featureRoles\(cadence\) : cadence;/);
   // what the writer is told
   assert.match(fn, /A FEATURED VERSE — \$\{featNames\} \$\{featured\.length === 1 \? "sings" : "each sing"\} part of this song, like a featured artist on a real record\./);
-  assert.match(fn, /in EVERY scene of that verse set "singer" to their exact name/);
-  assert.match(fn, /In their PERFORMANCE scene the VISUAL shows THEM singing to camera, on their own/);
-  assert.match(fn, /the artist sings the FIRST performance/);
+  // WHICH scenes are the verse is not left to the writer (2026-11-22: asked to "give them two or three
+  // scenes in a row", a sheet came back with the co-star's performance written into the last cut scene
+  // and the artist singing in the scene the rule then dealt to her — the pictures were written to one
+  // plan and filmed to another). The plan is dealt first and said in the shot list, line by line…
+  assert.match(fn, /const featPlan: number\[\] = featured\.length \? defaultFeaturePlan\(roles, sceneSec, featured\.map\(\(n\) => castList\.indexOf\(n\)\)\) : \[\];/);
+  assert.match(fn, /PERFORMANCE — \$\{who\}'S VERSE: \$\{who\} sings straight to camera, ALONE in the shot \(the artist is not in it\); "singer": "\$\{who\}"/);
+  assert.match(fn, /\$\{note\} — \$\{who\}'S VERSE goes on over it \(their voice; nobody sings to camera\); "singer": "\$\{who\}"/);
+  assert.match(fn, /The scenes marked "…'S VERSE" in the shot list ARE that verse: set "singer" to their exact name in each of them and in no other scene\./);
+  assert.match(fn, /The lyric lines of those scenes are THEIR words, in their own voice/);
   assert.match(fn, /End the title with "\(feat\. \$\{featNames\}\)"/);
+  assert.doesNotMatch(fn, /two or three scenes in a row/);
   // …and "only the artist ever sings" is still what every other video is told
   assert.match(fn, /WHO DOES WHAT — only the ARTIST ever sings\./);
-  // the marks are kept only when they make a verse that can be filmed; else it is dealt by rule
-  assert.match(fn, /if \(featured\.length && !\(planIsSound\(singers, outRoles\) && featIdx\.every\(\(k\) => singers\.includes\(k\)\)\)\) singers = defaultFeaturePlan\(outRoles, sceneSec, featIdx\);/);
+  // …and the SAME rule decides who sings each scene afterwards, whatever marks came back
+  assert.match(fn, /const singers: number\[\] = featured\.length \? defaultFeaturePlan\(outRoles, sceneSec, featIdx\) : list\.map\(\(\) => -1\);/);
+  assert.doesNotMatch(fn, /planIsSound\(singers, outRoles\)/);
   assert.match(fn, /\.\.\.\(featured\.length && singers\[i\] >= 0 \? \{ singer: castList\[singers\[i\]\] \} : \{\}\),/);
+  // the plan the writer is given for the usual six scenes: the artist opens and has the first
+  // performance; the co-star has the second performance and the cut scene after it
+  const roles = featureRoles(Array.from({ length: 6 }, (_, i) => defaultRole(i, 6, 5)));
+  assert.deepEqual(defaultFeaturePlan(roles, 5, [1]), [-1, -1, -1, 1, 1, -1]);
+  // one world: a night video never cuts to daylight (the same sheet set its last scene "sunlit")
+  assert.match(fn, /but ONE WORLD: the same time of day and the same kind of light in every scene \(a night video never cuts to daylight\), said in each VISUAL/);
 });
 
 test("the render: the verse is re-voiced and mixed, the co-star leads their shot, and a failure costs nothing", () => {
