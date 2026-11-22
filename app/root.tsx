@@ -9,6 +9,7 @@ import {
   useRouteError,
 } from "@remix-run/react";
 import { json } from "@remix-run/node";
+import { useEffect, useRef } from "react";
 import type {
   LinksFunction,
   LoaderFunctionArgs,
@@ -132,6 +133,26 @@ export default function App() {
  * app/routes/app.tsx has its own boundary and keeps it; this one catches
  * everything else, /web/* included.
  */
+/** The mascot on the page below. That page is shown WHILE the server is being swapped, so its own picture
+ *  can be refused too (seen on the live site during a deploy, 2026-11-22: the icon answered 502 and the
+ *  page showed the browser's broken-image mark). Never that: it hides, and asks again a few times as the
+ *  new server comes up. */
+function BoundaryIcon() {
+  const ref = useRef<HTMLImageElement>(null);
+  const tries = useRef(0);
+  const again = () => {
+    const im = ref.current;
+    if (!im) return;
+    im.style.visibility = "hidden";
+    if (tries.current >= 5) return;
+    const n = ++tries.current;
+    window.setTimeout(() => { if (ref.current) ref.current.src = `/helpurr-icon.png?v=3&again=${n}`; }, 2500);
+  };
+  // (a picture that failed before the page woke up never told anyone)
+  useEffect(() => { const im = ref.current; if (im && im.complete && im.naturalWidth === 0) again(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return <img ref={ref} src="/helpurr-icon.png?v=3" alt="" width={56} height={56} style={{ borderRadius: 14 }} onLoad={(e) => { e.currentTarget.style.visibility = "visible"; }} onError={again} />;
+}
+
 export function ErrorBoundary() {
   const error = useRouteError();
   const routeError = isRouteErrorResponse(error) ? error : null;
@@ -148,7 +169,9 @@ export function ErrorBoundary() {
     ? "The link may be old, or the page may have moved."
     : routeError?.status === 403
       ? "You don’t have permission to view this page."
-      : "We pushed a quick update while you were here — give it a reload and you’ll pick right back up where you left off. Nothing’s lost on your end.";
+      // (it used to end "Nothing’s lost on your end." — true of everything SAVED, not of a storyboard still
+      //  open on the page, which a reload does lose; it says only what is true)
+      : "We pushed a quick update while you were here — give it a reload and carry on. Everything you’ve made is safe.";
   return (
     <html lang="en">
       <head>
@@ -174,7 +197,7 @@ export function ErrorBoundary() {
       <body style={{ margin: 0, background: "#F4F1E6", color: "#14201A", fontFamily: "Inter, -apple-system, sans-serif" }}>
         <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
           <div style={{ maxWidth: 460, textAlign: "center", background: "#FDFCF7", border: "1px solid #E1DECD", borderRadius: 18, padding: "36px 28px" }}>
-            <img src="/helpurr-icon.png?v=3" alt="" width={56} height={56} style={{ borderRadius: 14 }} />
+            <BoundaryIcon />
             <h1 style={{ fontFamily: "Poppins, sans-serif", fontWeight: 800, fontSize: 22, margin: "14px 0 8px" }}>{title}</h1>
             <p style={{ fontSize: 14, lineHeight: 1.55, color: "#4A554E", margin: "0 0 22px" }}>{body}</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>

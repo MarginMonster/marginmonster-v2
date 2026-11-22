@@ -28,6 +28,7 @@ import { CHARACTER_VOICES, characterVoiceSample, isCharacterVoice } from "../lib
 import { GENRE_PACE, MV_DEFAULT_SECONDS, MV_MAX_SECONDS, MV_SECONDS, PACES, PACE_KEYS, cutCount, defaultRole, isPace, lengthLabel, mvBillScenes, paceFor, sceneCountFor, sceneSecondsFor, sceneSecondsOf, shotSlot, type Pace } from "../lib/mv-pace";
 import { MAX_COSTARS, sceneCast, singerOf } from "../lib/mv-cast";
 import { FEATURE_MIN_SECONDS } from "../lib/mv-feature";
+import type { Recast } from "../lib/mv-recast";
 import { CAPTION_STYLES, captionStyleOf, type CaptionStyle } from "../lib/narrated-core";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
 import { favouritesFirst } from "../lib/favourites";
@@ -192,6 +193,20 @@ function parseOutfits(raw: string | null): Record<string, string> | undefined {
  *  wardrobe row made it — they are styled from it, so the look that was tapped is the look that is worn.
  *  Only pictures on our own render disk count: whatever host an address names, it is read as a site path
  *  under /renders/, so nothing else can be fetched through it. At most four (a star and their co-stars). */
+/** WHO IS IN A SCENE NOW, by name — sent by the scene's Cast editor so the scene's words can follow its
+ *  cast (mv-recast.ts). A short list of short names, whatever was sent; anything else is no list at all. */
+function parseSceneWho(raw: string | null): Recast | null {
+  if (!raw) return null;
+  try {
+    const o = JSON.parse(raw) as { names?: unknown; lead?: unknown; wasLead?: unknown; beside?: unknown } | null;
+    if (!o || typeof o !== "object") return null;
+    const nm = (v: unknown): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, 40) : "");
+    const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(nm).filter(Boolean).slice(0, 6) : []);
+    const names = list(o.names);
+    return names.length ? { names, lead: nm(o.lead), wasLead: nm(o.wasLead), beside: list(o.beside) } : null;
+  } catch { return null; }
+}
+
 function parseOutfitImgs(raw: string | null): Record<string, string> | undefined {
   if (!raw) return undefined;
   try {
@@ -518,6 +533,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       let faults: number | null = null;
       // what the check read off the picture (a music video's cast still) — null = it was not looked at
       let check: unknown = null;
+      // the scene's words as they are drawn (rewritten below when its cast was just changed)
+      let visualNow = sceneVisual;
       if (narrated) {
         // the scene as it reads NOW (the maker may have edited the words), drawn again on its own
         let scenesNow: Array<{ visual: string; caption?: string }> = [];
@@ -530,15 +547,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         img = r.sceneImgs[sceneIndex] || null;
       } else if (tmpl.lipSyncSinger) {
         if (!artistRef) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
+        // THE WORDS FOLLOW THE CAST (mv-recast.ts): the scene's Cast editor says who is in the scene now.
+        // Words that would be wrong for them — another lead, or the name of someone who has left it — are
+        // rewritten first; the picture is drawn from the NEW words, and they go back to the card.
+        const who = parseSceneWho(form.get("sceneWho") as string);
+        if (who) {
+          const { recastSceneText } = await import("../lib/mv-recast.server");
+          const rc = await recastSceneText(sceneVisual, who, rerollKind === "perform");
+          visualNow = rc.visual;
+          if (rc.by !== "kept") console.log(`[mv-recast] scene ${sceneIndex + 1} — its words were rewritten for its cast (by the ${rc.by})`);
+        }
         const { rerollMusicVideoScene } = await import("../lib/music-video-pipeline.server");
-        const r = await rerollMusicVideoScene({ artistRef, sceneVisual, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect, customProps: rerollCustomProps, kind: rerollKind, sceneCount: rerollSceneCount, sceneSeconds: filmSceneSeconds, leadRef: rerollLeadRef });
+        const r = await rerollMusicVideoScene({ artistRef, sceneIndex, propKey, genre, castRefs: sceneCastRefs, aspect: rerollAspect, customProps: rerollCustomProps, kind: rerollKind, sceneCount: rerollSceneCount, sceneSeconds: filmSceneSeconds, leadRef: rerollLeadRef,
+          sceneVisual: visualNow,
+        });
         img = r.img; faults = r.faults; check = r.reading ?? null;
       } else {
         const { rerollFilmSceneSeed } = await import("../lib/film-engine.server");
         img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined });
       }
       if (!img) return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex });
-      return json({ ok: true, sceneIndex, img, faults, check });
+      return json({ ok: true, sceneIndex, img, faults, check, ...(visualNow !== sceneVisual ? { visual: visualNow } : {}) });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
     }
@@ -946,7 +975,8 @@ export default function FilmStudio() {
   // Music Video STORYBOARD: pre-seed every scene's still (props placed) BEFORE paying for the video,
   // so the owner checks accuracy + the prop per scene and the render uses those EXACT stills (no surprise).
   const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; sceneFaults?: (number | null)[]; sceneChecks?: unknown[]; treatment?: Treatment; propForScene?: Record<number, string>; artistRef?: string | null; castRef?: string | null; error?: string }>();
-  const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; faults?: number | null; check?: unknown; error?: string }>();
+  // (`visual`: the scene's words as rewritten for who is in it now — only when the re-roll changed them)
+  const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; faults?: number | null; check?: unknown; visual?: string; error?: string }>();
   // Make-your-own prop: describe it → we generate a studio photo of it (free).
   const propMakerFetcher = useFetcher<{ img?: string; error?: string }>();
   // Make-your-own artist: describe a face → we generate a portrait (free), like the presenter forge.
@@ -1202,6 +1232,13 @@ export default function FilmStudio() {
     setStepsDone((d) => (d[key] ? d : { ...d, [key]: true }));
   };
   const [topic, setTopic] = useState("");
+  // (the music video's idea box grows with its text — CSS `field-sizing` where the browser has it; sized
+  //  by hand where it does not, so the idea is never a wrapped line hidden under a one-row box)
+  useEffect(() => {
+    if (typeof document === "undefined" || (typeof CSS !== "undefined" && CSS.supports?.("field-sizing", "content"))) return;
+    const el = document.getElementById("mm-topic-in") as HTMLTextAreaElement | null;
+    if (el && el.tagName === "TEXTAREA") { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; }
+  }, [topic, template]);
   // The merchant can PICK one of their avatars to BE the artist ("" = auto-cast one for the genre).
   const [artistPick, setArtistPick] = useState<string>("");
   const artistName = artistPick ? (d.roster.find((r) => r.img === artistPick)?.name || customArtists.find((c) => c.img === artistPick)?.name || "") : "";
@@ -1347,6 +1384,15 @@ export default function FilmStudio() {
   const affordable = d.tokens >= cost;
   const productReady = !tmpl?.needsProduct || !!prodImage.trim();
   const canGo = d.hasPlan && d.canFilm && affordable && productReady && !generating;
+  // THE BUTTON SAYS IT WORKED. "Render these scenes" used to go straight back to itself, live, the moment
+  // the render was queued — the only sign was a line under it, and a second tap queued the same video
+  // again. It now stays "Rendering…" for the storyboard that was SENT, and comes back the moment anything
+  // in it changes (a re-roll, a new line, another shape): that is a different video.
+  const renderSig = seeds ? JSON.stringify([seeds.imgs, seeds.treatment, mvAspect, mvLyrics, mvPace]) : "";
+  const sigAtSubmit = useRef("");
+  const [sentSig, setSentSig] = useState("");
+  useEffect(() => { if (actionData?.ok && sigAtSubmit.current) setSentSig(sigAtSubmit.current); }, [actionData]);
+  const alreadySent = !!renderSig && sentSig === renderSig;
 
   const bump = (delta: number) => {
     const n = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, scenes + delta));
@@ -1429,7 +1475,9 @@ export default function FilmStudio() {
     if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null, castRef: sd.castRef || null, castRefs: Array.isArray(crefs) ? crefs : [], faults: Array.isArray(sd.sceneFaults) ? sd.sceneFaults : [], checks: Array.isArray(sd.sceneChecks) ? sd.sceneChecks : [] });
   }, [sceneSeedsFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Re-roll ONE storyboard scene (reusing the hero / cast ref) when it came back wrong; swap that still.
-  const rerollScene = (i: number, propOverride?: string, castOverride?: string[], singerOverride?: string, wearOverride?: Record<string, string>) => {
+  // (`who` — the people in the scene BY NAME — rides only with the Cast editor's own re-roll: the scene's
+  //  words are then rewritten for them first, mv-recast.ts. A plain re-roll keeps the maker's words.)
+  const rerollScene = (i: number, propOverride?: string, castOverride?: string[], singerOverride?: string, wearOverride?: Record<string, string>, who?: Recast) => {
     if (!seeds || (!narrated && !seeds.artistRef && !seeds.castRef)) return;
     const pk = propOverride !== undefined ? propOverride : (seeds.propForScene[i] || "");
     // Resolve THIS scene's co-stars → their styled refs so the re-roll composes the right faces. (In a
@@ -1445,7 +1493,7 @@ export default function FilmStudio() {
     const leadRef = leadImg ? sceneRefOf(i, leadImg, costarImgToRef(leadImg), wearOverride) : null;
     setRerollingScene(i);
     rerollSceneFetcher.submit(
-      { intent: "rerollFilmScene", template, filmGenre, ...(leadRef ? { sceneLeadRef: leadRef } : {}), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated", approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}) } : {}), artistRef: sceneArtistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}) },
+      { intent: "rerollFilmScene", template, filmGenre, ...(leadRef ? { sceneLeadRef: leadRef } : {}), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated", approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}) } : {}), artistRef: sceneArtistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(who ? { sceneWho: JSON.stringify(who) } : {}) },
       { method: "post" }
     );
   };
@@ -1481,7 +1529,11 @@ export default function FilmStudio() {
     if (rerollSceneFetcher.state === "idle" && rd) {
       if (rd.ok && typeof rd.sceneIndex === "number" && rd.img) {
         const idx = rd.sceneIndex, nimg = rd.img, nf = rd.faults ?? null, nc = rd.check ?? null;
-        setSeeds((prev) => (prev ? { ...prev, imgs: prev.imgs.map((u, j) => (j === idx ? nimg : u)), faults: prev.imgs.map((_, j) => (j === idx ? nf : (prev.faults || [])[j] ?? null)), checks: prev.imgs.map((_, j) => (j === idx ? nc : (prev.checks || [])[j] ?? null)) } : prev));
+        // the scene's words, if the re-roll rewrote them for who is in it now: the card says what the picture shows
+        const nv = typeof rd.visual === "string" && rd.visual.trim() ? rd.visual.trim().slice(0, 400) : null;
+        setSeeds((prev) => (prev ? { ...prev,
+          treatment: nv ? { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === idx ? { ...s, visual: nv } : s)) } : prev.treatment,
+          imgs: prev.imgs.map((u, j) => (j === idx ? nimg : u)), faults: prev.imgs.map((_, j) => (j === idx ? nf : (prev.faults || [])[j] ?? null)), checks: prev.imgs.map((_, j) => (j === idx ? nc : (prev.checks || [])[j] ?? null)) } : prev));
       }
       setRerollingScene(null);
     }
@@ -1609,7 +1661,11 @@ export default function FilmStudio() {
     setCastForScene((prev) => ({ ...prev, [i]: sceneCastDraft }));
     setSceneOutfits((prev) => { const n = { ...prev }; if (Object.keys(wear).length) n[i] = wear; else delete n[i]; return n; });
     setSceneCastPick(null);
-    rerollScene(i, undefined, sceneCastDraft, newSinger ? singer : undefined, wear);
+    // THE WORDS FOLLOW THE CAST: who is in the scene now, by name. The scene's words are rewritten for
+    // them before it is drawn (they used to stay "OMAR sings … VALENTINA dancing beside him" under a
+    // picture of KEIKO — and the picture model drew the VALENTINA it was told about; mv-recast.ts).
+    const who = { names: [artistName, ...castNamesAll].map((n) => (n || "").trim()).filter(Boolean), lead: singer || (artistName || "").trim(), wasLead: sceneSingerName(scenesArr[i], i, scenesArr.length) || (artistName || "").trim(), beside: sceneCastDraft.map((img) => castMemberName(img).trim()).filter(Boolean) };
+    rerollScene(i, undefined, sceneCastDraft, newSinger ? singer : undefined, wear, who);
   };
   // ---- Wardrobe (owner edit) ------------------------------------------------
   // Folded INTO the avatar picker: select an avatar → an outfit slider opens under it (presets + your
@@ -2338,7 +2394,10 @@ export default function FilmStudio() {
         <div className="mm">
           <div className="mm-topic">
             <label htmlFor="mm-topic-in">{t("What's your video about?")}</label>
-            <input id="mm-topic-in" value={topic} onChange={(e) => setTopic(e.target.value)} maxLength={300}
+            {/* (a box that GROWS with the idea: it was one line, and a phone showed "late night drive through
+                the city, two pe…" — the rest of the idea out of sight. Enter is not a new line; an idea is one.) */}
+            <textarea id="mm-topic-in" className="mm-topic-grow" rows={1} value={topic} onChange={(e) => setTopic(e.target.value.replace(/[\r\n]+/g, " "))} maxLength={300}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
               placeholder={t("e.g. grinding from nothing, staying loyal, winning big")} />
           </div>
 
@@ -2705,7 +2764,7 @@ export default function FilmStudio() {
               {sceneSeedsFetcher.data?.error && <p className="fs-err">{sceneSeedsFetcher.data.error}</p>}
               {seedBusy && seedProgressUI()}
             </>)}
-            <Form method="post">
+            <Form method="post" onSubmit={() => { sigAtSubmit.current = renderSig; }}>
               <input type="hidden" name="intent" value="film" />
               <input type="hidden" name="template" value={template} />
               <input type="hidden" name="filmGenre" value={filmGenre} />
@@ -2735,8 +2794,9 @@ export default function FilmStudio() {
               {/* Generating is GATED on making the scenes first — you must script + preview the
                   storyboard (above) before you can spend tokens on the render. */}
               {seeds ? (
-                <button type="submit" className="mm-go" disabled={!canGo}>
+                <button type="submit" className={`mm-go${alreadySent ? " is-sent" : ""}`} disabled={!canGo || alreadySent}>
                   {generating ? <>… {t("Starting your video")}</>
+                    : alreadySent ? <><Ico n="check" size={17} /> {t("Rendering — it lands in your Archive")}</>
                     : <><Ico n="film" size={17} /> {cost > 0 ? t("Render these scenes · {cost} Tokens", { cost }) : t("Render these scenes")}</>}
                 </button>
               ) : (
@@ -2753,7 +2813,7 @@ export default function FilmStudio() {
             {!d.hasPlan && <p className="fs-err">{t("Pick a plan on the Dashboard first — film runs on tokens.")}</p>}
             {d.hasPlan && !affordable && <p className="fs-err">{t("Not enough tokens for this length — shorten it, or top up on the Plans page.")}</p>}
             {actionData?.error && <p className="fs-err">{actionData.error}</p>}
-            {actionData?.ok && <p className="fs-ok"><Ico n="check" size={14} /> {t("Rolling! Your video is rendering — it'll land in your Gallery in a few minutes. You can keep working.")}</p>}
+            {actionData?.ok && <p className="fs-ok"><Ico n="check" size={14} /> {t("Rolling! Your video is rendering — it'll land in your Archive when it's done. You can keep working.")}</p>}
           </div>
         </div>
       )}
@@ -3326,7 +3386,7 @@ export default function FilmStudio() {
         {d.hasPlan && tmpl?.needsProduct && !productReady && <p className="fs-err">{t("Add your product above to generate a skit.")}</p>}
         {actionData?.error && <p className="fs-err">{actionData.error}</p>}
         {actionData?.ok && (
-          <p className="fs-ok"><Ico n="check" size={14} /> {t("Rolling! Your film is rendering — it'll land in your Gallery in a few minutes. You can keep working.")}</p>
+          <p className="fs-ok"><Ico n="check" size={14} /> {t("Rolling! Your film is rendering — it'll land in your Archive when it's done. You can keep working.")}</p>
         )}
       </div>
       </>)}
@@ -3783,6 +3843,8 @@ const FS_STYLE = `
 .mm-topic label{font-size:13px;font-weight:800;color:var(--ink,#14201A);display:block;margin-bottom:8px;}
 .mm-topic input,.mm-topic textarea{width:100%;border:1.5px solid var(--line,#E4DFCF);border-radius:12px;padding:12px 14px;font-size:14.5px;font-family:Poppins,sans-serif;color:var(--ink,#14201A);background:#fff;box-sizing:border-box;}
 .mm-topic textarea{resize:vertical;min-height:62px;line-height:1.45;}
+/* the music video's idea: one line that grows to show all of what was typed */
+.mm-topic textarea.mm-topic-grow{resize:none;overflow:hidden;field-sizing:content;min-height:0;display:block;}
 .mm-topic input:focus,.mm-topic textarea:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
 .mm-topic input::placeholder,.mm-topic textarea::placeholder{color:var(--ink3,#9AA39B);}
 /* scene-count row that lives under the describe-first box in the classic (non-MV) builder */
@@ -4304,6 +4366,9 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-go svg{stroke:#fff;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 .mm-go::after{content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.45),transparent);transform:skewX(-18deg);animation:mm-sheen 4.5s ease-in-out infinite;}
 .mm-go:disabled::after{display:none;}
+/* sent: the button itself says so — calm, not greyed out like something that cannot be done */
+.mm-go.is-sent:disabled{filter:none;opacity:1;background:#E4F4EA;color:#0A5E37;box-shadow:inset 0 0 0 1.5px #B9E0C8;}
+.mm-go.is-sent svg{stroke:#0A5E37;}
 @keyframes mm-sheen{0%,58%{left:-60%}80%,100%{left:130%}}
 .mm-eta{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:12px;font-size:13px;font-weight:700;color:var(--ink2,#4A554E);}
 .mm-eta b{color:var(--ink,#14201A);}

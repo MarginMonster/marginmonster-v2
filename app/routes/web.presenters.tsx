@@ -1055,6 +1055,14 @@ ${SPIN_STAGE_CSS}
 @keyframes pcrise{from{opacity:0;transform:translateY(14px) scale(.985)}}
 .pc-x{position:absolute;top:12px;right:12px;z-index:5;width:36px;height:36px;border-radius:50%;border:1px solid var(--line,#E1DECD);background:rgba(253,252,247,.92);color:var(--ink,#14201A);display:grid;place-items:center;cursor:pointer;}
 .pc-x:hover{border-color:var(--green2,#12A85E);color:var(--green,#0C7A46);}
+/* a thumb's worth of target around the small round and pill controls (measured on a 390 px phone,
+   2026-11-22: close 36, the arrows 38, 3D / Portrait 26 tall, Change 33 tall) — the look is unchanged */
+.pc-x::before{content:"";position:absolute;inset:-4px;border-radius:50%;}
+.pc-nav::before{content:"";position:absolute;inset:-3px;border-radius:50%;}
+.pc-view button{position:relative;}
+.pc-view button::before{content:"";position:absolute;inset:-9px 0;}
+.pc-chg{position:relative;}
+.pc-chg::before{content:"";position:absolute;inset:-6px 0;}
 .pc-stage{position:relative;min-height:0;overflow:hidden;}
 .pc-still{position:absolute;left:50%;bottom:0;width:auto;height:auto;max-width:100%;max-height:94%;transform:translateX(-50%);display:block;user-select:none;-webkit-user-select:none;}
 .pc-still.raw{inset:0;left:0;transform:none;width:100%;height:100%;object-fit:cover;object-position:center 18%;}

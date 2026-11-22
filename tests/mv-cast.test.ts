@@ -426,7 +426,7 @@ test("one scene can break from the locked wardrobe — inside the scene's Cast e
   const confirm = ui.slice(ui.indexOf("const confirmSceneCastMv"), ui.indexOf("// ---- Wardrobe (owner edit)"));
   assert.ok(confirm.includes("for (const k of Object.keys(sceneWearDraft)) if (inScene.has(k)) wear[k] = sceneWearDraft[k];"), "only people in the scene keep an outfit for it");
   assert.ok(confirm.includes("if (Object.keys(wear).length) n[i] = wear; else delete n[i];"), "back to the video look = no entry");
-  assert.ok(confirm.includes("rerollScene(i, undefined, sceneCastDraft, newSinger ? singer : undefined, wear);"));
+  assert.ok(confirm.includes("rerollScene(i, undefined, sceneCastDraft, newSinger ? singer : undefined, wear, who);"), "(who, by name: the scene's words follow its cast — tests/mv-recast.test.ts)");
   assert.equal(castEditor.split("mm-sp-confirm").length - 1, 1, "one Regenerate button");
   // a scene is drawn from the picture of what each person wears IN IT
   assert.ok(ui.includes("if (w === undefined) return videoRef;") && ui.includes("if (w === \"\") return img;") && ui.includes("return styleFor(img, w) || videoRef;"));
@@ -526,9 +526,9 @@ test("the music video's setup ends in ONE button: it makes the scenes, then it r
   assert.ok(card.includes("<button type=\"button\" className=\"mm-go\" onClick={makeStoryboard} disabled={writing || seedBusy || chainToScenes || !d.hasPlan}>"));
   assert.ok(card.includes(": <><Ico n=\"wand\" size={17} /> {t(\"Make the scenes — free\")}</>}"));
   // …and once there is one it renders it, with "Start over" as the small button
-  assert.ok(card.includes("<button type=\"submit\" className=\"mm-go\" disabled={!canGo}>"));
+  assert.ok(card.includes("<button type=\"submit\" className={`mm-go${alreadySent ? \" is-sent\" : \"\"}`} disabled={!canGo || alreadySent}>"));
   assert.ok(card.includes("{seeds ? makeBtn() : (<>"));
-  assert.equal(card.split("className=\"mm-go\"").length - 1, 2, "one or the other, never both");
+  assert.equal((card.split("className=\"mm-go\"").length - 1) + (card.split("className={`mm-go${").length - 1), 2, "one or the other, never both");
   assert.ok(card.includes("{t(\"Free — you see and edit every scene before anything is rendered.\")}"));
 });
 
@@ -614,6 +614,34 @@ test("once the scenes are drawn, another shape is asked for twice — it draws t
   assert.deepEqual(run(true, ["16:9", "9:16"]), { shape: "9:16", arm: "" }, "tapping the shape it already has backs out");
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["Tap again to redraw", "A new shape draws every scene again, and your scene edits start over."]) {
+    assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5, k);
+  }
+});
+
+test("the Render button says it worked — and the same storyboard is not sent twice", () => {
+  // Seen on the live site, 2026-11-22: "Render these scenes" went straight back to itself, live, the moment
+  // the render was queued. The only sign was a line under it, and a second tap queued the same video again.
+  const ui = read("app", "routes", "web.film.tsx");
+  // what was sent is remembered when the server says yes…
+  assert.ok(ui.includes("const renderSig = seeds ? JSON.stringify([seeds.imgs, seeds.treatment, mvAspect, mvLyrics, mvPace]) : \"\";"));
+  assert.ok(ui.includes("<Form method=\"post\" onSubmit={() => { sigAtSubmit.current = renderSig; }}>"));
+  assert.ok(ui.includes("useEffect(() => { if (actionData?.ok && sigAtSubmit.current) setSentSig(sigAtSubmit.current); }, [actionData]);"));
+  // …and the button stays "Rendering" for exactly that storyboard: change anything and it is live again
+  assert.ok(ui.includes("const alreadySent = !!renderSig && sentSig === renderSig;"));
+  assert.ok(ui.includes("<button type=\"submit\" className={`mm-go${alreadySent ? \" is-sent\" : \"\"}`} disabled={!canGo || alreadySent}>"));
+  assert.ok(ui.includes(": alreadySent ? <><Ico n=\"check\" size={17} /> {t(\"Rendering — it lands in your Archive\")}</>"));
+  // the same rule, run
+  const sent = (sig: string, sentSig: string) => !!sig && sentSig === sig;
+  assert.equal(sent("a", ""), false, "nothing sent yet");
+  assert.equal(sent("a", "a"), true, "this storyboard is rendering");
+  assert.equal(sent("b", "a"), false, "a re-rolled scene makes it a different video");
+  assert.equal(sent("", ""), false, "no storyboard, nothing to say");
+  // the line under it names the tab the video lands in, and does not promise "a few minutes"
+  assert.ok(!ui.includes("land in your Gallery"), "the tab is called Archive");
+  assert.ok(ui.includes("t(\"Rolling! Your video is rendering — it'll land in your Archive when it's done. You can keep working.\")"));
+  assert.ok(ui.includes("t(\"Rolling! Your film is rendering — it'll land in your Archive when it's done. You can keep working.\")"));
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  for (const k of ["Rendering — it lands in your Archive", "Rolling! Your video is rendering — it'll land in your Archive when it's done. You can keep working.", "Rolling! Your film is rendering — it'll land in your Archive when it's done. You can keep working."]) {
     assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5, k);
   }
 });
