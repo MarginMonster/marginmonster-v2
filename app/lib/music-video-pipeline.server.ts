@@ -422,6 +422,21 @@ async function readCast(imgUrl: string, castRefs: string[], prop?: string): Prom
   return null;
 }
 
+/** THE CAST CHECK, ASKED BY HAND — the admin's diagnostic (web.film.tsx `readCastStill`): the same reader,
+ *  the same pictures and, unless another question is given to try, the same question the storyboard asks
+ *  about a cast still. It returns the reader's own words beside what was read from them, so a flag can be
+ *  explained and a change to the question tried on real stills before it ships. (A change to the clothes
+ *  question was first tried on a different reader with the pictures pasted side by side — close, not
+ *  the same; 2026-11-22.) */
+export async function readCastStillByHand(o: { img: string; refs: string[]; prop?: string; question?: string }): Promise<{ question: string; raw: string; reading: CastCheck | null }> {
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  const abs = (u: string): string => (u.startsWith("http") ? u : `${base}${u}`);
+  const refs = o.refs.slice(0, 3).map(abs);
+  const question = (o.question || "").trim().slice(0, 4000) || castCheckPrompt({ refs: refs.length, prop: o.prop });
+  const raw = String(await anthropicVision(question, [abs(o.img), ...refs], { maxTokens: 300, model: "claude-sonnet-4-6" }));
+  return { question, raw, reading: parseCastCheck(raw) };
+}
+
 /** A cast still and how it fared when it was looked at: `faults` 0 = right, more = what was still wrong
  *  with the best of the tries (the storyboard flags that scene for a re-roll); null = it could not be
  *  checked. `reading` = what the check saw in the picture that was kept (who, a microphone, anything
@@ -479,7 +494,7 @@ async function castStill(o: {
     if (!best || faults < best.faults) best = { img, faults, reading: { ...(seen || {}), bars } };
     if (!faults) break;
     fix = [seen ? castFix(seen, expect, micOk, performing, o.prop?.noun) : "", bars ? FILL_FRAME : ""].filter(Boolean).join(". ");
-    console.log(`[musicvideo] ${o.tag || "cast shot"}: try ${attempt + 1} had ${seen ? `${seen.people} of ${expect ?? "any"} people, seen=${JSON.stringify(seen.seen || null)}, twin=${seen.twin ?? "?"}, odd=${seen.odd ?? "?"}, mic=${seen.mic}${o.prop ? `, prop=${seen.prop}` : ""}` : "no reading"}${bars ? ", black bars round the picture" : ""}${attempt < 2 ? " — making it again" : " — keeping the best of three"}`);
+    console.log(`[musicvideo] ${o.tag || "cast shot"}: try ${attempt + 1} had ${seen ? `${seen.people} of ${expect ?? "any"} people, seen=${JSON.stringify(seen.seen || null)}, twin=${seen.twin ?? "?"}, dressed=${JSON.stringify(seen.dressed || null)}, odd=${seen.odd ?? "?"}, mic=${seen.mic}${o.prop ? `, prop=${seen.prop}` : ""}` : "no reading"}${bars ? ", black bars round the picture" : ""}${attempt < 2 ? " — making it again" : " — keeping the best of three"}`);
   }
   return best || { img: null, faults: null };
 }

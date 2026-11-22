@@ -262,6 +262,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const intent = ((form.get("intent") as string) || "").trim();
   const { filmTemplate, previewFilmTreatment, canNarrate, clampNarrated } = await import("../lib/film-engine.server");
 
+  // THE CAST CHECK, ASKED BY HAND — admin only, and it reads only pictures on our own render disk or among
+  // the built-in avatars. The question the storyboard asks about a cast still, put to the same reader with
+  // the same pictures: to explain a flag, or to try a change to the question on real stills before it
+  // ships. Nothing is made, charged or saved.
+  if (intent === "readCastStill") {
+    if (!isAdminEmail(account.email)) return json({ error: "Not found" }, { status: 404 });
+    const own = (v: unknown): string | null => {
+      if (typeof v !== "string" || !v.trim()) return null;
+      let p = "";
+      try { p = new URL(v.trim(), "https://site.invalid").pathname; } catch { return null; }
+      return /^\/(?:renders|avatars)\/[\w.-]+\.(?:jpe?g|png|webp)$/i.test(p) ? p : null;
+    };
+    const img = own(form.get("img"));
+    let refs: string[] = [];
+    try { const a = JSON.parse(((form.get("refs") as string) || "[]").trim()); if (Array.isArray(a)) refs = a.map(own).filter((x): x is string => !!x).slice(0, 3); } catch { /* no references */ }
+    if (!img) return json({ error: "img must be a picture under /renders/ or /avatars/" }, { status: 400 });
+    const { readCastStillByHand } = await import("../lib/music-video-pipeline.server");
+    try {
+      return json({ ok: true, img, refs, ...(await readCastStillByHand({ img, refs, prop: ((form.get("prop") as string) || "").trim().slice(0, 40) || undefined, question: ((form.get("question") as string) || "").trim() || undefined })) });
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message.slice(0, 200) : String(e) }, { status: 502 });
+    }
+  }
+
   if (!shop.activePlan?.active) return json({ error: tr(lang, "Pick a plan on the Dashboard first — film runs on tokens.") });
   if (!capabilitiesFor(shop.activePlan).has("creatorvideo")) {
     return json({ error: tr(lang, "Your plan doesn't include video yet — upgrade to make films.") });
@@ -1497,6 +1521,19 @@ export default function FilmStudio() {
       { method: "post" }
     );
   };
+  /** WHY a still is flagged, in two words — from what the check read off it (mv-cast.ts CastCheck). The
+   *  flag used to say only "Worth a re-roll", with the reason in a tooltip a phone does not have. */
+  const flagWhy = (i: number): string => {
+    const c = ((seeds?.checks || [])[i] || null) as { seen?: boolean[]; twin?: boolean; dressed?: boolean[]; odd?: boolean; mic?: string; bars?: boolean } | null;
+    if (!c) return t("Worth a re-roll");
+    if ((c.seen || []).some((x) => x === false)) return t("Missing someone");
+    if (c.twin === true) return t("Someone doubled");
+    if ((c.dressed || []).some((x) => x === false)) return t("Wrong clothes");
+    if (c.odd === true) return t("Looks impossible");
+    if (c.bars === true) return t("Black bars");
+    if (c.mic && c.mic !== "none") return t("Stray microphone");
+    return t("Worth a re-roll");
+  };
   // Tap a scene still to inspect it big (lightbox).
   const [zoomImg, setZoomImg] = useState<string | null>(null);
   // Per-scene PROP edit (post-creation): STAGE a prop in a draft (no auto-regen), then an explicit
@@ -1949,7 +1986,7 @@ export default function FilmStudio() {
                     {rerollingScene === i && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     <span className="mm-sb-num">{i + 1}</span>
                     {/* the picture was looked at and something was still off (someone missing, doubled, or a stray microphone) */}
-                    {flagged && <button type="button" className="mm-sb-flag" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("We checked this picture and something looks off — someone missing or doubled, or a stray microphone. Tap to draw it again.")}><Ico n="refresh" size={11} /> {t("Worth a re-roll")}</button>}
+                    {flagged && <button type="button" className="mm-sb-flag" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("We checked this picture and something looks off — someone missing or doubled, the wrong clothes, or a stray microphone. Tap to draw it again.")}><Ico n="refresh" size={11} /> {flagWhy(i)}</button>}
                     <button type="button" className="mm-sc-x" onClick={() => sbRemoveScene(i)} disabled={strip.scenes.length <= 1} title={t("Remove this scene")} aria-label={t("Remove scene {n}", { n: i + 1 })}>✕</button>
                     {seeds && (narrated || seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={12} /></button>}
                   </div>

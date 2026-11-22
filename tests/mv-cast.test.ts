@@ -131,7 +131,9 @@ test("the cast picture is told who is who FIRST, inside the length the picture c
   // a cut scene with the cast in it says they are different people too (two co-stars came back blended into one)
   // — and that what they DO is the setting's business: it said "all moving together", and a scene set in a
   // car came back with the cast on their feet in it (tests/mv-sense.test.ts)
-  assert.match(cut, /each doing what the setting describes, each with their own face, hair and clothes/);
+  // (…and that they are DRESSED as in their pictures — said plainly: "each with their own … clothes" let a
+  //  cut scene re-dress two of them; the test "the locked wardrobe is LOOKED AT" below)
+  assert.match(cut, /each doing what the setting describes, each with their own face and hair, and each DRESSED EXACTLY as in their reference image — the same garments, the same colours\. /);
   assert.doesNotMatch(cut, /all moving together/);
 });
 
@@ -357,7 +359,7 @@ test("the wardrobe is locked: what is picked is what is worn, in every scene", (
 
   // every scene is drawn from that picture, and says so
   assert.match(castStillPrompt({ genre: "Pop", role: "perform", frame: "a medium-wide shot", visual: "A rooftop at night", costars: 2, micOk: false }), /NOT singing; everyone dressed exactly as in their reference image\. /);
-  assert.match(castStillPrompt({ genre: "Pop", role: "broll", frame: "a wide shot", visual: "A rooftop at night", costars: 1, micOk: false }), /each with their own face, hair and clothes\. /);
+  assert.match(castStillPrompt({ genre: "Pop", role: "broll", frame: "a wide shot", visual: "A rooftop at night", costars: 1, micOk: false }), /each DRESSED EXACTLY as in their reference image — the same garments, the same colours\. /);
   assert.match(soloStillPrompt({ genre: "Pop", role: "broll", frame: "a wide shot", visual: "A street at night", micOk: false }), /the artist \(the person in the reference image, dressed exactly as in it\)/);
   assert.match(soloEditPrompt({ role: "perform", frame: "a medium shot", visual: "A street at night", micOk: false }), /same face, hair, skin, build, and the clothes and jewelry of this picture whatever the setting says they wear;/);
   // …and the writer no longer dresses anyone: a VISUAL that said "silver jacket catching the glow" put a
@@ -616,6 +618,89 @@ test("once the scenes are drawn, another shape is asked for twice — it draws t
   for (const k of ["Tap again to redraw", "A new shape draws every scene again, and your scene edits start over."]) {
     assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5, k);
   }
+});
+
+import { CUT_SCENE_DRESSED, CUT_SCENE_SETTING_MIN, redressedIn } from "../app/lib/mv-cast.ts";
+import { rideFrame } from "../app/lib/mv-sense.ts";
+
+test("the locked wardrobe is LOOKED AT: a still that re-dresses someone is made again", () => {
+  // The live render of 2026-11-22: scenes 3 and 5 (the star and a co-star, a cut scene each) kept the navy
+  // suit and the green velvet suit; scene 6 — the same two, from the same styled pictures — came back with
+  // him in a patterned bomber and jeans and her in a sequin dress and a white coat. The check read hair
+  // and faces, said both were there, and the scene was rendered: five seconds of a thirty-second video.
+  const q = castCheckPrompt({ refs: 2 });
+  assert.match(q, /For each of the two people, in order: are they wearing the SAME OUTFIT as in their own image\?/);
+  // THE KIND of garment, not its colour. Tried on that storyboard's own stills (scratchpad
+  // mvfix/dressed-try.mts): asked about "the same colours", the reader called a green velvet suit wrong
+  // because blue light made it look teal — and a false alarm redraws a good picture and flags it. Asked
+  // about the kind of garment it read all five right: the re-dressed scene caught, the four others passed.
+  assert.match(q, /Judge the KIND of garments, not their colour — coloured light, shadow and distance change how a colour looks, so an outfit that looks darker, bluer or warmer here is still the same outfit\./);
+  assert.match(q, /Answer false only when a garment is plainly a different kind \(a bomber or casual jacket where their image has a tailored suit jacket; a dress or skirt where it has trousers; jeans where it has suit trousers\) or something big has been added or taken away \(a coat, a hat\)\./);
+  assert.match(q, /If they are small, far away or partly hidden and you cannot tell, answer true\. If they are not in the frame, answer true\./);
+  assert.doesNotMatch(q, /same colours/);
+  assert.match(q, /"twin": true \| false, "dressed": \[true \| false, true \| false\]/);
+  assert.doesNotMatch(castCheckPrompt(), /dressed/i, "nobody to compare with: nothing asked");
+  // read like the other answers: a list of yes/no, or left out
+  assert.deepEqual(parseCastCheck('{"people": 2, "seen": [true, true], "twin": false, "dressed": [false, false], "mic": "none", "odd": false}'), { people: 2, mic: "none", seen: [true, true], twin: false, dressed: [false, false], odd: false });
+  assert.deepEqual(parseCastCheck('{"people": 2, "seen": [true, true], "dressed": "mostly", "mic": "none"}'), { people: 2, mic: "none", seen: [true, true] });
+  // THE SCENE: both there, each once, nothing odd, no microphone — and both in the wrong clothes
+  const riverside = { people: 2, mic: "none" as const, seen: [true, true], twin: false, dressed: [false, false], odd: false };
+  assert.deepEqual(redressedIn(riverside), [0, 1]);
+  assert.equal(castFaults(riverside, 2, false, false), 4, "it is a fault now — the still is made again");
+  assert.equal(castFaults({ ...riverside, dressed: [true, true] }, 2, false, false), 0);
+  assert.equal(castFaults({ ...riverside, dressed: [true, false] }, 2, false, false), 2);
+  // the redraw is told what was wrong, and whose
+  assert.match(castFix(riverside, 2, false, false), /The person in the 1st and 2nd reference image is in the WRONG CLOTHES — dress them EXACTLY as in their reference image: the same garments, the same colours, nothing added/);
+  assert.match(castFix({ ...riverside, dressed: [true, false] }, 2, false, false), /The person in the 2nd reference image is in the WRONG CLOTHES/);
+  assert.equal(castFix({ ...riverside, dressed: [true, true] }, 2, false, false), "");
+  // someone who is MISSING is not also "in the wrong clothes"
+  const gone = { people: 1, mic: "none" as const, seen: [true, false], twin: false, dressed: [true, false] };
+  assert.deepEqual(redressedIn(gone), []);
+  assert.equal(castFaults(gone, 2, false, false), castFaults({ ...gone, dressed: [true, true] }, 2, false, false));
+  // a wide shot where the people are too small to count is not judged on their clothes either
+  assert.equal(castFaults(riverside, null, false, false), 0);
+  assert.equal(castFix(riverside, null, false, false), "");
+  // a missing person is still the worse fault
+  assert.ok(castFaults({ people: 1, mic: "none", seen: [true, false] }, 2, false, false) > castFaults({ ...riverside, dressed: [true, false] }, 2, false, false));
+
+  // THE PROMPT says it plainly in a cut scene, wherever the setting keeps room to be read…
+  const visual = "OMAR and VALENTINA walk together along a glowing riverside promenade, leaning on the railing, taking in the skyline";
+  const cut = castStillPrompt({ genre: "Pop / Dance / EDM", role: "broll", frame: "Wide lifestyle shot, both of them full length", visual, costars: 1, micOk: false });
+  assert.ok(cut.includes(CUT_SCENE_DRESSED) && cut.includes(visual) && cut.length <= CAST_PROMPT_MAX);
+  // …and keeps the short form where the plain one would cut the setting to a stub (a ride is framed in many words)
+  const ride = castStillPrompt({ genre: "Pop / Dance / EDM", role: "broll", frame: rideFrame({ costars: 1, performing: false }), visual: LONG, costars: 1, micOk: false, extra: "Everyone does something a real person could really be filmed doing there; people in a vehicle sit in its seats" });
+  assert.ok(!ride.includes(CUT_SCENE_DRESSED) && ride.includes("each with their own face, hair and clothes"), "the short form where the plain one would leave the setting too little room");
+  const setting = ride.slice(ride.indexOf(" Setting: ") + 10).split(". Everyone does")[0];
+  assert.ok(setting.length >= 60 && LONG.startsWith(setting), `the setting is still read (${setting.length} characters)`);
+  assert.ok(CUT_SCENE_SETTING_MIN >= 120, "the plain form is only said where a setting can still be read whole");
+  // the pipeline records what the check read about clothes
+  assert.ok(read("app", "lib", "music-video-pipeline.server.ts").includes("dressed=${JSON.stringify(seen.dressed || null)}"));
+  // and the card's flag names it among the things a re-roll is for
+  assert.ok(read("app", "routes", "web.film.tsx").includes("t(\"We checked this picture and something looks off — someone missing or doubled, the wrong clothes, or a stray microphone. Tap to draw it again.\")"));
+});
+
+test("the cast check can be asked by hand — by an admin, about our own pictures only", () => {
+  // (so a flag can be explained, and a change to the question tried on real stills with the real reader
+  //  before it ships — the clothes question was first tried on a stand-in)
+  const ui = read("app", "routes", "web.film.tsx");
+  const act = ui.slice(ui.indexOf("if (intent === \"readCastStill\") {"), ui.indexOf("if (!shop.activePlan?.active) return json({ error: tr(lang, \"Pick a plan on the Dashboard first"));
+  assert.ok(act.length > 200 && act.length < 2600);
+  // admin only, and it says nothing to anyone else
+  assert.ok(act.includes("if (!isAdminEmail(account.email)) return json({ error: \"Not found\" }, { status: 404 });"));
+  assert.ok(act.indexOf("isAdminEmail(account.email)") < act.indexOf("readCastStillByHand"), "the gate comes first");
+  // only pictures on our own render disk or among the built-in avatars, whatever host an address names
+  const ours = /^\/(?:renders|avatars)\/[\w.-]+\.(?:jpe?g|png|webp)$/i;
+  assert.ok(act.includes(`return ${String(ours)}.test(p) ? p : null;`));
+  const pathOf = (v: string) => new URL(v.trim(), "https://site.invalid").pathname;
+  for (const good of ["/renders/img-1795333801456-417a5a1f929984e990.jpg", "https://easymodeapp.com/avatars/omar_0.jpg", "https://elsewhere.example/renders/x.webp"]) assert.ok(ours.test(pathOf(good)), good);
+  for (const bad of ["https://elsewhere.example/steal.jpg", "/renders/../secrets.jpg", "/renders/a/b.jpg", "/uploads/x.jpg", "/renders/x.svg", "file:///etc/passwd"]) assert.ok(!ours.test(pathOf(bad)), bad);
+  assert.ok(act.includes(".slice(0, 3)"), "three reference pictures at most, as in the storyboard's own check");
+  // the same reader, the same question unless another is given to try
+  const lib = read("app", "lib", "music-video-pipeline.server.ts");
+  const fn = lib.slice(lib.indexOf("export async function readCastStillByHand"), lib.indexOf("/** A cast still and how it fared when it was looked at"));
+  assert.ok(fn.includes("castCheckPrompt({ refs: refs.length, prop: o.prop })"));
+  assert.ok(fn.includes("anthropicVision(question, [abs(o.img), ...refs], { maxTokens: 300, model: \"claude-sonnet-4-6\" })"));
+  assert.ok(lib.includes("anthropicVision(castCheckPrompt({ refs: refs.length, prop }), [imgUrl, ...refs], { maxTokens: 300, model: \"claude-sonnet-4-6\" })"), "…which is what the storyboard's own check does");
 });
 
 test("the Render button says it worked — and the same storyboard is not sent twice", () => {

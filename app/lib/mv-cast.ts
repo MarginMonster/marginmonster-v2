@@ -159,6 +159,10 @@ export function castStylePrompt(o: { genreLabel: string; look: string; perform?:
  *  longer framing and the sit-in-your-seat rule, and at 760 they left the setting 110 characters; the
  *  picture call itself reads up to 900.) */
 export const CAST_PROMPT_MAX = 880;
+/** How the people of a CUT SCENE are told to dress — the locked wardrobe, in so many words… */
+export const CUT_SCENE_DRESSED = "each with their own face and hair, and each DRESSED EXACTLY as in their reference image — the same garments, the same colours";
+/** …said only while the setting keeps at least this much room to be read. */
+export const CUT_SCENE_SETTING_MIN = 150;
 export function castStillPrompt(o: {
   /** e.g. "Rap / Hip-Hop" */
   genre: string;
@@ -177,16 +181,23 @@ export function castStillPrompt(o: {
   const n = k + 1;
   const others = k === 1 ? `the other person (the ${ORDINALS[1]} reference image)` : `the other two (the ${ORDINALS[1]} and ${ORDINALS[2]} reference images)`;
   const performing = o.role === "perform";
-  const roles = performing
+  // (THE WARDROBE IS LOCKED in a cut scene too. "each with their own face, hair and clothes" was not
+  //  enough: a two-person cut scene came back re-dressed — the live render of 2026-11-22. It is said
+  //  plainly wherever the setting keeps room to be read; a ride in a car is framed in so many words that
+  //  the plain form would cut its setting to a stub, and keeps the short one. The check LOOKS, either way.)
+  const rolesWith = (dress: string): string => performing
     ? `the ARTIST (the person in the ${ORDINALS[0]} reference image) is front and centre, nearest the camera, facing it and singing; ${others} ${k === 1 ? "is" : "are"} beside and a step behind the artist, dancing to the music, mouth${k === 1 ? "" : "s"} closed, NOT singing; everyone dressed exactly as in their reference image`
     // ("each doing what the setting describes": it used to say "all moving together", and with a framing
     //  of "all of them dancing" a scene set in a car came back with the cast standing up in it — mv-sense.ts)
-    : `the artist (the person in the ${ORDINALS[0]} reference image) with ${others}, each doing what the setting describes, each with their own face, hair and clothes`;
+    : `the artist (the person in the ${ORDINALS[0]} reference image) with ${others}, each doing what the setting describes, ${dress}`;
   // ("DIFFERENT": told only the count, the model made the count with the artist twice and a co-star
   //  missing, and with two co-stars blended into one — the first live storyboard, 2026-11-21)
-  const head = `A photoreal frame from a real ${o.genre} music video. EXACTLY ${COUNT_WORD[n]} DIFFERENT people, each shown ONCE: ${roles}. ${micLine(o.micOk, performing)} ${o.frame.replace(/[.\s]+$/, "")}.`;
+  const headWith = (dress: string): string => `A photoreal frame from a real ${o.genre} music video. EXACTLY ${COUNT_WORD[n]} DIFFERENT people, each shown ONCE: ${rolesWith(dress)}. ${micLine(o.micOk, performing)} ${o.frame.replace(/[.\s]+$/, "")}.`;
   const tail = (o.extra || "").trim().replace(/[.\s]+$/, "");
-  const room = Math.max(80, CAST_PROMPT_MAX - head.length - tail.length - 12);
+  const roomWith = (h: string): number => CAST_PROMPT_MAX - h.length - tail.length - 12;
+  const plain = headWith(CUT_SCENE_DRESSED);
+  const head = performing || roomWith(plain) >= CUT_SCENE_SETTING_MIN ? plain : headWith("each with their own face, hair and clothes");
+  const room = Math.max(80, roomWith(head));
   // (no closing full stop: the picture call adds its own before the identity lock)
   return `${head} Setting: ${cutAtWord(o.visual, room).replace(/[.\s]+$/, "")}${tail ? `. ${tail}` : ""}`;
 }
@@ -225,7 +236,15 @@ export function soloEditPrompt(o: { role: ShotRole; frame: string; visual: strin
  *  something no real person could be filmed doing there (`odd` — two of the cast were drawn standing up
  *  in the back of a moving convertible: the first featured-verse video, 2026-11-22); and — when the scene
  *  has a prop — whether the prop can be seen. */
-export type CastCheck = { people: number; mic: "none" | "front" | "other" | "several"; seen?: boolean[]; twin?: boolean; odd?: boolean; prop?: boolean };
+export type CastCheck = {
+  people: number; mic: "none" | "front" | "other" | "several"; seen?: boolean[]; twin?: boolean; odd?: boolean; prop?: boolean;
+  /** THE WARDROBE IS LOCKED — and looked at: for each cast member, in the order of their reference pictures,
+   *  whether they wear what their picture wears. The styling kept everyone's clothes and the prompt asked
+   *  for them, and a two-person cut scene still came back with the star in a patterned bomber and his
+   *  co-star in a sequin dress and a white coat (the live render of 2026-11-22; scenes either side of it
+   *  were right). The check read faces and hair, passed it, and it was rendered. */
+  dressed?: boolean[];
+};
 
 /** The question put to the vision model about a cast still. The frame is the FIRST image it is shown;
  *  `refs` more follow — the cast's reference pictures, in order — when the check is to say WHO is there
@@ -242,10 +261,15 @@ export function castCheckPrompt(o: { refs?: number; prop?: string } = {}): strin
     who +
     `Count the people who are clearly IN the frame as its subjects — in the foreground or mid-ground, recognisable. Do NOT count an audience, a crowd, silhouettes, or small blurred figures far in the background.\n` +
     (n ? `For each of the ${COUNT_WORD[n]} people, in order: is someone matching them in the frame?\nIs anyone in the frame there TWICE (a twin or copy of the same person), or a BLEND of two of them (one person's hair on another's clothes)?\n` : "") +
+    // (the wardrobe is locked: the same clothes in every scene. The question is about the KIND of garment,
+    //  not its colour: tried on the stills of a real storyboard, "the same colours" called a green velvet
+    //  suit wrong because blue light made it look teal — and a false alarm redraws a good picture and
+    //  flags it. A bomber for a suit jacket, a dress for a trouser suit, an added coat: that is the drift.)
+    (n ? `For each of the ${COUNT_WORD[n]} people, in order: are they wearing the SAME OUTFIT as in their own image? Judge the KIND of garments, not their colour — coloured light, shadow and distance change how a colour looks, so an outfit that looks darker, bluer or warmer here is still the same outfit. Answer false only when a garment is plainly a different kind (a bomber or casual jacket where their image has a tailored suit jacket; a dress or skirt where it has trousers; jeans where it has suit trousers) or something big has been added or taken away (a coat, a hat). If they are small, far away or partly hidden and you cannot tell, answer true. If they are not in the frame, answer true.\n` : "") +
     `Say who is HOLDING a microphone (a mic on an empty stand that nobody holds counts as none).\n` +
     `Is anybody doing something a real person could NOT really be filmed doing there — standing, walking or dancing in or on a car or other vehicle (people in a vehicle sit in its seats), floating, a body passing through something solid, or standing on a ledge, an unrailed roof edge or a glass floor over a drop?\n` +
     (p ? `Say whether a real, recognisable ${p} is clearly visible.\n` : "") +
-    `Reply with ONLY this JSON: {"people": <number>${n ? `, "seen": [${Array.from({ length: n }, () => "true | false").join(", ")}], "twin": true | false` : ""}, "mic": "none" | "front" | "other" | "several", "odd": true | false${p ? `, "prop": true | false` : ""}}\n` +
+    `Reply with ONLY this JSON: {"people": <number>${n ? `, "seen": [${Array.from({ length: n }, () => "true | false").join(", ")}], "twin": true | false, "dressed": [${Array.from({ length: n }, () => "true | false").join(", ")}]` : ""}, "mic": "none" | "front" | "other" | "several", "odd": true | false${p ? `, "prop": true | false` : ""}}\n` +
     `"front" = only the person who is front-and-centre / nearest the camera holds one. "other" = someone else holds one and the front person does not. "several" = more than one person holds one.`
   );
 }
@@ -255,13 +279,14 @@ export function parseCastCheck(raw: string): CastCheck | null {
   const m = /\{[^{}]*\}/.exec(raw || "");
   if (!m) return null;
   try {
-    const j = JSON.parse(m[0]) as { people?: unknown; mic?: unknown; prop?: unknown; seen?: unknown; twin?: unknown; odd?: unknown };
+    const j = JSON.parse(m[0]) as { people?: unknown; mic?: unknown; prop?: unknown; seen?: unknown; twin?: unknown; odd?: unknown; dressed?: unknown };
     const people = Number(j.people);
     const mic = String(j.mic || "").toLowerCase();
     if (j.people == null || !Number.isFinite(people) || people < 0 || people > 20) return null;
     if (mic !== "none" && mic !== "front" && mic !== "other" && mic !== "several") return null;
-    const seen = Array.isArray(j.seen) && j.seen.length <= 3 && j.seen.every((x) => typeof x === "boolean") ? (j.seen as boolean[]) : undefined;
-    return { people: Math.round(people), mic, ...(seen ? { seen } : {}), ...(typeof j.twin === "boolean" ? { twin: j.twin } : {}), ...(typeof j.odd === "boolean" ? { odd: j.odd } : {}), ...(typeof j.prop === "boolean" ? { prop: j.prop } : {}) };
+    const flags = (v: unknown): boolean[] | undefined => (Array.isArray(v) && v.length <= 3 && v.every((x) => typeof x === "boolean") ? (v as boolean[]) : undefined);
+    const seen = flags(j.seen), dressed = flags(j.dressed);
+    return { people: Math.round(people), mic, ...(seen ? { seen } : {}), ...(typeof j.twin === "boolean" ? { twin: j.twin } : {}), ...(dressed ? { dressed } : {}), ...(typeof j.odd === "boolean" ? { odd: j.odd } : {}), ...(typeof j.prop === "boolean" ? { prop: j.prop } : {}) };
   } catch { return null; }
 }
 
@@ -274,10 +299,18 @@ export function castFaults(c: CastCheck, expectPeople: number | null, micOk: boo
   const count = expectPeople == null || c.people === expectPeople ? 0 : 2 + Math.min(3, Math.abs(c.people - expectPeople));
   const missing = expectPeople == null ? 0 : 3 * (c.seen || []).filter((s) => s === false).length;
   const twin = expectPeople != null && c.twin === true ? 3 : 0;
+  // (someone in the wrong clothes — counted only for someone who IS there, and only in a shot where the
+  //  people are big enough to read: a missing person is already counted, and worse)
+  const redressed = expectPeople == null ? 0 : 2 * redressedIn(c).length;
   const odd = c.odd === true ? 3 : 0;
   const micWrong = c.mic === "none" ? 0 : c.mic === "front" && micOk && performing ? 0 : c.mic === "front" ? 1 : 2;
   const propGone = wantProp && c.prop === false ? 2 : 0;
-  return count + missing + twin + odd + micWrong + propGone;
+  return count + missing + twin + redressed + odd + micWrong + propGone;
+}
+
+/** Which of the cast (0 = the first reference picture) are in the still but NOT in their own clothes. */
+export function redressedIn(c: CastCheck): number[] {
+  return (c.dressed || []).map((d, k) => (d === false && (c.seen || [])[k] !== false ? k : -1)).filter((k) => k >= 0);
 }
 
 /** What to tell the picture model when a still came back wrong and is being made again: the fault, named. */
@@ -288,6 +321,8 @@ export function castFix(c: CastCheck, expectPeople: number | null, micOk: boolea
   if (expectPeople != null && c.twin === true) out.push(`Nobody appears twice and no two people are blended into one — ${COUNT_WORD[expectPeople] || expectPeople} DIFFERENT people`);
   if (!gone.length && expectPeople != null && c.people < expectPeople) out.push(`ALL ${COUNT_WORD[expectPeople] || expectPeople} people must be clearly visible — leave nobody out`);
   if (expectPeople != null && c.people > expectPeople) out.push(`ONLY ${COUNT_WORD[expectPeople] || expectPeople} people — no extra person and no copy of anyone`);
+  const wrongClothes = expectPeople == null ? [] : redressedIn(c).map((k) => ORDINALS[k]).filter(Boolean);
+  if (wrongClothes.length) out.push(`The person in the ${wrongClothes.join(" and ")} reference image is in the WRONG CLOTHES — dress them EXACTLY as in their reference image: the same garments, the same colours, nothing added`);
   if (c.odd === true) out.push("Everyone does something a real person could really be filmed doing: people in a vehicle SIT in its seats — nobody stands, walks or dances in or on it; up high, everyone is on solid floor back from the edge, behind a wall or railing");
   if (c.mic !== "none" && !(c.mic === "front" && micOk && performing)) out.push(micOk && performing ? "ONLY the artist holds a microphone — nobody else" : "Remove every microphone");
   if (prop && c.prop === false) out.push(`The ${prop} must be clearly visible`);
