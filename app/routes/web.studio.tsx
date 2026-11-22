@@ -325,7 +325,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       id: a.id,
       media: frameBase ? frameBase + raw : raw,
       avatarId: m.avatarId || null,
-      productTitle: m.productTitle || a.title || null,
+      // The name the shot was MADE with, or none. Not the Archive title (a photo edit's is "Photo edit —
+      // edited"), and not "product", the stand-in a Combine made before the product was named carries
+      // (see the combine action): reusing such a shot wrote those into the merchant's Product name box.
+      productTitle: m.productTitle && m.productTitle !== "product" ? m.productTitle : null,
       presenter: !!m.avatarId,
       when: a.createdAt.toISOString(),
     }];
@@ -333,8 +336,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // The newest CREATOR generation job (any status) — so the Studio Stage can
   // surface a FAILED generation (e.g. a blocked/risky prompt) instead of
   // spinning forever. Self-clearing: a later success is a newer row.
+  // (EDIT_VIDEO is a Creator piece too — "upload a video, edit it". It was not on this list, so a video
+  //  edit that failed was never reported and the Stage's "Making your video…" had nothing to stop it.)
   const lastGenRow = await db.job.findFirst({
-    where: { shopId: shop.id, type: { in: ["GENERATE_IMAGE_AD", "GENERATE_VIDEO_AD", "GENERATE_SONG"] }, payload: { contains: '"section":"creator"' } },
+    where: { shopId: shop.id, type: { in: ["GENERATE_IMAGE_AD", "GENERATE_VIDEO_AD", "GENERATE_SONG", "EDIT_VIDEO"] }, payload: { contains: '"section":"creator"' } },
     orderBy: { createdAt: "desc" },
     select: { id: true, type: true, status: true, createdAt: true, lastError: true, payload: true },
   });
@@ -351,6 +356,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     try { p = JSON.parse(lastGenRow.payload || "{}"); } catch { /* ignore */ }
     const kind = lastGenRow.type === "GENERATE_SONG" ? "song"
       : lastGenRow.type === "GENERATE_VIDEO_AD" ? (p.contentType === "faceless" ? "faceless" : "video")
+      // a video edit carries an editOp as well (trim / caption / speed): it is a video, not a photo edit
+      : lastGenRow.type === "EDIT_VIDEO" ? "video"
       : p.editOp ? "photo" : "image";
     const source = kind === "photo" && typeof p.sourceImageUrl === "string" && /^https?:\/\//.test(p.sourceImageUrl) ? p.sourceImageUrl : null;
     return { id: lastGenRow.id, kind, source, at: lastGenRow.createdAt.toISOString() };
@@ -1071,17 +1078,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (!vbase) return json({ error: tr(lang, "Video uploads aren't configured on this server yet.") });
       const sourceVideoUrl = `${vbase}/uploads/${vname}`;
       // The op + its params. Validation of ranges/values lives in the ffmpeg half
-      // (editVideo throws a clear Error on bad params); here we just parse.
+      // (editVideo throws a clear Error on bad params); here we parse — and refuse the
+      // one request that can only fail there, a Trim with no usable End (below).
       const editOp = ((form.get("editOp") as string) || "").trim();
       if (editOp !== "trim" && editOp !== "caption" && editOp !== "speed") {
         return json({ error: tr(lang, "Pick what to do with the video — trim, caption or speed.") });
       }
-      const startSecRaw = Number(form.get("startSec"));
-      const endSecRaw = Number(form.get("endSec"));
-      const speedRaw = Number(form.get("speed"));
-      const startSec = Number.isFinite(startSecRaw) ? startSecRaw : undefined;
-      const endSec = Number.isFinite(endSecRaw) ? endSecRaw : undefined;
-      const speed = Number.isFinite(speedRaw) ? speedRaw : undefined;
+      // A BLANK BOX IS NOT A ZERO. Number(null) and Number("") are both 0, so a Trim with End left empty
+      // — Trim is the preselected op, and its button was live with both boxes empty — arrived as
+      // endSec 0: five tokens were taken, the worker refused "endSec > startSec" on every attempt, and
+      // the refund came long after. A field that is missing or empty is now simply absent…
+      const secField = (name: string): number | undefined => {
+        const raw = form.get(name);
+        if (typeof raw !== "string" || !raw.trim()) return undefined;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : undefined;
+      };
+      // …and a Trim is checked HERE, before a token moves. It starts at 0 when Start is left blank (the
+      // box's own placeholder) and needs an End after its Start — the rule the worker enforces.
+      const startSec = editOp === "trim" ? (secField("startSec") ?? 0) : secField("startSec");
+      const endSec = secField("endSec");
+      const speed = secField("speed");
+      if (editOp === "trim" && (startSec === undefined || startSec < 0 || endSec === undefined || endSec <= startSec)) {
+        return json({ error: tr(lang, "Set an End time that is after the Start.") });
+      }
       const captionText = trimToWord((form.get("captionText") as string) || "", 200) || undefined;
       const editTitle = trimToWord((form.get("title") as string) || "", 80) || undefined;
       // Spend FIRST, enqueue after — the same order (and the same unbacked-token
@@ -2190,6 +2210,8 @@ export default function WebStudio() {
   const [combining, setCombining] = useState(false);
   const [combineErr, setCombineErr] = useState<string | null>(null);
   const [combineJobId, setCombineJobId] = useState<string | null>(null);
+  // The Combine has been waiting longer than usual — only the line under the spinner changes (see the poll).
+  const [combineSlow, setCombineSlow] = useState(false);
   // Post-combine edit context: the change ("green shirt", "in an office")
   // currently applied, plus the in-progress Edit-box text. Each Edit/Retry
   // re-runs the compose (a fresh image charge), which is why it's affordable —
@@ -2216,7 +2238,8 @@ export default function WebStudio() {
   const [bgUploading, setBgUploading] = useState(false);
   // Saved backdrops (newest first) — seeded from the loader, grows as they upload.
   const [backdrops, setBackdrops] = useState<Array<{ id: string; url: string; label: string }>>(d.backdrops ?? []);
-  const backdropFetcher = useFetcher<{ backdropSaved?: { id: string; url: string; label: string }; backdropError?: string; backdropDeleted?: string; backdropRenamed?: { id: string; label: string } }>();
+  // (error / bgJobId: what "Create a background" answers with — refused before it is queued, or queued)
+  const backdropFetcher = useFetcher<{ backdropSaved?: { id: string; url: string; label: string }; backdropError?: string; backdropDeleted?: string; backdropRenamed?: { id: string; label: string }; error?: string; bgJobId?: string }>();
   // Inline rename of a saved backdrop card (the ✎).
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -2268,11 +2291,18 @@ export default function WebStudio() {
   const [bgGenerating, setBgGenerating] = useState(false);
   const bgGenStartRef = useRef(0);
   const bgKnownIdsRef = useRef<Set<string>>(new Set());
+  // The job making the background — asked about BY ID while it cooks, the way a Combine is (the loader's
+  // ?combineJob= probe reads any image job's status) — and whether it has waited longer than usual.
+  const [bgJobId, setBgJobId] = useState<string | null>(null);
+  const [bgSlow, setBgSlow] = useState(false);
+  const bgStatusFetcher = useFetcher<{ combineResult?: { jobId: string; done: boolean; failed: boolean } | null; backdrops?: Array<{ id: string; url: string; label: string }> }>();
   const createBackground = () => {
     const desc = (combineScene || "").trim();
     if (!desc) { setCombineErr(t("Describe the background you want to create first.")); return; }
     bgKnownIdsRef.current = new Set(backdrops.map((b) => b.id));
     bgGenStartRef.current = Date.now();
+    setBgJobId(null);
+    setBgSlow(false);
     setBgGenerating(true);
     setCombineErr(null);
     const fd = new FormData();
@@ -2311,6 +2341,25 @@ export default function WebStudio() {
   // result stays a "your own shot" frame (combineGenerated false) and can be
   // edited again, instead of flipping to the re-compose path.
   const frameEditModeRef = useRef(false);
+  // What a paid Edit / Retry is replacing, kept until its result lands: the shot, the change as typed and
+  // the look so far. Both paths clear the shot (and the box) the moment they are sent, and no failure
+  // path put them back — a refused or failed Edit left an empty stage. restoreShot is that way back; it
+  // also ends frame-edit mode, which a failed edit left on, so the NEXT real Combine was labelled "your
+  // own shot" and given the wrong Edit path.
+  const prevShotRef = useRef<{ url: string; edit: string; scene: string } | null>(null);
+  const restoreShot = () => {
+    const prev = prevShotRef.current;
+    prevShotRef.current = null;
+    frameEditModeRef.current = false;
+    // (only while the wait it was kept for is still the one on screen: a new presenter or product, or
+    //  another shot picked meanwhile, has already moved on and must not get the old frame back)
+    if (!prev || !combining) return;
+    setCombineUrl(prev.url); setCombineEdit(prev.edit); setCombineScene(prev.scene);
+  };
+  // Left by useFrame for the stale-frame effect: what that effect's inputs will be once the reused shot's
+  // own re-match (presenter, hold/wear) has landed — a change it must not answer by dropping the shot.
+  const reusedFrameRef = useRef<string | null>(null);
+  const frameDepsKey = (...deps: unknown[]) => JSON.stringify(deps);
   const formRef = useRef<HTMLFormElement>(null);
 
   // ── STEP 2 (after Combine): pick the VIDEO STYLE, preview the words free ──
@@ -2329,11 +2378,19 @@ export default function WebStudio() {
   const [jingleStyle, setJingleStyle] = useState<string | null>(null); // Anthem music genre (JINGLE_STYLES key); null = default
   const previewFetcher = useFetcher<{ previewStyle?: "anthem" | "talking" | "commercial"; lyrics?: string; script?: string; plan?: CommPlan; error?: string }>();
   const previewBusy = previewFetcher.state !== "idle";
-  // Picking a style wipes any words from another format (lyrics ≠ script ≠ plan).
+  // What went wrong writing the words — shown BESIDE the Write button. These used to go to combineErr,
+  // which is drawn only inside the Combine panel, far above on a phone: the tap looked like it did nothing.
+  const [wordsErr, setWordsErr] = useState<string | null>(null);
+  // Each style keeps its OWN words (lyrics ≠ script ≠ plan). Picking a style used to WIPE them — a tap on
+  // the other card erased a script or lyrics edited by hand, with no warning and no way back. The words
+  // being left are put aside under their style, and the style being picked gets back whatever it had.
+  const wordsByStyleRef = useRef<Partial<Record<"anthem" | "talking" | "commercial", { words: string; plan: CommPlan | null; ready: boolean }>>>({});
   const pickVideoStyle = (s: "anthem" | "talking" | "commercial") => {
     if (s === videoStyle) return;
+    if (videoStyle) wordsByStyleRef.current[videoStyle] = { words: wordsDraft, plan: planDraft, ready: wordsReady };
+    const kept = wordsByStyleRef.current[s];
     setVideoStyle(s);
-    setWordsDraft(""); setPlanDraft(null); setWordsReady(false); setCombineErr(null);
+    setWordsDraft(kept?.words ?? ""); setPlanDraft(kept?.plan ?? null); setWordsReady(kept?.ready ?? false); setWordsErr(null);
   };
   // "✨ Write" / "↻ Randomize" — generate the words for the chosen style. Re-firing
   // re-rolls (model temperature gives a fresh take), which is what Randomize is.
@@ -2344,7 +2401,7 @@ export default function WebStudio() {
     const titleForPreview = noProduct
       ? (direction.trim() || (videoStyle === "anthem" ? "our brand" : "")).slice(0, 60)
       : productTitle.trim();
-    if (!titleForPreview) { setCombineErr(noProduct ? t("Tell me what they talk about first.") : t("Add the product name first.")); return; }
+    if (!titleForPreview) { setWordsErr(noProduct ? t("Tell me what they talk about first.") : t("Add the product name first.")); return; }
     const fd = new FormData();
     fd.set("intent", "previewAdText");
     fd.set("videoStyle", videoStyle);
@@ -2353,7 +2410,7 @@ export default function WebStudio() {
     if (serviceOn || noProduct) fd.set("service", "1");
     if (avatarId) fd.set("avatarId", avatarId);
     fd.set("avatarVariant", "0");
-    setCombineErr(null);
+    setWordsErr(null);
     previewFetcher.submit(fd, { method: "post" });
   };
 
@@ -2445,7 +2502,17 @@ export default function WebStudio() {
   // name; reset the override when detection flips so detection leads.
   const apparel = isApparel(productTitle);
   const [wearOverride, setWearOverride] = useState<boolean | null>(null);
-  useEffect(() => { setWearOverride(null); }, [apparel]);
+  // …but only while there is no shot to lose. In the Avatar hub the Product name box comes AFTER
+  // Combine, and a name passes through apparel words on its way to something else ("Bracelet" through
+  // "Bra", "Topaz" through "Top"): detection flipped, `wear` flipped with it, and the stale-frame effect
+  // further down threw away the approved, paid frame — or a Combine still rendering — without a word.
+  // Whatever takes a shot pins the choice it was taken with (doCombine, useFrame, an uploaded frame);
+  // from then on only a tap on Holding / Wearing changes it.
+  useEffect(() => { if (!combineUrl && !combining) setWearOverride(null); }, [apparel]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A DIFFERENT PRODUCT starts from detection again — the pin belongs to the shot the last one was in.
+  // (The guard above reads the old shot at the moment a new product is picked, so on its own a shot of a
+  //  mug would leave "Holding it" pinned for the hoodie picked next, and the other way round.)
+  useEffect(() => { setWearOverride(null); }, [imageUrl]);
   const wear = wearOverride === null ? apparel : wearOverride;
   // Casual hides Article + Import — if the mode flips (or a deep-link lands)
   // while one of those is active, fall back to a visible tab so the user never
@@ -2455,8 +2522,27 @@ export default function WebStudio() {
   // those Creator-only tabs, land on Image rather than an orphaned tab.
   useEffect(() => { if (!casual && (tab === "music" || tab === "faceless")) { setTab("image"); setUpsell(null); } }, [casual, tab]);
   // A plan that can't do social must never sit in the (fully locked) marketing
-  // Studio — keep locked users in Create; the Social toggle then upsells them.
-  useEffect(() => { if (!socialUnlocked && mode !== "casual") { setMode("casual"); setSocialLockOpen(false); } }, [socialUnlocked, mode]);
+  // Studio — keep locked users in Create, and SAY WHY when the Ad Maker is what they asked for.
+  //
+  // This set socialLockOpen to FALSE, and nothing else ever set it true (the in-Studio toggle that did
+  // is gone): the "Ad Maker" tab simply landed back on Creator, and the one explanation there is — the
+  // upsell below — could never appear. It opens now when the Ad Maker was PICKED: the nav tab and the
+  // Dashboard card store the pick (emMode) before this runs, whereas a browser that never picked only
+  // starts out in "marketing" and has nothing to be told. And never over a ?do= / ?tab= link into one
+  // of Creator's own flows — whoever arrived by one asked for Creator. (A link is about the ARRIVAL: a
+  // tap on the Ad Maker tab later, from that same address, is still told.)
+  const lockGateRanRef = useRef(false);
+  useEffect(() => {
+    const arriving = !lockGateRanRef.current;
+    lockGateRanRef.current = true;
+    if (socialUnlocked || mode === "casual") return;
+    let pickedAdMaker = false;
+    try { pickedAdMaker = /(?:^|;\s*)emMode=marketing(?:;|$)/.test(document.cookie) || localStorage.getItem("emMode") === "marketing"; } catch { /* storage is a nicety */ }
+    const creatorLink = arriving && doParam !== "presenter" && (initTab === "video" || initTab === "image" || initTab === "music" || initTab === "faceless");
+    if (pickedAdMaker && !creatorLink) setSocialLockOpen(true);
+    setMode("casual"); // (after the read above — this stores "casual" as the pick)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socialUnlocked, mode]);
   // "Commercial look" is an ad treatment — clear it on entering casual so a value
   // ticked in marketing can't ride a casual submit (the control is hidden in
   // casual, but a control nobody can see must not change the order).
@@ -2649,6 +2735,10 @@ export default function WebStudio() {
   // technical failure so the message (and tone) can differ.
   const [genError, setGenError] = useState<{ kind: "failed" | "unsafe"; message: string } | null>(null);
   const makingStartedRef = useRef<number>(0);
+  // When THIS PAGE began watching the piece now cooking — what the poll's cap counts from. (Not
+  // makingStartedRef: for a piece picked back up after a reload that is when the JOB began, which can
+  // already be most of the cap ago.)
+  const watchStartedRef = useRef<number>(0);
   const preIdsRef = useRef<string[]>([]);
   const makingNounRef = useRef<string>("");
   const makeBtnRef = useRef<HTMLButtonElement>(null);
@@ -2677,6 +2767,7 @@ export default function WebStudio() {
       setGenError(null);
       setStageResult(null);
       setEditingSrc((actionData as { editSource?: string }).editSource || null);
+      watchStartedRef.current = Date.now();
       setMaking(true);
       queuedAtRef.current = Date.now();
       showStage();
@@ -2713,23 +2804,30 @@ export default function WebStudio() {
     setTab(wantTab);
     if (f.kind === "photo") setImageMode("product");
     else if (f.kind === "image") setImageMode("create");
+    watchStartedRef.current = Date.now();
     setMaking(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [casual, d.inFlight?.id]);
   // While making, quietly revalidate so d.recent refreshes; stop after a cap so a
   // stuck render never polls forever.
+  //
+  // The cap is counted from watchStartedRef — set where `making` begins — and NOT from a clock started
+  // in here: `stageRev` is a new object every time the revalidation state changes, so each 5-second
+  // poll re-ran this effect and a start time taken inside it was reset with it. The 3 / 6 minutes could
+  // never be reached, and a piece that never landed left "Making your …" spinning for good.
   useEffect(() => {
     if (!making) return;
-    const started = Date.now();
     // Video can legitimately take minutes; images/songs are quick. Cap the poll
     // so a stuck render never spins forever — and SAY something on timeout
     // instead of silently going idle.
     const capMs = (makingNounRef.current === "video") ? 6 * 60_000 : 3 * 60_000;
     const iv = setInterval(() => {
-      if (Date.now() - started > capMs) {
+      if (Date.now() - watchStartedRef.current > capMs) {
         setMaking(false);
         setEditingSrc(null);
-        setGenError({ kind: "failed", message: t("This is taking longer than usual. It may still land in your gallery shortly — or try again.") });
+        // (it said "your gallery" — the tab is "Archive" — and "or try again", which for a piece that is
+        //  only waiting its turn means paying for a second one)
+        setGenError({ kind: "failed", message: t("This is taking longer than usual. It will show up in your Archive when it's ready — no need to make it again.") });
         return;
       }
       if (stageRev.state === "idle") stageRev.revalidate();
@@ -2840,12 +2938,15 @@ export default function WebStudio() {
   );
   // Click a creation in the shelf → bring it back UP onto the Stage (for viewing
   // + quick edits), instead of leaving to the gallery.
+  //
+  // LOOKING at a past piece changes nothing else. This used to stop `making` — and the only poll runs
+  // while `making` is true, so a piece tapped while a new one was cooking meant the new, paid one never
+  // arrived on the Stage. It also threw away a photo loaded for editing (preview and file) while hasFile
+  // stayed true: "Edit photo" stayed live and posted with no photo. None of that is needed to show the
+  // piece — the Stage draws a result above both the photo being edited and the cooking state — so the
+  // watch keeps running, the photo stays loaded, and both are back when the piece is cleared.
   const loadToStage = (p: StagePiece) => {
     setGenError(null);
-    setMaking(false);
-    setEditingSrc(null);
-    setEditPreview((prev) => { if (prev) { try { URL.revokeObjectURL(prev); } catch { /* */ } } return null; });
-    setEditFile(null);
     setStageResult(p);
     try { document.querySelector(".ws-stage")?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch { /* */ }
   };
@@ -2968,9 +3069,17 @@ export default function WebStudio() {
   // carry their own model/quality. Build the form's FormData, override the field +
   // intent, and submit — the SERVER re-derives the cost and charges (money-safe).
   // Mirror onFormSubmit's variant bump so repeat makes vary.
+  //
+  // ONE AT A TIME, PER KIND. The Stage watches a single piece. The guard here — and on the buttons — was
+  // `busy` alone, which is over the moment the action answers, so Make / Pro / Ultra were live again
+  // while the piece was still cooking: a second tap was a second charge, its result never showed on the
+  // Stage, and it reset the watch on the first. While a piece of THIS kind is cooking they stay off (the
+  // poll's cap, or the piece landing or failing, ends it). Another kind — a song while a video renders —
+  // is still open.
+  const cookingSame = casual && making && makingNounRef.current === noun;
   const makeSubmit = (overrides: Record<string, string>) => {
     const f = formRef.current;
-    if (!f || busy) return;
+    if (!f || busy || cookingSame) return;
     if (variantRef.current) variantRef.current.value = nextVariant();
     const fd = new FormData(f);
     for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
@@ -3027,6 +3136,9 @@ export default function WebStudio() {
   // changed: a different outfit variant, and/or a scene/direction. Omitted =
   // the first Combine (form defaults: variant 0, no scene).
   const doCombine = (over?: { variant?: number; scene?: string }) => {
+    // Pin hold/wear to what THIS shot is made with: the product name typed afterwards must not flip it
+    // and take the frame with it (see wearOverride).
+    setWearOverride(wear);
     const formEl = formRef.current;
     if (!formEl) return;
     const fd = new FormData(formEl);
@@ -3060,6 +3172,12 @@ export default function WebStudio() {
       fd.set("contentType", contentType === "cartoon" ? "cartoon" : "avatar");
       fd.delete("productPhoto");
     }
+    // An Edit / Retry replaces a shot that is already there: keep it — with the change as typed and the
+    // look it had — until the new one lands (restoreShot). These are the values this render still
+    // holds; applyCombineEdit's own updates to the box and the look have not been applied yet.
+    prevShotRef.current = combineUrl ? { url: combineUrl, edit: combineEdit, scene: combineScene } : null;
+    // A re-compose is never a frame edit — a frame edit that was dropped part-way must not label this one.
+    frameEditModeRef.current = false;
     combineStartRef.current = Date.now();
     setCombineErr(null);
     setCombineUrl(null);
@@ -3101,6 +3219,10 @@ export default function WebStudio() {
     fd.set("intent", "frameEdit");
     fd.set("sourceFrameUrl", combineUrl);
     fd.set("direction", s);
+    // The shot and the typed change are cleared for the wait — and kept, so a paid Edit that is refused
+    // or fails puts both back (restoreShot). Nothing used to: an uploaded shot is not in the reuse strip,
+    // so it had to be uploaded again, and the change typed again.
+    prevShotRef.current = { url: combineUrl, edit: combineEdit, scene: combineScene };
     frameEditModeRef.current = true;
     combineStartRef.current = Date.now();
     setCombineEdit(""); setCombineErr(null); setCombineUrl(null); setCombineJobId(null); setCombining(true);
@@ -3119,8 +3241,19 @@ export default function WebStudio() {
   // Reuse a PAST creation as the frame — re-match the presenter + product to it
   // (so the video's voice/script fit the shot) and drop straight into Locked-in.
   const useFrame = (f: { media: string; avatarId: string | null; productTitle: string | null }) => {
-    if (f.avatarId && d.cast.some((c) => c.id === f.avatarId)) setAvatarId(f.avatarId);
-    if (f.productTitle) setProductTitle(f.productTitle);
+    const nextAvatar = f.avatarId && d.cast.some((c) => c.id === f.avatarId) ? f.avatarId : avatarId;
+    // Only an EMPTY name box is filled. The shot's stored name used to overwrite whatever the merchant
+    // had typed — with the literal "product", or an Archive title such as "Photo edit — edited".
+    const name = productTitle.trim() ? productTitle : (f.productTitle || productTitle);
+    // Hold/wear is pinned with the shot, as doCombine does — to what the name it now sits beside detects.
+    const nextWear = wearOverride === null ? isApparel(name) : wearOverride;
+    // Re-matching the presenter (or hold/wear) changes what the stale-frame effect watches, and it
+    // answered by wiping the frame this very tap sets below — a shot made with another presenter took a
+    // second tap. Leave it a note of what this tap changes them TO; it lets exactly that through.
+    reusedFrameRef.current = frameDepsKey(nextAvatar, imageUrl, nextWear, contentType, productSize);
+    if (nextAvatar !== avatarId) setAvatarId(nextAvatar);
+    if (name !== productTitle) setProductTitle(name);
+    if (wearOverride === null) setWearOverride(nextWear);
     setCombineScene(""); setCombineEdit(""); setCombineErr(null); setCombineJobId(null); setCombining(false);
     setCombineGenerated(false); setCombineUrl(f.media);
   };
@@ -3165,22 +3298,49 @@ export default function WebStudio() {
       setBgUploading(false);
       setBgGenerating(false);
     }
+    // "Create a background" can be refused before anything is queued — not enough tokens, no plan, no
+    // brand voice, a plan that cannot make images — and the action says so as { error }, like every other
+    // intent. Only backdropError was read here, so the "Creating…" card spun for two minutes and then
+    // blamed the wait; the reason was never shown.
+    else if (bd.error) { setCombineErr(bd.error); setBgGenerating(false); setBgUploading(false); }
+    // Queued: keep the job's id, so the wait below can ask THAT job how it is doing.
+    else if (bd.bgJobId) setBgJobId(bd.bgJobId);
   }, [backdropFetcher.data]);
   // While a background is generating, poll the loader for the new Backdrop the
-  // worker saves on completion. Times out so the spinner can't hang forever.
+  // worker saves on completion — and ask the job itself (by id) whether it is done.
+  //
+  // Two minutes used to END the wait: the card stopped, "taking a while … or try again" went up and
+  // Create was live again — while the first, already-charged scene was still in the queue (the worker
+  // runs one job at a time for every shop). A second tap made a second scene, and both were charged.
+  // The clock now only changes the hint under the box; the card spins until the job answers (below).
   useEffect(() => {
     if (!bgGenerating) return;
     const iv = window.setInterval(() => {
-      if (Date.now() - bgGenStartRef.current > 120000) {
-        setBgGenerating(false);
-        setCombineErr(t("That background is taking a while — check back in a moment, or try again."));
-        window.clearInterval(iv);
-        return;
-      }
+      if (Date.now() - bgGenStartRef.current > 120000) setBgSlow(true);
       if (bgRev.state === "idle") bgRev.revalidate();
+      if (bgJobId) bgStatusFetcher.load(`/web/studio?combineJob=${encodeURIComponent(bgJobId)}`);
     }, 3500);
     return () => window.clearInterval(iv);
-  }, [bgGenerating, bgRev, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgGenerating, bgRev, bgJobId]);
+  // The job's own answer. FAILED: no scene was made and the queue has refunded it — say that, where the
+  // timer used to guess. Finished: the worker saves the Backdrop BEFORE the job is marked done, so this
+  // same answer already lists it and the sync below selects it on the poll's next pass; if it lists
+  // nothing new, the scene could not be kept and no amount of waiting will bring it.
+  useEffect(() => {
+    if (!bgGenerating || !bgJobId) return;
+    const st = bgStatusFetcher.data;
+    const r = st?.combineResult;
+    if (!r || r.jobId !== bgJobId || !r.done) return; // still in line, or being made
+    if (r.failed) {
+      setBgGenerating(false);
+      setCombineErr(t("That one didn’t come through — it may have hit a snag. Your tokens were refunded; try again."));
+    } else if (!(st?.backdrops ?? []).some((b) => !bgKnownIdsRef.current.has(b.id))) {
+      setBgGenerating(false);
+      setCombineErr(t("That didn’t finish"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgStatusFetcher.data, bgGenerating, bgJobId]);
   // Keep local backdrops in sync with the loader (newest additions merge in), and
   // when a generated background lands, auto-select it so it shows for confirmation.
   useEffect(() => {
@@ -3205,26 +3365,34 @@ export default function WebStudio() {
     const data = frameFetcher.data;
     if (!data) return;
     if (data.error) { setCombineErr(data.error); return; }
-    if (data.frameUrl) { setCombineScene(""); setCombineEdit(""); setCombineJobId(null); setCombining(false); setCombineGenerated(false); setCombineUrl(data.frameUrl); }
+    // (hold/wear is pinned with the shot, as doCombine does: an uploaded shot is not in the reuse strip,
+    //  so one dropped by a keystroke in the name box had to be uploaded again — see wearOverride)
+    if (data.frameUrl) { setWearOverride(wear); setCombineScene(""); setCombineEdit(""); setCombineJobId(null); setCombining(false); setCombineGenerated(false); setCombineUrl(data.frameUrl); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frameFetcher.data]);
   // The combine submit came back — grab the job id to poll, or surface an error
   // (tokens are charged BEFORE enqueue, so an error here means no charge).
   useEffect(() => {
     const data = combineFetcher.data;
     if (!data) return;
-    if (data.error) { setCombining(false); setCombineErr(data.error); return; }
+    // (restoreShot: a refused Edit / Retry gets the shot it was replacing back, and the typed change)
+    if (data.error) { setCombining(false); setCombineErr(data.error); restoreShot(); return; }
     if (data.combineJobId) setCombineJobId(data.combineJobId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [combineFetcher.data]);
   // Poll the combine job BY ID (section-agnostic) until its presenter frame
-  // lands; a cap stops a stuck render from spinning forever.
+  // lands — or until the JOB says it is finished or failed (the reader below).
+  //
+  // Four minutes used to END the wait: the button came back and the line said "try Combine again" —
+  // while the first, already-charged job was still in the queue. The worker runs one job at a time for
+  // every shop, so a wait that long is ordinary behind someone else's video; both jobs then finished and
+  // both were charged. The clock now only changes the line under the spinner. The button stays off and
+  // the SAME job is asked about until it answers.
+  useEffect(() => { if (!combining) setCombineSlow(false); }, [combining]);
   useEffect(() => {
     if (!combining || !combineJobId) return;
     const tick = () => {
-      if (Date.now() - combineStartRef.current > 4 * 60_000) {
-        setCombining(false);
-        setCombineErr(t("That took too long — try Combine again."));
-        return;
-      }
+      if (Date.now() - combineStartRef.current > 4 * 60_000) setCombineSlow(true);
       // No state guard: the effect closure would capture a STALE statusFetcher,
       // so reading .state here is unreliable. A fetcher serializes its own loads
       // (a new load supersedes an in-flight one), so polling every tick is safe.
@@ -3256,16 +3424,21 @@ export default function WebStudio() {
       // a real combine/retry becomes a generated frame (the re-compose path).
       if (frameEditModeRef.current) frameEditModeRef.current = false;
       else setCombineGenerated(true);
+      prevShotRef.current = null; // the new shot is here — the one it replaced is no longer needed
       setCombining(false); return;
     }
     if (r.failed) {
       // Only a genuine technical miss (no frame produced) fails now — the job
       // refunds the charge (presenterOnly), so keep it plain and reassuring.
+      // (restoreShot, here and below: an Edit / Retry that did not come through gives back the shot it
+      //  was replacing — the one already paid for — and the change as it was typed.)
       setCombining(false);
       setCombineErr(t("That didn’t come through — you weren’t charged. Tap Combine to try again."));
+      restoreShot();
     } else if (r.done) {
       setCombining(false);
       setCombineErr(t("That take didn’t come through — tap Combine to run it again."));
+      restoreShot();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFetcher.data, combining, combineJobId]);
@@ -3275,7 +3448,7 @@ export default function WebStudio() {
   useEffect(() => {
     const r = previewFetcher.data;
     if (!r) return;
-    if (r.error) { setCombineErr(r.error); return; }
+    if (r.error) { setWordsErr(r.error); return; }
     if (r.previewStyle && r.previewStyle !== videoStyle) return;
     if (r.previewStyle === "commercial" && r.plan) { setPlanDraft(r.plan); setWordsReady(true); }
     else if (typeof r.lyrics === "string") { setWordsDraft(r.lyrics); setWordsReady(true); }
@@ -3324,8 +3497,12 @@ export default function WebStudio() {
   // on) must reset hubPick, or a drawer left open would re-open EXPANDED on
   // return — defeating collapse-by-default. Keyed on avatarVideoHub so it only
   // fires on the true→false leave, never mid-pick (the old slam-shut bug).
+  // (It also used to forget the chosen style and the words — setVideoStyle(null), setWordsDraft(""),
+  // setPlanDraft(null), setWordsReady(false) — so a tap on the Image or "Import your store" tab and back
+  // erased a script or lyrics edited by hand, with no warning. Nothing needed that: the hidden fields
+  // that submit them are mounted only inside the hub, so they cannot ride any other tab's submit.)
   useEffect(() => {
-    if (!avatarVideoHub) { setHubPick(null); setNoProduct(false); setVideoStyle(null); setWordsDraft(""); setPlanDraft(null); setWordsReady(false); }
+    if (!avatarVideoHub) { setHubPick(null); setNoProduct(false); }
   }, [avatarVideoHub]);
   useEffect(() => { if (hubPick === "setting") { const id = window.setTimeout(recomputeSetMore, 60); return () => window.clearTimeout(id); } }, [hubPick, recomputeSetMore]);
   // Realistic is the ONLY avatar style, so pre-select it on entering the avatar
@@ -3484,7 +3661,15 @@ export default function WebStudio() {
   // stale AND must cancel any in-flight combine, so a late landing can't set the
   // wrong frame — drop it all. (Swapping an uploaded FILE keeps hasFile=true, so
   // that case is cleared directly in takeUpload/clearUpload, not here.)
+  // …EXCEPT the change a reused shot makes itself: picking a past shot re-matches the presenter to it,
+  // which fired this on the next render and wiped the frame that same tap had just set. useFrame leaves
+  // a note of what it changes these TO; waking up to exactly that is the reuse, anything else is not.
+  // (A reuse that changed nothing leaves a note of what these already were. The next real change
+  //  differs from it, so it is not shielded — and the note goes the first time this runs either way.)
   useEffect(() => {
+    const reused = reusedFrameRef.current;
+    reusedFrameRef.current = null;
+    if (reused === frameDepsKey(avatarId, imageUrl, wear, contentType, productSize)) return;
     resetCombine();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatarId, imageUrl, wear, contentType, productSize]);
@@ -3596,9 +3781,14 @@ export default function WebStudio() {
   const casualVideo = casual && tab === "video";
   // The describe->make video path specifically (a video loaded to edit is NOT it).
   const casualVideoMake = casualVideo && !isVideoEdit;
-  // A Captions edit needs text to burn in; trim/speed validate ranges server-side.
-  const videoEditReady = isVideoEdit && (videoEditOp !== "caption" || !!videoCaption.trim());
-  const ctaDisabled = busy || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !noProduct && !productTitle.trim()) || (noProduct && videoStyle !== "anthem" && !direction.trim()) || needsPhoto || (needsPresenter && !avatarId && !(avatarVideoHub && !!combineUrl)) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !noProduct && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || (avatarVideoHub && (!videoStyle || !wordsReady)) || shortBy > 0;
+  // A Captions edit needs text to burn in. A Trim needs an End after its Start (a blank Start is 0, the
+  // box's placeholder) — the rule the action checks before it charges: with both boxes empty this
+  // button was live, and the 5-token job it queued could only fail. Speed validates server-side.
+  const trimFrom = trimStart.trim() === "" ? 0 : Number(trimStart);
+  const trimTo = trimEnd.trim() === "" ? NaN : Number(trimEnd);
+  const trimReady = trimFrom >= 0 && trimTo > trimFrom;
+  const videoEditReady = isVideoEdit && (videoEditOp !== "caption" || !!videoCaption.trim()) && (videoEditOp !== "trim" || trimReady);
+  const ctaDisabled = busy || cookingSame || !d.hasPlan || combining || (!isEdit && !isCreate && !isMusic && !isFaceless && !casualVideo && !noProduct && !productTitle.trim()) || (noProduct && videoStyle !== "anthem" && !direction.trim()) || needsPhoto || (needsPresenter && !avatarId && !(avatarVideoHub && !!combineUrl)) || (tab === "video" && (contentType === "cartoon" || contentType === "avatar") && !noProduct && !styleSet) || (isEdit && !editOp && !direction.trim()) || (isEdit && editOp === "replace" && !direction.trim()) || (isCreate && !direction.trim()) || (isMusic && !direction.trim()) || (isFaceless && !direction.trim()) || (casualVideoMake && !direction.trim()) || (isVideoEdit && !videoEditReady) || (avatarVideoHub && (!videoStyle || !wordsReady)) || shortBy > 0;
   // When the avatar-video Generate is disabled, SAY WHY — otherwise the merchant
   // taps a dead button with no clue (the step-1 "Your scene" setup is above and
   // easy to miss once you're down in the style/words step). Ordered by fix-first;
@@ -3637,11 +3827,13 @@ export default function WebStudio() {
       </div>
       {/* Create ↔ Social mode is switched from the top nav (Creator / Ad Maker);
           the in-Studio toggle + hint were removed as redundant. The locked-state
-          upsell still shows if a gated user lands in Social Marketing. */}
+          upsell shows when a gated user picks the Ad Maker (see the gate effect).
+          It called the section "Social Marketing" — the tab they tapped says
+          "Ad Maker", so that is the name it uses now. */}
       {socialLockOpen && !socialUnlocked && (
         <div className="ws-upsell ws-ms-upsell">
-          <b><Ico n="lock" size={15} /> {t("Social Marketing is a Starter feature")}</b>
-          <p>{t("Upgrade to Starter ($19/mo) to switch into Social Marketing mode — product ads, spokesperson videos & auto-posting. Everything you already make comes along.")}</p>
+          <b><Ico n="lock" size={15} /> {t("{name} is a {tier} feature", { name: t("Ad Maker"), tier: "Starter" })}</b>
+          <p>{t("Upgrade to Starter ($19/mo) to open the Ad Maker — product ads, spokesperson videos & auto-posting. Everything you already make comes along.")}</p>
           <div><Link to="/web#plans" className="wb-btn" style={{ padding: "9px 20px", fontSize: 13 }}>{t("See plans")}</Link>
             <button type="button" className="wb-btn ghost" style={{ padding: "9px 16px", fontSize: 13, marginLeft: 8 }} onClick={() => setSocialLockOpen(false)}>{t("Not now")}</button></div>
         </div>
@@ -4293,7 +4485,7 @@ export default function WebStudio() {
                               : <><span aria-hidden="true">✨</span> {t("Create")}</>}
                           </button>
                         </div>
-                        <div className="ws-bgcreate-hint">{t("We’ll make the scene ({n} tok) so you can see it before you combine.", { n: d.costs.createImage })}</div>
+                        <div className="ws-bgcreate-hint">{bgGenerating && bgSlow ? t("Still in line — it shows up here when it's ready.") : t("We’ll make the scene ({n} tok) so you can see it before you combine.", { n: d.costs.createImage })}</div>
                       </div>
                     )}
                     {/* Mounted whenever the picker is open so the Upload card's file
@@ -4358,7 +4550,8 @@ export default function WebStudio() {
                   ) : combining ? (
                     <div className="ws-combine-loading">
                       <span className="ws-combine-loadtxt">{noProduct ? t("Setting the scene with your presenter…") : t("Placing your product in their hands…")}</span>
-                      <span className="ws-combine-loadsub">{t("This usually takes up to a minute — hang tight.")}</span>
+                      {/* past the usual wait it says it is still queued — it never asks for a second (paid) Combine */}
+                      <span className="ws-combine-loadsub">{combineSlow ? t("Still in line — it shows up here when it's ready.") : t("This usually takes up to a minute — hang tight.")}</span>
                     </div>
                   ) : (
                     <div className="ws-combine-empty">
@@ -4796,7 +4989,7 @@ export default function WebStudio() {
                   ) : combining ? (
                     <div className="ws-combine-loading">
                       <span className="ws-combine-loadtxt">{noProduct ? t("Setting the scene with your presenter…") : t("Placing your product in their hands…")}</span>
-                      <span className="ws-combine-loadsub">{t("This usually takes up to a minute — hang tight.")}</span>
+                      <span className="ws-combine-loadsub">{combineSlow ? t("Still in line — it shows up here when it's ready.") : t("This usually takes up to a minute — hang tight.")}</span>
                     </div>
                   ) : (
                     <div className="ws-combine-empty">
@@ -4940,6 +5133,9 @@ export default function WebStudio() {
                               placeholder={t("e.g. 10")} onChange={(e) => setTrimEnd(e.target.value)} /></label>
                         </div>
                       )}
+                      {/* The Edit button stays off until the trim has an End after its Start — say so
+                          (the same line the action answers with), or it is a dead button with no reason. */}
+                      {videoEditOp === "trim" && !trimReady && <p className="ws-note" style={{ margin: 0 }}>{t("Set an End time that is after the Start.")}</p>}
                       {videoEditOp === "caption" && (
                         <input className="wb-in" type="text" maxLength={200} value={videoCaption}
                           placeholder={t("Caption to burn in")} onChange={(e) => setVideoCaption(e.target.value)} />
@@ -5098,6 +5294,9 @@ export default function WebStudio() {
                             {previewBusy ? <>… {t("Writing")}</> : videoStyle === "anthem" ? <>✨ {t("Write the jingle — free")}</> : videoStyle === "talking" ? <>✨ {t("Write the script — free")}</> : <>✨ {t("Write the commercial — free")}</>}
                           </button>
                           <span className="ws-vsetup-free">{t("Free — read it before you spend a token")}</span>
+                          {/* why nothing was written, right where the button was tapped (it used to be
+                              shown only in the Combine panel, a screen or more above on a phone) */}
+                          {wordsErr && <p className="ws-note ws-err" role="alert" style={{ flex: "1 1 100%", margin: 0 }}>{wordsErr}</p>}
                         </div>
                       </>
                     ) : (
@@ -5133,6 +5332,7 @@ export default function WebStudio() {
                             <button type="button" className="ws-vtheme" onClick={() => setWordsReady(false)}>✎ {t("Change the theme")}</button>
                           )}
                           <span className="ws-vsetup-free">{t("Free")}</span>
+                          {wordsErr && <p className="ws-note ws-err" role="alert" style={{ flex: "1 1 100%", margin: 0 }}>{wordsErr}</p>}
                         </div>
                       </>
                     )}
@@ -5525,14 +5725,15 @@ export default function WebStudio() {
                   description sits BELOW each as a caption. Each submits its own
                   model; the SERVER re-prices + charges (money-safe). */}
               {showTwoCta && (() => {
-                const base = busy || !d.hasPlan || combining || !direction.trim();
+                // (cookingSame: one of these is already being made — see makeSubmit)
+                const base = busy || cookingSame || !d.hasPlan || combining || !direction.trim();
                 const mk = (key: string, name: string, desc: string, cls: string, c: number, onPick: () => void) => {
                   const afford = d.tokens >= c;
                   return (
                     <div className="ws-ctacol" key={key}>
                       <button type="button" className={`ws-cta ${cls}`} disabled={base || !afford} onClick={onPick}>
                         <b>{t(name)}</b>
-                        <span className="ws-cta-c">{busy ? t("Working…") : !d.hasPlan ? t("Pick a plan") : !afford ? t("Need {n} more", { n: (c - d.tokens).toLocaleString("en-US") }) : t("Make · {n} tokens", { n: c.toLocaleString("en-US") })}</span>
+                        <span className="ws-cta-c">{busy || cookingSame ? t("Working…") : !d.hasPlan ? t("Pick a plan") : !afford ? t("Need {n} more", { n: (c - d.tokens).toLocaleString("en-US") }) : t("Make · {n} tokens", { n: c.toLocaleString("en-US") })}</span>
                       </button>
                       <span className="ws-cta-d">{t(desc)}</span>
                     </div>
@@ -5564,6 +5765,8 @@ export default function WebStudio() {
               <button ref={makeBtnRef} className="wb-btn" name="intent" value={submitIntent} disabled={ctaDisabled} style={showTwoCta ? { display: "none" } : undefined}>
                 {busy
                   ? t("Sending to the studio…")
+                  : cookingSame
+                    ? t("Making your {noun}…", { noun: t(makingNounRef.current || noun) })
                   : !d.hasPlan
                     ? t("Pick a plan to start")
                   : shortBy > 0
@@ -5739,8 +5942,12 @@ export default function WebStudio() {
                    </div>
                    <button type="button" className="wb-btn ws-qedit-go" disabled={!quickSel || making || busy}
                      onClick={() => { const o = QUICK_OPS.find((x) => x.key === quickSel); if (o) quickEdit(o.op, o.dir); }}>
-                     {(making || busy)
+                     {/* (a past piece can be on the Stage while another one cooks — the shelf no longer stops
+                         the watch — and then it is that piece being made, not an edit of this one) */}
+                     {busy
                        ? t("Applying your edit…")
+                       : making
+                         ? t("Making your {noun}…", { noun: t(makingNounRef.current || noun) })
                        : quickSel
                          ? t("Apply {label}", { label: QUICK_OPS.find((o) => o.key === quickSel)?.label || "" })
                          : t("Pick an edit above to apply")}
@@ -6756,6 +6963,11 @@ ${FORGE_CSS}
   .ws-model{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
   .ws-upclear{min-height:44px;padding-top:11px;padding-bottom:11px}
   .ws-srccard{min-height:76px}
+  /* Manage presenters — none of it was in this block: Voice / trash / Delete were ~30px tall and Keep
+     ~27px, and Close is a 32px disc. The row buttons grow; Close keeps its size and gets a 44px hit area
+     (it is already position:absolute, so the ::after anchors to it). */
+  .ws-mp-act,.ws-mp-undo{min-height:44px}
+  .ws-forgem-x::after{content:"";position:absolute;inset:-6px}
 }
 /* Cinematic Studio hero — matches Film Studio: dark, broken up with the app's own
    light rosettes, with a mode-aware still + the artist Helpurr. Scoped so it never
