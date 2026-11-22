@@ -304,7 +304,8 @@ test("a check that cannot be read is asked for again, said so, and what it saw r
   // (a re-rolled performance came back with a microphone its scene ruled out and no flag on it —
   //  and nothing recorded whether the check had looked at it)
   assert.match(fn, /for \(let attempt = 0; attempt < 2; attempt\+\+\) \{/);
-  assert.match(fn, /maxTokens: 300, model: "claude-sonnet-4-6"/);
+  // (room for a sentence before the JSON — and, since the clothes question, for the garments it writes down)
+  assert.match(fn, /maxTokens: CAST_CHECK_TOKENS, model: "claude-sonnet-4-6"/);
   assert.match(fn, /the cast check's answer could not be read/);
   assert.match(fn, /the cast check could not be made/);
   // what the check read off the kept picture goes back with the storyboard and with a re-roll

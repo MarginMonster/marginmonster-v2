@@ -244,6 +244,10 @@ export type CastCheck = {
    *  co-star in a sequin dress and a white coat (the live render of 2026-11-22; scenes either side of it
    *  were right). The check read faces and hair, passed it, and it was rendered. */
   dressed?: boolean[];
+  /** …and what the reader saw each of them wearing — in their own picture, and in the frame. It is asked to
+   *  write these down BEFORE it answers `dressed`: asked for the answer alone, it said "the same". */
+  wearsInImage?: string[];
+  wearsInFrame?: string[];
 };
 
 /** The question put to the vision model about a cast still. The frame is the FIRST image it is shown;
@@ -261,15 +265,19 @@ export function castCheckPrompt(o: { refs?: number; prop?: string } = {}): strin
     who +
     `Count the people who are clearly IN the frame as its subjects — in the foreground or mid-ground, recognisable. Do NOT count an audience, a crowd, silhouettes, or small blurred figures far in the background.\n` +
     (n ? `For each of the ${COUNT_WORD[n]} people, in order: is someone matching them in the frame?\nIs anyone in the frame there TWICE (a twin or copy of the same person), or a BLEND of two of them (one person's hair on another's clothes)?\n` : "") +
-    // (the wardrobe is locked: the same clothes in every scene. The question is about the KIND of garment,
-    //  not its colour: tried on the stills of a real storyboard, "the same colours" called a green velvet
-    //  suit wrong because blue light made it look teal — and a false alarm redraws a good picture and
-    //  flags it. A bomber for a suit jacket, a dress for a trouser suit, an added coat: that is the drift.)
-    (n ? `For each of the ${COUNT_WORD[n]} people, in order: are they wearing the SAME OUTFIT as in their own image? Judge the KIND of garments, not their colour — coloured light, shadow and distance change how a colour looks, so an outfit that looks darker, bluer or warmer here is still the same outfit. Answer false only when a garment is plainly a different kind (a bomber or casual jacket where their image has a tailored suit jacket; a dress or skirt where it has trousers; jeans where it has suit trousers) or something big has been added or taken away (a coat, a hat). If they are small, far away or partly hidden and you cannot tell, answer true. If they are not in the frame, answer true.\n` : "") +
+    // THE WARDROBE IS LOCKED — and looked at. Two things about this question were learned on the stills of
+    // a real storyboard, with the real reader (web.film.tsx `readCastStill`), 2026-11-22:
+    //  · asked only "are they dressed the same?" it answered yes to a man in a floral bomber and jeans
+    //    whose picture is a navy suit. Made to WRITE DOWN the garments in the picture and in the frame
+    //    first, it saw it: both re-dressed people caught twice in two, three good scenes passed;
+    //  · it is about the KIND of garment, not the colour: asked about "the same colours", a green velvet
+    //    suit was called wrong because blue light made it look teal — and a false alarm redraws a good
+    //    picture and flags it.
+    (n ? `For each of the ${COUNT_WORD[n]} people, in order: first name, in a few words, the main garments they wear in THEIR OWN image, and the main garments the matching person wears in the frame. Then say whether it is the SAME OUTFIT. Judge the KIND of garments, not their colour — coloured light, shadow and distance change how a colour looks. It is NOT the same outfit when a garment is plainly a different kind (a bomber or casual jacket where their image has a tailored suit jacket; a dress or skirt where it has trousers; jeans where it has suit trousers) or something big has been added or taken away (a coat, a hat). If they are too small, too far away or too hidden to tell, or not in the frame, answer true.\n` : "") +
     `Say who is HOLDING a microphone (a mic on an empty stand that nobody holds counts as none).\n` +
     `Is anybody doing something a real person could NOT really be filmed doing there — standing, walking or dancing in or on a car or other vehicle (people in a vehicle sit in its seats), floating, a body passing through something solid, or standing on a ledge, an unrailed roof edge or a glass floor over a drop?\n` +
     (p ? `Say whether a real, recognisable ${p} is clearly visible.\n` : "") +
-    `Reply with ONLY this JSON: {"people": <number>${n ? `, "seen": [${Array.from({ length: n }, () => "true | false").join(", ")}], "twin": true | false, "dressed": [${Array.from({ length: n }, () => "true | false").join(", ")}]` : ""}, "mic": "none" | "front" | "other" | "several", "odd": true | false${p ? `, "prop": true | false` : ""}}\n` +
+    `Reply with ONLY this JSON: {"people": <number>${n ? `, "seen": [${Array.from({ length: n }, () => "true | false").join(", ")}], "twin": true | false, "wearsInImage": [${Array.from({ length: n }, () => `"<few words>"`).join(", ")}], "wearsInFrame": [${Array.from({ length: n }, () => `"<few words>"`).join(", ")}], "dressed": [${Array.from({ length: n }, () => "true | false").join(", ")}]` : ""}, "mic": "none" | "front" | "other" | "several", "odd": true | false${p ? `, "prop": true | false` : ""}}\n` +
     `"front" = only the person who is front-and-centre / nearest the camera holds one. "other" = someone else holds one and the front person does not. "several" = more than one person holds one.`
   );
 }
@@ -279,14 +287,17 @@ export function parseCastCheck(raw: string): CastCheck | null {
   const m = /\{[^{}]*\}/.exec(raw || "");
   if (!m) return null;
   try {
-    const j = JSON.parse(m[0]) as { people?: unknown; mic?: unknown; prop?: unknown; seen?: unknown; twin?: unknown; odd?: unknown; dressed?: unknown };
+    const j = JSON.parse(m[0]) as { people?: unknown; mic?: unknown; prop?: unknown; seen?: unknown; twin?: unknown; odd?: unknown; dressed?: unknown; wearsInImage?: unknown; wearsInFrame?: unknown };
     const people = Number(j.people);
     const mic = String(j.mic || "").toLowerCase();
     if (j.people == null || !Number.isFinite(people) || people < 0 || people > 20) return null;
     if (mic !== "none" && mic !== "front" && mic !== "other" && mic !== "several") return null;
     const flags = (v: unknown): boolean[] | undefined => (Array.isArray(v) && v.length <= 3 && v.every((x) => typeof x === "boolean") ? (v as boolean[]) : undefined);
+    // (what each one wears, in the reader's few words — kept with the reading, so a "Wrong clothes" flag can be explained)
+    const words = (v: unknown): string[] | undefined => (Array.isArray(v) && v.length > 0 && v.length <= 3 && v.every((x) => typeof x === "string") ? (v as string[]).map((x) => x.replace(/\s+/g, " ").trim().slice(0, 90)) : undefined);
     const seen = flags(j.seen), dressed = flags(j.dressed);
-    return { people: Math.round(people), mic, ...(seen ? { seen } : {}), ...(typeof j.twin === "boolean" ? { twin: j.twin } : {}), ...(dressed ? { dressed } : {}), ...(typeof j.odd === "boolean" ? { odd: j.odd } : {}), ...(typeof j.prop === "boolean" ? { prop: j.prop } : {}) };
+    const inImage = words(j.wearsInImage), inFrame = words(j.wearsInFrame);
+    return { people: Math.round(people), mic, ...(seen ? { seen } : {}), ...(typeof j.twin === "boolean" ? { twin: j.twin } : {}), ...(dressed ? { dressed } : {}), ...(inImage ? { wearsInImage: inImage } : {}), ...(inFrame ? { wearsInFrame: inFrame } : {}), ...(typeof j.odd === "boolean" ? { odd: j.odd } : {}), ...(typeof j.prop === "boolean" ? { prop: j.prop } : {}) };
   } catch { return null; }
 }
 

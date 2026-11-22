@@ -629,16 +629,29 @@ test("the locked wardrobe is LOOKED AT: a still that re-dresses someone is made 
   // him in a patterned bomber and jeans and her in a sequin dress and a white coat. The check read hair
   // and faces, said both were there, and the scene was rendered: five seconds of a thirty-second video.
   const q = castCheckPrompt({ refs: 2 });
-  assert.match(q, /For each of the two people, in order: are they wearing the SAME OUTFIT as in their own image\?/);
-  // THE KIND of garment, not its colour. Tried on that storyboard's own stills (scratchpad
-  // mvfix/dressed-try.mts): asked about "the same colours", the reader called a green velvet suit wrong
-  // because blue light made it look teal — and a false alarm redraws a good picture and flags it. Asked
-  // about the kind of garment it read all five right: the re-dressed scene caught, the four others passed.
-  assert.match(q, /Judge the KIND of garments, not their colour — coloured light, shadow and distance change how a colour looks, so an outfit that looks darker, bluer or warmer here is still the same outfit\./);
-  assert.match(q, /Answer false only when a garment is plainly a different kind \(a bomber or casual jacket where their image has a tailored suit jacket; a dress or skirt where it has trousers; jeans where it has suit trousers\) or something big has been added or taken away \(a coat, a hat\)\./);
-  assert.match(q, /If they are small, far away or partly hidden and you cannot tell, answer true\. If they are not in the frame, answer true\./);
+  // TWO THINGS WERE LEARNED on that storyboard's own stills, with the real reader (the admin's
+  // `readCastStill`, below):
+  //  1. asked only whether they were dressed the same, it answered YES to the re-dressed scene. Made to
+  //     WRITE DOWN the garments first — in each person's own picture, and in the frame — it read
+  //     ["floral bomber jacket, black t-shirt, dark jeans", "sequined mini dress, cream blazer coat"] and
+  //     answered [false, false], twice in two; the three good scenes passed, the three-person one included.
+  assert.match(q, /For each of the two people, in order: first name, in a few words, the main garments they wear in THEIR OWN image, and the main garments the matching person wears in the frame\. Then say whether it is the SAME OUTFIT\./);
+  assert.match(q, /"twin": true \| false, "wearsInImage": \["<few words>", "<few words>"\], "wearsInFrame": \["<few words>", "<few words>"\], "dressed": \[true \| false, true \| false\]/);
+  assert.ok(q.indexOf("\"wearsInFrame\"") < q.indexOf("\"dressed\""), "the garments are written before the answer");
+  //  2. it is about the KIND of garment, not its colour: asked about "the same colours", a stand-in reader
+  //     called a green velvet suit wrong because blue light made it look teal — and a false alarm redraws
+  //     a good picture and flags it.
+  assert.match(q, /Judge the KIND of garments, not their colour — coloured light, shadow and distance change how a colour looks\./);
+  assert.match(q, /It is NOT the same outfit when a garment is plainly a different kind \(a bomber or casual jacket where their image has a tailored suit jacket; a dress or skirt where it has trousers; jeans where it has suit trousers\) or something big has been added or taken away \(a coat, a hat\)\./);
+  assert.match(q, /If they are too small, too far away or too hidden to tell, or not in the frame, answer true\./);
   assert.doesNotMatch(q, /same colours/);
-  assert.match(q, /"twin": true \| false, "dressed": \[true \| false, true \| false\]/);
+  // what it wrote is kept with the reading (the card can say what was wrong), tidied and bounded
+  const real = parseCastCheck('```json {"people": 2, "seen": [true, true], "twin": false, "wearsInImage": ["dark suit jacket, white shirt, dark trousers", "dark green velvet double-breasted blazer, dark green trousers"], "wearsInFrame": ["floral bomber jacket, black t-shirt, dark jeans", "sequined mini dress, cream blazer coat"], "dressed": [false, false], "mic": "none", "odd": false} ```');
+  assert.deepEqual(real?.dressed, [false, false]);
+  assert.deepEqual(real?.wearsInFrame, ["floral bomber jacket, black t-shirt, dark jeans", "sequined mini dress, cream blazer coat"]);
+  assert.equal(real?.wearsInImage?.length, 2);
+  assert.equal(parseCastCheck(`{"people": 1, "mic": "none", "wearsInFrame": ["${"x".repeat(400)}"]}`)?.wearsInFrame?.[0].length, 90);
+  assert.equal(parseCastCheck('{"people": 1, "mic": "none", "wearsInFrame": "a suit"}')?.wearsInFrame, undefined);
   assert.doesNotMatch(castCheckPrompt(), /dressed/i, "nobody to compare with: nothing asked");
   // read like the other answers: a list of yes/no, or left out
   assert.deepEqual(parseCastCheck('{"people": 2, "seen": [true, true], "twin": false, "dressed": [false, false], "mic": "none", "odd": false}'), { people: 2, mic: "none", seen: [true, true], twin: false, dressed: [false, false], odd: false });
@@ -699,8 +712,9 @@ test("the cast check can be asked by hand — by an admin, about our own picture
   const lib = read("app", "lib", "music-video-pipeline.server.ts");
   const fn = lib.slice(lib.indexOf("export async function readCastStillByHand"), lib.indexOf("/** A cast still and how it fared when it was looked at"));
   assert.ok(fn.includes("castCheckPrompt({ refs: refs.length, prop: o.prop })"));
-  assert.ok(fn.includes("anthropicVision(question, [abs(o.img), ...refs], { maxTokens: 300, model: \"claude-sonnet-4-6\" })"));
-  assert.ok(lib.includes("anthropicVision(castCheckPrompt({ refs: refs.length, prop }), [imgUrl, ...refs], { maxTokens: 300, model: \"claude-sonnet-4-6\" })"), "…which is what the storyboard's own check does");
+  assert.ok(fn.includes("anthropicVision(question, [abs(o.img), ...refs], { maxTokens: CAST_CHECK_TOKENS, model: \"claude-sonnet-4-6\" })"));
+  assert.ok(lib.includes("anthropicVision(castCheckPrompt({ refs: refs.length, prop }), [imgUrl, ...refs], { maxTokens: CAST_CHECK_TOKENS, model: \"claude-sonnet-4-6\" })"), "…which is what the storyboard's own check does");
+  assert.ok(lib.includes("const CAST_CHECK_TOKENS = 450;"), "room for the garments it writes down before it answers");
 });
 
 test("the Render button says it worked — and the same storyboard is not sent twice", () => {

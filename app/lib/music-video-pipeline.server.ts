@@ -403,6 +403,7 @@ async function sceneShowsProp(imgUrl: string, noun: string): Promise<boolean> {
  *  reference pictures after the frame), whether anyone is in it twice or blended, who holds a
  *  microphone, whether the prop is there. Null when it cannot be read — a vision outage never blocks a
  *  render. sonnet-4-6, the strict reader (the same model as the prop gate above). */
+const CAST_CHECK_TOKENS = 450;
 async function readCast(imgUrl: string, castRefs: string[], prop?: string): Promise<CastCheck | null> {
   const refs = castRefs.slice(0, 3);
   // An answer that cannot be read is asked for once more before the picture is let through unlooked-at —
@@ -411,7 +412,8 @@ async function readCast(imgUrl: string, castRefs: string[], prop?: string): Prom
   // for a sentence before the JSON, too: the reply is found wherever it sits in the answer.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const raw = await anthropicVision(castCheckPrompt({ refs: refs.length, prop }), [imgUrl, ...refs], { maxTokens: 300, model: "claude-sonnet-4-6" });
+      // (room for the garments it is asked to write down before it answers — three people's worth)
+      const raw = await anthropicVision(castCheckPrompt({ refs: refs.length, prop }), [imgUrl, ...refs], { maxTokens: CAST_CHECK_TOKENS, model: "claude-sonnet-4-6" });
       const read = parseCastCheck(raw);
       if (read) return read;
       console.error(`[musicvideo] the cast check's answer could not be read${attempt ? " — the picture is taken as it is" : " — asking again"}: ${String(raw).replace(/\s+/g, " ").slice(0, 160)}`);
@@ -433,7 +435,7 @@ export async function readCastStillByHand(o: { img: string; refs: string[]; prop
   const abs = (u: string): string => (u.startsWith("http") ? u : `${base}${u}`);
   const refs = o.refs.slice(0, 3).map(abs);
   const question = (o.question || "").trim().slice(0, 4000) || castCheckPrompt({ refs: refs.length, prop: o.prop });
-  const raw = String(await anthropicVision(question, [abs(o.img), ...refs], { maxTokens: 300, model: "claude-sonnet-4-6" }));
+  const raw = String(await anthropicVision(question, [abs(o.img), ...refs], { maxTokens: CAST_CHECK_TOKENS, model: "claude-sonnet-4-6" }));
   return { question, raw, reading: parseCastCheck(raw) };
 }
 
