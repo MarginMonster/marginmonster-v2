@@ -122,3 +122,17 @@ test("every hero has its poster files, and every name and line is translated", (
   // a poster's two lines fit a phone card (about 45 characters): "…your cast on…" was cut off at 390 px
   for (const h of FILM_HEROES) assert.ok((h.kick + (h.meta ? ` · ${h.meta}` : "")).length <= 45, `${h.name}: ${h.kick} · ${h.meta}`);
 });
+
+test("a film named after its idea is cut at a whole word, and says it was cut", async () => {
+  const { trimTitle } = await import("../app/lib/text-trim.ts");
+  // the Archive showed "Horror Story — two night cleaners at an old theatre find a bride who has be"
+  const idea = "two night cleaners at an old theatre find a bride who has been waiting in the royal box since opening night";
+  const cut = trimTitle(idea, 60);
+  assert.ok(cut.length <= 60 && cut.endsWith("…"), cut);
+  assert.ok(idea.startsWith(cut.slice(0, -1)) && idea[cut.length - 1] === " ", "ends on a whole word");
+  assert.equal(trimTitle("The Lullaby Ward", 60), "The Lullaby Ward", "a title that fits is untouched");
+  assert.equal(trimTitle("  spaced   out  ", 60), "spaced out");
+  assert.equal(trimTitle("", 60), "");
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${trimTitle(treatment.title || opts.topic || \"a story\", 60)}`,"));
+  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("${trimTitle(treatment.title || opts.topic || \"dialogue scene\", 60)}`,"));
+});

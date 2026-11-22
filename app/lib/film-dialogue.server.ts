@@ -41,6 +41,7 @@ import { captionStyleOf } from "./narrated-core";
 import { MIXED_CAST_LOCK, nameTok } from "./character-prompts";
 import { normalizeContentLang } from "./content-lang";
 import { heroName } from "./film-heroes";
+import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -1115,7 +1116,7 @@ export async function generateTestMovie(opts: {
       type: "VIDEO_AD",
       status: "PENDING",
       // (named after the HERO it was made as — an acted horror story is a "Horror Film": film-heroes.ts)
-      title: `${heroName(tmpl.key, false, tmpl.name)} — ${(treatment.title || opts.topic || "dialogue scene").slice(0, 60)}`,
+      title: `${heroName(tmpl.key, false, tmpl.name)} — ${trimTitle(treatment.title || opts.topic || "dialogue scene", 60)}`,
       bodyJson: JSON.stringify({ style: "TESTMOVIE", videoUrl: storedUrl, prompt: opts.topic || "", treatment }),
       metaJson: JSON.stringify({
         kind: "testmovie", template: tmpl.key, section: opts.section || "creator",

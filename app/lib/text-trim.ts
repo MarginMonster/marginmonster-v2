@@ -28,3 +28,12 @@ export function trimToWord(s: string | null | undefined, max: number): string {
   // a prompt, as an instruction that trails off.
   return kept.replace(/[\s,;:.!?\-–—/&+]+$/, "");
 }
+
+/** A TITLE cut to fit says that it was cut: the last whole word that fits, then an ellipsis. A story
+ *  whose writer returned no title is named after its idea, and the Archive showed "Horror Story — two
+ *  night cleaners at an old theatre find a bride who has be" (2026-11-22). Short enough → unchanged. */
+export function trimTitle(s: string | null | undefined, max: number): string {
+  const t = (s || "").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  return `${trimToWord(t, Math.max(1, max - 1))}…`;
+}
