@@ -57,7 +57,7 @@ function currentRetryCost(type: string, pl: Record<string, unknown>): number {
   return TOKEN_COST.image;
 }
 import { assertCapability, videoCapabilityFor, videoCapabilityForSection } from "../lib/capabilities.server";
-import { enqueueJob } from "../lib/job-queue.server";
+import { enqueueJob, placesInLine } from "../lib/job-queue.server";
 import { AI_DISCLOSURE_TAG, buildPostTitle, fallbackCaption, getOrMakeCaptions, trialCredit } from "../lib/social-caption.server";
 import { catalogImageFor, productLinkFor } from "../lib/catalog-import.server";
 import { externalOrigin } from "../lib/origin.server";
@@ -342,7 +342,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45, GENERATE_SONG: 60, GENERATE_BLOG_POST: 40 };
   const COMMERCIAL_TYPICAL_SEC = 660;
   const KIND: Record<string, "video" | "image" | "music" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_SONG: "music", GENERATE_BLOG_POST: "blog" };
-  const cookingCards: { jobId: string; kind: "video" | "image" | "music" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number }[] = [];
+  const cookingCards: { jobId: string; kind: "video" | "image" | "music" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number; waiting: boolean; ahead: number | null }[] = [];
+  // A PIECE THAT HAS NOT STARTED SAYS SO. One job of a kind is made at a time (lib/job-lanes.ts), so a
+  // piece can be waiting its turn — and it used to be shown as "Rendering · ~3 min left", counting down
+  // an estimate for a render nobody had begun, then "still rendering" for as long as somebody else's
+  // film took. For the ones still waiting, ask where they stand: how many jobs start before each.
+  const inLine = jobs.filter((j) => j.status === "PENDING" && (!j.runAt || j.runAt.getTime() <= nowMs));
+  const places = inLine.length ? await placesInLine(inLine.map((j) => ({ id: j.id, type: j.type }))).catch(() => new Map<string, number | null>()) : new Map<string, number | null>();
   for (const j of jobs) {
     let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string; contentType?: string; filmScenes?: number } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
@@ -379,7 +385,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const curCost = currentRetryCost(j.type, p as Record<string, unknown>);
     const storedCost = typeof pl.chargedTokens === "number" && pl.chargedTokens > 0 ? pl.chargedTokens : curCost;
     const retryCost = failed && p.refunded ? Math.min(storedCost, curCost) : 0;
-    cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec, elapsedSec, refunded: !!p.refunded, retryCost });
+    cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec, elapsedSec, refunded: !!p.refunded, retryCost, waiting: !failed && j.status === "PENDING", ahead: places.get(j.id) ?? null });
   }
   const linked = linkedFromCache(shop.socialsJson).filter(isPostable);
   // WHICH PIECES CAN BE REMIXED.
@@ -1104,6 +1110,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
  *  past a typical time, and a stuck "5s left" makes a working render look
  *  frozen. Below ~10s we stop giving a number at all, because a number that
  *  keeps not arriving is worse than no number. */
+/** What a waiting piece says: how many are made before it — never a countdown for a render that has not begun. */
+function inLineText(ahead: number | null, t: (s: string, p?: Record<string, string | number>) => string): string {
+  if (ahead == null) return t("In line — it starts when its turn comes");
+  if (ahead <= 0) return t("In line — starting any moment");
+  return ahead === 1 ? t("In line — 1 ahead of you") : t("In line — {n} ahead of you", { n: ahead });
+}
+
 function fmtEta(etaSec: number, elapsedSec: number | undefined, t: (s: string, p?: Record<string, string | number>) => string): string {
   if (etaSec > 60) return t("{n} min left", { n: Math.ceil(etaSec / 60) });
   if (etaSec > 10) return t("{n}s left", { n: etaSec });
@@ -2716,13 +2729,13 @@ export default function WebArchive() {
                 className="wb-cookimg"
                 style={j.productImage ? { backgroundImage: `linear-gradient(rgba(10,14,12,.5),rgba(10,14,12,.55)), url(${j.productImage})` } : undefined}
               >
-                <span className="wb-bufwrap"><span className="wb-spin" /><span className="wb-eta">{j.etaSec > 10 ? "~" : ""}{fmtEtaShort(j.etaSec, j.elapsedSec, t)}</span></span>
+                <span className="wb-bufwrap"><span className="wb-spin" /><span className="wb-eta">{j.waiting ? t("In line") : <>{j.etaSec > 10 ? "~" : ""}{fmtEtaShort(j.etaSec, j.elapsedSec, t)}</>}</span></span>
               </div>
               <div className="m">
                 {j.kind === "blog"
                   ? (j.productTitle ? t("Writing about {title}…", { title: j.productTitle }) : t("Writing your article…"))
                   : (j.productTitle ? t("Creating your {kind} — {title}…", { kind: j.kind, title: j.productTitle }) : t("Creating your {kind}…", { kind: j.kind }))}
-                <div className="s">{t("Rendering")} · {j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec, t)}</div>
+                <div className="s">{j.waiting ? inLineText(j.ahead, t) : <>{t("Rendering")} · {j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec, t)}</>}</div>
               </div>
             </div>
           ))}

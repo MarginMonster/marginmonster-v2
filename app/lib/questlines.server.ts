@@ -1049,7 +1049,10 @@ export async function abandonQuestline(shopId: string, questlineId: string): Pro
     for (const j of jobs) {
       try {
         const p = JSON.parse(j.payload);
-        if (p.questlineId === questlineId) await db.job.delete({ where: { id: j.id } });
+        // only while it is STILL waiting: a job the worker took between the read above and this line
+        // is running, and deleting its row left the render going with nothing to report to (its slot
+        // was then refunded AND delivered). A claimed job is caught by the claimed-slot query below.
+        if (p.questlineId === questlineId) await db.job.deleteMany({ where: { id: j.id, status: "PENDING" } });
       } catch { /* skip */ }
     }
   } catch (e) {
@@ -1229,7 +1232,10 @@ export async function onQuestlineObjectiveDone(questlineId: string, objectiveKey
     let weeklyBonus = 0;
     let allContentDone = false;
 
-    for (let attempt = 0; attempt < 4 && !committed; attempt++) {
+    // eight tries, each a little later: a campaign's video, picture and article can now finish at the
+    // same moment (lib/job-lanes.ts), all writing this one record, while a post is being recorded on it
+    for (let attempt = 0; attempt < 8 && !committed; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, 150 * attempt));
       const q = await db.questline.findUnique({ where: { id: questlineId } });
       if (!q || q.status === "COMPLETE") return;
       const objectives: Objective[] = JSON.parse(q.objectivesJson);
@@ -1297,7 +1303,7 @@ export async function onQuestlineObjectiveDone(questlineId: string, objectiveKey
     }
 
     if (!committed) {
-      console.warn(`[questline] ${questlineId}: progress for slot ${slotIdx} lost four races — not recorded`);
+      console.warn(`[questline] ${questlineId}: progress for slot ${slotIdx} lost eight races — not recorded`);
       return;
     }
 

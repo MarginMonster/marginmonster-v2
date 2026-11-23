@@ -88,13 +88,41 @@ function captionSafe(s: string): string {
 export async function createWhisperx(audioUrl: string, language: string | null = "en", opts: { sung?: boolean } = {}): Promise<string> {
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) throw new Error("REPLICATE_API_TOKEN not set");
-  const res = await fetch("https://api.replicate.com/v1/predictions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ version: WHISPERX_VERSION, input: { audio_file: audioUrl, align_output: true, ...(language ? { language } : {}), batch_size: 16, ...(opts.sung ? SUNG_VAD : {}) } }),
-  });
-  if (!res.ok) throw new Error(`whisperx create ${res.status}: ${(await res.text()).slice(0, 160)}`);
-  return ((await res.json()) as { id: string }).id;
+  // "TOO MANY REQUESTS" IS WAITED OUT, NOT TAKEN FOR AN ANSWER. This was the one request to the provider
+  // that gave up on the first 429 — and every caller catches that and carries on without a listen:
+  // captions and picture changes "timed by length instead", lyrics left off a music video, a line
+  // never checked for who was heard. Nothing failed; the piece was just quietly worse. A story asks for
+  // its pictures four at a time right before this, and with pieces now made side by side the provider
+  // is asked for more at once still. Same patience as every other create (ugc → repCreate): the wait
+  // the provider names, up to 90 seconds in all.
+  let slept = 0;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const res = await fetch("https://api.replicate.com/v1/predictions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ version: WHISPERX_VERSION, input: { audio_file: audioUrl, align_output: true, ...(language ? { language } : {}), batch_size: 16, ...(opts.sung ? SUNG_VAD : {}) } }),
+    });
+    if (res.status === 429) {
+      const body = (await res.json().catch(() => ({}))) as { retry_after?: number };
+      const wait = Math.min(retryAfterMs(res.headers.get("retry-after"), body.retry_after), WHISPERX_PATIENCE_MS - slept);
+      if (wait <= 0) break;
+      slept += wait;
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
+    if (!res.ok) throw new Error(`whisperx create ${res.status}: ${(await res.text()).slice(0, 160)}`);
+    return ((await res.json()) as { id: string }).id;
+  }
+  throw new Error("whisperx create: rate-limited too long");
+}
+
+/** How long a transcript request will wait on "too many requests" before it gives up. */
+export const WHISPERX_PATIENCE_MS = 90_000;
+/** The wait a 429 asks for, in ms: the header, else the body's figure, else 12 s — plus a moment. */
+export function retryAfterMs(header: string | null, bodySeconds?: number): number {
+  const h = Number(header);
+  const seconds = Number.isFinite(h) && h > 0 ? h : typeof bodySeconds === "number" && bodySeconds > 0 ? bodySeconds : 12;
+  return seconds * 1000 + 1500;
 }
 
 export type WordT = { word: string; start: number; end: number };

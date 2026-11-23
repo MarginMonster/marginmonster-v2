@@ -3,6 +3,8 @@
 // a low-volume app. Guarded by a global so hot-reload doesn't spawn duplicates.
 
 import { processNextJob, reclaimOrphanJobs } from "./lib/job-queue.server";
+import { LANES } from "./lib/job-lanes";
+import { startMemoryWatch } from "./lib/memwatch.server";
 import { postDueSlots } from "./lib/social-post.server";
 import { tickDueSeries } from "./lib/creator-series.server";
 import { tickPostQueue } from "./lib/post-queue.server";
@@ -57,67 +59,94 @@ const TICK_DEADLINE_MS = 70 * 60_000;
 // deadline a fresh tick takes over. That does not cancel the stuck promise —
 // nothing in JavaScript can — but an overlapping drain is a bounded cost the
 // conditional claim already handles, and a dead worker is not.
-let ticking = false;
-let tickStartedAt = 0;
-let tickGen = 0;
-async function tick() {
-  if (ticking && Date.now() - tickStartedAt < TICK_DEADLINE_MS) return;
-  if (ticking) {
-    console.error(
-      `[worker] the previous tick has been running for ${Math.round((Date.now() - tickStartedAt) / 60_000)} min — ` +
-        `treating it as wedged and starting a fresh one. Something in it is awaiting a promise that will not settle.`
-    );
-  }
-  const gen = ++tickGen;
-  ticking = true;
-  tickStartedAt = Date.now();
-  try {
-    // Self-heal the style tiles + ad templates: cheap no-op when everything
-    // exists; re-kicks anything a deploy restart interrupted mid-render.
-    if (Date.now() - lastTileKick > 10 * 60_000) {
-      lastTileKick = Date.now();
-      import("./lib/style-tiles.server").then((m) => m.ensureAllStyleTiles()).catch(() => { /* non-fatal */ });
-      // Whole-cast tile pre-forge: one presenter per cycle until every
-      // presenter's style set exists (no more portrait stand-ins in pickers).
-      Promise.all([import("./lib/style-tiles.server"), import("./lib/avatars")])
-        .then(([m, a]) => m.ensureNextCharacterTiles(a.AVATARS.map((av) => av.id)))
-        .catch(() => { /* non-fatal */ });
-      import("./lib/image-generation.server").then((m) => { m.ensureAllAdTemplates(); m.ensureAllFormatPreviews(); }).catch(() => { /* non-fatal */ });
-      // Self-heal Stripe webhook provisioning (no-op once the secret exists).
-      import("./lib/stripe.server").then((m) => m.ensureStripeWebhook()).catch(() => { /* non-fatal */ });
+//
+// ONE GUARD PER LOOP (2026-11-23). There was one tick, and it did everything in a row: the chores, then
+// every waiting job, each awaited to its end. So while a film rendered — 25 minutes, up to 65 — nothing
+// else on the site moved: no picture, no catalogue import for a member who had just signed up, and no
+// scheduled post either, because the chores only ran when a tick began. Each lane of jobs
+// (lib/job-lanes.ts) now drains in its own loop, and the chores have theirs; every loop keeps the same
+// guard and the same way out as the single tick had.
+function guarded(name: string, body: () => Promise<void>): () => Promise<void> {
+  let running = false;
+  let startedAt = 0;
+  let gen = 0;
+  return async () => {
+    if (running && Date.now() - startedAt < TICK_DEADLINE_MS) return;
+    if (running) {
+      console.error(
+        `[worker] ${name}: the previous pass has been running for ${Math.round((Date.now() - startedAt) / 60_000)} min — ` +
+          `treating it as wedged and starting a fresh one. Something in it is awaiting a promise that will not settle.`
+      );
     }
-    // Publish READY slots whose post time arrived (self-throttled to ~5 min).
-    await postDueSlots();
-    // Advance Creator "Channels" — render + post the next drop for any channel
-    // whose cadence is due (self-throttled to ~2 min; caps drops per scan).
-    await tickDueSeries().catch((e) => console.error("[worker] series tick (non-fatal):", e));
-    // Send queued pieces ("Coming up" on Auto-post) whose time has come — claimed one by one, never twice.
-    await tickPostQueue().catch((e) => console.error("[worker] post queue (non-fatal):", e));
-    // Pull organic follower/engagement analytics into the cache (self-throttled to ~1h).
-    await refreshSocialStats().catch((e) => console.error("[worker] social insights (non-fatal):", e));
-    await backfillDeadImages().catch((e) => console.error("[worker] image backfill (non-fatal):", e));
-    // Clear un-kept videos/photos older than 30 days (self-throttled to ~6h).
-    await purgeStaleUnkept().catch((e) => console.error("[worker] storage cleanup (non-fatal):", e));
-    // Monthly "here's what we made you" digest (self-throttled; per-shop 30-day gate).
-    await sendMonthlyDigests().catch((e) => console.error("[worker] digest (non-fatal):", e));
-    // Pay referrals whose free trial has now elapsed (self-throttled to ~6h).
-    await settlePendingReferrals().catch((e) => console.error("[worker] referral settle (non-fatal):", e));
-    // Drain any pending jobs each tick.
+    const mine = ++gen;
+    running = true;
+    startedAt = Date.now();
+    try {
+      await body();
+    } catch (e) {
+      console.error(`[worker] ${name} error:`, e);
+    } finally {
+      // Only the newest pass may release the flag. A wedged predecessor that
+      // finally settles must not clear it out from under its replacement.
+      if (mine === gen) running = false;
+    }
+  };
+}
+
+// THE CHORES — everything that is not a job. None of it renders anything here (posts go out through the
+// posting service, channels QUEUE their next drop), so none of it has a reason to wait for a render.
+const chores = guarded("chores", async () => {
+  // Self-heal the style tiles + ad templates: cheap no-op when everything
+  // exists; re-kicks anything a deploy restart interrupted mid-render.
+  if (Date.now() - lastTileKick > 10 * 60_000) {
+    lastTileKick = Date.now();
+    import("./lib/style-tiles.server").then((m) => m.ensureAllStyleTiles()).catch(() => { /* non-fatal */ });
+    // Whole-cast tile pre-forge: one presenter per cycle until every
+    // presenter's style set exists (no more portrait stand-ins in pickers).
+    Promise.all([import("./lib/style-tiles.server"), import("./lib/avatars")])
+      .then(([m, a]) => m.ensureNextCharacterTiles(a.AVATARS.map((av) => av.id)))
+      .catch(() => { /* non-fatal */ });
+    import("./lib/image-generation.server").then((m) => { m.ensureAllAdTemplates(); m.ensureAllFormatPreviews(); }).catch(() => { /* non-fatal */ });
+    // Self-heal Stripe webhook provisioning (no-op once the secret exists).
+    import("./lib/stripe.server").then((m) => m.ensureStripeWebhook()).catch(() => { /* non-fatal */ });
+  }
+  // Publish READY slots whose post time arrived (self-throttled to ~5 min).
+  await postDueSlots();
+  // Advance Creator "Channels" — render + post the next drop for any channel
+  // whose cadence is due (self-throttled to ~2 min; caps drops per scan).
+  await tickDueSeries().catch((e) => console.error("[worker] series tick (non-fatal):", e));
+  // Send queued pieces ("Coming up" on Auto-post) whose time has come — claimed one by one, never twice.
+  await tickPostQueue().catch((e) => console.error("[worker] post queue (non-fatal):", e));
+  // Pull organic follower/engagement analytics into the cache (self-throttled to ~1h).
+  await refreshSocialStats().catch((e) => console.error("[worker] social insights (non-fatal):", e));
+  // Clear un-kept videos/photos older than 30 days (self-throttled to ~6h).
+  await purgeStaleUnkept().catch((e) => console.error("[worker] storage cleanup (non-fatal):", e));
+  // Monthly "here's what we made you" digest (self-throttled; per-shop 30-day gate).
+  await sendMonthlyDigests().catch((e) => console.error("[worker] digest (non-fatal):", e));
+  // Pay referrals whose free trial has now elapsed (self-throttled to ~6h).
+  await settlePendingReferrals().catch((e) => console.error("[worker] referral settle (non-fatal):", e));
+});
+
+// THE LANES — each drains its own waiting jobs, one at a time, beside the others.
+const drains = LANES.map((lane) =>
+  guarded(`${lane} lane`, async () => {
     let processed = true;
     let guard = 0;
     while (processed && guard < 20) {
-      processed = await processNextJob();
+      processed = await processNextJob(lane);
       guard++;
     }
-  } catch (e) {
-    console.error("[worker] tick error:", e);
-  } finally {
-    // Only the newest tick may release the flag. A wedged predecessor that
-    // finally settles must not clear it out from under its replacement.
-    if (gen === tickGen) ticking = false;
-  }
-}
+    // Re-making pictures whose files went missing draws pictures HERE, so it takes its turn with the
+    // picture jobs — as it always did, when everything took turns. AFTER the members' own pictures:
+    // it can take a few minutes, and nobody is waiting for it.
+    if (lane === "picture") await backfillDeadImages().catch((e) => console.error("[worker] image backfill (non-fatal):", e));
+  })
+);
 
+function tick() {
+  void chores();
+  for (const drain of drains) void drain();
+}
 // The reaper, deliberately on its own timer and its own guard. This is the
 // only thing that turns a job killed by a restart — or by a wedge — into a
 // FAILED row with the merchant's tokens returned, so it must not be reachable
@@ -138,6 +167,9 @@ async function reap() {
 if (!global.__mm_worker_started__ && process.env.NODE_ENV === "production") {
   global.__mm_worker_started__ = true;
   console.log("[worker] in-process job worker started");
+  // Sample what the server is really using, so "is it safe to run jobs side by side" is a number on
+  // /art-status and not a guess (lib/memwatch.server.ts).
+  startMemoryWatch();
   // Boot reclaim: anything left IN_PROGRESS was orphaned by the previous
   // process (this is exactly the "stuck rendering forever" bug) — but a deploy
   // OVERLAPS, so a job the outgoing process is still rendering (and paying for)

@@ -1,8 +1,10 @@
 // DB-backed job queue. Worker calls processNextJob() in a loop.
 // Jobs are claimed with status=IN_PROGRESS to prevent double-processing.
 
-import type { BrandProfile } from "@prisma/client";
+import type { BrandProfile, JobType } from "@prisma/client";
 import { db } from "../db.server";
+import { LANES, LANE_LOOKAHEAD, aheadInLine, claimNext, laneOf, laneTypeFilter, type Lane } from "./job-lanes";
+import { asJob } from "./ffmpeg-turn";
 import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
 import { generateImageAd, editImage, isEditOp, createImage, tagAssetSection } from "./image-generation.server";
@@ -43,11 +45,58 @@ const MAX_RECLAIMS = 6;
 // overlap this exists to prevent. Normal renders release early (finally), so a
 // generous ceiling costs nothing; it only bounds a never-settling render.
 const RENDER_SLOT_MS = 70 * 60_000;
-let renderSlotUntil = 0;
-// Which reservation currently owns the slot. A render that overran the ceiling
-// and is finally settling must not clear a NEWER tick's reservation — only the
-// current owner releases, exactly like the worker tick's generation guard.
-let renderSlotToken = 0;
+// ONE SLOT PER LANE (job-lanes.ts). The rule above is about VIDEO renders, and it
+// was being applied to everything: a picture, a catalogue import and a welcome
+// email all waited behind whichever film was rendering. Each lane now has its
+// own slot with the same time-bounded reservation — still never two renders at
+// once, and never two pictures at once, but a picture no longer waits for a
+// film. `token` says which reservation owns the slot: a job that overran the
+// ceiling and is finally settling must not clear a NEWER tick's reservation —
+// only the current owner releases, exactly like the worker tick's generation
+// guard.
+const slots: Record<Lane, { until: number; token: number }> = {
+  render: { until: 0, token: 0 },
+  picture: { until: 0, token: 0 },
+  desk: { until: 0, token: 0 },
+};
+// When each member last had a job START in each lane — members take turns
+// (job-lanes.ts → takeTurns). In memory: a restart only forgets whose turn it was.
+const lastServed: Record<Lane, Map<string, number>> = { render: new Map(), picture: new Map(), desk: new Map() };
+
+/** WHERE A WAITING JOB STANDS: how many jobs will start before it in its lane (job-lanes.ts →
+ *  aheadInLine). A piece that has not begun was shown as "Rendering · ~3 min left", counting down an
+ *  estimate for a render nobody had started — and then "still rendering" for as long as somebody else's
+ *  film took. The Archive can now say what is true: "In line · 2 ahead of you". Asked only for jobs that
+ *  are waiting; null = could not be worked out (the card then just says it is in line). */
+export async function placesInLine(jobs: Array<{ id: string; type: string }>): Promise<Map<string, number | null>> {
+  const out = new Map<string, number | null>();
+  for (const lane of LANES) {
+    const mine = jobs.filter((j) => laneOf(j.type) === lane);
+    if (!mine.length) continue;
+    try {
+      const type = laneTypeFilter(lane) as { in: JobType[] } | { notIn: JobType[] };
+      const [waiting, inHand] = await Promise.all([
+        db.job.findMany({
+          where: { status: "PENDING", attempts: { lt: MAX_ATTEMPTS }, OR: [{ runAt: null }, { runAt: { lte: new Date() } }], type },
+          orderBy: { createdAt: "asc" },
+          take: LANE_LOOKAHEAD,
+          select: { id: true, shopId: true, createdAt: true },
+        }),
+        db.job.count({ where: { status: "IN_PROGRESS", type } }),
+      ]);
+      for (const j of mine) out.set(j.id, aheadInLine(j.id, waiting, lastServed[lane], inHand));
+    } catch {
+      for (const j of mine) out.set(j.id, null);
+    }
+  }
+  return out;
+}
+
+/** Which lanes have a job in hand right now — for the status page. */
+export function lanesHeld(): Record<Lane, boolean> {
+  const now = Date.now();
+  return { render: now < slots.render.until, picture: now < slots.picture.until, desk: now < slots.desk.until };
+}
 
 // Pre-paid generations (tokens spent at enqueue — Studio pieces AND questline
 // drops, which are charged per-piece on accept) get their tokens BACK if the
@@ -359,57 +408,62 @@ export async function enqueueJob(
 }
 
 
-export async function processNextJob(): Promise<boolean> {
-  // ONE heavy render at a time, PROCESS-WIDE. The tick deadline can start a
-  // second tick while a render is still going; without this guard that tick
-  // claimed the NEXT queued video and ran two ffmpeg+model renders at once —
-  // the memory spike that exceeded Render's limit and OOM-restarted the whole
-  // instance. Reserve the slot SYNCHRONOUSLY, before the first await below, so
-  // two ticks interleaving on that await cannot both pass this check. The slot
-  // is time-bounded (see RENDER_SLOT_MS), so even a render that never settles
-  // frees it to a fresh tick rather than wedging the worker forever.
-  if (Date.now() < renderSlotUntil) return false;
-  const myToken = ++renderSlotToken;
-  renderSlotUntil = Date.now() + RENDER_SLOT_MS;
+export async function processNextJob(lane: Lane): Promise<boolean> {
+  // ONE job at a time IN THIS LANE, PROCESS-WIDE — and for the render lane that
+  // is the original rule: the tick deadline can start a second tick while a
+  // render is still going; without this guard that tick claimed the NEXT queued
+  // video and ran two ffmpeg+model renders at once — the memory spike that
+  // exceeded Render's limit and OOM-restarted the whole instance. Reserve the
+  // slot SYNCHRONOUSLY, before the first await below, so two ticks interleaving
+  // on that await cannot both pass this check. The slot is time-bounded (see
+  // RENDER_SLOT_MS), so even a job that never settles frees it to a fresh tick
+  // rather than wedging the lane forever.
+  const slot = slots[lane];
+  if (Date.now() < slot.until) return false;
+  const myToken = ++slot.token;
+  slot.until = Date.now() + RENDER_SLOT_MS;
   try {
-    return await claimAndRunOneJob();
+    return await claimAndRunOneJob(lane);
   } finally {
     // Release only if we still own the slot — a newer tick may have taken it
-    // after ours expired, and clearing it then would let a third render overlap.
-    if (renderSlotToken === myToken) renderSlotUntil = 0;
+    // after ours expired, and clearing it then would let a third job overlap.
+    if (slot.token === myToken) slot.until = 0;
   }
 }
 
-async function claimAndRunOneJob(): Promise<boolean> {
+async function claimAndRunOneJob(lane: Lane): Promise<boolean> {
   // Candidates only — the read is NOT the claim. Two overlapping worker ticks
   // (or two instances mid-deploy) both selected the same PENDING row here and
   // both ran it: the same paid video rendered TWICE and created two assets.
-  const candidates = await db.job.findMany({
-    where: {
-      status: "PENDING",
-      attempts: { lt: MAX_ATTEMPTS },
-      OR: [{ runAt: null }, { runAt: { lte: new Date() } }],
-    },
-    orderBy: { createdAt: "asc" },
-    take: 5,
-  });
-  if (!candidates.length) return false;
-
+  // Only this lane's kinds of job, enough of them to see past one member's
+  // batch, tried in turn-taking order (job-lanes.ts → claimNext).
+  //
   // Claim by CONDITIONAL update: only the caller whose updateMany reports
   // count === 1 flipped PENDING → IN_PROGRESS, so exactly one worker owns the
   // job. Losers move on to the next candidate.
-  let job: (typeof candidates)[number] | undefined;
-  for (const candidate of candidates) {
-    const claim = await db.job.updateMany({
-      where: { id: candidate.id, status: "PENDING" },
-      data: { status: "IN_PROGRESS", attempts: { increment: 1 } },
-    });
-    if (claim.count === 1) {
-      job = candidate;
-      break;
-    }
-  }
-  if (!job) return false; // everything visible was taken by someone else
+  let job = await claimNext(
+    lane,
+    {
+      waiting: (type, take) =>
+        db.job.findMany({
+          where: {
+            status: "PENDING",
+            attempts: { lt: MAX_ATTEMPTS },
+            OR: [{ runAt: null }, { runAt: { lte: new Date() } }],
+            type: type as { in: JobType[] } | { notIn: JobType[] },
+          },
+          orderBy: { createdAt: "asc" },
+          take,
+        }),
+      claim: async (id) =>
+        (await db.job.updateMany({
+          where: { id, status: "PENDING" },
+          data: { status: "IN_PROGRESS", attempts: { increment: 1 } },
+        })).count === 1,
+    },
+    lastServed[lane],
+  );
+  if (!job) return false; // nothing waiting, or everything visible was taken by someone else
 
   // WHEN THIS ATTEMPT ACTUALLY STARTED.
   //
@@ -419,8 +473,14 @@ async function claimAndRunOneJob(): Promise<boolean> {
   // Archive read updatedAt as the render's start, so a merchant watching a
   // commercial saw the elapsed counter drop back to zero and the ETA climb
   // again every time it banked a finished beat.
+  //
+  // Stamped onto the payload AS IT IS NOW, not as it was when the line was read: between that read and
+  // the claim a waiting job can be re-pointed (a corrected store address replaces a waiting import's —
+  // web.studio), and writing the older copy back would undo the correction. Once claimed, nothing but
+  // this run and its own checkpoints write the payload.
   try {
-    const p = JSON.parse(job.payload);
+    const fresh = await db.job.findUnique({ where: { id: job.id }, select: { payload: true } });
+    const p = JSON.parse(fresh?.payload ?? job.payload);
     p.__startedAt = new Date().toISOString();
     const stamped = JSON.stringify(p);
     await db.job.update({ where: { id: job.id }, data: { payload: stamped } });
@@ -454,7 +514,14 @@ async function claimAndRunOneJob(): Promise<boolean> {
       }
     }
 
-    await runJob(job.type, job.shopId, payload);
+    // EVERYTHING THIS JOB DOES IS A JOB'S WORK (ffmpeg-turn.ts → asJob): its encodes wait their turn with
+    // the other lanes'. While one of them waits or runs, the row is touched once a minute — a job standing
+    // in line to encode is alive, and the reaper (25 minutes untouched = abandoned) must leave it alone.
+    const { id: jobId, type: jobType, shopId: jobShop } = job;
+    await asJob(
+      () => runJob(jobType, jobShop, payload),
+      () => db.job.updateMany({ where: { id: jobId, status: "IN_PROGRESS" }, data: { updatedAt: new Date() } }),
+    );
 
     // Terminal write, guarded: while we were rendering, orphan-reclaim may have
     // decided this row was a corpse (it can only do that past the 25-min
@@ -477,9 +544,17 @@ async function claimAndRunOneJob(): Promise<boolean> {
     if (done.count !== 1) {
       const now = await db.job.findUnique({ where: { id: job.id }, select: { status: true } });
       console.warn(`[worker] job ${job.id} finished but was reclaimed (now ${now?.status}) — not re-running it`);
-      // Only force-complete the row WE were reclaimed on (same attempt), never
-      // one a newer run has already taken back to IN_PROGRESS.
-      await db.job.updateMany({ where: { id: job.id, status: "PENDING", attempts: myAttempt }, data: { status: "COMPLETED", processedAt: new Date() } });
+      // Force-complete the row if it is WAITING — never one a newer run has
+      // already taken back to IN_PROGRESS (the status says which).
+      //
+      // This was also pinned to `attempts: myAttempt`, and since 2026-11-03 it
+      // could not match: a reclaim hands the attempt BACK (attempts - 1), so the
+      // bounced row never carried this run's number. A live job the reaper
+      // bounced therefore finished, stayed PENDING, and was rendered again —
+      // a second piece and a second provider bill (found by reading, 11-23).
+      // A waiting row is being run by nobody, and this run has just delivered
+      // its piece: whatever its attempt count, it is done.
+      await db.job.updateMany({ where: { id: job.id, status: "PENDING" }, data: { status: "COMPLETED", processedAt: new Date() } });
     }
   } catch (e: unknown) {
     const lastError = e instanceof Error ? e.message : String(e);

@@ -48,8 +48,17 @@ export type KitTools = {
    *  side by side (a build's matting pass next to the render worker) is how the box ran out of memory.
    *  Absent (the stock build script), ffmpeg just runs. */
   lane?: <T>(job: () => Promise<T>) => Promise<T>;
+  /** Runs ONE ffmpeg process when no other encode is running anywhere in the server (ffmpeg-turn.ts).
+   *  The lane above keeps two kit runs apart; it does not know about the render worker, and a build's
+   *  matting pass (about 450 MB at full size) next to a film's encode is exactly the pair that ran the
+   *  box out of memory. Applied to the single process, never to a whole job: the lane is re-entrant and
+   *  wraps jobs made of many runs, and a turn taken around one of those would wait on itself. */
+  turn?: <T>(run: () => Promise<T>) => Promise<T>;
 };
-const inLane = <T>(t: KitTools, job: () => Promise<T>): Promise<T> => (t.lane ? t.lane(job) : job());
+const inLane = <T>(t: KitTools, job: () => Promise<T>): Promise<T> => {
+  const alone = t.turn ? () => t.turn!(job) : job;
+  return t.lane ? t.lane(alone) : alone();
+};
 
 export type KitSpin = {
   /** How many frames the rotation has. */
@@ -159,6 +168,11 @@ async function save(url: string, file: string): Promise<void> {
   throw last instanceof Error ? last : new Error("[kit] download failed");
 }
 
+/** No single run of a binary here is allowed past this. A wedged ffmpeg never ends by itself, and these
+ *  runs hold a place in line that every other encode on the server is waiting behind (KitTools.turn).
+ *  The heaviest real one — a full-size matting pass — takes a minute or two. */
+const RUN_CEILING_MS = 10 * 60_000;
+
 /** Run a binary without blocking the event loop (on the server this shares a process with every request). */
 function run(bin: string, args: string[]): Promise<{ code: number; out: string; err: string }> {
   return new Promise((resolve, reject) => {
@@ -166,10 +180,11 @@ function run(bin: string, args: string[]): Promise<{ code: number; out: string; 
     let out = "";
     let err = "";
     const keep = (s: string, add: string) => (s + add).slice(-2_000_000); // ffmpeg is chatty; the tail is what matters
+    const kill = setTimeout(() => { err = keep(err, `\n[kit] killed after ${RUN_CEILING_MS / 60_000} min (wedged)`); try { p.kill("SIGKILL"); } catch { /* already gone */ } }, RUN_CEILING_MS);
     p.stdout.on("data", (d) => { out = keep(out, String(d)); });
     p.stderr.on("data", (d) => { err = keep(err, String(d)); });
-    p.on("error", reject);
-    p.on("close", (code) => resolve({ code: code ?? 1, out, err }));
+    p.on("error", (e) => { clearTimeout(kill); reject(e); });
+    p.on("close", (code) => { clearTimeout(kill); resolve({ code: code ?? 1, out, err }); });
   });
 }
 
@@ -179,10 +194,11 @@ function runBytes(bin: string, args: string[]): Promise<{ code: number; out: Buf
     const p = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
     const chunks: Buffer[] = [];
     let err = "";
+    const kill = setTimeout(() => { err = (err + `\n[kit] killed after ${RUN_CEILING_MS / 60_000} min (wedged)`).slice(-20_000); try { p.kill("SIGKILL"); } catch { /* already gone */ } }, RUN_CEILING_MS);
     p.stdout.on("data", (d: Buffer) => { chunks.push(d); });
     p.stderr.on("data", (d) => { err = (err + String(d)).slice(-20_000); });
-    p.on("error", reject);
-    p.on("close", (code) => resolve({ code: code ?? 1, out: Buffer.concat(chunks), err }));
+    p.on("error", (e) => { clearTimeout(kill); reject(e); });
+    p.on("close", (code) => { clearTimeout(kill); resolve({ code: code ?? 1, out: Buffer.concat(chunks), err }); });
   });
 }
 

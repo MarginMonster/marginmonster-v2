@@ -8,6 +8,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { artLogEntries } from "../lib/art-log.server";
 import { emailEnabled } from "../lib/email-provider.server";
+import { ffmpegTurns } from "../lib/ffmpeg-turn";
+import { memoryReport } from "../lib/memwatch.server";
 import { stripeWebhookReady } from "../lib/stripe.server";
 
 /** Upload-directory health WITHOUT naming the files. See the call site. */
@@ -93,7 +95,17 @@ async function generationHealth(includeFailureText = false) {
         minsAgo: Math.round((Date.now() - j.updatedAt.getTime()) / 60000),
         error: scrub(j.lastError || ""),
       }));
-    return { last24h: counts, failures: includeFailureText ? failures : [] };
+    // IS ANYTHING BEING MADE RIGHT NOW — of ANY kind. `last24h` counts three kinds of job; a song, a video
+    // edit, a re-rolled shot, a presenter forge and a catalogue import are not among them, so "nothing in
+    // progress" there did not mean the site was idle (and a deploy restarts the server under whatever is
+    // running). `running` is every job in hand; `waiting` is every job that could start this minute — a
+    // drop scheduled for next week is not waiting. `lanes` says which lanes have a job in hand in THIS
+    // process (lib/job-lanes.ts).
+    const due = { status: "PENDING" as const, attempts: { lt: 3 }, OR: [{ runAt: null }, { runAt: { lte: new Date() } }] };
+    const [running, waiting] = await Promise.all([db.job.count({ where: { status: "IN_PROGRESS" } }), db.job.count({ where: due })]);
+    let lanes: Record<string, boolean> | null = null;
+    try { lanes = (await import("../lib/job-queue.server")).lanesHeld(); } catch { /* the counts above still answer the question */ }
+    return { last24h: counts, busy: { running, waiting }, lanes, failures: includeFailureText ? failures : [] };
   } catch (e) {
     return { error: e instanceof Error ? e.message.slice(0, 160) : "unavailable" };
   }
@@ -170,6 +182,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // counts are safe and stay public; the messages need the same diagnostics
     // key the activity log already requires.
     generation: await generationHealth(keyed),
+    // What the server is really using, sampled (lib/memwatch.server.ts): the container's memory — this
+    // process and its ffmpeg children — against the platform's limit, the highest of each of the last 30
+    // minutes, and how many encodes are running / waiting their turn (lib/ffmpeg-turn.ts). Numbers only.
+    memory: memoryReport(),
+    encodes: ffmpegTurns(),
     // Merchant-specific render activity only with the diagnostics key — the
     // same PURGE_KEY gate api.diag.tsx uses. Without it this page still
     // answers the question it exists for ("did the app's own art build?")

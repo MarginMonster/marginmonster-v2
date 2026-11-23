@@ -133,9 +133,10 @@ test("2 — a Trim with no End is refused before a token moves, and a failed vid
   assert.ok(ui.includes("type: { in: [\"GENERATE_IMAGE_AD\", \"GENERATE_VIDEO_AD\", \"GENERATE_SONG\", \"EDIT_VIDEO\"] }, payload: { contains: '\"section\":\"creator\"' } },"));
   assert.ok(branch.includes("section: \"creator\", sourceVideoUrl, editOp, startSec, endSec, captionText, speed, title: editTitle,"), "a video edit is tagged the way the probe looks for");
   // a video edit carries an editOp too — without its own line it would have been read as a PHOTO edit
-  const kind = cut("const kind = lastGenRow.type === \"GENERATE_SONG\" ? \"song\"", "const source =");
-  assert.ok(kind.includes(": lastGenRow.type === \"EDIT_VIDEO\" ? \"video\""));
-  assert.ok(kind.indexOf("\"EDIT_VIDEO\" ? \"video\"") < kind.indexOf(": p.editOp ? \"photo\" : \"image\";"));
+  // (the kind is worked out for each of the newest few jobs now — tests/job-lanes.test.ts says why)
+  const kind = cut("return r.type === \"GENERATE_SONG\" ? \"song\"", "const recentGens =");
+  assert.ok(kind.includes(": r.type === \"EDIT_VIDEO\" ? \"video\""));
+  assert.ok(kind.indexOf("\"EDIT_VIDEO\" ? \"video\"") < kind.indexOf(": gp.editOp ? \"photo\" : \"image\";"));
 });
 
 test("3 — a long wait never offers the paid button again: the SAME job is followed until it answers", () => {
@@ -201,7 +202,7 @@ test("4 — looking at a past creation changes nothing else: the piece that is c
   assert.ok(order.every((n, i) => n >= 0 && (i === 0 || n > order[i - 1])), `the result branch comes first: ${order.join(", ")}`);
   // the poll it used to stop, and the landing it used to prevent
   assert.ok(ui.includes("if (stageRev.state === \"idle\") stageRev.revalidate();"));
-  assert.ok(ui.includes("const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id));"));
+  assert.ok(ui.includes("const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id) && ofKind(p));"));
 });
 
 test("5 — reusing a past shot keeps that shot, and never types over the product name", () => {

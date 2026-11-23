@@ -338,7 +338,7 @@ test("12 — the place is called “Archive”, and the Stage does not link to i
   assert.equal(count(verbs, "<Link"), 0, "the result's controls no longer repeat it");
   // (the shelf is there whenever a result is: a result comes from the same list the shelf draws)
   assert.ok(ui.includes("{casual && d.recent.length > 0 && (\n        <section className=\"ws-shelf\">"));
-  assert.ok(ui.includes("const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id));"));
+  assert.ok(ui.includes("const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id) && ofKind(p));"));
   // the header, and the "being made" card
   assert.ok(ui.includes("<Link to=\"/web/archive?section=creator\">{t(\"Archive\")}</Link>.</>"));
   assert.equal(count(ui, "<b>{t(\"Archive\")}</b>"), 2);

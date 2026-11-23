@@ -19,6 +19,7 @@ import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
 import { tidyAdCopy } from "./ad-copy-tidy";
 import { occupiedPlate } from "./plate-scene";
+import { ffmpegTurn } from "./ffmpeg-turn";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
 import { EDIT_RETRY_LEAD, canBeDeclined, editCheckPrompt, parseEditCheck, type EditCheck } from "./edit-check";
 import { presenterSprayEnabled } from "./feature-flags.server";
@@ -172,7 +173,10 @@ function runFfmpegStill(
   // the caller intends to surface the message.
   opts: { captureStdout?: boolean; captureStderr?: boolean; timeoutMs?: number } = {}
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
+  // A still takes its turn with every other encode (ffmpeg-turn.ts): pictures are made while a film
+  // renders now, and the one thing that must not double is what takes the memory. The kill timer
+  // below starts with the turn.
+  return ffmpegTurn(() => new Promise<{ ok: boolean; stdout: string; stderr: string }>((resolve) => {
     let settled = false;
     let timer: NodeJS.Timeout | undefined;
     let out = "";
@@ -203,7 +207,7 @@ function runFfmpegStill(
       p.on("error", (e) => { err = err || e.message; finish(false); });
       p.on("close", (code) => finish(code === 0));
     } catch (e) { err = err || (e as Error).message; finish(false); }
-  });
+  }));
 }
 
 /** Average luma (0-255) of a horizontal band of the image, so text color can
@@ -2378,6 +2382,8 @@ export type ShotPlan = { gripDetail?: string; sizeAnchor?: string; textElements?
 /** Keyed by product image URL: the plan describes the product, not the pair,
  *  so a merchant's catalogue plans once per product per process. */
 const shotPlans = new Map<string, ShotPlan | null>();
+const shotPlanFailed = new Map<string, number>();
+const PLAN_RETRY_AFTER_MS = 10 * 60_000;
 
 async function planShot(
   productImageUrl: string,
@@ -2394,6 +2400,11 @@ async function planShot(
   if (process.env.PRESENTER_PLANNER === "0") return null;
   const hit = shotPlans.get(productImageUrl);
   if (hit !== undefined) return hit;
+  // A plan that FAILED is not asked for again for ten minutes — and then it is. The failure used to be
+  // kept beside the successes, for good: one busy moment at the model ("too many requests") left that
+  // product on the generic prompt for every presenter shot until the next restart.
+  const failedAt = shotPlanFailed.get(productImageUrl);
+  if (failedAt && Date.now() - failedAt < PLAN_RETRY_AFTER_MS) return null;
   try {
     // Bytes, same as the gate — Shopify originals can be AVIF or >8000px.
     let ref = productImageUrl;
@@ -2438,7 +2449,7 @@ async function planShot(
     // A failed plan means the generic prompt — the path that exists today —
     // never a blocked render.
     console.warn(`[presenter:plan] failed, using generic prompt: ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`);
-    shotPlans.set(productImageUrl, null);
+    shotPlanFailed.set(productImageUrl, Date.now());
     return null;
   }
 }
@@ -2490,7 +2501,7 @@ export async function runPresenterHold(opts: {
   let preQa: { pass: boolean; reason: string; bad: string[] } | undefined;
   const showcase = presenterLayout(opts.sizeClass, opts.wear) === "showcase";
 
-  const { submitCompose, pollCompose } = await import("./fal-image.server");
+  const { submitCompose, awaitCompose } = await import("./fal-image.server");
 
   // ── NO-PRODUCT COMBINE ──────────────────────────────────────────────────
   // The merchant toggled "No product": compose the presenter ALONE in the
@@ -2506,12 +2517,8 @@ export async function runPresenterHold(opts: {
     const q = opts.bgImageUrl
       ? await submitCompose(opts.portraitUrl, opts.bgImageUrl, opts.productTitle || "", 1, "backdrop", opts.scene, undefined, undefined, undefined, opts.continuity)
       : await submitCompose(opts.portraitUrl, "", opts.productTitle || "", 1, "blank", opts.scene, undefined, undefined, undefined, opts.continuity);
-    let frame: string | undefined;
-    for (let i = 0; i < 90; i++) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const p = await pollCompose(q.statusUrl, q.responseUrl);
-      if (p.done) { frame = p.urls?.[0]; break; }
-    }
+    // three minutes of being MADE; time in the provider's own line does not count (fal-image → awaitCompose)
+    const frame: string | undefined = (await awaitCompose(q.statusUrl, q.responseUrl, 180_000))?.[0];
     return {
       url: frame || null,
       pass: !!frame,
@@ -2536,12 +2543,8 @@ export async function runPresenterHold(opts: {
     // 3 minutes, not 90 seconds: a 4K compose regularly outlives the old
     // window, and an expired poll reads as "compose returned nothing" — the
     // render finishes anyway, billed, and thrown away.
-    for (let i = 0; i < 90; i++) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const p = await pollCompose(q.statusUrl, q.responseUrl);
-      if (p.done) return p.urls?.[0];
-    }
-    return undefined;
+    // (and those 3 minutes are minutes of being MADE — fal-image → awaitCompose)
+    return (await awaitCompose(q.statusUrl, q.responseUrl, 180_000))?.[0];
   };
 
   // ── CANDIDATES, THEN PICK ───────────────────────────────────────────────

@@ -22,6 +22,7 @@ import { readUiLang, tr } from "../lib/ui-i18n";
 import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
+import { stageJobFits, stageKindFits } from "../lib/stage-kind";
 import { screenCreatePrompt } from "../lib/prompt-safety.server";
 import { TOKEN_COST, CREATOR_PRICE, CREATOR_SURCHARGE_MULT, CREATOR_VIDEO_SECONDS, creatorVideoSeconds, creatorVideoTokens, type CreatorVideoSeconds } from "../lib/plan-config";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
@@ -342,29 +343,43 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // spinning forever. Self-clearing: a later success is a newer row.
   // (EDIT_VIDEO is a Creator piece too — "upload a video, edit it". It was not on this list, so a video
   //  edit that failed was never reported and the Stage's "Making your video…" had nothing to stop it.)
-  const lastGenRow = await db.job.findFirst({
+  //
+  // THE NEWEST FEW, EACH WITH ITS KIND (2026-11-23). This read one row — the newest — because jobs
+  // finished in the order they were asked for. They no longer do (lib/job-lanes.ts): a picture asked
+  // for through Helpurr while a video cooks is the newer job AND the first to land. With only the
+  // newest row, that picture failing was reported as "your video failed, tokens refunded" while the
+  // video was still rendering, and a video that failed after it was never reported at all.
+  const genRows = await db.job.findMany({
     where: { shopId: shop.id, type: { in: ["GENERATE_IMAGE_AD", "GENERATE_VIDEO_AD", "GENERATE_SONG", "EDIT_VIDEO"] }, payload: { contains: '"section":"creator"' } },
     orderBy: { createdAt: "desc" },
+    take: 5,
     select: { id: true, type: true, status: true, createdAt: true, lastError: true, payload: true },
   });
-  const lastGen = lastGenRow ? { status: lastGenRow.status as string, at: lastGenRow.createdAt.toISOString(), error: lastGenRow.lastError || null } : null;
+  const genPayload = (r: { payload: string }): { editOp?: string; sourceImageUrl?: string; contentType?: string } => { try { return JSON.parse(r.payload || "{}"); } catch { return {}; } };
+  const genKind = (r: { type: string; payload: string }): "song" | "faceless" | "video" | "photo" | "image" => {
+    const gp = genPayload(r);
+    return r.type === "GENERATE_SONG" ? "song"
+      : r.type === "GENERATE_VIDEO_AD" ? (gp.contentType === "faceless" ? "faceless" : "video")
+      // a video edit carries an editOp as well (trim / caption / speed): it is a video, not a photo edit
+      : r.type === "EDIT_VIDEO" ? "video"
+      : gp.editOp ? "photo" : "image";
+  };
+  const recentGens = genRows.map((r) => ({ status: r.status as string, at: r.createdAt.toISOString(), error: r.lastError || null, kind: genKind(r) }));
+  const lastGen = recentGens[0] ?? null;
   // A Creator piece STILL COOKING — so the Stage can pick it back up after anything that rebuilt the page
   // (a reload, an app update landing mid-edit, leaving and coming back). Before this, the Stage only knew
   // about a job it had queued in this very page: after a reload the photo vanished and the edit landed
   // in the gallery while the Stage sat empty (owner report 2026-11-18). An edit carries the photo it is
   // editing, so the Stage can show that photo cooking.
   const inFlight = (() => {
-    if (!lastGenRow || (lastGenRow.status !== "PENDING" && lastGenRow.status !== "IN_PROGRESS")) return null;
-    if (Date.now() - lastGenRow.createdAt.getTime() > 20 * 60_000) return null; // a stuck job is not "cooking"
-    let p: { editOp?: string; sourceImageUrl?: string; contentType?: string } = {};
-    try { p = JSON.parse(lastGenRow.payload || "{}"); } catch { /* ignore */ }
-    const kind = lastGenRow.type === "GENERATE_SONG" ? "song"
-      : lastGenRow.type === "GENERATE_VIDEO_AD" ? (p.contentType === "faceless" ? "faceless" : "video")
-      // a video edit carries an editOp as well (trim / caption / speed): it is a video, not a photo edit
-      : lastGenRow.type === "EDIT_VIDEO" ? "video"
-      : p.editOp ? "photo" : "image";
+    // the newest one STILL COOKING — a picture that has already landed does not hide the video behind it
+    const cooking = genRows.find((r) => (r.status === "PENDING" || r.status === "IN_PROGRESS")
+      && Date.now() - r.createdAt.getTime() <= 20 * 60_000); // a stuck job is not "cooking"
+    if (!cooking) return null;
+    const p = genPayload(cooking);
+    const kind = genKind(cooking);
     const source = kind === "photo" && typeof p.sourceImageUrl === "string" && /^https?:\/\//.test(p.sourceImageUrl) ? p.sourceImageUrl : null;
-    return { id: lastGenRow.id, kind, source, at: lastGenRow.createdAt.toISOString() };
+    return { id: cooking.id, kind, source, at: cooking.createdAt.toISOString() };
   })();
   // ---- Combine-step status (polled by ?combineJob=<id>) ----
   // The Combine step runs in MARKETING mode, so its presenter image is tagged
@@ -424,6 +439,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({
     combineResult,
     lastGen,
+    recentGens,
     inFlight,
     recent,
     frameChoices,
@@ -2871,7 +2887,12 @@ export default function WebStudio() {
   // The new piece has landed → show it on the Stage.
   useEffect(() => {
     if (!making) return;
-    const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id));
+    // …OF THE KIND BEING MADE. A picture asked for elsewhere while a video cooks lands first now, and the
+    // first new piece of ANY kind used to be taken for the result: the picture shown as "your video",
+    // and the Stage gone idle while the video was still being made.
+    const want = makingNounRef.current;
+    const ofKind = (p: { isVideo?: boolean; isAudio?: boolean }) => stageKindFits(want, { video: !!p.isVideo, audio: !!p.isAudio });
+    const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id) && ofKind(p));
     if (fresh && fresh.media) {
       // An edit the model did not make is saved first and its tokens returned a moment later. Landing it
       // in between would say "not made" and nothing about the tokens — so it waits for the next look (the
@@ -2900,8 +2921,9 @@ export default function WebStudio() {
     }
     // No new piece yet — did THIS generation fail? The newest creator job is
     // FAILED and was created around when we started → stop spinning and say so.
-    const lg = d.lastGen;
-    if (lg && lg.status === "FAILED" && new Date(lg.at).getTime() >= makingStartedRef.current - 15000) {
+    // (of the kind being made — the newest job may be something else entirely, see the loader)
+    const lg = (d.recentGens || []).find((g) => g.status === "FAILED" && stageJobFits(want, g.kind) && new Date(g.at).getTime() >= makingStartedRef.current - 15000);
+    if (lg) {
       // Even a prompt that passed our pre-screen can be refused by the model's
       // own provider-side safety — read the failure reason and split the message.
       const errStr = (lg.error || "").toLowerCase();
@@ -2913,7 +2935,7 @@ export default function WebStudio() {
       setEditingSrc(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.recent, d.lastGen, making]);
+  }, [d.recent, d.recentGens, making]);
   // POST-GENERATION QUICK EDITS — turn a finished image into the next one
   // (Enhance / Zoom out / Zoom in / Remove bg). Reuses the edit pipeline on the
   // result's OWN url (a small "quickedit" charge). Submitted programmatically

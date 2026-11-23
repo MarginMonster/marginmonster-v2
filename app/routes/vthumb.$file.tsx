@@ -32,7 +32,16 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
       fs.mkdirSync(thumbsDir, { recursive: true });
       // Grab a frame ~0.6s in (0.1s can land on a black fade-in) and scale to a
       // card-sized poster. One cheap frame extract, cached forever after.
-      await runFfmpeg(["-y", "-ss", "0.6", "-i", video, "-frames:v", "1", "-vf", "scale=400:-2", "-q:v", "4", thumb]);
+      //
+      // WRITTEN BESIDE, THEN MOVED INTO PLACE. ffmpeg used to write straight onto the final name, so a
+      // second request arriving mid-write found the file "there", read half a picture, and served it
+      // with a one-year immutable cache — a broken thumbnail for good in that browser. A name of its
+      // own per request (two can be drawing the same one), an explicit format (the name no longer ends
+      // in .jpg), and a rename, which is all-or-nothing.
+      const part = `${thumb}.${process.pid}-${Date.now()}-${Math.round(Math.random() * 1e6)}.part`;
+      const made = await runFfmpeg(["-y", "-ss", "0.6", "-i", video, "-frames:v", "1", "-vf", "scale=400:-2", "-q:v", "4", "-f", "mjpeg", part]);
+      if (made.status === 0 && fs.existsSync(part) && fs.statSync(part).size > 0) fs.renameSync(part, thumb);
+      else { try { fs.unlinkSync(part); } catch { /* never written */ } }
     } catch { /* fall through to the 404 below */ }
   }
   if (!fs.existsSync(thumb)) return new Response("Not found", { status: 404 });

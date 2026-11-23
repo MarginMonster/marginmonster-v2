@@ -19,10 +19,14 @@ import { db } from "../db.server";
  *  forging should skip this round and retry on the next self-heal tick. */
 export async function merchantBusy(): Promise<boolean> {
   try {
+    // EVERY kind of piece a member can be waiting on. The list was three kinds long, so the app's own
+    // art was drawn beside a member's song, a presenter being forged, a video edit and a re-rolled
+    // shot — the same competition for the same provider this exists to prevent. A job scheduled for
+    // later (a campaign's drop next week, a win-back email in 45 days) is not somebody waiting.
     const n = await db.job.count({
       where: {
-        type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST"] },
-        status: { in: ["PENDING", "IN_PROGRESS"] },
+        type: { in: ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_BLOG_POST", "GENERATE_SONG", "EDIT_VIDEO", "REGEN_SHOT", "FORGE_CUSTOM_AVATAR", "FORGE_COMPANION"] },
+        OR: [{ status: "IN_PROGRESS" }, { status: "PENDING", OR: [{ runAt: null }, { runAt: { lte: new Date() } }] }],
       },
     });
     return n > 0;

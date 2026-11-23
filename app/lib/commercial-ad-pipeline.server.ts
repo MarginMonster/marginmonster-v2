@@ -60,6 +60,7 @@ import { COMMERCIAL_LUFS, commercialBedFilter, commercialMusicPrompt } from "./c
 import { captionFilm } from "./film-captions.server";
 import { COMMERCIAL_BEAT_SEC, COMMERCIAL_PACK_SEC, commercialCaptionPlan } from "./commercial-captions";
 import { normalizeContentLang } from "./content-lang";
+import { ffmpegTurn } from "./ffmpeg-turn";
 
 function ffmpegBin(): string | null {
   for (const p of ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]) if (fs.existsSync(p)) return p;
@@ -78,7 +79,8 @@ function ffmpegBin(): string | null {
 const FFMPEG_TIMEOUT_MS = 10 * 60_000;
 
 function runFfmpeg(bin: string, args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
+  // one encode at a time, across every job (ffmpeg-turn.ts); the kill timer starts with the turn
+  return ffmpegTurn(() => new Promise<void>((resolve, reject) => {
     const p = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
     let timedOut = false;
@@ -98,7 +100,7 @@ function runFfmpeg(bin: string, args: string[]): Promise<void> {
       code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}: ${err.slice(-400)}`));
     });
     p.on("error", (e) => { clearTimeout(timer); reject(e); });
-  });
+  }));
 }
 
 export interface CommercialBeat {

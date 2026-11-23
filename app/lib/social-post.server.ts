@@ -220,7 +220,12 @@ export async function postDueSlots(): Promise<void> {
       // and nothing else, then commit with a compare-and-swap on the exact JSON
       // just read, so a write landing in between is detected instead of lost.
       const record = async (slot: QuestSlot): Promise<boolean> => {
-        for (let attempt = 0; attempt < 3; attempt++) {
+        // EIGHT tries, each a little later than the last. Three was enough while posts only went out
+        // BETWEEN jobs; they now go out while jobs run (worker.server.ts), and up to three of a
+        // campaign's pieces can finish at the same moment, each writing this same schedule. Giving up
+        // here leaves a post that is LIVE recorded nowhere — and the next scan would post it again.
+        for (let attempt = 0; attempt < 8; attempt++) {
+          if (attempt) await new Promise((r) => setTimeout(r, 150 * attempt));
           try {
             const fresh = await db.questline.findUnique({ where: { id: q.id }, select: { scheduleJson: true } });
             if (!fresh) return false; // abandoned mid-scan — stop touching it

@@ -35,6 +35,7 @@ import { catalogPriceFor } from "./catalog-import.server";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 import { captionChunks, CJK_OPTS, LATIN_OPTS } from "./caption-chunks";
+import { ffmpegTurn } from "./ffmpeg-turn";
 import { CJK_FONT_FILE, CJK_FONT_MIN_BYTES, CJK_FONT_SOURCES, fontMagic, looksLikeCjkFont } from "./caption-font";
 
 /** Merge stage checkpoints into the job payload (kept local to avoid a
@@ -754,7 +755,9 @@ const FFMPEG_TIMEOUT_MS = 10 * 60_000;
  *  mid-render and the platform killed the instance ("app crashed" with no
  *  deploy). 1080p encodes are long enough to guarantee it. */
 export function runFfmpeg(args: string[]): Promise<{ status: number; stderr: string }> {
-  return new Promise((resolve, reject) => {
+  // ONE ENCODE AT A TIME, across every job (ffmpeg-turn.ts): a picture can be made while a film is, but
+  // two encodes never run together. The kill timer below starts when the turn does, not when it is asked for.
+  return ffmpegTurn(() => new Promise<{ status: number; stderr: string }>((resolve, reject) => {
     const p = spawn(ffmpegBin(), args, { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
     let timedOut = false;
@@ -775,7 +778,7 @@ export function runFfmpeg(args: string[]): Promise<{ status: number; stderr: str
       }
       resolve({ status: code ?? -1, stderr: err });
     });
-  });
+  }));
 }
 
 export async function assemble(opts: {

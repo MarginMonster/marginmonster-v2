@@ -3,6 +3,7 @@
 // or use a cron job to call /api/worker/tick.
 
 import { processNextJob } from "./app/lib/job-queue.server";
+import { LANES } from "./app/lib/job-lanes";
 
 const POLL_MS = 5000;
 const DECISIONING_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -15,9 +16,11 @@ async function runWorker() {
   while (true) {
     try {
       // Drain pending content generation jobs
+      // one lane after another: this process is its own worker and does one thing at a time
       let processed = true;
       while (processed) {
-        processed = await processNextJob();
+        processed = false;
+        for (const lane of LANES) processed = (await processNextJob(lane)) || processed;
       }
 
       // Hourly decisioning pass
@@ -32,7 +35,7 @@ async function runWorker() {
             payload: "{}",
           },
         });
-        await processNextJob();
+        await processNextJob("desk");
       }
     } catch (e) {
       console.error("Worker error:", e);

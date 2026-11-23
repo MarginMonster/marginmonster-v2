@@ -119,7 +119,7 @@ test("the Stage says an edit was not made, and that the tokens came back", () =>
   assert.ok(ui.includes("t(\"The model didn’t make that change, so this one is on us — your {n} tokens are back. Try saying it another way.\", { n: stageResult.returned })"));
   assert.ok(ui.includes(".ws-notmade{"));
   // the tokens go back a beat AFTER the piece is saved: the note waits for them (six seconds at most)
-  const land = ui.slice(ui.indexOf("const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id));"), ui.indexOf("setStageResult({ id: fresh.id"));
+  const land = ui.slice(ui.indexOf("const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id) && ofKind(p));"), ui.indexOf("setStageResult({ id: fresh.id"));
   assert.ok(land.includes("if (fresh.notMade && !fresh.returned) {") && land.includes("if (!notMadeSeenRef.current) { notMadeSeenRef.current = Date.now(); return; }") && land.includes("if (Date.now() - notMadeSeenRef.current < 6000) return;"));
   // both sentences in all five languages
   const dict = read("app", "lib", "ui-i18n-dict.ts");

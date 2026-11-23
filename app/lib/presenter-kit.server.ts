@@ -28,6 +28,7 @@ import { db } from "../db.server";
 import { mirrorRender } from "./object-storage.server";
 import { isAdminEmail } from "./admin.server";
 import { ffmpegBin, ffprobeBin } from "./ugc-ad-pipeline.server";
+import { ffmpegTurnAlways } from "./ffmpeg-turn";
 import { refundTokens, spendTokens } from "./tokens.server";
 import { TOKEN_COST } from "./plan-config";
 import { portraitFilesOf } from "./custom-avatars.server";
@@ -59,7 +60,7 @@ export function spinIsStale(r: { avatarId: string; look: number; state: string; 
 function tools(tag: string): KitTools {
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) throw new Error("[kit] REPLICATE_API_TOKEN not set");
-  return { token, ffmpeg: ffmpegBin(), ffprobe: ffprobeBin(), log: (m) => console.log(`[kit] ${tag}: ${m}`), lane: oneAtATime };
+  return { token, ffmpeg: ffmpegBin(), ffprobe: ffprobeBin(), log: (m) => console.log(`[kit] ${tag}: ${m}`), lane: oneAtATime, turn: (run) => ffmpegTurnAlways(run) };
 }
 
 /** Anything that runs ffmpeg goes through here, one at a time: this process shares the box with the

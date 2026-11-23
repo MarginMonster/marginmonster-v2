@@ -52,12 +52,33 @@ export async function composeHoldingFrames(
 
   // Worker-context path (campaign drips): no request deadline, poll up to 2 min.
   const q = await submitCompose(portraitUrl, productImageUrl, productTitle, numImages, mode, scene, scaleHint, undefined, undefined, continuity, bgImageUrl);
-  for (let i = 0; i < 48; i++) {
-    await new Promise((r) => setTimeout(r, 2500));
-    const p = await pollCompose(q.statusUrl, q.responseUrl);
-    if (p.done) return p.urls;
-  }
+  const urls = await awaitCompose(q.statusUrl, q.responseUrl, 2 * 60_000, 2500);
+  if (urls) return urls;
   throw new Error("compose: timed out after 2 min");
+}
+
+/** How long a picture may stand in the provider's own line before we stop waiting for it. A film asks
+ *  for four clips at once from the same account, each several minutes long. */
+export const COMPOSE_QUEUE_GRACE_MS = 8 * 60_000;
+
+/** WAIT FOR A COMPOSE — and count only the time it is BEING MADE against its limit.
+ *
+ *  The limit (2 or 3 minutes) was sized for a picture asked for alone. Pictures are now made while a
+ *  film is (lib/job-lanes.ts), and a film has several long requests open with the same provider: a
+ *  picture that the provider has not even started would time out, and for the Combine step that is a
+ *  failed frame the member has to ask for again. Time spent in the provider's line does not use up
+ *  the limit, up to COMPOSE_QUEUE_GRACE_MS. Returns the picture addresses, or null when time ran out
+ *  (a failed compose throws, as before). */
+export async function awaitCompose(statusUrl: string, responseUrl: string, makeMs: number, everyMs = 2000): Promise<string[] | null> {
+  let made = 0;
+  let queued = 0;
+  while (made < makeMs && queued < COMPOSE_QUEUE_GRACE_MS) {
+    await new Promise((r) => setTimeout(r, everyMs));
+    const p = await pollCompose(statusUrl, responseUrl);
+    if (p.done) return p.urls;
+    if (p.queued) queued += everyMs; else made += everyMs;
+  }
+  return null;
 }
 
 function auth(): Record<string, string> {
@@ -446,13 +467,14 @@ export async function inpaintFill(
 export async function pollCompose(
   statusUrl: string,
   responseUrl: string
-): Promise<{ done: false } | { done: true; urls: string[] }> {
+): Promise<{ done: false; queued?: boolean } | { done: true; urls: string[] }> {
   if (!isFalQueueUrl(statusUrl) || !isFalQueueUrl(responseUrl)) throw new Error("compose: bad queue url");
   const s = await fetch(statusUrl, { headers: auth() });
   if (!s.ok) return { done: false };
   const sj = (await s.json()) as { status?: string };
   if (sj.status === "FAILED" || sj.status === "ERROR") throw new Error(`compose ${sj.status}`);
-  if (sj.status !== "COMPLETED") return { done: false };
+  // `queued`: the provider has not STARTED it — it is standing in their line (see awaitCompose)
+  if (sj.status !== "COMPLETED") return { done: false, queued: sj.status === "IN_QUEUE" };
   const res = await fetch(responseUrl, { headers: auth() });
   if (!res.ok) throw new Error(`compose result ${res.status}`);
   const j = (await res.json()) as { images?: { url?: string }[] };
