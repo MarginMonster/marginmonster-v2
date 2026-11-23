@@ -20,6 +20,8 @@ import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
 // (2026-11-22) a photo edit the model did not make: said in the viewer, as on the Studio's Stage
 import { editNote } from "../lib/edit-check";
+// (2026-11-23) what a narrated piece's timing was made from — shown to the operator alone
+import { timingLine } from "../lib/narrated-core";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -230,6 +232,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop, account } = await requireWebIdentity(request);
   const operator = isAdminEmail(account.email);
   const lang = readUiLang(request);
+
+  // FOR THE OPERATOR ONLY: ?timing=<a piece> answers with what that piece's narration timing was made
+  // from (narrated-core → timingRecord) and nothing else — so a caption that came up wrong on the server
+  // can be worked out again on a desk, word for word. Anyone else asking gets the Archive as ever.
+  const timingOf = new URL(request.url).searchParams.get("timing");
+  if (timingOf && operator) {
+    const piece = await db.asset.findFirst({ where: { id: timingOf.slice(0, 64), shopId: shop.id }, select: { id: true, title: true, metaJson: true } });
+    let timing: unknown = null;
+    try { timing = JSON.parse(piece?.metaJson || "{}").timing ?? null; } catch { timing = null; }
+    // (typed as nothing, so the page's own data keeps its one shape)
+    return json({ timingOf: piece?.id || null, title: piece?.title || null, timing }) as never;
+  }
 
   // ONE unified archive (owner 11-01): the Creator/Marketing toggle was far too
   // confusing — it hid a still-rendering film in the "other" section. Everything
@@ -470,6 +484,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // FOR THE OPERATOR ONLY (never drawn, never sent to a member): what went wrong while a piece was
         // made and was worked around — a faceless video's picture that failed, and why.
         opsNote: operator ? (() => { try { const m = JSON.parse(a.metaJson || "{}"); return Array.isArray(m.stillFaults) && m.stillFaults.length ? m.stillFaults.slice(0, 8) : undefined; } catch { return undefined; } })() : undefined,
+        // …and, in one line, what a narrated piece's timing was made from (narrated-core → timingLine; the
+        // whole record is ?timing=<its id>, above)
+        opsTiming: operator ? (() => { try { return timingLine(JSON.parse(a.metaJson || "{}").timing) || undefined; } catch { return undefined; } })() : undefined,
         // Is it a STORY film (acted or narrated)? Those can be continued: the viewer's "Next episode" opens
         // the Movie Maker on the next episode of its series (film-series.ts → storyHeroOf / episodeCardFor).
         canContinue: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson),

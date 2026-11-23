@@ -23,9 +23,9 @@ import crypto from "node:crypto";
 import { db } from "../db.server";
 import { checkpointJob, downloadBuffer, ffprobeDuration, repCreate, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { captionGraph } from "./caption-burn.server";
-import { LISTEN_AGAIN_UNDER, heardShare } from "./narrated-core";
+import { listenAgain, listenQuality, listenedWords, sureWords, timingRecord, type Span } from "./narrated-core";
 import { persistRemote, renderCreativeSeed, repRun } from "./image-generation.server";
-import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
+import { createWhisperx } from "./faceless-video.server";
 import { musicBedToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { voiceLangOpts, normalizeContentLang } from "./content-lang";
@@ -33,7 +33,7 @@ import { AVATAR_VOICE_IDS } from "./avatar-voice-catalog";
 import { characterVoice, isCharacterVoice } from "./character-voices";
 import { heroName } from "./film-heroes";
 import { trimTitle } from "./text-trim";
-import { voiceSound } from "./voice-sound.server";
+import { readVoiceSound } from "./voice-sound.server";
 import { NOTHING_WRITTEN, ONE_PICTURE, noLettering, oneMoment, parseStoryCast, parseStoryPanels, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCheck } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
@@ -370,21 +370,27 @@ export async function generateNarratedStory(opts: {
   //    real stories: Spanish 174 of 174 words timed, Chinese 278 glyphs, about 13 seconds each. The
   //    language is always named — told a Spanish voice is English, the listener TRANSLATES it.)
   let words: WordT[] = [];
+  // (for the piece's timing record: what the first listen had heard when a second was made, and which was kept)
+  let firstShare: number | undefined;
+  let keptSoft = false;
   if (resume.ckWords) { try { words = JSON.parse(resume.ckWords) as WordT[]; } catch { words = []; } }
   else {
     if (voUrl) {
-      try { words = wordsFromWhisperx(await repPoll(await createWhisperx(voUrl, normalizeContentLang(lang)), 5 * 60_000, "narration-align")); }
+      try { words = listenedWords(await repPoll(await createWhisperx(voUrl, normalizeContentLang(lang)), 5 * 60_000, "narration-align")); }
       catch (e) { console.error(`[narrated] alignment failed — pictures and captions are timed by length instead: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
       // A LISTEN THAT MISSED PART OF THE STORY IS DONE AGAIN, SOFTER (narrated-core → LISTEN_AGAIN_UNDER): a
       // performed voice's quiet opening is not taken for speech by the stock voice detector. The better
       // of the two listens is kept; a second one that fails leaves the first as it was.
-      const share = heardShare(lines, words);
-      if (share < LISTEN_AGAIN_UNDER) {
+      // …AND SO IS ONE THAT FITTED WORDS WHERE IT WAS NOT SURE OF THEM (narrated-core → sureWords): such
+      // words do not count as heard, so the listen that is sure of more of the story is the one kept.
+      const first = listenQuality(lines, words);
+      if (listenAgain(first)) {
+        firstShare = first.share;
         try {
-          const again = wordsFromWhisperx(await repPoll(await createWhisperx(voUrl, normalizeContentLang(lang), { sung: true }), 5 * 60_000, "narration-align-soft"));
-          const better = heardShare(lines, again);
-          console.log(`[narrated] the first listen heard ${Math.round(share * 100)}% of the story — a softer one heard ${Math.round(better * 100)}%`);
-          if (better > share) words = again;
+          const again = listenedWords(await repPoll(await createWhisperx(voUrl, normalizeContentLang(lang), { sung: true }), 5 * 60_000, "narration-align-soft"));
+          const second = listenQuality(lines, again);
+          console.log(`[narrated] the first listen heard ${Math.round(first.share * 100)}% of the story${first.doubted ? ` (and was not sure of ${first.doubted} words)` : ""} — a softer one heard ${Math.round(second.share * 100)}%`);
+          if (second.share > first.share) { words = again; keptSoft = true; }
         } catch (e) { console.error(`[narrated] the softer listen failed — keeping the first: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
       }
     }
@@ -392,6 +398,12 @@ export async function generateNarratedStory(opts: {
   }
   // a creature chain can lead the voice in by a second: every heard word is where it is IN THE FILE,
   // so nothing needs shifting — the windows are simply read off what was heard
+  // WORDS THE LISTENER WAS NOT SURE OF ARE NOT BELIEVED (narrated-core → sureWords: a line of this very
+  // story was once drawn in the pause before it was spoken, and gone while it was said). Everything
+  // below is timed by the words it WAS sure of; `listened` is all of them, kept for the record.
+  const listened = words;
+  const doubt = sureWords(listened);
+  words = doubt.sure;
   const windows = sceneWindows(lines, words, voDur);
   // the captions say what was WRITTEN, timed by what was heard (a transcriber's spelling never reaches
   // the screen) — and, when nothing was heard, each scene's words spread across its window: the same
@@ -399,8 +411,12 @@ export async function generateNarratedStory(opts: {
   // …and a word nobody heard goes where the voice track is SOUNDING (voice-sound.server.ts): a whispered
   // last line came up in the pause before it — 1.7 seconds early, the ending given away — when unheard
   // words were laid straight on from the last heard one.
-  const speech = words.length ? await voiceSound(voPath, voDur) : [];
-  const timed = scriptWordTimes(lines, words, windows, undefined, speech);
+  const sound: { speech: Span[][]; unread?: string } = words.length ? await readVoiceSound(voPath, voDur) : { speech: [] };
+  const speech = sound.speech;
+  const timed = scriptWordTimes(lines, words, windows, undefined, speech, doubt.squeezed);
+  // WHAT THE TIMING WAS MADE FROM stays with the piece (narrated-core → timingRecord): nobody can read
+  // this server's log, and a film listened to again afterwards does not hear what was heard here.
+  const timing = timingRecord({ lines, listened, speech, seconds: voDur, timed, plain: scriptWordTimes(lines, words, windows), first: firstShare, soft: keptSoft, unread: sound.unread });
   const cards: Card[] = style === "bold" || style === "highlight"
     ? boldCards(timed, normalizeContentLang(lang))
     : style === "subtitles" ? subtitleCards(lines, windows, subtitleChars(W, H), words.length ? timed : undefined) : [];
@@ -483,6 +499,8 @@ export async function generateNarratedStory(opts: {
         pictures: stills.map((f) => `/renders/${path.basename(f)}`),
         ...(musicPath ? { music: path.basename(musicPath) } : {}),
         ...(opts.translatedFrom ? { translatedFrom: String(opts.translatedFrom).slice(0, 64) } : {}),
+        // what its timing was made from — for the operator alone (web.archive's loader)
+        timing,
       }),
     },
   });

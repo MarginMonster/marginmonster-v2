@@ -15,7 +15,8 @@
  * Captions are also used by the acted films (film-dialogue), which is why the styles live here. */
 
 /** `last` marks the final word of a scene (set by scriptWordTimes): a caption card never runs past it. */
-export type WordT = { word: string; start: number; end: number; last?: boolean };
+/** (`score` is the listener's own word for how sure it is of a HEARD word, 0 to 1 — see sureWords.) */
+export type WordT = { word: string; start: number; end: number; last?: boolean; score?: number };
 export type Window = { t0: number; t1: number };
 /** `words` = the card's own words, each with the time it is said and its piece of the card's text (the
  *  pieces join back into `text`). boldCards() sets them; the highlight style lights each one in turn. */
@@ -264,6 +265,21 @@ function voicedIn(speech: Span[], g0: number, g1: number, run: number, leftHeard
   return ps.length && holds(ps) ? ps : null;
 }
 
+/** `pieces` with every stretch of `cut` taken out of them (a sliver under 0.05 s that is left is dropped). */
+function without(pieces: Span[], cut: Span[]): Span[] {
+  let out = pieces;
+  for (const [c0, c1] of cut) {
+    const next: Span[] = [];
+    for (const [s, e] of out) {
+      if (c1 <= s || c0 >= e) { next.push([s, e]); continue; }
+      if (c0 - s >= 0.05) next.push([s, c0]);
+      if (e - c1 >= 0.05) next.push([c1, e]);
+    }
+    out = next;
+  }
+  return out;
+}
+
 /** `run` words shared out over the stretches by how long each is, in WHOLE words — so no word is drawn
  *  across a silence — and spread evenly inside each. Returns each word's start and end, in order. */
 export function layOver(pieces: Span[], run: number): Array<{ s: number; e: number }> {
@@ -295,6 +311,71 @@ export function heardShare(lines: string[], words: WordT[]): number {
  *  character voice's quiet opening sentence was not taken for speech at all on 2026-11-23 — 137 words of
  *  147; the same recording heard with the voice detector set softer gave all 147.) */
 export const LISTEN_AGAIN_UNDER = 0.97;
+
+/* ---- words the listener was not sure of ----
+ * The listener gives every word a time AND says how sure it is of it. On 2026-11-23 a story told in the
+ * Ghost voice had one line — "yet still they came" — drawn in the pause BEFORE it was spoken (four words
+ * in 0.7 s, straight after "door,") and nothing on screen while it was said: the listener had fitted the
+ * words into the swell that leads that voice in, and left the line itself without a word. The same film
+ * listened to again came out right every time — nothing could be seen of it afterwards.
+ *
+ * What a listener does with words it has fitted where they are not: it scores them near nothing. Measured
+ * that day over 2,041 words of 19 real listens (six voices; clean tracks and finished films): 44 words
+ * scored under 0.2 — "a", "the", "and", a name spelt another way — and EVERY one of them stood alone
+ * between two words the listener was sure of; not once were two such words side by side. So one unsure
+ * word is where it says it is (its neighbours hold it there), and two or more in a row are not believed:
+ * they are taken out of what was heard, and the script's words for them are placed like any others nobody
+ * heard — where the voice is sounding, and first of all anywhere but where the listener squeezed them. */
+/** A heard word the listener itself scored under this… */
+export const DOUBT_SCORE = 0.2;
+/** …with this many of them in a row, is not believed. */
+export const DOUBT_RUN = 2;
+
+/** The listener's answer as words: each with its time and — when the listener said — how sure it was. */
+export function listenedWords(raw: unknown): WordT[] {
+  const r = raw as { segments?: Array<{ words?: Array<{ word?: unknown; start?: unknown; end?: unknown; score?: unknown }> }> } | null;
+  const out: WordT[] = [];
+  for (const seg of r?.segments || []) {
+    for (const w of seg?.words || []) {
+      if (typeof w.word === "string" && typeof w.start === "number" && typeof w.end === "number" && w.end > w.start) {
+        out.push({ word: w.word, start: w.start, end: w.end, ...(typeof w.score === "number" && Number.isFinite(w.score) ? { score: w.score } : {}) });
+      }
+    }
+  }
+  return out;
+}
+
+/** What was heard, without the words the listener was not sure of (DOUBT_RUN or more in a row, each
+ *  under DOUBT_SCORE): `sure` is what is left, `squeezed` is where each such run had been put, `doubted`
+ *  how many words that was. A word with no score is taken at its word. */
+export function sureWords(words: WordT[]): { sure: WordT[]; squeezed: Span[]; doubted: number } {
+  const sure: WordT[] = [], squeezed: Span[] = [];
+  let doubted = 0;
+  const unsure = (w: WordT) => typeof w.score === "number" && w.score < DOUBT_SCORE;
+  for (let i = 0; i < words.length; ) {
+    let j = i;
+    while (j < words.length && unsure(words[j])) j++;
+    if (j - i >= DOUBT_RUN) {
+      squeezed.push([words[i].start, Math.max(words[j - 1].end, words[i].start)]);
+      doubted += j - i;
+      i = j;
+    } else {
+      // a sure word — or one unsure word alone, which stays where its neighbours hold it
+      sure.push(words[i]);
+      i++;
+    }
+  }
+  return { sure, squeezed, doubted };
+}
+
+/** How good a listen is: how much of the script it heard AND was sure of, and how many words it was not. */
+export function listenQuality(lines: string[], words: WordT[]): { share: number; doubted: number } {
+  const { sure, doubted } = sureWords(words);
+  return { share: heardShare(lines, sure), doubted };
+}
+/** A listen that missed part of the script — or fitted words where it was not sure of them — is worth
+ *  another, softer one. */
+export const listenAgain = (q: { share: number; doubted: number }): boolean => q.share < LISTEN_AGAIN_UNDER || q.doubted > 0;
 
 /** When each scene's first word is said, where the scenes' own words say so — null for a scene whose
  *  opening (and the close of the scene before it) the listener did not hear; null altogether when the
@@ -390,8 +471,12 @@ export const drawable = (s: string): string => s.replace(/[']/g, "’").replace(
  *  them: its words run from the first heard word (or `lead` after the window opens) to `tail` before
  *  it closes.
  *  With `speech` (where the voice track has sound, the clear voice first — soundLevels), words nobody
- *  heard are laid over the sound in their gap, never across a silence ("where the voice is sounding"). */
-export function scriptWordTimes(lines: string[], words: WordT[], windows: Window[], sparse?: { minHeard: number; lead: number; tail: number }, speech?: Span[][]): WordT[] {
+ *  heard are laid over the sound in their gap, never across a silence ("where the voice is sounding").
+ *  With `squeezed` (where the listener had put words it was not sure of — sureWords, which also takes
+ *  them out of `words`), the words nobody is sure of go anywhere in their gap but there, when the rest of
+ *  it can hold them. */
+export function scriptWordTimes(lines: string[], words: WordT[], windows: Window[], sparse?: { minHeard: number; lead: number; tail: number }, speech?: Span[][], squeezed?: Span[]): WordT[] {
+  const room = (list: Span[]) => list.reduce((sum, [s, e]) => sum + (e - s), 0);
   const out: WordT[] = [];
   lines.forEach((line, k) => {
     const win = windows[k];
@@ -444,20 +529,42 @@ export function scriptWordTimes(lines: string[], words: WordT[], windows: Window
         for (const level of speech || []) {
           const g0 = left !== null ? left : win.t0;
           const pieces = voicedIn(level, g0, right !== null ? Math.max(right, g0) : win.t1, run, left !== null, right !== null);
-          if (pieces) { const over = layOver(pieces, run); if (over.length === run) { laid = over; break; } }
+          if (!pieces) continue;
+          // …and first of all anywhere but where the listener squeezed words it was not sure of
+          const elsewhere = squeezed && squeezed.length ? without(pieces, squeezed) : pieces;
+          const over = layOver(room(elsewhere) >= run * MIN_SAY ? elsewhere : pieces, run);
+          if (over.length === run) { laid = over; break; }
         }
         if (laid) {
           for (let q = i; q < j; q++) when[q] = laid[q - i];
           i = j;
           continue;
         }
+        // (the track was not read, or has no sound here that could be these words — the older rule.)
+        // Not where the listener squeezed them: a squeeze that opens the stretch is stepped past, when
+        // what is left of the stretch can still hold the words.
+        const past = (from: number, to: number): number => {
+          for (const [q0, q1] of squeezed || []) if (q0 < from + 0.3 && q1 > from && to - q1 >= run * MIN_SAY) return q1;
+          return from;
+        };
         let a: number, b: number;
-        if (left !== null && right !== null) { a = left; b = Math.max(left, right); }
-        // before the first anchor: from where the listener started hearing something else — or, when it
-        // heard nothing before, at an ordinary pace up to the anchor (not before the scene opens)
-        else if (right !== null) { b = right; a = Math.max(win.t0, firstHeard > 0 ? Math.min(heard[0].start, b) : b - run * SAY_PACE); }
-        // after the last anchor: as far as the listener went on hearing — or at an ordinary pace
-        else { a = left!; b = Math.max(a, lastHeard < Hn - 1 ? heard[Hn - 1].end : Math.min(win.t1, a + run * SAY_PACE)); }
+        if (left !== null && right !== null) { a = past(left, right); b = Math.max(a, right); }
+        // before the first anchor: from where the listener started hearing something else — when that
+        // leaves time for these words to be said in — or at an ordinary pace up to the anchor (not before
+        // the scene opens)
+        else if (right !== null) {
+          b = right;
+          const from = firstHeard > 0 ? Math.min(heard[0].start, b) : NaN;
+          a = Math.max(win.t0, b - from >= run * MIN_SAY ? from : b - run * SAY_PACE);
+        }
+        // after the last anchor: as far as the listener went on hearing — when that is long enough for
+        // these words to have been said in (a stray sound heard just after the anchor must not have a
+        // whole line squeezed into it) — or at an ordinary pace
+        else {
+          a = past(left!, win.t1);
+          const on = lastHeard < Hn - 1 ? heard[Hn - 1].end : NaN;
+          b = Math.max(a, on - a >= run * MIN_SAY ? on : Math.min(win.t1, a + run * SAY_PACE));
+        }
         const per = (b - a) / run;
         for (let q = i; q < j; q++) when[q] = { s: a + (q - i) * per, e: a + (q - i + 1) * per };
         i = j;
@@ -501,6 +608,99 @@ export function stillBeingSaid(timed: WordT[], clearVoice: Span[]): WordT[] {
     if (!(gap > 0.05) || gap > STILL_SAID_MAX_S) return w;
     return sounding(w.end, next.start) >= gap * 0.85 ? { ...w, end: next.start } : w;
   });
+}
+
+/* ---- what the timing was made from ----
+ * Nobody can read the server's log. When a story's captions came up wrong there (2026-11-23, "words the
+ * listener was not sure of"), nothing said what the listener had heard — and the same film listened to
+ * again on a desk came out right, every time. So a piece that is timed to its narration keeps what the
+ * timing was made from: its lines, every word the listener heard with its time and how sure it was,
+ * where the voice track was sounding, how long the track ran. A few thousand characters — and with them
+ * the timing can be worked out again anywhere, word for word (readTiming → sceneWindows →
+ * scriptWordTimes). It is shown to the operator alone (the Archive's loader). */
+export type TimingRecord = {
+  v: 1;
+  /** how long the voice track ran */
+  seconds: number;
+  lines: string[];
+  /** every word the listener heard — the word, when it starts and ends, how sure (−1: it did not say) */
+  heard: Array<[string, number, number, number]>;
+  /** where the voice was sounding, as start,end,start,end… — the clear voice, and any sound at all */
+  clear: number[];
+  any: number[];
+  /** why the voice track was not read, when it was not */
+  unread?: string;
+  /** how much of the script was heard and sure (0 to 1); what the FIRST listen had heard when a softer
+   *  second one was made; and whether the softer one was the one kept */
+  share: number;
+  first?: number;
+  soft?: boolean;
+  /** how many heard words were not believed, and how many of the script's words the voice track placed */
+  doubted: number;
+  placed: number;
+};
+/** No more heard words than this are kept (a story is a few hundred at most). */
+export const TIMING_WORDS_MAX = 900;
+const to2 = (x: number) => Math.round(x * 100) / 100;
+const to3 = (x: number) => Math.round(x * 1000) / 1000;
+
+/** The record of one timing. `listened` is everything the listener heard (unsure words too); `timed` is
+ *  what scriptWordTimes made of it and `plain` the same without the voice track — the words that differ
+ *  are the ones the track placed. */
+export function timingRecord(o: {
+  lines: string[]; listened: WordT[]; speech: Span[][]; seconds: number;
+  timed?: WordT[]; plain?: WordT[]; first?: number; soft?: boolean; unread?: string;
+}): TimingRecord {
+  const flat = (spans?: Span[]) => (spans || []).flatMap(([s, e]) => [to2(s), to2(e)]);
+  const q = listenQuality(o.lines, o.listened);
+  const placed = o.timed && o.plain && o.timed.length === o.plain.length
+    ? o.timed.filter((w, i) => Math.abs(w.start - o.plain![i].start) > 0.05).length : 0;
+  return {
+    v: 1,
+    seconds: to3(o.seconds),
+    lines: o.lines,
+    heard: o.listened.slice(0, TIMING_WORDS_MAX).map((w): [string, number, number, number] => [w.word, to3(w.start), to3(w.end), typeof w.score === "number" ? to3(w.score) : -1]),
+    clear: flat(o.speech[0]),
+    any: flat(o.speech[1]),
+    ...(o.unread ? { unread: o.unread.slice(0, 200) } : {}),
+    share: to3(q.share),
+    ...(typeof o.first === "number" ? { first: to3(o.first) } : {}),
+    ...(o.soft ? { soft: true } : {}),
+    doubted: q.doubted,
+    placed,
+  };
+}
+
+/** A record read back into what the timing is made from — null when it is not one. */
+export function readTiming(rec: unknown): { lines: string[]; listened: WordT[]; speech: Span[][]; seconds: number } | null {
+  const r = rec as Partial<TimingRecord> | null;
+  if (!r || typeof r !== "object" || r.v !== 1 || !Array.isArray(r.lines) || !Array.isArray(r.heard)) return null;
+  const pairs = (flat: unknown): Span[] => {
+    const out: Span[] = [];
+    if (Array.isArray(flat)) for (let i = 0; i + 1 < flat.length; i += 2) if (typeof flat[i] === "number" && typeof flat[i + 1] === "number") out.push([flat[i], flat[i + 1]]);
+    return out;
+  };
+  const listened: WordT[] = [];
+  for (const h of r.heard) {
+    if (Array.isArray(h) && typeof h[0] === "string" && typeof h[1] === "number" && typeof h[2] === "number") {
+      listened.push({ word: h[0], start: h[1], end: h[2], ...(typeof h[3] === "number" && h[3] >= 0 ? { score: h[3] } : {}) });
+    }
+  }
+  const clear = pairs(r.clear), any = pairs(r.any);
+  return { lines: r.lines.map(String), listened, speech: clear.length || any.length ? [clear, any] : [], seconds: Number(r.seconds) || 0 };
+}
+
+/** The record in one line, for the operator. */
+export function timingLine(rec: unknown): string | null {
+  const r = rec as Partial<TimingRecord> | null;
+  const t = readTiming(rec);
+  if (!r || !t) return null;
+  const said = t.lines.reduce((n, l) => n + saidUnits(l).length, 0);
+  const pct = (x: unknown) => `${Math.round((typeof x === "number" ? x : 0) * 100)}%`;
+  const listen = `heard ${t.listened.length} words for ${said} written (${pct(r.share)} sure)`
+    + (typeof r.first === "number" ? ` — ${r.soft ? "softer second listen kept" : "softer second listen no better"}, the first had ${pct(r.first)}` : "");
+  const track = t.speech.length ? `voice track read: ${t.speech[0].length} clear / ${t.speech[1].length} any` : `voice track NOT read${r.unread ? ` (${r.unread})` : ""}`;
+  return `timing: ${listen} · ${track} · ${r.doubted || 0} not believed · ${r.placed || 0} placed by the track`;
 }
 
 /** The longest BOLD card, in characters: one line of big words at one size. */

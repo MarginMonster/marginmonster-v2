@@ -38,9 +38,9 @@ test("faceless captions are the SCRIPT's words timed by the voice — never the 
   const src = read("faceless-video.server.ts");
   assert.ok(src.includes("const voSeconds = ffprobeDuration(voPath) || 35;\n    beatWindows = sceneWindows(lines, words, voSeconds);"));
   // (…and a word nobody heard goes where the voice track is sounding — tests/voice-sound.test.ts)
-  assert.ok(src.includes("caps = boldCards(scriptWordTimes(lines, words, beatWindows, undefined, speech), lang);"));
+  assert.ok(src.includes("const timed = scriptWordTimes(lines, words, beatWindows, undefined, speech, doubt.squeezed);\n    caps = boldCards(timed, lang);"));
   assert.ok(!src.includes("caps = groupCaptions(wordsFromWhisperx(raw));"), "the heard words are no longer the captions");
-  assert.ok(src.includes("await ckpt({ ckTimings: JSON.stringify({ caps, windows: beatWindows }) });"));
+  assert.ok(src.includes("await ckpt({ ckTimings: JSON.stringify({ caps, windows: beatWindows, timing }) });"));
   assert.ok(src.includes("if (Array.isArray(saved)) caps = saved;"), "a checkpoint from before the change (the cards alone) still resumes");
   // what that does, with the real functions: the listener mishears the product, the caption does not
   const lines = ["Meet Labubu, the monster everyone wants.", "Sixteen figures in every blind box set."];

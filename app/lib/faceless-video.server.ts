@@ -13,7 +13,7 @@ import crypto from "node:crypto";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { repCreate, repPoll, downloadBuffer, runFfmpeg, ffprobeDuration, resolveTextFont, checkpointJob } from "./ugc-ad-pipeline.server";
-import { voiceSound } from "./voice-sound.server";
+import { readVoiceSound } from "./voice-sound.server";
 import { brollStill } from "./image-generation.server";
 import { musicBedToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
@@ -22,7 +22,7 @@ import { ownNarratorVoice } from "./voice-clone.server";
 import { SUNG_VAD } from "./lyric-sync";
 import { langDirective, normalizeContentLang, voiceLangOpts } from "./content-lang";
 import { trimTitle } from "./text-trim";
-import { LISTEN_AGAIN_UNDER, boldCards, captionFilters, heardShare, sceneWindows, scriptWordTimes, type Window } from "./narrated-core";
+import { boldCards, captionFilters, listenAgain, listenQuality, listenedWords, sceneWindows, scriptWordTimes, sureWords, timingRecord, type Span, type TimingRecord, type Window } from "./narrated-core";
 
 // Truncate on a sentence boundary so a hard char-cap never feeds the writer a
 // dangling half-spec ("…holds up to 2L and is made from"). Falls back to the
@@ -399,30 +399,45 @@ export async function generateFacelessVideo(opts: {
   //    picture is up while ITS line is said instead of for an even share of the video.
   let caps: Cap[];
   let beatWindows: Window[] | null = null;
+  // what the timing was made from, kept with the piece (narrated-core → timingRecord)
+  let timing: TimingRecord | null = null;
   if (resume.ckTimings) {
     // (a checkpoint from before 2026-11-23 is the cards alone)
-    const saved = JSON.parse(resume.ckTimings) as Cap[] | { caps?: Cap[]; windows?: Window[] };
+    const saved = JSON.parse(resume.ckTimings) as Cap[] | { caps?: Cap[]; windows?: Window[]; timing?: TimingRecord | null };
     if (Array.isArray(saved)) caps = saved;
-    else { caps = saved.caps || []; beatWindows = saved.windows || null; }
+    else { caps = saved.caps || []; beatWindows = saved.windows || null; timing = saved.timing || null; }
   } else {
     let words: WordT[] = [];
-    try { words = wordsFromWhisperx(await repPoll(await createWhisperx(voUrl, lang), 5 * 60_000, "faceless-align")); }
+    try { words = listenedWords(await repPoll(await createWhisperx(voUrl, lang), 5 * 60_000, "faceless-align")); }
     catch (e) { console.error("[faceless] could not listen to the voice-over — captions and pictures are timed by length:", (e as Error).message); }
     const lines = script.beats.map((b) => b.line);
     // a listen that missed part of the script is done again with the voice detector set softer, and the
-    // better of the two is kept (narrated-core → LISTEN_AGAIN_UNDER)
-    if (words.length && heardShare(lines, words) < LISTEN_AGAIN_UNDER) {
+    // better of the two is kept (narrated-core → LISTEN_AGAIN_UNDER) — and so is one that fitted words
+    // where it was not sure of them (narrated-core → sureWords: such words do not count as heard)
+    const first = listenQuality(lines, words);
+    let firstShare: number | undefined;
+    let keptSoft = false;
+    if (words.length && listenAgain(first)) {
+      firstShare = first.share;
       try {
-        const again = wordsFromWhisperx(await repPoll(await createWhisperx(voUrl, lang, { sung: true }), 5 * 60_000, "faceless-align-soft"));
-        if (heardShare(lines, again) > heardShare(lines, words)) words = again;
+        const again = listenedWords(await repPoll(await createWhisperx(voUrl, lang, { sung: true }), 5 * 60_000, "faceless-align-soft"));
+        if (listenQuality(lines, again).share > first.share) { words = again; keptSoft = true; }
       } catch { /* the first listen stands */ }
     }
+    // WORDS THE LISTENER WAS NOT SURE OF ARE NOT BELIEVED: everything below is timed by the words it was
+    // sure of; `listened` is all of them, kept for the record
+    const listened = words;
+    const doubt = sureWords(listened);
+    words = doubt.sure;
     const voSeconds = ffprobeDuration(voPath) || 35;
     beatWindows = sceneWindows(lines, words, voSeconds);
     // a word nobody heard goes where the voice track is sounding, never into a pause (voice-sound.server.ts)
-    const speech = words.length ? await voiceSound(voPath, voSeconds) : [];
-    caps = boldCards(scriptWordTimes(lines, words, beatWindows, undefined, speech), lang);
-    await ckpt({ ckTimings: JSON.stringify({ caps, windows: beatWindows }) });
+    const sound: { speech: Span[][]; unread?: string } = words.length ? await readVoiceSound(voPath, voSeconds) : { speech: [] };
+    const speech = sound.speech;
+    const timed = scriptWordTimes(lines, words, beatWindows, undefined, speech, doubt.squeezed);
+    caps = boldCards(timed, lang);
+    timing = timingRecord({ lines, listened, speech, seconds: voSeconds, timed, plain: scriptWordTimes(lines, words, beatWindows), first: firstShare, soft: keptSoft, unread: sound.unread });
+    await ckpt({ ckTimings: JSON.stringify({ caps, windows: beatWindows, timing }) });
   }
 
   // 4) B-ROLL STILLS — one 9:16 flux still per beat (sequential = no 429). Banked
@@ -546,7 +561,7 @@ export async function generateFacelessVideo(opts: {
       // "…a lighthouse keeper named Wren Oakhollow and her ")
       title: `Faceless video — ${trimTitle((script.title || "").replace(/["“”]/g, "").trim() || topic, 60)}`,
       bodyJson: JSON.stringify({ style: "FACELESS", videoUrl: storedUrl, prompt: topic, script: fullScript }),
-      metaJson: JSON.stringify({ kind: "faceless", section: opts.section || "creator", format: fmtKey, topic, aspect: "vertical", ...(product ? { product: product.title } : {}), ...(stillFaults.length ? { stillFaults: stillFaults.slice(0, 8) } : {}) }),
+      metaJson: JSON.stringify({ kind: "faceless", section: opts.section || "creator", format: fmtKey, topic, aspect: "vertical", ...(product ? { product: product.title } : {}), ...(stillFaults.length ? { stillFaults: stillFaults.slice(0, 8) } : {}), ...(timing ? { timing } : {}) }),
     },
   });
   return asset.id;

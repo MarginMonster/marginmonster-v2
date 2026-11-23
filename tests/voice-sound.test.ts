@@ -202,15 +202,19 @@ test("a word is still being said while the voice goes on — but quiet is quiet"
 
 test("the story and the faceless video read their own voice track — and a track that cannot be read costs nothing", () => {
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const speech = words.length ? await voiceSound(voPath, voDur) : [];\n  const timed = scriptWordTimes(lines, words, windows, undefined, speech);"));
+  assert.ok(nar.includes("const sound: { speech: Span[][]; unread?: string } = words.length ? await readVoiceSound(voPath, voDur) : { speech: [] };\n  const speech = sound.speech;\n  const timed = scriptWordTimes(lines, words, windows, undefined, speech, doubt.squeezed);"));
   const fl = read("app", "lib", "faceless-video.server.ts");
-  assert.ok(fl.includes("const speech = words.length ? await voiceSound(voPath, voSeconds) : [];\n    caps = boldCards(scriptWordTimes(lines, words, beatWindows, undefined, speech), lang);"));
+  assert.ok(fl.includes("const sound: { speech: Span[][]; unread?: string } = words.length ? await readVoiceSound(voPath, voSeconds) : { speech: [] };\n    const speech = sound.speech;\n    const timed = scriptWordTimes(lines, words, beatWindows, undefined, speech, doubt.squeezed);\n    caps = boldCards(timed, lang);"));
   const vs = read("app", "lib", "voice-sound.server.ts");
   // the narrator alone, 50 ms frames, printed to a FILE (the runner keeps ffmpeg's messages, not its output)
   assert.ok(vs.includes("aresample=16000,asetnsamples=n=800,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file='${name}'"));
   assert.ok(vs.includes('const name = file.replace(/\\\\/g, "/").replace(/:/g, "\\\\:");'), "a path is not filter syntax: slashes forward, the colon escaped, the name quoted");
-  assert.ok(vs.includes("return soundLevels(levelFrames(fs.readFileSync(out, \"utf8\")), total);"));
-  assert.ok(vs.includes("if (r.status !== 0 || !fs.existsSync(out)) return [];"));
+  assert.ok(vs.includes("const frames = levelFrames(fs.readFileSync(out, \"utf8\"));\n    const speech = soundLevels(frames, total);"));
+  assert.ok(vs.includes("if (r.status !== 0) return { speech: [], unread: ") && vs.includes("if (!fs.existsSync(out)) return { speech: [], unread: \"nothing was printed\" };"));
+  // the older name still answers with the reading alone
+  assert.ok(vs.includes("return (await readVoiceSound(voPath, total)).speech;"));
   assert.ok(vs.includes("try { fs.rmSync(out, { force: true }); } catch { /* nothing written */ }"), "the print-out is not left behind");
-  assert.equal(vs.split("return [];").length - 1, 3, "not read = an empty answer, never a failed render");
+  // (…and WHY, kept with the piece: nobody can read the server's log — tests/listener-doubt.test.ts)
+  assert.equal(vs.split("speech: [], unread:").length - 1, 5, "not read = an empty answer and its reason, never a failed render");
+  assert.ok(!vs.includes("throw "), "it never throws");
 });

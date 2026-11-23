@@ -140,12 +140,13 @@ test("a listen that missed part of the story is done again, softer — and the b
   assert.ok(Math.abs(heardShare(["In 1981 a boy named Tobias knocked anyway."], said("In nineteen eighty one a boy named Tobius knocked anyway.", 1)) - 6 / 8) < 1e-9);
   const read = (f: string) => fs.readFileSync(new URL(`../app/lib/${f}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
   const nar = read("narrated-story.server.ts");
-  assert.ok(nar.includes("const share = heardShare(lines, words);\n      if (share < LISTEN_AGAIN_UNDER) {"));
+  // (…or fitted words where it was not sure of them — tests/listener-doubt.test.ts)
+  assert.ok(nar.includes("const first = listenQuality(lines, words);\n      if (listenAgain(first)) {"));
   assert.ok(nar.includes("createWhisperx(voUrl, normalizeContentLang(lang), { sung: true })"), "the softer detector, in the story's own language");
-  assert.ok(nar.includes("if (better > share) words = again;"), "only a better listen replaces the first");
+  assert.ok(nar.includes("if (second.share > first.share) { words = again; keptSoft = true; }"), "only a better listen replaces the first");
   assert.ok(nar.includes("the softer listen failed — keeping the first"), "and a failed second listen costs nothing");
   const fl = read("faceless-video.server.ts");
-  assert.ok(fl.includes("if (words.length && heardShare(lines, words) < LISTEN_AGAIN_UNDER) {"));
+  assert.ok(fl.includes("if (words.length && listenAgain(first)) {"));
   assert.ok(fl.includes("createWhisperx(voUrl, lang, { sung: true })"));
-  assert.ok(fl.includes("if (heardShare(lines, again) > heardShare(lines, words)) words = again;"));
+  assert.ok(fl.includes("if (listenQuality(lines, again).share > first.share) { words = again; keptSoft = true; }"));
 });
