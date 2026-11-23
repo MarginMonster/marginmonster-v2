@@ -173,6 +173,114 @@ function sameWords(written: string[], heard: string[]): Array<[number, number]> 
 const anchored = (pairs: number, atoms: string[], heard: number, min: number): boolean =>
   pairs >= Math.max(min, Math.min(atoms.filter(Boolean).length, heard) * 0.5);
 
+/* ---- where the voice is sounding ----
+ * The words the listener did NOT hear still have to go somewhere. Laid "on from the last heard word at an
+ * ordinary pace", a story's last line came up 1.7 seconds before it was spoken (2026-11-23, "The Keeper's
+ * Tide", told in the Ghost voice): "…breathed against her ear:" — a long pause — and then, whispered,
+ * "welcome home, daughter". The listener does not hear a whisper; the caption gave the ending away in
+ * the pause and was gone before the whisper came.
+ *
+ * The voice track itself says where those words are: it is SOUNDING there, and quiet in the pause.
+ * (The track is the narrator alone — the music is mixed in later — so sound is voice.) Unheard words are
+ * laid over the stretches of their gap that have sound in them, and never across a pause.
+ *
+ * "Sound" is the track's LEVEL, frame by frame, against how loud this voice itself is — not ffmpeg's
+ * silence detector, which goes by single samples: a performed voice rings on after a word (the Ghost
+ * speaks "from another room"), and measured on a real take that echo kept every pause but one "not
+ * silent". The level tells them apart: a whisper sits 5 to 15 dB under the voice's loud level, the echo
+ * dying away 20 and more. Two readings are handed on — the CLEAR voice (within CLEAR_VOICE_DB of the
+ * loud level) is tried first; if it cannot hold the words, anything within ANY_SOUND_DB; and if neither
+ * can, the older rule. */
+export type Span = [number, number];
+
+/** How far under this voice's loud level the clear voice still is (a whisper is; an echo is not)… */
+export const CLEAR_VOICE_DB = 15;
+/** …and how far under it anything at all still counts as sound. */
+export const ANY_SOUND_DB = 30;
+/** A quiet shorter than this is the space between two words, not a pause. */
+export const PAUSE_MIN_S = 0.3;
+/** The least time a spoken word takes: less sound than this for each unheard word cannot be those words. */
+export const MIN_SAY = 0.2;
+
+/** The level of each short frame of a track, out of ffmpeg's print-out (
+ *  `astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level`): when the frame
+ *  starts, and its level in dB (a frame of pure silence reads -inf, kept as -Infinity). */
+export function levelFrames(printout: string): Array<{ t: number; db: number }> {
+  const out: Array<{ t: number; db: number }> = [];
+  let t: number | null = null;
+  for (const line of (printout || "").split(/\r?\n/)) {
+    const at = /pts_time:\s*(-?[\d.]+)/.exec(line);
+    if (at) { t = Number(at[1]); continue; }
+    const lv = /RMS_level=\s*(-?inf|-?[\d.]+)/i.exec(line);
+    if (lv && t !== null && Number.isFinite(t)) {
+      const db = /inf/i.test(lv[1]) ? -Infinity : Number(lv[1]);
+      if (!Number.isNaN(db)) out.push({ t, db });
+      t = null;
+    }
+  }
+  return out;
+}
+
+/** Where the track is sounding: the stretches whose level is within `under` dB of the voice's loud level
+ *  (the level its loudest tenth of frames reaches). A quiet shorter than PAUSE_MIN_S does not split a
+ *  stretch; a blip shorter than 0.08 s is not one. */
+export function soundSpans(frames: Array<{ t: number; db: number }>, total: number, under: number): Span[] {
+  const real = frames.filter((f) => Number.isFinite(f.db)).map((f) => f.db).sort((a, b) => a - b);
+  if (!real.length || !(total > 0)) return [];
+  const loud = real[Math.min(real.length - 1, Math.floor(real.length * 0.9))];
+  const floor = loud - under;
+  // how long one frame lasts: the commonest step between two of them
+  const steps = frames.slice(1).map((f, i) => f.t - frames[i].t).filter((d) => d > 0).sort((a, b) => a - b);
+  const step = steps.length ? steps[Math.floor(steps.length / 2)] : 0.05;
+  const spans: Span[] = [];
+  for (const f of frames) {
+    if (!(f.db >= floor)) continue;
+    const a = Math.max(0, f.t), b = Math.min(total, f.t + step);
+    const last = spans[spans.length - 1];
+    if (last && a - last[1] < PAUSE_MIN_S) last[1] = Math.max(last[1], b);
+    else spans.push([a, b]);
+  }
+  return spans.filter(([a, b]) => b - a >= 0.08);
+}
+
+/** Both readings of a track, the clear voice first — what scriptWordTimes takes as `speech`. */
+export function soundLevels(frames: Array<{ t: number; db: number }>, total: number): Span[][] {
+  return [soundSpans(frames, total, CLEAR_VOICE_DB), soundSpans(frames, total, ANY_SOUND_DB)].filter((l) => l.length > 0);
+}
+/** The stretches of the gap [g0, g1] that have the voice in them, for `run` unheard words — or null when
+ *  they cannot hold that many words (MIN_SAY each).
+ *  Sound right against a heard word, with quiet between it and the rest, is that word ringing on (or the
+ *  next heard word drawing breath): the unheard words are in the rest — when the rest can hold them. What
+ *  a listener misses is a quiet PHRASE, set apart by a pause; a word in the same breath as one it heard,
+ *  it hears. */
+function voicedIn(speech: Span[], g0: number, g1: number, run: number, leftHeard: boolean, rightHeard: boolean): Span[] | null {
+  if (!(g1 - g0 > 0.05)) return null;
+  let ps = speech.map(([s, e]): Span => [Math.max(s, g0), Math.min(e, g1)]).filter(([s, e]) => e - s >= 0.05);
+  const holds = (list: Span[]) => list.reduce((sum, [s, e]) => sum + (e - s), 0) >= run * MIN_SAY;
+  if (ps.length > 1 && leftHeard && ps[0][0] - g0 < 0.03 && holds(ps.slice(1))) ps = ps.slice(1);
+  if (ps.length > 1 && rightHeard && g1 - ps[ps.length - 1][1] < 0.03 && holds(ps.slice(0, -1))) ps = ps.slice(0, -1);
+  return ps.length && holds(ps) ? ps : null;
+}
+
+/** `run` words shared out over the stretches by how long each is, in WHOLE words — so no word is drawn
+ *  across a silence — and spread evenly inside each. Returns each word's start and end, in order. */
+export function layOver(pieces: Span[], run: number): Array<{ s: number; e: number }> {
+  const voiced = pieces.reduce((sum, [s, e]) => sum + (e - s), 0);
+  const out: Array<{ s: number; e: number }> = [];
+  if (!(voiced > 0) || run <= 0) return out;
+  const ideal = pieces.map(([s, e]) => (run * (e - s)) / voiced);
+  const given = ideal.map((x) => Math.floor(x + 1e-9));
+  let left = run - given.reduce((a, b) => a + b, 0);
+  // what is left over goes to the stretches the rounding cut shortest (the earlier, on a tie)
+  const order = ideal.map((x, k) => ({ k, frac: x - given[k] })).sort((a, b) => b.frac - a.frac || a.k - b.k);
+  for (let n = 0; left > 0 && order.length; n++, left--) given[order[n % order.length].k]++;
+  pieces.forEach(([s, e], k) => {
+    const per = given[k] ? (e - s) / given[k] : 0;
+    for (let q = 0; q < given[k]; q++) out.push({ s: s + q * per, e: s + (q + 1) * per });
+  });
+  return out;
+}
+
 /** How much of the script the listener heard as itself: 1 = every word, 0 = none of them. */
 export function heardShare(lines: string[], words: WordT[]): number {
   const atoms: string[] = [];
@@ -278,8 +386,10 @@ export const drawable = (s: string): string => s.replace(/[']/g, "’").replace(
  *  The words are returned as they will be drawn (see drawable), in order, scene after scene.
  *  With `sparse`, a window in which fewer than minHeard of the line's words were heard is not timed by
  *  them: its words run from the first heard word (or `lead` after the window opens) to `tail` before
- *  it closes. */
-export function scriptWordTimes(lines: string[], words: WordT[], windows: Window[], sparse?: { minHeard: number; lead: number; tail: number }): WordT[] {
+ *  it closes.
+ *  With `speech` (where the voice track has sound, the clear voice first — soundLevels), words nobody
+ *  heard are laid over the sound in their gap, never across a silence ("where the voice is sounding"). */
+export function scriptWordTimes(lines: string[], words: WordT[], windows: Window[], sparse?: { minHeard: number; lead: number; tail: number }, speech?: Span[][]): WordT[] {
   const out: WordT[] = [];
   lines.forEach((line, k) => {
     const win = windows[k];
@@ -326,6 +436,19 @@ export function scriptWordTimes(lines: string[], words: WordT[], windows: Window
         while (j < A && !when[j]) j++;
         const run = j - i;
         const left = i > 0 ? when[i - 1]!.e : null, right = j < A ? when[j]!.s : null;
+        // WHERE THE VOICE IS SOUNDING in this gap, when the track has been read: the unheard words are
+        // there — after the pause, if there is one — and not "on from the last heard word".
+        let laid: Array<{ s: number; e: number }> | null = null;
+        for (const level of speech || []) {
+          const g0 = left !== null ? left : win.t0;
+          const pieces = voicedIn(level, g0, right !== null ? Math.max(right, g0) : win.t1, run, left !== null, right !== null);
+          if (pieces) { const over = layOver(pieces, run); if (over.length === run) { laid = over; break; } }
+        }
+        if (laid) {
+          for (let q = i; q < j; q++) when[q] = laid[q - i];
+          i = j;
+          continue;
+        }
         let a: number, b: number;
         if (left !== null && right !== null) { a = left; b = Math.max(left, right); }
         // before the first anchor: from where the listener started hearing something else — or, when it

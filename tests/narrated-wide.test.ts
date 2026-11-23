@@ -157,7 +157,7 @@ test("BOLD when nothing was heard is the same cards, spread over each scene — 
   for (const c of cEn) { assert.ok(c.text.split(" ").length <= 3, c.text); assert.ok(!/[.,]$/.test(c.text), c.text); assert.equal(c.text, c.text.toUpperCase()); }
   assert.equal(cEn[cEn.length - 1].text, "ALL OF THEM");
   const src = fs.readFileSync(new URL("../app/lib/narrated-story.server.ts", import.meta.url), "utf8");
-  assert.ok(src.includes("const timed = scriptWordTimes(lines, words, windows);"), "one way to time the words, heard or not");
+  assert.ok(src.includes("const timed = scriptWordTimes(lines, words, windows, undefined, speech);"), "one way to time the words, heard or not");
   assert.ok(!src.includes("subtitleCards(lines.map((l) => l.toUpperCase()), windows, 18)"), "the sentence-at-a-time bold is gone");
 });
 

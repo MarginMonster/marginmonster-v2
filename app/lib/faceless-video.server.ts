@@ -13,6 +13,7 @@ import crypto from "node:crypto";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { repCreate, repPoll, downloadBuffer, runFfmpeg, ffprobeDuration, resolveTextFont, checkpointJob } from "./ugc-ad-pipeline.server";
+import { voiceSound } from "./voice-sound.server";
 import { brollStill } from "./image-generation.server";
 import { musicBedToDisk } from "./music-generation.server";
 import { mirrorRender } from "./object-storage.server";
@@ -416,8 +417,11 @@ export async function generateFacelessVideo(opts: {
         if (heardShare(lines, again) > heardShare(lines, words)) words = again;
       } catch { /* the first listen stands */ }
     }
-    beatWindows = sceneWindows(lines, words, ffprobeDuration(voPath) || 35);
-    caps = boldCards(scriptWordTimes(lines, words, beatWindows), lang);
+    const voSeconds = ffprobeDuration(voPath) || 35;
+    beatWindows = sceneWindows(lines, words, voSeconds);
+    // a word nobody heard goes where the voice track is sounding, never into a pause (voice-sound.server.ts)
+    const speech = words.length ? await voiceSound(voPath, voSeconds) : [];
+    caps = boldCards(scriptWordTimes(lines, words, beatWindows, undefined, speech), lang);
     await ckpt({ ckTimings: JSON.stringify({ caps, windows: beatWindows }) });
   }
 

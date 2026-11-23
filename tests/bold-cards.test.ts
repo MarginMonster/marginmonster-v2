@@ -82,7 +82,7 @@ test("the leaning words are each language's own", () => {
   assert.deepEqual(cardsOf(KEEPER.slice(0, 1)), cardsOf(KEEPER.slice(0, 1), "en"));
   // the callers say which language the words are in
   assert.ok(read("narrated-story.server.ts").includes("? boldCards(timed, normalizeContentLang(lang))"));
-  assert.ok(read("faceless-video.server.ts").includes("caps = boldCards(scriptWordTimes(lines, words, beatWindows), lang);"));
+  assert.ok(read("faceless-video.server.ts").includes("caps = boldCards(scriptWordTimes(lines, words, beatWindows, undefined, speech), lang);"));
   assert.ok(read("film-captions.server.ts").includes("o.style === \"bold\" || o.style === \"highlight\" ? boldCards(timed, o.lang) : subtitleCards(lines, windows, subtitleChars(W, H), timed);"));
 });
 

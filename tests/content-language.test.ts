@@ -36,8 +36,9 @@ test("a faceless video is written, read and listened to in the shop's language",
 
 test("faceless captions are the SCRIPT's words timed by the voice — never the listener's spelling", () => {
   const src = read("faceless-video.server.ts");
-  assert.ok(src.includes("beatWindows = sceneWindows(lines, words, ffprobeDuration(voPath) || 35);"));
-  assert.ok(src.includes("caps = boldCards(scriptWordTimes(lines, words, beatWindows), lang);"));
+  assert.ok(src.includes("const voSeconds = ffprobeDuration(voPath) || 35;\n    beatWindows = sceneWindows(lines, words, voSeconds);"));
+  // (…and a word nobody heard goes where the voice track is sounding — tests/voice-sound.test.ts)
+  assert.ok(src.includes("caps = boldCards(scriptWordTimes(lines, words, beatWindows, undefined, speech), lang);"));
   assert.ok(!src.includes("caps = groupCaptions(wordsFromWhisperx(raw));"), "the heard words are no longer the captions");
   assert.ok(src.includes("await ckpt({ ckTimings: JSON.stringify({ caps, windows: beatWindows }) });"));
   assert.ok(src.includes("if (Array.isArray(saved)) caps = saved;"), "a checkpoint from before the change (the cards alone) still resumes");

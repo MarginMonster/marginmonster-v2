@@ -33,6 +33,7 @@ import { AVATAR_VOICE_IDS } from "./avatar-voice-catalog";
 import { characterVoice, isCharacterVoice } from "./character-voices";
 import { heroName } from "./film-heroes";
 import { trimTitle } from "./text-trim";
+import { voiceSound } from "./voice-sound.server";
 import { NOTHING_WRITTEN, ONE_PICTURE, noLettering, oneMoment, parseStoryCast, parseStoryPanels, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCheck } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
@@ -395,7 +396,11 @@ export async function generateNarratedStory(opts: {
   // the captions say what was WRITTEN, timed by what was heard (a transcriber's spelling never reaches
   // the screen) — and, when nothing was heard, each scene's words spread across its window: the same
   // cards either way (the unheard ones used to be whole sentences in capitals, full stops and all)
-  const timed = scriptWordTimes(lines, words, windows);
+  // …and a word nobody heard goes where the voice track is SOUNDING (voice-sound.server.ts): a whispered
+  // last line came up in the pause before it — 1.7 seconds early, the ending given away — when unheard
+  // words were laid straight on from the last heard one.
+  const speech = words.length ? await voiceSound(voPath, voDur) : [];
+  const timed = scriptWordTimes(lines, words, windows, undefined, speech);
   const cards: Card[] = style === "bold" || style === "highlight"
     ? boldCards(timed, normalizeContentLang(lang))
     : style === "subtitles" ? subtitleCards(lines, windows, subtitleChars(W, H), words.length ? timed : undefined) : [];
