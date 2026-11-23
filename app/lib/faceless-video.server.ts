@@ -75,6 +75,12 @@ const SCRIPT_SCHEMA = {
   required: ["beats", "musicMood"],
 } as const;
 
+/** Did the picture model REFUSE this picture (its own filter), as opposed to failing to make it? A
+ *  refusal is about the words asked with: the same words get the same answer. */
+export function pictureRefused(message: string): boolean {
+  return /flagged as sensitive|sensitive content|safety (filter|system)|content polic|nsfw|\(E005\)/i.test(message);
+}
+
 /** ALL-CAPS, filter-safe caption text (mirrors ugc captionSafe). */
 function captionSafe(s: string): string {
   return s.toUpperCase().replace(/[']/g, "’").replace(/[^\p{L}\p{N} .,!?$%’-]/gu, "").replace(/\s+/g, " ").trim();
@@ -457,14 +463,24 @@ export async function generateFacelessVideo(opts: {
     // The last two tries ask a SECOND WAY: if the picture as described is what the model will not
     // draw, the same words four times are four refusals — a plainer picture for the line itself is
     // better than its neighbour's picture twice.
-    const plain = `A simple, striking, symbolic cinematic image for this moment of a short video: "${beat.line.replace(/["\n]/g, " ").slice(0, 200)}". Vertical 9:16, high detail, no text, no watermark.`;
+    //
+    // THE CAUSE, READ AT LAST (2026-11-23, from the note this loop writes — `stillFaults`): the picture
+    // model answered "The input or output was flagged as sensitive" for a sunset "glowing unnaturally
+    // red". So: (1) a REFUSAL is not a hiccup — asked again in the same words it is refused again, and
+    // the wait before it is wasted; the second way is asked at once. (2) The second way said "simple,
+    // striking, symbolic", and what came back was a painted blood-red sky with a figure on a peak in
+    // the middle of six photographs. It now asks for what the rest of the video is: a photograph.
+    const plain = `A realistic cinematic photograph for this moment of a short video, the look of documentary b-roll, natural colour: "${beat.line.replace(/["\n]/g, " ").slice(0, 200)}". Vertical 9:16, high detail, no text, no watermark.`;
     let still: string | null = null;
     let why = "";
     let plainer = false;
+    let refused = false;
     for (let attempt = 0; attempt < 4 && !still; attempt++) {
-      try { still = await brollStill(attempt < 2 ? prompt : plain, quality); if (still && attempt >= 2) plainer = true; }
+      const secondWay = refused || attempt >= 2;
+      try { still = await brollStill(secondWay ? plain : prompt, quality); if (still && secondWay) plainer = true; }
       catch (e) {
         why = e instanceof Error ? e.message.slice(0, 160) : String(e).slice(0, 160);
+        if (!secondWay && pictureRefused(why)) { refused = true; continue; }
         if (attempt < 3) await new Promise((r) => setTimeout(r, [2000, 6000, 15000][attempt]));
       }
     }

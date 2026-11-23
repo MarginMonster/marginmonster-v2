@@ -2,6 +2,7 @@
 // Jobs are claimed with status=IN_PROGRESS to prevent double-processing.
 
 import type { BrandProfile, Prisma } from "@prisma/client";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { db } from "../db.server";
 import { LANES, LANE_LOOKAHEAD, aheadInLine, claimNext, laneOf, laneWhere, storyKindOf, type Lane } from "./job-lanes";
 import { asJob } from "./ffmpeg-turn";
@@ -405,7 +406,20 @@ export async function enqueueJob(
       runAt: runAt ?? null,
     },
   });
+  queuedHere.getStore()?.push(job.id);
   return job.id;
+}
+
+/** WHICH JOBS A REQUEST STARTED. A page that queues a piece and then waits for it has to know which job
+ *  is its own — and the Studio's action has a dozen branches that queue, none of which said. Run the
+ *  request's work inside this and every job queued by it, however deep, is on the list that comes
+ *  back. (Guessing afterwards from "the newest job of that kind" was tried first and failed on the live
+ *  site the same hour: the list the page held was still the one from before the action.) */
+const queuedHere = new AsyncLocalStorage<string[]>();
+export async function collectingJobs<T>(work: () => Promise<T>): Promise<{ result: T; jobIds: string[] }> {
+  const jobIds: string[] = [];
+  const result = await queuedHere.run(jobIds, work);
+  return { result, jobIds };
 }
 
 /** WHICH LANE A VIDEO JOB RUNS IN IS DECIDED HERE, ONCE, WHEN IT IS QUEUED (job-lanes.ts → STORY_MARK).

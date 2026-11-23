@@ -668,7 +668,6 @@ test("a finished piece carries its job, and what waits for “my piece” asks f
   assert.equal(stageFailureFits(null, "video", { id: "x", kind: "video", at: at(30) }, Date.parse(at(20))), true);
   assert.equal(stageFailureFits(null, "video", { id: "x", kind: "video", at: at(5) }, Date.parse(at(20))), false);
   const studio = read("app", "routes", "web.studio.tsx");
-  assert.ok(studio.includes('watchedJobRef.current = queuedJob(String((actionData as { queued?: string }).queued || ""), d.recentGens || [], Date.now() - 20_000);'));
   assert.ok(studio.includes("watchedJobRef.current = f.id; // picked back up after a reload: this is the job"));
   assert.ok(studio.includes("stagePieceFits(watchedJobRef.current, want, { jobId: p.jobId, video: !!p.isVideo, audio: !!p.isAudio })"));
   assert.ok(studio.includes("const recentGens = genRows.map((r) => ({ id: r.id, status: r.status as string,"));
@@ -678,4 +677,24 @@ test("a finished piece carries its job, and what waits for “my piece” asks f
 test("a narrated story's card does not promise ten minutes", () => {
   const archive = read("app", "routes", "web.archive.tsx");
   assert.ok(archive.includes('const typical = (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film" && p.filmMode === "narrated")\n      ? 60 + (typeof p.filmScenes === "number" ? p.filmScenes : 6) * 12\n      : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film")\n      ? Math.max(600,'));
+});
+
+test("the Studio's action says which job it queued, and the Stage is told before it guesses", () => {
+  // Found on the live site the hour the job-following shipped: the Stage looked for its job on the list
+  // it held when "queued" arrived — still the list from BEFORE the action — found nothing, fell back to
+  // "a video", and showed a story that landed first as the faceless video's result.
+  assert.ok(queue.includes("queuedHere.getStore()?.push(job.id);\n  return job.id;"), "every job queued inside a request is noted");
+  assert.ok(queue.includes("export async function collectingJobs<T>(work: () => Promise<T>): Promise<{ result: T; jobIds: string[] }> {\n  const jobIds: string[] = [];\n  const result = await queuedHere.run(jobIds, work);\n  return { result, jobIds };\n}"));
+  const studio = read("app", "routes", "web.studio.tsx");
+  const wrap = studio.slice(studio.indexOf("export const action = async (args: ActionFunctionArgs) => {"), studio.indexOf("const studioAction = async ({ request }: ActionFunctionArgs) => {"));
+  assert.ok(wrap.includes("const { result, jobIds } = await collectingJobs(() => studioAction(args));"));
+  assert.ok(wrap.includes("if (!jobIds.length || !(result instanceof Response)) return result;"), "nothing queued: the answer exactly as it was");
+  assert.ok(wrap.includes('if (data && typeof data === "object" && "queued" in data) {'), "only beside `queued`");
+  assert.ok(wrap.includes("return json({ ...data, jobIds }, { status: result.status, headers });"));
+  assert.ok(wrap.includes('headers.delete("content-length");'), "the body grew");
+  // the Stage: the job it was told; else the list — and the list is looked at again when it comes back
+  assert.ok(studio.includes("watchedJobRef.current = Array.isArray(told) && told.length === 1 && typeof told[0] === \"string\"\n        ? told[0]\n        : queuedJob(queuedKindRef.current, d.recentGens || [], Date.now() - 20_000);"));
+  const land = studio.slice(studio.indexOf("if (!watchedJobRef.current && queuedKindRef.current) {"), studio.indexOf("const fresh = d.recent.find("));
+  assert.ok(land.includes("watchedJobRef.current = queuedJob(queuedKindRef.current, d.recentGens || [], makingStartedRef.current - 20_000);"), "before any piece is judged");
+  assert.ok(studio.includes('watchedJobRef.current = f.id; // picked back up after a reload: this is the job\n    queuedKindRef.current = "";'));
 });

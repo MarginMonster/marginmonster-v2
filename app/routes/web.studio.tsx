@@ -21,7 +21,7 @@ import { requireWebIdentity } from "../lib/web-auth.server";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
-import { enqueueJob } from "../lib/job-queue.server";
+import { collectingJobs, enqueueJob } from "../lib/job-queue.server";
 import { queuedJob, stageFailureFits, stagePieceFits } from "../lib/stage-kind";
 import { screenCreatePrompt } from "../lib/prompt-safety.server";
 import { TOKEN_COST, CREATOR_PRICE, CREATOR_SURCHARGE_MULT, CREATOR_VIDEO_SECONDS, creatorVideoSeconds, creatorVideoTokens, type CreatorVideoSeconds } from "../lib/plan-config";
@@ -482,7 +482,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
+/** The Studio's action — and, when it queued something, WHICH JOB(S): `jobIds` rides back beside
+ *  `queued`, so the Stage follows exactly the job this request started (lib/stage-kind.ts). The branches
+ *  below queue in a dozen places; none of them has to know (job-queue → collectingJobs). */
+export const action = async (args: ActionFunctionArgs) => {
+  const { result, jobIds } = await collectingJobs(() => studioAction(args));
+  if (!jobIds.length || !(result instanceof Response)) return result;
+  try {
+    const data = (await result.clone().json()) as Record<string, unknown> | null;
+    if (data && typeof data === "object" && "queued" in data) {
+      const headers = new Headers(result.headers);
+      headers.delete("content-length");
+      return json({ ...data, jobIds }, { status: result.status, headers });
+    }
+  } catch { /* not JSON: as it was */ }
+  return result;
+};
+
+const studioAction = async ({ request }: ActionFunctionArgs) => {
   const lang = readUiLang(request);
   const { shop } = await requireWebIdentity(request);
   const form = await request.formData();
@@ -2793,6 +2810,8 @@ export default function WebStudio() {
   const preIdsRef = useRef<string[]>([]);
   // The job the Stage is waiting for, when it is known (lib/stage-kind.ts) — its piece, its failure.
   const watchedJobRef = useRef<string | null>(null);
+  // …and what kind of piece was queued, to find that job on the list if the action did not name it.
+  const queuedKindRef = useRef<string>("");
   // when a not-made edit was first seen without its "tokens returned" note (0 = none waiting)
   const notMadeSeenRef = useRef(0);
   const makingNounRef = useRef<string>("");
@@ -2819,9 +2838,17 @@ export default function WebStudio() {
       preIdsRef.current = d.recent.map((p) => p.id);
       makingNounRef.current = noun;
       makingStartedRef.current = Date.now();
-      // WHICH JOB — the loader's list comes back with the action's answer, so the job just queued is the
-      // newest of its kind on it (lib/stage-kind.ts → queuedJob). Null when it cannot be told.
-      watchedJobRef.current = queuedJob(String((actionData as { queued?: string }).queued || ""), d.recentGens || [], Date.now() - 20_000);
+      // WHICH JOB — the action says (`jobIds`: one job for one piece). If it did not, the newest job of
+      // the queued kind on the loader's list (lib/stage-kind.ts → queuedJob) — but the list in hand at
+      // this instant can still be the one from BEFORE the action (seen live, 2026-11-23: the job was not
+      // on it, nothing was found, and a story that landed first was shown as the faceless video's
+      // result), so what was queued is remembered and the landing effect below looks again each time
+      // the list comes back, before it accepts any piece.
+      const told = (actionData as { jobIds?: unknown }).jobIds;
+      queuedKindRef.current = String((actionData as { queued?: string }).queued || "");
+      watchedJobRef.current = Array.isArray(told) && told.length === 1 && typeof told[0] === "string"
+        ? told[0]
+        : queuedJob(queuedKindRef.current, d.recentGens || [], Date.now() - 20_000);
       setGenError(null);
       setStageResult(null);
       setEditingSrc((actionData as { editSource?: string }).editSource || null);
@@ -2853,6 +2880,7 @@ export default function WebStudio() {
     if (initTab && initTab !== wantTab) return; // a deep link asked for something else — leave the Stage to it
     resumedRef.current = f.id;
     watchedJobRef.current = f.id; // picked back up after a reload: this is the job
+    queuedKindRef.current = "";
     const startedAt = new Date(f.at).getTime();
     // Pieces made before this job are "already there"; one made after it is its result.
     preIdsRef.current = d.recent.filter((p) => new Date(p.at).getTime() < startedAt - 1000).map((p) => p.id);
@@ -2901,6 +2929,11 @@ export default function WebStudio() {
     // and the Stage gone idle while the video was still being made.
     // (2026-11-23, later) …AND MADE BY THE JOB THIS PAGE QUEUED, when both are known: a film from the
     // Movie Maker or a channel's own drop is a Creator video too, and landed first.
+    // A job not yet known is looked for FIRST, on the list that came with these pieces: the same answer
+    // from the server names the job and shows what has landed, so a piece is never judged without it.
+    if (!watchedJobRef.current && queuedKindRef.current) {
+      watchedJobRef.current = queuedJob(queuedKindRef.current, d.recentGens || [], makingStartedRef.current - 20_000);
+    }
     const want = makingNounRef.current;
     const ofKind = (p: { jobId?: string | null; isVideo?: boolean; isAudio?: boolean }) => stagePieceFits(watchedJobRef.current, want, { jobId: p.jobId, video: !!p.isVideo, audio: !!p.isAudio });
     const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id) && ofKind(p));

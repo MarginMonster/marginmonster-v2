@@ -131,8 +131,11 @@ test("a faceless beat whose picture could not be made shows its neighbour's — 
   assert.ok(src.includes("if (attempt < 3) await new Promise((r) => setTimeout(r, [2000, 6000, 15000][attempt]));"), "long enough to outlast a rate limit");
   // the last two tries ask a second way (the same words four times are four refusals), and why a picture
   // failed is written down with the video — for the operator only
-  assert.ok(src.includes("try { still = await brollStill(attempt < 2 ? prompt : plain, quality); if (still && attempt >= 2) plainer = true; }"));
-  assert.ok(src.includes("const plain = `A simple, striking, symbolic cinematic image for this moment of a short video: "));
+  assert.ok(src.includes("const secondWay = refused || attempt >= 2;\n      try { still = await brollStill(secondWay ? plain : prompt, quality); if (still && secondWay) plainer = true; }"));
+  // a REFUSAL goes to the second way at once (read from a live video's note, 2026-11-23: "flagged as sensitive")
+  assert.ok(src.includes("if (!secondWay && pictureRefused(why)) { refused = true; continue; }"));
+  assert.ok(src.includes("return /flagged as sensitive|sensitive content|safety (filter|system)|content polic|nsfw|\\(E005\\)/i.test(message);"));
+  assert.ok(src.includes("const plain = `A realistic cinematic photograph for this moment of a short video, the look of documentary b-roll, natural colour: "), "the second way looks like the rest of the video");
   assert.ok(src.includes("...(stillFaults.length ? { stillFaults: stillFaults.slice(0, 8) } : {})"));
   const arch = read("app", "routes", "web.archive.tsx");
   assert.ok(arch.includes("const operator = isAdminEmail(account.email);"));
