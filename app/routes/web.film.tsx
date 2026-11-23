@@ -1026,7 +1026,7 @@ const backdropIs = (where: string, key: string): boolean => new RegExp(`(^|[^a-z
  * The phone (4:5) posters keep the film frame with its caption, which sits above the name there. */
 const LOOP_V = 5;
 const STILL_V = 8;
-const LOOP_KEYS = ["musicvideo", "testmovie", "shortstory", "kidstv", "moralstory", "horrorstory", "horror", "kidsmusicvideo"];
+const LOOP_KEYS = ["musicvideo", "testmovie", "shortstory", "kidstv", "moralstory", "moral", "horrorstory", "horror", "kidsmusicvideo"];
 /** Formats whose cover has its own 4:5 picture for phones (the rest are one picture cropped both ways). */
 const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo", "testmovie", "moral", "horrorstory", "shortstory", "moralstory"]);
 const stillOf = (key: string) => `/landing/film-still-${key}.jpg?v=${STILL_V}`;

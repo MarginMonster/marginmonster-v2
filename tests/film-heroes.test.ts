@@ -56,7 +56,18 @@ test("a hero is found by its id, and a finished film by how it was made", () => 
   assert.equal(heroName("horror", false, "Horror Story"), "Horror Film");
   assert.equal(heroName("horror", true, "Horror Story"), "Horror Story");
   assert.equal(heroName("testmovie", true, "Short Film"), "Short Story");
-  assert.equal(heroName("moral", false, "Moral Story"), "Moral Story", "no acted Moral hero: the template's name stands");
+  // MORAL FILM (2026-11-23): the acted Moral Story is a hero again — a tester who had been making it:
+  // "Moral story section previous model do amazing, set this like previous"
+  assert.equal(heroName("moral", false, "Moral Story"), "Moral Film");
+  assert.equal(heroName("moral", true, "Moral Story"), "Moral Story");
+  assert.equal(heroOf("moral", false)?.id, "moralfilm");
+  assert.equal(heroById("moralfilm")?.told, "acted");
+  assert.equal(heroById("moralfilm")?.media, "moral", "the poster of the acted one, which never left the disk");
+  for (const f of ["film-loop-moral.mp4", "film-loop-moral-tall.mp4", "film-loop-moral.jpg", "film-still-moral.jpg", "film-still-moral-tall.jpg"]) assert.ok(fs.existsSync(path.join(root, "public", "landing", f)), f);
+  assert.ok(read("app", "routes", "web.film.tsx").includes('const LOOP_KEYS = ["musicvideo", "testmovie", "shortstory", "kidstv", "moralstory", "moral", "horrorstory", "horror", "kidsmusicvideo"];'));
+  // it sits right after the story it is the acted twin of, like the other pairs
+  assert.equal(FILM_HEROES.findIndex((h) => h.id === "moralfilm"), FILM_HEROES.findIndex((h) => h.id === "moral") + 1);
+  for (const w of ["Moral Film", "A lesson, scripted and acted out"]) assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("\n  " + JSON.stringify(w) + ": ").length - 1, 5, w);
   assert.equal(heroName("youtube", false, "YouTube Video"), "YouTube Video");
   assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("title: `${heroName(tmpl.key, false, tmpl.name)} — "));
   assert.ok(read("app", "lib", "narrated-story.server.ts").includes("title: `${heroName(tmpl.key, true, tmpl.name)} — "));
@@ -66,7 +77,7 @@ test("a page is offered only the heroes it can make", () => {
   const all = ["musicvideo", "kidstv", "kidsmusicvideo", "moral", "horror", "testmovie"];
   assert.deepEqual(heroesFor(all, ["horror", "moral", "kidstv", "testmovie"]).map((h) => h.id), FILM_HEROES.map((h) => h.id));
   // a template that cannot be narrated offers no told hero; a template the account lacks offers none at all
-  assert.deepEqual(heroesFor(all, ["moral"]).map((h) => h.id), ["musicvideo", "kidstv", "kidsmusicvideo", "moral", "horrorfilm", "testmovie"]);
+  assert.deepEqual(heroesFor(all, ["moral"]).map((h) => h.id), ["musicvideo", "kidstv", "kidsmusicvideo", "moral", "moralfilm", "horrorfilm", "testmovie"]);
   assert.deepEqual(heroesFor(["musicvideo"], ["horror"]).map((h) => h.id), ["musicvideo"]);
 });
 

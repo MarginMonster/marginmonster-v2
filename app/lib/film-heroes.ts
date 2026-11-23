@@ -12,8 +12,12 @@
  *
  *   Horror Film  — scripted and acted out          Horror Story — narrated
  *   Short Film   — scripted and acted out          Short Story  — narrated
- *   Moral Story  — narrated (a story with a lesson is told)
+ *   Moral Film   — scripted and acted out          Moral Story  — narrated
  *   Kids Cartoon — acted (the characters talk)
+ *
+ * (Moral Film came back on 2026-11-23. The first grid had Moral Story narrated ONLY — and a tester who had
+ * been making the acted one said so the same week: "Moral story section previous model do amazing, set this
+ * like previous." The engine never lost it; the grid had simply stopped offering it.)
  *
  * The names are a first proposal, each one line to change. `tmpl` is the engine's template key (unchanged:
  * the engine still takes a template and a mode); `media` is the key of the poster files in public/landing
@@ -43,6 +47,7 @@ export const FILM_HEROES: FilmHero[] = [
   { id: "kidstv", tmpl: "kidstv", told: "acted", media: "kidstv", name: "Kids Cartoon", kick: "A cartoon for little ones", meta: "acted out", tint: "t-kids" },
   { id: "kidsmusicvideo", tmpl: "kidsmusicvideo", told: null, media: "kidsmusicvideo", name: "Kids Music Video", kick: "A sing-along for little ones", meta: "about 20 sec", tint: "t-kmv" },
   { id: "moral", tmpl: "moral", told: "narrated", media: "moralstory", name: "Moral Story", kick: "A story with a lesson", meta: "narrated in minutes", tint: "t-moral" },
+  { id: "moralfilm", tmpl: "moral", told: "acted", media: "moral", name: "Moral Film", kick: "A lesson, scripted and acted out", meta: "", tint: "t-moral" },
   { id: "horror", tmpl: "horror", told: "narrated", media: "horrorstory", name: "Horror Story", kick: "A scary story", meta: "narrated in minutes", tint: "t-horror" },
   { id: "horrorfilm", tmpl: "horror", told: "acted", media: "horror", name: "Horror Film", kick: "A scare, scripted and acted out", meta: "", tint: "t-horror" },
   { id: "shortstory", tmpl: "testmovie", told: "narrated", media: "shortstory", name: "Short Story", kick: "Your story", meta: "narrated in minutes", tint: "t-film" },
