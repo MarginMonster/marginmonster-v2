@@ -98,12 +98,27 @@ function pickedButMissed(metaJson: string | null, bodyJson: string | null): stri
 /** The kinds every Movie Maker pipeline writes on its finished film. */
 const FILM_KINDS = new Set(["testmovie", "narrated", "musicvideo", "film", "avatardialogue", "enginetest"]);
 
+/** A Creator video: a scene the member described, animated — not a product ad. The pipeline stamps
+ *  `creative` on it; one made before 2026-11-23 is known by the brief every such video was built from. */
+function creativeVideo(meta: Record<string, unknown>, body: Record<string, unknown>): boolean {
+  return meta.creative === true || (meta.style === "PRODUCT_HIGHLIGHT" && typeof body.prompt === "string" && body.prompt.startsWith("Cinematic short video."));
+}
+
 function recipeLabel(metaJson: string | null, bodyJson: string | null): string | null {
   let meta: Record<string, unknown> = {};
   let body: Record<string, unknown> = {};
   try { meta = JSON.parse(metaJson || "{}"); } catch { /* ignore */ }
   try { body = JSON.parse(bodyJson || "{}"); } catch { /* ignore */ }
   const pretty = (k: string) => k.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  // A described Creator video is not a "Product Highlight" (the pipeline's name for its style): say what it
+  // is, how long, and whether it carries sound — asked of the finished file, so a silent fallback says so.
+  if (creativeVideo(meta, body)) {
+    const sec = typeof meta.seconds === "number" && meta.seconds > 0 ? ` · ${meta.seconds}s` : "";
+    // …and the engine that really rendered it (the film labels name theirs too), so a fallback is visible
+    const e = typeof meta.engine === "string" ? meta.engine : "";
+    const eng = /kling-video\/o3\//.test(e) ? " · Kling 3 Omni" : /kling-video\/v3\//.test(e) ? " · Kling 3 Pro" : /veo/.test(e) ? " · Veo" : /seedance/.test(e) ? " · Seedance" : /kling/.test(e) ? " · Kling 2.5" : "";
+    return `Creator video${eng}${sec}${meta.sound === true ? " · sound" : meta.sound === false ? " · silent" : ""}`;
+  }
   // An engine test (a film shot, or a whole film, rendered again on another Kling host): say which host made it.
   if (meta.kind === "enginetest") {
     const h = meta.host === "fal" ? "fal · ½ price" : meta.host === "fal-std" ? "fal standard · ⅖ price" : "Replicate";
@@ -181,15 +196,19 @@ function buildDetails(type: string, metaJson: string | null, bodyJson: string | 
   // topic back as if it were the script.
   let script = str(body.script) || str(body.prompt);
   if (script && script === topic) script = null;
+  // A described Creator video has no product and no script: what the member wrote is its "direction", and
+  // body.prompt is OUR brief to the engine (camera, no-text rules, the sound line) — not theirs to read.
+  const creative = type === "VIDEO_AD" && creativeVideo(meta, body);
+  if (creative) script = null;
   return {
     kind,
-    product: str(meta.productTitle),
+    product: creative ? null : str(meta.productTitle),
     presenter,
     held: body.heldProduct === true,
     service: meta.serviceMode === true,
     topic,
     tagline: str(body.tagline),
-    direction: str(meta.direction),
+    direction: str(meta.direction) || (creative ? str(meta.productTitle) : null),
     script,
     scriptLabel: script ? (isFaceless ? "Narration" : hasPresenter ? "What they say" : "Prompt") : null,
   };
@@ -2068,9 +2087,14 @@ export default function WebArchive() {
     setArmColDel(false);
     colSubmit({ intent: "colDelete", collectionId: colOpen.id });
   };
+  // An answer is acted on ONCE, when its fetcher has gone idle. (A fetcher's `data` arrives while it is
+  // still "loading" the page again, and going idle does not change `data` — so an effect on the data alone
+  // ran once, too early, and the name box stayed open over a collection that had been made.)
+  const colAnswered = useRef<unknown>(null);
   useEffect(() => {
     const r = colFetcher.data?.col;
-    if (!r || colFetcher.state !== "idle") return;
+    if (!r || colFetcher.state !== "idle" || colAnswered.current === colFetcher.data) return;
+    colAnswered.current = colFetcher.data;
     if (!r.ok) { if (colForm) setColErr(r.error); else setToast({ msg: r.error }); return; }
     setColForm(null);
     setColErr(null);
@@ -2078,7 +2102,7 @@ export default function WebArchive() {
     if (r.op === "colCreate") { openCol(r.id); return; } // made from the menu: open it (its empty state says how to fill it)
     if (r.op === "colDelete") { setSelecting(false); setPicked(new Set()); navigate(colHref(""), { preventScrollReset: true }); }
     setToast({ msg: t(colSay(r.op, r.n), { n: r.n, name: r.name }) });
-  }, [colFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [colFetcher.data, colFetcher.state]); // eslint-disable-line react-hooks/exhaustive-deps
   const addPickedTo = (target: { collectionId: string } | { newName: string }) => {
     const ids = [...picked];
     if (!ids.length) return;
@@ -2095,14 +2119,16 @@ export default function WebArchive() {
   const queueFetcher = useFetcher<QueueAnswer>();
   const queueBusy = queueFetcher.state !== "idle";
   const queueIds = (ids: string[]) => queueFetcher.submit({ intent: "queueAdd", assetIds: ids.join(",") }, { method: "post", action: "/web/autopost" });
+  const queueAnswered = useRef<unknown>(null);
   useEffect(() => {
     const a = queueFetcher.data;
-    if (!a || queueFetcher.state !== "idle") return;
+    if (!a || queueFetcher.state !== "idle" || queueAnswered.current === a) return; // once, when idle — see colAnswered
+    queueAnswered.current = a;
     const said = queueSay(a, !("error" in a) && a.firstDueAt ? queueWhen(a.firstDueAt, Date.now()) : "");
     if ("error" in said) { setToast({ msg: said.error, ms: 6000 }); return; }
     if (selecting) setPicked(new Set());
     setToast({ msg: said.parts.map((x) => t(x.s, x.p)).join(" "), link: { to: "/web/autopost", label: t("See the queue") }, ms: 8000 });
-  }, [queueFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [queueFetcher.data, queueFetcher.state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Editable caption preview: "Post to socials" opens one caption box pre-filled
   // with an AI suggestion (intent "draft") the merchant can tweak or post as-is.

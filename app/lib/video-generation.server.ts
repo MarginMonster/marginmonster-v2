@@ -771,7 +771,9 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       // regenerates the product from its name — 150 tokens of something else.
       metaJson: JSON.stringify({ style, productTitle, avatarId: avatar?.id || null, avatarVariant: avatar ? variant : null, direction: params.customPrompt || null, productImageUrl: params.productImageUrl || null, serviceMode: !!params.serviceMode,
         aspect: qaAspect ? (qaAspect.ok ? (aspect === "9:16" ? "vertical" : aspect) : "offspec") : "unverified", qa: qaAspect ? { aspect: qaAspect } : undefined,
-        sound, engine: ranModel || undefined, seconds: params.durationSec || undefined }),
+        sound, engine: ranModel || undefined, seconds: params.durationSec || undefined,
+        // a scene the member DESCRIBED, not a product ad — the Archive labels it as that (creativeVideo)
+        creative: params.creative || undefined }),
     },
   });
   return asset.id;

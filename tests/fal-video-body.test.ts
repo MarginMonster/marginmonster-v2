@@ -126,6 +126,14 @@ test("a video sold with sound tries two engines that make it before the silent d
   assert.ok(!read("app", "lib", "video-engines.ts").includes("kling3s"));
   // what shipped is asked of the file and written on the piece
   assert.ok(vid.includes("sound = hasAudioStream(path.join(process.cwd(), \"data\", \"renders\", path.basename(storedUrl)));"));
-  assert.ok(vid.includes("sound, engine: ranModel || undefined, seconds: params.durationSec || undefined }),"));
+  assert.ok(vid.includes("sound, engine: ranModel || undefined, seconds: params.durationSec || undefined,"));
+  assert.ok(vid.includes("creative: params.creative || undefined }),"), "and that it is a described scene, not a product ad");
+  // the Archive reads those back: a Creator video is not labelled "Product Highlight", and our own brief
+  // to the engine is not printed under "Prompt"
+  const arc = read("app", "routes", "web.archive.tsx");
+  assert.ok(arc.includes("function creativeVideo(meta: Record<string, unknown>, body: Record<string, unknown>): boolean {"));
+  assert.ok(arc.includes("return `Creator video${eng}${sec}${meta.sound === true ? \" · sound\" : meta.sound === false ? \" · silent\" : \"\"}`;"));
+  assert.ok(arc.includes("if (creative) script = null;"));
+  assert.ok(arc.includes("product: creative ? null : str(meta.productTitle),"));
   assert.ok(vid.includes("if (hasAudioStream(finalPath)) await levelFilm(finalPath, -16);"), "and it plays at the level of everything else we make");
 });
