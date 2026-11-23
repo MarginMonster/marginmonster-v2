@@ -45,6 +45,7 @@ import { lyricLinesOf, sceneLineTimes } from "./lyric-sync";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 import { episodeTitle, seriesWriterBrief, type SeriesBrief } from "./film-series";
 import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from "./dialogue-fit";
+import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -338,6 +339,9 @@ export interface FilmTreatment {
    *  (dialogue-fit.ts): the spoken words of each long line as written, what each came to, and what went
    *  wrong if anything did. */
   lineFit?: { was: number[]; now: number[]; note?: string };
+  /** An ACTED film's lines by somebody who is not on screen (dialogue-cast.ts): how many there were, how
+   *  many were rewritten for one of the two who are, and what went wrong if anything did. */
+  castFit?: { unseen: number; fixed: number; note?: string };
 }
 
 const TREATMENT_SCHEMA = {
@@ -491,6 +495,11 @@ export async function previewFilmTreatment(opts: {
       ? (artistName
         ? `\nThe artist is named "${artistName}" — use THIS EXACT name everywhere; do NOT give them a stage name, alias, rap name or ANY other name. Return "cast" as an array of vivid FIXED visual descriptions, EACH STARTING WITH THE PERSON'S EXACT NAME: the FIRST entry is ${artistName} (e.g. "${artistName}, a singer with long dark wavy hair and a black leather jacket")${castNames.length ? `, then ONE entry for EACH co-star, in this order and with these EXACT names — ${castNames.map((n) => `"${n}"`).join(", ")} (e.g. "${castNames[0]}, …")` : ""}. Every scene's VISUAL and caption must use ONLY these exact names — NEVER a made-up or stage name.${coStars} Every scene's VISUAL features this SAME performer.${noSlop}`
         : `\nFirst invent the ARTIST and return it as "cast": an array whose FIRST entry is ONE vivid, FIXED visual description of the singer to reuse in every scene (e.g. "Mia, a 25-year-old singer with long dark wavy hair, a black leather jacket and silver hoop earrings").${coStars} Every scene's VISUAL must feature this SAME performer, described the same way.${noSlop}`)
+      // AN ACTED SCENE IS TWO PEOPLE (dialogue-cast.ts): the film is shot as a two-shot, so the cast the
+      // writer invents for one is exactly two, each with ONE word for a name — "Grandpa Joe" was read as
+      // "Joe" by the shot builder and matched nobody's portrait, and a third character had no mouth at all.
+      : tmpl.dialogue && !narrated
+      ? `\nFirst invent the TWO characters who carry this scene and return them as "cast": exactly two entries, each ONE vivid, FIXED visual description to reuse in every shot, starting with the character's name — a simple ONE-WORD first name (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"; never a title or two words such as "Grandpa Joe" or "Mr. Alvarez"). Every shot's VISUAL features these same two, described the same way.${noSlop}`
       : `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"). Every scene's VISUAL must feature these same named characters, described the same way.${noSlop}`)
     : "";
   const prodLine = tmpl.needsProduct && opts.productTitle
@@ -592,7 +601,7 @@ export async function previewFilmTreatment(opts: {
     : tmpl.dialogue
     ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FIVE fields:\n` +
       `• VISUAL — what we SEE: a TWO-SHOT framing BOTH characters together in the place; they STAY put (NO standing up, sitting down, walking, turning away or crossing — big moves make the AI morph faces/clothing); a still, tense TALKING beat with only small gestures and changing expressions; keep hands EMPTY by default — do NOT add cigarettes, drinks, phones or handheld props for flavour (they warp badly in AI video), only include one if the user's theme specifically involves it; NO readable text, documents, papers, boards, signage or screens in view.\n` +
-      `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot. Each line fills MOST of the ~10-second shot WITHOUT overrunning it: a two-sentence beat of about 15-18 words (~7-9 seconds of speech). This is a HARD window — NEVER a short one-liner (a line that doesn't fill the shot leaves dead air, which makes the AI voice stall or repeat words), and NEVER more than 18 words, because a longer line overruns the 10-second clip and gets cut off at the end. Count the words and stay inside 15-18. The speaker ALTERNATES shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names, and make each line a genuine REPLY to the one before it (never a non-sequitur).\n` +
+      `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot. Each line fills MOST of the ~10-second shot WITHOUT overrunning it: a two-sentence beat of about 15-18 words (~7-9 seconds of speech). This is a HARD window — NEVER a short one-liner (a line that doesn't fill the shot leaves dead air, which makes the AI voice stall or repeat words), and NEVER more than 18 words, because a longer line overruns the 10-second clip and gets cut off at the end. Count the words and stay inside 15-18. The speaker ALTERNATES shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names, and make each line a genuine REPLY to the one before it (never a non-sequitur). ONLY the two people in the shot ever speak: the NAME before the colon is always one of their two names, the same single word every time. Anyone else the story needs — a shopkeeper, a parent, a stranger — is talked ABOUT or stands silent in the background, and is never heard; when what they say or do matters, one of the two reports it (\"He says he can't thank us enough!\").\n` +
       `• WHERE — the LOCATION this beat happens in, as a short vivid label (e.g. "a dim old diner at night, rain on the windows").\n` +
       `• SHOT — set this to EXACTLY "wide two-shot" for EVERY beat. Do NOT use close-ups, reverse angles or any other framing — the director adds those by hand later. Every beat in a scene MUST share the same "wide two-shot" so the whole scene plays as ONE seamless, continuous take.\n` +
       `• TONE — HOW this exact line is delivered: a short emotional direction for the voice (e.g. "coldly, with quiet menace", "voice rising in anger", "quietly, barely holding it together"). It must MATCH the words so the read is never flat or monotone.\n` +
@@ -739,6 +748,34 @@ export async function previewFilmTreatment(opts: {
   // go back ONCE, each asked for at THREE lengths, and the code picks the one that fits (asked simply for
   // "14 to 18 words" again, the live site got 25, 29 and 26). Any trouble at all and the lines stay as they
   // were written. What happened rides back on the treatment ("lineFit").
+  // ONLY THE TWO ON SCREEN SPEAK (dialogue-cast.ts). The writer is told so above and still closed a film on
+  // a third character's line — and the grandfather was seen saying the fruit seller's thanks (a film made
+  // on the live site, 2026-11-23). A line by anyone who is not one of the two in its place goes back ONCE
+  // to be rewritten for one of them; any trouble and the lines stay as they were written. What happened
+  // rides back on the treatment ("castFit").
+  let castNote: FilmTreatment["castFit"];
+  if (tmpl.dialogue && !narrated) {
+    const written = list.map((s) => s.caption || "");
+    const wheres = list.map((s) => s.where || "");
+    const unseen = unseenLines(written, wheres);
+    if (unseen.length) {
+      try {
+        const raw = await anthropicText(unseenAsk(written, wheres), {
+          model: "claude-sonnet-5", maxTokens: 1500,
+          jsonSchema: { name: "dialogue_cast", schema: { type: "object", properties: { lines: { type: "array", items: { type: "string" } } }, required: ["lines"], additionalProperties: false } },
+        });
+        const next = takeSeen(written, (JSON.parse(raw) as { lines?: unknown }).lines, wheres);
+        const took = unseen.filter((i) => next[i] !== written[i]);
+        console.log(`[film] ${unseen.length} line${unseen.length === 1 ? "" : "s"} spoken by somebody who is not on screen — ${took.length} rewritten for one of the two who are`);
+        list = list.map((s, i) => (next[i] && next[i] !== written[i] ? { ...s, caption: next[i] } : s));
+        castNote = { unseen: unseen.length, fixed: took.length, ...(took.length < unseen.length ? { note: `${unseen.length - took.length} of ${unseen.length} had no usable rewrite` } : {}) };
+      } catch (e) {
+        const why = e instanceof Error ? e.message.slice(0, 140) : String(e);
+        console.error(`[film] the lines by somebody off screen could not be rewritten, kept as written: ${why}`);
+        castNote = { unseen: unseen.length, fixed: 0, note: `a rewrite could not be made: ${why}` };
+      }
+    }
+  }
   let lineNote: FilmTreatment["lineFit"];
   if (tmpl.dialogue && !narrated) {
     const written = list.map((s) => s.caption || "");
@@ -797,7 +834,7 @@ export async function previewFilmTreatment(opts: {
   }
   // an episode is called "<Series> — Episode <N>" (the writer's short episode name may follow a colon)
   if (series) outTitle = episodeTitle(series.title, series.episode, outTitle);
-  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
+  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 
 // ---- Assembly ---------------------------------------------------------------
