@@ -892,6 +892,10 @@ async function runJob(
             jobId: payload.__jobId as string | undefined,
             // NEXT EPISODE: the series it continues (film-series.ts; checked again here)
             series: (await import("./film-series")).seriesFromPayload(payload.filmSeries),
+            // TOLD AGAIN IN ANOTHER LANGUAGE (story-translate.ts): the language, and the story it re-tells.
+            // Its translated words arrive as the approved treatment and its pictures as ckImages, below.
+            lang: typeof payload.filmLang === "string" ? payload.filmLang : undefined,
+            translatedFrom: typeof payload.filmTranslatedFrom === "string" ? payload.filmTranslatedFrom : undefined,
             resume: {
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
               ckApproved: payload.ckApproved as string | undefined,

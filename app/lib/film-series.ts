@@ -65,6 +65,9 @@ export function storyHeroOf(meta: unknown): FilmHero | null {
   const m = safeParse(meta);
   const kind = str(m.kind);
   if (!(STORY_KINDS as readonly string[]).includes(kind)) return null;
+  // A story TOLD AGAIN IN ANOTHER LANGUAGE (story-translate.ts) is not an episode of anything: a series
+  // continues from the original — whose next episode is written in the shop's own language.
+  if (str(m.translatedFrom)) return null;
   const h = heroOf(str(m.template), kind === "narrated");
   return h && h.told !== null && h.told === (kind === "narrated" ? "narrated" : "acted") ? h : null;
 }

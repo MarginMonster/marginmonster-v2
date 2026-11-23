@@ -27,7 +27,7 @@ import { isExpiringUrl } from "../lib/image-generation.server";
 import { db } from "../db.server";
 import { ensureProfile, linkedFromCache, publishPost, refreshLinkedPlatforms, socialProviderEnabled } from "../lib/social-provider.server";
 import { spendTokens, tokensRemainingLive } from "../lib/tokens.server";
-import { TOKEN_COST, CREATOR_SURCHARGE_MULT, creatorVideoTokens } from "../lib/plan-config";
+import { TOKEN_COST, CREATOR_SURCHARGE_MULT, creatorVideoTokens, estimateFilmTokens } from "../lib/plan-config";
 import { facelessQualitySurcharge } from "../lib/create-models";
 import { engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { xpForSpend } from "../lib/achievements";
@@ -65,6 +65,9 @@ import { externalOrigin } from "../lib/origin.server";
 import { isValidTimeZone, zonedDateString, zonedInstant } from "../lib/timezone";
 import { storyHeroOf } from "../lib/film-series";
 import { adWordsOf } from "../lib/ad-words";
+import { isNarratedStory, storyLangOf, translateTargets } from "../lib/story-translate";
+import { tellStoryAgain } from "../lib/story-translate.server";
+import { isAdminEmail } from "../lib/admin.server";
 // (2026-11-22) Collections — named shelves a piece can sit on; every query is in collections.server.ts
 import { addToCollection, collectionIdsByAsset, createCollection, deleteCollection, listCollections, removeFromCollection, renameCollection, type ColProblem } from "../lib/collections.server";
 
@@ -454,6 +457,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // Is it a STORY film (acted or narrated)? Those can be continued: the viewer's "Next episode" opens
         // the Movie Maker on the next episode of its series (film-series.ts → storyHeroOf / episodeCardFor).
         canContinue: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson),
+        // A NARRATED story can be told again in another language — same pictures, same storyteller
+        // (story-translate.ts). The languages it is not already in, by their own names; null for anything else.
+        tellIn: a.type === "VIDEO_AD" && isNarratedStory(a.metaJson) ? translateTargets(storyLangOf(a.metaJson, shop.contentLang)) : null,
         // Which kind of video it is, for the Films / Faceless chips: every Movie Maker pipeline records its
         // own kind (acted, narrated, music video, the older stills-and-clips engine, engine tests).
         group: (() => {
@@ -553,7 +559,7 @@ function colProblemSentence(lang: ReturnType<typeof readUiLang>, problem: ColPro
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { shop } = await requireWebIdentity(request);
+  const { shop, account } = await requireWebIdentity(request);
   const lang = readUiLang(request);
   const form = await request.formData();
   const intent = form.get("intent") as string;
@@ -905,6 +911,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       await enqueueJob(shop.id, "GENERATE_BLOG_POST", { productTitle, productDescription: direction, prePaid: paid, chargedTokens: paid ? cost : undefined, chargedFromExtra: remixFromExtra });
     }
     return json({ remixed: type, free });
+  }
+  if (intent === "tellAgain") {
+    // TOLD AGAIN IN ANOTHER LANGUAGE (story-translate.server.ts). It is a film like any other: the same
+    // price, and — while films are free — the same daily cap as the Movie Maker's own Generate.
+    const freeCap = parseInt(process.env.FILM_FREE_DAILY_CAP || "", 10);
+    if (Number.isFinite(freeCap) && freeCap > 0 && estimateFilmTokens(1) === 0 && !isAdminEmail(account.email)) {
+      const made = await db.job.count({
+        where: { shopId: shop.id, type: "GENERATE_VIDEO_AD", createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, payload: { contains: '"contentType":"film"' } },
+      });
+      if (made >= freeCap) return json({ error: tr(lang, "You've made {n} films in the last 24 hours. Movie Maker is free while we finish it, so it's limited to {n} a day for now — come back tomorrow for more.", { n: freeCap }) });
+    }
+    const r = await tellStoryAgain({ shopId: shop.id, assetId: (form.get("assetId") as string) || "", lang: (form.get("lang") as string) || "" });
+    if (r.ok) return json({ told: r.langName });
+    if (r.error) console.error(`[archive] tell again failed (${r.code}): ${r.error}`);
+    const why: Record<string, string> = {
+      gone: "That piece is gone — refresh and try again.",
+      "not-a-story": "Only a narrated story can be told again in another language.",
+      language: "It is already told in that language.",
+      "no-pictures": "This story's pictures were not kept, so it can't be told again — make it again in the Movie Maker.",
+      "write-failed": "Couldn't translate that just now — try again in a moment.",
+      tokens: "You don't have enough tokens for that.",
+      "queue-failed": "Couldn't start that just now — try again in a moment.",
+    };
+    return json({ error: tr(lang, why[r.code] || why["queue-failed"]) });
   }
   if (intent === "draft") {
     // Suggest one editable caption for the manual post box. A single caption
@@ -1429,6 +1459,8 @@ const WA_CSS = `
 .wa-vbtn.ghost.on{background:#EAF6EF;border-color:#BFE2CD;color:var(--green,#0C7A46);}
 .wa-sizes{flex-basis:100%;border:1px solid var(--line,#E1DECD);border-radius:14px;padding:12px;background:#FBFAF4;}
 .wa-sizes-h{margin:0 0 10px;font-size:12.5px;line-height:1.45;color:var(--ink2,#4A554E);}
+.wa-tell{display:flex;flex-wrap:wrap;gap:8px;}
+.wa-tell .wa-vbtn{flex:1 1 120px;justify-content:center;}
 .wa-sizes-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:7px;} /* one per row: the viewer rail is narrow, and two across cut the labels */
 .wa-size{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 10px;border-radius:12px;border:1px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);font:inherit;text-align:left;text-decoration:none;cursor:pointer;box-sizing:border-box;transition:border-color .12s,background .12s;}
 .wa-size:hover{border-color:#BFE2CD;}
@@ -2165,6 +2197,21 @@ export default function WebArchive() {
     if (selecting) setPicked(new Set());
     setToast({ msg: said.parts.map((x) => t(x.s, x.p)).join(" "), link: { to: "/web/autopost", label: t("See the queue") }, ms: 8000 });
   }, [queueFetcher.data, queueFetcher.state]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // TELL IT AGAIN IN ANOTHER LANGUAGE (story-translate.ts) — a narrated story's viewer offers the languages
+  // it is not already in; a tap starts an ordinary narrated render that reuses the story's own pictures.
+  const [tellFor, setTellFor] = useState<string | null>(null);
+  const tellFetcher = useFetcher<{ told?: string; error?: string }>();
+  const tellBusy = tellFetcher.state !== "idle";
+  const tellAgain = (assetId: string, to: string) => tellFetcher.submit({ intent: "tellAgain", assetId, lang: to }, { method: "post" });
+  const tellAnswered = useRef<unknown>(null);
+  useEffect(() => {
+    const a = tellFetcher.data;
+    if (!a || tellFetcher.state !== "idle" || tellAnswered.current === a) return; // once, when idle — see colAnswered
+    tellAnswered.current = a;
+    if (a.error) { setToast({ msg: a.error, ms: 7000 }); return; }
+    if (a.told) { setTellFor(null); setViewer(null); setToast({ msg: t("Telling it in {lang} — it lands here in a few minutes.", { lang: a.told }), ms: 8000 }); }
+  }, [tellFetcher.data, tellFetcher.state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Editable caption preview: "Post to socials" opens one caption box pre-filled
   // with an AI suggestion (intent "draft") the merchant can tweak or post as-is.
@@ -2991,6 +3038,25 @@ export default function WebArchive() {
                     {/* A story film is continued from where it is watched: the Movie Maker opens on the next
                         episode of its series — same cast, same voices — whichever episode this one is. */}
                     {viewer.canContinue && viewer.media && !viewer.expired && <a className="wa-vbtn ghost" href={`/web/film?episode=${viewer.id}`} title={t("Continue this story — the next episode, with the same cast")}><Ico n="video" /> {t("Next episode")}</a>}
+                    {/* A narrated story, told again in another language: the same pictures and the same
+                        storyteller, as a piece of its own. (Only the languages it is not already in.) */}
+                    {viewer.tellIn && viewer.tellIn.length > 0 && viewer.media && !viewer.expired && (
+                      <button type="button" className={`wa-vbtn ghost${tellFor === viewer.id ? " on" : ""}`} aria-expanded={tellFor === viewer.id}
+                        onClick={() => setTellFor((cur) => (cur === viewer.id ? null : viewer.id))}>
+                        <Ico n="globe" /> {t("Another language")}
+                      </button>
+                    )}
+                    {viewer.tellIn && viewer.tellIn.length > 0 && viewer.media && !viewer.expired && tellFor === viewer.id && (
+                      <div className="wa-sizes" role="group" aria-label={t("Another language")}>
+                        <p className="wa-sizes-h">{t("Tell this story again in another language — the same pictures and the same storyteller. It lands here as its own piece.")}</p>
+                        <div className="wa-tell">
+                          {viewer.tellIn.map((l) => (
+                            <button type="button" key={l.code} className="wa-vbtn ghost" lang={l.code} disabled={tellBusy} onClick={() => tellAgain(viewer.id, l.code)}>{l.name}</button>
+                          ))}
+                        </div>
+                        {tellBusy && <p className="wa-sizes-h" role="status" style={{ margin: "10px 0 0" }}>{t("Translating the story…")}</p>}
+                      </div>
+                    )}
                     {(viewer.isVideo || viewer.type === "IMAGE_AD") && viewer.media && (
                       <button type="button" className={`wa-vbtn ghost${sizesFor === viewer.id ? " on" : ""}`} aria-expanded={sizesFor === viewer.id}
                         onClick={() => setSizesFor((cur) => (cur === viewer.id ? null : viewer.id))}>

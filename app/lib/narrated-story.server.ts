@@ -293,6 +293,11 @@ export async function generateNarratedStory(opts: {
   /** NEXT EPISODE (film-series.ts): the series this story continues — told to the writer when the story
    *  is written here, and stored on the asset as meta.series. */
   series?: SeriesBrief | null;
+  /** TOLD AGAIN IN ANOTHER LANGUAGE (story-translate.ts): the language to tell it in — the narrator's
+   *  voice, the timing and the words on screen all follow it. Unset = the shop's own content language. */
+  lang?: string | null;
+  /** …and the story it is a re-telling of (its asset id), recorded on the new one. */
+  translatedFrom?: string | null;
   resume?: { ckTreatment?: string; ckApproved?: string; ckVoPath?: string; ckVoUrl?: string; ckWords?: string; ckImages?: string; ckMusic?: string };
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template);
@@ -302,7 +307,7 @@ export async function generateNarratedStory(opts: {
   const resume = opts.resume || {};
   const ckpt = async (patch: Record<string, unknown>) => { if (jobId) await checkpointJob(jobId, patch); };
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-  const lang = (await db.shop.findUnique({ where: { id: opts.shopId }, select: { contentLang: true } }))?.contentLang;
+  const lang = opts.lang || (await db.shop.findUnique({ where: { id: opts.shopId }, select: { contentLang: true } }))?.contentLang;
 
   // 1) THE STORY
   let treatment: FilmTreatment;
@@ -427,6 +432,13 @@ export async function generateNarratedStory(opts: {
         // series this story is an episode of — an ordinary story has no `series`
         cast: castForMeta(opts.cast),
         ...(opts.series ? { series: seriesMeta(opts.series) } : {}),
+        // TOLD AGAIN IN ANOTHER LANGUAGE (story-translate.ts): the language this one is told in, and what a
+        // re-telling reuses — its pictures (one per scene, on our own disk) and its music bed. A re-telling
+        // says which story it came from.
+        lang: normalizeContentLang(lang),
+        pictures: stills.map((f) => `/renders/${path.basename(f)}`),
+        ...(musicPath ? { music: path.basename(musicPath) } : {}),
+        ...(opts.translatedFrom ? { translatedFrom: String(opts.translatedFrom).slice(0, 64) } : {}),
       }),
     },
   });
