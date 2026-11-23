@@ -148,3 +148,23 @@ test("a faceless beat whose picture could not be made shows its neighbour's — 
   assert.deepEqual(shownOf(["/r/prod-1.jpg", "/r/a.jpg"]), ["/r/prod-1.jpg", "/r/a.jpg"], "a product photo is a real picture");
   assert.ok(src.includes(shownOf.toString().includes("after") ? "const after = stills[i + d], before = stills[i - d];" : ""), "the same rule is in the pipeline");
 });
+
+test("titles are cut at a word, the panel says when every language is told, and a faceless line is long enough", () => {
+  // what the storyboard calls the story it has open: one line on a phone
+  const long = storyToEditFrom(asset({}, { treatment: { title: "Zwei Nachtreinigungskräfte in einem alten Theater finden eine Braut, die in der Loge wartet", scenes: SCENES, musicMood: "" } }), PICS, "de")!;
+  assert.ok(long.title.length <= 48 && long.title.endsWith("…") && !/\s…$/.test(long.title), long.title);
+  assert.ok("Zwei Nachtreinigungskräfte in einem alten Theater finden eine Braut, die in der Loge wartet".startsWith(long.title.slice(0, -1)), "whole words only");
+  assert.equal(long.treatment.title.endsWith("wartet"), true, "the story's own title is not shortened");
+  // a telling's title (it came back "…finden eine Braut, die in der")
+  const tr = read("app", "lib", "story-translate.ts");
+  assert.ok(tr.includes("const title = trimTitle(oneLine(str(a.title)), 80);"));
+  assert.ok(!tr.includes("oneLine(str(a.title)).slice(0, 80)"));
+  // every language already told: the panel says so instead of offering to tell it "again"
+  const a = read("app", "routes", "web.archive.tsx");
+  assert.ok(a.includes("{viewer.tellIn.every((l) => l.have) ? t(\"This story is told in every language — tap one to open it.\") : t(\"Tell this story again in another language — the same pictures and the same storyteller. It lands here as its own piece.\")}"));
+  assert.equal(read("app", "lib", "ui-i18n-dict.ts").split(`${JSON.stringify("This story is told in every language — tap one to open it.")}:`).length - 1, 5);
+  // a faceless video is priced as about half a minute: lines of 8-9 words made a 21-second one
+  const fl = read("app", "lib", "faceless-video.server.ts");
+  assert.equal(fl.split("one conversational sentence of 12 to 16 words;").length - 1, 2, "both scripts");
+  assert.ok(!fl.includes("~8-16 words"));
+});

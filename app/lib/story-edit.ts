@@ -14,6 +14,7 @@
  * This file is the deciding part: what the storyboard is handed, and what a re-telling carries over
  * from the story it was opened from. Pure — the database and the disk are story-edit.server.ts. */
 import { heroOf } from "./film-heroes.ts";
+import { trimTitle } from "./text-trim.ts";
 import { isNarratedStory, storyLangOf, toldFrom } from "./story-translate.ts";
 
 type Obj = Record<string, unknown>;
@@ -85,7 +86,8 @@ export function storyToEditFrom(
   const captions = str(meta.captions);
   return {
     from: asset.id,
-    title: oneLine(str(tr.title)).slice(0, 80) || oneLine(asset.title || "").slice(0, 80),
+    // (what the storyboard CALLS the story it has open — short enough for one line on a phone)
+    title: trimTitle(oneLine(str(tr.title)) || oneLine(asset.title || ""), 48),
     heroId: hero.id,
     template: hero.tmpl,
     aspect: aspect === "16:9" || aspect === "1:1" ? aspect : "9:16",
@@ -97,7 +99,8 @@ export function storyToEditFrom(
       .filter((c) => c.name),
     topic: str(body.prompt).slice(0, 2000),
     treatment: {
-      title: oneLine(str(tr.title)).slice(0, 80),
+      // (the story's own title, whole: the render cuts it at a word for the library)
+      title: oneLine(str(tr.title)).slice(0, 200),
       scenes,
       musicMood: oneLine(str(tr.musicMood)).slice(0, 200),
       cast: (Array.isArray(tr.cast) ? tr.cast : []).map((c) => oneLine(str(c)).slice(0, 300)).filter(Boolean).slice(0, 8),

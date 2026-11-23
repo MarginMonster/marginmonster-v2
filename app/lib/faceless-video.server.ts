@@ -304,12 +304,12 @@ export async function generateFacelessVideo(opts: {
         `PRODUCT: "${product.title}".\n` +
         (product.description ? `DETAILS (use ONLY what's here — do not invent anything beyond it): ${sentenceSlice(product.description, 600)}.\n` : "") +
         `Angle: ${PRODUCT_ANGLES[opts.format || ""] || PRODUCT_ANGLES.spotlight}.\n` +
-        `Return 5-6 beats. Each beat = a spoken LINE (one short conversational sentence, ~8-16 words; the FIRST line is a scroll-stopping hook about the product; the LAST line is a soft call to action like "link's right here" or "grab yours") + a VISUAL (a vivid cinematic lifestyle scene that features or complements the product — NO text/words/logos in the image, no real named people).\n` +
+        `Return 5-6 beats. Each beat = a spoken LINE (one conversational sentence of 12 to 16 words; the FIRST line is a scroll-stopping hook about the product; the LAST line is a soft call to action like "link's right here" or "grab yours") + a VISUAL (a vivid cinematic lifestyle scene that features or complements the product — NO text/words/logos in the image, no real named people).\n` +
         `Total spoken length ~25-35 seconds. Also give musicMood (a short phrase), voiceGender, and a title: 2 to 6 words, what a viewer would call this video — not the product name alone.\n` +
         `SAFETY: say ONLY what is true from the DETAILS above — NEVER invent statistics, prices, discounts, sales, guarantees, reviews, ratings, awards or endorsements. No "best", "#1" or superlatives you cannot back up.` + inLang
       : `Write a short FACELESS social video for TikTok/Reels about: "${topic}".\n` +
         `Style: ${FACELESS_FORMATS[fmtKey]}.\n` +
-        `Return 6-7 beats. Each beat = a spoken LINE (one short conversational sentence, ~8-16 words; the FIRST line is a scroll-stopping hook) + a VISUAL (a vivid, specific, cinematic image description for AI b-roll that matches the line — NO text/words/logos in the image, no real named people).\n` +
+        `Return 6-7 beats. Each beat = a spoken LINE (one conversational sentence of 12 to 16 words; the FIRST line is a scroll-stopping hook) + a VISUAL (a vivid, specific, cinematic image description for AI b-roll that matches the line — NO text/words/logos in the image, no real named people).\n` +
         `Total spoken length ~30-40 seconds. Also give musicMood (a short phrase describing background music), voiceGender, and a title: 2 to 6 words, what a viewer would call this video — not the topic repeated.\n` +
         `SAFETY: keep it general and true — do NOT invent specific statistics, prices, dates, medical or financial advice, or claims you are unsure of; no defamation of real people or brands.` + inLang;
     const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 1200, jsonSchema: { name: "faceless_script", schema: SCRIPT_SCHEMA as unknown as Record<string, unknown> } });

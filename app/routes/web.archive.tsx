@@ -3054,7 +3054,7 @@ export default function WebArchive() {
                     )}
                     {viewer.tellIn && viewer.tellIn.length > 0 && viewer.media && !viewer.expired && tellFor === viewer.id && (
                       <div className="wa-sizes" role="group" aria-label={t("Another language")}>
-                        <p className="wa-sizes-h">{t("Tell this story again in another language — the same pictures and the same storyteller. It lands here as its own piece.")}</p>
+                        <p className="wa-sizes-h">{viewer.tellIn.every((l) => l.have) ? t("This story is told in every language — tap one to open it.") : t("Tell this story again in another language — the same pictures and the same storyteller. It lands here as its own piece.")}</p>
                         <div className="wa-tell">
                           {viewer.tellIn.map((l) => l.have ? (
                             // already told in this language: the button opens that telling instead of making another

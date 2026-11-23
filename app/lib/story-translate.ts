@@ -10,6 +10,7 @@
  * the database are the callers' (story-translate.server.ts).
  */
 import { CONTENT_LANGS, CONTENT_LANG_NATIVE, normalizeContentLang } from "./content-lang.ts";
+import { trimTitle } from "./text-trim.ts";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -105,7 +106,8 @@ export function translatedTreatment<T extends { title?: string; scenes: Array<Re
   if (!caps || caps.length !== treatment.scenes.length) throw new Error(`the translation came back with ${caps ? caps.length : "no"} scenes of ${treatment.scenes.length}`);
   const told = caps.map((c) => oneLine(str(c)).replace(/^\d+\.\s*/, ""));
   if (told.some((c) => c.length < 2)) throw new Error("the translation left a scene empty");
-  const title = oneLine(str(a.title)).slice(0, 80);
+  // (cut at a word, and said to be cut: a German title came back "…finden eine Braut, die in der")
+  const title = trimTitle(oneLine(str(a.title)), 80);
   return { ...treatment, ...(title ? { title } : {}), scenes: treatment.scenes.map((s, i) => ({ ...s, caption: told[i] })) };
 }
 
