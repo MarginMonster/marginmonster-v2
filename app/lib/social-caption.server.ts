@@ -1,7 +1,8 @@
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
-import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, claimFaults, dropFaultSentences } from "./ad-claims";
 import { NETWORKS, POSTABLE_PLATFORMS, captionFor, network, takes } from "./social-networks";
+import { pieceCaptionPrompt, pieceSubjectOf, pieceTags, storefrontOf, type PieceSubject } from "./caption-subject";
 
 /* AI caption + hashtag writer for auto-posted content.
  *
@@ -20,7 +21,18 @@ import { NETWORKS, POSTABLE_PLATFORMS, captionFor, network, takes } from "./soci
 
 /** `fallback` marks the minimal stand-in we ship when the writer could not
  *  be reached. It is deliberately NOT persisted — see getOrMakeCaptions. */
-export type PlatformCaption = { text: string; hashtags: string[]; fallback?: boolean };
+export type PlatformCaption = {
+  text: string;
+  hashtags: string[];
+  fallback?: boolean;
+  /** written about the piece itself — a film, a story, a picture somebody made — not about a product
+   *  (caption-subject.ts). Kept with the cached caption: one cached without it was written by the product
+   *  brief, and for a made piece that is a miss. */
+  piece?: boolean;
+  /** this post carries no link: the piece is not a product and the member has no storefront for a link to
+   *  lead to. Worked out on every read, never stored. */
+  noLink?: boolean;
+};
 export type CaptionSet = Record<string, PlatformCaption>; // keyed by platform
 
 // Every network we post to (social-networks.ts is the one list).
@@ -52,6 +64,9 @@ export interface CaptionInput {
   topic?: string;
   isVideo: boolean;
   platforms: string[];
+  /** Set when the piece is NOT a product ad — a film, a story, a Creator video or picture. The caption is
+   *  then written about the piece itself. getOrMakeCaptions works it out from the asset; callers need not. */
+  piece?: PieceSubject | null;
 }
 
 interface BrandVoice {
@@ -137,8 +152,14 @@ export async function generateCaptionSet(
 
     const medium = input.isVideo ? "short-form video (Reel/TikTok)" : "photo post";
     const platformRules = wanted.map((p) => `- ${p}: ${PLATFORM_RULE[p] ?? PLATFORM_RULE.facebook}`).join("\n");
+    const piece = input.piece || null;
 
-    const prompt = `You write high-performing social captions for an e-commerce brand. Write scroll-stopping captions that boost reach WITHOUT looking AI-generated or spammy.${langDirective(contentLang)}${contentLang && contentLang !== "en" ? " Hashtags may mix that language with high-reach English tags." : ""}
+    // A PIECE SOMEBODY MADE IS WRITTEN ABOUT AS WHAT IT IS (caption-subject.ts). The product brief below sold
+    // a Creator video of a lighthouse in a storm as "this lighthouse decor piece" with #homedecor.
+    const prompt = piece ? pieceCaptionPrompt({
+      piece, isVideo: input.isVideo, platforms: wanted, tone: voice.tone,
+      langLine: `${langDirective(contentLang)}${contentLang && contentLang !== "en" ? " Hashtags may mix that language with high-reach English tags." : ""}`,
+    }) : `You write high-performing social captions for an e-commerce brand. Write scroll-stopping captions that boost reach WITHOUT looking AI-generated or spammy.${langDirective(contentLang)}${contentLang && contentLang !== "en" ? " Hashtags may mix that language with high-reach English tags." : ""}
 
 Product: ${stripPromoTag(input.productTitle)}${input.productType ? ` (${input.productType})` : ""}
 ${input.productDescription ? `Product details (ground every claim in these — invent nothing beyond them): ${input.productDescription.slice(0, 600)}\n` : ""}Format: ${medium}${input.topic ? `\nAngle/theme: ${input.topic}` : ""}
@@ -162,18 +183,28 @@ ${wanted.map((p) => `  "${p}": { "text": "caption here", "hashtags": ["tag1", "t
 
     const raw = await anthropicText(prompt, { maxTokens: 700 });
     const parsed = firstJsonObject(raw);
+    // THE CAPTION IS READ FOR CLAIMS NOBODY GAVE IT (ad-claims.ts → claimFaults), as the Commercial's script
+    // is. What the member wrote themselves — their title, details, angle, or the piece's own words — is
+    // theirs to say; a discount, a deadline, a rank or a guarantee the writer added is not, and the sentence
+    // that makes it is taken out before anything is published.
+    const memberSaid = [input.productTitle, input.productDescription, input.topic, piece?.title, piece?.about, piece?.product].filter(Boolean).join(" \n ");
     for (const p of wanted) {
       const entry = parsed[p] as { text?: unknown; hashtags?: unknown } | undefined;
       const written = typeof entry?.text === "string" ? entry.text.trim() : "";
-      set[p] = written
-        // Deterministic backstop: strip an implied endorsement possessive
-        // ("Pokémon's pick") before the caption is published publicly.
-        ? { text: dropOrgEndorsementPossessive(written).slice(0, 300), hashtags: cleanTags(entry?.hashtags, p) }
-        : { ...fb, fallback: true }; // model skipped this platform — retry it next time
+      // Deterministic backstop: strip an implied endorsement possessive
+      // ("Pokémon's pick") before the caption is published publicly.
+      const said = dropOrgEndorsementPossessive(written);
+      const faults = claimFaults(said, memberSaid);
+      if (faults.length) console.error(`[caption] ${p}: the caption claimed ${faults.map((x) => `"${x}"`).join(", ")} — those sentences are cut`);
+      const text = (faults.length ? dropFaultSentences(said, memberSaid) : said).slice(0, 300);
+      const tags = cleanTags(entry?.hashtags, p);
+      set[p] = text
+        ? { text, hashtags: piece ? pieceTags(tags) : tags, ...(piece ? { piece: true } : {}) }
+        : { ...fb, fallback: true, ...(piece ? { piece: true } : {}) }; // model skipped this platform, or nothing was left of it — retry it next time
     }
   } catch (e) {
     console.error("[caption] generation failed, using fallback:", e instanceof Error ? e.message : e);
-    for (const p of wanted) set[p] = { ...fb, fallback: true };
+    for (const p of wanted) set[p] = { ...fb, fallback: true, ...(input.piece ? { piece: true } : {}) };
   }
   return set;
 }
@@ -192,10 +223,30 @@ export async function getOrMakeCaptions(
   if (wanted.length === 0) return {};
 
   let body: Record<string, unknown> = {};
+  // WHAT IS THIS PIECE? A film, a story, a Creator video or picture is written about as itself, not as a
+  // product (caption-subject.ts). Worked out here, from the piece, so every caller gets it: the Archive,
+  // the queue, a campaign drop, a series.
+  let piece: PieceSubject | null = input.piece || null;
+  let noLink = false;
   try {
-    const asset = await db.asset.findUnique({ where: { id: assetId }, select: { bodyJson: true } });
-    if (asset) body = JSON.parse(asset.bodyJson || "{}");
+    const asset = await db.asset.findUnique({
+      where: { id: assetId },
+      select: { bodyJson: true, metaJson: true, title: true, shop: { select: { storeUrl: true, domain: true } } },
+    });
+    if (asset) {
+      try { body = JSON.parse(asset.bodyJson || "{}"); } catch { /* treat as empty */ }
+      if (!piece) piece = pieceSubjectOf(asset);
+      // A cart link on somebody's short film is wrong, and for a member with no storefront it leads to OUR
+      // front door (go.a.$assetId.tsx's last resort). No store of theirs → no link on a piece that sells nothing.
+      noLink = !!piece && !storefrontOf(asset.shop);
+    }
   } catch { /* treat as empty */ }
+  const forRead = (set: CaptionSet): CaptionSet => {
+    if (!noLink) return set;
+    const out: CaptionSet = {};
+    for (const [p, c] of Object.entries(set)) out[p] = { ...c, noLink: true };
+    return out;
+  };
 
   const cached = (body.captions && typeof body.captions === "object" ? body.captions : {}) as CaptionSet;
 
@@ -206,8 +257,11 @@ export async function getOrMakeCaptions(
   const stand = fallbackCaption(input);
   const poisoned = (c?: PlatformCaption) =>
     !!c && c.text === stand.text && (c.hashtags?.length ?? 0) === 0;
-  const missing = wanted.filter((p) => !cached[p]?.text || poisoned(cached[p]));
-  if (missing.length === 0) return cached;
+  // …and for a made piece, a caption cached before pieces were written about as themselves is a product
+  // pitch for a film ("this lighthouse decor piece"). It is a miss too, so it is written again, once.
+  const stale = (c?: PlatformCaption) => !!piece && !!c && c.piece !== true;
+  const missing = wanted.filter((p) => !cached[p]?.text || poisoned(cached[p]) || stale(cached[p]));
+  if (missing.length === 0) return forRead(cached);
 
   // Best-effort grounding: if the asset stored the product description it was
   // generated from, feed it to the writer so the PUBLIC caption anchors on real
@@ -217,6 +271,7 @@ export async function getOrMakeCaptions(
     ...input,
     productDescription: input.productDescription || descFromBody,
     platforms: missing,
+    piece,
   });
   const merged: CaptionSet = { ...cached, ...fresh };
 
@@ -250,7 +305,7 @@ export async function getOrMakeCaptions(
   } catch (e) {
     console.error("[caption] cache write failed (non-fatal):", e instanceof Error ? e.message : e);
   }
-  return merged;
+  return forRead(merged);
 }
 
 // FTC / AI-disclosure: EVERY post EasyMode publishes carries this branded tag,
@@ -288,7 +343,9 @@ function assemblePost(
   tagList.push(AI_DISCLOSURE_TAG);
   const tags = tagList.map((t) => `#${t}`).join(" ");
   const parts = [text];
-  if (goUrl) parts.push(`🛒 ${goUrl}`);
+  // The cart is for a product. A film, a story or a picture somebody made carries a plain link to their
+  // store — and none at all when they have no store for it to lead to (PlatformCaption.noLink).
+  if (goUrl && !caption?.noLink) parts.push(`${caption?.piece ? "🔗" : "🛒"} ${goUrl}`);
   parts.push(tags);
   if (credit) parts.push(credit);
   return parts.join("\n\n");
