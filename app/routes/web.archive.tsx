@@ -2430,14 +2430,10 @@ export default function WebArchive() {
             <Link to={`?tab=${tab}${whenQ}${colQ}${isCreator ? "&section=creator" : ""}`} preventScrollReset aria-label={t("Clear")}><Ico n="x" size={12} /></Link>
           </span>
         )}
-        {/* COLLECTIONS (2026-11-22): the open collection shows its name the way the search shows its word,
-            and clears the same way (✕ — the search and the When window stay). */}
-        {colOpen && (
-          <span className="wa-qchip">
-            <Ico n="bookcase" size={12} /> {colOpen.name}
-            <Link to={colHref("")} preventScrollReset aria-label={t("Clear")} onClick={() => { endSelect(); setColForm(null); setArmColDel(false); }}><Ico n="x" size={12} /></Link>
-          </span>
-        )}
+        {/* COLLECTIONS: the open collection is NOT repeated here as a chip. It was, on the first day
+            (2026-11-23) — and the page then named it three times: this chip, the Collections menu showing it
+            selected, and the line under the filters that counts it. The menu chooses and the line below
+            manages (with "Show all" to leave); one fewer row on a phone. */}
         {/* WHEN (2026-11-22) — All time · Today · This week · This month, each with how many of the open
             tab's pieces it holds. Links, not buttons: the window lives in the URL and the loader applies
             it (where the paging is), so it combines with the search and the chips beside it and survives
@@ -2501,7 +2497,7 @@ export default function WebArchive() {
                 <Ico n="bookcase" /> <span className="wa-sr">{t("Collections")}</span>
                 <select value={colOpen?.id || ""} aria-label={t("Collections")}
                   onChange={(e) => { const v = e.target.value; if (v === "__new") askColForm("filter"); else openCol(v); }}>
-                  <option value="">{t("Collections")}</option>
+                  <option value="">{colOpen ? t("Show all") : t("Collections")}</option>
                   {collections.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.count}</option>)}
                   <option value="__new">{t("New collection…")}</option>
                 </select>
@@ -2550,6 +2546,7 @@ export default function WebArchive() {
         <p className="wa-shelfnote wa-colmanage">
           <Ico n="bookcase" />
           <span>{colOpen.count === 1 ? t("1 piece in “{name}”.", { name: colOpen.name }) : t("{n} pieces in “{name}”.", { n: colOpen.count, name: colOpen.name })}</span>
+          <Link to={colHref("")} preventScrollReset className="wa-linkbtn" onClick={() => { endSelect(); setColForm(null); setArmColDel(false); }}>{t("Show all")}</Link>
           <button type="button" className="wa-linkbtn" disabled={colBusy} onClick={() => askColForm("rename")}>{t("Rename")}</button>
           <button type="button" className={`wa-linkbtn wa-coldel${armColDel ? " armed" : ""}`} disabled={colBusy} onClick={deleteCol}>
             {armColDel ? t("Tap again to delete it — the pieces stay") : t("Delete collection")}

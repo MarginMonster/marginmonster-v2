@@ -264,10 +264,13 @@ test("THE MENU, THE OPEN COLLECTION, AND ITS EMPTY STATE", () => {
   assert.ok(pick.includes('onChange={(e) => { const v = e.target.value; if (v === "__new") askColForm("filter"); else openCol(v); }}>'));
   // choosing one is a new shelf, like a When chip: it ends a selection
   assert.ok(src.includes("const openCol = (id: string) => { endSelect(); setColForm(null); setArmColDel(false); navigate(colHref(id), { preventScrollReset: true }); };"));
-  // the open one shows its name where the search shows its word, cleared the same way
+  // the open one is named ONCE beside the chooser — not again as a chip in the search row (it was, on the
+  // first day, and the page named it three times). The menu's first entry and the manage line leave it.
   const bar = src.slice(src.indexOf('<div className="wa-bar">'), src.indexOf('<div className="wa-filters wa-when"'));
-  assert.equal(count(bar, '<span className="wa-qchip">'), 2, "the search's chip and the collection's");
-  assert.ok(bar.includes('<Ico n="bookcase" size={12} /> {colOpen.name}\n            <Link to={colHref("")} preventScrollReset aria-label={t("Clear")}'));
+  assert.equal(count(bar, '<span className="wa-qchip">'), 1, "the search's chip only");
+  assert.ok(!bar.includes("{colOpen.name}"));
+  assert.ok(pick.includes('<option value="">{colOpen ? t("Show all") : t("Collections")}</option>'));
+  assert.ok(src.includes('<Link to={colHref("")} preventScrollReset className="wa-linkbtn" onClick={() => { endSelect(); setColForm(null); setArmColDel(false); }}>{t("Show all")}</Link>'));
   // MANAGE: Rename, and Delete armed — the second tap deletes, and the line says the pieces stay
   assert.ok(src.includes('{armColDel ? t("Tap again to delete it — the pieces stay") : t("Delete collection")}'));
   const del = src.slice(src.indexOf("const deleteCol = () => {"), src.indexOf("useEffect(() => {", src.indexOf("const deleteCol = () => {")));
