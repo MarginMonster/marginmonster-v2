@@ -56,6 +56,9 @@ import { parseGateVerdict, outageReason } from "./gate-verdict";
 import { musicBedToDisk } from "./music-generation.server";
 import { levelFilm } from "./film-loudness.server";
 import { COMMERCIAL_LUFS, commercialBedFilter, commercialMusicPrompt } from "./commercial-music";
+import { captionFilm } from "./film-captions.server";
+import { COMMERCIAL_BEAT_SEC, COMMERCIAL_PACK_SEC, commercialCaptionPlan } from "./commercial-captions";
+import { normalizeContentLang } from "./content-lang";
 
 function ffmpegBin(): string | null {
   for (const p of ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]) if (fs.existsSync(p)) return p;
@@ -384,7 +387,7 @@ export async function assembleCommercial(opts: {
   try {
     // 1) Normalize every clip: trim to its beat length (the animator returns
     // longer takes and the fade-out marks the cut), cover-crop, 30fps.
-    const clipSecs = opts.clipPaths.map((_, i) => opts.clipSecs?.[i] ?? opts.clipSec ?? 5);
+    const clipSecs = opts.clipPaths.map((_, i) => opts.clipSecs?.[i] ?? opts.clipSec ?? COMMERCIAL_BEAT_SEC);
     const norm: string[] = [];
     for (let i = 0; i < opts.clipPaths.length; i++) {
       const sec = clipSecs[i];
@@ -452,7 +455,7 @@ export async function assembleCommercial(opts: {
     // bottom-left; the baked centre rosette stays still behind the text).
     // Product mode: Ken Burns push-in on the real product photo — the one
     // frame of the ad that is guaranteed truthful, same trick as cutaway.
-    const packSec = opts.packshotSec ?? 4;
+    const packSec = opts.packshotSec ?? COMMERCIAL_PACK_SEC;
     const pack = path.join(tmp, "pack.mp4");
     const frames = Math.round(packSec * 30);
     if (opts.endCard) {
@@ -962,6 +965,19 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     // One loudness for everything we make: the first commercial measured sat at -27.5 LUFS. One gain for
     // the whole ad and a limiter that only touches a peak the gain pushed over; a failure leaves the file.
     try { await levelFilm(outPath, COMMERCIAL_LUFS); } catch (e) { console.error("[commercial] loudness left as it was:", e instanceof Error ? e.message.slice(0, 160) : e); }
+    // THE WORDS ON SCREEN. Most people meet an ad with the sound off, and until 2026-11-23 a Commercial
+    // said nothing to them at all: its story was in a narrator they could not hear. Each scene now carries
+    // its own line, and the closing shot its tagline, drawn by the step the films use (timed to the voice
+    // where it can be heard, to the scene's length otherwise). Captions that cannot be drawn leave the ad
+    // exactly as it was — captionFilm never throws and never touches the sound.
+    {
+      const cap = commercialCaptionPlan(plan.beats.map((b) => b.narration), plan.tagline, clipPaths.length);
+      const drawn = await captionFilm({
+        filmPath: outPath, lines: cap.lines, clipDurs: cap.clipDurs, style: "subtitles",
+        english: normalizeContentLang(contentLang) === "en", jobId: params.jobId, listenMs: 120_000,
+      });
+      if (drawn === "off") console.error("[commercial] shipped without captions");
+    }
     // Output QA — never persist a broken clip as a paid video (refund instead).
     assertPlayableVideo(outPath);
 
