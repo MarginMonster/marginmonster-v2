@@ -3041,6 +3041,9 @@ export default function WebArchive() {
                     {/* A story film is continued from where it is watched: the Movie Maker opens on the next
                         episode of its series — same cast, same voices — whichever episode this one is. */}
                     {viewer.canContinue && viewer.media && !viewer.expired && <a className="wa-vbtn ghost" href={`/web/film?episode=${viewer.id}`} title={t("Continue this story — the next episode, with the same cast")}><Ico n="video" /> {t("Next episode")}</a>}
+                    {/* A narrated story's WORDS can be changed and the story told again with the same pictures:
+                        it opens in the Movie Maker's own storyboard (story-edit.ts) and lands as a new piece. */}
+                    {viewer.tellIn && viewer.media && !viewer.expired && <a className="wa-vbtn ghost" href={`/web/film?edit=${viewer.id}`} title={t("Change the words — it is told again with the same pictures")}><Ico n="sliders" /> {t("Edit story")}</a>}
                     {/* A narrated story, told again in another language: the same pictures and the same
                         storyteller, as a piece of its own. (Only the languages it is not already in.) */}
                     {viewer.tellIn && viewer.tellIn.length > 0 && viewer.media && !viewer.expired && (

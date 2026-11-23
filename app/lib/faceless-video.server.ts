@@ -414,21 +414,39 @@ export async function generateFacelessVideo(opts: {
     // the flux-schnell slop it replaced.
     const beat = script.beats[i % script.beats.length];
     const prompt = `${beat.visual}. Vertical 9:16, cinematic, high detail, no text, no watermark.`;
-    // Up to 3 tries per beat: a 429/transient refusal under load used to kill
-    // the whole render (no retry, no catch). No schnell fallback — it's retired.
+    // Up to 4 tries per beat, waiting longer each time: a 429/transient refusal under load used to kill
+    // the whole render (no retry, no catch), and three quick tries in five seconds did not outlast a
+    // rate limit either. No schnell fallback — it's retired.
     let still: string | null = null;
-    for (let attempt = 0; attempt < 3 && !still; attempt++) {
+    for (let attempt = 0; attempt < 4 && !still; attempt++) {
       try { still = await brollStill(prompt, quality); }
-      catch { if (attempt < 2) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); }
+      catch { if (attempt < 3) await new Promise((r) => setTimeout(r, [2000, 6000, 15000][attempt])); }
     }
     // Never skip a beat (the resume/checkpoint logic maps stills[i] → beat i):
-    // fall back to repeating the previous still, or a neutral frame for beat 0.
+    // fall back to repeating the previous still, or — for the opening beat, which has none before it —
+    // a plain frame that only holds its place (it is never shown: see `shown` below).
     if (!still) still = stills.length ? stills[stills.length - 1] : await neutralFrame();
     if (!still) throw new Error("[faceless] b-roll generation failed for the opening beat");
     stills.push(still);
     await ckpt({ ckImages: stills });
   }
   if (!stills.length) throw new Error("[faceless] no b-roll generated");
+  // A BEAT WHOSE PICTURE COULD NOT BE MADE SHOWS ITS NEIGHBOUR'S — NEVER A BLANK SCREEN. A video made on
+  // 2026-11-23 opened on 3.6 seconds of the plain dark place-holder under its captions: the first
+  // picture had failed, and "a neutral frame for beat 0" was what a paying member got as their hook.
+  // The place-holder still keeps the beats in step for a restart; what is SHOWN in its place is the
+  // nearest real picture. A video with no real picture at all is not a video: it fails, and is refunded.
+  const isPlaceholder = (p: string): boolean => path.basename(p).startsWith("bg-");
+  if (stills.every(isPlaceholder)) throw new Error("[faceless] no b-roll could be made");
+  const shown = stills.map((s, i) => {
+    if (!isPlaceholder(s)) return s;
+    for (let d = 1; d < stills.length; d++) {
+      const after = stills[i + d], before = stills[i - d];
+      if (after && !isPlaceholder(after)) return after;
+      if (before && !isPlaceholder(before)) return before;
+    }
+    return s;
+  });
 
   // 5) MUSIC BED (best-effort — video ships without it rather than fail).
   let musicPath: string | null = resume.ckMusic && fs.existsSync(resume.ckMusic) ? resume.ckMusic : null;
@@ -445,7 +463,7 @@ export async function generateFacelessVideo(opts: {
   catch (e) { caps = []; console.error(`[faceless] no font for these words — no captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   const outName = `vid-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleFaceless({ stills, voPath, musicPath, caps, windows: beatWindows, fontFile, outPath, jobId });
+  await assembleFaceless({ stills: shown, voPath, musicPath, caps, windows: beatWindows, fontFile, outPath, jobId });
   const outBuf = fs.readFileSync(outPath);
   try { await mirrorRender(outName, outBuf); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;

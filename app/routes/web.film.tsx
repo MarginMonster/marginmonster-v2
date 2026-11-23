@@ -40,6 +40,8 @@ import { useModalA11y } from "../lib/use-modal-a11y";
 import { favouritesFirst } from "../lib/favourites";
 import { nameTok } from "../lib/character-prompts";
 import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
+import type { StoryToEdit } from "../lib/story-edit";
+import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
 
@@ -172,11 +174,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     openEpisode = episodeCardFor(askedEpisode, rows);
     if (openEpisode) await castBack(openEpisode, rows);
   }
+  // "EDIT STORY", ASKED FROM A FINISHED NARRATED STORY — the Archive viewer's button lands here with
+  // ?edit=<its id> (story-edit.ts). The storyboard is handed that story's words and the pictures it was
+  // made with; only this shop's own stories are ever read, and an id that is not one opens the page as usual.
+  let openStory: StoryToEdit | null = null;
+  const askedEdit = (new URL(request.url).searchParams.get("edit") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+  if (askedEdit && !openEpisode) { try { openStory = await storyToEdit(shop.id, askedEdit, shop.contentLang); } catch { openStory = null; } }
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
     roster,
     nextEpisodes,
     openEpisode,
+    openStory,
     savedLooks,
     // A TRIAL, for the owner's account only (the owner, 2026-11-22: "test monsters in a music video"): a
     // monster can be cast as a music video's star or co-star. Nobody else is offered them there until a
@@ -856,6 +865,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // A music video is priced by its LENGTH: two five-second scenes are one ten-second scene's worth,
     // so the same 30 seconds costs the same whatever the pace (mvBillScenes — the builder quotes with it).
     const cost = estimateFilmTokens(tmpl.lipSyncSinger ? mvBillScenes(scenes, filmSceneSeconds) : scenes);
+    // EDIT STORY (story-edit.ts): a narrated story opened from a finished one and told again carries over
+    // what the page is not trusted to say — the language it is told in, the first story it is a telling
+    // of, and its music bed. Read from THIS shop's own story; any other id is an ordinary new story.
+    const editFrom = ((form.get("editFrom") as string) || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+    const edited = narrated && editFrom ? await editCarryFor(shop.id, editFrom, shop.contentLang) : null;
 
     let unbacked = 0, unbackedFromExtra = 0;
     try {
@@ -891,6 +905,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // NEXT EPISODE: the series it continues, read from this shop's own film above — written onto the
         // new film's asset row when the pipeline creates it (meta.series)
         ...(series ? { filmSeries: series } : {}),
+        ...(edited ? { filmLang: edited.lang, ...(edited.translatedFrom ? { filmTranslatedFrom: edited.translatedFrom } : {}), ...(edited.musicFile ? { ckMusic: edited.musicFile } : {}) } : {}),
         dialogueEngine, filmAspect,
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
         productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
@@ -1254,6 +1269,8 @@ export default function FilmStudio() {
   //  idea, the cast, the shape … all at once, and each of those, changed by hand, rightly starts the
   //  storyboard over; changed by the restore they must not.)
   const restoring = useRef(false);
+  // EDIT STORY: the finished story this storyboard was opened from (story-edit.ts) — while it lasts
+  const [editing, setEditing] = useState<{ from: string; title: string; kept: boolean } | null>(null);
   // …and WHO SINGS it, staged the same way: the name of the co-star whose scene it becomes ("" = the star)
   const [sceneSingerDraft, setSceneSingerDraft] = useState<string>("");
   // PER-SCENE WARDROBE: scene index → cast member img → what they wear in THAT scene ("" = their own
@@ -1825,6 +1842,51 @@ export default function FilmStudio() {
     startEpisode(d.openEpisode);
     navigate("/web/film", { replace: true, preventScrollReset: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // EDIT STORY — a finished narrated story, opened in THIS storyboard (story-edit.ts). The Archive viewer's
+  // button lands here with ?edit=<its id>; the loader hands back its words and the pictures it was made
+  // with (d.openStory). It opens by itself, once; Generate then tells it again as a new piece, and only a
+  // picture that is missing is drawn. Its format, shape, captions, narrator and cast are set as they were.
+  const startEdit = (st: StoryToEdit) => {
+    const h = heroById(st.heroId);
+    if (!h || !heroes.some((x) => x.id === h.id)) return;
+    const reduce = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setAnim("in");
+    window.setTimeout(() => {
+      // (the hero's own defaults — its length and shape — must not land on top of the story's)
+      restoring.current = true;
+      window.setTimeout(() => { restoring.current = false; }, 600);
+      switchHero(h.id);
+      const done: Record<string, boolean> = { length: true, shape: true, captions: true };
+      const ids = st.cast.map((m) => (m.faceUrl ? d.roster.find((r) => r.img === m.faceUrl)?.id : undefined)).filter((x): x is string => !!x);
+      const pick = ids.filter((x, k) => ids.indexOf(x) === k).slice(0, 3);
+      if (pick.length) { setStoryPick(pick); done.cast = true; }
+      setScenes(Math.max(d.narratedScenes.min, Math.min(d.narratedScenes.max, st.treatment.scenes.length)));
+      setFilmAspect(st.aspect);
+      setCapPick(st.captions);
+      if (st.narrator && (CHARACTER_VOICES.some((v) => v.id === st.narrator) || d.voices.some((v) => v.id === st.narrator) || d.myVoices.some((v) => v.voiceId === st.narrator))) { setNarrPick(st.narrator); done.voice = true; }
+      setStoryDone(done);
+      setTopic(st.topic); setIdeaChanged(false);
+      // The storyboard itself goes in a moment LATER: the effects that clear it when the way of telling,
+      // the cast or the shape changes run on the changes just made, and would take it away again.
+      window.setTimeout(() => {
+        setTreatment(st.treatment);
+        setSeeds({ imgs: st.pictures, treatment: st.treatment, propForScene: {}, artistRef: null, castRef: null, castRefs: [], faults: [], checks: [] });
+        setEditing({ from: st.from, title: st.title, kept: st.picturesKept });
+        setIdeaChanged(false);
+        setEntered(true); setAnim(""); setZoomKey(null);
+      }, 160);
+    }, reduce ? 0 : 400);
+  };
+  const openedStory = useRef(false);
+  useEffect(() => {
+    if (!d.openStory || openedStory.current) return;
+    openedStory.current = true;
+    startEdit(d.openStory);
+    navigate("/web/film", { replace: true, preventScrollReset: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // …and the edit lasts as long as the storyboard it loaded: start over, another format or another way
+  // of telling is an ordinary new story again
+  useEffect(() => { if (!seeds) setEditing(null); }, [seeds]);
   // Cinematic format entry: you land on the poster GRID; tap a card and IT zooms in while the
   // other cards are thrown away, then it becomes that format's builder. Back reverses it.
   const [entered, setEntered] = useState(false);
@@ -3357,6 +3419,15 @@ export default function FilmStudio() {
       {/* Step 1 — the vibe + length */}
       {/* Describe-first entry — same premium look as the Music Video builder's topic box. */}
       <div className="mm-topic mm-topic-film">
+        {/* EDIT STORY: the one line that says what this storyboard is, and what Generate will do */}
+        {isStoryboard && narrated && editing && (
+          <p className="fs-editline" role="status">
+            <Ico n="pencil" size={14} />
+            <span>{editing.kept
+              ? t("Editing “{title}” — its pictures are kept. Change the words below, then Generate: it lands as a new piece.", { title: editing.title })
+              : t("Editing “{title}” — its pictures were not kept, so they will be drawn again.", { title: editing.title })}</span>
+          </p>
+        )}
         {/* NEXT EPISODE: the one line that says what this is — ✕ makes it an ordinary new film */}
         {isStoryboard && series ? (
           <div className="fs-epline">
@@ -3880,6 +3951,7 @@ export default function FilmStudio() {
           {isStoryboard && !narrated && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId, ...(c.faceUrl && c.kind && c.kind !== "person" ? { kind: c.kind, look: c.look || "" } : {}) })))} />}
           {isStoryboard && !narrated && lockVoices && cast.some((c) => c.voiceId) && <input type="hidden" name="filmLockVoices" value="1" />}
           {isStoryboard && series && <input type="hidden" name="seriesFrom" value={series.from} />}
+          {isStoryboard && narrated && editing && <input type="hidden" name="editFrom" value={editing.from} />}
           <button type="submit" className={`fs-go${storySent ? " is-sent" : ""}`} disabled={!canGo || storySent}>
             {generating ? <>… {t("Starting your film")}</> : storySent ? <><Ico n="check" size={16} /> {t("Rendering — it lands in your Archive")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(heroTitle), cost }) : t("Generate {name} · Free", { name: t(heroTitle) })}</>}
           </button>
@@ -4418,6 +4490,8 @@ ${CAST_ID_CSS}
 .fs-ep-txt span{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:800;color:#0A5E37;}
 /* …and on the setup screen, the one line that says what this is, with an ✕ to make it an ordinary film */
 .fs-epline{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.fs-editline{display:flex;align-items:flex-start;gap:8px;margin:0 0 10px;padding:9px 12px;border-radius:12px;background:#EEF7F1;border:1px solid #CFE6D8;color:#0A5E37;font-size:13px;line-height:1.45;}
+.fs-editline svg{flex:none;margin-top:2px;}
 .mm-topic .fs-epline label{flex:1;min-width:0;margin:0;display:flex;align-items:center;gap:6px;font-family:Poppins,sans-serif;font-size:13.5px;color:#0A5E37;}
 .fs-epline-x{flex:none;position:relative;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);cursor:pointer;}
 .fs-epline-x::after{content:"";position:absolute;inset:-6px;}

@@ -56,7 +56,7 @@ test("faceless captions are the SCRIPT's words timed by the voice — never the 
 
 test("each faceless picture is up while its own line is said, not for an even share", () => {
   const src = read("faceless-video.server.ts");
-  assert.ok(src.includes("await assembleFaceless({ stills, voPath, musicPath, caps, windows: beatWindows, fontFile, outPath, jobId });"));
+  assert.ok(src.includes("await assembleFaceless({ stills: shown, voPath, musicPath, caps, windows: beatWindows, fontFile, outPath, jobId });"));
   assert.ok(src.includes("? opts.windows.map((w) => w.t1 - w.t0)\n    : norm.map(() => voDur / N);"), "an even share only when the lines' times are not known");
   assert.ok(src.includes("const frames = Math.max(18, Math.round(durs[i] * 30));"));
   assert.ok(src.includes("else a.push(\"-loop\", \"1\", \"-t\", durs[i].toFixed(3), \"-i\", s);"));

@@ -89,7 +89,7 @@ async function letterboxed(rendersUrl: string | null): Promise<boolean> {
  *  story's other recurring characters from one cast sheet, so they look the same throughout. `only`
  *  re-draws a single scene. Returns /renders URLs made absolute (null where a still could not be made). */
 export async function narratedSceneSeeds(o: {
-  template?: string; treatment: FilmTreatment; cast?: StoryCast; aspect?: string; only?: number; castRef?: string | null;
+  template?: string; treatment: FilmTreatment; cast?: StoryCast; aspect?: string; /** draw only this scene, or only these */ only?: number | number[]; castRef?: string | null;
 }): Promise<{ sceneImgs: (string | null)[]; castRef: string | null }> {
   const tmpl = filmTemplate(o.template);
   const { aspect } = storyFrame(o.aspect);
@@ -100,7 +100,7 @@ export async function narratedSceneSeeds(o: {
   // the story's recurring characters nobody gave a picture to
   const others = (o.treatment.cast || []).filter((e) => !!e && !picked.some((c) => namedIn(c.name, entryName(e)) || namedIn(entryName(e), c.name)));
   const scenes = o.treatment.scenes;
-  const todo = typeof o.only === "number" ? [o.only].filter((i) => i >= 0 && i < scenes.length) : scenes.map((_, i) => i);
+  const todo = (Array.isArray(o.only) ? o.only : typeof o.only === "number" ? [o.only] : scenes.map((_, i) => i)).filter((i, k, a) => Number.isInteger(i) && i >= 0 && i < scenes.length && a.indexOf(i) === k);
   const who = todo.map((i) => sceneCast(scenes[i]?.visual || "", picked.map((c) => c.name), others));
 
   // ONE sheet of the unpictured characters, only if a scene being drawn needs one of them
@@ -380,7 +380,10 @@ export async function generateNarratedStory(opts: {
   if (imgs.length !== treatment.scenes.length) {
     if (approved.length === treatment.scenes.length && approved.every(Boolean)) imgs = approved;
     else {
-      const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect });
+      // ONLY THE SCENES WITH NO PICTURE ARE DRAWN. (One scene added to an approved storyboard used to
+      // have EVERY picture drawn again — and all but that one thrown away for the approved ones.)
+      const missing = treatment.scenes.map((_, i) => i).filter((i) => !approved[i]);
+      const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing });
       imgs = treatment.scenes.map((_, i) => approved[i] || drawn.sceneImgs[i] || null);
     }
     await ckpt({ ckImages: JSON.stringify(imgs) });

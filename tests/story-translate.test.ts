@@ -138,7 +138,9 @@ test("starting one: this shop's own story, pictures that are really on disk, an 
   assert.ok(srv.includes("if (!canTellIn(opts.lang, from)) return { ok: false, code: \"language\" };"));
   assert.ok(srv.includes("const local = (u: string) => u.replace(/^https?:\\/\\/[^/]+/i, \"\");"));
   assert.ok(srv.includes("const onDisk = (u: string) => local(u).startsWith(\"/renders/\") && fs.existsSync(path.join(renders, path.basename(local(u).split(\"?\")[0])));"));
-  assert.ok(srv.includes("if (!found.pictures.every(onDisk)) return { ok: false, code: \"no-pictures\" };"), "never told over a picture that is not there");
+  // (the look for the pictures is storyPicturesOnDisk — "Edit story" uses the same one)
+  assert.ok(srv.includes("if (!found.pictures.every(onDisk)) return null;"), "never told over a picture that is not there");
+  assert.ok(srv.includes("const found = await storyPicturesOnDisk(shopId, asset, words.captions.length);\n  if (!found) return { ok: false, code: \"no-pictures\" };"));
   assert.ok(srv.includes("told = translatedTreatment(treatment, JSON.parse(raw));"));
   assert.ok(srv.includes("approvedTreatment: JSON.stringify(told),"));
   assert.ok(srv.includes("ckImages: JSON.stringify(found.pictures),"));

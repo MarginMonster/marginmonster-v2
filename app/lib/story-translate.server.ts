@@ -21,6 +21,43 @@ import { canTellIn, isNarratedStory, storyLangOf, storyPicturesFrom, storyWordsT
 export type TellAgainFail = "gone" | "not-a-story" | "language" | "telling" | "no-pictures" | "write-failed" | "tokens" | "queue-failed";
 export type TellAgainResult = { ok: true; lang: string; langName: string; cost: number } | { ok: false; code: TellAgainFail; error?: string };
 
+/**
+ * A finished narrated story's pictures AS THEY ARE ON OUR DISK — one for each scene, in order — and its
+ * music bed's file; null when they cannot be found, or are no longer all there. The story's own record
+ * (meta.pictures), or — for one made before that was kept — the job that rendered it.
+ * Used by "Another language" (here) and "Edit story" (story-edit.server.ts): both make a new piece
+ * over the SAME pictures.
+ */
+export async function storyPicturesOnDisk(
+  shopId: string,
+  asset: { metaJson: string | null; createdAt: Date },
+  scenes: number,
+): Promise<{ pictures: string[]; musicFile: string } | null> {
+  let meta: Record<string, unknown> = {};
+  try { meta = JSON.parse(asset.metaJson || "{}"); } catch { /* empty */ }
+  let payloads: string[] = [];
+  if (!Array.isArray(meta.pictures)) {
+    try {
+      const at = asset.createdAt.getTime();
+      const jobs = await db.job.findMany({
+        where: { shopId, type: "GENERATE_VIDEO_AD", status: "COMPLETED", processedAt: { gte: new Date(at - 2 * 60_000), lte: new Date(at + 10 * 60_000) } },
+        select: { payload: true },
+        take: 6,
+      });
+      payloads = jobs.map((j) => j.payload);
+    } catch { /* none found */ }
+  }
+  const found = storyPicturesFrom(asset.metaJson, payloads, scenes);
+  if (!found) return null;
+  const renders = path.join(process.cwd(), "data", "renders");
+  // (a picture is named by its /renders path; one stored with a site address in front of it is the same
+  //  file — the render itself looks every picture up by its file name on our disk)
+  const local = (u: string) => u.replace(/^https?:\/\/[^/]+/i, "");
+  const onDisk = (u: string) => local(u).startsWith("/renders/") && fs.existsSync(path.join(renders, path.basename(local(u).split("?")[0])));
+  if (!found.pictures.every(onDisk)) return null;
+  const musicFile = found.music ? path.join(renders, path.basename(found.music)) : "";
+  return { pictures: found.pictures, musicFile: musicFile && fs.existsSync(musicFile) ? musicFile : "" };
+}
 /** `fromFirst` is this function's own: set when it has already stepped back to the story first told. */
 export async function tellStoryAgain(opts: { shopId: string; assetId: string; lang: string; fromFirst?: boolean }): Promise<TellAgainResult> {
   const { shopId } = opts;
@@ -68,29 +105,11 @@ export async function tellStoryAgain(opts: { shopId: string; assetId: string; la
     if (onItsWay) return { ok: false, code: "telling" };
   } catch { /* the look is a courtesy: never the reason a story is not told */ }
 
-  // THE PICTURES: the story's own record, or (made before that was kept) the job that rendered it.
-  let payloads: string[] = [];
-  if (!Array.isArray(meta.pictures)) {
-    try {
-      const at = asset.createdAt.getTime();
-      const jobs = await db.job.findMany({
-        where: { shopId, type: "GENERATE_VIDEO_AD", status: "COMPLETED", processedAt: { gte: new Date(at - 2 * 60_000), lte: new Date(at + 10 * 60_000) } },
-        select: { payload: true },
-        take: 6,
-      });
-      payloads = jobs.map((j) => j.payload);
-    } catch { /* none found */ }
-  }
-  const found = storyPicturesFrom(asset.metaJson, payloads, words.captions.length);
+  // THE PICTURES — found, and still on our disk (storyPicturesOnDisk): a story is never told over a
+  // picture that is not there
+  const found = await storyPicturesOnDisk(shopId, asset, words.captions.length);
   if (!found) return { ok: false, code: "no-pictures" };
-  // …and they must still be on our disk: a story is never told over a picture that is not there
-  const renders = path.join(process.cwd(), "data", "renders");
-  // (a picture is named by its /renders path; one stored with a site address in front of it is the same
-  //  file — the render itself looks every picture up by its file name on our disk)
-  const local = (u: string) => u.replace(/^https?:\/\/[^/]+/i, "");
-  const onDisk = (u: string) => local(u).startsWith("/renders/") && fs.existsSync(path.join(renders, path.basename(local(u).split("?")[0])));
-  if (!found.pictures.every(onDisk)) return { ok: false, code: "no-pictures" };
-  const musicFile = found.music ? path.join(renders, path.basename(found.music)) : "";
+  const musicFile = found.musicFile;
 
   // THE WORDS
   let told: typeof treatment;
@@ -124,7 +143,7 @@ export async function tellStoryAgain(opts: { shopId: string; assetId: string; la
       approvedTreatment: JSON.stringify(told),
       // the pictures the story already has, as the render's already-made pictures: none is drawn again
       ckImages: JSON.stringify(found.pictures),
-      ...(musicFile && fs.existsSync(musicFile) ? { ckMusic: musicFile } : {}),
+      ...(musicFile ? { ckMusic: musicFile } : {}),
       ...(typeof meta.narrator === "string" && meta.narrator ? { filmNarrator: meta.narrator } : {}),
       ...(typeof meta.captions === "string" && meta.captions ? { filmCaptions: meta.captions } : {}),
       ...(typeof meta.aspect === "string" && meta.aspect ? { filmAspect: meta.aspect } : {}),
