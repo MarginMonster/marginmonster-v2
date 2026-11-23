@@ -1043,7 +1043,9 @@ ${CAST_ID_CSS}
   .ph-facewrap.can-hear .ph-face-meta{padding-right:34px;}
   .ph-hear{width:26px;height:26px;right:6px;bottom:8px;font-size:9.5px;}
   .ph-hear::before{inset:-9px;}
-  .ph-face-nm{font-size:12px;}
+  /* Three cards across leaves a name 69px beside the ▶ — "Mourning Mary" read "Mourning M…" on its own card.
+     A long name takes a second line here instead of being cut. */
+  .ph-face-nm{font-size:12px;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;}
   .ph-face-voice{font-size:10.5px;}
   .ph-face-go{display:none;}
   .ph-bfbadge,.ph-yoursbadge,.ph-3d,.ph-kind{top:6px;font-size:9px;padding:2px 6px;}
