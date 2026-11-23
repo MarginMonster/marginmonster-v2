@@ -23,6 +23,7 @@ import { editNote } from "../lib/edit-check";
 // (2026-11-23) what a narrated piece's timing was made from — shown to the operator alone
 import { timingLine } from "../lib/narrated-core";
 import { storyTypicalSeconds } from "../lib/story-motion";
+import { heroName } from "../lib/film-heroes";
 import { storyMotionOn } from "../lib/story-motion.server";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
@@ -140,7 +141,9 @@ function recipeLabel(metaJson: string | null, bodyJson: string | null): string |
     const tk = typeof meta.template === "string" ? meta.template : "testmovie";
     const names: Record<string, string> = { testmovie: "Short Film", moral: "Moral Story", horror: "Horror Story", kidstv: "Kids Cartoon", musicvideo: "Music Video", kidsmusic: "Kids Music Video" };
     const ar = typeof meta.aspect === "string" && meta.aspect !== "9:16" && meta.aspect !== "vertical" ? ` · ${meta.aspect}` : "";
-    return `${names[tk] || "Short Film"} · ${eng === "kling3" ? "Kling" : "Veo"}${ar}`;
+    // (an ACTED film is called what its poster is called — "Horror Film", "Moral Film" — not its template:
+    //  the badge under "Moral Film — The Wallet at the Market" read "Moral Story · Kling", 2026-11-23)
+    return `${heroName(tk, false, names[tk] || "Short Film")} · ${eng === "kling3" ? "Kling" : "Veo"}${ar}`;
   }
   const method = typeof body.method === "string" ? body.method : "";
   const m = method.match(/^(format|template|template-staged|template-fallback):(.+)$/);

@@ -147,3 +147,15 @@ test("a film named after its idea is cut at a whole word, and says it was cut", 
   assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${trimTitle(treatment.title || opts.topic || \"a story\", 60)}`,"));
   assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("${trimTitle(treatment.title || opts.topic || \"dialogue scene\", 60)}`,"));
 });
+
+test("an acted film's badge in the Archive is its poster's name too", () => {
+  // Under "Moral Film — The Wallet at the Market" the badge read "Moral Story · Kling · 16:9" (2026-11-23):
+  // the badge named the engine's template, the title named the hero.
+  const arch = read("app", "routes", "web.archive.tsx");
+  assert.ok(arch.includes('return `${heroName(tk, false, names[tk] || "Short Film")} · ${eng === "kling3" ? "Kling" : "Veo"}${ar}`;'));
+  assert.equal(heroName("moral", false, "Moral Story"), "Moral Film");
+  assert.equal(heroName("horror", false, "Horror Story"), "Horror Film");
+  assert.equal(heroName("testmovie", false, "Short Film"), "Short Film");
+  assert.equal(heroName("kidstv", false, "Kids Cartoon"), "Kids Cartoon");
+  assert.equal(heroName("kidsmusic", false, "Kids Music Video"), "Kids Music Video", "a template with no hero keeps its own name");
+});
