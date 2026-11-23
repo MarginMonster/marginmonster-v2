@@ -358,15 +358,25 @@ export function wrapEvenUnits(units: string[], max: number): string[] {
   for (let i = 1; i < units.length; i++) {
     const a = joinUnits(units.slice(0, i)), b = joinUnits(units.slice(i));
     if (textWidth(a) > max || textWidth(b) > max) continue;
-    const g = Math.abs(textWidth(a) - textWidth(b)) + (wide ? cutCost(units[i - 1], units[i]) : 0);
-    const pause = wide && /[.,!?…]$/u.test(units[i - 1]);
+    const even = Math.abs(textWidth(a) - textWidth(b));
+    const g = even + (wide ? cutCost(units[i - 1], units[i]) : 0);
+    // a pause is always where a script without spaces turns; one with spaces turns there when the pause
+    // is near the middle ("He never shared a single one, / terrified winter would…" — not "…a single
+    // one, terrified / winter would…"), and evenly otherwise
+    const pause = /[.,!?…]$/u.test(units[i - 1]) && (wide || even <= 2 * PAUSE_PULL);
     if (pause ? !atPause || g < gap - 1e-6 : !atPause && g < gap - 1e-6) { gap = g; best = [a, b]; atPause = atPause || pause; }
   }
   return best;
 }
 
-/** Cut a run of words into `parts` runs of about the same length as drawn (each at least a word). */
-export function evenParts(words: string[], parts: number): string[][] {
+/** How far from the even point a pause may be and still be where the cut falls, in letters. */
+export const PAUSE_PULL = 12;
+
+/** Cut a run of words into `parts` runs of about the same length as drawn (each at least a word).
+ *  With `atPauses`, a cut is drawn to a pause — a comma — that is near the even point: "…with barely a
+ *  handful left himself, / offered Russo acorns…" rather than "…a handful left / himself, offered…"
+ *  (the first real wide story, 2026-11-23). */
+export function evenParts(words: string[], parts: number, atPauses = false): string[][] {
   const n = Math.max(1, Math.min(parts, words.length));
   const ends: number[] = [];
   let pos = 0;
@@ -377,7 +387,7 @@ export function evenParts(words: string[], parts: number): string[][] {
     const target = (j * pos) / n;
     // how far a cut after word i is from an even one — plus what it costs to cut there at all (cutCost:
     // nothing, in a script with spaces)
-    const off = (i: number): number => Math.abs(ends[i] - target) + (i + 1 < words.length ? cutCost(words[i], words[i + 1]) : 0);
+    const off = (i: number): number => Math.abs(ends[i] - target) + (i + 1 < words.length ? cutCost(words[i], words[i + 1]) : 0) - (atPauses && /[,…]$/u.test(words[i]) ? PAUSE_PULL : 0);
     let best = from;
     // (a later cut has to be really better, not better by the rounding of 1.7 + 1.7 + …: of two cuts
     //  as good as each other, the earlier one is taken — as it always was)
@@ -424,7 +434,9 @@ export function subtitleCards(lines: string[], windows: Window[], maxChars: numb
       // too long for one card: as few cards as it needs, each with an even share of the sentence
       // (two full lines and then "in circles." on a card of its own reads like a mistake)
       let parts = Math.ceil(wrapUnits(sen, maxChars).length / 2);
-      let split = evenParts(sen, parts);
+      // (cut at a pause near the even point when that still fits; else evenly; else in more cards)
+      let split = evenParts(sen, parts, true);
+      if (!split.every(fits)) split = evenParts(sen, parts);
       while (!split.every(fits) && parts < sen.length) split = evenParts(sen, ++parts);
       groups.push(...split);
     }

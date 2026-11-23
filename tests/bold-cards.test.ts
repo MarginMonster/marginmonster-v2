@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BOLD_LINE, boldCards, drawable, saidUnits, sceneWindows, scriptWordTimes } from "../app/lib/narrated-core.ts";
+import { BOLD_LINE, PAUSE_PULL, boldCards, drawable, evenParts, saidUnits, sceneWindows, scriptWordTimes, subtitleCards, subtitleChars } from "../app/lib/narrated-core.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (f: string) => fs.readFileSync(path.join(root, "app", "lib", f), "utf8").replace(/\r\n/g, "\n");
@@ -120,4 +120,53 @@ test("a faceless video has a title of its own, and no title is cut in the middle
   const cut = trimTitle("storytime: a lighthouse keeper named Wren Oakhollow and her cat Biscuit hear a ship's bell", 60);
   assert.ok(cut.length <= 60 && cut.endsWith("…") && !/\s…$/.test(cut), cut);
   assert.ok("storytime: a lighthouse keeper named Wren Oakhollow and her cat Biscuit hear a ship's bell".startsWith(cut.slice(0, -1)), "whole words only");
+});
+
+// ---- subtitles (the film look) ---------------------------------------------------------------------------
+// 2026-11-23, the first wide story looked at with subtitles: a sentence too long for one card was cut one
+// word before its comma ("…with barely a handful left" / "himself, offered Russo acorns…"), and a two-line
+// card turned mid-clause ("He never shared a single one, terrified" / "winter would leave him…").
+const FOX = [
+  "Every autumn, young Russo the fox gathered acorns like his life depended on it. He never shared a single one, terrified winter would leave him with nothing.",
+  "The more he piled up, the more alone and anxious he seemed to feel.",
+  "Then old Bartholomew the badger, with barely a handful left himself, offered Russo acorns without a moment's hesitation.",
+  "Russo finally understood: what we give away is never really lost.",
+];
+
+test("SUBTITLES turn and split at a pause when one is near the middle, evenly otherwise", () => {
+  const wide = subtitleChars(1280, 720);
+  const cards = subtitleCards(FOX, sceneWindows(FOX, [], 40), wide).map((c) => c.text);
+  // a two-line card turns at the comma near its middle…
+  assert.ok(cards.includes("He never shared a single one,\nterrified winter would leave him with nothing."), cards.join(" | "));
+  assert.ok(cards.includes("The more he piled up,\nthe more alone and anxious he seemed to feel."), cards.join(" | "));
+  assert.ok(cards.includes("Russo finally understood,\nwhat we give away is never really lost."), "the colon is a pause, drawn as a comma");
+  // …and evenly when the only comma is far from it
+  assert.ok(cards.includes("Every autumn, young Russo the fox gathered\nacorns like his life depended on it."), cards.join(" | "));
+  // a sentence too long for one card is cut at its comma, not a word before it
+  assert.ok(cards.includes("Then old Bartholomew the badger,\nwith barely a handful left himself,"), cards.join(" | "));
+  assert.ok(cards.includes("offered Russo acorns without a moment’s hesitation."), cards.join(" | "));
+  // the rules every card keeps, in every frame shape
+  for (const [W, H] of [[1280, 720], [720, 1280], [720, 720]]) {
+    const max = subtitleChars(W, H);
+    const cs = subtitleCards(FOX, sceneWindows(FOX, [], 40), max);
+    for (const c of cs) {
+      const ls = c.text.split("\n");
+      assert.ok(ls.length <= 2, c.text);
+      for (const l of ls) assert.ok(l.length <= max, `${W}x${H}: "${l}" is ${l.length} of ${max}`);
+    }
+    assert.equal(cs.map((c) => c.text.replace(/\n/g, " ")).join(" "), FOX.flatMap(saidUnits).join(" "), `${W}x${H}: nothing lost, nothing added`);
+  }
+});
+
+test("the even split is drawn to a pause only when asked, and only as far as PAUSE_PULL", () => {
+  const sen = saidUnits("Then old Bartholomew the badger, with barely a handful left himself, offered Russo acorns without a moment's hesitation.");
+  assert.equal(evenParts(sen, 2)[0].slice(-1)[0], "left", "plain: the evenest cut");
+  assert.equal(evenParts(sen, 2, true)[0].slice(-1)[0], "himself,", "at pauses: the comma eleven letters on");
+  assert.ok(PAUSE_PULL >= 8 && PAUSE_PULL <= 16);
+  // a comma far from the even point does not pull the cut
+  const far = saidUnits("Well, the old lighthouse keeper walked slowly down the long winding stairs to the cold wet rocks below");
+  assert.deepEqual(evenParts(far, 2, true), evenParts(far, 2));
+  // nothing changes where there is no pause at all
+  const none = "the quick brown fox jumps over the lazy dog again and again".split(" ");
+  assert.deepEqual(evenParts(none, 3, true), evenParts(none, 3));
 });
