@@ -122,12 +122,23 @@ async function adCopy(productTitle: string, tone: string | undefined, direction:
 // letter to ffmpeg, not syntax. It is also the right mark for a contraction,
 // so the type simply looks better. Same fix as captionSafe in the UGC
 // pipeline.
+//
+// A PRICE KEEPS ITS CURRENCY SIGN. The allow-list had no "$", so a headline that led with the real price —
+// "16 figures, one $43.14 set" — was drawn "ONE 43.14 SET", the ad's own check then found "$43.14" missing,
+// and the crisp drawn layout was thrown away for the slower generative one (2026-11-23, made as a
+// customer). The film, faceless and lyric caption sanitizers have always let "$" through to drawtext; it
+// is a letter to ffmpeg, not syntax, like the other currency signs here.
+//
+// AND A PERCENT SIGN IS KEPT. It was deleted here because a stray "%" blanks the whole string in drawtext's
+// default mode; every drawtext these composites run is now literal (runFfmpegStill → expansion=none), so
+// "20% off" is drawn "20% OFF" and "100% cotton" keeps what makes it a claim worth printing. The colon
+// still goes: it separates a filter's options.
 const dt = (s: string) =>
   s
     .replace(/\\/g, "")
     .replace(/[']/g, "’")   // fold BEFORE the allow-list, or it is stripped
-    .replace(/[:%]/g, "")
-    .replace(/[^\p{L}\p{N} \-!?.,&’]/gu, "")
+    .replace(/[:]/g, "")
+    .replace(/[^\p{L}\p{N} \-!?.,&’$€£¥₹%]/gu, "")
     .trim();
 
 /**
@@ -173,7 +184,13 @@ function runFfmpegStill(
       resolve({ ok, stdout: out, stderr: err });
     };
     try {
-      const p = spawn(bin, args, {
+      // EVERY WORD WE DRAW IS DRAWN AS WRITTEN. drawtext's default mode reads "%" as the start of a %{…}
+      // sequence, and a stray one makes it draw NOTHING for that whole string (verified with ffmpeg and
+      // Poppins: "20% OFF FIRST ORDER" and "100% COTTON" came out blank). So the sanitizer deleted every
+      // percent sign instead, and a merchant's real "20% off" was drawn "20 OFF". With expansion=none the
+      // text is literal: "%" draws, and so does every currency sign. Nothing here uses %{…}.
+      const literal = args.map((a) => (a.includes("drawtext=") ? a.split("drawtext=").join("drawtext=expansion=none:") : a));
+      const p = spawn(bin, literal, {
         stdio: ["ignore", opts.captureStdout ? "pipe" : "ignore", opts.captureStderr ? "pipe" : "ignore"],
       });
       timer = setTimeout(() => {
