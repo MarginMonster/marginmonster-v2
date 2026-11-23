@@ -97,3 +97,33 @@ test("a prompt that already fits is left alone", () => {
   const exact = talk(KLING_PROMPT_MAX);
   assert.equal(clampKlingPrompt(exact), exact);
 });
+
+test("an acted, spoken, live-action shot has a living background — the speakers hold their places", () => {
+  // A tester, 2026-11-23, on Short Film and Horror Film: "scenes looks more real, backend moves, live real
+  // day life, not stuck." The note had told the model "identical … background throughout" and "Nobody
+  // moves except natural talking" — and the people behind the speakers stood frozen for the whole shot.
+  const r = clipRules({ cartoon: false, sing: false });
+  for (const note of [r.look, r.lookTight]) {
+    assert.ok(note.includes("The speakers hold their places"), "it is the speakers who stay put");
+    assert.ok(/background stays (?:alive with gentle natural motion|gently alive)/.test(note));
+    assert.ok(note.includes("nothing new enters"), "what is there moves; nobody walks in");
+    assert.ok(!note.includes("Nobody moves"), "nobody is told to freeze");
+    assert.ok(!/lighting and background/.test(note), "the background is no longer to be held identical");
+    // everything that keeps a face a face is still there
+    assert.ok(note.includes("Keep EVERYONE and the setting EXACTLY as in the starting image"));
+    assert.ok(/Add NO new object; anything already held (?:keeps its exact|stays the same) size and shape in the same hand\./.test(note));
+  }
+  assert.ok(r.look.includes("every beard, mustache and bit of stubble stays exactly as it is"));
+  assert.ok(r.look.includes("Do NOT morph, age or redraw anyone."));
+  // the camera does not start to wander because the world does
+  assert.ok(r.steady.startsWith("The camera stays LOCKED and level — no rotation, tilt, flip or zoom."));
+  // a cartoon and a sung shot keep the note they were approved with
+  for (const kind of [{ cartoon: true, sing: false }, { cartoon: false, sing: true }, { cartoon: true, sing: true }]) {
+    const k = clipRules(kind);
+    assert.ok(k.look.includes("Nobody moves except natural talking and small, subtle head and expression shifts."), JSON.stringify(kind));
+    assert.ok(!k.look.includes("background stays alive"));
+  }
+  // the standing rules of the spoken shot sit exactly on their budget — a word more and a typical shot
+  // would lose the full note
+  assert.equal(r.look.length + r.style.length + r.steady.length + r.noText.length + 4, 900);
+});
