@@ -9,7 +9,7 @@ import { db } from "../db.server";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { linkedFromCache, socialProviderEnabled } from "../lib/social-provider.server";
 import { isValidTimeZone } from "../lib/timezone";
-import { dayBucket, normalizePerDay } from "../lib/post-queue";
+import { dayBucket, normalizePerDay, queueRunsOut, weekAhead } from "../lib/post-queue";
 import {
   loadComingUp, queueAdd, queueDraft, queueEdit, queuePostNow, queueRemove, queueRetry, setQueuePerDay, skipChannelDrop, type ComingUpRow,
 } from "../lib/post-queue.server";
@@ -56,8 +56,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     dateLabel: dateFmt.format(new Date(r.at)),
     dueNow: r.status === "PENDING" && Date.parse(r.at) <= now,
   });
+  // THE WEEK AT A GLANCE (post-queue → weekAhead): the next seven days of the shop's own calendar with
+  // what goes out on each, and the day the queue runs dry. The days are named HERE, like the times —
+  // a calendar day is formatted at its own noon in UTC, so no zone can turn it into its neighbour.
+  const noon = (date: string) => new Date(`${date}T12:00:00Z`);
+  const wdFmt = new Intl.DateTimeFormat(lang, { weekday: "short", timeZone: "UTC" });
+  const numFmt = new Intl.DateTimeFormat(lang, { day: "numeric", timeZone: "UTC" });
+  const dayFmt = new Intl.DateTimeFormat(lang, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+  // (what GOES OUT: a queued piece, and a channel drop that posts by itself — a drop held for approval
+  //  makes a video and posts nothing)
+  const days = weekAhead(queue.upcoming.filter((r) => r.kind === "piece" || r.autoPost), now, tz);
+  const dry = queueRunsOut(days);
   return json({
     linked, channels, channelsPaused, productChannels, productChannelsPaused, campaigns, campaignsPaused,
+    week: days.map((w) => ({ ...w, wd: wdFmt.format(noon(w.date)), num: numFmt.format(noon(w.date)), label: dayFmt.format(noon(w.date)) })),
+    runsOut: dry ? dayFmt.format(noon(dry)) : null,
     perDay: normalizePerDay(shop.queuePerDay),
     upcoming: queue.upcoming.map(dress),
     failed: queue.failed.map(dress),
@@ -234,6 +247,32 @@ function ComingUp() {
       </div>
       {perErr && <p className="ap-q-err" role="alert">{perErr}</p>}
 
+      {/* THE WEEK AT A GLANCE — only when something is coming up in it: seven days, how many go out on
+          each, today ringed. A day the list below has a group for is a link to it. Under it, the one
+          thing a list cannot say: the day the queue runs dry. */}
+      {d.week.some((w) => w.pieces + w.drops > 0) && (
+        <div className="ap-week" role="list" aria-label={t("The next seven days")}>
+          {d.week.map((w, i) => {
+            const n = w.pieces + w.drops;
+            const say = n > 0 ? t(n === 1 ? "{date}: {n} post" : "{date}: {n} posts", { date: w.label, n }) : t("{date}: nothing going out", { date: w.label });
+            const cls = `ap-week-c${n > 0 ? " on" : ""}${i === 0 ? " now" : ""}`;
+            const cell = (
+              <>
+                <span className="ap-week-wd">{w.wd}</span>
+                <span className="ap-week-num">{w.num}</span>
+                <span className="ap-week-n" aria-hidden="true">{n > 0 ? n : "·"}</span>
+              </>
+            );
+            return groups.some((g) => g.key === w.bucket)
+              ? <a key={w.date} role="listitem" className={cls} href={`#ap-day-${w.bucket}`} aria-label={say} title={say}>{cell}</a>
+              : <div key={w.date} role="listitem" className={cls} aria-label={say} title={say}>{cell}</div>;
+          })}
+        </div>
+      )}
+      {d.runsOut && (
+        <p className="ap-week-note">{t("Your queue runs out after {date}.", { date: d.runsOut })} <Link to="/web/archive">{t("Add more from the Archive")}</Link></p>
+      )}
+
       {d.failed.length > 0 && (
         <div className="ap-q-group">
           <h3 className="ap-q-day warn"><Ico n="warning" size={13} /> {t("Didn't post")}</h3>
@@ -242,7 +281,7 @@ function ComingUp() {
       )}
 
       {groups.map((g) => (
-        <div className="ap-q-group" key={g.key}>
+        <div className="ap-q-group" key={g.key} id={`ap-day-${g.key}`}>
           <h3 className="ap-q-day">{g.label}</h3>
           {g.rows.map((r) => <QueueRow key={`${r.kind}-${r.id}`} r={r} />)}
         </div>
@@ -516,7 +555,19 @@ const AP_CSS = `
 .ap-q-per-l{margin-right:4px;font-size:13px;font-weight:800;color:var(--ink2,#4A554E);}
 .ap-q-per button{min-width:44px;min-height:44px;border-radius:12px;border:1px solid var(--line,#E1DECD);background:#FBFAF4;color:var(--ink,#14201A);font:800 15px Poppins,sans-serif;cursor:pointer;}
 .ap-q-per button.on{background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);color:#fff;}
-.ap-q-group{margin-top:16px;}
+.ap-q-group{margin-top:16px;scroll-margin-top:76px;}
+/* the week at a glance: seven days in one row at every width (44 px a day on a 390 px phone) */
+.ap-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;margin:14px 0 2px;}
+.ap-week-c{display:flex;flex-direction:column;align-items:center;gap:1px;min-height:68px;padding:8px 0 7px;border-radius:12px;border:1px solid var(--line,#E1DECD);background:#FBFAF4;color:var(--ink,#14201A);text-decoration:none;}
+.ap-week-c.now{border-color:var(--ink,#14201A);box-shadow:inset 0 0 0 1px var(--ink,#14201A);}
+a.ap-week-c:hover{border-color:var(--green,#0C7A46);}
+a.ap-week-c:focus-visible{outline:3px solid var(--green,#0C7A46);outline-offset:2px;}
+.ap-week-wd{max-width:100%;overflow:hidden;white-space:nowrap;font-size:11px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--ink2,#4A554E);}
+.ap-week-num{font:800 17px Poppins,sans-serif;line-height:1.15;}
+.ap-week-n{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;font:800 12px Poppins,sans-serif;color:#8B9189;}
+.ap-week-c.on .ap-week-n{background:var(--green,#0C7A46);color:#fff;}
+.ap-week-note{margin:8px 0 0;font-size:13px;line-height:1.45;color:var(--ink2,#4A554E);}
+.ap-week-note a{color:var(--green,#0C7A46);font-weight:800;}
 .ap-q-day{display:flex;align-items:center;gap:6px;margin:0 0 6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--ink2,#4A554E);}
 .ap-q-day.warn{color:#8A5A12;}
 .ap-q-row{display:grid;grid-template-columns:64px 52px minmax(0,1fr) auto;align-items:center;gap:10px 12px;padding:10px 0;border-top:1px solid #EFECE0;}

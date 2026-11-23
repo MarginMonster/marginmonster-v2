@@ -94,3 +94,58 @@ export function dayBucket(instant: Date | number | string, now: Date | number, t
   if (d === addDays(today, 1)) return "tomorrow";
   return d;
 }
+
+/* ---- the week at a glance ----
+ * "Coming up" is a list, a day at a time. What a list does not show is the SHAPE of the week: the days
+ * something goes out, and the day the queue runs dry. Every scheduler people come from opens on that
+ * picture (a calendar); here it is one strip of seven days over the list — nothing new to learn or set.
+ *
+ * A queued piece counts on the day it is due (one already due counts today). A channel's NEXT drop is
+ * known exactly; the ones after it are worked out from how often the channel posts (`everyHours`), so a
+ * daily channel shows on every day of the strip and not only on its next one. */
+export type WeekDay = {
+  /** the day, "YYYY-MM-DD", in the shop's own calendar */
+  date: string;
+  /** how the list below names the same day: "today" | "tomorrow" | the date (dayBucket) */
+  bucket: string;
+  /** queued pieces due that day, and channel drops (the next one, and the ones worked out after it) */
+  pieces: number;
+  drops: number;
+};
+
+/** The next `days` days of the shop's calendar, starting today, with what goes out on each. */
+export function weekAhead(
+  rows: ReadonlyArray<{ kind: "piece" | "drop"; at: Date | number | string; everyHours?: number | null }>,
+  now: Date | number,
+  tz?: string | null,
+  days = 7,
+): WeekDay[] {
+  const from = ms(now);
+  const today = zonedDateString(new Date(from), tz);
+  const week: WeekDay[] = Array.from({ length: Math.max(1, days) }, (_, i) => ({
+    date: addDays(today, i), bucket: i === 0 ? "today" : i === 1 ? "tomorrow" : addDays(today, i), pieces: 0, drops: 0,
+  }));
+  const last = week[week.length - 1].date;
+  const dayOf = (at: number): string => { const d = zonedDateString(new Date(at), tz); return d < today ? today : d; };
+  const put = (at: number, what: "pieces" | "drops") => { const day = week.find((w) => w.date === dayOf(at)); if (day) day[what]++; };
+  for (const r of rows) {
+    const at = ms(r.at);
+    if (!Number.isFinite(at)) continue;
+    if (r.kind === "piece") { put(at, "pieces"); continue; }
+    // a drop that is already due goes out now, and the channel's next ones are counted on from then
+    const every = typeof r.everyHours === "number" && r.everyHours > 0 ? r.everyHours * 3_600_000 : 0;
+    for (let t = Math.max(at, from), n = 0; n < 60 && dayOf(t) <= last; t += every, n++) {
+      put(t, "drops");
+      if (!every) break;
+    }
+  }
+  return week;
+}
+
+/** The last day of the strip a QUEUED piece goes out on — null when the queue has nothing in the strip,
+ *  and null when it reaches the strip's last day (it does not run dry this week). */
+export function queueRunsOut(week: ReadonlyArray<WeekDay>): string | null {
+  let lastWith = -1;
+  week.forEach((d, i) => { if (d.pieces > 0) lastWith = i; });
+  return lastWith < 0 || lastWith === week.length - 1 ? null : week[lastWith].date;
+}

@@ -414,6 +414,9 @@ export type ComingUpRow = {
   ownCaption?: boolean;
   /** a piece: it goes to fewer networks than are linked (and could take it) */
   fewerNetworks?: boolean;
+  /** a channel drop: how often the channel posts, in hours — the drops after this one are worked out
+   *  from it for the week at a glance (post-queue → weekAhead) */
+  everyHours?: number;
 };
 
 const thumbOf = (bodyJson: string | null | undefined): { thumb: string | null; isVideo: boolean } => {
@@ -442,7 +445,7 @@ export async function loadComingUp(shopId: string, linked: string[]): Promise<{ 
       where: { shopId, status: "ACTIVE", nextRunAt: { not: null, lte: new Date(now + 7 * 24 * 3600_000) } },
       orderBy: { nextRunAt: "asc" },
       take: 20,
-      select: { id: true, name: true, nextRunAt: true, platformsJson: true, autoPost: true },
+      select: { id: true, name: true, nextRunAt: true, platformsJson: true, autoPost: true, cadence: true },
     }),
   ]);
   const postable = linked.filter((p) => POSTABLE_PLATFORMS.includes(p));
@@ -469,7 +472,7 @@ export async function loadComingUp(shopId: string, linked: string[]): Promise<{ 
       return {
         kind: "drop", id: s.id, status: "ACTIVE", at: (s.nextRunAt as Date).toISOString(), title: s.name, thumb: null, isVideo: true,
         networks: s.autoPost ? (want.length ? want.filter((p) => postable.includes(p)) : postable) : [],
-        error: null, urls: {}, autoPost: s.autoPost,
+        error: null, urls: {}, autoPost: s.autoPost, everyHours: cadenceOf(s.cadence).intervalHours,
       };
     }),
   ].sort((a, b) => a.at.localeCompare(b.at));
