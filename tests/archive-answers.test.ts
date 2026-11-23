@@ -52,3 +52,23 @@ test("no other answer on this page waits on data alone while checking for idle",
     assert.ok(deps.includes(`${name}.state`), `the effect that waits for ${name} to go idle must re-run when it does: ${deps.trim()}`);
   }
 });
+
+test("on a phone the Select bar and the toast stand above the app's own tab bar", () => {
+  // measured at 390px on the live site: the tab bar (web.tsx .wb-bottom, up to 760px) was the element under
+  // "Add to collection" and "Done" — the bar's third row could not be tapped
+  assert.ok(ui.includes("@media(max-width:760px){.wa-bulk,.wa-toast{bottom:calc(98px + env(safe-area-inset-bottom,0px));}}"));
+  const shell = fs.readFileSync(path.join(root, "app", "routes", "web.tsx"), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(shell.includes(".wb-main{padding:10px 16px calc(98px + env(safe-area-inset-bottom,0px));}"), "the same 98px the page itself keeps clear");
+  assert.ok(/@media\(max-width:760px\)\{[\s\S]*?\.wb-bottom\{display:flex;/.test(shell), "…at the width where the tab bar appears");
+  // the rule comes after the 640px toast rule it has to beat
+  assert.ok(ui.indexOf("@media(max-width:760px){.wa-bulk,.wa-toast{") > ui.indexOf("@media(max-width:640px){.wa-toast{left:16px;right:16px;transform:none;bottom:16px;}"));
+});
+
+test("a piece named after its description ends on a whole word", () => {
+  const studio = fs.readFileSync(path.join(root, "app", "routes", "web.studio.tsx"), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(studio.includes("import { trimToWord, trimTitle } from \"../lib/text-trim\";"));
+  assert.ok(studio.includes("productTitle: productTitle || (casualMode ? trimTitle(direction, 60) || \"My video\" : productTitle),"));
+  for (const v of ["createPrompt", "desc", "musicBase", "topic"]) assert.ok(studio.includes(`productTitle: trimTitle(${v}, 60),`), v);
+  assert.ok(studio.includes("<input type=\"hidden\" name=\"productTitle\" value={trimTitle(direction, 60)} />"), "the page sends the same name the server would make");
+  for (const v of ["createPrompt", "desc", "musicBase", "topic"]) assert.ok(!studio.includes(`productTitle: ${v}.slice(0, 60),`), v);
+});

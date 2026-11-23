@@ -8,7 +8,7 @@
 
 import { HeroVideo } from "../components/HeroVideo";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { trimToWord } from "../lib/text-trim";
+import { trimToWord, trimTitle } from "../lib/text-trim";
 import { Form, Link, useActionData, useFetcher, useLoaderData, useNavigation, useOutletContext, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import { LangToggle } from "../components/LangToggle";
 import { normalizeContentLang, CONTENT_LANG_NATIVE } from "../lib/content-lang";
@@ -1031,7 +1031,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
           section: genSection,
           // Casual video has no name field — title it from the description.
-          productTitle: productTitle || (casualMode ? (direction || "").slice(0, 60) || "My video" : productTitle),
+          productTitle: productTitle || (casualMode ? trimTitle(direction, 60) || "My video" : productTitle),
           productImageUrl, productUrl, customPrompt: videoDirection, productDescription: direction,
           style: presenterVideo ? "AI_AVATAR" : "PRODUCT_HIGHLIGHT",
           contentType, cartoonStyle,
@@ -1436,7 +1436,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       charged(createEach, createFromExtra);
       await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
         createImage: true, createPrompt, createStyle, createModel, createAspect, createPermissive: genPermissive, section: "creator",
-        productTitle: createPrompt.slice(0, 60),
+        productTitle: trimTitle(createPrompt, 60),
         prePaid: true, chargedTokens: createEach, chargedFromExtra: createFromExtra,
       });
       backed(createEach, createFromExtra);
@@ -1459,7 +1459,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const bgJobId = await enqueueJob(shop.id, "GENERATE_IMAGE_AD", {
         createImage: true, saveAsBackdrop: true,
         createPrompt: bgPrompt, createModel: bgModel, createAspect: "9:16",
-        productTitle: desc.slice(0, 60),
+        productTitle: trimTitle(desc, 60),
         prePaid: true, chargedTokens: bgEach, chargedFromExtra: bgFromExtra,
       });
       backed(bgEach, bgFromExtra);
@@ -1479,7 +1479,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       charged(TOKEN_COST.music, musicFromExtra);
       await enqueueJob(shop.id, "GENERATE_SONG", {
         section: "creator", musicPrompt,
-        productTitle: musicBase.slice(0, 60),
+        productTitle: trimTitle(musicBase, 60),
         prePaid: true, chargedTokens: TOKEN_COST.music, chargedFromExtra: musicFromExtra,
       });
       backed(TOKEN_COST.music, musicFromExtra);
@@ -1505,7 +1505,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       charged(facelessCost, flFromExtra);
       await enqueueJob(shop.id, "GENERATE_VIDEO_AD", {
         section: "creator", contentType: "faceless", topic, facelessFormat, voiceKey, facelessQuality,
-        productTitle: topic.slice(0, 60),
+        productTitle: trimTitle(topic, 60),
         prePaid: true, chargedTokens: facelessCost, chargedFromExtra: flFromExtra,
       });
       backed(facelessCost, flFromExtra);
@@ -5193,7 +5193,7 @@ export default function WebStudio() {
                       Give the jingle an OPTIONAL subject (a product name or topic)
                       to steer the lyrics; blank = a general brand jingle. The
                       server-required productTitle falls back so it never dead-ends. */}
-                  <input type="hidden" name="productTitle" value={(direction.trim() || "our brand").slice(0, 60)} />
+                  <input type="hidden" name="productTitle" value={trimTitle(direction.trim() || "our brand", 60)} />
                   <div className="ws-lbl"><span>{t("Product name or topic")}</span> <span className="ws-opt">{t("optional — helps the jingle")}</span></div>
                   <input className="wb-in" value={direction} maxLength={120}
                     onChange={(e) => setDirection(e.target.value)}
@@ -5204,7 +5204,7 @@ export default function WebStudio() {
                   {/* No product: there's no product to name — send the topic as the
                       hidden productTitle (server requires one for video). The visible
                       topic box IS the video script. */}
-                  <input type="hidden" name="productTitle" value={direction.slice(0, 60)} />
+                  <input type="hidden" name="productTitle" value={trimTitle(direction, 60)} />
                   <div className="ws-lbl"><span>{t("What do they say?")}</span> <span className="ws-req">{t("required")}</span></div>
                   <textarea className="wb-in ws-ta ws-hero" value={direction} maxLength={300} rows={3}
                     onChange={(e) => setDirection(e.target.value)}

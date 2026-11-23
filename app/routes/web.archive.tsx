@@ -1672,6 +1672,12 @@ const WA_CSS = `
 .wa-toast .wa-toast-ic{color:#8FE3B4;display:inline-grid;place-items:center;}
 .wa-toast-undo{border:0;background:none;color:#FFC24A;font:inherit;font-weight:800;cursor:pointer;padding:4px 6px;text-decoration:underline;flex:0 0 auto;}
 @media(max-width:640px){.wa-toast{left:16px;right:16px;transform:none;bottom:16px;}.wa-toast-undo{min-height:44px}@keyframes waToastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}}
+/* ABOVE THE PHONE'S TAB BAR. Up to 760px the app's own navigation is a floating bar across the bottom of
+   the screen (web.tsx .wb-bottom — the page keeps 98px clear for it). The Select bar and the toast sat at
+   16px from the bottom, UNDER it: with two rows of buttons the bar's lower edge was merely clipped, and
+   the third row added on 2026-11-23 ("Add to collection", "Done") could not be tapped at all — measured
+   on a 390px screen, the tab bar was the element under both. They now stand on top of that clearance. */
+@media(max-width:760px){.wa-bulk,.wa-toast{bottom:calc(98px + env(safe-area-inset-bottom,0px));}}
 /* Section hero — softened green band to match Film Studio / Studio / Presenters. */
 .ar-cinehead{position:relative;z-index:1;border-radius:18px;padding:20px 24px;margin-bottom:16px;min-height:130px;display:flex;align-items:center;}
 .ar-cinehead-bg{position:absolute;inset:0;z-index:0;border-radius:18px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 8px 22px rgba(11,20,15,.16),inset 0 0 0 1px rgba(255,255,255,.1);}
