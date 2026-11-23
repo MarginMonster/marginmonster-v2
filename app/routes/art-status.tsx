@@ -11,6 +11,26 @@ import { emailEnabled } from "../lib/email-provider.server";
 import { ffmpegTurns } from "../lib/ffmpeg-turn";
 import { memoryReport } from "../lib/memwatch.server";
 import { stripeWebhookReady } from "../lib/stripe.server";
+import { isMotionClip } from "../lib/story-motion";
+
+/** The renders disk: how full it is, and how much of it the kept story clips take (story-motion.ts — a
+ *  story whose pictures move keeps a clip a scene for a week). Numbers only. Nobody can read the
+ *  server's log, where the cleanup sweep prints the same figure a few times a day. */
+function rendersDisk(): { totalGb: number; freeGb: number; usedPct: number; storyClips: number; storyClipsMb: number } | null {
+  try {
+    const dir = path.join(process.cwd(), "data", "renders");
+    const st = fs.statfsSync(dir);
+    const totalGb = (st.blocks * st.bsize) / 1e9, freeGb = (st.bavail * st.bsize) / 1e9;
+    let storyClips = 0, bytes = 0;
+    for (const n of fs.readdirSync(dir)) {
+      if (!isMotionClip(n)) continue;
+      storyClips++;
+      try { bytes += fs.statSync(path.join(dir, n)).size; } catch { /* vanished */ }
+    }
+    const r1 = (x: number) => Math.round(x * 10) / 10;
+    return { totalGb: r1(totalGb), freeGb: r1(freeGb), usedPct: totalGb > 0 ? Math.round((1 - freeGb / totalGb) * 100) : 0, storyClips, storyClipsMb: Math.round(bytes / 1e6) };
+  } catch { return null; }
+}
 
 /** Upload-directory health WITHOUT naming the files. See the call site. */
 function uploadHealth(dir: string): { count: number; emptyFiles: number; totalKb: number; newest: string | null } {
@@ -187,6 +207,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // minutes, and how many encodes are running / waiting their turn (lib/ffmpeg-turn.ts). Numbers only.
     memory: memoryReport(),
     encodes: ffmpegTurns(),
+    // …and the renders disk (how full; what the kept story clips take)
+    disk: rendersDisk(),
     // Merchant-specific render activity only with the diagnostics key — the
     // same PURGE_KEY gate api.diag.tsx uses. Without it this page still
     // answers the question it exists for ("did the app's own art build?")

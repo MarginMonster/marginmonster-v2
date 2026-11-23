@@ -219,3 +219,13 @@ test("a story's writer is ASKED for its title", () => {
   // (should one still come back without a title, the idea stands in, cut at a whole word with an ellipsis)
   assert.ok(engine.includes("let outTitle = (parsed.title || topic || tmpl.name).slice(0, 80);"));
 });
+
+test("the status page says how full the renders disk is, and what the kept clips take", () => {
+  // Moving pictures keep a clip a scene for a week, and nobody can read the server's log where the
+  // cleanup sweep prints the disk's fill: the figure is on /art-status, numbers only.
+  const st = read("app", "routes", "art-status.tsx");
+  assert.ok(st.includes("disk: rendersDisk(),"));
+  assert.ok(st.includes("if (!isMotionClip(n)) continue;"));
+  assert.ok(st.includes("return { totalGb: r1(totalGb), freeGb: r1(freeGb), usedPct: totalGb > 0 ? Math.round((1 - freeGb / totalGb) * 100) : 0, storyClips, storyClipsMb: Math.round(bytes / 1e6) };"));
+  assert.ok(st.includes("} catch { return null; }"), "a platform without the call answers nothing rather than failing the page");
+});
