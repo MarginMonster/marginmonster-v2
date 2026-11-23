@@ -336,6 +336,14 @@ export const DOUBT_RUN = 2;
  *  English, 0.76–0.82 in Spanish, French and German, 0.95 in Chinese, 0.52–0.65 for sung lyrics; a
  *  Spanish voice listened to as English — the one listen on hand with runs — 0.57.) */
 export const DOUBT_OFF_MIDDLE = 0.4;
+/** …and unless the run has NO ROOM to be anywhere else: less than this much free time between the sure
+ *  words on either side of it, beyond the time the run itself was given. Such a run is held where it
+ *  is by its neighbours exactly as one unsure word alone is. (The first Spanish story made with the
+ *  rule live, 2026-11-23: "notita [clara y] pequeña" — "clara y" scored 0.00 and 0.00, squeezed into
+ *  0.14 s of the 0.20 s between two sure words. Not believing them moved nothing — there was nowhere
+ *  to move them — and cost the story a second listen. The line this rule is for had 2.45 s of room
+ *  beside it: that is where it was really said.) */
+export const DOUBT_ROOM_S = 0.5;
 
 /** The listener's answer as words: each with its time and — when the listener said — how sure it was. */
 export function listenedWords(raw: unknown): WordT[] {
@@ -352,8 +360,9 @@ export function listenedWords(raw: unknown): WordT[] {
 }
 
 /** What was heard, without the words the listener was not sure of (DOUBT_RUN or more in a row, each
- *  under DOUBT_SCORE): `sure` is what is left, `squeezed` is where each such run had been put, `doubted`
- *  how many words that was. A word with no score is taken at its word. */
+ *  under DOUBT_SCORE, with DOUBT_ROOM_S or more of free time beside them): `sure` is what is left,
+ *  `squeezed` is where each such run had been put, `doubted` how many words that was. A word with no
+ *  score is taken at its word. */
 export function sureWords(words: WordT[]): { sure: WordT[]; squeezed: Span[]; doubted: number } {
   const sure: WordT[] = [], squeezed: Span[] = [];
   let doubted = 0;
@@ -363,12 +372,20 @@ export function sureWords(words: WordT[]): { sure: WordT[]; squeezed: Span[]; do
   for (let i = 0; i < words.length; ) {
     let j = i;
     while (j < words.length && unsure(words[j])) j++;
-    if (j - i >= DOUBT_RUN) {
+    // the free time beside the run: from the sure word before it to the sure word after it (to the end of
+    // what was heard, when it is the last thing heard — nothing holds it there), less its own
+    const span = j > i ? Math.max(0, words[j - 1].end - words[i].start) : 0;
+    const from = i > 0 ? words[i - 1].end : 0;
+    const room = j > i ? (j < words.length ? words[j].start - from - span : Infinity) : 0;
+    if (j - i >= DOUBT_RUN && room >= DOUBT_ROOM_S) {
       squeezed.push([words[i].start, Math.max(words[j - 1].end, words[i].start)]);
       doubted += j - i;
       i = j;
+    } else if (j > i) {
+      // one unsure word alone — or a run with no room to be anywhere else: held where it is by its neighbours
+      for (let q = i; q < j; q++) sure.push(words[q]);
+      i = j;
     } else {
-      // a sure word — or one unsure word alone, which stays where its neighbours hold it
       sure.push(words[i]);
       i++;
     }

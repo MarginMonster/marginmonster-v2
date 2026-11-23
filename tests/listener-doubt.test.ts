@@ -18,7 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  DOUBT_OFF_MIDDLE, DOUBT_RUN, DOUBT_SCORE, LISTEN_AGAIN_UNDER, MIN_SAY, SAY_PACE, TIMING_WORDS_MAX,
+  DOUBT_OFF_MIDDLE, DOUBT_ROOM_S, DOUBT_RUN, DOUBT_SCORE, LISTEN_AGAIN_UNDER, MIN_SAY, SAY_PACE, TIMING_WORDS_MAX,
   boldCards, listenAgain, listenQuality, listenedWords, readTiming, sceneWindows, scriptWordTimes, sureWords, timingLine, timingRecord,
   type Card, type Span, type WordT,
 } from "../app/lib/narrated-core.ts";
@@ -75,10 +75,27 @@ test("two or more unsure words in a row are not believed — one alone is", () =
   // a listener that gives no scores is taken at its word
   const bare: WordT[] = [{ word: "yet", start: 1, end: 1.1 }, { word: "still", start: 1.1, end: 1.2 }, { word: "they", start: 1.2, end: 1.3 }];
   assert.deepEqual(sureWords(bare), { sure: bare, squeezed: [], doubted: 0 });
+  // A RUN WITH NO ROOM TO BE ANYWHERE ELSE STAYS — like one unsure word alone. The first Spanish story
+  // made with the rule live: "notita [clara y] pequeña", the two scored 0.00, squeezed into 0.14 s of the
+  // 0.20 s between two sure words. Not believing them moved nothing and cost the story a second listen.
+  assert.equal(DOUBT_ROOM_S, 0.5);
+  const held = words([["su", 41.68, 41.76, 0.96], ["notita", 41.82, 42.5, 0.82], ["clara", 42.52, 42.62, 0.0], ["y", 42.64, 42.66, 0.0], ["pequeña,", 42.7, 43.14, 0.88], ["entrelazándose", 43.52, 44.18, 0.87]]);
+  assert.deepEqual(sureWords(held), { sure: held, squeezed: [], doubted: 0 });
+  assert.equal(listenAgain(listenQuality(["su notita clara y pequeña, entrelazándose"], held)), false, "and nothing is asked again");
+  // the same two words BESIDE A GAP — the next sure word a second later — are not held by anything
+  const loose = held.map((w, i) => (i >= 4 ? { ...w, start: w.start + 1, end: w.end + 1 } : w));
+  assert.equal(sureWords(loose).doubted, 2);
+  assert.deepEqual(sureWords(loose).squeezed, [[42.52, 42.66]]);
+  // the line this is all for had 2.45 s of room beside it (the sure words on either side: 18.20 … 21.36)
+  assert.ok(21.36 - 18.2 - (18.93 - 18.22) > 2.4);
+  // a run that is the LAST thing heard has nothing after it to hold it
+  const tail = words([...BEFORE, ["door,", 18.02, 18.2, 0.9], ["yet", 18.22, 18.38, 0.05], ["still", 18.38, 18.52, 0.03]]);
+  assert.equal(sureWords(tail).doubted, 2);
   // two runs: each has its own stretch
   const sureOnes = (n: number, from: number): Heard[] => Array.from({ length: n }, (_, i): Heard => ["s", from + i, from + i + 0.5, 0.9]);
-  const two = words([...sureOnes(20, 10), ["a", 1, 1.1, 0.01], ["b", 1.1, 1.2, 0.02], ["c", 2, 2.5, 0.9], ["d", 3, 3.1, 0.1], ["e", 3.1, 3.2, 0.1], ["f", 3.2, 3.3, 0.1], ...sureOnes(20, 40)]);
-  assert.deepEqual(sureWords(two).squeezed, [[1, 1.2], [3, 3.3]]);
+  // (in the order they were heard, each run with seconds of room beside it)
+  const two = words([...sureOnes(20, 0), ["a", 30, 30.1, 0.01], ["b", 30.1, 30.2, 0.02], ["c", 31, 31.5, 0.9], ["d", 33, 33.1, 0.1], ["e", 33.1, 33.2, 0.1], ["f", 33.2, 33.3, 0.1], ...sureOnes(20, 40)]);
+  assert.deepEqual(sureWords(two).squeezed, [[30, 30.2], [33, 33.3]]);
   assert.equal(sureWords(two).doubted, 5);
   assert.equal(sureWords(two).sure.length, 41);
   assert.deepEqual(sureWords([]), { sure: [], squeezed: [], doubted: 0 });
