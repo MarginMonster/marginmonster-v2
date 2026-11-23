@@ -206,3 +206,14 @@ test("a clip never costs a story", () => {
   const jq = read("app", "lib", "job-queue.server.ts");
   assert.ok(jq.includes("ckMotion: payload.ckMotion as string | undefined,"));
 });
+
+test("a story's writer is ASKED for its title", () => {
+  // A story made on the live site, 2026-11-23, was called "Moral Story — A boastful young rooster named
+  // Bram wants the whole…": the writer had left the title out (it was optional), and the story was named
+  // after the maker's idea, cut where eighty characters ran out.
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.ok(engine.includes('required: ["scenes", "musicMood", "title"],'));
+  assert.ok(engine.includes("Also give musicMood (a short phrase for the backing track) and a short title."));
+  // (should one still come back without a title, the idea stands in, cut at a whole word with an ellipsis)
+  assert.ok(engine.includes("let outTitle = (parsed.title || topic || tmpl.name).slice(0, 80);"));
+});

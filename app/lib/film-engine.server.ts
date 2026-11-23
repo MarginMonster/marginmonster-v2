@@ -355,7 +355,11 @@ const TREATMENT_SCHEMA = {
       },
     },
   },
-  required: ["scenes", "musicMood"],
+  // THE TITLE IS ASKED FOR, NOT HOPED FOR. It was optional, and a writer that left it out had its story
+  // named after the maker's idea, cut where eighty characters ran out: "Moral Story — A boastful young
+  // rooster named Bram wants the whole…" (a story made on the live site, 2026-11-23; the one before it,
+  // from the same button, was "Pip and the Last Apples of Autumn").
+  required: ["scenes", "musicMood", "title"],
 } as const;
 
 /* NARRATED stories — one storyteller, illustrated scenes. Each scene is 2-3 spoken sentences (about ten
