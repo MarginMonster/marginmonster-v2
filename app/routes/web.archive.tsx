@@ -5,9 +5,10 @@
 
 import { HeroVideo } from "../components/HeroVideo";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Form, Link, useActionData, useFetcher, useLoaderData, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
+import { Form, Link, useActionData, useFetcher, useLoaderData, useNavigate, useNavigation, useRevalidator, useSearchParams, useSubmit } from "@remix-run/react";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { AD_SIZES, AD_SIZE_KEYS, isAdSize, type AdSize } from "../lib/ad-sizes";
+import { isPostable, takes } from "../lib/social-networks";
 
 // The ad pack (a size, the captions file, the ad copy) changes nothing in the library, so it must not
 // reload the whole shelf (hundreds of pieces) every time a part of it lands.
@@ -26,7 +27,7 @@ import { isExpiringUrl } from "../lib/image-generation.server";
 import { db } from "../db.server";
 import { ensureProfile, linkedFromCache, publishPost, refreshLinkedPlatforms, socialProviderEnabled } from "../lib/social-provider.server";
 import { spendTokens, tokensRemainingLive } from "../lib/tokens.server";
-import { TOKEN_COST } from "../lib/plan-config";
+import { TOKEN_COST, CREATOR_SURCHARGE_MULT, creatorVideoTokens } from "../lib/plan-config";
 import { facelessQualitySurcharge } from "../lib/create-models";
 import { engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { xpForSpend } from "../lib/achievements";
@@ -41,7 +42,11 @@ function currentRetryCost(type: string, pl: Record<string, unknown>): number {
   if (type === "GENERATE_VIDEO_AD") {
     if (pl.contentType === "faceless") return TOKEN_COST.faceless + facelessQualitySurcharge(pl.facelessQuality as string);
     const eng = engineSurcharge(normalizeEngineKey(pl.videoEngine as string));
-    return (pl.section === "creator" ? TOKEN_COST.casualVideo : TOKEN_COST.video) + eng;
+    // A Creator video is priced by its length on the default engine, and a premium engine's surcharge
+    // is scaled on the Creator floor — the same sum the Studio charges (plan-config.ts). Retrying a
+    // 15-second clip at the 5-second price would be a loss on every retry.
+    if (pl.section === "creator") return creatorVideoTokens(eng ? 5 : pl.videoDurationSec) + eng * CREATOR_SURCHARGE_MULT;
+    return TOKEN_COST.video + eng;
   }
   // A COMBINE frame is a GENERATE_IMAGE_AD but runs the pricey nano-banana-pro
   // compose (presenterOnly), so it reprices at the combine rate, not the cheap
@@ -58,6 +63,8 @@ import { catalogImageFor, productLinkFor } from "../lib/catalog-import.server";
 import { externalOrigin } from "../lib/origin.server";
 // (2026-11-22) the "Today" of the When filter starts at midnight where the shop is
 import { isValidTimeZone, zonedDateString, zonedInstant } from "../lib/timezone";
+// (2026-11-22) Collections — named shelves a piece can sit on; every query is in collections.server.ts
+import { addToCollection, collectionIdsByAsset, createCollection, deleteCollection, listCollections, removeFromCollection, renameCollection, type ColProblem } from "../lib/collections.server";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
 export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }> }) => {
@@ -217,7 +224,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Matched on the title across the whole library, not the loaded page, so an old piece is findable;
   // every count below is narrowed the same way so "Showing X of Y" stays true.
   const q = (new URL(request.url).searchParams.get("q") || "").trim().slice(0, 80);
-  const titleWhere = q ? { title: { contains: q, mode: "insensitive" as const } } : {};
+  // COLLECTIONS (2026-11-22): ?col= names one of THIS shop's collections — anything else (a deleted one,
+  // another shop's, a hand-edited link) is no filter at all. It narrows the shelves and every count exactly
+  // the way the search does, so it rides in the same where: `titleWhere` is every narrowing the counts
+  // share — the search word and the collection.
+  const collections = await listCollections(shop.id);
+  const colParam = new URL(request.url).searchParams.get("col") || "";
+  const col = collections.some((c) => c.id === colParam) ? colParam : "";
+  const colWhere = col ? { collectionItems: { some: { collectionId: col } } } : {};
+  const titleWhere = { ...(q ? { title: { contains: q, mode: "insensitive" as const } } : {}), ...colWhere };
   // WHEN (2026-11-22) — "All time · Today · This week · This month". Like the search it lives in the URL
   // (?when=) and is applied HERE, because here is where the paging is: the page holds only the newest
   // `show` pieces, so a filter over what was loaded would quietly leave out this month's 61st. Today
@@ -329,7 +344,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const retryCost = failed && p.refunded ? Math.min(storedCost, curCost) : 0;
     cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || "", etaSec, elapsedSec, refunded: !!p.refunded, retryCost });
   }
-  const linked = linkedFromCache(shop.socialsJson).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
+  const linked = linkedFromCache(shop.socialsJson).filter(isPostable);
   // WHICH PIECES CAN BE REMIXED.
   //
   // The viewer offered a gold "Remix · N tokens" on every video and image, but the remix action refuses
@@ -363,6 +378,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Un-kept media (PENDING video/photo) auto-clears at 30 days — surface a
   // per-item countdown so nothing vanishes as a surprise. Blogs never expire.
   const CACHE_DAYS = 30;
+  // Which collections each loaded piece is on (its chips in the viewer) — one read for the page, and none
+  // at all for a shop that has no collections.
+  const colsOf = collections.length ? await collectionIdsByAsset(shop.id, [...assets, ...stills].map((a) => a.id)) : {};
   const mapAsset = (a: (typeof assets)[number]) => {
       let body: { videoUrl?: string; imageUrl?: string; audioUrl?: string; title?: string; html?: string; needsRegen?: boolean } = {};
       try { body = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
@@ -442,6 +460,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // Whether the remix action would take this piece at all (remixBasis, above). The viewer shows
         // Remix — and the free "Make it again" — only then: a button that can only refuse is a dead end.
         canRemix: remixable(a),
+        // the ids of the collections it is on (the shop's own only)
+        cols: colsOf[a.id] || [],
       };
   };
   return json({
@@ -459,6 +479,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // WHEN (2026-11-22): the open window, and what every window holds (the numbers on its chips)
     when,
     whenCounts,
+    // COLLECTIONS (2026-11-22): the shop's shelves (A to Z, each with its count) and the open one ("" = none)
+    collections,
+    col,
     // Whether anything is still hidden, and how to ask for more of it.
     shown: Math.min(show, totalAll),
     totalAll,
@@ -482,6 +505,16 @@ function numberRepeats<T extends { title: string; when: string }>(list: T[]): T[
     if (n > 1) label.set(x, `${x.title} (${n})`);
   }
   return list.map((x) => (label.has(x) ? { ...x, title: label.get(x)! } : x));
+}
+
+/** What a collection request that could not be done says, as one sentence in the member's language. */
+function colProblemSentence(lang: ReturnType<typeof readUiLang>, problem: ColProblem, name?: string): string {
+  if (problem === "empty") return tr(lang, "Give the collection a name.");
+  if (problem === "long") return tr(lang, "Keep the name to 40 characters or fewer.");
+  if (problem === "taken") return tr(lang, "You already have a collection called “{name}” — pick another name.", { name: name || "" });
+  if (problem === "full") return tr(lang, "You have 50 collections, the most there can be — delete one to make another.");
+  if (problem === "gone") return tr(lang, "That collection is gone — refresh and try again.");
+  return tr(lang, "Those pieces are gone — refresh and try again.");
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -556,6 +589,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const r = await writeAdCopy({ shopId: shop.id, assetId: String(form.get("assetId") || ""), fresh: form.get("fresh") === "1" });
     if (r.ok) return json({ adcopy: { ok: true as const, ...r.copy } });
     return json({ adcopy: { ok: false as const, error: r.error === "missing" ? tr(lang, "That piece is gone.") : tr(lang, "The copy didn't come out — try again.") } });
+  }
+
+  // COLLECTIONS (2026-11-22): make, fill, empty, rename and delete the shop's named shelves. The database
+  // work — and the shop scoping of every query — is collections.server.ts; this reads the form and says
+  // what happened, in a sentence when something is wrong.
+  if (intent === "colCreate" || intent === "colAdd" || intent === "colRemove" || intent === "colRename" || intent === "colDelete") {
+    const collectionId = String(form.get("collectionId") || "");
+    const r = intent === "colCreate" ? await createCollection(shop.id, form.get("name"))
+      : intent === "colAdd" ? await addToCollection(shop.id, collectionId ? { collectionId } : { newName: form.get("newName") }, form.get("assetIds"))
+      : intent === "colRemove" ? await removeFromCollection(shop.id, collectionId, form.get("assetIds"))
+      : intent === "colRename" ? await renameCollection(shop.id, collectionId, form.get("name"))
+      : await deleteCollection(shop.id, collectionId);
+    if (!r.ok) return json({ col: { ok: false as const, op: intent, error: colProblemSentence(lang, r.problem, r.name) } });
+    return json({ col: { ok: true as const, op: intent, id: r.collection.id, name: r.collection.name, n: r.n } });
   }
 
   if (intent === "retryJob") {
@@ -836,7 +883,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const isVideo = asset.type === "VIDEO_AD";
     let platforms: string[] = [];
     try {
-      if (socialProviderEnabled()) platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
+      if (socialProviderEnabled()) platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => takes(p, isVideo));
     } catch { /* ignore */ }
     if (platforms.length === 0) platforms = ["instagram"];
     const tune = platforms.includes("instagram") ? "instagram" : platforms[0];
@@ -845,7 +892,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Deep-link the post at the actual product page when we mirrored their
     // catalogue — an ad nobody can act on is half an ad.
     const buyUrl = await productLinkFor(shop.id, title);
-    return json({ draft: buildPostTitle(captions[tune], buyUrl, fbText) });
+    return json({ draft: buildPostTitle(captions[tune], buyUrl, fbText, undefined, tune) });
   }
   if (intent === "post") {
     if (!socialProviderEnabled()) return json({ error: tr(lang, "Social posting is coming online — check back shortly.") });
@@ -861,7 +908,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // a live platform refresh instead of trusting the stale socials cache.
     const profileKey = await ensureProfile(shop.id);
     if (!profileKey) return json({ error: tr(lang, "Couldn't reach the posting service — try again in a minute.") });
-    const platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
+    const platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => takes(p, asset.type === "VIDEO_AD"));
     if (platforms.length === 0) return json({ error: tr(lang, "Link your socials first on the Auto-posting page.") });
     const isVideo = asset.type === "VIDEO_AD";
     // DO NOT ABSOLUTIZE HERE.
@@ -905,7 +952,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // every click gets counted on this exact piece before forwarding with
       // UTM tags. This is where "which post made money" starts.
       const goUrl = `${base}/go/a/${id}`;
-      titleFor = (p) => buildPostTitle(captions[p], goUrl, fbText, credit);
+      titleFor = (p) => buildPostTitle(captions[p], goUrl, fbText, credit, p);
     }
     // NAME THE PLATFORMS THAT ACTUALLY TOOK IT.
     //
@@ -1131,6 +1178,53 @@ function dlSummary(started: number, skipped: number, failed: number): Array<{ s:
   return out;
 }
 /* ── end of the pure part ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── COLLECTIONS & THE QUEUE · THE PURE PART (2026-11-22) ─────────────────────────────────────────────
+ * What the Collections controls and the two "Add to queue" buttons decide and say. Like the block above:
+ * no React, no database, nothing imported — tests/archive-collections.test.ts lifts it out and runs it. */
+
+/** What the posting queue answers (POST /web/autopost, intent=queueAdd — the Auto-post page's endpoint). */
+type QueueAnswer = { ok: true; queued: number; skipped: number; firstDueAt: string | null; lastDueAt: string | null } | { error: string };
+
+/** Only videos and image ads go in the posting queue — and only ones whose render is still there. */
+function queueableIds(pieces: Array<{ id: string; type: string; media: string | null }>): string[] {
+  return pieces.filter((p) => (p.type === "VIDEO_AD" || p.type === "IMAGE_AD") && !!p.media).map((p) => p.id);
+}
+
+/** When the first queued piece posts, in the member's own locale: weekday and time within the week ahead
+ *  ("Tue 6:00 PM"), the date and time further out ("Dec 2, 6:00 PM"). A time nothing can be made of is "". */
+function queueWhen(iso: string, nowMs: number, locale?: string): string {
+  const d = new Date(iso);
+  const at = d.getTime();
+  if (!Number.isFinite(at)) return "";
+  const soon = at - nowMs < 6 * 86_400_000;
+  return d.toLocaleString(locale, soon ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+/** What the page says once the queue has answered: English source sentences and their values (the page
+ *  runs each through t()). The endpoint's own error sentence is shown as it is. */
+function queueSay(a: QueueAnswer, when: string): { error: string } | { parts: Array<{ s: string; p: Record<string, string | number> }> } {
+  if ("error" in a) return { error: a.error };
+  const parts: Array<{ s: string; p: Record<string, string | number> }> = [];
+  if (a.queued > 0) {
+    if (when) parts.push({ s: a.queued === 1 ? "1 added to your queue — it posts {when}." : "{n} added to your queue — the first posts {when}.", p: { n: a.queued, when } });
+    else parts.push({ s: a.queued === 1 ? "1 added to your queue." : "{n} added to your queue.", p: { n: a.queued } });
+    if (a.skipped > 0) parts.push({ s: a.skipped === 1 ? "1 was already in it or can't be posted." : "{n} were already in it or can't be posted.", p: { n: a.skipped } });
+  } else {
+    parts.push({ s: "Nothing new to queue — those are already in it or can't be posted.", p: {} });
+  }
+  return { parts };
+}
+
+/** What a collection change says, once it is done (English source; {n} and {name} are filled by t()). */
+function colSay(op: string, n: number): string {
+  if (op === "colAdd") return n === 0 ? "Already in “{name}”." : n === 1 ? "1 added to “{name}”." : "{n} added to “{name}”.";
+  if (op === "colRemove") return n === 1 ? "1 removed from “{name}”." : "{n} removed from “{name}”.";
+  if (op === "colRename") return "Renamed to “{name}”.";
+  if (op === "colDelete") return "“{name}” deleted — its pieces are still in your Archive.";
+  return "“{name}” is ready.";
+}
+/* ── end of the collections & queue part ──────────────────────────────────────────────────────────── */
 
 /** The browser's own download for one file: an <a download> made for it and clicked (2026-11-22). */
 function clickDownload(href: string, name: string) {
@@ -1574,6 +1668,40 @@ const WA_CSS = `
 .ar-cinehead .wb-sub a{color:#E7C879;text-decoration:underline;}
 @media(max-width:640px){.ar-cinehead{padding:18px;min-height:118px;}.ar-cinehead .wb-h1{font-size:21px;}.ar-cinehead-copy{max-width:60%;}.ar-cinehead-media{width:52%;}}
 @media(prefers-reduced-motion:reduce){.ar-cinehead-rose{animation:none;}}
+/* COLLECTIONS + QUEUE (2026-11-22). A native <select> laid invisibly over a chip or a bar button, so a tap
+   opens the phone's own picker while the control keeps the look of what sits beside it. */
+.wa-pickover{position:relative;overflow:hidden;}
+.wa-pickover select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px;border:0;margin:0;padding:0;}
+.wa-pickover select:disabled{cursor:default;}
+.wa-bulk-btn.wa-pickover.off{opacity:.45;}
+.wa-pickover:focus-within{box-shadow:0 0 0 3px rgba(143,227,180,.45);}
+.wa-colmanage{align-items:center;flex-wrap:wrap;gap:4px 12px;}
+.wa-colmanage .wa-linkbtn{font-weight:700;min-height:30px;}
+.wa-coldel{color:#8C2E1B !important;}
+.wa-coldel.armed{background:#8C2E1B;color:#fff !important;text-decoration:none;border-radius:999px;padding:0 12px;}
+.wa-colrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0;}
+.wa-colchip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--green,#0C7A46);background:#EAF6EF;border:1px solid #BFE2CD;border-radius:999px;padding:0 4px 0 10px;min-height:30px;box-sizing:border-box;}
+.wa-colchip button{position:relative;display:inline-grid;place-items:center;width:22px;height:22px;border:0;border-radius:999px;background:none;color:inherit;cursor:pointer;padding:0;}
+.wa-colchip button:hover{background:#D5EEDF;}
+.wa-colchip.wa-coladd{color:var(--ink,#14201A);background:#fff;border-style:dashed;border-color:#CFD6C5;padding:0 12px;cursor:pointer;font-family:Poppins,sans-serif;}
+button.wa-colchip.wa-coladd{font-size:12px;}
+.wa-colform{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px;}
+.wa-colform input{flex:1 1 160px;min-width:0;min-height:36px;box-sizing:border-box;border:1px solid var(--line,#E1DECD);border-radius:999px;padding:0 14px;font:inherit;font-size:14px;color:var(--ink,#14201A);background:#fff;outline:none;}
+.wa-colform input:focus{border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.wa-colform-go{min-height:36px;padding:0 16px;border-radius:999px;border:0;background:var(--green,#0C7A46);color:#fff;font:800 13px/1 Poppins,sans-serif;cursor:pointer;}
+.wa-colform-go:disabled{opacity:.5;cursor:default;}
+.wa-colform-x{min-height:36px;padding:0 10px;border:0;background:none;color:var(--ink2,#4A554E);font:700 13px/1 Poppins,sans-serif;cursor:pointer;text-decoration:underline;}
+.wa-colform-err{flex-basis:100%;margin:0;font-size:12.5px;font-weight:600;color:#8C2E1B;}
+.wa-colform.dark{flex-basis:100%;margin:0;}
+.wa-colform.dark input{border-color:rgba(255,255,255,.25);}
+.wa-colform.dark .wa-colform-x{color:#fff;}
+.wa-colform.dark .wa-colform-err{color:#FFC24A;}
+.wa-toast-link{color:#8FE3B4;font-weight:800;text-decoration:underline;white-space:nowrap;flex:0 0 auto;padding:4px 6px;}
+@media(max-width:640px){
+  .wa-colchip,.wa-colmanage .wa-linkbtn,.wa-colform input,.wa-colform-go,.wa-colform-x,.wa-toast-link{min-height:44px;}
+  .wa-colchip button::before{content:"";position:absolute;inset:-11px;}
+  .wa-toast-link{display:inline-flex;align-items:center;box-sizing:border-box;}
+}
 `;
 
 /** One shape in the viewer's "Every size" panel: tap → made on the server → a Save link. */
@@ -1722,9 +1850,25 @@ function ShareLink({ assetId, title, token }: { assetId: string; title: string; 
   );
 }
 
+/** COLLECTIONS (2026-11-22): the one inline box that asks for a collection's name — a new one (from the
+ *  Collections menu, the select bar or an opened piece) or a new name for the open one. Enter saves. */
+function ColNameForm({ initial = "", label, busy, error, dark, onSave, onCancel }: { initial?: string; label: string; busy: boolean; error: string | null; dark?: boolean; onSave: (name: string) => void; onCancel: () => void }) {
+  const t = useT();
+  const [v, setV] = useState(initial);
+  return (
+    <form className={`wa-colform${dark ? " dark" : ""}`} onSubmit={(e) => { e.preventDefault(); const name = v.trim(); if (name && !busy) onSave(name); }}>
+      {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+      <input autoFocus value={v} maxLength={40} onChange={(e) => setV(e.target.value)} placeholder={t("Collection name")} aria-label={t("Collection name")} />
+      <button type="submit" className="wa-colform-go" disabled={busy || !v.trim()}>{label}</button>
+      <button type="button" className="wa-colform-x" onClick={onCancel}>{t("Cancel")}</button>
+      {error && <p className="wa-colform-err" role="alert">{error}</p>}
+    </form>
+  );
+}
+
 export default function WebArchive() {
   const t = useT();
-  const { section, q, when, whenCounts, assets, stills, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow } = useLoaderData<typeof loader>();
+  const { section, q, when, whenCounts, assets, stills, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow, collections, col } = useLoaderData<typeof loader>();
   const isCreator = section === "creator";
   // Preserve the section across tab links, "show more", and revalidation so the
   // Gallery stays the Gallery.
@@ -1756,7 +1900,12 @@ export default function WebArchive() {
   const whenLit = whenGoing ?? whenOpen;
   // …and every link that reloads the shelf (search, clear, show older) carries it, so none of them drops it
   const whenQ = whenOpen !== "all" ? `&when=${whenOpen}` : "";
-  const whenHref = (k: AWhen) => `?tab=${tab}${k !== "all" ? `&when=${k}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}${isCreator ? "&section=creator" : ""}`;
+  // COLLECTIONS (2026-11-22): the open collection lives in the URL too (?col=), and every link that reloads
+  // the shelf carries it — the When chips, clearing the search, Show older — so the filters work together.
+  const colOpen = collections.find((c) => c.id === col) || null;
+  const colQ = colOpen ? `&col=${encodeURIComponent(colOpen.id)}` : "";
+  const colHref = (id: string) => `?tab=${tab}${whenQ}${q ? `&q=${encodeURIComponent(q)}` : ""}${id ? `&col=${encodeURIComponent(id)}` : ""}${isCreator ? "&section=creator" : ""}`;
+  const whenHref = (k: AWhen) => `?tab=${tab}${k !== "all" ? `&when=${k}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}${colQ}${isCreator ? "&section=creator" : ""}`;
   const [viewer, setViewer] = useState<(typeof assets)[number] | null>(null);
   // "Every size" panel — closed again whenever a different piece opens
   const [sizesFor, setSizesFor] = useState<string | null>(null);
@@ -1825,7 +1974,8 @@ export default function WebArchive() {
   // fires the real server delete once the window closes un-undone.
   // (`ms`, 2026-11-22: a toast with more to read — the select bar's Download — says how long it stays;
   //  every toast that does not, stays exactly as long as it did.)
-  const [toast, setToast] = useState<{ msg: string; undo?: () => void; pending?: ReturnType<typeof setTimeout>; ms?: number } | null>(null);
+  // (`link`, 2026-11-22: the queue's confirmation carries "See the queue".)
+  const [toast, setToast] = useState<{ msg: string; undo?: () => void; pending?: ReturnType<typeof setTimeout>; ms?: number; link?: { to: string; label: string } } | null>(null);
   useEffect(() => {
     if (!toast) return;
     // Undo-able toasts linger until their delete actually commits (6s); plain
@@ -1892,6 +2042,67 @@ export default function WebArchive() {
     const pending = setTimeout(() => { setToast(null); submit({ intent: "deleteMany", assetIds: ids.join(",") }, { method: "post" }); }, 5000);
     setToast({ msg: ids.length === 1 ? t("Deleted 1 piece.") : t("Deleted {n} pieces.", { n: ids.length }), pending, undo: () => { clearTimeout(pending); setPicked(new Set(ids)); setToast({ msg: t("Restored.") }); } });
   };
+
+  // COLLECTIONS (2026-11-22) — named shelves. Every change goes through ONE fetcher to this route's action
+  // (colCreate / colAdd / colRemove / colRename / colDelete), so the shelf and the counts reload after it
+  // and the page's own actionData — the viewer's post and remix messages — is left alone. `colForm` is the
+  // one inline name box that may be open (a new collection from the menu, the bar or a piece; or a rename).
+  const navigate = useNavigate();
+  const colById = new Map(collections.map((c) => [c.id, c] as const));
+  const colFetcher = useFetcher<{ col?: { ok: true; op: string; id: string; name: string; n: number } | { ok: false; op: string; error: string } }>();
+  const colBusy = colFetcher.state !== "idle";
+  const [colForm, setColForm] = useState<null | "filter" | "bulk" | "viewer" | "rename">(null);
+  const [colErr, setColErr] = useState<string | null>(null);
+  const [armColDel, setArmColDel] = useState(false);
+  useEffect(() => { if (!armColDel) return; const tm = setTimeout(() => setArmColDel(false), 4000); return () => clearTimeout(tm); }, [armColDel]);
+  const colSubmit = (data: Record<string, string>) => { setColErr(null); colFetcher.submit(data, { method: "post" }); };
+  const askColForm = (which: "filter" | "bulk" | "viewer" | "rename") => { setColErr(null); setArmColDel(false); setColForm(which); };
+  // an opened piece's name box closes when another piece opens (or the viewer closes); the bar's, when selecting ends
+  useEffect(() => { setColForm((f) => (f === "viewer" ? null : f)); }, [viewer?.id]);
+  useEffect(() => { if (!selecting) setColForm((f) => (f === "bulk" ? null : f)); }, [selecting]);
+  // choosing a collection (or none) is a new shelf from the server, like a When chip: it ends a selection
+  const openCol = (id: string) => { endSelect(); setColForm(null); setArmColDel(false); navigate(colHref(id), { preventScrollReset: true }); };
+  const deleteCol = () => {
+    if (!colOpen) return;
+    if (!armColDel) { setArmColDel(true); return; }
+    setArmColDel(false);
+    colSubmit({ intent: "colDelete", collectionId: colOpen.id });
+  };
+  useEffect(() => {
+    const r = colFetcher.data?.col;
+    if (!r || colFetcher.state !== "idle") return;
+    if (!r.ok) { if (colForm) setColErr(r.error); else setToast({ msg: r.error }); return; }
+    setColForm(null);
+    setColErr(null);
+    if ((r.op === "colAdd" || r.op === "colRemove") && selecting) setPicked(new Set());
+    if (r.op === "colCreate") { openCol(r.id); return; } // made from the menu: open it (its empty state says how to fill it)
+    if (r.op === "colDelete") { setSelecting(false); setPicked(new Set()); navigate(colHref(""), { preventScrollReset: true }); }
+    setToast({ msg: t(colSay(r.op, r.n), { n: r.n, name: r.name }) });
+  }, [colFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const addPickedTo = (target: { collectionId: string } | { newName: string }) => {
+    const ids = [...picked];
+    if (!ids.length) return;
+    colSubmit({ intent: "colAdd", ...target, assetIds: ids.join(",") });
+  };
+  const removePicked = () => {
+    const ids = [...picked];
+    if (!ids.length || !colOpen) return;
+    colSubmit({ intent: "colRemove", collectionId: colOpen.id, assetIds: ids.join(",") });
+  };
+
+  // ADD TO QUEUE (2026-11-22) — the posting queue is the Auto-post page's (POST /web/autopost, intent
+  // queueAdd); this page only hands it pieces and says what came back. Videos and image ads only.
+  const queueFetcher = useFetcher<QueueAnswer>();
+  const queueBusy = queueFetcher.state !== "idle";
+  const queueIds = (ids: string[]) => queueFetcher.submit({ intent: "queueAdd", assetIds: ids.join(",") }, { method: "post", action: "/web/autopost" });
+  useEffect(() => {
+    const a = queueFetcher.data;
+    if (!a || queueFetcher.state !== "idle") return;
+    const said = queueSay(a, !("error" in a) && a.firstDueAt ? queueWhen(a.firstDueAt, Date.now()) : "");
+    if ("error" in said) { setToast({ msg: said.error, ms: 6000 }); return; }
+    if (selecting) setPicked(new Set());
+    setToast({ msg: said.parts.map((x) => t(x.s, x.p)).join(" "), link: { to: "/web/autopost", label: t("See the queue") }, ms: 8000 });
+  }, [queueFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Editable caption preview: "Post to socials" opens one caption box pre-filled
   // with an AI suggestion (intent "draft") the merchant can tweak or post as-is.
@@ -2092,8 +2303,9 @@ export default function WebArchive() {
 
   // a search narrows the cooking and failed cards too, by the same title the finished piece will carry
   const qMatch = (title: string) => !q || title.toLowerCase().includes(q.toLowerCase());
-  const genCards = cookingCards.filter((j) => j.kind === tab && j.status === "generating" && qMatch(j.productTitle));
-  const failCards = cookingCards.filter((j) => j.kind === tab && j.status === "failed" && qMatch(j.productTitle));
+  // (2026-11-22) …and a piece still being made is on no collection yet, so none show while one is open
+  const genCards = colOpen ? [] : cookingCards.filter((j) => j.kind === tab && j.status === "generating" && qMatch(j.productTitle));
+  const failCards = colOpen ? [] : cookingCards.filter((j) => j.kind === tab && j.status === "failed" && qMatch(j.productTitle));
 
   // WHEN, and a window with nothing in it (2026-11-22). An empty WINDOW is not an empty library: where
   // the open tab has pieces from other days, the shelf says which window is empty and offers the way back
@@ -2104,6 +2316,16 @@ export default function WebArchive() {
   const whenEmpty = whenOpen !== "all" && shelf.length === 0 && tabTotal === 0 && tabEver > 0 && genCards.length === 0;
   // The chips show wherever the open tab has something to sift by date — and while a window is on (the way back).
   const showWhen = whenOpen !== "all" || tabEver > 0;
+  // COLLECTIONS: an open collection with nothing of this tab's kind on it, at any time — its own empty state
+  // (how to fill it, and the way back), never "No videos yet — open the Studio".
+  const colEmpty = !!colOpen && !q && !whenEmpty && shelf.length === 0 && tabTotal === 0 && tabEver === 0;
+  // the open piece's collections, from the freshest data (the viewer holds the piece as it was when opened)
+  const viewerCols = viewer ? (([...assets, ...stills].find((a) => a.id === viewer.id) ?? viewer).cols || []).map((id) => colById.get(id)).filter((c): c is (typeof collections)[number] => !!c) : [];
+  const queuePicked = () => {
+    const ids = queueableIds(shelf.filter((a) => picked.has(a.id)));
+    if (!ids.length) { setToast({ msg: t("Only videos and image ads can be queued.") }); return; }
+    queueIds(ids);
+  };
 
   return (
     <div className={isCreator ? "wa-creator" : undefined}>
@@ -2145,7 +2367,7 @@ export default function WebArchive() {
           // …plus what is being made right now (it is about to be a piece). A job that FAILED is not one:
           // counting its card made the tab say "Videos · 115" over a shelf that said "57 of 111".
           const n = (totals?.[k] ?? assets.filter((a) => A_KIND[a.type] === k).length)
-            + cookingCards.filter((j) => j.kind === k && j.status === "generating").length;
+            + (colOpen ? 0 : cookingCards.filter((j) => j.kind === k && j.status === "generating").length);
           return (
             <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setFilter("all"); setWho(""); setProd(""); endSelect(); }}>
               <Ico n={icon} /> {label} · {n}
@@ -2165,13 +2387,23 @@ export default function WebArchive() {
           <input type="hidden" name="tab" value={tab} />
           {/* (2026-11-22) a search keeps the open When window — and clearing the search keeps it too */}
           {whenOpen !== "all" && <input type="hidden" name="when" value={whenOpen} />}
+          {/* …and the open collection */}
+          {colOpen && <input type="hidden" name="col" value={colOpen.id} />}
           <Ico n="search" />
           <input type="search" name="q" defaultValue={q} key={q} maxLength={80} placeholder={t("Search your pieces")} aria-label={t("Search your pieces")} />
         </Form>
         {q && (
           <span className="wa-qchip">
             {t("Results for “{q}”", { q })}
-            <Link to={`?tab=${tab}${whenQ}${isCreator ? "&section=creator" : ""}`} preventScrollReset aria-label={t("Clear")}><Ico n="x" size={12} /></Link>
+            <Link to={`?tab=${tab}${whenQ}${colQ}${isCreator ? "&section=creator" : ""}`} preventScrollReset aria-label={t("Clear")}><Ico n="x" size={12} /></Link>
+          </span>
+        )}
+        {/* COLLECTIONS (2026-11-22): the open collection shows its name the way the search shows its word,
+            and clears the same way (✕ — the search and the When window stay). */}
+        {colOpen && (
+          <span className="wa-qchip">
+            <Ico n="bookcase" size={12} /> {colOpen.name}
+            <Link to={colHref("")} preventScrollReset aria-label={t("Clear")} onClick={() => { endSelect(); setColForm(null); setArmColDel(false); }}><Ico n="x" size={12} /></Link>
           </span>
         )}
         {/* WHEN (2026-11-22) — All time · Today · This week · This month, each with how many of the open
@@ -2209,8 +2441,9 @@ export default function WebArchive() {
           </div>
         )}
         {/* Who's in it and what it's for — a menu each, when the open tab has more than one of them. */}
-        {(whoOpts.length > 1 || prodOpts.length > 1 || who || prod) && (
-          <div className="wa-filters wa-pick" role="group" aria-label={t("Filter by presenter or product")}>
+        {/* (2026-11-22) …and which collection — a third menu, there once the shop has a collection. */}
+        {(whoOpts.length > 1 || prodOpts.length > 1 || who || prod || collections.length > 0) && (
+          <div className="wa-filters wa-pick" role="group" aria-label={t("Filter by presenter, product or collection")}>
             {(whoOpts.length > 1 || who) && (
               <label className={`wa-filterchip wa-select${who ? " on" : ""}`}>
                 <Ico n="presenter" /> <span className="wa-sr">{t("Presenter")}</span>
@@ -2226,6 +2459,19 @@ export default function WebArchive() {
                 <select value={prod} onChange={(e) => setProd(e.target.value)} aria-label={t("Product")}>
                   <option value="">{t("Any product")}</option>
                   {prodOpts.map(([v, n]) => <option key={v} value={v}>{v.length > 42 ? `${v.slice(0, 40)}…` : v} · {n}</option>)}
+                </select>
+              </label>
+            )}
+            {/* COLLECTIONS (2026-11-22): each collection with how many pieces it holds, then "New collection…".
+                Choosing one opens it (?col= — the loader filters, so it pages and counts like the search). */}
+            {collections.length > 0 && (
+              <label className={`wa-filterchip wa-select${colOpen ? " on" : ""}`}>
+                <Ico n="bookcase" /> <span className="wa-sr">{t("Collections")}</span>
+                <select value={colOpen?.id || ""} aria-label={t("Collections")}
+                  onChange={(e) => { const v = e.target.value; if (v === "__new") askColForm("filter"); else openCol(v); }}>
+                  <option value="">{t("Collections")}</option>
+                  {collections.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.count}</option>)}
+                  <option value="__new">{t("New collection…")}</option>
                 </select>
               </label>
             )}
@@ -2256,10 +2502,28 @@ export default function WebArchive() {
               // (the word was built as tab + "s", which on the Scenes & Portraits tab read "stillss")
               ? <>{t("Your")} <b>{tabTotal}</b> {t(TAB_PLURAL[tab])} {t("are further back.")}{" "}</>
               : <>{t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}{t(TAB_PLURAL[tab])}.{" "}</>}
-            <Link to={`?show=${nextShow}&tab=${tab}${whenQ}${q ? `&q=${encodeURIComponent(q)}` : ""}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
+            <Link to={`?show=${nextShow}&tab=${tab}${whenQ}${q ? `&q=${encodeURIComponent(q)}` : ""}${colQ}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>
           </p>
         )}
       </div>
+      {/* COLLECTIONS (2026-11-22): a new one from the Collections menu — named here, then opened */}
+      {colForm === "filter" && (
+        <ColNameForm label={t("Create")} busy={colBusy} error={colErr} onSave={(name) => colSubmit({ intent: "colCreate", name })} onCancel={() => setColForm(null)} />
+      )}
+      {/* …and, while one is open, its two ways to manage it: Rename, and Delete (armed — a second tap deletes
+          it; the pieces stay in the Archive, and the line says so before that tap) */}
+      {colOpen && (colForm === "rename" ? (
+        <ColNameForm key={colOpen.id} initial={colOpen.name} label={t("Save")} busy={colBusy} error={colErr} onSave={(name) => colSubmit({ intent: "colRename", collectionId: colOpen.id, name })} onCancel={() => setColForm(null)} />
+      ) : (
+        <p className="wa-shelfnote wa-colmanage">
+          <Ico n="bookcase" />
+          <span>{colOpen.count === 1 ? t("1 piece in “{name}”.", { name: colOpen.name }) : t("{n} pieces in “{name}”.", { n: colOpen.count, name: colOpen.name })}</span>
+          <button type="button" className="wa-linkbtn" disabled={colBusy} onClick={() => askColForm("rename")}>{t("Rename")}</button>
+          <button type="button" className={`wa-linkbtn wa-coldel${armColDel ? " armed" : ""}`} disabled={colBusy} onClick={deleteCol}>
+            {armColDel ? t("Tap again to delete it — the pieces stay") : t("Delete collection")}
+          </button>
+        </p>
+      ))}
       {(tab === "video" || tab === "image") && shelf.some((a) => a.daysLeft != null) && (
         // It said to open a piece and hit "Keep" — an opened piece has no button that reads Keep:
         // keeping is the heart over the clip, and the viewer's own note says "tap the heart".
@@ -2278,7 +2542,7 @@ export default function WebArchive() {
       {/* (2026-11-22: neither of the next two speaks for an empty When WINDOW — `whenEmpty`, which has its
           own words just below them. With no window on, both are exactly what they were.) */}
       {!whenEmpty && q && shelf.length === 0 && tabTotal === 0 && (
-        <p className="wa-noq">{t("Nothing here matches “{q}”.", { q })} <Link to={`?tab=${tab}${whenQ}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Clear")}</Link></p>
+        <p className="wa-noq">{t("Nothing here matches “{q}”.", { q })} <Link to={`?tab=${tab}${whenQ}${colQ}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Clear")}</Link></p>
       )}
       {/* WHEN, and nothing in the window: the page's own empty state — an icon, one line, one button —
           saying which window is empty, with the way back to everything. */}
@@ -2289,7 +2553,15 @@ export default function WebArchive() {
           <Link to={whenHref("all")} preventScrollReset className="wb-btn wa-empty-cta" onClick={endSelect}>{t("Show all")}</Link>
         </div>
       )}
-      {!whenEmpty && !q && shelf.length === 0 && tabTotal === 0 && genCards.length === 0 && failCards.length === 0 && (
+      {/* COLLECTIONS: an open collection with none of this kind on it — how to fill it, and the way back */}
+      {colEmpty && colOpen && (
+        <div className="wa-empty">
+          <span className="wa-empty-ic"><Ico n="bookcase" size={26} /></span>
+          <p className="wa-empty-ln">{t("Nothing of this kind in “{name}” yet. Show all your pieces, tap Select, pick some, then Add to collection.", { name: colOpen.name })}</p>
+          <Link to={colHref("")} preventScrollReset className="wb-btn wa-empty-cta" onClick={endSelect}>{t("Show all")}</Link>
+        </div>
+      )}
+      {!whenEmpty && !colEmpty && !q && shelf.length === 0 && tabTotal === 0 && genCards.length === 0 && failCards.length === 0 && (
         // A real empty state: an icon, one line of encouragement, and a bold
         // deep-link into the Studio — not a bare inline text link.
         <div className="wa-empty">
@@ -2535,6 +2807,35 @@ export default function WebArchive() {
                   <Ico n="warning" /> {t("The")} <b>{viewer.missed}</b> {t("layout didn't render cleanly, so this went out as a plain product ad instead.")}{viewer.canRemix && <> <b>{t("Remix")}</b> {t("re-rolls it.")}</>}
                 </span>
               )}
+              {/* COLLECTIONS (2026-11-22): the collections this piece is on, each a chip whose ✕ takes it off that
+                  one (the piece stays), and "+ Collection" — the shop's other collections and "New collection…"
+                  in the phone's own picker, or straight to the name box while the shop has none. */}
+              {colForm === "viewer" ? (
+                <ColNameForm label={t("Add")} busy={colBusy} error={colErr} onSave={(name) => colSubmit({ intent: "colAdd", newName: name, assetIds: viewer.id })} onCancel={() => setColForm(null)} />
+              ) : (
+                <div className="wa-colrow" role="group" aria-label={t("Collections")}>
+                  {viewerCols.map((c) => (
+                    <span key={c.id} className="wa-colchip">
+                      <Ico n="bookcase" size={12} /> {c.name}
+                      <button type="button" aria-label={t("Take it off “{name}”", { name: c.name })} title={t("Take it off “{name}”", { name: c.name })} disabled={colBusy}
+                        onClick={() => colSubmit({ intent: "colRemove", collectionId: c.id, assetIds: viewer.id })}><Ico n="x" size={12} /></button>
+                    </span>
+                  ))}
+                  {collections.length === 0 ? (
+                    <button type="button" className="wa-colchip wa-coladd" disabled={colBusy} onClick={() => askColForm("viewer")}>+ {t("Collection")}</button>
+                  ) : (
+                    <label className="wa-colchip wa-coladd wa-pickover">
+                      + {t("Collection")}
+                      <select value="" disabled={colBusy} aria-label={t("Add to collection")}
+                        onChange={(e) => { const v = e.target.value; if (v === "__new") askColForm("viewer"); else if (v) colSubmit({ intent: "colAdd", collectionId: v, assetIds: viewer.id }); }}>
+                        <option value="" disabled>{t("Add to collection")}</option>
+                        {collections.filter((c) => !viewerCols.some((v) => v.id === c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        <option value="__new">{t("New collection…")}</option>
+                      </select>
+                    </label>
+                  )}
+                </div>
+              )}
               {/* THE RECEIPT — what the merchant picked and what the AI wrote.
                   Only renders the fields a given piece actually stored. */}
               {(() => {
@@ -2609,6 +2910,10 @@ export default function WebArchive() {
                   <div className="wa-vacts">
                     {canPost && linked.length > 0 && !capOpen && viewer.media && !viewer.isAudio && (
                       <button type="button" className="wa-vbtn full" disabled={busy} onClick={() => startPost(viewer.id)}>{isCreator ? t("Share to socials") : t("Post to socials")}</button>
+                    )}
+                    {/* ADD TO QUEUE (2026-11-22): post it later instead of now — into the Auto-post queue */}
+                    {(viewer.isVideo || viewer.type === "IMAGE_AD") && viewer.media && !viewer.expired && (
+                      <button type="button" className="wa-vbtn ghost" disabled={queueBusy} onClick={() => queueIds([viewer.id])}><Ico n="rocket" /> {queueBusy ? t("Adding…") : t("Add to queue")}</button>
                     )}
                     {viewer.media && <a className="wa-vbtn ghost" href={viewer.media} download={dlName(viewer.title, viewer.isVideo, viewer.isAudio)}><Ico n="download" /> {t("Download")}</a>}
                     {viewer.media && !viewer.expired && (
@@ -2714,6 +3019,7 @@ export default function WebArchive() {
           <span className="wa-toast-ic"><Ico n={toast.undo ? "trash" : "check"} /></span>
           <span>{toast.msg}</span>
           {toast.undo && <button type="button" className="wa-toast-undo" onClick={toast.undo}>{t("Undo")}</button>}
+          {toast.link && <Link to={toast.link.to} className="wa-toast-link" onClick={() => setToast(null)}>{toast.link.label} →</Link>}
         </div>
       , document.body) : null}
 
@@ -2745,7 +3051,32 @@ export default function WebArchive() {
           <button type="button" className={`wa-bulk-btn del${armBulk ? " armed" : ""}`} disabled={!picked.size || busy} onClick={deletePicked}>
             <Ico n="trash" /> {armBulk ? t("Tap again to delete {n}", { n: picked.size }) : t("Delete")}
           </button>
+          {/* QUEUE (2026-11-22): the picked videos and image ads, into the Auto-post queue — not on the tabs
+              that hold neither */}
+          {tab !== "music" && tab !== "blog" && (
+            <button type="button" className="wa-bulk-btn queue" disabled={!picked.size || queueBusy} onClick={queuePicked}><Ico n="rocket" /> {t("Queue")}</button>
+          )}
+          {/* COLLECTIONS (2026-11-22): put the picked pieces on a collection — or, while one is open, take them
+              off it. One control for the one decision each place offers. */}
+          {colOpen ? (
+            <button type="button" className="wa-bulk-btn" disabled={!picked.size || colBusy} onClick={removePicked}><Ico n="x" /> {t("Remove from collection")}</button>
+          ) : collections.length === 0 ? (
+            <button type="button" className="wa-bulk-btn" disabled={!picked.size || colBusy} onClick={() => askColForm("bulk")}><Ico n="bookcase" /> {t("Add to collection")}</button>
+          ) : (
+            <label className={`wa-bulk-btn wa-pickover${!picked.size || colBusy ? " off" : ""}`}>
+              <Ico n="bookcase" /> {t("Add to collection")}
+              <select value="" disabled={!picked.size || colBusy} aria-label={t("Add to collection")}
+                onChange={(e) => { const v = e.target.value; if (v === "__new") askColForm("bulk"); else if (v) addPickedTo({ collectionId: v }); }}>
+                <option value="" disabled>{t("Add to collection")}</option>
+                {collections.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.count}</option>)}
+                <option value="__new">{t("New collection…")}</option>
+              </select>
+            </label>
+          )}
           <button type="button" className="wa-bulk-done" onClick={endSelect}>{t("Done")}</button>
+          {colForm === "bulk" && !colOpen && (
+            <ColNameForm dark label={t("Add")} busy={colBusy || !picked.size} error={colErr} onSave={(name) => addPickedTo({ newName: name })} onCancel={() => setColForm(null)} />
+          )}
         </div>
       )}
     </div>

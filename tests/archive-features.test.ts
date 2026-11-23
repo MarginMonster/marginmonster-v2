@@ -241,7 +241,8 @@ test("WHEN: its chips are links that keep the tab, the search and the section �
     "  const whenLit = whenGoing ?? whenOpen;",
   ].join("\n")));
   // where a chip goes: all time carries no ?when= at all, and paging starts again (no ?show=)
-  assert.ok(src.includes('const whenHref = (k: AWhen) => `?tab=${tab}${k !== "all" ? `&when=${k}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}${isCreator ? "&section=creator" : ""}`;'));
+  // (2026-11-22: it carries the open collection too — `colQ`, empty with none open; pinned in archive-collections.test.ts)
+  assert.ok(src.includes('const whenHref = (k: AWhen) => `?tab=${tab}${k !== "all" ? `&when=${k}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}${colQ}${isCreator ? "&section=creator" : ""}`;'));
   const whenHref = (tab: string, k: When, q: string, isCreator: boolean) => `?tab=${tab}${k !== "all" ? `&when=${k}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}${isCreator ? "&section=creator" : ""}`;
   assert.equal(whenHref("video", "week", "", false), "?tab=video&when=week");
   assert.equal(whenHref("image", "all", "", false), "?tab=image");
@@ -271,9 +272,10 @@ test("WHEN: its chips are links that keep the tab, the search and the section �
   // a search (a GET form: its fields ARE the new address)…
   assert.ok(src.includes('{whenOpen !== "all" && <input type="hidden" name="when" value={whenOpen} />}'));
   // …clearing the search, from its chip and from "Nothing here matches"…
-  assert.equal(count(src, 'to={`?tab=${tab}${whenQ}${isCreator ? "&section=creator" : ""}`}'), 2);
+  // (2026-11-22: each keeps the open collection as well — `colQ`)
+  assert.equal(count(src, 'to={`?tab=${tab}${whenQ}${colQ}${isCreator ? "&section=creator" : ""}`}'), 2);
   // …and Show older pieces
-  assert.ok(src.includes('<Link to={`?show=${nextShow}&tab=${tab}${whenQ}${q ? `&q=${encodeURIComponent(q)}` : ""}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>'));
+  assert.ok(src.includes('<Link to={`?show=${nextShow}&tab=${tab}${whenQ}${q ? `&q=${encodeURIComponent(q)}` : ""}${colQ}${isCreator ? "&section=creator" : ""}`} preventScrollReset>{t("Show older pieces")} →</Link>'));
   // no link on the page rebuilds the address without it
   assert.ok(!src.includes('to={`?tab=${tab}${isCreator ? "&section=creator" : ""}`}'));
   assert.ok(!src.includes("to={`?show=${nextShow}&tab=${tab}${q ?"));
@@ -297,7 +299,8 @@ test("WHEN: an empty window says so — it is not an empty library, and not an e
   ].join("\n")));
   // the two states that were there step aside for it — and only for it
   assert.ok(src.includes("      {!whenEmpty && q && shelf.length === 0 && tabTotal === 0 && ("));
-  assert.ok(src.includes("      {!whenEmpty && !q && shelf.length === 0 && tabTotal === 0 && genCards.length === 0 && failCards.length === 0 && ("));
+  // (2026-11-22: …and for an open collection's own empty state, `colEmpty` — archive-collections.test.ts)
+  assert.ok(src.includes("      {!whenEmpty && !colEmpty && !q && shelf.length === 0 && tabTotal === 0 && genCards.length === 0 && failCards.length === 0 && ("));
 
   // what those three lines decide
   type S = { when: When; q: string; shelf: number; tabTotal: number; tabEver: number; cooking?: number; failed?: number };
@@ -642,16 +645,19 @@ test("the toast clears the select bar however tall the bar is — and a toast ma
   assert.ok(fx.includes("    const ro = new ResizeObserver(measure);\n    ro.observe(el);\n    return () => ro.disconnect();\n  }, [selecting]);"));
 
   // HOW LONG. A toast that says nothing about it stays exactly as long as it did: 3s, or 6.2s with an Undo.
-  assert.ok(src.includes("const [toast, setToast] = useState<{ msg: string; undo?: () => void; pending?: ReturnType<typeof setTimeout>; ms?: number } | null>(null);"));
+  // (2026-11-22: a toast may also carry a link — the queue's "See the queue")
+  assert.ok(src.includes("const [toast, setToast] = useState<{ msg: string; undo?: () => void; pending?: ReturnType<typeof setTimeout>; ms?: number; link?: { to: string; label: string } } | null>(null);"));
   assert.ok(src.includes("    const timer = setTimeout(() => setToast(null), toast.ms ?? (toast.undo ? 6200 : 3000));"));
   const stays = (toast: { undo?: () => void; ms?: number }) => toast.ms ?? (toast.undo ? 6200 : 3000);
   assert.equal(stays({}), 3000);
   assert.equal(stays({ undo: () => undefined }), 6200);
   assert.equal(stays({ ms: 6000 }), 6000);
-  // only the Download's toasts ask for longer
-  assert.equal(count(src, "ms: 6000 }"), 2);
+  // only the Download's toasts ask for longer — and (2026-11-22) the queue's two: its error sentence (6s)
+  // and its confirmation with the "See the queue" link (8s)
+  assert.equal(count(src, "ms: 6000 }"), 3);
   assert.equal(count(src, "ms: 600_000 }"), 1);
-  assert.equal(count(src, ", ms: "), 3);
+  assert.equal(count(src, "ms: 8000 }"), 1);
+  assert.equal(count(src, ", ms: "), 5);
 });
 
 test("every new word goes through t() — and these are all of them", () => {
