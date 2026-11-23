@@ -2,10 +2,12 @@
  *
  * The request body used to be built inline in falVideoSubmit, untested. Its Kling 3 branch was written
  * for the film engine's dialogue shots (sound on; ten seconds unless told) — and Kling 3 Pro was already
- * the DEFAULT engine of every ad pipeline, whose callers say nothing about length or sound. So from
- * 2026-11-06 every default-engine clip was rendered at ten seconds with generated sound and no negative
- * prompt: $1.68 where $0.56 was meant (fal's price page: $0.112 a second silent, $0.168 with sound), for
- * sound the ad pipelines then discard under their own voice and music.
+ * the DEFAULT motion engine, whose callers say nothing about sound and, some of them, nothing about
+ * length. So from 2026-11-06 every default-engine clip was rendered with generated sound and no negative
+ * prompt — a cartoon's or an anthem's at ten seconds, $1.68 where $0.56 was meant (fal's price page:
+ * $0.112 a second silent, $0.168 with sound); a kids' film scene $0.84 where $0.56 was meant — for sound
+ * those pipelines then discard under their own voice and music. (The Commercial was never on that engine:
+ * it is pinned to Kling 2.6 Pro, and a test below holds that true.)
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -115,6 +117,10 @@ test("the looped ads ask for ten seconds by name, on Kling only; a commercial be
   }
   const com = read("app", "lib", "commercial-ad-pipeline.server.ts");
   assert.ok(com.includes("opts: { startImage: string; prompt: string; negativePrompt?: string },"), "five beats × the default five seconds");
+  // …on ITS OWN engine: the Commercial is pinned to Kling 2.6 Pro (no sound, $0.35 a clip), so it was never
+  // one of the clips the Kling 3 default over-rendered — and it must not drift onto that default unpriced
+  assert.ok(com.includes("const motionEngine: string | undefined = \"kling26\";"));
+  assert.deepEqual(falVideoBody(K26, seed), { prompt: "a hero shot", image_url: "https://x.test/renders/seed.jpg", duration: "5", negative_prompt: DEFAULT_NEGATIVE_PROMPT });
   assert.ok(com.includes("const clipSecs = opts.clipPaths.map((_, i) => opts.clipSecs?.[i] ?? opts.clipSec ?? 5);"), "which is what its assembler cuts to");
   // the Replicate fallback only knows 5 and 10
   assert.ok(read("app", "lib", "ugc-ad-pipeline.server.ts").includes("duration: (opts.durationSec ?? 5) > 7 ? 10 : 5 };"));

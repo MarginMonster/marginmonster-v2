@@ -25,6 +25,7 @@
  * charge = underwater. On 2.6 it stays profit-positive even worst-case (~30%).
  * The clips are REQUESTED at 5s (animateInputFor duration:5), not 10s — the
  * ":349" trim comment describes an older model and does NOT mean we over-buy.
+ * + a music bed since 2026-11-23 (one 12 s musicgen loop, ~$0.03 — commercial-music.ts).
  */
 import crypto from "node:crypto";
 import fs from "node:fs";

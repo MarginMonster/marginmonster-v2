@@ -3,14 +3,17 @@
  * It used to be built inline in falVideoSubmit, where nothing checked it, and it cost real money:
  *
  *   The Kling 3 branch was written on 2026-11-06 for the film engine's DIALOGUE shots — sound on, ten
- *   seconds unless told otherwise. But Kling 3 Pro had been the DEFAULT motion engine of every ad
- *   pipeline since 10-13, and those callers pass neither a length nor a word about sound. So from that
- *   day every default-engine clip was rendered at ten seconds WITH generated sound: a cartoon ad's
- *   motion, an anthem's, each of a commercial's five beats, every scene of a kids' film. Those pipelines
- *   use five seconds and lay their own voice and music over the top — the clip's sound was thrown away.
- *   fal's own price page (read 2026-11-23): Kling 3 Pro is $0.112 a second silent and $0.168 with sound.
- *   A clip meant to cost 5 × $0.112 = $0.56 cost 10 × $0.168 = $1.68; a five-beat commercial $8.40
- *   instead of $2.80 — more than its 150 tokens bring in.
+ *   seconds unless told otherwise. But Kling 3 Pro had been the DEFAULT motion engine since 10-13, and
+ *   the callers that take the default pass no word about sound and, some of them, no length. So from
+ *   that day every DEFAULT-engine clip was rendered WITH generated sound, and at ten seconds where no
+ *   length was given: a cartoon ad's motion and an anthem's (ten seconds, sound), every scene of a kids'
+ *   or sung film (five seconds, sound). Those pipelines lay their own voice and music over the picture
+ *   — the clip's sound was thrown away. fal's own price page (read 2026-11-23): Kling 3 Pro is $0.112 a
+ *   second silent and $0.168 with sound. A cartoon or anthem clip meant to cost 5 × $0.112 = $0.56 cost
+ *   10 × $0.168 = $1.68; a film scene $0.84 instead of $0.56.
+ *   (NOT the Commercial: it is pinned to Kling 2.6 Pro — commercial-ad-pipeline.server.ts, motionEngine —
+ *   which has no sound and took its five seconds from the other branch below. I wrote the opposite in the
+ *   commit that introduced this file, 2729542a; that message is wrong about commercials.)
  *
  *   The same branch left out `negative_prompt`, which Kling 3 takes: "no talking mouth" for a narrated
  *   cartoon, "nobody vanishes" for a kids' scene, "the product does not morph" never reached the model.
