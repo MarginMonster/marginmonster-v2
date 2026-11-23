@@ -17,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { mirrorRender, storageEnabled } from "./object-storage.server";
 import { checkpointUrlAlive } from "./cartoon-ad-pipeline.server";
+import { fetchableUrl } from "./fetchable-url";
 
 export type VideoStyle = "PRODUCT_HIGHLIGHT" | "AI_AVATAR";
 
@@ -491,8 +492,17 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       const seedPrompt = `${scene}. Cinematic, richly detailed, dramatic lighting, high quality.`;
       const seed = await renderCreativeSeed(seedPrompt, aspect);
       if (seed) {
-        const vseed = await prepareVerticalSeed(seed, aspect);
-        seedImage = vseed || seed;
+        // THE SEED COMES BACK AS "/renders/<file>" — OUR path, not an address.
+        //
+        // renderCreativeSeed saves the still on our own disk and returns where we
+        // serve it from. That was handed on as it was: prepareVerticalSeed could not
+        // fetch a path with no host, so it gave up, and the bare path went to the video
+        // engines, which both turned it away ("start_image: Does not match format
+        // 'uri'"). Every described Creator video failed and refunded, from the day this
+        // seed step shipped (2026-10-27) until a customer-view test on 2026-11-23.
+        const seedAbs = fetchableUrl(seed);
+        const vseed = seedAbs ? await prepareVerticalSeed(seedAbs, aspect) : undefined;
+        seedImage = vseed || seedAbs;
       }
     } catch (e) {
       console.error("[video] creative seed failed — falling back to text-to-video:", e instanceof Error ? e.message.slice(0, 160) : e);
