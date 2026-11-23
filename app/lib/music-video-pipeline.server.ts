@@ -28,6 +28,7 @@ import { checkpointJob, download, ffprobeDuration, repPoll, runFfmpeg } from "./
 import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { falVideoSubmit, falVideoPoll, falLipSync, falEnabled } from "./fal-video.server";
 import { mirrorRender } from "./object-storage.server";
+import { trimTitle } from "./text-trim";
 import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, PROPS, type FilmTreatment } from "./film-engine.server";
 import { singToDisk } from "./music-generation.server";
 import { ensureVoiceModel, coverSongInVoice, matchLoudness, revoiceSongVocals } from "./singing-voice.server";
@@ -1398,7 +1399,7 @@ export async function generateMusicVideo(opts: {
       shopId: opts.shopId,
       type: "VIDEO_AD",
       status: "PENDING",
-      title: `Music Video — ${(treatment.title || opts.topic || g.label).slice(0, 60)}`,
+      title: `Music Video — ${trimTitle(treatment.title || opts.topic || g.label, 60)}`,
       bodyJson: JSON.stringify({ style: "MUSICVIDEO", videoUrl: storedUrl, prompt: opts.topic || "", genre, treatment }),
       metaJson: JSON.stringify({
         kind: "musicvideo", template: "musicvideo", section: opts.section || "creator",

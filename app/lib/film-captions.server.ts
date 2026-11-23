@@ -73,7 +73,7 @@ export async function captionFilm(o: {
     let said = windows;
     try { said = trimToSound(windows, (await runFfmpeg(["-i", o.filmPath, "-vn", "-af", "silencedetect=noise=-30dB:d=0.6", "-f", "null", "-"])).stderr); } catch { /* the whole shot */ }
     const timed = scriptWordTimes(lines, words, said, { minHeard: 0.6, lead: 0.25, tail: 0.3 });
-    const cards: Card[] = o.style === "bold" ? boldCards(timed) : subtitleCards(lines, windows, subtitleChars(W, H), timed);
+    const cards: Card[] = o.style === "bold" ? boldCards(timed, o.lang) : subtitleCards(lines, windows, subtitleChars(W, H), timed);
     // 3) burn them in; the sound is not touched
     const drawn = await burnCards(o.filmPath, tmp, cards, o.style, lines.join(" "), W, H, total);
     await beat();

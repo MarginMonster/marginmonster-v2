@@ -68,7 +68,10 @@ function wordPieces(run: string): string[] {
  *  words — and, in a script without spaces, the words found in each run of glyphs, so that a caption is
  *  never cut inside one. A mark stays on the unit before it: there, the marks are the only pauses. */
 export function saidUnits(line: string): string[] {
-  if (!WIDE.test(line)) return drawable(line).split(" ").filter(Boolean);
+  // (a colon, a semicolon or a dash between words is a pause, and cannot be drawn — the first two
+  //  separate a filter's options: a comma stands for it, where it used to vanish and run "she heard
+  //  it: a slow bell" together)
+  if (!WIDE.test(line)) return drawable(line.replace(/[:;](?=\s|$)/g, ",").replace(/(?<=[\p{L}\p{N}])\s+[—–]+\s+/gu, ", ")).split(" ").filter(Boolean);
   // the full-width marks as the plain ones drawable() keeps; a dash between glyphs is a pause too
   const plain = line
     .replace(/[，、；：]/g, ",").replace(/[。．]/g, ".").replace(/！/g, "!").replace(/？/g, "?")
@@ -225,13 +228,57 @@ export function scriptWordTimes(lines: string[], words: WordT[], windows: Window
 /** The longest BOLD card, in characters: one line of big words at one size. */
 export const BOLD_LINE = 18;
 
+/* Words that lean on what FOLLOWS them — articles, joining words, the commonest prepositions, "his" and
+ * "her", the little pronouns French and Spanish hang on a verb. A card that ends on one reads as a
+ * stumble: a faceless video made on 2026-11-23 showed "KEEPER HEARD A", "FLATTENED, AND HE" and
+ * "STOPPED, AND THE". By language, because the same letters are a different word in another one ("die"
+ * is an article in German and a verb in English). "is" and "was" are not here: "HER NAME WAS" / "WREN
+ * OAKHOLLOW" is a reveal, not a stumble. A word with a mark on it is a pause, and is not looked up. */
+const LEAN: Record<string, Set<string>> = {
+  en: new Set("a an the and or but nor so of to in on at for with from by as into onto over under near than that who which when while if because his her their my your our its this these those no not".split(" ")),
+  es: new Set("el la los las un una unos unas y e o u pero de del en a al con por para sin sobre que cuando si porque su sus mi mis tu tus no se me te lo le nos".split(" ")),
+  fr: new Set("le la les un une des et ou mais de du en à au aux avec pour par sans sur dans que qui quand si car son sa ses mon ma mes ton ta tes ne se me te je tu il elle on nous vous ils elles".split(" ")),
+  de: new Set("der die das den dem des ein eine einen einem einer und oder aber von zu zum zur in im an am auf mit für aus bei nach über unter dass wenn weil sein seine ihr ihre mein meine kein keine nicht".split(" ")),
+};
+
+/** One phrase in cards of up to three words on one line — the cut that reads best, not the first that
+ *  fits: a card is not left ending on a word that leans on the next one, a word is not left on a card by
+ *  itself (unless it is a clause by itself), and where the sentence breathes — a comma — is where a card
+ *  ends, not somewhere in the middle of one. */
+function phraseCards(ph: WordT[], lean: Set<string>): WordT[][] {
+  const n = ph.length;
+  const fits = (i: number, j: number): boolean => j - i === 1 || textWidth(ph.slice(i, j).map((w) => w.word).join(" ")) <= BOLD_LINE;
+  const best: number[] = new Array(n + 1).fill(Infinity);
+  const from: number[] = new Array(n + 1).fill(-1);
+  best[0] = 0;
+  for (let j = 1; j <= n; j++) {
+    for (let len = 1; len <= 3; len++) { // of two cuts as good as each other, the EARLIER card is the fuller one ("HIS NAME WAS" / "HOWL, ONCE")
+      const i = j - len;
+      if (i < 0 || best[i] === Infinity || !fits(i, j)) continue;
+      const last = ph[j - 1].word;
+      const breathes = /,$/.test(last);
+      let cost = best[i] + 1; // a card
+      if (j < n && lean.has(last.toLowerCase())) cost += 3; // it ends leaning on the next card
+      if (len === 1 && n > 1) cost += j === n ? 3 : 2; // a word by itself — worst of all as the phrase's last card
+      if (j < n && breathes) cost -= 1.5; // it ends where the sentence breathes
+      for (let k = i; k < j - 1; k++) if (/,$/.test(ph[k].word)) cost += 2; // …and does not breathe in the middle
+      if (cost < best[j] - 1e-9) { best[j] = cost; from[j] = i; }
+    }
+  }
+  const cuts: number[] = [];
+  for (let j = n; j > 0; j = from[j]) cuts.unshift(j);
+  let at = 0;
+  return cuts.map((j) => ph.slice(at, (at = j)));
+}
+
 /** BOLD: the words, a few at a time (up to three words, one line), each card up exactly while it is
- *  being said. Give it scriptWordTimes() for the script's own spelling.
+ *  being said. Give it scriptWordTimes() for the script's own spelling, and the language the words are
+ *  in (en, es, fr, de — anything else is cut as English).
  *
  *  A card never holds the end of one sentence and the start of the next ("HOWL, ONCE. A" — seen in the
  *  first real render), never runs past the end of its scene, and does not draw the comma or full stop it
  *  ends on: big words carry their own weight. */
-export function boldCards(words: WordT[]): Card[] {
+export function boldCards(words: WordT[], lang?: string | null): Card[] {
   // 1) phrases: a card never crosses the end of a sentence, the end of a scene, or a real pause
   const phrases: WordT[][] = [];
   let cur: WordT[] = [];
@@ -257,19 +304,8 @@ export function boldCards(words: WordT[]): Card[] {
       let from = 0;
       chunks = split.map((g) => ph.slice(from, (from += g.length)));
     } else {
-      // 2) each phrase in lines of up to three words…
-      let c: WordT[] = [];
-      for (const w of ph) {
-        if (c.length && (c.length >= 3 || width(c) + 1 + w.word.length > BOLD_LINE)) { chunks.push(c); c = []; }
-        c.push(w);
-      }
-      if (c.length) chunks.push(c);
-      // …and no word left on a card by itself when the card before it can spare one
-      const n = chunks.length;
-      if (n >= 2 && chunks[n - 1].length === 1 && chunks[n - 2].length >= 2) {
-        const moved = chunks[n - 2][chunks[n - 2].length - 1];
-        if (moved.word.length + 1 + chunks[n - 1][0].word.length <= BOLD_LINE) { chunks[n - 2].pop(); chunks[n - 1].unshift(moved); }
-      }
+      // 2) each phrase in cards of up to three words on one line, cut where it reads best (phraseCards)
+      chunks = phraseCards(ph, LEAN[(lang || "en").toLowerCase().slice(0, 2)] || LEAN.en);
     }
     for (const ch of chunks) {
       const text = drawable(joinUnits(ch.map((w) => w.word))).toUpperCase().replace(/[.,…]+$/u, "").trim();

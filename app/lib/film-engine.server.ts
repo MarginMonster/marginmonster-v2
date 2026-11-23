@@ -33,6 +33,7 @@ import { SCENE_PROMPT_MAX, SHEET_PROMPT_MAX, VISUAL_STANDS_ALONE, castSheetPromp
 import { musicBedToDisk, singToDisk } from "./music-generation.server";
 import { CONTENT_LANGS, normalizeContentLang, voiceLangOpts } from "./content-lang";
 import { mirrorRender } from "./object-storage.server";
+import { trimTitle } from "./text-trim";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
 import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds, type ShotRole } from "./mv-pace";
 import { MAX_COSTARS, singerOf } from "./mv-cast";
@@ -1251,7 +1252,7 @@ export async function generateFilm(opts: {
       shopId: opts.shopId,
       type: "VIDEO_AD",
       status: "PENDING",
-      title: `${tmpl.name} — ${(treatment.title || opts.topic || product?.title || "").slice(0, 60)}`,
+      title: `${tmpl.name} — ${trimTitle(treatment.title || opts.topic || product?.title || "", 60)}`,
       bodyJson: JSON.stringify({ style: "FILM", videoUrl: storedUrl, prompt: opts.topic || "", treatment }),
       metaJson: JSON.stringify({ kind: "film", template: tmpl.key, section: opts.section || "creator", scenes: clips.length, aspect: "vertical", ...(product ? { product: product.title } : {}) }),
     },

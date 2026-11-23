@@ -54,7 +54,7 @@ test("a Chinese line is cut into words — no glyph lost, marks kept on the word
 });
 
 test("every other script is cut exactly as before: at its spaces", () => {
-  for (const s of ["Nobody in Harlow Creek remembers who built the house.", "Dicen que el viejo teatro nunca se vacía del todo — después de la medianoche.", "It’s 100% true: isn't it?"]) {
+  for (const s of ["Nobody in Harlow Creek remembers who built the house.", "Dicen que el viejo teatro nunca se vacía del todo después de la medianoche.", "It’s 100% true, isn't it?"]) {
     assert.equal(hasWide(s), false);
     assert.deepEqual(saidUnits(s), drawable(s).split(" ").filter(Boolean));
     assert.equal(joinUnits(saidUnits(s)), drawable(s));
@@ -62,6 +62,10 @@ test("every other script is cut exactly as before: at its spaces", () => {
     assert.ok(saidUnits(s).every((u) => unitWeight(u) === 1), "and a word is one unit of speech");
   }
   assert.deepEqual(wrapLines("the quick brown fox jumps over", 12), wrapUnits(["the", "quick", "brown", "fox", "jumps", "over"], 12));
+  // a colon, a semicolon or a dash between words is a pause: it cannot be drawn, so a comma stands for it
+  // (it used to vanish: "she heard it: a slow bell" ran together as "IT A SLOW")
+  assert.deepEqual(saidUnits("Then she heard it: a slow bell; far off — and gone."), ["Then", "she", "heard", "it,", "a", "slow", "bell,", "far", "off,", "and", "gone."]);
+  assert.deepEqual(saidUnits("door—open at 10:30"), ["door", "open", "at", "1030"], "a dash inside a word and a colon inside a time are not pauses");
 });
 
 test("units go back together the way Chinese is set: nothing between glyphs, a space where a comma was", () => {

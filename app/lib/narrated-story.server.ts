@@ -371,7 +371,7 @@ export async function generateNarratedStory(opts: {
   // cards either way (the unheard ones used to be whole sentences in capitals, full stops and all)
   const timed = scriptWordTimes(lines, words, windows);
   const cards: Card[] = style === "bold"
-    ? boldCards(timed)
+    ? boldCards(timed, normalizeContentLang(lang))
     : style === "subtitles" ? subtitleCards(lines, windows, subtitleChars(W, H), words.length ? timed : undefined) : [];
 
   // 4) THE PICTURES — the ones the maker approved, else drawn now

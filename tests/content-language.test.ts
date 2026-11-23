@@ -23,7 +23,7 @@ test("a faceless video is written, read and listened to in the shop's language",
   const src = read("faceless-video.server.ts");
   assert.ok(src.includes("const lang = normalizeContentLang((await db.shop.findUnique({ where: { id: opts.shopId }, select: { contentLang: true } }))?.contentLang);"));
   // WRITTEN: both scripts (a product drop and a topic) end on the language line
-  assert.ok(src.includes("const inLang = lang === \"en\" ? \"\" : `\\n${langDirective(lang).trim()} That means every spoken LINE. Each VISUAL and the musicMood stay in English: they are instructions for the picture and the music, never shown or said.`;"));
+  assert.ok(src.includes("const inLang = lang === \"en\" ? \"\" : `\\n${langDirective(lang).trim()} That means every spoken LINE and the title. Each VISUAL and the musicMood stay in English: they are instructions for the picture and the music, never shown or said.`;"));
   assert.equal(src.split("` + inLang").length - 1, 2, "the product script and the topic script");
   // READ: the voice is told the language, on the first try and on the backup
   assert.ok(src.includes("repCreate(\"minimax/speech-02-hd\", { text: fullScript, voice_id: voiceId, ...voiceLangOpts(lang) })"));
@@ -37,7 +37,7 @@ test("a faceless video is written, read and listened to in the shop's language",
 test("faceless captions are the SCRIPT's words timed by the voice — never the listener's spelling", () => {
   const src = read("faceless-video.server.ts");
   assert.ok(src.includes("beatWindows = sceneWindows(lines, words, ffprobeDuration(voPath) || 35);"));
-  assert.ok(src.includes("caps = boldCards(scriptWordTimes(lines, words, beatWindows));"));
+  assert.ok(src.includes("caps = boldCards(scriptWordTimes(lines, words, beatWindows), lang);"));
   assert.ok(!src.includes("caps = groupCaptions(wordsFromWhisperx(raw));"), "the heard words are no longer the captions");
   assert.ok(src.includes("await ckpt({ ckTimings: JSON.stringify({ caps, windows: beatWindows }) });"));
   assert.ok(src.includes("if (Array.isArray(saved)) caps = saved;"), "a checkpoint from before the change (the cards alone) still resumes");

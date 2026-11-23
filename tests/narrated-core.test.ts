@@ -9,7 +9,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   BOLD_LINE, MIN_SCENE_S, barBox, barsIn, boldCards, captionFilters, captionStyleOf, drawable, entryName, evenParts, frameWords, kenBurns, namedIn, nameWords, wrapEven,
-  keepToldScenes, sceneCast, sceneWindows, trimToSound, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, wrapLines, type WordT,
+  keepToldScenes, saidUnits, sceneCast, sceneWindows, trimToSound, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, wrapLines, type WordT,
 } from "../app/lib/narrated-core.ts";
 
 /** A narration "heard" word for word: `gap` seconds of silence between scenes. */
@@ -209,7 +209,8 @@ test("SUBTITLES: the story as written, at most two lines at a time, each inside 
       assert.ok(c.t1 > c.t0);
     }
     for (let i = 0; i + 1 < cards.length; i++) assert.ok(cards[i].t1 <= cards[i + 1].t0 + 1e-9, "one card at a time");
-    assert.equal(cards.map((c) => c.text.replace(/\n/g, " ")).join(" "), STORY.map(drawable).join(" "), "nothing lost, nothing added");
+    // (as the words are said: a dash between words is a pause, drawn as a comma — saidUnits)
+    assert.equal(cards.map((c) => c.text.replace(/\n/g, " ")).join(" "), STORY.flatMap(saidUnits).join(" "), "nothing lost, nothing added");
     // a card never spills into the next scene's picture
     let k = 0;
     for (const c of cards) { while (k + 1 < win.length && c.t0 >= win[k].t1 - 1e-9) k++; assert.ok(c.t1 <= win[k].t1 + 1e-9, `card "${c.text.slice(0, 20)}" ends inside scene ${k + 1}`); }

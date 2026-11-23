@@ -20,6 +20,7 @@ import { dropOrgEndorsementPossessive } from "./ad-claims";
 import { ownNarratorVoice } from "./voice-clone.server";
 import { SUNG_VAD } from "./lyric-sync";
 import { langDirective, normalizeContentLang, voiceLangOpts } from "./content-lang";
+import { trimTitle } from "./text-trim";
 import { boldCards, captionFilters, sceneWindows, scriptWordTimes, type Window } from "./narrated-core";
 
 // Truncate on a sentence boundary so a hard char-cap never feeds the writer a
@@ -54,7 +55,7 @@ export const FACELESS_FORMATS: Record<string, string> = {
 };
 
 type Beat = { line: string; visual: string };
-type Script = { beats: Beat[]; musicMood: string; voiceGender?: "m" | "f" };
+type Script = { beats: Beat[]; musicMood: string; voiceGender?: "m" | "f"; title?: string };
 
 const SCRIPT_SCHEMA = {
   type: "object",
@@ -69,6 +70,7 @@ const SCRIPT_SCHEMA = {
     },
     musicMood: { type: "string" },
     voiceGender: { type: "string", enum: ["m", "f"] },
+    title: { type: "string" },
   },
   required: ["beats", "musicMood"],
 } as const;
@@ -201,10 +203,16 @@ async function assembleFaceless(opts: {
     let vLabel = "[vcat]";
     if (useCaptions && captions.length) { f.push(`[vcat]${captions.join(",")}[vf]`); vLabel = "[vf]"; }
 
-    let aMap = `${N}:a`;
+    // THE SOUND, at the loudness the rest of the catalogue plays at. A faceless video made on 2026-11-23
+    // measured -31.5 LUFS — fifteen decibels under a story (-16), all but inaudible in a feed: the voice
+    // went in at the level the speech engine happened to give it, and amix then halved it (it divides
+    // by the number of inputs unless told not to). The stories' own recipe: the voice brought to -16,
+    // the music under it at a fixed level, mixed as they are.
+    f.push(`[${N}:a]aresample=44100,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100[vo]`);
+    let aMap = "[vo]";
     if (musicOn) {
-      f.push(`[${N + 1}:a]volume=0.20,afade=t=out:st=${Math.max(0, voDur - 1.5).toFixed(2)}:d=1.5[bg]`);
-      f.push(`[${N}:a][bg]amix=inputs=2:duration=first:dropout_transition=0[aout]`);
+      f.push(`[${N + 1}:a]aresample=44100,volume=0.18,afade=t=out:st=${Math.max(0, voDur - 1.5).toFixed(2)}:d=1.5[bg]`);
+      f.push(`[vo][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`);
       aMap = "[aout]";
     }
 
@@ -282,7 +290,7 @@ export async function generateFacelessVideo(opts: {
   // English. The words are written in it, the voice is told it, and the listener is told it (told a
   // Spanish voice is English, it translates what it hears).
   const lang = normalizeContentLang((await db.shop.findUnique({ where: { id: opts.shopId }, select: { contentLang: true } }))?.contentLang);
-  const inLang = lang === "en" ? "" : `\n${langDirective(lang).trim()} That means every spoken LINE. Each VISUAL and the musicMood stay in English: they are instructions for the picture and the music, never shown or said.`;
+  const inLang = lang === "en" ? "" : `\n${langDirective(lang).trim()} That means every spoken LINE and the title. Each VISUAL and the musicMood stay in English: they are instructions for the picture and the music, never shown or said.`;
 
   // 1) SCRIPT — structured beats (line + visual) in one forced-tool call.
   let script: Script;
@@ -297,12 +305,12 @@ export async function generateFacelessVideo(opts: {
         (product.description ? `DETAILS (use ONLY what's here — do not invent anything beyond it): ${sentenceSlice(product.description, 600)}.\n` : "") +
         `Angle: ${PRODUCT_ANGLES[opts.format || ""] || PRODUCT_ANGLES.spotlight}.\n` +
         `Return 5-6 beats. Each beat = a spoken LINE (one short conversational sentence, ~8-16 words; the FIRST line is a scroll-stopping hook about the product; the LAST line is a soft call to action like "link's right here" or "grab yours") + a VISUAL (a vivid cinematic lifestyle scene that features or complements the product — NO text/words/logos in the image, no real named people).\n` +
-        `Total spoken length ~25-35 seconds. Also give musicMood (a short phrase) and voiceGender.\n` +
+        `Total spoken length ~25-35 seconds. Also give musicMood (a short phrase), voiceGender, and a title: 2 to 6 words, what a viewer would call this video — not the product name alone.\n` +
         `SAFETY: say ONLY what is true from the DETAILS above — NEVER invent statistics, prices, discounts, sales, guarantees, reviews, ratings, awards or endorsements. No "best", "#1" or superlatives you cannot back up.` + inLang
       : `Write a short FACELESS social video for TikTok/Reels about: "${topic}".\n` +
         `Style: ${FACELESS_FORMATS[fmtKey]}.\n` +
         `Return 6-7 beats. Each beat = a spoken LINE (one short conversational sentence, ~8-16 words; the FIRST line is a scroll-stopping hook) + a VISUAL (a vivid, specific, cinematic image description for AI b-roll that matches the line — NO text/words/logos in the image, no real named people).\n` +
-        `Total spoken length ~30-40 seconds. Also give musicMood (a short phrase describing background music) and voiceGender.\n` +
+        `Total spoken length ~30-40 seconds. Also give musicMood (a short phrase describing background music), voiceGender, and a title: 2 to 6 words, what a viewer would call this video — not the topic repeated.\n` +
         `SAFETY: keep it general and true — do NOT invent specific statistics, prices, dates, medical or financial advice, or claims you are unsure of; no defamation of real people or brands.` + inLang;
     const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 1200, jsonSchema: { name: "faceless_script", schema: SCRIPT_SCHEMA as unknown as Record<string, unknown> } });
     script = JSON.parse(raw) as Script;
@@ -367,7 +375,7 @@ export async function generateFacelessVideo(opts: {
     catch (e) { console.error("[faceless] could not listen to the voice-over — captions and pictures are timed by length:", (e as Error).message); }
     const lines = script.beats.map((b) => b.line);
     beatWindows = sceneWindows(lines, words, ffprobeDuration(voPath) || 35);
-    caps = boldCards(scriptWordTimes(lines, words, beatWindows));
+    caps = boldCards(scriptWordTimes(lines, words, beatWindows), lang);
     await ckpt({ ckTimings: JSON.stringify({ caps, windows: beatWindows }) });
   }
 
@@ -448,7 +456,9 @@ export async function generateFacelessVideo(opts: {
       shopId: opts.shopId,
       type: "VIDEO_AD",
       status: "PENDING",
-      title: `Faceless video — ${topic.slice(0, 60)}`,
+      // its own title (the library used to show the topic, cut at sixty characters wherever that fell:
+      // "…a lighthouse keeper named Wren Oakhollow and her ")
+      title: `Faceless video — ${trimTitle((script.title || "").replace(/["“”]/g, "").trim() || topic, 60)}`,
       bodyJson: JSON.stringify({ style: "FACELESS", videoUrl: storedUrl, prompt: topic, script: fullScript }),
       metaJson: JSON.stringify({ kind: "faceless", section: opts.section || "creator", format: fmtKey, topic, aspect: "vertical", ...(product ? { product: product.title } : {}) }),
     },
