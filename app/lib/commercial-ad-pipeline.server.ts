@@ -35,7 +35,7 @@ import { spawn } from "node:child_process";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { composeResolution } from "./feature-flags.server";
-import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, claimFaults, claimRepairNote, dropFaultSentences } from "./ad-claims";
 import { trimToWord } from "./text-trim";
 import { mirrorRender } from "./object-storage.server";
 import {
@@ -125,9 +125,13 @@ export async function planCommercial(
   // Every sibling generator threads this. This one never did, so a shop set to
   // Spanish got a Spanish landing page, Spanish captions — and an English
   // voice-over on the format it pays the most for.
-  contentLang?: string | null
+  contentLang?: string | null,
+  /** The product's REAL price as the catalogue has it ("$43.14"), when there is one. The writer may say
+   *  exactly that figure; with none it is told to leave price alone — see the claims check below. */
+  priceText?: string | null
 ): Promise<CommercialPlan> {
-  const raw = await anthropicText(
+  const price = (priceText || "").replace(/\s+/g, " ").trim().slice(0, 40);
+  const ask = (repair?: string) => anthropicText(
     [
       serviceMode
         ? `You are directing a 15-second cinematic TV-style commercial for a service / offer: "${stripPromoTag(productTitle)}". There is nothing physical to photograph — the ad sells the OUTCOME of the offer.`
@@ -153,17 +157,25 @@ export async function planCommercial(
       // Narration and tagline are spoken claims — no invented endorsement,
       // authenticity or scarcity built on a real brand/tag name either.
       `This applies to "narration" and "tagline": ${CLAIMS_GUARDRAIL}`,
+      // THE PRICE, SAID ONCE AND EXACTLY. The Ad Maker's own quick direction is "lead with the price", and a
+      // writer with no price to lead with wrote "the lowest price around" (2026-11-23). It now has the real
+      // figure when the catalogue does — and is told what it may NOT say about it either way.
+      price
+        ? `PRICE: the real price is ${price}. If the direction asks for the price, say exactly that figure, once. Say NOTHING else about price — never "lowest", "best", "cheapest", "deal", a discount, a saving or a comparison with anyone.`
+        : `PRICE: no price was given. Do not mention price, cost, deals, savings or value for money at all — even if the direction asks for the price, sell on the product itself.`,
       serviceMode ? `Then tagline: 3-6 punchy words for the closing brand card.` : `Then tagline: 3-6 punchy words for the closing product shot.`,
       ``,
       `Reply ONLY JSON: {"beats":[{"scene":"...","motion":"...","narration":"..."},...5 total],"tagline":"..."}`,
       langDirective(contentLang)
         ? `${langDirective(contentLang)} This applies to every "narration" value and to "tagline" ONLY — keep "scene" and "motion" in English, they are camera directions for the image model.`
         : "",
+      repair || "",
     ].filter(Boolean).join("\n"),
     // 1400: the restate-the-protagonist rule makes scene sentences long, and
     // a truncated JSON plan kills the render before it starts.
     { maxTokens: 1400, model: "claude-sonnet-5" }
   );
+  const shape = (raw: string): CommercialPlan => {
   const m = raw.match(/\{[\s\S]*\}/);
   if (!m) throw new Error("commercial plan: no JSON");
   const j = JSON.parse(m[0]) as CommercialPlan;
@@ -184,6 +196,44 @@ export async function planCommercial(
   const pin = direction?.match(/tagline must be exactly:\s*(.+?)\s*$/i);
   if (pin) j.tagline = trimToWord(pin[1], 60);
   return j;
+  };
+
+  // THE WORDS ARE READ BEFORE THEY ARE USED (ad-claims.ts → claimFaults). A claim the merchant made in
+  // their own title, details or direction is theirs; one the writer added is asked out once, and if the
+  // second draft still makes it, the sentence that makes it is taken out. These words are spoken by the
+  // narrator AND printed on the screen — the merchant is answerable for both.
+  const merchantSaid = [productTitle, productDescription, direction, price].filter(Boolean).join(" \n ");
+  const spoken = (p: CommercialPlan) => [...p.beats.map((b) => b.narration), p.tagline].join(" \n ");
+  let j = shape(await ask());
+  let faults = claimFaults(spoken(j), merchantSaid);
+  if (faults.length) {
+    console.error(`[commercial] the script claimed ${faults.map((x) => `"${x}"`).join(", ")} — asking for it again`);
+    try {
+      const again = shape(await ask(claimRepairNote(faults)));
+      const left = claimFaults(spoken(again), merchantSaid);
+      if (left.length < faults.length) { j = again; faults = left; }
+    } catch (e) {
+      console.error("[commercial] the rewrite could not be used:", e instanceof Error ? e.message.slice(0, 160) : e);
+    }
+  }
+  if (faults.length) {
+    console.error(`[commercial] still claiming ${faults.map((x) => `"${x}"`).join(", ")} — those sentences are cut`);
+    const plain = trimToWord(stripPromoTag(productTitle), 60);
+    j.beats = j.beats.map((b) => ({ ...b, narration: dropFaultSentences(b.narration, merchantSaid) || `${plain}.` }));
+    j.tagline = dropFaultSentences(j.tagline, merchantSaid) || plain;
+  }
+  return j;
+}
+
+/** The price the catalogue has for this product, by its title — or nothing. Never throws: a paid job
+ *  must not fail over a lookup. */
+async function catalogPriceFor(shopId: string, productTitle: string): Promise<string | null> {
+  try {
+    const row = await db.catalogProduct.findFirst({ where: { shopId, title: productTitle }, select: { priceText: true } });
+    return (row?.priceText || "").trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Submit an image job to the fal queue and poll it to a URL. Shared by the
@@ -720,7 +770,7 @@ async function livePrefix(urls: string[]): Promise<string[]> {
  *  plan rides back into generateCommercialAd via resume.plan verbatim. */
 export async function previewCommercialPlan(params: { shopId: string; productTitle: string; productDescription?: string; direction?: string; serviceMode?: boolean }): Promise<CommercialPlan> {
   const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
-  return planCommercial(params.productTitle, params.productDescription, params.direction, params.serviceMode === true, contentLang);
+  return planCommercial(params.productTitle, params.productDescription, params.direction, params.serviceMode === true, contentLang, await catalogPriceFor(params.shopId, params.productTitle));
 }
 
 export async function generateCommercialAd(params: CommercialAdParams): Promise<string> {
@@ -747,7 +797,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
   if (params.resume?.plan) {
     plan = JSON.parse(params.resume.plan) as CommercialPlan;
   } else {
-    plan = await planCommercial(params.productTitle, params.productDescription, params.direction, serviceMode, contentLang);
+    plan = await planCommercial(params.productTitle, params.productDescription, params.direction, serviceMode, contentLang, await catalogPriceFor(params.shopId, params.productTitle));
     await ckpt({ ckCommercialPlan: JSON.stringify(plan) });
   }
 

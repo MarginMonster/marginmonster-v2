@@ -53,3 +53,104 @@ const ORG_POSSESSIVE =
 export function dropOrgEndorsementPossessive(text: string): string {
   return typeof text === "string" ? text.replace(ORG_POSSESSIVE, "$1") : text;
 }
+
+/* ---- THE CLAIMS THAT CAN BE RECOGNISED BY THEIR OWN WORDS -------------------------------------
+ *
+ * The guardrail above is an instruction, and an instruction can lose. Made as a customer on
+ * 2026-11-23: a Commercial for a set of toys with the Ad Maker's own quick direction "fast + funny,
+ * lead with the price". The writer was given no price — so it led with one anyway: "Sixteen blind
+ * boxes, the lowest price around", and the tagline "Sixteen Wonders, Lowest Price". Rule (7) names
+ * 'lowest price' as a thing never to invent; the member's direction outweighed it. The line was
+ * spoken by the narrator and printed on the screen.
+ *
+ * So the writer's answer is READ before it is used. These are the claims of rules 1, 3, 4, 5, 7 and 8
+ * that are unmistakable as words (a price superlative, a discount, a deadline, a rank, a guarantee, a
+ * provenance word). A claim the MERCHANT made — the words are in their own title, details or
+ * direction — is theirs to make and is not a fault. English only: in another language the
+ * instruction is still all there is.
+ */
+const CLAIM_WORDS: RegExp[] = [
+  // price superlatives and comparisons (7)
+  /\b(?:lowest|best|cheapest|unbeatable|unbeaten|rock[- ]bottom)\s+(?:price|prices|deal|deals|value|rate|rates)\b/gi,
+  /\blowest[- ]ever\b/gi,
+  /\bcheapest\b/gi,
+  /\bprices?\s+(?:around|anywhere|in town|on the market)\b/gi,
+  /\bbeats?\s+any\s+price\b/gi,
+  /\bhalf[- ]price\b/gi,
+  // discounts and deadlines (7)
+  /\b\d{1,3}\s?%\s?off\b/gi,
+  /\bpercent off\b/gi,
+  /\bon sale\b/gi,
+  /\bsale ends\b/gi,
+  /\btoday only\b/gi,
+  /\blimited[- ]time\b/gi,
+  /\bflash sale\b/gi,
+  /\bclearance\b/gi,
+  /\bfree shipping\b/gi,
+  /\bbuy one,? get one\b/gi,
+  // scarcity (3)
+  /\bwhile (?:supplies|stocks?) lasts?\b/gi,
+  /\bselling (?:out )?fast\b/gi,
+  /\balmost gone\b/gi,
+  /\bonly \d+ left\b/gi,
+  /\blast chance\b/gi,
+  // rank and social proof (4, 8)
+  /#\s?1\b/g,
+  /\bnumber[- ]one\b/gi,
+  /\bbest[- ]sell(?:er|ers|ing)\b/gi,
+  /\btop[- ]rated\b/gi,
+  /\baward[- ]winning\b/gi,
+  /\b(?:five|5)[- ]stars?\b/gi,
+  /\b\d(?:\.\d)?\s?stars\b/gi,
+  /\bthousands of (?:happy |satisfied |five-star )?(?:customers|fans|reviews|buyers)\b/gi,
+  // promises (5)
+  /\bmoney[- ]back\b/gi,
+  /\bguarantee[ds]?\b/gi,
+  /\bwarranty\b/gi,
+  /\brisk[- ]free\b/gi,
+  // provenance (1)
+  /\bauthentic\b/gi,
+  /\bofficial(?:ly)?[- ]licen[sc]ed\b/gi,
+  /\bgenuine\b/gi,
+  /\bfactory[- ]sealed\b/gi,
+];
+const plainWords = (s: string) => (s || "").toLowerCase().replace(/[’‘]/g, "'").replace(/\s+/g, " ").trim();
+
+/** The forbidden claims written into `text`, as the words that make them — minus any the merchant
+ *  made themselves (`merchantSaid`: their title, details and direction). Empty = nothing to fix. */
+export function claimFaults(text: string | null | undefined, merchantSaid?: string | null): string[] {
+  const t = plainWords(text || "");
+  if (!t) return [];
+  const said = plainWords(merchantSaid || "");
+  const out: string[] = [];
+  for (const re of CLAIM_WORDS) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(t))) {
+      const hit = m[0].trim();
+      if (hit && !said.includes(hit) && !out.includes(hit)) out.push(hit);
+      if (m.index === re.lastIndex) re.lastIndex++;
+    }
+  }
+  return out;
+}
+
+/** What the writer is told when its draft made such claims: which words, and what to do instead. */
+export function claimRepairNote(faults: readonly string[]): string {
+  const quoted = faults.slice(0, 8).map((f) => `"${f}"`).join(", ");
+  return (
+    `YOUR LAST DRAFT BROKE THE CLAIMS RULE. It said ${quoted} — claims nobody gave you and nobody can check. ` +
+    `Write it again. Every line that made one of those claims must be rewritten to sell on what the product IS and DOES, ` +
+    `with no price talk, discount, deadline, rank, guarantee or authenticity claim that the details above do not state in those words. ` +
+    `Keep the story, the scenes and every line that made no such claim.`
+  );
+}
+
+/** Last resort, when a second draft still makes the claim: the sentences that make it are taken out and
+ *  the rest is kept. Returns "" when nothing is left — the caller puts a plain line there. */
+export function dropFaultSentences(text: string | null | undefined, merchantSaid?: string | null): string {
+  const t = (text || "").replace(/\s+/g, " ").trim();
+  if (!t || !claimFaults(t, merchantSaid).length) return t;
+  const kept = t.split(/(?<=[.!?…])\s+/).filter((s) => !claimFaults(s, merchantSaid).length);
+  return kept.join(" ").trim();
+}
