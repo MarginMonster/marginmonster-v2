@@ -58,7 +58,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   try {
-    const plan = await generateMarketingPlan(shop.brandProfile, shop.activePlan);
+    const plan = await generateMarketingPlan(shop.brandProfile, shop.activePlan, shop.contentLang);
     return json({ plan });
   } catch (e) {
     try { await refundTokens(shop.id, TOKEN_COST.strategy, fromExtra); }

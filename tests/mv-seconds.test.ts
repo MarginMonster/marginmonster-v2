@@ -421,7 +421,7 @@ test("a scene's lyric is a range with both ends, and a sheet that misses it is c
   // the picks are kept only if the sheet then fits better, and there must be versions for every scene
   assert.match(fn, /if \(after\.off < now\.off\) \{ sung\.forEach\(\(s, i\) => \{ s\.caption = caps\[i\]; \}\); now = after; trouble = ""; \}/);
   assert.match(fn, /vs\.length !== sung\.length/);
-  assert.match(fn, /\$\{ORIGINAL_LYRICS_RULE\}\$\{langLine\}/, "the rewrite is held to original words too, in the video's language");
+  assert.match(fn, /\$\{ORIGINAL_LYRICS_RULE\}\$\{langWordsLine\}/, "the rewrite is held to original words too, in the video's language");
   // a rewrite that cannot be made costs nothing; the full-length engine (counted in lines) is left alone
   assert.match(fn, /\} catch \(e\) \{ trouble = `a rewrite could not be made: /);
   assert.match(fn, /if \(tmpl\.lipSyncSinger && !fullSong\) \{\s+const sung = /);

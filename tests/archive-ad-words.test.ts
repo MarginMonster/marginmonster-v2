@@ -45,7 +45,7 @@ test("the viewer: an image ad shows its words; only a picture the member describ
   assert.ok(src.includes("const ownPicture = meta.kind === \"create\" || meta.kind === \"edit\";"));
   assert.ok(src.includes("const adWords = type === \"IMAGE_AD\" && !ownPicture ? adWordsOf(body.formatCopy) : null;"));
   assert.ok(src.includes("if (type === \"IMAGE_AD\" && !ownPicture) script = adWords;"), "our brief and the internal tag are never printed");
-  assert.ok(src.includes("scriptLabel: script ? (adWords ? \"Words on the ad\" : isFaceless ? \"Narration\" : hasPresenter ? \"What they say\" : \"Prompt\") : null,"));
+  assert.ok(src.includes("scriptLabel: script ? (adWords ? \"Words on the ad\" : isFaceless || isStory ? \"Narration\" : hasPresenter ? \"What they say\" : \"Prompt\") : null,"));
   // the block keeps its line breaks and shows six lines
   assert.ok(src.includes("white-space:pre-wrap;}"));
   assert.ok(src.includes(".wa-prompt-script{-webkit-line-clamp:6;}"));

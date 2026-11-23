@@ -1,6 +1,7 @@
 import type { BrandProfile } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
 import { brandBlock } from "./brand-prompt";
+import { langDirective } from "./content-lang";
 
 export interface LandingContent {
   hero: string;
@@ -13,10 +14,13 @@ export interface LandingContent {
 export async function generateLandingContent(
   brandProfile: BrandProfile,
   productName: string,
-  goal: string
+  goal: string,
+  /** the shop's content language: the page is written in it (until 2026-11-23 it was always English) */
+  lang?: string | null,
 ): Promise<LandingContent> {
   // One shared block, and only the lines we can actually fill.
   const brand = brandBlock(brandProfile);
+  const inLang = langDirective(lang) ? `${langDirective(lang)} (The JSON keys stay exactly as shown.)` : "";
 
   const goalLine =
     goal === "LEAD"
@@ -44,7 +48,7 @@ Return ONLY a JSON object:
   "ctaText": "string — 2-4 word button text"
 }
 
-Make every line sound like this brand.`;
+Make every line sound like this brand.${inLang}`;
 
   const text = await anthropicText(prompt, { maxTokens: 900 });
   const match = text.match(/\{[\s\S]*\}/);

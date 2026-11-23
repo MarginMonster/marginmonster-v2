@@ -2,6 +2,7 @@ import type { BrandProfile } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
 import { brandBlock } from "./brand-prompt";
 import { CLAIMS_GUARDRAIL, stripPromoTag } from "./ad-claims";
+import { langDirective } from "./content-lang";
 
 export interface ProductCopy {
   seoTitle: string;
@@ -13,10 +14,13 @@ export interface ProductCopy {
 export async function generateProductCopy(
   brandProfile: BrandProfile,
   productName: string,
-  notes: string
+  notes: string,
+  /** the shop's content language: the copy is written in it (until 2026-11-23 it was always English) */
+  lang?: string | null,
 ): Promise<ProductCopy> {
   // One shared block, and only the lines we can actually fill.
   const brand = brandBlock(brandProfile);
+  const inLang = langDirective(lang) ? `${langDirective(lang)} (The JSON keys stay exactly as shown.)` : "";
 
   const prompt = `Write high-converting, SEO-friendly product copy for a Shopify store.
 
@@ -39,7 +43,7 @@ Return ONLY a JSON object:
 Every line must sound like this brand — never generic.
 
 ${CLAIMS_GUARDRAIL}
-Use only the product name and the merchant's notes as fact — invent no specs, measurements, materials or prices that were not given.`;
+Use only the product name and the merchant's notes as fact — invent no specs, measurements, materials or prices that were not given.${inLang}`;
 
   const strict =
     prompt +

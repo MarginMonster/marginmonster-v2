@@ -99,6 +99,18 @@ export function joinUnits(units: string[]): string {
   return WIDE.test(out) ? out.replace(new RegExp(`${AFTER_WIDE}[.,]+(?= |$)`, "g"), "").trim() : out;
 }
 
+/* Where a Chinese line is better not cut. A word that leans on what FOLLOWS it (一 在 和 把 …) should not
+ * end a card, and a particle that leans on what came BEFORE (的 了 着 过 …) should not start one: the
+ * first real render had "人们都说这座老剧院一 / 到午夜就从未真正空过" and "GUS 和 ISLA 在 / 这里打扫多年",
+ * which read as stumbles; "…老剧院 / 一到午夜…" and "GUS 和 ISLA / 在这里…" do not. This is not grammar —
+ * only the commonest function words, each worth about two glyphs of unevenness. A word with a mark on
+ * it is a pause, and a pause is always a fine place to cut. No effect on a script with spaces. */
+const LEANS_FORWARD = new Set(Array.from("一在和与及就也都还又才把被对从向往为给跟比让使而但却那这每很太最更不没别是有将要"));
+const LEANS_BACK = new Set(Array.from("的了着过吗呢吧啊们里上下中内外后前时地得般"));
+/** What it costs, in letters of unevenness, to cut a line between these two units. */
+export const cutCost = (prev: string, next: string): number =>
+  (LEANS_FORWARD.has(prev) ? 3.4 : 0) + (LEANS_BACK.has(next.replace(/[.,!?…]+$/u, "")) ? 3.4 : 0);
+
 /** What a scene has to say, as a length: its words — or, in a script without spaces, its glyphs. */
 const saidLength = (line: string): number => (WIDE.test(line) ? saidUnits(line).reduce((n, u) => n + unitWeight(u), 0) : countWords(line));
 
@@ -299,15 +311,20 @@ export function wrapEvenUnits(units: string[], max: number): string[] {
   let best = greedy;
   let gap = Math.abs(textWidth(greedy[0]) - textWidth(greedy[1]));
   // in a script without spaces the line turns at a pause when there is one to turn at ("…寒气袭来 / 可那里
-  // …", not "…寒气袭 / 来 可那里…"): the evenest of those, and only otherwise the evenest of all
+  // …", not "…寒气袭 / 来 可那里…"): the evenest of those, and only otherwise the evenest of all — and
+  // not where a word would be left leaning over the turn (cutCost)
   const wide = units.some((u) => WIDE.test(u));
+  if (wide) {
+    const k = units.findIndex((_, i) => i > 0 && joinUnits(units.slice(0, i)) === greedy[0]);
+    if (k > 0) gap += cutCost(units[k - 1], units[k]);
+  }
   let atPause = false;
   for (let i = 1; i < units.length; i++) {
     const a = joinUnits(units.slice(0, i)), b = joinUnits(units.slice(i));
     if (textWidth(a) > max || textWidth(b) > max) continue;
-    const g = Math.abs(textWidth(a) - textWidth(b));
+    const g = Math.abs(textWidth(a) - textWidth(b)) + (wide ? cutCost(units[i - 1], units[i]) : 0);
     const pause = wide && /[.,!?…]$/u.test(units[i - 1]);
-    if (pause ? !atPause || g < gap : !atPause && g < gap) { gap = g; best = [a, b]; atPause = atPause || pause; }
+    if (pause ? !atPause || g < gap - 1e-6 : !atPause && g < gap - 1e-6) { gap = g; best = [a, b]; atPause = atPause || pause; }
   }
   return best;
 }
@@ -322,8 +339,13 @@ export function evenParts(words: string[], parts: number): string[][] {
   let from = 0;
   for (let j = 1; j < n; j++) {
     const target = (j * pos) / n;
+    // how far a cut after word i is from an even one — plus what it costs to cut there at all (cutCost:
+    // nothing, in a script with spaces)
+    const off = (i: number): number => Math.abs(ends[i] - target) + (i + 1 < words.length ? cutCost(words[i], words[i + 1]) : 0);
     let best = from;
-    for (let i = from; i < words.length - (n - j); i++) if (Math.abs(ends[i] - target) < Math.abs(ends[best] - target)) best = i;
+    // (a later cut has to be really better, not better by the rounding of 1.7 + 1.7 + …: of two cuts
+    //  as good as each other, the earlier one is taken — as it always was)
+    for (let i = from; i < words.length - (n - j); i++) if (off(i) < off(best) - 1e-6) best = i;
     out.push(words.slice(from, best + 1));
     from = best + 1;
   }

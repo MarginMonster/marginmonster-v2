@@ -1232,7 +1232,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         }
         const stock = pickVoice(avatar);
         downgrade(why, stock);
-        const ttsId = await repCreate("minimax/speech-02-turbo", { text: script, voice_id: stock });
+        const ttsId = await repCreate("minimax/speech-02-turbo", { text: script, voice_id: stock, ...voiceLangOpts(contentLang) });
         return await repPoll(ttsId, 3 * 60_000, "tts");
       }
     }
@@ -1273,6 +1273,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
       const ttsId = await repCreate("minimax/speech-02-turbo", {
         text: script,
         voice_id: stock,
+        ...voiceLangOpts(contentLang),
       });
       return await repPoll(ttsId, 3 * 60_000, "tts");
     }

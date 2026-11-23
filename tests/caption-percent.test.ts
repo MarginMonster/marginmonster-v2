@@ -19,7 +19,8 @@ import { drawable as cardDrawable } from "../app/lib/narrated-core.ts";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (f: string) => fs.readFileSync(path.join(root, "app", "lib", f), "utf8").replace(/\r\n/g, "\n");
 
-const VIDEO_FILES = ["ugc-ad-pipeline.server.ts", "faceless-video.server.ts", "film-engine.server.ts", "video-edit.server.ts", "narrated-core.ts"];
+// (a faceless video draws its captions through narrated-core's captionFilters since 2026-11-23 — it has no drawtext of its own)
+const VIDEO_FILES = ["ugc-ad-pipeline.server.ts", "film-engine.server.ts", "video-edit.server.ts", "narrated-core.ts"];
 
 test("the caption cards and the timed words keep a percent sign — and still agree with each other", () => {
   for (const s of ["Take 20% off today", "100% cotton — $19.99", "Half the class is 50% faster…"]) {
@@ -49,5 +50,8 @@ test("every caption drawtext is literal — a kept % would otherwise blank the w
     assert.ok(!src.includes("%{"), `${f} asks drawtext to expand nothing`);
     total += all;
   }
-  assert.equal(total, 7, "ugc ×2, narrated-core ×2, film-engine, faceless, video-edit");
+  assert.equal(total, 6, "ugc ×2, narrated-core ×2, film-engine, video-edit");
+  const faceless = read("faceless-video.server.ts");
+  assert.ok(!faceless.includes("drawtext="), "a faceless video has no caption drawing of its own");
+  assert.ok(faceless.includes("const captions = captionFilters(opts.caps, \"bold\", opts.fontFile, 720, 1280);"), "it draws the same cards the stories do");
 });

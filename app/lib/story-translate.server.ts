@@ -15,13 +15,14 @@ import { enqueueJob } from "./job-queue.server";
 import { refundTokens, spendTokens } from "./tokens.server";
 import { estimateFilmTokens } from "./plan-config";
 import { CONTENT_LANG_NATIVE, normalizeContentLang } from "./content-lang";
-import { canTellIn, isNarratedStory, storyLangOf, storyPicturesFrom, storyWordsToTranslate, translateAsk, translatedTreatment } from "./story-translate";
+import { canTellIn, isNarratedStory, storyLangOf, storyPicturesFrom, storyWordsToTranslate, toldFrom, translateAsk, translatedTreatment } from "./story-translate";
 
 /** Why nothing was started. The caller owns the sentence (and the member's language). */
-export type TellAgainFail = "gone" | "not-a-story" | "language" | "no-pictures" | "write-failed" | "tokens" | "queue-failed";
+export type TellAgainFail = "gone" | "not-a-story" | "language" | "telling" | "no-pictures" | "write-failed" | "tokens" | "queue-failed";
 export type TellAgainResult = { ok: true; lang: string; langName: string; cost: number } | { ok: false; code: TellAgainFail; error?: string };
 
-export async function tellStoryAgain(opts: { shopId: string; assetId: string; lang: string }): Promise<TellAgainResult> {
+/** `fromFirst` is this function's own: set when it has already stepped back to the story first told. */
+export async function tellStoryAgain(opts: { shopId: string; assetId: string; lang: string; fromFirst?: boolean }): Promise<TellAgainResult> {
   const { shopId } = opts;
   const asset = await db.asset.findFirst({
     where: { id: opts.assetId, shopId, type: "VIDEO_AD", status: { not: "FAILED" } },
@@ -40,6 +41,32 @@ export async function tellStoryAgain(opts: { shopId: string; assetId: string; la
   const from = storyLangOf(asset.metaJson, asset.shop?.contentLang);
   const lang = normalizeContentLang(opts.lang);
   if (!canTellIn(opts.lang, from)) return { ok: false, code: "language" };
+
+  // ONE FAMILY (story-translate.ts → tellChoices). A telling of a telling is told from the story FIRST
+  // told, while that is still here: one translation away from the writer's own words, not two — and
+  // every telling then points at the same first story.
+  const first = toldFrom(asset.metaJson);
+  if (first && first !== asset.id && !opts.fromFirst) {
+    const root = await db.asset.findFirst({
+      where: { id: first, shopId, type: "VIDEO_AD", status: { not: "FAILED" } },
+      select: { id: true, metaJson: true, shop: { select: { contentLang: true } } },
+    });
+    if (root && isNarratedStory(root.metaJson) && canTellIn(opts.lang, storyLangOf(root.metaJson, root.shop?.contentLang))) {
+      return tellStoryAgain({ shopId, assetId: root.id, lang: opts.lang, fromFirst: true });
+    }
+  }
+  // …and never twice at once: a telling in this language that is already on its way is the one.
+  // (A second tap inside the minute it takes used to make a second copy.)
+  try {
+    const onItsWay = await db.job.findFirst({
+      where: {
+        shopId, type: "GENERATE_VIDEO_AD", status: { in: ["PENDING", "IN_PROGRESS"] },
+        AND: [{ payload: { contains: `"filmTranslatedFrom":"${asset.id}"` } }, { payload: { contains: `"filmLang":"${lang}"` } }],
+      },
+      select: { id: true },
+    });
+    if (onItsWay) return { ok: false, code: "telling" };
+  } catch { /* the look is a courtesy: never the reason a story is not told */ }
 
   // THE PICTURES: the story's own record, or (made before that was kept) the job that rendered it.
   let payloads: string[] = [];

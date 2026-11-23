@@ -41,6 +41,37 @@ export function translateTargets(current: string): Array<{ code: string; name: s
 export const canTellIn = (lang: string | null | undefined, current: string): boolean =>
   !!lang && translateTargets(current).some((t) => t.code === String(lang).toLowerCase().slice(0, 2));
 
+/** The story a piece was told again FROM (meta.translatedFrom), or "" for one that was not. */
+export const toldFrom = (meta: unknown): string => str(parse(meta).translatedFrom);
+
+/**
+ * ONE STORY, ITS LANGUAGES. A story and every telling of it in another language are one family: the story
+ * first told, and the pieces told again from it. For any piece of the family, the languages it can be
+ * seen in: every language but its own — each either ALREADY TOLD (`have` = that piece's id: open it) or
+ * still to make.
+ *
+ * (The first version offered every other language every time: after a Spanish telling existed the
+ * original still offered "Español", and a second tap made a second one — "…(2)".)
+ *
+ * `rows` = the member's pieces, newest first (so the newest telling in a language is the one opened).
+ * Null for a piece that is not a narrated story.
+ */
+export function tellChoices(
+  piece: { id: string; metaJson: unknown },
+  rows: ReadonlyArray<{ id: string; metaJson: unknown }>,
+  shopLang?: string | null,
+): Array<{ code: string; name: string; have?: string }> | null {
+  if (!isNarratedStory(piece.metaJson)) return null;
+  const from = toldFrom(piece.metaJson);
+  // the family's first story — when it is still in the library; otherwise this piece stands for it
+  const root = from && rows.some((r) => r.id === from && isNarratedStory(r.metaJson)) ? from : piece.id;
+  const family = rows.filter((r) => r.id !== piece.id && isNarratedStory(r.metaJson) && (r.id === root || toldFrom(r.metaJson) === root));
+  return translateTargets(storyLangOf(piece.metaJson, shopLang)).map((t) => {
+    const have = family.find((r) => storyLangOf(r.metaJson, shopLang) === t.code);
+    return have ? { ...t, have: have.id } : t;
+  });
+}
+
 /** A story's narration, one entry per scene, and its title — what gets translated. */
 export function storyWordsToTranslate(bodyJson: unknown): { title: string; captions: string[] } | null {
   const tr = parse(bodyJson).treatment;

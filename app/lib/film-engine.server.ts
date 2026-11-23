@@ -31,6 +31,7 @@ import { animateCreate, animatePoll, checkpointJob, download, downloadBuffer, ff
 import { renderCreativeSeed, renderStyledSeed } from "./image-generation.server";
 import { SCENE_PROMPT_MAX, SHEET_PROMPT_MAX, VISUAL_STANDS_ALONE, castSheetPrompt, sceneFromSheetPrompt, sceneInWordsPrompt } from "./film-cast-sheet";
 import { musicBedToDisk, singToDisk } from "./music-generation.server";
+import { CONTENT_LANGS, normalizeContentLang, voiceLangOpts } from "./content-lang";
 import { mirrorRender } from "./object-storage.server";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
 import { MV_MAX_SECONDS, SHOT_NOTES, defaultRole, shotSlot, type SceneSeconds, type ShotRole } from "./mv-pace";
@@ -447,7 +448,20 @@ export async function previewFilmTreatment(opts: {
   const g = genreKey ? GENRES[genreKey] : null;
   const genreLabel = g ? g.label : "pop";
   const genreLine = g ? `\nGENRE: ${g.label}. The song must sound like authentic ${g.label} — ${g.song}. The artist and EVERY setting must look like a real ${g.label} music video — ${g.look}.` : "";
-  const langLine = opts.contentLang && opts.contentLang !== "en" ? `\nWrite all captions in this language code: ${opts.contentLang}.` : "";
+  // THE LANGUAGE THE WORDS ARE IN: the one asked for (a story told again names its own), else the shop's.
+  // Until 2026-11-23 a caller that passed none meant English — three fallbacks did — and the line said
+  // only "Write all captions in this language code: es": the title stayed English. What is HEARD and
+  // SHOWN follows the language: every caption, lyric and the title. A "visual" stays in English — it is
+  // an instruction for the picture, never shown.
+  let shopLang: string | null | undefined = opts.contentLang;
+  if (shopLang === undefined || shopLang === null || shopLang === "") {
+    try { shopLang = (await db.shop.findUnique({ where: { id: opts.shopId }, select: { contentLang: true } }))?.contentLang; } catch { shopLang = null; }
+  }
+  const langCode = normalizeContentLang(shopLang);
+  const langName = CONTENT_LANGS[langCode] || "English";
+  const langLine = langCode === "en" ? "" : `\nLANGUAGE: write every caption — the words that are spoken, narrated or sung — and the title in ${langName}. Keep every name exactly as given. Each "visual" and the musicMood stay in English: they are instructions for the picture and the music, never shown or said.`;
+  /** the same, for an ask that is about the words alone (a re-fit of the lyrics) */
+  const langWordsLine = langCode === "en" ? "" : ` The words stay in ${langName}.`;
   const artistName = (opts.artistName || "").trim().slice(0, 60);
   const castNames = (opts.castNames || []).map((n) => (n || "").trim()).filter(Boolean).slice(0, 4);
   const coStars = castNames.length
@@ -670,7 +684,7 @@ export async function previewFilmTreatment(opts: {
           `In this genre the song is sung at about ${SING_RATE[genreKey] || 2.2} words a second, so EVERY scene needs between ${now.lo} and ${now.hi} words (${wordsAsLineCount(sceneWords)}). As written the song has ${now.total} words and needs about ${now.want} — ${now.total < now.want ? "it would run out before the video ends" : "its words could not all be sung in time"}.\n` +
           // THREE LENGTHS of every scene, and the code picks: asked to rewrite to the range it went from 50
           // words to 94 ("needs 3 to 5 MORE" a scene, and it added eight). It cannot count — we can.
-          `For EVERY scene write THREE versions of its lyric — the same meaning and the same rhyme at three LENGTHS: a short one of about ${Math.max(4, sceneWords - 3)} words, a middle one of about ${sceneWords} words, a long one of about ${sceneWords + 3} words — by tightening or lengthening its own lines. Keep the story, the order and the hook. ${ORIGINAL_LYRICS_RULE}${langLine}\n` +
+          `For EVERY scene write THREE versions of its lyric — the same meaning and the same rhyme at three LENGTHS: a short one of about ${Math.max(4, sceneWords - 3)} words, a middle one of about ${sceneWords} words, a long one of about ${sceneWords + 3} words — by tightening or lengthening its own lines. Keep the story, the order and the hook. ${ORIGINAL_LYRICS_RULE}${langWordsLine}\n` +
           `Return "scenes": exactly ${sung.length} entries in scene order, each a list of that scene's three versions (shortest first), a version's lines joined by " / " — nothing in them but the lyric (no numbers, no brackets).`;
         const raw = await anthropicText(refit, {
           model: "claude-sonnet-5", maxTokens: scenes > 12 ? 3600 : 1600,
@@ -1163,8 +1177,10 @@ export async function generateFilm(opts: {
     if (narration) {
       try {
         let voUrl = "";
-        try { voUrl = await repPoll(await repCreate("minimax/speech-02-hd", { text: narration, voice_id: NARRATOR_VOICE, english_normalization: true, language_boost: "English" }), 3 * 60_000, "film-vo"); }
-        catch { voUrl = await repPoll(await repCreate("minimax/speech-02-turbo", { text: narration, voice_id: NARRATOR_VOICE }), 3 * 60_000, "film-vo"); }
+        // (the narrator reads the language the story was written in: the shop's)
+        const voLang = voiceLangOpts((await db.shop.findUnique({ where: { id: opts.shopId }, select: { contentLang: true } }))?.contentLang);
+        try { voUrl = await repPoll(await repCreate("minimax/speech-02-hd", { text: narration, voice_id: NARRATOR_VOICE, ...voLang }), 3 * 60_000, "film-vo"); }
+        catch { voUrl = await repPoll(await repCreate("minimax/speech-02-turbo", { text: narration, voice_id: NARRATOR_VOICE, ...voLang }), 3 * 60_000, "film-vo"); }
         const buf = await downloadBuffer(voUrl);
         if (buf.length > 8_000) {
           const voName = `filmvo-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp3`;

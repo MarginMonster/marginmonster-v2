@@ -19,6 +19,8 @@ import { mirrorRender } from "./object-storage.server";
 import { dropOrgEndorsementPossessive } from "./ad-claims";
 import { ownNarratorVoice } from "./voice-clone.server";
 import { SUNG_VAD } from "./lyric-sync";
+import { langDirective, normalizeContentLang, voiceLangOpts } from "./content-lang";
+import { boldCards, captionFilters, sceneWindows, scriptWordTimes, type Window } from "./narrated-core";
 
 // Truncate on a sentence boundary so a hard char-cap never feeds the writer a
 // dangling half-spec ("…holds up to 2L and is made from"). Falls back to the
@@ -129,22 +131,12 @@ export function groupCaptions(words: WordT[]): Cap[] {
   return caps;
 }
 
-/** drawtext filters from timed caption cards (word-synced). */
-function timedCaptionFilters(caps: Cap[], fontFile: string): string[] {
-  const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
-  return caps.map((c) => {
-    const size = Math.max(32, Math.min(52, Math.floor((720 * 0.92) / (c.text.length * 0.62))));
-    return (
-      `drawtext=expansion=none:fontfile='${font}':text='${c.text}':fontsize=${size}:fontcolor=white:` +
-      `borderw=8:bordercolor=black:x=(w-text_w)/2:y=h-360:enable='gte(t,${c.t0.toFixed(2)})*lt(t,${c.t1.toFixed(2)})'`
-    );
-  });
-}
-
 /** The faceless compositor: N stills as Ken-Burns beats across the VO, captions
- *  burned in, VO over a looped music bed, 720x1280. Reuses runFfmpeg's budget. */
+ *  burned in, VO over a looped music bed, 720x1280. Reuses runFfmpeg's budget.
+ *  `windows` (one per still) = when each beat's line is said: its picture is up for exactly that long.
+ *  Without them the pictures share the voice-over evenly. */
 async function assembleFaceless(opts: {
-  stills: string[]; voPath: string; musicPath: string | null; caps: Cap[]; fontFile: string; outPath: string; jobId?: string;
+  stills: string[]; voPath: string; musicPath: string | null; caps: Cap[]; windows?: Window[] | null; fontFile: string; outPath: string; jobId?: string;
 }): Promise<void> {
   const beat = async () => { if (opts.jobId) await checkpointJob(opts.jobId, { ckBeat: Date.now() }); };
   const voDur = ffprobeDuration(opts.voPath);
@@ -161,9 +153,14 @@ async function assembleFaceless(opts: {
   await beat();
 
   const N = norm.length;
-  const seg = voDur / N;
+  // how long each picture is up: while its own line is said — or, when that is not known, an even share
+  const durs = opts.windows && opts.windows.length === N && opts.windows.every((w) => w.t1 - w.t0 > 0.3)
+    ? opts.windows.map((w) => w.t1 - w.t0)
+    : norm.map(() => voDur / N);
   const hasMusic = !!opts.musicPath && fs.existsSync(opts.musicPath);
-  const captions = timedCaptionFilters(opts.caps, opts.fontFile);
+  // the same big few-words cards the narrated stories use (narrated-core): one size, the punctuation a
+  // card ends on not drawn, and a script without spaces (Chinese) cut and measured as it is drawn
+  const captions = captionFilters(opts.caps, "bold", opts.fontFile, 720, 1280);
 
   // Build the whole ffmpeg arg list for a given quality rung. Captions, the
   // music bed and the Ken-Burns motion are all nice-to-have; the VO over the
@@ -174,11 +171,11 @@ async function assembleFaceless(opts: {
   // encode hiccup hard-failed all three attempts → "didn't make it" + refund).
   const buildArgs = (useCaptions: boolean, useKenBurns: boolean, useMusic: boolean): string[] => {
     const a: string[] = ["-y"];
-    norm.forEach((s) => {
+    norm.forEach((s, i) => {
       // Ken-Burns gets its duration from zoompan d=; the plain rung instead
-      // holds each still for `seg` seconds with -loop 1 -t.
+      // holds each still for its own stretch with -loop 1 -t.
       if (useKenBurns) a.push("-i", s);
-      else a.push("-loop", "1", "-t", seg.toFixed(3), "-i", s);
+      else a.push("-loop", "1", "-t", durs[i].toFixed(3), "-i", s);
     });
     a.push("-i", opts.voPath); // input N
     const musicOn = useMusic && hasMusic;
@@ -188,7 +185,7 @@ async function assembleFaceless(opts: {
     const labels: string[] = [];
     norm.forEach((_, i) => {
       if (useKenBurns) {
-        const frames = Math.max(18, Math.round(seg * 30));
+        const frames = Math.max(18, Math.round(durs[i] * 30));
         const z = i % 2 === 0 ? `1+0.12*on/${frames - 1}` : `max(1.12-0.12*on/${frames - 1},1.001)`;
         f.push(
           `[${i}:v]scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,` +
@@ -280,6 +277,12 @@ export async function generateFacelessVideo(opts: {
   const product = opts.product;
   const ckpt = async (patch: Record<string, unknown>) => { if (jobId) await checkpointJob(jobId, patch); };
   const fmtKey = opts.format && FACELESS_FORMATS[opts.format] ? opts.format : "facts";
+  // THE SHOP'S LANGUAGE. Until 2026-11-23 this pipeline never asked for it: a Spanish shop's faceless
+  // videos — and every drop its channels posted by themselves — were written, read and captioned in
+  // English. The words are written in it, the voice is told it, and the listener is told it (told a
+  // Spanish voice is English, it translates what it hears).
+  const lang = normalizeContentLang((await db.shop.findUnique({ where: { id: opts.shopId }, select: { contentLang: true } }))?.contentLang);
+  const inLang = lang === "en" ? "" : `\n${langDirective(lang).trim()} That means every spoken LINE. Each VISUAL and the musicMood stay in English: they are instructions for the picture and the music, never shown or said.`;
 
   // 1) SCRIPT — structured beats (line + visual) in one forced-tool call.
   let script: Script;
@@ -295,12 +298,12 @@ export async function generateFacelessVideo(opts: {
         `Angle: ${PRODUCT_ANGLES[opts.format || ""] || PRODUCT_ANGLES.spotlight}.\n` +
         `Return 5-6 beats. Each beat = a spoken LINE (one short conversational sentence, ~8-16 words; the FIRST line is a scroll-stopping hook about the product; the LAST line is a soft call to action like "link's right here" or "grab yours") + a VISUAL (a vivid cinematic lifestyle scene that features or complements the product — NO text/words/logos in the image, no real named people).\n` +
         `Total spoken length ~25-35 seconds. Also give musicMood (a short phrase) and voiceGender.\n` +
-        `SAFETY: say ONLY what is true from the DETAILS above — NEVER invent statistics, prices, discounts, sales, guarantees, reviews, ratings, awards or endorsements. No "best", "#1" or superlatives you cannot back up.`
+        `SAFETY: say ONLY what is true from the DETAILS above — NEVER invent statistics, prices, discounts, sales, guarantees, reviews, ratings, awards or endorsements. No "best", "#1" or superlatives you cannot back up.` + inLang
       : `Write a short FACELESS social video for TikTok/Reels about: "${topic}".\n` +
         `Style: ${FACELESS_FORMATS[fmtKey]}.\n` +
         `Return 6-7 beats. Each beat = a spoken LINE (one short conversational sentence, ~8-16 words; the FIRST line is a scroll-stopping hook) + a VISUAL (a vivid, specific, cinematic image description for AI b-roll that matches the line — NO text/words/logos in the image, no real named people).\n` +
         `Total spoken length ~30-40 seconds. Also give musicMood (a short phrase describing background music) and voiceGender.\n` +
-        `SAFETY: keep it general and true — do NOT invent specific statistics, prices, dates, medical or financial advice, or claims you are unsure of; no defamation of real people or brands.`;
+        `SAFETY: keep it general and true — do NOT invent specific statistics, prices, dates, medical or financial advice, or claims you are unsure of; no defamation of real people or brands.` + inLang;
     const raw = await anthropicText(prompt, { model: "claude-sonnet-5", maxTokens: 1200, jsonSchema: { name: "faceless_script", schema: SCRIPT_SCHEMA as unknown as Record<string, unknown> } });
     script = JSON.parse(raw) as Script;
     script.beats = (script.beats || []).filter((b) => b && b.line && b.visual).slice(0, 8);
@@ -326,10 +329,10 @@ export async function generateFacelessVideo(opts: {
   if (!voPath) {
     if (!voUrl) {
       try {
-        const id = await repCreate("minimax/speech-02-hd", { text: fullScript, voice_id: voiceId, english_normalization: true, language_boost: "English" });
+        const id = await repCreate("minimax/speech-02-hd", { text: fullScript, voice_id: voiceId, ...voiceLangOpts(lang) });
         voUrl = await repPoll(id, 3 * 60_000, "faceless-tts");
       } catch {
-        const id = await repCreate("minimax/speech-02-turbo", { text: fullScript, voice_id: voiceId });
+        const id = await repCreate("minimax/speech-02-turbo", { text: fullScript, voice_id: voiceId, ...voiceLangOpts(lang) });
         voUrl = await repPoll(id, 3 * 60_000, "faceless-tts");
       }
     }
@@ -345,30 +348,27 @@ export async function generateFacelessVideo(opts: {
 
   // 3) WORD TIMINGS — WhisperX over the VO (its Replicate CDN url is still fresh
   //    here). Cached in ckTimings so it never re-bills on resume.
+  //
+  //    THE CAPTIONS SAY WHAT WAS WRITTEN, timed by what was heard. They used to BE what was heard: the
+  //    listener's own spelling, burned into the video — a product's name came out however it happened
+  //    to be heard (the same listener wrote "Gas" for a narrator's "Gus" on 2026-11-23). The script's
+  //    words are now laid over the heard timings (narrated-core, as the stories do), and each beat's
+  //    picture is up while ITS line is said instead of for an even share of the video.
   let caps: Cap[];
+  let beatWindows: Window[] | null = null;
   if (resume.ckTimings) {
-    caps = JSON.parse(resume.ckTimings);
+    // (a checkpoint from before 2026-11-23 is the cards alone)
+    const saved = JSON.parse(resume.ckTimings) as Cap[] | { caps?: Cap[]; windows?: Window[] };
+    if (Array.isArray(saved)) caps = saved;
+    else { caps = saved.caps || []; beatWindows = saved.windows || null; }
   } else {
-    try {
-      const id = await createWhisperx(voUrl);
-      const raw = (await repPoll(id, 5 * 60_000, "faceless-align")) as unknown;
-      caps = groupCaptions(wordsFromWhisperx(raw));
-    } catch (e) {
-      console.error("[faceless] whisperx failed, falling back to even-division captions:", (e as Error).message);
-      caps = [];
-    }
-    // Fallback: even-division across the VO from the script chunks (rung c).
-    if (!caps.length) {
-      const voDur = ffprobeDuration(voPath) || 35;
-      const chunks = captionSafe(fullScript).split(" ").reduce<string[]>((acc, w) => {
-        const last = acc[acc.length - 1];
-        if (!last || (last.length + w.length + 1) > 20 || last.split(" ").length >= 3) acc.push(w); else acc[acc.length - 1] = `${last} ${w}`;
-        return acc;
-      }, []);
-      const per = voDur / Math.max(1, chunks.length);
-      caps = chunks.map((text, i) => ({ text, t0: i * per, t1: (i + 1) * per }));
-    }
-    await ckpt({ ckTimings: JSON.stringify(caps) });
+    let words: WordT[] = [];
+    try { words = wordsFromWhisperx(await repPoll(await createWhisperx(voUrl, lang), 5 * 60_000, "faceless-align")); }
+    catch (e) { console.error("[faceless] could not listen to the voice-over — captions and pictures are timed by length:", (e as Error).message); }
+    const lines = script.beats.map((b) => b.line);
+    beatWindows = sceneWindows(lines, words, ffprobeDuration(voPath) || 35);
+    caps = boldCards(scriptWordTimes(lines, words, beatWindows));
+    await ckpt({ ckTimings: JSON.stringify({ caps, windows: beatWindows }) });
   }
 
   // 4) B-ROLL STILLS — one 9:16 flux still per beat (sequential = no 429). Banked
@@ -437,7 +437,7 @@ export async function generateFacelessVideo(opts: {
   catch (e) { caps = []; console.error(`[faceless] no font for these words — no captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   const outName = `vid-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleFaceless({ stills, voPath, musicPath, caps, fontFile, outPath, jobId });
+  await assembleFaceless({ stills, voPath, musicPath, caps, windows: beatWindows, fontFile, outPath, jobId });
   const outBuf = fs.readFileSync(outPath);
   try { await mirrorRender(outName, outBuf); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;

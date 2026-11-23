@@ -65,7 +65,7 @@ import { externalOrigin } from "../lib/origin.server";
 import { isValidTimeZone, zonedDateString, zonedInstant } from "../lib/timezone";
 import { storyHeroOf } from "../lib/film-series";
 import { adWordsOf } from "../lib/ad-words";
-import { isNarratedStory, storyLangOf, translateTargets } from "../lib/story-translate";
+import { tellChoices } from "../lib/story-translate";
 import { tellStoryAgain } from "../lib/story-translate.server";
 import { isAdminEmail } from "../lib/admin.server";
 // (2026-11-22) Collections — named shelves a piece can sit on; every query is in collections.server.ts
@@ -181,6 +181,7 @@ function buildDetails(type: string, metaJson: string | null, bodyJson: string | 
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
   const style = str(meta.style) || str(body.style);
   const isFaceless = meta.kind === "faceless" || style === "FACELESS";
+  const isStory = meta.kind === "narrated" || style === "NARRATED";
   const hasPresenter = style === "AI_AVATAR" || style === "COMMERCIAL" || style === "CARTOON" || style === "JINGLE";
   const kind =
     type === "AUDIO" ? "Music track"
@@ -221,7 +222,7 @@ function buildDetails(type: string, metaJson: string | null, bodyJson: string | 
     tagline: str(body.tagline),
     direction: str(meta.direction) || (creative ? str(meta.productTitle) : null),
     script,
-    scriptLabel: script ? (adWords ? "Words on the ad" : isFaceless ? "Narration" : hasPresenter ? "What they say" : "Prompt") : null,
+    scriptLabel: script ? (adWords ? "Words on the ad" : isFaceless || isStory ? "Narration" : hasPresenter ? "What they say" : "Prompt") : null,
   };
 }
 
@@ -458,8 +459,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // the Movie Maker on the next episode of its series (film-series.ts → storyHeroOf / episodeCardFor).
         canContinue: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson),
         // A NARRATED story can be told again in another language — same pictures, same storyteller
-        // (story-translate.ts). The languages it is not already in, by their own names; null for anything else.
-        tellIn: a.type === "VIDEO_AD" && isNarratedStory(a.metaJson) ? translateTargets(storyLangOf(a.metaJson, shop.contentLang)) : null,
+        // (story-translate.ts). Every language but its own, by their own names — each one either already
+        // told (`have`: that piece, to open) or still to make; null for anything else.
+        tellIn: a.type === "VIDEO_AD" ? tellChoices(a, assets, shop.contentLang) : null,
         // Which kind of video it is, for the Films / Faceless chips: every Movie Maker pipeline records its
         // own kind (acted, narrated, music video, the older stills-and-clips engine, engine tests).
         group: (() => {
@@ -929,6 +931,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       gone: "That piece is gone — refresh and try again.",
       "not-a-story": "Only a narrated story can be told again in another language.",
       language: "It is already told in that language.",
+      telling: "This story is already being told in that language — it lands here in a few minutes.",
       "no-pictures": "This story's pictures were not kept, so it can't be told again — make it again in the Movie Maker.",
       "write-failed": "Couldn't translate that just now — try again in a moment.",
       tokens: "You don't have enough tokens for that.",
@@ -3050,7 +3053,11 @@ export default function WebArchive() {
                       <div className="wa-sizes" role="group" aria-label={t("Another language")}>
                         <p className="wa-sizes-h">{t("Tell this story again in another language — the same pictures and the same storyteller. It lands here as its own piece.")}</p>
                         <div className="wa-tell">
-                          {viewer.tellIn.map((l) => (
+                          {viewer.tellIn.map((l) => l.have ? (
+                            // already told in this language: the button opens that telling instead of making another
+                            <button type="button" key={l.code} className="wa-vbtn ghost on" lang={l.code} title={t("Already told in {lang} — open it", { lang: l.name })} aria-label={t("Already told in {lang} — open it", { lang: l.name })}
+                              onClick={() => { const it = assets.find((x) => x.id === l.have); if (it) { setTellFor(null); setViewer(it); } }}>{l.name} ✓</button>
+                          ) : (
                             <button type="button" key={l.code} className="wa-vbtn ghost" lang={l.code} disabled={tellBusy} onClick={() => tellAgain(viewer.id, l.code)}>{l.name}</button>
                           ))}
                         </div>

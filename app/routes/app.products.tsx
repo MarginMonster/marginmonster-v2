@@ -195,7 +195,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // Forge them all in parallel, then charge only for the ones that succeeded.
   const settled = await Promise.allSettled(
-    items.map((it) => generateProductCopy(shop.brandProfile!, it.title.trim(), (it.notes || "").trim()))
+    items.map((it) => generateProductCopy(shop.brandProfile!, it.title.trim(), (it.notes || "").trim(), shop.contentLang))
   );
   const results = items.map((it, i) => {
     const s = settled[i];

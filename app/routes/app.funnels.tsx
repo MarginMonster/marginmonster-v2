@@ -84,7 +84,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     try {
-      const content = await generateLandingContent(shop.brandProfile, productName, goal);
+      const content = await generateLandingContent(shop.brandProfile, productName, goal, shop.contentLang);
       await db.landingPage.create({
         data: {
           shopId: shop.id,

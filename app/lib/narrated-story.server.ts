@@ -192,7 +192,7 @@ export async function narrate(text: string, voice: string, lang: string | null |
   }
   let url = "";
   try { url = await repPoll(await repCreate("minimax/speech-02-hd", { text, voice_id: voice, ...voiceLangOpts(lang) }), 4 * 60_000, "narration"); }
-  catch { url = await repPoll(await repCreate("minimax/speech-02-turbo", { text, voice_id: voice }), 4 * 60_000, "narration"); }
+  catch { url = await repPoll(await repCreate("minimax/speech-02-turbo", { text, voice_id: voice, ...voiceLangOpts(lang) }), 4 * 60_000, "narration"); }
   const buf = await downloadBuffer(url);
   if (buf.length < 8_000) throw new Error("[narrated] the narration came back empty");
   fs.mkdirSync(RENDERS(), { recursive: true });

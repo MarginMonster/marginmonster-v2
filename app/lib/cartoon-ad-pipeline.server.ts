@@ -989,7 +989,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       });
     } catch {
       audioUrl = await resumablePrediction({
-        create: () => repCreate("minimax/speech-02-turbo", { text: script, voice_id: cartoonVoice }),
+        create: () => repCreate("minimax/speech-02-turbo", { text: script, voice_id: cartoonVoice, ...voiceLangOpts(contentLang) }),
         save: (id) => ckpt({ ckTtsId: id }),
         maxMs: 3 * 60_000,
         stage: "cartoon-tts",

@@ -14,8 +14,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
-  BOLD_LINE, boldCards, captionFilters, drawable, hasWide, joinUnits, saidUnits, sceneWindows, scriptWordTimes, subtitleCards, subtitleChars, textWidth, unitWeight,
-  wrapEvenUnits, wrapLines, wrapUnits, type WordT,
+  BOLD_LINE, boldCards, captionFilters, cutCost, drawable, evenParts, hasWide, joinUnits, saidUnits, sceneWindows, scriptWordTimes, subtitleCards, subtitleChars, textWidth,
+  unitWeight, wrapEvenUnits, wrapLines, wrapUnits, type WordT,
 } from "../app/lib/narrated-core.ts";
 
 const STORY = [
@@ -123,6 +123,23 @@ test("BOLD in Chinese: a clause per card, every card inside the line, nothing lo
     const size = Number(/fontsize=(\d+)/.exec(f)![1]);
     assert.ok(textWidth(cards[i].text) * 0.62 * size <= 720 * 0.9 + 1, `${cards[i].text} at ${size}px`);
   });
+});
+
+test("a clause too long for one card is not cut where a word is left leaning over the cut", () => {
+  // the two stumbles in the first real render
+  assert.deepEqual(evenParts(saidUnits("人们都说这座老剧院一到午夜就从未真正空过"), 2).map(joinUnits), ["人们都说这座老剧院", "一到午夜就从未真正空过"], "一 goes with what follows it");
+  assert.deepEqual(evenParts(saidUnits("GUS和ISLA在这里打扫多年"), 2).map(joinUnits), ["GUS 和 ISLA", "在这里打扫多年"], "在 goes with what follows it");
+  assert.ok(cutCost("一", "到") > 0 && cutCost("在", "这里") > 0 && cutCost("和", "ISLA") > 0, "a word that leans forward does not end a card");
+  assert.ok(cutCost("封死", "了") > 0 && cutCost("包厢", "的,") > 0, "a particle that leans back does not start one");
+  assert.equal(cutCost("剧院", "一"), 0);
+  assert.equal(cutCost("说,", "这"), 0, "a word with a mark on it is a pause: always a fine place to cut");
+  // …and it is nothing at all in a script with spaces
+  assert.equal(cutCost("the", "old"), 0);
+  assert.deepEqual(evenParts("the quick brown fox jumps over the lazy dog".split(" "), 2), [["the", "quick", "brown", "fox"], ["jumps", "over", "the", "lazy", "dog"]]);
+  const h = heard(STORY);
+  const cards = boldCards(scriptWordTimes(STORY, h.words, sceneWindows(STORY, h.words, h.total))).map((c) => c.text);
+  assert.ok(cards.includes("GUS 和 ISLA"), cards.slice(0, 8).join(" | "));
+  for (const c of cards) assert.ok(!/[一在和把被从向]$/.test(c), `no card ends leaning forward: ${c}`);
 });
 
 test("BOLD when nothing was heard is the same cards, spread over each scene — not whole sentences", () => {

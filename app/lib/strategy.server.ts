@@ -1,6 +1,7 @@
 import type { BrandProfile, Plan } from "@prisma/client";
 import { anthropicText } from "./anthropic.server";
 import { brandBlock } from "./brand-prompt";
+import { langDirective } from "./content-lang";
 
 export interface MarketingPlan {
   headline: string;
@@ -23,10 +24,13 @@ const PLAN_FOCUS: Record<string, string> = {
 
 export async function generateMarketingPlan(
   brandProfile: BrandProfile,
-  plan: Plan
+  plan: Plan,
+  /** the shop's content language: the plan is written in it (until 2026-11-23 it was always English) */
+  lang?: string | null,
 ): Promise<MarketingPlan> {
   // One shared block, and only the lines we can actually fill.
   const brand = brandBlock(brandProfile);
+  const inLang = langDirective(lang) ? `${langDirective(lang)} (The JSON keys stay exactly as shown.)` : "";
   const focus = PLAN_FOCUS[plan.type] || PLAN_FOCUS.GROWTH;
 
   const prompt = `You are a senior e-commerce growth strategist. Build a concrete 4-week marketing plan for this Shopify store.
@@ -59,7 +63,7 @@ Return ONLY a JSON object with this exact structure:
   "kpis": ["kpi1", "kpi2", "kpi3"]
 }
 
-Make it specific to this store and realistic for the budget. Percentages must sum to 100.`;
+Make it specific to this store and realistic for the budget. Percentages must sum to 100.${inLang}`;
 
   const text = await anthropicText(prompt, { maxTokens: 1200 });
   const match = text.match(/\{[\s\S]*\}/);

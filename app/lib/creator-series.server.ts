@@ -15,6 +15,7 @@ import { spendTokens, refundTokens, tokensRemainingLive } from "./tokens.server"
 import { enqueueJob } from "./job-queue.server";
 import { anthropicText } from "./anthropic.server";
 import { FACELESS_FORMATS } from "./faceless-video.server";
+import { langDirective } from "./content-lang";
 import { VIDEO_PLATFORMS } from "./social-networks";
 
 const SOCIAL: readonly string[] = VIDEO_PLATFORMS; // a channel's drop is a video
@@ -51,7 +52,7 @@ function parseTopics(json: string | null | undefined): string[] {
  *  format, steering clear of the recent ones so a channel never repeats itself.
  *  Cheap (default Haiku); on any failure falls back to the niche itself so a
  *  drop is never blocked on the topic brain. */
-export async function nextTopic(niche: string, format: string, recent: string[]): Promise<string> {
+export async function nextTopic(niche: string, format: string, recent: string[], lang?: string | null): Promise<string> {
   const fmt = FACELESS_FORMATS[format] || FACELESS_FORMATS.facts;
   try {
     const prompt =
@@ -60,7 +61,8 @@ export async function nextTopic(niche: string, format: string, recent: string[])
       `Give ONE fresh, specific, scroll-stopping topic for the NEXT video — a single short line (max ~12 words). No quotes, no numbering, no hashtags.\n` +
       (recent.length ? `Do NOT repeat or closely overlap any of these recent topics:\n- ${recent.slice(-12).join("\n- ")}\n` : "") +
       `Keep it true and general — don't invent specific stats, prices or named people.\n` +
-      `Return ONLY the topic line.`;
+      // the topic is the video's title in the member's library: it is in the language their shop makes content in
+      `Return ONLY the topic line.${langDirective(lang)}`;
     const raw = (await anthropicText(prompt, { maxTokens: 60 })).trim();
     const line = raw
       .split("\n")
@@ -109,7 +111,7 @@ export async function tickDueSeries(): Promise<void> {
       try {
         const shop = await db.shop.findUnique({
           where: { id: s.shopId },
-          select: { id: true, socialsJson: true, activePlan: true },
+          select: { id: true, socialsJson: true, activePlan: true, contentLang: true },
         });
         if (!shop?.activePlan) { await pause(s.id, "user"); continue; }
 
@@ -153,7 +155,7 @@ export async function tickDueSeries(): Promise<void> {
           product = { title: pick.title, imageUrl: pick.imageUrl || undefined, description: pick.description || undefined };
           productUrl = pick.url || undefined;
         } else {
-          topic = await nextTopic(s.niche, s.format, recent);
+          topic = await nextTopic(s.niche, s.format, recent, shop.contentLang);
         }
 
         // CLAIM THE SLOT BEFORE SPENDING — the read above is NOT the claim.
