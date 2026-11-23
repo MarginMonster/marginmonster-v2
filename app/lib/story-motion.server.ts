@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pipeline.server";
-import { MOTION_MAX_SCENES, STORY_MOTION_MODEL, motionName, motionOn, motionPrompt, motionReusable, motionSeconds } from "./story-motion";
+import { MOTION_MAX_SCENES, STORY_MOTION_MODEL, motionName, motionOn, motionPrompt, motionReusable, motionSeconds, servable } from "./story-motion";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 /** How many clips are asked for at once. */
@@ -71,9 +71,11 @@ export async function animateScenes(o: {
       const ask = motionSeconds(need);
       let id = ids[name];
       if (!id) {
+        // the engine fetches the picture from this app's own address — a name that address will not serve
+        // is a clip that cannot be made, and is said so here rather than by the provider a minute later
+        if (!servable(path.basename(seed)) || !fs.existsSync(seed)) throw new Error(`the picture cannot be fetched (${path.basename(seed)})`);
         id = await falVideoSubmit(STORY_MOTION_MODEL, { startImage: `${o.base}/renders/${path.basename(seed)}`, prompt: motionPrompt(o.visuals[i] || ""), durationSec: ask });
         ids[name] = id;
-        out.seconds += ask;
         await saveIds();
       }
       let url: string;
@@ -98,6 +100,7 @@ export async function animateScenes(o: {
       delete ids[name];
       await saveIds().catch(() => undefined);
       out.made++;
+      out.seconds += ask; // counted when the clip is MADE: a request the provider refuses is not paid for
       return file;
     })();
     making.set(name, p);

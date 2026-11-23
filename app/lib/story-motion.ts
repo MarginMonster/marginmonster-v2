@@ -84,6 +84,18 @@ export function motionChain(fit: { speed: number; hold: number }, frames: number
   return `${slow}fps=30,scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,format=yuv420p,tpad=stop_mode=clone:stop_duration=${(fit.hold + 1).toFixed(2)},trim=end_frame=${Math.max(2, Math.round(frames))},setpts=PTS-STARTPTS`;
 }
 
+/** The picture as it goes into the cut — its black bars cropped off — is written beside the picture
+ *  under THIS name. One dot, on purpose: the engine fetches it from the app's own /renders address, and
+ *  that route serves only names of letters, digits, "-" and "_" with one ending. (The first story made
+ *  with moving pictures on the live site, 2026-11-23, had every clip refused — "Failed to download the
+ *  file" — because the cropped picture was called "<picture>.jpg.n.jpg", which that route answers with
+ *  a 404. The story shipped over its stills, and its own record said why.) */
+export const seedName = (pictureFile: string): string =>
+  `${String(pictureFile).replace(/\.(?:jpe?g|png|webp)$/i, "")}-n.jpg`;
+/** Can the app's own /renders address serve a file of this name? (The rule of routes/renders.$file.tsx
+ *  for pictures.) */
+export const servable = (name: string): boolean => /^[a-zA-Z0-9_-]+\.(?:jpe?g|png|webp)$/.test(name);
+
 /** Where a picture's clip is kept: beside the picture, under the picture's own name — so the same
  *  picture told again (another language, a changed line) finds it, and a re-drawn picture does not. */
 export const motionName = (pictureFile: string): string =>

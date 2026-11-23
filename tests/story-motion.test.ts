@@ -20,7 +20,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   MOTION_KEEP_DAYS, MOTION_MAX_S, MOTION_MAX_SCENES, MOTION_MIN_S, MOTION_REUSE_SHARE, MOTION_STRETCH_MAX, MOTION_USD_PER_SECOND,
-  STORY_MOTION_MODEL, fitMotion, isMotionClip, motionChain, motionCost, motionName, motionOn, motionPrompt, motionReusable, motionSeconds, storyTypicalSeconds,
+  STORY_MOTION_MODEL, fitMotion, isMotionClip, motionChain, motionCost, motionName, motionOn, motionPrompt, motionReusable, motionSeconds, seedName, servable, storyTypicalSeconds,
 } from "../app/lib/story-motion.ts";
 import { falVideoBody } from "../app/lib/fal-video-body.ts";
 
@@ -68,7 +68,7 @@ test("a clip shorter than its scene is slowed a little, then its last frame hold
 
 test("the same picture told again moves without being paid for twice — a re-drawn one does not", () => {
   assert.equal(motionName("/data/renders/img-1795454456667-16cc1ad934d7cdf1c9.jpg"), "img-1795454456667-16cc1ad934d7cdf1c9.mv.mp4");
-  assert.equal(motionName("C:\\data\\renders\\nst-17-2-ab.jpg.n.jpg"), "nst-17-2-ab.jpg.n.mv.mp4", "a picture with its bars cropped off is its own picture");
+  assert.equal(motionName("C:\\data\\renders\\nst-17-2-ab-n.jpg"), "nst-17-2-ab-n.mv.mp4", "a picture with its bars cropped off is its own picture");
   assert.equal(motionName("x.PNG"), "x.mv.mp4");
   assert.notEqual(motionName("img-1.jpg"), motionName("img-2.jpg"));
   assert.ok(isMotionClip("img-1.mv.mp4") && !isMotionClip("nar-1.mp4") && !isMotionClip("img-1.mv.mp4.raw.mp4"));
@@ -146,14 +146,39 @@ test("a kept clip is cleared after a week — by its own name, and nothing else 
   assert.ok(!arch.includes("a.opsMotion") && !arch.includes("viewer.opsMotion"));
 });
 
+test("the picture a clip is made from can be FETCHED — the name the app's own address serves", () => {
+  // The first story made with moving pictures on the live site (2026-11-23): all six clips refused,
+  // "Failed to download the file" — the cropped picture was "<picture>.jpg.n.jpg", and /renders serves
+  // one-dot names only. The story shipped over its stills; its own record said why.
+  const route = read("app", "routes", "renders.$file.tsx");
+  assert.ok(route.includes("/^[a-zA-Z0-9_-]+\\.(mp4|mp3|jpe?g|png|webp|srt)$/.test(name)"), "the route's own rule");
+  for (const picture of ["/data/renders/img-1795456790000-ab12cd34ef.jpg", "C:\\data\\renders\\nst-1795456790000-3-9f8e7d.jpg", "x.PNG", "y.webp"]) {
+    const seed = seedName(picture);
+    const base = seed.replace(/\\/g, "/").split("/").pop()!;
+    assert.ok(servable(base), base);
+    assert.ok(/-n\.jpg$/.test(base));
+    assert.ok(/^[a-zA-Z0-9_-]+\.(mp4|mp3|jpe?g|png|webp|srt)$/.test(base), "by the route's rule itself");
+  }
+  assert.equal(seedName("/data/renders/img-1.jpg"), "/data/renders/img-1-n.jpg");
+  assert.equal(servable("img-1.jpg.n.jpg"), false, "the name that was refused");
+  assert.equal(servable("../etc/passwd.jpg"), false);
+  assert.equal(servable("img-1.mv.mp4"), false);
+  // the cut and the engine are given the same picture, and a name that cannot be served is caught at once
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("export async function withoutBars(s: string): Promise<string> {\n  const n = seedName(s);"));
+  const srv = read("app", "lib", "story-motion.server.ts");
+  assert.ok(srv.includes("if (!servable(path.basename(seed)) || !fs.existsSync(seed)) throw new Error("));
+});
+
 test("a clip never costs a story", () => {
   const srv = read("app", "lib", "story-motion.server.ts");
   // each scene by itself: one that fails is written down and keeps its still
   assert.ok(srv.includes("try { out.clips[i] = await clipFor(i); }\n        catch (e) { out.faults.push({ scene: i + 1, error: "));
   // asked for ONCE: a kept clip is used, a job that starts again picks its request up by id
   assert.ok(srv.includes("if (fs.existsSync(file) && motionReusable(seconds(file), need)) { out.reused++; return file; }"));
-  assert.ok(srv.includes("let id = ids[name];\n      if (!id) {\n        id = await falVideoSubmit(STORY_MOTION_MODEL, "));
-  assert.ok(srv.includes("ids[name] = id;\n        out.seconds += ask;\n        await saveIds();"), "the id is saved before the wait");
+  assert.ok(srv.includes("let id = ids[name];\n      if (!id) {\n") && srv.includes("        id = await falVideoSubmit(STORY_MOTION_MODEL, "));
+  assert.ok(srv.includes("ids[name] = id;\n        await saveIds();"), "the id is saved before the wait");
+  assert.ok(srv.includes("out.made++;\n      out.seconds += ask; // counted when the clip is MADE"), "a request the provider refuses is not counted as paid for");
   assert.ok(srv.includes("if (!/still running/.test(e instanceof Error ? e.message : \"\")) { delete ids[name];"), "a clip still being made keeps its id for the next try");
   // one clip a picture — a scene that borrowed its neighbour's picture does not buy a second
   assert.ok(srv.includes("const had = making.get(name);\n    if (had) return had;"));

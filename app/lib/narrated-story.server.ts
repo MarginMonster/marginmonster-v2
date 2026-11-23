@@ -34,7 +34,7 @@ import { characterVoice, isCharacterVoice } from "./character-voices";
 import { heroName } from "./film-heroes";
 import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
-import { STORY_MOTION_ENGINE, fitMotion, motionChain } from "./story-motion";
+import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { NOTHING_WRITTEN, ONE_PICTURE, noLettering, oneMoment, parseStoryCast, parseStoryPanels, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCheck } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
@@ -214,7 +214,7 @@ export async function narrate(text: string, voice: string, lang: string | null |
 /** A picture as it goes into the cut: one that was kept with black bars baked in has them cropped off
  *  (to a file beside it), anything else is the picture itself. */
 export async function withoutBars(s: string): Promise<string> {
-  const n = `${s}.n.jpg`;
+  const n = seedName(s);
   let crop: string[] = [];
   try { const box = barBox((await runFfmpeg(["-loop", "1", "-i", s, "-vf", "cropdetect=limit=10:round=2:reset=0", "-frames:v", "5", "-f", "null", "-"])).stderr); if (box) crop = ["-vf", `crop=${box.w}:${box.h}:${box.x}:${box.y}`]; } catch { /* as it is */ }
   const c = await runFfmpeg(["-y", "-i", s, ...crop, "-frames:v", "1", n]);
