@@ -40,7 +40,7 @@ import type { BrandProfile } from "@prisma/client";
 import { langDirective, voiceLangOpts } from "./content-lang";
 import { isPersonalVoice } from "./avatar-voice-catalog";
 import { isCharacterVoice } from "./character-voices";
-import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, writeClaimFree } from "./ad-claims";
 import { scriptTooShort, capScript, endStop } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
@@ -447,8 +447,16 @@ async function writeCartoonScriptOnce(o: {
     `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
   ].filter(Boolean).join("\n");
 
-  let script = ((await anthropicText(scriptPrompt, { model: "claude-sonnet-5", maxTokens: 200 })) || "")
-    .replace(/["“”\n]+/g, " ").replace(/\s+/g, " ").trim();
+  // READ BEFORE IT IS USED (ad-claims.ts → writeClaimFree): this script is HEARD and burned on screen, so a
+  // discount, a deadline, a rank or a guarantee nobody gave the writer is asked out once and then cut. A
+  // claim in the merchant's own title, details or direction is theirs to make.
+  const merchantSaid = [o.productTitle, o.productDescription, o.direction].filter(Boolean).join(" \n ");
+  const script = await writeClaimFree(
+    async (repair) => ((await anthropicText(repair ? `${scriptPrompt}\n${repair}` : scriptPrompt, { model: "claude-sonnet-5", maxTokens: 200 })) || "")
+      .replace(/["“”\n]+/g, " ").replace(/\s+/g, " ").trim(),
+    merchantSaid,
+    { label: "cartoon:script" },
+  );
   // Empty is a REFUSAL, not a crash — withBrandFallback decides what next.
   if (!script) return "";
   // A truncated fragment is WORSE than empty: "Every t." shipped as a voice

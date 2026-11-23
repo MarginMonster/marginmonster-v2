@@ -154,3 +154,44 @@ export function dropFaultSentences(text: string | null | undefined, merchantSaid
   const kept = t.split(/(?<=[.!?…])\s+/).filter((s) => !claimFaults(s, merchantSaid).length);
   return kept.join(" ").trim();
 }
+
+/** The same last resort for words written one to a LINE (a lyric): the lines that make the claim are
+ *  taken out and the line breaks kept. "" when nothing is left. */
+export function dropFaultLines(text: string | null | undefined, merchantSaid?: string | null): string {
+  const lines = (text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.filter((l) => !claimFaults(l, merchantSaid).length).join("\n");
+}
+
+/**
+ * READ → ASK ONCE MORE → CUT. The whole backstop, for any writer whose words go out in an ad: the
+ * talking script, the cartoon voice-over, the jingle. `ask()` returns one draft; `ask(repair)` returns
+ * another with the repair note added to its brief.
+ *
+ *  - a draft that claims nothing is returned as it is (one call, as before);
+ *  - one that does is asked for again, told which words — the second draft is kept only if it claims less;
+ *  - what still claims has those sentences (or, with `lines`, those lyric lines) taken out.
+ *
+ * It can return "" (every sentence claimed, or the writer returned nothing): each caller already treats
+ * an empty or too-short draft as a refusal and tries again. No imports and no model of its own — the
+ * caller's `ask` is the only thing that costs anything.
+ */
+export async function writeClaimFree(
+  ask: (repair?: string) => Promise<string>,
+  merchantSaid: string,
+  opts: { label: string; lines?: boolean },
+): Promise<string> {
+  let draft = (await ask()) || "";
+  let faults = claimFaults(draft, merchantSaid);
+  if (!faults.length) return draft;
+  console.error(`[${opts.label}] the draft claimed ${faults.map((x) => `"${x}"`).join(", ")} — asking for it again`);
+  try {
+    const again = (await ask(claimRepairNote(faults))) || "";
+    const left = again ? claimFaults(again, merchantSaid) : faults;
+    if (again && left.length < faults.length) { draft = again; faults = left; }
+  } catch (e) {
+    console.error(`[${opts.label}] the rewrite could not be used:`, e instanceof Error ? e.message.slice(0, 160) : e);
+  }
+  if (!faults.length) return draft;
+  console.error(`[${opts.label}] still claiming ${faults.map((x) => `"${x}"`).join(", ")} — those ${opts.lines ? "lines" : "sentences"} are cut`);
+  return opts.lines ? dropFaultLines(draft, merchantSaid) : dropFaultSentences(draft, merchantSaid);
+}

@@ -45,7 +45,7 @@ import type { BrandProfile } from "@prisma/client";
 import { langDirective } from "./content-lang";
 import { capScript } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
-import { CLAIMS_GUARDRAIL, dropOrgEndorsementPossessive } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, dropOrgEndorsementPossessive, writeClaimFree } from "./ad-claims";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 import { reconcileEngineSurcharge } from "./engine-reconcile.server";
 import { createWhisperx, wordsFromWhisperx, groupCaptions } from "./faceless-video.server";
@@ -291,13 +291,34 @@ function jingleLyricsPrompt(p: JingleLyricInputs, productRef: string, debranded:
 export async function previewJingleLyrics(params: { shopId: string; brandProfile: { voiceJson: string }; productTitle: string; productDescription?: string; direction?: string; serviceMode?: boolean }): Promise<{ lyrics: string }> {
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
   const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
-  let lyrics = await withBrandFallback(async (productRef, debranded) =>
-    ((await anthropicText(jingleLyricsPrompt(params, productRef, debranded, voiceJson.tone, contentLang), { model: "claude-sonnet-5", maxTokens: 250 })) || "")
-      .replace(/["“”]+/g, "").split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 6).join("\n").trim(),
+  let lyrics = await withBrandFallback(
+    (productRef, debranded) => draftJingleLyrics(jingleLyricsPrompt(params, productRef, debranded, voiceJson.tone, contentLang), jingleMerchantSaid(params)),
     params.productTitle, "jingle:lyrics", params.productDescription);
   lyrics = capScript(lyrics, 48);
   lyrics = dropOrgEndorsementPossessive(lyrics);
   return { lyrics };
+}
+
+/** What the merchant said themselves — a claim in THESE words is theirs to make (ad-claims.ts). */
+const jingleMerchantSaid = (p: { productTitle: string; productDescription?: string; direction?: string }): string =>
+  [p.productTitle, p.productDescription, p.direction].filter(Boolean).join(" \n ");
+
+/** ONE DRAFT OF THE LYRIC, READ BEFORE IT IS SUNG. It is sung, and printed on screen line by line — so a
+ *  line with a discount, a deadline, a rank or a guarantee nobody gave the writer is asked out once and
+ *  then dropped, the other lines kept (ad-claims.ts → writeClaimFree, by LINES). */
+async function draftJingleLyrics(prompt: string, merchantSaid: string): Promise<string> {
+  return writeClaimFree(
+    async (repair) => ((await anthropicText(repair ? `${prompt}\n${repair}` : prompt, { model: "claude-sonnet-5", maxTokens: 250 })) || "")
+      .replace(/["“”]+/g, "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, 6)
+      .join("\n")
+      .trim(),
+    merchantSaid,
+    { label: "jingle:lyrics", lines: true },
+  );
 }
 
 export async function generateJingleAd(params: JingleAdParams): Promise<string> {
@@ -318,15 +339,8 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
     // Prompt lives in the module-level jingleLyricsPrompt (shared with the step-2
     // previewJingleLyrics). A branded title can be refused outright — retry, then
     // drop the brand and sing the category. See ad-copy-retry.server.ts.
-    lyrics = await withBrandFallback(async (productRef, debranded) =>
-      ((await anthropicText(jingleLyricsPrompt(params, productRef, debranded, voiceJson.tone, contentLang), { model: "claude-sonnet-5", maxTokens: 250 })) || "")
-        .replace(/["“”]+/g, "")
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .slice(0, 6)
-        .join("\n")
-        .trim(),
+    lyrics = await withBrandFallback(
+      (productRef, debranded) => draftJingleLyrics(jingleLyricsPrompt(params, productRef, debranded, voiceJson.tone, contentLang), jingleMerchantSaid(params)),
       params.productTitle, "jingle:lyrics", params.productDescription);
     // Measured per writing system. `split(/\s+/)` scored a whole Chinese
     // lyric as one word, so this cap never fired and the song ran long.

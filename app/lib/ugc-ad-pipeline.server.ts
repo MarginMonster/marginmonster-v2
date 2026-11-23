@@ -30,7 +30,7 @@ import { isPersonalVoice } from "./avatar-voice-catalog";
 import { isCharacterVoice } from "./character-voices";
 import { hasCJK, langDirective, voiceLangOpts } from "./content-lang";
 import { scriptTooShort, capScript, endStop } from "./script-length";
-import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, writeClaimFree } from "./ad-claims";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 import { captionChunks, CJK_OPTS, LATIN_OPTS } from "./caption-chunks";
@@ -1023,6 +1023,31 @@ function ugcScriptPrompt(p: UgcScriptInputs, productRef: string, debranded: bool
   ].filter(Boolean).join("\n");
 }
 
+/** What the merchant said themselves — their title, details and direction. A claim in THESE words is
+ *  theirs to make; one the writer adds is not (ad-claims.ts → claimFaults). */
+const ugcMerchantSaid = (p: { productTitle: string; productDescription?: string; direction?: string }): string =>
+  [p.productTitle, p.productDescription, p.direction].filter(Boolean).join(" \n ");
+
+/** ONE DRAFT OF THE SPOKEN SCRIPT, READ BEFORE IT IS USED. The presenter says these words and they are
+ *  burned on screen as captions, so a discount, a deadline, a rank or a guarantee nobody gave the writer
+ *  is asked out once and then cut (ad-claims.ts → writeClaimFree) — the Commercial's rule, here too.
+ *
+ *  Returns "" for a fragment: the spec is 26-32 words, so a fragment is a mangled output, and the
+ *  fallback ladder treats "" as a refusal and tries again instead of shipping it. Measured per writing
+ *  system — `split(/\s+/)` scored a perfect 35-character Chinese script as ONE word, so every zh shop
+ *  failed this check forever and could not make a UGC ad at all. */
+async function draftUgcScript(prompt: string, merchantSaid: string): Promise<string> {
+  const raw = await writeClaimFree(
+    async (repair) => ((await anthropicText(repair ? `${prompt}\n${repair}` : prompt, { model: "claude-sonnet-5", maxTokens: 200 })) || "")
+      .replace(/["“”\n]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+    merchantSaid,
+    { label: "ugc:script" },
+  );
+  return scriptTooShort(raw) ? "" : raw;
+}
+
 /** Generate the spoken UGC script as TEXT for the step-2 preview (approve/randomize
  *  before paying). Free — rides back into generateUgcAd via resume.script. */
 export async function previewUgcScript(params: { shopId: string; brandProfile: { voiceJson: string }; avatarId: string | null; avatarVariant?: number; productTitle: string; productDescription?: string; direction?: string; serviceMode?: boolean }): Promise<{ script: string }> {
@@ -1033,11 +1058,9 @@ export async function previewUgcScript(params: { shopId: string; brandProfile: {
   const { avatar } = await resolvePresenter(params.shopId, params.avatarId || "", variant);
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
   const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
-  let script = await withBrandFallback(async (productRef, debranded) => {
-    const raw = ((await anthropicText(ugcScriptPrompt(params, productRef, debranded, avatar.name, avatar.desc, voiceJson.tone, contentLang), { model: "claude-sonnet-5", maxTokens: 200 })) || "")
-      .replace(/["“”\n]+/g, " ").replace(/\s+/g, " ").trim();
-    return scriptTooShort(raw) ? "" : raw;
-  }, stripPromoTag(params.productTitle), "ugc:script", params.productDescription);
+  let script = await withBrandFallback(
+    (productRef, debranded) => draftUgcScript(ugcScriptPrompt(params, productRef, debranded, avatar.name, avatar.desc, voiceJson.tone, contentLang), ugcMerchantSaid(params)),
+    stripPromoTag(params.productTitle), "ugc:script", params.productDescription);
   script = capScript(script, 36);
   script = endStop(script);
   script = dropOrgEndorsementPossessive(script);
@@ -1079,22 +1102,13 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     // A branded product title can be refused outright, returning nothing —
     // retry, then drop the brand and sell the category. See
     // ad-copy-retry.server.ts for what the sweep showed.
-    script = await withBrandFallback(async (productRef, debranded) => {
-      const raw = ((await anthropicText(buildScriptPrompt(productRef, debranded), { model: "claude-sonnet-5", maxTokens: 200 })) || "")
-        .replace(/["“”\n]+/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-      // A truncated fragment is worse than empty — the spec is 26-32 words,
-      // so a fragment is a mangled output. Return "" so the fallback ladder
-      // treats it as a refusal and retries instead of shipping it.
-      // Measured per writing system: `split(/\s+/)` scored a perfect
-      // 35-character Chinese script as ONE word, so every zh shop failed
-      // this check forever and could not make a UGC ad at all.
-      return scriptTooShort(raw) ? "" : raw;
-      // Strip a store curation tag ("– Comic-Con Pick") off the title BEFORE it
-      // becomes the grounding the writer anchors on — parity with the image
-      // generator, which the audit flagged this path was missing.
-    }, stripPromoTag(params.productTitle), "ugc:script", params.productDescription);
+    // One draft = draftUgcScript: written, read for claims nobody gave it, and "" when it is a fragment.
+    // Strip a store curation tag ("– Comic-Con Pick") off the title BEFORE it
+    // becomes the grounding the writer anchors on — parity with the image
+    // generator, which the audit flagged this path was missing.
+    script = await withBrandFallback(
+      (productRef, debranded) => draftUgcScript(buildScriptPrompt(productRef, debranded), ugcMerchantSaid(params)),
+      stripPromoTag(params.productTitle), "ugc:script", params.productDescription);
     // ~12-13s budget — hard cap so it never runs past the lip-sync sweet spot.
     // In characters for CJK, where the old word cap could never fire. 36, not
     // 34: the spec is "26-32 words incl. the CTA" but the model routinely lands
