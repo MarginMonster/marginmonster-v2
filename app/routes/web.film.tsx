@@ -4534,7 +4534,9 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-shape.s9x16{width:25px;height:43px;}
 .mm-shape.s1x1{width:34px;height:34px;margin:4.5px 0;}
 .mm-lenopt.on .mm-shape{color:var(--green,#0C7A46);background:rgba(12,122,70,.1);}
-.mm-cappick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:4px;}
+.mm-cappick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:4px;}
+/* four styles: one row where there is room, two rows of two on a phone (three across left "Off" by itself) */
+@media(max-width:640px){.mm-cappick{grid-template-columns:repeat(2,minmax(0,1fr));}}
 .mm-cap{display:flex;flex-direction:column;align-items:center;gap:6px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;padding:10px 8px 12px;cursor:pointer;font-family:Poppins,sans-serif;transition:border-color .14s,background .14s,box-shadow .14s;}
 .mm-cap b{font-size:13.5px;font-weight:800;color:var(--ink,#14201A);}
 .mm-cap small{font-size:11px;line-height:1.35;color:var(--ink2,#4A554E);text-align:center;}

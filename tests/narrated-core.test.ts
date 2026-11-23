@@ -136,8 +136,12 @@ test("an acted shot whose voice was barely understood keeps its line up for the 
   // nothing heard at all in a shot: the line comes up just after the cut
   const none = scriptWordTimes(lines, heardW.slice(0, 13), windows, sparse).slice(n1);
   assert.ok(Math.abs(none[0].start - 6.35) < 1e-9);
-  // without the option (a narrated story) nothing changes: words follow what was heard
-  assert.ok(scriptWordTimes(lines, heardW, windows).slice(n1)[his.length - 1].end < 8);
+  // without the option (a narrated story): the three words that were heard are where they were heard, and
+  // the rest of the line runs on from them at an ordinary pace. (It used to be squeezed into the third of
+  // a second that was heard — the whole line gone by 7.7 s. caption-anchors.test.ts)
+  const plain = scriptWordTimes(lines, heardW, windows).slice(n1);
+  assert.ok(Math.abs(plain[1].start - 7.38) < 1e-9, "“here” where it was heard");
+  assert.ok(plain[his.length - 1].end > 11 && plain[his.length - 1].end <= 13.27 + 1e-9, String(plain[his.length - 1].end));
 });
 
 test("BOLD cards: a few words on one line, upper case, each up while it is said, none overlapping", () => {

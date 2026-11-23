@@ -125,24 +125,102 @@ const saidLength = (line: string): number => (WIDE.test(line) ? saidUnits(line).
 /** No picture is up for less than this, however little its scene has to say. */
 export const MIN_SCENE_S = 1.2;
 
+/* ---- the script, laid over what was heard ----
+ * The listener's words used to be matched to the script by COUNT alone: scene k started at the heard
+ * word the same fraction of the way through, and inside a scene the j-th written word took the j-th
+ * heard word's time. That holds while the listener hears every word. On 2026-11-23 a story told in a
+ * performed character voice had its whole first sentence missed — ten words of 147 — and every caption
+ * in the story came up late (1.9 s on average, 4.2 s at worst; every picture changed late too): ten
+ * missing words move every count after them.
+ *
+ * So the SAME WORDS are found first. Where a written word and a heard word are the same word, in order
+ * (the longest such chain), the written word is said exactly when that heard word is. The words in
+ * between — a number read out, a name heard wrong, a sentence the listener missed — are laid between
+ * the anchors on either side of them. Only when too few words are the same (a different text, a garbled
+ * listen) is anything counted into place as before. */
+/** How long an unheard word is given when nothing says otherwise: an ordinary speaking pace. */
+export const SAY_PACE = 0.42;
+/** A word as it is compared: its letters and digits alone, lower-case, accents folded. */
+const atomOf = (w: string): string => w.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]/gu, "");
+/** What is compared for one unit: the word itself — or, in a script without spaces, each of its glyphs
+ *  (the listener hears such a script glyph by glyph). */
+function unitAtoms(u: string): string[] {
+  if (!WIDE.test(u)) return [atomOf(u)];
+  const glyphs = u.match(WIDE_ALL);
+  return glyphs && glyphs.length ? glyphs : [atomOf(u)];
+}
+/** The longest chain of pairs (written, heard) that are the same word, both in order. */
+function sameWords(written: string[], heard: string[]): Array<[number, number]> {
+  const M = written.length, H = heard.length;
+  if (!M || !H || M * H > 4_000_000) return [];
+  const d = new Uint16Array((M + 1) * (H + 1));
+  const at = (i: number, j: number) => i * (H + 1) + j;
+  for (let i = 1; i <= M; i++) for (let j = 1; j <= H; j++) {
+    d[at(i, j)] = written[i - 1] && written[i - 1] === heard[j - 1] ? d[at(i - 1, j - 1)] + 1 : Math.max(d[at(i - 1, j)], d[at(i, j - 1)]);
+  }
+  const pairs: Array<[number, number]> = [];
+  let i = M, j = H;
+  while (i > 0 && j > 0) {
+    if (written[i - 1] && written[i - 1] === heard[j - 1] && d[at(i, j)] === d[at(i - 1, j - 1)] + 1) { pairs.unshift([i - 1, j - 1]); i--; j--; }
+    else if (d[at(i - 1, j)] >= d[at(i, j - 1)]) i--;
+    else j--;
+  }
+  return pairs;
+}
+/** Enough of the words are the same for them to be anchors: at least half of whichever is fewer — the
+ *  written words or the heard ones — and never fewer than `min`. (Half of the WRITTEN words would turn
+ *  away the very case this is for: a listener that missed most of a scene and heard the rest exactly.) */
+const anchored = (pairs: number, atoms: string[], heard: number, min: number): boolean =>
+  pairs >= Math.max(min, Math.min(atoms.filter(Boolean).length, heard) * 0.5);
+
+/** When each scene's first word is said, where the scenes' own words say so — null for a scene whose
+ *  opening (and the close of the scene before it) the listener did not hear; null altogether when the
+ *  heard words are not the script's. */
+function sceneStarts(lines: string[], words: WordT[]): Array<number | null> | null {
+  const atoms: string[] = [];
+  const first: number[] = [];
+  for (const l of lines) { first.push(atoms.length); for (const u of saidUnits(l)) atoms.push(...unitAtoms(u)); }
+  const pairs = sameWords(atoms, words.map((w) => atomOf(w.word)));
+  if (!anchored(pairs.length, atoms, words.length, 3)) return null;
+  const heardAt = new Map(pairs);
+  return lines.map((_, k) => {
+    if (!k) return 0;
+    const end = k + 1 < lines.length ? first[k + 1] : atoms.length;
+    // the close of the scene before, as it was heard (one of its last three words)
+    let closed: number | null = null;
+    for (let i = first[k] - 1; i >= Math.max(first[k - 1], first[k] - 3) && closed === null; i--) {
+      const h = heardAt.get(i);
+      if (h !== undefined) closed = words[h].end + (first[k] - 1 - i) * SAY_PACE;
+    }
+    // its own first word as it was heard — or counted back from the first of its opening words that was
+    for (let j = first[k]; j < Math.min(end, first[k] + 4); j++) {
+      const h = heardAt.get(j);
+      if (h !== undefined) return Math.max(words[h].start - (j - first[k]) * SAY_PACE, closed ?? 0);
+    }
+    return closed;
+  });
+}
+
 /** When each scene's part of the narration is spoken: one window per line, tiling [0, total] exactly
  *  (a picture stays up until the first word of the next scene).
  *
- *  The aligner's words are matched to the script by COUNT, not word for word — it hears "nineteen
- *  eighty one" where the script says "1981", drops an "a", splits a hyphen — so scene k starts at the
- *  heard word that sits the same fraction of the way through as scene k's first word does in the
- *  script. With no heard words at all, the scenes share the track by how much each has to say. */
+ *  A scene starts when its first word is heard (sceneStarts). Where that cannot be told — the heard
+ *  words are not the script's, or that stretch was not heard — it starts at the heard word that sits
+ *  the same fraction of the way through as its first word does in the script. With no heard words at
+ *  all, the scenes share the track by how much each has to say. */
 export function sceneWindows(lines: string[], words: WordT[], total: number): Window[] {
   const n = lines.length;
   if (!n) return [];
   const T = Math.max(total, n * MIN_SCENE_S);
   const counts = lines.map((l) => Math.max(1, saidLength(l)));
   const sum = counts.reduce((a, b) => a + b, 0);
+  const heardStart = words.length ? sceneStarts(lines, words) : null;
   const starts: number[] = [0];
   let said = counts[0];
   for (let k = 1; k < n; k++) {
     const frac = said / sum;
-    let at = words.length ? words[Math.min(words.length - 1, Math.round(frac * words.length))].start : frac * T;
+    const known = heardStart ? heardStart[k] : null;
+    let at = known !== null && known !== undefined ? known : words.length ? words[Math.min(words.length - 1, Math.round(frac * words.length))].start : frac * T;
     // in order, each scene given at least its minimum, and room left for the ones still to come
     at = Math.max(starts[k - 1] + MIN_SCENE_S, Math.min(at, T - (n - k) * MIN_SCENE_S));
     starts.push(at);
@@ -177,10 +255,13 @@ export function trimToSound(windows: Window[], silenceReport: string): Window[] 
  *  becomes a space, so "door—open" does not close up into one word. */
 export const drawable = (s: string): string => s.replace(/[']/g, "’").replace(/[—–]/g, " ").replace(/[^\p{L}\p{N} .,!?$%’…-]/gu, "").replace(/\s+/g, " ").trim();
 
-/** The SCRIPT's own words, each given the time of the heard word at the same place in its scene — so the
- *  captions say exactly what was written (a name spelt right, "1981" as written, nothing a transcriber
- *  misheard) and still move in step with the voice. Inside a scene's window the script's words and the
- *  heard words are matched by position; a scene in which nothing was heard spreads its words evenly.
+/** The SCRIPT's own words, each given the time it is said — so the captions say exactly what was written
+ *  (a name spelt right, "1981" as written, nothing a transcriber misheard) and still move in step with
+ *  the voice. Inside a scene's window a written word takes the time of the heard word that IS that word;
+ *  the words between two such anchors are laid between them, and words before the first or after the
+ *  last run up to it or on from it at an ordinary pace (see "the script, laid over what was heard").
+ *  When too few words are the same, the written and the heard words are matched by position instead;
+ *  a scene in which nothing was heard spreads its words evenly.
  *  The words are returned as they will be drawn (see drawable), in order, scene after scene.
  *  With `sparse`, a window in which fewer than minHeard of the line's words were heard is not timed by
  *  them: its words run from the first heard word (or `lead` after the window opens) to `tail` before
@@ -215,6 +296,40 @@ export function scriptWordTimes(lines: string[], words: WordT[], windows: Window
       return;
     }
     const Hn = heard.length;
+    // THE SAME WORDS, WHERE THEY WERE HEARD
+    const atoms: string[] = [];
+    const firstAtom: number[] = [];
+    for (const tk of toks) { firstAtom.push(atoms.length); atoms.push(...unitAtoms(tk)); }
+    firstAtom.push(atoms.length);
+    const pairs = Hn ? sameWords(atoms, heard.map((w) => atomOf(w.word))) : [];
+    if (anchored(pairs.length, atoms, Hn, 2)) {
+      const A = atoms.length;
+      const when: Array<{ s: number; e: number } | null> = atoms.map(() => null);
+      for (const [i, h] of pairs) when[i] = { s: heard[h].start, e: heard[h].end };
+      const firstHeard = pairs[0][1], lastHeard = pairs[pairs.length - 1][1];
+      for (let i = 0; i < A; ) {
+        if (when[i]) { i++; continue; }
+        let j = i;
+        while (j < A && !when[j]) j++;
+        const run = j - i;
+        const left = i > 0 ? when[i - 1]!.e : null, right = j < A ? when[j]!.s : null;
+        let a: number, b: number;
+        if (left !== null && right !== null) { a = left; b = Math.max(left, right); }
+        // before the first anchor: from where the listener started hearing something else — or, when it
+        // heard nothing before, at an ordinary pace up to the anchor (not before the scene opens)
+        else if (right !== null) { b = right; a = Math.max(win.t0, firstHeard > 0 ? Math.min(heard[0].start, b) : b - run * SAY_PACE); }
+        // after the last anchor: as far as the listener went on hearing — or at an ordinary pace
+        else { a = left!; b = Math.max(a, lastHeard < Hn - 1 ? heard[Hn - 1].end : Math.min(win.t1, a + run * SAY_PACE)); }
+        const per = (b - a) / run;
+        for (let q = i; q < j; q++) when[q] = { s: a + (q - i) * per, e: a + (q - i + 1) * per };
+        i = j;
+      }
+      toks.forEach((word, j) => {
+        const a = when[firstAtom[j]]!, b = when[firstAtom[j + 1] - 1]!;
+        out.push({ word, start: a.s, end: Math.max(b.e, a.s + 0.05), ...(j === M - 1 ? { last: true } : {}) });
+      });
+      return;
+    }
     toks.forEach((word, j) => {
       const fin = j === M - 1 ? { last: true } : {};
       if (Hn) {
