@@ -4199,6 +4199,17 @@ ${CAST_ID_CSS}
 .fs-voice-play:hover:not(:disabled){background:rgba(12,122,70,.08);border-color:var(--green,#0C7A46);}
 .fs-voice-play:disabled{opacity:.4;cursor:default;}
 .fs-actor-opts{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+/* An opened picker takes the whole row. As one more item in this row it was only as wide as its own label
+   — "Pick a presenter" opened 32 faces in a single 98px column, one and a half showing at a time. */
+.fs-actor-opts > details[open]{flex:1 1 100%;min-width:0;}
+/* On a phone that row goes UNDER the face, the full width of the card: beside the face there was room for
+   two faces across. (The face keeps its place beside the name, the description and the voice.) */
+@media(max-width:560px){
+  .fs-actor{display:grid;grid-template-columns:98px minmax(0,1fr);gap:8px 14px;align-items:start;}
+  .fs-actor-face{grid-row:1 / span 3;}
+  .fs-actor-main{display:contents;}
+  .fs-actor-opts{grid-column:1 / -1;}
+}
 .fs-actor-recast{display:inline-flex;align-items:center;gap:4px;background:none;border:0;color:var(--ink2,#4A554E);font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;padding:0;}
 .fs-actor-recast:hover:not(:disabled){color:var(--green,#0C7A46);}
 .fs-actor-recast:disabled{opacity:.5;cursor:default;}
