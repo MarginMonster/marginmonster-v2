@@ -36,10 +36,13 @@ export const MOTION_USD_PER_SECOND = 0.0216;
  *  narratedScenes.max), so a story never moves for ten scenes and stands still for its last two. */
 export const MOTION_MAX_SCENES = 12;
 /** How long a story takes to make, in seconds, by its scenes: the voice, the listening, the pictures and
- *  the cut — and, when its pictures move, a clip a scene (about a minute each, three at a time) and the
- *  time to bring each to the story's size. A first estimate; the live site is the measure. */
+ *  the cut — and, when its pictures move, a clip a scene (three at a time) and the time to bring each to
+ *  the story's size. MEASURED on the live site, 2026-11-23: a six-scene story whose pictures were kept
+ *  took 176 seconds with all six scenes moving, against about 72 over stills — the motion added about a
+ *  hundred seconds (the first guess here, 75 seconds a wave of three, made the page say "5–8 min" for a
+ *  story that landed in three). */
 export const storyTypicalSeconds = (scenes: number, moves: boolean): number =>
-  60 + Math.max(1, scenes) * 12 + (moves ? 40 + Math.ceil(Math.max(1, scenes) / 3) * 75 + Math.max(1, scenes) * 8 : 0);
+  60 + Math.max(1, scenes) * 12 + (moves ? 20 + Math.ceil(Math.max(1, scenes) / 3) * 30 + Math.max(1, scenes) * 4 : 0);
 /** A clip shorter than its scene is played this much slower at most — past that its last frame holds. */
 export const MOTION_STRETCH_MAX = 1.25;
 /** A clip made for one telling serves another (the same pictures told again in another language, or with

@@ -117,9 +117,11 @@ test("the wait is said honestly: a story whose pictures move takes minutes longe
   // over stills, as it was measured: sixty seconds and twelve a scene
   assert.equal(storyTypicalSeconds(6, false), 132);
   assert.equal(storyTypicalSeconds(4, false), 108);
-  // moving: a clip a scene, three at a time (about a minute and a quarter a wave), and each brought to size
-  assert.equal(storyTypicalSeconds(6, true), 132 + 40 + 2 * 75 + 6 * 8);
-  assert.equal(storyTypicalSeconds(3, true), 96 + 40 + 75 + 24);
+  // moving: a clip a scene, three at a time, and each brought to size — as MEASURED on the live site
+  // (six scenes, pictures kept: 176 s moving against about 72 s over stills → about a hundred seconds more)
+  assert.equal(storyTypicalSeconds(6, true), 132 + 20 + 2 * 30 + 6 * 4);
+  assert.equal(storyTypicalSeconds(6, true) - storyTypicalSeconds(6, false), 104);
+  assert.equal(storyTypicalSeconds(3, true), 96 + 20 + 30 + 12);
   assert.ok(storyTypicalSeconds(12, true) < 12 * 60, "the longest story is still under twelve minutes");
   assert.equal(storyTypicalSeconds(0, false), storyTypicalSeconds(1, false));
   // the Archive's card counts down from it, and the builder says it beside Generate
