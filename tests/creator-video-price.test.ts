@@ -76,5 +76,5 @@ test("the length reaches the engine", () => {
   const jq = read("app", "lib", "job-queue.server.ts");
   assert.ok(jq.includes("durationSec: typeof payload.videoDurationSec === \"number\" ? payload.videoDurationSec : (payload.videoDurationSec ? Number(payload.videoDurationSec) : undefined),"));
   const vid = read("app", "lib", "video-generation.server.ts");
-  assert.ok(vid.includes("const created = await animateCreate(engineKey, { startImage: seedImage, prompt, durationSec: params.durationSec, generateAudio: true });"));
+  assert.ok(vid.includes("const created = await animateCreate(engineKey, { startImage: seedImage, prompt, durationSec: params.durationSec, generateAudio: true, aspect });"));
 });

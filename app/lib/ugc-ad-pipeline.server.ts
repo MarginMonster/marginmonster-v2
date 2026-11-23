@@ -212,7 +212,7 @@ function animateModelFor(engineKey: string | undefined): string {
   }
 }
 
-function animateInputFor(model: string, opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number }): Record<string, unknown> {
+function animateInputFor(model: string, opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; aspect?: string }): Record<string, unknown> {
   const neg = opts.negativePrompt || "object disappearing, product vanishing, flickering, fading in and out, morphing, distortion, extra objects, text, watermark, blur";
   // 9:16 explicitly: Veo defaults to 16:9 landscape, and a landscape clip
   // cover-cropped into our vertical assembler loses two-thirds of the frame.
@@ -222,7 +222,7 @@ function animateInputFor(model: string, opts: { startImage: string; prompt: stri
   // param + negative_prompt are confirmed in google/veo-3-fast's live Replicate
   // input schema (verified 2026-10-10). Seedance/Hailuo below take NEITHER a
   // negative_prompt NOR an audio flag (not in their schemas) — do not add them.
-  if (model === "google/veo-3-fast") return { prompt: opts.prompt, image: opts.startImage, aspect_ratio: "9:16", generate_audio: false, negative_prompt: neg };
+  if (model === "google/veo-3-fast") return { prompt: opts.prompt, image: opts.startImage, aspect_ratio: opts.aspect === "16:9" ? "16:9" : "9:16", generate_audio: false, negative_prompt: neg };
   if (model === "bytedance/seedance-1-pro") return { prompt: opts.prompt, image: opts.startImage, duration: 10, resolution: "720p" };
   if (model === "minimax/hailuo-02") return { prompt: opts.prompt, first_frame_image: opts.startImage, duration: 10 };
   // kling 2.x dropped cfg_scale and caps at 5s/10s per tier; 1.6 still takes it. A length only Kling 3
@@ -239,7 +239,7 @@ export async function animateCreate(
   /** `generateAudio: true` = this pipeline SHIPS the clip's own sound, so the engine is asked to make it.
    *  Left out, the clip is silent and costs a third less — every pipeline that lays its own voice or
    *  music over the motion leaves it out (see fal-video-body.ts). */
-  opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; generateAudio?: boolean }
+  opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; generateAudio?: boolean; aspect?: string }
 ): Promise<{ id: string; model: string }> {
   // fal first when the engine lives there (kling 2.6 pro is fal-only).
   const falModel = falAnimateModelFor(engineKey);

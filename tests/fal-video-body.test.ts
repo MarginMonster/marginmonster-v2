@@ -42,8 +42,9 @@ test("sound is asked for, never assumed", () => {
     assert.equal(falVideoBody(m, { ...seed, generateAudio: false }).generate_audio, false);
     assert.equal(falVideoBody(m, { ...seed, generateAudio: true }).generate_audio, true);
   }
-  // Veo's flag is only present when asked, so a silent Veo caller's request is what it always was
-  assert.ok(!("generate_audio" in falVideoBody(VEO, seed)));
+  // Veo makes sound unless told not to (its default is true, at half again the price) — so the flag is
+  // always sent, and it is true only when asked
+  assert.equal(falVideoBody(VEO, seed).generate_audio, false);
   assert.equal(falVideoBody(VEO, { ...seed, generateAudio: true }).generate_audio, true);
   // engines with no sound of their own are never sent the flag
   for (const m of [K25, K26, SEEDANCE]) assert.ok(!("generate_audio" in falVideoBody(m, { ...seed, generateAudio: true })), m);
@@ -72,8 +73,13 @@ test("each engine gets its own field names and nothing its schema lacks", () => 
   assert.deepEqual(falVideoBody(K26, { ...seed, durationSec: 10, negativePrompt: "blur" }), { prompt: "a hero shot", image_url: "https://x.test/renders/seed.jpg", duration: "10", negative_prompt: "blur" });
   // Seedance: prompt + image_url + resolution + duration, nothing else (anything else is a 422)
   assert.deepEqual(falVideoBody(SEEDANCE, { ...seed, negativePrompt: "x", generateAudio: true }), { prompt: "a hero shot", image_url: "https://x.test/renders/seed.jpg", resolution: "720p", duration: "5" });
-  // Veo: vertical, by flag
-  assert.deepEqual(falVideoBody(VEO, seed), { prompt: "a hero shot", image_url: "https://x.test/renders/seed.jpg", aspect_ratio: "9:16" });
+  // Veo: its frame is a flag — vertical unless the caller wants wide (it was always 9:16, so a wide
+  // Creator video picked on Ultra came back vertical and was refunded after we had paid for it)
+  assert.deepEqual(falVideoBody(VEO, seed), { prompt: "a hero shot", image_url: "https://x.test/renders/seed.jpg", aspect_ratio: "9:16", generate_audio: false });
+  assert.equal(falVideoBody(VEO, { ...seed, aspect: "16:9" }).aspect_ratio, "16:9");
+  assert.equal(falVideoBody(VEO, { ...seed, aspect: "1:1" }).aspect_ratio, "9:16", "Veo has no square");
+  // the engines that follow the seed's own shape are never sent one
+  for (const m of [V3_PRO, O3_STD, K25, SEEDANCE]) assert.ok(!("aspect_ratio" in falVideoBody(m, { ...seed, aspect: "16:9" })), m);
 });
 
 test("the submit sends that body and nothing built beside it", () => {
@@ -87,7 +93,7 @@ test("the submit sends that body and nothing built beside it", () => {
 test("a pipeline asks for sound exactly when it ships the clip's own sound", () => {
   // ships it: a Creator / product video (the file keeps the clip's audio) — all three of its renders ask
   const vid = read("app", "lib", "video-generation.server.ts");
-  assert.equal(count(vid, "generateAudio: true }"), 3, "the first render, the inference retry and the fidelity re-roll");
+  assert.equal(count(vid, "generateAudio: true, aspect }"), 3, "the first render, the inference retry and the fidelity re-roll — each with the frame the member picked");
   assert.ok(vid.includes("\"-map\", \"[v]\", \"-map\", \"0:a?\","), "…because this is the pipeline whose frame step carries the audio through");
   // ships it: a film's dialogue shot
   const dia = read("app", "lib", "film-dialogue.server.ts");
@@ -99,7 +105,7 @@ test("a pipeline asks for sound exactly when it ships the clip's own sound", () 
   assert.ok(read("app", "lib", "music-video-pipeline.server.ts").includes("generateAudio: false"));
   // and the adapter hands the wish straight through
   const ugc = read("app", "lib", "ugc-ad-pipeline.server.ts");
-  assert.ok(ugc.includes("opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; generateAudio?: boolean }"));
+  assert.ok(ugc.includes("opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; generateAudio?: boolean; aspect?: string }"));
   assert.ok(ugc.includes("const rid = await falVideoSubmit(m, opts);"));
 });
 

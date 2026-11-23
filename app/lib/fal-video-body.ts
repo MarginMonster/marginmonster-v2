@@ -24,7 +24,12 @@
  *     Omni "O3" models, not Seedance, not Veo).
  */
 
-export type FalVideoOpts = { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; generateAudio?: boolean };
+export type FalVideoOpts = {
+  startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; generateAudio?: boolean;
+  /** The frame the caller wants — "16:9" for a wide clip, anything else is vertical. Only Veo reads it:
+   *  the Kling and Seedance engines take no shape of their own and follow the seed image. */
+  aspect?: string;
+};
 
 /** What every motion clip is told NOT to do when its caller names nothing more specific. */
 export const DEFAULT_NEGATIVE_PROMPT =
@@ -43,8 +48,12 @@ export function modelMakesSound(model: string): boolean {
 
 export function falVideoBody(model: string, opts: FalVideoOpts): Record<string, unknown> {
   if (/veo/.test(model)) {
-    // generate_audio is added ONLY when asked — omitting it keeps every silent veo caller as it was.
-    return { prompt: opts.prompt, image_url: opts.startImage, aspect_ratio: "9:16", ...(opts.generateAudio === true ? { generate_audio: true } : {}) };
+    // Veo makes sound UNLESS TOLD NOT TO (fal's page, 2026-11-23: generate_audio defaults to true, $0.15 a
+    // second against $0.10 silent). The flag used to be left out for callers that did not ask — which is
+    // asking for sound and paying for it. It is always sent now, true only when asked.
+    // The frame: Veo takes "16:9" or "9:16" (and crops any other seed to fit). It was always told 9:16, so a
+    // WIDE Creator video picked on Ultra came back vertical, failed the shape check and was refunded in full.
+    return { prompt: opts.prompt, image_url: opts.startImage, aspect_ratio: opts.aspect === "16:9" ? "16:9" : "9:16", generate_audio: opts.generateAudio === true };
   }
   if (/kling-video\/(?:v3|o3)/.test(model)) {
     // Kling 3.0 / O3. V3's seed frame is `start_image_url`; O3 uses `image_url`. Both take a string

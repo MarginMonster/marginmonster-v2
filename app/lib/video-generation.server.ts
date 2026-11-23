@@ -586,7 +586,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     // animateCreate already treats undefined as "the default engine", so
     // passing it through is all this needs.
     if (seedImage) {
-      const created = await animateCreate(engineKey, { startImage: seedImage, prompt, durationSec: params.durationSec, generateAudio: true });
+      const created = await animateCreate(engineKey, { startImage: seedImage, prompt, durationSec: params.durationSec, generateAudio: true, aspect });
       predictionId = created.id;
       ranModel = created.model;
     } else {
@@ -615,7 +615,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       // engine that can make it has not been tried.
       const retryKey = engineKey === SOUND_ENGINE_KEY && ranModel !== DEFAULT_FAL_ANIMATE_MODEL ? "kling" : "kling25";
       console.error(`[video] ${ranModel} failed at inference — retrying on ${retryKey === "kling" ? DEFAULT_FAL_ANIMATE_MODEL : DEFAULT_ANIMATE_MODEL}:`, e instanceof Error ? e.message.slice(0, 200) : e);
-      const retry = await animateCreate(retryKey, { startImage: seedImage, prompt, durationSec: params.durationSec, generateAudio: true });
+      const retry = await animateCreate(retryKey, { startImage: seedImage, prompt, durationSec: params.durationSec, generateAudio: true, aspect });
       // The default engine is what actually renders from here. Leaving
       // ranModel on the premium engine made the asset metadata claim a
       // model that never ran, and hid the downgrade from the refund below.
@@ -645,7 +645,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       if (!fid.ok && !fid.degraded) {
         console.log(`[video] product-fidelity gate failed (${fid.why}) — re-rolling once on ${ranModel || "the engine"}`);
         try {
-          const rr = await animateCreate(engineKey, { startImage: seedImage, prompt, durationSec: params.durationSec, generateAudio: true });
+          const rr = await animateCreate(engineKey, { startImage: seedImage, prompt, durationSec: params.durationSec, generateAudio: true, aspect });
           await ckpt({ ckVideoPredId: rr.id });
           ranModel = rr.model;
           videoUrl = await animatePoll(rr.id, VIDEO_POLL_MS, "video(fidelity-reroll)");
