@@ -121,7 +121,8 @@ test("the looped ads ask for ten seconds by name, on Kling only; a commercial be
   // one of the clips the Kling 3 default over-rendered — and it must not drift onto that default unpriced
   assert.ok(com.includes("const motionEngine: string | undefined = \"kling26\";"));
   assert.deepEqual(falVideoBody(K26, seed), { prompt: "a hero shot", image_url: "https://x.test/renders/seed.jpg", duration: "5", negative_prompt: DEFAULT_NEGATIVE_PROMPT });
-  assert.ok(com.includes("const clipSecs = opts.clipPaths.map((_, i) => opts.clipSecs?.[i] ?? opts.clipSec ?? 5);"), "which is what its assembler cuts to");
+  assert.ok(com.includes("const clipSecs = opts.clipPaths.map((_, i) => opts.clipSecs?.[i] ?? opts.clipSec ?? COMMERCIAL_BEAT_SEC);"), "which is what its assembler cuts to");
+  assert.ok(read("app", "lib", "commercial-captions.ts").includes("export const COMMERCIAL_BEAT_SEC = 5;"));
   // the Replicate fallback only knows 5 and 10
   assert.ok(read("app", "lib", "ugc-ad-pipeline.server.ts").includes("duration: (opts.durationSec ?? 5) > 7 ? 10 : 5 };"));
 });
