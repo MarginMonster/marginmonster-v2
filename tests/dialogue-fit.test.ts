@@ -119,7 +119,7 @@ test("the writer's lines go through it for an acted film — not a narrated stor
   assert.ok(src.includes("const next = takeRewrites(written, long, (JSON.parse(raw) as { lines?: unknown }).lines);"));
   assert.ok(src.includes("list = list.map((s, i) => (next[i] && next[i] !== written[i] ? { ...s, caption: next[i] } : s));"));
   assert.ok(src.includes("lineNote = { was: long.map((i) => saidWords(written[i])), now: long.map((i) => saidWords(next[i])),"));
-  assert.ok(src.includes("...(lineNote ? { lineFit: lineNote } : {}) };"), "what happened rides back on the treatment");
+  assert.ok(src.includes("cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };"), "what happened rides back on the treatment");
   assert.ok(src.includes("console.error(`[film] the long lines could not be rewritten, kept as written: ${why}`);"), "any trouble: the lines stay as written");
   // the instruction it backs up is still given
   assert.ok(src.includes("NEVER more than 18 words"));

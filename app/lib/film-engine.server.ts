@@ -778,7 +778,7 @@ export async function previewFilmTreatment(opts: {
   }
   // an episode is called "<Series> — Episode <N>" (the writer's short episode name may follow a colon)
   if (series) outTitle = episodeTitle(series.title, series.episode, outTitle);
-  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast, ...(fitNote ? { lyricFit: fitNote } : {}), ...(lineNote ? { lineFit: lineNote } : {}) };
+  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 
 // ---- Assembly ---------------------------------------------------------------
