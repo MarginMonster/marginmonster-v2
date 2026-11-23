@@ -64,6 +64,7 @@ import { externalOrigin } from "../lib/origin.server";
 // (2026-11-22) the "Today" of the When filter starts at midnight where the shop is
 import { isValidTimeZone, zonedDateString, zonedInstant } from "../lib/timezone";
 import { storyHeroOf } from "../lib/film-series";
+import { adWordsOf } from "../lib/ad-words";
 // (2026-11-22) Collections — named shelves a piece can sit on; every query is in collections.server.ts
 import { addToCollection, collectionIdsByAsset, createCollection, deleteCollection, listCollections, removeFromCollection, renameCollection, type ColProblem } from "../lib/collections.server";
 
@@ -201,6 +202,12 @@ function buildDetails(type: string, metaJson: string | null, bodyJson: string | 
   // body.prompt is OUR brief to the engine (camera, no-text rules, the sound line) — not theirs to read.
   const creative = type === "VIDEO_AD" && creativeVideo(meta, body);
   if (creative) script = null;
+  // AN IMAGE AD SHOWS ITS OWN WORDS (ad-words.ts). Its body.prompt is our brief to the image model, or the
+  // internal tag "deterministic-callout" — the viewer printed both under "Prompt". Only a picture the
+  // member DESCRIBED (Creator → make an image, or a photo edit) has a prompt that is theirs to read.
+  const ownPicture = meta.kind === "create" || meta.kind === "edit";
+  const adWords = type === "IMAGE_AD" && !ownPicture ? adWordsOf(body.formatCopy) : null;
+  if (type === "IMAGE_AD" && !ownPicture) script = adWords;
   return {
     kind,
     product: creative ? null : str(meta.productTitle),
@@ -211,7 +218,7 @@ function buildDetails(type: string, metaJson: string | null, bodyJson: string | 
     tagline: str(body.tagline),
     direction: str(meta.direction) || (creative ? str(meta.productTitle) : null),
     script,
-    scriptLabel: script ? (isFaceless ? "Narration" : hasPresenter ? "What they say" : "Prompt") : null,
+    scriptLabel: script ? (adWords ? "Words on the ad" : isFaceless ? "Narration" : hasPresenter ? "What they say" : "Prompt") : null,
   };
 }
 
