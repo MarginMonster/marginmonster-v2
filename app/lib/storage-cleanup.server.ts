@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseSchedule } from "./questlines";
 import { deleteObject, renderKey } from "./object-storage.server";
+import { MOTION_KEEP_DAYS, isMotionClip } from "./story-motion";
 
 /* 30-day storage cache clear.
  *
@@ -73,6 +74,26 @@ async function purgeOverlaySources(rendersDir: string, now: number): Promise<voi
   if (freed) console.log(`[storage-cleanup] removed ${freed} orphaned pre-overlay still(s)`);
 }
 
+/** A story's moving pictures (story-motion.ts) are kept beside the pictures for one reason: the same
+ *  pictures told again soon — another language, a changed line — move without being paid for twice.
+ *  They are a cache and nothing names them; a week after one was made it is cleared. Only files with
+ *  the clips' own ending (".mv.mp4") in the renders folder itself are ever looked at. */
+function purgeMotionClips(rendersDir: string, now: number): void {
+  let names: string[];
+  try { names = fs.readdirSync(rendersDir); } catch { return; }
+  const cutoff = now - MOTION_KEEP_DAYS * 86_400_000;
+  let freed = 0;
+  for (const n of names) {
+    if (!isMotionClip(n)) continue;
+    try {
+      const fp = path.join(rendersDir, n);
+      const st = fs.statSync(fp);
+      if (st.isFile() && st.mtimeMs < cutoff) { fs.rmSync(fp, { force: true }); freed++; }
+    } catch { /* vanished mid-sweep */ }
+  }
+  if (freed) console.log(`[storage-cleanup] cleared ${freed} story clip(s) older than ${MOTION_KEEP_DAYS}d`);
+}
+
 export async function purgeStaleUnkept(): Promise<void> {
   const now = Date.now();
   if (now - lastRun < EVERY_MS) return;
@@ -95,6 +116,7 @@ export async function purgeStaleUnkept(): Promise<void> {
   // Runs before the early returns below — orphans exist whether or not there
   // is any stale asset to clear this round.
   await purgeOverlaySources(rendersDir, now);
+  purgeMotionClips(rendersDir, now);
 
   try {
     const cutoff = new Date(now - CACHE_DAYS * 86_400_000);

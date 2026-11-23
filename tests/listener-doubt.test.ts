@@ -253,7 +253,7 @@ test("both narrated pipelines do it, the record stays with the piece, and only t
   const nar = read("app", "lib", "narrated-story.server.ts");
   assert.ok(nar.includes("const listened = words;\n  const doubt = sureWords(listened);\n  words = doubt.sure;\n  const windows = sceneWindows(lines, words, voDur);"), "the pictures are timed by the sure words too");
   assert.ok(nar.includes("const timing = timingRecord({ lines, listened, speech, seconds: voDur, timed, plain: scriptWordTimes(lines, words, windows), first: firstShare, soft: keptSoft, unread: sound.unread });"));
-  assert.ok(nar.includes("        timing,\n      }),"), "in the piece's own meta");
+  assert.ok(nar.includes("        // what its timing was made from — for the operator alone (web.archive's loader)\n        timing,\n"), "in the piece's own meta");
   // (what is checkpointed is what was LISTENED — a job that starts again takes the same words out again)
   assert.ok(nar.includes("await ckpt({ ckWords: JSON.stringify(words) });\n  }"));
   assert.ok(nar.indexOf("await ckpt({ ckWords: JSON.stringify(words) });") < nar.indexOf("const doubt = sureWords(listened);"));

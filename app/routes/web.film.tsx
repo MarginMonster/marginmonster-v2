@@ -42,6 +42,9 @@ import { nameTok } from "../lib/character-prompts";
 import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 import type { StoryToEdit } from "../lib/story-edit";
 import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
+// (2026-11-23) a story's pictures move — what that takes is said beside Generate
+import { storyTypicalSeconds } from "../lib/story-motion";
+import { storyMotionOn } from "../lib/story-motion.server";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
 
@@ -207,6 +210,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // NARRATED stories: which formats can be told by a narrator, and how long one may be
     narratable: (await import("../lib/film-engine.server")).NARRATABLE_KEYS,
     narratedScenes: { min: 3, max: 12, def: 6 },
+    // a story's pictures move (story-motion.ts) — the estimate beside Generate says what that takes
+    storyMotion: storyMotionOn(),
     defaultNarrator: (await import("../lib/narrated-story.server")).DEFAULT_NARRATOR,
   });
 };
@@ -2455,7 +2460,7 @@ export default function FilmStudio() {
             ? t("Here's your video, shot by shot. Tap any line to change it. A green Performance is sung to camera; a purple Cut scene breaks to props or scenery with no singing (tap the pill to switch).")
             : (hasStills
               ? t("Swipe through your story — this is exactly what renders. Re-roll any scene that's off, then Generate.")
-              : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life."))}{narrated && seeds ? <> {t("The narrator reads each scene's words over its picture.")}</> : null}</div>
+              : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life."))}{narrated && seeds ? <> {t("The narrator reads each scene's words over its picture.")}{d.storyMotion ? <> {t("In the finished story every picture moves.")}</> : null}</> : null}</div>
           {/* Pre-editor: a vertical list of scene cards (not a cramped strip) — each with its still, an
               editable "what we see" + "words", and a Performance/Cut-scene type you can flip. */}
           <div className={`mm-sb-list${isMv ? " is-mv" : ""}${narrated ? " is-told" : ""}`}>
@@ -3958,7 +3963,7 @@ export default function FilmStudio() {
             {generating ? <>… {t("Starting your film")}</> : storySent ? <><Ico n="check" size={16} /> {t("Rendering — it lands in your Archive")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(heroTitle), cost }) : t("Generate {name} · Free", { name: t(heroTitle) })}</>}
           </button>
           <div className="fs-eta" aria-live="polite" title={t("A rough estimate — longer films and lip-sync take more time.")}>
-            <span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, narrated, scenes, engine: dialogueEngine })}</b>
+            <span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, narrated, moves: d.storyMotion, scenes, engine: dialogueEngine })}</b>
           </div>
         </Form>
         <p className="fs-cost">
@@ -3988,11 +3993,13 @@ export default function FilmStudio() {
  *  by engine: lip-sync Music Video (OmniHuman, ~2 clips at a time — the slow lane),
  *  dialogue films (per-beat Kling/Veo clips), and sung/other (parallel i2v). Returns a
  *  friendly range string; recomputed live from scene count + template + engine. */
-function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; narrated?: boolean; scenes: number; sceneSec?: number; engine: "veo" | "kling3" }): string {
+function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; narrated?: boolean; moves?: boolean; scenes: number; sceneSec?: number; engine: "veo" | "kling3" }): string {
   const n = Math.max(1, opts.scenes || 1);
   let lo: number, hi: number;
   if (opts.narrated) {
     lo = 2; hi = n > 8 ? 5 : 4; // a narration, an alignment pass, a picture a scene, one cut
+    // …and, when its pictures move, a clip a scene — the same sum the Archive's card counts down from
+    if (opts.moves) { const s = storyTypicalSeconds(n, true); lo = Math.max(3, Math.round((s * 0.8) / 60)); hi = Math.round((s * 1.35) / 60); }
   } else if (opts.lipSyncSinger) {
     // The scenes are filmed three at a time. MEASURED 2026-11-21: a 30-second video of six five-second
     // scenes took 11 min 46 s start to finish (about four minutes a wave of three, plus the song, the

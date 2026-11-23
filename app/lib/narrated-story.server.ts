@@ -34,6 +34,8 @@ import { characterVoice, isCharacterVoice } from "./character-voices";
 import { heroName } from "./film-heroes";
 import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
+import { STORY_MOTION_ENGINE, fitMotion, motionChain } from "./story-motion";
+import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { NOTHING_WRITTEN, ONE_PICTURE, noLettering, oneMoment, parseStoryCast, parseStoryPanels, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCheck } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
@@ -209,9 +211,22 @@ export async function narrate(text: string, voice: string, lang: string | null |
 /** Put it together: each still for its window with a slow move, captions, the voice over a ducked
  *  music bed. Degrades rather than fails — drop the captions, then the moves and the music — so a
  *  drawing hiccup never costs a finished story. */
+/** A picture as it goes into the cut: one that was kept with black bars baked in has them cropped off
+ *  (to a file beside it), anything else is the picture itself. */
+export async function withoutBars(s: string): Promise<string> {
+  const n = `${s}.n.jpg`;
+  let crop: string[] = [];
+  try { const box = barBox((await runFfmpeg(["-loop", "1", "-i", s, "-vf", "cropdetect=limit=10:round=2:reset=0", "-frames:v", "5", "-f", "null", "-"])).stderr); if (box) crop = ["-vf", `crop=${box.w}:${box.h}:${box.x}:${box.y}`]; } catch { /* as it is */ }
+  const c = await runFfmpeg(["-y", "-i", s, ...crop, "-frames:v", "1", n]);
+  return c.status === 0 && fs.existsSync(n) ? n : s;
+}
+
 export async function assembleNarrated(o: {
   stills: string[]; windows: Window[]; voPath: string; musicPath: string | null; cards: Card[]; style: CaptionStyle;
   fontFile: string; W: number; H: number; outPath: string; jobId?: string;
+  /** THE PICTURES MOVE (story-motion.ts): a scene's clip, where it has one — it plays in place of the
+   *  still. Index-aligned with `stills`; a scene without one keeps its still and its slow push-in. */
+  clips?: (string | null)[];
 }): Promise<void> {
   const beat = async () => { if (o.jobId) await checkpointJob(o.jobId, { ckBeat: Date.now() }); };
   const N = o.stills.length;
@@ -220,32 +235,44 @@ export async function assembleNarrated(o: {
   // every picture for its window (the last holds through the tail), in whole frames that add up exactly
   const frames = o.windows.map((w, i) => Math.round((i === N - 1 ? total : w.t1) * FPS) - Math.round(w.t0 * FPS));
   const norm: string[] = [];
-  for (const s of o.stills) {
-    const n = `${s}.n.jpg`;
-    // a picture that was kept with black bars baked in has them cropped off here, not shown
-    let crop: string[] = [];
-    try { const box = barBox((await runFfmpeg(["-loop", "1", "-i", s, "-vf", "cropdetect=limit=10:round=2:reset=0", "-frames:v", "5", "-f", "null", "-"])).stderr); if (box) crop = ["-vf", `crop=${box.w}:${box.h}:${box.x}:${box.y}`]; } catch { /* as it is */ }
-    const c = await runFfmpeg(["-y", "-i", s, ...crop, "-frames:v", "1", n]);
-    norm.push(c.status === 0 && fs.existsSync(n) ? n : s);
-  }
+  // a picture that was kept with black bars baked in has them cropped off here, not shown
+  for (const s of o.stills) norm.push(await withoutBars(s));
   await beat();
+  // the scenes that MOVE: a clip that is there and plays, and how it fills its window (story-motion.ts)
+  const moves = norm.map((_, i) => {
+    const c = o.clips?.[i];
+    if (!c || !fs.existsSync(c)) return null;
+    let have = 0;
+    try { have = ffprobeDuration(c); } catch { have = 0; }
+    return have > 1 ? { file: c, fit: fitMotion(have, frames[i] / FPS) } : null;
+  });
+  const anyMoves = moves.some(Boolean);
   const hasMusic = !!o.musicPath && fs.existsSync(o.musicPath);
   // the look that was asked for (Highlight is a file for the subtitle renderer), and the same cards as
   // plain drawn text behind it: a renderer that fails must not cost the story its words (caption-burn)
   const cap = captionGraph(o.cards, o.style, o.fontFile, o.W, o.H);
   const captions = cap.plain;
 
-  const build = (useCaptions: boolean, moving: boolean, useMusic: boolean, styled = false): string[] => {
+  const build = (useCaptions: boolean, moving: boolean, useMusic: boolean, styled = false, useClips = true): string[] => {
     const a: string[] = ["-y"];
-    norm.forEach((s, i) => { if (moving) a.push("-i", s); else a.push("-loop", "1", "-t", (frames[i] / FPS).toFixed(3), "-i", s); });
+    const clipOf = (i: number) => (useClips && moving ? moves[i] : null);
+    norm.forEach((s, i) => {
+      const m = clipOf(i);
+      if (m) a.push("-i", m.file);
+      else if (moving) a.push("-i", s);
+      else a.push("-loop", "1", "-t", (frames[i] / FPS).toFixed(3), "-i", s);
+    });
     a.push("-i", o.voPath);
     const musicOn = useMusic && hasMusic;
     if (musicOn) a.push("-stream_loop", "-1", "-i", o.musicPath!);
     const f: string[] = [];
     norm.forEach((_, i) => {
-      f.push(moving
-        ? `[${i}:v]${kenBurns(i, frames[i], o.W, o.H)}[c${i}]`
-        : `[${i}:v]scale=${o.W}:${o.H}:force_original_aspect_ratio=increase,crop=${o.W}:${o.H},setsar=1,fps=${FPS}[c${i}]`);
+      const m = clipOf(i);
+      f.push(m
+        ? `[${i}:v]${motionChain(m.fit, frames[i], o.W, o.H)}[c${i}]`
+        : moving
+        ? `[${i}:v]${kenBurns(i, frames[i], o.W, o.H)},format=yuv420p[c${i}]`
+        : `[${i}:v]scale=${o.W}:${o.H}:force_original_aspect_ratio=increase,crop=${o.W}:${o.H},setsar=1,fps=${FPS},format=yuv420p[c${i}]`);
     });
     f.push(`${norm.map((_, i) => `[c${i}]`).join("")}concat=n=${N}:v=1:a=0[vcat]`);
     let v = "[vcat]";
@@ -276,8 +303,16 @@ export async function assembleNarrated(o: {
       console.error(`[narrated] the highlight captions could not be drawn — drawn as Bold instead: ${(run.stderr || "").slice(-200)}`);
       await beat();
     }
+    // A CLIP MUST NEVER COST THE STORY: with the moving scenes first, and — should that cut fail — the
+    // same story from its still pictures, exactly as it was made before the pictures moved.
+    if (anyMoves) {
+      const run = await runFfmpeg(build(true, true, true));
+      if (run.status === 0 && produced()) return;
+      console.error(`[narrated] the cut with moving scenes failed — cut from the still pictures instead: ${(run.stderr || "").slice(-240)}`);
+      await beat();
+    }
     for (const [withCaps, kb, mus] of rungs) {
-      const run = await runFfmpeg(build(withCaps, kb, mus));
+      const run = await runFfmpeg(build(withCaps, kb, mus, false, false));
       if (run.status === 0 && produced()) {
         if (!withCaps && captions.length) console.error("[narrated] the captions could not be drawn — the story shipped without them");
         return;
@@ -313,7 +348,7 @@ export async function generateNarratedStory(opts: {
   lang?: string | null;
   /** …and the story it is a re-telling of (its asset id), recorded on the new one. */
   translatedFrom?: string | null;
-  resume?: { ckTreatment?: string; ckApproved?: string; ckVoPath?: string; ckVoUrl?: string; ckWords?: string; ckImages?: string; ckMusic?: string };
+  resume?: { ckTreatment?: string; ckApproved?: string; ckVoPath?: string; ckVoUrl?: string; ckWords?: string; ckImages?: string; ckMusic?: string; ckMotion?: string };
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template);
   const { aspect, W, H } = storyFrame(opts.aspect);
@@ -455,6 +490,23 @@ export async function generateNarratedStory(opts: {
   for (let i = 0; i < stills.length; i++) if (!stills[i]) stills[i] = stills.slice(0, i).reverse().find(Boolean) || stills.slice(i + 1).find(Boolean) || "";
   if (stills.some((s) => !s)) throw new Error("[narrated] no pictures could be made for the story");
 
+  // 4b) THE PICTURES MOVE (story-motion.ts) — each scene's own picture, played as one continuous shot for
+  //     as long as the scene is told. A scene whose clip cannot be made keeps its still; the story is
+  //     never held up or failed by it.
+  let motion: MotionResult | null = null;
+  if (storyMotionOn()) {
+    try {
+      const seeds: string[] = [];
+      for (const s of stills) seeds.push(await withoutBars(s));
+      const end = windows[windows.length - 1].t1 + TAIL_S;
+      motion = await animateScenes({
+        seeds, visuals: treatment.scenes.map((s) => s.visual || s.caption || ""),
+        told: windows.map((w, i) => (i === windows.length - 1 ? end : w.t1) - w.t0),
+        base, W, H, jobId, ckMotion: resume.ckMotion,
+      });
+    } catch (e) { console.error(`[narrated] the pictures could not be brought to life — told over the still pictures: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
+  }
+
   // 5) MUSIC (the story ships without it rather than fail) and THE CUT
   let musicPath: string | null = resume.ckMusic && fs.existsSync(resume.ckMusic) ? resume.ckMusic : null;
   if (!musicPath) {
@@ -469,7 +521,7 @@ export async function generateNarratedStory(opts: {
   catch (e) { wordsDrawable = false; console.error(`[narrated] no font for these words — told without captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   const outName = `nar-${Date.now()}-${rid()}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleNarrated({ stills, windows, voPath, musicPath, cards: wordsDrawable ? cards : [], style, fontFile, W, H, outPath, jobId });
+  await assembleNarrated({ stills, clips: motion?.clips, windows, voPath, musicPath, cards: wordsDrawable ? cards : [], style, fontFile, W, H, outPath, jobId });
   try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
 
   const voiceName = characterVoice(narrator)?.label || narrator;
@@ -501,6 +553,9 @@ export async function generateNarratedStory(opts: {
         ...(opts.translatedFrom ? { translatedFrom: String(opts.translatedFrom).slice(0, 64) } : {}),
         // what its timing was made from — for the operator alone (web.archive's loader)
         timing,
+        // THE PICTURES MOVE: how many scenes do, what was asked for now (seconds = what was paid for), and
+        // why any scene kept its still
+        ...(motion ? { motion: { engine: STORY_MOTION_ENGINE, scenes: motion.clips.filter(Boolean).length, of: stills.length, made: motion.made, reused: motion.reused, seconds: motion.seconds, ...(motion.faults.length ? { faults: motion.faults.slice(0, 8) } : {}) } } : {}),
       }),
     },
   });

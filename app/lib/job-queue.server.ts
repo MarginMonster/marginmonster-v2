@@ -1032,6 +1032,8 @@ async function runJob(
               ckWords: payload.ckWords as string | undefined,
               ckImages: payload.ckImages as string | undefined,
               ckMusic: payload.ckMusic as string | undefined,
+              // (story-motion: the clips a stopped job was still waiting for)
+              ckMotion: payload.ckMotion as string | undefined,
             },
           });
         } else if (isLipSyncMusicVideo) {

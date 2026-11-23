@@ -22,6 +22,8 @@ import { Ico } from "../lib/icons";
 import { editNote } from "../lib/edit-check";
 // (2026-11-23) what a narrated piece's timing was made from — shown to the operator alone
 import { timingLine } from "../lib/narrated-core";
+import { storyTypicalSeconds } from "../lib/story-motion";
+import { storyMotionOn } from "../lib/story-motion.server";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { requireWebIdentity } from "../lib/web-auth.server";
@@ -394,7 +396,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // (2026-11-23): 72 s for four scenes whose pictures were kept, about two minutes for six drawn new.
     // Under the film's estimate its card read "~10 min" for a piece that landed in one.
     const typical = (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film" && p.filmMode === "narrated")
-      ? 60 + (typeof p.filmScenes === "number" ? p.filmScenes : 6) * 12
+      // (…and since its pictures MOVE — story-motion.ts — a clip a scene on top of that)
+      ? storyTypicalSeconds(typeof p.filmScenes === "number" ? p.filmScenes : 6, storyMotionOn())
       : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film")
       ? Math.max(600, (typeof p.filmScenes === "number" ? p.filmScenes : 8) * 60)
       : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "commercial") ? COMMERCIAL_TYPICAL_SEC
@@ -487,6 +490,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // …and, in one line, what a narrated piece's timing was made from (narrated-core → timingLine; the
         // whole record is ?timing=<its id>, above)
         opsTiming: operator ? (() => { try { return timingLine(JSON.parse(a.metaJson || "{}").timing) || undefined; } catch { return undefined; } })() : undefined,
+        // …and how many of a story's pictures move, what was paid for, why any did not (story-motion.ts)
+        opsMotion: operator ? (() => { try { const m = JSON.parse(a.metaJson || "{}").motion; return m && typeof m === "object" ? m : undefined; } catch { return undefined; } })() : undefined,
         // Is it a STORY film (acted or narrated)? Those can be continued: the viewer's "Next episode" opens
         // the Movie Maker on the next episode of its series (film-series.ts → storyHeroOf / episodeCardFor).
         canContinue: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson),
