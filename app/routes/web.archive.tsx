@@ -63,6 +63,7 @@ import { catalogImageFor, productLinkFor } from "../lib/catalog-import.server";
 import { externalOrigin } from "../lib/origin.server";
 // (2026-11-22) the "Today" of the When filter starts at midnight where the shop is
 import { isValidTimeZone, zonedDateString, zonedInstant } from "../lib/timezone";
+import { storyHeroOf } from "../lib/film-series";
 // (2026-11-22) Collections — named shelves a piece can sit on; every query is in collections.server.ts
 import { addToCollection, collectionIdsByAsset, createCollection, deleteCollection, listCollections, removeFromCollection, renameCollection, type ColProblem } from "../lib/collections.server";
 
@@ -443,6 +444,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // Does this film carry a per-shot timeline (dialogue pipeline)? Gates the "Edit
         // shots" link into the section editor.
         hasShots: (() => { try { const m = JSON.parse(a.metaJson || "{}"); return Array.isArray(m.shots) && m.shots.length > 0; } catch { return false; } })(),
+        // Is it a STORY film (acted or narrated)? Those can be continued: the viewer's "Next episode" opens
+        // the Movie Maker on the next episode of its series (film-series.ts → storyHeroOf / episodeCardFor).
+        canContinue: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson),
         // Which kind of video it is, for the Films / Faceless chips: every Movie Maker pipeline records its
         // own kind (acted, narrated, music video, the older stills-and-clips engine, engine tests).
         group: (() => {
@@ -2963,6 +2967,9 @@ export default function WebArchive() {
                       </div>
                     )}
                     {viewer.hasShots && viewer.media && <a className="wa-vbtn ghost" href={`/web/filmedit/${viewer.id}`} title={t("Open the shot timeline — preview and edit each shot")}><Ico n="video" /> {t("Edit shots")}</a>}
+                    {/* A story film is continued from where it is watched: the Movie Maker opens on the next
+                        episode of its series — same cast, same voices — whichever episode this one is. */}
+                    {viewer.canContinue && viewer.media && !viewer.expired && <a className="wa-vbtn ghost" href={`/web/film?episode=${viewer.id}`} title={t("Continue this story — the next episode, with the same cast")}><Ico n="video" /> {t("Next episode")}</a>}
                     {(viewer.isVideo || viewer.type === "IMAGE_AD") && viewer.media && (
                       <button type="button" className={`wa-vbtn ghost${sizesFor === viewer.id ? " on" : ""}`} aria-expanded={sizesFor === viewer.id}
                         onClick={() => setSizesFor((cur) => (cur === viewer.id ? null : viewer.id))}>

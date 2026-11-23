@@ -62,7 +62,8 @@ test("another format's job, a job with no cast, and the other way of telling are
 test("the Movie Maker asks only for older films, only this shop's finished renders, and survives a miss", () => {
   const src = read("app", "routes", "web.film.tsx");
   assert.ok(src.includes("const nextEpisodes = nextEpisodeCards(storyFilms, 3);"));
-  assert.ok(src.includes("if (card.setup.cast.length) continue;"), "a film that kept its cast is never looked up");
+  assert.ok(src.includes("if (card.setup.cast.length) return;"), "a film that kept its cast is never looked up");
+  assert.ok(src.includes("for (const card of nextEpisodes) await castBack(card, storyFilms);"));
   assert.ok(src.includes("where: { shopId: shop.id, type: \"GENERATE_VIDEO_AD\", status: \"COMPLETED\", processedAt: { gte: new Date(at - 2 * 60_000), lte: new Date(at + 10 * 60_000) } },"));
   assert.ok(src.includes("card.setup.cast = castFromJobPayloads(film, jobs.map((j) => j.payload));"));
   assert.ok(src.includes("} catch { /* nobody cast, as before */ }"));

@@ -349,3 +349,28 @@ export function castFromJobPayloads(film: { metaJson?: unknown; bodyJson?: unkno
   }
   return candidates.length === 1 ? castForMeta(candidates[0].cast as Array<{ name?: string }>) : [];
 }
+
+/* ---- "NEXT EPISODE", ASKED FROM A FILM ITSELF ---------------------------------------------------
+ *
+ * The Archive is where a finished film is watched, so that is where "what happens next?" is asked: its
+ * viewer links to the Movie Maker with ?episode=<that film's id>. Asked from episode 1 when episode 2 is
+ * already made, the next one is episode 3 — the series continues from its LATEST episode, never forks.
+ */
+
+/** The series a film belongs to, as a key: its series' id — which is the id of the film that started it. */
+export const seriesKeyOf = (film: { id: string; metaJson?: unknown }): string => seriesOf(film.metaJson)?.id || film.id;
+
+/** The card to open when the next episode is asked for from `fromId`: the one for the latest finished
+ *  episode of that film's series among `rows` (NEWEST FIRST), or null when `fromId` is not a story film
+ *  of this shop's (`rows` are only ever the signed-in shop's own films). */
+export function episodeCardFor(fromId: string, rows: ReadonlyArray<{ id: string; title?: string | null; metaJson?: unknown; bodyJson?: unknown }>): NextEpisodeCard | null {
+  const asked = rows.find((r) => r.id === fromId);
+  if (!asked || !storyHeroOf(asked.metaJson)) return null;
+  const key = seriesKeyOf(asked);
+  for (const r of rows) {
+    if (seriesKeyOf(r) !== key) continue;
+    const card = nextEpisodeCards([r], 1)[0];
+    if (card) return card; // the first that qualifies is the newest: a finished story film with its video
+  }
+  return null;
+}

@@ -39,7 +39,7 @@ import { SPIN_STAGE_CSS } from "../components/SpinStage";
 import { useModalA11y } from "../lib/use-modal-a11y";
 import { favouritesFirst } from "../lib/favourites";
 import { nameTok } from "../lib/character-prompts";
-import { castFromJobPayloads, nextEpisodeCards, seriesBriefOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
+import { castFromJobPayloads, episodeCardFor, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
 
@@ -133,10 +133,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // with nobody cast, so episode 2 was played by invented faces. The job that rendered it still holds who
   // the maker picked: this shop's own finished render jobs from the minutes around the film's creation.
   // Read-only, at most three small lookups, and only for those older films; any miss leaves it as it was.
-  for (const card of nextEpisodes) {
-    if (card.setup.cast.length) continue;
-    const film = storyFilms.find((r) => r.id === card.from);
-    if (!film) continue;
+  type StoryFilm = (typeof storyFilms)[number];
+  const castBack = async (card: NextEpisodeCard, films: StoryFilm[]) => {
+    if (card.setup.cast.length) return;
+    const film = films.find((r) => r.id === card.from);
+    if (!film) return;
     try {
       const at = film.createdAt.getTime();
       const jobs = await db.job.findMany({
@@ -146,11 +147,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       });
       card.setup.cast = castFromJobPayloads(film, jobs.map((j) => j.payload));
     } catch { /* nobody cast, as before */ }
+  };
+  for (const card of nextEpisodes) await castBack(card, storyFilms);
+  // "NEXT EPISODE", ASKED FROM A FILM ITSELF — the Archive viewer's button lands here with ?episode=<that
+  // film's id> (film-series.ts → episodeCardFor). The card opened is the one for the LATEST episode of
+  // that film's series, so asking from episode 1 when episode 2 exists makes episode 3. Only this shop's
+  // own films are ever read; an id that is not one of them opens the page as usual.
+  let openEpisode: NextEpisodeCard | null = null;
+  const askedEpisode = (new URL(request.url).searchParams.get("episode") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+  if (askedEpisode) {
+    let rows: StoryFilm[] = storyFilms;
+    if (!rows.some((r) => r.id === askedEpisode)) {
+      // older than the newest thirty: the film itself, and whatever later episodes its series has
+      const pick = { id: true, title: true, metaJson: true, bodyJson: true, createdAt: true } as const;
+      const one = await db.asset.findFirst({ where: { id: askedEpisode, shopId: shop.id, type: "VIDEO_AD", status: { not: "FAILED" } }, select: pick });
+      if (one) {
+        const later = await db.asset.findMany({
+          where: { shopId: shop.id, type: "VIDEO_AD", status: { not: "FAILED" }, id: { not: one.id }, metaJson: { contains: `"id":"${seriesKeyOf(one).replace(/[^A-Za-z0-9_-]/g, "")}"` } },
+          orderBy: { createdAt: "desc" }, take: 12, select: pick,
+        });
+        rows = [...later, one];
+      }
+    }
+    openEpisode = episodeCardFor(askedEpisode, rows);
+    if (openEpisode) await castBack(openEpisode, rows);
   }
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
     roster,
     nextEpisodes,
+    openEpisode,
     savedLooks,
     // A TRIAL, for the owner's account only (the owner, 2026-11-22: "test monsters in a music video"): a
     // monster can be cast as a music video's star or co-star. Nobody else is offered them there until a
@@ -1775,6 +1801,17 @@ export default function FilmStudio() {
     setSeries(null); setSeriesCast([]);
     if (storyHasWork) { setTreatment(null); setSeeds(null); setFrames([]); setCast([]); }
   });
+  // "NEXT EPISODE", ASKED FROM THE FILM ITSELF: the Archive viewer's button opens this page with
+  // ?episode=<that film's id>, and the loader hands back the card for its series' latest episode
+  // (d.openEpisode). Its setup opens by itself, once — and the address is tidied (keeping the router's own
+  // history state), so a refresh starts from the posters instead of opening the episode again.
+  const openedEpisode = useRef(false);
+  useEffect(() => {
+    if (!d.openEpisode || openedEpisode.current) return;
+    openedEpisode.current = true;
+    startEpisode(d.openEpisode);
+    try { window.history.replaceState(window.history.state, "", window.location.pathname); } catch { /* the address stays as it is */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Cinematic format entry: you land on the poster GRID; tap a card and IT zooms in while the
   // other cards are thrown away, then it becomes that format's builder. Back reverses it.
   const [entered, setEntered] = useState(false);
