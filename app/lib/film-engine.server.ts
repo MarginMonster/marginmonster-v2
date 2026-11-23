@@ -1180,7 +1180,11 @@ export async function generateFilm(opts: {
 
   // 4) ASSEMBLE → one 720x1280 MP4.
   let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-  try { fontFile = await resolveTextFont(treatment.scenes.map((s) => s.caption || "").join(" ")); } catch { /* keep Poppins */ }
+  // (the resolver only fails for words Poppins cannot draw — Chinese with no font fetched: the film is
+  //  then cut without its words. Drawing them with Poppins made every caption a row of boxes.)
+  let wordsDrawable = true;
+  try { fontFile = await resolveTextFont(treatment.scenes.map((s) => s.caption || "").join(" ")); }
+  catch (e) { wordsDrawable = false; console.error(`[film] no font for these words — cut without captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   const outName = `film-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
   // A SUNG FILM FOLLOWS ITS SONG (sung-fit.ts): the song is listened to and every scene is on screen
@@ -1214,7 +1218,7 @@ export async function generateFilm(opts: {
   }
   await assembleFilm({
     clips: filmClips,
-    captions: tmpl.captions ? treatment.scenes.map((s) => s.caption) : treatment.scenes.map(() => undefined),
+    captions: tmpl.captions && wordsDrawable ? treatment.scenes.map((s) => s.caption) : treatment.scenes.map(() => undefined),
     musicPath, musicIsSung, voPath, fontFile, outPath, jobId,
   });
   for (const f of filmClips) { if (!clips.includes(f)) { try { fs.unlinkSync(f); } catch { /* best effort */ } } }

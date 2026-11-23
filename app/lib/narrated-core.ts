@@ -32,6 +32,76 @@ export const CAPTION_STYLES: Array<{ key: CaptionStyle; label: string; blurb: st
 export const captionStyleOf = (v: unknown, fallback: CaptionStyle = "off"): CaptionStyle => (v === "off" || v === "bold" || v === "subtitles" ? v : fallback);
 
 const countWords = (s: string): number => (s.trim().match(/\S+/g) || []).length;
+
+/* ---- scripts written without spaces (Chinese, Japanese) ----
+ * The first Chinese story (2026-11-23, a re-telling) showed what counting spaces does to one: a whole
+ * scene is "one word", so every scene got the same share of the narration whatever it had to say, and
+ * each scene's caption was a single line of forty glyphs running off both sides of the frame. Here a
+ * line is cut into the words a dictionary finds in it, a glyph is measured as wide as it is drawn, and
+ * the said length of a line is its glyphs. For every other script nothing below changes. */
+const WIDE = /[぀-ヿ㐀-䶿一-鿿豈-﫿]/;
+const WIDE_ALL = new RegExp(WIDE.source, "g");
+const AFTER_WIDE = new RegExp(`(?<=${WIDE.source})`).source;
+/** Is any of this text in a script written without spaces — square glyphs, each about 1.7 letters wide? */
+export const hasWide = (s: string): boolean => WIDE.test(s);
+/** How wide a text draws, in Latin letters (what every line budget here is counted in). */
+export function textWidth(s: string): number {
+  let n = 0;
+  for (const ch of s) n += WIDE.test(ch) ? 1.7 : 1;
+  return n;
+}
+/** How long a unit takes to say, next to its neighbours: a word is one, a Chinese word is its glyphs. */
+export const unitWeight = (u: string): number => Math.max(1, (u.match(WIDE_ALL) || []).length);
+
+type WordSegmenter = { segment(s: string): Iterable<{ segment: string }> };
+let segmenter: WordSegmenter | null | undefined;
+/** A run of glyphs as the words a dictionary finds in it (glyph by glyph where there is no dictionary). */
+function wordPieces(run: string): string[] {
+  if (segmenter === undefined) {
+    const Seg = (Intl as unknown as { Segmenter?: new (locale: string, o: { granularity: "word" }) => WordSegmenter }).Segmenter;
+    try { segmenter = Seg ? new Seg("zh", { granularity: "word" }) : null; } catch { segmenter = null; }
+  }
+  return segmenter ? Array.from(segmenter.segment(run), (x) => x.segment) : Array.from(run);
+}
+
+/** A line as the units a voice says one after another, each as it will be drawn (see drawable): its
+ *  words — and, in a script without spaces, the words found in each run of glyphs, so that a caption is
+ *  never cut inside one. A mark stays on the unit before it: there, the marks are the only pauses. */
+export function saidUnits(line: string): string[] {
+  if (!WIDE.test(line)) return drawable(line).split(" ").filter(Boolean);
+  // the full-width marks as the plain ones drawable() keeps; a dash between glyphs is a pause too
+  const plain = line
+    .replace(/[，、；：]/g, ",").replace(/[。．]/g, ".").replace(/！/g, "!").replace(/？/g, "?")
+    .replace(new RegExp(`${AFTER_WIDE}\\s*[—–]+\\s*`, "g"), ", ")
+    .replace(new RegExp(`${AFTER_WIDE}[;:]`, "g"), ",");
+  const out: string[] = [];
+  for (const run of drawable(plain).split(" ").filter(Boolean)) {
+    if (!WIDE.test(run)) { out.push(run); continue; }
+    let lead = "";
+    for (const piece of wordPieces(run)) {
+      if (/[\p{L}\p{N}]/u.test(piece)) { out.push(lead + piece); lead = ""; }
+      else if (out.length) out[out.length - 1] += piece;
+      else lead += piece;
+    }
+  }
+  return out;
+}
+
+/** Units back into a line of text. Nothing goes between two glyphs of a script without spaces — and,
+ *  the way Chinese subtitles are set, the comma or full stop after a glyph is not drawn: the space (or
+ *  the end of the line) says it. Any other text is its words with a space between. */
+export function joinUnits(units: string[]): string {
+  let out = "";
+  for (const u of units) {
+    if (!u) continue;
+    out += (!out || (WIDE.test(out[out.length - 1]) && WIDE.test(u[0])) ? "" : " ") + u;
+  }
+  return WIDE.test(out) ? out.replace(new RegExp(`${AFTER_WIDE}[.,]+(?= |$)`, "g"), "").trim() : out;
+}
+
+/** What a scene has to say, as a length: its words — or, in a script without spaces, its glyphs. */
+const saidLength = (line: string): number => (WIDE.test(line) ? saidUnits(line).reduce((n, u) => n + unitWeight(u), 0) : countWords(line));
+
 /** No picture is up for less than this, however little its scene has to say. */
 export const MIN_SCENE_S = 1.2;
 
@@ -46,7 +116,7 @@ export function sceneWindows(lines: string[], words: WordT[], total: number): Wi
   const n = lines.length;
   if (!n) return [];
   const T = Math.max(total, n * MIN_SCENE_S);
-  const counts = lines.map((l) => Math.max(1, countWords(l)));
+  const counts = lines.map((l) => Math.max(1, saidLength(l)));
   const sum = counts.reduce((a, b) => a + b, 0);
   const starts: number[] = [0];
   let said = counts[0];
@@ -99,35 +169,41 @@ export function scriptWordTimes(lines: string[], words: WordT[], windows: Window
   const out: WordT[] = [];
   lines.forEach((line, k) => {
     const win = windows[k];
-    const toks = drawable(line).split(" ").filter(Boolean);
+    const toks = saidUnits(line);
     if (!win || !toks.length) return;
     const last = k === lines.length - 1;
     const heard = words.filter((w) => w.start >= win.t0 - 1e-6 && (last || w.start < win.t1 - 1e-6));
     const M = toks.length;
+    // where each unit sits in the line, by how long it takes to say: a word is one — so for a script
+    // with spaces this is simply its place in the line — and a Chinese word is its glyphs (the aligner
+    // hears Chinese glyph by glyph)
+    const at: number[] = [0];
+    for (const tk of toks) at.push(at[at.length - 1] + unitWeight(tk));
+    const S = at[M];
     // `sparse` (acted films): a voice the aligner could barely follow — a snarling creature, a whisper —
     // gives a few early words and then nothing, and timing the whole line by those would take it off
     // screen while it is still being said. Heard too little of it? The line starts at the first heard
     // word (or just after the cut) and runs to the end of its window.
-    const thin = !!sparse && heard.length < sparse.minHeard * M;
+    const thin = !!sparse && heard.length < sparse.minHeard * S;
     if (thin) {
       // just after the cut — unless the first word that WAS heard comes well into the shot (a late entrance)
       const late = heard.length && heard[0].start - win.t0 > 1.5 ? heard[0].start - 0.2 : win.t0 + sparse!.lead;
       const t0 = Math.min(Math.max(win.t0, late), win.t1 - 0.5);
       const t1 = Math.max(t0 + 0.4, win.t1 - sparse!.tail);
-      const per = (t1 - t0) / M;
-      toks.forEach((word, j) => out.push({ word, start: t0 + j * per, end: t0 + (j + 1) * per, ...(j === M - 1 ? { last: true } : {}) }));
+      const per = (t1 - t0) / S;
+      toks.forEach((word, j) => out.push({ word, start: t0 + at[j] * per, end: t0 + at[j + 1] * per, ...(j === M - 1 ? { last: true } : {}) }));
       return;
     }
     const Hn = heard.length;
     toks.forEach((word, j) => {
       const fin = j === M - 1 ? { last: true } : {};
       if (Hn) {
-        const a = Math.min(Hn - 1, Math.floor((j * Hn) / M));
-        const b = Math.min(Hn - 1, Math.max(a, Math.ceil(((j + 1) * Hn) / M) - 1));
+        const a = Math.min(Hn - 1, Math.floor((at[j] * Hn) / S));
+        const b = Math.min(Hn - 1, Math.max(a, Math.ceil((at[j + 1] * Hn) / S) - 1));
         out.push({ word, start: heard[a].start, end: Math.max(heard[b].end, heard[a].start + 0.05), ...fin });
       } else {
-        const per = (win.t1 - win.t0) / M;
-        out.push({ word, start: win.t0 + j * per, end: win.t0 + (j + 1) * per, ...fin });
+        const per = (win.t1 - win.t0) / S;
+        out.push({ word, start: win.t0 + at[j] * per, end: win.t0 + at[j + 1] * per, ...fin });
       }
     });
   });
@@ -150,28 +226,41 @@ export function boldCards(words: WordT[]): Card[] {
   for (const w of words) {
     if (cur.length && w.start - cur[cur.length - 1].end > 0.6) { phrases.push(cur); cur = []; }
     cur.push(w);
-    if (w.last || /[.!?…]$/u.test(w.word)) { phrases.push(cur); cur = []; }
+    // (in a script without spaces a comma ends the phrase too: there, a clause is what a card holds)
+    if (w.last || /[.!?…]$/u.test(w.word) || (WIDE.test(w.word) && /,$/.test(w.word))) { phrases.push(cur); cur = []; }
   }
   if (cur.length) phrases.push(cur);
-  const width = (ws: WordT[]) => ws.reduce((n, x) => n + x.word.length, 0) + Math.max(0, ws.length - 1);
+  const width = (ws: WordT[]) => textWidth(joinUnits(ws.map((x) => x.word)));
   const cards: Card[] = [];
   for (const ph of phrases) {
-    // 2) each phrase in lines of up to three words…
-    const chunks: WordT[][] = [];
-    let c: WordT[] = [];
-    for (const w of ph) {
-      if (c.length && (c.length >= 3 || width(c) + 1 + w.word.length > BOLD_LINE)) { chunks.push(c); c = []; }
-      c.push(w);
-    }
-    if (c.length) chunks.push(c);
-    // …and no word left on a card by itself when the card before it can spare one
-    const n = chunks.length;
-    if (n >= 2 && chunks[n - 1].length === 1 && chunks[n - 2].length >= 2) {
-      const moved = chunks[n - 2][chunks[n - 2].length - 1];
-      if (moved.word.length + 1 + chunks[n - 1][0].word.length <= BOLD_LINE) { chunks[n - 2].pop(); chunks[n - 1].unshift(moved); }
+    let chunks: WordT[][] = [];
+    if (ph.some((w) => WIDE.test(w.word))) {
+      // 2) a script without spaces: the clause is the card when it fits the line; a longer one is cut
+      //    into as few even parts as fit — between words, never inside one
+      const units = ph.map((w) => w.word);
+      const fits = (g: string[]) => textWidth(joinUnits(g)) <= BOLD_LINE;
+      let parts = Math.max(1, Math.ceil(width(ph) / BOLD_LINE));
+      let split = evenParts(units, parts);
+      while (!split.every(fits) && parts < units.length) split = evenParts(units, ++parts);
+      let from = 0;
+      chunks = split.map((g) => ph.slice(from, (from += g.length)));
+    } else {
+      // 2) each phrase in lines of up to three words…
+      let c: WordT[] = [];
+      for (const w of ph) {
+        if (c.length && (c.length >= 3 || width(c) + 1 + w.word.length > BOLD_LINE)) { chunks.push(c); c = []; }
+        c.push(w);
+      }
+      if (c.length) chunks.push(c);
+      // …and no word left on a card by itself when the card before it can spare one
+      const n = chunks.length;
+      if (n >= 2 && chunks[n - 1].length === 1 && chunks[n - 2].length >= 2) {
+        const moved = chunks[n - 2][chunks[n - 2].length - 1];
+        if (moved.word.length + 1 + chunks[n - 1][0].word.length <= BOLD_LINE) { chunks[n - 2].pop(); chunks[n - 1].unshift(moved); }
+      }
     }
     for (const ch of chunks) {
-      const text = drawable(ch.map((w) => w.word).join(" ")).toUpperCase().replace(/[.,…]+$/u, "").trim();
+      const text = drawable(joinUnits(ch.map((w) => w.word))).toUpperCase().replace(/[.,…]+$/u, "").trim();
       if (text) cards.push({ text, t0: ch[0].start, t1: ch[ch.length - 1].end });
     }
   }
@@ -183,38 +272,52 @@ export function boldCards(words: WordT[]): Card[] {
 /** Break a text into lines of at most `max` characters, at spaces (a single word longer than a line
  *  stands alone). */
 export function wrapLines(text: string, max: number): string[] {
+  return wrapUnits(text.split(" ").filter(Boolean), max);
+}
+
+/** wrapLines for a line already cut into its units (saidUnits): as wide as it is drawn, joined as it is drawn. */
+export function wrapUnits(units: string[], max: number): string[] {
   const lines: string[] = [];
-  let cur = "";
-  for (const w of text.split(" ").filter(Boolean)) {
-    if (cur && cur.length + 1 + w.length > max) { lines.push(cur); cur = w; }
-    else cur = cur ? `${cur} ${w}` : w;
+  let cur: string[] = [];
+  for (const u of units) {
+    if (cur.length && textWidth(joinUnits([...cur, u])) > max) { lines.push(joinUnits(cur)); cur = [u]; }
+    else cur.push(u);
   }
-  if (cur) lines.push(cur);
+  if (cur.length) lines.push(joinUnits(cur));
   return lines;
 }
 
 /** Like wrapLines, but a text that takes two lines is broken where the two come out most alike. */
 export function wrapEven(text: string, max: number): string[] {
-  const greedy = wrapLines(text, max);
+  return wrapEvenUnits(text.split(" ").filter(Boolean), max);
+}
+
+/** wrapEven for a line already cut into its units. */
+export function wrapEvenUnits(units: string[], max: number): string[] {
+  const greedy = wrapUnits(units, max);
   if (greedy.length !== 2) return greedy;
-  const words = text.split(" ").filter(Boolean);
   let best = greedy;
-  let gap = Math.abs(greedy[0].length - greedy[1].length);
-  for (let i = 1; i < words.length; i++) {
-    const a = words.slice(0, i).join(" "), b = words.slice(i).join(" ");
-    if (a.length > max || b.length > max) continue;
-    const g = Math.abs(a.length - b.length);
-    if (g < gap) { gap = g; best = [a, b]; }
+  let gap = Math.abs(textWidth(greedy[0]) - textWidth(greedy[1]));
+  // in a script without spaces the line turns at a pause when there is one to turn at ("…寒气袭来 / 可那里
+  // …", not "…寒气袭 / 来 可那里…"): the evenest of those, and only otherwise the evenest of all
+  const wide = units.some((u) => WIDE.test(u));
+  let atPause = false;
+  for (let i = 1; i < units.length; i++) {
+    const a = joinUnits(units.slice(0, i)), b = joinUnits(units.slice(i));
+    if (textWidth(a) > max || textWidth(b) > max) continue;
+    const g = Math.abs(textWidth(a) - textWidth(b));
+    const pause = wide && /[.,!?…]$/u.test(units[i - 1]);
+    if (pause ? !atPause || g < gap : !atPause && g < gap) { gap = g; best = [a, b]; atPause = atPause || pause; }
   }
   return best;
 }
 
-/** Cut a run of words into `parts` runs of about the same length in characters (each at least a word). */
+/** Cut a run of words into `parts` runs of about the same length as drawn (each at least a word). */
 export function evenParts(words: string[], parts: number): string[][] {
   const n = Math.max(1, Math.min(parts, words.length));
   const ends: number[] = [];
   let pos = 0;
-  words.forEach((w, i) => { pos += w.length + (i ? 1 : 0); ends.push(pos); });
+  words.forEach((w, i) => { pos += textWidth(w) + (i && !(WIDE.test(words[i - 1].slice(-1)) && WIDE.test(w[0] || "")) ? 1 : 0); ends.push(pos); });
   const out: string[][] = [];
   let from = 0;
   for (let j = 1; j < n; j++) {
@@ -242,10 +345,10 @@ export function evenParts(words: string[], parts: number): string[][] {
 export function subtitleCards(lines: string[], windows: Window[], maxChars: number, timed?: WordT[]): Card[] {
   const cards: Card[] = [];
   let at = 0; // where this scene's words start in `timed`
-  const fits = (ws: string[]) => wrapLines(ws.join(" "), maxChars).length <= 2;
+  const fits = (ws: string[]) => wrapUnits(ws, maxChars).length <= 2;
   lines.forEach((line, k) => {
     const win = windows[k];
-    const toks = drawable(line).split(" ").filter(Boolean);
+    const toks = saidUnits(line);
     const n = toks.length;
     const mine = timed && timed.length >= at + n ? timed.slice(at, at + n) : null;
     at += n;
@@ -262,7 +365,7 @@ export function subtitleCards(lines: string[], windows: Window[], maxChars: numb
       if (fits(sen)) { acc = sen; continue; }
       // too long for one card: as few cards as it needs, each with an even share of the sentence
       // (two full lines and then "in circles." on a card of its own reads like a mistake)
-      let parts = Math.ceil(wrapLines(sen.join(" "), maxChars).length / 2);
+      let parts = Math.ceil(wrapUnits(sen, maxChars).length / 2);
       let split = evenParts(sen, parts);
       while (!split.every(fits) && parts < sen.length) split = evenParts(sen, ++parts);
       groups.push(...split);
@@ -272,7 +375,7 @@ export function subtitleCards(lines: string[], windows: Window[], maxChars: numb
     let w0 = 0;
     groups.forEach((g, gi) => {
       const w1 = Math.min(n, w0 + g.length);
-      const text = wrapEven(g.join(" "), maxChars).join("\n");
+      const text = wrapEvenUnits(g, maxChars).join("\n");
       if (mine) cards.push({ text, t0: mine[w0].start, t1: Math.min(win.t1, mine[w1 - 1].end + 0.6) });
       else cards.push({ text, t0: win.t0 + ((win.t1 - win.t0) * w0) / n, t1: gi === groups.length - 1 ? win.t1 : win.t0 + ((win.t1 - win.t0) * w1) / n });
       w0 = w1;
@@ -299,7 +402,7 @@ export function captionFilters(cards: Card[], style: CaptionStyle, font: string,
       const fromBottom = lines.length - 1 - li;
       if (style === "bold") {
         // ONE size for every card (a card is at most BOLD_LINE characters); only a single giant word shrinks
-        const size = Math.round(Math.max(30, Math.min(54, Math.floor((720 * 0.9) / (Math.max(BOLD_LINE, ln.length) * 0.62)))) * u);
+        const size = Math.round(Math.max(30, Math.min(54, Math.floor((720 * 0.9) / (Math.max(BOLD_LINE, textWidth(ln)) * 0.62)))) * u);
         const y = W > H ? `h-${Math.round(150 * u)}-${fromBottom * Math.round(size * 1.25)}` : `h-${Math.round(H * 0.28)}-${fromBottom * Math.round(size * 1.25)}`;
         out.push(`drawtext=expansion=none:fontfile='${f}':text='${ln}':fontsize=${size}:fontcolor=white:borderw=${Math.max(4, Math.round(8 * u))}:bordercolor=black:x=(w-text_w)/2:y=${y}:${when}`);
       } else {

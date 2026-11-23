@@ -431,7 +431,10 @@ export async function generateFacelessVideo(opts: {
 
   // 6) ASSEMBLE → 9:16 MP4.
   let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-  try { fontFile = await resolveTextFont(fullScript); } catch { /* keep Poppins */ }
+  // (the resolver only fails for words Poppins cannot draw — Chinese with no font fetched: the video
+  //  ships without captions then. Drawing them with Poppins made every caption a row of boxes.)
+  try { fontFile = await resolveTextFont(fullScript); }
+  catch (e) { caps = []; console.error(`[faceless] no font for these words — no captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   const outName = `vid-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
   await assembleFaceless({ stills, voPath, musicPath, caps, fontFile, outPath, jobId });

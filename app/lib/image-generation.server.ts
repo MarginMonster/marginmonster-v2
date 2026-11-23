@@ -1274,7 +1274,7 @@ async function renderCalloutComposite(opts: {
     try {
       const { resolveTextFont } = await import("./ugc-ad-pipeline.server");
       fontFile = await resolveTextFont(`${opts.headline} ${opts.cta} ${chips.join(" ")}`);
-    } catch { /* keep default */ }
+    } catch { fontFile = ""; /* words Poppins cannot draw and no font that can: draw none — never boxes */ }
     if (!fs.existsSync(fontFile)) return null;
     const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
 
@@ -1441,7 +1441,7 @@ async function renderStatComposite(opts: {
     try {
       const { resolveTextFont } = await import("./ugc-ad-pipeline.server");
       fontFile = await resolveTextFont(`${statRaw} ${opts.statlabel} ${opts.headline} ${opts.cta}`);
-    } catch { /* keep default */ }
+    } catch { fontFile = ""; /* words Poppins cannot draw and no font that can: draw none — never boxes */ }
     if (!fs.existsSync(fontFile)) return null;
     const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
 
@@ -1617,7 +1617,7 @@ async function renderVersusComposite(opts: {
 
     // 6) All the text, drawn ourselves — perfectly spelled, always.
     let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${us.join(" ")} ${them.join(" ")}`); } catch { /* keep default */ }
+    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${us.join(" ")} ${them.join(" ")}`); } catch { fontFile = ""; /* words Poppins cannot draw and no font that can: draw none — never boxes */ }
     if (!fs.existsSync(fontFile)) return null;
     const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
 
@@ -1775,7 +1775,7 @@ async function renderBundleComposite(opts: {
 
     // 6) Text: headline (auto-contrast + wrap), item labels, CTA.
     let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${items.join(" ")} ${opts.cta}`); } catch { /* keep default */ }
+    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${items.join(" ")} ${opts.cta}`); } catch { fontFile = ""; /* words Poppins cannot draw and no font that can: draw none — never boxes */ }
     if (!fs.existsSync(fontFile)) return null;
     const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
 
@@ -1859,7 +1859,7 @@ async function renderPosterComposite(opts: {
     const comp = `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[bg];[1:v]scale=${pw}:${ph}[cut];[cut]split[c1][c2];[c2]scale=${shW}:${shH},colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=16,colorchannelmixer=aa=0.40[sh];[bg][sh]overlay=x=${shX}:y=${shY}[b1];[b1][c1]overlay=x=${px}:y=${py}[outv]`;
     if (!(await runFfmpegStill(bin, ["-y", ...bgInput, "-i", tmpCut, "-filter_complex", comp, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", tmpStill])).ok || !fs.existsSync(tmpStill)) return null;
     let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${opts.sub} ${opts.cta}`); } catch { /* keep default */ }
+    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${opts.sub} ${opts.cta}`); } catch { fontFile = ""; /* words Poppins cannot draw and no font that can: draw none — never boxes */ }
     if (!fs.existsSync(fontFile)) return null;
     const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
     const hl = dt(opts.headline).toUpperCase(); const sb = dt(opts.sub || "").toUpperCase(); const ct = dt(opts.cta || "").toUpperCase();
@@ -1921,7 +1921,7 @@ async function renderOfferComposite(opts: {
     const comp = `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[bg];[1:v]scale=${pw}:${ph}[cut];[cut]split[c1][c2];[c2]scale=${shW}:${shH},colorchannelmixer=rr=0:gg=0:bb=0,gblur=sigma=16,colorchannelmixer=aa=0.40[sh];[bg][sh]overlay=x=${shX}:y=${shY}[b1];[b1][c1]overlay=x=${px}:y=${py}[outv]`;
     if (!(await runFfmpegStill(bin, ["-y", ...bgInput, "-i", tmpCut, "-filter_complex", comp, "-map", "[outv]", "-frames:v", "1", "-q:v", "3", tmpStill])).ok || !fs.existsSync(tmpStill)) return null;
     let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${opts.offer} ${opts.cta}`); } catch { /* keep default */ }
+    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${opts.offer} ${opts.cta}`); } catch { fontFile = ""; /* words Poppins cannot draw and no font that can: draw none — never boxes */ }
     if (!fs.existsSync(fontFile)) return null;
     const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
     const hl = dt(opts.headline).toUpperCase(); const of = dt(opts.offer || "").toUpperCase(); const ct = dt(opts.cta || "").toUpperCase();
@@ -1970,7 +1970,7 @@ async function renderReasonsComposite(opts: {
     try { const bgPrompt = `Empty advertising backdrop photograph — ${opts.styleDesc}. Completely empty scene: NO product, NO objects, NO people, NO text, NO logos — just a clean premium surface and softly-lit backdrop with even space across the whole frame. Photorealistic, magazine-quality, soft believable shadow area, no text, no watermark.`; const bgUrl = await fluxDevStill(bgPrompt, "reasons-backdrop"); if (bgUrl) { const r = await fetch(bgUrl); if (r.ok) { fs.writeFileSync(tmpBg, Buffer.from(await r.arrayBuffer())); gotBg = true; } } } catch { /* cream fallback */ }
     { const r = await fetch(cutout); if (!r.ok) return null; fs.writeFileSync(tmpCut, Buffer.from(await r.arrayBuffer())); }
     let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${reasons.join(" ")}`); } catch { /* keep default */ }
+    try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(`${opts.headline} ${reasons.join(" ")}`); } catch { fontFile = ""; /* words Poppins cannot draw and no font that can: draw none — never boxes */ }
     if (!fs.existsSync(fontFile)) return null;
     const font = fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
     const BADGE = 48;
@@ -2057,7 +2057,7 @@ async function composeProductStill(bin: string, dir: string, stamp: string, styl
 
 async function resolveFont(text: string): Promise<string | null> {
   let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-  try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(text); } catch { /* keep default */ }
+  try { const { resolveTextFont } = await import("./ugc-ad-pipeline.server"); fontFile = await resolveTextFont(text); } catch { fontFile = ""; /* words Poppins cannot draw and no font that can: draw none — never boxes */ }
   if (!fs.existsSync(fontFile)) return null;
   return fontFile.replace(/\\/g, "/").replace(/:/g, "\\:");
 }

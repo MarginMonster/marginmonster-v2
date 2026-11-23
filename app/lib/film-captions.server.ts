@@ -27,7 +27,7 @@ const RENDERS = () => path.join(process.cwd(), "data", "renders");
  *  film was left as it was. `listenMs` caps the wait for the word timings (a quick edit in the shot editor
  *  can't hold its request open for minutes); past it the lines are timed by shot length instead. */
 export async function captionFilm(o: {
-  filmPath: string; lines: string[]; clipDurs: number[]; style: CaptionStyle; english: boolean; jobId?: string; listenMs?: number;
+  filmPath: string; lines: string[]; clipDurs: number[]; style: CaptionStyle; /** the language it is spoken in (en, es, fr, de, zh) */ lang: string; jobId?: string; listenMs?: number;
 }): Promise<CaptionStyle> {
   if (o.style === "off" || !fs.existsSync(o.filmPath)) return "off";
   const lines = o.lines.map((l) => (l || "").replace(/\s+/g, " ").trim());
@@ -46,14 +46,16 @@ export async function captionFilm(o: {
     if (!size) return "off";
     const W = Number(size[1]), H = Number(size[2]);
 
-    // 1) what is heard, and when (English: the aligner; otherwise the shots' own lengths time the lines)
+    // 1) what is heard, and when — listened for in the language the film is spoken in (it is always
+    //    named: told a Spanish voice is English, the listener translates it). Nothing heard, or no way
+    //    to listen: the shots' own lengths time the lines.
     let words: WordT[] = [];
-    if (o.english && base) {
+    if (base) {
       try {
         const ex = await runFfmpeg(["-y", "-i", o.filmPath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", audio]);
         if (ex.status === 0 && fs.existsSync(audio)) {
           try { await mirrorRender(path.basename(audio), fs.readFileSync(audio)); } catch { /* the disk copy is served */ }
-          words = wordsFromWhisperx(await repPoll(await createWhisperx(`${base}/renders/${path.basename(audio)}`), Math.max(10_000, Math.min(5 * 60_000, o.listenMs ?? 5 * 60_000)), "film-captions"));
+          words = wordsFromWhisperx(await repPoll(await createWhisperx(`${base}/renders/${path.basename(audio)}`, o.lang || "en"), Math.max(10_000, Math.min(5 * 60_000, o.listenMs ?? 5 * 60_000)), "film-captions"));
         }
       } catch (e) { console.error(`[captions] could not listen to the film — timing the lines by shot length: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
       await beat();
@@ -90,7 +92,10 @@ export async function captionFilm(o: {
  *  Poppins can't draw gets a font that can). False — and the film untouched — when it can't be drawn. */
 async function burnCards(filmPath: string, tmp: string, cards: Card[], style: CaptionStyle, sample: string, W: number, H: number, total: number): Promise<boolean> {
   let font = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-  try { font = await resolveTextFont(sample); } catch { /* keep Poppins */ }
+  // (the resolver only fails for words Poppins cannot draw — Chinese with no font fetched: no captions
+  //  then, the film as it is. Drawing them with Poppins made every caption a row of boxes.)
+  try { font = await resolveTextFont(sample); }
+  catch (e) { console.error(`[captions] no font for these words — the film ships without captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); return false; }
   const filters = captionFilters(cards, style, font, W, H);
   if (!filters.length) return false;
   const run = await runFfmpeg(["-y", "-i", filmPath, "-vf", filters.join(","), "-threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", tmp]);

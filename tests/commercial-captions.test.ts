@@ -54,7 +54,7 @@ test("the ad is captioned last — after the music and the level — and can nev
   assert.ok(at < src.indexOf("assertPlayableVideo(outPath);", at), "and the finished file is still checked before it is stored");
   const call = src.slice(at, at + 520);
   assert.ok(call.includes("filmPath: outPath, lines: cap.lines, clipDurs: cap.clipDurs, style: \"subtitles\","));
-  assert.ok(call.includes("english: normalizeContentLang(contentLang) === \"en\", jobId: params.jobId, listenMs: 120_000,"), "timed to the voice in English; by scene length in any other language; two minutes of listening at most");
+  assert.ok(call.includes("lang: normalizeContentLang(contentLang), jobId: params.jobId, listenMs: 120_000,"), "timed to the voice, listened for in the ad's own language; two minutes of listening at most");
   // captionFilm's own promise, which this relies on: it returns "off" and leaves the file when it cannot draw
   const cap = read("app", "lib", "film-captions.server.ts");
   assert.ok(cap.includes("console.error(`[captions] failed — the film ships without captions:"));

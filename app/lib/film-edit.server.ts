@@ -94,7 +94,7 @@ async function finishCut(film: Film, shopId: string, parts: Array<{ shot: Shot; 
   if (style === "off") return "off";
   const lang = (await db.shop.findFirst({ where: { id: shopId }, select: { contentLang: true } }))?.contentLang;
   return captionFilm({
-    filmPath: outPath, style, english: normalizeContentLang(lang) === "en", listenMs: opts.listenMs,
+    filmPath: outPath, style, lang: normalizeContentLang(lang), listenMs: opts.listenMs,
     lines: parts.map((p) => spokenLine(p.shot, film)),
     clipDurs: parts.map((p) => { try { return ffprobeDuration(p.path); } catch { return 0; } }),
   });

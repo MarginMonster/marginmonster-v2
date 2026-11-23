@@ -1107,7 +1107,7 @@ export async function generateTestMovie(opts: {
     const { captionFilm } = await import("./film-captions.server");
     const lang = (await db.shop.findUnique({ where: { id: opts.shopId }, select: { contentLang: true } }))?.contentLang;
     captioned = await captionFilm({
-      filmPath: outPath, style: wantCaptions, jobId, english: normalizeContentLang(lang) === "en",
+      filmPath: outPath, style: wantCaptions, jobId, lang: normalizeContentLang(lang),
       lines: treatment.scenes.slice(0, clips.length).map((sc) => splitExchange(sc.caption || "").map((t) => t.line).join(" ")),
       clipDurs: clips.map((c) => { try { return ffprobeDuration(c); } catch { return 0; } }),
     });

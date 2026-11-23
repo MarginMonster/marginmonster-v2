@@ -1013,7 +1013,7 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
       const cap = commercialCaptionPlan(plan.beats.map((b) => b.narration), plan.tagline, clipPaths.length);
       const drawn = await captionFilm({
         filmPath: outPath, lines: cap.lines, clipDurs: cap.clipDurs, style: "subtitles",
-        english: normalizeContentLang(contentLang) === "en", jobId: params.jobId, listenMs: 120_000,
+        lang: normalizeContentLang(contentLang), jobId: params.jobId, listenMs: 120_000,
       });
       if (drawn === "off") console.error("[commercial] shipped without captions");
     }

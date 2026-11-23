@@ -349,12 +349,16 @@ export async function generateNarratedStory(opts: {
   const voDur = ffprobeDuration(voPath);
   if (!(voDur > 2)) throw new Error("[narrated] the narration is too short to be a story");
 
-  // 3) TIMING — the narration's own word timings (English; other languages share the track by length)
+  // 3) TIMING — the narration's own word timings, listened for IN THE LANGUAGE IT IS TOLD IN.
+  //    (Until 2026-11-23 only an English story was listened to; a Spanish one had its pictures and its
+  //    captions timed by the length of the written sentences, a beat off the voice. Measured that day on
+  //    real stories: Spanish 174 of 174 words timed, Chinese 278 glyphs, about 13 seconds each. The
+  //    language is always named — told a Spanish voice is English, the listener TRANSLATES it.)
   let words: WordT[] = [];
   if (resume.ckWords) { try { words = JSON.parse(resume.ckWords) as WordT[]; } catch { words = []; } }
   else {
-    if (normalizeContentLang(lang) === "en" && voUrl) {
-      try { words = wordsFromWhisperx(await repPoll(await createWhisperx(voUrl), 5 * 60_000, "narration-align")); }
+    if (voUrl) {
+      try { words = wordsFromWhisperx(await repPoll(await createWhisperx(voUrl, normalizeContentLang(lang)), 5 * 60_000, "narration-align")); }
       catch (e) { console.error(`[narrated] alignment failed — pictures and captions are timed by length instead: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
     }
     await ckpt({ ckWords: JSON.stringify(words) });
@@ -362,11 +366,13 @@ export async function generateNarratedStory(opts: {
   // a creature chain can lead the voice in by a second: every heard word is where it is IN THE FILE,
   // so nothing needs shifting — the windows are simply read off what was heard
   const windows = sceneWindows(lines, words, voDur);
-  // the captions say what was WRITTEN, timed by what was heard (a transcriber's spelling never reaches the screen)
-  const timed = words.length ? scriptWordTimes(lines, words, windows) : undefined;
+  // the captions say what was WRITTEN, timed by what was heard (a transcriber's spelling never reaches
+  // the screen) — and, when nothing was heard, each scene's words spread across its window: the same
+  // cards either way (the unheard ones used to be whole sentences in capitals, full stops and all)
+  const timed = scriptWordTimes(lines, words, windows);
   const cards: Card[] = style === "bold"
-    ? (timed ? boldCards(timed) : subtitleCards(lines.map((l) => l.toUpperCase()), windows, 18))
-    : style === "subtitles" ? subtitleCards(lines, windows, subtitleChars(W, H), timed) : [];
+    ? boldCards(timed)
+    : style === "subtitles" ? subtitleCards(lines, windows, subtitleChars(W, H), words.length ? timed : undefined) : [];
 
   // 4) THE PICTURES — the ones the maker approved, else drawn now
   let imgs: (string | null)[] = [];
@@ -406,10 +412,14 @@ export async function generateNarratedStory(opts: {
     catch (e) { console.error(`[narrated] no music bed (continuing without): ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
   }
   let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
-  try { fontFile = await resolveTextFont(lines.join(" ")); } catch { /* keep Poppins */ }
+  // (the resolver only fails for words Poppins cannot draw — Chinese with no font fetched: the story is
+  //  then told without words on screen. Drawing them with Poppins made every caption a row of boxes.)
+  let wordsDrawable = true;
+  try { fontFile = await resolveTextFont(lines.join(" ")); }
+  catch (e) { wordsDrawable = false; console.error(`[narrated] no font for these words — told without captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   const outName = `nar-${Date.now()}-${rid()}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleNarrated({ stills, windows, voPath, musicPath, cards, style, fontFile, W, H, outPath, jobId });
+  await assembleNarrated({ stills, windows, voPath, musicPath, cards: wordsDrawable ? cards : [], style, fontFile, W, H, outPath, jobId });
   try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
 
   const voiceName = characterVoice(narrator)?.label || narrator;

@@ -35,6 +35,7 @@ import { catalogPriceFor } from "./catalog-import.server";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 import { captionChunks, CJK_OPTS, LATIN_OPTS } from "./caption-chunks";
+import { CJK_FONT_FILE, CJK_FONT_MIN_BYTES, CJK_FONT_SOURCES, fontMagic, looksLikeCjkFont } from "./caption-font";
 
 /** Merge stage checkpoints into the job payload (kept local to avoid a
  *  circular import with job-queue.server). Never fatal. Shared by the cartoon
@@ -630,20 +631,48 @@ function captionSafe(s: string): string {
 /** Font for burned-in text. Poppins covers Latin; CJK needs Noto, which we
  *  fetch ONCE to the persistent disk (too heavy to ship in the repo). Throws
  *  if CJK text can't get a CJK font — callers then skip captions rather than
- *  burning tofu boxes. */
+ *  burning tofu boxes. (Where it comes from, and why there is more than one
+ *  source: caption-font.ts.) */
+let cjkFontFetch: Promise<string> | null = null;
 export async function resolveTextFont(text: string): Promise<string> {
   const poppins = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
   if (!hasCJK(text)) return poppins;
   const dir = path.join(process.cwd(), "data", "renders", "fonts");
-  const f = path.join(dir, "NotoSansSC-Bold.otf");
-  if (fs.existsSync(f) && fs.statSync(f).size > 1_000_000) return f;
-  fs.mkdirSync(dir, { recursive: true });
-  const url = "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Bold.otf";
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`[fonts] Noto CJK download failed (${r.status})`);
-  fs.writeFileSync(f, Buffer.from(await r.arrayBuffer()));
-  console.log("[fonts] Noto Sans SC fetched to persistent disk");
-  return f;
+  const f = path.join(dir, CJK_FONT_FILE);
+  // on the disk, and really a font (its size and its first four bytes)
+  const kept = (): boolean => {
+    try {
+      if (!fs.existsSync(f) || fs.statSync(f).size < CJK_FONT_MIN_BYTES) return false;
+      const head = Buffer.alloc(4);
+      const fd = fs.openSync(f, "r");
+      try { fs.readSync(fd, head, 0, 4, 0); } finally { fs.closeSync(fd); }
+      return fontMagic(head);
+    } catch { return false; }
+  };
+  if (kept()) return f;
+  // one fetch at a time, however many renders ask for it at once
+  if (!cjkFontFetch) {
+    cjkFontFetch = (async () => {
+      fs.mkdirSync(dir, { recursive: true });
+      let why = "no source";
+      for (const url of CJK_FONT_SOURCES) {
+        try {
+          const r = await fetch(url, { signal: AbortSignal.timeout(90_000) });
+          if (!r.ok) { why = `${r.status} from ${new URL(url).host}`; continue; }
+          const buf = Buffer.from(await r.arrayBuffer());
+          if (!looksLikeCjkFont(buf)) { why = `not a font (${buf.length} bytes) from ${new URL(url).host}`; continue; }
+          // written beside it and moved into place: a half-written file is never taken for the font
+          const part = `${f}.${process.pid}.part`;
+          fs.writeFileSync(part, buf);
+          fs.renameSync(part, f);
+          console.log(`[fonts] Noto Sans SC fetched to persistent disk from ${new URL(url).host}`);
+          return f;
+        } catch (e) { why = `${e instanceof Error ? e.message.slice(0, 80) : e} from ${new URL(url).host}`; }
+      }
+      throw new Error(`[fonts] no Chinese font could be fetched (${why})`);
+    })().finally(() => { cjkFontFetch = null; });
+  }
+  return cjkFontFetch;
 }
 
 function buildCaptionFilters(script: string, duration: number, fontFile: string): string[] {
