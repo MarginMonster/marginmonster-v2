@@ -91,6 +91,28 @@ test("a lyric is cut by lines, and keeps its line breaks", async () => {
   assert.ok(logged[1].includes("those lines are cut"));
 });
 
+test("the words drawn INTO an image ad are read too — they cannot be edited out of pixels", () => {
+  const img = read("app", "lib", "image-generation.server.ts");
+  assert.ok(img.includes("import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, claimFaults, dropFaultSentences } from \"./ad-claims\";"));
+  // the format copy: after the field scrubs (price, badge, urgency, offer), every field is read
+  assert.ok(img.includes("const merchantSaid = [productTitle, productDetails, direction, merchantOffer, productPrice].filter(Boolean).join(\" \\n \");"));
+  const at = img.indexOf("const merchantSaid = [productTitle, productDetails, direction, merchantOffer, productPrice]");
+  const pass = img.slice(at, at + 700);
+  assert.ok(pass.includes("for (const f of Object.keys(out)) {"));
+  assert.ok(pass.includes("const kept = dropFaultSentences(out[f], merchantSaid);"));
+  assert.ok(pass.includes("if (kept) { out[f] = kept; continue; }"), "a sentence that claims is cut and the rest kept");
+  assert.ok(pass.includes("if (optional.has(f)) { delete out[f]; continue; }"), "an optional field with nothing left is dropped");
+  assert.ok(pass.includes("return null;"), "a required one: the format cannot run truthfully, the scene ladder takes over");
+  assert.ok(at > img.indexOf("out.offer = merchantOffer ? trimToWord(merchantOffer, 40) : invented ? \"Own the set\" : out.offer;"), "after the scrubs that swap in a neutral line");
+  assert.ok(at > img.indexOf("out.badge = formatKey === \"seasonal\" ? \"New drop\" : \"Gift ready\";"));
+  assert.ok(at < img.indexOf("if (formatKey === \"callout\") {\n      const seen = new Set<string>();"), "before the chips are de-duplicated");
+  // the poster copy: a claiming headline is not drawn at all; a claiming support line or button is left off
+  assert.ok(img.includes("const ok = (s: string) => (claimFaults(s, merchantSaid).length ? \"\" : s);"));
+  assert.ok(img.includes("const sub = ok(subWordCount > 9 ? \"\" : clean(j.sub, 9));"));
+  assert.ok(img.includes("const cta = ok(clean(j.cta, 3));"));
+  assert.ok(/if \(claimFaults\(headline, merchantSaid\)\.length\) \{[\s\S]{0,200}return null;/.test(img));
+});
+
 test("the three writers draft through it — the preview and the paid render alike", () => {
   const ugc = read("app", "lib", "ugc-ad-pipeline.server.ts");
   assert.ok(ugc.includes("async function draftUgcScript(prompt: string, merchantSaid: string): Promise<string> {"));
@@ -98,7 +120,7 @@ test("the three writers draft through it — the preview and the paid render ali
   assert.ok(ugc.includes("{ label: \"ugc:script\" },"));
   assert.ok(ugc.includes("return scriptTooShort(raw) ? \"\" : raw;"), "a fragment — written or left by a cut — is still a refusal");
   assert.equal(ugc.split("draftUgcScript(").length - 1, 3, "defined once, used by the free preview and by the render");
-  assert.ok(ugc.includes("[p.productTitle, p.productDescription, p.direction].filter(Boolean).join(\" \\n \");"));
+  assert.ok(ugc.includes("[p.productTitle, p.productDescription, p.direction, cleanPrice(p.price)].filter(Boolean).join(\" \\n \");"));
 
   const jingle = read("app", "lib", "jingle-ad-pipeline.server.ts");
   assert.ok(jingle.includes("async function draftJingleLyrics(prompt: string, merchantSaid: string): Promise<string> {"));
@@ -106,7 +128,7 @@ test("the three writers draft through it — the preview and the paid render ali
   assert.equal(jingle.split("draftJingleLyrics(").length - 1, 3);
 
   const cartoon = read("app", "lib", "cartoon-ad-pipeline.server.ts");
-  assert.ok(cartoon.includes("const merchantSaid = [o.productTitle, o.productDescription, o.direction].filter(Boolean).join(\" \\n \");"));
+  assert.ok(cartoon.includes("const merchantSaid = [o.productTitle, o.productDescription, o.direction, cleanPrice(o.price)].filter(Boolean).join(\" \\n \");"));
   assert.ok(cartoon.includes("const script = await writeClaimFree("));
   assert.ok(cartoon.includes("{ label: \"cartoon:script\" },"));
   // the member's own approved words are never rewritten: only a draft WE write goes through the check

@@ -195,3 +195,29 @@ export async function writeClaimFree(
   console.error(`[${opts.label}] still claiming ${faults.map((x) => `"${x}"`).join(", ")} — those ${opts.lines ? "lines" : "sentences"} are cut`);
   return opts.lines ? dropFaultLines(draft, merchantSaid) : dropFaultSentences(draft, merchantSaid);
 }
+
+/* ---- THE PRICE, SAID ONCE AND EXACTLY — OR NOT AT ALL -------------------------------------------
+ *
+ * The Ad Maker offers the same quick direction on every style: "fast + funny, lead with the price". A
+ * writer with no price to lead with invents price talk ("the lowest price around"); one that knows the
+ * real figure says it. So every writer is told which of three cases it is in:
+ *
+ *   1. the catalogue has the price            → say exactly that figure, once, if the direction asks;
+ *   2. it does not, but the merchant typed one → say theirs, exactly as written (a service has no
+ *      catalogue row — "$49 a month" in the direction is the only price there is, and it is theirs);
+ *   3. nobody gave a price                    → no price talk at all, whatever the direction asks.
+ */
+const PRICE_FIGURE = /(?:[$€£¥₹]|\b(?:usd|eur|gbp|cad|aud|pkr|inr|rs\.?)\s?)\d[\d,]*(?:\.\d{1,2})?|\b\d[\d,]*(?:\.\d{1,2})?\s?(?:dollars?|bucks|euros?|pounds?|rupees?|cents?)\b/i;
+/** Do these words carry a price figure ("$49", "49 dollars", "Rs. 500")? */
+export const saysAPrice = (text?: string | null): boolean => PRICE_FIGURE.test(text || "");
+/** A catalogue price as it is given to a writer: one line, at most 40 characters. */
+export const cleanPrice = (priceText?: string | null): string => (priceText || "").replace(/\s+/g, " ").trim().slice(0, 40);
+
+const NO_OTHER_PRICE_TALK = `Say NOTHING else about price — never "lowest", "best", "cheapest", "deal", a discount, a saving or a comparison with anyone`;
+/** The one line about price in a writer's brief. `memberWords` = the merchant's own details and direction. */
+export function priceRule(priceText?: string | null, memberWords?: string | null): string {
+  const price = cleanPrice(priceText);
+  if (price) return `PRICE: the real price is ${price}. If the direction asks for the price, say exactly that figure, once. ${NO_OTHER_PRICE_TALK}.`;
+  if (saysAPrice(memberWords)) return `PRICE: the only price you may say is the figure written in the merchant's own words above — exactly as they wrote it, once. ${NO_OTHER_PRICE_TALK} — unless those words are the merchant's own too.`;
+  return `PRICE: no price was given. Do not mention price, cost, deals, savings or value for money at all — even if the direction asks for the price, sell on the product itself.`;
+}

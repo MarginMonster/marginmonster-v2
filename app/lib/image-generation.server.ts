@@ -9,7 +9,7 @@ import { mirrorRender } from "./object-storage.server";
 import { trimToWord } from "./text-trim";
 import { CREATE_STYLE_BY_KEY } from "./create-styles";
 import { CREATE_MODEL_BY_KEY, DEFAULT_CREATE_MODEL, CREATE_ASPECT_VALUES, DEFAULT_CREATE_ASPECT } from "./create-models";
-import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, claimFaults, dropFaultSentences } from "./ad-claims";
 import { paletteLine } from "./brand-kit";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
@@ -92,9 +92,18 @@ async function adCopy(productTitle: string, tone: string | undefined, direction:
     // chopped off by the word cap; a dangling fragment on a finished ad reads
     // worse than no sub at all (the headline already carries it).
     const subWordCount = (j.sub || "").trim().split(/\s+/).filter(Boolean).length;
-    const sub = subWordCount > 9 ? "" : clean(j.sub, 9);
-    const cta = clean(j.cta, 3);
+    // READ BEFORE IT IS DRAWN (ad-claims.ts → claimFaults): a headline that makes a claim nobody gave the
+    // writer is not used — the clean image ships, as it does for any other copy failure; a support line or a
+    // button that makes one is left off.
+    const merchantSaid = [productTitle, direction].filter(Boolean).join(" \n ");
+    const ok = (s: string) => (claimFaults(s, merchantSaid).length ? "" : s);
+    const sub = ok(subWordCount > 9 ? "" : clean(j.sub, 9));
+    const cta = ok(clean(j.cta, 3));
     if (!headline) return null;
+    if (claimFaults(headline, merchantSaid).length) {
+      console.log(`[image-ad] adCopy headline claimed ${claimFaults(headline, merchantSaid).join(", ")} — no overlay`);
+      return null;
+    }
     return { headline, sub, cta };
   } catch { return null; }
 }
@@ -3298,6 +3307,22 @@ async function formatCopy(
     if (out.offer) {
       const invented = /\d|%|\$|\b(off|sale|free|save|deal|discount|coupon|limited|exclusive|hurry|last\s*chance|selling\s*fast|while\s*supplies)\b/i.test(out.offer);
       out.offer = merchantOffer ? trimToWord(merchantOffer, 40) : invented ? "Own the set" : out.offer;
+    }
+    // THE COPY IS READ FOR CLAIMS NOBODY GAVE IT (ad-claims.ts → claimFaults) — the general twin of the field
+    // scrubs above, for every field they do not cover. These words are baked into pixels: a "#1", a
+    // "guaranteed" or a "lowest price" in a headline cannot be edited out afterwards. What the merchant said
+    // themselves (title, details, direction, their offer, their price) is theirs. A sentence that claims is
+    // cut; a field with nothing left is dropped if it may be, and otherwise this format cannot run
+    // truthfully — the scene ladder takes over, as it does for an invented price.
+    const merchantSaid = [productTitle, productDetails, direction, merchantOffer, productPrice].filter(Boolean).join(" \n ");
+    for (const f of Object.keys(out)) {
+      const faults = claimFaults(out[f], merchantSaid);
+      if (!faults.length) continue;
+      const kept = dropFaultSentences(out[f], merchantSaid);
+      if (kept) { out[f] = kept; continue; }
+      if (optional.has(f)) { delete out[f]; continue; }
+      console.log(`[image-ad] formatCopy ${formatKey} claim-in-required-field: ${f} (${faults.join(", ")})`);
+      return null;
     }
     // No two callout benefit chips may be identical — a repeat renders a doubled
     // label on the ad ("Nine to collect" twice). Drop later duplicates

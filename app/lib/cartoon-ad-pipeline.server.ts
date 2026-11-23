@@ -40,7 +40,8 @@ import type { BrandProfile } from "@prisma/client";
 import { langDirective, voiceLangOpts } from "./content-lang";
 import { isPersonalVoice } from "./avatar-voice-catalog";
 import { isCharacterVoice } from "./character-voices";
-import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, writeClaimFree } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, writeClaimFree, cleanPrice, priceRule } from "./ad-claims";
+import { catalogPriceFor } from "./catalog-import.server";
 import { scriptTooShort, capScript, endStop } from "./script-length";
 import { withBrandFallback } from "./ad-copy-retry.server";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
@@ -396,6 +397,8 @@ export async function writeCartoonScript(o: {
   tone?: string;
   direction?: string;
   contentLang?: string | null;
+  /** the catalogue's real price for this product, when it has one (ad-claims.ts → priceRule) */
+  price?: string | null;
 }): Promise<string> {
   // A sweep of 54 scripts failed 14 times and every failure was a branded
   // collectible — the model declines to write promotional copy for someone
@@ -416,6 +419,7 @@ async function writeCartoonScriptOnce(o: {
   tone?: string;
   direction?: string;
   contentLang?: string | null;
+  price?: string | null;
   debranded?: boolean;
 }): Promise<string> {
   const scriptPrompt = [
@@ -444,13 +448,15 @@ async function writeCartoonScriptOnce(o: {
     // A spoken cartoon ad carries the same claim liability as a printed one —
     // and this script is both HEARD and burned on-screen as captions.
     CLAIMS_GUARDRAIL,
+    // THE PRICE, SAID ONCE AND EXACTLY — OR NOT AT ALL ("lead with the price" is a quick direction here too)
+    priceRule(o.price, [o.productDescription, o.direction].filter(Boolean).join(" ")),
     `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
   ].filter(Boolean).join("\n");
 
   // READ BEFORE IT IS USED (ad-claims.ts → writeClaimFree): this script is HEARD and burned on screen, so a
   // discount, a deadline, a rank or a guarantee nobody gave the writer is asked out once and then cut. A
   // claim in the merchant's own title, details or direction is theirs to make.
-  const merchantSaid = [o.productTitle, o.productDescription, o.direction].filter(Boolean).join(" \n ");
+  const merchantSaid = [o.productTitle, o.productDescription, o.direction, cleanPrice(o.price)].filter(Boolean).join(" \n ");
   const script = await writeClaimFree(
     async (repair) => ((await anthropicText(repair ? `${scriptPrompt}\n${repair}` : scriptPrompt, { model: "claude-sonnet-5", maxTokens: 200 })) || "")
       .replace(/["“”\n]+/g, " ").replace(/\s+/g, " ").trim(),
@@ -610,6 +616,7 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
       tone: voiceJson.tone,
       direction: params.direction,
       contentLang,
+      price: params.serviceMode ? null : await catalogPriceFor(params.shopId, params.productTitle),
     });
     await ckpt({ ckScript: script });
   }

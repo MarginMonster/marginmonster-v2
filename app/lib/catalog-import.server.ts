@@ -513,6 +513,21 @@ export async function productLinkFor(shopId: string, productTitle?: string | nul
   }
 }
 
+/** The price the catalogue has for a product, by its title ("$43.14") — or nothing. Every ad writer is
+ *  given it (ad-claims.ts → priceRule): the Ad Maker's own quick direction is "lead with the price", and a
+ *  writer with no price to lead with invented price talk. Never throws: a paid job must not fail over a
+ *  lookup. */
+export async function catalogPriceFor(shopId: string, productTitle?: string | null): Promise<string | null> {
+  const t = (productTitle || "").trim();
+  if (!t) return null;
+  try {
+    const row = await db.catalogProduct.findFirst({ where: { shopId, title: t }, select: { priceText: true } });
+    return (row?.priceText || "").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /** The catalogue image for a product we generated an ad about.
  *
  *  Ads made before metaJson carried the photo have no way to rebuild — but if

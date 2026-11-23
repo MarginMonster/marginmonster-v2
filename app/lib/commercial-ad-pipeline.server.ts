@@ -35,7 +35,8 @@ import { spawn } from "node:child_process";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { composeResolution } from "./feature-flags.server";
-import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, claimFaults, claimRepairNote, dropFaultSentences } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, claimFaults, claimRepairNote, dropFaultSentences, cleanPrice, priceRule } from "./ad-claims";
+import { catalogPriceFor } from "./catalog-import.server";
 import { trimToWord } from "./text-trim";
 import { mirrorRender } from "./object-storage.server";
 import {
@@ -130,7 +131,7 @@ export async function planCommercial(
    *  exactly that figure; with none it is told to leave price alone — see the claims check below. */
   priceText?: string | null
 ): Promise<CommercialPlan> {
-  const price = (priceText || "").replace(/\s+/g, " ").trim().slice(0, 40);
+  const price = cleanPrice(priceText);
   const ask = (repair?: string) => anthropicText(
     [
       serviceMode
@@ -160,9 +161,8 @@ export async function planCommercial(
       // THE PRICE, SAID ONCE AND EXACTLY. The Ad Maker's own quick direction is "lead with the price", and a
       // writer with no price to lead with wrote "the lowest price around" (2026-11-23). It now has the real
       // figure when the catalogue does — and is told what it may NOT say about it either way.
-      price
-        ? `PRICE: the real price is ${price}. If the direction asks for the price, say exactly that figure, once. Say NOTHING else about price — never "lowest", "best", "cheapest", "deal", a discount, a saving or a comparison with anyone.`
-        : `PRICE: no price was given. Do not mention price, cost, deals, savings or value for money at all — even if the direction asks for the price, sell on the product itself.`,
+      // (ad-claims.ts → priceRule: the catalogue's figure, else one the merchant typed themselves, else none)
+      priceRule(price, [productDescription, direction].filter(Boolean).join(" ")),
       serviceMode ? `Then tagline: 3-6 punchy words for the closing brand card.` : `Then tagline: 3-6 punchy words for the closing product shot.`,
       ``,
       `Reply ONLY JSON: {"beats":[{"scene":"...","motion":"...","narration":"..."},...5 total],"tagline":"..."}`,
@@ -223,17 +223,6 @@ export async function planCommercial(
     j.tagline = dropFaultSentences(j.tagline, merchantSaid) || plain;
   }
   return j;
-}
-
-/** The price the catalogue has for this product, by its title — or nothing. Never throws: a paid job
- *  must not fail over a lookup. */
-async function catalogPriceFor(shopId: string, productTitle: string): Promise<string | null> {
-  try {
-    const row = await db.catalogProduct.findFirst({ where: { shopId, title: productTitle }, select: { priceText: true } });
-    return (row?.priceText || "").trim() || null;
-  } catch {
-    return null;
-  }
 }
 
 /** Submit an image job to the fal queue and poll it to a URL. Shared by the

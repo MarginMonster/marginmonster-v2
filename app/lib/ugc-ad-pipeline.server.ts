@@ -30,7 +30,8 @@ import { isPersonalVoice } from "./avatar-voice-catalog";
 import { isCharacterVoice } from "./character-voices";
 import { hasCJK, langDirective, voiceLangOpts } from "./content-lang";
 import { scriptTooShort, capScript, endStop } from "./script-length";
-import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, writeClaimFree } from "./ad-claims";
+import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, writeClaimFree, cleanPrice, priceRule } from "./ad-claims";
+import { catalogPriceFor } from "./catalog-import.server";
 import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 import { captionChunks, CJK_OPTS, LATIN_OPTS } from "./caption-chunks";
@@ -996,7 +997,9 @@ export function resolvePortraitFile(id: string, variant: number): string {
 
 // Shared UGC-script prompt — one source of truth for the gen below and the free
 // step-2 "preview the script" step (previewUgcScript). Pure string builder.
-type UgcScriptInputs = { serviceMode?: boolean; productDescription?: string; direction?: string };
+type UgcScriptInputs = { serviceMode?: boolean; productDescription?: string; direction?: string;
+  /** the catalogue's real price for this product, when it has one (ad-claims.ts → priceRule) */
+  price?: string | null };
 function ugcScriptPrompt(p: UgcScriptInputs, productRef: string, debranded: boolean, avatarName: string, avatarDesc: string, voiceTone: string | undefined, contentLang: string | null | undefined): string {
   return [
     `You write spoken scripts for short-form UGC video ads (TikTok/Reels/Shorts).${langDirective(contentLang)}`,
@@ -1017,16 +1020,19 @@ function ugcScriptPrompt(p: UgcScriptInputs, productRef: string, debranded: bool
     `Output ONLY the spoken words — no stage directions, quotes, emoji, or hashtags.`,
     p.productDescription
       ? `Every concrete claim, spec, material, size or result must come ONLY from the product details above — never invent a feature or outcome the merchant did not state.`
-      : `You have ONLY the product name — state no specific spec, material, size, count, ingredient, price or result; sell the feeling and the category, and invent no feature the merchant did not give.`,
+      : `You have ONLY the product name — state no specific spec, material, size, count, ingredient${p.price ? "" : ", price"} or result; sell the feeling and the category, and invent no feature the merchant did not give.`,
     CLAIMS_GUARDRAIL,
+    // THE PRICE, SAID ONCE AND EXACTLY — OR NOT AT ALL. "fast + funny, lead with the price" is the Ad Maker's
+    // own quick direction on this style too; without the figure a writer invents price talk.
+    priceRule(p.price, [p.productDescription, p.direction].filter(Boolean).join(" ")),
     `The final sentence must be a COMPLETE call to action — finish it; never stop mid-phrase.`,
   ].filter(Boolean).join("\n");
 }
 
 /** What the merchant said themselves — their title, details and direction. A claim in THESE words is
  *  theirs to make; one the writer adds is not (ad-claims.ts → claimFaults). */
-const ugcMerchantSaid = (p: { productTitle: string; productDescription?: string; direction?: string }): string =>
-  [p.productTitle, p.productDescription, p.direction].filter(Boolean).join(" \n ");
+const ugcMerchantSaid = (p: { productTitle: string; productDescription?: string; direction?: string; price?: string | null }): string =>
+  [p.productTitle, p.productDescription, p.direction, cleanPrice(p.price)].filter(Boolean).join(" \n ");
 
 /** ONE DRAFT OF THE SPOKEN SCRIPT, READ BEFORE IT IS USED. The presenter says these words and they are
  *  burned on screen as captions, so a discount, a deadline, a rank or a guarantee nobody gave the writer
@@ -1058,8 +1064,9 @@ export async function previewUgcScript(params: { shopId: string; brandProfile: {
   const { avatar } = await resolvePresenter(params.shopId, params.avatarId || "", variant);
   const voiceJson = JSON.parse(params.brandProfile.voiceJson || "{}");
   const contentLang = (await db.shop.findUnique({ where: { id: params.shopId }, select: { contentLang: true } }))?.contentLang;
+  const priced = { ...params, price: params.serviceMode ? null : await catalogPriceFor(params.shopId, params.productTitle) };
   let script = await withBrandFallback(
-    (productRef, debranded) => draftUgcScript(ugcScriptPrompt(params, productRef, debranded, avatar.name, avatar.desc, voiceJson.tone, contentLang), ugcMerchantSaid(params)),
+    (productRef, debranded) => draftUgcScript(ugcScriptPrompt(priced, productRef, debranded, avatar.name, avatar.desc, voiceJson.tone, contentLang), ugcMerchantSaid(priced)),
     stripPromoTag(params.productTitle), "ugc:script", params.productDescription);
   script = capScript(script, 36);
   script = endStop(script);
@@ -1090,8 +1097,10 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
   // 1) SCRIPT — hook-first, ~13s spoken. Services sell the OUTCOME, not an
   // object the presenter holds up. Prompt lives in the module-level
   // ugcScriptPrompt (shared with the step-2 previewUgcScript).
+  // (the catalogue's real price rides along — ad-claims.ts → priceRule; a service has no catalogue row)
+  const priced = { ...params, price: params.serviceMode || params.resume?.script ? null : await catalogPriceFor(params.shopId, params.productTitle) };
   const buildScriptPrompt = (productRef: string, debranded: boolean) =>
-    ugcScriptPrompt(params, productRef, debranded, avatar.name, avatar.desc, voiceJson.tone, contentLang);
+    ugcScriptPrompt(priced, productRef, debranded, avatar.name, avatar.desc, voiceJson.tone, contentLang);
 
   const resume = params.resume || {};
   const ckpt = (patch: Record<string, unknown>) =>
@@ -1107,7 +1116,7 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
     // becomes the grounding the writer anchors on — parity with the image
     // generator, which the audit flagged this path was missing.
     script = await withBrandFallback(
-      (productRef, debranded) => draftUgcScript(buildScriptPrompt(productRef, debranded), ugcMerchantSaid(params)),
+      (productRef, debranded) => draftUgcScript(buildScriptPrompt(productRef, debranded), ugcMerchantSaid(priced)),
       stripPromoTag(params.productTitle), "ugc:script", params.productDescription);
     // ~12-13s budget — hard cap so it never runs past the lip-sync sweet spot.
     // In characters for CJK, where the old word cap could never fire. 36, not

@@ -92,10 +92,12 @@ test("the instruction still names what the check enforces", () => {
 
 test("the Commercial reads its own words before using them, and knows the real price", () => {
   const src = read("app", "lib", "commercial-ad-pipeline.server.ts");
-  // the price: said once and exactly when the catalogue has one; left alone when it does not
-  assert.ok(src.includes("PRICE: the real price is ${price}. If the direction asks for the price, say exactly that figure, once."));
-  assert.ok(src.includes("PRICE: no price was given. Do not mention price, cost, deals, savings or value for money at all"));
-  assert.ok(src.includes("const row = await db.catalogProduct.findFirst({ where: { shopId, title: productTitle }, select: { priceText: true } });"));
+  // the price: said once and exactly when the catalogue has one; left alone when it does not. The rule is
+  // one function now (ad-claims.ts → priceRule, tests/ad-price-rule.test.ts) — every ad writer is given it.
+  assert.ok(src.includes("priceRule(price, [productDescription, direction].filter(Boolean).join(\" \")),"));
+  assert.ok(src.includes("const price = cleanPrice(priceText);"));
+  assert.ok(src.includes("import { catalogPriceFor } from \"./catalog-import.server\";"));
+  assert.ok(read("app", "lib", "catalog-import.server.ts").includes("const row = await db.catalogProduct.findFirst({ where: { shopId, title: t }, select: { priceText: true } });"));
   assert.equal(src.split("await catalogPriceFor(params.shopId, params.productTitle)").length - 1, 2, "the free preview and the paid render are given the same price");
   // read → ask once more → cut the sentence
   assert.ok(src.includes("const merchantSaid = [productTitle, productDescription, direction, price].filter(Boolean).join(\" \\n \");"));
