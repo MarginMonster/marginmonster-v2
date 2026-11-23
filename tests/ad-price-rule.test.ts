@@ -17,7 +17,7 @@ const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").
 
 test("the catalogue has the price: that figure, once, and nothing else about price", () => {
   const r = priceRule("  $43.14 \n", "fast + funny, lead with the price");
-  assert.equal(r, "PRICE: the real price is $43.14. If the direction asks for the price, say exactly that figure, once. Say NOTHING else about price — never \"lowest\", \"best\", \"cheapest\", \"deal\", a discount, a saving or a comparison with anyone.");
+  assert.equal(r, "PRICE: the real price is $43.14. If the direction asks for the price, say exactly that figure, once. Say NOTHING else about price — never \"lowest\", \"best\", \"cheapest\", \"deal\", a discount, a saving or a comparison with anyone, and no remark on how little it is (\"pocket change\", \"a bargain\", \"a steal\", \"impulse-priced\").");
   assert.equal(cleanPrice("  $43.14 \n USD "), "$43.14 USD");
   assert.equal(cleanPrice(null), "");
   assert.equal(cleanPrice("x".repeat(90)).length, 40);

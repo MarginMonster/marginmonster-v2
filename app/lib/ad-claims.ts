@@ -213,7 +213,8 @@ export const saysAPrice = (text?: string | null): boolean => PRICE_FIGURE.test(t
 /** A catalogue price as it is given to a writer: one line, at most 40 characters. */
 export const cleanPrice = (priceText?: string | null): string => (priceText || "").replace(/\s+/g, " ").trim().slice(0, 40);
 
-const NO_OTHER_PRICE_TALK = `Say NOTHING else about price — never "lowest", "best", "cheapest", "deal", a discount, a saving or a comparison with anyone`;
+// (the last clause: live drafts said the figure and then added "that's basically pocket change per figure" and "impulse-priced")
+const NO_OTHER_PRICE_TALK = `Say NOTHING else about price — never "lowest", "best", "cheapest", "deal", a discount, a saving or a comparison with anyone, and no remark on how little it is ("pocket change", "a bargain", "a steal", "impulse-priced")`;
 /** The one line about price in a writer's brief. `memberWords` = the merchant's own details and direction. */
 export function priceRule(priceText?: string | null, memberWords?: string | null): string {
   const price = cleanPrice(priceText);
