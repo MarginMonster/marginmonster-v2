@@ -23,7 +23,7 @@ import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { screenCreatePrompt } from "../lib/prompt-safety.server";
-import { TOKEN_COST, CREATOR_PRICE, CREATOR_SURCHARGE_MULT, DURATION_SURCHARGE_10S } from "../lib/plan-config";
+import { TOKEN_COST, CREATOR_PRICE, CREATOR_SURCHARGE_MULT, CREATOR_VIDEO_SECONDS, creatorVideoSeconds, creatorVideoTokens, type CreatorVideoSeconds } from "../lib/plan-config";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
 import { uprightPhoto } from "../lib/upright-photo.server";
 import { assertCapability, capabilitiesFor, videoCapabilityFor } from "../lib/capabilities.server";
@@ -999,15 +999,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const CASUAL_ASPECTS = ["9:16", "1:1", "16:9"];
       const rawVideoAspect = ((form.get("videoAspect") as string) || "").trim();
       const videoAspect = casualMode && CASUAL_ASPECTS.includes(rawVideoAspect) ? rawVideoAspect : "9:16";
-      const durationHonored = ["auto", "kling", "kling26", "kling25fal", "seedance"].includes(effectiveEngine || "auto");
-      const videoDurationSec = (casualMode && (form.get("videoDurationSec") as string) === "10" && durationHonored) ? 10 : 5;
-      const lengthFee = (casualMode && videoDurationSec === 10) ? DURATION_SURCHARGE_10S : 0;
-      // Casual (Creator) video is a single clip — priced well below a full
-      // marketing video ad (presenter/multi-scene). Engine surcharge still rides.
-      const videoBase = casualMode ? TOKEN_COST.casualVideo : TOKEN_COST.video;
+      // The lengths on offer (5, 10, 15 s) are the default engine's: Kling 3 makes any of them, with
+      // sound. An engine the member PICKED keeps its own fixed clip — so a length is honoured, and
+      // charged for, on the default engine only (the Ultra button says it makes one short clip).
+      const durationHonored = casualMode && !effectiveEngine;
+      const videoDurationSec = durationHonored ? creatorVideoSeconds(form.get("videoDurationSec")) : 5;
+      // Casual (Creator) video is a single clip — priced well below a full marketing video ad
+      // (presenter/multi-scene), and BY THE SECOND: plan-config.ts creatorVideoTokens has the
+      // arithmetic. Engine surcharge still rides.
+      const videoBase = casualMode ? creatorVideoTokens(videoDurationSec) : TOKEN_COST.video;
       // Creator floor: a premium engine's surcharge was sized for Studio tokens,
       // so scale it up on casual video (creatorvideo cap) — see CREATOR_SURCHARGE_MULT.
-      const each = videoBase + engineSurcharge(effectiveEngine) * (casualMode ? CREATOR_SURCHARGE_MULT : 1) + lengthFee;
+      const each = videoBase + engineSurcharge(effectiveEngine) * (casualMode ? CREATOR_SURCHARGE_MULT : 1);
       // Video bursts cap lower than image bursts — one video is 60+ tokens, so
       // a ten-pack would empty most wallets on a single tap. Three is enough
       // to pick from without being a decision the merchant regrets.
@@ -2494,7 +2497,7 @@ export default function WebStudio() {
   const [videoEngine, setVideoEngine] = useState("auto");
   // Casual creative video Frame + Length (Options ▾). Ride hidden inputs in the Form.
   const [videoAspect, setVideoAspect] = useState<string>("9:16");
-  const [videoDurationSec, setVideoDurationSec] = useState<5 | 10>(5);
+  const [videoDurationSec, setVideoDurationSec] = useState<CreatorVideoSeconds>(5);
   const [showVideoOpts, setShowVideoOpts] = useState(false);
   const [commercial, setCommercial] = useState(false);
   const [breakout, setBreakout] = useState(false);
@@ -2724,7 +2727,8 @@ export default function WebStudio() {
   const submitIntent = isVideoEdit ? "videoedit" : isEdit && (editOp || direction.trim()) ? "edit" : isCreate ? "create" : tab;
   const verb = isVideoEdit ? "Edit" : isCreate || isMusic || isFaceless || (casual && tab === "video") ? "Make" : isEdit ? "Edit" : tab === "blog" ? "Write" : "Generate";
   const noun = isCreate ? "image" : isMusic ? "song" : isFaceless ? "video" : isEdit ? "photo" : tab === "video" ? "video" : tab === "image" ? "image" : "article";
-  const baseCost = isVideoEdit ? d.costs.videoEdit : isCreate ? d.costs.createImage : tab === "video" ? (casual ? d.costs.casualVideo : d.costs.video) : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
+  // (a Creator video is priced by its length on the default engine; a picked engine makes one fixed clip)
+  const baseCost = isVideoEdit ? d.costs.videoEdit : isCreate ? d.costs.createImage : tab === "video" ? (casual ? (videoEngine && videoEngine !== "auto" ? d.costs.casualVideo : creatorVideoTokens(videoDurationSec)) : d.costs.video) : tab === "image" ? d.costs.image : tab === "music" ? d.costs.music : tab === "faceless" ? d.costs.faceless : d.costs.blog;
   // Premium "Make an image" model (Genius) adds a token surcharge, like the
   // video engines. Re-derived from the SAME table the server charges from, so
   // the quote, the pill, XP and the Make button can't disagree with the charge.
@@ -5345,15 +5349,16 @@ export default function WebStudio() {
                             </div>
                             <div className="ws-lbl" style={{ marginTop: 12 }}>{t("Length")}</div>
                             <div className="ws-frames" role="radiogroup" aria-label={t("Clip length")}>
-                              {([5, 10] as const).map((sec) => (
+                              {/* each length says what it costs — the same number the Pro button then shows */}
+                              {CREATOR_VIDEO_SECONDS.map((sec) => (
                                 <button type="button" key={sec} role="radio" aria-checked={videoDurationSec === sec}
                                   className={`ws-frame${videoDurationSec === sec ? " sel" : ""}`} onClick={() => setVideoDurationSec(sec)}>
                                   <span className="ws-frame-nm" style={{ fontWeight: 800, fontSize: "14px" }}>{sec}s</span>
-                                  <span className="ws-frame-nm" style={{ fontSize: "10.5px", color: "#8A968E" }}>{sec === 5 ? t("default") : `+${DURATION_SURCHARGE_10S} tok`}</span>
+                                  <span className="ws-frame-nm" style={{ fontSize: "10.5px", color: "#8A968E" }}>{t("{n} tokens", { n: creatorVideoTokens(sec) })}</span>
                                 </button>
                               ))}
                             </div>
-                            <p className="ws-note" style={{ marginTop: 6 }}>{t("10s renders on Pro. Ultra makes a fixed short clip.")}</p>
+                            <p className="ws-note" style={{ marginTop: 6 }}>{t("Every video is made with its own sound. The length is for Pro — Ultra makes one short clip.")}</p>
                           </div>
                         )}
                         <input type="hidden" name="videoAspect" value={videoAspect} />
@@ -5893,7 +5898,7 @@ export default function WebStudio() {
                       mk("ultra", "Ultra", "Flagship b-roll — the sharpest, most cinematic look", "ws-cta-ultra", d.costs.faceless + facelessQualitySurcharge("ultra") * CREATOR_SURCHARGE_MULT, () => makeFacelessQ("ultra")),
                     ]
                   : [
-                      mk("pro", "Pro", "Fast, high-quality motion — our default", "ws-cta-pro", d.costs.casualVideo + engineSurcharge("auto") * CREATOR_SURCHARGE_MULT + (videoDurationSec === 10 ? DURATION_SURCHARGE_10S : 0), () => makeVideoQ("auto")),
+                      mk("pro", "Pro", "Fast, high-quality motion with sound — our default", "ws-cta-pro", creatorVideoTokens(videoDurationSec) + engineSurcharge("auto") * CREATOR_SURCHARGE_MULT, () => makeVideoQ("auto")),
                       mk("ultra", "Ultra", "Premium realism & finer detail — our flagship", "ws-cta-ultra", d.costs.casualVideo + engineSurcharge("veo31") * CREATOR_SURCHARGE_MULT, () => makeVideoQ("veo31")),
                     ];
                 return <div className="ws-cta2">{pair}</div>;

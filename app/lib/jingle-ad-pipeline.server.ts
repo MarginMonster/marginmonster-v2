@@ -722,6 +722,10 @@ export async function generateJingleAd(params: JingleAdParams): Promise<string> 
   if (!talkingUrl && !animUrl) {
     const created = await animateCreate(params.videoEngine, {
       startImage: keyframeUrl,
+      // Ten seconds, asked for by name: the song runs longer than any clip and this one is looped
+      // under it, so a longer clip means fewer loop seams. Silent — the song IS the sound.
+      // (Kling only: a premium engine keeps its own length — Seedance bills by the second.)
+      durationSec: !params.videoEngine || params.videoEngine.startsWith("kling") ? 10 : undefined,
       prompt: `Upbeat retro TV-commercial hero shot: the product stays the clear star, lively dynamic camera motion and a confident reveal, gentle sparkle and shine sweeps, bright cheerful energy, vertical video. The product's label and shape stay crisp and unchanged.`,
       negativePrompt: "morphing, distortion, extra objects, people appearing, text, watermark, blur, style change",
     });

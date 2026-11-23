@@ -1078,6 +1078,12 @@ export async function generateCartoonAd(params: CartoonAdParams): Promise<string
     }
     const created = await animateCreate(params.videoEngine, {
       startImage: keyframeUrl,
+      // Ten seconds, asked for by name: the voice-over runs 12–15 s and the clip is looped under it,
+      // so a longer clip means half as many loop seams. (It was ten by accident for two weeks — the
+      // engine adapter's default — and with paid sound nobody heard; see fal-video-body.ts. Silent:
+      // the narration and music are laid over this clip.)
+      // (Kling only: a premium engine keeps its own length — Seedance bills by the second.)
+      durationSec: !params.videoEngine || params.videoEngine.startsWith("kling") ? 10 : undefined,
       // This pipeline has NO lipsync — the voice-over is a separate track laid
       // over the animation. So a character animated as though talking can only
       // ever look out of sync. It is narration, and the animation must not

@@ -213,7 +213,7 @@ test("the scene length rides from the page to the render, and an old job is stil
   assert.doesNotMatch(gen, /N \* 10/, "nothing still assumes ten-second scenes");
   assert.doesNotMatch(gen, /const D = 10/);
   // the video model takes exactly these two lengths
-  const fal = read("app", "lib", "fal-video.server.ts");
+  const fal = read("app", "lib", "fal-video-body.ts"); // where the request is built (tests/fal-video-body.test.ts)
   assert.match(fal, /duration: String\(opts\.durationSec \?\? /);
   // the format allows two minutes of five-second scenes
   const engine = read("app", "lib", "film-engine.server.ts");

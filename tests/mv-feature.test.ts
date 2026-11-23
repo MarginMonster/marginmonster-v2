@@ -542,7 +542,7 @@ test("a cut scene's faces do not talk", () => {
   assert.match(gen, /const quietFaces = shot\.role === "perform" \? "" : "talking, speaking, singing, lip sync, lips moving, mouth opening, open mouth, /);
   assert.match(gen, /generateAudio: false, \.\.\.\(quietFaces \? \{ negativePrompt: quietFaces \} : \{\}\) \}\);/);
   // a performance is left alone: its mouth is re-driven to the song afterwards
-  const fal = read("app", "lib", "fal-video.server.ts");
+  const fal = read("app", "lib", "fal-video-body.ts"); // where the request is built (tests/fal-video-body.test.ts)
   assert.match(fal, /negative_prompt: opts\.negativePrompt/);
 });
 

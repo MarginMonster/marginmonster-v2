@@ -316,9 +316,17 @@ export const TOKEN_COST = {
   // engine, NO presenter/avatar lipsync and no multi-scene commercial (those are
   // what make the marketing `video` cost 150). A single clip's COGS is cents, so
   // the marketing price was wildly over-packaged for a creator making fun videos
-  // (and absurd next to faceless, a full 30s video, at 30). 50 keeps a big margin
-  // and sits sensibly above faceless. Premium engines still add their surcharge.
-  casualVideo: 50,
+  // (and absurd next to faceless, a full 30s video, at 30). Premium engines still
+  // add their surcharge.
+  //
+  // THIS IS THE PRICE OF THE SHORTEST ONE: 5 seconds, with sound. A Creator video
+  // is priced by the second (CREATOR_VIDEO_TOKENS_PER_SECOND below, where the
+  // arithmetic is) and this entry is kept equal to five of them, so everything
+  // that reads "what a Creator video costs" — plan cards, the Archive's remake
+  // price — agrees with the Studio. It was 50, set when the clip was a silent
+  // Kling 2.5 at $0.07 a second; tests/creator-video-price.test.ts holds the two
+  // numbers together.
+  casualVideo: 60,
   // Creating a custom presenter is priced to BREAK EVEN, not to earn (owner, 2026-11-17: "avatar
   // creation needs to be a break-even deal — we make the real money on the video and ad creation").
   // What one presenter costs us to make:
@@ -367,14 +375,41 @@ export type TokenAction = keyof typeof TOKEN_COST;
 // → 3 (whole-token surcharges; Studio margins have headroom).
 export const CREATOR_SURCHARGE_MULT = 3;
 
-// Casual creative video LENGTH surcharge. 5s is free (the default); a 10s clip
-// roughly doubles the per-second render COGS (one extra ~5s Kling-3-Pro increment,
-// est. $0.15–0.35 on fal). 15 tokens = $0.21 at the CREATOR floor ($0.0140/tok):
-// a 65-token (50+15) 10s video keeps ≥40% margin even at the pessimistic COGS.
-// Flat (NOT ×CREATOR_SURCHARGE_MULT) — it already clears the floor. LEVER: raise if
-// a live 10s prod gen shows higher per-second fal billing. Veo ignores duration, so
-// the route never charges this when the Ultra/Veo engine is picked.
-export const DURATION_SURCHARGE_10S = 15;
+// ---- What a Creator video costs: by the second, sound included -------------------------------------
+//
+// A Creator video is one clip that keeps the sound its engine makes with the picture (Kling 3 Omni,
+// standard — see SOUND_ENGINE_KEY in ugc-ad-pipeline.server.ts). The engine bills by the second, so the
+// price does too: twice as long costs twice as much, and there is nothing else to explain.
+//
+//   COGS, from fal's own price page (read 2026-11-23): $0.112 a second with sound, plus about $0.04
+//   for the still the scene is animated from.
+//       5 s  $0.60        10 s  $1.16        15 s  $1.72
+//   At the binding floor — the standalone Creator plan, $6.99 for 500 tokens = $0.01398 a token — and
+//   the owner's rule (every generation at least 20% profit; 30% is the working target):
+//       5 s  60 tokens = $0.84  → 28%      10 s  120 = $1.68 → 31%      15 s  180 = $2.52 → 32%
+//   (On Studio and Legend a token is worth three times as much, so the same prices clear 75%+.)
+//
+// WHY IT MOVED. It was 50 tokens for 5 s and 65 for 10 s, sized for a SILENT Kling 2.5 clip at $0.07
+// a second. From 2026-11-06 the clip was really a Kling 3 Pro one WITH sound ($0.168 a second) — the
+// engine adapter's default, never priced: $0.88 for a 50-token ($0.70) video and $1.72 for a 65-token
+// ($0.91) one, a loss on every Creator-plan video. Sound stays, on the cheaper Omni engine, and the
+// price follows the bill.
+//
+// LEVER: one number. Raise it if the per-second bill climbs; lower it only with a cheaper engine.
+// The Ultra engine (Veo) makes one fixed short clip, so it is never priced by length: it costs the
+// 5-second price plus its own surcharge, whatever length is picked.
+export const CREATOR_VIDEO_TOKENS_PER_SECOND = 12;
+export const CREATOR_VIDEO_SECONDS = [5, 10, 15] as const;
+export type CreatorVideoSeconds = (typeof CREATOR_VIDEO_SECONDS)[number];
+/** The length a request is really for: one of the three on offer, 5 for anything else. */
+export function creatorVideoSeconds(v: unknown): CreatorVideoSeconds {
+  const n = typeof v === "string" ? parseInt(v, 10) : Number(v);
+  return n === 10 || n === 15 ? n : 5;
+}
+/** Tokens for a Creator video of this length on the default engine. */
+export function creatorVideoTokens(sec: unknown): number {
+  return CREATOR_VIDEO_TOKENS_PER_SECOND * creatorVideoSeconds(sec);
+}
 
 // ---- Film engine (premium long-form video: music video, kids cartoon, short
 // film) — METERED BY SCENE COUNT. Each scene = one AI seed still + one i2v CLIP

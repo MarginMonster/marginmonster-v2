@@ -22,6 +22,7 @@ function headers(): Record<string, string> {
  *  resolve on Replicate's. Returns a hosted mp3 url. Tries the full schema,
  *  then a minimal variant (fal has 422'd on audio_setting before). */
 import { voiceLangOpts } from "./content-lang";
+import { falVideoBody, type FalVideoOpts } from "./fal-video-body";
 
 export interface TtsDelivery {
   /** MiniMax-native semitones, kept within ±3 upstream so reads stay natural. */
@@ -313,38 +314,12 @@ export async function falLipSync(videoUrl: string, audioUrl: string): Promise<st
  *  falVideoPoll(model, id). */
 export async function falVideoSubmit(
   model: string,
-  opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; generateAudio?: boolean }
+  opts: FalVideoOpts
 ): Promise<string> {
   if (!falEnabled()) throw new Error("FAL_KEY not set");
-  const body: Record<string, unknown> = /veo/.test(model)
-    // generate_audio is added ONLY when asked (the Test Movie dialogue path) —
-    // omitting it keeps every existing veo caller byte-for-byte unchanged.
-    ? { prompt: opts.prompt, image_url: opts.startImage, aspect_ratio: "9:16", ...(opts.generateAudio ? { generate_audio: true } : {}) }
-    : /kling-video\/(?:v3|o3)/.test(model)
-    // Kling 3.0 / O3 image-to-video — the Test Movie dialogue engine option with
-    // NATIVE lip-synced speech. Scoped to v3/o3 so the existing SILENT Kling 2.x
-    // motion callers (which use the generic `image_url` else-branch) are untouched.
-    // V3 Pro's seed frame is `start_image_url`; O3 Standard uses `image_url`. Both
-    // take a string `duration` (3-15s) and `generate_audio` (default on). No aspect
-    // flag — the output ratio is inherited from the seed image.
-    ? {
-        prompt: opts.prompt,
-        ...(/\/o3\//.test(model) ? { image_url: opts.startImage } : { start_image_url: opts.startImage }),
-        duration: String(opts.durationSec ?? 10),
-        generate_audio: opts.generateAudio !== false,
-      }
-    : /seedance/.test(model)
-    // Seedance 2.5's schema is prompt + image_url + resolution + duration — it
-    // takes NEITHER a negative_prompt NOR an aspect flag (sending them 422s).
-    // 720p keeps COGS sane; a reject here falls back to Replicate seedance-1-pro.
-    ? { prompt: opts.prompt, image_url: opts.startImage, resolution: "720p", duration: String(opts.durationSec ?? 5) }
-    : {
-        prompt: opts.prompt,
-        image_url: opts.startImage,
-        duration: String(opts.durationSec ?? 5),
-        negative_prompt: opts.negativePrompt
-          || "object disappearing, product vanishing, flickering, morphing, distortion, extra fingers, deformed hands, text, watermark",
-      };
+  // What is asked for — the length, whether the engine makes sound, what it must not do — is built in
+  // one pure, tested place: fal-video-body.ts (read its header before changing a default here).
+  const body = falVideoBody(model, opts);
   const res = await fetch(`https://queue.fal.run/${model}`, {
     method: "POST", headers: headers(), body: JSON.stringify(body),
   });

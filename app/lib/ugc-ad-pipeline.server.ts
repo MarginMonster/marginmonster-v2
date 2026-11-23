@@ -171,6 +171,9 @@ export async function repCreate(model: string, input: Record<string, unknown>): 
  * v2.6 if v3's cost breaks the margin floor. */
 export const DEFAULT_FAL_ANIMATE_MODEL = "fal-ai/kling-video/v3/pro/image-to-video";
 export const DEFAULT_ANIMATE_MODEL = "kwaivgi/kling-v2.5-turbo-pro";
+/** See falAnimateModelFor. */
+export const SOUND_ENGINE_KEY = "kling3s";
+export const SOUND_FAL_ANIMATE_MODEL = "fal-ai/kling-video/o3/standard/image-to-video";
 
 /** fal-hosted engines, keyed the same way as the Replicate ones. */
 function falAnimateModelFor(engineKey: string | undefined): string | null {
@@ -178,6 +181,11 @@ function falAnimateModelFor(engineKey: string | undefined): string | null {
     case undefined: case "": case "kling": case "kling3": return DEFAULT_FAL_ANIMATE_MODEL; // Kling 3 Pro (newest)
     case "kling26": return "fal-ai/kling-video/v2.6/pro/image-to-video"; // previous gen
     case "kling25fal": return "fal-ai/kling-video/v2.5-turbo/pro/image-to-video";
+    // Kling 3 Omni, standard: the engine of a video that KEEPS ITS OWN SOUND (a Creator video). It is
+    // the cheapest Kling that makes sound ($0.112 a second with it — fal's page, 2026-11-23), it renders
+    // at the 720p we ship, and it is the model the owner picked by ear for films. Not on the engine
+    // menu (video-engines.ts): the server chooses it, a member never has to.
+    case SOUND_ENGINE_KEY: return SOUND_FAL_ANIMATE_MODEL;
     case "veo31": return "fal-ai/veo3.1/fast/image-to-video";
     // Seedance 2.5 (newest) runs on fal; a fal reject falls through to the
     // Replicate seedance-1-pro in animateModelFor below, so it always renders.
@@ -217,8 +225,9 @@ function animateInputFor(model: string, opts: { startImage: string; prompt: stri
   if (model === "google/veo-3-fast") return { prompt: opts.prompt, image: opts.startImage, aspect_ratio: "9:16", generate_audio: false, negative_prompt: neg };
   if (model === "bytedance/seedance-1-pro") return { prompt: opts.prompt, image: opts.startImage, duration: 10, resolution: "720p" };
   if (model === "minimax/hailuo-02") return { prompt: opts.prompt, first_frame_image: opts.startImage, duration: 10 };
-  // kling 2.x dropped cfg_scale and caps at 5s/10s per tier; 1.6 still takes it.
-  if (/kling-v2/.test(model)) return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: opts.durationSec ?? 5 };
+  // kling 2.x dropped cfg_scale and caps at 5s/10s per tier; 1.6 still takes it. A length only Kling 3
+  // makes (15 s, or anything between) lands on the nearer of the two rather than being refused.
+  if (/kling-v2/.test(model)) return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: (opts.durationSec ?? 5) > 7 ? 10 : 5 };
   return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: 10, cfg_scale: 0.5 };
 }
 
@@ -227,17 +236,25 @@ function animateInputFor(model: string, opts: { startImage: string; prompt: stri
  *  which model ACTUALLY ran (for honest asset metadata). */
 export async function animateCreate(
   engineKey: string | undefined,
-  opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number }
+  /** `generateAudio: true` = this pipeline SHIPS the clip's own sound, so the engine is asked to make it.
+   *  Left out, the clip is silent and costs a third less — every pipeline that lays its own voice or
+   *  music over the motion leaves it out (see fal-video-body.ts). */
+  opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; generateAudio?: boolean }
 ): Promise<{ id: string; model: string }> {
   // fal first when the engine lives there (kling 2.6 pro is fal-only).
   const falModel = falAnimateModelFor(engineKey);
   if (falModel && falEnabled()) {
-    try {
-      const { falVideoSubmit } = await import("./fal-video.server");
-      const rid = await falVideoSubmit(falModel, opts);
-      return { id: `${FAL_ID}${falModel}|${rid}`, model: falModel };
-    } catch (e) {
-      console.error(`[animate] ${falModel} rejected — falling back to Replicate:`, e instanceof Error ? e.message.slice(0, 160) : e);
+    // A video sold with sound gets a second engine that makes sound before it is handed to the silent
+    // Replicate default: Kling 3 Pro, the same family.
+    const falModels = engineKey === SOUND_ENGINE_KEY ? [falModel, DEFAULT_FAL_ANIMATE_MODEL] : [falModel];
+    const { falVideoSubmit } = await import("./fal-video.server");
+    for (const m of falModels) {
+      try {
+        const rid = await falVideoSubmit(m, opts);
+        return { id: `${FAL_ID}${m}|${rid}`, model: m };
+      } catch (e) {
+        console.error(`[animate] ${m} rejected — falling back:`, e instanceof Error ? e.message.slice(0, 160) : e);
+      }
     }
   }
   const model = animateModelFor(engineKey);

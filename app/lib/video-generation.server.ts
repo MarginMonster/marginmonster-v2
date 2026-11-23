@@ -10,7 +10,7 @@ import type { BrandProfile, Plan } from "@prisma/client";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { trimToWord } from "./text-trim";
 import { stripPromoTag } from "./ad-claims";
-import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, download, probeVideoDims, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
+import { animateCreate, animatePoll, checkpointJob, DEFAULT_ANIMATE_MODEL, DEFAULT_FAL_ANIMATE_MODEL, SOUND_ENGINE_KEY, download, hasAudioStream, probeVideoDims, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
 import fs from "node:fs";
 import os from "node:os";
@@ -18,6 +18,7 @@ import path from "node:path";
 import { mirrorRender, storageEnabled } from "./object-storage.server";
 import { checkpointUrlAlive } from "./cartoon-ad-pipeline.server";
 import { fetchableUrl } from "./fetchable-url";
+import { levelFilm } from "./film-loudness.server";
 
 export type VideoStyle = "PRODUCT_HIGHLIGHT" | "AI_AVATAR";
 
@@ -188,6 +189,19 @@ async function persistRemoteVideo(url: string, aspect = "9:16"): Promise<string>
       onDisk = true;
     } catch (diskErr) {
       console.warn(`[video] local write failed, trying durable storage: ${diskErr instanceof Error ? diskErr.message : String(diskErr)}`);
+    }
+
+    // ONE LOUDNESS. The clip's own sound arrives at whatever level the engine made it — the first
+    // one measured (a thunderstorm, 2026-11-23) sat at -21 LUFS, half as loud as a film or an ad from
+    // this same app. Levelled the way a film is: one gain for the whole clip, and a limiter that only
+    // touches a peak the gain pushed over. BEFORE the mirror, so the durable copy is the levelled
+    // one. A silent clip is left alone; a failure leaves the file exactly as it was.
+    if (onDisk) {
+      try {
+        if (hasAudioStream(finalPath)) await levelFilm(finalPath, -16);
+      } catch (e) {
+        console.warn(`[video] loudness left as it was: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
 
     // Mirror the framed file when we have one, the raw download when we don’t.
@@ -442,7 +456,19 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
   const context = (!params.creative && productDescription?.trim())
     ? ` Product context: ${trimToWord(productDescription, 200)}.`
     : "";
-  const prompt = `${basePrompt}${context}${direction ? ` Direction: ${direction}` : ""}`;
+  // THIS PIPELINE SHIPS THE CLIP'S OWN SOUND. toVerticalFrame maps the clip's audio through and a 1:1 /
+  // 16:9 clip is written as it came, so whatever the engine makes is what the member hears. The engine
+  // is therefore ASKED for sound (generateAudio below) and told what kind — left to itself it may invent
+  // a voice talking gibberish over a product shot. A described scene gets the sound of that scene, and
+  // speech only if the description has someone speak; a product video gets motion sound and no voice.
+  const soundLine = params.creative
+    ? " Sound: the real sound of this scene — its ambience and the effects of what is seen, in time with the picture. Nobody speaks or sings and there is no music unless the description asks for it."
+    : " Sound: clean, modern sound design that fits the motion — soft whooshes, subtle ambience. No speech, no voice-over, no singing.";
+  const prompt = `${basePrompt}${context}${direction ? ` Direction: ${direction}` : ""}${soundLine}`;
+  // A described Creator video on "Auto" runs on the engine built for a clip that keeps its sound; a
+  // picked premium engine, and every product video, keeps the engine it has. `params.videoEngine` itself
+  // is left alone — the surcharge reconcile below compares what was PAID for with what ran.
+  const engineKey = params.videoEngine ?? (params.creative ? SOUND_ENGINE_KEY : undefined);
   // Casual creative OUTPUT frame — only `creative` honours it; everything else
   // stays "9:16" so the product/marketing path's seed, QA and framing are byte-
   // for-byte unchanged.
@@ -560,7 +586,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     // animateCreate already treats undefined as "the default engine", so
     // passing it through is all this needs.
     if (seedImage) {
-      const created = await animateCreate(params.videoEngine, { startImage: seedImage, prompt, durationSec: params.durationSec });
+      const created = await animateCreate(engineKey, { startImage: seedImage, prompt, durationSec: params.durationSec, generateAudio: true });
       predictionId = created.id;
       ranModel = created.model;
     } else {
@@ -583,9 +609,13 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       // default engine that a create-time rejection gets.
       if (!seedImage || ranModel === DEFAULT_ANIMATE_MODEL) throw e;
       // "kling25" forces the Replicate path: retrying the default would go
-      // straight back to the fal engine that just failed at inference.
-      console.error(`[video] ${ranModel} failed at inference — retrying on ${DEFAULT_ANIMATE_MODEL}:`, e instanceof Error ? e.message.slice(0, 200) : e);
-      const retry = await animateCreate("kling25", { startImage: seedImage, prompt, durationSec: params.durationSec });
+      // straight back to the fal engine that just failed at inference. One step
+      // before that for the sound engine: Kling 3 Pro also makes sound, so a
+      // video sold with sound is not handed to the silent default while an
+      // engine that can make it has not been tried.
+      const retryKey = engineKey === SOUND_ENGINE_KEY && ranModel !== DEFAULT_FAL_ANIMATE_MODEL ? "kling" : "kling25";
+      console.error(`[video] ${ranModel} failed at inference — retrying on ${retryKey === "kling" ? DEFAULT_FAL_ANIMATE_MODEL : DEFAULT_ANIMATE_MODEL}:`, e instanceof Error ? e.message.slice(0, 200) : e);
+      const retry = await animateCreate(retryKey, { startImage: seedImage, prompt, durationSec: params.durationSec, generateAudio: true });
       // The default engine is what actually renders from here. Leaving
       // ranModel on the premium engine made the asset metadata claim a
       // model that never ran, and hid the downgrade from the refund below.
@@ -615,7 +645,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       if (!fid.ok && !fid.degraded) {
         console.log(`[video] product-fidelity gate failed (${fid.why}) — re-rolling once on ${ranModel || "the engine"}`);
         try {
-          const rr = await animateCreate(params.videoEngine, { startImage: seedImage, prompt, durationSec: params.durationSec });
+          const rr = await animateCreate(engineKey, { startImage: seedImage, prompt, durationSec: params.durationSec, generateAudio: true });
           await ckpt({ ckVideoPredId: rr.id });
           ranModel = rr.model;
           videoUrl = await animatePoll(rr.id, VIDEO_POLL_MS, "video(fidelity-reroll)");
@@ -722,6 +752,13 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
     }
   }
 
+  // Does the file we serve carry sound? Asked of the file, not assumed from the engine: a fallback to the
+  // silent default, or an engine with no sound of its own, ships a silent clip — and the piece says so.
+  let sound: boolean | undefined;
+  if (storedUrl.startsWith("/renders/")) {
+    try { sound = hasAudioStream(path.join(process.cwd(), "data", "renders", path.basename(storedUrl))); } catch { /* unknown */ }
+  }
+
   const asset = await db.asset.create({
     data: {
       shopId,
@@ -733,7 +770,8 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       // productImageUrl is what a REMIX rebuilds from. Without it the remix
       // regenerates the product from its name — 150 tokens of something else.
       metaJson: JSON.stringify({ style, productTitle, avatarId: avatar?.id || null, avatarVariant: avatar ? variant : null, direction: params.customPrompt || null, productImageUrl: params.productImageUrl || null, serviceMode: !!params.serviceMode,
-        aspect: qaAspect ? (qaAspect.ok ? (aspect === "9:16" ? "vertical" : aspect) : "offspec") : "unverified", qa: qaAspect ? { aspect: qaAspect } : undefined }),
+        aspect: qaAspect ? (qaAspect.ok ? (aspect === "9:16" ? "vertical" : aspect) : "offspec") : "unverified", qa: qaAspect ? { aspect: qaAspect } : undefined,
+        sound, engine: ranModel || undefined, seconds: params.durationSec || undefined }),
     },
   });
   return asset.id;
