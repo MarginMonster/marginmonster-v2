@@ -52,6 +52,9 @@ import { langDirective, voiceLangOpts } from "./content-lang";
 import { engineLedger } from "./engine-ledger.ts";
 import { reconcileEngineSurcharge } from "./engine-reconcile.server";
 import { parseGateVerdict, outageReason } from "./gate-verdict";
+import { musicBedToDisk } from "./music-generation.server";
+import { levelFilm } from "./film-loudness.server";
+import { COMMERCIAL_LUFS, commercialBedFilter, commercialMusicPrompt } from "./commercial-music";
 
 function ffmpegBin(): string | null {
   for (const p of ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"]) if (fs.existsSync(p)) return p;
@@ -345,6 +348,9 @@ export async function assembleCommercial(opts: {
   narrationPaths?: string[];
   /** Spoken tagline, placed over the packshot. */
   taglinePath?: string;
+  /** A music bed laid under the voice for the whole cut (looped; see commercial-music.ts). Without one
+   *  the ad is a narrator and silence between the lines. */
+  musicPath?: string;
   productJpegPath?: string;
   /** Deterministic brand close-out: a designed base card plus a transparent
    *  rosette PNG spun live by ffmpeg — no AI-generated finale at all. When
@@ -500,6 +506,20 @@ export async function assembleCommercial(opts: {
       const graph = `${delays.join(";")};${pieces.map((_, i) => `[a${i}]`).join("")}amix=inputs=${pieces.length}:normalize=0,apad=whole_dur=${totalSec}[aout]`;
       await runFfmpeg(bin, ["-y", ...inputs, "-filter_complex", graph, "-map", "[aout]", "-t", String(totalSec), mixed]);
       voPath = mixed;
+    }
+    // 3b) THE BED UNDER THE VOICE. Without it there were more than two seconds of dead silence after
+    // every line (measured on the first commercial made as a customer, 2026-11-23). The voice is brought
+    // to -16 LUFS and the looped bed sits well under it — the narrated stories' own mix. A bed that
+    // cannot be mixed costs nothing but itself: the voice track goes on as it was.
+    if (voPath && opts.musicPath && fs.existsSync(opts.musicPath)) {
+      const withBed = path.join(tmp, "vo-bed.wav");
+      try {
+        await runFfmpeg(bin, ["-y", "-i", voPath, "-stream_loop", "-1", "-i", opts.musicPath,
+          "-filter_complex", commercialBedFilter(totalSec), "-map", "[aout]", "-t", String(totalSec), withBed]);
+        if (fs.existsSync(withBed) && fs.statSync(withBed).size > 2000) voPath = withBed;
+      } catch (e) {
+        console.error("[commercial] music bed could not be mixed — voice only:", e instanceof Error ? e.message.slice(0, 200) : e);
+      }
     }
     // 4) Concat + letterbox + grade + the sound-off layer (captions and the
     // watermark composited as timed overlays — each caption slides up 44px
@@ -921,13 +941,26 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     fs.mkdirSync(rendersDir, { recursive: true });
     const fileName = `commercial-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`;
     const outPath = path.join(rendersDir, fileName);
+    // The bed: one short loop in the feel the member asked for (commercial-music.ts). It is bought last,
+    // when everything else has rendered, and never fails the ad — no bed is yesterday's commercial.
+    let musicPath: string | undefined;
+    try {
+      musicPath = await musicBedToDisk(commercialMusicPrompt(params.direction, params.productTitle));
+    } catch (e) {
+      console.error("[commercial] no music bed — voice only:", e instanceof Error ? e.message.slice(0, 200) : e);
+    }
     await assembleCommercial({
       clipPaths,
       narrationPaths: voPaths.slice(0, clipPaths.length),
       taglinePath: voPaths[clipPaths.length],
+      musicPath,
       productJpegPath: jpg,
       outPath,
     });
+    if (musicPath) { try { fs.unlinkSync(musicPath); } catch { /* best effort */ } }
+    // One loudness for everything we make: the first commercial measured sat at -27.5 LUFS. One gain for
+    // the whole ad and a limiter that only touches a peak the gain pushed over; a failure leaves the file.
+    try { await levelFilm(outPath, COMMERCIAL_LUFS); } catch (e) { console.error("[commercial] loudness left as it was:", e instanceof Error ? e.message.slice(0, 160) : e); }
     // Output QA — never persist a broken clip as a paid video (refund instead).
     assertPlayableVideo(outPath);
 

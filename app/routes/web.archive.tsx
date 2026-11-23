@@ -327,6 +327,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // product image as the tile art, failed jobs surfaced instead of vanishing.
   const nowMs = Date.now();
   const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45, GENERATE_SONG: 60, GENERATE_BLOG_POST: 40 };
+  const COMMERCIAL_TYPICAL_SEC = 660;
   const KIND: Record<string, "video" | "image" | "music" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_SONG: "music", GENERATE_BLOG_POST: "blog" };
   const cookingCards: { jobId: string; kind: "video" | "image" | "music" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number }[] = [];
   for (const j of jobs) {
@@ -353,8 +354,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // A film runs FAR longer than a normal 180s video (one AI clip per scene),
     // so estimate from its scene count — otherwise the card falsely reads
     // "taking longer than usual" within a few minutes of a perfectly healthy run.
+    // A COMMERCIAL is five scenes drawn, animated and voiced one after another, then cut over music:
+    // 9 min 26 s on the live site (2026-11-23). At the 180 s of a single clip its card read "taking
+    // longer than usual" from the third minute of a perfectly healthy render.
     const typical = (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film")
       ? Math.max(600, (typeof p.filmScenes === "number" ? p.filmScenes : 8) * 60)
+      : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "commercial") ? COMMERCIAL_TYPICAL_SEC
       : TYPICAL[j.type];
     const etaSec = generating ? Math.round(typical - elapsedSec) : 0;
     const pl = p as { chargedTokens?: number };
