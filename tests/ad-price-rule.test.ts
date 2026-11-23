@@ -73,6 +73,12 @@ test("every writer whose words go out in an ad is given the rule and the catalog
   for (const f of ["commercial-ad-pipeline.server.ts", "ugc-ad-pipeline.server.ts", "jingle-ad-pipeline.server.ts", "cartoon-ad-pipeline.server.ts"]) {
     assert.ok(read("app", "lib", f).includes("import { catalogPriceFor } from \"./catalog-import.server\";"), f);
   }
+  // the words drawn into an IMAGE ad have their own price lines (the layout has price fields of its own):
+  // asked to lead with the price they wrote "16 FIGURES, ONE TINY PRICE" and a "Low cost" chip — no price
+  const img = read("app", "lib", "image-generation.server.ts");
+  assert.ok(img.includes("? `If the angle asks for the price, put that exact figure — ${productPrice} — in the headline (or, where the headline cannot hold it, in one label), once. Say nothing else about price: no “low cost”, “tiny price”, “cheap”, “affordable”, “best value”, “bargain”, no discount and no comparison with anyone.`"));
+  assert.ok(img.includes(": `Say nothing about price at all — no “low cost”, “tiny price”, “cheap”, “affordable”, “great value” or “bargain” — even if the angle asks for the price.`,"));
+  assert.deepEqual(claimFaults("Low cost", "Funism palmsize wonders V2 (16 per set) \n fast + funny, lead with the price \n $43.14"), ["low cost"], "the chip that was really drawn is now read as a claim");
   // the quick direction that started this is still offered under every style
   assert.ok(read("app", "routes", "web.studio.tsx").includes("\"fast + funny, lead with the price\""));
 });

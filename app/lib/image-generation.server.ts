@@ -3168,6 +3168,13 @@ async function formatCopy(
       productPrice
         ? `The product’s REAL price is "${productPrice}". Wherever a price appears, reproduce that string EXACTLY — never round it, never restate it in another currency, never make up a different one. Any per-use or per-serving figure must be arithmetic on that number and nothing else.`
         : `You do NOT know this product’s price. Never write a currency amount anywhere — no price, no cost-per-use, no per-serving figure, no “from $…”. Sell it on what it is instead.`,
+      // ASKED TO LEAD WITH THE PRICE, IT WROTE "ONE TINY PRICE". Made as a customer, 2026-11-23, with the Ad
+      // Maker's own quick direction "fast + funny, lead with the price" and the price on file: the headline
+      // read "16 FIGURES, ONE TINY PRICE" with a "Low cost" chip — price talk, and no price. The figure is
+      // what was asked for; remarks about how little it is are claims nobody gave the writer.
+      productPrice
+        ? `If the angle asks for the price, put that exact figure — ${productPrice} — in the headline (or, where the headline cannot hold it, in one label), once. Say nothing else about price: no “low cost”, “tiny price”, “cheap”, “affordable”, “best value”, “bargain”, no discount and no comparison with anyone.`
+        : `Say nothing about price at all — no “low cost”, “tiny price”, “cheap”, “affordable”, “great value” or “bargain” — even if the angle asks for the price.`,
       // GROUND EVERY SPEC, AND MAKE IT SPECIFIC. The copy prints on a paid ad
       // the merchant runs as fact: an invented spec ("14-day battery", "2%
       // hyaluronic acid") is a false-advertising claim they are liable for, and

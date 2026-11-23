@@ -77,6 +77,12 @@ const CLAIM_WORDS: RegExp[] = [
   /\bprices?\s+(?:around|anywhere|in town|on the market)\b/gi,
   /\bbeats?\s+any\s+price\b/gi,
   /\bhalf[- ]price\b/gi,
+  // …and the plain ones that say it is cheaper than it would otherwise be, or than the market: an image ad
+  // asked to "lead with the price" printed a "Low cost" chip beside no price at all (2026-11-23)
+  /\blow(?:er)?[- ](?:cost|price|prices|priced)\b/gi,
+  /\bcheap(?:er|ly)?\b/gi,
+  /\bbargains?\b/gi,
+  /\ba steal\b/gi,
   // discounts and deadlines (7)
   /\b\d{1,3}\s?%\s?off\b/gi,
   /\bpercent off\b/gi,

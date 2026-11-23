@@ -37,6 +37,14 @@ test("each rule's unmistakable words are found", () => {
     ["The #1 blind box in the country.", "#1"],
     ["Our best-selling set.", "best-selling"],
     ["A top-rated toy.", "top-rated"],
+    // the plain price comparisons (an image ad printed a "Low cost" chip beside no price, 2026-11-23)
+    ["Low cost", "low cost"],
+    ["Low prices on every set.", "low prices"],
+    ["A low-priced way to start.", "low-priced"],
+    ["Cheaper than a night out.", "cheaper"],
+    ["It's cheap fun.", "cheap"],
+    ["A real bargain.", "bargain"],
+    ["Sixteen figures? That's a steal.", "a steal"],
     ["Rated 4.9 stars by fans.", "4.9 stars"],
     ["Thousands of happy customers agree.", "thousands of happy customers"],
     ["Backed by a money-back promise.", "money-back"],
@@ -58,7 +66,14 @@ test("ordinary selling words are left alone", () => {
     "The stars of your shelf.",
     "Made to perch right on the edge of anything.",
     "Open one. Then another. Then all of them.",
+    // words that only look like the new price words
+    "Slow costume changes, fast laughs.",
+    "Steal the show at your next party.",
+    "Follow the low road home.",
+    "A cheerful little set.",
   ]) assert.deepEqual(claimFaults(line), [], line);
+  // …and a price word the merchant wrote themselves is theirs
+  assert.deepEqual(claimFaults("Low cost", "Low cost blind boxes for resellers"), []);
   assert.deepEqual(claimFaults(""), []);
   assert.deepEqual(claimFaults(null), []);
 });
