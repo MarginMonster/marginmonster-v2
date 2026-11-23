@@ -29,11 +29,11 @@ test("the link is a third source, and both choosers offer it as a card", () => {
 });
 
 test("arriving from another source drops that source's pick; the card puts the cursor in the box", () => {
-  assert.ok(ui.includes("const chooseLink = () => { if (prodSource !== \"link\") { setImageUrl(\"\"); setPickedUrl(\"\"); } setProdSource(\"link\"); setShowConnect(false); };"));
+  assert.ok(ui.includes("const chooseLink = () => { if (prodSource !== \"link\") { dropPickedName(); setImageUrl(\"\"); setPickedUrl(\"\"); } setProdSource(\"link\"); setShowConnect(false); };"));
   assert.ok(ui.includes("const pickLinkCard = () => { flushSync(chooseLink); linkInputRef.current?.focus(); };"), "one tap, then paste");
   // the other two cards already drop whatever came from any source but their own
-  assert.ok(ui.includes("const chooseStore = () => { if (prodSource !== \"store\") { setImageUrl(\"\"); setPickedUrl(\"\"); } setProdSource(\"store\");"));
-  assert.ok(ui.includes("const chooseUpload = () => { if (prodSource !== \"upload\") { setImageUrl(\"\"); setPickedUrl(\"\"); } setProdSource(\"upload\"); setShowConnect(false); };"));
+  assert.ok(ui.includes("const chooseStore = () => { if (prodSource !== \"store\") { dropPickedName(); setImageUrl(\"\"); setPickedUrl(\"\"); } setProdSource(\"store\");"));
+  assert.ok(ui.includes("const chooseUpload = () => { if (prodSource !== \"upload\") { dropPickedName(); setImageUrl(\"\"); setPickedUrl(\"\"); } setProdSource(\"upload\"); setShowConnect(false); };"));
 });
 
 test("an imported product stays under ITS card, counts as a product, and rides the submit in the same field", () => {

@@ -152,7 +152,7 @@ test("6 — a tab change clears an uploaded photo, not a product picked from the
   //  a tab tap keeps it exactly as it keeps a store pick: only the upload source is dropped)
   assert.equal(after("link", [keepStore]), "link");
   assert.ok(ui.includes("const hasMarketingProduct = (prodSource === \"store\" && !!imageUrl.trim()) || (prodSource === \"upload\" && (hasFile || !!imageUrl.trim())) || (prodSource === \"link\" && !!imageUrl.trim());"));
-  assert.ok(ui.includes("const chooseStore = () => { if (prodSource !== \"store\") { setImageUrl(\"\"); setPickedUrl(\"\"); } setProdSource(\"store\");"));
+  assert.ok(ui.includes("const chooseStore = () => { if (prodSource !== \"store\") { dropPickedName(); setImageUrl(\"\"); setPickedUrl(\"\"); } setProdSource(\"store\");"));
 
   // AND IN CREATOR: the same effect clears `hasFile`, which the photo editor shares with the upload source —
   // while the photo being edited stays on the Stage (it lives in editFile). "Edit photo" went dead with the

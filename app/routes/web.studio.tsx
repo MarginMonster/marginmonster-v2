@@ -3164,14 +3164,22 @@ export default function WebStudio() {
   // No explicit clearUpload here — the [prodSource] effect clears the upload
   // state only on an ACTUAL switch, so re-tapping the active store card never
   // wipes an approved combine frame.
-  const chooseStore = () => { if (prodSource !== "store") { setImageUrl(""); setPickedUrl(""); } setProdSource("store"); if (d.catalog.length === 0) setShowConnect(true); };
+  // …AND THE NAME A PICK FILLED IN GOES WITH THE PICK. A switch dropped the picked product's picture and buy
+  // link but left its NAME in the box: pick a product from the store, tap "Upload a photo", and the ad made
+  // from the uploaded photo was still named after the store product. A name is a pick's when it came with
+  // a buy link or is a catalogue title; one the member typed themselves is theirs and stays. Only when
+  // LEAVING a source — the first tap on a card (no source yet) clears nothing.
+  const dropPickedName = () => {
+    if (prodSource !== null && (pickedUrl || d.catalog.some((c) => c.title === productTitle))) setProductTitle("");
+  };
+  const chooseStore = () => { if (prodSource !== "store") { dropPickedName(); setImageUrl(""); setPickedUrl(""); } setProdSource("store"); if (d.catalog.length === 0) setShowConnect(true); };
   // Clear any store pick so "upload my own" starts clean, then REVEAL the upload
   // branch. chooseUpload itself does NOT open the OS picker — the "Upload a photo"
   // CARD opens it (it calls uploadRef.current?.click() right after this, which
   // works because the file input is always-mounted), per owner request that
   // tapping the card BE the Choose-File action. The in-branch "Choose a photo"
   // button and the "Not in your store" link reuse chooseUpload without the auto-open.
-  const chooseUpload = () => { if (prodSource !== "upload") { setImageUrl(""); setPickedUrl(""); } setProdSource("upload"); setShowConnect(false); };
+  const chooseUpload = () => { if (prodSource !== "upload") { dropPickedName(); setImageUrl(""); setPickedUrl(""); } setProdSource("upload"); setShowConnect(false); };
   // 2026-11-22 — THE THIRD SOURCE: "Paste a product link". It is the import that sat behind the small
   // "＋ Add by URL" beside the name box, as a card beside the other two — and it keeps their rule.
   // Arriving from ANOTHER source drops that source's pick (a store product's picture and buy link, or an
@@ -3179,7 +3187,7 @@ export default function WebStudio() {
   // tap on the card that is already on wipes nothing. The uploaded FILE goes by the [prodSource] effect,
   // as it does for the store card. LEAVING this card is covered by the two handlers above, unchanged:
   // each already drops whatever came from any source but its own.
-  const chooseLink = () => { if (prodSource !== "link") { setImageUrl(""); setPickedUrl(""); } setProdSource("link"); setShowConnect(false); };
+  const chooseLink = () => { if (prodSource !== "link") { dropPickedName(); setImageUrl(""); setPickedUrl(""); } setProdSource("link"); setShowConnect(false); };
   // The card also puts the cursor in the box — one tap, then paste (as the Upload card IS "Choose
   // File"). flushSync, so the box is on the page before focus() is called and the call is still part of
   // the tap: iOS only raises the keyboard then.
