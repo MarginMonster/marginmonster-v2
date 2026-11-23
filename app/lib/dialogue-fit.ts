@@ -6,17 +6,22 @@
  * words — every shot ran the full ten seconds, the film was 40 seconds, and it cost us twice the render.
  * (The music video's lyric has the same history: film-engine.server.ts counts it and asks again.)
  *
- * So the lines are counted, and the ones over the limit are sent back ONCE for a shorter rewrite — the same
- * speaker, the same meaning, and whatever the next line answers still said. A rewrite is only taken when it
- * really is that line, shorter. Pure: the model call is the caller's.
+ * So the lines are counted, and the ones over the limit are sent back ONCE. Asking for "14 to 18 words"
+ * again does not work — the first version of this did exactly that, and on the live site the lines came
+ * back at 25, 29 and 26 words. What works is what the lyric fit learned: ask for every long line at THREE
+ * LENGTHS and let the code pick — the longest version that fits, or failing that the shortest one that is
+ * at least shorter. A version is only ever taken when it is that speaker's line. Pure: the model call is
+ * the caller's.
  */
 
-/** What the writer is asked for. */
+/** What a line should come to. */
 export const LINE_WORDS_WANT: readonly [number, number] = [14, 18];
-/** A line with more words than this goes back for a rewrite (a little slack over the 18 it is told). */
+/** A line with more words than this goes back (a little slack over the 18 the writer is told). */
 export const LINE_WORDS_MAX = 20;
-/** A rewrite shorter than this is not a line any more (a shot would be mostly dead air). */
+/** A version shorter than this is not a line any more (a shot would be mostly dead air). */
 export const LINE_WORDS_MIN = 8;
+/** The three lengths every long line is asked for, in words. */
+export const LINE_VERSIONS: readonly [number, number, number] = [11, 14, 17];
 
 const LABEL = /^\s*([\p{L}][\p{L}\p{N} .'’-]{0,30}):\s*([\s\S]*)$/u;
 const CJK = /[぀-ヿ㐀-鿿가-힯]/;
@@ -42,36 +47,52 @@ export function linesTooLong(captions: ReadonlyArray<string | null | undefined>)
   return out;
 }
 
-/** The one request for shorter lines. Every line is shown, in order, so the rewrite can keep the thread. */
+/** The one request: every line is shown, in order, so a rewrite can keep the thread; the long ones are
+ *  marked, and each of THOSE is asked for at three lengths. */
 export function fitAsk(captions: ReadonlyArray<string | null | undefined>, long: ReadonlyArray<number>): string {
-  const [lo, hi] = LINE_WORDS_WANT;
-  const sheet = captions.map((c, i) => `${i + 1}. ${long.includes(i) ? `[TOO LONG — ${saidWords(c)} words] ` : ""}${(c || "").replace(/\s+/g, " ").trim()}`).join("\n");
+  const [a, b, c] = LINE_VERSIONS;
+  const sheet = captions.map((l, i) => `${i + 1}. ${long.includes(i) ? `[TOO LONG — ${saidWords(l)} words] ` : ""}${(l || "").replace(/\s+/g, " ").trim()}`).join("\n");
   return (
     `These are the lines of a short acted scene, in order, one speaker per line, each written as "NAME: what they say". ` +
-    `Every line is spoken in ONE shot of at most ten seconds, so a line may have AT MOST ${hi} spoken words (the NAME is not spoken). The lines marked [TOO LONG] have more.\n` +
-    `Rewrite ONLY the marked lines to between ${lo} and ${hi} spoken words each: the SAME speaker, the same meaning and feeling, in the language the line is written in — and whatever the NEXT line answers or reacts to must still be said. Count the words. Leave every other line exactly as it is.\n\n` +
+    `Every line is spoken in ONE shot of at most ten seconds, so a line may have AT MOST ${LINE_WORDS_WANT[1]} spoken words (the NAME is not spoken). The lines marked [TOO LONG] have more.\n\n` +
     `${sheet}\n\n` +
-    `Return "lines": exactly ${captions.length} entries, one for each line above in the same order — a marked line rewritten, an unmarked line unchanged — each as "NAME: what they say" and nothing else (no numbers, no marks).`
+    `For EVERY marked line write THREE shorter versions of it — the SAME speaker, the same meaning and feeling, in the language the line is written in, at three LENGTHS: a short one of about ${a} spoken words, a middle one of about ${b}, and a long one of about ${c}. Whatever the NEXT line answers or reacts to must still be said in each. Shorter means fewer words — cut, do not squeeze.\n` +
+    `Return "lines": exactly ${captions.length} entries, one for each line above in the same order. The entry for a marked line is the list of its three versions, shortest first, each as "NAME: what they say" and nothing else (no numbers, no marks). The entry for an unmarked line is an EMPTY list.`
   );
 }
 
-/** The lines after the rewrite came back: a marked line takes its rewrite only when that is a line by the
- *  SAME speaker, between LINE_WORDS_MIN and LINE_WORDS_MAX words, and shorter than what it replaces.
- *  Anything else — a wrong count of lines, another speaker, a longer line, not text — keeps the original. */
+/** Of a long line's versions, the one to use — or the original when none will do. Only a version that is
+ *  the SAME speaker's line (and still a line: LINE_WORDS_MIN words or more) is considered. The longest that
+ *  fits (≤ LINE_WORDS_MAX) fills the shot best; if none fits, the shortest that is at least shorter than
+ *  the original is still an improvement. */
+export function pickLine(original: string, versions: ReadonlyArray<unknown>): string {
+  const was = splitLine(original);
+  const had = saidWords(original);
+  const ok: Array<{ said: string; n: number }> = [];
+  for (const v of versions) {
+    if (typeof v !== "string") continue;
+    const tidy = v.replace(/^\s*\d+\.\s*/, "").replace(/^\s*\[[^\]]*\]\s*/, "").replace(/\s+/g, " ").trim();
+    const now = splitLine(tidy);
+    if (now.name.toLowerCase() !== was.name.toLowerCase()) continue;
+    const n = (now.said.match(/\S+/g) || []).length;
+    if (n < LINE_WORDS_MIN || n >= had) continue;
+    ok.push({ said: now.said, n });
+  }
+  if (!ok.length) return original;
+  const fits = ok.filter((x) => x.n <= LINE_WORDS_MAX).sort((x, y) => y.n - x.n);
+  const best = fits[0] || ok.sort((x, y) => x.n - y.n)[0];
+  // the speaker's label exactly as it was first written (the cast is matched by it)
+  return was.name ? `${was.name}: ${best.said}` : best.said;
+}
+
+/** The lines after the versions came back. Only a marked line can change. A wrong number of entries, or
+ *  anything that is not a list of them, changes nothing. (An entry may also be a single text: one version.) */
 export function takeRewrites(captions: ReadonlyArray<string | null | undefined>, long: ReadonlyArray<number>, rewritten: unknown): string[] {
   const base = captions.map((c) => c || "");
   if (!Array.isArray(rewritten) || rewritten.length !== captions.length) return base;
   return base.map((orig, i) => {
     if (!long.includes(i)) return orig;
     const r = rewritten[i];
-    if (typeof r !== "string") return orig;
-    const tidy = r.replace(/^\s*\d+\.\s*/, "").replace(/^\s*\[[^\]]*\]\s*/, "").replace(/\s+/g, " ").trim();
-    const was = splitLine(orig);
-    const now = splitLine(tidy);
-    if (now.name.toLowerCase() !== was.name.toLowerCase()) return orig;
-    const n = saidWords(tidy);
-    if (n < LINE_WORDS_MIN || n > LINE_WORDS_MAX || n >= saidWords(orig)) return orig;
-    // the speaker's label exactly as it was written the first time (the cast is matched by it)
-    return was.name ? `${was.name}: ${now.said}` : now.said;
+    return pickLine(orig, Array.isArray(r) ? r : [r]);
   });
 }

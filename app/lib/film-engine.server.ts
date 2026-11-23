@@ -332,6 +332,10 @@ export interface FilmTreatment {
    *  to fit (film-engine previewFilmTreatment): how many words it has now, how many are wanted, how many
    *  it was written with, the rounds of rewriting, whether it fits, and what went wrong if anything did. */
   lyricFit?: { words: number; want: number; was: number; rounds: number; fits: boolean; note?: string };
+  /** An acted film's lines, counted against the shot each is spoken in — set when a line was too long
+   *  (dialogue-fit.ts): the spoken words of each long line as written, what each came to, and what went
+   *  wrong if anything did. */
+  lineFit?: { was: number[]; now: number[]; note?: string };
 }
 
 const TREATMENT_SCHEMA = {
@@ -713,23 +717,28 @@ export async function previewFilmTreatment(opts: {
   // A SPOKEN LINE FITS ITS SHOT (dialogue-fit.ts). The writer is told 15-18 words a line and cannot count:
   // a kids' cartoon set to "≈ 20s · 4 shots" came back with lines of 26-30 words, every shot ran its full
   // ten seconds, and the film was 40 seconds (2026-11-23). The lines are counted; the ones over the limit
-  // go back ONCE for a shorter rewrite, taken only when it is the same speaker's line, shorter. Any
-  // trouble at all and the lines stay as they were written.
+  // go back ONCE, each asked for at THREE lengths, and the code picks the one that fits (asked simply for
+  // "14 to 18 words" again, the live site got 25, 29 and 26). Any trouble at all and the lines stay as they
+  // were written. What happened rides back on the treatment ("lineFit").
+  let lineNote: FilmTreatment["lineFit"];
   if (tmpl.dialogue && !narrated) {
     const written = list.map((s) => s.caption || "");
     const long = linesTooLong(written);
     if (long.length) {
       try {
         const raw = await anthropicText(fitAsk(written, long), {
-          model: "claude-sonnet-5", maxTokens: 900,
-          jsonSchema: { name: "dialogue_fit", schema: { type: "object", properties: { lines: { type: "array", items: { type: "string" } } }, required: ["lines"], additionalProperties: false } },
+          model: "claude-sonnet-5", maxTokens: 1500,
+          jsonSchema: { name: "dialogue_fit", schema: { type: "object", properties: { lines: { type: "array", items: { type: "array", items: { type: "string" } } } }, required: ["lines"], additionalProperties: false } },
         });
         const next = takeRewrites(written, long, (JSON.parse(raw) as { lines?: unknown }).lines);
         const took = long.filter((i) => next[i] !== written[i]);
         console.log(`[film] ${long.length} line${long.length === 1 ? "" : "s"} over ${LINE_WORDS_MAX} words (${long.map((i) => saidWords(written[i])).join(", ")}) — ${took.length} rewritten shorter (${took.map((i) => saidWords(next[i])).join(", ") || "none taken"})`);
         list = list.map((s, i) => (next[i] && next[i] !== written[i] ? { ...s, caption: next[i] } : s));
+        lineNote = { was: long.map((i) => saidWords(written[i])), now: long.map((i) => saidWords(next[i])), ...(took.length < long.length ? { note: `${long.length - took.length} of ${long.length} had no usable shorter version` } : {}) };
       } catch (e) {
-        console.error(`[film] the long lines could not be rewritten, kept as written: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+        const why = e instanceof Error ? e.message.slice(0, 140) : String(e);
+        console.error(`[film] the long lines could not be rewritten, kept as written: ${why}`);
+        lineNote = { was: long.map((i) => saidWords(written[i])), now: long.map((i) => saidWords(written[i])), note: `a rewrite could not be made: ${why}` };
       }
     }
   }
@@ -769,7 +778,7 @@ export async function previewFilmTreatment(opts: {
   }
   // an episode is called "<Series> — Episode <N>" (the writer's short episode name may follow a colon)
   if (series) outTitle = episodeTitle(series.title, series.episode, outTitle);
-  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast, ...(fitNote ? { lyricFit: fitNote } : {}) };
+  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast, ...(fitNote ? { lyricFit: fitNote } : {}), ...(lineNote ? { lineFit: lineNote } : {}) };
 }
 
 // ---- Assembly ---------------------------------------------------------------
