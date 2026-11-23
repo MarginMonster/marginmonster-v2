@@ -20,8 +20,9 @@
 import { db } from "../db.server";
 import { linkedFromCache, socialProviderEnabled } from "./social-provider.server";
 import { cadenceOf } from "./creator-series.server";
-import { POSTABLE_PLATFORMS, postAssetToSocials } from "./post-asset.server";
+import { POSTABLE_PLATFORMS, draftCaptionFor, postAssetToSocials } from "./post-asset.server";
 import { QUEUE_CAP, nextFreeSlots, normalizePerDay } from "./post-queue.ts";
+import { networkName, takes } from "./social-networks";
 
 /** A claimed row older than this is not slow, it is orphaned — see the header. */
 export const POSTING_STUCK_MS = 15 * 60_000;
@@ -282,6 +283,106 @@ export async function setQueuePerDay(shopId: string, n: unknown): Promise<Done> 
   });
 }
 
+/* ── QUEUE EDIT · THE PURE PART (lifted out and run by tests/post-queue-edit.test.ts — no imports, no db) ──
+ * A waiting piece can be changed before it goes: its words (ScheduledPost.caption — null = the caption
+ * written for the piece) and where it goes (platformsJson — "[]" = every linked account at post time). */
+
+/** The most the member's own words may be — the Archive's own post cuts at the same 860. */
+const QUEUE_CAPTION_MAX = 860;
+
+/** The words as stored: trimmed; empty = the automatic caption (null). Longer than the limit is refused,
+ *  never cut silently. */
+function cleanQueueCaption(v: unknown): { caption: string | null } | { error: "too-long" } {
+  const s = typeof v === "string" ? v.trim() : "";
+  if (!s) return { caption: null };
+  if (s.length > QUEUE_CAPTION_MAX) return { error: "too-long" };
+  return { caption: s };
+}
+
+/** Which networks were ticked, as stored. `offered` = the linked networks that take this piece. Every one
+ *  ticked → [] (so an account linked later is included too); none ticked → refused. Keys that are not
+ *  offered are ignored. With nothing offered at all there is nothing to choose: [] again. */
+function pickQueuePlatforms(raw: unknown, offered: readonly string[]): { platforms: string[] } | { error: "none-picked" } {
+  if (offered.length === 0) return { platforms: [] };
+  const asked = new Set(String(raw ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+  const picked = offered.filter((k) => asked.has(k));
+  if (picked.length === 0) return { error: "none-picked" };
+  return { platforms: picked.length === offered.length ? [] : picked };
+}
+
+/** The boxes the row shows: the linked networks that take the piece, each ticked when the row goes there. */
+function queueNetworkBoxes(
+  linked: readonly string[],
+  isVideo: boolean,
+  want: readonly string[],
+  postable: readonly string[],
+  canTake: (key: string, isVideo: boolean) => boolean
+): Array<{ key: string; on: boolean }> {
+  const offered = [...new Set(linked)].filter((k) => postable.includes(k) && canTake(k, isVideo));
+  return offered.map((key) => ({ key, on: want.length === 0 || want.includes(key) }));
+}
+/* ── end of the pure part ─────────────────────────────────────────────────────────────────────────────── */
+
+export type QueueDraft = { ok: true; caption: string; own: boolean; networks: Array<{ key: string; name: string; on: boolean }> };
+
+/** A waiting row, read for "Edit" — or why it cannot be edited. Scoped by shopId. */
+async function pendingRow(shopId: string, id: string) {
+  const row = await db.scheduledPost.findFirst({
+    where: { id, shopId },
+    select: { status: true, assetId: true, caption: true, platformsJson: true, asset: { select: { type: true } }, shop: { select: { socialsJson: true } } },
+  });
+  if (!row) return { error: "not-found" as const };
+  if (row.status === "POSTING") return { error: "posting" as const };
+  if (row.status !== "PENDING") return { error: "not-found" as const };
+  const linked = socialProviderEnabled() ? linkedFromCache(row.shop.socialsJson) : [];
+  const boxes = queueNetworkBoxes(linked, row.asset.type === "VIDEO_AD", parseList(row.platformsJson), POSTABLE_PLATFORMS, takes);
+  return { row, boxes };
+}
+
+/** "Edit" on a waiting row: the words that will go out, and where. Read-only — except that writing the
+ *  automatic caption caches it on the asset, as the Archive's draft does (draftCaptionFor). Never posts. */
+export async function queueDraft(shopId: string, id: string): Promise<QueueDraft | { error: "not-found" | "posting" }> {
+  const p = await pendingRow(shopId, id);
+  if (p.error) return { error: p.error };
+  const ownWords = (p.row.caption || "").trim();
+  let caption = ownWords;
+  if (!ownWords) {
+    const d = await draftCaptionFor(shopId, p.row.assetId);
+    if (!d.ok) return { error: "not-found" };
+    caption = d.caption;
+  }
+  return {
+    ok: true,
+    caption,
+    own: !!ownWords,
+    networks: p.boxes.map((b) => ({ key: b.key, name: networkName(b.key), on: b.on })),
+  };
+}
+
+/** One Save for both: the member's words ("" = the automatic caption) and the ticked networks
+ *  (comma-separated keys). Pinned to PENDING — a row that has started posting is never changed. Never posts. */
+export async function queueEdit(
+  shopId: string,
+  id: string,
+  captionRaw: unknown,
+  platformsRaw: unknown
+): Promise<{ ok: true } | { error: "not-found" | "posting" | "too-long" | "none-picked" }> {
+  const c = cleanQueueCaption(captionRaw);
+  if ("error" in c) return c;
+  const p = await pendingRow(shopId, id);
+  if (p.error) return { error: p.error };
+  const picked = pickQueuePlatforms(platformsRaw, p.boxes.map((b) => b.key));
+  if ("error" in picked) return picked;
+  const w = await db.scheduledPost.updateMany({
+    where: { id, shopId, status: "PENDING" },
+    data: { caption: c.caption, platformsJson: JSON.stringify(picked.platforms) },
+  });
+  if (w.count === 1) return { ok: true };
+  // claimed (or removed) between the read and the write
+  const now = await db.scheduledPost.findFirst({ where: { id, shopId }, select: { status: true } });
+  return { error: now?.status === "POSTING" ? "posting" : "not-found" };
+}
+
 /** Skip a running Channel's next drop: its next drop moves on by one cadence interval. Pinned to the
  *  nextRunAt read, so a drop the worker has just started is never skipped after the fact. */
 export async function skipChannelDrop(shopId: string, seriesId: string): Promise<Done> {
@@ -309,6 +410,10 @@ export type ComingUpRow = {
   error: string | null;
   urls: Record<string, string>;
   autoPost?: boolean;
+  /** a piece: the member saved their own words for it */
+  ownCaption?: boolean;
+  /** a piece: it goes to fewer networks than are linked (and could take it) */
+  fewerNetworks?: boolean;
 };
 
 const thumbOf = (bodyJson: string | null | undefined): { thumb: string | null; isVideo: boolean } => {
@@ -328,7 +433,7 @@ const titleOf = (title: string | null, metaJson: string | null | undefined): str
 /** Everything "Coming up" lists for one shop. */
 export async function loadComingUp(shopId: string, linked: string[]): Promise<{ upcoming: ComingUpRow[]; failed: ComingUpRow[]; posted: ComingUpRow[] }> {
   const now = Date.now();
-  const assetSel = { select: { title: true, bodyJson: true, metaJson: true } } as const;
+  const assetSel = { select: { title: true, bodyJson: true, metaJson: true, type: true } } as const;
   const [waiting, failedRows, postedRows, drops] = await Promise.all([
     db.scheduledPost.findMany({ where: { shopId, status: { in: ACTIVE } }, orderBy: { dueAt: "asc" }, take: QUEUE_CAP + 10, include: { asset: assetSel } }),
     db.scheduledPost.findMany({ where: { shopId, status: "FAILED" }, orderBy: { updatedAt: "desc" }, take: 30, include: { asset: assetSel } }),
@@ -345,11 +450,16 @@ export async function loadComingUp(shopId: string, linked: string[]): Promise<{ 
     const want = parseList(r.platformsJson);
     let urls: Record<string, string> = {};
     try { const u = JSON.parse(r.urlsJson || "{}"); if (u && typeof u === "object") urls = u; } catch { /* none */ }
+    // only the linked networks that take this kind of piece — the same boxes "Edit" shows
+    const boxes = queueNetworkBoxes(postable, r.asset.type === "VIDEO_AD", want, POSTABLE_PLATFORMS, takes);
+    const goes = boxes.filter((b) => b.on).map((b) => b.key);
     return {
       kind: "piece", id: r.id, status: r.status, at: at.toISOString(),
       title: titleOf(r.asset.title, r.asset.metaJson), ...thumbOf(r.asset.bodyJson),
-      networks: r.status === "POSTED" ? Object.keys(urls) : want.length ? want.filter((p) => postable.includes(p)) : postable,
+      networks: r.status === "POSTED" ? Object.keys(urls) : goes,
       error: r.error, urls,
+      ownCaption: !!(r.caption || "").trim(),
+      fewerNetworks: goes.length < boxes.length,
     };
   };
   const upcoming: ComingUpRow[] = [

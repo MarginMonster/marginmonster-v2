@@ -1,5 +1,6 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
-import { Link, useFetcher, useLoaderData } from "@remix-run/react";
+import { Link, useFetcher, useLoaderData, type ShouldRevalidateFunction } from "@remix-run/react";
+import { useState } from "react";
 import { Ico } from "../lib/icons";
 import { HeroVideo } from "../components/HeroVideo";
 import { useT } from "../lib/ui-lang";
@@ -10,7 +11,7 @@ import { linkedFromCache, socialProviderEnabled } from "../lib/social-provider.s
 import { isValidTimeZone } from "../lib/timezone";
 import { dayBucket, normalizePerDay } from "../lib/post-queue";
 import {
-  loadComingUp, queueAdd, queuePostNow, queueRemove, queueRetry, setQueuePerDay, skipChannelDrop, type ComingUpRow,
+  loadComingUp, queueAdd, queueDraft, queueEdit, queuePostNow, queueRemove, queueRetry, setQueuePerDay, skipChannelDrop, type ComingUpRow,
 } from "../lib/post-queue.server";
 import { networkName } from "../lib/social-networks";
 
@@ -68,6 +69,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
  *   queueAdd (assetIds, comma-separated) → { ok, queued, skipped, firstDueAt, lastDueAt } | { error }
  *   queueRemove (id) · queuePostNow (id) · queueRetry (id) · queuePerDay (n) · skipDrop (seriesId)
  *                                        → { ok: true } | { error }
+ *   queueDraft (id)                      → { ok, caption, own, networks: { key, name, on }[] } | { error }
+ *   queueEdit (id, caption, platforms)   → { ok: true } | { error }   ("" caption = the automatic one;
+ *                                          platforms = comma-separated keys, every one ticked stores [])
  * Every one is scoped to the signed-in shop inside post-queue.server.ts. */
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
@@ -83,6 +87,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     "not-found": tr(lang, "That piece isn't in your queue any more — refresh to see the latest."),
     posting: tr(lang, "That piece is posting right now, so it can't be stopped."),
     started: tr(lang, "That channel has already started making this video — refresh to see it."),
+    "too-long": tr(lang, "Keep your caption to 860 characters or fewer."),
+    "none-picked": tr(lang, "Tick at least one network for it to post to."),
   };
   const fail = (code: string) => json({ error: ERR[code] || tr(lang, "Something went wrong — try again.") });
   try {
@@ -91,8 +97,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if ("error" in r) return fail(r.error);
       return json({ ok: true as const, queued: r.queued, skipped: r.skipped, firstDueAt: r.firstDueAt, lastDueAt: r.lastDueAt });
     }
+    if (intent === "queueDraft") {
+      // Only when a member opens a row — writing the automatic caption calls a text model.
+      const r = await queueDraft(shop.id, field("id"));
+      if ("error" in r) return fail(r.error);
+      return json({ ok: true as const, caption: r.caption, own: r.own, networks: r.networks });
+    }
     let r: { ok: true } | { error: string };
-    if (intent === "queueRemove") r = await queueRemove(shop.id, field("id"));
+    if (intent === "queueEdit") r = await queueEdit(shop.id, field("id"), String(form.get("caption") ?? ""), field("platforms"));
+    else if (intent === "queueRemove") r = await queueRemove(shop.id, field("id"));
     else if (intent === "queuePostNow") r = await queuePostNow(shop.id, field("id"));
     else if (intent === "queueRetry") r = await queueRetry(shop.id, field("id"));
     else if (intent === "queuePerDay") r = await setQueuePerDay(shop.id, field("n"));
@@ -105,6 +118,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return fail("unknown");
   }
 };
+
+/** Opening a row to edit only READS (queueDraft) — the page is not reloaded for it. */
+export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultShouldRevalidate }) =>
+  formData?.get("intent") === "queueDraft" ? false : defaultShouldRevalidate;
 
 export default function AutoPost() {
   const d = useLoaderData<typeof loader>();
@@ -249,11 +266,42 @@ function ComingUp() {
   );
 }
 
+/** The most the member's own words may be — the same 860 as QUEUE_CAPTION_MAX in post-queue.server.ts (a
+ *  server module, so not imported into the page) and the Archive's own post. */
+const CAPTION_MAX = 860;
+
+type Draft = { ok: true; caption: string; own: boolean; networks: Array<{ key: string; name: string; on: boolean }> };
+const isDraft = (v: unknown): v is Draft => !!v && typeof v === "object" && "caption" in v && "networks" in v;
+
 function QueueRow({ r }: { r: Row }) {
   const t = useT();
   const f = useFetcher<typeof action>();
   const busy = f.state !== "idle";
   const err = f.data && "error" in f.data ? f.data.error : null;
+
+  // ── Edit: a waiting row opens in place to show the words and where it goes. Everything shown is derived
+  // from the two fetchers' data and state — no effect. `editing` remembers what each fetcher held when the
+  // row was opened, so an older answer is never taken for this one.
+  const canEdit = r.kind === "piece" && r.status === "PENDING";
+  const dr = useFetcher<typeof action>(); // the words + boxes, loaded only when the row is opened
+  const ed = useFetcher<typeof action>(); // the one Save
+  const [editing, setEditing] = useState<{ draftBase: unknown; saveBase: unknown } | null>(null);
+  const [text, setText] = useState<string | null>(null); // null = not changed yet
+  const [ticks, setTicks] = useState<string[] | null>(null); // null = not changed yet
+  const saved = !!editing && ed.state === "idle" && !!ed.data && "ok" in ed.data && ed.data !== editing.saveBase;
+  const open = canEdit && !!editing && !saved;
+  const fresh = !!editing && dr.state === "idle" && dr.data !== editing.draftBase;
+  const draft = fresh && isDraft(dr.data) ? dr.data : null;
+  const draftErr = fresh && dr.data && "error" in dr.data ? dr.data.error : null;
+  const saveErr = !!editing && ed.state === "idle" && ed.data && "error" in ed.data && ed.data !== editing.saveBase ? ed.data.error : null;
+  const saving = ed.state !== "idle";
+  const toggleEdit = () => {
+    if (open) { setEditing(null); return; }
+    setEditing({ draftBase: dr.data, saveBase: ed.data });
+    setText(null);
+    setTicks(null);
+    dr.submit({ intent: "queueDraft", id: r.id }, { method: "post" });
+  };
   const missed = r.error?.startsWith("missed:") ? r.error.slice(7).split(",").filter(Boolean) : [];
 
   // Every state, said in a sentence.
@@ -301,15 +349,123 @@ function QueueRow({ r }: { r: Row }) {
             ))}
           </span>
         )}
+        {!open && r.kind === "piece" && r.status !== "POSTED" && (r.ownCaption || r.fewerNetworks) && (
+          <span className="ap-q-marks">
+            {r.ownCaption && <span className="ap-q-mark"><Ico n="pencil" size={11} /> {t("Your caption")}</span>}
+            {r.fewerNetworks && <span className="ap-q-mark">{t("Only some networks")}</span>}
+          </span>
+        )}
+        {!open && saved && <span className="ap-q-saved" role="status"><Ico n="check" size={11} /> {t("Saved.")}</span>}
         {err && <span className="ap-q-err" role="alert">{err}</span>}
       </span>
       <span className="ap-q-acts">
         {r.kind === "drop" && button("skipDrop", t("Skip"), { field: "seriesId" })}
         {r.kind === "piece" && r.status === "PENDING" && !r.dueNow && button("queuePostNow", t("Post now"), { primary: true })}
         {r.kind === "piece" && r.status === "FAILED" && button("queueRetry", t("Try again"), { primary: true })}
+        {canEdit && (
+          <span className="ap-q-act">
+            <button type="button" className={`ap-q-btn${open ? " on" : ""}`} onClick={toggleEdit} aria-expanded={open} aria-controls={`ap-q-edit-${r.id}`} disabled={busy}>
+              <Ico n="pencil" size={13} /> {t("Edit")}
+            </button>
+          </span>
+        )}
         {r.kind === "piece" && (r.status === "PENDING" || r.status === "FAILED") && button("queueRemove", t("Remove"))}
       </span>
+      {open && (
+        <div className="ap-q-edit" id={`ap-q-edit-${r.id}`}>
+          {!draft ? (
+            draftErr ? <p className="ap-q-err" role="alert">{draftErr}</p> : <p className="ap-q-wait" role="status">{t("Getting the caption…")}</p>
+          ) : (
+            <QueueEditForm
+              id={r.id}
+              draft={draft}
+              text={text ?? draft.caption}
+              setText={setText}
+              on={ticks ? draft.networks.filter((n) => ticks.includes(n.key)).map((n) => n.key) : draft.networks.filter((n) => n.on).map((n) => n.key)}
+              setTicks={setTicks}
+              saving={saving}
+              saveErr={saveErr}
+              onCancel={() => setEditing(null)}
+              onSave={(caption, platforms) => ed.submit({ intent: "queueEdit", id: r.id, caption, platforms }, { method: "post" })}
+            />
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+/** The opened row: the words, where it goes, one Save. */
+function QueueEditForm(p: {
+  id: string;
+  draft: Draft;
+  text: string;
+  setText: (s: string) => void;
+  on: string[];
+  setTicks: (k: string[]) => void;
+  saving: boolean;
+  saveErr: string | null;
+  onCancel: () => void;
+  onSave: (caption: string, platforms: string) => void;
+}) {
+  const t = useT();
+  const { draft, text, on } = p;
+  // What "the automatic caption" looks like in the box: the draft itself, or — when the member's own words
+  // are loaded — an empty box (empty = the caption written for the piece goes out).
+  const autoText = draft.own ? "" : draft.caption;
+  const isAuto = text.trim() === autoText.trim();
+  const none = draft.networks.length > 0 && on.length === 0;
+  const tid = `ap-q-text-${p.id}`;
+  const toggle = (key: string) => p.setTicks(on.includes(key) ? on.filter((k) => k !== key) : [...on, key]);
+  return (
+    <form
+      className="ap-q-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (none || p.saving) return;
+        // the automatic words, untouched, stay automatic (null) — so the post gets the caption written for
+        // each network; anything else is the member's own
+        p.onSave(isAuto ? "" : text.trim(), on.join(","));
+      }}
+    >
+      <label className="ap-q-edit-l" htmlFor={tid}>{t("The words that go out")}</label>
+      <textarea
+        id={tid}
+        className="ap-q-text"
+        value={text}
+        maxLength={CAPTION_MAX}
+        rows={5}
+        placeholder={t("Leave it empty and the caption written for this piece goes out.")}
+        onChange={(e) => p.setText(e.target.value)}
+      />
+      <span className="ap-q-text-foot">
+        <span>{t("The #EasyModeAi tag is always added.")}</span>
+        <span className="ap-q-count" aria-live="polite">{t("{n} of {max} characters", { n: text.length, max: CAPTION_MAX })}</span>
+      </span>
+      {!isAuto && (
+        <button type="button" className="ap-q-link" onClick={() => p.setText(autoText)}>{t("Use the automatic caption")}</button>
+      )}
+      <fieldset className="ap-q-nets">
+        <legend className="ap-q-edit-l">{t("Where it goes")}</legend>
+        {draft.networks.length === 0 ? (
+          <span className="ap-q-line">{t("Link an account and it posts there.")}</span>
+        ) : (
+          draft.networks.map((n) => (
+            <label key={n.key} className={`ap-q-net${on.includes(n.key) ? " on" : ""}`}>
+              <input type="checkbox" checked={on.includes(n.key)} onChange={() => toggle(n.key)} />
+              {n.name}
+            </label>
+          ))
+        )}
+      </fieldset>
+      {p.saveErr && <p className="ap-q-err" role="alert">{p.saveErr}</p>}
+      <span className="ap-q-edit-acts">
+        <button type="button" className="ap-q-btn" onClick={p.onCancel}>{t("Cancel")}</button>
+        <button type="submit" className="ap-q-btn primary" disabled={none || p.saving}>
+          {none ? t("Tick at least one network") : p.saving ? t("Saving…") : t("Save")}
+        </button>
+      </span>
+    </form>
   );
 }
 
@@ -381,9 +537,28 @@ const AP_CSS = `
 .ap-q-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);font-size:13.5px;font-weight:800;text-decoration:none;cursor:pointer;white-space:nowrap;}
 .ap-q-btn.primary{background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);color:#fff;}
 .ap-q-btn:disabled{opacity:.55;cursor:default;}
+.ap-q-btn.on{background:#E3F3EA;border-color:#9CCBB1;color:var(--green,#0C7A46);}
+.ap-q-marks{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:3px;}
+.ap-q-mark{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:#F1EFE4;color:var(--ink2,#4A554E);font-size:11.5px;font-weight:800;}
+.ap-q-saved{display:inline-flex;align-items:center;gap:4px;margin-top:3px;font-size:12.5px;font-weight:800;color:var(--green,#0C7A46);}
+.ap-q-edit{grid-column:1 / -1;margin:2px 0 4px;padding:14px;border-radius:14px;background:#FBFAF4;border:1px solid var(--line,#E1DECD);}
+.ap-q-wait{margin:0;font-size:13.5px;color:var(--ink2,#4A554E);}
+.ap-q-form{display:flex;flex-direction:column;gap:8px;margin:0;}
+.ap-q-edit-l{padding:0;font-family:Poppins,sans-serif;font-size:13.5px;font-weight:800;color:var(--ink,#14201A);}
+.ap-q-text{box-sizing:border-box;width:100%;min-height:120px;padding:10px 12px;border-radius:12px;border:1px solid var(--line,#E1DECD);background:#fff;color:var(--ink,#14201A);font-family:inherit;font-size:16px;line-height:1.45;resize:vertical;}
+.ap-q-text:focus{outline:2px solid var(--green,#0C7A46);outline-offset:1px;border-color:var(--green,#0C7A46);}
+.ap-q-text-foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;font-size:12.5px;line-height:1.4;color:var(--ink2,#4A554E);}
+.ap-q-count{font-variant-numeric:tabular-nums;}
+.ap-q-link{align-self:flex-start;min-height:44px;padding:0 2px;border:0;background:none;color:var(--green,#0C7A46);font-size:13.5px;font-weight:800;text-decoration:underline;text-underline-offset:3px;cursor:pointer;}
+.ap-q-nets{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 0;padding:0;border:0;min-width:0;}
+.ap-q-nets legend{width:100%;margin-bottom:6px;}
+.ap-q-net{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px 0 12px;border-radius:12px;border:1px solid var(--line,#E1DECD);background:#fff;font-size:14px;font-weight:700;cursor:pointer;}
+.ap-q-net.on{border-color:#9CCBB1;background:#E3F3EA;}
+.ap-q-net input{width:20px;height:20px;margin:0;accent-color:var(--green,#0C7A46);}
+.ap-q-edit-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:4px;}
 .ap-q-empty{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:16px;padding:18px;border-radius:14px;background:#FBFAF4;border:1px dashed #D9D5C2;}
 .ap-q-empty p{margin:0;font-size:14px;line-height:1.5;color:var(--ink,#14201A);}
-@media(max-width:640px){.ap-q{padding:16px;margin-top:20px;}.ap-q-row{grid-template-columns:52px minmax(0,1fr);}.ap-q-time{grid-column:1 / -1;font-size:13px;}.ap-q-acts{grid-column:1 / -1;justify-content:stretch;}.ap-q-act{flex:1 1 0;}.ap-q-btn{width:100%;}.ap-q-per{width:100%;}.ap-q-per-l{flex:1 1 auto;}}
+@media(max-width:640px){.ap-q{padding:16px;margin-top:20px;}.ap-q-row{grid-template-columns:52px minmax(0,1fr);}.ap-q-time{grid-column:1 / -1;font-size:13px;}.ap-q-acts{grid-column:1 / -1;justify-content:stretch;}.ap-q-act{flex:1 1 0;}.ap-q-btn{width:100%;}.ap-q-per{width:100%;}.ap-q-per-l{flex:1 1 auto;}.ap-q-edit{padding:12px;}.ap-q-edit-acts .ap-q-btn{flex:1 1 0;}}
 @media(max-width:640px){.ap-head{min-height:0;border-radius:18px;margin-bottom:16px;}.ap-head-copy{max-width:66%;padding:20px 18px;}.ap-head-media{width:50%;}.ap-head p{font-size:13.5px;}.ap-grid{gap:12px;}.ap-card{padding:16px 16px 15px;}}
 @media(prefers-reduced-motion:reduce){.ap-head-rose{animation:none;}.ap-card{transition:none;}.ap-card:hover{transform:none;}}
 `;

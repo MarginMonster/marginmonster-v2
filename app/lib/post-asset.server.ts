@@ -16,11 +16,43 @@
 import { db } from "../db.server";
 import { ensureProfile, publishPost, refreshLinkedPlatforms, socialProviderEnabled } from "./social-provider.server";
 import { AI_DISCLOSURE_TAG, buildPostTitle, fallbackCaption, getOrMakeCaptions, trialCredit } from "./social-caption.server";
+import { productLinkFor } from "./catalog-import.server";
 
 import { POSTABLE_PLATFORMS as ALL_NETWORKS, takes } from "./social-networks";
 
 /** The networks a piece can be posted to from here — the one shared list (social-networks.ts). */
 export const POSTABLE_PLATFORMS: readonly string[] = ALL_NETWORKS;
+
+/**
+ * The one editable caption a member sees before a piece goes out — the Archive viewer's draft (the
+ * `intent === "draft"` branch of app/routes/web.archive.tsx), as a function, so the posting queue's "Edit"
+ * shows the very same words. Tuned to Instagram when linked, else the first linked network that takes the
+ * piece; deep-linked at the product page when the catalogue was mirrored.
+ *
+ * Read-only except for one thing: writing the caption calls a text model, and getOrMakeCaptions caches what
+ * it wrote on the asset (bodyJson.captions) so the next call, and the post itself, reuse it. It never spends
+ * the member's tokens and never posts anything. Call it only when a member asks to see the words.
+ */
+export async function draftCaptionFor(
+  shopId: string,
+  assetId: string
+): Promise<{ ok: true; caption: string; isVideo: boolean } | { ok: false; code: "gone" }> {
+  const asset = await db.asset.findFirst({ where: { id: assetId, shopId, type: { in: ["VIDEO_AD", "IMAGE_AD"] } } });
+  if (!asset) return { ok: false, code: "gone" };
+  let title = asset.title || "New from our shop";
+  try { const m = JSON.parse(asset.metaJson || "{}"); title = m.productTitle || title; } catch { /* ignore */ }
+  const isVideo = asset.type === "VIDEO_AD";
+  let platforms: string[] = [];
+  try {
+    if (socialProviderEnabled()) platforms = (await refreshLinkedPlatforms(shopId)).filter((p) => takes(p, isVideo));
+  } catch { /* ignore */ }
+  if (platforms.length === 0) platforms = ["instagram"];
+  const tune = platforms.includes("instagram") ? "instagram" : platforms[0];
+  const captions = await getOrMakeCaptions(asset.id, shopId, { productTitle: title, isVideo, platforms });
+  const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;
+  const buyUrl = await productLinkFor(shopId, title);
+  return { ok: true, caption: buildPostTitle(captions[tune], buyUrl, fbText, undefined, tune), isVideo };
+}
 
 /** Why nothing went out. In the Archive's words:
  *  provider-off → "Social posting is coming online — check back shortly."
