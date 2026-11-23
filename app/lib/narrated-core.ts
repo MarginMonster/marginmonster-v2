@@ -245,7 +245,9 @@ export function soundSpans(frames: Array<{ t: number; db: number }>, total: numb
 
 /** Both readings of a track, the clear voice first — what scriptWordTimes takes as `speech`. */
 export function soundLevels(frames: Array<{ t: number; db: number }>, total: number): Span[][] {
-  return [soundSpans(frames, total, CLEAR_VOICE_DB), soundSpans(frames, total, ANY_SOUND_DB)].filter((l) => l.length > 0);
+  // always in this order — the clear voice is [0] even when it found nothing (stillBeingSaid reads [0])
+  const clear = soundSpans(frames, total, CLEAR_VOICE_DB), any = soundSpans(frames, total, ANY_SOUND_DB);
+  return clear.length || any.length ? [clear, any] : [];
 }
 /** The stretches of the gap [g0, g1] that have the voice in them, for `run` unheard words — or null when
  *  they cannot hold that many words (MIN_SAY each).
@@ -478,7 +480,27 @@ export function scriptWordTimes(lines: string[], words: WordT[], windows: Window
       }
     });
   });
-  return out;
+  return speech && speech.length ? stillBeingSaid(out, speech[0]) : out;
+}
+
+/** A WORD IS STILL BEING SAID WHILE THE VOICE GOES ON SOUNDING. The listener ends a whispered or
+ *  drawn-out word early: on a re-telling of the same story (2026-11-23) it gave "welcome" 0.4 s, then
+ *  nothing for over half a second while the whisper went straight on, then "home" — so the caption went
+ *  blank in the middle of three words, and the cut fell between "welcome" and "home" as if a pause were
+ *  there. Where the clear voice sounds all the way from the end of one word to the start of the next, the
+ *  first word's time runs on to the second's. Never across the end of a scene, and never across a real
+ *  pause: quiet is quiet. */
+export const STILL_SAID_MAX_S = 1.5;
+export function stillBeingSaid(timed: WordT[], clearVoice: Span[]): WordT[] {
+  if (!clearVoice.length) return timed;
+  const sounding = (a: number, b: number) => clearVoice.reduce((sum, [s, e]) => sum + Math.max(0, Math.min(e, b) - Math.max(s, a)), 0);
+  return timed.map((w, i) => {
+    const next = timed[i + 1];
+    if (!next || w.last) return w;
+    const gap = next.start - w.end;
+    if (!(gap > 0.05) || gap > STILL_SAID_MAX_S) return w;
+    return sounding(w.end, next.start) >= gap * 0.85 ? { ...w, end: next.start } : w;
+  });
 }
 
 /** The longest BOLD card, in characters: one line of big words at one size. */

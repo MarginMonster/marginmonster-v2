@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ANY_SOUND_DB, CLEAR_VOICE_DB, MIN_SAY, PAUSE_MIN_S, boldCards, layOver, levelFrames, sceneWindows, scriptWordTimes, soundLevels, soundSpans, type Span, type WordT } from "../app/lib/narrated-core.ts";
+import { ANY_SOUND_DB, CLEAR_VOICE_DB, MIN_SAY, PAUSE_MIN_S, STILL_SAID_MAX_S, boldCards, layOver, levelFrames, sceneWindows, scriptWordTimes, soundLevels, soundSpans, stillBeingSaid, type Span, type WordT } from "../app/lib/narrated-core.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
@@ -155,16 +155,49 @@ test("when the track cannot say — no reading, or too little sound for the word
   assert.deepEqual(scriptWordTimes([LINE], withoutWhisper, windows, undefined, []), old);
   assert.deepEqual(scriptWordTimes([LINE], withoutWhisper, windows, undefined, undefined), old);
   // a reading with nothing after the last heard word but a sliver: three words do not fit in 0.3 s
+  // (every word STARTS where the older rule put it; a word's end may run on while the voice does — below)
+  const starts = (t: WordT[]) => t.map((w) => w.start);
   const sliver: Span[][] = [[[1.15, 14.05], [16.0, 16.3]]];
   assert.ok(0.3 < 3 * MIN_SAY);
-  assert.deepEqual(scriptWordTimes([LINE], withoutWhisper, windows, undefined, sliver), old);
+  assert.deepEqual(starts(scriptWordTimes([LINE], withoutWhisper, windows, undefined, sliver)), starts(old));
   // the clear voice cannot hold them but the looser reading can: the looser one is used
   const second: Span[][] = [[[1.15, 14.05], [16.0, 16.3]], [[1.15, 14.05], [14.65, 17.4]]];
   const timed = scriptWordTimes([LINE], withoutWhisper, windows, undefined, second);
   assert.ok(near(at(timed, "welcome").start, 14.65));
-  // everything heard: the track changes nothing
+  // everything heard: no word starts anywhere else
   const all = sceneWindows([LINE], HEARD_ALL, TOTAL);
-  assert.deepEqual(scriptWordTimes([LINE], HEARD_ALL, all, undefined, soundLevels(ghostTake(), TOTAL)), scriptWordTimes([LINE], HEARD_ALL, all));
+  assert.deepEqual(starts(scriptWordTimes([LINE], HEARD_ALL, all, undefined, soundLevels(ghostTake(), TOTAL))), starts(scriptWordTimes([LINE], HEARD_ALL, all)));
+});
+
+test("a word is still being said while the voice goes on — but quiet is quiet", () => {
+  // Seen on the re-telling: the listener gave "welcome" 0.4 s, then nothing for over half a second while
+  // the whisper went straight on, then "home": the caption went blank in the middle of three words, and
+  // the cards were cut WELCOME / HOME, DAUGHTER as if a pause sat between them.
+  const clear: Span[] = [[1.0, 5.0], [6.5, 9.0]];
+  const w = (word: string, start: number, end: number, last = false): WordT => ({ word, start, end, ...(last ? { last: true } : {}) });
+  const timed = [w("welcome", 1.0, 1.4), w("home,", 2.1, 2.9), w("daughter.", 3.0, 4.9), w("Then", 6.5, 6.8), w("nothing.", 7.9, 8.6, true), w("Next", 8.7, 8.9)];
+  const out = stillBeingSaid(timed, clear);
+  assert.equal(out[0].end, 2.1, "the voice sounds from 1.4 to 2.1: welcome runs on to home");
+  assert.equal(out[1].end, 3.0, "a short gap too, when it is sound");
+  assert.equal(out[2].end, 4.9, "5.0 to 6.5 is quiet: a pause is left a pause");
+  assert.equal(out[3].end, 7.9, "sound all the way: held");
+  assert.equal(out[4].end, 8.6, "never across the end of a scene");
+  assert.deepEqual(out.map((x) => x.start), timed.map((x) => x.start), "no word starts anywhere else");
+  // a gap only partly sound is a pause with an echo in it — not held
+  assert.equal(stillBeingSaid([w("a", 1.0, 1.2), w("b", 2.2, 2.5)], [[1.0, 1.6]])[0].end, 1.2);
+  // nothing known about the track: nothing changes
+  assert.deepEqual(stillBeingSaid(timed, []), timed);
+  assert.ok(STILL_SAID_MAX_S <= 2, "and never across seconds of it");
+  // …so the three words are one phrase, cut where it reads: WELCOME HOME / DAUGHTER, with no blank between
+  const cards = boldCards(out.slice(0, 3), "en");
+  assert.deepEqual(cards.map((c) => c.text), ["WELCOME HOME", "DAUGHTER"]);
+  assert.equal(cards[0].t1, cards[1].t0);
+  // without it: the half-second the listener left empty split them
+  assert.deepEqual(boldCards(timed.slice(0, 3), "en").map((c) => c.text), ["WELCOME", "HOME, DAUGHTER"]);
+  // it is the clear voice that is asked, and it is asked last, after every word has its place
+  const core = read("app", "lib", "narrated-core.ts");
+  assert.ok(core.includes("return speech && speech.length ? stillBeingSaid(out, speech[0]) : out;"));
+  assert.ok(core.includes("return clear.length || any.length ? [clear, any] : [];"), "the clear voice is always [0]");
 });
 
 test("the story and the faceless video read their own voice track — and a track that cannot be read costs nothing", () => {
