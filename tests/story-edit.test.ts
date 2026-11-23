@@ -128,7 +128,16 @@ test("a story draws only the pictures it does not have", () => {
 test("a faceless beat whose picture could not be made shows its neighbour's — never a blank screen", () => {
   const src = read("app", "lib", "faceless-video.server.ts");
   assert.ok(src.includes("for (let attempt = 0; attempt < 4 && !still; attempt++) {"));
-  assert.ok(src.includes("catch { if (attempt < 3) await new Promise((r) => setTimeout(r, [2000, 6000, 15000][attempt])); }"), "long enough to outlast a rate limit");
+  assert.ok(src.includes("if (attempt < 3) await new Promise((r) => setTimeout(r, [2000, 6000, 15000][attempt]));"), "long enough to outlast a rate limit");
+  // the last two tries ask a second way (the same words four times are four refusals), and why a picture
+  // failed is written down with the video — for the operator only
+  assert.ok(src.includes("try { still = await brollStill(attempt < 2 ? prompt : plain, quality); if (still && attempt >= 2) plainer = true; }"));
+  assert.ok(src.includes("const plain = `A simple, striking, symbolic cinematic image for this moment of a short video: "));
+  assert.ok(src.includes("...(stillFaults.length ? { stillFaults: stillFaults.slice(0, 8) } : {})"));
+  const arch = read("app", "routes", "web.archive.tsx");
+  assert.ok(arch.includes("const operator = isAdminEmail(account.email);"));
+  assert.ok(arch.includes("opsNote: operator ? (() => {"), "never sent to a member");
+  assert.ok(!arch.includes("viewer.opsNote") && !arch.includes("a.opsNote"), "and never drawn");
   assert.ok(src.includes("const isPlaceholder = (p: string): boolean => path.basename(p).startsWith(\"bg-\");"));
   assert.ok(src.includes("if (stills.every(isPlaceholder)) throw new Error(\"[faceless] no b-roll could be made\");"), "no picture at all is a failed (refunded) video, not a blank one");
   assert.ok(src.includes("await assembleFaceless({ stills: shown, voPath, musicPath, caps, windows: beatWindows, fontFile, outPath, jobId });"));

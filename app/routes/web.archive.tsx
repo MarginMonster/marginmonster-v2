@@ -227,7 +227,8 @@ function buildDetails(type: string, metaJson: string | null, bodyJson: string | 
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { shop } = await requireWebIdentity(request);
+  const { shop, account } = await requireWebIdentity(request);
+  const operator = isAdminEmail(account.email);
   const lang = readUiLang(request);
 
   // ONE unified archive (owner 11-01): the Creator/Marketing toggle was far too
@@ -455,6 +456,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // Does this film carry a per-shot timeline (dialogue pipeline)? Gates the "Edit
         // shots" link into the section editor.
         hasShots: (() => { try { const m = JSON.parse(a.metaJson || "{}"); return Array.isArray(m.shots) && m.shots.length > 0; } catch { return false; } })(),
+        // FOR THE OPERATOR ONLY (never drawn, never sent to a member): what went wrong while a piece was
+        // made and was worked around — a faceless video's picture that failed, and why.
+        opsNote: operator ? (() => { try { const m = JSON.parse(a.metaJson || "{}"); return Array.isArray(m.stillFaults) && m.stillFaults.length ? m.stillFaults.slice(0, 8) : undefined; } catch { return undefined; } })() : undefined,
         // Is it a STORY film (acted or narrated)? Those can be continued: the viewer's "Next episode" opens
         // the Movie Maker on the next episode of its series (film-series.ts → storyHeroOf / episodeCardFor).
         canContinue: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson),

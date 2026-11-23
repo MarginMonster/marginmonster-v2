@@ -408,6 +408,7 @@ export async function generateFacelessVideo(opts: {
       return c.status === 0 && fs.existsSync(pn) ? pn : null;
     } catch { return null; }
   };
+  const stillFaults: Array<{ beat: number; error: string; got: string }> = [];
   for (let i = stills.length; i < script.beats.length; i++) {
     // The assembler oversamples each still for the Ken-Burns crop, so a bigger,
     // sharper source (nano-banana / nano-banana-pro) reads as real b-roll, not
@@ -417,11 +418,22 @@ export async function generateFacelessVideo(opts: {
     // Up to 4 tries per beat, waiting longer each time: a 429/transient refusal under load used to kill
     // the whole render (no retry, no catch), and three quick tries in five seconds did not outlast a
     // rate limit either. No schnell fallback — it's retired.
+    // The last two tries ask a SECOND WAY: if the picture as described is what the model will not
+    // draw, the same words four times are four refusals — a plainer picture for the line itself is
+    // better than its neighbour's picture twice.
+    const plain = `A simple, striking, symbolic cinematic image for this moment of a short video: "${beat.line.replace(/["\n]/g, " ").slice(0, 200)}". Vertical 9:16, high detail, no text, no watermark.`;
     let still: string | null = null;
+    let why = "";
+    let plainer = false;
     for (let attempt = 0; attempt < 4 && !still; attempt++) {
-      try { still = await brollStill(prompt, quality); }
-      catch { if (attempt < 3) await new Promise((r) => setTimeout(r, [2000, 6000, 15000][attempt])); }
+      try { still = await brollStill(attempt < 2 ? prompt : plain, quality); if (still && attempt >= 2) plainer = true; }
+      catch (e) {
+        why = e instanceof Error ? e.message.slice(0, 160) : String(e).slice(0, 160);
+        if (attempt < 3) await new Promise((r) => setTimeout(r, [2000, 6000, 15000][attempt]));
+      }
     }
+    // (written down with the video — there is nowhere else to read why a picture failed)
+    if (why) stillFaults.push({ beat: i + 1, error: why, got: !still ? "its neighbour's picture" : plainer ? "a plainer picture" : "its own picture, on a later try" });
     // Never skip a beat (the resume/checkpoint logic maps stills[i] → beat i):
     // fall back to repeating the previous still, or — for the opening beat, which has none before it —
     // a plain frame that only holds its place (it is never shown: see `shown` below).
@@ -478,7 +490,7 @@ export async function generateFacelessVideo(opts: {
       // "…a lighthouse keeper named Wren Oakhollow and her ")
       title: `Faceless video — ${trimTitle((script.title || "").replace(/["“”]/g, "").trim() || topic, 60)}`,
       bodyJson: JSON.stringify({ style: "FACELESS", videoUrl: storedUrl, prompt: topic, script: fullScript }),
-      metaJson: JSON.stringify({ kind: "faceless", section: opts.section || "creator", format: fmtKey, topic, aspect: "vertical", ...(product ? { product: product.title } : {}) }),
+      metaJson: JSON.stringify({ kind: "faceless", section: opts.section || "creator", format: fmtKey, topic, aspect: "vertical", ...(product ? { product: product.title } : {}), ...(stillFaults.length ? { stillFaults: stillFaults.slice(0, 8) } : {}) }),
     },
   });
   return asset.id;
