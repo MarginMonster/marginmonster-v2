@@ -147,6 +147,7 @@ function tick() {
   void chores();
   for (const drain of drains) void drain();
 }
+
 // The reaper, deliberately on its own timer and its own guard. This is the
 // only thing that turns a job killed by a restart — or by a wedge — into a
 // FAILED row with the merchant's tokens returned, so it must not be reachable

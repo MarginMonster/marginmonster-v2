@@ -110,6 +110,24 @@ export const CREATE_ASPECT_VALUES: string[] = CREATE_ASPECTS.map((a) => a.value)
 
 export const DEFAULT_CREATE_ASPECT = "1:1";
 
+/** A picture's shape as people say it → the frame. "wide" / "landscape" / "banner" → 16:9; "tall" /
+ *  "vertical" / "story" / "phone" → 9:16; "portrait" → 4:5; "square" → 1:1; a frame value is itself.
+ *  Anything else → undefined, and the picture is made in the default shape.
+ *  (2026-11-23: asked through Helpurr for "a wide shot", a member got a square — the chat had no way
+ *  to say a shape at all, though the Studio's own "Make an image" has four.) */
+export function aspectForShape(shape: unknown): string | undefined {
+  const s = typeof shape === "string" ? shape.trim().toLowerCase() : "";
+  if (!s) return undefined;
+  if (CREATE_ASPECT_VALUES.includes(s)) return s;
+  const said: Record<string, string> = {
+    square: "1:1",
+    portrait: "4:5",
+    tall: "9:16", vertical: "9:16", story: "9:16", phone: "9:16",
+    wide: "16:9", landscape: "16:9", banner: "16:9",
+  };
+  return said[s];
+}
+
 /** CSS aspect-ratio string for a frame value (falls back to square). */
 export function aspectCss(value: string | null | undefined): string {
   return CREATE_ASPECTS.find((a) => a.value === value)?.css || "1 / 1";

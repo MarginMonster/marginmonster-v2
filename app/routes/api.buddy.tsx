@@ -21,6 +21,7 @@ import { anthropicToolLoop, anthropicToolLoopStream, anthropicText, anthropicVis
 import { UPLOAD_NAME_RE, shopSlug } from "../lib/upload-names";
 import { parseSocialStats, sumStats } from "../lib/social-insights.server";
 import { externalOrigin } from "../lib/origin.server";
+import { aspectForShape } from "../lib/create-models";
 import { readUiLang, tr, type UiLang } from "../lib/ui-i18n";
 import { db } from "../db.server";
 
@@ -288,6 +289,7 @@ const BUDDY_TOOLS: ToolDef[] = [
         presenter: { type: "boolean", description: "video ONLY: true = a presenter holds/presents the product; false = product-only cinematic." },
         clean: { type: "boolean", description: "image ONLY: true = a CLEAN product shot — just the product, NO headline text and NO 'Shop now' button. Set it when they ask for a 'product-only' / 'cinematic' / 'plain' / 'just the product' / 'no text' shot, i.e. a photo not an ad. Default false = a full image ad with a headline + call-to-action." },
         direction: { type: "string", description: "image/video: optional creative direction. edit: the freeform instruction for editOp 'describe', or the new backdrop for 'bgswap'." },
+        shape: { type: "string", enum: ["square", "portrait", "tall", "wide"], description: "create ONLY: the picture's shape. square (default) · portrait (4:5, a feed post) · tall (9:16 — a phone screen, a story, a wallpaper, 'vertical') · wide (16:9 — a banner, a landscape, a desktop wallpaper, 'a wide shot'). Set it whenever their words name or imply a shape; leave it out otherwise." },
         count: { type: "integer", minimum: 1, maximum: 4, description: "how MANY to make at once (default 1, max 4). Set it only when the user wants SEVERAL of the SAME thing — 'make 3 of these', 'give me 4 variations', 'a couple options'. They queue and all run on ONE confirm tap that shows the total cost. For DIFFERENT products or kinds, call make_content once per item instead of using count." },
       },
       required: ["kind"],
@@ -375,7 +377,7 @@ async function buildShowWork(id: WebId, input: Record<string, unknown>): Promise
 // "edit" is the one kind whose subject comes from the CLIENT (a photo the user
 // uploaded into the chat), so MakeSpec carries sourceImageUrl + editOp for it.
 type MakeKind = "image" | "video" | "faceless" | "music" | "edit" | "create";
-type MakeSpec = { kind: MakeKind; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; sourceImageUrl?: string; editOp?: string; cost: number; free?: boolean; clean?: boolean; label: string };
+type MakeSpec = { kind: MakeKind; product: string; topic?: string; format?: string; voice?: string; presenter: boolean; direction: string; sourceImageUrl?: string; editOp?: string; cost: number; free?: boolean; clean?: boolean; aspect?: string; label: string };
 
 // FREE TIER: a signed-in account with NO active plan gets a few FREE makes a DAY
 // on the house — image GENERATIONS or photo EDITS (one shared pool) — then
@@ -418,7 +420,8 @@ async function handleFreeMakeIntent(id: WebId, spec: Partial<MakeSpec>, kind: Ma
     const prompt = typeof spec.direction === "string" ? spec.direction.trim().slice(0, 400) : "";
     if (!prompt) return json({ error: tr(lang, "Tell me what to picture first.") }, { status: 400 });
     try {
-      const jobId = await enqueueJob(id.shop.id, "GENERATE_IMAGE_AD", { createImage: true, createPrompt: prompt, section: "creator", productTitle: prompt.slice(0, 60), prePaid: true, chargedTokens: 0, freeGen: true, initiator: "web" });
+      const freeAspect = aspectForShape(spec.aspect);
+      const jobId = await enqueueJob(id.shop.id, "GENERATE_IMAGE_AD", { createImage: true, createPrompt: prompt, section: "creator", ...(freeAspect ? { createAspect: freeAspect } : {}), productTitle: prompt.slice(0, 60), prePaid: true, chargedTokens: 0, freeGen: true, initiator: "web" });
       return json({ jobId, cursor: Date.now(), kind: "create", cost: 0 });
     } catch (e) { console.error("[buddy] free create enqueue failed:", e instanceof Error ? e.message.slice(0, 160) : e); return json({ error: tr(lang, "Couldn't start it — mind trying again?") }, { status: 500 }); }
   }
@@ -620,7 +623,8 @@ async function buildFreeMake(id: WebId, input: Record<string, unknown>, lang: Ui
   if (kind === "create") {
     const prompt = (typeof input.direction === "string" && input.direction.trim()) || (typeof input.topic === "string" && input.topic.trim()) || "";
     if (!prompt) return { make: null, toolResult: JSON.stringify({ error: "Ask in one line WHAT they want to picture before offering to make it." }) };
-    const make: MakeSpec = { kind: "create", product: "", presenter: false, direction: String(prompt).slice(0, 400), cost: 0, free: true, label: tr(lang, "Make this image — free") };
+    const freeAspect = aspectForShape(input.shape);
+    const make: MakeSpec = { kind: "create", product: "", presenter: false, direction: String(prompt).slice(0, 400), cost: 0, free: true, ...(freeAspect ? { aspect: freeAspect } : {}), label: tr(lang, "Make this image — free") };
     return { make, toolResult: JSON.stringify({ readyToMake: true, kind: "create", free: true, note: `A FREE one-tap "Make it" button is now shown (${left} free make${left === 1 ? "" : "s"} left today) to generate the image. Say it's on the house, name what you'll make in one line, and — only if it fits — note a plan adds a monthly token pool for videos, music and more (keep it light, never a pitch). Do NOT claim it is done.` }) };
   }
   // EDIT — the attached photo, OR (source:'recent' / nothing attached) the shop's
@@ -715,12 +719,14 @@ async function buildMake(id: WebId, input: Record<string, unknown>, lang: UiLang
     const cost = TOKEN_COST.createImage;
     if (tokens < cost) return { make: null, toolResult: JSON.stringify({ error: `Not enough tokens (${tokens} left, needs ${cost}). Tell them to top up; don't make it.` }) };
     const label = tr(lang, "Make an image of {prompt}", { prompt: prompt.slice(0, 44) });
-    const make: MakeSpec = { kind: "create", product: "", topic: prompt, presenter: false, direction: prompt, cost, label };
+    // THE SHAPE THEY ASKED FOR (create-models → aspectForShape): "a wide shot", "for my phone", "a banner".
+    const aspect = aspectForShape(input.shape);
+    const make: MakeSpec = { kind: "create", product: "", topic: prompt, presenter: false, direction: prompt, cost, ...(aspect ? { aspect } : {}), label };
     return {
       make,
       toolResult: JSON.stringify({
-        readyToMake: true, kind: "create", cost,
-        note: `A one-tap "Make it" confirm button (cost ${cost} tokens) is now shown to create an image of "${prompt}". Say in ONE line what you'll picture and that tapping it makes it right here. Do NOT claim it is already made or that tokens were spent.`,
+        readyToMake: true, kind: "create", cost, ...(aspect ? { shape: aspect } : {}),
+        note: `A one-tap "Make it" confirm button (cost ${cost} tokens) is now shown to create ${aspect ? `a ${aspect} ` : "an "}image of "${prompt}". Say in ONE line what you'll picture and that tapping it makes it right here. Do NOT claim it is already made or that tokens were spent.`,
       }),
     };
   }
@@ -1340,8 +1346,10 @@ export async function action({ request }: ActionFunctionArgs) {
       const fromExtra = (await spendTokens(id.shop.id, cost)).fromExtra;
       const cursor = Date.now();
       try {
+        const createAspect = aspectForShape(spec.aspect); // only a shape the Studio itself offers
         const jobId = await enqueueJob(id.shop.id, "GENERATE_IMAGE_AD", {
           createImage: true, createPrompt: prompt, section: "creator",
+          ...(createAspect ? { createAspect } : {}),
           productTitle: prompt.slice(0, 60),
           prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra, initiator: "web",
         });
