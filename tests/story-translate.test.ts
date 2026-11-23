@@ -136,7 +136,8 @@ test("starting one: this shop's own story, pictures that are really on disk, an 
   assert.ok(srv.includes("where: { id: opts.assetId, shopId, type: \"VIDEO_AD\", status: { not: \"FAILED\" } },"), "scoped by the shop");
   assert.ok(srv.includes("if (!isNarratedStory(asset.metaJson)) return { ok: false, code: \"not-a-story\" };"));
   assert.ok(srv.includes("if (!canTellIn(opts.lang, from)) return { ok: false, code: \"language\" };"));
-  assert.ok(srv.includes("const onDisk = (u: string) => u.startsWith(\"/renders/\") && fs.existsSync(path.join(renders, path.basename(u.split(\"?\")[0])));"));
+  assert.ok(srv.includes("const local = (u: string) => u.replace(/^https?:\\/\\/[^/]+/i, \"\");"));
+  assert.ok(srv.includes("const onDisk = (u: string) => local(u).startsWith(\"/renders/\") && fs.existsSync(path.join(renders, path.basename(local(u).split(\"?\")[0])));"));
   assert.ok(srv.includes("if (!found.pictures.every(onDisk)) return { ok: false, code: \"no-pictures\" };"), "never told over a picture that is not there");
   assert.ok(srv.includes("told = translatedTreatment(treatment, JSON.parse(raw));"));
   assert.ok(srv.includes("approvedTreatment: JSON.stringify(told),"));

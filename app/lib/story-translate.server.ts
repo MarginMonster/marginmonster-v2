@@ -58,7 +58,10 @@ export async function tellStoryAgain(opts: { shopId: string; assetId: string; la
   if (!found) return { ok: false, code: "no-pictures" };
   // …and they must still be on our disk: a story is never told over a picture that is not there
   const renders = path.join(process.cwd(), "data", "renders");
-  const onDisk = (u: string) => u.startsWith("/renders/") && fs.existsSync(path.join(renders, path.basename(u.split("?")[0])));
+  // (a picture is named by its /renders path; one stored with a site address in front of it is the same
+  //  file — the render itself looks every picture up by its file name on our disk)
+  const local = (u: string) => u.replace(/^https?:\/\/[^/]+/i, "");
+  const onDisk = (u: string) => local(u).startsWith("/renders/") && fs.existsSync(path.join(renders, path.basename(local(u).split("?")[0])));
   if (!found.pictures.every(onDisk)) return { ok: false, code: "no-pictures" };
   const musicFile = found.music ? path.join(renders, path.basename(found.music)) : "";
 

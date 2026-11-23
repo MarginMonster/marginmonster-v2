@@ -654,10 +654,13 @@ test("the toast clears the select bar however tall the bar is — and a toast ma
   assert.equal(stays({ ms: 6000 }), 6000);
   // only the Download's toasts ask for longer — and (2026-11-22) the queue's two: its error sentence (6s)
   // and its confirmation with the "See the queue" link (8s)
+  // …and (2026-11-23) "Another language"'s two: its error sentence (7s, they are longer to read) and
+  // "Telling it in … — it lands here in a few minutes." (8s)
   assert.equal(count(src, "ms: 6000 }"), 3);
   assert.equal(count(src, "ms: 600_000 }"), 1);
-  assert.equal(count(src, "ms: 8000 }"), 1);
-  assert.equal(count(src, ", ms: "), 5);
+  assert.equal(count(src, "ms: 7000 }"), 1);
+  assert.equal(count(src, "ms: 8000 }"), 2);
+  assert.equal(count(src, ", ms: "), 7);
 });
 
 test("every new word goes through t() — and these are all of them", () => {
