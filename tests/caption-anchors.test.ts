@@ -9,7 +9,8 @@
  * anchors is laid between them. Measured on that story: 0.03 s on average. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SAY_PACE, boldCards, sceneWindows, scriptWordTimes, type WordT } from "../app/lib/narrated-core.ts";
+import fs from "node:fs";
+import { LISTEN_AGAIN_UNDER, SAY_PACE, boldCards, heardShare, sceneWindows, scriptWordTimes, type WordT } from "../app/lib/narrated-core.ts";
 
 /** Words as a listener gives them: `text` split at spaces, `per` seconds apart, starting at `t0`. */
 const said = (text: string, t0: number, per = 0.3): WordT[] => text.split(" ").map((word, i) => ({ word, start: t0 + i * per, end: t0 + i * per + per * 0.8 }));
@@ -118,4 +119,33 @@ test("a script without spaces is anchored glyph by glyph — a Latin name the li
   assert.ok(Math.abs(at("在").start - heard[6].start) < 1e-6, "在 too — the two glyphs heard for ISLA do not push it");
   assert.ok(Math.abs(at("多年").start - heard[11].start) < 1e-6 && Math.abs(at("多年").end - heard[12].end) < 1e-6, "a two-glyph word spans its two glyphs");
   assert.ok(at("ISLA").start >= heard[3].end - 1e-6 && at("ISLA").end <= heard[6].start + 0.06, "the name sits between its neighbours");
+});
+
+// ---- the listen itself ------------------------------------------------------------------------------------
+// The sentence was missed because the stock voice detector did not take a performed voice's quiet opening
+// for speech. The same recording heard with the detector set softer gave all 147 words (measured,
+// 2026-11-23). A first listen that missed part of the script is done again that way; the better is kept.
+test("a listen that missed part of the story is done again, softer — and the better one is kept", () => {
+  const heardAll = [...said("They say the old theatre never fully empties after midnight. Gus and Isla had cleaned it for years.", 0.2), ...said("A light flickered in the royal box. Isla felt a cold draft where no window existed.", 9.0), ...said("Gus forced the door that had not opened in fifty years.", 15.0)];
+  const missedOpening = heardAll.slice(10);
+  assert.equal(heardShare(STORY, heardAll), 1, "every word heard as itself");
+  const share = heardShare(STORY, missedOpening);
+  assert.ok(Math.abs(share - (heardAll.length - 10) / heardAll.length) < 1e-9, `ten words missed: ${share}`);
+  assert.ok(share < LISTEN_AGAIN_UNDER, "worth a second listen");
+  assert.ok(137 / 147 < LISTEN_AGAIN_UNDER, "the real one (137 of 147) was");
+  assert.ok(177 / 179 >= LISTEN_AGAIN_UNDER && 157 / 158 >= LISTEN_AGAIN_UNDER, "a name heard wrong here and there is not (the French and German listens)");
+  assert.equal(heardShare(STORY, []), 0);
+  assert.equal(heardShare([], heardAll), 0);
+  // a heard name spelt another way, a number read out: those words are not "the same", the rest are
+  assert.ok(Math.abs(heardShare(["In 1981 a boy named Tobias knocked anyway."], said("In nineteen eighty one a boy named Tobius knocked anyway.", 1)) - 6 / 8) < 1e-9);
+  const read = (f: string) => fs.readFileSync(new URL(`../app/lib/${f}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const nar = read("narrated-story.server.ts");
+  assert.ok(nar.includes("const share = heardShare(lines, words);\n      if (share < LISTEN_AGAIN_UNDER) {"));
+  assert.ok(nar.includes("createWhisperx(voUrl, normalizeContentLang(lang), { sung: true })"), "the softer detector, in the story's own language");
+  assert.ok(nar.includes("if (better > share) words = again;"), "only a better listen replaces the first");
+  assert.ok(nar.includes("the softer listen failed — keeping the first"), "and a failed second listen costs nothing");
+  const fl = read("faceless-video.server.ts");
+  assert.ok(fl.includes("if (words.length && heardShare(lines, words) < LISTEN_AGAIN_UNDER) {"));
+  assert.ok(fl.includes("createWhisperx(voUrl, lang, { sung: true })"));
+  assert.ok(fl.includes("if (heardShare(lines, again) > heardShare(lines, words)) words = again;"));
 });

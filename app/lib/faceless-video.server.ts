@@ -21,7 +21,7 @@ import { ownNarratorVoice } from "./voice-clone.server";
 import { SUNG_VAD } from "./lyric-sync";
 import { langDirective, normalizeContentLang, voiceLangOpts } from "./content-lang";
 import { trimTitle } from "./text-trim";
-import { boldCards, captionFilters, sceneWindows, scriptWordTimes, type Window } from "./narrated-core";
+import { LISTEN_AGAIN_UNDER, boldCards, captionFilters, heardShare, sceneWindows, scriptWordTimes, type Window } from "./narrated-core";
 
 // Truncate on a sentence boundary so a hard char-cap never feeds the writer a
 // dangling half-spec ("…holds up to 2L and is made from"). Falls back to the
@@ -374,6 +374,14 @@ export async function generateFacelessVideo(opts: {
     try { words = wordsFromWhisperx(await repPoll(await createWhisperx(voUrl, lang), 5 * 60_000, "faceless-align")); }
     catch (e) { console.error("[faceless] could not listen to the voice-over — captions and pictures are timed by length:", (e as Error).message); }
     const lines = script.beats.map((b) => b.line);
+    // a listen that missed part of the script is done again with the voice detector set softer, and the
+    // better of the two is kept (narrated-core → LISTEN_AGAIN_UNDER)
+    if (words.length && heardShare(lines, words) < LISTEN_AGAIN_UNDER) {
+      try {
+        const again = wordsFromWhisperx(await repPoll(await createWhisperx(voUrl, lang, { sung: true }), 5 * 60_000, "faceless-align-soft"));
+        if (heardShare(lines, again) > heardShare(lines, words)) words = again;
+      } catch { /* the first listen stands */ }
+    }
     beatWindows = sceneWindows(lines, words, ffprobeDuration(voPath) || 35);
     caps = boldCards(scriptWordTimes(lines, words, beatWindows), lang);
     await ckpt({ ckTimings: JSON.stringify({ caps, windows: beatWindows }) });

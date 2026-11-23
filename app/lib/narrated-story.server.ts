@@ -23,6 +23,7 @@ import crypto from "node:crypto";
 import { db } from "../db.server";
 import { checkpointJob, downloadBuffer, ffprobeDuration, repCreate, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { captionGraph } from "./caption-burn.server";
+import { LISTEN_AGAIN_UNDER, heardShare } from "./narrated-core";
 import { persistRemote, renderCreativeSeed, repRun } from "./image-generation.server";
 import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { musicBedToDisk } from "./music-generation.server";
@@ -373,6 +374,18 @@ export async function generateNarratedStory(opts: {
     if (voUrl) {
       try { words = wordsFromWhisperx(await repPoll(await createWhisperx(voUrl, normalizeContentLang(lang)), 5 * 60_000, "narration-align")); }
       catch (e) { console.error(`[narrated] alignment failed — pictures and captions are timed by length instead: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
+      // A LISTEN THAT MISSED PART OF THE STORY IS DONE AGAIN, SOFTER (narrated-core → LISTEN_AGAIN_UNDER): a
+      // performed voice's quiet opening is not taken for speech by the stock voice detector. The better
+      // of the two listens is kept; a second one that fails leaves the first as it was.
+      const share = heardShare(lines, words);
+      if (share < LISTEN_AGAIN_UNDER) {
+        try {
+          const again = wordsFromWhisperx(await repPoll(await createWhisperx(voUrl, normalizeContentLang(lang), { sung: true }), 5 * 60_000, "narration-align-soft"));
+          const better = heardShare(lines, again);
+          console.log(`[narrated] the first listen heard ${Math.round(share * 100)}% of the story — a softer one heard ${Math.round(better * 100)}%`);
+          if (better > share) words = again;
+        } catch (e) { console.error(`[narrated] the softer listen failed — keeping the first: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+      }
     }
     await ckpt({ ckWords: JSON.stringify(words) });
   }

@@ -173,6 +173,19 @@ function sameWords(written: string[], heard: string[]): Array<[number, number]> 
 const anchored = (pairs: number, atoms: string[], heard: number, min: number): boolean =>
   pairs >= Math.max(min, Math.min(atoms.filter(Boolean).length, heard) * 0.5);
 
+/** How much of the script the listener heard as itself: 1 = every word, 0 = none of them. */
+export function heardShare(lines: string[], words: WordT[]): number {
+  const atoms: string[] = [];
+  for (const l of lines) for (const u of saidUnits(l)) atoms.push(...unitAtoms(u));
+  const real = atoms.filter(Boolean).length;
+  if (!real || !words.length) return 0;
+  return sameWords(atoms, words.map((w) => atomOf(w.word))).length / real;
+}
+/** A first listen that heard less of the script than this is worth a second, softer one. (A performed
+ *  character voice's quiet opening sentence was not taken for speech at all on 2026-11-23 — 137 words of
+ *  147; the same recording heard with the voice detector set softer gave all 147.) */
+export const LISTEN_AGAIN_UNDER = 0.97;
+
 /** When each scene's first word is said, where the scenes' own words say so — null for a scene whose
  *  opening (and the close of the scene before it) the listener did not hear; null altogether when the
  *  heard words are not the script's. */
