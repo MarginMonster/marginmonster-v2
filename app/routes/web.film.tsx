@@ -3893,7 +3893,8 @@ ${CAST_ID_CSS}
 [data-cast-hold],[data-cast-hold] *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
 .fs-peek-hint{display:none;margin:4px 2px 0;font-size:11.5px;font-weight:600;line-height:1.35;color:var(--ink3,#7C877F);}
 @media(hover:none) and (pointer:coarse){.fs-peek-hint{display:block;}}
-.fs-peek{position:fixed;inset:0;z-index:10500;display:flex;align-items:flex-end;justify-content:center;padding:16px 16px max(16px,env(safe-area-inset-bottom));background:rgba(20,32,26,.46);font-family:Inter,-apple-system,sans-serif;color:var(--ink,#14201A);-webkit-user-select:none;user-select:none;}
+/* (10650: over the Helpurr mascot, which floats at 10600 — on a phone it sat on the corner of this sheet's card) */
+.fs-peek{position:fixed;inset:0;z-index:10650;display:flex;align-items:flex-end;justify-content:center;padding:16px 16px max(16px,env(safe-area-inset-bottom));background:rgba(20,32,26,.46);font-family:Inter,-apple-system,sans-serif;color:var(--ink,#14201A);-webkit-user-select:none;user-select:none;}
 .fs-peek-sheet{box-sizing:border-box;width:100%;max-width:400px;max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain;border:1.5px solid var(--green,#0C7A46);border-radius:20px;background:#FFFDF7;padding:2px 12px 12px;box-shadow:0 24px 60px -18px rgba(20,32,26,.55);animation:fspeekin .2s cubic-bezier(.2,.8,.2,1) both;}
 @keyframes fspeekin{from{opacity:0;transform:translateY(18px);}}
 @media(min-width:640px){.fs-peek{align-items:center;}}
