@@ -1,5 +1,12 @@
 import { db } from "../db.server";
-import { trimKeepingDisclosure } from "./post-title";
+import { ANALYTICS_PLATFORMS, CONNECT_PLATFORMS, networkName, planPublish, type PublishPlan } from "./social-networks";
+
+// The ONE list of networks (keys, names, what each takes, limits) lives in the pure social-networks.ts
+// so client code and tests can import it; it is re-exported here as the provider's surface.
+export {
+  NETWORKS, POSTABLE_PLATFORMS, VIDEO_PLATFORMS, PHOTO_PLATFORMS, CONNECT_PLATFORMS, ANALYTICS_PLATFORMS,
+  network, networkName, isPostable, takes, captionFor, type Network, type NetworkKey,
+} from "./social-networks";
 
 /* Social auto-posting provider: upload-post.com (v1 backend, chosen on recon —
  * multi-tenant user profiles on one API key, branded hosted connect page,
@@ -54,8 +61,9 @@ export async function ensureProfile(shopId: string): Promise<string | null> {
   return shopId;
 }
 
-/** Branded hosted page where the merchant links TikTok/Instagram/Facebook.
- *  `returnUrl` sends them straight back into our app when they're done. */
+/** Branded hosted page where the merchant links their accounts — every network the page documents
+ *  (generate-jwt `platforms`: tiktok, instagram, facebook, youtube, x, threads, linkedin; Bluesky is not
+ *  one of its values). `returnUrl` sends them straight back into our app when they're done. */
 export async function connectUrl(shopId: string, returnUrl?: string): Promise<string | null> {
   const username = await ensureProfile(shopId);
   if (!username) return null;
@@ -68,8 +76,8 @@ export async function connectUrl(shopId: string, returnUrl?: string): Promise<st
         // brand the white-label hosted page as hard as its params allow
         logo_image: `${process.env.SHOPIFY_APP_URL || "https://marginmonster-fiew.onrender.com"}/helpurr-icon.png?v=3`,
         connect_title: "Connect your socials to EasyMode 🏝️",
-        connect_description: "One tap links TikTok, Instagram & Facebook. From here on, EasyMode auto-posts every drop for you — hands off, all month long.",
-        platforms: ["tiktok", "instagram", "facebook"],
+        connect_description: `One tap links ${CONNECT_PLATFORMS.slice(0, -1).map(networkName).join(", ")} & ${networkName(CONNECT_PLATFORMS[CONNECT_PLATFORMS.length - 1])}. From here on, EasyMode auto-posts every drop for you — hands off, all month long.`,
+        platforms: [...CONNECT_PLATFORMS],
         show_calendar: false,
         ...(returnUrl ? { redirect_url: returnUrl, redirect_button_text: "← Back to EasyMode" } : {}),
       }),
@@ -120,7 +128,10 @@ export function linkedFromCache(socialsJson: string | null | undefined): string[
 }
 
 /** Per-platform profile analytics (followers + engagement). Provider endpoint:
- *  GET /api/analytics/{username}?platforms=tiktok,instagram,facebook  (Apikey auth).
+ *  GET /api/analytics/{username}?platforms=tiktok,instagram,facebook,…  (Apikey auth). The provider
+ *  answers for every network we post to (docs: get-analytics); only those are asked for, because an
+ *  unknown value in `platforms` is a 400 for the whole request. A network it cannot answer for comes
+ *  back as a per-network message object and is skipped below, so it never hides the others.
  *  Response is keyed by platform: { instagram: { followers, reach, views,
  *  impressions, likes, comments, shares, saves, ... }, ... }.
  *
@@ -140,6 +151,7 @@ export async function fetchAnalytics(
   username: string,
   platforms: string[]
 ): Promise<Record<string, PlatformStats> | null> {
+  platforms = platforms.filter((p) => (ANALYTICS_PLATFORMS as readonly string[]).includes(p));
   if (!socialProviderEnabled() || !username || platforms.length === 0) return null;
   try {
     const qs = encodeURIComponent(platforms.join(","));
@@ -172,28 +184,33 @@ export async function fetchAnalytics(
 /** Publish one piece of media. Returns ok ONLY on confirmed provider success.
  *  Video: pass the media URL directly (upload-post's /api/upload `video` field
  *  accepts a URL) — no re-upload through our server. Photos: /api/upload_photos
- *  is file-only, so we fetch the bytes and attach them. */
+ *  is file-only, so we fetch the bytes and attach them.
+ *
+ *  `title` is the whole assembled post (buildPostTitle). TikTok/Instagram/Facebook get it as the one shared
+ *  `title`, trimmed to 150 exactly as before; each newer network also gets its own field, fitted to its own
+ *  limit with #EasyModeAi kept (social-networks.ts → planPublish). A network that cannot take this kind of
+ *  piece (a photo to YouTube) is left out of the request and named in `skipped`, never failing the rest. */
 export async function publishPost(
   username: string,
   params: { title: string; mediaUrl: string; isVideo: boolean; platforms: string[] }
-): Promise<{ ok: boolean; error?: string; urls?: Record<string, string> }> {
+): Promise<{ ok: boolean; error?: string; urls?: Record<string, string>; skipped?: PublishPlan["skipped"] }> {
   if (!socialProviderEnabled()) return { ok: false, error: "no-api-key" };
   try {
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     const mediaAbs = params.mediaUrl.startsWith("http") ? params.mediaUrl : `${base}${params.mediaUrl}`;
-    const title = trimKeepingDisclosure(params.title);
+
+    // THE PLATFORMS' OWN "AI-GENERATED" LABEL. Everything EasyMode posts is made with AI, and the caption
+    // already says so (#EasyModeAi); the plan sets each platform's native disclosure as well — TikTok's
+    // "Creator labeled as AI-generated" (is_aigc), Instagram's AI info, YouTube's synthetic-media flag,
+    // X's made_with_ai, Threads' is_made_with_ai — through upload-post's one alias `is_ai_generated`
+    // (docs.upload-post.com/guides/ai-content-labeling). Facebook Reels take their own field
+    // (`facebook_is_ai_generated`); a Facebook photo or Page post, LinkedIn and Bluesky have no API label.
+    const plan = planPublish(username, params);
+    const skipped = plan.skipped.length ? plan.skipped : undefined;
+    if (plan.sent.length === 0) return { ok: false, error: "no-network-takes-this", skipped };
 
     const form = new FormData();
-    form.append("user", username);
-    form.append("title", title);
-    for (const p of params.platforms) form.append("platform[]", p);
-    // THE PLATFORMS' OWN "AI-GENERATED" LABEL. Everything EasyMode posts is made with AI, and the caption
-    // already says so (#EasyModeAi); this sets each platform's native disclosure as well — TikTok's
-    // "Creator labeled as AI-generated" (is_aigc), Instagram's AI info, YouTube's synthetic-media flag,
-    // X's made_with_ai — through upload-post's one alias (docs.upload-post.com/guides/ai-content-labeling).
-    // Facebook Reels take their own field; a Facebook photo or Page post has no API label (a no-op).
-    form.append("is_ai_generated", "true");
-    if (params.isVideo && params.platforms.includes("facebook")) form.append("facebook_is_ai_generated", "true");
+    for (const [k, v] of plan.fields) form.append(k, v);
 
     if (params.isVideo) {
       // video accepts a URL string — provider fetches it directly
@@ -219,10 +236,10 @@ export async function publishPost(
       for (const [p, res] of Object.entries(j.results || {})) {
         if (res?.url) urls[p] = res.url;
       }
-      return { ok: true, urls };
+      return { ok: true, urls, skipped };
     }
     console.error("[social] post failed:", r.status, JSON.stringify(j).slice(0, 300));
-    return { ok: false, error: `post-${r.status}` };
+    return { ok: false, error: `post-${r.status}`, skipped };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "network" };
   }

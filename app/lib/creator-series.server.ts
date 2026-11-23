@@ -15,8 +15,9 @@ import { spendTokens, refundTokens, tokensRemainingLive } from "./tokens.server"
 import { enqueueJob } from "./job-queue.server";
 import { anthropicText } from "./anthropic.server";
 import { FACELESS_FORMATS } from "./faceless-video.server";
+import { VIDEO_PLATFORMS } from "./social-networks";
 
-const SOCIAL = ["tiktok", "instagram", "facebook"] as const;
+const SOCIAL: readonly string[] = VIDEO_PLATFORMS; // a channel's drop is a video
 
 /** Cadence presets, framed the way creators think ("videos per week"), not as a
  *  token meter. intervalHours drives the next-drop time. */
@@ -264,7 +265,7 @@ export async function postCreatorDrop(opts: {
   const posted: string[] = [];
   const urls: Record<string, string> = {};
   for (const p of targets) {
-    const title = buildPostTitle(captions[p], opts.linkUrl || "", fbText); // product URL for Product Channels; empty for vibe drops
+    const title = buildPostTitle(captions[p], opts.linkUrl || "", fbText, undefined, p); // product URL for Product Channels; empty for vibe drops
     const res = await publishPost(profileKey, { title, mediaUrl, isVideo: true, platforms: [p] });
     if (res.ok) {
       posted.push(p);

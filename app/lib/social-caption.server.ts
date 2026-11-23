@@ -1,6 +1,7 @@
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from "./ad-claims";
+import { NETWORKS, POSTABLE_PLATFORMS, captionFor, network, takes } from "./social-networks";
 
 /* AI caption + hashtag writer for auto-posted content.
  *
@@ -22,10 +23,24 @@ import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive } from ".
 export type PlatformCaption = { text: string; hashtags: string[]; fallback?: boolean };
 export type CaptionSet = Record<string, PlatformCaption>; // keyed by platform
 
-const SUPPORTED = ["tiktok", "instagram", "facebook"] as const;
+// Every network we post to (social-networks.ts is the one list).
+const SUPPORTED = POSTABLE_PLATFORMS;
 
 // Per-platform hashtag budgets — each network's discovery sweet spot.
-const TAG_CAP: Record<string, number> = { tiktok: 5, instagram: 6, facebook: 3 };
+const TAG_CAP: Record<string, number> = Object.fromEntries(NETWORKS.map((n) => [n.key, n.hashtags]));
+
+// How each network rewards a caption — one line each in the writer's brief.
+// (The first three are word for word what the writer was always told.)
+const PLATFORM_RULE: Record<string, string> = {
+  instagram: `warm hook + 1 short line. ${TAG_CAP.instagram} hashtags: mix 2 broad-reach, 2-3 niche/product-specific, 1 branded.`,
+  tiktok: `punchy, curiosity-driven opener (lowercase-casual ok). ${TAG_CAP.tiktok} broad DISCOVERY hashtags people actually search (e.g. #tiktokmademebuyit style), no niche jargon.`,
+  facebook: `friendly, a touch more descriptive, clear value. only ${TAG_CAP.facebook} hashtags.`,
+  youtube: `a YouTube Short — the FIRST sentence is also the video's title, so make it a clear, searchable hook under 80 characters; then one line of value. ${TAG_CAP.youtube} search-friendly hashtags.`,
+  x: `one sharp line under 160 characters, conversational, no filler. only ${TAG_CAP.x} hashtags.`,
+  threads: `casual and talky, like a friend's post, under 250 characters. only ${TAG_CAP.threads} hashtag.`,
+  linkedin: `professional and useful — what it is and why it matters, 1-2 sentences, no slang. ${TAG_CAP.linkedin} professional hashtags.`,
+  bluesky: `plain and friendly, under 180 characters, no hype. only ${TAG_CAP.bluesky} hashtags.`,
+};
 
 export interface CaptionInput {
   productTitle: string;
@@ -103,7 +118,8 @@ export async function generateCaptionSet(
   shopId: string,
   input: CaptionInput
 ): Promise<CaptionSet> {
-  const wanted = input.platforms.filter((p) => (SUPPORTED as readonly string[]).includes(p));
+  // only networks we post to that take this kind of piece (no caption is written for a photo to YouTube)
+  const wanted = input.platforms.filter((p) => (SUPPORTED as readonly string[]).includes(p) && takes(p, input.isVideo));
   const set: CaptionSet = {};
   const fb = fallbackCaption(input);
   if (wanted.length === 0) return set;
@@ -120,11 +136,7 @@ export async function generateCaptionSet(
     ].filter(Boolean).join("\n");
 
     const medium = input.isVideo ? "short-form video (Reel/TikTok)" : "photo post";
-    const platformRules = wanted.map((p) => {
-      if (p === "instagram") return `- instagram: warm hook + 1 short line. ${TAG_CAP.instagram} hashtags: mix 2 broad-reach, 2-3 niche/product-specific, 1 branded.`;
-      if (p === "tiktok") return `- tiktok: punchy, curiosity-driven opener (lowercase-casual ok). ${TAG_CAP.tiktok} broad DISCOVERY hashtags people actually search (e.g. #tiktokmademebuyit style), no niche jargon.`;
-      return `- facebook: friendly, a touch more descriptive, clear value. only ${TAG_CAP.facebook} hashtags.`;
-    }).join("\n");
+    const platformRules = wanted.map((p) => `- ${p}: ${PLATFORM_RULE[p] ?? PLATFORM_RULE.facebook}`).join("\n");
 
     const prompt = `You write high-performing social captions for an e-commerce brand. Write scroll-stopping captions that boost reach WITHOUT looking AI-generated or spammy.${langDirective(contentLang)}${contentLang && contentLang !== "en" ? " Hashtags may mix that language with high-reach English tags." : ""}
 
@@ -175,7 +187,8 @@ export async function getOrMakeCaptions(
   shopId: string,
   input: CaptionInput
 ): Promise<CaptionSet> {
-  const wanted = input.platforms.filter((p) => (SUPPORTED as readonly string[]).includes(p));
+  // only networks we post to that take this kind of piece (no caption is written for a photo to YouTube)
+  const wanted = input.platforms.filter((p) => (SUPPORTED as readonly string[]).includes(p) && takes(p, input.isVideo));
   if (wanted.length === 0) return {};
 
   let body: Record<string, unknown> = {};
@@ -246,8 +259,25 @@ export const AI_DISCLOSURE_TAG = "EasyModeAi";
 
 /** Assemble the final post string for one platform: caption + shop link +
  *  hashtag block. Falls back to the plain caption if no captions were made.
- *  The #EasyModeAi disclosure tag is always present exactly once. */
+ *  The #EasyModeAi disclosure tag is always present exactly once.
+ *
+ *  `platform`, when given for one of the newer networks (YouTube, X, Threads, LinkedIn, Bluesky), returns
+ *  the text that network will actually get: fitted to its own limit AFTER the link, the tags and the credit
+ *  are on, the disclosure never cut (social-networks.ts → captionFor). For TikTok/Instagram/Facebook, or
+ *  with no platform, the string is exactly what it always was — publishPost trims those to 150 itself. */
 export function buildPostTitle(
+  caption: PlatformCaption | undefined,
+  goUrl: string,
+  fallbackText: string,
+  credit?: string,
+  platform?: string
+): string {
+  const full = assemblePost(caption, goUrl, fallbackText, credit);
+  const n = platform ? network(platform) : undefined;
+  return n && n.titleRule !== "shared" ? captionFor(n.key, full) : full;
+}
+
+function assemblePost(
   caption: PlatformCaption | undefined,
   goUrl: string,
   fallbackText: string,

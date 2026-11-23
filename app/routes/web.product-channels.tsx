@@ -15,6 +15,7 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { xpForSpend } from "../lib/achievements";
 import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
+import { VIDEO_PLATFORMS, networkName } from "../lib/social-networks";
 import { shopVoiceClones } from "../lib/voice-clone.server";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
@@ -25,8 +26,9 @@ export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }
   return [{ title: tr((uiLang || "en") as Parameters<typeof tr>[0], "Product Channels") + " · EasyMode" }];
 };
 
-const SOCIAL = ["tiktok", "instagram", "facebook"] as const;
-const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
+// A product channel posts videos: every linked network that takes one (social-networks.ts is the one list).
+const SOCIAL = VIDEO_PLATFORMS;
+const PLAT_LABEL: Record<string, string> = Object.fromEntries(VIDEO_PLATFORMS.map((p) => [p, networkName(p)]));
 const ANGLES: [string, string][] = [["spotlight", "Spotlight"], ["hype", "Hype"], ["story", "Storytime"], ["value", "Value"]];
 // One-line example hook per angle so users aren't picking blind. {product} is a
 // literal placeholder we show in the preview (the real pipeline fills the SKU).
@@ -313,7 +315,7 @@ function SetupForm({ linked, tokens, facelessCost, productCount, cadences, myVoi
       {linked.length > 0 ? (
         <div className="pc-chips">{linked.map((p) => <button type="button" key={p} className={`pc-chip${plats.includes(p) ? " on" : ""}`} onClick={() => togglePlat(p)}>{plats.includes(p) ? "✓ " : ""}{PLAT_LABEL[p]}</button>)}</div>
       ) : (
-        <div className="pc-connect">{t("No socials linked yet —")} <Link to="/web/connect" className="pc-link">{t("connect TikTok / Instagram / Facebook")}</Link> {t("to post automatically. You can still start in approve mode below.")}</div>
+        <div className="pc-connect">{t("No socials linked yet —")} <Link to="/web/connect" className="pc-link">{t("connect your socials")}</Link> {t("to post automatically. You can still start in approve mode below.")}</div>
       )}
 
       <label className="pc-lbl">{t("Posting")}</label>

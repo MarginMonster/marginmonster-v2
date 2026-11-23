@@ -14,6 +14,7 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { xpForSpend } from "../lib/achievements";
 import { CADENCE, cadenceOf, parsePlatforms } from "../lib/creator-series.server";
 import { socialProviderEnabled, linkedFromCache } from "../lib/social-provider.server";
+import { VIDEO_PLATFORMS, networkName } from "../lib/social-networks";
 import { shopVoiceClones } from "../lib/voice-clone.server";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
@@ -24,8 +25,9 @@ export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }
   return [{ title: tr((uiLang || "en") as Parameters<typeof tr>[0], "Channels") + " · EasyMode" }];
 };
 
-const SOCIAL = ["tiktok", "instagram", "facebook"] as const;
-const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
+// A channel posts videos: every linked network that takes one (social-networks.ts is the one list).
+const SOCIAL = VIDEO_PLATFORMS;
+const PLAT_LABEL: Record<string, string> = Object.fromEntries(VIDEO_PLATFORMS.map((p) => [p, networkName(p)]));
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { account, shop } = await requireWebIdentity(request);
@@ -333,7 +335,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, myVoices, error, cr
           {linked.map((p) => <button type="button" key={p} className={`ch-chip plat${plats.includes(p) ? " on" : ""}`} onClick={() => togglePlat(p)}>{plats.includes(p) && <Ico n="check" size={13} className="ch-chip-chk" />}{PLAT_LABEL[p]}</button>)}
         </div>
       ) : (
-        <div className="ch-connect">{t("No socials linked yet —")} <Link to="/web/connect" className="ch-link">{t("connect TikTok / Instagram / Facebook")}</Link> {t("to post automatically. You can still start in approve mode below.")}</div>
+        <div className="ch-connect">{t("No socials linked yet —")} <Link to="/web/connect" className="ch-link">{t("connect your socials")}</Link> {t("to post automatically. You can still start in approve mode below.")}</div>
       )}
 
       <label className="ch-lbl">{t("Posting")}</label>

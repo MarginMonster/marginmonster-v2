@@ -1,6 +1,7 @@
 import { db } from "../db.server";
 import { zonedInstant } from "./timezone";
 import { parseSchedule, type QuestSlot } from "./questlines";
+import { takes } from "./social-networks";
 
 /* The auto-posting engine (v0 scaffold).
  *
@@ -48,7 +49,7 @@ async function publishContent(
   } catch { /* fall through */ }
   if (!mediaUrl) return { ok: false, pending: "no-media" };
 
-  const platforms = linked.filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
+  const platforms = linked.filter((p) => takes(p, item.type === "video"));
   if (platforms.length === 0) return { ok: false, pending: "no-platforms" };
 
   // ATTRIBUTION: the caption links through OUR /go turnstile, which counts
@@ -83,7 +84,7 @@ async function publishContent(
   const failed: string[] = [];
   let lastErr: string | undefined;
   for (const p of platforms) {
-    const title = buildPostTitle(captions[p], goUrl, fbText, item.credit);
+    const title = buildPostTitle(captions[p], goUrl, fbText, item.credit, p);
     const res = await publishPost(profileKey, { title, mediaUrl, isVideo, platforms: [p] });
     if (res.ok) {
       posted.push(p);

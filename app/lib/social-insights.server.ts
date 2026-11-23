@@ -1,5 +1,6 @@
 import { db } from "../db.server";
 import type { PlatformStats } from "./social-provider.server";
+import { ANALYTICS_PLATFORMS } from "./social-networks";
 
 /* Organic social insights — the "social media management" layer.
  *
@@ -18,7 +19,7 @@ export type SocialStats = {
   platforms: Record<string, PlatformStats>;
 };
 
-export const SOCIAL_PLATFORMS = ["tiktok", "instagram", "facebook"] as const;
+export const SOCIAL_PLATFORMS: readonly string[] = ANALYTICS_PLATFORMS;
 
 const EMPTY: SocialStats = { fetchedAt: null, platforms: {} };
 

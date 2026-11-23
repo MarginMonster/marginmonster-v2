@@ -1,6 +1,7 @@
-/* Web socials — link TikTok / Instagram / Facebook through the upload-post
- * hosted connect page, exactly like the embedded app. Once linked, the
- * Archive's "Post" button auto-publishes with AI captions + #EasyModeAi. */
+/* Web socials — link TikTok, Instagram, Facebook, YouTube, X, Threads and LinkedIn through the
+ * upload-post hosted connect page, exactly like the embedded app. Once linked, the Archive's "Post"
+ * button auto-publishes with AI captions + #EasyModeAi. The networks come from social-networks.ts;
+ * Bluesky (which that page does not link) shows here only once it is linked. */
 
 import { json, redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
@@ -10,9 +11,7 @@ import { externalOrigin } from "../lib/origin.server";
 import { Ico } from "../lib/icons";
 import { useT, useUiLang } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
-
-const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
-const PLATFORMS = ["tiktok", "instagram", "facebook"] as const;
+import { CONNECT_PLATFORMS, POSTABLE_PLATFORMS, isPostable, networkName } from "../lib/social-networks";
 
 // "TikTok, Instagram and Facebook" with the active language's grammar, falling
 // back to a manual " and " join where Intl.ListFormat is unavailable.
@@ -34,7 +33,7 @@ export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await requireWebIdentity(request);
   const enabled = socialProviderEnabled();
-  const linked = enabled ? (await refreshLinkedPlatforms(shop.id)).filter((p) => p in PLAT_LABEL) : [];
+  const linked = enabled ? (await refreshLinkedPlatforms(shop.id)).filter(isPostable) : [];
   return json({ enabled, linked });
 };
 
@@ -56,7 +55,9 @@ export default function WebConnect() {
   const nav = useNavigation();
   const t = useT();
   const lang = useUiLang();
-  const linkedNames = PLATFORMS.filter((p) => linked.includes(p)).map((p) => PLAT_LABEL[p]);
+  // every network the connect page can link, plus any other we post to that is already linked (Bluesky)
+  const PLATFORMS = POSTABLE_PLATFORMS.filter((p) => CONNECT_PLATFORMS.includes(p) || linked.includes(p));
+  const linkedNames = PLATFORMS.filter((p) => linked.includes(p)).map(networkName);
   return (
     <div>
       <style dangerouslySetInnerHTML={{ __html: CONNECT_CSS }} />
@@ -83,7 +84,7 @@ export default function WebConnect() {
             return (
               <span className={`wc-chip${on ? " on" : ""}`} key={p}>
                 <i className={`wc-dot wc-dot-${p}`} aria-hidden="true">{on ? "✓" : ""}</i>
-                {PLAT_LABEL[p]}
+                {networkName(p)}
                 {!on && <em>{t("not linked")}</em>}
               </span>
             );
@@ -108,7 +109,7 @@ export default function WebConnect() {
                 ? t("Opening the connect page…")
                 : linked.length
                   ? <>{t("Manage accounts")} →</>
-                  : <>{t("Link TikTok, Instagram & Facebook")} →</>}
+                  : <>{t("Link your socials")} →</>}
           </button>
         </Form>
         {linked.length > 0 && (
@@ -144,10 +145,20 @@ const CONNECT_CSS = `
 .wc-dot-tiktok{color:#010101;}
 .wc-dot-instagram{color:#C13584;}
 .wc-dot-facebook{color:#1877F2;}
+.wc-dot-youtube{color:#FF0000;}
+.wc-dot-x{color:#000000;}
+.wc-dot-threads{color:#000000;}
+.wc-dot-linkedin{color:#0A66C2;}
+.wc-dot-bluesky{color:#1185FE;}
 .wc-chip.on .wc-dot{border-color:transparent;color:#fff;}
 .wc-chip.on .wc-dot-tiktok{background:#010101;}
 .wc-chip.on .wc-dot-instagram{background:radial-gradient(circle at 30% 107%,#FDF497 0%,#FD5949 45%,#D6249F 70%,#285AEB 100%);}
 .wc-chip.on .wc-dot-facebook{background:#1877F2;}
+.wc-chip.on .wc-dot-youtube{background:#FF0000;}
+.wc-chip.on .wc-dot-x{background:#000000;}
+.wc-chip.on .wc-dot-threads{background:#000000;}
+.wc-chip.on .wc-dot-linkedin{background:#0A66C2;}
+.wc-chip.on .wc-dot-bluesky{background:#1185FE;}
 .wc-armed{margin:10px 0 14px;font-size:13px;font-weight:600;color:#0A3D26;background:#EAF6EF;border:1px solid #BFE2CD;
   border-radius:12px;padding:9px 13px;}
 `;

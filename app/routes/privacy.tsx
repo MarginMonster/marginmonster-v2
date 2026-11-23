@@ -107,7 +107,7 @@ export default function Privacy() {
         <ul>
           <li><strong>Account details</strong> — the name or brand you enter, your email address, and a password we store only as a salted hash. We never store your password itself.</li>
           <li><strong>Your store address and catalog</strong> — the storefront URL you give us, and the product names, prices, descriptions and images we read from it, so generated content describes real products at real prices.</li>
-          <li><strong>Connected social accounts</strong> — access tokens for the TikTok, Instagram or Facebook accounts you link, used only to publish content you approved.</li>
+          <li><strong>Connected social accounts</strong> — access tokens for the social accounts you link (TikTok, Instagram, Facebook, YouTube, X, Threads, LinkedIn or Bluesky), used only to publish content you approved.</li>
           <li><strong>Content you generate</strong> — the videos, images, articles and captions produced for you, and which of them you approved or published.</li>
           <li><strong>Usage and billing records</strong> — plan, token balance and spend history, and basic technical logs (IP address, browser, timestamps) used to keep the service running and to stop abuse.</li>
         </ul>

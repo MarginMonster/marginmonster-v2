@@ -15,6 +15,7 @@ import { linkedFromCache } from "../lib/social-provider.server";
 import { enqueueJob } from "../lib/job-queue.server";
 import { paidAdsEnabled } from "../lib/feature-flags.server";
 import { getObject, renderKey } from "../lib/object-storage.server";
+import { takes } from "../lib/social-networks";
 
 // Single source of truth — the refund table in job-queue.server.ts needs the
 // same number, and a failed launch has to give it back.
@@ -314,14 +315,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let platforms: string[] = [];
     try {
       const { refreshLinkedPlatforms, socialProviderEnabled } = await import("../lib/social-provider.server");
-      if (socialProviderEnabled()) platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
+      if (socialProviderEnabled()) platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => takes(p, isVideo));
     } catch { /* ignore */ }
     if (platforms.length === 0) platforms = ["instagram"];
     const tune = platforms.includes("instagram") ? "instagram" : platforms[0];
     const { getOrMakeCaptions, buildPostTitle, fallbackCaption } = await import("../lib/social-caption.server");
     const captions = await getOrMakeCaptions(id, shop.id, { productTitle: title, isVideo, platforms });
     const fbText = fallbackCaption({ productTitle: title, isVideo, platforms }).text;
-    return json({ draft: buildPostTitle(captions[tune], "", fbText) });
+    return json({ draft: buildPostTitle(captions[tune], "", fbText, undefined, tune) });
   }
   if (intent === "post") {
     const id = (form.get("assetId") as string) || "";
@@ -336,7 +337,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!socialProviderEnabled()) return json({ error: "Auto-posting isn't switched on yet." });
     const profileKey = await ensureProfile(shop.id);
     if (!profileKey) return json({ error: "Couldn't reach the posting service." });
-    const platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => ["tiktok", "instagram", "facebook"].includes(p));
+    const platforms = (await refreshLinkedPlatforms(shop.id)).filter((p) => takes(p, asset.type === "VIDEO_AD"));
     if (platforms.length === 0) return json({ error: "Connect a social account first, then post." });
     const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
     const mediaUrl = /^https?:\/\//.test(media) ? media : base ? `${base}${media}` : media;
@@ -361,7 +362,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Tracked link, not a bare caption: clicks count on this exact piece
       // via /go/a before forwarding to the product with UTM tags.
       const appBase = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-      titleFor = (p) => buildPostTitle(captions[p], appBase ? `${appBase}/go/a/${id}` : "", fbText, credit);
+      titleFor = (p) => buildPostTitle(captions[p], appBase ? `${appBase}/go/a/${id}` : "", fbText, credit, p);
     }
     const urls: Record<string, string> = {};
     let anyOk = false;

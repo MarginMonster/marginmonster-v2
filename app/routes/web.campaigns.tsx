@@ -29,6 +29,7 @@ import { xpForSpend } from "../lib/achievements";
 import { capabilitiesFor } from "../lib/capabilities.server";
 import { CATALOG_CAP } from "../lib/catalog-import.server";
 import { Ico } from "../lib/icons";
+import { POSTABLE_PLATFORMS, networkName } from "../lib/social-networks";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
 export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }> }) => {
@@ -63,7 +64,7 @@ function weekdayNarrow(locale: string): string[] {
   const f = new Intl.DateTimeFormat(locale, { weekday: "narrow", timeZone: "UTC" });
   return Array.from({ length: 7 }, (_, i) => f.format(new Date(Date.UTC(2023, 0, 1 + i))));
 }
-const PLAT_LABEL: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
+const PLAT_LABEL: Record<string, string> = Object.fromEntries(POSTABLE_PLATFORMS.map((p) => [p, networkName(p)]));
 const pad = (n: number) => String(n).padStart(2, "0");
 /** "2 Video" / "Image" — a count only when it earns one. Labels beat dots:
  *  a merchant scanning the month wants to know WHAT lands, not just that

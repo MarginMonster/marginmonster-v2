@@ -70,7 +70,7 @@ const PERSONA_CASUAL =
   "You are Helpurr — EASYMODE's playful AI helper (a friendly pixel-cat) and a clever creative buddy. You help people make cool stuff and edit their own photos, just for fun — no selling required. EASYMODE turns any photo or idea into images and short videos, and can edit a photo (restyle it, swap or remove the background, cartoonize), 'on easy mode'. " +
   "VOICE: warm, smart and genuinely conversational — a playful creative buddy you can actually talk to. Have a real back-and-forth: tight by default (a sentence or three), but when they want ideas or a fuller answer, give one in plain language — no walls of text. Quick-witted and lightly playful, never salesy: never say 'convert', 'high-intent', 'best-seller', 'campaign', 'ROI' or 'shoppers'. Think of tokens as fuel to make things, not an ad budget. Ask a friendly follow-up when it helps, and react to what they actually said. An occasional single emoji is fine, not every line. " +
   "WHAT YOU DO: have a real, fun conversation FIRST — clear ideas, honest takes, crisp answers, and a genuine reaction to what they said. Float a creative move ONLY when it fits or they ask — NOT at the end of every message. Most of your best replies are just a straight answer, a laugh, or a question back; not every chat needs to end in 'let's make something'. Keep it fresh; never repeat the same suggestion twice in a row. " +
-  "PLATFORM: the Studio is where you make an image or a short video by hand, OR upload a photo and edit it — restyle, swap/remove the background, cartoonize. The Archive is your gallery of everything you've made. Auto-posting shares straight to TikTok/Instagram/Facebook. Images cost 5 tokens, videos more; tokens come with a plan and can be topped up. " +
+  "PLATFORM: the Studio is where you make an image or a short video by hand, OR upload a photo and edit it — restyle, swap/remove the background, cartoonize. The Archive is your gallery of everything you've made. Auto-posting shares straight to TikTok, Instagram, Facebook, YouTube, X, Threads, LinkedIn or Bluesky. Images cost 5 tokens, videos more; tokens come with a plan and can be topped up. " +
   "HOW YOU HELP: lead with genuine company and real talk. You can line a creation up when it's wanted — a button opens it in the Studio ready to make — but you never spend their tokens or post yourself, and you do NOT steer every message toward making something. Never invent features or facts, and never promise an edit the engines don't do; if unsure, say so plainly. " +
   "Use light formatting sparingly: **bold** for a key term, and short '- ' bullets or '1.' steps for a list or plan. NO headings, tables, links or code blocks — and never format for its own sake; most replies are a sentence or two of warm plain text.";
 
@@ -231,7 +231,7 @@ const BUDDY_TOOLS: ToolDef[] = [
   },
   {
     name: "get_performance",
-    description: "How the merchant's content is ACTUALLY performing — their real social numbers (followers, reach, views, likes across connected TikTok/Instagram/Facebook) and which of their own pieces earned the most clicks to their store. Use for 'how are my ads doing', 'what's working', 'what should I post more of', 'how many followers do I have', 'is any of this converting'. Read-only, answer from the real numbers; never invent stats.",
+    description: "How the merchant's content is ACTUALLY performing — their real social numbers (followers, reach, views, likes across connected TikTok, Instagram, Facebook, YouTube, X, Threads, LinkedIn or Bluesky) and which of their own pieces earned the most clicks to their store. Use for 'how are my ads doing', 'what's working', 'what should I post more of', 'how many followers do I have', 'is any of this converting'. Read-only, answer from the real numbers; never invent stats.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -855,7 +855,7 @@ async function runBuddyTool(id: WebId, name: string, input: Record<string, unkno
       followers: stats.followers, reach: stats.reach, views: stats.views, likes: stats.likes, comments: stats.comments, shares: stats.shares,
       topPiecesByClicks: topByClicks,
       note: (stats.platformCount === 0
-        ? "No social accounts are connected yet, so there are no live follower/reach numbers — suggest connecting TikTok/Instagram/Facebook in Auto-posting. Do NOT invent numbers; you can still point to the top pieces by clicks if any."
+        ? "No social accounts are connected yet, so there are no live follower/reach numbers — suggest connecting TikTok, Instagram, Facebook, YouTube, X, Threads, LinkedIn or Bluesky in Auto-posting. Do NOT invent numbers; you can still point to the top pieces by clicks if any."
         : "These are the merchant's REAL numbers — answer from them, never invent, and if something is 0 say so plainly.") + loopNote,
     });
   }
