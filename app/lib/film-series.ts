@@ -376,3 +376,15 @@ export function episodeCardFor(fromId: string, rows: ReadonlyArray<{ id: string;
   }
   return null;
 }
+
+/** The film to CONTINUE from when `asked` is the one named: the newest finished story film of its series
+ *  among `rows` (NEWEST FIRST) — or `asked` itself when it is the latest, or the only one. The page always
+ *  names the latest episode; this is the server not trusting that (a series must never fork). */
+export function latestEpisode<T extends { id: string; metaJson?: unknown; bodyJson?: unknown }>(asked: T, rows: ReadonlyArray<T>): T {
+  const key = seriesKeyOf(asked);
+  for (const r of rows) {
+    if (seriesKeyOf(r) !== key || !storyHeroOf(r.metaJson)) continue;
+    if (oneLine(str(safeParse(r.bodyJson).videoUrl))) return r;
+  }
+  return asked;
+}

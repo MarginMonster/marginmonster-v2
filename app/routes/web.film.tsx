@@ -39,7 +39,7 @@ import { SPIN_STAGE_CSS } from "../components/SpinStage";
 import { useModalA11y } from "../lib/use-modal-a11y";
 import { favouritesFirst } from "../lib/favourites";
 import { nameTok } from "../lib/character-prompts";
-import { castFromJobPayloads, episodeCardFor, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
+import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
 
@@ -333,11 +333,21 @@ function parseStoryCast(raw: string | null): StoryCastIn[] {
 async function seriesBriefFor(shopId: string, fromId: string, want: { template: string; narrated: boolean }): Promise<SeriesBrief | null> {
   const id = (fromId || "").trim().slice(0, 64);
   if (!id) return null;
-  const prev = await db.asset.findFirst({
-    where: { id, shopId, type: "VIDEO_AD" },
-    select: { id: true, title: true, metaJson: true, bodyJson: true },
-  });
-  return prev ? seriesBriefOf(prev, want) : null;
+  const pick = { id: true, title: true, metaJson: true, bodyJson: true } as const;
+  const prev = await db.asset.findFirst({ where: { id, shopId, type: "VIDEO_AD" }, select: pick });
+  if (!prev) return null;
+  // A SERIES NEVER FORKS. The page names the series' latest episode — but if an older one is named (a stale
+  // tab, a hand-made request), the episode still continues from the LATEST finished one (film-series.ts →
+  // latestEpisode). Only this shop's own films; a failed lookup continues from the film that was named.
+  let from = prev;
+  try {
+    const later = await db.asset.findMany({
+      where: { shopId, type: "VIDEO_AD", status: { not: "FAILED" }, id: { not: prev.id }, metaJson: { contains: `"id":"${seriesKeyOf(prev).replace(/[^A-Za-z0-9_-]/g, "")}"` } },
+      orderBy: { createdAt: "desc" }, take: 12, select: pick,
+    });
+    from = latestEpisode(prev, [...later, prev]);
+  } catch { /* continue from the film that was named */ }
+  return seriesBriefOf(from, want);
 }
 
 /** The lead's gender (drives the sung voice + casting) and each named co-star's known gender. */

@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { episodeCardFor, seriesKeyOf } from "../app/lib/film-series.ts";
+import { episodeCardFor, latestEpisode, seriesKeyOf } from "../app/lib/film-series.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
@@ -43,6 +43,17 @@ test("asked from any episode, the card is for the series' LATEST episode", () =>
   assert.equal(single?.from, "x1");
   assert.equal(single?.episode, 2);
   assert.equal(single?.title, "Last Train");
+});
+
+test("the server does not trust the page: named an older episode, it still continues from the latest", () => {
+  // (a hand-made request named episode 1 on the live site and got a second "Episode 2", 2026-11-23)
+  assert.equal(latestEpisode(ep1, [ep2, other, ep1]).id, "ep2");
+  assert.equal(latestEpisode(ep2, [ep2, ep1]).id, "ep2");
+  assert.equal(latestEpisode(other, [ep2, other, ep1]).id, "x1", "another series is never mixed in");
+  assert.equal(latestEpisode(ep1, []).id, "ep1", "nothing found: the film that was named");
+  // an unfinished later episode is not continued from
+  const ep3 = film("ep3", "Short Film — One Umbrella — Episode 3", { series: { id: "ep1", title: "One Umbrella", episode: 3 } }, "");
+  assert.equal(latestEpisode(ep1, [ep3, ep2, ep1]).id, "ep2");
 });
 
 test("only a finished story film of the rows given can be continued", () => {

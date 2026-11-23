@@ -175,9 +175,14 @@ test("a series in a job payload is checked again; meta.cast keeps only who, whic
 
 test("the previous film is looked up ONLY among the signed-in shop's own films; a deleted one is an ordinary film", () => {
   const page = read("app", "routes", "web.film.tsx");
-  const fn = page.slice(page.indexOf("async function seriesBriefFor("), page.indexOf("async function seriesBriefFor(") + 700);
-  assert.ok(fn.includes("where: { id, shopId, type: \"VIDEO_AD\" },"), "scoped by the shop");
-  assert.ok(fn.includes("return prev ? seriesBriefOf(prev, want) : null;"), "not found → no series");
+  const fn = page.slice(page.indexOf("async function seriesBriefFor("), page.indexOf("async function seriesBriefFor(") + 1500);
+  assert.ok(fn.includes("const prev = await db.asset.findFirst({ where: { id, shopId, type: \"VIDEO_AD\" }, select: pick });"), "scoped by the shop");
+  assert.ok(fn.includes("if (!prev) return null;"), "not found → no series");
+  // a series never forks: an older episode named → the latest finished one of this shop's is continued
+  assert.ok(fn.includes("where: { shopId, type: \"VIDEO_AD\", status: { not: \"FAILED\" }, id: { not: prev.id }, metaJson: { contains: `\"id\":\"${seriesKeyOf(prev).replace(/[^A-Za-z0-9_-]/g, \"\")}\"` } },"));
+  assert.ok(fn.includes("from = latestEpisode(prev, [...later, prev]);"));
+  assert.ok(fn.includes("} catch { /* continue from the film that was named */ }"));
+  assert.ok(fn.includes("return seriesBriefOf(from, want);"));
   assert.ok(page.includes("await seriesBriefFor(shop.id, seriesFrom, { template: tmpl.key, narrated })"));
   // only the id comes from the page; the series is read from the film itself
   assert.ok(page.includes("...(series && isStoryboard ? { seriesFrom: series.from } : {})"));
