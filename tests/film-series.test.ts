@@ -103,6 +103,8 @@ test("the writer is told: the series, 'Previously' as fenced quoted material, no
   // no retelling; forward; same characters, looks and voices; stands alone
   assert.match(w, /do NOT retell/);
   assert.match(w, /moves FORWARD/);
+  // (an episode 2 with the idea box left empty came back as "let us fly our kite again", 2026-11-23)
+  assert.match(w, /This episode has an event OF ITS OWN — a new small problem, place, visitor or discovery\. Not the same activity as last time done again\./);
   assert.match(w, /SAME named characters continue, with the same looks and the same voices/);
   assert.match(w, /stands on its own/);
   assert.ok(w.includes("Tom, a weathered old keeper"), "who was in it, as the writer described them");

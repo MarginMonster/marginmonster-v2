@@ -73,7 +73,8 @@ test("the Archive viewer offers it on a story film, and the Movie Maker opens th
   // the page opens it once, and tidies the address so a refresh starts from the posters
   assert.ok(film.includes("if (!d.openEpisode || openedEpisode.current) return;"));
   assert.ok(film.includes("startEpisode(d.openEpisode);"));
-  assert.ok(film.includes("window.history.replaceState(window.history.state, \"\", window.location.pathname);"), "keeping the router's own history state");
+  assert.ok(film.includes("navigate(\"/web/film\", { replace: true, preventScrollReset: true });"), "through the router — history.replaceState behind its back did not hold");
+  assert.ok(!film.includes("window.history.replaceState("));
 });
 
 test("the new sentence is in all five languages", () => {

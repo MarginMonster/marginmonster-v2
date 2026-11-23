@@ -235,6 +235,8 @@ export function seriesWriterBrief(s: SeriesBrief): string {
     `Write EPISODE ${s.episode}:\n` +
     `• The SAME named characters continue, with the same looks and the same voices — keep every name exactly as before, and bring them back rather than inventing new leads.\n` +
     `• The story moves FORWARD from where the last episode stopped: do NOT retell or re-explain what already happened, and never repeat its scenes.\n` +
+    // (asked for an episode 2 with the idea box left empty, a kite story came back as "let us fly our kite again")
+    `• This episode has an event OF ITS OWN — a new small problem, place, visitor or discovery. Not the same activity as last time done again.\n` +
     `• This episode still stands on its own: someone who missed the last one can follow it.\n` +
     `• Its title is "${title} — Episode ${s.episode}", optionally followed by a colon and a short episode name.\n`
   );

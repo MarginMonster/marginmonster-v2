@@ -6,7 +6,7 @@
  * "creatorvideo" (all plans). */
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction, type SerializeFrom } from "@remix-run/node";
-import { Form, useActionData, useFetcher, useLoaderData, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useFetcher, useLoaderData, useNavigate, useNavigation } from "@remix-run/react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { lookLabel } from "../lib/avatar-looks";
 import { createPortal } from "react-dom";
@@ -1216,6 +1216,7 @@ export default function FilmStudio() {
   };
   const t = useT();
   const nav = useNavigation();
+  const navigate = useNavigate();
   const actionData = useActionData<typeof action>() as { ok?: boolean; queued?: string; cost?: number; error?: string } | undefined;
   const treatmentFetcher = useFetcher<{ treatment?: Treatment; error?: string }>();
   // Music Video STORYBOARD: pre-seed every scene's still (props placed) BEFORE paying for the video,
@@ -1803,14 +1804,16 @@ export default function FilmStudio() {
   });
   // "NEXT EPISODE", ASKED FROM THE FILM ITSELF: the Archive viewer's button opens this page with
   // ?episode=<that film's id>, and the loader hands back the card for its series' latest episode
-  // (d.openEpisode). Its setup opens by itself, once — and the address is tidied (keeping the router's own
-  // history state), so a refresh starts from the posters instead of opening the episode again.
+  // (d.openEpisode). Its setup opens by itself, once — and the address is tidied THROUGH THE ROUTER, so a
+  // refresh starts from the posters instead of opening the episode again. (Tidying it behind the router's
+  // back with history.replaceState did not hold: the router put ?episode= back on its next navigation —
+  // seen live the moment Generate was pressed.)
   const openedEpisode = useRef(false);
   useEffect(() => {
     if (!d.openEpisode || openedEpisode.current) return;
     openedEpisode.current = true;
     startEpisode(d.openEpisode);
-    try { window.history.replaceState(window.history.state, "", window.location.pathname); } catch { /* the address stays as it is */ }
+    navigate("/web/film", { replace: true, preventScrollReset: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Cinematic format entry: you land on the poster GRID; tap a card and IT zooms in while the
   // other cards are thrown away, then it becomes that format's builder. Back reverses it.
