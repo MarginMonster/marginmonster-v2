@@ -135,7 +135,7 @@ function captionSafe(s: string): string {
   return s
     .toUpperCase()
     .replace(/[']/g, "’")
-    .replace(/[^\p{L}\p{N} .,!?$’-]/gu, "")
+    .replace(/[^\p{L}\p{N} .,!?$%’-]/gu, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -212,7 +212,7 @@ export async function editVideo(params: EditVideoParams): Promise<string> {
       // Thick black outline + a semi-opaque black box behind the line = readable
       // over any footage; anchored near the bottom with a small margin.
       const drawtext =
-        `drawtext=fontfile='${font}':text='${safe}':fontsize=${size}:fontcolor=white:` +
+        `drawtext=expansion=none:fontfile='${font}':text='${safe}':fontsize=${size}:fontcolor=white:` +
         `borderw=7:bordercolor=black:box=1:boxcolor=black@0.45:boxborderw=18:` +
         `x=(w-text_w)/2:y=h-text_h-80`;
       args = ["-y", "-i", srcPath, "-vf", drawtext, ...encodeTail(outPath)];

@@ -32,7 +32,7 @@ export const heardTooLittle = (r: { matched: number; total: number }): boolean =
 /** EXACTLY narrated-core's drawable() (the caption cards split lines with it, so the timed words must be
  *  cut the same way) — kept here so this module has no runtime import; tests/lyric-sync.test.ts holds the
  *  two equal. */
-export const drawable = (s: string): string => s.replace(/[']/g, "’").replace(/[—–]/g, " ").replace(/[^\p{L}\p{N} .,!?$’…-]/gu, "").replace(/\s+/g, " ").trim();
+export const drawable = (s: string): string => s.replace(/[']/g, "’").replace(/[—–]/g, " ").replace(/[^\p{L}\p{N} .,!?$%’…-]/gu, "").replace(/\s+/g, " ").trim();
 
 const norm = (w: string) => w.toLowerCase().replace(/[’']/g, "").replace(/[^\p{L}\p{N}]+/gu, "");
 

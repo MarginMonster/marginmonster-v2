@@ -85,7 +85,7 @@ export function trimToSound(windows: Window[], silenceReport: string): Window[] 
 /** Letters, digits and the punctuation that can be drawn without quoting trouble. An apostrophe becomes
  *  the typographic one: a straight one would end the text inside the filter. A dash between words
  *  becomes a space, so "door—open" does not close up into one word. */
-export const drawable = (s: string): string => s.replace(/[']/g, "’").replace(/[—–]/g, " ").replace(/[^\p{L}\p{N} .,!?$’…-]/gu, "").replace(/\s+/g, " ").trim();
+export const drawable = (s: string): string => s.replace(/[']/g, "’").replace(/[—–]/g, " ").replace(/[^\p{L}\p{N} .,!?$%’…-]/gu, "").replace(/\s+/g, " ").trim();
 
 /** The SCRIPT's own words, each given the time of the heard word at the same place in its scene — so the
  *  captions say exactly what was written (a name spelt right, "1981" as written, nothing a transcriber
@@ -301,7 +301,7 @@ export function captionFilters(cards: Card[], style: CaptionStyle, font: string,
         // ONE size for every card (a card is at most BOLD_LINE characters); only a single giant word shrinks
         const size = Math.round(Math.max(30, Math.min(54, Math.floor((720 * 0.9) / (Math.max(BOLD_LINE, ln.length) * 0.62)))) * u);
         const y = W > H ? `h-${Math.round(150 * u)}-${fromBottom * Math.round(size * 1.25)}` : `h-${Math.round(H * 0.28)}-${fromBottom * Math.round(size * 1.25)}`;
-        out.push(`drawtext=fontfile='${f}':text='${ln}':fontsize=${size}:fontcolor=white:borderw=${Math.max(4, Math.round(8 * u))}:bordercolor=black:x=(w-text_w)/2:y=${y}:${when}`);
+        out.push(`drawtext=expansion=none:fontfile='${f}':text='${ln}':fontsize=${size}:fontcolor=white:borderw=${Math.max(4, Math.round(8 * u))}:bordercolor=black:x=(w-text_w)/2:y=${y}:${when}`);
       } else {
         const size = Math.round(34 * u);
         // a wide frame keeps them low, like a film; a tall or square one lifts them clear of the strip
@@ -309,7 +309,7 @@ export function captionFilters(cards: Card[], style: CaptionStyle, font: string,
         const base = W > H ? Math.round(70 * u) : W === H ? Math.round(H * 0.12) : Math.round(H * 0.2);
         const y = `h-${base}-${fromBottom * Math.round(size * 1.42)}`;
         // a soft dark backing behind each line: readable over a bright cartoon and a dark cellar alike
-        out.push(`drawtext=fontfile='${f}':text='${ln}':fontsize=${size}:fontcolor=white:borderw=${Math.max(1, Math.round(1.5 * u))}:bordercolor=black@0.85:box=1:boxcolor=black@0.45:boxborderw=${Math.max(6, Math.round(9 * u))}:x=(w-text_w)/2:y=${y}:${when}`);
+        out.push(`drawtext=expansion=none:fontfile='${f}':text='${ln}':fontsize=${size}:fontcolor=white:borderw=${Math.max(1, Math.round(1.5 * u))}:bordercolor=black@0.85:box=1:boxcolor=black@0.45:boxborderw=${Math.max(6, Math.round(9 * u))}:x=(w-text_w)/2:y=${y}:${when}`);
       }
     });
   }

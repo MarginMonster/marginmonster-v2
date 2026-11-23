@@ -73,7 +73,7 @@ const SCRIPT_SCHEMA = {
 
 /** ALL-CAPS, filter-safe caption text (mirrors ugc captionSafe). */
 function captionSafe(s: string): string {
-  return s.toUpperCase().replace(/[']/g, "’").replace(/[^\p{L}\p{N} .,!?$’-]/gu, "").replace(/\s+/g, " ").trim();
+  return s.toUpperCase().replace(/[']/g, "’").replace(/[^\p{L}\p{N} .,!?$%’-]/gu, "").replace(/\s+/g, " ").trim();
 }
 
 /** Start a WhisperX prediction by version; returns the prediction id. */
@@ -135,7 +135,7 @@ function timedCaptionFilters(caps: Cap[], fontFile: string): string[] {
   return caps.map((c) => {
     const size = Math.max(32, Math.min(52, Math.floor((720 * 0.92) / (c.text.length * 0.62))));
     return (
-      `drawtext=fontfile='${font}':text='${c.text}':fontsize=${size}:fontcolor=white:` +
+      `drawtext=expansion=none:fontfile='${font}':text='${c.text}':fontsize=${size}:fontcolor=white:` +
       `borderw=8:bordercolor=black:x=(w-text_w)/2:y=h-360:enable='gte(t,${c.t0.toFixed(2)})*lt(t,${c.t1.toFixed(2)})'`
     );
   });

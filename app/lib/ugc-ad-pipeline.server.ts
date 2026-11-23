@@ -622,7 +622,7 @@ function captionSafe(s: string): string {
   return s
     .toUpperCase()
     .replace(/[']/g, "’")
-    .replace(/[^\p{L}\p{N} .,!?$’-]/gu, "")
+    .replace(/[^\p{L}\p{N} .,!?$%’-]/gu, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -685,7 +685,7 @@ function buildCaptionFilters(script: string, duration: number, fontFile: string)
     // gte*lt (not between) — between is inclusive on both ends, which
     // double-draws two captions on the shared boundary frame
     return (
-      `drawtext=fontfile='${font}':text='${text}':fontsize=${size}:fontcolor=white:` +
+      `drawtext=expansion=none:fontfile='${font}':text='${text}':fontsize=${size}:fontcolor=white:` +
       `borderw=7:bordercolor=black:x=(w-text_w)/2:y=h-330:enable='gte(t,${t0})*lt(t,${t1})'`
     );
   });
@@ -706,7 +706,7 @@ function buildTimedCaptionFilters(caps: { text: string; t0: number; t1: number }
       const glyph = hasCJK(text) ? 1.05 : 0.62;
       const size = Math.max(30, Math.min(50, Math.floor((720 * 0.94) / (text.length * glyph))));
       return (
-        `drawtext=fontfile='${font}':text='${text}':fontsize=${size}:fontcolor=white:` +
+        `drawtext=expansion=none:fontfile='${font}':text='${text}':fontsize=${size}:fontcolor=white:` +
         `borderw=7:bordercolor=black:x=(w-text_w)/2:y=h-330:enable='gte(t,${c.t0.toFixed(2)})*lt(t,${c.t1.toFixed(2)})'`
       );
     })

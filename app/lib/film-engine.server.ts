@@ -380,7 +380,7 @@ function clampScenes(t: FilmTemplate, n: number): number {
 
 /** ALL-CAPS, filter-safe caption text (mirrors faceless captionSafe). */
 function captionSafe(s: string): string {
-  return (s || "").toUpperCase().replace(/[']/g, "’").replace(/[^\p{L}\p{N} .,!?$’-]/gu, "").replace(/\s+/g, " ").trim();
+  return (s || "").toUpperCase().replace(/[']/g, "’").replace(/[^\p{L}\p{N} .,!?$%’-]/gu, "").replace(/\s+/g, " ").trim();
 }
 
 /** Write (or re-write, on Randomize) the treatment as free Anthropic TEXT — no
@@ -813,7 +813,7 @@ async function assembleFilm(opts: {
         lines.forEach((ln, li) => {
           const y = `h-300-${(lines.length - 1 - li) * LINE_H}`;
           draws.push(
-            `drawtext=fontfile='${font}':text='${ln}':fontsize=${FS}:fontcolor=white:` +
+            `drawtext=expansion=none:fontfile='${font}':text='${ln}':fontsize=${FS}:fontcolor=white:` +
             `borderw=7:bordercolor=black:x=(w-text_w)/2:y=${y}:enable='gte(t,${t0})*lt(t,${t1})'`
           );
         });
