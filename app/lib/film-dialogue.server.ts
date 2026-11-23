@@ -36,6 +36,7 @@ import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { letterboxCrop, parseCropdetect } from "./letterbox";
 import { mirrorRender } from "./object-storage.server";
 import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
+import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { clipSecondsFor } from "./speech-meter";
 import { captionStyleOf } from "./narrated-core";
 import { MIXED_CAST_LOCK, nameTok } from "./character-prompts";
@@ -600,6 +601,9 @@ export async function generateTestMovie(opts: {
   /** CAPTIONS: put the spoken lines on screen ("bold" big words in time, or "subtitles" along the
    *  bottom) — exactly as written, timed to each voice. Unset / "off" = none. */
   captions?: string;
+  /** NEXT EPISODE (film-series.ts): the series this film continues — told to the writer when the script
+   *  is written here, and stored on the asset as meta.series. */
+  series?: SeriesBrief | null;
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template); // "testmovie"
   // Style/mode switches so the ONE dialogue pipeline serves photoreal talking films
@@ -625,7 +629,9 @@ export async function generateTestMovie(opts: {
   let treatment: FilmTreatment;
   if (resume.ckTreatment) treatment = JSON.parse(resume.ckTreatment);
   else if (opts.treatment && opts.treatment.scenes?.length) treatment = opts.treatment;
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, series: opts.series });
+  // an episode is called "<Series> — Episode <N>", however its script was written (film-series.ts)
+  if (opts.series) treatment.title = episodeTitle(opts.series.title, opts.series.episode, treatment.title);
   const want = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, opts.sceneCount ?? treatment.scenes.length));
   treatment.scenes = treatment.scenes.slice(0, want);
   await ckpt({ ckTreatment: JSON.stringify(treatment) });
@@ -1122,6 +1128,10 @@ export async function generateTestMovie(opts: {
         kind: "testmovie", template: tmpl.key, section: opts.section || "creator",
         scenes: clips.length, aspect, engine: dialogueEngine, voicesLocked, captions: captioned,
         ...(dialogueEngine === "kling3" ? { host: filmKlingHost() } : {}),
+        // NEXT EPISODE (film-series.ts): who was cast — face and voice — so the next episode casts them
+        // again, and the series this film is an episode of (an ordinary film has no `series`)
+        cast: castForMeta(opts.cast),
+        ...(opts.series ? { series: seriesMeta(opts.series) } : {}),
         // Per-shot timeline for the section editor: each rendered shot's /renders URL +
         // the line it speaks, so the editor can list, preview and (later) re-edit each one.
         shots: clips.map((c, i) => ({

@@ -117,7 +117,9 @@ test("the page: kept as it changes, offered on arrival, put back on one tap — 
     assert.ok(resume.includes(set), set);
   }
   assert.ok(resume.indexOf("restoring.current = true;") < resume.indexOf("setTopic("), "the guard is up before anything is set");
-  assert.equal(ui.split("if (restoring.current) return;").length - 1, 4, "the four effects that reset the song, the scenes or the voice");
+  // (the fifth: the story formats' way-of-telling effect, which stands down while a NEXT EPISODE is set up —
+  //  film-series.ts — so the hero's default length and shape do not land on top of the episode's own)
+  assert.equal(ui.split("if (restoring.current) return;").length - 1, 5, "the four effects that reset the song, the scenes or the voice, and the story's way-of-telling one");
   assert.ok(ui.includes("useEffect(() => { if (restoring.current) return; setSeeds(null); setCastForScene({}); setSceneCastPick(null); setSceneOutfits({}); }, [filmGenre,"));
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["Your music video is still here", "{n} scenes drawn", "Pick it up", "Not now"]) {

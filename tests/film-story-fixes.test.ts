@@ -58,7 +58,8 @@ test("a rewrite keeps its casting: the same name keeps the face and the voice it
   assert.ok(fn.includes("const was = prev.find((p) => nameTok(p.name) === nameTok(c.name));"));
   assert.ok(fn.includes("const face = !c.faceUrl && was.faceUrl ? { faceUrl: was.faceUrl, kind: was.kind, look: was.look } : {};"), "a face already brought by a picked presenter wins");
   assert.ok(fn.includes("const voice = was.voiceId && was.autoVoice === false && c.autoVoice !== false ? { voiceId: was.voiceId, autoVoice: false } : {};"), "only a voice the maker CHOSE is carried");
-  assert.ok(ui.includes("setCast((prev) => keepCasting(castFromPicked(deriveCast(tr2)), prev));"));
+  // (a next episode's cast — face and voice by name, film-series.ts — is laid in between: castFromSeries)
+  assert.ok(ui.includes("setCast((prev) => keepCasting(castFromSeries(castFromPicked(deriveCast(tr2))), prev));"));
   assert.ok(!ui.includes("setCast(castFromPicked(deriveCast(tr2)));"));
 });
 
@@ -74,7 +75,7 @@ test("the idea box does not wipe what is made: it stays until the maker starts i
   const after = ui.slice(ui.indexOf("if (seeds || !ideaChanged) return;"), ui.indexOf("if (seeds || !ideaChanged) return;") + 260);
   assert.ok(after.includes("if (tmpl?.lipSyncSinger) setTreatment(null);") && after.includes("if (tmpl?.lipSyncSinger || !treatment) setIdeaChanged(false);"));
   // a freshly written script or song is made from the idea as it stands
-  assert.ok(ui.includes("setCast((prev) => keepCasting(castFromPicked(deriveCast(tr2)), prev)); setIdeaChanged(false); }"));
+  assert.ok(ui.includes("setCast((prev) => keepCasting(castFromSeries(castFromPicked(deriveCast(tr2))), prev)); setIdeaChanged(false); }"));
   // said under both idea boxes
   assert.ok(ui.includes("{ideaChanged && seeds && <p className=\"mm-note mm-idea-kept\" role=\"status\">{t(\"What you've made stays as it is — start over to use the new idea.\")}</p>}"));
   assert.ok(ui.includes("{ideaChanged && (seeds || treatment) && <p className=\"mm-note mm-idea-kept\" role=\"status\">{isStoryboard && !narrated ? t(\"Your script stays as it is — Rewrite to use the new idea.\") : t(\"What you've made stays as it is — start over to use the new idea.\")}</p>}"));
@@ -82,7 +83,8 @@ test("the idea box does not wipe what is made: it stays until the maker starts i
 
 test("Generate says the film was sent, and stays sent until something in the film changes", () => {
   // (the idea counts only until a script exists: typing in the idea box afterwards must not make the button live again)
-  assert.ok(ui.includes("const storySig = `story:${JSON.stringify([template, treatment ? \"\" : topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId])])}`;"));
+  // (…and the series it is an episode of: dropping it with ✕ makes it a different film)
+  assert.ok(ui.includes("const storySig = `story:${JSON.stringify([template, treatment ? \"\" : topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId]), series?.from || \"\"])}`;"));
   assert.ok(ui.includes("const storySent = sentSig === storySig;"));
   assert.ok(ui.includes("<Form method=\"post\" onSubmit={() => { sigAtSubmit.current = storySig; }}>"));
   assert.ok(ui.includes("<button type=\"submit\" className={`fs-go${storySent ? \" is-sent\" : \"\"}`} disabled={!canGo || storySent}>"));

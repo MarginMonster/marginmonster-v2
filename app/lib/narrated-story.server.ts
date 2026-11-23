@@ -33,6 +33,7 @@ import { heroName } from "./film-heroes";
 import { trimTitle } from "./text-trim";
 import { NOTHING_WRITTEN, ONE_PICTURE, noLettering, oneMoment, parseStoryCast, parseStoryPanels, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCheck } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
+import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -289,6 +290,9 @@ export async function generateNarratedStory(opts: {
   approvedSceneImgs?: (string | null)[];
   section?: string;
   jobId?: string;
+  /** NEXT EPISODE (film-series.ts): the series this story continues — told to the writer when the story
+   *  is written here, and stored on the asset as meta.series. */
+  series?: SeriesBrief | null;
   resume?: { ckTreatment?: string; ckApproved?: string; ckVoPath?: string; ckVoUrl?: string; ckWords?: string; ckImages?: string; ckMusic?: string };
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template);
@@ -304,7 +308,9 @@ export async function generateNarratedStory(opts: {
   let treatment: FilmTreatment;
   if (resume.ckTreatment) treatment = JSON.parse(resume.ckTreatment);
   else if (opts.treatment && opts.treatment.scenes?.length) treatment = opts.treatment;
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, contentLang: lang, mode: "narrated", cast: (opts.cast || []).map((c) => ({ name: c.name, desc: c.look })) });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, contentLang: lang, mode: "narrated", cast: (opts.cast || []).map((c) => ({ name: c.name, desc: c.look })), series: opts.series });
+  // an episode is called "<Series> — Episode <N>", however its story was written
+  if (opts.series) treatment.title = episodeTitle(opts.series.title, opts.series.episode, treatment.title);
   // The scenes it is told in, each with the picture the maker approved for it. On a RESTART both were
   // saved together (ckApproved exists only then). NB the approved story arrives in resume.ckTreatment on
   // the first run too — that field alone does not mean a restart (the first live film re-drew every
@@ -417,6 +423,10 @@ export async function generateNarratedStory(opts: {
         timedToWords: words.length > 0,
         // how many of its pictures were the ones approved in the storyboard (the rest were drawn at render)
         approvedPictures: approved.filter(Boolean).length,
+        // NEXT EPISODE (film-series.ts): who was cast (so the next episode casts them again), and the
+        // series this story is an episode of — an ordinary story has no `series`
+        cast: castForMeta(opts.cast),
+        ...(opts.series ? { series: seriesMeta(opts.series) } : {}),
       }),
     },
   });

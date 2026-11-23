@@ -39,6 +39,7 @@ import { SPIN_STAGE_CSS } from "../components/SpinStage";
 import { useModalA11y } from "../lib/use-modal-a11y";
 import { favouritesFirst } from "../lib/favourites";
 import { nameTok } from "../lib/character-prompts";
+import { nextEpisodeCards, seriesBriefOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
 
@@ -119,9 +120,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null, sing: builtInCanSing(a), kind: "person" as const, look: (a.desc || "").slice(0, 220), card: cardOf(a) })),
     ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || a.voiceId || null, sing: false, kind: (a.kind || "person") as "person" | "cartoon" | "monster", look: (a.desc || "").slice(0, 220), card: cardOf(a) })),
   ], favs).slice(0, 70);
+  // NEXT EPISODE (film-series.ts): this shop's most recent finished STORY films — one per series, by its
+  // latest episode — each with what its next episode is set up as. (Only this shop's own films.)
+  const nextEpisodes = nextEpisodeCards(await db.asset.findMany({
+    where: { shopId: shop.id, type: "VIDEO_AD", status: { not: "FAILED" }, OR: [{ metaJson: { contains: '"kind":"narrated"' } }, { metaJson: { contains: '"kind":"testmovie"' } }] },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+    select: { id: true, title: true, metaJson: true, bodyJson: true },
+  }), 3);
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
     roster,
+    nextEpisodes,
     savedLooks,
     // A TRIAL, for the owner's account only (the owner, 2026-11-22: "test monsters in a music video"): a
     // monster can be cast as a music video's star or co-star. Nobody else is offered them there until a
@@ -271,6 +281,20 @@ function parseStoryCast(raw: string | null): StoryCastIn[] {
   } catch { return []; }
 }
 
+/** NEXT EPISODE (film-series.ts): the series a story continues, from the film it was started from. The
+ *  page sends only that film's id; everything else — the series, the episode number, the recap — is read
+ *  here from the film's own row, and ONLY from this shop's own films. A film that has been deleted (or is
+ *  another shop's, or another format's) means no series: an ordinary new film. */
+async function seriesBriefFor(shopId: string, fromId: string, want: { template: string; narrated: boolean }): Promise<SeriesBrief | null> {
+  const id = (fromId || "").trim().slice(0, 64);
+  if (!id) return null;
+  const prev = await db.asset.findFirst({
+    where: { id, shopId, type: "VIDEO_AD" },
+    select: { id: true, title: true, metaJson: true, bodyJson: true },
+  });
+  return prev ? seriesBriefOf(prev, want) : null;
+}
+
 /** The lead's gender (drives the sung voice + casting) and each named co-star's known gender. */
 function parseArtistGender(raw: string | null): "m" | "f" | undefined { return raw === "f" ? "f" : raw === "m" ? "m" : undefined; }
 function parseCastGenders(raw: string | null): Array<{ name: string; gender: "m" | "f" }> | undefined {
@@ -330,6 +354,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const clampScenes = (n: number) => (narrated ? clampNarrated(n) : Math.max(tmpl.minScenes, Math.min(maxScenes, Math.round(n || tmpl.defaultScenes))));
   // The cast the maker picked before the script was written (story formats).
   const storyCast = tmpl.lipSyncSinger ? [] : parseStoryCast(form.get("filmCast") as string);
+  // NEXT EPISODE: the series this story continues (story formats only — never a music video)
+  const seriesFrom = ((form.get("seriesFrom") as string) || "").trim();
+  const series = seriesFrom && tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung && (intent === "previewFilmTreatment" || intent === "previewFilmScenes" || intent === "film")
+    ? await seriesBriefFor(shop.id, seriesFrom, { template: tmpl.key, narrated })
+    : null;
 
   // Product (skit): title + photo required for product templates.
   const productTitle = ((form.get("filmProductTitle") as string) || "").trim().slice(0, 120);
@@ -348,7 +377,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const castNamesRaw = ((form.get("filmCastNames") as string) || "").trim();
     if (castNamesRaw) { try { const a = JSON.parse(castNamesRaw); if (Array.isArray(a)) castNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     try {
-      const args = { shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, sceneSeconds: filmSceneSeconds, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(tmpl.lipSyncSinger ? { featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name) } : {}), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) } : {}) };
+      const args = { shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, sceneSeconds: filmSceneSeconds, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(tmpl.lipSyncSinger ? { featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name) } : {}), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) } : {}), ...(series ? { series } : {}) };
       let treatment;
       // One more go before the maker is told it failed: the first write after a restart failed once on
       // the live site (2026-11-21) and the very same request then succeeded twelve times running.
@@ -532,7 +561,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (narrated) {
         // NARRATED: one picture a scene; picked cast are drawn from their own pictures.
         let tr0 = approvedTreatment as unknown as import("../lib/film-engine.server").FilmTreatment | undefined;
-        if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) });
+        if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look })), series });
         const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
         const r = await narratedSceneSeeds({ template: tmpl.key, treatment: tr0, cast: storyCast, aspect: filmAspect });
         if (!r.sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
@@ -804,6 +833,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(filmProps?.length ? { filmProps } : {}),
         ...(filmCustomProps.length ? { filmCustomProps } : {}),
         ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
+        // NEXT EPISODE: the series it continues, read from this shop's own film above — written onto the
+        // new film's asset row when the pipeline creates it (meta.series)
+        ...(series ? { filmSeries: series } : {}),
         dialogueEngine, filmAspect,
         ...(tmpl.needsProduct ? { filmProductTitle: productTitle, filmProductImageUrl: productImageUrl, filmProductDescription: productDescription } : {}),
         productTitle: (productTitle || topic || tmpl.name).slice(0, 60),
@@ -1498,10 +1530,29 @@ export default function FilmStudio() {
   // CAPTIONS ("" = the usual for the way it is told: big words on a narrated story, none on an acted film)
   const [capPick, setCapPick] = useState<CaptionStyle | "">("");
   const captions: CaptionStyle = capPick || (narrated ? "bold" : "off");
+  // NEXT EPISODE (film-series.ts): the film this one continues — its series' title and this episode's
+  // number, shown above the idea box; only `from` (the earlier film's id) is sent, the server reads the
+  // rest from that film itself. null = an ordinary new film.
+  const [series, setSeries] = useState<{ from: string; title: string; episode: number } | null>(null);
+  // …and the cast as that film had it (face + voice, by name): when the script comes back, each character
+  // who is still in it by name gets the same face and the same voice again
+  const [seriesCast, setSeriesCast] = useState<NextEpisodeCard["setup"]["cast"]>([]);
+  const castFromSeries = (list: CastMember[]): CastMember[] => {
+    if (!series || !seriesCast.length) return list;
+    return rebalanceVoices(list.map((c) => {
+      const was = seriesCast.find((m) => nameTok(m.name) === nameTok(c.name));
+      if (!was) return c;
+      const face = !c.faceUrl && was.faceUrl ? { faceUrl: was.faceUrl, ...(was.kind ? { kind: was.kind, look: was.look } : {}) } : {};
+      const voice = was.voiceId ? { voiceId: was.voiceId, autoVoice: false } : {};
+      return { ...c, ...face, ...voice };
+    }));
+  };
   // a different cast, or a different way of telling it, is a different story: script and pictures start over
   useEffect(() => { setTreatment(null); setSeeds(null); setFrames([]); setCast([]); }, [told, storyPick.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!tmpl?.dialogue) return;
+    // (a next episode is opened with its own length, cast and shape: those are set with it)
+    if (restoring.current) return;
     setScenes(told === "narrated" && canTell ? d.narratedScenes.def : (tmpl?.defaultScenes || 4));
     setStoryPick((p) => p.slice(0, told === "narrated" ? 3 : 2));
     // a narrated story is made for a phone, an acted film for a wide screen — until the maker picks a shape
@@ -1550,7 +1601,7 @@ export default function FilmStudio() {
   // When a fresh treatment arrives, adopt it (and lock the scene count to it) + cast.
   useEffect(() => {
     const tr2 = treatmentFetcher.data?.treatment;
-    if (tr2 && tr2.scenes?.length) { setTreatment(tr2); setScenes(tr2.scenes.length); setFrames([]); setCast((prev) => keepCasting(castFromPicked(deriveCast(tr2)), prev)); setIdeaChanged(false); }
+    if (tr2 && tr2.scenes?.length) { setTreatment(tr2); setScenes(tr2.scenes.length); setFrames([]); setCast((prev) => keepCasting(castFromSeries(castFromPicked(deriveCast(tr2))), prev)); setIdeaChanged(false); }
   }, [treatmentFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Store each actor's portrait as it's cast; clear the busy flag.
@@ -1658,7 +1709,53 @@ export default function FilmStudio() {
     setTemplate(h.tmpl); setScenes(nt?.lipSyncSinger ? mvWant : openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)); setTreatment(null); setFrames([]); setCast([]);
     setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({});
     if (nt?.dialogue) setFilmAspect(openNarrated ? "9:16" : "16:9");
+    // another format is an ordinary new film (a next episode sets its series again right after this)
+    setSeries(null); setSeriesCast([]);
   };
+  // NEXT EPISODE — one tap on a card of the "Next episode" row (film-series.ts): open that film's format
+  // with everything set as it was for that film — the same cast (same people, same order), length, shape,
+  // captions, and narrator or camera and voices — an empty idea box, and the series it continues.
+  const startEpisode = (c: NextEpisodeCard) => {
+    const h = heroById(c.heroId);
+    if (!h || !heroes.some((x) => x.id === h.id)) return;
+    const reduce = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setAnim("in");
+    window.setTimeout(() => {
+      // (the hero's own defaults — its length and shape — must not land on top of the episode's)
+      restoring.current = true;
+      window.setTimeout(() => { restoring.current = false; }, 600);
+      switchHero(h.id);
+      const nt = d.templates.find((x) => x.key === h.tmpl);
+      const isNarr = h.told === "narrated";
+      const s = c.setup;
+      const done: Record<string, boolean> = {};
+      // the same roster members, in the same order (a face no longer in the roster is left out)
+      const ids = s.cast.map((m) => (m.faceUrl ? d.roster.find((r) => r.img === m.faceUrl)?.id : undefined)).filter((x): x is string => !!x);
+      const pick = ids.filter((x, k) => ids.indexOf(x) === k).slice(0, isNarr ? 3 : 2);
+      if (pick.length) { setStoryPick(pick); done.cast = true; }
+      setSeriesCast(s.cast);
+      if (s.scenes) {
+        setScenes(isNarr ? Math.max(d.narratedScenes.min, Math.min(d.narratedScenes.max, s.scenes)) : Math.max(nt?.minScenes || 1, Math.min(nt?.maxScenes || s.scenes, s.scenes)));
+        done.length = true;
+      }
+      if (s.aspect) { setFilmAspect(s.aspect); done.shape = true; }
+      const cap = CAPTION_STYLES.find((k) => k.key === s.captions);
+      if (cap) { setCapPick(cap.key); done.captions = true; }
+      if (isNarr && s.narrator && (CHARACTER_VOICES.some((v) => v.id === s.narrator) || d.voices.some((v) => v.id === s.narrator) || d.myVoices.some((v) => v.voiceId === s.narrator))) { setNarrPick(s.narrator); done.voice = true; }
+      if (!isNarr && s.engine) { setDialogueEngine(s.engine); done.voice = true; }
+      if (!isNarr) setLockVoices(s.lockVoices);
+      setStoryDone(done);
+      setTopic(""); setIdeaChanged(false);
+      setSeries({ from: c.from, title: c.title, episode: c.episode });
+      setEntered(true); setAnim(""); setZoomKey(null);
+    }, reduce ? 0 : 400);
+  };
+  /** ✕ on the episode line: drop the link — an ordinary new film. (What was already written for the episode
+   *  was written AS the episode, so it starts over — asked first, the page's own "tap again" way.) */
+  const dropSeries = () => orArm("series:", storyHasWork, () => {
+    setSeries(null); setSeriesCast([]);
+    if (storyHasWork) { setTreatment(null); setSeeds(null); setFrames([]); setCast([]); }
+  });
   // Cinematic format entry: you land on the poster GRID; tap a card and IT zooms in while the
   // other cards are thrown away, then it becomes that format's builder. Back reverses it.
   const [entered, setEntered] = useState(false);
@@ -1690,7 +1787,7 @@ export default function FilmStudio() {
   };
   const writeTreatment = () => {
     treatmentFetcher.submit(
-      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}) },
+      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(series && isStoryboard ? { seriesFrom: series.from } : {}) },
       { method: "post" }
     );
   };
@@ -1698,7 +1795,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(Object.keys(outfitImgs).length ? { filmOutfitImgs: JSON.stringify(outfitImgs) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(Object.keys(outfitImgs).length ? { filmOutfitImgs: JSON.stringify(outfitImgs) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}), ...(series && isStoryboard ? { seriesFrom: series.from } : {}) },
       { method: "post" }
     );
   };
@@ -2581,7 +2678,7 @@ export default function FilmStudio() {
   // comes back the moment anything in it changes — a line, a face, a shape: that is another film.
   // (the IDEA counts only while there is no script: once one is written IT is the film, and a letter typed
   //  in the idea box afterwards changes nothing that renders — it made the button live again, seen 11-22)
-  const storySig = `story:${JSON.stringify([template, treatment ? "" : topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId])])}`;
+  const storySig = `story:${JSON.stringify([template, treatment ? "" : topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId]), series?.from || ""])}`;
   const storySent = sentSig === storySig;
   // Make the cast editable + buildable — rename, re-describe, add your own character, or remove one.
   // This is how you "create" a cast member (a cartoon character for Kids Cartoon, an actor for a film):
@@ -2678,6 +2775,27 @@ export default function FilmStudio() {
           <button type="button" className="mm-kept-x" onClick={() => setDraft(null)} aria-label={t("Not now")} title={t("Not now")}>✕</button>
         </div>
       )}
+      {/* NEXT EPISODE (film-series.ts): the member's latest story films — one per series — each one tap from
+          its next episode: the same format, cast, look and voices, and the writer knows what happened. */}
+      {!entered && (() => {
+        const eps = (d.nextEpisodes || []).filter((c) => heroes.some((h) => h.id === c.heroId));
+        return eps.length ? (
+          <section className={`fs-eps${anim === "in" ? " throw" : ""}`} aria-labelledby="fs-eps-h">
+            <h2 id="fs-eps-h" className="fs-eps-h">{t("Next episode")}</h2>
+            <div className="fs-eps-row">
+              {eps.map((c) => (
+                <button type="button" key={c.from} className="fs-ep-card" onClick={() => startEpisode(c)} aria-label={t("Make episode {n} of “{title}”", { n: c.episode, title: c.title })}>
+                  <img className="fs-ep-pic" src={`/vthumb/${c.video.split("?")[0].split("/").pop()}`} alt="" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+                  <span className="fs-ep-txt">
+                    <b>{c.title}</b>
+                    <span><Ico n="film" size={12} /> {t("Episode {n}", { n: c.episode })}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null;
+      })()}
       <div className="fs-switch">
         {!entered && (
           <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t("Movie formats")}>
@@ -3170,9 +3288,18 @@ export default function FilmStudio() {
       {/* Step 1 — the vibe + length */}
       {/* Describe-first entry — same premium look as the Music Video builder's topic box. */}
       <div className="mm-topic mm-topic-film">
-        <label htmlFor="fs-topic-in">{tmpl?.needsProduct ? t("What's the gag?") : narrated ? t("What's your story about?") : tmpl?.sung ? t("What's your song about?") : t("What's your movie about?")}</label>
+        {/* NEXT EPISODE: the one line that says what this is — ✕ makes it an ordinary new film */}
+        {isStoryboard && series ? (
+          <div className="fs-epline">
+            <label htmlFor="fs-topic-in"><Ico n="film" size={14} /> {t("Episode {n} of “{title}”", { n: series.episode, title: series.title })}</label>
+            <button type="button" className={`fs-epline-x${wipeArm === "series:" ? " is-arm" : ""}`} onClick={dropSeries} aria-label={t("Make an ordinary new film instead")} title={t("Make an ordinary new film instead")}><Ico n="x" size={14} /></button>
+          </div>
+        ) : (
+          <label htmlFor="fs-topic-in">{tmpl?.needsProduct ? t("What's the gag?") : narrated ? t("What's your story about?") : tmpl?.sung ? t("What's your song about?") : t("What's your movie about?")}</label>
+        )}
+        {wipeNote("series:")}
         <textarea id="fs-topic-in" rows={3} value={topic} onChange={(e) => setTopic(e.target.value)}
-          placeholder={tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={300} />
+          placeholder={isStoryboard && series ? t("What happens next? Leave it empty and we'll decide.") : tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={300} />
         {ideaChanged && (seeds || treatment) && <p className="mm-note mm-idea-kept" role="status">{isStoryboard && !narrated ? t("Your script stays as it is — Rewrite to use the new idea.") : t("What you've made stays as it is — start over to use the new idea.")}</p>}
         {!isStoryboard && (
         <div className="fs-len fs-len-topic">
@@ -3683,6 +3810,7 @@ export default function FilmStudio() {
           {isStoryboard && !narrated && frames.some(Boolean) && <input type="hidden" name="approvedFrames" value={JSON.stringify(frames)} />}
           {isStoryboard && !narrated && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId, ...(c.faceUrl && c.kind && c.kind !== "person" ? { kind: c.kind, look: c.look || "" } : {}) })))} />}
           {isStoryboard && !narrated && lockVoices && cast.some((c) => c.voiceId) && <input type="hidden" name="filmLockVoices" value="1" />}
+          {isStoryboard && series && <input type="hidden" name="seriesFrom" value={series.from} />}
           <button type="submit" className={`fs-go${storySent ? " is-sent" : ""}`} disabled={!canGo || storySent}>
             {generating ? <>… {t("Starting your film")}</> : storySent ? <><Ico n="check" size={16} /> {t("Rendering — it lands in your Archive")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(heroTitle), cost }) : t("Generate {name} · Free", { name: t(heroTitle) })}</>}
           </button>
@@ -4193,6 +4321,26 @@ ${CAST_ID_CSS}
 .mm-kept-go:hover{filter:brightness(1.07);}
 .mm-kept-x{flex:none;position:relative;width:30px;height:30px;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);font-size:11px;cursor:pointer;}
 .mm-kept-x::after{content:"";position:absolute;inset:-7px;}
+/* NEXT EPISODE (film-series.ts): a small row above the posters — up to three of the member's own story
+   films, one tap from their next episode. One line of compact cards, swiped sideways on a phone. */
+.fs-eps{margin:16px 0 0;transition:opacity .32s ease;}
+.fs-eps.throw{opacity:0;pointer-events:none;}
+.fs-eps-h{margin:0 0 8px;font-family:Poppins,sans-serif;font-size:14px;font-weight:800;color:var(--ink,#14201A);}
+.fs-eps-row{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 2px 6px;scrollbar-width:none;}
+.fs-eps-row::-webkit-scrollbar{display:none;}
+.fs-ep-card{flex:0 0 auto;width:min(240px,74vw);min-height:64px;display:flex;align-items:center;gap:10px;padding:8px 12px 8px 8px;border:1.5px solid #B9E0C8;background:#F0F8F3;border-radius:14px;cursor:pointer;text-align:left;font:inherit;color:inherit;scroll-snap-align:start;}
+.fs-ep-card:hover{border-color:var(--green,#0C7A46);}
+.fs-ep-card:focus-visible{outline:3px solid rgba(12,122,70,.35);outline-offset:2px;}
+.fs-ep-pic{flex:none;width:48px;height:48px;border-radius:10px;object-fit:cover;background:#20302A;}
+.fs-ep-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+.fs-ep-txt b{font-family:Poppins,sans-serif;font-size:13px;font-weight:800;color:var(--ink,#14201A);line-height:1.25;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;}
+.fs-ep-txt span{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:800;color:#0A5E37;}
+/* …and on the setup screen, the one line that says what this is, with an ✕ to make it an ordinary film */
+.fs-epline{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.mm-topic .fs-epline label{flex:1;min-width:0;margin:0;display:flex;align-items:center;gap:6px;font-family:Poppins,sans-serif;font-size:13.5px;color:#0A5E37;}
+.fs-epline-x{flex:none;position:relative;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);cursor:pointer;}
+.fs-epline-x::after{content:"";position:absolute;inset:-6px;}
+.fs-epline-x.is-arm{border-color:#D9A53A;box-shadow:0 0 0 2px #EBD9A8;background:#FFF7E3;color:#7A5A12;}
 /* scene-count row that lives under the describe-first box in the classic (non-MV) builder */
 .fs-len-topic{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#E4DFCF);font-size:13px;font-weight:700;color:var(--ink2,#55605A);flex-wrap:wrap;}
 .mm-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:18px 4px 10px;display:flex;align-items:center;gap:7px;}

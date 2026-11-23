@@ -890,6 +890,8 @@ async function runJob(
             approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined,
             section: (payload.section as string) || "creator",
             jobId: payload.__jobId as string | undefined,
+            // NEXT EPISODE: the series it continues (film-series.ts; checked again here)
+            series: (await import("./film-series")).seriesFromPayload(payload.filmSeries),
             resume: {
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
               ckApproved: payload.ckApproved as string | undefined,
@@ -980,6 +982,8 @@ async function runJob(
             dialogueEngine: payload.dialogueEngine === "veo" ? "veo" : "kling3",
             // Output shape: 9:16 vertical (default) · 16:9 landscape (YouTube/TV/film) · 1:1.
             aspect: payload.filmAspect === "16:9" || payload.filmAspect === "1:1" ? payload.filmAspect : "9:16",
+            // NEXT EPISODE: the series it continues (film-series.ts; checked again here)
+            series: (await import("./film-series")).seriesFromPayload(payload.filmSeries),
           });
         } else if ((payload.filmTemplate as string | undefined) === "avatardialogue") {
           // ISOLATED audio-driven pipeline — locked actors + fixed voices (HeyGen).

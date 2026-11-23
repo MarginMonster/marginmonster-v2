@@ -41,6 +41,7 @@ import { SENSE_RULES, sameCar, sameTime } from "./mv-sense";
 import { MOTION_GENTLE, MOTION_KEEPS_CAST, MOTION_NEGATIVE, fitFilter, fitScenesToSong, sceneSpans } from "./sung-fit";
 import { lyricLinesOf, sceneLineTimes } from "./lyric-sync";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
+import { episodeTitle, seriesWriterBrief, type SeriesBrief } from "./film-series";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -415,9 +416,14 @@ export async function previewFilmTreatment(opts: {
   /** Music Video FEATURED VERSE: the names of the co-stars (from castNames) who sing a verse of their
    *  own. The writer gives each one a verse and marks its scenes with "singer". */
   featureNames?: string[];
+  /** NEXT EPISODE (film-series.ts): this story continues a series — the writer is told the series, the
+   *  episode number and a quoted recap of the last episode. Story formats only; ignored for sung ones. */
+  series?: SeriesBrief | null;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const narrated = opts.mode === "narrated" && !tmpl.lipSyncSinger && !tmpl.sung;
+  // (a music video or a sing-along is never an episode)
+  const series = !tmpl.lipSyncSinger && !tmpl.sung && opts.series ? opts.series : null;
   // a music video is never longer than two minutes, however short its scenes
   const sceneSec: SceneSeconds = tmpl.lipSyncSinger && opts.sceneSeconds === 5 ? 5 : 10;
   const scenes = narrated ? clampNarrated(opts.sceneCount ?? NARRATED_DEFAULT_SCENES)
@@ -585,7 +591,11 @@ export async function previewFilmTreatment(opts: {
     : tmpl.brief;
   const prompt =
     `Write ${brief}.\n` +
-    (topic ? `THEME / what it's about: "${topic.slice(0, 300)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n` : `Pick a fun, broadly-appealing theme.\n`) +
+    // NEXT EPISODE: the series, the recap (fenced, quoted) and the rules of a next episode (film-series.ts)
+    (series ? seriesWriterBrief(series) : "") +
+    (topic
+      ? `${series ? "WHAT HAPPENS IN THIS EPISODE" : "THEME / what it's about"}: "${topic.slice(0, 300)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n`
+      : series ? `Decide what happens next in this episode.\n` : `Pick a fun, broadly-appealing theme.\n`) +
     // a sung piece: the words are ours, whatever song the theme names
     (tmpl.lipSyncSinger || tmpl.sung ? `${ORIGINAL_LYRICS_RULE}\n` : "") +
     genreLine +
@@ -733,6 +743,8 @@ export async function previewFilmTreatment(opts: {
     const timed = sameTime(list.map((s) => s.visual));
     list = list.map((s, i) => ({ ...s, visual: timed[i] || s.visual }));
   }
+  // an episode is called "<Series> — Episode <N>" (the writer's short episode name may follow a colon)
+  if (series) outTitle = episodeTitle(series.title, series.episode, outTitle);
   return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast, ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 
