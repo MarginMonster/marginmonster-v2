@@ -348,9 +348,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // an estimate for a render nobody had begun, then "still rendering" for as long as somebody else's
   // film took. For the ones still waiting, ask where they stand: how many jobs start before each.
   const inLine = jobs.filter((j) => j.status === "PENDING" && (!j.runAt || j.runAt.getTime() <= nowMs));
-  const places = inLine.length ? await placesInLine(inLine.map((j) => ({ id: j.id, type: j.type }))).catch(() => new Map<string, number | null>()) : new Map<string, number | null>();
+  const places = inLine.length ? await placesInLine(inLine.map((j) => ({ id: j.id, type: j.type, payload: j.payload }))).catch(() => new Map<string, number | null>()) : new Map<string, number | null>();
   for (const j of jobs) {
-    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string; contentType?: string; filmScenes?: number } = {};
+    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string; contentType?: string; filmScenes?: number; filmMode?: string } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
     // Unified archive: every cooking tile shows, whichever section started it.
     const due = !j.runAt || j.runAt.getTime() <= nowMs;
@@ -376,7 +376,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // A COMMERCIAL is five scenes drawn, animated and voiced one after another, then cut over music:
     // 9 min 26 s on the live site (2026-11-23). At the 180 s of a single clip its card read "taking
     // longer than usual" from the third minute of a perfectly healthy render.
-    const typical = (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film")
+    // A NARRATED STORY is not that: one voice, a picture a scene, one encode. Measured on the live site
+    // (2026-11-23): 72 s for four scenes whose pictures were kept, about two minutes for six drawn new.
+    // Under the film's estimate its card read "~10 min" for a piece that landed in one.
+    const typical = (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film" && p.filmMode === "narrated")
+      ? 60 + (typeof p.filmScenes === "number" ? p.filmScenes : 6) * 12
+      : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film")
       ? Math.max(600, (typeof p.filmScenes === "number" ? p.filmScenes : 8) * 60)
       : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "commercial") ? COMMERCIAL_TYPICAL_SEC
       : TYPICAL[j.type];

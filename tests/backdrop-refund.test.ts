@@ -24,7 +24,7 @@ test("a background that was not saved fails its job — the tokens go back the w
   // only the save itself decides it…
   assert.ok(block.indexOf("await db.backdrop.create({ data: { shopId, url: abs, label: \"Created\" } });") < block.indexOf("saved = true;"));
   assert.ok(block.indexOf("saved = true;") < block.indexOf("await db.backdrop.deleteMany("), "trimming the older cards comes after, and may fail quietly");
-  assert.ok(block.indexOf("saved = true;") < block.indexOf("await tagAssetSection(createdAssetId, \"backdrop\");"), "so may tagging the picture");
+  assert.ok(block.indexOf("saved = true;") < block.indexOf("await tagAssetSection(createdAssetId, \"backdrop\", payload.__jobId as string | undefined);"), "so may tagging the picture");
   // …and without it the job throws (outside the try, so nothing swallows it)
   const thrown = block.indexOf("if (!saved) throw new Error(");
   assert.ok(thrown > block.lastIndexOf("} catch (e) {"), "the throw is after the catch, not inside the try");

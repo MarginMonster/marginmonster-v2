@@ -22,7 +22,7 @@ import { readUiLang, tr } from "../lib/ui-i18n";
 import { db } from "../db.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
 import { enqueueJob } from "../lib/job-queue.server";
-import { stageJobFits, stageKindFits } from "../lib/stage-kind";
+import { queuedJob, stageFailureFits, stagePieceFits } from "../lib/stage-kind";
 import { screenCreatePrompt } from "../lib/prompt-safety.server";
 import { TOKEN_COST, CREATOR_PRICE, CREATOR_SURCHARGE_MULT, CREATOR_VIDEO_SECONDS, creatorVideoSeconds, creatorVideoTokens, type CreatorVideoSeconds } from "../lib/plan-config";
 import { uploadFileName, type UploadExt } from "../lib/upload-names";
@@ -302,7 +302,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       try { b = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
       // (2026-11-22) an edit the model did not make (edit-check.ts): the page says so, and what came back
       const made = editNote(a.metaJson);
-      return { id: a.id, isVideo: a.type === "VIDEO_AD", isAudio: a.type === "AUDIO", media: b.videoUrl || b.imageUrl || b.audioUrl || b.url || null, title: a.title || "Untitled", at: a.createdAt.toISOString(), ...made };
+      // which job made it (the worker writes meta.jobId) — the Stage waits for exactly its own
+      let madeBy: string | null = null;
+      try { const j = (JSON.parse(a.metaJson || "{}") as { jobId?: unknown }).jobId; madeBy = typeof j === "string" && j ? j : null; } catch { /* no job on it */ }
+      return { id: a.id, jobId: madeBy, isVideo: a.type === "VIDEO_AD", isAudio: a.type === "AUDIO", media: b.videoUrl || b.imageUrl || b.audioUrl || b.url || null, title: a.title || "Untitled", at: a.createdAt.toISOString(), ...made };
     })
     .filter((p) => !!p.media)
     .slice(0, 6);
@@ -364,7 +367,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       : r.type === "EDIT_VIDEO" ? "video"
       : gp.editOp ? "photo" : "image";
   };
-  const recentGens = genRows.map((r) => ({ status: r.status as string, at: r.createdAt.toISOString(), error: r.lastError || null, kind: genKind(r) }));
+  const recentGens = genRows.map((r) => ({ id: r.id, status: r.status as string, at: r.createdAt.toISOString(), error: r.lastError || null, kind: genKind(r) }));
   const lastGen = recentGens[0] ?? null;
   // A Creator piece STILL COOKING — so the Stage can pick it back up after anything that rebuilt the page
   // (a reload, an app update landing mid-edit, leaving and coming back). Before this, the Stage only knew
@@ -2788,6 +2791,8 @@ export default function WebStudio() {
   // already be most of the cap ago.)
   const watchStartedRef = useRef<number>(0);
   const preIdsRef = useRef<string[]>([]);
+  // The job the Stage is waiting for, when it is known (lib/stage-kind.ts) — its piece, its failure.
+  const watchedJobRef = useRef<string | null>(null);
   // when a not-made edit was first seen without its "tokens returned" note (0 = none waiting)
   const notMadeSeenRef = useRef(0);
   const makingNounRef = useRef<string>("");
@@ -2814,6 +2819,9 @@ export default function WebStudio() {
       preIdsRef.current = d.recent.map((p) => p.id);
       makingNounRef.current = noun;
       makingStartedRef.current = Date.now();
+      // WHICH JOB — the loader's list comes back with the action's answer, so the job just queued is the
+      // newest of its kind on it (lib/stage-kind.ts → queuedJob). Null when it cannot be told.
+      watchedJobRef.current = queuedJob(String((actionData as { queued?: string }).queued || ""), d.recentGens || [], Date.now() - 20_000);
       setGenError(null);
       setStageResult(null);
       setEditingSrc((actionData as { editSource?: string }).editSource || null);
@@ -2840,10 +2848,11 @@ export default function WebStudio() {
     if (!casual || !f || making || stageResult || resumedRef.current === f.id) return;
     // Queued from this very page a moment ago (the action and the reloaded data land together): the
     // effect above is already watching it.
-    if (Date.now() - queuedAtRef.current < 15_000) { resumedRef.current = f.id; return; }
+    if (Date.now() - queuedAtRef.current < 15_000) { resumedRef.current = f.id; if (!watchedJobRef.current) watchedJobRef.current = f.id; return; }
     const wantTab: Tab = f.kind === "song" ? "music" : f.kind === "faceless" ? "faceless" : f.kind === "video" ? "video" : "image";
     if (initTab && initTab !== wantTab) return; // a deep link asked for something else — leave the Stage to it
     resumedRef.current = f.id;
+    watchedJobRef.current = f.id; // picked back up after a reload: this is the job
     const startedAt = new Date(f.at).getTime();
     // Pieces made before this job are "already there"; one made after it is its result.
     preIdsRef.current = d.recent.filter((p) => new Date(p.at).getTime() < startedAt - 1000).map((p) => p.id);
@@ -2890,8 +2899,10 @@ export default function WebStudio() {
     // …OF THE KIND BEING MADE. A picture asked for elsewhere while a video cooks lands first now, and the
     // first new piece of ANY kind used to be taken for the result: the picture shown as "your video",
     // and the Stage gone idle while the video was still being made.
+    // (2026-11-23, later) …AND MADE BY THE JOB THIS PAGE QUEUED, when both are known: a film from the
+    // Movie Maker or a channel's own drop is a Creator video too, and landed first.
     const want = makingNounRef.current;
-    const ofKind = (p: { isVideo?: boolean; isAudio?: boolean }) => stageKindFits(want, { video: !!p.isVideo, audio: !!p.isAudio });
+    const ofKind = (p: { jobId?: string | null; isVideo?: boolean; isAudio?: boolean }) => stagePieceFits(watchedJobRef.current, want, { jobId: p.jobId, video: !!p.isVideo, audio: !!p.isAudio });
     const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id) && ofKind(p));
     if (fresh && fresh.media) {
       // An edit the model did not make is saved first and its tokens returned a moment later. Landing it
@@ -2922,7 +2933,7 @@ export default function WebStudio() {
     // No new piece yet — did THIS generation fail? The newest creator job is
     // FAILED and was created around when we started → stop spinning and say so.
     // (of the kind being made — the newest job may be something else entirely, see the loader)
-    const lg = (d.recentGens || []).find((g) => g.status === "FAILED" && stageJobFits(want, g.kind) && new Date(g.at).getTime() >= makingStartedRef.current - 15000);
+    const lg = (d.recentGens || []).find((g) => g.status === "FAILED" && stageFailureFits(watchedJobRef.current, want, g, makingStartedRef.current - 15000));
     if (lg) {
       // Even a prompt that passed our pre-screen can be refused by the model's
       // own provider-side safety — read the failure reason and split the message.

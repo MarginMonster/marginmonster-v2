@@ -1,9 +1,9 @@
 // DB-backed job queue. Worker calls processNextJob() in a loop.
 // Jobs are claimed with status=IN_PROGRESS to prevent double-processing.
 
-import type { BrandProfile, JobType } from "@prisma/client";
+import type { BrandProfile, Prisma } from "@prisma/client";
 import { db } from "../db.server";
-import { LANES, LANE_LOOKAHEAD, aheadInLine, claimNext, laneOf, laneTypeFilter, type Lane } from "./job-lanes";
+import { LANES, LANE_LOOKAHEAD, aheadInLine, claimNext, laneOf, laneWhere, storyKindOf, type Lane } from "./job-lanes";
 import { asJob } from "./ffmpeg-turn";
 import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
@@ -56,33 +56,34 @@ const RENDER_SLOT_MS = 70 * 60_000;
 // guard.
 const slots: Record<Lane, { until: number; token: number }> = {
   render: { until: 0, token: 0 },
+  story: { until: 0, token: 0 },
   picture: { until: 0, token: 0 },
   desk: { until: 0, token: 0 },
 };
 // When each member last had a job START in each lane — members take turns
 // (job-lanes.ts → takeTurns). In memory: a restart only forgets whose turn it was.
-const lastServed: Record<Lane, Map<string, number>> = { render: new Map(), picture: new Map(), desk: new Map() };
+const lastServed: Record<Lane, Map<string, number>> = { render: new Map(), story: new Map(), picture: new Map(), desk: new Map() };
 
 /** WHERE A WAITING JOB STANDS: how many jobs will start before it in its lane (job-lanes.ts →
  *  aheadInLine). A piece that has not begun was shown as "Rendering · ~3 min left", counting down an
  *  estimate for a render nobody had started — and then "still rendering" for as long as somebody else's
  *  film took. The Archive can now say what is true: "In line · 2 ahead of you". Asked only for jobs that
  *  are waiting; null = could not be worked out (the card then just says it is in line). */
-export async function placesInLine(jobs: Array<{ id: string; type: string }>): Promise<Map<string, number | null>> {
+export async function placesInLine(jobs: Array<{ id: string; type: string; payload?: string | null }>): Promise<Map<string, number | null>> {
   const out = new Map<string, number | null>();
   for (const lane of LANES) {
-    const mine = jobs.filter((j) => laneOf(j.type) === lane);
+    const mine = jobs.filter((j) => laneOf(j.type, j.payload) === lane);
     if (!mine.length) continue;
     try {
-      const type = laneTypeFilter(lane) as { in: JobType[] } | { notIn: JobType[] };
+      const inLane = laneWhere(lane) as Prisma.JobWhereInput;
       const [waiting, inHand] = await Promise.all([
         db.job.findMany({
-          where: { status: "PENDING", attempts: { lt: MAX_ATTEMPTS }, OR: [{ runAt: null }, { runAt: { lte: new Date() } }], type },
+          where: { status: "PENDING", attempts: { lt: MAX_ATTEMPTS }, OR: [{ runAt: null }, { runAt: { lte: new Date() } }], ...inLane },
           orderBy: { createdAt: "asc" },
           take: LANE_LOOKAHEAD,
           select: { id: true, shopId: true, createdAt: true },
         }),
-        db.job.count({ where: { status: "IN_PROGRESS", type } }),
+        db.job.count({ where: { status: "IN_PROGRESS", ...inLane } }),
       ]);
       for (const j of mine) out.set(j.id, aheadInLine(j.id, waiting, lastServed[lane], inHand));
     } catch {
@@ -95,7 +96,7 @@ export async function placesInLine(jobs: Array<{ id: string; type: string }>): P
 /** Which lanes have a job in hand right now — for the status page. */
 export function lanesHeld(): Record<Lane, boolean> {
   const now = Date.now();
-  return { render: now < slots.render.until, picture: now < slots.picture.until, desk: now < slots.desk.until };
+  return { render: now < slots.render.until, story: now < slots.story.until, picture: now < slots.picture.until, desk: now < slots.desk.until };
 }
 
 // Pre-paid generations (tokens spent at enqueue — Studio pieces AND questline
@@ -400,11 +401,28 @@ export async function enqueueJob(
     data: {
       shopId,
       type: type as any,
-      payload: JSON.stringify(payload),
+      payload: JSON.stringify(await withLane(type, payload)),
       runAt: runAt ?? null,
     },
   });
   return job.id;
+}
+
+/** WHICH LANE A VIDEO JOB RUNS IN IS DECIDED HERE, ONCE, WHEN IT IS QUEUED (job-lanes.ts → STORY_MARK).
+ *  A narrated story or a faceless video gets `__lane: "story"`; anything else carries no mark, and a
+ *  payload queued again (a retry from the Archive) is decided again rather than trusted. The test is
+ *  storyKindOf — the same two conditions runJob dispatches on. */
+async function withLane(type: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (type !== "GENERATE_VIDEO_AD") return payload;
+  const { __lane: _decidedBefore, ...rest } = payload;
+  try {
+    const narrates = rest.contentType === "film" && rest.filmMode === "narrated"
+      ? (await import("./film-engine.server")).canNarrate
+      : () => false;
+    return storyKindOf(rest, narrates) ? { ...rest, __lane: "story" } : rest;
+  } catch {
+    return rest; // could not tell: the careful lane
+  }
 }
 
 
@@ -444,13 +462,13 @@ async function claimAndRunOneJob(lane: Lane): Promise<boolean> {
   let job = await claimNext(
     lane,
     {
-      waiting: (type, take) =>
+      waiting: (inLane, take) =>
         db.job.findMany({
           where: {
             status: "PENDING",
             attempts: { lt: MAX_ATTEMPTS },
             OR: [{ runAt: null }, { runAt: { lte: new Date() } }],
-            type: type as { in: JobType[] } | { notIn: JobType[] },
+            ...(inLane as Prisma.JobWhereInput),
           },
           orderBy: { createdAt: "asc" },
           take,
@@ -511,6 +529,23 @@ async function claimAndRunOneJob(lane: Lane): Promise<boolean> {
           data: { status: "PENDING", attempts: { decrement: 1 }, runAt: new Date(Date.now() + 10 * 60_000) },
         });
         return true; // a tick was still spent; let the loop pull the next job
+      }
+    }
+
+    // THE STORY LANE RUNS ONLY WHAT WILL BE RUN AS A STORY. The mark was written when the job was queued;
+    // this asks the same question again with the payload in hand, so that a film can never run in the
+    // story lane beside another film whatever was written. A job that fails the test loses its mark and
+    // goes back to wait for the render lane (its try handed back).
+    if (lane === "story") {
+      const { canNarrate } = await import("./film-engine.server");
+      if (!storyKindOf(payload, canNarrate)) {
+        const { __lane: _mark, __jobId: _id, ...unmarked } = payload;
+        await db.job.updateMany({
+          where: { id: job.id, status: "IN_PROGRESS" },
+          data: { status: "PENDING", attempts: { decrement: 1 }, payload: JSON.stringify(unmarked) },
+        });
+        console.warn(`[worker] job ${job.id} was marked a story but is not one — handed to the render lane`);
+        return true;
       }
     }
 
@@ -719,6 +754,8 @@ async function runJob(
           prompt: typeof payload.editPrompt === "string" ? payload.editPrompt : undefined,
           model: typeof payload.editModel === "string" ? payload.editModel : undefined,
         });
+        // which job made it (the pipeline tags its own section; nothing said which request it answered)
+        await tagAssetSection(editedId, undefined, payload.__jobId as string | undefined);
         // AN EDIT THE MODEL DID NOT MAKE IS NOT CHARGED (edit-check.ts). The result is kept and shown — it
         // is what the model gave — and the tokens go back, once.
         await returnDeclinedEdit({ assetId: editedId, shopId, jobType: type, payload });
@@ -746,6 +783,8 @@ async function runJob(
           aspectRatio: typeof payload.createAspect === "string" ? payload.createAspect : undefined,
           permissive: payload.createPermissive === true,
         });
+        // which job made it
+        await tagAssetSection(createdAssetId, undefined, payload.__jobId as string | undefined);
         // "Create a background": remember the generated scene as a reusable
         // Backdrop (shows as a "Created" card, feeds the backdrop-compose combine).
         // Non-fatal — the image still generated even if the bookkeeping fails.
@@ -773,7 +812,7 @@ async function runJob(
               }
               // Keep the raw scene out of the creator gallery — it's a backdrop, not
               // a deliverable the merchant asked to post.
-              await tagAssetSection(createdAssetId, "backdrop");
+              await tagAssetSection(createdAssetId, "backdrop", payload.__jobId as string | undefined);
             } catch (e) {
               console.error(`[createBackdrop] ${saved ? "tidying after the save failed (the background is saved)" : "backdrop save failed"}:`, e instanceof Error ? e.message : String(e));
             }
@@ -817,7 +856,7 @@ async function runJob(
         });
         // Marketing-tag the intermediate frame so it never clutters the creator
         // gallery (same as the photoreal Combine presenter image).
-        await tagAssetSection(typeof kfId === "string" ? kfId : undefined, payload.section as string | undefined);
+        await tagAssetSection(typeof kfId === "string" ? kfId : undefined, payload.section as string | undefined, payload.__jobId as string | undefined);
         break;
       }
       if (!shop?.brandProfile || !shop?.activePlan) {
@@ -851,7 +890,7 @@ async function runJob(
       // from exactly one place: the end of the VIDEO case. Every image ad
       // dropped the link, and /go/a then fell back to the storefront.
       await stampProductUrl(typeof imgAssetId === "string" ? imgAssetId : undefined, payload);
-      await tagAssetSection(typeof imgAssetId === "string" ? imgAssetId : undefined, payload.section as string | undefined);
+      await tagAssetSection(typeof imgAssetId === "string" ? imgAssetId : undefined, payload.section as string | undefined, payload.__jobId as string | undefined);
       if (payload.prePaid) await maybeTickQuestline(payload, shopId, true, typeof imgAssetId === "string" ? imgAssetId : undefined);
       // still-count achievements
       try {
@@ -896,7 +935,7 @@ async function runJob(
           },
         });
         await stampProductUrl(facelessAssetId, payload);
-        await tagAssetSection(facelessAssetId, payload.section as string | undefined);
+        await tagAssetSection(facelessAssetId, payload.section as string | undefined, payload.__jobId as string | undefined);
         // Achievements — a faceless reel is a VIDEO_AD (counts as a take) + its
         // own Faceless badge + the shared creation-count checks. Non-fatal.
         try {
@@ -1104,7 +1143,7 @@ async function runJob(
             },
           });
         }
-        await tagAssetSection(filmAssetId, payload.section as string | undefined);
+        await tagAssetSection(filmAssetId, payload.section as string | undefined, payload.__jobId as string | undefined);
         try {
           await unlockAchievement(shopId, "FACELESS_FIRST");
           const takes = await db.asset.count({ where: { shopId, type: "VIDEO_AD" } });
@@ -1363,7 +1402,7 @@ async function runJob(
         });
       }
       await stampProductUrl(forgedAssetId, payload);
-      await tagAssetSection(forgedAssetId, payload.section as string | undefined);
+      await tagAssetSection(forgedAssetId, payload.section as string | undefined, payload.__jobId as string | undefined);
 
       // Accounting. Questline videos were pre-paid on accept (tokens) and don't
       // touch the manual video quota; standalone Studio videos burn a take.
@@ -1441,7 +1480,7 @@ async function runJob(
         },
       });
       // Land it in the Creator gallery (same tagger the casual video uses).
-      await tagAssetSection(editAsset.id, payload.section as string | undefined);
+      await tagAssetSection(editAsset.id, payload.section as string | undefined, payload.__jobId as string | undefined);
       // take-count achievements — an edited clip is still a VIDEO_AD take.
       try {
         const takes = await db.asset.count({ where: { shopId, type: "VIDEO_AD" } });
@@ -1470,7 +1509,7 @@ async function runJob(
         title: payload.productTitle as string | undefined,
       });
       await stampProductUrl(musicAssetId, payload);
-      await tagAssetSection(musicAssetId, payload.section as string | undefined);
+      await tagAssetSection(musicAssetId, payload.section as string | undefined, payload.__jobId as string | undefined);
       try {
         const tracks = await db.asset.count({ where: { shopId, type: "AUDIO" } });
         if (tracks >= 1) await unlockAchievement(shopId, "MUSIC_FIRST");

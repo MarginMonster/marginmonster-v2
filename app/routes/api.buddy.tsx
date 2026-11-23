@@ -1409,9 +1409,23 @@ export async function action({ request }: ActionFunctionArgs) {
     // window a concurrent same-type asset could be mis-correlated, so narrow on the
     // pipeline's metaJson.kind stamp (faceless/song/edit) when there is one.
     const metaKind = kind === "faceless" ? '"kind":"faceless"' : kind === "music" ? '"kind":"song"' : kind === "edit" ? '"kind":"edit"' : kind === "create" ? '"kind":"create"' : "";
-    const asset = await db.asset.findFirst({
-      where: { shopId: id.shop.id, type, createdAt: { gte: new Date(cursor - 3000) }, ...(metaKind ? { metaJson: { contains: metaKind } } : {}) },
-      orderBy: { createdAt: "desc" }, select: { title: true, bodyJson: true },
+    // THE PIECE THIS JOB MADE, when the piece says so (2026-11-23: the worker writes meta.jobId on what a
+    // job makes — image-generation → tagAssetSection). "The newest video since the cursor" was only ever
+    // right while nothing else of the member's could land in between; a channel's own drop or a story
+    // made in another lane lands first and was handed over as "Here it is!", and the video that was
+    // asked for never showed in the chat. The older rule stays for a piece that carries no job at all —
+    // and only for those: a piece stamped by ANOTHER job is never anybody else's answer.
+    const select = { title: true, bodyJson: true } as const;
+    const safeJob = /^[A-Za-z0-9_-]{8,64}$/.test(jobId) ? jobId : "";
+    const mine = safeJob
+      ? await db.asset.findFirst({ where: { shopId: id.shop.id, type, metaJson: { contains: `"jobId":"${safeJob}"` } }, orderBy: { createdAt: "desc" }, select })
+      : null;
+    const asset = mine ?? await db.asset.findFirst({
+      where: {
+        shopId: id.shop.id, type, createdAt: { gte: new Date(cursor - 3000) },
+        AND: [...(metaKind ? [{ metaJson: { contains: metaKind } }] : []), { NOT: { metaJson: { contains: '"jobId":"' } } }],
+      },
+      orderBy: { createdAt: "desc" }, select,
     });
     let url = "";
     if (asset) { try { const b = JSON.parse(asset.bodyJson || "{}") as { videoUrl?: string; imageUrl?: string; audioUrl?: string; url?: string }; url = b.videoUrl || b.imageUrl || b.audioUrl || b.url || ""; } catch { /* */ } }

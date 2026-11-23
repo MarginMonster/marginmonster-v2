@@ -19,9 +19,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DESK_TYPES, LANES, LANE_LOOKAHEAD, PICTURE_TYPES, RETRY_REST_MS, aheadInLine, claimNext, laneOf, laneTypeFilter, lineOrder, resting, takeTurns } from "../app/lib/job-lanes.ts";
+import { DESK_TYPES, LANES, LANE_LOOKAHEAD, PICTURE_TYPES, RETRY_REST_MS, STORY_MARK, aheadInLine, claimNext, laneOf, laneWhere, lineOrder, resting, storyKindOf, takeTurns, type LaneWhere } from "../app/lib/job-lanes.ts";
 import { FFMPEG_TURN_WAIT_MS, TURN_BEAT_MS, asJob, ffmpegTurn, ffmpegTurnAlways, ffmpegTurns, inJob } from "../app/lib/ffmpeg-turn.ts";
-import { stageJobFits, stageKindFits } from "../app/lib/stage-kind.ts";
+import { queuedJob, queuedKindFits, stageFailureFits, stageJobFits, stageKindFits, stagePieceFits } from "../app/lib/stage-kind.ts";
 import { KEEP_MINUTES, foldSample, memoryNow, oneNumber, statLine } from "../app/lib/memwatch.server.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -48,22 +48,96 @@ test("every kind of job has a lane, and the lists name only kinds that exist", (
   assert.equal(laneOf("GENERATE_BRAND_PROFILE"), "desk");
   assert.equal(laneOf("SEND_WELCOME"), "desk");
   assert.equal(laneOf("SOMETHING_NOBODY_LISTED"), "render", "the careful lane is the default");
-  assert.deepEqual([...LANES], ["render", "picture", "desk"]);
+  assert.deepEqual([...LANES], ["render", "story", "picture", "desk"]);
 });
 
-test("a lane's filter selects its own kinds, and the render lane's is 'everything not named elsewhere'", () => {
-  assert.deepEqual(laneTypeFilter("picture"), { in: [...PICTURE_TYPES] });
-  assert.deepEqual(laneTypeFilter("desk"), { in: [...DESK_TYPES] });
-  assert.deepEqual(laneTypeFilter("render"), { notIn: [...PICTURE_TYPES, ...DESK_TYPES] });
-  // every kind is selected by exactly one lane
+/** What the database does with a lane's filter, done here: type (a name, a list, or "not in" a list), the
+ *  payload containing a piece of text, and NOT — which is "not BOTH": this kind of job AND that text. (A
+ *  video edit that carried the text is still a render; written as a bare "does not contain", it was
+ *  selected by no lane at all — this test is what found that.) */
+function selects(where: LaneWhere, job: { type: string; payload?: string | null }): boolean {
+  const t = where.type;
+  const typeOk = typeof t === "string" ? job.type === t : "in" in t ? t.in.includes(job.type) : !t.notIn.includes(job.type);
+  const text = job.payload || "";
+  return typeOk && (!where.payload || text.includes(where.payload.contains)) && (!where.NOT || !(job.type === where.NOT.type && text.includes(where.NOT.payload.contains)));
+}
+
+test("a lane's filter selects its own jobs — every job by exactly one lane", () => {
+  assert.deepEqual(laneWhere("picture"), { type: { in: [...PICTURE_TYPES] } });
+  assert.deepEqual(laneWhere("desk"), { type: { in: [...DESK_TYPES] } });
+  assert.deepEqual(laneWhere("story"), { type: "GENERATE_VIDEO_AD", payload: { contains: STORY_MARK } });
+  assert.deepEqual(laneWhere("render"), { type: { notIn: [...PICTURE_TYPES, ...DESK_TYPES] }, NOT: { type: "GENERATE_VIDEO_AD", payload: { contains: STORY_MARK } } });
+  const story = JSON.stringify({ section: "creator", contentType: "film", filmMode: "narrated", filmTemplate: "horror", __lane: "story" });
+  const film = JSON.stringify({ section: "creator", contentType: "film", filmTemplate: "horror" });
+  // every kind of job, with a film's payload, with a story's, and with none: one lane each, and the one laneOf names
   for (const t of JOB_TYPES) {
-    const hits = LANES.filter((lane) => {
-      const f = laneTypeFilter(lane) as { in?: string[]; notIn?: string[] };
-      return f.in ? f.in.includes(t) : !f.notIn!.includes(t);
-    });
-    assert.deepEqual(hits, [laneOf(t)], t);
+    for (const payload of [film, story, null]) {
+      const hits = LANES.filter((lane) => selects(laneWhere(lane), { type: t, payload }));
+      assert.deepEqual(hits, [laneOf(t, payload)], t + " " + (payload || "").slice(0, 40));
+    }
   }
+  assert.equal(laneOf("GENERATE_VIDEO_AD", story), "story");
+  assert.equal(laneOf("GENERATE_VIDEO_AD", film), "render");
+  assert.equal(laneOf("GENERATE_VIDEO_AD"), "render", "a video job nobody can read is a render");
+  assert.equal(laneOf("EDIT_VIDEO", story), "render", "only the kind of job that can be a story is asked");
+  assert.equal(laneOf("GENERATE_IMAGE_AD", story), "picture");
 });
+
+test("a story is known by the worker's own two tests, and the mark cannot be typed", () => {
+  const narratable = (k: string | undefined) => !!k && ["horror", "moral", "kidstv", "testmovie"].includes(k);
+  assert.equal(storyKindOf({ contentType: "faceless" }, narratable), "faceless");
+  assert.equal(storyKindOf({ contentType: "film", filmMode: "narrated", filmTemplate: "horror" }, narratable), "narrated");
+  assert.equal(storyKindOf({ contentType: "film", filmTemplate: "horror" }, narratable), null, "the same format, acted: a film");
+  assert.equal(storyKindOf({ contentType: "film", filmMode: "narrated", filmTemplate: "musicvideo" }, narratable), null, "told by a narrator only where the format can be");
+  assert.equal(storyKindOf({ contentType: "film", filmMode: "narrated" }, narratable), null);
+  assert.equal(storyKindOf({ contentType: "commercial" }, narratable), null);
+  assert.equal(storyKindOf({}, narratable), null);
+  // the mark is the field as JSON.stringify writes it…
+  assert.ok(JSON.stringify({ a: 1, __lane: "story" }).includes(STORY_MARK));
+  // …and a member cannot spell it: a quote inside anything they type is escaped
+  const typed = JSON.stringify({ contentType: "film", filmTopic: 'my story "__lane":"story" please', approvedTreatment: { title: '"__lane":"story"' } });
+  assert.ok(!typed.includes(STORY_MARK));
+  assert.equal(laneOf("GENERATE_VIDEO_AD", typed), "render");
+  // decided when the job is queued, with those tests, and decided AGAIN for a payload queued a second time
+  assert.ok(queue.includes("payload: JSON.stringify(await withLane(type, payload)),"));
+  const lane = queue.slice(queue.indexOf("async function withLane("), queue.indexOf("export async function processNextJob"));
+  assert.ok(lane.includes('if (type !== "GENERATE_VIDEO_AD") return payload;'));
+  assert.ok(lane.includes("const { __lane: _decidedBefore, ...rest } = payload;"), "an old mark is not trusted");
+  assert.ok(lane.includes('return storyKindOf(rest, narrates) ? { ...rest, __lane: "story" } : rest;'));
+  assert.ok(lane.includes("return rest; // could not tell: the careful lane"));
+  // the worker's dispatch is still those two tests, word for word
+  assert.ok(queue.includes('if (payload.contentType === "faceless") {'));
+  assert.ok(queue.includes('if (payload.contentType === "film") {'));
+  assert.ok(queue.includes('if (payload.filmMode === "narrated" && canNarrate(ft)) {'));
+  // and the story lane asks once more before it runs anything: a film can never run there
+  const guard = queue.slice(queue.indexOf('if (lane === "story") {'), queue.indexOf("// EVERYTHING THIS JOB DOES IS A JOB'S WORK"));
+  assert.ok(guard.includes("if (!storyKindOf(payload, canNarrate)) {"));
+  assert.ok(guard.includes('data: { status: "PENDING", attempts: { decrement: 1 }, payload: JSON.stringify(unmarked) },'), "back to waiting, its try handed back, the mark gone");
+  assert.ok(guard.includes("const { __lane: _mark, __jobId: _id, ...unmarked } = payload;"));
+  assert.ok(guard.includes("return true;"));
+});
+
+test("a story does not wait behind a film — and two stories still take turns", async () => {
+  const film = (id: string, shop: string, m: number): Row => ({ ...row(id, shop, "GENERATE_VIDEO_AD", m), payload: JSON.stringify({ contentType: "film", filmTemplate: "testmovie" }) });
+  const story = (id: string, shop: string, m: number): Row => ({ ...row(id, shop, "GENERATE_VIDEO_AD", m), payload: JSON.stringify({ contentType: "film", filmMode: "narrated", filmTemplate: "horror", __lane: "story" }) });
+  const faceless = (id: string, shop: string, m: number): Row => ({ ...row(id, shop, "GENERATE_VIDEO_AD", m), payload: JSON.stringify({ contentType: "faceless", topic: "octopus", __lane: "story" }) });
+  const old = (id: string, shop: string, m: number): Row => ({ ...row(id, shop, "GENERATE_VIDEO_AD", m), payload: JSON.stringify({ contentType: "faceless", topic: "queued before the mark existed" }) });
+  const rows = [film("film1", "A", 0), film("film2", "B", 1), story("story1", "B", 2), faceless("drop1", "C", 3), old("old1", "D", 4)];
+  const { door } = memoryQueue(rows);
+  const served = { render: new Map<string, number>(), story: new Map<string, number>() };
+  const [r1, s1] = await Promise.all([claimNext("render", door, served.render, 1000), claimNext("story", door, served.story, 1000)]);
+  assert.equal(r1?.id, "film1");
+  assert.equal(s1?.id, "story1", "the two-minute story starts now, not after two films");
+  // the story lane's next is the faceless drop; it never takes a film, and never the unmarked job
+  assert.equal((await claimNext("story", door, served.story, 2000))?.id, "drop1");
+  assert.equal(await claimNext("story", door, served.story, 3000), null);
+  // the render lane: the other film, then the job that carries no mark (the careful lane) — never a story
+  assert.equal((await claimNext("render", door, served.render, 2000))?.id, "film2");
+  assert.equal((await claimNext("render", door, served.render, 3000))?.id, "old1");
+  assert.equal(await claimNext("render", door, served.render, 4000), null);
+  assert.deepEqual(rows.filter((r) => r.status === "PENDING"), []);
+});
+
 
 // ---- 2. members take turns --------------------------------------------------------------------------------
 
@@ -118,7 +192,7 @@ test("a waiting piece knows how many are made before it — and its card says th
   // the Archive asks, and a piece that has not begun does not count down
   const archive = read("app", "routes", "web.archive.tsx");
   assert.ok(archive.includes('const inLine = jobs.filter((j) => j.status === "PENDING" && (!j.runAt || j.runAt.getTime() <= nowMs));'));
-  assert.ok(archive.includes("await placesInLine(inLine.map((j) => ({ id: j.id, type: j.type })))"));
+  assert.ok(archive.includes("await placesInLine(inLine.map((j) => ({ id: j.id, type: j.type, payload: j.payload })))"), "its own lane: a story is not behind the films");
   assert.ok(archive.includes('waiting: !failed && j.status === "PENDING", ahead: places.get(j.id) ?? null });'));
   assert.ok(archive.includes('{j.waiting ? inLineText(j.ahead, t) : <>{t("Rendering")} · '));
   assert.ok(archive.includes('{j.waiting ? t("In line") : <>'));
@@ -133,22 +207,23 @@ test("a waiting piece knows how many are made before it — and its card says th
   }
   const queueSrc = read("app", "lib", "job-queue.server.ts");
   assert.ok(queueSrc.includes("for (const j of mine) out.set(j.id, aheadInLine(j.id, waiting, lastServed[lane], inHand));"));
-  assert.ok(queueSrc.includes('db.job.count({ where: { status: "IN_PROGRESS", type } }),'), "the one in hand counts as ahead");
+  assert.ok(queueSrc.includes('db.job.count({ where: { status: "IN_PROGRESS", ...inLane } }),'), "the one in hand counts as ahead");
+  assert.ok(queueSrc.includes("const mine = jobs.filter((j) => laneOf(j.type, j.payload) === lane);"));
 });
 
 // ---- 2b. taking a job, against a queue in memory -----------------------------------------------------------
 
-type Row = { id: string; shopId: string; type: string; createdAt: Date; status: "PENDING" | "IN_PROGRESS" };
+type Row = { id: string; shopId: string; type: string; createdAt: Date; status: "PENDING" | "IN_PROGRESS"; payload?: string };
 
 /** The two database calls, as the real ones behave: `waiting` filters by kind and returns oldest first;
  *  `claim` succeeds only for the first caller to flip a PENDING row. */
 function memoryQueue(rows: Row[]) {
   const asked: Array<{ take: number }> = [];
   const door = {
-    async waiting(type: { in?: string[]; notIn?: string[] }, take: number) {
+    async waiting(lane: LaneWhere, take: number) {
       asked.push({ take });
       return rows
-        .filter((r) => r.status === "PENDING" && (type.in ? type.in.includes(r.type) : !type.notIn!.includes(r.type)))
+        .filter((r) => r.status === "PENDING" && selects(lane, r))
         .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
         .slice(0, take);
     },
@@ -268,11 +343,13 @@ test("only a job takes a turn — a thumbnail asked for by a web request does no
 });
 
 test("a job that is waiting its turn says it is alive", async () => {
+  // No clock in this test: the film's encode ends only when the waiting job has beaten three times, so the
+  // picture can only be drawn if the beats really happen WHILE it waits (every 10 ms here; a minute, live).
   let beats = 0;
-  const long = asJob(() => ffmpegTurn(async () => { await sleep(120); }));
+  let endFilm: () => void = () => {};
+  const long = asJob(() => ffmpegTurn(() => new Promise<void>((r) => { endFilm = r; })));
   await sleep(2);
-  // the picture job waits behind the film's encode, beating every 25 ms (a minute, in the real thing)
-  const waited = ffmpegTurnAlways(async () => "drawn", 5000, () => { beats++; }, 25);
+  const waited = ffmpegTurnAlways(async () => "drawn", 60_000, () => { beats++; if (beats === 3) endFilm(); }, 10);
   assert.equal(await waited, "drawn");
   await long;
   assert.ok(beats >= 3, "beat while it waited: " + beats);
@@ -387,7 +464,7 @@ test("the queue claims within a lane, in turn-taking order, with a slot per lane
   // taking a job is claimNext (tested above with a queue in memory); the queue hands it the two real calls
   const take = queue.slice(queue.indexOf("let job = await claimNext("), queue.indexOf("if (!job) return false;"));
   assert.ok(take.includes("lane,"), "its own lane");
-  assert.ok(take.includes('status: "PENDING",\n            attempts: { lt: MAX_ATTEMPTS },\n            OR: [{ runAt: null }, { runAt: { lte: new Date() } }],\n            type: type as { in: JobType[] } | { notIn: JobType[] },'), "only what could start now, of the lane's kinds");
+  assert.ok(take.includes('status: "PENDING",\n            attempts: { lt: MAX_ATTEMPTS },\n            OR: [{ runAt: null }, { runAt: { lte: new Date() } }],\n            ...(inLane as Prisma.JobWhereInput),'), "only what could start now, of this lane");
   assert.ok(take.includes('orderBy: { createdAt: "asc" },\n          take,'));
   // the claim is still the conditional update: only the caller that flipped the row owns the job
   assert.ok(take.includes('where: { id, status: "PENDING" },\n          data: { status: "IN_PROGRESS", attempts: { increment: 1 } },\n        })).count === 1,'));
@@ -476,7 +553,7 @@ test("the Stage waits for the piece of the kind it is making", () => {
   assert.equal(stageJobFits("photo", "video"), false);
   const studio = read("app", "routes", "web.studio.tsx");
   assert.ok(studio.includes("const fresh = d.recent.find((p) => p.media && !preIdsRef.current.includes(p.id) && ofKind(p));"));
-  assert.ok(studio.includes('const lg = (d.recentGens || []).find((g) => g.status === "FAILED" && stageJobFits(want, g.kind) && new Date(g.at).getTime() >= makingStartedRef.current - 15000);'));
+  assert.ok(studio.includes('const lg = (d.recentGens || []).find((g) => g.status === "FAILED" && stageFailureFits(watchedJobRef.current, want, g, makingStartedRef.current - 15000));'));
   assert.ok(studio.includes("take: 5,\n    select: { id: true, type: true, status: true, createdAt: true, lastError: true, payload: true },"), "the newest few jobs, not only the newest");
   assert.ok(studio.includes('const cooking = genRows.find((r) => (r.status === "PENDING" || r.status === "IN_PROGRESS")'), "a landed picture does not hide the video still cooking");
 });
@@ -539,4 +616,66 @@ test("a transcript request waits out “too many requests”, and members' pictu
   // the picture lane: the members' own jobs first, then the pictures nobody is waiting for
   const lane = worker.slice(worker.indexOf("const drains = LANES.map("), worker.indexOf("function tick()"));
   assert.ok(lane.indexOf("processed = await processNextJob(lane);") < lane.indexOf('if (lane === "picture") await backfillDeadImages()'));
+});
+
+// ---- 7. every piece says which job made it -----------------------------------------------------------------
+
+test("a finished piece carries its job, and what waits for “my piece” asks for exactly that", () => {
+  const img = read("app", "lib", "image-generation.server.ts");
+  const tag = img.slice(img.indexOf("export async function tagAssetSection("), img.indexOf("export type EditOp"));
+  assert.ok(tag.includes("export async function tagAssetSection(assetId: string | null | undefined, section: string | undefined, jobId?: string): Promise<void> {"));
+  assert.ok(tag.includes("if (!assetId || (!creator && !jobId)) return;"), "the job is written for every section");
+  assert.ok(tag.includes("const needJob = !!jobId && meta.jobId !== jobId;"));
+  assert.ok(tag.includes("if (needSection) meta.section = \"creator\";\n      if (needJob) meta.jobId = jobId;"));
+  assert.ok(tag.includes("where: { id: assetId, metaJson: prev }"), "still compare-and-swap on what was read");
+  // the worker hands the job to it wherever a piece is finished — ten places
+  assert.equal(queue.split("payload.__jobId as string | undefined);").length - 1, 10);
+  assert.ok(queue.includes("await tagAssetSection(editedId, undefined, payload.__jobId as string | undefined);"), "a photo edit");
+  assert.ok(queue.includes("await tagAssetSection(createdAssetId, undefined, payload.__jobId as string | undefined);"), "a described picture");
+  assert.ok(queue.includes("payload.__jobId = job.id;"));
+  assert.ok(!/tagAssetSection\([^)]*payload\.section as string \| undefined\);/.test(queue), "no call left without the job");
+
+  // HELPURR: the piece this job made; the old rule only for a piece that carries no job at all
+  const buddy = read("app", "routes", "api.buddy.tsx");
+  const poll = buddy.slice(buddy.indexOf('if (body.intent === "makeStatus") {'), buddy.indexOf("if (url) return json({ done: true"));
+  assert.ok(poll.includes('const safeJob = /^[A-Za-z0-9_-]{8,64}$/.test(jobId) ? jobId : "";'), "an id is an id before it goes into a search");
+  assert.ok(poll.includes("? await db.asset.findFirst({ where: { shopId: id.shop.id, type, metaJson: { contains: `\"jobId\":\"${safeJob}\"` } }, orderBy: { createdAt: \"desc\" }, select })"));
+  assert.ok(poll.includes("const asset = mine ?? await db.asset.findFirst({"));
+  assert.ok(poll.includes("{ NOT: { metaJson: { contains: '\"jobId\":\"' } } }"), "a piece stamped by another job is never the answer");
+
+  // THE STAGE: the job it queued
+  assert.equal(queuedKindFits("video", "video"), true);
+  assert.equal(queuedKindFits("videoedit", "video"), true);
+  assert.equal(queuedKindFits("video", "faceless"), false, "a faceless video is its own kind — and its own lane");
+  assert.equal(queuedKindFits("faceless", "faceless"), true);
+  assert.equal(queuedKindFits("music", "song"), true);
+  assert.equal(queuedKindFits("image", "photo"), true);
+  assert.equal(queuedKindFits("article", "image"), false);
+  const at = (sec: number) => new Date(Date.UTC(2026, 10, 23, 15, 0, sec)).toISOString();
+  const gens = [{ id: "helpurr-picture", kind: "image", at: at(32) }, { id: "my-video", kind: "video", at: at(30) }, { id: "older-video", kind: "video", at: at(1) }];
+  assert.equal(queuedJob("video", gens, Date.parse(at(10))), "my-video", "the newest job OF THAT KIND, not the newest job");
+  assert.equal(queuedJob("faceless", gens, Date.parse(at(10))), null, "none of that kind: not guessed");
+  assert.equal(queuedJob("video", gens, Date.parse(at(40))), null, "nothing new enough");
+  // the Movie Maker film that lands first is a Creator video too — it is not the answer
+  assert.equal(stagePieceFits("my-video", "video", { jobId: "a-film-queued-earlier", video: true, audio: false }), false);
+  assert.equal(stagePieceFits("my-video", "video", { jobId: "my-video", video: true, audio: false }), true);
+  assert.equal(stagePieceFits("my-video", "video", { jobId: null, video: true, audio: false }), true, "a piece that says nothing: the kind rule, as before");
+  assert.equal(stagePieceFits("my-video", "video", { jobId: null, video: false, audio: false }), false);
+  assert.equal(stagePieceFits(null, "video", { jobId: "whoever", video: true, audio: false }), true, "a page that does not know its job: the kind rule");
+  assert.equal(stageFailureFits("my-video", "video", { id: "helpurr-picture", kind: "image", at: at(32) }, 0), false);
+  assert.equal(stageFailureFits("my-video", "video", { id: "another-video", kind: "video", at: at(33) }, 0), false, "another video failing is not this one failing");
+  assert.equal(stageFailureFits("my-video", "video", { id: "my-video", kind: "video", at: at(30) }, 0), true);
+  assert.equal(stageFailureFits(null, "video", { id: "x", kind: "video", at: at(30) }, Date.parse(at(20))), true);
+  assert.equal(stageFailureFits(null, "video", { id: "x", kind: "video", at: at(5) }, Date.parse(at(20))), false);
+  const studio = read("app", "routes", "web.studio.tsx");
+  assert.ok(studio.includes('watchedJobRef.current = queuedJob(String((actionData as { queued?: string }).queued || ""), d.recentGens || [], Date.now() - 20_000);'));
+  assert.ok(studio.includes("watchedJobRef.current = f.id; // picked back up after a reload: this is the job"));
+  assert.ok(studio.includes("stagePieceFits(watchedJobRef.current, want, { jobId: p.jobId, video: !!p.isVideo, audio: !!p.isAudio })"));
+  assert.ok(studio.includes("const recentGens = genRows.map((r) => ({ id: r.id, status: r.status as string,"));
+  assert.ok(studio.includes("return { id: a.id, jobId: madeBy, isVideo: a.type === \"VIDEO_AD\","));
+});
+
+test("a narrated story's card does not promise ten minutes", () => {
+  const archive = read("app", "routes", "web.archive.tsx");
+  assert.ok(archive.includes('const typical = (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film" && p.filmMode === "narrated")\n      ? 60 + (typeof p.filmScenes === "number" ? p.filmScenes : 6) * 12\n      : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film")\n      ? Math.max(600,'));
 });

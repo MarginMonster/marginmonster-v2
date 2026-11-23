@@ -9,20 +9,42 @@
  * once took the server down (2026-11-03 — the encodes together went past its memory). That is about video
  * encodes. It says nothing about a picture drawn by a remote model, or a page of text.
  *
- * So: three lanes, and one job at a time IN EACH.
- *   render  — everything that encodes video. Exactly as before: never two at once.
+ * So: lanes, and one job at a time IN EACH.
+ *   render  — films, music videos, commercials, ads, video edits: many clips from a video model, 10 to 65
+ *             minutes. Exactly as before: never two at once.
+ *   story   — a narrated story or a faceless video: a script, a voice, pictures, ONE encode — a minute or
+ *             two. It used to wait behind whatever film was rendering (see STORY_MARK below).
  *   picture — pictures, songs, presenter and companion forges: a remote model and a single frame drawn here.
  *   desk    — words and network only: catalogue imports, the brand profile, blog posts, emails, launches.
- * What takes the memory is still never doubled: every encode waits its turn (ffmpeg-turn.ts).
+ * What takes the memory is still never doubled: every encode waits its turn (ffmpeg-turn.ts). Measured
+ * on the live server, 2026-11-23 (limit 2,048 MB): idle about 110 MB; a story's encode about 360 MB with
+ * a picture being made beside it; the highest minute of another member's render 538 MB.
  *
  * A job type nobody listed here runs in the render lane. The careful lane is the default, so a new kind
  * of job cannot start overlapping a render because somebody forgot this file.
  *
  * Pure: no database, no clock of its own. The queue (job-queue.server.ts) asks it. */
 
-export type Lane = "render" | "picture" | "desk";
+export type Lane = "render" | "story" | "picture" | "desk";
 
-export const LANES: readonly Lane[] = ["render", "picture", "desk"];
+export const LANES: readonly Lane[] = ["render", "story", "picture", "desk"];
+
+/** HOW A STORY JOB IS KNOWN. A narrated story and a faceless video are GENERATE_VIDEO_AD jobs like a film;
+ *  what tells them apart is inside the payload, where the database cannot reason — but it can look for a
+ *  piece of text. So the decision is made ONCE, when the job is queued (job-queue → enqueueJob, with
+ *  storyKindOf below), and written into the payload as `__lane: "story"`. This is that field exactly as
+ *  JSON.stringify writes it; a quote inside a typed value is always escaped, so no member's words can
+ *  spell it. A video job without the mark — every job queued before this existed — is a render. */
+export const STORY_MARK = '"__lane":"story"';
+
+/** Is this the payload of a story job — and which kind? THE SAME TWO TESTS THE WORKER USES to choose the
+ *  pipeline (job-queue → runJob): a faceless video; a film told by a narrator, in a format that can be.
+ *  `canNarrate` is film-engine's (handed in: this file knows no formats). */
+export function storyKindOf(p: { contentType?: unknown; filmMode?: unknown; filmTemplate?: unknown }, canNarrate: (template: string | undefined) => boolean): "faceless" | "narrated" | null {
+  if (p.contentType === "faceless") return "faceless";
+  if (p.contentType === "film" && p.filmMode === "narrated" && canNarrate(typeof p.filmTemplate === "string" ? p.filmTemplate : undefined)) return "narrated";
+  return null;
+}
 
 /** A remote model does the work; what happens here is a download and a single frame. */
 export const PICTURE_TYPES: readonly string[] = ["GENERATE_IMAGE_AD", "GENERATE_SONG", "FORGE_COMPANION", "FORGE_CUSTOM_AVATAR"];
@@ -40,18 +62,31 @@ export const DESK_TYPES: readonly string[] = [
   "DECISIONING_PASS",
 ];
 
-export function laneOf(type: string): Lane {
+/** The lane a job runs in. `payload` is the job's payload as stored (text); without it a video job is a render. */
+export function laneOf(type: string, payload?: string | null): Lane {
   if (PICTURE_TYPES.includes(type)) return "picture";
   if (DESK_TYPES.includes(type)) return "desk";
+  if (type === "GENERATE_VIDEO_AD" && typeof payload === "string" && payload.includes(STORY_MARK)) return "story";
   return "render";
 }
 
-/** The `type` filter that selects a lane's jobs. The render lane is "everything not named elsewhere",
- *  so a type added to the database and to nothing else lands there. */
-export function laneTypeFilter(lane: Lane): { in: string[] } | { notIn: string[] } {
-  if (lane === "picture") return { in: [...PICTURE_TYPES] };
-  if (lane === "desk") return { in: [...DESK_TYPES] };
-  return { notIn: [...PICTURE_TYPES, ...DESK_TYPES] };
+/** What selects a lane's jobs in the database — the same answer as laneOf, for every job. The render
+ *  lane is "everything not named elsewhere": a type added to the database and to nothing else lands
+ *  there, and so does a video job that carries no mark. The two video lanes are EXCLUSIVE: a story is
+ *  never taken by the render lane (two stories would run at once), nor a film by the story lane. */
+export type LaneWhere = {
+  type: string | { in: string[] } | { notIn: string[] };
+  payload?: { contains: string };
+  NOT?: { type: string; payload: { contains: string } };
+};
+export function laneWhere(lane: Lane): LaneWhere {
+  if (lane === "picture") return { type: { in: [...PICTURE_TYPES] } };
+  if (lane === "desk") return { type: { in: [...DESK_TYPES] } };
+  if (lane === "story") return { type: "GENERATE_VIDEO_AD", payload: { contains: STORY_MARK } };
+  // NOT (a video job AND marked): the mark means something on that kind of job only. Written as a bare
+  // "payload does not contain the mark", a job of any OTHER kind that carried the text would have been
+  // selected by no lane at all, and waited for ever.
+  return { type: { notIn: [...PICTURE_TYPES, ...DESK_TYPES] }, NOT: { type: "GENERATE_VIDEO_AD", payload: { contains: STORY_MARK } } };
 }
 
 export type Waiting = { id: string; shopId: string; createdAt: Date | number | string; attempts?: number; updatedAt?: Date | number | string };
@@ -129,8 +164,8 @@ export function aheadInLine<T extends Waiting>(id: string, waiting: T[], lastSer
 /** The two things a lane needs from the queue. The real ones are database calls (job-queue.server.ts);
  *  handed in, so that taking a job can be tested without a database. */
 export type QueueDoor<T extends Waiting> = {
-  /** Jobs that could start now, of the kinds the filter selects — oldest first, at most `take`. */
-  waiting(type: ReturnType<typeof laneTypeFilter>, take: number): Promise<T[]>;
+  /** Jobs that could start now, of the lane this selects — oldest first, at most `take`. */
+  waiting(lane: LaneWhere, take: number): Promise<T[]>;
   /** Try to take one. True ONLY for the caller that changed it from waiting to in hand: reading a job
    *  is not taking it (two ticks once read the same row and the same paid video was rendered twice). */
   claim(id: string): Promise<boolean>;
@@ -140,7 +175,7 @@ export type QueueDoor<T extends Waiting> = {
  *  that is won. Null when nothing is waiting or every claim was lost to somebody else. Only a won claim
  *  counts as that member having been served. */
 export async function claimNext<T extends Waiting>(lane: Lane, door: QueueDoor<T>, lastServed: Map<string, number>, now: number = Date.now()): Promise<T | null> {
-  const waiting = (await door.waiting(laneTypeFilter(lane), LANE_LOOKAHEAD)).filter((j) => !resting(j, now));
+  const waiting = (await door.waiting(laneWhere(lane), LANE_LOOKAHEAD)).filter((j) => !resting(j, now));
   for (const candidate of takeTurns(waiting, lastServed)) {
     if (await door.claim(candidate.id)) {
       lastServed.set(candidate.shopId, now);

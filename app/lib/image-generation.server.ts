@@ -4426,21 +4426,31 @@ export async function editSubjectIntoScene(subjectUrl: string, prompt: string, m
  *  Marketing. Merges into metaJson (no schema change). Only "creator" is tagged —
  *  the Marketing archive is everything NOT tagged creator, so marketing + legacy
  *  need no write. Best-effort: a tag failure must never fail a paid generation. */
-export async function tagAssetSection(assetId: string | null | undefined, section: string | undefined): Promise<void> {
-  if (!assetId || section !== "creator") return;
+/** …AND WHICH JOB MADE IT (`jobId`, 2026-11-23). A piece carried nothing that said which request it
+ *  answered, so everything that waits for "my piece" went by kind and time — "the newest video since I
+ *  asked". That was only ever right while one job ran at a time and nothing else of the member's was in
+ *  the line: a film queued earlier, a channel's own drop, and now any job in another lane lands first
+ *  and was taken for the answer. With the job's id on the piece the Stage and Helpurr can ask for
+ *  exactly theirs. Written for every section; the section tag is still for Creator pieces only. */
+export async function tagAssetSection(assetId: string | null | undefined, section: string | undefined, jobId?: string): Promise<void> {
+  const creator = section === "creator";
+  if (!assetId || (!creator && !jobId)) return;
   // Compare-and-swap, not a blind write: the worker and every HTTP route share
   // one event loop, so a click/caption write could land between our read and
   // write. updateMany pins the metaJson we parsed; a miss means it changed under
-  // us, so we re-read and retry once rather than clobbering the other write.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // us, so we re-read and retry rather than clobbering the other write.
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const a = await db.asset.findUnique({ where: { id: assetId }, select: { metaJson: true } });
       if (!a) return;
       const prev = a.metaJson || "{}";
       let meta: Record<string, unknown> = {};
       try { meta = JSON.parse(prev); } catch { /* ignore */ }
-      if (meta.section === "creator") return;
-      meta.section = "creator";
+      const needSection = creator && meta.section !== "creator";
+      const needJob = !!jobId && meta.jobId !== jobId;
+      if (!needSection && !needJob) return;
+      if (needSection) meta.section = "creator";
+      if (needJob) meta.jobId = jobId;
       const r = await db.asset.updateMany({ where: { id: assetId, metaJson: prev }, data: { metaJson: JSON.stringify(meta) } });
       if (r.count > 0) return;
     } catch (e) {
