@@ -1912,7 +1912,7 @@ export default function WebArchive() {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   // ?tab= deep link → initial tab.
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const startTab = (["video", "image", "music", "blog", "stills"] as const).find((t) => t === searchParams.get("tab"));
   const [tab, setTab] = useState<ATab>(startTab || "video");
   // Quick-filter within a tab. Up to 600 pieces land here, and the two things a
@@ -1941,6 +1941,20 @@ export default function WebArchive() {
   const colHref = (id: string) => `?tab=${tab}${whenQ}${q ? `&q=${encodeURIComponent(q)}` : ""}${id ? `&col=${encodeURIComponent(id)}` : ""}${isCreator ? "&section=creator" : ""}`;
   const whenHref = (k: AWhen) => `?tab=${tab}${k !== "all" ? `&when=${k}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}${colQ}${isCreator ? "&section=creator" : ""}`;
   const [viewer, setViewer] = useState<(typeof assets)[number] | null>(null);
+  // A PIECE CAN BE OPENED BY ITS ADDRESS: /web/archive?open=<id>. The shell's "… is ready · Watch it" notice
+  // (web.tsx → ReadyNotice) links here, so the film that just finished opens in the viewer instead of the
+  // member hunting for its card. Once only, for a piece in the list this page loaded (this shop's own); the
+  // address is then tidied through the router, keeping every other filter, so a refresh does not re-open it.
+  const openId = searchParams.get("open");
+  const openedById = useRef(false);
+  useEffect(() => {
+    if (!openId || openedById.current) return;
+    const it = assets.find((a) => a.id === openId);
+    if (!it) return; // not among the loaded pieces (yet): the page's own refresh while cooking tries again
+    openedById.current = true;
+    setViewer(it);
+    setSearchParams((p) => { const n = new URLSearchParams(p); n.delete("open"); return n; }, { replace: true, preventScrollReset: true });
+  }, [openId, assets]); // eslint-disable-line react-hooks/exhaustive-deps
   // "Every size" panel — closed again whenever a different piece opens
   const [sizesFor, setSizesFor] = useState<string | null>(null);
   // the Share link panel, the same way

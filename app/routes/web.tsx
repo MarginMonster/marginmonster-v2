@@ -16,6 +16,8 @@ import { Familiar } from "../components/Familiar";
 import { LangToggle } from "../components/LangToggle";
 import { UI_LANG_NATIVE, readUiLang, tr } from "../lib/ui-i18n";
 import { useT, useUiLang } from "../lib/ui-lang";
+import { cookingCount } from "../lib/ready-notice.server";
+import { READY_POLL_MS, READY_SEEN_KEY, READY_SHOW_MS, pieceToAnnounce, readyName, seenAfter, type ReadyPiece, type ReadyState } from "../lib/ready-notice";
 
 const EMPTY_HUD = {
   name: "", email: "", level: 1, xpInto: 0, xpNeed: 40, xpPct: 0,
@@ -43,7 +45,7 @@ const writeModeCookie = (m: ShellMode) => {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const id = await getWebIdentity(request);
   const savedMode = readModeCookie(request.headers.get("Cookie"));
-  if (!id) return json({ authed: false, hud: EMPTY_HUD, isAdmin: false, savedMode });
+  if (!id) return json({ authed: false, hud: EMPTY_HUD, isAdmin: false, savedMode, cooking: 0, cookingAt: 0 });
   const { account, shop } = id;
   const lang = readUiLang(request);
   const plan = shop.activePlan;
@@ -71,6 +73,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({
     authed: true,
     savedMode,
+    // how many pieces are rendering right now — while it is above zero the shell keeps looking for the
+    // finished one, to say "… is ready" on whatever page the member is on (lib/ready-notice.ts)
+    cooking: await cookingCount(shop.id),
+    // …and when this was counted: the loader runs again after every action, so a film sent off while
+    // another is still rendering restarts the looking (the count alone would not change from "some")
+    cookingAt: Date.now(),
     isAdmin: isAdminEmail(account.email),
     hud: {
       name: account.name?.trim() || account.email.split("@")[0],
@@ -114,8 +122,68 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 /** Every page that is part of auto-posting — the nav's "Auto-post" tab is lit on all of them. */
 const AUTOPOST_PATHS = ["/web/autopost", "/web/connect", "/web/channels", "/web/product-channels", "/web/campaigns"];
 
+/* "… IS READY" — said on whatever page the member is on (lib/ready-notice.ts has the why and the rules).
+ *
+ * One look when the shell loads, and then every twenty seconds for as long as something is rendering. The
+ * shell's own loader says whether anything is (`cooking`), and it runs again after every action — so the
+ * looking starts the moment a film is sent off from any page, and stops by itself when the last one lands.
+ * What this browser has already been told about is kept in localStorage; with no storage nothing is ever
+ * announced (silence is the safe side of a nicety).
+ */
+function ReadyNotice({ cooking, stamp }: { cooking: number; stamp: number }) {
+  const t = useT();
+  const loc = useLocation();
+  const [piece, setPiece] = useState<ReadyPiece | null>(null);
+  const path = useRef(loc.pathname);
+  path.current = loc.pathname;
+  // one look when the shell loads; while something is rendering, a fresh round after every shell reload
+  const round = cooking > 0 ? stamp : 0;
+  useEffect(() => {
+    let stopped = false;
+    let timer: number | undefined;
+    const look = async (): Promise<number> => {
+      try {
+        const r = await fetch("/web/ready", { headers: { Accept: "application/json" } });
+        if (!r.ok) return 0;
+        const cur = (await r.json()) as ReadyState;
+        let seen: string | null = null;
+        let canRemember = true;
+        try { seen = window.localStorage.getItem(READY_SEEN_KEY); } catch { canRemember = false; }
+        const found = canRemember ? pieceToAnnounce(cur, seen, Date.now(), path.current === "/web/archive") : null;
+        try { window.localStorage.setItem(READY_SEEN_KEY, seenAfter(cur, seen)); } catch { /* nothing is remembered */ }
+        if (found && !stopped) setPiece(found);
+        return cur.cooking;
+      } catch {
+        return 0;
+      }
+    };
+    const loop = async () => {
+      const left = await look();
+      if (!stopped && left > 0) timer = window.setTimeout(loop, READY_POLL_MS);
+    };
+    void loop();
+    return () => { stopped = true; if (timer) window.clearTimeout(timer); };
+  }, [round]);
+  // It leaves by itself; and arriving at the Archive (where the piece is in plain view) takes it down too.
+  useEffect(() => {
+    if (!piece) return;
+    const id = window.setTimeout(() => setPiece(null), READY_SHOW_MS);
+    return () => window.clearTimeout(id);
+  }, [piece]);
+  useEffect(() => { if (loc.pathname === "/web/archive") setPiece(null); }, [loc.pathname]);
+  if (!piece) return null;
+  return (
+    <div className="wb-ready" role="status" aria-live="polite">
+      <span className="wb-ready-ic" aria-hidden="true"><Ico n="check" /></span>
+      <span className="wb-ready-txt">{t("“{name}” is ready.", { name: readyName(piece.title) })}</span>
+      <Link className="wb-ready-go" to={`/web/archive?open=${encodeURIComponent(piece.id)}`} onClick={() => setPiece(null)}>{t("Watch it")}</Link>
+      <button type="button" className="wb-ready-x" aria-label={t("Dismiss")} onClick={() => setPiece(null)}>✕</button>
+    </div>
+  );
+}
+
 export default function WebLayout() {
-  const { authed, hud, isAdmin, savedMode } = useLoaderData<typeof loader>();
+  const { authed, hud, isAdmin, savedMode, cooking, cookingAt } = useLoaderData<typeof loader>();
   const loc = useLocation();
   const tab = (p: string) => (loc.pathname === p ? "wb-tab on" : "wb-tab");
   // UI display language — the header pill. t() translates chrome; the pill
@@ -204,6 +272,7 @@ export default function WebLayout() {
         <main className={loc.pathname === "/web/home" ? "wb-main wb-main-bare" : "wb-main"}>
           <Outlet context={{ mode, setMode: chooseMode }} />
         </main>
+        {authed && <ReadyNotice cooking={cooking} stamp={cookingAt} />}
         {/* Phone navigation — a FLOATING bottom tab bar (Facebook-style pill).
             CSS shows it only on phones, where the top tab row is hidden.
 
@@ -1913,6 +1982,25 @@ body{font-family:Inter,-apple-system,sans-serif;}
   .ws-tiles,.ws-tiles.styles,.ws-tiles.fmt,.ws-tiles.two{gap:8px;}
   .ws-tile-sub{display:none;}
 }
+
+/* ---- "… is ready" — a finished film, announced on any page (ReadyNotice) ---- */
+.wb-ready{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:10700;display:flex;align-items:center;gap:10px;max-width:min(560px,calc(100vw - 32px));box-sizing:border-box;background:#14201A;color:#fff;font-family:Inter,-apple-system,sans-serif;font-size:13.5px;font-weight:600;line-height:1.35;padding:10px 10px 10px 16px;border-radius:14px;box-shadow:0 14px 40px rgba(10,14,12,.4);animation:wbReadyIn .2s ease both;}
+@keyframes wbReadyIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+.wb-ready-ic{color:#8FE3B4;display:inline-grid;place-items:center;flex:0 0 auto;}
+.wb-ready-txt{min-width:0;overflow-wrap:anywhere;}
+.wb-ready-go{flex:0 0 auto;display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border-radius:10px;background:#8FE3B4;color:#0B2A1A;font-weight:800;text-decoration:none;white-space:nowrap;}
+.wb-ready-go:hover{background:#A9EDC6;}
+.wb-ready-x{flex:0 0 auto;width:36px;height:36px;border:0;border-radius:50%;background:transparent;color:#C9D3CC;font-size:13px;cursor:pointer;}
+.wb-ready-x:hover{background:rgba(255,255,255,.1);color:#fff;}
+.wb-ready-go:focus-visible,.wb-ready-x:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+/* On a phone it sits above the floating tab bar (which the page keeps 98px clear for), edge to edge. */
+@media(max-width:760px){
+  .wb-ready{left:16px;right:16px;max-width:none;transform:none;bottom:calc(98px + env(safe-area-inset-bottom,0px));animation-name:wbReadyInPhone;}
+  .wb-ready-go,.wb-ready-x{min-height:44px;}
+  .wb-ready-x{width:44px;height:44px;}
+  @keyframes wbReadyInPhone{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+}
+@media(prefers-reduced-motion:reduce){.wb-ready{animation:none;}}
 
 /* ---- Helpurr — the AI helper (floating sidekick) ---- */
 .mm-fab{position:fixed;z-index:10600;bottom:30px;right:20px;width:66px;height:66px;border:0;cursor:pointer;padding:0;background:transparent;transition:transform .15s;}
