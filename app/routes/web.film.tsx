@@ -5,7 +5,7 @@
  * estimateFilmTokens — the SAME function quotes and charges). Gated at
  * "creatorvideo" (all plans). */
 
-import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction, type SerializeFrom } from "@remix-run/node";
 import { Form, useActionData, useFetcher, useLoaderData, useNavigation } from "@remix-run/react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { lookLabel } from "../lib/avatar-looks";
@@ -24,7 +24,7 @@ import { enqueueJob } from "../lib/job-queue.server";
 import { estimateFilmTokens, FILM_PER_SCENE, FILM_BASE } from "../lib/plan-config";
 import { externalOrigin } from "../lib/origin.server";
 import { AVATAR_VOICES, AVATAR_VOICE_IDS, autoCastVoices } from "../lib/avatar-voice-catalog";
-import { CHARACTER_VOICES, characterVoiceSample, isCharacterVoice } from "../lib/character-voices";
+import { CHARACTER_VOICES, characterVoice, characterVoiceSample, isCharacterVoice } from "../lib/character-voices";
 import { GENRE_PACE, MV_DEFAULT_SECONDS, MV_MAX_SECONDS, MV_SECONDS, PACES, PACE_KEYS, cutCount, defaultRole, isPace, lengthLabel, mvBillScenes, paceFor, sceneCountFor, sceneSecondsFor, sceneSecondsOf, shotSlot, type Pace } from "../lib/mv-pace";
 import { MAX_COSTARS, sceneCast, singerOf } from "../lib/mv-cast";
 import { FEATURE_MIN_SECONDS } from "../lib/mv-feature";
@@ -32,7 +32,11 @@ import type { Recast } from "../lib/mv-recast";
 import { MV_DRAFT_KEY, draftScenes, packDraft, readDraft, type MvDraft } from "../lib/mv-draft";
 import { FILM_HEROES, heroById, heroesFor } from "../lib/film-heroes";
 import { CAPTION_STYLES, captionStyleOf, type CaptionStyle } from "../lib/narrated-core";
-import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
+import { DESIGNED_VOICES, LIVE_AVATARS, OUTFITS, STOCK_CHARACTERS, avatarImg, type Avatar } from "../lib/avatars";
+import { stockCut, stockLooks, stockSpin, type Spin } from "../lib/presenter-kits";
+import { CastFigure, CastHoverCard, CastIdCard, CAST_ID_CSS, castAgeText, castSentence, idCardOf, useCastPeek, type CastCardSource } from "../components/CastIdCard";
+import { SPIN_STAGE_CSS } from "../components/SpinStage";
+import { useModalA11y } from "../lib/use-modal-a11y";
 import { favouritesFirst } from "../lib/favourites";
 import { nameTok } from "../lib/character-prompts";
 
@@ -91,10 +95,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // the looks saved for this shop's presenters (outfits made in the wardrobe, here or on another device)
   const { avatarLooksFor } = await import("../lib/avatar-looks.server");
   const savedLooks = await avatarLooksFor(shop.id);
+  // the shop's own cloned voices ("My voices") — offered in the cast's voice menu above the stock ones
+  const myVoices = await (await import("../lib/voice-clone.server")).shopVoiceClones(shop.id);
+  // THE ID CARD of each built-in face (app/components/CastIdCard.tsx): what the Presenters section's card
+  // says, from the same source — the cast's own record, the voice the shop gave them, their kit. Text and
+  // counts only: no pictures but the cut-out, and of the turning figure only where its frames are (they
+  // load when a card is shown, never before). A face the shop made itself has no card here.
+  const cardOf = (a: Avatar): (Omit<CastCardSource, "id" | "name" | "kind" | "custom" | "signature"> & { signature: boolean; cut: string | null; spin: Spin | null }) => {
+    const vid = stockVoice[a.id] || a.voiceId || "";
+    const own = myVoices.find((v) => v.voiceId === vid);
+    const outfits = Math.min(OUTFITS.length, stockLooks(a.id));
+    return {
+      vibe: a.vibe, about: castSentence(a.desc), age: castAgeText(a.desc), energy: a.energy,
+      voice: own ? own.label : characterVoice(vid)?.label || AVATAR_VOICES.find((v) => v.id === vid)?.label || "",
+      voiceOwn: !!own, signature: DESIGNED_VOICES.has(a.id),
+      outfits: outfits + (savedLooks[a.id] || []).length,
+      has3d: Array.from({ length: outfits }, (_, v) => stockSpin(a.id, v)).some(Boolean),
+      cut: stockCut(a.id, 0), spin: stockSpin(a.id, 0),
+    };
+  };
   const roster = favouritesFirst([
-    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null, sing: !!c.voiceId && !isCharacterVoice(c.voiceId), kind: (c.kind || "person") as "person" | "cartoon" | "monster", look: (c.desc || "").slice(0, 220) })),
-    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null, sing: builtInCanSing(a), kind: "person" as const, look: (a.desc || "").slice(0, 220) })),
-    ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || a.voiceId || null, sing: false, kind: (a.kind || "person") as "person" | "cartoon" | "monster", look: (a.desc || "").slice(0, 220) })),
+    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img, custom: true, gender: c.gender === "f" ? "f" : "m", voiceId: c.voiceId || null, sing: !!c.voiceId && !isCharacterVoice(c.voiceId), kind: (c.kind || "person") as "person" | "cartoon" | "monster", look: (c.desc || "").slice(0, 220), card: null })),
+    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || null, sing: builtInCanSing(a), kind: "person" as const, look: (a.desc || "").slice(0, 220), card: cardOf(a) })),
+    ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), custom: false, gender: a.gender, voiceId: stockVoice[a.id] || a.voiceId || null, sing: false, kind: (a.kind || "person") as "person" | "cartoon" | "monster", look: (a.desc || "").slice(0, 220), card: cardOf(a) })),
   ], favs).slice(0, 70);
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
@@ -114,8 +137,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     products,
     gallery,
     voices: AVATAR_VOICES.map((v) => ({ id: v.id, label: v.label, blurb: v.blurb, gender: v.gender })),
-    // the shop's own cloned voices ("My voices") — offered in the cast's voice menu above the stock ones
-    myVoices: await (await import("../lib/voice-clone.server")).shopVoiceClones(shop.id),
+    myVoices,
     perScene: FILM_PER_SCENE,
     base: FILM_BASE,
     // NARRATED stories: which formats can be told by a narrator, and how long one may be
@@ -1042,6 +1064,65 @@ function LoopCover({ k }: { k: string }) {
   );
 }
 
+/** One face of the roster, as the page has it. */
+type RosterFace = SerializeFrom<typeof loader>["roster"][number];
+/** A face a picker offers, as its ID card needs it: who they are, and what picking them does THERE. */
+type PeekTarget = { r: RosterFace; picked: boolean; pick: () => void; disabled: boolean };
+
+/** What a face's ID card shows — through idCardOf, the one mapping the Presenters section uses too. */
+function peekCard(x: PeekTarget, t: ReturnType<typeof useT>) {
+  const c = x.r.card;
+  if (!c) return null;
+  return {
+    ...idCardOf({ ...c, id: x.r.id, name: x.r.name, kind: x.r.kind, custom: x.r.custom }, t),
+    // their figure turning on the card — its frames load only now, when a card is shown
+    figure: <CastFigure spin={c.spin} img={c.cut || x.r.img} name={x.r.name} />,
+  };
+}
+
+/** THE CAST ID CARD of the Movie Maker's pickers: ONE layer for all of them (see `peek` in FilmStudio).
+ *  With a mouse, the card floats beside the face pointed at; after a finger's hold, the same card opens
+ *  as a sheet. Both portal themselves to <body>. */
+function CastPeek({ peek, targets }: { peek: ReturnType<typeof useCastPeek>; targets: Record<string, PeekTarget> }) {
+  const t = useT();
+  const held = peek.held ? targets[peek.held.id] : undefined;
+  const pointed = !held && peek.at ? targets[peek.at.id] : undefined;
+  // the face that was held is not on the page any more (its picker closed under it): nothing to show
+  useEffect(() => { if (peek.held && !held) peek.close(); });
+  if (held) return <CastPeekSheet key={peek.held?.id} x={held} onClose={peek.close} />;
+  const card = pointed ? peekCard(pointed, t) : null;
+  return card && peek.at ? <CastHoverCard key={peek.at.id} anchor={peek.at.anchor}><CastIdCard size="mini" {...card} /></CastHoverCard> : null;
+}
+
+/** The card as a sheet over the page, for a finger: the card, a close button, and ONE button that picks
+ *  them ("Picked" when they already are). */
+function CastPeekSheet({ x, onClose }: { x: PeekTarget; onClose: () => void }) {
+  const t = useT();
+  const ref = useModalA11y<HTMLDivElement>(true, onClose);
+  // The finger that opened this is still on the glass. Whatever its lifting does is not a choice made
+  // HERE: nothing in the sheet answers a click until a press has started inside it (a keyboard's click,
+  // detail 0, always counts).
+  const armed = useRef(false);
+  const card = peekCard(x, t);
+  if (!card) return null;
+  return createPortal(
+    <div className="fs-peek" onPointerDownCapture={() => { armed.current = true; }}
+      onClickCapture={(e) => { if (!armed.current && e.detail !== 0) { e.preventDefault(); e.stopPropagation(); } }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={ref} className="fs-peek-sheet" role="dialog" aria-modal="true" aria-label={x.r.name}>
+        <div className="fs-peek-head">
+          <button type="button" className="fs-peek-x" onClick={onClose} aria-label={t("Close")}><span aria-hidden="true">✕</span></button>
+        </div>
+        <CastIdCard size="mini" {...card} />
+        <button type="button" className={`fs-peek-pick${x.picked ? " on" : ""}`} disabled={x.picked || x.disabled} onClick={() => { x.pick(); onClose(); }}>
+          {x.picked ? <><Ico n="check" size={14} /> {t("Picked")}</> : t("Pick {name}", { name: x.r.name })}
+        </button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function FilmStudio() {
   const d = useLoaderData<typeof loader>();
   // Who can be cast where. The Music Video is built around a real-looking singer, so it is offered
@@ -1690,6 +1771,24 @@ export default function FilmStudio() {
   };
   // Tap a scene still to inspect it big (lightbox).
   const [zoomImg, setZoomImg] = useState<string | null>(null);
+  // THE CAST ID CARD in every picker where a face is chosen (the story's cast, the music video's star and
+  // co-stars, a scene's "add to this scene", the acted film's roster): with a mouse it floats beside the
+  // face pointed at, as in the Presenters section; with a finger, HOLD a face and it opens as a sheet
+  // with one button that picks them. A tap still picks, exactly as before. ONE hook for all four, and ONE
+  // layer (<CastPeek>, below the page) — each picker says, per face, what picking them does (`peekOn`).
+  // Never over the enlarged scene still.
+  const peek = useCastPeek(!zoomImg);
+  const peekTargets: Record<string, PeekTarget> = {};
+  const peekOn = (key: string, r: RosterFace | undefined, picked: boolean, pick: () => void, disabled = false) => {
+    if (!r?.card) return undefined; // a face the shop made, or an uploaded photo: no card — as before
+    peekTargets[key] = { r, picked, pick, disabled };
+    return peek.bind(key);
+  };
+  // (a picker that keeps its faces by picture — a scene's cast — finds who they are in the roster)
+  const faceOfImg = (img: string): RosterFace | undefined => (img ? d.roster.find((r) => r.img === img) : undefined);
+  // …and how a finger learns it: one quiet line under the first picker of each flow, on a touch screen
+  // only (the page's CSS shows it where nothing hovers)
+  const peekHint = <p className="fs-peek-hint">{t("Hold a face to see their card.")}</p>;
   // Per-scene PROP edit (post-creation): STAGE a prop in a draft (no auto-regen), then an explicit
   // "Regenerate this scene" CTA re-rolls just that scene with it.
   const [scenePropPick, setScenePropPick] = useState<number | null>(null);
@@ -2262,19 +2361,22 @@ export default function FilmStudio() {
                               <div className="mm-sc-castpick">
                                 {/* in a co-star's own performance the STAR is someone who can stand beside them */}
                                 {draftLead && artistPick && !sceneCastDraft.includes(artistPick) && (
-                                  <button type="button" className="mm-cp-opt mm-cp-add" onClick={() => toggleSceneCastDraft(artistPick)} title={artistName}>
+                                  <button type="button" className="mm-cp-opt mm-cp-add" onClick={() => toggleSceneCastDraft(artistPick)} title={artistName}
+                                    {...peekOn(`scene:${artistPick}`, faceOfImg(artistPick), false, () => toggleSceneCastDraft(artistPick))}>
                                     <span className="mm-cp-img" style={{ backgroundImage: `url(${artistPick})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{artistName || t("The star")}
                                   </button>
                                 )}
                                 {castExtra.filter((m) => m.img !== draftLead && !sceneCastDraft.includes(m.img)).map((m) => (
-                                  <button type="button" key={m.img} className="mm-cp-opt mm-cp-add" onClick={() => toggleSceneCastDraft(m.img)} title={m.name}>
+                                  <button type="button" key={m.img} className="mm-cp-opt mm-cp-add" onClick={() => toggleSceneCastDraft(m.img)} title={m.name}
+                                    {...peekOn(`scene:${m.img}`, faceOfImg(m.img), false, () => toggleSceneCastDraft(m.img))}>
                                     <span className="mm-cp-img" style={{ backgroundImage: `url(${m.img})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{m.name || t("Cast")}
                                   </button>
                                 ))}
                                 {/* (a face from the roster JOINS the cast — so it is offered only while the cast has room:
                                     a third co-star is never added, and the tile used to put them in the picture anyway) */}
                                 {(castExtra.length < MAX_COSTARS ? [...customArtists.map((c) => ({ img: c.img, name: c.name })), ...mvRoster.map((r) => ({ img: r.img, name: r.name }))] : []).filter((r) => r.img && !castExtra.some((m) => m.img === r.img)).slice(0, 14).map((r) => (
-                                  <button type="button" key={`pool-${r.img}`} className="mm-cp-opt mm-cp-add" onClick={() => { addCastMemberMv(r.img, r.name); toggleSceneCastDraft(r.img); }} title={r.name}>
+                                  <button type="button" key={`pool-${r.img}`} className="mm-cp-opt mm-cp-add" onClick={() => { addCastMemberMv(r.img, r.name); toggleSceneCastDraft(r.img); }} title={r.name}
+                                    {...peekOn(`scene:${r.img}`, faceOfImg(r.img), false, () => { addCastMemberMv(r.img, r.name); toggleSceneCastDraft(r.img); })}>
                                     <span className="mm-cp-img" style={{ backgroundImage: `url(${r.img})` }} aria-hidden="true" /><span className="mm-cp-plus" aria-hidden="true">＋</span>{r.name}
                                   </button>
                                 ))}
@@ -2532,6 +2634,8 @@ export default function FilmStudio() {
   return (
     <div className="fs-wrap">
       <style dangerouslySetInnerHTML={{ __html: FS_STYLE }} />
+      {/* the ID card of the face pointed at (a mouse) or held (a finger) — for every picker on the page */}
+      <CastPeek peek={peek} targets={peekTargets} />
 
       {/* The "Make a movie" hero shows only while picking a format — once a format is chosen, its own
           banner (fs-hero) REPLACES it so there aren't two stacked headers. */}
@@ -2704,13 +2808,15 @@ export default function FilmStudio() {
                   </button>
                 ))}
                 {mvRoster.map((r) => (
-                  <button type="button" key={r.id} className={`fs-rface${artistPick === r.img ? " on" : ""}`} title={r.name} onClick={() => setArtistPick(r.img)}>
+                  <button type="button" key={r.id} className={`fs-rface${artistPick === r.img ? " on" : ""}`} title={r.name} onClick={() => setArtistPick(r.img)}
+                    {...peekOn(`star:${r.id}`, r, artistPick === r.img, () => setArtistPick(r.img))}>
                     <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
                     {artistPick === r.img && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
                     <span className="fs-rface-name">{r.name}</span>
                   </button>
                 ))}
               </div>
+              {peekHint}
               {artistMakerOpen && (
                 <div className="mm-propmaker">
                   <input value={artistDesc} onChange={(e) => setArtistDesc(e.target.value)} maxLength={120} placeholder={t("e.g. a young woman with curly red hair; a bearded man in a leather jacket")}
@@ -2787,7 +2893,8 @@ export default function FilmStudio() {
                     </button>
                   ))}
                   {mvRoster.map((r) => (
-                    <button type="button" key={`cx-${r.id}`} className={`fs-rface${castExtra.some((m) => m.img === r.img) ? " on" : ""}`} title={r.name} onClick={() => addCastMemberMv(r.img, r.name)}>
+                    <button type="button" key={`cx-${r.id}`} className={`fs-rface${castExtra.some((m) => m.img === r.img) ? " on" : ""}`} title={r.name} onClick={() => addCastMemberMv(r.img, r.name)}
+                      {...peekOn(`co:${r.id}`, r, castExtra.some((m) => m.img === r.img), () => addCastMemberMv(r.img, r.name), castExtra.length >= MAX_COSTARS)}>
                       <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
                       {castExtra.some((m) => m.img === r.img) && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
                       <span className="fs-rface-name">{r.name}</span>
@@ -3162,7 +3269,8 @@ export default function FilmStudio() {
                   {rosterFor(template).map((r) => {
                     const on = storyPick.includes(r.id);
                     return (
-                      <button type="button" key={r.id} className={`fs-rface${on ? " on" : ""}${wipeArm === `cast:${r.id}` ? " is-arm" : ""}`} title={r.name} aria-pressed={on} disabled={!on && storyPick.length >= maxPick} onClick={() => orArm(`cast:${r.id}`, true, () => toggleStoryPick(r.id))}>
+                      <button type="button" key={r.id} className={`fs-rface${on ? " on" : ""}${wipeArm === `cast:${r.id}` ? " is-arm" : ""}`} title={r.name} aria-pressed={on} disabled={!on && storyPick.length >= maxPick} onClick={() => orArm(`cast:${r.id}`, true, () => toggleStoryPick(r.id))}
+                        {...peekOn(`story:${r.id}`, r, on, () => orArm(`cast:${r.id}`, true, () => toggleStoryPick(r.id)), !on && storyPick.length >= maxPick)}>
                         <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
                         {on && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
                         <span className="fs-rface-name">{r.name}</span>
@@ -3170,6 +3278,7 @@ export default function FilmStudio() {
                     );
                   })}
                 </div>
+                {peekHint}
                 {wipeNote("cast:")}
                 <a className="mm-pace-auto" href="/web/presenters?forge=1"><Ico n="wand" size={12} /> {t("Create a new character")}</a>
               </div>
@@ -3487,13 +3596,15 @@ export default function FilmStudio() {
                           <div className="fs-roster" role="list" aria-label={t("Your presenters")}>
                             {rosterFor(template).map((r) => (
                               <button type="button" role="listitem" key={r.id} className={`fs-rface${c.faceUrl === r.img ? " on" : ""}`}
-                                disabled={castingIndex !== null} title={r.name} onClick={() => castPresenter(i, r)}>
+                                disabled={castingIndex !== null} title={r.name} onClick={() => castPresenter(i, r)}
+                                {...peekOn(`actor${i}:${r.id}`, r, c.faceUrl === r.img, () => castPresenter(i, r), castingIndex !== null)}>
                                 <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
                                 {c.faceUrl === r.img && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
                                 <span className="fs-rface-name">{r.name}</span>
                               </button>
                             ))}
                           </div>
+                          {i === 0 && peekHint}
                         </details>
                       )}
                       <details className="fs-shot-own fs-actor-own">
@@ -3628,6 +3739,27 @@ function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; narrated?:
 }
 
 const FS_STYLE = `
+${SPIN_STAGE_CSS}
+${CAST_ID_CSS}
+/* ---- the cast ID card in the pickers (CastPeek): a face a finger can hold, and the sheet it opens ---- */
+/* holding a face selects no text and raises no callout (iOS) — the card opens instead */
+[data-cast-hold],[data-cast-hold] *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
+.fs-peek-hint{display:none;margin:4px 2px 0;font-size:11.5px;font-weight:600;line-height:1.35;color:var(--ink3,#7C877F);}
+@media(hover:none) and (pointer:coarse){.fs-peek-hint{display:block;}}
+.fs-peek{position:fixed;inset:0;z-index:10500;display:flex;align-items:flex-end;justify-content:center;padding:16px 16px max(16px,env(safe-area-inset-bottom));background:rgba(20,32,26,.46);font-family:Inter,-apple-system,sans-serif;color:var(--ink,#14201A);-webkit-user-select:none;user-select:none;}
+.fs-peek-sheet{box-sizing:border-box;width:100%;max-width:400px;max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain;border:1.5px solid var(--green,#0C7A46);border-radius:20px;background:#FFFDF7;padding:2px 12px 12px;box-shadow:0 24px 60px -18px rgba(20,32,26,.55);animation:fspeekin .2s cubic-bezier(.2,.8,.2,1) both;}
+@keyframes fspeekin{from{opacity:0;transform:translateY(18px);}}
+@media(min-width:640px){.fs-peek{align-items:center;}}
+@media(prefers-reduced-motion:reduce){.fs-peek-sheet{animation:none;}}
+.fs-peek-head{display:flex;justify-content:flex-end;margin:0 -8px -2px 0;}
+.fs-peek-x{display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--ink2,#4A554E);font-size:14px;cursor:pointer;}
+.fs-peek-x span{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;border:1.5px solid var(--line,#E4DFCF);background:#fff;}
+/* the card fills the sheet, and says all it has to say: here is where it is inspected */
+.fs-peek-sheet .pc-id.mini{width:auto;box-shadow:none;}
+.fs-peek-sheet .pc-id.mini .pc-id-about{display:block;-webkit-line-clamp:unset;overflow:visible;}
+.fs-peek-pick{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:48px;margin-top:12px;padding:10px 16px;border:0;border-radius:14px;background:var(--green,#0C7A46);color:#fff;font-family:Poppins,sans-serif;font-size:15px;font-weight:800;line-height:1.2;cursor:pointer;}
+.fs-peek-pick:disabled{background:#E7EAE3;color:var(--ink2,#4A554E);cursor:default;}
+.fs-peek-pick.on:disabled{background:#E3F3EA;color:var(--green,#0C7A46);}
 .fs-wrap{max-width:none;margin:0 auto;--fs-gold:#C79A3A;--fs-gold-lt:#E7C879;}
 .fs-eta{display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 0;font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
 .fs-eta b{font-weight:800;color:var(--ink,#14201A);}

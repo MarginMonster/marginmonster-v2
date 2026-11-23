@@ -16,7 +16,7 @@ import { VoicePicker, VOICE_UI_CSS, type MyVoiceT } from "../components/VoicePic
 import { CharacterForge, FORGE_CSS } from "../components/CharacterForge";
 import { DEFAULT_CHARACTER_VOICE, characterVoice, characterVoiceSample } from "../lib/character-voices";
 import { SpinStage, SPIN_STAGE_CSS } from "../components/SpinStage";
-import { CastIdCard, CastFigure, CastHoverCard, useCastHover, CAST_ID_CSS } from "../components/CastIdCard";
+import { CastIdCard, CastFigure, CastHoverCard, useCastHover, CAST_ID_CSS, idCardOf, castVoiceWord, castAgeText, castSentence } from "../components/CastIdCard";
 import { favouritesFirst, passes, NO_FILTER, type CastFilter } from "../lib/favourites";
 
 export const meta: MetaFunction = () => [{ title: "Your cast · EasyMode" }];
@@ -57,16 +57,10 @@ type Member = {
   signature: { sample: string } | null;
 };
 
-const DECADE: Record<string, string> = { twenties: "20s", thirties: "30s", forties: "40s", fifties: "50s", sixties: "60s", seventies: "70s" };
-/** "a gentle East Asian woman in her mid twenties with…" → "Mid 20s". */
-function ageText(a: Avatar): string {
-  const m = /\b(early|mid|late)\s+(twenties|thirties|forties|fifties|sixties|seventies)\b/i.exec(a.desc);
-  // only an age the description states — a guessed band reads as a fact ("30s–40s" on an ogre mascot)
-  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${DECADE[m[2].toLowerCase()]}` : "";
-}
-// The cast's descriptions were written as prompts: "a photorealistic friendly ogre" is a note to the
-// picture model, not something to say about them.
-const sentence = (s: string) => { const x = s.trim().replace(/\.$/, "").replace(/^(an?) photorealistic /i, "$1 "); return x ? `${x[0].toUpperCase()}${x.slice(1)}.` : ""; };
+// Their age ("Mid 20s", only when the description states one) and their description as a sentence: the
+// ID card's own helpers, shared with the Movie Maker's loader (app/components/CastIdCard.tsx).
+const ageText = (a: Avatar): string => castAgeText(a.desc);
+const sentence = castSentence;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { account, shop } = await requireWebIdentity(request);
@@ -552,7 +546,7 @@ export default function PresenterHub() {
           the cast card, which clips its contents, lifts on hover and is itself the link. */}
       {pointed && hoverAt ? (
         <CastHoverCard key={pointed.id} anchor={hoverAt.anchor}>
-          <CastIdCard size="mini" {...idCardOf(pointed, t)} lead={pointed.id === d.brandFaceId}
+          <CastIdCard size="mini" {...cardOf(pointed, t)} lead={pointed.id === d.brandFaceId}
             figure={<CastFigure spin={pointed.looks[0]?.spin} img={pointed.cut || pointed.img} name={pointed.name} />} />
         </CastHoverCard>
       ) : null}
@@ -582,20 +576,12 @@ export default function PresenterHub() {
   );
 }
 
-// Under the card's own "Energy" label, so the words are the Refine chips' ("High energy" there would say it twice).
-const ENERGY: Record<Member["energy"], string> = { hype: "Upbeat", warm: "Warm", calm: "Calm" };
 type T = ReturnType<typeof useT>;
 /** The name of the voice a member speaks with, as their cast card and their ID card give it. */
-const voiceWord = (c: Member, t: T): string => (c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.signature ? t("Signature") : t("Automatic"));
-/** What a member's ID card says — the same in the character view and on the card that floats beside
- *  their cast card. Whoever they are: a person, a cartoon character, a creature. */
-const idCardOf = (c: Member, t: T) => ({
-  id: c.id, name: c.name, kind: c.kind,
-  role: c.custom ? t(c.vibe) : c.vibe,
-  age: c.age, energy: t(ENERGY[c.energy]), voice: voiceWord(c, t),
-  outfits: c.looks.length, has3d: c.looks.some((l) => !!l.spin),
-  about: c.about,
-});
+const voiceWord = (c: Member, t: T): string => castVoiceWord(c, t);
+/** What a member's ID card says: idCardOf (app/components/CastIdCard.tsx) — the ONE mapping, which the
+ *  Movie Maker's cast pickers use too. A member's outfits are counted here, from their looks. */
+const cardOf = (c: Member, t: T) => idCardOf({ ...c, outfits: c.looks.length, has3d: c.looks.some((l) => !!l.spin) }, t);
 
 /* One presenter, up close. Left: the stage — the outfit you picked as a full-body figure to turn
  * around (its "3D view"), or as its portrait. Right: who they are, their voice, their outfits, and
@@ -779,9 +765,9 @@ function CharacterView({ c, isBrandFace, fav, onFav, myVoices, canMakeVoice, spi
          <div className="pc-scroll">
           <span className={`pc-badge${isBrandFace ? " bf" : c.custom ? " own" : c.kind !== "person" ? ` ${c.kind}` : ""}`}>{isBrandFace ? <Ico n="star" size={11} /> : null}{badge}</span>
           {/* Their ID card: who they are, beside the figure (under it on a phone). The same card floats
-              beside their cast card in the grid — see idCardOf. The pencil and the star ride on the name. */}
+              beside their cast card in the grid — see cardOf. The pencil and the star ride on the name. */}
           <CastIdCard
-            {...idCardOf(c, t)}
+            {...cardOf(c, t)}
             lead={isBrandFace}
             nameSlot={renaming ? (
               <form className="pc-rename" onSubmit={(e) => { e.preventDefault(); if (newName.trim()) post({ intent: "rename", name: newName.trim() }); }}>

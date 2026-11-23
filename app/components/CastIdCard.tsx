@@ -10,6 +10,11 @@
  *   - "mini", floating beside a cast card that is pointed at or holds the keyboard's focus, with the
  *     member's turning figure standing ON the card: useCastHover + CastHoverCard + CastFigure, below.
  *     Only where there is a mouse; on a phone a tap opens the character, and the same card is there.
+ *   - and in the Movie Maker's cast pickers, where a tap PICKS a face: the same floating card for a
+ *     mouse, and for a finger a press-and-hold (useCastPeek, at the end of this file) that opens it as a
+ *     sheet the page draws.
+ *
+ * What a card SAYS is idCardOf, below: one mapping for every page that shows one.
  *
  * Nothing in this file knows about a route, a loader, or how a page keeps its cast. A page turns what
  * it has into the plain props below — text already in the viewer's language; the card translates only
@@ -17,7 +22,7 @@
  * figure needs SPIN_STAGE_CSS beside CAST_ID_CSS in its stylesheet. */
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties, FocusEvent as ReactFocusEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { CSSProperties, FocusEvent as ReactFocusEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
@@ -91,6 +96,55 @@ export function placeCastHover(
 }
 
 const KIND_ICON: Record<CastKind, string> = { person: "presenter", cartoon: "felt", monster: "moon" };
+
+/* ---- what a card says: ONE mapping, for the Presenters section and the Movie Maker alike ---- */
+
+type Tr = (source: string, params?: Record<string, string | number>) => string;
+
+/** Under the card's own "Energy" label, so the words are the Refine chips' ("High energy" there would
+ *  say it twice). */
+export const CAST_ENERGY = { hype: "Upbeat", warm: "Warm", calm: "Calm" } as const;
+
+/** What a page knows about a cast member that their card shows — plain text and counts, no pictures:
+ *  the Movie Maker's loader sends exactly this for each face it offers. */
+export type CastCardSource = {
+  id: string; name: string; kind: CastKind;
+  /** one the shop made itself: its `vibe` is one of the few stock words ("Your creature"), translated */
+  custom: boolean;
+  vibe: string; about: string; age: string; energy: keyof typeof CAST_ENERGY;
+  /** the voice's name ("" = none chosen); `voiceOwn` = one the shop recorded (a name it gave it, never
+   *  translated); `signature` = a voice designed for this stock presenter */
+  voice: string; voiceOwn: boolean; signature: unknown;
+  outfits: number; has3d: boolean;
+};
+
+/** The name of the voice a member speaks with, as their cast card and their ID card give it. */
+export const castVoiceWord = (c: Pick<CastCardSource, "voice" | "voiceOwn" | "signature">, t: Tr): string =>
+  (c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.signature ? t("Signature") : t("Automatic"));
+
+/** What a member's ID card says — the same in the character view, on the card that floats beside a cast
+ *  card, and in the Movie Maker. Whoever they are: a person, a cartoon character, a creature. */
+export const idCardOf = (c: CastCardSource, t: Tr) => ({
+  id: c.id, name: c.name, kind: c.kind,
+  role: c.custom ? t(c.vibe) : c.vibe,
+  age: c.age, energy: t(CAST_ENERGY[c.energy] || CAST_ENERGY.warm), voice: castVoiceWord(c, t),
+  outfits: c.outfits, has3d: c.has3d,
+  about: c.about,
+});
+
+const DECADE: Record<string, string> = { twenties: "20s", thirties: "30s", forties: "40s", fifties: "50s", sixties: "60s", seventies: "70s" };
+/** "a gentle East Asian woman in her mid twenties with…" → "Mid 20s". Only an age the description
+ *  states — a guessed band reads as a fact ("30s–40s" on an ogre mascot). */
+export function castAgeText(desc: string): string {
+  const m = /\b(early|mid|late)\s+(twenties|thirties|forties|fifties|sixties|seventies)\b/i.exec(desc || "");
+  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${DECADE[m[2].toLowerCase()]}` : "";
+}
+/** The cast's descriptions were written as prompts: "a photorealistic friendly ogre" is a note to the
+ *  picture model, not something to say about them. */
+export const castSentence = (s: string) => {
+  const x = (s || "").trim().replace(/\.$/, "").replace(/^(an?) photorealistic /i, "$1 ");
+  return x ? `${x[0].toUpperCase()}${x.slice(1)}.` : "";
+};
 
 export function CastIdCard({ id, name, kind, role, age, energy, voice, outfits, has3d, about, size = "full", lead, figure, nameSlot, actions, children }: {
   /** The member's id: what the ID code is made from. */
@@ -377,3 +431,88 @@ export const CAST_ID_CSS = `
 @media not all and (hover:hover) and (pointer:fine){.pc-id-float{display:none;}}
 @media(prefers-reduced-motion:reduce){.pc-id-float{animation:none;}}
 `;
+
+/* ---- a finger: press and hold ---- */
+
+/** How long a finger must rest on a face before its card opens: a tap (which picks) never gets there. */
+export const CAST_HOLD_MS = 500;
+/** How far the finger may drift meanwhile, in CSS pixels: further is a scroll, or a swipe along a row. */
+export const CAST_HOLD_SLOP = 10;
+
+type Press = { id: string; anchor: HTMLElement; x: number; y: number; pointer: number };
+
+/** For the Movie Maker's cast pickers, where a tap PICKS a face (in the Presenters section a tap opens
+ *  the character, so there is nothing to hold there). One hook for every picker on the page; spread
+ *  `bind(key)` on each face that has a card.
+ *    - A mouse: useCastHover, as it is. `at` is the face whose card floats beside it.
+ *    - A finger (or a pen) resting CAST_HOLD_MS on a face: `held` is that face, and the page shows its
+ *      card as a sheet. Drifting more than CAST_HOLD_SLOP, lifting, the browser taking the touch for a
+ *      scroll (pointercancel), or a scroll anywhere — and it was an ordinary tap, or a swipe.
+ *  A HOLD IS NOT ALSO A PICK: the one click the browser may send when that finger lifts is swallowed —
+ *  only that one (the next press starts clean; a keyboard's click, detail 0, is never touched). The
+ *  phone's own long-press menu is refused while a finger rests on a face — on Android the "contextmenu"
+ *  that a long press raises opens the card at once instead. Text selection and the iOS callout are
+ *  stopped by the page's CSS, on [data-cast-hold]. `enabled: false` (something open over the pickers)
+ *  closes both. */
+export function useCastPeek(enabled = true) {
+  const [held, setHeld] = useState<HoverAt | null>(null);
+  const hover = useCastHover(enabled && !held);
+  const press = useRef<Press | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const swallow = useRef(false);
+
+  const cancel = () => {
+    press.current = null;
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+  };
+  const open = () => {
+    const p = press.current;
+    cancel();
+    if (!p || !p.anchor.isConnected) return;
+    swallow.current = true;
+    setHeld({ id: p.id, anchor: p.anchor });
+  };
+  const close = () => { swallow.current = false; setHeld(null); };
+
+  useEffect(() => {
+    if (!enabled) { cancel(); close(); return; }
+    // a scroll anywhere — the page, a row of faces — is not a hold
+    const onScroll = () => cancel();
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => { window.removeEventListener("scroll", onScroll, true); cancel(); };
+  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const bind = (id: string) => {
+    const h = hover.bind(id);
+    return {
+      ...h,
+      "data-cast-hold": "",
+      onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
+        h.onPointerDown();
+        swallow.current = false;
+        cancel();
+        if (!enabled || e.pointerType === "mouse" || !e.isPrimary) return;
+        press.current = { id, anchor: e.currentTarget, x: e.clientX, y: e.clientY, pointer: e.pointerId };
+        timer.current = setTimeout(open, CAST_HOLD_MS);
+      },
+      onPointerMove: (e: ReactPointerEvent<HTMLElement>) => {
+        const p = press.current;
+        if (p && p.pointer === e.pointerId && Math.hypot(e.clientX - p.x, e.clientY - p.y) > CAST_HOLD_SLOP) cancel();
+      },
+      onPointerUp: cancel,
+      onPointerCancel: cancel,
+      onClickCapture: (e: ReactMouseEvent<HTMLElement>) => {
+        if (!swallow.current || e.detail === 0) return;
+        swallow.current = false;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      onContextMenu: (e: ReactMouseEvent<HTMLElement>) => {
+        if (press.current?.id === id) { e.preventDefault(); open(); }
+        else if (swallow.current) e.preventDefault();
+      },
+    };
+  };
+
+  return { at: enabled && !held ? hover.at : null, held: enabled ? held : null, bind, close, hide: hover.hide };
+}

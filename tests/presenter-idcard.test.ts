@@ -274,30 +274,34 @@ test("the card is shared: it knows nothing of a route, and it carries its own st
   assert.ok(css.includes(".pc-id-fig .spin-tip{display:none;}"), "\"Drag to turn\" is not offered on a card that cannot be touched");
   // the Presenters page ships it, beside the turning figure's own stylesheet
   assert.ok(page.includes("${SPIN_STAGE_CSS}\n${CAST_ID_CSS}\n"));
-  assert.ok(page.includes('import { CastIdCard, CastFigure, CastHoverCard, useCastHover, CAST_ID_CSS } from "../components/CastIdCard";'));
+  assert.ok(page.includes('import { CastIdCard, CastFigure, CastHoverCard, useCastHover, CAST_ID_CSS, idCardOf, castVoiceWord, castAgeText, castSentence } from "../components/CastIdCard";'));
 });
 
 test("on inspection: the character view shows the card, and everything the old lines did is still there", () => {
   const view = page.slice(page.indexOf("function CharacterView("), page.indexOf("const PH_STYLE = `"));
   // ONE card per character view, fed by the same facts as the one that floats
   assert.equal(count(view, "<CastIdCard"), 1);
-  assert.ok(view.includes("          <CastIdCard\n            {...idCardOf(c, t)}\n            lead={isBrandFace}\n"));
+  assert.ok(view.includes("          <CastIdCard\n            {...cardOf(c, t)}\n            lead={isBrandFace}\n"));
   // it stands where the loose lines stood: under the badge, above the error line, the Outfits and the Voice
   const order = ['<span className={`pc-badge', "<CastIdCard", '{fetcher.data?.error ? <p className="pc-err" role="alert">{fetcher.data.error}</p> : null}\n\n          {/* Outfits */}', "{/* Voice */}", '{danger("in")}'].map((s) => view.indexOf(s));
   assert.ok(order.every((at) => at > 0), JSON.stringify(order));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
-  // THE FACTS' MEANING — who they are, energy, the age when it is known, how many outfits, whether one turns
-  const of = page.slice(page.indexOf("const idCardOf = (c: Member, t: T) => ({"), page.indexOf("/* One presenter, up close."));
+  // THE FACTS' MEANING — who they are, energy, the age when it is known, how many outfits, whether one turns.
+  // (2026-11-22: the mapping moved into the card's own module, so the Movie Maker's pickers use the SAME
+  //  one — tests/film-cast-idcard.test.ts. The page only counts a member's outfits from their looks.)
+  const of = card.slice(card.indexOf("export const idCardOf = (c: CastCardSource, t: Tr) => ({"), card.indexOf("const DECADE"));
   assert.ok(of.includes("id: c.id, name: c.name, kind: c.kind,"), "whoever they are: their kind goes through as it is");
   assert.ok(of.includes("role: c.custom ? t(c.vibe) : c.vibe,"), "the line under the name, as it read before");
-  assert.ok(of.includes("age: c.age, energy: t(ENERGY[c.energy]), voice: voiceWord(c, t),"));
-  assert.ok(of.includes("outfits: c.looks.length, has3d: c.looks.some((l) => !!l.spin),"));
+  assert.ok(of.includes("age: c.age, energy: t(CAST_ENERGY[c.energy] || CAST_ENERGY.warm), voice: castVoiceWord(c, t),"));
+  assert.ok(of.includes("outfits: c.outfits, has3d: c.has3d,"));
   assert.ok(of.includes("about: c.about,"));
+  assert.ok(page.includes("const cardOf = (c: Member, t: T) => idCardOf({ ...c, outfits: c.looks.length, has3d: c.looks.some((l) => !!l.spin) }, t);"));
   // the energy is under a label now, so it is the Refine chips' own word for it
-  assert.ok(page.includes('const ENERGY: Record<Member["energy"], string> = { hype: "Upbeat", warm: "Warm", calm: "Calm" };'));
+  assert.ok(card.includes('export const CAST_ENERGY = { hype: "Upbeat", warm: "Warm", calm: "Calm" } as const;'));
   assert.ok(page.includes('["energy", "hype", "Upbeat"], ["energy", "warm", "Warm"], ["energy", "calm", "Calm"],'));
   // THE VOICE'S NAME: the one the cast card in the grid gives — one function for both
-  assert.ok(page.includes('const voiceWord = (c: Member, t: T): string => (c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.signature ? t("Signature") : t("Automatic"));'));
+  assert.ok(card.includes('(c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.signature ? t("Signature") : t("Automatic"));'));
+  assert.ok(page.includes("const voiceWord = (c: Member, t: T): string => castVoiceWord(c, t);"));
   assert.ok(page.includes('<Ico n="mic" size={10} /> {voiceWord(c, t)}</span>'));
   // …and the Voice section under the card still says it its own, longer way
   assert.ok(view.includes('const voiceName = c.voiceOwn ? c.voice : c.voice ? t(c.voice) : c.signature ? t("Signature voice") : t("Automatic");'));
@@ -327,7 +331,7 @@ test("on inspection: the character view shows the card, and everything the old l
 });
 
 test("on hover: one card at a time, after a moment, only where there is a mouse — and never in the click's way", () => {
-  const hub = page.slice(page.indexOf("export default function PresenterHub()"), page.indexOf("const ENERGY: Record"));
+  const hub = page.slice(page.indexOf("export default function PresenterHub()"), page.indexOf("type T = ReturnType<typeof useT>;"));
   const hook = card.slice(card.indexOf("export function useCastHover("), card.indexOf("/** The floating ID card:"));
   const floating = card.slice(card.indexOf("export function CastHoverCard("), card.indexOf("export const CAST_ID_CSS"));
   const css = mod.CAST_ID_CSS;
@@ -338,7 +342,7 @@ test("on hover: one card at a time, after a moment, only where there is a mouse 
   assert.ok(hub.includes([
     "      {pointed && hoverAt ? (",
     "        <CastHoverCard key={pointed.id} anchor={hoverAt.anchor}>",
-    '          <CastIdCard size="mini" {...idCardOf(pointed, t)} lead={pointed.id === d.brandFaceId}',
+    '          <CastIdCard size="mini" {...cardOf(pointed, t)} lead={pointed.id === d.brandFaceId}',
     "            figure={<CastFigure spin={pointed.looks[0]?.spin} img={pointed.cut || pointed.img} name={pointed.name} />} />",
     "        </CastHoverCard>",
     "      ) : null}",
