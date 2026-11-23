@@ -38,7 +38,7 @@ import { AD_FORMATS, AD_FORMAT_BY_KEY, FORMAT_GROUPS, type AdFormat } from "../l
 import { CREATE_STYLES } from "../lib/create-styles";
 import { CREATE_MODELS, CREATE_ASPECTS, aspectCss, createModelSurcharge, normalizeCreateModelKey, DEFAULT_CREATE_MODEL, DEFAULT_CREATE_ASPECT, FACELESS_QUALITIES, facelessQualitySurcharge, normalizeFacelessQuality } from "../lib/create-models";
 import { MUSIC_STYLES, MUSIC_STYLE_BY_KEY } from "../lib/music-styles";
-import { VIDEO_ENGINES, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
+import { engineMenuFor, engineSurcharge, normalizeEngineKey } from "../lib/video-engines";
 import { resolveImageOrPage, scrapeProductPage } from "../lib/product-scrape.server";
 import { CATALOG_CAP, storeOrigin } from "../lib/catalog-import.server";
 import { SIZE_CHOICES } from "../lib/product-scale";
@@ -4222,7 +4222,9 @@ export default function WebStudio() {
               <>
                 <div className="ws-lbl">{t("Video engine")} <span className="ws-opt">{t("premium engines add tokens")}</span></div>
                 <div className="ws-engines">
-                  {VIDEO_ENGINES.map((e) => (
+                  {/* the four real choices (video-engines.ts VIDEO_ENGINE_MENU) — plus the engine in force when a
+                      remix brought an older one that is no longer offered */}
+                  {engineMenuFor(videoEngine).map((e) => (
                     <button type="button" key={e.key} className={`ws-engine${videoEngine === e.key ? " sel" : ""}`} title={t(e.blurb)} onClick={() => setVideoEngine(e.key)}>
                       <b>{t(e.name)}</b><span>{e.surcharge > 0 ? `+${e.surcharge * (casual ? CREATOR_SURCHARGE_MULT : 1)}` : t("included")}</span>
                     </button>

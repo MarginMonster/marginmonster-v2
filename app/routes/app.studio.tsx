@@ -13,7 +13,7 @@ import { TOKEN_COST } from "../lib/plan-config";
 import { LIVE_AVATARS, avatarImg, DESIGNED_VOICES, privateCastFor } from "../lib/avatars";
 import { AD_TEMPLATES, AD_TEMPLATE_BY_KEY } from "../lib/ad-templates";
 import { AD_FORMATS } from "../lib/ad-formats";
-import { VIDEO_ENGINES, engineSurcharge } from "../lib/video-engines";
+import { engineMenuFor, engineSurcharge } from "../lib/video-engines";
 
 type Tab = "video" | "image" | "blog";
 const TABS: { key: Tab; label: string; icon: string; cost: number; verb: string; noun: string }[] = [
@@ -703,7 +703,7 @@ export default function Studio() {
               )}
               <div className="cfg-lbl cs-lblrow"><span>Video engine</span><span className="cs-opt">premium engines add tokens</span></div>
               <div className="cs-engines">
-                {VIDEO_ENGINES.map((e) => (
+                {engineMenuFor(videoEngine).map((e) => (
                   <button type="button" key={e.key} className={`cs-engine${videoEngine === e.key ? " sel" : ""}`} onClick={() => setVideoEngine(e.key)} title={e.blurb}>
                     <b>{e.name}</b>
                     <span>{e.surcharge > 0 ? `+${e.surcharge} tokens` : "included"}</span>
