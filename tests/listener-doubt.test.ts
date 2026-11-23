@@ -18,7 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  DOUBT_RUN, DOUBT_SCORE, LISTEN_AGAIN_UNDER, MIN_SAY, SAY_PACE, TIMING_WORDS_MAX,
+  DOUBT_OFF_MIDDLE, DOUBT_RUN, DOUBT_SCORE, LISTEN_AGAIN_UNDER, MIN_SAY, SAY_PACE, TIMING_WORDS_MAX,
   boldCards, listenAgain, listenQuality, listenedWords, readTiming, sceneWindows, scriptWordTimes, sureWords, timingLine, timingRecord,
   type Card, type Span, type WordT,
 } from "../app/lib/narrated-core.ts";
@@ -76,11 +76,22 @@ test("two or more unsure words in a row are not believed — one alone is", () =
   const bare: WordT[] = [{ word: "yet", start: 1, end: 1.1 }, { word: "still", start: 1.1, end: 1.2 }, { word: "they", start: 1.2, end: 1.3 }];
   assert.deepEqual(sureWords(bare), { sure: bare, squeezed: [], doubted: 0 });
   // two runs: each has its own stretch
-  const two = words([["a", 1, 1.1, 0.01], ["b", 1.1, 1.2, 0.02], ["c", 2, 2.5, 0.9], ["d", 3, 3.1, 0.1], ["e", 3.1, 3.2, 0.1], ["f", 3.2, 3.3, 0.1]]);
+  const sureOnes = (n: number, from: number): Heard[] => Array.from({ length: n }, (_, i): Heard => ["s", from + i, from + i + 0.5, 0.9]);
+  const two = words([...sureOnes(20, 10), ["a", 1, 1.1, 0.01], ["b", 1.1, 1.2, 0.02], ["c", 2, 2.5, 0.9], ["d", 3, 3.1, 0.1], ["e", 3.1, 3.2, 0.1], ["f", 3.2, 3.3, 0.1], ...sureOnes(20, 40)]);
   assert.deepEqual(sureWords(two).squeezed, [[1, 1.2], [3, 3.3]]);
   assert.equal(sureWords(two).doubted, 5);
-  assert.deepEqual(sureWords(two).sure.map((w) => w.word), ["c"]);
+  assert.equal(sureWords(two).sure.length, 41);
   assert.deepEqual(sureWords([]), { sure: [], squeezed: [], doubted: 0 });
+  // A LISTENER UNSURE OF MOST OF WHAT IT HEARD TELLS NOTHING APART (a voice it can barely follow): when
+  // the middle score of the whole listen is low, every word is taken at its word, as it always was
+  assert.equal(DOUBT_OFF_MIDDLE, 0.4);
+  const murky = words([["a", 1, 1.1, 0.01], ["b", 1.1, 1.2, 0.02], ["c", 2, 2.5, 0.9], ["d", 3, 3.1, 0.1], ["e", 3.1, 3.2, 0.1], ["f", 3.2, 3.3, 0.1]]);
+  assert.deepEqual(sureWords(murky), { sure: murky, squeezed: [], doubted: 0 });
+  // …which a SHORT piece with one squeezed line is not: four words of these eighteen, and still doubted
+  assert.ok(4 / FAULTY.length > 0.2);
+  assert.equal(sureWords(FAULTY).doubted, 4);
+  // the real middles (measured): the Ghost 0.69–0.73, Spanish 0.77, French 0.76, German 0.82, Chinese 0.95
+  for (const middle of [0.69, 0.73, 0.77, 0.76, 0.82, 0.95, 0.57]) assert.ok(middle > DOUBT_OFF_MIDDLE + 0.15);
 });
 
 test("the line is drawn while it is said — in a voice whose pauses are quiet", () => {

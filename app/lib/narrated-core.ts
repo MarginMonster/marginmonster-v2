@@ -330,6 +330,12 @@ export const LISTEN_AGAIN_UNDER = 0.97;
 export const DOUBT_SCORE = 0.2;
 /** …with this many of them in a row, is not believed. */
 export const DOUBT_RUN = 2;
+/** …unless the listener is unsure of most of what it heard — the MIDDLE score of the whole listen is
+ *  under this: then its scores tell nothing apart in this voice, and every word is taken at its word as
+ *  it always was. (Measured the same day, the middle score of whole listens: 0.69–0.73 in the Ghost's
+ *  English, 0.76–0.82 in Spanish, French and German, 0.95 in Chinese, 0.52–0.65 for sung lyrics; a
+ *  Spanish voice listened to as English — the one listen on hand with runs — 0.57.) */
+export const DOUBT_OFF_MIDDLE = 0.4;
 
 /** The listener's answer as words: each with its time and — when the listener said — how sure it was. */
 export function listenedWords(raw: unknown): WordT[] {
@@ -352,6 +358,8 @@ export function sureWords(words: WordT[]): { sure: WordT[]; squeezed: Span[]; do
   const sure: WordT[] = [], squeezed: Span[] = [];
   let doubted = 0;
   const unsure = (w: WordT) => typeof w.score === "number" && w.score < DOUBT_SCORE;
+  const scores = words.map((w) => w.score).filter((x): x is number => typeof x === "number").sort((a, b) => a - b);
+  if (scores.length && scores[Math.floor(scores.length / 2)] < DOUBT_OFF_MIDDLE) return { sure: words, squeezed: [], doubted: 0 };
   for (let i = 0; i < words.length; ) {
     let j = i;
     while (j < words.length && unsure(words[j])) j++;
