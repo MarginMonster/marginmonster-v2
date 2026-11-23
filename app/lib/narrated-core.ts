@@ -17,19 +17,24 @@
 /** `last` marks the final word of a scene (set by scriptWordTimes): a caption card never runs past it. */
 export type WordT = { word: string; start: number; end: number; last?: boolean };
 export type Window = { t0: number; t1: number };
-export type Card = { text: string; t0: number; t1: number };
+/** `words` = the card's own words, each with the time it is said and its piece of the card's text (the
+ *  pieces join back into `text`). boldCards() sets them; the highlight style lights each one in turn. */
+export type Card = { text: string; t0: number; t1: number; words?: Array<{ text: string; t0: number; t1: number }> };
 
 /** How the words are put on screen.
  *   off        nothing
  *   bold       big upper-case words, a few at a time, in step with the voice (the social look)
+ *   highlight  the same big words — and the one being said is lit, word by word (what every short-video
+ *              tool leads with; drawn by the subtitle renderer, see highlightAss)
  *   subtitles  a clean line or two of sentence-case text at the bottom (the film look) */
-export type CaptionStyle = "off" | "bold" | "subtitles";
+export type CaptionStyle = "off" | "bold" | "highlight" | "subtitles";
 export const CAPTION_STYLES: Array<{ key: CaptionStyle; label: string; blurb: string }> = [
   { key: "bold", label: "Bold", blurb: "Big words that pop in time with the voice" },
+  { key: "highlight", label: "Highlight", blurb: "Big words — the one being said lights up" },
   { key: "subtitles", label: "Subtitles", blurb: "A clean line along the bottom, like a film" },
   { key: "off", label: "Off", blurb: "No words on screen" },
 ];
-export const captionStyleOf = (v: unknown, fallback: CaptionStyle = "off"): CaptionStyle => (v === "off" || v === "bold" || v === "subtitles" ? v : fallback);
+export const captionStyleOf = (v: unknown, fallback: CaptionStyle = "off"): CaptionStyle => (v === "off" || v === "bold" || v === "highlight" || v === "subtitles" ? v : fallback);
 
 const countWords = (s: string): number => (s.trim().match(/\S+/g) || []).length;
 
@@ -308,8 +313,20 @@ export function boldCards(words: WordT[], lang?: string | null): Card[] {
       chunks = phraseCards(ph, LEAN[(lang || "en").toLowerCase().slice(0, 2)] || LEAN.en);
     }
     for (const ch of chunks) {
-      const text = drawable(joinUnits(ch.map((w) => w.word))).toUpperCase().replace(/[.,…]+$/u, "").trim();
-      if (text) cards.push({ text, t0: ch[0].start, t1: ch[ch.length - 1].end });
+      const upTo = (k: number): string => drawable(joinUnits(ch.slice(0, k + 1).map((w) => w.word))).toUpperCase().replace(/[.,…]+$/u, "").trim();
+      const text = upTo(ch.length - 1);
+      if (!text) continue;
+      // each word's own piece of the card (they join back into it), so one can be lit while it is said
+      const pieces: Array<{ text: string; t0: number; t1: number }> = [];
+      let before = "";
+      let whole = true;
+      ch.forEach((w, k) => {
+        const now = upTo(k);
+        if (!now.startsWith(before) || now.length === before.length) whole = false;
+        pieces.push({ text: now.slice(before.length), t0: w.start, t1: w.end });
+        before = now;
+      });
+      cards.push({ text, t0: ch[0].start, t1: ch[ch.length - 1].end, ...(whole ? { words: pieces } : {}) });
     }
   }
   // no gaps a word can fall into: a card holds until the next one starts (but not across a long pause)
@@ -470,7 +487,7 @@ export function captionFilters(cards: Card[], style: CaptionStyle, font: string,
     const when = `enable='gte(t,${c.t0.toFixed(2)})*lt(t,${c.t1.toFixed(2)})'`;
     lines.forEach((ln, li) => {
       const fromBottom = lines.length - 1 - li;
-      if (style === "bold") {
+      if (style === "bold" || style === "highlight") {
         // ONE size for every card (a card is at most BOLD_LINE characters); only a single giant word shrinks
         const size = Math.round(Math.max(30, Math.min(54, Math.floor((720 * 0.9) / (Math.max(BOLD_LINE, textWidth(ln)) * 0.62)))) * u);
         const y = W > H ? `h-${Math.round(150 * u)}-${fromBottom * Math.round(size * 1.25)}` : `h-${Math.round(H * 0.28)}-${fromBottom * Math.round(size * 1.25)}`;
@@ -487,6 +504,63 @@ export function captionFilters(cards: Card[], style: CaptionStyle, font: string,
     });
   }
   return out;
+}
+
+/* ---- the HIGHLIGHT style: the Bold cards, with the word being said lit ----
+ * drawtext draws a whole string in one colour, so this one is handed to the subtitle renderer (libass)
+ * as an .ass file: for every word of a card, one line that is on screen while that word is said — the
+ * card's text with that word in the highlight colour. Sized and placed to sit exactly where the Bold
+ * card sits (measured side by side, 2026-11-23: with Poppins, the renderer's font size is the letter
+ * height × 1.74, and the line's foot is 1.31 letter heights under where drawtext puts its top).
+ * A card with no word times (or a script without spaces, not yet measured) is shown unlit. */
+export const HIGHLIGHT_RGB = "FFD84A";
+export const ASS_EM = 1.74;
+export const ASS_FOOT = 1.31;
+const assTime = (t: number): string => {
+  const cs = Math.max(0, Math.round(t * 100));
+  return `${Math.floor(cs / 360000)}:${String(Math.floor((cs % 360000) / 6000)).padStart(2, "0")}:${String(Math.floor((cs % 6000) / 100)).padStart(2, "0")}.${String(cs % 100).padStart(2, "0")}`;
+};
+/** RRGGBB → the renderer's &H00BBGGRR& */
+const assColour = (rgb: string): string => `&H00${rgb.slice(4, 6)}${rgb.slice(2, 4)}${rgb.slice(0, 2)}&`;
+/** what may stand in a line of the file: drawable() text has no braces or backslashes, but nothing is taken on trust */
+const assText = (t: string): string => t.replace(/[{}\\\r\n]/g, " ");
+
+/** The .ass file for the highlight style — "" when there is nothing to draw. `fontFamily` is the family
+ *  name of the font the cards are drawn in (the renderer finds it in the fonts folder it is given). */
+export function highlightAss(cards: Card[], fontFamily: string, W: number, H: number): string {
+  const shown = cards.filter((c) => c.text && c.t1 > c.t0);
+  if (!shown.length) return "";
+  const u = Math.min(W, H) / 720;
+  const outline = Math.max(4, Math.round(8 * u));
+  const white = assColour("FFFFFF"), lit = assColour(HIGHLIGHT_RGB);
+  const head = [
+    "[Script Info]", "ScriptType: v4.00+", `PlayResX: ${W}`, `PlayResY: ${H}`, "WrapStyle: 2", "ScaledBorderAndShadow: yes", "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    `Style: Cap,${fontFamily.replace(/[,\r\n]/g, " ")},54,${white},${white},&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,${outline},0,2,20,20,0,1`, "",
+    "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  ];
+  const lines: string[] = [];
+  for (const c of shown) {
+    // the same size and the same place as the Bold card (captionFilters)
+    const em = Math.round(Math.max(30, Math.min(54, Math.floor((720 * 0.9) / (Math.max(BOLD_LINE, textWidth(c.text)) * 0.62)))) * u);
+    const top = W > H ? H - Math.round(150 * u) : H - Math.round(H * 0.28);
+    const marginV = Math.max(0, H - top - Math.round(em * ASS_FOOT));
+    const open = `{\\fs${Math.round(em * ASS_EM)}}`;
+    const say = (a: number, b: number, text: string) => { if (b - a > 0.005) lines.push(`Dialogue: 0,${assTime(a)},${assTime(b)},Cap,,0,0,${marginV},,${open}${text}`); };
+    const ws = c.words && c.words.length && !hasWide(c.text) ? c.words : null;
+    if (!ws) { say(c.t0, c.t1, assText(c.text)); continue; }
+    ws.forEach((w, k) => {
+      const a = k === 0 ? c.t0 : Math.max(c.t0, Math.min(w.t0, c.t1));
+      const b = k + 1 < ws.length ? Math.max(a, Math.min(ws[k + 1].t0, c.t1)) : c.t1;
+      // (the word's own letters are lit — not the space or comma that joins it to the one before)
+      const lead = /^[\s,]*/.exec(w.text)![0];
+      const before = ws.slice(0, k).map((x) => x.text).join("") + lead;
+      const after = ws.slice(k + 1).map((x) => x.text).join("");
+      say(a, b, `${assText(before)}{\\c${lit}}${assText(w.text.slice(lead.length))}{\\c${white}}${assText(after)}`);
+    });
+  }
+  return lines.length ? [...head, ...lines, ""].join("\n") : "";
 }
 
 /* ---- who is IN a scene's picture ----

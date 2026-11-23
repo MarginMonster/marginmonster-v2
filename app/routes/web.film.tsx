@@ -3509,7 +3509,7 @@ export default function FilmStudio() {
             <button type="button" style={{ order: 9 }} className={`mm-card${storyCard === "captions" ? " on" : ""}${storyDone.captions ? " done" : ""}`} onClick={() => tapStory("captions")}>
               <span className="mm-step" aria-hidden="true">{storyDone.captions ? <Ico n="check" size={13} /> : 4}</span>
               <span className="mm-card-top"><span className="mm-card-ico c1"><Ico n="article" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The words")}</span><b>{t("Captions")}</b></span></span>
-              <span className="mm-val">{capName}{captions !== "off" ? <> · {t(captions === "bold" ? "big words, in time" : "a line along the bottom")}</> : null}</span>
+              <span className="mm-val">{capName}{captions !== "off" ? <> · {t(captions === "bold" ? "big words, in time" : captions === "highlight" ? "the spoken word lights up" : "a line along the bottom")}</> : null}</span>
             </button>
             {/* 5 · Narrator (narrated) or Engine (acted) */}
             <button type="button" style={{ order: 11 }} className={`mm-card${storyCard === "voice" ? " on" : ""}${storyDone.voice ? " done" : ""}`} onClick={() => tapStory("voice")}>
@@ -3594,6 +3594,8 @@ export default function FilmStudio() {
                     <button type="button" key={c.key} className={`mm-cap${captions === c.key ? " on" : ""}`} aria-pressed={captions === c.key} onClick={() => setCapPick(c.key)}>
                       <span className="mm-cap-demo" style={{ backgroundImage: `linear-gradient(180deg,rgba(8,20,15,.15),rgba(8,20,15,.55)),url(${stillOf(template)})` }} aria-hidden="true">
                         {c.key === "bold" && <i className="bold">{t("the door opened")}</i>}
+                        {/* the same big words, the last one lit — as it is while that word is being said */}
+                        {c.key === "highlight" && (() => { const w = t("the door opened").split(" "); return <i className="bold">{w.slice(0, -1).join(" ")}{w.length > 1 ? " " : ""}<b className="lit">{w[w.length - 1]}</b></i>; })()}
                         {c.key === "subtitles" && <i className="sub">{t("The door opened before his hand came down.")}</i>}
                       </span>
                       <b>{t(c.label)}</b>
@@ -4541,6 +4543,7 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-cap-demo{position:relative;display:block;width:100%;max-width:132px;aspect-ratio:4 / 5;border-radius:10px;overflow:hidden;background:#12241D center/cover no-repeat;}
 .mm-cap-demo i{position:absolute;left:7%;right:7%;text-align:center;font-style:normal;color:#fff;}
 .mm-cap-demo .bold{top:54%;font-size:15px;font-weight:900;line-height:1.08;letter-spacing:.01em;text-transform:uppercase;text-shadow:-1.5px -1.5px 0 #000,1.5px -1.5px 0 #000,-1.5px 1.5px 0 #000,1.5px 1.5px 0 #000,0 2.5px 0 #000;}
+.mm-cap-demo .bold .lit{color:#FFD84A;font-weight:inherit;}
 .mm-cap-demo .sub{bottom:8%;font-size:8.5px;font-weight:600;line-height:1.3;text-shadow:0 1px 2px #000,0 0 3px #000;}
 .mm-vo-h{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3,#9AA39B);margin:14px 0 7px;}
 .mm-vopick{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;}

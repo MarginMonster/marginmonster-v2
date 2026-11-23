@@ -22,6 +22,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
 import { checkpointJob, downloadBuffer, ffprobeDuration, repCreate, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
+import { captionGraph } from "./caption-burn.server";
 import { persistRemote, renderCreativeSeed, repRun } from "./image-generation.server";
 import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { musicBedToDisk } from "./music-generation.server";
@@ -227,9 +228,12 @@ export async function assembleNarrated(o: {
   }
   await beat();
   const hasMusic = !!o.musicPath && fs.existsSync(o.musicPath);
-  const captions = captionFilters(o.cards, o.style, o.fontFile, o.W, o.H);
+  // the look that was asked for (Highlight is a file for the subtitle renderer), and the same cards as
+  // plain drawn text behind it: a renderer that fails must not cost the story its words (caption-burn)
+  const cap = captionGraph(o.cards, o.style, o.fontFile, o.W, o.H);
+  const captions = cap.plain;
 
-  const build = (useCaptions: boolean, moving: boolean, useMusic: boolean): string[] => {
+  const build = (useCaptions: boolean, moving: boolean, useMusic: boolean, styled = false): string[] => {
     const a: string[] = ["-y"];
     norm.forEach((s, i) => { if (moving) a.push("-i", s); else a.push("-loop", "1", "-t", (frames[i] / FPS).toFixed(3), "-i", s); });
     a.push("-i", o.voPath);
@@ -243,7 +247,7 @@ export async function assembleNarrated(o: {
     });
     f.push(`${norm.map((_, i) => `[c${i}]`).join("")}concat=n=${N}:v=1:a=0[vcat]`);
     let v = "[vcat]";
-    if (useCaptions && captions.length) { f.push(`[vcat]${captions.join(",")}[vf]`); v = "[vf]"; }
+    if (useCaptions && captions.length) { f.push(`[vcat]${(styled && cap.styled ? cap.styled : captions).join(",")}[vf]`); v = "[vf]"; }
     f.push(`[${N}:a]aresample=44100,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100,apad=pad_dur=${TAIL_S}[vo]`);
     let aMap = "[vo]";
     if (musicOn) {
@@ -262,15 +266,24 @@ export async function assembleNarrated(o: {
   if (captions.length) rungs.push([false, true, true]);
   rungs.push([false, false, false]);
   let lastErr = "";
-  for (const [cap, kb, mus] of rungs) {
-    const run = await runFfmpeg(build(cap, kb, mus));
-    if (run.status === 0 && produced()) {
-      if (!cap && captions.length) console.error("[narrated] the captions could not be drawn — the story shipped without them");
-      return;
+  try {
+    // the styled look first, when there is one — and if THAT cannot be drawn, the same cards plain
+    if (cap.styled) {
+      const run = await runFfmpeg(build(true, true, true, true));
+      if (run.status === 0 && produced()) return;
+      console.error(`[narrated] the highlight captions could not be drawn — drawn as Bold instead: ${(run.stderr || "").slice(-200)}`);
+      await beat();
     }
-    lastErr = (run.stderr || "").slice(-240);
-    await beat();
-  }
+    for (const [withCaps, kb, mus] of rungs) {
+      const run = await runFfmpeg(build(withCaps, kb, mus));
+      if (run.status === 0 && produced()) {
+        if (!withCaps && captions.length) console.error("[narrated] the captions could not be drawn — the story shipped without them");
+        return;
+      }
+      lastErr = (run.stderr || "").slice(-240);
+      await beat();
+    }
+  } finally { cap.cleanup(); }
   throw new Error(`[narrated] ffmpeg failed after ${rungs.length} rungs: ${lastErr}`);
 }
 
@@ -370,7 +383,7 @@ export async function generateNarratedStory(opts: {
   // the screen) — and, when nothing was heard, each scene's words spread across its window: the same
   // cards either way (the unheard ones used to be whole sentences in capitals, full stops and all)
   const timed = scriptWordTimes(lines, words, windows);
-  const cards: Card[] = style === "bold"
+  const cards: Card[] = style === "bold" || style === "highlight"
     ? boldCards(timed, normalizeContentLang(lang))
     : style === "subtitles" ? subtitleCards(lines, windows, subtitleChars(W, H), words.length ? timed : undefined) : [];
 

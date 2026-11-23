@@ -40,7 +40,7 @@ export type StoryToEdit = {
   heroId: string;
   template: string;
   aspect: "9:16" | "16:9" | "1:1";
-  captions: "off" | "bold" | "subtitles";
+  captions: "off" | "bold" | "highlight" | "subtitles";
   narrator: string;
   /** the language it is told in (a telling in another language is edited in that language) */
   lang: string;
@@ -91,7 +91,7 @@ export function storyToEditFrom(
     heroId: hero.id,
     template: hero.tmpl,
     aspect: aspect === "16:9" || aspect === "1:1" ? aspect : "9:16",
-    captions: captions === "off" || captions === "subtitles" ? captions : "bold",
+    captions: captions === "off" || captions === "subtitles" || captions === "highlight" ? captions : "bold",
     narrator: str(meta.narrator).slice(0, 80),
     lang: storyLangOf(asset.metaJson, shopLang),
     cast: (Array.isArray(meta.cast) ? meta.cast : []).filter(isObj).slice(0, 4)

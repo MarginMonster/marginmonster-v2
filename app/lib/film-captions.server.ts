@@ -18,6 +18,7 @@ import { checkpointJob, ffprobeDuration, repPoll, resolveTextFont, runFfmpeg } f
 import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { mirrorRender } from "./object-storage.server";
 import { LISTEN_AUDIO, heardTooLittle, lyricWordTimes } from "./lyric-sync";
+import { captionGraph } from "./caption-burn.server";
 import { boldCards, captionFilters, scriptWordTimes, subtitleCards, subtitleChars, trimToSound, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -73,7 +74,7 @@ export async function captionFilm(o: {
     let said = windows;
     try { said = trimToSound(windows, (await runFfmpeg(["-i", o.filmPath, "-vn", "-af", "silencedetect=noise=-30dB:d=0.6", "-f", "null", "-"])).stderr); } catch { /* the whole shot */ }
     const timed = scriptWordTimes(lines, words, said, { minHeard: 0.6, lead: 0.25, tail: 0.3 });
-    const cards: Card[] = o.style === "bold" ? boldCards(timed, o.lang) : subtitleCards(lines, windows, subtitleChars(W, H), timed);
+    const cards: Card[] = o.style === "bold" || o.style === "highlight" ? boldCards(timed, o.lang) : subtitleCards(lines, windows, subtitleChars(W, H), timed);
     // 3) burn them in; the sound is not touched
     const drawn = await burnCards(o.filmPath, tmp, cards, o.style, lines.join(" "), W, H, total);
     await beat();
@@ -96,13 +97,22 @@ async function burnCards(filmPath: string, tmp: string, cards: Card[], style: Ca
   //  then, the film as it is. Drawing them with Poppins made every caption a row of boxes.)
   try { font = await resolveTextFont(sample); }
   catch (e) { console.error(`[captions] no font for these words — the film ships without captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); return false; }
-  const filters = captionFilters(cards, style, font, W, H);
-  if (!filters.length) return false;
-  const run = await runFfmpeg(["-y", "-i", filmPath, "-vf", filters.join(","), "-threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", tmp]);
-  if (run.status !== 0 || !fs.existsSync(tmp) || Math.abs(ffprobeDuration(tmp) - total) > 0.5) {
-    console.error(`[captions] the captions could not be drawn — the film ships without them: ${(run.stderr || "").slice(-200)}`);
-    return false;
-  }
+  // the look that was asked for (Highlight is a file for the subtitle renderer), then the same cards as
+  // plain drawn text: a renderer that fails must not cost the film its words (caption-burn.server.ts)
+  const cap = captionGraph(cards, style, font, W, H);
+  const filters = cap.plain;
+  if (!filters.length) { cap.cleanup(); return false; }
+  const burn = (vf: string[]) => runFfmpeg(["-y", "-i", filmPath, "-vf", vf.join(","), "-threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", tmp]);
+  const drawn = (r: { status: number | null }) => r.status === 0 && fs.existsSync(tmp) && Math.abs(ffprobeDuration(tmp) - total) <= 0.5;
+  try {
+    let run = cap.styled ? await burn(cap.styled) : null;
+    if (run && !drawn(run)) console.error(`[captions] the highlight captions could not be drawn — drawn as Bold instead: ${(run.stderr || "").slice(-200)}`);
+    if (!run || !drawn(run)) run = await burn(filters);
+    if (!drawn(run)) {
+      console.error(`[captions] the captions could not be drawn — the film ships without them: ${(run.stderr || "").slice(-200)}`);
+      return false;
+    }
+  } finally { cap.cleanup(); }
   fs.renameSync(tmp, filmPath);
   return true;
 }
