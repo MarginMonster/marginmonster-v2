@@ -5,6 +5,7 @@
 import { processNextJob, reclaimOrphanJobs } from "./lib/job-queue.server";
 import { postDueSlots } from "./lib/social-post.server";
 import { tickDueSeries } from "./lib/creator-series.server";
+import { tickPostQueue } from "./lib/post-queue.server";
 import { refreshSocialStats } from "./lib/social-insights.server";
 import { backfillDeadImages } from "./lib/image-generation.server";
 import { purgeStaleUnkept } from "./lib/storage-cleanup.server";
@@ -90,6 +91,8 @@ async function tick() {
     // Advance Creator "Channels" — render + post the next drop for any channel
     // whose cadence is due (self-throttled to ~2 min; caps drops per scan).
     await tickDueSeries().catch((e) => console.error("[worker] series tick (non-fatal):", e));
+    // Send queued pieces ("Coming up" on Auto-post) whose time has come — claimed one by one, never twice.
+    await tickPostQueue().catch((e) => console.error("[worker] post queue (non-fatal):", e));
     // Pull organic follower/engagement analytics into the cache (self-throttled to ~1h).
     await refreshSocialStats().catch((e) => console.error("[worker] social insights (non-fatal):", e));
     await backfillDeadImages().catch((e) => console.error("[worker] image backfill (non-fatal):", e));
@@ -143,6 +146,10 @@ if (!global.__mm_worker_started__ && process.env.NODE_ENV === "production") {
   setInterval(tick, POLL_MS);
   // Independent of the drain: a wedged tick must not switch off refunds.
   setInterval(reap, 60_000);
+  // The posting queue, ALSO on its own timer. The tick above awaits whole renders (up to an hour), and
+  // the page promises "Post now" goes out within a minute. tickPostQueue has its own in-process guard
+  // and claims every row before sending, so the two callers can never send the same row twice.
+  setInterval(() => { tickPostQueue().catch((e) => console.error("[worker] post queue timer (non-fatal):", e)); }, 30_000);
   // Kick one immediately so freshly-installed shops don't wait.
   tick();
   // Self-build the cartoon style-picker tiles (real flux renders of the first
