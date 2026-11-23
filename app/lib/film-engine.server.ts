@@ -42,6 +42,7 @@ import { MOTION_GENTLE, MOTION_KEEPS_CAST, MOTION_NEGATIVE, fitFilter, fitScenes
 import { lyricLinesOf, sceneLineTimes } from "./lyric-sync";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 import { episodeTitle, seriesWriterBrief, type SeriesBrief } from "./film-series";
+import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from "./dialogue-fit";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -709,6 +710,29 @@ export async function previewFilmTreatment(opts: {
     ...(featured.length && singers[i] >= 0 ? { singer: castList[singers[i]] } : {}),
   }));
   if (list.length < 1) throw new Error("[film] treatment came back empty");
+  // A SPOKEN LINE FITS ITS SHOT (dialogue-fit.ts). The writer is told 15-18 words a line and cannot count:
+  // a kids' cartoon set to "≈ 20s · 4 shots" came back with lines of 26-30 words, every shot ran its full
+  // ten seconds, and the film was 40 seconds (2026-11-23). The lines are counted; the ones over the limit
+  // go back ONCE for a shorter rewrite, taken only when it is the same speaker's line, shorter. Any
+  // trouble at all and the lines stay as they were written.
+  if (tmpl.dialogue && !narrated) {
+    const written = list.map((s) => s.caption || "");
+    const long = linesTooLong(written);
+    if (long.length) {
+      try {
+        const raw = await anthropicText(fitAsk(written, long), {
+          model: "claude-sonnet-5", maxTokens: 900,
+          jsonSchema: { name: "dialogue_fit", schema: { type: "object", properties: { lines: { type: "array", items: { type: "string" } } }, required: ["lines"], additionalProperties: false } },
+        });
+        const next = takeRewrites(written, long, (JSON.parse(raw) as { lines?: unknown }).lines);
+        const took = long.filter((i) => next[i] !== written[i]);
+        console.log(`[film] ${long.length} line${long.length === 1 ? "" : "s"} over ${LINE_WORDS_MAX} words (${long.map((i) => saidWords(written[i])).join(", ")}) — ${took.length} rewritten shorter (${took.map((i) => saidWords(next[i])).join(", ") || "none taken"})`);
+        list = list.map((s, i) => (next[i] && next[i] !== written[i] ? { ...s, caption: next[i] } : s));
+      } catch (e) {
+        console.error(`[film] the long lines could not be rewritten, kept as written: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+      }
+    }
+  }
   const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 5) : undefined;
   let outTitle = (parsed.title || topic || tmpl.name).slice(0, 80);
   // NAME ENFORCEMENT (robust). The writer keeps inventing stage names (Kai Monroe, Wyatt, Vex, Dalla…)
