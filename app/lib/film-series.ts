@@ -302,3 +302,50 @@ export function nextEpisodeCards(rows: ReadonlyArray<{ id: string; title?: strin
   }
   return out;
 }
+
+/* ---- A FILM MADE BEFORE FILMS KEPT THEIR CAST --------------------------------------------------
+ *
+ * meta.cast is written from 2026-11-23 on. Every story film made before that opens its next episode
+ * with nobody cast ("0/3 cast"), so an untouched episode 2 is played by invented faces — it does not
+ * look like episode 1. The cast was never lost, though: the JOB that rendered the film still holds what
+ * the maker picked (payload.cast — each character's picture and voice), and the clips it checkpointed.
+ */
+
+const baseName = (u: unknown): string => {
+  const s = str(u).split(/[?#]/)[0];
+  return s.slice(Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\")) + 1);
+};
+
+/** The files a finished film is made of: its own video and every shot it kept. */
+export function filmFileNames(film: { metaJson?: unknown; bodyJson?: unknown }): string[] {
+  const meta = safeParse(film.metaJson);
+  const body = safeParse(film.bodyJson);
+  const shots = Array.isArray(meta.shots) ? meta.shots : [];
+  return [baseName(body.videoUrl), ...shots.map((s) => (isObj(s) ? baseName(s.url) : ""))].filter(Boolean);
+}
+
+/**
+ * The cast of an older film, from the payloads of the jobs that finished when it was made (the caller
+ * asks for this shop's completed render jobs around the film's creation time — one render runs at a time).
+ *
+ * A payload is THE film's when one of the clips it checkpointed is one of the film's own files. Failing
+ * that — a narrated story checkpoints no clips — it must be the ONLY candidate of the film's own format;
+ * two candidates and no file in common is a guess, and nobody is cast by a guess.
+ */
+export function castFromJobPayloads(film: { metaJson?: unknown; bodyJson?: unknown }, payloads: ReadonlyArray<unknown>): SeriesCastMember[] {
+  const meta = safeParse(film.metaJson);
+  const template = str(meta.template);
+  const narrated = str(meta.kind) === "narrated";
+  const files = new Set(filmFileNames(film));
+  const candidates: Obj[] = [];
+  for (const raw of payloads) {
+    const p = safeParse(raw);
+    if (!Array.isArray(p.cast) || !p.cast.length) continue;
+    if (template && str(p.filmTemplate) && str(p.filmTemplate) !== template) continue;
+    if ((str(p.filmMode) === "narrated") !== narrated) continue;
+    const clips = Array.isArray(p.ckClips) ? p.ckClips : [];
+    if (clips.some((c) => files.has(baseName(c)))) return castForMeta(p.cast as Array<{ name?: string }>);
+    candidates.push(p);
+  }
+  return candidates.length === 1 ? castForMeta(candidates[0].cast as Array<{ name?: string }>) : [];
+}

@@ -39,7 +39,7 @@ import { SPIN_STAGE_CSS } from "../components/SpinStage";
 import { useModalA11y } from "../lib/use-modal-a11y";
 import { favouritesFirst } from "../lib/favourites";
 import { nameTok } from "../lib/character-prompts";
-import { nextEpisodeCards, seriesBriefOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
+import { castFromJobPayloads, nextEpisodeCards, seriesBriefOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
 
@@ -122,12 +122,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   ], favs).slice(0, 70);
   // NEXT EPISODE (film-series.ts): this shop's most recent finished STORY films — one per series, by its
   // latest episode — each with what its next episode is set up as. (Only this shop's own films.)
-  const nextEpisodes = nextEpisodeCards(await db.asset.findMany({
+  const storyFilms = await db.asset.findMany({
     where: { shopId: shop.id, type: "VIDEO_AD", status: { not: "FAILED" }, OR: [{ metaJson: { contains: '"kind":"narrated"' } }, { metaJson: { contains: '"kind":"testmovie"' } }] },
     orderBy: { createdAt: "desc" },
     take: 30,
-    select: { id: true, title: true, metaJson: true, bodyJson: true },
-  }), 3);
+    select: { id: true, title: true, metaJson: true, bodyJson: true, createdAt: true },
+  });
+  const nextEpisodes = nextEpisodeCards(storyFilms, 3);
+  // A FILM MADE BEFORE FILMS KEPT THEIR CAST (film-series.ts → castFromJobPayloads) opened its next episode
+  // with nobody cast, so episode 2 was played by invented faces. The job that rendered it still holds who
+  // the maker picked: this shop's own finished render jobs from the minutes around the film's creation.
+  // Read-only, at most three small lookups, and only for those older films; any miss leaves it as it was.
+  for (const card of nextEpisodes) {
+    if (card.setup.cast.length) continue;
+    const film = storyFilms.find((r) => r.id === card.from);
+    if (!film) continue;
+    try {
+      const at = film.createdAt.getTime();
+      const jobs = await db.job.findMany({
+        where: { shopId: shop.id, type: "GENERATE_VIDEO_AD", status: "COMPLETED", processedAt: { gte: new Date(at - 2 * 60_000), lte: new Date(at + 10 * 60_000) } },
+        select: { payload: true },
+        take: 6,
+      });
+      card.setup.cast = castFromJobPayloads(film, jobs.map((j) => j.payload));
+    } catch { /* nobody cast, as before */ }
+  }
   return json({
     tokens: tokensRemainingLive(shop.activePlan),
     roster,
