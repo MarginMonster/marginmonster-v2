@@ -297,10 +297,21 @@ const lockOf = (note: string): string => {
  *  is said (EVENT_MAX unless told). Not a staging → the rules as they came.
  *  `heard` = THE SHOT OPENS ON A SOUND (heardIn, below): the scene's words lead the whole prompt instead
  *  (heardTalk), so the note says only what follows them, and the sound rule lets that sound be heard.
- *  `reveal` = a horror film's last shot: what is seen in it moves SLOWLY (REVEAL_MOVES). */
-export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; others?: ReadonlyArray<{ name: string; side: string }>; heard?: boolean; reveal?: boolean }): T {
+ *  `reveal` = a horror film's last shot: what is seen in it moves SLOWLY and the two FREEZE (REVEAL_MOVES,
+ *  REVEAL_REACT); `implied` = …whose thing could not be drawn into its picture: the scene's words are not said
+ *  at all, and the two react to something never seen (REVEAL_UNSEEN_REACT). */
+export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; others?: ReadonlyArray<{ name: string; side: string }>; heard?: boolean; reveal?: boolean; implied?: boolean }): T {
   if (!isActedStaging(o.staging)) return base;
   const spec = ACTED_STAGINGS[o.staging];
+  if (o.implied) {
+    return {
+      ...base,
+      look: `${lockOf(base.look)} ${spec.clip} ${REVEAL_UNSEEN_REACT}`,
+      lookTight: `${lockOf(base.lookTight)} ${spec.clip} ${REVEAL_UNSEEN_REACT}`,
+      lookShort: `${lockOf(base.lookShort)} ${REVEAL_UNSEEN_REACT}`,
+      steady: spec.camera ? base.steady.replace(CAMERA_LOCKED, spec.camera) : base.steady,
+    };
+  }
   const event = clipEvent(o.event, o.eventMax && o.eventMax > 0 ? o.eventMax : EVENT_MAX);
   const heard = !!o.heard && !!event;
   const who = event && !heard
@@ -313,7 +324,7 @@ export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown
         return said ? `${said[0]} is on the ${side}.` : "";
       }).filter(Boolean).join(" ")
     : "";
-  const slow = event && o.reveal ? ` ${REVEAL_MOVES}` : "";
+  const slow = event && o.reveal ? ` ${REVEAL_MOVES} ${REVEAL_REACT}` : "";
   const does = heard ? HEARD_AFTER : event ? `${who ? `${who} ` : ""}${EVENT_LEAD} ${event}${slow}` : "Only natural talking, small gestures and shifts of weight.";
   const rest = event ? "Nothing else" : "Nothing";
   const alive = /background stays/.test(base.look) ? " The background stays gently alive." : "";
@@ -433,11 +444,13 @@ const unquoted = (s: string): string => s.replace(/["“”«»„‟‹›‘�
  *  of the frame — no talking directions place anybody in such a shot, so each is said when the event names
  *  them. The prompt is `NOBODY_SPEAKS`, then these (clip-prompt.ts → fitClipPrompt, with no voice timbre).
  *  And, after what happens: `unseen` = it is a sound from out of sight, made by nothing in the picture
- *  (HEARD_UNSEEN); `reveal` = a horror film's last shot, whose thing moves SLOWLY (REVEAL_MOVES); `face` =
- *  who must not smile (faceNote) — every one of them in words with no quotation mark in them either. */
-export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; sides?: ReadonlyArray<{ name: string; side: string }>; unseen?: boolean; reveal?: boolean; face?: string | null } = {}): T {
+ *  (HEARD_UNSEEN); `reveal` = a horror film's last shot, whose thing moves SLOWLY while the two freeze and one
+ *  turns to it (REVEAL_MOVES, REVEAL_REACT); `implied` = …whose thing could not be drawn into its picture: the
+ *  scene's words are not said, and the two react to something never seen (REVEAL_UNSEEN_REACT); `face` = who
+ *  must not smile (faceNote) — every one of them in words with no quotation mark in them either. */
+export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; sides?: ReadonlyArray<{ name: string; side: string }>; unseen?: boolean; reveal?: boolean; implied?: boolean; face?: string | null } = {}): T {
   const spec = isActedStaging(o.staging) ? ACTED_STAGINGS[o.staging] : null;
-  const event = unquoted(clipEvent(o.event, o.eventMax && o.eventMax > 0 ? o.eventMax : EVENT_MAX));
+  const event = o.implied ? "" : unquoted(clipEvent(o.event, o.eventMax && o.eventMax > 0 ? o.eventMax : EVENT_MAX));
   const who = event
     ? (o.sides || []).map((p) => {
         const name = unquoted(oneLine(p?.name));
@@ -449,8 +462,8 @@ export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown
       }).filter(Boolean).join(" ")
     : "";
   const move = spec ? spec.clip : "Everybody stays where they are in the picture, faces in view.";
-  const after = `${event && o.unseen ? ` ${HEARD_UNSEEN}` : ""}${event && o.reveal ? ` ${REVEAL_MOVES}` : ""}${o.face ? ` ${unquoted(oneLine(o.face))}` : ""}`;
-  const does = event ? `${who ? `${who} ` : ""}${SILENT_EVENT_LEAD} ${event}${after}` : `Only small natural movement: breathing, a look, a shift of weight.${after}`;
+  const after = `${event && o.unseen ? ` ${HEARD_UNSEEN}` : ""}${event && o.reveal ? ` ${REVEAL_MOVES} ${REVEAL_REACT}` : ""}${o.face ? ` ${unquoted(oneLine(o.face))}` : ""}`;
+  const does = event ? `${who ? `${who} ` : ""}${SILENT_EVENT_LEAD} ${event}${after}` : o.implied ? `${REVEAL_UNSEEN_REACT}${after}` : `Only small natural movement: breathing, a look, a shift of weight.${after}`;
   const rest = event ? "Nothing else" : "Nothing";
   const alive = /background stays/.test(base.look) ? " The background stays gently alive." : "";
   const lock = (note: string): string => (spec?.camera ? lockOf(note).replace(/\bbackground\b/g, "place") : lockOf(note));
@@ -672,21 +685,100 @@ export function faceNote(o: { horror?: boolean; tone?: string | null; visual?: s
  * rather than written a third time: photographed, a practical effect (story-picture.ts → CREATURE_REAL), and
  * mostly lost in the dark (take.ts → TAKE_HIDDEN); and as slightly wrong as the scene's own words say (the
  * writer was told WHAT FRIGHTENS: one or two exact wrongnesses). In the clip it moves SLOWLY — "slow is what
- * frightens" (take.ts) — and the cut to it is a straight cut (film-dialogue → assembleTestMovie). */
+ * frightens" (take.ts) — and the cut to it is a straight cut (film-dialogue → assembleTestMovie).
+ *
+ * THE SECOND LIVE FILM (2026-11-24, the same idea, made on that) had its reveal in the same room, cut straight
+ * — and still "odd, not real": an ordinary, smooth, evenly lit, normal-length human arm reaching in from a
+ * split in the wallpaper at the very left edge of the frame, and neither sister reacting (one talked to the
+ * camera, the other kept packing). Nothing wrong with it had landed, because nothing concrete was asked for —
+ * only "slightly WRONG in exactly the ways the moment says", and the moment said none. So the picture is now
+ * told, whatever the scene's words: (a) the THING ITSELF, barely seen — a face a hand's width back in a hole
+ * broken through the plaster, one eye catching the light; or the tips of long fingers curled over its broken
+ * edge — never a whole limb in the light; (b) its wrongness in so many words, for the part of it that shows
+ * (REVEAL_PARTS); (c) WHERE it is — close behind one of the two, at the height of a head, in light that has
+ * dimmed — never at the edge of the frame; and that the two have frozen. It is drawn on the stronger editor
+ * (film-dialogue → nano-banana-pro, flux-kontext-pro when that refuses). And the clip (d): they freeze, then one
+ * of them slowly turns to it (REVEAL_REACT) — or, when no picture of it could be drawn, they react to something
+ * never seen (REVEAL_UNSEEN_REACT). Every wording was drawn from a frame of that film and LOOKED at. */
 
 /** How the thing in a horror film's last shot moves. */
 export const REVEAL_MOVES = "What is seen moves SLOWLY — slow, smooth and unhurried, never a jump, a lunge or a sudden move — and it stays solid and real, half in shadow.";
+/** …and how the two take it, in the clip: they do not go on packing, and they do not talk to the camera. */
+export const REVEAL_REACT = "Both of them FREEZE where they are — whatever their hands were doing stops dead — and then, slowly, one of them turns to look at it and stares; nobody screams, nobody runs, nobody looks at the camera.";
+/** …and when the thing could not be drawn into the picture (the picture models refused it, or the place has no
+ *  staged picture to draw it into): the clip is NOT told what it is — a clip told to show a thing that is not in
+ *  its picture draws one of its own, and that is the floating hand the owner saw — so the two react to something
+ *  we never see. */
+export const REVEAL_UNSEEN_REACT = "Something they can see and we never do has stopped them dead: both FREEZE, staring at the same place in the dark beside them, faces drained; then, slowly, one of them backs away a single step. Nothing new appears anywhere in the picture.";
 /** How much of the scene's words the picture is told. */
 export const REVEAL_MOMENT_MAX = 320;
 
+/** WHAT OF IT IS SEEN, AND WHAT IS WRONG WITH IT — in so many words, by the part of it the scene's words name
+ *  (a face or an eye; fingers, a hand or an arm). Anything else shows as a part of itself, and is wrong the way
+ *  found footage's things are (take.ts → TAKE_WRONG). Every wording here was drawn from a frame of the second
+ *  live film on the real picture models, nine rounds of it, and LOOKED at (scratchpad t45/acted/reveal-lab):
+ *  told "a gap", the model cut a flat black shape out of the picture; told "grey, too many joints", it drew a
+ *  bony white claw; told "wide, wet eye", a crying woman; told "between them", it painted over the window. */
+const REVEAL_FACE = /\b(?:face|faces|eye|eyes|head|mouth|smile|smiling|teeth|stare|stares|staring|watch|watches|watching|peers|peering)\b/i;
+const REVEAL_HAND = /\b(?:hand|hands|finger|fingers|arm|arms|knuckles?|claws?|nails?|grip|grips|gripping|reach|reaches|reaching)\b/i;
+/** A scene whose thing is in a WALL — then it is in a hole broken through real plaster (with thickness: torn
+ *  paper, crumbled plaster, splintered lath), not a black shape laid over the picture. */
+const REVEAL_WALL = /\b(?:wall|walls|plaster|wallpaper|paper|panel|panelling|paneling|boards|hole|gap|crack|split|torn)\b/i;
+const REVEAL_HOLE = "the plaster has been broken open from inside into a ragged hole: torn wallpaper curling outward, crumbled plaster and splintered wooden lath at its edges, deep black inside";
+export const REVEAL_PARTS = {
+  face: {
+    seen: "a hand's width back inside it, half hidden by its broken edge, is a FACE that is not quite human: only one eye and a sliver of cheek catch the light; the rest is lost in black",
+    wrong: "the skin is grey-white like old candle wax and the cheek is sunken; the eye is open far too wide, the white showing all the way round it, and it does not blink",
+  },
+  hand: {
+    seen: "curled over its broken lower edge from inside are the tips of four FINGERS, as far as the second knuckle — only the fingertips: never a whole hand or an arm, nothing reaching into the room; the rest is lost in black",
+    wrong: "they are human fingers — pale, bloodless skin, creased knuckles, short broken human nails — but far too long and thin, with one joint too many, so that they bend where no finger bends; never a claw, never a monster's hand",
+  },
+  both: {
+    seen: "a hand's width back inside it, half hidden by its broken edge, is a FACE that is not quite human — only one eye and a sliver of cheek catch the light — and the tips of its FINGERS are curled over the broken edge; nothing reaches into the room, the rest is lost in black",
+    wrong: "the skin is grey-white like old candle wax; the eye is open far too wide, the white showing all the way round it, and does not blink; the fingers are human but far too long and thin, with one joint too many — never a claw",
+  },
+  /** …anything else the scene's words have (a shape in a corner, something standing in a doorway): a FIGURE,
+   *  almost all in shadow. (Told take.ts's TAKE_WRONG — "waxy, bloodless, eyes sunk in dark sockets" — the
+   *  picture model drew a zombie.) */
+  figure: {
+    seen: "a tall FIGURE stands in the dark, almost all of it in shadow; only the pale shape of its face catches the light, a little too high up",
+    wrong: "it is too tall and too thin, and perfectly still; its face is grey-white like old candle wax, and one eye is open far too wide — never a zombie, never a skull, never a mask",
+  },
+} as const;
+/** Which of them a scene's words call for. */
+export const revealPart = (moment: string | null | undefined): "face" | "hand" | "both" | "figure" => {
+  const m = oneLine(moment);
+  const face = REVEAL_FACE.test(m), hand = REVEAL_HAND.test(m);
+  return face && hand ? "both" : face ? "face" : hand ? "hand" : "figure";
+};
+/** The light it is seen in: the place's own, dimmed — the frame that worked was the one in which the light had
+ *  gone low; in the place's ordinary light the thing read as stuck onto the picture. */
+export const REVEAL_DIM = "The light has dimmed, and deep shadow has crept in around them.";
+/** …and that it is real: photographed there, never laid over the picture. */
+const REVEAL_REAL = "Real, photographed in this place with the same grain and softness — dim, and easy to miss at first.";
+
 /** THE PICTURE OF A HORROR FILM'S LAST SHOT, asked of the picture model with that place's own picture (its
- *  master) as the one reference image. `moment` = the scene's own words; `mood` = the format's face mood (a
- *  horror cast does not grin — film-engine → faceMood). "" when there is no moment to draw. */
-export function revealPicture(o: { moment: string | null | undefined; mood?: string | null }): string {
+ *  master) as the one reference image. `moment` = the scene's own words; `sides` = who is on which side of that
+ *  picture (the picture model is handed no names: "behind Peggy" means nothing to it unless it is told which
+ *  one Peggy is — and the thing goes close behind the one the scene's words put it behind, else the one on the
+ *  right); `mood` = the format's face mood (a horror cast does not grin — film-engine → faceMood). "" when
+ *  there is no moment to draw. The recipe the horror stories use is said in its own words: photographed, a
+ *  practical effect (story-picture.ts → CREATURE_REAL), mostly hidden (take.ts → TAKE_HIDDEN). */
+export function revealPicture(o: { moment: string | null | undefined; mood?: string | null; sides?: ReadonlyArray<{ name: string; side: string }> }): string {
   const moment = clipEvent(o.moment, REVEAL_MOMENT_MAX);
   if (!moment) return "";
   const mood = oneLine(o.mood);
-  return `Edit this picture, a frame from a live-action horror film. Keep it EXACTLY as it is — the same place, the same camera and framing, the same light and colour, and the same two people on the same sides of the frame, with the same faces, hair and clothes. Change ONLY what this moment changes: ${moment} The one new thing in the picture is what this moment says is there, and it is real. ${CREATURE_REAL} It is nearly human and slightly WRONG — in exactly the one or two ways the moment says, and in no other. ${TAKE_HIDDEN} It is lit only by the light already in this place, falling away into shadow around it: no new light is added, and nothing about it is clean, smooth or evenly lit.${mood ? ` ${mood}` : ""} Nothing written anywhere in the picture.`;
+  const sides = (o.sides || []).map((p) => ({ name: oneLine(p?.name), side: oneLine(p?.side).toLowerCase() })).filter((p) => p.name && (p.side === "left" || p.side === "right"));
+  const who = sides.length ? ` ${sides.map((p) => `${p.name} is the one on the ${p.side}`).join("; ")}.` : "";
+  const behind = sides.find((p) => { try { return new RegExp(`\\b(?:behind|over)\\s+${escapeRe(p.name)}\\b`, "iu").test(moment); } catch { return false; } })
+    || sides.find((p) => p.side === "right") || null;
+  const at = behind ? `close behind ${behind.name}, the one on the ${behind.side}` : "close behind one of them";
+  const part = revealPart(moment);
+  const where = REVEAL_WALL.test(moment)
+    ? `In the wall ${at}, at the height of a head — not over a window or a door, well inside the picture — ${REVEAL_HOLE}; `
+    : `In the dark ${at}, well inside the picture, `;
+  return `Edit this photo, a frame from a live-action horror film. Keep the camera and the framing, every window, door and lamp, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes.${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${REVEAL_PARTS[part].seen}. What is wrong with it: ${REVEAL_PARTS[part].wrong}. ${REVEAL_REAL} ${CREATURE_REAL} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.`;
 }
 
 /* ---- THE WRITER ---- */
@@ -764,4 +856,200 @@ export const HEARD_BEFORE_SAID = "A SOUND COMES BEFORE ANY WORD ABOUT IT — whe
  *  in its wall (the owner: "more odd than actual realism"). Now its WHERE is the place before it, letter for
  *  letter, and the film draws the thing INTO that place's own picture (film-dialogue → revealPicture). It
  *  moves SLOWLY, and the two are afraid of it — nobody grins at what frightens them, unless the smile IS it. */
-export const SEEN_AT_THE_END = "THE LAST SHOT IS SEEN, NOT SAID — a horror film ends on something the viewer SEES, not on a line about it. So the LAST shot has NO LINE: its CAPTION is \"\" (empty — no NAME, no words) and it has no TONE. Nobody speaks in it, not a word and not a whisper; the last words of the film are the line of the shot BEFORE it. It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter: the thing is found where the two already are (in the wall they have been listening to, in the doorway they came through, right behind one of them), never in another room; the film draws it into that place's own picture, the one thing in the film that was not in that place's first VISUAL. In that last shot's VISUAL the thing this story has been circling is IN the picture with the two of them, seen the way WHAT FRIGHTENS (below) says such a thing is seen — a part of it, at the edge of the light, behind one of them, mostly in shadow — and what HAPPENS in that shot is IT, SLOWLY: it moves a little, it is nearer than it was, the one who has not seen it turns round. Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so. When it is not one of the two, it has no \"cast\" entry: say what it is, and the one or two things that are wrong with it, in that VISUAL (which may run to 40 words).";
+export const SEEN_AT_THE_END = "THE LAST SHOT IS SEEN, NOT SAID — a horror film ends on something the viewer SEES, not on a line about it. So the LAST shot has NO LINE: its CAPTION is \"\" (empty — no NAME, no words) and it has no TONE. Nobody speaks in it, not a word and not a whisper; the last words of the film are the line of the shot BEFORE it. It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter: the thing is found where the two already are (in the wall they have been listening to, in the doorway they came through, right behind one of them), never in another room; the film draws it into that place's own picture, the one thing in the film that was not in that place's first VISUAL. In that last shot's VISUAL the thing this story has been circling is IN the picture with the two of them, seen the way WHAT FRIGHTENS (below) says such a thing is seen — BARELY: only a part of it, the way a horror film shows it (a face pressed into a gap in the wall, one eye catching the light; the tips of long fingers curled over a broken edge), never a whole arm or a whole body reaching out into the light — close behind one of the two or between them, where the light gives out, never at the edge of the picture. Say its one or two wrongnesses in so many words (fingers far too long, with a joint too many; skin like old candle wax; an eye open far too wide that never blinks) — never just \"wrong\" or \"strange\". And what HAPPENS in that shot is IT, SLOWLY: it moves a little, it is nearer than it was — and the two FREEZE, and one of them slowly turns to it. Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so. When it is not one of the two, it has no \"cast\" entry: say what it is, and the one or two things that are wrong with it, in that VISUAL (which may run to 40 words).";
+
+/* ---- PEOPLE WHO ARE RELATED ARE THE RIGHT AGES FOR IT ----
+ * The owner, of the same live film: "Also want to note in that video they are "sisters" but one of them is 130
+ * and the other looks 30". The writer's cast for that idea had read "in her fifties" and "in her thirties", and
+ * the pictures — drawn from those words — followed them. So the writer is told (AGES_FIT_RELATION), and then the
+ * cast it wrote is CHECKED (castAgeProblem): when the idea, the lines or the cast make the two related, their
+ * stated ages must fit — and a cast that breaks it is asked for again, or put right here (repairAges); never
+ * filmed. Only a cast of exactly two is checked (the pair the relation is about is then not in doubt). */
+
+/** What the writer is told, with the cast it invents. */
+export const AGES_FIT_RELATION = "AGES — every \"cast\" entry says that character's AGE plainly (\"in her forties\", \"a 30-year-old\", \"in his early sixties\"): their picture is drawn from it. When the story makes two of them RELATED, their ages FIT it: sisters or brothers within about ten years of each other (twins the same age), cousins or a married couple within about fifteen, a parent 20 to 40 years older than their child, a grandparent 45 to 70 years older than their grandchild.";
+
+/** The relations a cast of two can have, and the age gap each allows (in years: [least, most]). */
+export const AGE_RULES = {
+  twins: { gap: [0, 1], says: "twins", rule: "twins are the same age" },
+  siblings: { gap: [0, 10], says: "siblings", rule: "siblings are within about ten years of each other" },
+  cousins: { gap: [0, 15], says: "cousins", rule: "cousins are within about fifteen years of each other" },
+  couple: { gap: [0, 15], says: "a married couple", rule: "a married couple is within about fifteen years of each other" },
+  parent: { gap: [18, 45], says: "a parent and their child", rule: "a parent is 20 to 40 years older than their child" },
+  grandparent: { gap: [40, 75], says: "a grandparent and their grandchild", rule: "a grandparent is 45 to 70 years older than their grandchild" },
+} as const;
+export type AgeRelation = keyof typeof AGE_RULES;
+
+const DECADE_WORDS: Record<string, number> = { teens: 10, twenties: 20, thirties: 30, forties: 40, fifties: 50, sixties: 60, seventies: 70, eighties: 80, nineties: 90 };
+const DECADE_OF = Object.fromEntries(Object.entries(DECADE_WORDS).map(([w, d]) => [d, w])) as Record<number, string>;
+/** An age, as words say it: a decade (early / mid / late), a number of years, or a word for a time of life. */
+const AGE_SAID = /\b(?:(early|mid|late)[\s-]+)?(teens|twenties|thirties|forties|fifties|sixties|seventies|eighties|nineties|[1-9]0s)\b|\b(\d{1,2})[\s-]+years?[\s-]+old\b|\b(?:aged|age)\s+(\d{1,2})\b|\b(elderly|middle-aged|teenage|teenager)\b/i;
+
+/** THE AGE AN ENTRY STATES, as a range of years — "in her fifties" [50, 59], "in his early thirties" [30, 33],
+ *  "a 30-year-old" [30, 30], "middle-aged" [40, 60] — with the words it was said in; null when it states none. */
+export function ageOf(entry: unknown): { from: number; to: number; said: string } | null {
+  const m = AGE_SAID.exec(oneLine(entry));
+  if (!m) return null;
+  const said = m[0];
+  if (m[2]) {
+    const d = /^\d0s$/i.test(m[2]) ? parseInt(m[2], 10) : DECADE_WORDS[m[2].toLowerCase()];
+    const lo = d === 10 ? 13 : d;
+    const part = (m[1] || "").toLowerCase();
+    return part === "early" ? { from: lo, to: lo + 3, said } : part === "mid" ? { from: d + 3, to: d + 6, said } : part === "late" ? { from: d + 6, to: d + 9, said } : { from: lo, to: d + 9, said };
+  }
+  const n = parseInt(m[3] || m[4] || "", 10);
+  if (Number.isFinite(n)) return { from: n, to: n, said };
+  const w = (m[5] || "").toLowerCase();
+  return w === "elderly" ? { from: 65, to: 90, said } : w === "middle-aged" ? { from: 40, to: 60, said } : { from: 13, to: 19, said };
+}
+
+const nameOfEntry = (e: unknown): string => (oneLine(e).split(/[,:—–(]/)[0] || "").trim();
+
+/* Who is family to whom. A horror story talks about relatives all the time — "their late mother's house", "Mum
+ * kept every letter", "my brother went missing down there" — and none of those is one of the TWO. So a relation
+ * is read only where it is said of the pair: */
+const KIN_NOUN = "twin|sister|brother|cousin|husband|wife|mother|mum|mom|father|dad|daughter|son|grandmother|grandma|granny|grandfather|grandpa|granddad|granddaughter|grandson|grandchild";
+const KIN_ADJ = "older|younger|big|little|kid|baby|twin|elder";
+const KIN_OF: Record<string, AgeRelation> = {
+  twin: "twins", sister: "siblings", brother: "siblings", cousin: "cousins", husband: "couple", wife: "couple",
+  mother: "parent", mum: "parent", mom: "parent", father: "parent", dad: "parent", daughter: "parent", son: "parent",
+  grandmother: "grandparent", grandma: "grandparent", granny: "grandparent", grandfather: "grandparent", grandpa: "grandparent", granddad: "grandparent", granddaughter: "grandparent", grandson: "grandparent", grandchild: "grandparent",
+};
+/** (the order a relation is taken in, when words seem to say two: the narrower first) */
+const RELATION_ORDER: AgeRelation[] = ["twins", "grandparent", "parent", "couple", "cousins", "siblings"];
+/** said of the two together: "two sisters", "the Miller brothers", "twin sisters", "a brother and sister",
+ *  "a mother and her daughter" — never "their sisters", "whose brothers", "a mother of twins" */
+const PAIR_SAID: Array<[RegExp, AgeRelation]> = [
+  [/\btwin\s+(?:sisters|brothers)\b|(?<!\b(?:their|her|his|my|our|your|whose)\s+(?:\p{L}+\s+)?|\b(?:mother|father|parent|mum|mom|dad)\s+of\s+(?:\p{L}+\s+)?)\btwins\b/iu, "twins"],
+  [/\b(?:grandmother|grandma|granny|grandfather|grandpa|granddad)\s+and\s+(?:her|his|their)?\s*(?:granddaughter|grandson|grandchild)\b|\b(?:granddaughter|grandson|grandchild)\s+and\s+(?:her|his|their)?\s*(?:grandmother|grandma|granny|grandfather|grandpa|granddad)\b/iu, "grandparent"],
+  [/\b(?:mother|mum|mom|father|dad|parent)\s+and\s+(?:her|his|their)?\s*(?:daughter|son|child|kid|boy|girl)\b|\b(?:daughter|son)\s+and\s+(?:her|his|their)?\s*(?:mother|mum|mom|father|dad)\b/iu, "parent"],
+  [/\b(?:husband\s+and\s+wife|wife\s+and\s+husband|married\s+couple|newlyweds?)\b/iu, "couple"],
+  [/(?<!\b(?:their|her|his|my|our|your|whose)\s+(?:\p{L}+\s+)?)\bcousins\b/iu, "cousins"],
+  [/\b(?:brother\s+and\s+sister|sister\s+and\s+brother)\b|(?<!\b(?:their|her|his|my|our|your|whose)\s+(?:\p{L}+\s+)?)\b(?:sisters|brothers|siblings)\b/iu, "siblings"],
+];
+/** a line said TO the other one ("you're my little sister") or of the TWO of them ("we're twins", "we're married") */
+const LINE_TO_YOU = new RegExp(`\\byou(?:['’]re|\\s+are|\\s+were)\\s+(?:my|our)\\s+(?:(${KIN_ADJ})\\s+)?(${KIN_NOUN})(?![\\p{L}'’])`, "giu");
+const LINE_OF_US = /\bwe(?:['’]re|\s+are|\s+were)\s+(?:(?:both|all|still)\s+)?(twins|sisters|brothers|siblings|cousins|married)\b/giu;
+const kinRelation = (adj: string | undefined, noun: string): AgeRelation | undefined => ((adj || "").toLowerCase() === "twin" ? "twins" : KIN_OF[noun.toLowerCase()]);
+
+/** WHAT THE TWO ARE TO EACH OTHER — read only where it is said of the PAIR: in the idea ("two sisters", "a widow
+ *  and her brother", "my sister and I", "June's older sister"), in a cast entry (right after its name — "Bo, her
+ *  older brother, …" — or of the other one by name: "Peggy's younger sister"), and in a line said to the other
+ *  one or of both ("you're my little sister", "we're twins"). A third person they speak of ("their late mother's
+ *  house", "Mum kept every letter", "her late husband's brother", "my brother went missing here") is not a
+ *  relation between them. null = none. */
+export function relationOf(o: { idea?: string | null; cast?: ReadonlyArray<string | null | undefined>; lines?: ReadonlyArray<string | null | undefined> }): AgeRelation | null {
+  const idea = oneLine(o.idea);
+  const entries = (o.cast || []).map(oneLine).filter(Boolean);
+  const lines = (o.lines || []).map(oneLine).join(" | ");
+  const found = new Set<AgeRelation>();
+  const kin = (text: string, who: string) => {
+    if (!text) return;
+    let re: RegExp;
+    try { re = new RegExp(`${who}\\s+(?:(${KIN_ADJ})\\s+)?(${KIN_NOUN})(?![\\p{L}'’])`, "giu"); } catch { return; }
+    for (const m of text.matchAll(re)) { const r = kinRelation(m[1], m[2]); if (r) found.add(r); }
+  };
+  // (a name of one of the two, whole or any word of it: "Peggy's sister", "Mary Ann's brother")
+  const names = [...new Set(entries.map(nameOfEntry).flatMap((n) => [n, ...n.split(/\s+/)]).filter((n) => n.replace(/\P{L}/gu, "").length > 1))].map(escapeRe);
+  const named = names.length ? `(?<![\\p{L}\\p{N}])(?:${names.join("|")})['’]s` : "";
+  for (const text of [idea, ...entries]) for (const [re, r] of PAIR_SAID) if (re.test(text)) found.add(r);
+  kin(idea, `\\b(?:and|with)\\s+(?:her|his|your)`);
+  kin(idea, `\\b(?:my|our)(?=\\s+(?:(?:${KIN_ADJ})\\s+)?(?:${KIN_NOUN})\\s+and\\s+(?:I|me)\\b)`);
+  for (const text of [idea, ...entries]) if (named) kin(text, named);
+  for (const e of entries) kin(e, `^[^,:—–(]*[,:—–(]\\s*(?:her|his)`);
+  for (const m of lines.matchAll(LINE_TO_YOU)) { const r = kinRelation(m[1], m[2]); if (r) found.add(r); }
+  for (const m of lines.matchAll(LINE_OF_US)) { const w = m[1].toLowerCase(); found.add(w === "married" ? "couple" : w === "twins" ? "twins" : w === "cousins" ? "cousins" : "siblings"); }
+  return RELATION_ORDER.find((r) => found.has(r)) ?? null;
+}
+
+/** IS THIS CAST OF TWO THE WRONG AGES FOR WHAT THEY ARE TO EACH OTHER? The relation, the two entries' ages, and
+ *  which entry is the older — or null when there is nothing wrong, no relation, no age stated for either, or not
+ *  exactly two in the cast. Ages are ranges, and only a clear break counts: "in her fifties" and "in her thirties"
+ *  are at least eleven years apart — not sisters; "late forties" and "early fifties" are. */
+export function castAgeProblem(o: { idea?: string | null; cast?: ReadonlyArray<string | null | undefined> | null; lines?: ReadonlyArray<string | null | undefined> }): { relation: AgeRelation; ages: [{ from: number; to: number; said: string }, { from: number; to: number; said: string }]; older: 0 | 1 } | null {
+  const cast = (o.cast || []).map(oneLine).filter(Boolean);
+  if (cast.length !== 2) return null;
+  const relation = relationOf({ idea: o.idea, cast, lines: o.lines });
+  if (!relation) return null;
+  const a = ageOf(cast[0]), b = ageOf(cast[1]);
+  if (!a || !b) return null;
+  const [least, most] = AGE_RULES[relation].gap;
+  const minGap = Math.max(0, Math.max(a.from, b.from) - Math.min(a.to, b.to));
+  const maxGap = Math.max(a.to, b.to) - Math.min(a.from, b.from);
+  if (minGap <= most && maxGap >= least) return null;
+  return { relation, ages: [a, b], older: a.from + a.to >= b.from + b.to ? 0 : 1 };
+}
+
+/** A decade the way a cast entry says it ("mid-forties", "early thirties", "late teens"), for `years`. */
+const decadeWords = (years: number): string => {
+  const y = Math.max(13, Math.min(95, Math.round(years)));
+  if (y < 20) return "late teens";
+  const d = Math.floor(y / 10) * 10;
+  const u = y - d;
+  return `${u <= 3 ? "early " : u <= 6 ? "mid-" : "late "}${DECADE_OF[d]}`;
+};
+
+/** PUT IT RIGHT, when asking again did not: one of the two keeps their age, and only the other one's AGE WORDS
+ *  are said again, where the relation puts them — "thirties" → "mid-forties" (so "in her thirties" reads "in her
+ *  mid-forties"), "30-year-old" → "46-year-old", "middle-aged" → "a 46-year-old". Brothers, sisters, cousins, a
+ *  couple: the younger is brought up to a few years under the older. A parent or a grandparent: the CHILD keeps
+ *  their age and the elder is made older — a horror film's cast is adults only, and making the child younger could
+ *  make them a minor. Everything else in both entries is left exactly as written. */
+export function repairAges(cast: ReadonlyArray<string>, p: NonNullable<ReturnType<typeof castAgeProblem>>): string[] {
+  const out = cast.map(oneLine);
+  const elder = p.relation === "parent" || p.relation === "grandparent";
+  const keep = p.ages[elder ? (p.older === 0 ? 1 : 0) : p.older];
+  const k = elder ? p.older : p.older === 0 ? 1 : 0;
+  const change = p.ages[k];
+  const target = Math.max(1, Math.round(p.relation === "parent" ? keep.from + 28 : p.relation === "grandparent" ? keep.from + 55 : p.relation === "twins" ? (keep.from + keep.to) / 2 : keep.from - 4));
+  const at = out[k].indexOf(change.said);
+  if (at < 0) return out;
+  const decade = /(?:teens|ties|[1-9]0s)$/i.test(change.said);
+  const said = decade ? decadeWords(target) : /\d/.test(change.said) ? change.said.replace(/\d{1,2}/, String(target)) : `${target}-year-old`;
+  let before = out[k].slice(0, at);
+  // (an article that no longer fits the word after it: "an elderly woman" → "a 70-year-old woman")
+  if (!decade) before = before.replace(/\b(an?)\s+$/i, (m, art: string) => `${/^(?:8|11-|18-)/.test(said) ? (art[0] === "A" ? "An" : "an") : (art[0] === "A" ? "A" : "a")} `);
+  out[k] = `${before}${said}${out[k].slice(at + change.said.length)}`;
+  return out;
+}
+
+/** The one question asked when the ages are wrong: both entries again, the same people, ages that fit. */
+export function ageAsk(cast: ReadonlyArray<string>, p: NonNullable<ReturnType<typeof castAgeProblem>>): string {
+  const rule = AGE_RULES[p.relation];
+  return `These are the two characters of a short film, as its cast list describes them:\n1. ${oneLine(cast[0])}\n2. ${oneLine(cast[1])}\nIn the story they are ${rule.says} — but their ages (${p.ages[0].said}; ${p.ages[1].said}) cannot be: ${rule.rule}. Rewrite BOTH entries so that their ages fit what they are to each other, and say each one's age plainly in the entry ("in her forties", "about 30"). Keep each entry's NAME first and exactly as it is, and keep everything else about them — looks, clothes, hair — the same. Return "cast": the two entries, in the same order.`;
+}
+
+/** The rewritten cast, taken only when it is two entries, each starting with the same name as before, whose ages
+ *  now fit; else null. */
+export function takeAgeFix(cast: ReadonlyArray<string>, answer: unknown, o: { idea?: string | null; lines?: ReadonlyArray<string | null | undefined> } = {}): string[] | null {
+  if (!Array.isArray(answer) || answer.length !== 2 || answer.some((x) => typeof x !== "string" || !oneLine(x))) return null;
+  const next = answer.map((x) => oneLine(x).slice(0, 400));
+  if (next.some((e, i) => nameOfEntry(e).toLowerCase() !== nameOfEntry(cast[i]).toLowerCase())) return null;
+  if (!ageOf(next[0]) || !ageOf(next[1])) return null;
+  return castAgeProblem({ idea: o.idea, cast: next, lines: o.lines }) ? null : next;
+}
+
+/* ---- THE TITLE ----
+ * The same film was called "Horror Film — Two sisters clearing out their late mother's house at…": the idea, not
+ * a title. The one made from that same idea before it was "The Knock She Kept". The writer's answer is a forced
+ * tool call, and the schema's "required" is not enforced there — a writer that leaves the title out (or hands the
+ * idea back as one) used to have the film named after the idea; it happened once before, to a Moral Story
+ * (2026-11-23), and making the title "required" did not stop it. So the title is CHECKED, and asked for once more
+ * on its own (titleAsk) when it is not one. (For every story format — acted and told.) */
+
+const titleNorm = (s: unknown): string => oneLine(s).toLowerCase().replace(/[^\p{L}\p{N} ]/gu, "").replace(/\s+/g, " ").trim();
+/** The writer's title, tidied — or "" when it is not a title of its own: missing, the idea itself, the idea's own
+ *  opening words, or a whole sentence. */
+export function ownTitle(title: unknown, idea: unknown): string {
+  const t = oneLine(title).replace(/^["'“”‘’«»]+|["'“”‘’«».]+$/g, "").trim();
+  if (!t) return "";
+  const n = titleNorm(t), i = titleNorm(idea);
+  const words = n.split(" ").filter(Boolean).length;
+  if (i && (n === i || (i.startsWith(n) && words >= 5))) return "";
+  return words > 12 ? "" : t.slice(0, 80);
+}
+/** The one question asked when it is not: the film's own lines and scenes, a title of its own. */
+export function titleAsk(o: { idea?: string | null; scenes: ReadonlyArray<{ visual?: string | null; caption?: string | null }>; language?: string }): string {
+  const sheet = o.scenes.map((s, k) => `${k + 1}. ${oneLine(s.visual).slice(0, 200)}${oneLine(s.caption) ? ` — ${oneLine(s.caption).slice(0, 200)}` : ""}`).join("\n");
+  return `This is a short film, scene by scene:\n${sheet}\nIt was made from this idea: "${oneLine(o.idea).replace(/"/g, "'").slice(0, 300)}".\nGive the film a TITLE of its own, the way a film is titled: two to six words, short and specific to THIS story — never the idea's own words, no quotation marks, no full stop${o.language && !/^english$/i.test(o.language) ? `, in ${o.language}` : ""}. Return "title".`;
+}

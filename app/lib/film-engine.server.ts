@@ -52,7 +52,7 @@ import { tellerVisual } from "./character-series";
 import { planShots, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
 // (2026-11-24) an acted film: every shot is something that HAPPENS, and the camera is dealt, not written
-import { CAMERA_IS_DEALT, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, TWO_ALWAYS, eventIdeas, happensBrief, wordless } from "./acted-staging";
+import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, takeAgeFix, titleAsk, wordless } from "./acted-staging";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -362,6 +362,10 @@ export interface FilmTreatment {
   /** An ACTED film's lines by somebody who is not on screen (dialogue-cast.ts): how many there were, how
    *  many were rewritten for one of the two who are, and what went wrong if anything did. */
   castFit?: { unseen: number; fixed: number; note?: string };
+  /** A cast of two whose stated ages broke what they are to each other (acted-staging.ts → castAgeProblem):
+   *  the relation, the ages as written, as they are now, and whether the writer rewrote them or they were put
+   *  right here. */
+  ageFit?: { relation: string; was: string[]; now: string[]; how: "rewritten" | "repaired" };
   /** AN ACTED FILM WHOSE SHOTS HAPPEN (acted-staging.ts): every scene's VISUAL is the ONE thing that is done
    *  in that shot while its line is spoken — names and an action, no looks, no camera — so each clip is told
    *  it. Absent on every script written before 2026-11-24 (their VISUALs describe a still two-shot, and are
@@ -728,6 +732,10 @@ export async function previewFilmTreatment(opts: {
     (tmpl.lipSyncSinger || tmpl.sung ? `${ORIGINAL_LYRICS_RULE}\n` : "") +
     genreLine +
     castLine +
+    // PEOPLE WHO ARE RELATED ARE THE RIGHT AGES FOR IT (acted-staging.ts): each one's age said plainly, and fitting
+    // what they are to each other — the owner, of a live film: "they are "sisters" but one of them is 130 and the
+    // other looks 30". (Checked below, after the writing.) Story formats only: a music video casts its own way.
+    (storyFormat ? `\n${AGES_FIT_RELATION}` : "") +
     genderLine +
     prodLine +
     captionLine +
@@ -908,6 +916,25 @@ export async function previewFilmTreatment(opts: {
     }
   }
   const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 5) : undefined;
+  // THE TITLE, MADE SURE OF (acted-staging.ts → ownTitle). The schema's "required" is not enforced on a forced
+  // tool call: a Horror Film made on the live site, 2026-11-24, came back with no title of its own and was
+  // called after its idea ("Two sisters clearing out their late mother's house at…") — the one made from the
+  // same idea before it was "The Knock She Kept". A missing title, or the idea handed back as one, is asked for
+  // once more on its own (a story format only — a song names itself its own way); still none, and the idea
+  // stands in as before.
+  parsed.title = ownTitle(parsed.title, topic) || undefined;
+  if (!parsed.title && storyFormat && list.length) {
+    try {
+      const raw = await anthropicText(titleAsk({ idea: topic, scenes: list, language: langName }), {
+        model: "claude-sonnet-5", maxTokens: 120,
+        jsonSchema: { name: "film_title", schema: { type: "object", properties: { title: { type: "string" } }, required: ["title"], additionalProperties: false } },
+      });
+      parsed.title = ownTitle((JSON.parse(raw) as { title?: unknown }).title, topic) || undefined;
+      console.log(`[film] the writer gave the story no title of its own — asked again: ${parsed.title ? `"${parsed.title}"` : "still none, the idea stands in"}`);
+    } catch (e) {
+      console.error(`[film] the title could not be asked for — the idea stands in: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+    }
+  }
   let outTitle = (parsed.title || topic || tmpl.name).slice(0, 80);
   // NAME ENFORCEMENT (robust). The writer keeps inventing stage names (Kai Monroe, Wyatt, Vex, Dalla…)
   // despite being told the EXACT names. So read the name it ACTUALLY used for each cast slot (the leading
@@ -928,6 +955,36 @@ export async function previewFilmTreatment(opts: {
       list = list.map((s) => ({ ...s, visual: apply(s.visual), caption: s.caption ? apply(s.caption) : undefined }));
       for (let i = 0; i < cast.length; i++) cast[i] = apply(cast[i]);
       outTitle = apply(outTitle);
+    }
+  }
+  // PEOPLE WHO ARE RELATED ARE THE RIGHT AGES FOR IT (acted-staging.ts → castAgeProblem) — told above, and
+  // CHECKED here, on the cast as it now stands: a cast of two whom the idea, the lines or the cast make related
+  // (sisters, a mother and her daughter…) and whose stated ages break it is asked for once more; when that does
+  // not put it right, only one of them's AGE WORDS are said again where the relation puts them (repairAges).
+  // Never filmed as written: the pictures are drawn from these words (the owner: "they are "sisters" but one of
+  // them is 130 and the other looks 30" — the cast had read "in her fifties" and "in her thirties").
+  // Only a cast the WRITER invented: people the maker picked are drawn from their own photos (film-dialogue
+  // keeps the written look of anybody with a cast photo out of every prompt), and their ages are the maker's.
+  let ageNote: FilmTreatment["ageFit"];
+  if (storyFormat && !picked.length && cast && cast.length === 2) {
+    const spoken = list.map((s) => s.caption || "");
+    const problem = castAgeProblem({ idea: topic, cast, lines: spoken });
+    if (problem) {
+      let fixed: string[] | null = null;
+      try {
+        const raw = await anthropicText(ageAsk(cast, problem), {
+          model: "claude-sonnet-5", maxTokens: 600,
+          jsonSchema: { name: "cast_ages", schema: { type: "object", properties: { cast: { type: "array", items: { type: "string" } } }, required: ["cast"], additionalProperties: false } },
+        });
+        fixed = takeAgeFix(cast, (JSON.parse(raw) as { cast?: unknown }).cast, { idea: topic, lines: spoken });
+      } catch (e) {
+        console.error(`[film] the cast's ages could not be asked for again — put right here: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+      }
+      const how: "rewritten" | "repaired" = fixed ? "rewritten" : "repaired";
+      const now = fixed || repairAges(cast, problem);
+      for (let i = 0; i < cast.length; i++) cast[i] = now[i];
+      ageNote = { relation: problem.relation, was: problem.ages.map((a) => a.said), now: now.map((e) => ageOf(e)?.said || ""), how };
+      console.log(`[film] the cast are ${AGE_RULES[problem.relation].says} but were written "${problem.ages[0].said}" and "${problem.ages[1].said}" — ${how}: "${ageNote.now.join('" and "')}"`);
     }
   }
   // ONE CAR, the same in every scene it is in (mv-sense.ts sameCar): each picture is drawn from its own
@@ -978,7 +1035,7 @@ export async function previewFilmTreatment(opts: {
   // (what it was dealt, so the maker's next story is dealt something else)
   const dealt = fresh ? { hook: fresh.hook, ...Object.fromEntries(freshKeys(series ? null : fresh).map((k) => k.split(":"))) } : null;
   // (an acted film written here says so: its scenes' VISUALs are things that HAPPEN, and each clip is told its own)
-  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, ...(acted ? { events: true } : {}), ...(dealt ? { fresh: dealt } : {}), ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
+  return { title: outTitle, scenes: list, ...(ageNote ? { ageFit: ageNote } : {}), musicMood: parsed.musicMood || tmpl.musicHint, ...(acted ? { events: true } : {}), ...(dealt ? { fresh: dealt } : {}), ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 
 // ---- Assembly ---------------------------------------------------------------

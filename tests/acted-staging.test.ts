@@ -20,11 +20,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  ACTED_STAGINGS, CAMERA_IS_DEALT, EVENT_IDEAS, EVENT_IDEAS_SMALL, EVENT_MAX, EVENT_MAX_LAST, HEARD_AUDIO, HEARD_BEFORE_SAID, HEARD_FIRST_SECONDS,
-  HEARD_NOT_DRAWN, HEARD_OPEN, HEARD_THEN, HEARD_UNSEEN, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, NOBODY_SPEAKS, ONE_TAKE, REVEAL_MOVES, SEEN_AT_THE_END,
-  SILENT_SHOT_SECONDS, TWO_ALWAYS,
-  clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, eventIdeas, faceNote, happensBrief, heardIn, heardSeconds, heardTalk, isActedStaging,
-  noRoomIn, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot, stagingClip, stagingPicture, stagingsFor, twoOnScreen, wordless,
+  ACTED_STAGINGS, AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, EVENT_IDEAS, EVENT_IDEAS_SMALL, EVENT_MAX, EVENT_MAX_LAST, HEARD_AUDIO, HEARD_BEFORE_SAID,
+  HEARD_FIRST_SECONDS, HEARD_NOT_DRAWN, HEARD_OPEN, HEARD_THEN, HEARD_UNSEEN, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, NOBODY_SPEAKS, ONE_TAKE,
+  REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, REVEAL_REACT, REVEAL_UNSEEN_REACT, SEEN_AT_THE_END, SILENT_SHOT_SECONDS, TWO_ALWAYS,
+  ageAsk, ageOf, castAgeProblem, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, eventIdeas, faceNote, happensBrief, heardIn, heardSeconds,
+  heardTalk, isActedStaging, noRoomIn, ownTitle, relationOf, repairAges, revealPart, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot,
+  stagingClip, stagingPicture, stagingsFor, takeAgeFix, titleAsk, twoOnScreen, wordless,
   type ActedStaging,
 } from "../app/lib/acted-staging.ts";
 import { KLING_PROMPT_MAX, clipRules, fitClipPrompt } from "../app/lib/clip-prompt.ts";
@@ -436,7 +437,7 @@ test("the wiring: dealt per location, drawn into its master, said to its clips, 
   // SAID to a clip only when the picture it grows out of was drawn in a staging: not a frame the maker approved,
   // not an angle they added by hand, not a film with no master
   assert.ok(eng.includes("if (!chained) chainStaging = approvedFrames[i] || !master?.url || tr === \"angle\" ? null : stagingOf(master);"));
-  assert.ok(eng.includes("    } else if (chainStaging) {\n      try {\n        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror });\n      } catch (e) {"), "the film's last scene may say more (a horror film's says what is seen, and what it does); and no shot is lost to its staging");
+  assert.ok(eng.includes("    } else if (chainStaging) {\n      try {\n        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, implied });\n      } catch (e) {"), "the film's last scene may say more (a horror film's says what is seen, and what it does); and no shot is lost to its staging");
   assert.ok(eng.includes("let playRules = rules;\n    if (silent) {"), "…after the one kind of shot that is told something else: nobody speaks in it");
   // a film is never lost to its staging either: with none dealt, every place is drawn as it always was
   assert.ok(eng.includes("    } catch (e) {\n      // (a film is never lost to its staging: with none dealt, every place is drawn as it always was)\n      stagingAt.clear();"));
@@ -703,7 +704,7 @@ test("a sound shot is longer by the sound, keeps its head, and is only made wher
   }
   assert.equal(heardSeconds("Dagny, stop moving for a second. Tell me you heard that too."), 9);
   const eng = read("app", "lib", "film-dialogue.server.ts");
-  assert.ok(eng.includes("const heard = !silent && chainStaging ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;"), "a staged picture in a film whose shots happen: where the scene is told at all");
+  assert.ok(eng.includes("const heard = !silent && chainStaging && !implied ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;"), "a staged picture in a film whose shots happen: where the scene is told at all (and never a reveal that could not be drawn — its words are not said)");
   assert.ok(eng.includes("const voiceLine = heard\n      ? heardTalk({"));
   // the trims: nothing before the line is cut or played fast — the first take and a re-rolled one alike
   assert.equal(eng.split("keepHead: clipHearsFirst(prompt)").length - 1, 2);
@@ -761,51 +762,80 @@ test("nobody smiles at what frightens them — said plainly, unless the script m
  * exposure, a smooth, evenly lit, mannequin-like arm in its wall. The owner: "the hands coming out of wall are
  * more odd than actual realism". */
 
-test("the last shot of a horror film: the SAME place, drawn into that place's own picture by the creature recipe, moving slowly", () => {
-  // the writer: the same WHERE, letter for letter — never another room; slow; afraid
+test("the last shot of a horror film: the SAME place, the thing BARELY seen and plainly wrong, close behind them — never a whole arm at the edge", () => {
+  // the writer: the same WHERE, letter for letter — never another room; barely seen; its wrongness in words; slow; afraid
   for (const rule of [
     "It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter",
     "never in another room; the film draws it into that place's own picture",
-    "mostly in shadow — and what HAPPENS in that shot is IT, SLOWLY",
+    "BARELY: only a part of it, the way a horror film shows it (a face pressed into a gap in the wall, one eye catching the light; the tips of long fingers curled over a broken edge), never a whole arm or a whole body reaching out into the light",
+    "close behind one of the two or between them, where the light gives out, never at the edge of the picture",
+    "Say its one or two wrongnesses in so many words (fingers far too long, with a joint too many; skin like old candle wax; an eye open far too wide that never blinks) — never just \"wrong\" or \"strange\".",
+    "what HAPPENS in that shot is IT, SLOWLY: it moves a little, it is nearer than it was — and the two FREEZE, and one of them slowly turns to it.",
     "Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so.",
   ]) assert.ok(SEEN_AT_THE_END.includes(rule), rule);
-  // the picture: the place's own picture, edited — the thing added by the recipe the horror stories use, REUSED
-  const moment = "Behind Ylva, a grey hand with fingers far too long pushes out through the split plaster toward her shoulder; Dagny sees it, Ylva has not turned round.";
+  // what of it shows, by the words: a face, fingers (a hand, an arm, a reach), both — anything else, a figure
+  assert.equal(revealPart("In a gap behind June a pale face presses forward, one eye watching Peggy."), "face");
+  assert.equal(revealPart("Behind Peggy, a pale hand pushes out through a split in the wallpaper and reaches toward her hair."), "hand");
+  assert.equal(revealPart("Long fingers curl round the edge as a face presses into the gap."), "both");
+  assert.equal(revealPart("In the dark corner behind June something tall stands perfectly still."), "figure");
   const mood = "Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs.";
-  const p = revealPicture({ moment, mood });
-  assert.ok(p.startsWith("Edit this picture, a frame from a live-action horror film. Keep it EXACTLY as it is — the same place, the same camera and framing, the same light and colour, and the same two people on the same sides of the frame, with the same faces, hair and clothes."));
-  assert.ok(p.includes(`Change ONLY what this moment changes: ${moment} The one new thing in the picture is what this moment says is there, and it is real.`));
+  const sides = [{ name: "Peggy", side: "left" }, { name: "June", side: "right" }];
+  // THE LIVE FILM'S KIND OF SCENE (a hand reaching out of the wallpaper toward the older one): drawn as its
+  // fingertips, out of a hole broken in real plaster, close behind HER — told who she is by her side of the picture
+  const arm = "Behind Peggy, a pale hand pushes out through a split in the wallpaper and reaches slowly toward her hair; June keeps folding, she has not seen it.";
+  const p = revealPicture({ moment: arm, mood, sides });
+  assert.ok(p.startsWith("Edit this photo, a frame from a live-action horror film. Keep the camera and the framing, every window, door and lamp, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes. Peggy is the one on the left; June is the one on the right."));
+  assert.ok(p.includes(REVEAL_DIM), "in light that has dimmed: in the place's ordinary light the thing read as stuck on");
+  assert.ok(p.includes(`(its words say WHAT it is and WHERE; never how much of it shows): ${arm} Show it like this, and no more of it: In the wall close behind Peggy, the one on the left, at the height of a head — not over a window or a door, well inside the picture — the plaster has been broken open from inside into a ragged hole: torn wallpaper curling outward, crumbled plaster and splintered wooden lath at its edges, deep black inside; ${REVEAL_PARTS.hand.seen}.`));
+  assert.ok(p.includes(`What is wrong with it: ${REVEAL_PARTS.hand.wrong}.`));
+  assert.ok(REVEAL_PARTS.hand.seen.includes("only the fingertips: never a whole hand or an arm, nothing reaching into the room"));
+  assert.ok(REVEAL_PARTS.hand.wrong.includes("far too long and thin, with one joint too many") && REVEAL_PARTS.hand.wrong.includes("never a claw"));
+  assert.ok(REVEAL_PARTS.face.seen.includes("a hand's width back inside it, half hidden by its broken edge, is a FACE that is not quite human: only one eye and a sliver of cheek catch the light"));
+  assert.ok(REVEAL_PARTS.face.wrong.includes("the eye is open far too wide, the white showing all the way round it, and it does not blink") && !/\bwet\b/.test(REVEAL_PARTS.face.wrong), "(told 'wet', the model drew a crying woman)");
   assert.ok(p.includes(CREATURE_REAL), "CAUGHT on a real camera, a practical effect, never CGI — story-picture.ts's own words");
   assert.ok(p.includes(TAKE_HIDDEN), "mostly HIDDEN — take.ts's own words");
-  assert.ok(p.includes("It is nearly human and slightly WRONG — in exactly the one or two ways the moment says, and in no other."), "WRONG — as the writer was told to write it (WHAT FRIGHTENS)");
-  assert.ok(p.includes("nothing about it is clean, smooth or evenly lit") && p.includes(` ${mood} `));
-  assert.ok(!p.includes(TAKE_WRONG), "not found footage's face — sunk eyes — on a thing that may be a hand");
-  assert.ok(p.length < 2000, "within what the picture call keeps");
+  assert.ok(p.includes("Both have frozen where they stand, faces drained, and neither looks at the camera.") && p.includes(` ${mood} `));
+  assert.ok(!p.includes(TAKE_WRONG), "(told found footage's 'waxy, bloodless, eyes sunk in dark sockets', the model drew a zombie)");
+  assert.ok(p.length < 2400, "inside what both editors read");
+  // with no place named for it, behind the one on the right; not at a wall, no hole — a figure in the dark
+  assert.ok(revealPicture({ moment: "In a black gap torn in the wallpaper a pale face presses forward, watching them.", sides }).includes("In the wall close behind June, the one on the right,"));
+  const corner = revealPicture({ moment: "In the dark corner something tall stands perfectly still.", sides });
+  assert.ok(corner.includes(`In the dark close behind June, the one on the right, well inside the picture, ${REVEAL_PARTS.figure.seen}.`) && !corner.includes("plaster"));
+  assert.ok(REVEAL_PARTS.figure.wrong.includes("never a zombie, never a skull, never a mask"));
   assert.equal(revealPicture({ moment: "" }), "");
   assert.equal(revealPicture({ moment: null }), "");
   // reused, not a third copy: the recipe's words are imported, never written out again here
   const src = read("app", "lib", "acted-staging.ts");
   assert.ok(src.includes("import { CREATURE_REAL } from \"./story-picture.ts\";") && src.includes("import { TAKE_HIDDEN } from \"./take.ts\";"));
   for (const words of ["a practical-effects creature as a 1970s horror film would build it", "we see less than we want to"]) assert.ok(!src.includes(words), words);
-  // the clip: it moves SLOWLY — whether or not a line was written for it
+  // the clip: it moves SLOWLY, and the two FREEZE and one turns to it — whether or not a line was written for it
   assert.ok(REVEAL_MOVES.startsWith("What is seen moves SLOWLY — slow, smooth and unhurried, never a jump, a lunge or a sudden move"));
+  assert.equal(REVEAL_REACT, "Both of them FREEZE where they are — whatever their hands were doing stops dead — and then, slowly, one of them turns to look at it and stares; nobody screams, nobody runs, nobody looks at the camera.");
   const live = clipRules({ cartoon: false, sing: false });
-  assert.ok(silentRules(live, { staging: "depth", event: moment, reveal: true }).lookShort.includes(REVEAL_MOVES));
+  const moment = "Behind June, the tips of long grey fingers curl over the broken edge of a hole in the plaster; Peggy sees them, June has not turned round.";
+  assert.ok(silentRules(live, { staging: "depth", event: moment, reveal: true }).lookShort.includes(`${REVEAL_MOVES} ${REVEAL_REACT}`));
   assert.ok(!silentRules(live, { staging: "depth", event: moment }).look.includes(REVEAL_MOVES));
-  assert.ok(stagedRules(live, { staging: "depth", event: moment, reveal: true }).lookShort.endsWith(`As the line is spoken, this happens once: ${moment} ${REVEAL_MOVES}`));
+  assert.ok(stagedRules(live, { staging: "depth", event: moment, reveal: true }).lookShort.endsWith(`As the line is spoken, this happens once: ${moment} ${REVEAL_MOVES} ${REVEAL_REACT}`));
   assert.ok(!stagedRules(live, { staging: "depth", reveal: true }).look.includes(REVEAL_MOVES), "nothing written to happen: nothing to move");
+  // …and when its picture could not be drawn: the clip is NOT told what it is (told to show a thing its picture
+  // has not got, the engine draws one of its own — the floating hand), and the two react to something never seen
+  for (const r of [silentRules(live, { staging: "depth", event: moment, reveal: true, implied: true }), stagedRules(live, { staging: "depth", event: moment, reveal: true, implied: true })]) {
+    for (const note of [r.look, r.lookTight, r.lookShort]) assert.ok(note.includes(REVEAL_UNSEEN_REACT) && !/fingers|plaster|hole/.test(note), note);
+  }
+  assert.ok(REVEAL_UNSEEN_REACT.endsWith("Nothing new appears anywhere in the picture."));
   // the film: the last shot of a staged horror film whose shots happen, in the same place, on a staged master —
-  // never over a frame the maker approved; a picture that will not come leaves it to be seeded as any other
+  // never over a frame the maker approved — drawn on the stronger editor first, the more permissive one after
   const eng = read("app", "lib", "film-dialogue.server.ts");
   assert.ok(eng.includes("const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);"));
   const at = eng.indexOf("if (!seedAbs && lastHorror && tr !== \"location\" && master?.url && stagingOf(master)) {");
   assert.ok(at > eng.indexOf("let seedAbs = abs(approvedFrames[i]);") && eng.indexOf("if (!seedAbs && master?.url) {", at) > at);
-  assert.ok(eng.includes("const ask = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood });"));
-  assert.ok(eng.includes("seedAbs = abs(await removeLetterbox(await renderStyledSeed(ask, abs(master.url)!, aspect, 2000)));"), "the place's master is the ONE reference picture");
-  assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, face: scared });"));
-  // (the picture call keeps 2,000 characters of a prompt — image-generation.server.ts, not changed here)
-  const img = read("app", "lib", "image-generation.server.ts");
-  assert.ok(img.includes("export async function renderStyledSeed(prompt: string, refImageUrl: string, aspect = \"9:16\", maxPrompt = 500): Promise<string | null> {") && img.includes("const full = `${(prompt || \"\").trim().slice(0, Math.max(200, Math.min(2000, maxPrompt)))}. No watermark, no signature.`;"));
+  assert.ok(eng.includes("const ask = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })) });"));
+  const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [abs(master.url)], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],");
+  const kontext = eng.indexOf("[\"black-forest-labs/flux-kontext-pro\", { prompt: ask, input_image: abs(master.url), aspect_ratio: aspect, output_format: \"jpg\", output_quality: 92 }],");
+  assert.ok(pro > at && kontext > pro, "the place's master is the ONE reference picture, on nano-banana-pro, then flux-kontext-pro");
+  assert.ok(eng.includes("try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\"))); }"));
+  assert.ok(eng.includes("const implied = lastHorror && !revealed && tr !== \"location\" && !approvedFrames[i];"));
+  assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, implied, face: scared });"));
 });
 
 /* ---- A CUT TO ANOTHER PLACE IS A STRAIGHT CUT ---- */
@@ -854,4 +884,132 @@ test("ffmpeg makes that one-frame xfade a straight cut: not one frame of the two
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+/* ---- PEOPLE WHO ARE RELATED ARE THE RIGHT AGES FOR IT ----
+ * The owner, of the same film: "Also want to note in that video they are "sisters" but one of them is 130 and the
+ * other looks 30". The writer's cast for that idea read "in her fifties" and "in her thirties". */
+
+const SISTERS_IDEA = "Two sisters clearing out their late mother's house at night hear slow knocking inside the bedroom wall.";
+const SISTERS_CAST = ["Peggy, a woman in her fifties with short grey hair, round glasses and a floral blouse", "June, a woman in her thirties with a long dark braid and a denim jacket"];
+const SISTERS_LINES = ["PEGGY: Mum kept every letter we ever wrote her, every single one of them.", "JUNE: Peggy, did you hear that? That came from inside the wall, right behind the dresser."];
+
+test("THE OWNER'S CASE: sisters written in their fifties and their thirties are caught — and never filmed so", () => {
+  const p = castAgeProblem({ idea: SISTERS_IDEA, cast: SISTERS_CAST, lines: SISTERS_LINES });
+  assert.ok(p, "caught");
+  assert.equal(p!.relation, "siblings");
+  assert.deepEqual(p!.ages.map((a) => [a.from, a.to, a.said]), [[50, 59, "fifties"], [30, 39, "thirties"]]);
+  assert.equal(p!.older, 0);
+  // asked for once more — both entries, the same people, ages that fit
+  const ask = ageAsk(SISTERS_CAST, p!);
+  assert.ok(ask.includes(`1. ${SISTERS_CAST[0]}\n2. ${SISTERS_CAST[1]}`) && ask.includes("In the story they are siblings — but their ages (fifties; thirties) cannot be: siblings are within about ten years of each other."));
+  assert.ok(ask.includes("Keep each entry's NAME first and exactly as it is"));
+  // a rewrite is taken only when it IS the two, by name, with ages that now fit
+  const good = ["Peggy, a woman in her early fifties with short grey hair, round glasses and a floral blouse", "June, a woman in her late forties with a long dark braid and a denim jacket"];
+  assert.deepEqual(takeAgeFix(SISTERS_CAST, good, { idea: SISTERS_IDEA, lines: SISTERS_LINES }), good);
+  assert.equal(takeAgeFix(SISTERS_CAST, SISTERS_CAST, { idea: SISTERS_IDEA }), null, "still a broken pair");
+  assert.equal(takeAgeFix(SISTERS_CAST, ["Margaret, a woman in her fifties", "June, a woman in her late forties"], { idea: SISTERS_IDEA }), null, "a renamed sister");
+  assert.equal(takeAgeFix(SISTERS_CAST, [good[0]], { idea: SISTERS_IDEA }), null);
+  assert.equal(takeAgeFix(SISTERS_CAST, ["Peggy, a woman with grey hair", "June, a woman with a braid"], { idea: SISTERS_IDEA }), null, "no ages said");
+  assert.equal(takeAgeFix(SISTERS_CAST, "nope", { idea: SISTERS_IDEA }), null);
+  // …and when no rewrite comes: put right here — only June's age words change, and they now fit
+  const fixed = repairAges(SISTERS_CAST, p!);
+  assert.deepEqual(fixed, [SISTERS_CAST[0], "June, a woman in her mid-forties with a long dark braid and a denim jacket"]);
+  assert.equal(castAgeProblem({ idea: SISTERS_IDEA, cast: fixed, lines: SISTERS_LINES }), null);
+});
+
+test("which two are related is read only from words said of the pair — never of a third person they talk about", () => {
+  // the owner's idea: "two sisters" — their late MOTHER's house, "Mum kept…", is somebody else
+  assert.equal(relationOf({ idea: SISTERS_IDEA, cast: SISTERS_CAST, lines: SISTERS_LINES }), "siblings");
+  assert.equal(relationOf({ idea: "A carer and a neighbour clear out their late mother's house.", cast: ["Ann, in her thirties", "Bo, in his sixties"], lines: ["ANN: Mum kept every letter."] }), null);
+  assert.equal(relationOf({ idea: "A woman and her neighbour hear knocking.", cast: ["Ann, in her thirties", "Bo, Ann's older brother, in his forties"] }), "siblings", "said of the other one BY NAME");
+  assert.equal(relationOf({ idea: "A woman and her neighbour hear knocking.", cast: ["Ann, in her thirties", "Bo, her older brother, in his forties"] }), "siblings", "said right after the name");
+  assert.equal(relationOf({ idea: "A woman and her neighbour hear knocking.", cast: ["Ann, in her thirties", "Bo, June's older brother, in his forties"] }), null, "June is not one of the two");
+  assert.equal(relationOf({ idea: "A woman and her neighbour hear knocking.", cast: ["Ann, in her thirties, still searching for her brother", "Bo, in his sixties"] }), null, "HER brother, somewhere in her own entry, is somebody else");
+  assert.equal(relationOf({ idea: "A haunted lighthouse.", cast: ["Ann, in her thirties", "Bo, in his forties"], lines: ["BO: You're my little sister, Ann. I won't leave you here."] }), "siblings");
+  assert.equal(relationOf({ idea: "A haunted lighthouse.", cast: ["Ann, in her thirties", "Bo, in his forties"], lines: ["ANN: We're twins, Bo. I'd know if it was you."] }), "twins");
+  assert.equal(relationOf({ idea: "A haunted lighthouse.", cast: ["Ann, in her thirties", "Bo, in his sixties"], lines: ["BO: My brother went missing down there.", "ANN: The twins from the village saw it too.", "BO: Your mother never came back."] }), null, "lines about anybody else are not read");
+  assert.equal(relationOf({ idea: "Two brothers hear their mother calling from the cellar." }), "siblings", "THEIR mother is never one of the two");
+  assert.equal(relationOf({ idea: "My sister and I spend a night in the old mill." }), "siblings");
+  assert.equal(relationOf({ idea: "A mother of twins hears crying in the attic." }), null);
+  assert.equal(relationOf({ idea: "A mother and her daughter hear knocking." }), "parent");
+  assert.equal(relationOf({ idea: "A widow and her late husband's brother.", cast: ["Ann, in her sixties", "Bo, in his sixties"] }), null, "her late husband's brother is family to somebody else — an in-law, not her brother");
+  assert.equal(relationOf({ idea: "A widow and her brother.", cast: ["Ann, in her sixties", "Bo, in his sixties"] }), "siblings");
+  assert.equal(relationOf({ idea: "Twin brothers find a door in the cellar." }), "twins");
+  assert.equal(relationOf({ idea: "A grandmother and her grandson." }), "grandparent");
+  assert.equal(relationOf({ idea: "A husband and wife buy an old farmhouse." }), "couple");
+  assert.equal(relationOf({ idea: "Two cousins inherit a boat." }), "cousins");
+  assert.equal(relationOf({ idea: "Two friends at a diner." }), null);
+});
+
+test("each relation's ages: a clear break is caught, a near one is not, and the repair never makes a child of anybody", () => {
+  for (const [idea, cast, broken] of [
+    ["Two sisters", ["Ann, in her late forties", "Bea, in her early fifties"], false],
+    ["Two sisters", ["Ann, an elderly woman", "Bea, a 30-year-old woman"], true],
+    ["Twin brothers", ["Sam, in his early thirties", "Max, in his early thirties"], false],
+    ["Twin brothers", ["Sam, in his early thirties", "Max, in his late thirties"], true],
+    ["A married couple", ["Ivy, in her sixties", "Ned, in his twenties"], true],
+    ["Two cousins", ["Ann, in her twenties", "Bea, in her fifties"], true],
+    ["A mother and her daughter", ["Mara, in her forties", "Lily, in her twenties"], false],
+    ["A mother and her daughter", ["Mara, in her forties", "Lily, in her late thirties"], true],
+    ["A grandmother and her grandson", ["Edna, in her seventies", "Tom, in his late teens"], false],
+    ["Two sisters", ["Ann, in her thirties", "Bea, with a braid"], false],
+    ["Two friends", ["Ann, in her twenties", "Bea, in her seventies"], false],
+  ] as Array<[string, string[], boolean]>) {
+    const p = castAgeProblem({ idea, cast });
+    assert.equal(!!p, broken, `${idea}: ${cast.join(" / ")}`);
+    if (!p) continue;
+    const fixed = repairAges(cast, p);
+    assert.equal(castAgeProblem({ idea, cast: fixed }), null, `${idea}: ${fixed.join(" / ")}`);
+    // only ONE entry's age words changed, and nobody was made younger than they were written
+    assert.equal(fixed.filter((e, i) => e !== cast[i]).length, 1);
+    fixed.forEach((e, i) => { const was = ageOf(cast[i])!, now = ageOf(e)!; assert.ok(now.from >= was.from || now.to >= was.from, `${cast[i]} → ${e}`); });
+  }
+  // a parent and child: the child keeps their age, the parent is made older (a horror cast is adults only)
+  assert.deepEqual(repairAges(["Mara, in her forties", "Lily, in her late thirties"], castAgeProblem({ idea: "A mother and her daughter", cast: ["Mara, in her forties", "Lily, in her late thirties"] })!), ["Mara, in her mid-sixties", "Lily, in her late thirties"]);
+  // the words an age is said in
+  assert.deepEqual(["Ruth, a 30-year-old nurse", "Ana, aged 27", "Cal, a middle-aged man", "Dee, in her early thirties", "Eli, in his late 40s", "Fay, no age said"].map((e) => { const a = ageOf(e); return a ? [a.from, a.to] : null; }), [[30, 30], [27, 27], [40, 60], [30, 33], [46, 49], null]);
+  assert.equal(repairAges(["Ann, an elderly woman", "Bea, an elderly woman"], { relation: "siblings", ages: [{ from: 65, to: 90, said: "elderly" }, { from: 13, to: 19, said: "elderly" }], older: 0 })[1], "Bea, a 61-year-old woman", "an article that fits the new words");
+});
+
+test("the writer is told: each one's age said plainly, and related people the right ages for it — and the cast is checked after", () => {
+  assert.ok(AGES_FIT_RELATION.startsWith("AGES — every \"cast\" entry says that character's AGE plainly"));
+  for (const rule of ["sisters or brothers within about ten years of each other (twins the same age)", "cousins or a married couple within about fifteen", "a parent 20 to 40 years older than their child", "a grandparent 45 to 70 years older than their grandchild"]) assert.ok(AGES_FIT_RELATION.includes(rule), rule);
+  assert.deepEqual(AGE_RULES.siblings.gap, [0, 10]);
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.ok(engine.includes("    castLine +\n") && engine.includes("(storyFormat ? `\\n${AGES_FIT_RELATION}` : \"\") +"), "told with the cast, in every story format");
+  // checked on the cast as it stands after the names are enforced, a cast of two only
+  const nameFix = engine.indexOf("outTitle = apply(outTitle);");
+  const check = engine.indexOf("const problem = castAgeProblem({ idea: topic, cast, lines: spoken });");
+  assert.ok(nameFix > 0 && check > nameFix);
+  // (a cast the writer invented: people the maker picked are drawn from their own photos, at their own ages)
+  assert.ok(engine.includes("if (storyFormat && !picked.length && cast && cast.length === 2) {"));
+  assert.ok(engine.includes("fixed = takeAgeFix(cast, (JSON.parse(raw) as { cast?: unknown }).cast, { idea: topic, lines: spoken });"));
+  assert.ok(engine.includes("const now = fixed || repairAges(cast, problem);"), "never filmed as written: put right here when asking again did not");
+  assert.ok(engine.includes("...(ageNote ? { ageFit: ageNote } : {})"), "…and what happened rides on the treatment");
+});
+
+/* ---- THE TITLE ----
+ * The same film was called "Horror Film — Two sisters clearing out their late mother's house at…"; the one made
+ * from that idea before it was "The Knock She Kept". */
+
+test("a title of its own, or asked for once more — never the idea", () => {
+  assert.equal(ownTitle("The Knock She Kept", SISTERS_IDEA), "The Knock She Kept");
+  assert.equal(ownTitle("\"Holding the Wall\".", SISTERS_IDEA), "Holding the Wall");
+  assert.equal(ownTitle("", SISTERS_IDEA), "");
+  assert.equal(ownTitle(undefined, SISTERS_IDEA), "");
+  assert.equal(ownTitle(SISTERS_IDEA, SISTERS_IDEA), "", "the idea handed back");
+  assert.equal(ownTitle("Two sisters clearing out their late mother's house", SISTERS_IDEA), "", "the idea's own opening words");
+  assert.equal(ownTitle("Two Sisters", SISTERS_IDEA), "Two Sisters", "a short title that happens to share two words is a title");
+  assert.equal(ownTitle("They heard it knocking in the wall and then they found out what it was all along", SISTERS_IDEA), "", "a sentence, not a title");
+  const ask = titleAsk({ idea: SISTERS_IDEA, scenes: [{ visual: "Peggy lifts a bundle of letters.", caption: "PEGGY: Mum kept every letter." }], language: "Spanish" });
+  assert.ok(ask.includes("1. Peggy lifts a bundle of letters. — PEGGY: Mum kept every letter.") && ask.includes("two to six words, short and specific to THIS story — never the idea's own words") && ask.includes(", in Spanish."));
+  assert.ok(!titleAsk({ idea: SISTERS_IDEA, scenes: [], language: "English" }).includes("in English"));
+  const engine = read("app", "lib", "film-engine.server.ts");
+  // checked before the line every story's title has come from — which stays as it was
+  const checked = engine.indexOf("parsed.title = ownTitle(parsed.title, topic) || undefined;");
+  assert.ok(checked > 0 && engine.indexOf("let outTitle = (parsed.title || topic || tmpl.name).slice(0, 80);") > checked);
+  assert.ok(engine.includes("if (!parsed.title && storyFormat && list.length) {"));
+  assert.ok(engine.includes("const raw = await anthropicText(titleAsk({ idea: topic, scenes: list, language: langName }), {"));
+  assert.ok(engine.includes("parsed.title = ownTitle((JSON.parse(raw) as { title?: unknown }).title, topic) || undefined;"));
 });

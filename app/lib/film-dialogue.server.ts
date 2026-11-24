@@ -28,7 +28,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
-import { renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderSideBySideTwoShot } from "./image-generation.server";
+import { persistRemote, renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderSideBySideTwoShot, repRun } from "./image-generation.server";
 import { AVATAR_VOICES, isPersonalVoice } from "./avatar-voice-catalog";
 import { characterVoice, isCharacterVoice } from "./character-voices";
 import { chainClipVoice } from "./character-voice.server";
@@ -1098,14 +1098,29 @@ export async function generateTestMovie(opts: {
     const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);
     let revealed = false;
     if (!seedAbs && lastHorror && tr !== "location" && master?.url && stagingOf(master)) {
-      const ask = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood });
-      for (let attempt = 0; attempt < 2 && ask && !seedAbs; attempt++) {
-        // (the master is the ONE reference image; the ask is ~1,400 characters, and renderStyledSeed keeps 2,000)
-        seedAbs = abs(await removeLetterbox(await renderStyledSeed(ask, abs(master.url)!, aspect, 2000)));
+      const ask = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })) });
+      // ON THE STRONGER EDITOR. Drawn from a frame of the owner's second film, nine rounds of it and looked at:
+      // the everyday picture model (the one this used, and the one that drew the mannequin's arm) made every
+      // thing it added look stuck on — a white bony claw, a cartoon eyeball, a face in a black cut-out over the
+      // window — and refused a third of them; nano-banana-pro kept the room and both faces and broke a real hole
+      // in real plaster with the face or the fingers in it, photographed. flux-kontext-pro is the more
+      // permissive editor when that one refuses (horror is refused now and then). About 15 cents a film.
+      for (const [model, input] of [
+        ["google/nano-banana-pro", { prompt: ask, image_input: [abs(master.url)], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
+        ["black-forest-labs/flux-kontext-pro", { prompt: ask, input_image: abs(master.url), aspect_ratio: aspect, output_format: "jpg", output_quality: 92 }],
+      ] as Array<[string, Record<string, unknown>]>) {
+        if (!ask || seedAbs) break;
+        try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), "jpg"))); }
+        catch (e) { console.error(`[testmovie] shot ${i + 1}: the reveal on ${model} did not come: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
       }
       if (seedAbs) { revealed = true; sinceAnchor = 0; console.log(`[testmovie] shot ${i + 1}: the reveal — drawn into the place's own picture (${locKeyAt(i).slice(0, 40)})`); }
-      else console.error(`[testmovie] shot ${i + 1}: the reveal's picture did not come — the shot is seeded as any other`);
+      else console.error(`[testmovie] shot ${i + 1}: the reveal's picture did not come — the shot is seeded as any other, and the clip is not told what the thing is (the two react to something never seen)`);
     }
+    // THE REVEAL THAT COULD NOT BE DRAWN — in its place, with no picture of it: its clip is not told what the thing
+    // is (a clip told to show a thing that is not in its picture draws one of its own), and the two react to
+    // something never seen (acted-staging.ts → REVEAL_UNSEEN_REACT). A last shot in a place of its own (a script
+    // written before the reveal moved into the room) has its thing in that place's own picture, and keeps it.
+    const implied = lastHorror && !revealed && tr !== "location" && !approvedFrames[i];
     if (!seedAbs && master?.url) {
       if (tr === "location") {
         seedAbs = abs(master.url); sinceAnchor = 0; if (i > 0) softSeams.add(i);
@@ -1203,7 +1218,7 @@ export async function generateTestMovie(opts: {
     // be made, exactly as described; one from out of sight is made by nothing in the picture; the take is
     // longer by it (heardSeconds) and keeps its head (clipHearsFirst). Only where the scene is told to the clip
     // at all: a staged picture, in a film whose shots happen.
-    const heard = !silent && chainStaging ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;
+    const heard = !silent && chainStaging && !implied ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;
     const voiceLine = heard
       ? heardTalk({
           event: clipEvent(eventAt(i), i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : EVENT_MAX), unseen: heard.unseen,
@@ -1242,7 +1257,7 @@ export async function generateTestMovie(opts: {
       const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)])?.unseen;
       const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : "";
       try {
-        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, face: scared });
+        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, implied, face: scared });
       } catch (e) {
         // (never a shot lost to its words: it is a held, quiet beat — and still told that nobody speaks)
         console.error(`[testmovie] shot ${i + 1}: the wordless shot's rules were not built — it is told to hold: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
@@ -1250,7 +1265,7 @@ export async function generateTestMovie(opts: {
       }
     } else if (chainStaging) {
       try {
-        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror });
+        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, implied });
       } catch (e) {
         // (never a shot lost to its staging: it is told what a shot was always told)
         console.error(`[testmovie] shot ${i + 1}: staging words not built — the shot is told to hold, as before: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
