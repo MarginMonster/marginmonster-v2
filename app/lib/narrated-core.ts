@@ -1083,12 +1083,41 @@ export function namedIn(name: string, text: string): boolean {
 }
 /** The name a cast-list entry starts with: "Marla, a tired night clerk…" → "Marla". */
 export const entryName = (entry: string): string => ((entry || "").split(/[,:—–(]/)[0] || "").trim();
+
+/* NAMED AS THE OWNER OF SOMETHING IS NOT BEING THERE. The second episode of a story (live, 2026-11-24) is about
+ * a woman who has NOT come: three of its pictures are at "Edda's cottage" — "the wooden bench beside Edda's
+ * round green door". Each of them named Edda, so each was drawn from her portrait: she stood in her own
+ * doorway in two of them, and the one picture that rightly left her out was flagged "Edda is missing".
+ * A character is IN a picture when its words name them as somebody — not only as whose a place or a thing
+ * is. "Edda's hand on the rail" is Edda; "Edda's cottage" is a cottage. */
+const OF_THEIR_OWN = /^(?:hands?|face|eyes?|arms?|shoulders?|hair|back|fingers?|feet|foot|head|coat|cloak|dress|gown|scarf|hat|cap|side|lap|knees?|cheeks?|mouth|lips|chest|neck|sleeves?|apron|jacket|boots|shoes|grip|grasp|gaze|smile|expression|shell|tail|paws?|fur|wings?|beak|ears?|nose|whiskers|claws|breath|shadow|voice|body|figure|silhouette|reflection)$/i;
+/** Is this character IN the picture these words describe? Named, and at least once as somebody: not as the
+ *  owner of something ("Edda's cottage"), unless what is theirs is part of them ("Edda's hand", "her" coat
+ *  is not asked — only what follows the name, four words on). */
+export function presentIn(name: string, text: string): boolean {
+  const t = text || "";
+  const full = (name || "").trim();
+  if (!full || !namedIn(full, t)) return false;
+  const asWritten = nameWords(full).map((w) => new RegExp(`(^|[^\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "gu"));
+  // (a name of several words is unmistakable in any case — as in namedIn)
+  const whole = /\s/.test(full) ? [new RegExp(full.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu")] : [];
+  for (const re of [...whole, ...asWritten]) {
+    for (const m of t.matchAll(re)) {
+      const after = t.slice((m.index || 0) + m[0].length);
+      const owns = /^['’]s?(?![\p{L}\p{N}])/u.exec(after);
+      if (!owns) return true; // named as somebody
+      const next = after.slice(owns[0].length).split(/[^\p{L}\p{N}'’-]+/u).filter(Boolean).slice(0, 4);
+      if (next.some((w) => OF_THEIR_OWN.test(w))) return true; // their hand, their coat: they are there
+    }
+  }
+  return false;
+}
 /** Who is in this scene's picture: which of the PICKED cast (by index) and which of the story's other
  *  cast-list entries. */
 export function sceneCast(visual: string, pickedNames: string[], others: string[]): { picked: number[]; others: string[] } {
   return {
-    picked: pickedNames.map((n, i) => (namedIn(n, visual) ? i : -1)).filter((i) => i >= 0),
-    others: others.filter((e) => namedIn(entryName(e), visual)),
+    picked: pickedNames.map((n, i) => (presentIn(n, visual) ? i : -1)).filter((i) => i >= 0),
+    others: others.filter((e) => presentIn(entryName(e), visual)),
   };
 }
 

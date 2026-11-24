@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
-  BOLD_LINE, MIN_SCENE_S, barBox, barsIn, boldCards, captionFilters, captionStyleOf, drawable, entryName, evenParts, frameWords, kenBurns, namedIn, nameWords, wrapEven,
+  BOLD_LINE, MIN_SCENE_S, barBox, barsIn, boldCards, captionFilters, captionStyleOf, drawable, entryName, evenParts, frameWords, kenBurns, namedIn, presentIn, nameWords, wrapEven,
   keepToldScenes, saidUnits, sceneCast, sceneWindows, trimToSound, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, wrapLines, type WordT,
 } from "../app/lib/narrated-core.ts";
 
@@ -350,4 +350,42 @@ test("ffmpeg accepts the caption filters and the picture move, for every frame s
       }
     }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+/* The second episode of the clock-tower story (live, 2026-11-24) is about a woman who has NOT come. Three of
+ * its pictures are at "Edda's cottage". Each named Edda, so each was drawn from her portrait: she stood in
+ * her own doorway in two of them — and the one picture that rightly left her out was flagged "Edda is
+ * missing". */
+test("named as the owner of something is not being there", () => {
+  const cottage = "Finn walks up to Edda's cottage, past the wooden bench beside the round green door, no smoke rising from the crooked chimney.";
+  const door = "Finn sits on the wooden bench beside Edda’s round green door at dusk, Old Tomas beside him.";
+  assert.ok(namedIn("Edda", cottage), "she is NAMED there…");
+  assert.equal(presentIn("Edda", cottage), false, "…but it is her cottage that is in the picture");
+  assert.equal(presentIn("Edda", door), false);
+  assert.equal(presentIn("Finn", cottage), true);
+  assert.equal(presentIn("Old Tomas", door), true);
+  // what is theirs and part of them IS them
+  assert.equal(presentIn("Edda", "Edda's hand rests on the cold iron rail"), true);
+  assert.equal(presentIn("Maren", "Maren's bare bluish foot rests on the ferry's deck"), true);
+  assert.equal(presentIn("Maren", "Maren's long dark wet hair drips onto the planks"), true, "four words on");
+  assert.equal(presentIn("Pip", "the kite lands on Pip's nose"), true);
+  assert.equal(presentIn("Ode", "morning light golden on Ode's mossy shell"), true);
+  // named as somebody once is enough, whatever else of theirs is mentioned
+  assert.equal(presentIn("Edda", "Edda stands at the door of Edda's cottage"), true);
+  assert.equal(presentIn("Tomas", "Tomas' boat rocks at the pier"), false, "a name that ends in s");
+  assert.equal(presentIn("Tomas", "Old Tomas holds the great key out toward Finn"), true);
+  // not named at all, or nothing to go on
+  assert.equal(presentIn("Edda", "The empty square at dawn"), false);
+  assert.equal(presentIn("", cottage), false);
+  assert.equal(presentIn("Edda", ""), false);
+  // WHO IS DRAWN: the three cottage pictures are Finn's and Old Tomas's — Edda's portrait is not handed over
+  const others = ["Edda, a small silver-haired woman in her seventies", "Finn, a wiry nine-year-old boy", "Old Tomas, a tall stooped man in a navy coat"];
+  assert.deepEqual(sceneCast(cottage, [], others).others, [others[1]]);
+  assert.deepEqual(sceneCast("Old Tomas stands beside Finn at Edda's cottage, resting a weathered hand on the boy's shoulder.", [], others).others, [others[1], others[2]]);
+  assert.deepEqual(sceneCast("Edda and Finn stand together outside the weathered wooden door of the clock tower, Edda pointing down the street.", [], others).others, [others[0], others[1]]);
+  // a picked presenter is held to the same rule
+  assert.deepEqual(sceneCast("The bench outside Howl's den, empty", ["Howl"], []).picked, []);
+  // the writer is told as well: whoever a picture names is drawn in it
+  const engine = fs.readFileSync(new URL("../app/lib/film-engine.server.ts", import.meta.url), "utf8");
+  assert.ok(engine.includes("Whoever a VISUAL names is DRAWN in it — so a place or thing that belongs to somebody who is NOT in the picture is called by what it is"));
 });

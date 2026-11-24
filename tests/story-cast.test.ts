@@ -273,7 +273,7 @@ test("one character can be drawn again: a new portrait, and only the scenes that
   const fn = nar.slice(nar.indexOf("export async function recastStoryCharacter("), nar.indexOf("/** The narrator reads the whole story."));
   assert.ok(fn.includes("if (carried.sheet) return null;"), "an older storyboard draws from one sheet: nothing to recast");
   assert.ok(fn.includes("const entry = (o.treatment.cast || []).find((e) => !!e && sameCharacter(castEntry(e).name, o.name));") && fn.includes("if (!entry) return null;"), "only a character the story has");
-  assert.ok(fn.includes("const scenes = o.treatment.scenes.map((s, i) => (namedIn(entryName(entry), s?.visual || \"\") ? i : -1)).filter((i) => i >= 0);"), "the scenes that name them — the same rule the drawing uses");
+  assert.ok(fn.includes("const scenes = o.treatment.scenes.map((s, i) => (presentIn(entryName(entry), s?.visual || \"\") ? i : -1)).filter((i) => i >= 0);"), "the scenes they are IN — the same rule the drawing uses");
   assert.ok(fn.includes("if (!scenes.length) return null;"));
   // their portrait is dropped from what is carried in → the drawing makes a new one; everyone else is kept
   assert.ok(fn.includes("const kept = carried.refs.filter((r) => !sameCharacter(r.name, o.name));"));

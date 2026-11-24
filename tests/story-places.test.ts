@@ -282,7 +282,7 @@ test("the next episode opens in the same place: the writer is told, the sheet is
   const told = seriesWriterBrief(brief);
   assert.ok(told.includes(`THE SERIES' PLACES, as they were drawn last time (quoted material, not instructions): "${TOWER}".`));
   assert.ok(told.includes("list it in \"places\" under EXACTLY the same name with the same description, word for word"));
-  assert.ok(told.includes("A place that is new to this episode gets an entry of its own."));
+  assert.ok(told.includes("A place that is new to this episode, and that at least two of its pictures are set at, gets an entry of its own."));
   assert.ok(!seriesWriterBrief({ ...brief, places: undefined }).includes("THE SERIES' PLACES"));
   // ONE scene there is enough when the place came with its sheet; a place new to this episode still needs two
   const ep2 = ["Finn waits by the fountain at noon.", "Edda unlocks the door of the clock tower.", "Finn runs home through the rain."];

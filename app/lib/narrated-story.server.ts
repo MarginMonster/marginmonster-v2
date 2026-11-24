@@ -41,7 +41,7 @@ import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.
 import { FRAMED_FIX, FRAMED_SIZE, framedIn, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_MODEL, castEntry, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
-import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
+import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, presentIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -299,7 +299,7 @@ export async function recastStoryCharacter(o: {
   if (carried.sheet) return null;
   const entry = (o.treatment.cast || []).find((e) => !!e && sameCharacter(castEntry(e).name, o.name));
   if (!entry) return null;
-  const scenes = o.treatment.scenes.map((s, i) => (namedIn(entryName(entry), s?.visual || "") ? i : -1)).filter((i) => i >= 0);
+  const scenes = o.treatment.scenes.map((s, i) => (presentIn(entryName(entry), s?.visual || "") ? i : -1)).filter((i) => i >= 0);
   if (!scenes.length) return null;
   const kept = carried.refs.filter((r) => !sameCharacter(r.name, o.name));
   const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept, carried.places) || null });

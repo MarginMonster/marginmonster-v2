@@ -20,7 +20,7 @@
  * rounds. So a big size is for a SHORT title, and the foot is one true gradient, computed in RGB.
  *
  * Pure (no disk, no ffmpeg): the layout and the filter text. tests/story-poster.test.ts holds it. */
-import { drawable, hasWide, namedIn, textWidth } from "./narrated-core.ts";
+import { drawable, hasWide, presentIn, textWidth } from "./narrated-core.ts";
 
 /** The poster: 4:5, twice the width of a shelf tile on a phone. */
 export const POSTER_W = 800;
@@ -43,7 +43,7 @@ export function posterScene(visuals: ReadonlyArray<string>, names: ReadonlyArray
   let best = -1, most = -1;
   visuals.forEach((v, i) => {
     if (have && !have[i]) return;
-    const n = names.filter((nm) => !!nm && namedIn(nm, v || "")).length;
+    const n = names.filter((nm) => !!nm && presentIn(nm, v || "")).length;
     if (n > most) { most = n; best = i; }
   });
   return best;
