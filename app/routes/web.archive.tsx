@@ -71,6 +71,7 @@ import { isValidTimeZone, zonedDateString, zonedInstant } from "../lib/timezone"
 import { storyHeroOf } from "../lib/film-series";
 // (2026-11-23) a finished film says who is in it — its cast, on the piece itself
 import { cookingReel, cookingTitle, keepGuess, storyStars } from "../lib/story-picture";
+import { showMeta } from "../lib/character-series";
 // (2026-11-24) a story film's poster is its cover on the shelf
 import { posterOf } from "../lib/story-poster";
 // (2026-11-24) KEEP IN MY CAST: a story's own character, registered from the finished film
@@ -516,6 +517,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // the picture it was drawn from (story-picture.ts → storyStars). Shown under the title, "Starring".
         // (…a telling in another language too: it is not an episode of anything, but the same people are in it)
         stars: a.type === "VIDEO_AD" && (!!storyHeroOf(a.metaJson) || isNarratedStory(a.metaJson)) ? storyStars(a.metaJson) : [],
+        // A CHARACTER'S SHOW (character-series.ts): the show this piece is an episode of, and which one —
+        // the viewer says so and leads back to the show. null for everything else.
+        show: a.type === "VIDEO_AD" ? (() => { try { const s = showMeta(JSON.parse(a.metaJson || "{}").show); return s ? { name: s.name, episode: s.episode } : null; } catch { return null; } })() : null,
         // A NARRATED story can be told again in another language — same pictures, same storyteller
         // (story-translate.ts). Every language but its own, by their own names — each one either already
         // told (`have`: that piece, to open) or still to make; null for anything else.
@@ -1517,6 +1521,12 @@ button.wa-vstar:focus-visible{outline:none;}
 button.wa-vstar:focus-visible img{outline:3px solid var(--green,#0C7A46);outline-offset:2px;}
 .wa-vstar-plus{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--green,#0C7A46);color:#fff;font:800 14px/1 Poppins,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.3);}
 .wa-vstars-hint{margin:6px 0 0;font-size:11.5px;font-weight:600;line-height:1.35;color:var(--ink2,#4A554E);}
+/* an episode of a character's show: one line back to the show, with the tally light a show is "on air" by */
+.wa-vshow{display:inline-flex;align-items:center;gap:7px;max-width:100%;min-height:32px;margin:8px 0 2px;padding:5px 12px 5px 10px;border-radius:999px;background:#1B1410;color:#F6E7C1;font-size:12px;font-weight:700;line-height:1.25;text-decoration:none;overflow-wrap:anywhere;}
+.wa-vshow i{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:#E5483A;box-shadow:0 0 0 3px rgba(229,72,58,.22);}
+.wa-vshow svg{flex:0 0 auto;opacity:.8;}
+.wa-vshow:hover{background:#2A1F18;}
+@media(max-width:620px){.wa-vshow{min-height:44px;}}
 .wa-vok{font-size:12.5px;font-weight:800;color:var(--green,#0C7A46);}
 .wa-verr{font-size:12.5px;font-weight:700;color:#8C2E1B;}
 .wa-vcdnote{display:block;margin-top:6px;font-size:12px;color:#8a6207;font-weight:600;}
@@ -3035,6 +3045,12 @@ export default function WebArchive() {
                   </div>
                   {viewer.stars.some((c) => c.own) && <p className="wa-vstars-hint">{t("Tap a character to keep them in your cast.")}</p>}
                 </div>
+              )}
+              {/* AN EPISODE OF A CHARACTER'S SHOW says whose, and leads back to the show */}
+              {viewer.show && (
+                <a className="wa-vshow" href="/web/channels?kind=show" title={t("Open the show")}>
+                  <i aria-hidden="true" /> {t("Episode {n} of {show}", { n: viewer.show.episode, show: viewer.show.name })} <Ico n="arrow" size={12} />
+                </a>
               )}
               {viewer.notMade && (
                 <span className="wa-vmissed">

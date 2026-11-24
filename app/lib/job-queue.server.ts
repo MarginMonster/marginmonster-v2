@@ -1029,6 +1029,8 @@ async function runJob(
             // A CHARACTER'S SHOW (character-series.ts): the line it ends on, and which episode this is
             signoff: typeof payload.filmSignoff === "string" ? payload.filmSignoff : undefined,
             show: (await import("./character-series")).showMeta(payload.filmShow),
+            // …and who tells it, when the star's own voice does: it is then written as theirs, as "I"
+            teller: typeof payload.filmTeller === "string" ? payload.filmTeller : undefined,
             resume: {
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
               ckApproved: payload.ckApproved as string | undefined,

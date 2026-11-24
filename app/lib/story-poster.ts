@@ -57,17 +57,37 @@ export function posterTitle(title: string): { title: string; episode: string; ep
   return m && m[1].trim() ? { title: m[1].trim(), episode: `Episode ${m[2]}`, episodeName: (m[3] || "").trim() } : { title: t, episode: "", episodeName: "" };
 }
 
+/** A TITLE's words as a poster can draw them: `drawable`, and the colon is kept. A show is called
+ *  "Howl: Night tales" — the first poster made for one (live, 2026-11-24) read "Howl Night Tales What
+ *  Follows the Trail", the colon and the dash both gone. The colon is escaped where it is drawn
+ *  (posterDress); nothing else `drawable` drops comes back. */
+export const billable = (s: string): string => {
+  const t = String(s || "");
+  // (a script written without spaces is cut by its glyphs — it stays exactly as `drawable` gives it)
+  if (hasWide(t)) return drawable(t);
+  return t.split(":").map((part) => drawable(part)).filter(Boolean).join(": ").replace(/(\d): (\d)/g, "$1:$2");
+};
+
 /** The title's lines at `max` letters to a line: as few lines as it fits in (three at most), filled as
  *  evenly as they can be. Words are kept whole; a script written without spaces is cut by its glyphs.
  *  [] when it does not fit in three lines of this width. */
 export function posterLines(text: string, max: number): string[] {
-  const t = drawable(String(text || ""));
+  const t = billable(String(text || ""));
   if (!t) return [];
   const glyphs = hasWide(t) && !/\s/.test(t);
   const units = glyphs ? Array.from(t) : t.split(" ");
   const glue = glyphs ? "" : " ";
   const width = (a: string[]) => textWidth(a.join(glue));
   const total = width(units);
+  // A NAME WITH A COLON BREAKS AT IT, when it needs two lines and both halves fit: a show is called
+  // "<Star>: <Kind>", and filled evenly it read "Howl: Night" / "tales" — one orphaned word under the name.
+  if (!glyphs && total > max) {
+    const k = units.findIndex((u) => u.endsWith(":"));
+    if (k >= 0 && k < units.length - 1) {
+      const halves = [units.slice(0, k + 1), units.slice(k + 1)];
+      if (halves.every((l) => width(l) <= max)) return halves.map((l) => l.join(glue));
+    }
+  }
   for (let n = 1; n <= 3; n++) {
     // each line takes words until it holds its share of the whole (or the next word would not fit)
     const share = total / n;
@@ -88,7 +108,7 @@ export const POSTER_SIZES: ReadonlyArray<readonly [number, number, number]> = [
   [96, 11, 1], [84, 13, 2], [72, 15, 2], [62, 17, 2], [54, 20, 3], [46, 24, 3], [40, 28, 3], [36, 31, 3],
 ];
 
-export type PosterLayout = { size: number; lines: string[]; episode: string; cast: string };
+export type PosterLayout = { size: number; lines: string[]; episode: string; /** the rest of an episode's name that did not fit on its line */ episode2?: string; cast: string };
 
 /** What goes on the poster — null when there is nothing to draw (no title at all). */
 export function posterLayout(o: { title: string; cast?: ReadonlyArray<string> }): PosterLayout | null {
@@ -102,7 +122,7 @@ export function posterLayout(o: { title: string; cast?: ReadonlyArray<string> })
   if (!lines.length) {
     // longer than three lines of the smallest size: the smallest, cut at three lines with an ellipsis
     const [s, max] = POSTER_SIZES[POSTER_SIZES.length - 1];
-    const words = drawable(title).split(" ").filter(Boolean);
+    const words = billable(title).split(" ").filter(Boolean);
     const out: string[] = [];
     let cur = "";
     let cut = false;
@@ -123,7 +143,27 @@ export function posterLayout(o: { title: string; cast?: ReadonlyArray<string> })
   if (textWidth(cast) > 38) cast = "";
   const epName = drawable(episodeName).toUpperCase();
   const ep = episode ? (epName && textWidth(`${episode}${DOT}${epName}`) <= 40 ? `${episode.toUpperCase()}${DOT}${epName}` : episode.toUpperCase()) : "";
-  return { size, lines, episode: ep, cast };
+  // AN EPISODE'S NAME THAT DOES NOT FIT ON ITS LINE takes a second one instead of being left off: on a
+  // character's show the name IS the episode ("EPISODE 3 · THE DOOR THAT WAS / NEVER THERE"). Whole words;
+  // a name too long even for two lines ends in an ellipsis.
+  let episode2 = "";
+  let ep1 = ep;
+  if (episode && epName && ep === episode.toUpperCase()) {
+    const words = epName.split(" ").filter(Boolean);
+    let first = `${episode.toUpperCase()}${DOT}`;
+    let k = 0;
+    while (k < words.length && textWidth(`${first}${words[k]}`) <= 40) { first += `${words[k]} `; k++; }
+    if (k > 0 && k < words.length) {
+      let rest = "";
+      let cut = false;
+      for (const w of words.slice(k)) {
+        if (textWidth(`${rest}${w}`) > 39) { cut = true; break; }
+        rest += `${w} `;
+      }
+      if (rest.trim()) { ep1 = first.trim(); episode2 = `${rest.trim()}${cut ? "…" : ""}`; }
+    }
+  }
+  return { size, lines, episode: ep1, ...(episode2 ? { episode2 } : {}), cast };
 }
 
 /** The ffmpeg filter chain for one poster frame: the picture cropped to 4:5, then the dress (below). */
@@ -159,7 +199,7 @@ export function posterDress(layout: PosterLayout, font: string): string {
   const H = POSTER_H;
   const lineH = Math.round(layout.size * 1.1);
   const titleH = layout.lines.length * lineH;
-  const episodeH = layout.episode ? 46 : 0;
+  const episodeH = layout.episode ? (layout.episode2 ? 80 : 46) : 0;
   // from the bottom up: margin, episode, title, billing, rule
   const titleTop = H - PAD - episodeH - titleH;
   const castY = titleTop - 44;
@@ -174,11 +214,14 @@ export function posterDress(layout: PosterLayout, font: string): string {
   const keep = `(1-${POSTER_FOOT_DEPTH}*pow(clip((Y-${from})/${span},0,1),${POSTER_FOOT_CURVE}))`;
   out.push("format=gbrp", `geq=r='r(X,Y)*${keep}':g='g(X,Y)*${keep}':b='b(X,Y)*${keep}'`);
   out.push(`drawbox=x=${PAD}:y=${ruleY}:w=72:h=5:color=${GOLD}@1:t=fill`);
+  // (a colon inside the words is escaped once: the graph's quotes are read first, then drawtext's own
+  //  options are split at every bare colon — checked on this machine's ffmpeg, 2026-11-24)
   const text = (s: string, size: number, color: string, y: number) =>
-    `drawtext=expansion=none:fontfile='${f}':text='${s}':fontsize=${size}:fontcolor=${color}:shadowcolor=black@0.55:shadowx=0:shadowy=2:x=${PAD}:y=${y}`;
+    `drawtext=expansion=none:fontfile='${f}':text='${s.replace(/:/g, "\\:")}':fontsize=${size}:fontcolor=${color}:shadowcolor=black@0.55:shadowx=0:shadowy=2:x=${PAD}:y=${y}`;
   if (layout.cast) out.push(text(layout.cast, 26, GOLD, castY));
   layout.lines.forEach((ln, i) => out.push(text(ln, layout.size, "white", titleTop + i * lineH)));
-  if (layout.episode) out.push(text(layout.episode, 26, GOLD, H - PAD - 30));
+  if (layout.episode) out.push(text(layout.episode, 26, GOLD, H - PAD - 30 - (layout.episode2 ? 34 : 0)));
+  if (layout.episode && layout.episode2) out.push(text(layout.episode2, 26, GOLD, H - PAD - 30));
   return out.join(",");
 }
 

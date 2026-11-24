@@ -66,7 +66,11 @@ test("2 · starting a channel closes the form, so the new card is what shows", (
   for (const [file, self] of [["web.channels.tsx", 'return redirect("/web/channels");'], ["web.product-channels.tsx", 'return redirect("/web/product-channels");']] as const) {
     const src = route(file);
     assert.ok(src.includes(self), `${file}: still lands back on its own page`);
-    assert.ok(src.includes("const [showForm, setShowForm] = useState(series.length === 0);"), file);
+    // (the Channels page also opens it for whoever arrives from a character's own page with them picked —
+    //  "Give Howl a show": tests/character-series.test.ts)
+    assert.ok(src.includes(file === "web.channels.tsx"
+      ? "const [showForm, setShowForm] = useState(series.length === 0 || (isShow && !!starId && roster.some((r) => r.id === starId)));"
+      : "const [showForm, setShowForm] = useState(series.length === 0);"), file);
     assert.ok(src.includes("const seriesCount = useRef(series.length);"), `${file}: the count before`);
     assert.ok(src.includes("if (series.length > seriesCount.current) setShowForm(false);"), `${file}: one more than before → close`);
     assert.ok(src.includes("seriesCount.current = series.length;"), `${file}: and remember the new count`);

@@ -20,7 +20,7 @@ import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 // (2026-11-24) A CHARACTER'S SHOW: a channel whose every drop is an episode starring one of the cast
-import { CHARACTER_SERIES_MAX, SHOWS, SHOW_CADENCES, parseStar, showOf, signoffOf } from "../lib/character-series";
+import { CHARACTER_SERIES_MAX, SHOWS, SHOW_CADENCES, episodesByShow, parseStar, showMetaNeedle, showOf, signoffOf, type ShowEpisode } from "../lib/character-series";
 import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
 import { isAdminEmail } from "../lib/admin.server";
 
@@ -70,6 +70,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     orderBy: { createdAt: "desc" },
     take: 24,
   });
+  // A SHOW'S EPISODES, on its own card: the pieces whose meta says they are an episode of it, newest
+  // first, each as its poster (character-series.ts → episodesByShow). One read for all the shows shown.
+  const showIds = kind === "show" ? rows.filter((s) => s.sourceType === "character").map((s) => s.id) : [];
+  let episodes: Record<string, ShowEpisode[]> = {};
+  if (showIds.length) {
+    try {
+      const pieces = await db.asset.findMany({
+        where: { shopId: shop.id, type: "VIDEO_AD", OR: showIds.map((id) => ({ metaJson: { contains: showMetaNeedle(id) } })) },
+        orderBy: { createdAt: "desc" },
+        take: 60,
+        select: { id: true, title: true, metaJson: true },
+      });
+      episodes = episodesByShow(pieces, showIds, 4);
+    } catch (e) { console.error(`[channels] a show's episodes could not be read (the cards show without them): ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
+  }
   const series = rows.filter((s) => (s.sourceType === "character") === (kind === "show")).map((s) => {
     const cad = cadenceOf(s.cadence);
     const star = s.sourceType === "character" ? parseStar(s.characterJson) : null;
@@ -77,6 +92,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       id: s.id,
       name: s.name,
       niche: s.niche,
+      // …its latest episodes (a show only): each one's number, own name, poster, and the piece to open
+      episodes: (episodes[s.id] || []).map((e) => ({ id: e.assetId, n: e.episode, title: e.title, poster: e.poster })),
       // a character's show: who stars, and what kind of show it is
       star: star ? { name: star.name, img: star.faceUrl } : null,
       showName: s.sourceType === "character" ? (showOf(s.format)?.name || "") : "",
@@ -266,7 +283,9 @@ export default function Channels() {
   const nav = useNavigation();
   const creating = nav.state !== "idle" && nav.formData?.get("intent") === "create";
 
-  const [showForm, setShowForm] = useState(series.length === 0);
+  // (arriving from a character's own page — "Give Howl a show" — the form is open with them picked,
+  //  whatever shows there already are)
+  const [showForm, setShowForm] = useState(series.length === 0 || (isShow && !!starId && roster.some((r) => r.id === starId)));
   // "Start my channel" redirects the page to itself: no message, and the form stayed open, still filled,
   // with its button live — so a second tap made a second channel on the same schedule (nothing checks for
   // a duplicate). When the list grows, the form closes, and what shows is the new card with its
@@ -483,6 +502,14 @@ function ShowForm({ roster, shows, starId, linked, cadences, running, max, error
   const full = running >= max;
   const togglePlat = (p: string) => setPlats((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]));
   const disabled = creating || !who || !kindOf || full || (autoPost && plats.length === 0);
+  // whoever arrived already picked (from their own page) is brought into view in the row — the row is
+  // scrolled, never the page
+  const starsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const row = starsRef.current;
+    const el = row?.querySelector<HTMLElement>(".ch-star.sel");
+    if (row && el) row.scrollLeft = Math.max(0, el.offsetLeft - row.offsetLeft - (row.clientWidth - el.offsetWidth) / 2);
+  }, []);
   return (
     <Form method="post" className="ch-setup">
       <input type="hidden" name="intent" value="create" />
@@ -500,7 +527,7 @@ function ShowForm({ roster, shows, starId, linked, cadences, running, max, error
       </div>
 
       <label className="ch-lbl">{t("Who stars?")}</label>
-      <div className="ch-stars" role="listbox" aria-label={t("Who stars?")}>
+      <div className="ch-stars" role="listbox" aria-label={t("Who stars?")} ref={starsRef}>
         {roster.map((r) => (
           <button type="button" key={r.id} role="option" aria-selected={star === r.id} className={`ch-star${star === r.id ? " sel" : ""}`} onClick={() => setStar(r.id)} title={r.name}>
             <img src={r.img} alt="" loading="lazy" />
@@ -693,11 +720,25 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
           <div className="ch-card-niche">{s.star ? <>{t(s.showName)} · {s.niche}</> : <>{t(fmtLabel)} · {s.niche}</>}</div>
           {s.star && s.signoff ? <div className="ch-card-sign">“{s.signoff}”</div> : null}
         </div>
-        <span className={`ch-badge ${s.status === "ACTIVE" ? "live" : "off"}`}>{s.status === "ACTIVE" ? <><span className="ch-run-dot" aria-hidden="true" /> {t("Running")}</> : <><span className="ch-pause-bars" aria-hidden="true" /> {t("Paused")}</>}</span>
+        {/* A SHOW IS ON AIR: the studio's own sign, lit while the show is running (a channel keeps its badge) */}
+        {s.star ? <span className={`ch-onair${s.status === "ACTIVE" ? " live" : ""}`} role="status">{s.status === "ACTIVE" ? t("On air") : t("Off air")}</span> :
+        <span className={`ch-badge ${s.status === "ACTIVE" ? "live" : "off"}`}>{s.status === "ACTIVE" ? <><span className="ch-run-dot" aria-hidden="true" /> {t("Running")}</> : <><span className="ch-pause-bars" aria-hidden="true" /> {t("Paused")}</>}</span>}
       </div>
 
+      {/* ITS EPISODES, as their posters — the newest first; each opens in the Archive */}
+      {s.star && s.episodes.length > 0 && (
+        <div className="ch-eps" role="list" aria-label={t("Episodes")}>
+          {s.episodes.map((e) => (
+            <Link key={e.id} role="listitem" to={`/web/archive?section=creator&tab=video&open=${encodeURIComponent(e.id)}`} className="ch-ep" title={e.title ? `${t("Episode {n}", { n: e.n })} — ${e.title}` : t("Episode {n}", { n: e.n })}>
+              {e.poster ? <img src={e.poster} alt={e.title || t("Episode {n}", { n: e.n })} loading="lazy" /> : <span className="ch-ep-none"><Ico n="film" size={16} /></span>}
+              <b>{t("Ep {n}", { n: e.n })}</b>
+            </Link>
+          ))}
+        </div>
+      )}
+
       <div className="ch-card-meta">
-        <span><b>{s.perWeek}</b> {t("videos/week")}</span>
+        <span><b>{s.perWeek}</b> {s.star ? t("episodes/week") : t("videos/week")}</span>
         <span>{s.autoPost ? <><Ico n="sparkle" /> {t("auto-post")}</> : <><Ico n="eye" /> {t("approve")}</>}</span>
         {s.platforms.length > 0 && <span>{s.platforms.map((p) => PLAT_LABEL[p]).join(" · ")}</span>}
       </div>
@@ -705,7 +746,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
       {freshDrop ? (
         <div className="ch-next rendering"><span className="ch-next-dot" /> {s.star ? t("First episode on its way…") : t("First video rendering…")}</div>
       ) : s.status === "ACTIVE" ? (
-        <div className="ch-next"><span className="ch-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt, t) || t("any minute now")}</div>
+        <div className="ch-next"><span className="ch-next-dot" /> {s.star ? t("Next episode") : t("Next drop")} {relTime(s.nextRunAt, t) || t("any minute now")}</div>
       ) : null}
       {paused && s.pauseReason && (
         <div className="ch-paused-note">
@@ -724,7 +765,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
       <div className="ch-card-stats">
         <div><b>{s.dropsMade}</b><span>{t("made")}</span></div>
         <div><b>{s.dropsPosted}</b><span>{t("posted")}</span></div>
-        <Link to="/web/archive?section=creator" className="ch-card-gal">{t("All drops")} →</Link>
+        <Link to={s.star ? "/web/archive?section=creator&tab=video" : "/web/archive?section=creator"} className="ch-card-gal">{s.star ? t("All episodes") : t("All drops")} →</Link>
       </div>
 
       <div className="ch-card-acts">
@@ -735,7 +776,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
         )}
         <Form method="post" onSubmit={(e) => { if (!armedEnd) { e.preventDefault(); setArmedEnd(true); } }}>
           <input type="hidden" name="intent" value="end" /><input type="hidden" name="id" value={s.id} />
-          <button className={`ch-act ghost${armedEnd ? " armed" : ""}`} title={armedEnd ? t("Tap again to end — the channel stops making new videos") : t("End this channel")}>{armedEnd ? t("Tap again to end") : t("End")}</button>
+          <button className={`ch-act ghost${armedEnd ? " armed" : ""}`} title={armedEnd ? (s.star ? t("Tap again to end — the show stops making new episodes") : t("Tap again to end — the channel stops making new videos")) : s.star ? t("End this show") : t("End this channel")}>{armedEnd ? t("Tap again to end") : t("End")}</button>
         </Form>
       </div>
     </div>
@@ -757,6 +798,25 @@ const CH_CSS = `
 .ch-star:focus-visible{outline:3px solid rgba(12,122,70,.35);outline-offset:2px;}
 .ch-card-star{flex:0 0 auto;width:48px;height:48px;border-radius:50%;object-fit:cover;object-position:center top;background:#EDE9DF;box-shadow:0 0 0 2px #fff,0 0 0 3px var(--l);margin-right:2px;}
 .ch-card-who{flex:1 1 auto;min-width:0;}
+/* ON AIR — a show's card carries the studio's own sign: a dark plate whose letters are lit, and breathe,
+   while the show is running; unlit when it is paused. (Nothing moves for anyone who asked for less motion.) */
+.ch-onair{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 9px;border-radius:7px;background:#1B1410;color:#7C7068;font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 1px 2px rgba(20,32,26,.2);}
+.ch-onair::before{content:"";flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:#4A3F38;}
+.ch-onair.live{color:#FF7466;text-shadow:0 0 8px rgba(255,90,74,.75);box-shadow:inset 0 0 0 1px rgba(255,106,92,.4),0 0 14px -2px rgba(229,72,58,.55);animation:chOnAir 2.6s ease-in-out infinite;}
+.ch-onair.live::before{background:#FF5A4A;box-shadow:0 0 8px 1px rgba(255,90,74,.9);}
+@keyframes chOnAir{0%,100%{box-shadow:inset 0 0 0 1px rgba(255,106,92,.4),0 0 14px -2px rgba(229,72,58,.55)}50%{box-shadow:inset 0 0 0 1px rgba(255,106,92,.55),0 0 22px 0 rgba(229,72,58,.85)}}
+@media(prefers-reduced-motion:reduce){.ch-onair.live{animation:none;}}
+/* …and its episodes, as their posters: the newest first */
+.ch-eps{display:flex;gap:8px;margin:14px 0 2px;}
+.ch-ep{position:relative;flex:1 1 0;min-width:0;max-width:78px;aspect-ratio:4/5;border-radius:9px;overflow:hidden;background:#1B1410;box-shadow:0 1px 2px rgba(20,32,26,.2),0 0 0 1px rgba(20,32,26,.08);text-decoration:none;transition:transform .14s,box-shadow .14s;}
+.ch-ep img{display:block;width:100%;height:100%;object-fit:cover;}
+/* (its number sits in the top corner: a poster's own title is drawn across its foot, and a tag laid there
+   printed over it) */
+.ch-ep b{position:absolute;left:5px;top:5px;padding:2px 6px 1px;border-radius:6px;background:rgba(20,14,10,.74);color:#F6E7C1;font-size:9.5px;font-weight:800;line-height:1.5;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;}
+.ch-ep-none{display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:#8A7A6C;}
+.ch-ep:hover{transform:translateY(-2px);box-shadow:0 6px 14px -6px rgba(20,32,26,.5),0 0 0 1px rgba(20,32,26,.1);}
+.ch-ep:focus-visible{outline:3px solid rgba(12,122,70,.4);outline-offset:2px;}
+@media(prefers-reduced-motion:reduce){.ch-ep{transition:none;}.ch-ep:hover{transform:none;}}
 .ch-card-sign{margin-top:3px;font-size:12px;font-weight:600;font-style:italic;color:var(--ink2);overflow-wrap:anywhere;}
 .ch-src{min-height:44px;display:inline-flex;align-items:center;padding:0 16px;border-radius:999px;font:inherit;font-weight:700;font-size:13px;color:#5B6B61;text-decoration:none;cursor:pointer;border:0;background:none;}
 .ch-src.sel{background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;}

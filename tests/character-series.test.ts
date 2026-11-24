@@ -17,7 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   CHARACTER_SERIES_MAX, SHOWS, SHOW_CADENCES, SHOW_SCENES,
-  episodeIdeaPrompt, episodeTopic, parseStar, showMeta, showOf, signoffOf, tidyIdea,
+  episodeIdeaPrompt, episodeOwnName, episodeTopic, episodesByShow, parseStar, showMeta, showMetaNeedle, showOf, showTeller, signoffOf, tellerVisual, tidyIdea,
 } from "../app/lib/character-series.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -72,11 +72,14 @@ test("the next episode's premise: this star, this show, and never an episode tha
   assert.ok(tidyIdea("w ".repeat(400), "x").length <= 170);
 });
 
-test("what the story's writer is told: the premise and whose show it is — inside the 300 characters it reads", () => {
+test("what the story's writer is told: the premise, and NOT the show's name — inside the 300 characters it reads", () => {
+  // (the first live episode, 2026-11-24: told 'An episode of "TEST Howl: Night tales"', the writer TITLED the
+  //  story with the show's name — the shelf then prefixed it again and the poster ran the two together)
   const t = episodeTopic({ idea: "Howl follows wet footprints to a door that was never there", seriesName: "Howl: Night tales", star: HOWL });
-  assert.equal(t, 'Howl follows wet footprints to a door that was never there (An episode of "Howl: Night tales", starring Howl.)');
+  assert.equal(t, "Howl follows wet footprints to a door that was never there");
+  assert.ok(!t.includes("Night tales"));
   const long = episodeTopic({ idea: "i".repeat(400), seriesName: "S".repeat(90), star: HOWL });
-  assert.ok(long.length <= 300 && long.endsWith("starring Howl.)"), `the tail is never the part that is cut (${long.length})`);
+  assert.equal(long.length, 298);
   // (the writer cuts the topic at 300: film-engine)
   assert.ok(read("app", "lib", "film-engine.server.ts").includes("\"${topic.slice(0, 300)}\""));
   // the sign-off: one clean line; and what a finished episode keeps about its show
@@ -84,6 +87,9 @@ test("what the story's writer is told: the premise and whose show it is — insi
   assert.equal(signoffOf(null), "");
   assert.ok(signoffOf("x".repeat(400)).length <= 120);
   assert.deepEqual(showMeta({ id: "s1", name: "Howl: Night tales", episode: 4.7, star: "Howl" }), { id: "s1", name: "Howl: Night tales", episode: 4, star: "Howl" });
+  // …and, once it is written, the episode's own name in full (read back from JSON too)
+  assert.deepEqual(showMeta(JSON.stringify({ id: "s1", name: "N", episode: 2, star: "Howl", title: "  The Door That Was\n Never There " })), { id: "s1", name: "N", episode: 2, star: "Howl", title: "The Door That Was Never There" });
+  assert.equal(showMeta("{")?.id, undefined);
   for (const bad of [null, "x", [], {}, { id: "s1", name: "N" }, { id: "", name: "N", episode: 2 }, { id: "s1", name: "N", episode: 0 }]) assert.equal(showMeta(bad), null, JSON.stringify(bad));
 });
 
@@ -107,7 +113,7 @@ test("the channel that runs it: two new columns, a third kind of drop, an episod
   assert.ok(eng.includes("contentType: \"film\", filmTemplate: show.template, filmMode: \"narrated\", section,"));
   assert.ok(eng.includes("filmTopic: episodeTopic({ idea: topic, seriesName: s.name, star }), filmScenes: SHOW_SCENES, filmCaptions: \"bold\", filmAspect: \"9:16\","));
   assert.ok(eng.includes("cast: [{ name: star.name, faceUrl: star.faceUrl, voiceId: null, kind: star.kind, look: star.look }],"));
-  assert.ok(eng.includes("...(star.voiceId ? { filmNarrator: star.voiceId } : {}),"));
+  assert.ok(eng.includes("...(star.voiceId ? { filmNarrator: star.voiceId, filmTeller: showTeller(star) } : {}),"), "told in the star's voice → told BY the star");
   assert.ok(eng.includes("...(signoff ? { filmSignoff: signoff } : {}),"));
   assert.ok(eng.includes("filmShow: { id: s.id, name: s.name, episode: s.dropsMade + 1, star: star.name },"));
   assert.ok(eng.includes("seriesId: s.id, seriesName: s.name, seriesAutoPost: s.autoPost, seriesPlatforms: wantPlatforms,\n              initiator: \"character-series\","));
@@ -125,8 +131,8 @@ test("the episode on its way out: the writer hears the sign-off, the piece keeps
   assert.ok(hook.includes("await postCreatorDrop({ shopId, assetId: filmAssetId, seriesId: payload.seriesId as string,"));
   assert.ok(hook.includes("console.error(\"[series] an episode's auto-post failed (non-fatal):\", e);"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("...(opts.signoff ? { signoff: opts.signoff } : {}), series: opts.series });"));
-  assert.ok(nar.includes("...(opts.show ? { show: opts.show } : {}),"), "meta.show: whose show, which episode");
+  assert.ok(nar.includes("...(opts.signoff ? { signoff: opts.signoff } : {}), ...(opts.teller ? { teller: opts.teller } : {}), series: opts.series });"));
+  assert.ok(nar.includes("...(opts.show ? { show: { ...opts.show, ...(showEpisodeName ? { title: showEpisodeName } : {}) } } : {}),"), "meta.show: whose show, which episode, and the episode's own name");
   const engine = read("app", "lib", "film-engine.server.ts");
   assert.ok(engine.includes("THE SIGN-OFF: the last scene's CAPTION ends with exactly these words, after its own last sentence, changed in no way: \"${signoff}\""));
   assert.ok(engine.includes("const signoff = narrated ? String(opts.signoff || \"\").replace(/[\"“”]/g, \"'\")"), "a told story only; a quote in it cannot break the brief");
@@ -164,6 +170,136 @@ test("the page: a third kind of channel, open to the owner until it has a price"
   assert.ok(page.includes("<ChannelCard key={s.id} s={s} tokens={tokens} facelessCost={s.star ? 0 : facelessCost} />"));
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["Character shows", "Who stars?", "What kind of show?", "Lessons", "Tales", "Night tales", "The line every episode ends on", "Start the show", "First episode on its way…", "Free while films are free", "Character shows are not open yet.", ...SHOWS.map((s) => s.line)]) {
+    assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
+  }
+});
+
+/* ---- THE SECOND PASS (2026-11-24, after the first episode was made and looked at on the live site) ---- */
+
+test("the star tells it: a show told in its star's own voice is told BY them — as \"I\" — and still drawn from their name", () => {
+  // who tells: the star when they have a voice; nobody in particular when they have none
+  assert.equal(showTeller(HOWL), "Howl");
+  assert.equal(showTeller({ ...HOWL, voiceId: null }), "");
+  assert.equal(showTeller(null), "");
+  // a picture is drawn from its words, and "I" is nobody: first-person words in a VISUAL become the name
+  assert.equal(tellerVisual("I stand at the tree line, my claws on the bark, watching the cabin", "Howl"), "Howl stand at the tree line, Howl's claws on the bark, watching the cabin");
+  assert.equal(tellerVisual("Marion looks back at me from the doorway. I'm in the rain.", "Howl"), "Marion looks back at Howl from the doorway. Howl is in the rain.");
+  assert.equal(tellerVisual("I’ve stopped; My shadow falls over the well, and I'd know it anywhere — I'll wait", "Howl"), "Howl has stopped; Howl's shadow falls over the well, and Howl would know it anywhere — Howl will wait");
+  assert.equal(tellerVisual("Howl crouches by myself at the old mine", "Howl"), "Howl crouches by Howl at the old mine", "a mine is a place");
+  // …and a VISUAL that already names them is not touched; nor anything when there is no teller
+  const plain = "Howl stands in the doorway of the ranger cabin, Marion behind him";
+  assert.equal(tellerVisual(plain, "Howl"), plain);
+  assert.equal(tellerVisual("I stand alone", ""), "I stand alone");
+  assert.equal(tellerVisual("", "Howl"), "");
+  // names that only CONTAIN the letters are left alone ("Imogen", "merchant", "Amy")
+  assert.equal(tellerVisual("Imogen and Amy meet the merchant at home", "Howl"), "Imogen and Amy meet the merchant at home");
+
+  // the writer is told — a told story only, and only for somebody who is in the cast
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.ok(engine.includes("const tellerWanted = narrated ? String(opts.teller || \"\").replace(/\\s+/g, \" \").trim().toLowerCase() : \"\";"));
+  assert.ok(engine.includes("const teller = tellerWanted ? picked.find((c) => c.name.toLowerCase() === tellerWanted)?.name || \"\" : \"\";"), "never a name the cast does not have");
+  assert.ok(engine.includes("(teller ? `THE TELLER: ${teller} tells this story THEMSELVES"));
+  assert.ok(engine.includes("Every CAPTION is ${teller} speaking in the first person (\"I\", \"me\", \"my\")"));
+  assert.ok(engine.includes("The captions never say \"${teller}\" and never call ${teller} \"he\", \"she\", \"it\" or \"they\"."));
+  assert.ok(engine.includes("every VISUAL still calls ${teller} by NAME and never says \"I\", \"me\" or \"my\""));
+  // …the TELLER line comes before the sign-off (the sign-off is the teller's own last words)
+  assert.ok(engine.indexOf("THE TELLER: ${teller}") < engine.indexOf("THE SIGN-OFF: the last scene's CAPTION"));
+  // …and whatever it wrote, a VISUAL gets the name back
+  assert.ok(engine.includes("if (teller) list = list.map((s) => ({ ...s, visual: tellerVisual(s.visual, teller) }));"));
+  assert.ok(engine.indexOf("visual: tellerVisual(s.visual, teller)") < engine.indexOf("visual: placeNamed(s.visual, saidPlaces[i], places)"), "before a place is put in front of the words");
+  // carried from the show to the writer
+  assert.ok(read("app", "lib", "job-queue.server.ts").includes("teller: typeof payload.filmTeller === \"string\" ? payload.filmTeller : undefined,"));
+});
+
+test("an episode is titled by its show: \"<Show> — Episode <N>: <its own name>\", the same way every time", () => {
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  // the episode's own name is kept IN FULL before the show's name goes on (the shelf's title is cut to fit)
+  assert.ok(nar.includes("const showEpisodeName = opts.show ? episodeOwnName(treatment.title, opts.show.name) : \"\";"));
+  assert.ok(nar.indexOf("const showEpisodeName = ") < nar.indexOf("else if (opts.show) treatment.title = episodeTitle(opts.show.name, opts.show.episode, treatment.title);"));
+  assert.ok(nar.includes("if (opts.series) treatment.title = episodeTitle(opts.series.title, opts.series.episode, treatment.title);"), "a film series is exactly what it was");
+  // …and its poster bills it in full
+  assert.ok(nar.includes("const billedAs = opts.show ? `${opts.show.name} — Episode ${opts.show.episode}${showEpisodeName ? `: ${showEpisodeName}` : \"\"}` : treatment.title || opts.topic || \"\";"));
+  // an episode's own name, from whatever its writer called it
+  assert.equal(episodeOwnName("What Follows the Trail", "Howl: Night tales"), "What Follows the Trail");
+  assert.equal(episodeOwnName("Howl: Night Tales — What Follows the Trail", "Howl: Night tales"), "What Follows the Trail", "the show's name is taken off its front");
+  assert.equal(episodeOwnName("Howl: Night tales — Episode 3: The Door That Was Never There", "Howl: Night tales"), "The Door That Was Never There", "idempotent: an episode title given back");
+  assert.equal(episodeOwnName("Howl: Night tales — Episode 3", "Howl: Night tales"), "", "an episode with no name of its own");
+  assert.equal(episodeOwnName("Horror Story — Howl: Night Tales — What Follows the Trail", "TEST Howl: Night tales"), "What Follows the Trail", "a shelf title: what follows its last long dash");
+  assert.equal(episodeOwnName('"The Lantern"', "S"), "The Lantern");
+  assert.equal(episodeOwnName(null, "S"), "");
+});
+
+test("a show's episodes are found by its own key in a piece's meta, and listed newest first", () => {
+  assert.equal(showMetaNeedle("cmw123"), '"show":{"id":"cmw123"');
+  // (it is exactly how narrated-story.server.ts writes it: `show` first holds `id`)
+  assert.ok(JSON.stringify({ kind: "narrated", show: { ...showMeta({ id: "cmw123", name: "N", episode: 1, star: "Howl" })!, title: "T" } }).includes(showMetaNeedle("cmw123")));
+  const meta = (id: string, episode: number, extra: Record<string, unknown> = {}) => JSON.stringify({ kind: "narrated", show: { id, name: "Howl: Night tales", episode, star: "Howl", ...extra }, poster: `/renders/nar-${episode}-poster.jpg` });
+  const rows = [
+    { id: "a1", title: "Horror Story — Howl: Night tales — Episode 1: The Trail", metaJson: meta("s1", 1) },
+    { id: "a3", title: "Horror Story — Howl: Night tales — Episode 3", metaJson: meta("s1", 3, { title: "The Door That Was Never There" }) },
+    { id: "a2", title: "Horror Story — Howl: Night tales — Episode 2: The Well", metaJson: meta("s1", 2) },
+    { id: "b1", title: "Moral Story — Pip: Lessons — Episode 1: The Loan", metaJson: meta("s2", 1) },
+    { id: "x", title: "somebody else's", metaJson: meta("other", 9) },
+    { id: "y", title: "not an episode", metaJson: JSON.stringify({ kind: "narrated" }) },
+    { id: "z", title: "broken", metaJson: "{" },
+    { id: "p", title: "Horror Story — Howl: Night tales — Episode 4: Bad Poster", metaJson: JSON.stringify({ show: { id: "s1", name: "N", episode: 4, star: "Howl" }, poster: "https://evil.example/p.jpg" }) },
+  ];
+  const by = episodesByShow(rows, ["s1", "s2"], 3);
+  assert.deepEqual(by.s1.map((e) => [e.assetId, e.episode, e.title, e.poster]), [
+    ["p", 4, "Bad Poster", null],
+    ["a3", 3, "The Door That Was Never There", "/renders/nar-3-poster.jpg"],
+    ["a2", 2, "The Well", "/renders/nar-2-poster.jpg"],
+  ], "newest first, three at most, the name in full when the piece kept it, only OUR poster pictures");
+  assert.deepEqual(by.s2.map((e) => e.assetId), ["b1"]);
+  assert.equal(by.other, undefined);
+  assert.deepEqual(episodesByShow([], ["s1"]), {});
+
+  const page = read("app", "routes", "web.channels.tsx");
+  assert.ok(page.includes("OR: showIds.map((id) => ({ metaJson: { contains: showMetaNeedle(id) } }))"), "one read, this shop's pieces only");
+  assert.ok(page.includes("where: { shopId: shop.id, type: \"VIDEO_AD\", OR: showIds.map("));
+  assert.ok(page.includes("episodes = episodesByShow(pieces, showIds, 4);"));
+  assert.ok(page.includes("episodes: (episodes[s.id] || []).map((e) => ({ id: e.assetId, n: e.episode, title: e.title, poster: e.poster })),"));
+});
+
+test("the show's card: an ON AIR sign that is lit while it runs, and its episodes as their posters", () => {
+  const page = read("app", "routes", "web.channels.tsx");
+  assert.ok(page.includes("{s.star ? <span className={`ch-onair${s.status === \"ACTIVE\" ? \" live\" : \"\"}`} role=\"status\">{s.status === \"ACTIVE\" ? t(\"On air\") : t(\"Off air\")}</span> :"));
+  // (a channel that is not a show keeps the badge it had)
+  assert.ok(page.includes("<span className={`ch-badge ${s.status === \"ACTIVE\" ? \"live\" : \"off\"}`}>"));
+  assert.ok(page.includes("{s.star && s.episodes.length > 0 && ("));
+  assert.ok(page.includes("to={`/web/archive?section=creator&tab=video&open=${encodeURIComponent(e.id)}`} className=\"ch-ep\""), "an episode opens in the Archive");
+  assert.ok(page.includes("<b>{t(\"Ep {n}\", { n: e.n })}</b>"));
+  // a show speaks of episodes, not drops
+  assert.ok(page.includes("{s.star ? t(\"episodes/week\") : t(\"videos/week\")}") && page.includes("{s.star ? t(\"Next episode\") : t(\"Next drop\")}") && page.includes("{s.star ? t(\"All episodes\") : t(\"All drops\")} →"));
+  // the sign is lit and breathes only while running — and holds still for anyone who asked for less motion
+  const css = page.slice(page.indexOf("const CH_CSS = `"));
+  assert.ok(css.includes(".ch-onair.live{color:#FF7466;") && css.includes("animation:chOnAir 2.6s ease-in-out infinite;"));
+  assert.ok(css.includes("@media(prefers-reduced-motion:reduce){.ch-onair.live{animation:none;}}"));
+  assert.ok(css.includes("@media(prefers-reduced-motion:reduce){.ch-ep{transition:none;}.ch-ep:hover{transform:none;}}"));
+  // arriving from a character's own page, the form is open with them picked — and brought into view in the row
+  assert.ok(page.includes("const [showForm, setShowForm] = useState(series.length === 0 || (isShow && !!starId && roster.some((r) => r.id === starId)));"));
+  assert.ok(page.includes("if (row && el) row.scrollLeft = Math.max(0, el.offsetLeft - row.offsetLeft - (row.clientWidth - el.offsetWidth) / 2);"), "the row is scrolled, never the page");
+});
+
+test("a character's own page lists their shows and offers another — for whoever shows are open to", () => {
+  const page = read("app", "routes", "web.presenters.tsx");
+  assert.ok(page.includes("const showsOpen = isAdminEmail(account.email);"), "the same gate as the Channels tab");
+  assert.ok(page.includes("where: { shopId: shop.id, sourceType: \"character\", status: { not: \"ENDED\" } },"), "this shop's own, and none that ended");
+  assert.ok(page.includes("if (showsOpen) {\n    try {\n      const rows = await db.creatorSeries.findMany({"), "nothing is read for anyone else");
+  assert.ok(page.includes("(showsBy[star.id] ||= []).push({ id: r.id, name: r.name, kind: showOf(r.format)?.name || \"\", running: r.status === \"ACTIVE\", made: r.dropsMade });"));
+  assert.ok(page.includes("shows={(d.showsBy as Record<string, ShowRow[]>)[open.id] || []}"));
+  const view = page.slice(page.indexOf("function CharacterView("), page.indexOf("const PH_STYLE = `"));
+  assert.ok(view.includes("{showsOpen && (\n            <section className=\"pc-sec\">\n              <h3 className=\"pc-h\"><Ico n=\"filmreel\" size={13} /> {t(\"Shows\")}</h3>"));
+  assert.ok(view.includes("<Link to={`/web/channels?kind=show&star=${encodeURIComponent(c.id)}`} className=\"pc-show-new\">"), "the way in carries WHO");
+  assert.ok(view.includes("{shows.length ? t(\"Give {name} another show\", { name: c.name }) : t(\"Give {name} a show\", { name: c.name })}"), "a character can have several");
+  // after the voice, before the delete
+  assert.ok(view.indexOf("{t(\"Voice\")}</h3>") < view.indexOf("{t(\"Shows\")}</h3>") && view.indexOf("{t(\"Shows\")}</h3>") < view.indexOf("{danger(\"in\")}"));
+  // the Archive says which show an episode belongs to, and leads back
+  const arch = read("app", "routes", "web.archive.tsx");
+  assert.ok(arch.includes("const s = showMeta(JSON.parse(a.metaJson || \"{}\").show); return s ? { name: s.name, episode: s.episode } : null;"), "its name and number — never the show's id");
+  assert.ok(arch.includes("{t(\"Episode {n} of {show}\", { n: viewer.show.episode, show: viewer.show.name })}"));
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  for (const k of ["On air", "Off air", "Ep {n}", "All episodes", "Shows", "Give {name} a show", "Give {name} another show", "Episode {n} of {show}", "End this show"]) {
     assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
   }
 });

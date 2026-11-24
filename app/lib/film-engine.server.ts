@@ -48,6 +48,7 @@ import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from ".
 import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 // (2026-11-24) a told story's places: a scene set at one says so in its own words
 import { inheritPlaces, placeNamed } from "./story-picture";
+import { tellerVisual } from "./character-series";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -448,6 +449,9 @@ export async function previewFilmTreatment(opts: {
   series?: SeriesBrief | null;
   /** A CHARACTER'S SHOW (character-series.ts): the line the storyteller ends every episode on. */
   signoff?: string;
+  /** …and WHO TELLS IT: the name of the one of the chosen cast whose own voice narrates. The story is then
+   *  theirs, told as "I" — a told story only, and only for somebody who is in `cast`. */
+  teller?: string;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const narrated = opts.mode === "narrated" && !tmpl.lipSyncSinger && !tmpl.sung;
@@ -465,6 +469,9 @@ export async function previewFilmTreatment(opts: {
   const picked = tmpl.lipSyncSinger ? [] : (opts.cast || [])
     .map((c) => ({ name: (c?.name || "").trim().slice(0, 40), desc: (c?.desc || "").trim().replace(/\s+/g, " ").slice(0, 220) }))
     .filter((c) => c.name).slice(0, 4);
+  // THE TELLER (a character's show): one of the chosen cast, by their own name as it is in `picked`
+  const tellerWanted = narrated ? String(opts.teller || "").replace(/\s+/g, " ").trim().toLowerCase() : "";
+  const teller = tellerWanted ? picked.find((c) => c.name.toLowerCase() === tellerWanted)?.name || "" : "";
   const topic = (opts.topic || "").trim();
   // Lip-sync Music Video: the chosen genre drives the song style, the artist and
   // every setting; folded into the writer prompt so lyrics + visuals match it.
@@ -613,6 +620,10 @@ export async function previewFilmTreatment(opts: {
       `• VISUAL — the ONE picture we see while that part is told, in at most 45 words: a single vivid, specific moment (${tmpl.sceneHint}) — who is in it, where, doing what, the light and the mood. Call every character who is IN the picture by their NAME exactly as in "cast" (never just "he", "she", "the creature" or "the clerk"); a picture nobody is in names nobody. Whoever a VISUAL names is DRAWN in it — so a place or thing that belongs to somebody who is NOT in the picture is called by what it is ("the cottage with the round green door"), never by their name ("Edda's cottage"). Anything that is seen in more than one picture (a kite, a car, a house, a toy) is described with the SAME few words every time, so it is drawn the same. A different moment every scene. It is ONE moment only — a picture cannot show two times: never "then", "until", "later" or a before-and-after in a VISUAL (three stories made on 2026-11-22: a scene written as two moments was drawn as two panels). A picture has the story's cast and at most ONE other person — never an extra "unnamed" figure beside two of the cast (the picture model then leaves one of the cast out). And nothing in it is WRITTEN: no sign with words, label, notice, number or name on a door — say what a thing looks like, never what it says.\n` +
       `• CAPTION — the NARRATOR'S words for that scene, written to be READ ALOUD: 2-3 sentences, about 25-35 words. Plain, vivid, concrete storytelling — no "NAME:" labels, no stage directions, no headings. The FIRST scene opens with a hook that makes a viewer stay. Each scene picks up exactly where the last one left off. The LAST scene lands the ending${tmpl.key === "moral" ? " and says the lesson in one clear closing line" : tmpl.key === "horror" ? " on the chilling twist — the last line should make the skin crawl" : ""}.\n` +
       `Read in order, the captions are the whole story, start to finish, in one voice.\n` +
+      // THE STAR TELLS IT (character-series.ts): a show told in its star's own voice is told BY them. The
+      // first live episode, 2026-11-24, was a werewolf's growl saying "But Howl did not lunge. It pointed…"
+      // — its own star, in the third person. A picture is still drawn from its words, so VISUALs keep the name.
+      (teller ? `THE TELLER: ${teller} tells this story THEMSELVES — it is ${teller}'s own voice we hear, start to finish. Every CAPTION is ${teller} speaking in the first person ("I", "me", "my"): it happened to ${teller}, and ${teller} is telling us about it. The captions never say "${teller}" and never call ${teller} "he", "she", "it" or "they". The VISUALS do not change: every VISUAL still calls ${teller} by NAME and never says "I", "me" or "my" — a picture is drawn from its words, and "I" is nobody.\n` : "") +
       // (a character's show ends every episode on the same line — the storyteller's very last words)
       (signoff ? `THE SIGN-OFF: the last scene's CAPTION ends with exactly these words, after its own last sentence, changed in no way: "${signoff}"\n` : "") +
       // THE STORY'S PLACES (story-picture.ts): the first Horror Story made in one press had a ferry that was
@@ -856,6 +867,8 @@ export async function previewFilmTreatment(opts: {
     const timed = sameTime(list.map((s) => s.visual));
     list = list.map((s, i) => ({ ...s, visual: timed[i] || s.visual }));
   }
+  // THE STAR TELLS IT: the words are "I", the pictures are still drawn from a NAME (character-series.ts)
+  if (teller) list = list.map((s) => ({ ...s, visual: tellerVisual(s.visual, teller) }));
   // an episode is called "<Series> — Episode <N>" (the writer's short episode name may follow a colon)
   // (the WRITER'S OWN title only: with none, an episode is just "<Series> — Episode <N>". It used to borrow
   //  the idea box or the format's name — an episode made from an empty idea box was "… Episode 2: Short Film")

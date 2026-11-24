@@ -92,19 +92,94 @@ export function tidyIdea(raw: unknown, fallback: string): string {
 }
 
 /** What the story's own writer is told the episode is about (it is cut at 300 characters there, so this
- *  is kept under it): the premise, then whose show it is. The cast and the sign-off travel beside it. */
+ *  is kept under it): the premise, and nothing else. The cast and the sign-off travel beside it.
+ *  (It used to end `(An episode of "<show>", starring <star>.)` — and the first episode made on the live
+ *  site, 2026-11-24, came back TITLED with the show's name: "Howl: Night Tales — What Follows the Trail",
+ *  which the Archive then prefixed again and the poster ran together. The show's name is ours to put on
+ *  an episode — film-series.ts → episodeTitle — never the writer's.) */
 export function episodeTopic(o: { idea: string; seriesName: string; star: ShowStar }): string {
-  const tail = ` (An episode of "${oneLine(o.seriesName).replace(/"/g, "'").slice(0, 50)}", starring ${o.star.name}.)`;
-  return `${oneLine(o.idea).slice(0, 298 - tail.length)}${tail}`;
+  return oneLine(o.idea).slice(0, 298);
 }
 
-/** What a finished episode keeps about its show (meta.show): whose it is and which episode. */
-export type ShowMeta = { id: string; name: string; episode: number; star: string };
+/* THE STAR TELLS IT. A show whose star has a voice is told IN that voice — and the first live episode was
+ * a werewolf's growl telling a story about "Howl" in the third person: "But Howl did not lunge. It
+ * pointed…". A character with their own show and their own voice is its HOST: the story is theirs, told
+ * as "I" (film-engine.server.ts → the TELLER line). A picture, though, is drawn from its words — and "I"
+ * is nobody — so a scene's VISUAL keeps calling them by name; the writer is told so, and this puts the
+ * name back wherever a first-person word slipped into one. */
+
+/** A scene's VISUAL with the teller's first-person words turned back into their name. */
+export function tellerVisual(visual: string, name: string): string {
+  const n = oneLine(name);
+  const v = String(visual || "");
+  // ("mine" is left alone: in a story it is as often a place as a pronoun)
+  if (!n || !/\b(?:I|me|[Mm]y|[Mm]yself)\b/.test(v)) return v;
+  return v
+    .replace(/\bI(?:'|’)m\b|\bI am\b/g, `${n} is`)
+    .replace(/\bI(?:'|’)ve\b|\bI have\b/g, `${n} has`)
+    .replace(/\bI(?:'|’)d\b/g, `${n} would`)
+    .replace(/\bI(?:'|’)ll\b/g, `${n} will`)
+    .replace(/\b[Mm]yself\b/g, n)
+    .replace(/\b[Mm]y\b/g, `${n}'s`)
+    .replace(/\bme\b/g, n)
+    .replace(/\bI\b/g, n);
+}
+
+/** Who tells a show's episodes: the star, when they have a voice of their own to tell it in — else nobody
+ *  in particular (the format's own storyteller, in the third person). */
+export const showTeller = (star: ShowStar | null | undefined): string => (star && star.voiceId ? star.name : "");
+
+/** What a finished episode keeps about its show (meta.show): whose it is, which episode, and — once it is
+ *  written — the episode's OWN name (its title is "<Show> — Episode <N>: <name>", cut to fit a shelf; this
+ *  is the name in full). */
+export type ShowMeta = { id: string; name: string; episode: number; star: string; title?: string };
 export function showMeta(raw: unknown): ShowMeta | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const o = raw as Record<string, unknown>;
+  let v: unknown = raw;
+  if (typeof v === "string") { try { v = JSON.parse(v); } catch { return null; } }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
   const id = oneLine(o.id).slice(0, 64);
   const name = oneLine(o.name).slice(0, 60);
   const episode = typeof o.episode === "number" && Number.isFinite(o.episode) && o.episode >= 1 ? Math.floor(o.episode) : 0;
-  return id && name && episode ? { id, name, episode, star: oneLine(o.star).slice(0, 40) } : null;
+  const title = oneLine(o.title).slice(0, 80);
+  return id && name && episode ? { id, name, episode, star: oneLine(o.star).slice(0, 40), ...(title ? { title } : {}) } : null;
+}
+
+/** An episode's OWN name, from what its writer called it: the part after "Episode <N>:" when the title is
+ *  already an episode's, the show's name taken off its front, "" when nothing of its own is left. */
+export function episodeOwnName(title: string | null | undefined, showName: string | null | undefined): string {
+  let t = oneLine(title);
+  const after = t.match(/\b(?:episode|ep\.?)\s*\d+\s*[:—–\-]\s*(.+)$/i);
+  if (after) return oneLine(after[1]).slice(0, 80);
+  if (/\b(?:episode|ep\.?)\s*\d+\s*$/i.test(t)) return "";
+  const show = oneLine(showName).toLowerCase();
+  if (show && t.toLowerCase().startsWith(show)) t = t.slice(show.length).replace(/^[\s:—–\-|,]+/, "");
+  // (a shelf title — "Horror Story — <show> — <name>" — keeps only what follows its last long dash)
+  else if (t.includes(" — ")) t = t.slice(t.lastIndexOf(" — ") + 3);
+  return t.replace(/^["“”']+|["“”']+$/g, "").trim().slice(0, 80);
+}
+
+/** The key a finished episode is found by: the exact text its meta holds for its show (JSON, as written by
+ *  narrated-story.server.ts — `"show":{"id":"<id>"`). A show's own page lists its episodes by it. */
+export const showMetaNeedle = (showId: string): string => `"show":{"id":${JSON.stringify(oneLine(showId).slice(0, 64))}`;
+
+/** One finished episode, as a show's card lists it. */
+export type ShowEpisode = { assetId: string; showId: string; episode: number; title: string; poster: string | null };
+
+/** The episodes of each show among these pieces, newest episode first, `max` a show. `rows` are assets
+ *  (id, title, metaJson) in any order; a piece that is not an episode of one of `showIds` is skipped. */
+export function episodesByShow(rows: ReadonlyArray<{ id: string; title?: string | null; metaJson?: unknown }>, showIds: ReadonlyArray<string>, max = 4): Record<string, ShowEpisode[]> {
+  const out: Record<string, ShowEpisode[]> = {};
+  for (const r of rows || []) {
+    let m: unknown = r.metaJson;
+    if (typeof m === "string") { try { m = JSON.parse(m); } catch { continue; } }
+    if (!m || typeof m !== "object" || Array.isArray(m)) continue;
+    const meta = m as Record<string, unknown>;
+    const s = showMeta(meta.show);
+    if (!s || !showIds.includes(s.id)) continue;
+    const p = typeof meta.poster === "string" && /^\/renders\/[a-zA-Z0-9_-]+-poster\.jpg$/.test(meta.poster) ? meta.poster : null;
+    (out[s.id] ||= []).push({ assetId: r.id, showId: s.id, episode: s.episode, title: s.title || episodeOwnName(r.title, s.name), poster: p });
+  }
+  for (const id of Object.keys(out)) out[id] = out[id].sort((a, b) => b.episode - a.episode).slice(0, Math.max(1, max));
+  return out;
 }

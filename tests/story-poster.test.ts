@@ -93,9 +93,13 @@ test("the billing: the cast's names in capitals, three at most, never running of
   // names too long to share a line: fewer are billed rather than a line that leaves the frame
   const longNames = lay(["Bartholomew Fitzwilliam", "Persephone Montgomery", "Alexandrina Featherstone"]).cast;
   assert.ok(longNames.length <= 40 && !longNames.includes("ALEXANDRINA"), longNames);
-  // the episode line: number and name, or the number alone when the name will not fit
+  // the episode line: number and name — and a name that will not fit on it goes on in a second line
+  // (it used to be left off: on a character's show the name IS the episode)
   assert.equal(lay(["Tobias"], "The Week the Boat Didn't Come — Episode 2: The Mended Hull").episode, "EPISODE 2  ·  THE MENDED HULL");
-  assert.equal(lay(["Tobias"], "The Week the Boat Didn't Come — Episode 2: The Night the Whole Harbour Came Out to Mend One Small Boat").episode, "EPISODE 2");
+  assert.equal(lay(["Tobias"], "The Week the Boat Didn't Come — Episode 2: The Mended Hull").episode2, undefined);
+  const wrapped = lay(["Tobias"], "The Week the Boat Didn't Come — Episode 2: The Night the Whole Harbour Came Out to Mend One Small Boat");
+  assert.equal(wrapped.episode, "EPISODE 2  ·  THE NIGHT THE WHOLE");
+  assert.equal(wrapped.episode2, "HARBOUR CAME OUT TO MEND ONE SMALL BOAT", "whole words, and all of it");
   assert.equal(lay(["Tobias"]).episode, "");
 });
 
@@ -156,7 +160,7 @@ test("a story makes its poster when it is made — and never fails for want of o
   assert.ok(fn.includes("const r = await runFfmpeg([\"-y\", \"-i\", o.stills[k], \"-vf\", posterFilters(layout, font), \"-frames:v\", \"1\", \"-q:v\", \"3\", outPath]);"));
   assert.ok(!/repRun|anthropic|fal/i.test(fn), "no model is asked: it costs nothing");
   // made after the film itself is safe on disk, inside a try: a film without a poster is still a film
-  const at = nar.indexOf("poster = await makeStoryPoster({ stills, visuals: treatment.scenes.map((s) => s.visual || \"\"), names: billed, title: treatment.title || opts.topic || \"\", videoName: outName });");
+  const at = nar.indexOf("poster = await makeStoryPoster({ stills, visuals: treatment.scenes.map((s) => s.visual || \"\"), names: billed, title: billedAs, videoName: outName });");
   assert.ok(at > nar.indexOf("await assembleNarrated({ stills, clips: motion?.clips"), "after the cut");
   assert.ok(nar.includes("if (process.env.STORY_POSTER !== \"off\") {"), "one switch turns it off");
   assert.ok(nar.includes("} catch (e) { console.error(`[narrated] no poster (the shelf shows the first frame): ${e instanceof Error ? e.message.slice(0, 160) : e}`); }"));
@@ -220,4 +224,41 @@ test("the Archive shows it as the film's cover, falls back to the first frame, a
   assert.ok(arc.includes("{viewer.poster && !viewer.expired && <a className=\"wa-vbtn ghost\" href={viewer.poster} download={"));
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["Poster", "Save this film's poster — its title and cast over its best picture"]) assert.equal(dict.split(`${JSON.stringify(k)}:`).length - 1, 5, k);
+});
+
+test("a show's poster: its name keeps its colon, and a long episode name takes a second line instead of vanishing", async () => {
+  const { billable, posterLayout, posterDress } = await import("../app/lib/story-poster.ts");
+  // (the first poster made for a show, live, 2026-11-24, read "Howl Night Tales What Follows the Trail")
+  assert.equal(billable("Howl: Night tales"), "Howl: Night tales");
+  assert.equal(billable("Howl:Night tales"), "Howl: Night tales");
+  assert.equal(billable(" : Howl :: Night — tales: "), "Howl: Night tales");
+  assert.equal(billable("The 10:30 Ferry"), "The 10:30 Ferry", "a time is not pulled apart");
+  assert.equal(billable("Don't Look: It's \"Here\"; <now>"), "Don’t Look: It’s Here now", "everything else `drawable` drops stays dropped");
+  assert.equal(billable("夜话:狼"), "夜话狼", "a script cut by its glyphs is exactly what it was");
+  const short = posterLayout({ title: "Howl: Night tales — Episode 2: The Well", cast: ["Howl", "Marion"] })!;
+  assert.deepEqual(short.lines, ["Howl:", "Night tales"], "a short name is set big, on two lines — and breaks AT its colon (it read \"Howl: Night\" / \"tales\")");
+  // …only when it needs two lines and both halves fit: a long name is filled evenly as before
+  assert.deepEqual(posterLayout({ title: "Pip: Lessons" })!.lines.join(" | "), "Pip: Lessons");
+  assert.ok(posterLayout({ title: "The Quiet Wolf of Hollow Pine Ridge: Night tales" })!.lines.length >= 2);
+  assert.equal(short.episode, "EPISODE 2  ·  THE WELL");
+  assert.equal(short.episode2, undefined);
+  // a name too long for its line goes on in a second one, whole words
+  const long = posterLayout({ title: "Howl: Night tales — Episode 3: The Door That Was Never There Before the Rain", cast: ["Howl"] })!;
+  assert.ok(long.episode.startsWith("EPISODE 3  ·  THE DOOR"), long.episode);
+  assert.ok(long.episode2 && !long.episode2.startsWith(" ") && `${long.episode} ${long.episode2}`.replace("EPISODE 3  ·  ", "") === "THE DOOR THAT WAS NEVER THERE BEFORE THE RAIN", `${long.episode} / ${long.episode2}`);
+  // …and one too long even for two lines ends in an ellipsis
+  const huge = posterLayout({ title: `S — Episode 9: ${"Wandering ".repeat(14)}`, cast: [] })!;
+  assert.ok(huge.episode2 && huge.episode2.endsWith("…"), huge.episode2);
+  // the colon is escaped where it is drawn — once (checked on a real ffmpeg: unescaped, the filter is refused)
+  const dress = posterDress(short, "C:/fonts/Poppins-Bold.ttf");
+  assert.ok(dress.includes("text='Howl\\:'"), dress);
+  const drawn = [...dress.matchAll(/text='([^']*)'/g)].map((m) => m[1]);
+  assert.equal(drawn.length, 4, "the billing, two title lines, the episode");
+  assert.ok(drawn.every((s) => !/(?:^|[^\\]):/.test(s)), "no bare colon inside any drawn text");
+  // two episode lines stand one above the other, and the title moves up to make room
+  const two = posterDress(long, "f.ttf");
+  const ys = [...two.matchAll(/fontsize=26:fontcolor=0xE7C879[^,]*:y=(\d+)/g)].map((m) => Number(m[1]));
+  assert.deepEqual(ys.slice(-2), [1000 - 56 - 30 - 34, 1000 - 56 - 30], "the last two gold lines");
+  const titleY = (d: string) => Number(/fontcolor=white[^,]*:y=(\d+)/.exec(d)![1]);
+  assert.equal(titleY(posterDress({ ...long, episode2: undefined }, "f.ttf")) - titleY(two), 34);
 });

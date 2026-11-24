@@ -11,7 +11,7 @@
 
 import { db } from "../db.server";
 import { TOKEN_COST, estimateFilmTokens } from "./plan-config";
-import { SHOW_SCENES, episodeIdeaPrompt, episodeTopic, parseStar, showOf, signoffOf, tidyIdea, type Show, type ShowStar } from "./character-series";
+import { SHOW_SCENES, episodeIdeaPrompt, episodeTopic, parseStar, showOf, showTeller, signoffOf, tidyIdea, type Show, type ShowStar } from "./character-series";
 import { spendTokens, refundTokens, tokensRemainingLive } from "./tokens.server";
 import { enqueueJob } from "./job-queue.server";
 import { anthropicText } from "./anthropic.server";
@@ -227,7 +227,8 @@ export async function tickDueSeries(): Promise<void> {
               contentType: "film", filmTemplate: show.template, filmMode: "narrated", section,
               filmTopic: episodeTopic({ idea: topic, seriesName: s.name, star }), filmScenes: SHOW_SCENES, filmCaptions: "bold", filmAspect: "9:16",
               cast: [{ name: star.name, faceUrl: star.faceUrl, voiceId: null, kind: star.kind, look: star.look }],
-              ...(star.voiceId ? { filmNarrator: star.voiceId } : {}),
+              // (told in the star's own voice → told BY the star, as "I": character-series.ts → showTeller)
+              ...(star.voiceId ? { filmNarrator: star.voiceId, filmTeller: showTeller(star) } : {}),
               ...(signoff ? { filmSignoff: signoff } : {}),
               filmShow: { id: s.id, name: s.name, episode: s.dropsMade + 1, star: star.name },
               ...(cost > 0 ? { prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra } : {}),

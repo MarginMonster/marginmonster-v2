@@ -41,7 +41,7 @@ import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.
 import { FRAMED_FIX, FRAMED_SIZE, framedIn, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_MODEL, castEntry, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
-import type { ShowMeta } from "./character-series";
+import { episodeOwnName, type ShowMeta } from "./character-series";
 import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, presentIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -469,6 +469,9 @@ export async function generateNarratedStory(opts: {
    *  show this is (kept on the piece as meta.show). */
   signoff?: string;
   show?: ShowMeta | null;
+  /** …and who TELLS it: the star's name, when the story is told in the star's own voice — it is then
+   *  written as theirs, in the first person (film-engine.server.ts → the TELLER line). */
+  teller?: string;
   /** TOLD AGAIN IN ANOTHER LANGUAGE (story-translate.ts): the language to tell it in — the narrator's
    *  voice, the timing and the words on screen all follow it. Unset = the shop's own content language. */
   lang?: string | null;
@@ -492,9 +495,15 @@ export async function generateNarratedStory(opts: {
   let treatment: FilmTreatment;
   if (resume.ckTreatment) treatment = JSON.parse(resume.ckTreatment);
   else if (opts.treatment && opts.treatment.scenes?.length) treatment = opts.treatment;
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, contentLang: lang, mode: "narrated", cast: (opts.cast || []).map((c) => ({ name: c.name, desc: c.look })), ...(opts.signoff ? { signoff: opts.signoff } : {}), series: opts.series });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, contentLang: lang, mode: "narrated", cast: (opts.cast || []).map((c) => ({ name: c.name, desc: c.look })), ...(opts.signoff ? { signoff: opts.signoff } : {}), ...(opts.teller ? { teller: opts.teller } : {}), series: opts.series });
+  // (an episode of a show: its OWN name, in full, as its writer gave it — before the show's name goes on)
+  const showEpisodeName = opts.show ? episodeOwnName(treatment.title, opts.show.name) : "";
   // an episode is called "<Series> — Episode <N>", however its story was written
   if (opts.series) treatment.title = episodeTitle(opts.series.title, opts.series.episode, treatment.title);
+  // …and so is an episode of A CHARACTER'S SHOW: "<Show> — Episode <N>: <its own name>". The show's name is
+  // put on it here, the same way every time, so its poster bills the show and names the episode under it
+  // (story-poster.ts → posterTitle). Idempotent, so a restart leaves it as it is.
+  else if (opts.show) treatment.title = episodeTitle(opts.show.name, opts.show.episode, treatment.title);
   // The scenes it is told in, each with the picture the maker approved for it. On a RESTART both were
   // saved together (ckApproved exists only then). NB the approved story arrives in resume.ckTreatment on
   // the first run too — that field alone does not mean a restart (the first live film re-drew every
@@ -662,7 +671,9 @@ export async function generateNarratedStory(opts: {
   if (process.env.STORY_POSTER !== "off") {
     try {
       const billed = [...(opts.cast || []).map((c) => c?.name || ""), ...readCastToken(storyCastRef).refs.map((c) => c.name)].filter(Boolean);
-      poster = await makeStoryPoster({ stills, visuals: treatment.scenes.map((s) => s.visual || ""), names: billed, title: treatment.title || opts.topic || "", videoName: outName });
+      // (an episode of a show is billed with its own name IN FULL — the shelf's title is cut to fit a shelf)
+      const billedAs = opts.show ? `${opts.show.name} — Episode ${opts.show.episode}${showEpisodeName ? `: ${showEpisodeName}` : ""}` : treatment.title || opts.topic || "";
+      poster = await makeStoryPoster({ stills, visuals: treatment.scenes.map((s) => s.visual || ""), names: billed, title: billedAs, videoName: outName });
     } catch (e) { console.error(`[narrated] no poster (the shelf shows the first frame): ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
   }
 
@@ -700,7 +711,7 @@ export async function generateNarratedStory(opts: {
         // …and its PLACES: the design sheet each recurring place was drawn from (story-picture.ts)
         ...(readCastToken(storyCastRef).places.length ? { places: readCastToken(storyCastRef).places } : {}),
         // A CHARACTER'S SHOW: which episode of whose show this is (character-series.ts)
-        ...(opts.show ? { show: opts.show } : {}),
+        ...(opts.show ? { show: { ...opts.show, ...(showEpisodeName ? { title: showEpisodeName } : {}) } } : {}),
         // what its timing was made from — for the operator alone (web.archive's loader)
         timing,
         // THE PICTURES MOVE: how many scenes do, what was asked for now (seconds = what was paid for), and

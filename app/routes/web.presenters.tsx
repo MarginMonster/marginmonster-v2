@@ -150,6 +150,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
   const retrying = new Set(forgeJobs.map((j) => { try { return String((JSON.parse(j.payload) as { customAvatarId?: string }).customAvatarId || ""); } catch { return ""; } }));
   const stillForging = (c: { status: string; rowId: string }) => c.status === "forging" || (c.status === "failed" && retrying.has(c.rowId));
+  // A CHARACTER'S SHOWS (character-series.ts): the shows each of the cast stars in, listed on their own
+  // page beside the way to give them another — the owner asked for a series to belong to a CHARACTER
+  // ("give character the chance to have a 'series'… characters could have multiple series"). Open to the
+  // owner's own account until shows have a price, exactly as the Channels tab is.
+  const { isAdminEmail } = await import("../lib/admin.server");
+  const { parseStar, showOf } = await import("../lib/character-series");
+  const showsOpen = isAdminEmail(account.email);
+  const showsBy: Record<string, Array<{ id: string; name: string; kind: string; running: boolean; made: number }>> = {};
+  if (showsOpen) {
+    try {
+      const rows = await db.creatorSeries.findMany({
+        where: { shopId: shop.id, sourceType: "character", status: { not: "ENDED" } },
+        orderBy: { createdAt: "desc" }, take: 24,
+        select: { id: true, name: true, format: true, status: true, dropsMade: true, characterJson: true },
+      });
+      for (const r of rows) {
+        const star = parseStar(r.characterJson);
+        if (!star?.id) continue;
+        (showsBy[star.id] ||= []).push({ id: r.id, name: r.name, kind: showOf(r.format)?.name || "", running: r.status === "ACTIVE", made: r.dropsMade });
+      }
+    } catch (e) { console.error(`[presenters] the cast's shows could not be read (the page shows without them): ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
+  }
   const brandFaceId = shop.brandAvatarId && cast.some((c) => c.id === shop.brandAvatarId) ? shop.brandAvatarId : null;
   // Brand Face leads the grid (your face, front and center), then the ones you starred, then everyone else.
   const bf = cast.find((c) => c.id === brandFaceId);
@@ -166,6 +188,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     canMakeVoice: canCloneVoice(account, shop),
     // what adding one outfit's 3D view to a presenter costs this viewer (0 = free: an admin account)
     spinCost: spinsAreFree(account) ? 0 : TOKEN_COST.avatarSpin,
+    // a character's shows: whether this viewer can have any, and the ones each of the cast stars in
+    showsOpen, showsBy,
   });
 };
 
@@ -564,6 +588,8 @@ export default function PresenterHub() {
           myVoices={d.myVoices as MyVoiceT[]}
           canMakeVoice={d.canMakeVoice}
           spinCost={d.spinCost}
+          showsOpen={d.showsOpen}
+          shows={(d.showsBy as Record<string, ShowRow[]>)[open.id] || []}
           position={`${openIdx + 1} / ${list.length}`}
           onClose={close}
           onPrev={() => go(openIdx - 1)}
@@ -586,8 +612,13 @@ const cardOf = (c: Member, t: T) => idCardOf({ ...c, outfits: c.looks.length, ha
 /* One presenter, up close. Left: the stage — the outfit you picked as a full-body figure to turn
  * around (its "3D view"), or as its portrait. Right: who they are, their voice, their outfits, and
  * what to do with them. */
-function CharacterView({ c, isBrandFace, fav, onFav, myVoices, canMakeVoice, spinCost, position, onClose, onPrev, onNext }: {
+/** One of a character's shows, as their page lists it (character-series.ts). */
+type ShowRow = { id: string; name: string; kind: string; running: boolean; made: number };
+
+function CharacterView({ c, isBrandFace, fav, onFav, myVoices, canMakeVoice, spinCost, showsOpen, shows, position, onClose, onPrev, onNext }: {
   c: Member; isBrandFace: boolean; myVoices: MyVoiceT[]; canMakeVoice: boolean;
+  /** A CHARACTER'S SHOWS: whether this viewer can have any, and the ones this character stars in. */
+  showsOpen: boolean; shows: ShowRow[];
   /** Starred by this shop (sits first in the cast and in every picker), and the toggle. */
   fav: boolean; onFav: () => void;
   /** Tokens to add one outfit's 3D view to a presenter that doesn't have it (0 = free for this viewer). */
@@ -837,6 +868,30 @@ function CharacterView({ c, isBrandFace, fav, onFav, myVoices, canMakeVoice, spi
             </div>
             {voiceFine ? <p className="pc-fine">{voiceFine}</p> : null}
           </section>
+
+          {/* Shows — a series of their own: each one they star in, and the way to give them another */}
+          {showsOpen && (
+            <section className="pc-sec">
+              <h3 className="pc-h"><Ico n="filmreel" size={13} /> {t("Shows")}</h3>
+              {shows.length > 0 && (
+                <ul className="pc-shows">
+                  {shows.map((s) => (
+                    <li key={s.id}>
+                      <Link to="/web/channels?kind=show" className="pc-show">
+                        <i className={s.running ? "on" : ""} aria-hidden="true" />
+                        <span className="pc-show-t"><b>{s.name}</b><small>{[s.kind ? t(s.kind) : "", s.running ? t("On air") : t("Off air"), s.made === 1 ? t("1 episode") : t("{n} episodes", { n: s.made })].filter(Boolean).join(" · ")}</small></span>
+                        <Ico n="arrow" size={13} />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Link to={`/web/channels?kind=show&star=${encodeURIComponent(c.id)}`} className="pc-show-new">
+                <span aria-hidden="true">+</span> {shows.length ? t("Give {name} another show", { name: c.name }) : t("Give {name} a show", { name: c.name })}
+              </Link>
+              {shows.length === 0 ? <p className="pc-fine">{t("A series of their own: a new episode on repeat, starring {name} — made for you, and posted when you say so.", { name: c.name })}</p> : null}
+            </section>
+          )}
           {danger("in")}
          </div>
 
@@ -1174,6 +1229,20 @@ ${CAST_ID_CSS}
 .pc-vfoot .pc-act-main{flex:1 1 auto;width:auto;}
 .pc-vfoot .pc-act{flex:0 0 auto;min-width:112px;}
 .pc-fine{margin:8px 0 0;font-size:11.5px;line-height:1.4;color:var(--ink2,#4A554E);}
+/* a character's SHOWS: each one a row with the tally light it is on air by, then the way to start another */
+.pc-shows{list-style:none;margin:0 0 9px;padding:0;display:flex;flex-direction:column;gap:7px;}
+.pc-show{display:flex;align-items:center;gap:11px;min-height:48px;padding:8px 12px;border:1.5px solid var(--line,#E1DECD);border-radius:14px;background:#fff;color:var(--ink,#14201A);text-decoration:none;transition:border-color .12s,background .12s;}
+.pc-show:hover{border-color:#9CCBB1;background:#F7FBF8;}
+.pc-show>i{flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:#C9C3B4;}
+.pc-show>i.on{background:#E5483A;box-shadow:0 0 0 3px rgba(229,72,58,.18),0 0 9px rgba(229,72,58,.6);}
+.pc-show-t{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;}
+.pc-show-t b{font-size:13.5px;font-weight:800;line-height:1.25;overflow-wrap:anywhere;}
+.pc-show-t small{font-size:11.5px;font-weight:600;color:var(--ink2,#4A554E);}
+.pc-show svg{flex:0 0 auto;color:var(--ink2,#4A554E);}
+.pc-show-new{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:9px 12px;border:1.5px dashed #B9CBBE;border-radius:14px;background:#F7FBF8;color:var(--green,#0C7A46);font-size:13px;font-weight:800;text-decoration:none;transition:border-color .12s,background .12s;}
+.pc-show-new:hover{border-color:var(--green,#0C7A46);background:#EEF7F1;}
+.pc-show-new span{font-size:16px;line-height:1;}
+.pc-show:focus-visible,.pc-show-new:focus-visible{outline:3px solid rgba(12,122,70,.35);outline-offset:2px;}
 .pc-looks{display:flex;gap:9px;flex-wrap:wrap;}
 .pc-look{flex:0 0 auto;width:74px;border:0;background:transparent;padding:0;cursor:pointer;text-align:center;transition:transform .14s;}
 .pc-look:hover{transform:translateY(-2px);}
