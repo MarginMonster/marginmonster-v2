@@ -656,6 +656,10 @@ export async function previewFilmTreatment(opts: {
       // THE STAR TELLS IT (character-series.ts): a show told in its star's own voice is told BY them. The
       // first live episode, 2026-11-24, was a werewolf's growl saying "But Howl did not lunge. It pointed…"
       // — its own star, in the third person. A picture is still drawn from its words, so VISUALs keep the name.
+      // …and with NO teller the storyteller stands outside the story. A Horror Story was written as "I" — a
+      // cleaning woman's night — and told in the storyteller's voice, a man's (live, 2026-11-24: "that clip
+      // is told in the creature voice - but from the womens perspective").
+      (teller ? "" : `THE STORYTELLER is outside the story — a narrator, the kind a documentary has: every CAPTION is in the third person (the characters by their names, "she", "he", "they"), never "I", "me", "my" or "we"; what a character says is reported, not spoken as them.\n`) +
       (teller ? `THE TELLER: ${teller} tells this story THEMSELVES — it is ${teller}'s own voice we hear, start to finish. Every CAPTION is ${teller} speaking in the first person ("I", "me", "my"): it happened to ${teller}, and ${teller} is telling us about it. The captions never say "${teller}" and never call ${teller} "he", "she", "it" or "they". The VISUALS do not change: every VISUAL still calls ${teller} by NAME and never says "I", "me" or "my" — a picture is drawn from its words, and "I" is nobody.\n` : "") +
       // (a character's show ends every episode on the same line — the storyteller's very last words)
       (signoff ? `THE SIGN-OFF: the last scene's CAPTION ends with exactly these words, after its own last sentence, changed in no way: "${signoff}"\n` : "") +

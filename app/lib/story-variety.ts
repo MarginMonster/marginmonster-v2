@@ -59,7 +59,7 @@ export const HOOKS: readonly string[] = [
   "open with an exact time or an exact number",
   "open with a question the story then answers",
   "open with something somebody said, as the teller reports it",
-  "open with a confession",
+  "open with something one of them will never admit",
   "open with a sound",
   "open with the aftermath, then go back to how it came to this",
   "open with one ordinary detail that is very slightly wrong",

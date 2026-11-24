@@ -57,7 +57,9 @@ export type StoryCast = Array<{ name: string; faceUrl?: string | null; kind?: "p
  *  Horror is told by the Hollow voice — a creature voice the owner approved, and exactly what a
  *  scary-story narrator should sound like. */
 export const DEFAULT_NARRATOR: Record<string, string> = {
-  horror: "char:keeper",
+  // (a familiar documentary voice, not a creature's: the owner, 2026-11-24 — "Narrated needs the 'discovery
+  //  channel guy' or similar yanno, something familiar". The creature voices are still there to be picked.)
+  horror: "English_ManWithDeepVoice",
   moral: "English_Trustworth_Man",
   kidstv: "English_CalmWoman",
   testmovie: "English_ManWithDeepVoice",

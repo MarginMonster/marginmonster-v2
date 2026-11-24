@@ -143,4 +143,9 @@ test("the writer is dealt its hand where the story is written — a story format
   assert.ok(engine.includes("...(dealt ? { fresh: dealt } : {}), ...(places.length ? { places } : {}), cast, ...(lineNote"));
   // Horror Story is photographed — its own poster is, and a story half painted, half photographed is two films
   assert.ok(engine.includes("a dark, moody, cinematic horror scene, photorealistic like a frame from a live-action horror film — deep shadows"));
+  // A TOLD STORY IS TOLD BY A STORYTELLER (the owner, 2026-11-24: "Narrated needs the 'discovery channel guy'… that
+  // clip is told in the creature voice - but from the womens perspective"): outside the story, in the third
+  // person — unless a character hosts their own show — and in a familiar documentary voice by default.
+  assert.ok(engine.includes("(teller ? \"\" : `THE STORYTELLER is outside the story — a narrator, the kind a documentary has: every CAPTION is in the third person"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("  horror: \"English_ManWithDeepVoice\","), "not a creature's voice (those are still there to be picked)");
 });
