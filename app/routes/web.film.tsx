@@ -59,6 +59,9 @@ import { VOICE_UI_CSS } from "../components/VoicePicker";
 // (2026-11-24) LIGHT BY DEFAULT, DARK BY CHOICE: the Movie Maker's dark side is a movie theater (FS_THEATER)
 import { themeOf } from "../lib/theme";
 import { useTheme } from "../lib/use-theme";
+// (2026-11-24) THE SHELL'S OWN DARK — what any page that is dark under the theme mounts while it is dark —
+// is shared (lib/theater-shell.ts); this page's own dark rules (FS_THEATER) follow it in the same <style>
+import { THEATER_SHELL_CSS } from "../lib/theater-shell";
 
 // (theme-color: in the DARK theme the Movie Maker is a theater — FS_THEATER, at the foot of this file — and
 //  a phone's own bar goes dark with it instead of framing it in white. The shell's loader knows the theme.)
@@ -3081,8 +3084,9 @@ export default function FilmStudio() {
       <style dangerouslySetInnerHTML={{ __html: FS_STYLE }} />
       {/* THE THEATER: this section's DARK theme. Its own stylesheet, mounted only while the dark is chosen
           and only by this page — so the dark (the shell's too) arrives with the Movie Maker and leaves with
-          it, and the light theme is the cream page it was. */}
-      {theme === "dark" && <style dangerouslySetInnerHTML={{ __html: FS_THEATER }} />}
+          it, and the light theme is the cream page it was. The shell's part is shared (lib/theater-shell.ts)
+          and comes first; this page's own rules follow it — one sheet, the rules in the order they had. */}
+      {theme === "dark" && <style dangerouslySetInnerHTML={{ __html: THEATER_SHELL_CSS + FS_THEATER }} />}
       {/* KEEP IN MY CAST — the one character dialog, opened on a story's own character (its styles ride in FS_STYLE) */}
       <CharacterForge open={!!keep} seed={keep} onClose={() => setKeep(null)} />
       {/* the ID card of the face pointed at (a mouse) or held (a finger) — for every picker on the page */}
@@ -3160,6 +3164,9 @@ export default function FilmStudio() {
                 on that shelf has in common — nobody has to open one to find out. */}
             {heroShelves(heroes).map((sh) => (
             <section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>
+              {/* the card's ENGRAVING (THE TICKET, in the stylesheet): a layer that covers the card and cuts
+                  itself to the card's shape, so the card itself clips nothing — a picture only */}
+              <span className="fs-shelf-wm" aria-hidden="true" />
               <header className="fs-shelf-h">
                 <span className="fs-shelf-ico" aria-hidden="true"><Ico n={sh.key === "told" ? "book" : sh.key === "acted" ? "film" : "music"} size={18} /></span>
                 <span className="fs-shelf-txt">
@@ -4324,14 +4331,23 @@ ${CAST_ID_CSS}
 /* Green hero band — SOFTENED so it sits in the page (light shadow + a crisp inner
    edge + slimmer) instead of a floating slab. Gold rosette, the still bleeds in. */
 .fs-head{position:relative;overflow:hidden;border-radius:20px;margin-bottom:16px;min-height:200px;display:flex;align-items:center;box-shadow:0 20px 48px -24px rgba(8,62,39,.55);background:radial-gradient(130% 150% at 80% 0%,#2C6549,#1A4A33 52%,#0F3323);}
-/* A blurred, zoomed copy of the hero still FILLS the frame behind the (contain) video, so there are no
-   empty bars when the whole clip is shown — ambient-mode look. */
+/* A blurred, zoomed copy of the hero still FILLS the band behind everything — the ground the reel's own
+   blurred posters lie over once they have loaded (ambient-mode look). */
 .fs-head::before{content:"";position:absolute;inset:0;z-index:0;background:url(/landing/film-hero.jpg?v=5) center/cover;filter:blur(30px) brightness(.5) saturate(1.15);transform:scale(1.18);}
 /* Desktop: a proper tall hero (a thin 200px strip looked tiny against the full-bleed width). */
-@media(min-width:960px){.fs-head{min-height:320px;}.fs-head-vid{object-fit:contain;object-position:center;}.fs-head-copy{padding:44px 54px;max-width:680px;}.fs-head-copy b{font-size:50px;}.fs-head-copy>span{font-size:16.5px;max-width:540px;margin-top:14px;}.fs-head-eyebrow{font-size:12.5px;}}
-.fs-head-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;z-index:1;}
-/* The reel: two stacked players that cross-fade. Each carries a blurred copy of its own poster behind
-   the clip, so the ambient fill beside a letterboxed clip always matches what is playing. */
+@media(min-width:960px){.fs-head{min-height:320px;}.fs-head-copy{padding:44px 54px;max-width:680px;}.fs-head-copy b{font-size:50px;}.fs-head-copy>span{font-size:16.5px;max-width:540px;margin-top:14px;}.fs-head-eyebrow{font-size:12.5px;}}
+/* THE CLIP IS FLUSH. On a wide screen it stood in this band as a screen of its own — a margin round it, its
+   own corners, a ring and a shadow — and the owner, 2026-11-24, with the other sections' headers beside it:
+   "the video hero's here are not flush like the others they appear boxed". So it is as the Auto-post's and
+   the Archive's headers have their picture: the clip fills the band's far side from the top to the foot and
+   out to the edge (the band's own rounded corners are what cut it), and its near edge dissolves into the
+   band. Nothing stands round it: no margin, no corners, no ring, no shadow of its own. At every width — on a
+   phone too, where it lay under the words from edge to edge. (Read right to left, the words start from
+   the right, so the clip keeps the left.) */
+.fs-head-vid{position:absolute;top:0;right:0;bottom:0;left:auto;width:56%;height:100%;object-fit:cover;object-position:center;z-index:1;-webkit-mask-image:linear-gradient(90deg,transparent,#000 46%);mask-image:linear-gradient(90deg,transparent,#000 46%);}
+[dir=rtl] .fs-head-vid{right:auto;left:0;-webkit-mask-image:linear-gradient(270deg,transparent,#000 46%);mask-image:linear-gradient(270deg,transparent,#000 46%);}
+/* The reel: two stacked players that cross-fade. Each carries a blurred copy of its own poster across the
+   whole band, behind the clip — so what the clip dissolves into is its own colours, under the band's shade. */
 .fs-reel{position:absolute;inset:0;z-index:1;opacity:0;transition:opacity .9s ease;}
 .fs-reel.on{opacity:1;}
 .fs-reel-amb{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(30px) brightness(.5) saturate(1.15);transform:scale(1.18);}
@@ -4341,18 +4357,28 @@ ${CAST_ID_CSS}
 .fs-head-tag i{flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:#FF6B5E;box-shadow:0 0 0 3px rgba(255,107,94,.28);}
 .fs-head-tag em{font-style:normal;font-weight:700;opacity:.78;}
 @keyframes fstag{from{opacity:0;transform:translateY(5px);}}
-/* Desktop: the hero is far wider than any clip (4–5 : 1), and stretching a clip to cover it shows a
-   sliver — the tops of two heads. So each clip plays WHOLE, as a screen standing at the right of the
-   hero, with its own blurred poster as the wall behind it; the scrim only shades the side the words are on. */
+/* Desktop: a tall band. (The clip's side of it is then close to the clip's own shape, so little of a clip is
+   cut: the hero as a whole is 4–5 : 1, and a clip stretched across all of it showed the tops of two heads.) */
 @media(min-width:960px){
   .fs-head{min-height:clamp(320px,24vw,420px);}
-  .fs-reel .fs-head-vid{inset:18px 18px 18px auto;width:auto;height:calc(100% - 36px);aspect-ratio:16/9;object-fit:cover;object-position:center;border-radius:14px;box-shadow:0 18px 44px -14px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.16);}
-  .fs-head-scrim{background:linear-gradient(90deg,rgba(7,42,27,.92) 8%,rgba(7,42,27,.6) 42%,rgba(7,42,27,.2) 66%,rgba(7,42,27,.08) 100%);}
-  .fs-head-tag{right:32px;bottom:32px;}
+  .fs-head-tag{right:22px;bottom:20px;}
 }
 @media(max-width:640px){.fs-head-tag{top:12px;bottom:auto;right:12px;min-height:28px;padding:4px 10px 4px 9px;font-size:11px;}.fs-head-tag em{display:none;}}
+[dir=rtl] .fs-head-tag{right:auto;left:16px;}
+@media(min-width:960px){[dir=rtl] .fs-head-tag{left:22px;}}
+@media(max-width:640px){[dir=rtl] .fs-head-tag{left:12px;}}
 @media(prefers-reduced-motion:reduce){.fs-reel{transition:none;}.fs-head-tag{animation:none;}}
-.fs-head-scrim{position:absolute;inset:0;z-index:2;background:radial-gradient(130% 120% at 85% 10%,rgba(12,122,70,.08) 0%,rgba(8,55,34,.42) 48%,rgba(7,42,27,.6) 100%),linear-gradient(90deg,rgba(7,42,27,.9) 8%,rgba(7,42,27,.3) 60%,transparent);}
+/* THE SHADE THE WORDS STAND ON: the band's own deep green, whole where the words are (they keep to the
+   band's first 58%, 60% on a phone) and gone before the clip is whole — so no word stands on a busy picture,
+   and nothing dulls the clip itself. */
+.fs-head-scrim{position:absolute;inset:0;z-index:2;background:linear-gradient(90deg,rgba(7,42,27,.92),rgba(7,42,27,.9) 54%,rgba(7,42,27,0) 74%);}
+[dir=rtl] .fs-head-scrim{background:linear-gradient(270deg,rgba(7,42,27,.92),rgba(7,42,27,.9) 54%,rgba(7,42,27,0) 74%);}
+/* (a phone: the words run to 60% of the band and the hero's rosette lies under all of them, so the shade is
+   whole a little further — no letter stands on a line of the rosette AND on the clip's near edge at once) */
+@media(max-width:640px){
+  .fs-head-scrim{background:linear-gradient(90deg,rgba(7,42,27,.92),rgba(7,42,27,.9) 60%,rgba(7,42,27,0) 78%);}
+  [dir=rtl] .fs-head-scrim{background:linear-gradient(270deg,rgba(7,42,27,.92),rgba(7,42,27,.9) 60%,rgba(7,42,27,0) 78%);}
+}
 .fs-head-dot{width:6px;height:6px;border-radius:50%;background:var(--fs-gold-lt,#E7C879);box-shadow:0 0 10px var(--fs-gold-lt,#E7C879);}
 .fs-head-bg{position:absolute;inset:0;z-index:0;border-radius:18px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 8px 22px rgba(11,20,15,.16),inset 0 0 0 1px rgba(255,255,255,.1);}
 .fs-head-rose{position:absolute;background:center/contain no-repeat;mix-blend-mode:screen;pointer-events:none;will-change:transform;}
@@ -4361,9 +4387,9 @@ ${CAST_ID_CSS}
 .fs-head-media{position:absolute;right:0;top:0;bottom:0;width:54%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 44%);mask-image:linear-gradient(90deg,transparent,#000 44%);}
 .fs-head-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;animation:fsstill .55s cubic-bezier(.2,.7,.2,1);}
 @keyframes fsstill{from{opacity:0;transform:scale(1.06);}to{opacity:1;transform:scale(1);}}
-.fs-head-copy{position:relative;z-index:3;flex:1 1 auto;min-width:0;padding:26px 30px;max-width:560px;}
+.fs-head-copy{position:relative;z-index:3;flex:1 1 auto;min-width:0;padding:26px 30px;max-width:min(560px,58%);}
 .fs-head-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:var(--fs-gold-lt,#E7C879);text-transform:uppercase;letter-spacing:.08em;}
-.fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:33px;letter-spacing:-.02em;color:#fff;margin-top:11px;line-height:1.04;text-shadow:0 2px 18px rgba(0,0,0,.4);}
+.fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:33px;letter-spacing:-.02em;color:#fff;margin-top:11px;line-height:1.04;text-shadow:0 2px 18px rgba(0,0,0,.4);text-wrap:balance;}
 .fs-head-copy b em{font-style:normal;color:#8FE9BC;}
 @keyframes fsFadeUp{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:translateY(0);}}
 .fs-head-copy>span{display:block;font-size:13.5px;color:rgba(255,255,255,.85);margin-top:10px;max-width:400px;line-height:1.5;text-shadow:0 1px 10px rgba(0,0,0,.4);}
@@ -4682,7 +4708,7 @@ ${CAST_ID_CSS}
 .fs-actor-recast:disabled{opacity:.5;cursor:default;}
 .fs-actor-own{margin:0;}
 @media(prefers-reduced-motion:reduce){.fs-go::after{display:none;}.fs-tmpl,.fs-shot-make,.fs-write,.fs-go,.fs-actor-cast{transition:none;}.fs-head-img,.fs-head-copy b,.fs-head-rose{animation:none;}}
-@media(max-width:640px){.fs-head{padding:18px;min-height:114px;}.fs-head-copy{max-width:60%;}.fs-head-copy b{font-size:21px;}.fs-head-media{width:52%;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
+@media(max-width:640px){.fs-head{padding:18px;min-height:114px;}.fs-head-copy{max-width:60%;padding:0;}.fs-head-vid{width:52%;}.fs-head-copy b{font-size:21px;}.fs-head-media{width:52%;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
 /* ---- Story flow (location + camera-angle storyboard) ---- */
 .fs-flegend{display:flex;flex-wrap:wrap;gap:14px;margin:2px 0 12px;font-size:11.5px;color:var(--ink2,#4A554E);}
 .fs-flegend span{display:inline-flex;align-items:center;gap:6px;}
@@ -5430,15 +5456,19 @@ a.mm-pace-auto{text-decoration:none;}
 .fs-shelf{--tp:14px;--ps:14px;--pe:14px;--gap:12px;--pw:calc((100% - 3 * var(--gap)) / 4);min-width:0;padding-bottom:0;}
 @media(max-width:979px){
   .fs-shelf{--pe:16px;--pw:calc((100% + var(--pe) - 3 * var(--gap)) / 3.3);margin-inline-end:calc(var(--fs-gut) * -1);border-inline-end-width:0;border-start-end-radius:0;border-end-end-radius:0;}
-  .fs-shelf-h{margin-inline-end:calc(2px + var(--fs-gut));}
 }
+/* (the heading keeps its place — its tag stands where the page's gutter is, not against the glass: its box is
+   said once, in THE TICKET below, where it becomes the ticket's stub) */
 /* (never wider than 190px: on a wide phone a taller card's pop would not fit the air the row keeps for it) */
 @media(max-width:639px){.fs-shelf{--pw:min(calc((100% + var(--pe) - 2 * var(--gap)) / 2.3),190px);}}
 @media(max-width:420px){.fs-shelf{--tp:10px;}}
 .fs-shelf .fs-fmtgrid{display:flex;align-items:flex-start;gap:var(--gap);margin-block:-28px 0;margin-inline:calc(var(--tp) * -1);padding-block:28px 24px;padding-inline:var(--ps) var(--pe);overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-padding-inline:var(--ps) var(--pe);overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
 .fs-shelf .fs-fmtgrid::-webkit-scrollbar{display:none;}
-/* (a mouse cannot swipe: where there is one, the row shows a thin bar of its own when it has more to show) */
-@media(hover:hover) and (pointer:fine){.fs-shelf .fs-fmtgrid{scrollbar-width:thin;}}
+/* (a mouse cannot swipe: where there is one, the row shows a thin bar of its own when it has more to show.
+   The bar has NO TRACK: a track is a square, the row runs to the card's round corner, and left as a browser
+   draws it a white corner stands out past the card's — PHOTOGRAPHED, on the dark page and on the cream. Its
+   thumb is the shell's deep gold, the gold of the hairline printed inside the card: 3:1 on the cream.) */
+@media(hover:hover) and (pointer:fine){.fs-shelf .fs-fmtgrid{scrollbar-width:thin;scrollbar-color:#B08526 transparent;}}
 .fs-shelf .fs-fmtgrid .fs-fmt{flex:0 0 var(--pw);min-width:0;}
 .fs-shelf .fs-fmt-label b{overflow-wrap:anywhere;}
 .fs-shelf .fs-fmt-sub{min-height:calc(1.34em * 2 + 21px);}
@@ -5446,44 +5476,130 @@ a.mm-pace-auto{text-decoration:none;}
 @media(max-width:639px){.fs-shelf .fs-fmt-sub{-webkit-line-clamp:3;min-height:calc(1.34em * 3 + 21px);}}
 .fs-shelf .fs-fmtgrid.throw .fs-fmt.zoom{position:sticky;left:var(--ps);right:var(--ps);}
 @media(min-width:980px){.fs-shelf .fs-fmtgrid:not(:has(> .fs-fmt:nth-child(5))){overflow:visible;}}
+/* THE ROW'S END. A small gold rosette stood here, turning — a finial — and it is gone (the owner, 2026-11-24:
+   "Those little rosettes on the cards appear slightly out of place"). The room it took is kept, and nothing
+   is drawn in it: below 980px it is still an item of the row after its last poster — the row's end margin (a
+   browser may drop a scroller's own end padding) — and, scrolled to its end, a row now opens onto the
+   card's own engraving (THE TICKET, below). From 980px, where four stand across, there is nothing to end. */
+.fs-shelf .fs-fmtgrid::after{flex:0 0 auto;align-self:center;width:calc(var(--pw) * .86);height:1px;margin-inline:6px 14px;pointer-events:none;}
+@media(max-width:979px){.fs-shelf .fs-fmtgrid::after{content:"";}}
+@media(min-width:640px){.fs-shelf .fs-fmtgrid::after{width:calc(var(--pw) * .62);}}
 /* (the Next-episode row is the same kind of row: it runs to the same edge) */
 .fs-eps-row{margin-inline-end:calc(var(--fs-gut) * -1);padding-inline-end:16px;scroll-padding-inline-end:16px;}
 
 /* ───────── THE GOLD — the app's rosette, slow and faint, in BOTH themes ─────────
    The owner, 2026-11-24: "I think we still need some gold spinners in there for asthetic". The rosette is
    the app's own spinner (the shell turns two great ones behind every page; the Presenters' hero has one in
-   its corner). This page has three of its own, each where no word stands, each a picture only (no tap, no
-   name), each turning once in nearly three minutes and standing still for anyone who asks for less motion:
-     1 · a phone's hero, its far bottom corner — the hero's words keep to the first 60% of it and its tag to
-         the top (read right to left the words start from the right: the free corner is the left one);
-     2 · a format's banner, its top right corner — its name and line are bottom left, the way back top left;
-     3 · THE FINIAL, where a row of posters ends: an item OF the row, after its last poster (below 980px it
-         is also the row's end margin). From 980px, where four stand across, only a row with a place to
-         spare has one — in the middle of the room that is left. It is drawn THROUGH the rosette (a mask),
-         so it takes the gold it is told. A shelf is a cream card in BOTH themes (in the dark it is a cream
-         card on the dark page, like the ticket on the sign-in screen), so the finial is the shell's deep
-         gold in both. */
-@keyframes fsThTurn{to{transform:rotate(360deg)}}
-@media(max-width:640px){
-  .fs-head::after{content:"";position:absolute;z-index:2;right:-96px;bottom:-100px;width:200px;height:200px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.32;pointer-events:none;animation:fsThTurn 170s linear infinite;}
-  [dir=rtl] .fs-head::after{right:auto;left:-96px;}
-}
-.fs-hero::after{content:"";position:absolute;z-index:2;top:-92px;right:-92px;width:184px;height:184px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.24;pointer-events:none;animation:fsThTurn 170s linear infinite;}
-@media(min-width:960px){.fs-hero::after{top:-140px;right:-120px;width:300px;height:300px;}}
-.fs-shelf{--fs-rose:#B08526;}
-.fs-shelf .fs-fmtgrid::after{flex:0 0 auto;align-self:center;width:calc(var(--pw) * .86);aspect-ratio:1;margin-inline:6px 14px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.5;pointer-events:none;animation:fsThTurn 170s linear infinite;transition:opacity .25s ease;}
-@supports ((-webkit-mask-image:none) or (mask-image:none)){.fs-shelf .fs-fmtgrid::after{background:var(--fs-rose);-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;}}
-@media(max-width:979px){.fs-shelf .fs-fmtgrid::after{content:"";}}
-@media(min-width:640px){.fs-shelf .fs-fmtgrid::after{width:calc(var(--pw) * .62);}}
-@media(min-width:980px){
-  .fs-shelf .fs-fmtgrid::after{margin-inline:auto;}
-  .fs-shelf .fs-fmtgrid:has(> .fs-fmt:last-child:not(:nth-child(4n)))::after{content:"";}
-}
-.fs-shelf .fs-fmtgrid.throw::after{opacity:0;}
+   its corner; the Ad Maker's, the Auto-post's and the Archive's have one under their words).
+   THIS PAGE HAS ONE IN GOLD: THE HERO'S — AND IT IS THE AD MAKER'S (the owner, 2026-11-24, with the two
+   heroes side by side on his phone: "Movie maker hero rosette needs to match the ad hero rosette"). The same
+   one, to the number: off the hero's bottom near corner (130px out, 170px down), 350px, at 30%, blended
+   as light ("screen"), turning the other way round once in 115 seconds — routes/web.studio.tsx,
+   .ws-cinehead-rose.b; a test holds the two together. It is INSIDE the hero: the hero is its own layer and
+   cuts it at its own rounded edge, so nothing of a rosette crosses that edge. And it is SEEN: it lies over
+   the shade the words stand on and under the words — fine light lines across the words' side of the band,
+   as on the Ad Maker's (the words still read where a line passes under them: the hero's test has the sum).
+   Read right to left the words' side is the right one, and the rosette goes with them.
+   (What it replaces: on a phone only, a gold rosette in the hero's FAR bottom corner, over the clip — the
+   corner the shell's own great rosette turns behind, so the two read as one rosette hanging out of the
+   card. A format's banner had one in its top far corner that read the same way; a banner is all picture,
+   with no panel for one to be engraved on, so it has none now. And there was a small one where every row
+   of posters ends, a finial: "Those little rosettes on the cards appear slightly out of place". A shelf
+   has the rosette ENGRAVED in its paper instead, in its own colour — THE TICKET, below — and the row's
+   end is empty: THE ROWS.)
+   It is a picture only (no tap, no name), and stands still for anyone who asks for less motion. */
+.fs-head{isolation:isolate;}
+.fs-head::after{content:"";position:absolute;z-index:2;left:-130px;bottom:-170px;width:350px;height:350px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.3;mix-blend-mode:screen;pointer-events:none;will-change:transform;animation:fsspinB 115s linear infinite;}
+[dir=rtl] .fs-head::after{left:auto;right:-130px;}
 @media(prefers-reduced-motion:reduce){
-  .fs-head::after,.fs-hero::after,.fs-shelf .fs-fmtgrid::after{animation:none;}
-  .fs-shelf .fs-fmtgrid::after{transition:none;}
+  .fs-head::after{animation:none;}
   .fs-hero-blur{animation:none;}
+}
+
+/* ───────── THE TICKET — a shelf is a ticket: engraved, perforated, edged (BOTH themes) ─────────
+   The owner, 2026-11-24, of the small rosette that stood at the end of each row: "Those little rosettes on
+   the cards appear slightly out of place, can we do some texture on the cards similar to the login one to
+   make it FUCKING POP". The login one is the "Admit one" ticket (components/AuthLobby.tsx): cream paper with
+   the rosette engraved in it as a watermark, a dashed perforation between two half-round notches, a gold
+   edge. A shelf is a cream card in both themes, so in both it is that kind of ticket:
+     1 · THE ENGRAVING. The rosette is IN the paper: one, larger than the card is tall (140% of its height;
+         160% on a wide screen, where a card is four posters long), its hub AT the card's top far corner
+         and the rest bleeding off that corner — a fan of its long loops across the heading and down behind
+         the posters, in the shelf's own colour (storybook gold-brown · the stage's green · the music
+         video's violet) at the strength of an engraving, 18% (the ticket's is 16%, and smaller). It is seen
+         across the heading, between the posters, in a place a shelf has to spare, and where a row ends (the
+         finial's old room is a window onto it). Where there is a mouse it turns, once in four minutes (and
+         stands still for anyone who asks for less motion); on a phone it stands still — the reason is with
+         its rule. It is drawn in a layer of its own (.fs-shelf-wm) that covers the card
+         and cuts ITSELF to the card's shape: the card clips nothing, so its row still runs off the screen
+         and a tapped poster still pops across its edge. That layer also carries the STUB's wash — the
+         shelf's own tint, whole at the card's top and gone by 60px, as the ticket's stub is tinted.
+         (TRIED AND NOT KEPT: a second, smaller rosette off the opposite corner. It lies under the first
+         poster — an arc in the card's foot is all of it that shows — and the hub behind the shelf's tag
+         instead of at the corner, which made a white disc of the rosette's eye: an object again.)
+     2 · THE PERFORATION. The heading is the ticket's stub: a dashed line under it from edge to edge, and a
+         half-round notch at each end of that line where the card has an end (below 980px it runs off the
+         screen: one notch). A notch is filled with the page's own colour and carries the card's edge round.
+     3 · THE HAIRLINE. A fine gold line just inside the card's edge, the way a ticket is printed.
+     4 · THE STOCK. The card has a THICKNESS and stands off the page, and what is on it is pressed into it or
+         lies on it: see "3D" and THE PRINTS below.
+   Nothing here is a control or says a word. The heading's words stand on the cream as they did: where a
+   line of the engraving passes under a letter, the ground there is at most a quarter the shelf's colour
+   (the wash and the line together) — which leaves a shelf's name 11.5:1 or better (it was 16.5) and the
+   line under it 4.7:1 or better (it was 6.4); a test holds the sums. And the tag's plate is solid cream
+   under its tint, so no line of the engraving runs behind its letters at all. */
+/* 3D ("Hero cards still need textured. 3d style" — the owner, the same evening; and LIGHT is the default, so
+   it is judged on cream first, where a cream card has no colour to stand off with: its depth is all edge and
+   shadow). A card is a piece of STOCK with a thickness, as the sign-in ticket is: a lit top edge and a
+   shaded foot inside it, three steps of darker cream under it (its side, seen from a little above), a tight
+   contact shadow and a long soft one. --tk-side is the card's own; --tk-drop is the shadow it casts, which
+   the dark page says again in black. All of it is cast only while the shelves stand. */
+.fs-shelf{isolation:isolate;--rr:17px;--tk-side:inset 0 1px 0 #fff,inset 0 -1px 0 rgba(126,94,19,.16),0 1px 0 #EDE6D2,0 2px 0 #E1D9C1,0 3px 0 #D3CAB0;--tk-drop:0 4px 5px rgba(20,32,26,.2),0 16px 26px -16px rgba(20,32,26,.3),0 38px 56px -38px rgba(20,32,26,.42);}
+@media(max-width:420px){.fs-shelf{--rr:13px;}}
+.fs-shelves:not(.throw) .fs-shelf{box-shadow:var(--tk-side),var(--tk-drop);}
+[dir=rtl] .fs-shelf::before{left:auto;right:0;border-radius:4px 0 0 4px;}
+.fs-shelf-wm{position:absolute;inset:0;z-index:-1;border-radius:inherit;overflow:hidden;pointer-events:none;background:linear-gradient(180deg,var(--shelf-soft),rgba(255,255,255,0) 60px);transition:opacity .3s ease;}
+@keyframes fsWmTurn{from{transform:translate(var(--wx),-50%) rotate(0deg)}to{transform:translate(var(--wx),-50%) rotate(360deg)}}
+/* (drawn THROUGH the rosette — a mask — so it takes the shelf's colour; where a browser cannot mask, nothing is
+   drawn. PRESSED INTO the stock, not printed on it: the line in the shelf's colour, and the same line again in
+   white a pixel down and along — the far lip of a groove, catching the light. It turns only where there is a
+   mouse: on a phone two such layers a card, each larger than the card, would be composited on every frame of
+   a scroll; standing still they are painted once, with the paper.) */
+@supports ((-webkit-mask-image:none) or (mask-image:none)){
+  .fs-shelf-wm::before,.fs-shelf-wm::after{content:"";position:absolute;--wx:50%;top:0;right:0;height:140%;aspect-ratio:1;transform:translate(var(--wx),-50%);-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;}
+  .fs-shelf-wm::before{background:var(--shelf);opacity:.18;}
+  .fs-shelf-wm::after{z-index:-1;margin:1px -1px 0 0;background:#fff;opacity:.9;}
+  [dir=rtl] .fs-shelf-wm::before,[dir=rtl] .fs-shelf-wm::after{--wx:-50%;right:auto;left:0;}
+  [dir=rtl] .fs-shelf-wm::after{margin:1px 0 0 1px;}
+  @media(min-width:980px){.fs-shelf-wm::before,.fs-shelf-wm::after{height:160%;}}
+  @media(hover:hover) and (pointer:fine){.fs-shelf-wm::before,.fs-shelf-wm::after{animation:fsWmTurn 240s linear infinite;}}
+}
+/* (the stub: the heading's own box runs from the card's one edge to the other — its words keep their place,
+   the tag where the page's gutter is — and the perforation is its foot: cut INTO the stock, a line of light
+   under the row of holes; and a notch is a bite out of the card, shaded inside its upper lip) */
+.fs-shelf-h{position:relative;margin-block:0 12px;margin-inline:calc(var(--tp) * -1);padding-block:0 11px;padding-inline:calc(var(--tp) + 6px) calc(var(--tp) + 2px + var(--fs-gut));border-bottom:2px dashed rgba(107,79,14,.42);box-shadow:0 1px 0 rgba(255,255,255,.95);}
+.fs-shelf-h::before,.fs-shelf-h::after{content:"";position:absolute;bottom:-8px;width:10px;height:18px;box-sizing:border-box;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF);box-shadow:inset 0 2px 2px -1px rgba(20,32,26,.3);pointer-events:none;}
+.fs-shelf-h::before{inset-inline-start:-1px;border-inline-start:0;border-start-end-radius:9px;border-end-end-radius:9px;}
+.fs-shelf-h::after{inset-inline-end:-1px;border-inline-end:0;border-start-start-radius:9px;border-end-start-radius:9px;}
+@media(max-width:979px){.fs-shelf-h::after{content:none;}}
+.fs-shelf-tag{background:linear-gradient(var(--shelf-soft),var(--shelf-soft)),#FFFEFA;}
+.fs-shelf::after{content:"";position:absolute;z-index:-1;inset:5px;border:1px solid rgba(176,133,38,.38);border-radius:var(--rr);pointer-events:none;transition:opacity .3s ease;}
+@media(max-width:979px){.fs-shelf::after{inset-inline-end:0;border-inline-end:0;border-start-end-radius:0;border-end-end-radius:0;}}
+/* (a ticket falls away with its shelf — the page's own rule takes the card, its bar and its stub) */
+.fs-shelves.throw .fs-shelf::after,.fs-shelves.throw .fs-shelf-wm{opacity:0;}
+/* THE PRINTS. A poster in a shelf is a physical print lying on the card: the same two steps of stock under it
+   and a deeper shadow; over its picture a thin lit bevel (light along its top and near side, shade along its
+   foot) and a sheen falling across its upper corner; and it LIFTS a little under a pointer or a finger —
+   moved and re-shadowed only, so nothing beside it shifts. No blur, no filter: a row of them still scrolls as
+   one painted strip. (The poster that flies when a format is entered keeps its own, stronger rules.) */
+.fs-shelf .fs-fmt{box-shadow:0 1px 0 #EDE7D6,0 2px 0 #DDD6C0,0 3px 4px rgba(20,32,26,.2),0 12px 18px -12px rgba(20,32,26,.36);}
+.fs-shelf .fs-fmt::after{content:"";position:absolute;inset:0;z-index:3;border-radius:inherit;pointer-events:none;background:linear-gradient(118deg,rgba(255,255,255,.2),rgba(255,255,255,.05) 24%,rgba(255,255,255,0) 42%);box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset 1px 0 0 rgba(255,255,255,.22),inset 0 -1px 0 rgba(20,32,26,.16);}
+@media(hover:hover){.fs-shelf .fs-fmt:hover{transform:translateY(-4px);box-shadow:0 1px 0 #EDE7D6,0 2px 0 #DDD6C0,0 7px 9px -2px rgba(20,32,26,.22),0 18px 22px -14px rgba(20,32,26,.44);}}
+.fs-shelf .fs-fmt:active{transform:translateY(-2px);box-shadow:0 1px 0 #EDE7D6,0 2px 0 #DDD6C0,0 5px 7px -2px rgba(20,32,26,.22),0 15px 20px -13px rgba(20,32,26,.4);}
+@media(prefers-reduced-motion:reduce){
+  .fs-shelf-wm::before,.fs-shelf-wm::after{animation:none;}
+  .fs-shelf-wm,.fs-shelf::after{transition:none;}
+  .fs-shelf .fs-fmt,.fs-shelf .fs-fmt:hover,.fs-shelf .fs-fmt:active{transition:none;transform:none;}
 }
 `;
 
@@ -5495,9 +5611,10 @@ a.mm-pace-auto{text-decoration:none;}
  *   "i typed money theater but really meant to say movie theater - but we can extend it to the film section
  *    and if we like it we move futher. I think we still need some gold spinners in there for asthetic"
  * So the lobby's dark comes inside — to THIS section and no other (not the cast page, not the Archive).
- * Then, the same day: "dark mode toggle in setting but keeep it light" — and, once he had seen the two
- * lights side by side: "Make dark default". So the rooms with a dark side are DARK BY DEFAULT and light by
- * choice (lib/theme.ts), and this is the Movie Maker's DARK theme: FilmStudio mounts this stylesheet
+ * Then, the same day: "dark mode toggle in setting but keeep it light" — then, once he had seen the two
+ * lights side by side: "Make dark default" — and then, that evening: "Light mode as the default - dark mode
+ * as option". So LIGHT IS THE DEFAULT and the dark is a member's choice (lib/theme.ts), and this is the
+ * Movie Maker's DARK theme, the option: FilmStudio mounts this stylesheet
  * — and puts .fs-theater on its root — only when useTheme() says "dark". In the light theme the page is the
  * cream page it was; what both themes share (the posters in rows, the page's own gold rosettes) is in the
  * page's stylesheet, FS_STYLE.
@@ -5509,69 +5626,29 @@ a.mm-pace-auto{text-decoration:none;}
  *
  *   THE ROOM     the shell's page and header go dark — a DEEP GREEN, not the first lobby's brown ("maybe we
  *                do a dark green background instead of the brown"): near-black green, a lighter green
- *                where the light falls, the lobby's gold #E7C879 — and a phone's tab bar with them
+ *                where the light falls, the lobby's gold #E7C879 — and a phone's tab bar with them.
+ *                (These rules are the SHELL's, so they live where a second dark page can share them:
+ *                lib/theater-shell.ts, THEATER_SHELL_CSS — mounted with this sheet, ahead of it.)
  *   THE SCREEN   the hero and a format's banner get a thin gold edge
- *   THE SHELVES  each shelf is the LIGHT theme's own cream card, laid on the dark the way the sign-in ticket
- *                is — a gold hairline edge, a deep doubled shadow, and nothing in it repainted (but the
- *                thin bar a mouse gives a row: it loses its white track). They were deep green "poster
- *                cases" first; he looked and said: "these cards even in dark should take on the lighter
- *                theme overlay like login right? To make it flow".
+ *   THE SHELVES  each shelf is the LIGHT theme's own cream card — a ticket: engraved, perforated, see THE
+ *                TICKET in the page's stylesheet — laid on the dark the way the sign-in ticket is: a gold
+ *                hairline edge, a deep doubled shadow, its notches showing the dark page, and nothing in it
+ *                repainted. They were deep green "poster cases" first; he looked and said: "these cards
+ *                even in dark should take on the lighter theme overlay like login right? To make it flow".
  *   THE TICKETS  "Next episode" cards are cream tickets with a perforation, under a sign-painted heading
  *   THE GOLD     the shell's own two great rosettes, behind the page, in the gold cut (as in the lobby);
- *                the page's own three rosettes are in both themes, and are not touched here
+ *                the page's own rosettes and engravings are in both themes, and are not touched here
  *
- * SCOPE. Every rule for the page itself starts with .fs-theater (the class this route's root carries in the
- * dark theme only), so it can style nothing else even if it were left on the page. The few rules for the
- * shell (html, body, .wb …) have no such anchor — they work the way the lobby's do: this stylesheet is
- * mounted by this route's component, only in the dark theme, and unmounted with it; web.tsx knows nothing
- * of it. tests/film-theater.test.ts holds all of that.
+ * SCOPE. Every rule in THIS sheet starts with .fs-theater (the class this route's root carries in the dark
+ * theme only), so it can style nothing else even if it were left on the page. The shell's rules (html,
+ * body, .wb …) have no such anchor — they work the way the lobby's do: lib/theater-shell.ts is mounted by
+ * this route's component, with this sheet, only in the dark theme, and unmounted with it; web.tsx knows
+ * nothing of either. tests/film-theater.test.ts holds all of that.
  *
  * Nothing here changes what a control does, adds a word, or asks for a file other than the rosette. */
 const FS_THEATER = `
-/* ---- the shell goes dark while the Movie Maker is up (these rules leave with the screen) ----
-   THE DARK IS A DEEP GREEN (the owner, of the first, brown-black lobby: "maybe we do a dark green background
-   instead of the brown"): a near-black green for the room, a lighter green where the light falls from above,
-   the app's own green low in the far corner. Gold stays gold; the cream cards stay cream. */
-html,body{background:#0A1C13;}
-html{scrollbar-color:#2A5A41 #0A1C13;}
-/* (…the page's own bar only: the pickers inside the cream cards keep the bars they had) */
-body{scrollbar-color:auto;}
-html .wb{background:radial-gradient(1200px 520px at 50% -160px,rgba(36,120,78,.36),rgba(36,120,78,0) 70%),radial-gradient(900px 520px at 0% 100%,rgba(12,122,70,.2),rgba(12,122,70,0) 70%),#0A1C13;}
-/* THE ROOM'S TWO GREAT ROSETTES. The shell keeps two of them — the app's own spinner — turning slowly behind
-   every page (fixed, under everything, taking no tap; green on the cream). Here, as in the lobby, they are the
-   gold cut, and they go on turning as a member walks from one dark room into the other. They are BEHIND the
-   page (the shell puts its header and its page above them), so never over a word; the shell stops them for
-   "reduce motion", and so does the last rule of this sheet. */
-html .wb::before,html .wb::after{background-image:url(/gstyle-rosette.svg);}
-html .wb::before{opacity:.14;}
-html .wb::after{opacity:.11;}
-.wb .wb-brand{position:relative;color:#FFFDF7;}
-.wb .wb-brand b{color:#E7C879;}
-.wb .wb-crest img{filter:drop-shadow(0 2px 3px rgba(0,0,0,.6));}
-.wb .lt-btn{position:relative;background:rgba(255,253,247,.07);border-color:rgba(231,200,121,.5);color:#FFFDF7;box-shadow:none;}
-.wb .lt-btn:hover,.wb .lt-btn[aria-expanded="true"]{border-color:#E7C879;color:#FFFDF7;box-shadow:0 0 0 3px rgba(231,200,121,.16);}
-.wb .lt-btn .lt-glyph{color:#E7C879;}
-.wb .lt-btn .lt-caret{color:#D8CFBA;}
-/* the logo and the language pill are 30 and 32 tall: 44 to the finger, nothing moved */
-.wb .wb-brand::after,.wb .lt-btn::after{content:"";position:absolute;inset:-7px -3px;}
-.wb .wb-tab:not(.on){color:#D8CFBA;}
-.wb .wb-tab:hover:not(.on){color:#FFFDF7;background:rgba(255,253,247,.08);}
-/* (the tab you are on, and your account chip, are cream on the dark already: they only get the gold edge) */
-.wb .wb-tab.on{border-color:rgba(231,200,121,.7);box-shadow:0 0 0 3px rgba(231,200,121,.12);}
-.wb .wb-chip{border-color:rgba(231,200,121,.7);box-shadow:none;}
-.wb .wb-chip:hover,.wb .wb-chip.on{border-color:#E7C879;box-shadow:0 0 0 3px rgba(231,200,121,.16);}
-.wb .wb-admin{color:#D8CFBA;opacity:.8;}
-.wb .wb-admin:hover{background:rgba(255,253,247,.1);}
-.wb .wb-nav a:focus-visible,.wb .wb-nav button:focus-visible{outline-color:#E7C879;}
-/* a phone's tab bar: a white pill was the brightest thing in the room */
-@media(max-width:760px){
-  .wb .wb-bottom{background:#0F2A1C;border-color:rgba(231,200,121,.42);box-shadow:0 14px 34px rgba(0,0,0,.6);}
-  .wb .wb-bt{color:#D8CFBA;}
-  .wb .wb-bt.on{color:#E7C879;}
-  .wb .wb-bt.on .wb-bt-ic{background:rgba(231,200,121,.16);}
-  .wb .wb-bt-mid{color:#D8CFBA;}
-  .wb .wb-bottom a:focus-visible{outline-color:#E7C879;}
-}
+/* (THE ROOM — the shell's page, its header and a phone's tab bar gone dark — is lib/theater-shell.ts, mounted
+   ahead of this sheet in the same <style>. Every rule below is the PAGE's, and starts with .fs-theater.) */
 
 /* ---- THE SCREEN: the hero, and a format's own banner — a thin gold edge. (The hero is the page's own deep
    green band, and the shade its words stand on is the page's own: neither is repainted.) ---- */
@@ -5584,9 +5661,8 @@ html .wb::after{opacity:.11;}
 .fs-theater .fs-hero{box-shadow:0 0 0 1px rgba(231,200,121,.45),0 24px 44px -28px #000;}
 .fs-theater .fs-hero-back{border-color:rgba(231,200,121,.45);}
 
-/* (the page's own three rosettes — in the hero's corner, a banner's corner, at the end of a row — are in
-   BOTH themes: see THE GOLD in the page's stylesheet. Nothing of them is changed here: a row's finial stands
-   on its shelf's cream card in the dark too, so it keeps the shell's deep gold.) */
+/* (the page's own rosettes — the one inside the hero, and the one ENGRAVED in every shelf — are in BOTH
+   themes: see THE GOLD and THE TICKET in the page's stylesheet. Nothing of them is changed here.) */
 
 /* ---- THE TICKETS: a kept music video, and Next episode ---- */
 .fs-theater .mm-kept{box-shadow:0 0 0 1px rgba(231,200,121,.5);}
@@ -5601,17 +5677,18 @@ html .wb::after{opacity:.11;}
    They were deep green "poster cases" at first, and the owner, 2026-11-24, with the Films shelf beside the
    sign-in ticket: "Now buddy, these cards even in dark should take on the lighter theme overlay like login
    right? To make it flow". So a shelf here IS the light theme's shelf card, and nothing of it is repainted:
-   its cream ground, its ink title and grey line, its coloured bar and tag, its poster cards, its deep-gold
-   finial. It only gets what a cream card needs to sit on a dark page, the way the ticket has it — a gold
+   its cream ground, its ink title and grey line, its coloured bar and tag, its poster cards — and what makes
+   it a ticket (THE TICKET, in the page's stylesheet): its engraving, its perforation, its printed hairline.
+   It only gets what a cream card needs to sit on a dark page, the way the sign-in ticket has it — a gold
    hairline for an edge (the card's own 1px border in the lobby's gold, the dark showing under it rather than
    the cream) and a deep, doubled shadow.
    The edge is said by a rule of TWO classes, so the page's own rule for a shelf falling away (three) still
-   takes it; and the shadow is cast only while a shelf stands, so nothing of one is left as a poster flies. */
-.fs-theater .fs-shelf{border-color:rgba(231,200,121,.6);background-clip:padding-box;}
-.fs-theater .fs-shelves:not(.throw) .fs-shelf{box-shadow:0 34px 60px -30px #000,0 14px 26px -16px rgba(0,0,0,.55);}
-/* (where there is a mouse a row has a thin bar, and a bar's track is a square: left as it comes, its white
-   corner stands out past the card's round one, on the dark. So no track — and the thumb in the finial's gold) */
-.fs-theater .fs-shelf .fs-fmtgrid{scrollbar-color:#B08526 transparent;}
+   takes it. The shadow is only NAMED here (--tk-drop: a contact shadow, a near one and the ticket's long one,
+   in black): the page's own rule casts it, with the card's own thickness, and only while the shelves stand —
+   so nothing of a card is left as a poster flies. */
+.fs-theater .fs-shelf{border-color:rgba(231,200,121,.6);background-clip:padding-box;--tk-drop:0 4px 6px rgba(0,0,0,.5),0 14px 26px -16px rgba(0,0,0,.55),0 34px 60px -30px #000;}
+/* (a notch is a bite out of the card: THIS page's dark fills it, and the card's gold edge goes round it) */
+.fs-theater .fs-shelf-h::before,.fs-theater .fs-shelf-h::after{background:#0A1C13;border-color:rgba(231,200,121,.6);}
 /* (the poster that flies when a format is entered crosses the dark page: a ring of gold — its own shadow is dark on dark) */
 .fs-theater .fs-fmtgrid.throw .fs-fmt.zoom{box-shadow:0 0 0 2px #E7C879,0 24px 40px -20px #000;}
 
@@ -5628,10 +5705,6 @@ html .wb::after{opacity:.11;}
 
 /* ---- a ring that is seen on the dark (a poster stands on its shelf's cream card: it keeps the shell's green ring) ---- */
 .fs-theater .fs-ep-card:focus-visible,.fs-theater .fs-head-tag:focus-visible,.fs-theater .fs-hero-back:focus-visible{outline:2px solid #E7C879;outline-offset:2px;}
-
-/* ---- less motion: the room's two rosettes stand still (the shell stops them too; the page's own three are
-   stopped by the page's stylesheet) ---- */
-@media(prefers-reduced-motion:reduce){
-  html .wb::before,html .wb::after{animation:none;}
-}
+/* (less motion: this sheet moves nothing. The room's two rosettes are stopped by the shell and again by
+   lib/theater-shell.ts; the page's own rosettes and engravings by the page's stylesheet.) */
 `;

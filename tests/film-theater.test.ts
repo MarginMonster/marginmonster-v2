@@ -1,4 +1,4 @@
-/* THE MOVIE MAKER'S TWO THEMES — its posters in rows (both), its gold rosettes (both), its dark theater (the default).
+/* THE MOVIE MAKER'S TWO THEMES — its posters in rows (both), its tickets and its one gold rosette (both), its dark theater (the option).
  *
  * The sign-in screens became a cinema's lobby (tests/auth-lobby.test.ts), and the owner, 2026-11-24:
  *   "I'm really fond of that dark style screen"
@@ -9,22 +9,37 @@
  *   "the film section needs sideways scroll for options instead of that layout"
  * then, of the first (brown-black) dark:
  *   "Looks pretty clean, but maybe we do a dark green background instead of the brown"
- *   "dark mode toggle in setting but keeep it light" — and, having seen the two side by side: "Make dark default"
+ *   "dark mode toggle in setting but keeep it light" — then, having seen the two side by side: "Make dark default"
+ *   — and then, that evening: "Light mode as the default - dark mode as option. Hero cards still need textured.
+ *   3d style". So the LIGHT Movie Maker is what nearly everyone sees, and the dark theater is the option.
  * then, of the dark's first shelves (each a deep green "poster case"), beside the sign-in ticket:
  *   "Now buddy, these cards even in dark should take on the lighter theme overlay like login right? To make it flow"
+ * then, of the small gold rosette that stood at the end of every row:
+ *   "Those little rosettes on the cards appear slightly out of place, can we do some texture on the cards
+ *    similar to the login one to make it FUCKING POP"
+ * and, of the clip in the hero band (a screen standing inside it, with a margin, corners and an edge of its own):
+ *   "Also the video hero's here are not flush like the others they appear boxed"
  *
  * So app/routes/web.film.tsx carries:
  *   THE ROWS     (the page's stylesheet, both themes) each shelf is ONE row of its posters, swiped sideways
- *   THE GOLD     (the page's stylesheet, both themes) three slow gold rosettes where no word stands
- *   FS_THEATER   the DARK theme — a deep green movie theater — mounted only while the theme is dark
+ *   THE GOLD     (the page's stylesheet, both themes) ONE gold rosette: the hero's — the Ad Maker's own, inside
+ *                the hero ("Movie maker hero rosette needs to match the ad hero rosette")
+ *   THE TICKET   (the page's stylesheet, both themes) a shelf is a ticket: engraved, perforated, edged — and a
+ *                piece of stock with a thickness, its posters prints lying on it ("3d style")
+ *   FS_THEATER   the DARK theme's rules for THIS PAGE — a deep green movie theater — mounted only while the
+ *                theme is dark, after app/lib/theater-shell.ts (THEATER_SHELL_CSS: the SHELL's dark, which
+ *                any page that is dark under the theme mounts while it is dark)
  *
  * What must stay true, and is held here:
- *   · the theater is mounted only in the dark theme (the default — lib/theme.ts), only on this page, and its
+ *   · the theater is mounted only in the dark theme (the option: light is the default — lib/theme.ts), only on this page, and its
  *     page rules cannot reach another section; the light theme is the cream page it was
  *   · THE PAGE IS DARK, EVERY CARD IS LIGHT: a shelf, a poster, a ticket, every sheet a member works in is the
  *     cream card it is in the light theme, with its own ink — the dark gives a card an edge and a shadow, no more
  *   · the dark is a deep green (not brown), and every word that stands on it reads (4.5:1 or better)
  *   · the gold rosettes are the app's own, slow and faint, and never over a word
+ *   · a shelf is a TICKET in both themes — the rosette engraved in its paper in its own colour, a perforation
+ *     between two notches, a printed hairline — and its words read as they did; the card itself clips nothing
+ *   · the hero's clip is FLUSH: the band's far side from top to foot, no box round it, its near edge dissolved
  *   · a shelf is one row: about 2.3 posters on a phone with the next one peeking, four across on a wide
  *     screen — and the page itself never scrolls sideways
  *   · it is still the same list of buttons in the same order; a tapped poster still pops
@@ -37,6 +52,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FILM_HEROES, heroShelves } from "../app/lib/film-heroes.ts";
+import { THEATER_SHELL_CSS } from "../app/lib/theater-shell.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // (a checkout with CRLF line endings must read the same as one with LF)
@@ -53,17 +69,22 @@ const sheetOf = (name: string) => {
   assert.ok(a > 0, name);
   return page.slice(a + open.length, page.indexOf("`;", a));
 };
-const theater = sheetOf("FS_THEATER");
+/** THE DARK, as the route mounts it: the SHELL's rules (app/lib/theater-shell.ts — shared, so that a second
+ *  page can be dark the same way) and then THIS PAGE's (FS_THEATER), in one <style>, in that order. */
+const theaterShell = THEATER_SHELL_CSS.replace(/\r\n/g, "\n");
+const theaterPage = sheetOf("FS_THEATER");
+const theater = theaterShell + theaterPage;
 const base = sheetOf("FS_STYLE");
 const ROWS_OPEN = "/* ───────── THE ROWS — each shelf is ONE row of its posters, swiped sideways ─────────";
 const GOLD_OPEN = "/* ───────── THE GOLD — the app's rosette, slow and faint, in BOTH themes ─────────";
-assert.equal(count(base, ROWS_OPEN), 1);
-assert.equal(count(base, GOLD_OPEN), 1);
-assert.ok(base.indexOf(ROWS_OPEN) < base.indexOf(GOLD_OPEN));
-/** The page's rules before the two added blocks; the rows' own; the gold's own (the last of the sheet). */
+const TICKET_OPEN = "/* ───────── THE TICKET — a shelf is a ticket: engraved, perforated, edged (BOTH themes) ─────────";
+for (const open of [ROWS_OPEN, GOLD_OPEN, TICKET_OPEN]) assert.equal(count(base, open), 1, open);
+assert.ok(base.indexOf(ROWS_OPEN) < base.indexOf(GOLD_OPEN) && base.indexOf(GOLD_OPEN) < base.indexOf(TICKET_OPEN));
+/** The page's rules before the three added blocks; the rows' own; the gold's own; the ticket's own (the last of the sheet). */
 const before = base.slice(0, base.indexOf(ROWS_OPEN));
 const rows = base.slice(base.indexOf(ROWS_OPEN), base.indexOf(GOLD_OPEN));
-const gold = base.slice(base.indexOf(GOLD_OPEN));
+const gold = base.slice(base.indexOf(GOLD_OPEN), base.indexOf(TICKET_OPEN));
+const ticket = base.slice(base.indexOf(TICKET_OPEN));
 /** The page's code: everything above its stylesheets. */
 const ui = page.slice(0, page.indexOf("const FS_STYLE = `"));
 
@@ -91,6 +112,7 @@ function rules(sheet: string): { media: string; sel: string; body: string }[] {
 const T = rules(theater);
 const R = rules(rows);
 const G = rules(gold);
+const K = rules(ticket);
 const parts = (r: { sel: string }) => r.sel.split(",").map((s) => s.trim());
 const named = (r: { media: string; sel: string }) => (r.media ? `${r.media} ` : "") + r.sel;
 /** The names of the properties a rule sets. */
@@ -122,16 +144,32 @@ function sources(dir: string): string[] {
 }
 
 test("the theater is the DARK theme's, and only this page's: mounted while the theme is dark, never in the light", () => {
-  // the theme is the shell's (lib/theme.ts, lib/use-theme.ts — dark unless a member chose the light): this page only reads it
+  // the theme is the shell's (lib/theme.ts, lib/use-theme.ts — light unless a member chose the dark): this page only reads it
   assert.ok(ui.includes('import { useTheme } from "../lib/use-theme";') && ui.includes('import { themeOf } from "../lib/theme";'));
   assert.equal(count(ui, "const theme = useTheme();"), 1);
   assert.ok(ui.indexOf("export default function FilmStudio()") < ui.indexOf("const theme = useTheme();"));
   // ONE mark on this route's root: its theme — and, in the dark only, the class every theater rule hangs on
   assert.equal(count(ui, "<div className={`fs-wrap${theme === \"dark\" ? \" fs-theater\" : \"\"}`} data-theme={theme}>"), 1);
   // the theater's stylesheet is mounted by this page, and only in the dark: in the light theme not one of
-  // its rules is on the page — the shell's included — so the light Movie Maker is the cream page it was
-  assert.equal(count(ui, "{theme === \"dark\" && <style dangerouslySetInnerHTML={{ __html: FS_THEATER }} />}"), 1);
+  // its rules is on the page — the shell's included — so the light Movie Maker is the cream page it was.
+  // ONE <style>: the shell's dark first (the shared module), then this page's own — the order the rules had
+  // when they were one sheet
+  assert.equal(count(ui, "{theme === \"dark\" && <style dangerouslySetInnerHTML={{ __html: THEATER_SHELL_CSS + FS_THEATER }} />}"), 1);
   assert.equal(count(ui, "FS_THEATER }"), 1, "mounted in one place");
+  assert.equal(count(ui, "THEATER_SHELL_CSS"), 2, "imported, and mounted in that one place");
+  assert.ok(ui.includes('import { THEATER_SHELL_CSS } from "../lib/theater-shell";'));
+  // THE SHELL'S DARK IS A MODULE OF ITS OWN (app/lib/theater-shell.ts): plain — it imports nothing — one string,
+  // and every rule in it names the SHELL; every rule this page keeps (FS_THEATER) names the PAGE. Neither
+  // holds one of the other's.
+  const shellModule = read("app", "lib", "theater-shell.ts");
+  assert.ok(!/^\s*import\s/m.test(shellModule) && count(shellModule, "export ") === 1 && shellModule.includes("export const THEATER_SHELL_CSS = `"));
+  assert.ok(shellModule.endsWith("`;\n") && !shellModule.includes("${"), "a template with nothing interpolated into it");
+  const heading = shellModule.slice(0, shellModule.indexOf("export const")).replace(/\n \* ?/g, " ");
+  assert.ok(heading.includes("the app's shell, repainted dark while a dark page is up") && heading.includes("A page that is dark under the theme") && heading.includes("while the theme is dark, and only then"), "its heading says what it is, and when a page mounts it");
+  const ofShell = rules(theaterShell), ofPage = rules(theaterPage);
+  assert.ok(ofShell.length >= 30 && ofPage.length >= 20);
+  for (const r of ofShell) assert.ok(!parts(r).some(isPage) && !/\.fs-|\.mm-/.test(r.sel), `${r.sel}: a page's rule in the shell's module`);
+  for (const r of ofPage) assert.ok(parts(r).every(isPage), `${r.sel}: not anchored on the page`);
   assert.ok(ui.includes("<style dangerouslySetInnerHTML={{ __html: FS_STYLE }} />"), "the page's own stylesheet is in both themes");
   assert.ok(!/fs-theater|\[data-theme/.test(base), "nothing in the page's own stylesheet waits on the theme: what both themes share is simply there");
   // a dark page gets a dark bar on a phone — in the dark only (the shell's loader says which; the hook reads the same)
@@ -195,7 +233,7 @@ test("the theater is the DARK theme's, and only this page's: mounted while the t
   // (the page's own scrollbar goes dark; every picker inside a cream card keeps the bar it had)
   assert.ok(theater.includes("body{scrollbar-color:auto;}"));
   // the stylesheets are plain text in a template: nothing interpolated, no escape to lose
-  for (const s of [theater, rows, gold]) assert.ok(!s.includes("${") && !s.includes("\\"));
+  for (const s of [theater, rows, gold, ticket]) assert.ok(!s.includes("${") && !s.includes("\\"));
 });
 
 test("the dark is a DEEP GREEN, not a brown (\"maybe we do a dark green background instead of the brown\")", () => {
@@ -211,12 +249,10 @@ test("the dark is a DEEP GREEN, not a brown (\"maybe we do a dark green backgrou
   // …and nothing of the first lobby's brown-black is left in it, nor of the deep green "poster cases" the shelves were
   assert.ok(!/#130E0B|#1C1511|#221912|#17110D|#2A2018|#241B15|#3D3024|#0A0705|rgba\((19,14,11|10,7,5),/i.test(theater));
   assert.ok(!/#153826|#1C4531|rgba\(5,18,12,/i.test(theater.replace(/\/\*[\s\S]*?\*\//g, "")));
-  // every colour written in the sheet is one of: those three greens · the gold (and, once, the shell's deeper
-  // gold: for the one gold thing that stands on cream) · the cream (and the ticket's paper) and the soft cream
-  // of words on the dark · the error's red · black for a shadow
+  // every colour written in the dark's two sheets is one of: those three greens · the gold · the cream (and
+  // the ticket's paper) and the soft cream of words on the dark · the error's red · black for a shadow
   const hexes = [...new Set([...theater.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/#[0-9A-Fa-f]{6}\b|#[0-9A-Fa-f]{3}\b/g)].map((m) => m[0].toUpperCase()))].sort();
-  assert.deepEqual(hexes, ["#000", "#0A1C13", "#0F2A1C", "#2A5A41", "#B08526", "#D8CFBA", "#E7C879", "#F7F0DE", "#FFB4A6", "#FFFDF7"]);
-  assert.equal(count(theater.replace(/\/\*[\s\S]*?\*\//g, ""), "#B08526"), 1);
+  assert.deepEqual(hexes, ["#000", "#0A1C13", "#0F2A1C", "#2A5A41", "#D8CFBA", "#E7C879", "#F7F0DE", "#FFB4A6", "#FFFDF7"]);
   // the hero is the page's own deep green band, and the shade its words stand on the page's own: the theater
   // repaints neither (it gives the hero and a format's banner a thin gold edge, and that is all)
   assert.ok(before.includes("background:radial-gradient(130% 150% at 80% 0%,#2C6549,#1A4A33 52%,#0F3323);}"));
@@ -247,12 +283,12 @@ test("the cream cards are kept (\"the Admit one light cream card over the dark i
   const touched = T.filter((r) => WORK.test(r.sel));
   assert.deepEqual(touched.map((r) => r.sel), [".fs-theater .mm-topic,.fs-theater .fs-card:not(.fs-go-card)"]);
   assert.equal(touched[0].body, "box-shadow:0 0 0 1px rgba(231,200,121,.5),0 22px 40px -28px #000;");
-  // …and the two blocks both themes share name none of them at all
-  assert.ok(![...R, ...G].some((r) => WORK.test(r.sel)));
+  // …and the three blocks both themes share name none of them at all
+  assert.ok(![...R, ...G, ...K].some((r) => WORK.test(r.sel)));
   // (the slate that claps, the cast walking on and the Starring strip are inside those cards: as they were)
   for (const k of [".fs-slate{position:relative;z-index:2;width:min(100%,290px);", ".mm-stars-row .mm-star{animation:mmStarOn .52s cubic-bezier(.2,.8,.2,1) both;", ".mm-stars-h b{font-family:Poppins,sans-serif;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--ink,#14201A);}"]) assert.ok(before.includes(k), k);
   // it never re-inks the page: no palette token is redefined, so a card's own colours resolve as they did
-  assert.ok(!/--(ink|ink2|ink3|line|line2|green|green2|green-d|panel|card|paper|mint|cream|gold|gold-deep|fs-gold|fs-gold-lt|shelf|shelf-soft)\s*:/.test(theater + rows + gold));
+  assert.ok(!/--(ink|ink2|ink3|line|line2|green|green2|green-d|panel|card|paper|mint|cream|gold|gold-deep|fs-gold|fs-gold-lt|shelf|shelf-soft)\s*:/.test(theater + rows + gold + ticket));
   // a rule may put a COLOUR on words only where they stand on the dark: the hero's line, the Next-episode
   // sign, and the few lines a builder lays straight on the page. (Not one word of a shelf: a shelf is a card.)
   assert.deepEqual(pageRules.filter((r) => /(^|;)color:/.test(r.body)).map((r) => r.sel), [
@@ -264,7 +300,7 @@ test("the cream cards are kept (\"the Admit one light cream card over the dark i
     ".fs-theater .mm > .fs-err",
     ".fs-theater .mm > .mm-storyboard > .mm-sb-head",
   ]);
-  assert.ok(![...R, ...G].some((r) => /(^|;)color:/.test(r.body)), "the rows and the gold colour no word in either theme");
+  assert.ok(![...R, ...G, ...K].some((r) => /(^|;)color:/.test(r.body)), "the rows, the gold and the ticket colour no word in either theme");
   // …and each of those really is on the page, not in a card: the hint between the idea box and the steps,
   // and the Music Video's three (its builder is the one that lays the storyboard straight on the page — a
   // told story's is inside its cream card, and is NOT matched by a child selector from .mm)
@@ -296,26 +332,31 @@ test("the cream cards are kept (\"the Admit one light cream card over the dark i
     ".fs-fmt:hover{transform:translateY(-3px);box-shadow:0 12px 26px -16px rgba(20,32,26,.28);}",
   ]) assert.equal(count(before, k), 1, k);
   // … and the theater says FOUR things about a shelf and its posters, and no more: the card's edge, the card's
-  // shadow, the bar a mouse gives a row (its track would stand out past the card's round corner — the rows'
-  // test), and the ring on the one poster that flies (it leaves its card and crosses the dark page)
+  // shadow, what fills a notch of the ticket (a notch is a bite out of the card: THIS page's dark shows in it,
+  // and the card's gold edge goes round it), and the ring on the one poster that flies (it leaves its card
+  // and crosses the dark page). What makes the card a TICKET is the page's own, in both themes — its own test.
   const ofShelf = T.filter((r) => /\.fs-(shelf|shelves|fmt)/.test(r.sel));
   assert.deepEqual(ofShelf.map((r) => [r.sel, r.body]), [
-    [".fs-theater .fs-shelf", "border-color:rgba(231,200,121,.6);background-clip:padding-box;"],
-    [".fs-theater .fs-shelves:not(.throw) .fs-shelf", "box-shadow:0 34px 60px -30px #000,0 14px 26px -16px rgba(0,0,0,.55);"],
-    [".fs-theater .fs-shelf .fs-fmtgrid", "scrollbar-color:#B08526 transparent;"],
+    [".fs-theater .fs-shelf", "border-color:rgba(231,200,121,.6);background-clip:padding-box;--tk-drop:0 4px 6px rgba(0,0,0,.5),0 14px 26px -16px rgba(0,0,0,.55),0 34px 60px -30px #000;"],
+    [".fs-theater .fs-shelf-h::before,.fs-theater .fs-shelf-h::after", "background:#0A1C13;border-color:rgba(231,200,121,.6);"],
     [".fs-theater .fs-fmtgrid.throw .fs-fmt.zoom", "box-shadow:0 0 0 2px #E7C879,0 24px 40px -20px #000;"],
   ]);
+  assert.ok(ofShelf[1].body.includes("background:#0A1C13;") && theater.includes("html,body{background:#0A1C13;}"), "a notch is the page's own dark");
+  assert.ok(ofShelf[1].body.endsWith(ofShelf[0].body.split(";")[0] + ";"), "and its edge is the card's own gold");
   // (nothing of the cases is left: no ground of its own, no strip of light, no pale title, no dark tag, no
   //  gold-edged poster, no pale finial)
   assert.ok(!/--lit|--fs-rose|\.fs-shelf::before|\.fs-shelf-(ico|name|txt|tag)|\.fs-theater \.fs-fmt[{:]|\.fs-fmtgrid::after/.test(theater.replace(/\/\*[\s\S]*?\*\//g, "")));
   // WHAT A CREAM CARD NEEDS TO SIT ON A DARK PAGE, the way the ticket has it: a gold hairline for an edge — the
   // card's own 1px border in the lobby's gold, with the dark under it rather than the cream (so it is the same
   // dim gold line the ticket's is) — and a deep, doubled shadow, the ticket's own first
-  const ticket = /\.lb\.is-dark\{[^}]*--lb-edge:([^;]+);--lb-drop:([^;]+);\}/.exec(lobby);
-  assert.ok(ticket, "the ticket's edge and its shadow, in the dark");
-  assert.ok(ofShelf[0].body.startsWith(`border-color:${ticket[1]};`), "a shelf's hairline is the ticket's own");
-  assert.ok(ofShelf[1].body.startsWith(`box-shadow:${ticket[2]},`), "a shelf's first shadow is the ticket's own — and a second, closer one lies under it");
-  assert.equal(count(ofShelf[1].body, "px #000,") + count(ofShelf[1].body, "rgba(0,0,0,"), 2, "doubled");
+  const admitOne = /\.lb\.is-dark\{[^}]*--lb-edge:([^;]+);--lb-drop:([^;]+);\}/.exec(lobby);
+  assert.ok(admitOne, "the sign-in ticket's edge and its shadow, in the dark");
+  assert.ok(ofShelf[0].body.startsWith(`border-color:${admitOne[1]};`), "a shelf's hairline is the ticket's own");
+  // (the shadow is only NAMED by the theater — --tk-drop: the page's own rule casts it, with the card's own
+  //  thickness, while the shelves stand — and it is the ticket's long shadow with two closer ones before it)
+  assert.ok(ofShelf[0].body.endsWith(`,${admitOne[2]};`), "a shelf's long shadow is the ticket's own — and a contact shadow and a near one lie under it");
+  assert.equal(count(ofShelf[0].body, "rgba(0,0,0,") + count(ofShelf[0].body, "px #000;"), 3, "three deep");
+  assert.ok(ticket.includes(".fs-shelves:not(.throw) .fs-shelf{box-shadow:var(--tk-side),var(--tk-drop);}") && !/box-shadow/.test(ofShelf[0].body));
 });
 
 test("the words read: 4.5:1 or better on the dark — the page, under its light, the bar — and a shelf's are its own ink on its own cream", () => {
@@ -357,8 +398,8 @@ test("the words read: 4.5:1 or better on the dark — the page, under its light,
   }
   // the card stands off the dark by far more than its hairline needs to say
   assert.ok(contrast(CARD_FOOT, DARK) >= 15 && contrast(CARD_FOOT, LIT) >= 10);
-  // its tag: each shelf's accent on that accent's own soft plate, over the cream of the card's first quarter
-  // (the heading is the first 52px of a card some 300 tall)
+  // (the heading stands in the card's first quarter — the first 60px or so of a card some 300 tall: HEAD is
+  //  the card's cream at its deepest there)
   const HEAD = over(CARD_FOOT, CARD_TOP, 0.25);
   const accents: [string, string, number][] = [];
   for (const key of ["told", "acted", "sung"]) {
@@ -367,12 +408,45 @@ test("the words read: 4.5:1 or better on the dark — the page, under its light,
     accents.push([key, m[1], Number(m[3])]);
   }
   assert.deepEqual(accents, [["told", "#A8741B", 0.1], ["acted", "#0C7A46", 0.09], ["sung", "#6B4BC8", 0.09]]);
-  const tagOn = (accent: string, a: number) => contrast(accent, over(accent, HEAD, a));
+  // THE TAG'S PLATE is solid now — the card's top cream under the accent's own tint — so the ticket's
+  // engraving never runs behind its letters, and it reads exactly as it did
+  assert.ok(ticket.includes(".fs-shelf-tag{background:linear-gradient(var(--shelf-soft),var(--shelf-soft)),#FFFEFA;}"));
+  assert.ok(before.includes("color:var(--shelf);background:var(--shelf-soft);border-radius:999px;padding:5px 10px;}"), "(the page's own rule: the tint alone)");
+  const tagOn = (accent: string, a: number) => contrast(accent, over(accent, CARD_TOP, a));
+
+  // WHERE THE TICKET'S ENGRAVING RUNS UNDER THE HEADING'S WORDS. The rosette is engraved in the card in the
+  // shelf's own colour, and the stub has a wash of that colour too (the ticket's test). The worst a letter
+  // can stand on is the wash at that letter's height with a line of the engraving across it — read from the
+  // stylesheet, and summed here:
+  const wm = /\.fs-shelf-wm\{[^}]*background:linear-gradient\(180deg,var\(--shelf-soft\),rgba\(255,255,255,0\) (\d+)px\);/.exec(ticket);
+  const eng = /\.fs-shelf-wm::before\{[^}]*background:var\(--shelf\);opacity:(\.\d+);/.exec(ticket);
+  assert.ok(wm && eng, "the wash and the engraving");
+  const WASH_END = Number(wm[1]), ENGRAVE = Number(eng[1]);
+  assert.ok(ENGRAVE >= 0.14 && ENGRAVE <= 0.2 && WASH_END <= 64, "an engraving, not an object (the sign-in ticket's is 16%)");
+  // (a name starts where the card's own padding ends — 12px down on a small phone, 14 elsewhere — and the
+  //  line under it stands one name and 1px lower: the page's own rules. The small phone is the worst case.)
+  for (const k of ["@media(max-width:420px){.fs-shelf{padding:12px 10px 12px;border-radius:18px;}.fs-shelf-name{font-size:17px;}}", ".fs-shelf-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;}", "letter-spacing:-.015em;line-height:1.15;color:var(--ink,#14201A);}"]) assert.ok(before.includes(k), k);
+  const under = (accent: string, soft: number, y: number) => {
+    const wash = soft * Math.max(0, (WASH_END - y) / WASH_END);
+    return { cover: 1 - (1 - wash) * (1 - ENGRAVE), ground: over(accent, over(accent, HEAD, wash), ENGRAVE) };
+  };
+  let nameWorst = 99, lineWorst = 99;
+  for (const [key, accent, soft] of accents) {
+    const name = under(accent, soft, 12), line = under(accent, soft, 12 + 17 * 1.15 + 1);
+    assert.ok(name.cover <= 0.25 && line.cover <= 0.22, `${key}: under a letter the ground is ${(name.cover * 100).toFixed(1)}% / ${(line.cover * 100).toFixed(1)}% the shelf's colour`);
+    nameWorst = Math.min(nameWorst, contrast("#14201A", name.ground));
+    lineWorst = Math.min(lineWorst, contrast("#55605A", line.ground));
+  }
+  // THE FIGURES: where a line of the engraving passes under it, a shelf's NAME is 11.5:1 or better (16.5 on
+  // the bare cream) and THE LINE UNDER IT 4.7:1 or better (6.4 on the bare cream) — both still read
+  assert.ok(nameWorst >= 11.5 && lineWorst >= 4.7, `the name ${nameWorst.toFixed(2)}, the line ${lineWorst.toFixed(2)}`);
+  assert.ok(Math.abs(contrast("#14201A", HEAD) - 16.48) < 0.05 && Math.abs(contrast("#55605A", HEAD) - 6.43) < 0.05, "as they were");
+  // ITS TAG: the shelf's accent on its own plate — that accent's tint over the solid cream — exactly as it was
   for (const [key, accent, a] of accents.filter(([k]) => k !== "told")) assert.ok(tagOn(accent, a) >= 4.5, `${key}: its tag is ${tagOn(accent, a).toFixed(2)}`);
-  // …EXCEPT ONE, said as it is: "NARRATED" in the Stories' gold-brown is about 3.5:1 on its plate — under 4.5.
-  // It is the LIGHT theme's own colour on the light theme's own card (the page's stylesheet, both themes), so
-  // it is not the theater's to change, and was reported with this change. If this line fails because the tag
-  // now reads, hold it to 4.5 with the other two.
+  // …EXCEPT ONE, said as it is: "NARRATED" in the Stories' gold-brown is about 3.6:1 on its plate — under 4.5.
+  // It is the page's own colour on the page's own card (both themes), reported when the shelves became cream
+  // cards in the dark; neither the theater nor the ticket changes a tag's colours. If this line fails because
+  // the tag now reads, hold it to 4.5 with the other two.
   const told = tagOn(accents[0][1], accents[0][2]);
   assert.ok(told >= 3.4 && told < 4.5, `the Stories' tag is ${told.toFixed(2)}`);
   // (each shelf's icon is white on its accent: a picture, 3:1)
@@ -409,78 +483,61 @@ test("the words read: 4.5:1 or better on the dark — the page, under its light,
 });
 
 test("the gold: the app's own rosette, slow and faint, in BOTH themes — and never over a word", () => {
-  // the only file any of the three stylesheets asks for
-  for (const s of [theater, gold]) assert.deepEqual([...new Set([...s.matchAll(/url\(([^)]+)\)/g)].map((m) => m[1]))], ["/gstyle-rosette.svg"]);
-  assert.ok(exists("public", "gstyle-rosette.svg") && !/url\(/.test(rows) && !/https?:|@import|@font-face/.test(theater + rows + gold));
-  // every pseudo-element the three draw is empty: no word is written by a stylesheet
-  assert.deepEqual([...new Set([...(theater + rows + gold).matchAll(/[;{]content:([^;]+);/g)].map((m) => m[1]))], ['""']);
+  // the only file any of these stylesheets asks for
+  for (const s of [theater, gold, ticket]) assert.deepEqual([...new Set([...s.matchAll(/url\(([^)]+)\)/g)].map((m) => m[1]))], ["/gstyle-rosette.svg"]);
+  assert.ok(exists("public", "gstyle-rosette.svg") && !/url\(/.test(rows) && !/https?:|@import|@font-face/.test(theater + rows + gold + ticket));
+  // every pseudo-element they draw is empty — no word is written by a stylesheet — or is taken away ("none":
+  // the notch at an end a ticket does not have)
+  assert.deepEqual([...new Set([...(theater + rows + gold + ticket).matchAll(/[;{]content:([^;]+);/g)].map((m) => m[1]))].sort(), ['""', "none"]);
 
-  // THE PAGE'S OWN THREE — in the page's stylesheet, so in the light theme and in the dark:
-  const three = G.filter((r) => /rosette\.svg/.test(r.body) && !r.media.startsWith("@supports"));
-  assert.deepEqual(three.map(named), ["@media(max-width:640px) .fs-head::after", ".fs-hero::after", ".fs-shelf .fs-fmtgrid::after"]);
-  for (const r of three) {
-    // faint, slow, a picture only: it takes no tap and says nothing
-    const o = /(?:^|;)opacity:(\.\d+);/.exec(r.body);
-    assert.ok(o && Number(o[1]) >= 0.2 && Number(o[1]) <= 0.5, r.sel);
-    assert.ok(r.body.includes("pointer-events:none;") && r.body.includes("animation:fsThTurn 170s linear infinite;"), r.sel);
-  }
-  assert.ok(gold.includes("@keyframes fsThTurn{to{transform:rotate(360deg)}}"), "it only turns: once in nearly three minutes");
-  assert.equal(count(gold, "@keyframes") + count(theater, "@keyframes") + count(rows, "@keyframes"), 1);
+  // THE PAGE HAS ONE ROSETTE IN GOLD — THE HERO'S — in the page's stylesheet, so in the light theme and in the dark:
+  const roses = G.filter((r) => /rosette\.svg/.test(r.body));
+  assert.deepEqual(roses.map(named), [".fs-head::after"], "one rosette in the hero, at every width — and no other in gold on the page");
+  assert.deepEqual(G.map(named), [".fs-head", ".fs-head::after", "[dir=rtl] .fs-head::after", "@media(prefers-reduced-motion:reduce) .fs-head::after", "@media(prefers-reduced-motion:reduce) .fs-hero-blur"]);
+  // (the blocks turn nothing of their own invention: the hero's turn is the page's old one, the ticket has one)
+  assert.equal(count(gold, "@keyframes") + count(theater, "@keyframes") + count(rows, "@keyframes"), 0);
+  assert.equal(count(ticket, "@keyframes"), 1);
   // it is the figure the app spins everywhere — gold, as the Presenters' hero has had one in its corner
   assert.ok(read("app", "routes", "web.presenters.tsx").includes("background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.28;mix-blend-mode:screen;pointer-events:none;will-change:transform;animation:phspin 115s linear infinite;}"));
 
-  // 1 · A PHONE'S HERO, its far bottom corner — gold on the hero's deep green in either theme. The hero's
-  //     words keep to the first 60% of it and its tag to the top (the page's own rules, at this very width).
-  const hero = three[0].body;
-  assert.ok(hero.startsWith("content:\"\";position:absolute;z-index:2;right:-96px;bottom:-100px;width:200px;height:200px;"));
-  // (read right to left the hero's words start from the right — it is a flex row — so the free corner is the left one)
-  assert.ok(gold.includes("  [dir=rtl] .fs-head::after{right:auto;left:-96px;}\n}"));
+  // 1 · THE HERO'S ROSETTE IS THE AD MAKER'S ("Movie maker hero rosette needs to match the ad hero rosette").
+  //     The same one, to the number — off the bottom near corner, 350px, 30%, blended as light, turning the
+  //     other way round once in 115 seconds — read out of the Ad Maker's own stylesheet and held to it here:
+  const rose = roses[0].body;
+  assert.equal(rose, "content:\"\";position:absolute;z-index:2;left:-130px;bottom:-170px;width:350px;height:350px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.3;mix-blend-mode:screen;pointer-events:none;will-change:transform;animation:fsspinB 115s linear infinite;");
+  const studio = read("app", "routes", "web.studio.tsx");
+  const ad = /\.ws-cinehead-rose\.b\{left:(-?\d+)px;bottom:(-?\d+)px;width:(\d+)px;height:(\d+)px;background-image:url\(([^)]+)\);opacity:(\.\d+);animation:(\w+) (\d+)s linear infinite\}/.exec(studio);
+  assert.ok(ad && studio.includes(".ws-cinehead-rose{position:absolute;background:center/contain no-repeat;mix-blend-mode:screen;pointer-events:none;will-change:transform}"), "the Ad Maker's hero rosette (if it changes, the Movie Maker's follows it)");
+  assert.ok(rose.includes(`;left:${ad[1]}px;bottom:${ad[2]}px;width:${ad[3]}px;height:${ad[4]}px;background:url(${ad[5]}) center/contain no-repeat;opacity:${ad[6]};mix-blend-mode:screen;`), "the same place, size, strength and blend");
+  assert.ok(rose.endsWith(` ${ad[8]}s linear infinite;`) && studio.includes(`@keyframes ${ad[7]}{to{transform:rotate(-360deg)}}`) && before.includes("@keyframes fsspinB{to{transform:rotate(-360deg);}}"), "the same turn, the same way round");
+  //     INSIDE THE HERO, AND NONE OUTSIDE IT: the hero is its own layer and clips at its own rounded edge, so
+  //     nothing of a rosette crosses that edge (the one a phone had in the hero's FAR corner, over the clip,
+  //     read as one with the shell's great rosette behind the page: gone)
   assert.ok(before.includes(".fs-head{position:relative;overflow:hidden;border-radius:20px;margin-bottom:16px;min-height:200px;display:flex;align-items:center;"), "cut off by the hero's own edge");
-  assert.ok(before.includes("@media(max-width:640px){.fs-head{padding:18px;min-height:114px;}.fs-head-copy{max-width:60%;}"));
-  assert.ok(before.includes("@media(max-width:640px){.fs-head-tag{top:12px;bottom:auto;right:12px;"));
-  assert.ok(before.includes(".fs-head-copy{position:relative;z-index:3;") && before.includes(".fs-head-scrim{position:absolute;inset:0;z-index:2;"), "over the shade, under the words");
-  for (let vw = 320; vw <= 640; vw += 10) {
-    const heroW = vw - 2 * 16; // the page's gutter on a phone
-    const wordsEnd = 18 + 0.6 * (heroW - 2 * 18); // the hero's padding, then 60% of what is inside it
-    assert.ok(heroW - (200 - 96) >= wordsEnd, `${vw}px: the rosette starts ${heroW - 104}, the words end ${wordsEnd}`);
-  }
-  assert.ok(!G.some((r) => r.sel === ".fs-head::after" && r.media === ""), "nowhere wider: there the tag sits in that corner");
+  assert.ok(gold.includes("\n.fs-head{isolation:isolate;}\n") && !/right:-96px|bottom:-100px/.test(gold.replace(/\/\*[\s\S]*?\*\//g, "")));
+  assert.equal(count(page.slice(page.indexOf("const FS_STYLE = `")).replace(/\/\*[\s\S]*?\*\//g, ""), ".fs-head::after{"), 3, "said once, once more for right-to-left, and once to stop it turning");
+  //     SEEN: it lies over the shade the words stand on, and under the words (z-index 2, after the shade in the
+  //     hero; the words are 3) — fine light lines across the words' side of the band, as on the Ad Maker's
+  assert.ok(before.includes(".fs-head-copy{position:relative;z-index:3;") && before.includes(".fs-head-scrim{position:absolute;inset:0;z-index:2;") && rose.includes(";z-index:2;"), "over the shade, under the words");
+  assert.ok(ui.indexOf("<span className=\"fs-head-scrim\" aria-hidden=\"true\" />") < ui.indexOf("<div className=\"fs-head-copy\">"), "(a pseudo-element comes after both, so at the same z-index it is drawn over the shade)");
+  //     (read right to left the words' side is the right one, and the rosette goes with the words)
+  assert.ok(gold.includes("\n[dir=rtl] .fs-head::after{left:auto;right:-130px;}\n"));
+  //     (the hero's words still read where a line of it passes under them: the sum is in the hero's test)
 
-  // 2 · A FORMAT'S BANNER, its top right corner: its name and line are bottom left, the way back top left
-  const banner = three[1].body;
-  assert.ok(banner.startsWith("content:\"\";position:absolute;z-index:2;top:-92px;right:-92px;width:184px;height:184px;"));
-  assert.ok(gold.includes("@media(min-width:960px){.fs-hero::after{top:-140px;right:-120px;width:300px;height:300px;}}"));
+  // 2 · A FORMAT'S BANNER HAS NONE. It had one in its top far corner — the corner the shell's great rosette
+  //     turns behind, so the two read as one rosette hanging over the banner's edge, as the phone hero's did.
+  //     A banner is all picture, with no panel for a rosette to be engraved on: left plain.
+  assert.ok(!G.some((r) => /\.fs-hero(?!-blur)/.test(r.sel)) && !/\.fs-hero::(before|after)/.test(page));
   for (const k of [".fs-hero{position:relative;height:150px;border-radius:16px;overflow:hidden;", ".fs-hero-back{position:absolute;top:19px;left:12px;z-index:4;", ".fs-hero-ttl{position:absolute;left:16px;bottom:27px;z-index:3;", ".fs-hero-sub{position:absolute;left:16px;bottom:14px;z-index:3;", "@media(min-width:960px){.fs-hero{height:260px;}"]) assert.ok(before.includes(k), k);
-  // (a phone's banner is 150 tall: the rosette reaches 92 down, and the name starts 27 + a line up from the foot)
-  assert.ok(184 - 92 <= 150 - 14 - 20 - 20 && 300 - 140 <= 260 - 14 - 20 - 44);
 
-  // 3 · THE FINIAL: where a row of posters ends. It is an item OF the row — after the last poster, in the row's
-  //     own flow — so it can lie under nothing and nothing can lie under it.
-  const finial = three[2].body;
-  assert.ok(finial.startsWith("flex:0 0 auto;align-self:center;width:calc(var(--pw) * .86);aspect-ratio:1;margin-inline:6px 14px;"));
-  assert.ok(!finial.includes("position:") && !finial.includes("content:"), "in flow — and drawn only where the rules below say");
-  assert.ok(gold.includes("@media(max-width:979px){.fs-shelf .fs-fmtgrid::after{content:\"\";}}"), "every row that runs off the screen ends in one");
-  assert.ok(gold.includes("@media(min-width:640px){.fs-shelf .fs-fmtgrid::after{width:calc(var(--pw) * .62);}}"), "smaller beside a wide poster: never taller than the row");
-  // (a phone's poster is 4:5 over three lines of 12px; a wide one 16:9 over two of 13.5px — the finial is a square)
-  for (const w of [110, 146, 190]) assert.ok(0.86 * w <= 1.25 * w + 3 * 1.34 * 12 + 21);
-  for (const w of [172, 214, 318, 440]) assert.ok(0.62 * w <= 0.5625 * w + 2 * 1.34 * 13.5 + 25);
-  // four stand across from 980px: only a row with a place to spare has one, in the middle of the room left
-  assert.ok(gold.includes("@media(min-width:980px){\n  .fs-shelf .fs-fmtgrid::after{margin-inline:auto;}\n  .fs-shelf .fs-fmtgrid:has(> .fs-fmt:last-child:not(:nth-child(4n)))::after{content:\"\";}\n}"));
-  const spare = heroShelves(FILM_HEROES).map((s) => [s.name, s.heroes.length % 4 !== 0]);
-  assert.deepEqual(spare, [["Stories", true], ["Films", false], ["Music videos", true]], "two on a wide screen: Stories and Music videos");
-  // it goes with the row when a format is entered
-  assert.ok(gold.includes(".fs-shelf .fs-fmtgrid.throw::after{opacity:0;}"));
-  // IT IS DRAWN THROUGH the rosette (a mask), in the shell's deep gold: it stands on a shelf's cream, where the
-  // bright cut all but vanishes. And it stands on that cream in BOTH themes — in the dark a shelf is the same
-  // cream card — so the theater does not re-cut it (it did, in the lobby's pale gold, while the shelves were
-  // dark cases: pale gold on cream is no more seen than the bright cut). Where a browser cannot mask, it is
-  // the bright cut as it comes (never a gold square).
-  assert.ok(gold.includes(".fs-shelf{--fs-rose:#B08526;}") && shell.includes("--gold:#B08526;"), "the shell's own gold");
-  assert.ok(gold.includes("@supports ((-webkit-mask-image:none) or (mask-image:none)){.fs-shelf .fs-fmtgrid::after{background:var(--fs-rose);-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;}}"));
-  assert.ok(finial.includes("background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.5;"));
-  assert.ok(!/--fs-rose|\.fs-fmtgrid::after/.test(theater.replace(/\/\*[\s\S]*?\*\//g, "")), "the same finial in the dark: the theater says nothing of it");
-  assert.ok(contrast("#B08526", "#FBF8F0") >= 3 && contrast("#FFD24A", "#FBF8F0") < 1.6 && contrast("#E7C879", "#FBF8F0") < 1.6, "seen on the cream card, where the bright cut and the lobby's pale gold are not");
-  assert.ok(before.includes("background:linear-gradient(180deg,#FFFEFA,#FBF8F0);"), "a shelf's cream, in both themes");
+  // 3 · THERE WAS A THIRD: THE FINIAL, a small gold rosette where every row of posters ended. The owner looked:
+  //     "Those little rosettes on the cards appear slightly out of place". It is gone in both themes — nothing
+  //     is drawn where a row ends, in gold or anything else (its ROOM is kept, empty: the rows' test) — and
+  //     each shelf has the rosette engraved in its own paper instead (the ticket's test).
+  const flat = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.ok(!/fmtgrid|\.fs-shelf/.test(flat(gold)), "the gold names no shelf and no row");
+  assert.ok(!/--fs-rose/.test(page) && !/\.fs-fmtgrid::after/.test(flat(theater) + flat(ticket) + flat(before)));
+  for (const r of R.filter((x) => /\.fs-fmtgrid(\.throw)?::after$/.test(x.sel))) assert.ok(!/background|mask|animation|opacity|border|shadow|url\(/.test(r.body), `${r.sel}: ${r.body}`);
 
   // THE ROOM'S TWO GREAT ROSETTES are the shell's own: fixed behind every page, taking no tap, turning once
   // in three and a half minutes and more — green on the cream, as they always were. In the DARK they are only
@@ -491,22 +548,45 @@ test("the gold: the app's own rosette, slow and faint, in BOTH themes — and ne
   // BEHIND the page — its header and everything in it are drawn above them — so never over a word
   assert.ok(shell.includes(".wb-hud,.wb-main{position:relative;z-index:1;}") && shell.includes(".wb-nav{position:relative;z-index:30;"));
   assert.ok(!/position:fixed|z-index:/.test(theater), "the theater lays nothing fixed over the page, and lifts nothing above it");
-  assert.ok(!/position:fixed/.test(gold + rows));
+  assert.ok(!/position:fixed/.test(gold + rows + ticket));
 });
 
 test("everything that moves stands still for anyone who asks for less motion", () => {
-  const still = G.filter((r) => r.media === "@media(prefers-reduced-motion:reduce)");
-  const stilled = new Set(still.filter((r) => /(^|;)animation:none;/.test(r.body)).flatMap(parts));
-  const moving = G.filter((r) => !r.media.includes("prefers-reduced-motion") && /(^|;)animation(-name)?:(?!none)/.test(r.body)).flatMap(parts);
-  assert.deepEqual([...new Set(moving)].sort(), [".fs-head::after", ".fs-hero::after", ".fs-shelf .fs-fmtgrid::after"], "the page's three rosettes, and nothing else");
-  for (const sel of moving) assert.ok(stilled.has(sel), `${sel} must stop`);
-  // the one thing that fades (a row's finial, as a format is entered) does not
-  const fading = G.filter((r) => !r.media.includes("prefers-reduced-motion") && /(^|;)transition:(?!none)/.test(r.body)).flatMap(parts);
-  assert.deepEqual(fading, [".fs-shelf .fs-fmtgrid::after"]);
-  assert.ok(still.some((r) => r.sel === ".fs-shelf .fs-fmtgrid::after" && r.body === "transition:none;"));
+  const stoppedIn = (RULES: typeof G) => {
+    const still = RULES.filter((r) => r.media === "@media(prefers-reduced-motion:reduce)");
+    return {
+      still,
+      stilled: new Set(still.filter((r) => /(^|;)animation:none;/.test(r.body)).flatMap(parts)),
+      moving: [...new Set(RULES.filter((r) => !r.media.includes("prefers-reduced-motion") && /(^|;)animation(-name)?:(?!none)/.test(r.body)).flatMap(parts))].sort(),
+      fading: RULES.filter((r) => !r.media.includes("prefers-reduced-motion") && /(^|;)transition:(?!none)/.test(r.body)).flatMap(parts),
+    };
+  };
+  // THE GOLD: the hero's rosette turns, and nothing else of it moves or fades
+  const g = stoppedIn(G);
+  assert.deepEqual(g.moving, [".fs-head::after"], "the hero's rosette, and nothing else");
+  for (const sel of g.moving) assert.ok(g.stilled.has(sel), `${sel} must stop`);
+  assert.deepEqual(g.fading, []);
+  // THE TICKET: a shelf's engraving — its line and the lit lip of its groove, together — turns (once in four
+  // minutes) only where there is a mouse, and nothing else of the ticket moves by itself
+  const k = stoppedIn(K);
+  assert.deepEqual(k.moving, [".fs-shelf-wm::after", ".fs-shelf-wm::before"], "the engraving, and nothing else");
+  for (const sel of k.moving) assert.ok(k.stilled.has(sel), `${sel} must stop`);
+  assert.deepEqual(K.filter((r) => /animation:fsWmTurn/.test(r.body)).map(named), ["@media(hover:hover) and (pointer:fine) .fs-shelf-wm::before,.fs-shelf-wm::after"], "on a phone it stands still: two such layers a card would be composited on every frame of a scroll");
+  assert.ok(ticket.includes("{animation:fsWmTurn 240s linear infinite;}"));
+  // …and standing still it is exactly where it was put: its place is said outside the turn as well as in it
+  assert.ok(ticket.includes("@keyframes fsWmTurn{from{transform:translate(var(--wx),-50%) rotate(0deg)}to{transform:translate(var(--wx),-50%) rotate(360deg)}}"));
+  assert.ok(/\.fs-shelf-wm::before,\.fs-shelf-wm::after\{[^}]*;--wx:50%;[^}]*;transform:translate\(var\(--wx\),-50%\);/.test(ticket));
+  // what FADES as a format is entered (the engraving's layer, the printed hairline) does not fade
+  assert.deepEqual(k.fading, [".fs-shelf-wm", ".fs-shelf::after"]);
+  assert.ok(k.still.some((r) => r.sel === ".fs-shelf-wm,.fs-shelf::after" && r.body === "transition:none;"));
+  // a PRINT lifts under a pointer or a finger — and for anyone who asks for less motion it does not move at all
+  assert.ok(k.still.some((r) => r.sel === ".fs-shelf .fs-fmt,.fs-shelf .fs-fmt:hover,.fs-shelf .fs-fmt:active" && r.body === "transition:none;transform:none;"));
+  const stilled = g.stilled;
   // …and the banner's slow drift, which the page's own reduced-motion rule named the wrong element for, stops
   assert.ok(before.includes(".fs-hero-blur{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(28px) brightness(.5) saturate(1.12);transform:scale(1.2);z-index:0;animation:fsken 18s ease-in-out infinite alternate;}"));
   assert.ok(stilled.has(".fs-hero-blur"));
+  // the hero's reel: the hand-over between two clips is not a fade, and its tag does not rise
+  assert.ok(before.includes("@media(prefers-reduced-motion:reduce){.fs-reel{transition:none;}.fs-head-tag{animation:none;}}"));
   // the theater moves nothing of its own; the room's two are moved by the shell, which stops them itself —
   // and the theater says so again, in case
   assert.ok(!T.some((r) => !r.media.includes("prefers-reduced-motion") && /(^|;)(animation|transition)(-name)?:/.test(r.body)));
@@ -565,15 +645,31 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   // not drag the page or the browser's "back"; no bar on a touch screen, a thin one where there is a mouse
   assert.ok(rows.includes(".fs-shelf .fs-fmtgrid{display:flex;align-items:flex-start;gap:var(--gap);margin-block:-28px 0;margin-inline:calc(var(--tp) * -1);padding-block:28px 24px;padding-inline:var(--ps) var(--pe);overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-padding-inline:var(--ps) var(--pe);overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none;}"));
   assert.ok(before.includes(".fs-fmt{position:relative;flex:0 0 130px;scroll-snap-align:start;"), "each poster is a place the row stops");
-  assert.ok(rows.includes(".fs-shelf .fs-fmtgrid::-webkit-scrollbar{display:none;}") && rows.includes("@media(hover:hover) and (pointer:fine){.fs-shelf .fs-fmtgrid{scrollbar-width:thin;}}"));
-  // IN THE DARK that thin bar loses its TRACK. A track is a square, and the row runs to the card's round
-  // corner: left as the browser draws it, a white corner stands out past the card's, on the dark page
-  // (PHOTOGRAPHED at 800px and 560px with the bars drawn). So: no track, and the thumb in the finial's own
-  // deep gold — which is seen on the cream (3:1 for a control), where the lobby's pale gold would not be.
-  assert.ok(theater.includes(".fs-theater .fs-shelf .fs-fmtgrid{scrollbar-color:#B08526 transparent;}") && gold.includes(".fs-shelf{--fs-rose:#B08526;}"));
+  // THAT THIN BAR HAS NO TRACK, in either theme. A track is a square, and the row runs to the card's round
+  // corner: left as the browser draws it, a white corner stands out past the card's — on the dark page and
+  // on the cream (PHOTOGRAPHED at 800px and 560px with the bars drawn). Its thumb is the shell's deep gold,
+  // the gold of the hairline printed inside the card: seen on the cream (3:1 for a control), where the
+  // lobby's pale gold would not be.
+  assert.ok(rows.includes(".fs-shelf .fs-fmtgrid::-webkit-scrollbar{display:none;}") && rows.includes("@media(hover:hover) and (pointer:fine){.fs-shelf .fs-fmtgrid{scrollbar-width:thin;scrollbar-color:#B08526 transparent;}}"));
+  assert.ok(shell.includes("--gold:#B08526;") && count(rows.replace(/\/\*[\s\S]*?\*\//g, ""), "scrollbar-color:") === 1);
   for (const ground of ["#FFFEFA", "#FBF8F0"]) assert.ok(contrast("#B08526", ground) >= 3 && contrast("#E7C879", ground) < 1.7, ground);
-  // (the theater gives the page's own bar its greens, and hands every other bar inside the page back)
-  assert.ok(theater.includes("html{scrollbar-color:#2A5A41 #0A1C13;}") && theater.includes("body{scrollbar-color:auto;}") && count(theater, "scrollbar-color:") === 3);
+  // (the dark gives the page's own bar its greens, hands every other bar inside the page back, and says
+  //  nothing of a row's: a row's bar is on a cream card in both themes)
+  assert.ok(theater.includes("html{scrollbar-color:#2A5A41 #0A1C13;}") && theater.includes("body{scrollbar-color:auto;}") && count(theater, "scrollbar-color:") === 2);
+
+  // THE ROW'S END. A small gold rosette stood there (a finial); it is gone, and its ROOM IS KEPT, empty — to
+  // the pixel: the same width (86% of a poster; 62% from 640px) and the same two margins. Below 980px it is
+  // still an item of the row after the last poster — the row's end margin — so not a row scrolls a pixel
+  // further or less than it did; from 980px, where four stand across, there is nothing to end.
+  const end = R.filter((r) => /\.fs-fmtgrid::after$/.test(r.sel));
+  assert.deepEqual(end.map((r) => [named(r), r.body]), [
+    [".fs-shelf .fs-fmtgrid::after", "flex:0 0 auto;align-self:center;width:calc(var(--pw) * .86);height:1px;margin-inline:6px 14px;pointer-events:none;"],
+    ["@media(max-width:979px) .fs-shelf .fs-fmtgrid::after", "content:\"\";"],
+    ["@media(min-width:640px) .fs-shelf .fs-fmtgrid::after", "width:calc(var(--pw) * .62);"],
+  ]);
+  // (MEASURED on the TEST page at 390px, as with the finial: that room is 125.3px wide, and the three rows
+  //  scroll 275, 433 and 118px)
+  assert.ok(Math.abs(0.86 * rowAt(390).w - 125.26) < 0.05);
   assert.ok(rows.includes(".fs-shelf .fs-fmtgrid .fs-fmt{flex:0 0 var(--pw);min-width:0;}"));
   assert.deepEqual([ROW.ps, ROW.gap, ROW.pe, ROW.peWide, ROW.phone, ROW.tablet], [14, 12, 16, 14, 2.3, 3.3]);
   assert.ok(rows.includes(".fs-shelf{--tp:14px;--ps:14px;--pe:14px;--gap:12px;--pw:calc((100% - 3 * var(--gap)) / 4);min-width:0;padding-bottom:0;}"), "four across where there is room");
@@ -622,8 +718,15 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   assert.ok(rows.includes(".fs-shelves{grid-template-columns:minmax(0,1fr);}") && rows.includes("min-width:0;padding-bottom:0;}"));
   // nothing a row holds leaves it: it is cut off at its own edges (the tray's), top and bottom too
   assert.ok(rows.includes("overflow-x:auto;overflow-y:hidden;"));
-  // the heading keeps its place: its tag stands where the page's gutter is, not against the glass
-  assert.ok(rows.includes("  .fs-shelf-h{margin-inline-end:calc(2px + var(--fs-gut));}"));
+  // the heading keeps its place: its tag stands where the page's gutter is, not against the glass. (Its box
+  // is said once, in THE TICKET, where it became the ticket's stub: it runs from the card's one edge to the
+  // other, and holds its words in by what the tray's padding and its own margins held them in before —
+  // 6px at the start, 2px and the page's gutter at the end.)
+  assert.ok(!/\.fs-shelf-h\{/.test(rows.replace(/\/\*[\s\S]*?\*\//g, "")));
+  assert.ok(ticket.includes(".fs-shelf-h{position:relative;margin-block:0 12px;margin-inline:calc(var(--tp) * -1);padding-block:0 11px;padding-inline:calc(var(--tp) + 6px) calc(var(--tp) + 2px + var(--fs-gut));"));
+  assert.ok(before.includes(".fs-shelf-h{display:flex;align-items:center;gap:11px;margin:0 2px 12px 6px;"), "6 and 2: the margins it had");
+  // (MEASURED on the TEST page at 390px, before and after: the tag's far edge at 362 — 28px from the screen's)
+  assert.equal(390 - (10 + 2 + 16), 362);
   // the Next-episode row is the same kind of row, to the same edge
   assert.ok(rows.includes(".fs-eps-row{margin-inline-end:calc(var(--fs-gut) * -1);padding-inline-end:16px;scroll-padding-inline-end:16px;}"));
   assert.ok(before.includes(".fs-eps-row{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 2px 6px;scrollbar-width:none;}"));
@@ -642,6 +745,12 @@ test("a tapped poster still pops where it stands — inside a row that keeps roo
   // heading's margin, so nothing moved) and 24 below (the tray's own foot, which it replaces)
   assert.ok(rows.includes("margin-block:-28px 0;") && rows.includes("padding-block:28px 24px;") && rows.includes("padding-bottom:0;}"));
   assert.ok(before.includes(".fs-shelf-h{display:flex;align-items:center;gap:11px;margin:0 2px 12px 6px;"));
+  // (the heading is the ticket's stub now, and still ends 12px above the posters: its perforation and its
+  //  foot are INSIDE its own box, above that margin — so the row's 28px of air is the 28 it was)
+  assert.ok(ticket.includes(".fs-shelf-h{position:relative;margin-block:0 12px;") && ticket.includes("padding-block:0 11px;") && ticket.includes("border-bottom:2px dashed rgba(107,79,14,.42);box-shadow:0 1px 0 rgba(255,255,255,.95);}"));
+  // (a print's lift is 4px of the 28 above it, and it is not added to the pop: the popped poster's own rule
+  //  outranks the lift's — four classes to three)
+  assert.ok(4 <= 28 && count(".fs-fmtgrid.throw .fs-fmt.zoom", ".") === 4 && count(".fs-shelf .fs-fmt:hover", ".") + 1 === 3);
   const heightAt = (vw: number, w: number) => (vw <= 639 ? 1.25 * w + 3 * 1.34 * 12 + 21 : 0.5625 * w + 2 * 1.34 * 13.5 + 25); // its picture, then its line
   for (const vw of [320, 360, 390, 430, 480, 639, 640, 768, 979]) {
     const { w } = rowAt(vw);
@@ -670,17 +779,32 @@ test("a tapped poster still pops where it stands — inside a row that keeps roo
   assert.ok(before.includes(FALL + "{background:transparent;border-color:transparent;}") && before.includes(".fs-shelves.throw .fs-shelf::before,.fs-shelves.throw .fs-shelf-h{opacity:0;}"));
   const classes = (sel: string) => count(sel, ".");
   const cards = T.filter((r) => /\.fs-shelf$/.test(r.sel));
-  assert.deepEqual(cards.map((r) => r.sel), [".fs-theater .fs-shelf", ".fs-theater .fs-shelves:not(.throw) .fs-shelf"]);
+  assert.deepEqual(cards.map((r) => r.sel), [".fs-theater .fs-shelf"]);
   // · its gold EDGE is said by a rule of TWO classes: the page's falling-away rule has three, and takes it
-  assert.deepEqual(props(cards[0].body), ["border-color", "background-clip"]);
+  assert.deepEqual(props(cards[0].body), ["border-color", "background-clip", "--tk-drop"]);
   assert.ok(classes(cards[0].sel) === 2 && classes(FALL) === 3 && classes(cards[0].sel) < classes(FALL));
-  // · its SHADOW is cast only while the shelves stand (the rule cannot match a shelf that is falling away,
-  //   and the page gives a shelf no shadow of its own to go back to)
-  assert.deepEqual(props(cards[1].body), ["box-shadow"]);
-  assert.ok(cards[1].sel.includes(".fs-shelves:not(.throw) "));
-  assert.ok(![...base.matchAll(/\.fs-shelf\{[^}]*\}/g)].some((m) => /box-shadow/.test(m[0])));
+  // · its SHADOW — and its THICKNESS, the card's lit edge and the three steps of stock under it — is cast by
+  //   ONE rule, the page's own, which cannot match a shelf that is falling away: the dark only names what
+  //   the card casts on it (--tk-drop), so no shelf in either theme has a shadow to go back to
+  const B = rules(base);
+  const ofCard = (r: { sel: string }) => parts(r).some((s) => /\.fs-shelf(\.is-[a-z]+)?$/.test(s));
+  assert.ok(B.filter(ofCard).length >= 12, "the page's own rules for a shelf card, in and out of its @media");
+  assert.deepEqual([...B, ...T].filter((r) => ofCard(r) && /(^|;)box-shadow:/.test(r.body)).map((r) => [named(r), r.body]), [[".fs-shelves:not(.throw) .fs-shelf", "box-shadow:var(--tk-side),var(--tk-drop);"]]);
   // · and it says nothing at all OF a shelf that is falling away
   assert.ok(!/\.fs-theater \.fs-shelves\.throw/.test(theater));
+  // WHAT MAKES THE CARD A TICKET FALLS AWAY WITH IT: the stub — its perforation and both notches are its own
+  // box and its own pseudo-elements — by the page's rule above; the engraving's layer and the printed
+  // hairline by the ticket's own, which outranks every rule that draws them (three classes)
+  assert.ok(ticket.includes(".fs-shelves.throw .fs-shelf::after,.fs-shelves.throw .fs-shelf-wm{opacity:0;}"));
+  const drawn = K.filter((x) => x.sel === ".fs-shelf::after" || x.sel === ".fs-shelf-wm");
+  assert.ok(drawn.length >= 3);
+  for (const r of drawn) assert.ok(classes(r.sel) === 1 && !/(^|;)opacity:/.test(r.body), `${named(r)}: ${r.body}`);
+  // THE CARD ITSELF CLIPS NOTHING — no overflow, no mask, no clip, no containment on a shelf, in either theme
+  // or in the dark's rules: a row still runs off the screen's edge and a popped poster still crosses the
+  // card's. The engraving is cut by ITS OWN layer (which covers the card and takes the card's corners).
+  for (const r of [...B, ...T].filter(ofCard)) assert.ok(!/(^|;)(overflow(-[xy])?|clip-path|-webkit-mask(-image)?|mask(-image)?|contain):/.test(r.body), `${named(r)} clips: ${r.body}`);
+  assert.ok(ticket.includes("\n.fs-shelf{isolation:isolate;--rr:17px;--tk-side:"), "(a card is its own layer — which clips nothing — so its engraving can lie under its words)");
+  assert.ok(ticket.includes(".fs-shelf-wm{position:absolute;inset:0;z-index:-1;border-radius:inherit;overflow:hidden;pointer-events:none;"));
 });
 
 test("a poster's words are never cut by the narrower card, and every card is the same height", () => {
@@ -718,16 +842,271 @@ test("in the dark the Next-episode cards are tickets under a sign in gold — an
   assert.ok(theater.includes(".fs-theater .fs-ep-txt{align-self:stretch;justify-content:center;padding-inline-start:10px;border-inline-start:2px dashed rgba(107,79,14,.42);}"));
   assert.ok(before.includes(".fs-ep-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}"), "a column: \"centre\" keeps its two lines in the middle of the card");
   // a shelf: its accent is the bar down its side, as in the light theme (while the shelves were dark cases it
-  // was a strip of light along the top) — the theater draws no pseudo-element of a shelf's at all
+  // was a strip of light along the top). The theater DRAWS no pseudo-element of a shelf's: the one pair it
+  // names — the ticket's two notches — it only colours (the dark that shows in them, the gold that edges them)
   assert.ok(before.includes(".fs-shelf::before{content:\"\";position:absolute;left:0;top:18px;bottom:18px;width:4px;border-radius:0 4px 4px 0;background:var(--shelf);opacity:.85;}"));
-  assert.ok(!T.some((r) => /\.fs-(shelf|fmt)[^,]*::(before|after)/.test(r.sel)));
+  const pseudo = T.filter((r) => /\.fs-(shelf|fmt)[^,]*::(before|after)/.test(r.sel));
+  assert.deepEqual(pseudo.map((r) => r.sel), [".fs-theater .fs-shelf-h::before,.fs-theater .fs-shelf-h::after"]);
+  assert.deepEqual(props(pseudo[0].body), ["background", "border-color"]);
   // the shelves' words are not a theme's to change: three shelves, their names, lines and tags
   assert.deepEqual(heroShelves(FILM_HEROES).map((s) => [s.name, s.tag, s.line]), [
     ["Stories", "Narrated", "A narrator tells it over moving pictures · ready in minutes"],
     ["Films", "Acted", "Actors speak the lines on camera"],
     ["Music videos", "Sung", "Your artist sings on camera"],
   ]);
-  // no gradient fades to the bare keyword (an old Safari greys it): every one ends in its own colour at nothing
-  // (the one "transparent" in the sheet is a row's bar's track, which is no gradient)
-  assert.ok(!/transparent/.test(theater.replace(/\/\*[\s\S]*?\*\//g, "").replace("scrollbar-color:#B08526 transparent;", "")));
+  // no gradient of the dark's fades to the bare keyword (an old Safari greys it): every one ends in its own
+  // colour at nothing — the word is not in either of its sheets
+  assert.ok(!/transparent/.test(theater.replace(/\/\*[\s\S]*?\*\//g, "")));
+});
+
+test("a shelf is a TICKET in both themes: the rosette engraved in its paper, a perforation between two notches, a printed hairline (\"some texture on the cards similar to the login one\")", () => {
+  // BOTH THEMES: it is the page's own stylesheet, said by the page's own classes — not a rule waits on the theme
+  assert.deepEqual(K.map(named), [
+    ".fs-shelf",
+    "@media(max-width:420px) .fs-shelf",
+    ".fs-shelves:not(.throw) .fs-shelf",
+    "[dir=rtl] .fs-shelf::before",
+    ".fs-shelf-wm",
+    "@supports ((-webkit-mask-image:none) or (mask-image:none)) .fs-shelf-wm::before,.fs-shelf-wm::after",
+    "@supports ((-webkit-mask-image:none) or (mask-image:none)) .fs-shelf-wm::before",
+    "@supports ((-webkit-mask-image:none) or (mask-image:none)) .fs-shelf-wm::after",
+    "@supports ((-webkit-mask-image:none) or (mask-image:none)) [dir=rtl] .fs-shelf-wm::before,[dir=rtl] .fs-shelf-wm::after",
+    "@supports ((-webkit-mask-image:none) or (mask-image:none)) [dir=rtl] .fs-shelf-wm::after",
+    "@media(min-width:980px) .fs-shelf-wm::before,.fs-shelf-wm::after",
+    "@media(hover:hover) and (pointer:fine) .fs-shelf-wm::before,.fs-shelf-wm::after",
+    ".fs-shelf-h",
+    ".fs-shelf-h::before,.fs-shelf-h::after",
+    ".fs-shelf-h::before",
+    ".fs-shelf-h::after",
+    "@media(max-width:979px) .fs-shelf-h::after",
+    ".fs-shelf-tag",
+    ".fs-shelf::after",
+    "@media(max-width:979px) .fs-shelf::after",
+    ".fs-shelves.throw .fs-shelf::after,.fs-shelves.throw .fs-shelf-wm",
+    ".fs-shelf .fs-fmt",
+    ".fs-shelf .fs-fmt::after",
+    "@media(hover:hover) .fs-shelf .fs-fmt:hover",
+    ".fs-shelf .fs-fmt:active",
+    "@media(prefers-reduced-motion:reduce) .fs-shelf-wm::before,.fs-shelf-wm::after",
+    "@media(prefers-reduced-motion:reduce) .fs-shelf-wm,.fs-shelf::after",
+    "@media(prefers-reduced-motion:reduce) .fs-shelf .fs-fmt,.fs-shelf .fs-fmt:hover,.fs-shelf .fs-fmt:active",
+  ]);
+  assert.ok(!/fs-theater|data-theme/.test(ticket.replace(/\/\*[\s\S]*?\*\//g, "")));
+  // ONE element was added for it — the engraving's layer, a picture only — the first thing in a shelf; the
+  // shelf's heading, its row and every poster are the markup they were (the rows' test pins them)
+  assert.equal(count(ui, "fs-shelf-wm"), 1);
+  assert.ok(ui.includes("<span className=\"fs-shelf-wm\" aria-hidden=\"true\" />\n              <header className=\"fs-shelf-h\">"));
+  const body = (sel: string, media = "") => { const r = K.filter((x) => x.sel === sel && x.media === media); assert.equal(r.length, 1, `${media} ${sel}`); return r[0].body; };
+  const MASKED = "@supports ((-webkit-mask-image:none) or (mask-image:none))";
+
+  // 1 · THE ENGRAVING. The rosette, IN the paper: drawn in a layer of its own that covers the card (inset 0),
+  //     takes the card's corners and cuts ITSELF — under the heading and the posters (z-index -1 inside the
+  //     card, which is its own layer), taking no tap.
+  assert.equal(body(".fs-shelf-wm"), "position:absolute;inset:0;z-index:-1;border-radius:inherit;overflow:hidden;pointer-events:none;background:linear-gradient(180deg,var(--shelf-soft),rgba(255,255,255,0) 60px);transition:opacity .3s ease;");
+  assert.ok(body(".fs-shelf").startsWith("isolation:isolate;--rr:17px;--tk-side:"));
+  //     In the shelf's OWN colour, through the rosette (a mask) — so storybook gold-brown, the stage's green,
+  //     the music video's violet — and only where a browser can mask: there is no rule for it outside that test
+  const rose = body(".fs-shelf-wm::before,.fs-shelf-wm::after", MASKED);
+  assert.equal(rose, "content:\"\";position:absolute;--wx:50%;top:0;right:0;height:140%;aspect-ratio:1;transform:translate(var(--wx),-50%);-webkit-mask:url(/gstyle-rosette.svg) center/contain no-repeat;mask:url(/gstyle-rosette.svg) center/contain no-repeat;");
+  assert.equal(body(".fs-shelf-wm::before", MASKED), "background:var(--shelf);opacity:.18;");
+  assert.ok(!K.some((r) => /\.fs-shelf-wm::(before|after)$/.test(r.sel) && r.media === ""), "never a square of colour");
+  //     PRESSED INTO THE STOCK, not printed on it: the same line once more under it, in white, a pixel down and
+  //     a pixel along — the far lip of a groove, catching the light (the light is from the top left in either
+  //     reading direction, so the lip is always the right-hand one)
+  assert.equal(body(".fs-shelf-wm::after", MASKED), "z-index:-1;margin:1px -1px 0 0;background:#fff;opacity:.9;");
+  assert.equal(body("[dir=rtl] .fs-shelf-wm::after", MASKED), "margin:1px 0 0 1px;");
+  for (const k of [".fs-shelf.is-told{--shelf:#A8741B;", ".fs-shelf.is-acted{--shelf:#0C7A46;", ".fs-shelf.is-sung{--shelf:#6B4BC8;"]) assert.ok(before.includes(k), k);
+  //     LARGE — taller than the card it is in (140% of the card's height; 160% on a wide screen, where a card
+  //     is four posters long) — and BLEEDING OFF A CORNER: its box is put AT the card's top far corner and
+  //     moved half its own size out and up, so its hub is the corner itself and three quarters of it lie
+  //     outside the card (the hub behind the shelf's tag was tried: the rosette's eye made a white disc there)
+  assert.ok(rose.includes(";top:0;right:0;height:140%;aspect-ratio:1;transform:translate(var(--wx),-50%);") && rose.includes(";--wx:50%;"));
+  assert.equal(body(".fs-shelf-wm::before,.fs-shelf-wm::after", "@media(min-width:980px)"), "height:160%;");
+  //     (read right to left the far corner is the left one)
+  assert.equal(body("[dir=rtl] .fs-shelf-wm::before,[dir=rtl] .fs-shelf-wm::after", MASKED), "--wx:-50%;right:auto;left:0;");
+  //     AT THE STRENGTH OF AN ENGRAVING, not of an object: 18% (the sign-in ticket's, a smaller rosette, is 16%)
+  //     ONE ROSETTE — its line and its lip — not two. (A second, smaller one off the opposite corner was tried
+  //     and not kept: it lies under the first poster, and an arc in the card's foot is all of it that shows.)
+  assert.equal(count(ticket.replace(/\/\*[\s\S]*?\*\//g, ""), "gstyle-rosette.svg"), 2, "one rosette: its mask, said twice for two engines");
+  //     The same layer carries the STUB's wash: the shelf's own tint, whole at the card's top, gone by 60px
+  assert.ok(body(".fs-shelf-wm").includes("background:linear-gradient(180deg,var(--shelf-soft),rgba(255,255,255,0) 60px);"));
+
+  // 2 · THE PERFORATION. The heading is the ticket's stub: its own box runs from the card's one edge to the
+  //     other, and its foot is a dashed line in the brown of a ticket's print (the Next-episode tickets' too)
+  const stub = body(".fs-shelf-h");
+  //     (CUT INTO the stock: a line of light runs under the row of holes)
+  assert.equal(stub, "position:relative;margin-block:0 12px;margin-inline:calc(var(--tp) * -1);padding-block:0 11px;padding-inline:calc(var(--tp) + 6px) calc(var(--tp) + 2px + var(--fs-gut));border-bottom:2px dashed rgba(107,79,14,.42);box-shadow:0 1px 0 rgba(255,255,255,.95);");
+  assert.ok(theater.includes("border-inline-start:2px dashed rgba(107,79,14,.42);}"));
+  assert.ok(rows.includes(".fs-shelf{--tp:14px;") && rows.includes("@media(max-width:420px){.fs-shelf{--tp:10px;}}") && before.includes("padding:14px 14px 14px;") && before.includes(".fs-shelf{padding:12px 10px 12px;"), "--tp is the card's own side padding: the stub takes exactly that back");
+  //     …between TWO HALF-ROUND NOTCHES, one at each end of that line: 18px tall and centred on it, each
+  //     covering the card's 1px edge and biting 9px into the card, filled with the PAGE's own colour (the
+  //     shell's cream here; the theater says the dark's) and carrying the card's edge round its curve
+  //     (a notch is a BITE out of the card: shaded inside its upper lip)
+  assert.equal(body(".fs-shelf-h::before,.fs-shelf-h::after"), "content:\"\";position:absolute;bottom:-8px;width:10px;height:18px;box-sizing:border-box;background:var(--paper,#F4F1E6);border:1px solid var(--line,#E4DFCF);box-shadow:inset 0 2px 2px -1px rgba(20,32,26,.3);pointer-events:none;");
+  assert.equal(body(".fs-shelf-h::before"), "inset-inline-start:-1px;border-inline-start:0;border-start-end-radius:9px;border-end-end-radius:9px;");
+  assert.equal(body(".fs-shelf-h::after"), "inset-inline-end:-1px;border-inline-end:0;border-start-start-radius:9px;border-end-start-radius:9px;");
+  assert.equal((18 - 8 + -8) / 2, 1, "its middle is 1px above the stub's foot: the middle of the 2px line");
+  assert.ok(shell.includes("--paper:#F4F1E6;") && shell.includes("    var(--paper);}"), "the cream page's own ground");
+  assert.ok(before.includes("border:1px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#FFFEFA,#FBF8F0);"), "the card's own edge");
+  assert.ok(8 < 12, "a notch ends 8px under the line; the posters start 12 under it");
+  //     …where the card HAS an end: below 980px it runs off the screen's edge, so it has one notch
+  assert.equal(body(".fs-shelf-h::after", "@media(max-width:979px)"), "content:none;");
+  assert.ok(rows.includes("margin-inline-end:calc(var(--fs-gut) * -1);border-inline-end-width:0;border-start-end-radius:0;border-end-end-radius:0;}"));
+  //     (every side is said by its logical name, so read right to left the ticket is its own mirror — and
+  //      the shelf's coloured bar, which the page put on the left, goes to the start with them)
+  assert.ok(!/(^|[;{])(left|right|margin-left|margin-right|padding-left|padding-right|border-left|border-right)[:-]/.test(stub + body(".fs-shelf-h::before") + body(".fs-shelf-h::after")));
+  assert.equal(body("[dir=rtl] .fs-shelf::before"), "left:auto;right:0;border-radius:4px 0 0 4px;");
+
+  // 3 · THE HAIRLINE: a fine line of the shell's deep gold just inside the card's edge — 5px in, following
+  //     the card's corners (22 - 5; 18 - 5 on a small phone) — printed UNDER the posters (z-index -1), so one
+  //     scrolled to the card's edge passes over it; open at the end where the card runs off the screen
+  assert.equal(body(".fs-shelf::after"), "content:\"\";position:absolute;z-index:-1;inset:5px;border:1px solid rgba(176,133,38,.38);border-radius:var(--rr);pointer-events:none;transition:opacity .3s ease;");
+  assert.equal(body(".fs-shelf::after", "@media(max-width:979px)"), "inset-inline-end:0;border-inline-end:0;border-start-end-radius:0;border-end-end-radius:0;");
+  assert.equal(body(".fs-shelf", "@media(max-width:420px)"), "--rr:13px;");
+  assert.ok(hexOf("176,133,38") === "#B08526" && shell.includes("--gold:#B08526;") && before.includes("border-radius:22px;") && before.includes("border-radius:18px;}.fs-shelf-name{font-size:17px;}}"));
+
+  // THE WORDS ON IT: the tag's plate is solid cream under its tint — nothing of the engraving runs behind its
+  // letters — and the name and the line under it still read where a line of the engraving passes under them
+  // (11.5:1 and 4.7:1 or better: the sums are in the contrast test)
+  assert.equal(body(".fs-shelf-tag"), "background:linear-gradient(var(--shelf-soft),var(--shelf-soft)),#FFFEFA;");
+  // 4 · 3D ("Hero cards still need textured. 3d style" — and LIGHT is the default, where a cream card has no
+  //     colour to stand off the cream page with: its depth is all edge and shadow). A CARD IS A PIECE OF STOCK
+  //     WITH A THICKNESS: inside it a lit top edge and a shaded foot; under it three steps of darker cream — its
+  //     side, seen from a little above — then a contact shadow, a near one and a long soft one
+  const stock = body(".fs-shelf");
+  const side = /--tk-side:inset 0 1px 0 #fff,inset 0 -1px 0 rgba\(126,94,19,\.16\),0 1px 0 (#[0-9A-F]{6}),0 2px 0 (#[0-9A-F]{6}),0 3px 0 (#[0-9A-F]{6});/.exec(stock);
+  assert.ok(side, stock);
+  const steps = ["#FBF8F0", side[1], side[2], side[3]];
+  for (let i = 1; i < steps.length; i++) assert.ok(lum(steps[i]) < lum(steps[i - 1]) - 0.02, `each step of the card's side is darker than the one above it: ${steps}`);
+  assert.ok(stock.endsWith("--tk-drop:0 4px 5px rgba(20,32,26,.2),0 16px 26px -16px rgba(20,32,26,.3),0 38px 56px -38px rgba(20,32,26,.42);"));
+  assert.equal(body(".fs-shelves:not(.throw) .fs-shelf"), "box-shadow:var(--tk-side),var(--tk-drop);");
+  //     …SEEN ON THE CREAM PAGE, where it must not go flat: the foot of the card's side stands off the page's
+  //     cream below it and off the card's cream above it
+  assert.ok(contrast(side[3], "#F4F1E6") >= 1.25 && contrast("#FFFEFA", side[3]) >= 1.4, `the card's side on the cream page: ${contrast(side[3], "#F4F1E6").toFixed(2)}`);
+  //     A POSTER IS A PRINT lying on the card: two steps of stock and a deeper shadow under it; over its picture
+  //     a thin lit bevel (light along its top and near side, shade along its foot) and a sheen across its corner
+  assert.equal(body(".fs-shelf .fs-fmt"), "box-shadow:0 1px 0 #EDE7D6,0 2px 0 #DDD6C0,0 3px 4px rgba(20,32,26,.2),0 12px 18px -12px rgba(20,32,26,.36);");
+  assert.equal(body(".fs-shelf .fs-fmt::after"), "content:\"\";position:absolute;inset:0;z-index:3;border-radius:inherit;pointer-events:none;background:linear-gradient(118deg,rgba(255,255,255,.2),rgba(255,255,255,.05) 24%,rgba(255,255,255,0) 42%);box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset 1px 0 0 rgba(255,255,255,.22),inset 0 -1px 0 rgba(20,32,26,.16);");
+  //     …which LIFTS a little under a pointer or a finger: moved and re-shadowed only — transform and box-shadow,
+  //     which take no room — so nothing beside it shifts; its shadow grows as it rises
+  const lift = body(".fs-shelf .fs-fmt:hover", "@media(hover:hover)"), press = body(".fs-shelf .fs-fmt:active");
+  for (const b of [lift, press]) assert.deepEqual(props(b), ["transform", "box-shadow"]);
+  assert.ok(lift.startsWith("transform:translateY(-4px);") && press.startsWith("transform:translateY(-2px);"));
+  assert.ok(before.includes("transition:transform .16s,box-shadow .16s,border-color .16s;"), "(the page's own poster eases both)");
+  //     (a row cuts off what leaves it and keeps 24px under its posters: a print's shadow stays inside that,
+  //      standing — 12 + 18 - 12 — or lifted — 18 + 22 - 14, less the 4 it rose)
+  assert.ok(12 + 18 - 12 <= 24 && 18 + 22 - 14 - 4 <= 24 && rows.includes("padding-block:28px 24px;"));
+  //     CHEAP: gradients, shadows and one mask — no filter, no backdrop-filter, no blur anywhere in it; a print's
+  //     dress is painted once with its row, so a row scrolls as it did
+  assert.ok(!/filter|backdrop|blur\(/.test(ticket.replace(/\/\*[\s\S]*?\*\//g, "")));
+
+  // NOT A CONTROL, NOT A WORD: nothing of the ticket takes a tap (the engraving is inside its layer, which
+  // takes none), and nothing of it is read out (pseudo-elements with nothing in them; a layer hidden from readers)
+  for (const sel of [".fs-shelf-wm", ".fs-shelf::after", ".fs-shelf-h::before,.fs-shelf-h::after", ".fs-shelf .fs-fmt::after"]) assert.ok(body(sel).includes("pointer-events:none;"), sel);
+});
+
+test("the hero's clip is FLUSH: the band's far side from top to foot, nothing round it, its near edge dissolved into the band (\"not flush like the others they appear boxed\")", () => {
+  // the reel is the page's own, as it was: two players that cross-fade, each over a blurred copy of its own
+  // poster; the tag that names what is playing; the words. Not a line of its markup changed.
+  for (const k of [
+    "<span key={k} className={`fs-reel${front === k ? \" on\" : \"\"}`} aria-hidden=\"true\">",
+    "<img className=\"fs-reel-amb\" src={c.poster} alt=\"\" />",
+    "<video ref={(el) => { vids.current[k] = el; }} className=\"fs-head-vid\" src={c.src} poster={c.poster}",
+    "<HeroReel clips={HERO_REEL.filter((c) => !c.key || heroes.some((h) => h.media === c.key))} onShow={setReelKey} />",
+    "<span className=\"fs-head-scrim\" aria-hidden=\"true\" />",
+    "<button type=\"button\" className=\"fs-head-tag\" key={reelKey} onClick={() => enterFormat(playing.id)}>",
+    "<b>{t(\"Make a movie.\")} <em>{t(\"Just describe it.\")}</em></b>",
+  ]) assert.equal(count(ui, k), 1, k);
+
+  // THE CLIP — every rule in the page's stylesheet that names it. It fills the band's far side: from the
+  // band's top to its foot and out to its edge (the band's own rounded corners are what cut it), 56% of the
+  // band (52% on a phone), covering that box; and its near edge DISSOLVES into the band (a mask, from nothing
+  // to whole over the first 46% of it) — the side, the share and the dissolve the Auto-post's and the
+  // Archive's headers give their picture.
+  const HB = rules(before);
+  const clip = HB.filter((r) => /\.fs-head-vid$/.test(r.sel));
+  assert.deepEqual(clip.map((r) => [named(r), r.body]), [
+    [".fs-head-vid", "position:absolute;top:0;right:0;bottom:0;left:auto;width:56%;height:100%;object-fit:cover;object-position:center;z-index:1;-webkit-mask-image:linear-gradient(90deg,transparent,#000 46%);mask-image:linear-gradient(90deg,transparent,#000 46%);"],
+    ["[dir=rtl] .fs-head-vid", "right:auto;left:0;-webkit-mask-image:linear-gradient(270deg,transparent,#000 46%);mask-image:linear-gradient(270deg,transparent,#000 46%);"],
+    ["@media(max-width:640px) .fs-head-vid", "width:52%;"],
+  ]);
+  assert.ok(before.includes(".fs-head{position:relative;overflow:hidden;border-radius:20px;"), "the band cuts it");
+  // NO BOX: nothing gives the clip a margin, corners, a ring, a shadow or a shape of its own — the screen
+  // that stood inside the band on a wide screen (18px in on three sides, 14px corners, a ring, a shadow) is gone
+  for (const r of clip) assert.ok(!/border|radius|shadow|outline|aspect-ratio|inset|margin|padding|contain/.test(r.body), `${named(r)}: ${r.body}`);
+  assert.ok(!/\.fs-reel \.fs-head-vid|18px 18px 18px/.test(before) && !/\.fs-head-vid/.test(rows + gold + ticket + theater));
+  // (the reel's two players still lie across the whole band, cross-fading — each with its poster's blurred
+  //  copy behind the clip, which is what the clip dissolves into)
+  for (const k of [".fs-reel{position:absolute;inset:0;z-index:1;opacity:0;transition:opacity .9s ease;}", ".fs-reel.on{opacity:1;}", ".fs-reel-amb{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(30px) brightness(.5) saturate(1.15);transform:scale(1.18);}"]) assert.equal(count(before, k), 1, k);
+
+  // THE WORDS keep to the band's first 58% (on a phone: the band's 18px, then 60% of what is inside it — and
+  // the padding the words' own box had there on top of the band's, 26 and 30, is gone: it made a narrow
+  // column of them and a band a screen tall)
+  assert.ok(before.includes(".fs-head-copy{position:relative;z-index:3;flex:1 1 auto;min-width:0;padding:26px 30px;max-width:min(560px,58%);}"));
+  assert.ok(before.includes("@media(max-width:640px){.fs-head{padding:18px;min-height:114px;}.fs-head-copy{max-width:60%;padding:0;}.fs-head-vid{width:52%;}"));
+  assert.ok(before.indexOf("@media(max-width:640px){.fs-head{padding:18px;") > before.indexOf(".fs-head-copy{position:relative;z-index:3;") && before.indexOf("@media(max-width:640px){.fs-head{padding:18px;") > before.indexOf(".fs-head-vid{position:absolute;top:0;"), "said after the rules it narrows");
+  // THE SHADE THEY STAND ON: the band's deep green, whole under the words and gone before the clip is whole
+  const shade = HB.filter((r) => /\.fs-head-scrim$/.test(r.sel));
+  assert.deepEqual(shade.map(named), [".fs-head-scrim", "[dir=rtl] .fs-head-scrim", "@media(max-width:640px) .fs-head-scrim", "@media(max-width:640px) [dir=rtl] .fs-head-scrim"]);
+  assert.ok(shade[0].body.startsWith("position:absolute;inset:0;z-index:2;background:linear-gradient(90deg,"));
+  for (const [ltr, rtl] of [[shade[0], shade[1]], [shade[2], shade[3]]]) assert.equal(rtl.body, ltr.body.slice(ltr.body.indexOf("background:")).replace("90deg", "270deg"), "mirrored, read right to left");
+  const readShade = (body: string) => {
+    const m = /background:linear-gradient\(90deg,rgba\(7,42,27,(\.\d+)\),rgba\(7,42,27,(\.\d+)\) (\d+)%,rgba\(7,42,27,0\) (\d+)%\);$/.exec(body);
+    assert.ok(m, body);
+    const [S0, S1, P1, P2] = [Number(m[1]), Number(m[2]), Number(m[3]) / 100, Number(m[4]) / 100];
+    return { P1, P2, at: (x: number) => (x <= P1 ? S0 + ((S1 - S0) * x) / P1 : x >= P2 ? 0 : (S1 * (P2 - x)) / (P2 - P1)) };
+  };
+  // (a phone's is whole a little further — to 60% of the band, where its words end — and gone by 78%)
+  const WIDE = readShade(shade[0].body), PHONE = readShade(shade[2].body);
+  assert.deepEqual([WIDE.P1, WIDE.P2, PHONE.P1, PHONE.P2], [0.54, 0.74, 0.6, 0.78]);
+  /** How much of the clip shows at `x` of the band, when the clip is the far `w` of it. */
+  const clipAt = (x: number, w: number) => Math.min(1, Math.max(0, (x - (1 - w)) / (0.46 * w)));
+  /** `src` blended over `base` as light ("screen") at `a` — how the hero's rosette lies on what is under it. */
+  const screenOver = (src: string, under: string, a: number) => "#" + [1, 3, 5].map((i) => { const b = parseInt(under.slice(i, i + 2), 16) / 255, s = parseInt(src.slice(i, i + 2), 16) / 255; return Math.round(255 * ((1 - a) * b + a * (b + s - b * s))).toString(16).padStart(2, "0"); }).join("");
+  // NO WORD STANDS ON A BUSY PICTURE — AND EVERY WORD STILL READS OVER THE ROSETTE. The worst there can be
+  // under a letter: a WHITE picture, over a poster that is white too (its blurred copy is halved in
+  // brightness), as much of it as shows there, under the shade there — and a line of the hero's rosette across
+  // it (the rosette's own gold, at 30% of a stroke that is 92% there, blended as light). The title is white;
+  // the line under it white at 85%.
+  assert.ok(before.includes("color:#fff;margin-top:11px;line-height:1.04;text-shadow:0 2px 18px rgba(0,0,0,.4);text-wrap:balance;}") && before.includes(".fs-head-copy>span{display:block;font-size:13.5px;color:rgba(255,255,255,.85);"));
+  assert.ok(read("public", "gstyle-rosette.svg").includes("stroke='#FFD24A' stroke-opacity='0.92'"));
+  const worst = (x: number, w: number, shadeAt: (x: number) => number, rosette: boolean) => {
+    let ground = over(hexOf("7,42,27"), over("#FFFFFF", "#808080", clipAt(x, w)), shadeAt(x));
+    if (rosette) ground = screenOver("#FFD24A", ground, 0.3 * 0.92);
+    return [contrast("#FFFFFF", ground), contrast(over("#FFFFFF", ground, 0.85), ground)];
+  };
+  // (the rosette is 350px, 130px of it off the band's near edge, and its figure fills 121.5/130 of its box:
+  //  it reaches 45 + 163.6 = 209px into the band at the most)
+  const REACH = -130 + 175 + (175 * 121.5) / 130;
+  assert.ok(Math.abs(REACH - 208.6) < 0.1);
+  let least = 99;
+  const look = (band: number, wordsEnd: number, w: number, shadeAt: (x: number) => number) => {
+    least = Math.min(least, ...worst(wordsEnd / band, w, shadeAt, wordsEnd <= REACH)); // the last letter of a line
+    least = Math.min(least, ...worst(Math.min(wordsEnd, REACH) / band, w, shadeAt, true)); // the furthest letter the rosette lies under
+  };
+  for (const vw of [641, 768, 960, 1280, 1920]) { const band = vw - 2 * Math.min(56, Math.max(18, 0.03 * vw)); look(band, 0.58 * band, 0.56, WIDE.at); }
+  for (let vw = 320; vw <= 640; vw += 10) { const band = vw - 2 * 16; look(band, 18 + 0.6 * (band - 2 * 18), 0.52, PHONE.at); }
+  assert.ok(least >= 4.5, `the least a word of the hero has — on a white picture, a line of the rosette under it: ${least.toFixed(2)}:1`);
+  // …AND NOTHING DULLS THE CLIP: where it is whole the shade is all but gone (a third of it is left on a
+  // phone's, for the first few pixels), and a little further it is gone
+  assert.ok(WIDE.at(1 - 0.56 + 0.46 * 0.56) <= 0.2 && PHONE.at(1 - 0.52 + 0.46 * 0.52) <= 0.35 && WIDE.at(WIDE.P2) === 0 && PHONE.at(PHONE.P2) === 0);
+  assert.ok(!/radial-gradient/.test(shade[0].body), "(the old shade lay over the whole picture)");
+
+  // WHAT IS ON THE CLIP: the tag that says what is playing — the band's far bottom corner (its top corner
+  // on a phone, where the page's gold rosette has the bottom one); mirrored when the page is
+  assert.ok(before.includes(".fs-head-tag{position:absolute;z-index:4;right:16px;bottom:14px;display:inline-flex;"));
+  assert.ok(before.includes("@media(min-width:960px){\n  .fs-head{min-height:clamp(320px,24vw,420px);}\n  .fs-head-tag{right:22px;bottom:20px;}\n}"));
+  assert.ok(before.includes("@media(max-width:640px){.fs-head-tag{top:12px;bottom:auto;right:12px;"));
+  assert.ok(before.includes("[dir=rtl] .fs-head-tag{right:auto;left:16px;}\n@media(min-width:960px){[dir=rtl] .fs-head-tag{left:22px;}}\n@media(max-width:640px){[dir=rtl] .fs-head-tag{left:12px;}}"));
+  // (MEASURED on the TEST page — 390px: the band 358 x 192, the clip 186 wide from the band's top to its foot,
+  //  the words ending at 59% of the band; 1280px: the band 1203 x 320, the clip 674 wide, the words ending
+  //  where it begins. Its corners 0, its shadow none.)
+  assert.ok(Math.abs(0.52 * 358 - 186.2) < 0.1 && Math.abs(0.56 * 1203.2 - 673.8) < 0.1);
+
+  // A FORMAT'S OWN BANNER was flush already — its picture covers it from edge to edge at every width (the
+  // "contain" a wide screen was once given is said BEFORE the rule it meant to change, so it never applied)
+  // — and is left exactly as it was
+  assert.ok(before.includes(".fs-hero-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;}"));
+  assert.ok(before.indexOf(".fs-hero-art{position:absolute;inset:0;") > before.indexOf(".fs-hero-art{object-fit:contain;object-position:center;}") && before.indexOf(".fs-hero-art{object-fit:contain;") > 0);
+  assert.deepEqual(HB.filter((r) => /\.fs-hero-art$/.test(r.sel)).map(named), ["@media(min-width:960px) .fs-hero-art", ".fs-hero-art", "@media (prefers-reduced-motion:reduce) .fs-hero-art"]);
 });
