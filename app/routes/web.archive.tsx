@@ -385,7 +385,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const inLine = jobs.filter((j) => j.status === "PENDING" && (!j.runAt || j.runAt.getTime() <= nowMs));
   const places = inLine.length ? await placesInLine(inLine.map((j) => ({ id: j.id, type: j.type, payload: j.payload }))).catch(() => new Map<string, number | null>()) : new Map<string, number | null>();
   for (const j of jobs) {
-    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string; contentType?: string; filmScenes?: number; filmMode?: string; filmPictures?: string } = {};
+    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string; contentType?: string; filmScenes?: number; filmMode?: string; filmPictures?: string; lyricSeconds?: number } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
     // Unified archive: every cooking tile shows, whichever section started it.
     const due = !j.runAt || j.runAt.getTime() <= nowMs;
