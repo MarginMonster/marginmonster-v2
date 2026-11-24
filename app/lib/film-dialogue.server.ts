@@ -1051,7 +1051,15 @@ export async function generateTestMovie(opts: {
     const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);
     let revealed = false;
     if (!seedAbs && lastHorror && tr !== "location" && master?.url && stagingOf(master)) {
-      const ask = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })) });
+      // THE CHOSEN CREATURE AS THE THING (premise-rules.ts → chosenThreat): a creature the maker chose that is not
+      // one of the two who talk, and that this last shot finds, is drawn FROM ITS OWN PICTURE — that creature, not
+      // one made up from the words (the stronger editor takes it as a second picture; the permissive one cannot).
+      const thing = castActors.find((c) => !!c.faceUrl && isCreature(c) && ![spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name)) && (scene.visual || "").toLowerCase().includes(c.name.trim().toLowerCase()));
+      const thingFace = thing ? abs(thing.faceUrl) : undefined;
+      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })) });
+      const ask = askOne && thing && thingFace
+        ? `${askOne} What is found is ${thing.name.trim()}: the creature in the SECOND picture — that exact creature, its face, its fur or skin and its colours and whatever it wears — drawn INTO the first picture the way this says; everything else in the first picture stays exactly as it is.`
+        : askOne;
       // ON THE STRONGER EDITOR. Drawn from a frame of the owner's second film, nine rounds of it and looked at:
       // the everyday picture model (the one this used, and the one that drew the mannequin's arm) made every
       // thing it added look stuck on — a white bony claw, a cartoon eyeball, a face in a black cut-out over the
@@ -1059,8 +1067,8 @@ export async function generateTestMovie(opts: {
       // in real plaster with the face or the fingers in it, photographed. flux-kontext-pro is the more
       // permissive editor when that one refuses (horror is refused now and then). About 15 cents a film.
       for (const [model, input] of [
-        ["google/nano-banana-pro", { prompt: ask, image_input: [abs(master.url)], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
-        ["black-forest-labs/flux-kontext-pro", { prompt: ask, input_image: abs(master.url), aspect_ratio: aspect, output_format: "jpg", output_quality: 92 }],
+        ["google/nano-banana-pro", { prompt: ask, image_input: [abs(master.url), ...(thing && thingFace ? [thingFace] : [])], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
+        ["black-forest-labs/flux-kontext-pro", { prompt: askOne, input_image: abs(master.url), aspect_ratio: aspect, output_format: "jpg", output_quality: 92 }],
       ] as Array<[string, Record<string, unknown>]>) {
         if (!ask || seedAbs) break;
         try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), "jpg"))); }

@@ -99,9 +99,9 @@ test("a creature stays that creature: said in the picture's words, said again wh
 
   const nar = read("app", "lib", "narrated-story.server.ts");
   assert.ok(nar.includes("here.forEach((c) => { const note = creatureNote(c.name, c.kind); if (note) notes.push(note); });"));
-  // THE LAST GO of a scene whose cast came out wrong twice is drawn on the stronger model
-  assert.ok(nar.includes("const strong = a === 2 && !!best && best.check.seen.includes(false) && process.env.STORY_STRONG_RETRY !== \"off\";"));
-  assert.ok(nar.includes("const model = strong ? STORY_CROWD_MODEL : sceneModel(people);"));
+  // EVERY GO of a scene is on the good model now (story-picture.ts → STORY_LADDER) — the last go of a scene whose
+  // cast came out wrong twice used to be the one moved up to it
+  assert.ok(!nar.includes("STORY_STRONG_RETRY") && nar.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
 });
 
 test("a picture kept with somebody still wrong is written down on the piece", () => {

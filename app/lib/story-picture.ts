@@ -234,17 +234,35 @@ export function portraitPrompt(entry: string, sceneHint: string, safe = ""): str
   return `${safe}${sceneHint}. A character portrait of ${String(entry || "").replace(/\s+/g, " ").trim().slice(0, 320)} — this ONE character alone, the whole body from head to feet, standing, turned a little toward the viewer, the face clearly seen, on a plain neutral background. In the exact art style of the story. ${NOTHING_WRITTEN}`;
 }
 
-/* THREE PEOPLE FROM THREE PICTURES is more than the everyday picture model holds. Asked for "Tobias stands
- * at the workshop doorway watching Marta and Ines sand the hull" with their three portraits, it drew TWO
- * people — six times out of six in a direct test (2026-11-23), whether or not the prompt said how many
- * there were, and once it merged the two women into one. The stronger model, given the very same prompt
- * and portraits, drew all three, both times. It costs about four times as much a picture and takes twice
- * as long, so it draws ONLY a picture made from three reference pictures; everything else stays where it was. */
-export const STORY_MODEL = "google/nano-banana";
-export const STORY_CROWD_MODEL = "google/nano-banana-pro";
-/** How many reference pictures make a "crowd". */
-export const STORY_CROWD_REFS = 3;
-export const sceneModel = (refs: number): string => (refs >= STORY_CROWD_REFS ? STORY_CROWD_MODEL : STORY_MODEL);
+/* A TOLD STORY IS DRAWN ON THE GOOD MODEL — every picture of it: its portraits, its places' sheets and its scenes.
+ *
+ * It used to be the everyday model (nano-banana) for everything but a picture made from three reference
+ * pictures (more than that model holds: asked for "Tobias stands at the workshop doorway watching Marta and Ines
+ * sand the hull" with their three portraits, it drew TWO people six times out of six, 2026-11-23). The owner,
+ * 2026-11-24, of a tester's Horror Story: "looks like our narrated horror is running a poop engine for the stills
+ * and not the good one". He was right twice over. A scene the everyday model would not draw (a scary one — it
+ * refuses those now and then) fell through to the lenient path, whose own fallback on a refusal was flux-dev: the
+ * tester's "two children in a house" came back as a murky hut in a forest. And what it did draw was soft and
+ * airbrushed beside the stronger model: the tester's own two scenes drawn side by side by all three (2026-11-24 —
+ * two children on a sofa, one on the phone, a pale woman outside the window; a boy at his bedroom window, a dark
+ * shadow under the old tree) — the everyday model put the woman INSIDE the room and drew the boy as a speck;
+ * nano-banana-pro drew both like frames of a film; Seedream 4.5 nearly as well. None refused.
+ * So: nano-banana-pro first (about 15 cents a picture, twice the time); Seedream 4.5 when it refuses or cannot be
+ * reached — a different maker's model, that takes the same reference pictures, so the cast keep their looks;
+ * the everyday model last. */
+export const STORY_MODEL = "google/nano-banana-pro";
+export const STORY_SECOND_MODEL = "bytedance/seedream-4.5";
+export const STORY_LAST_MODEL = "google/nano-banana";
+/** The models a told story's picture is tried on, in order. */
+export const STORY_LADDER: ReadonlyArray<string> = [STORY_MODEL, STORY_SECOND_MODEL, STORY_LAST_MODEL];
+/** What each of them is asked — the same picture, in each one's own words: nano-banana-pro at its plainest size
+ *  (1K — what the story is cut at), Seedream at its smallest (2K: it has no 1K), the everyday model as it was. */
+export function storyPictureInput(model: string, o: { prompt: string; refs: ReadonlyArray<string>; aspect: string }): Record<string, unknown> {
+  const refs = o.refs.length ? { image_input: [...o.refs] } : {};
+  if (model === STORY_SECOND_MODEL) return { prompt: o.prompt, ...refs, aspect_ratio: o.aspect, size: "2K", max_images: 1 };
+  if (model === STORY_LAST_MODEL) return { prompt: o.prompt, ...refs, aspect_ratio: o.aspect, output_format: "jpg" };
+  return { prompt: o.prompt, ...refs, aspect_ratio: o.aspect, output_format: "jpg", resolution: "1K" };
+}
 
 /** The token: the portraits — and the story's PLACES (below), which travel with them — each by its own
  *  address on OUR renders disk and nothing else (it comes back from a browser — an address anywhere else

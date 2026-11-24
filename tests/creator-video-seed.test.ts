@@ -50,6 +50,6 @@ test("the Creator seed is made whole before anything is asked to fetch it", () =
   // what the seed step returns is still a path of ours — the reason this join exists
   const img = read("app", "lib", "image-generation.server.ts");
   const fn = img.slice(img.indexOf("export async function renderCreativeSeed("));
-  assert.ok(fn.slice(0, 2600).includes("const durable = await persistRemote(url, \"jpg\");"));
+  assert.ok(fn.slice(0, 3400).includes("const durable = await persistRemote(url, \"jpg\");"));
   assert.ok(img.includes("  return `/renders/${fileName}`;"));
 });

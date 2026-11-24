@@ -84,8 +84,8 @@ test("what the story's writer is told: the premise, and NOT the show's name — 
   assert.ok(!t.includes("Night tales"));
   const long = episodeTopic({ idea: "i".repeat(400), seriesName: "S".repeat(90), star: HOWL });
   assert.equal(long.length, 298);
-  // (the writer cuts the topic at 300: film-engine)
-  assert.ok(read("app", "lib", "film-engine.server.ts").includes("\"${topic.slice(0, 300)}\""));
+  // (the writer cuts the topic at IDEA_MAX — 1200 since 2026-11-24 — so an episode's 300 always fits: film-engine)
+  assert.ok(read("app", "lib", "film-engine.server.ts").includes("\"${topic.slice(0, IDEA_MAX)}\""));
   // the sign-off: one clean line; and what a finished episode keeps about its show
   assert.equal(signoffOf('  "Stay quiet.\n Stay sharp."  '), "Stay quiet. Stay sharp.");
   assert.equal(signoffOf(null), "");

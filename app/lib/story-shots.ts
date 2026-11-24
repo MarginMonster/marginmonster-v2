@@ -73,8 +73,11 @@ export const STORY_SHOTS: Record<StoryShot, ShotSpec> = {
     motion: "Both hold their places; only small movement. The camera drifts very slowly forward.",
   },
   detail: {
-    write: "A DETAIL — no face at all: a hand, an object, a footprint, a door handle — the one thing this moment turns on, filling the frame (name nobody in this VISUAL unless it is their hand or their paw)",
-    camera: "CAMERA: an extreme close-up of that one thing — it fills the frame; no faces in the picture.",
+    // (ONE PERSON'S HANDS: a tester's Moral Story, 2026-11-24, ended on "the boy's small hand and the old man's
+    //  hand on the neck of the sack" — and the picture melted the two hands into one; a picture model cannot
+    //  keep two people's fingers apart on one thing filling the frame)
+    write: "A DETAIL — no face at all: ONE person's hand (or their two hands), an object, a footprint, a door handle — the one thing this moment turns on, filling the frame (name nobody in this VISUAL unless it is their hand or their paw). Never two people's hands together on one thing — when two share it, the DETAIL is the thing itself, or one of their hands on it",
+    camera: "CAMERA: an extreme close-up of that one thing — it fills the frame; no faces in the picture; at most one person's hands.",
     motion: "Almost still: the smallest movement. The camera holds still.",
   },
 };

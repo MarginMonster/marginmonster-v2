@@ -55,6 +55,7 @@ import type { StoryToEdit } from "../lib/story-edit";
 import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
 // (2026-11-23) a story's pictures move — what that takes is said beside Generate
 import { storyPicturesOf, storyTypicalSeconds, type StoryPictures } from "../lib/story-motion";
+import { IDEA_MAX } from "../lib/premise-rules";
 import { storyMotionOn } from "../lib/story-motion.server";
 // (2026-11-23) THE STORY'S OWN CAST: a portrait for every character a story invents — shown, and kept
 import { castCardsOf, castToken, keepGuess, placesOf, readCastToken, type StoryCastRef } from "../lib/story-picture";
@@ -455,7 +456,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: tr(lang, "That film format doesn't exist — pick one in the Movie Maker."), detail: `unknown template "${templateKey.slice(0, 40)}"` }, { status: 400 });
   }
   const tmpl = filmTemplate(templateKey || undefined);
-  const topic = ((form.get("filmTopic") as string) || "").trim().slice(0, 300);
+  // (an idea is the member's whole story — it was cut at 300 characters, and a tester's came to the writer
+  //  ending "…built around the roots of a big tr": IDEA_MAX, premise-rules.ts)
+  const topic = ((form.get("filmTopic") as string) || "").trim().slice(0, IDEA_MAX);
   // NARRATED: a storyteller's voice over pictures instead of the cast acting it (story formats only).
   const narrated = ((form.get("filmMode") as string) || "").trim() === "narrated" && canNarrate(tmpl.key);
   // MUSIC VIDEO: the length is picked in seconds and the pace decides how long a scene is — 5 or 10
@@ -3541,7 +3544,7 @@ export default function FilmStudio() {
             <label htmlFor="mm-topic-in">{t("What's your video about?")}</label>
             {/* (a box that GROWS with the idea: it was one line, and a phone showed "late night drive through
                 the city, two pe…" — the rest of the idea out of sight. Enter is not a new line; an idea is one.) */}
-            <textarea id="mm-topic-in" className="mm-topic-grow" rows={1} value={topic} onChange={(e) => setTopic(e.target.value.replace(/[\r\n]+/g, " "))} maxLength={300}
+            <textarea id="mm-topic-in" className="mm-topic-grow" rows={1} value={topic} onChange={(e) => setTopic(e.target.value.replace(/[\r\n]+/g, " "))} maxLength={IDEA_MAX}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
               placeholder={t("e.g. grinding from nothing, staying loyal, winning big")} />
             {ideaChanged && seeds && <p className="mm-note mm-idea-kept" role="status">{t("What you've made stays as it is — start over to use the new idea.")}</p>}
@@ -4013,7 +4016,7 @@ export default function FilmStudio() {
         )}
         {wipeNote("series:")}
         <textarea id="fs-topic-in" rows={3} value={topic} onChange={(e) => setTopic(e.target.value)}
-          placeholder={isStoryboard && series ? t("What happens next? Leave it empty and we'll decide.") : tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={300} />
+          placeholder={isStoryboard && series ? t("What happens next? Leave it empty and we'll decide.") : tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={IDEA_MAX} />
         {ideaChanged && (seeds || treatment) && <p className="mm-note mm-idea-kept" role="status">{isStoryboard && !narrated ? t("Your script stays as it is — Rewrite to use the new idea.") : t("What you've made stays as it is — start over to use the new idea.")}</p>}
         {!isStoryboard && (
         <div className="fs-len fs-len-topic">

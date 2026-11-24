@@ -47,7 +47,8 @@ import { episodeTitle, seriesWriterBrief, type SeriesBrief } from "./film-series
 import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from "./dialogue-fit";
 import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 // (2026-11-24) a told story's places: a scene set at one says so in its own words
-import { WHAT_FRIGHTENS, inheritPlaces, placeNamed, placesAsk, takePlaces } from "./story-picture";
+import { WHAT_FRIGHTENS, inheritPlaces, keepGuess, placeNamed, placesAsk, takePlaces } from "./story-picture";
+import { HORROR_SAFETY, IDEA_MAX, PREMISE_WINS, STORY_SAFETY, chosenThreat } from "./premise-rules";
 import { tellerVisual } from "./character-series";
 import { planShots, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
@@ -559,8 +560,14 @@ export async function previewFilmTreatment(opts: {
   // Kill "AI slop" names/pets WITHOUT banning atmosphere: the writer kept inventing a dog + NAMED
   // extras nobody asked for, but a crowd at a show or passersby on a street are fine and wanted.
   const noSlop = " Do NOT invent any uninvited NAMED or featured characters, or animals/pets (no dogs, cats) — the only recurring, named people are the cast above. Incidental UNNAMED background people (a crowd at a show, dancers, passersby on a street) are fine and encouraged where the setting calls for them.";
+  // A CREATURE THE MAKER CHOSE FOR A HORROR IDEA THAT CALLS ITS THREAT SOMETHING ELSE (premise-rules.ts →
+  // chosenThreat): the tester's "a dark shadow standing under the old tree", made with the werewolf chosen, came
+  // back with the werewolf standing beside the boy — a grown man by then — in a lit bedroom from the first shot.
+  // In an acted film the chosen creature is then the THING, not one of the two who talk.
+  const threatNames = tmpl.key === "horror" ? picked.filter((c) => keepGuess(c.desc).kind === "monster").map((c) => c.name) : [];
+  const actedThreat = acted && threatNames.length > 0;
   const pickedLine = picked.length
-    ? `\nTHE CAST IS ALREADY CHOSEN — write the story for exactly these characters: ${picked.map((c) => `${c.name}${c.desc ? ` — ${c.desc}` : ""}`).join("; ")}. Return them as "cast": ONE entry each, in this order, EACH STARTING WITH THE CHARACTER'S EXACT NAME followed by that fixed look (e.g. "${picked[0].name}, …"). Use these exact names in every scene and never rename them. A character who is a creature or a cartoon stays exactly that — never turn them into a person.${narrated ? " If the story needs someone else who comes back (a victim, a friend, a parent), you may add up to TWO more recurring characters: give each a simple first name and add them to \"cast\" after the chosen ones, each entry starting with the name followed by one fixed, vivid look." : picked.length < 2 ? " The story needs a second voice: invent ONE more character with a simple first name, described just as vividly, and add them to \"cast\" after the first." : " Do NOT add any other named character."}${noSlop}`
+    ? `\nTHE CAST IS ALREADY CHOSEN — write the story for exactly these characters: ${picked.map((c) => `${c.name}${c.desc ? ` — ${c.desc}` : ""}`).join("; ")}. Return them as "cast": ONE entry each${actedThreat ? " (a chosen creature that is the threat — below — excepted)" : ""}, in this order, EACH STARTING WITH THE CHARACTER'S EXACT NAME followed by that fixed look (e.g. "${picked[0].name}, …"). Use these exact names in every scene and never rename them. A character who is a creature or a cartoon stays exactly that — never turn them into a person.${narrated ? " If the story needs someone else who comes back (a victim, a friend, a parent), you may add up to TWO more recurring characters: give each a simple first name and add them to \"cast\" after the chosen ones, each entry starting with the name followed by one fixed, vivid look." : actedThreat ? " When a chosen creature is the threat, the two who talk are the idea's own people: invent each of them who was not chosen — a simple ONE-WORD first name and one fixed, vivid look that gives their age the way the idea does — and add them to \"cast\"." : picked.length < 2 ? " The story needs a second voice: invent ONE more character with a simple first name, described just as vividly, and add them to \"cast\" after the first." : " Do NOT add any other named character."}${noSlop}${chosenThreat(threatNames, acted)}`
     : "";
   const castLine = pickedLine ? pickedLine : tmpl.castBible
     ? (tmpl.sing && !tmpl.childSafe
@@ -710,11 +717,13 @@ export async function previewFilmTreatment(opts: {
     : tmpl.narrated
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a CAPTION that is the NARRATOR'S spoken line for that beat — ONE natural sentence, <=14 words, moving the story forward; read in order the captions are a continuous, emotive voiceover that tells the whole story and lands the ending.\n${VISUAL_STANDS_ALONE}\n`
     : `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}) and a short CAPTION (one punchy on-screen line, <=8 words; the hook or the joke's line for that beat).\n${VISUAL_STANDS_ALONE}\n`;
+  // CHILDREN STAY CHILDREN (premise-rules.ts). Both lines below used to end "recast any … as an adult" — and the
+  // tester's two children, and his boy, came back grown-ups.
   const safetyLine = tmpl.childSafe
     ? `SAFETY: this is for very young children — keep it 100% wholesome and G-rated: happy, gentle and safe. NOTHING scary, sad, violent, adult or unsafe; no real named people or brands; invent no claims.`
     : tmpl.key === "horror"
-    ? `This is FICTIONAL horror for an entertainment video (a horror-short / scary-story channel). Write a GENUINELY SCARY, intense, DARK horror story — real menace, dread, danger, frightening imagery and a chilling twist; a horror-FILM feel, NOT a watered-down kids' version. Violence, death, blood and disturbing imagery are fine when they serve the scare, portrayed with cinematic intent. CAST ONLY ADULTS: every character — victim and threat alike — is a grown adult; never write a child, teenager, infant or any minor into the story, and never place a young person in peril (the AI render models refuse minors-in-danger, which hard-fails the whole video — so recast any endangered character as an adult). The ONLY other limits: no gratuitous, lingering torture or graphic mutilation purely for shock, and no real named people. Take the premise and make it as frightening as you can within that.`
-    : `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe. Anyone who faces danger, threat, fear or menace is an ADULT — never place a child, teenager, infant or any minor in peril and never depict a minor being threatened, hunted, harmed or frightened; recast any such role as an adult (the AI render models refuse minors-in-danger, which hard-fails the video).`;
+    ? HORROR_SAFETY
+    : STORY_SAFETY;
   // The template brief says "a full ~2-minute MUSIC VIDEO … across several vivid settings" — say what a
   // short cut actually is, so the brief doesn't fight the hook-sized lyric budget above.
   const brief = tmpl.lipSyncSinger && shortCut
@@ -726,7 +735,7 @@ export async function previewFilmTreatment(opts: {
     // NEXT EPISODE: the series, the recap (fenced, quoted) and the rules of a next episode (film-series.ts)
     (series ? seriesWriterBrief(series) : "") +
     (topic
-      ? `${series ? "WHAT HAPPENS IN THIS EPISODE" : "THEME / what it's about"}: "${topic.slice(0, 300)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n`
+      ? `${series ? "WHAT HAPPENS IN THIS EPISODE" : "THEME / what it's about"}: "${topic.slice(0, IDEA_MAX)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n${storyFormat ? `${PREMISE_WINS}\n` : ""}`
       : series ? `Decide what happens next in this episode.\n` : `Pick a fun, broadly-appealing theme.\n`) +
     // a sung piece: the words are ours, whatever song the theme names
     (tmpl.lipSyncSinger || tmpl.sung ? `${ORIGINAL_LYRICS_RULE}\n` : "") +

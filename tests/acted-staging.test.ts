@@ -866,10 +866,14 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.ok(eng.includes("const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);"));
   const at = eng.indexOf("if (!seedAbs && lastHorror && tr !== \"location\" && master?.url && stagingOf(master)) {");
   assert.ok(at > eng.indexOf("let seedAbs = abs(approvedFrames[i]);") && eng.indexOf("if (!seedAbs && master?.url) {", at) > at);
-  assert.ok(eng.includes("const ask = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })) });"));
-  const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [abs(master.url)], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],");
-  const kontext = eng.indexOf("[\"black-forest-labs/flux-kontext-pro\", { prompt: ask, input_image: abs(master.url), aspect_ratio: aspect, output_format: \"jpg\", output_quality: 92 }],");
-  assert.ok(pro > at && kontext > pro, "the place's master is the ONE reference picture, on nano-banana-pro, then flux-kontext-pro");
+  assert.ok(eng.includes("const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })) });"));
+  const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [abs(master.url), ...(thing && thingFace ? [thingFace] : [])], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],");
+  const kontext = eng.indexOf("[\"black-forest-labs/flux-kontext-pro\", { prompt: askOne, input_image: abs(master.url), aspect_ratio: aspect, output_format: \"jpg\", output_quality: 92 }],");
+  assert.ok(pro > at && kontext > pro, "the place's master is the first reference picture, on nano-banana-pro, then flux-kontext-pro");
+  // A CREATURE THE MAKER CHOSE that is not one of the two, and that the last shot finds, is drawn from its own
+  // picture — the second picture on the stronger editor; the permissive one (one picture) is never told of it
+  assert.ok(eng.includes("const thing = castActors.find((c) => !!c.faceUrl && isCreature(c) && ![spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name)) && (scene.visual || \"\").toLowerCase().includes(c.name.trim().toLowerCase()));"));
+  assert.ok(eng.includes("const ask = askOne && thing && thingFace") && eng.includes(": askOne;"));
   assert.ok(eng.includes("try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\"))); }"));
   assert.ok(eng.includes("const implied = lastHorror && !revealed && tr !== \"location\" && !approvedFrames[i];"));
   assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, implied, face: scared });"));

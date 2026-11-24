@@ -4772,15 +4772,16 @@ export async function renderCreativeSeed(prompt: string, aspect = "9:16", maxPro
       // Fall back on ANY nano-banana error, not just a safety refusal. nano-banana is Google's model
       // on Replicate, and a Google-side auth outage (invalid_grant / Invalid JWT Signature) nulled
       // every hero image and killed whole renders — a provider incident no user or key change could
-      // fix. Route by cause: a SAFETY refusal -> flux-dev (the lenient model, for legal horror/gore);
-      // any OTHER error (a provider OUTAGE) -> flux-1.1-pro, which is sharp and photoreal, so the
-      // degraded mode still looks good. nano-banana resumes automatically when it heals.
+      // fix. Either way -> flux-1.1-pro, sharp and photoreal, so the degraded mode still looks good — and
+      // after a SAFETY refusal it is told to be lenient (safety_tolerance 5 of 6, for legal horror/gore).
+      // A refusal used to go to flux-dev, "the lenient model": the murky, airbrushed pictures the owner
+      // called "a poop engine" in a tester's Horror Story (2026-11-24). flux-dev is now the last resort,
+      // when even that refuses. nano-banana resumes automatically when it heals.
       const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
       const safety = /safet|flag|sensitive|nsfw|content|blocked|moderat|prohibit|violat|e005|not allowed/.test(msg);
-      artLog("image-ad", `nano-banana failed (${e instanceof Error ? e.message.slice(0, 70) : e}) — ${safety ? "flux-dev (safety)" : "flux-1.1-pro (outage)"}`);
-      url = safety
-        ? await repRun("black-forest-labs/flux-dev", { prompt: full, num_inference_steps: 30, guidance: 3, aspect_ratio: ar, output_format: "jpg", output_quality: 92 })
-        : await repRun("black-forest-labs/flux-1.1-pro", { prompt: full, aspect_ratio: ar, output_format: "jpg", output_quality: 90 });
+      artLog("image-ad", `nano-banana failed (${e instanceof Error ? e.message.slice(0, 70) : e}) — flux-1.1-pro (${safety ? "safety" : "outage"})`);
+      url = await repRun("black-forest-labs/flux-1.1-pro", { prompt: full, aspect_ratio: ar, output_format: "jpg", output_quality: 90, ...(safety ? { safety_tolerance: 5 } : {}) })
+        .catch((e2) => (safety ? repRun("black-forest-labs/flux-dev", { prompt: full, num_inference_steps: 30, guidance: 3, aspect_ratio: ar, output_format: "jpg", output_quality: 92 }) : Promise.reject(e2)));
     }
     const durable = await persistRemote(url, "jpg");
     artLog("image-ad", `creative video seed rendered (${ar})`);

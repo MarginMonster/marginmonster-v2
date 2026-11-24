@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { NOTHING_WRITTEN, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_CROWD_MODEL, STORY_CROWD_REFS, STORY_MODEL, castCardsOf, castEntry, castStillIn, castToken, portraitPrompt, readCastToken, sameCharacter, sceneModel, storyStars } from "../app/lib/story-picture.ts";
+import { NOTHING_WRITTEN, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, STORY_LAST_MODEL, STORY_MODEL, STORY_SECOND_MODEL, castCardsOf, castEntry, castStillIn, castToken, portraitPrompt, readCastToken, sameCharacter, storyPictureInput, storyStars } from "../app/lib/story-picture.ts";
 import { entryName } from "../app/lib/narrated-core.ts";
 import { storyToEditFrom } from "../app/lib/story-edit.ts";
 import { nextEpisodeCards } from "../app/lib/film-series.ts";
@@ -219,24 +219,24 @@ test("the finished film says who is in it: the maker's cast, then the story's ow
   assert.ok(a.includes(".wa-vstar img{display:block;width:58px;height:77px;object-fit:cover;object-position:center top;"));
 });
 
-test("three people from three pictures are drawn by the stronger model — and only those pictures", () => {
-  // A DIRECT TEST, 2026-11-23, with the lighthouse story's three portraits and the server's own prompt for
-  // "Tobias stands at the workshop doorway watching Marta and Ines sand the repaired hull":
-  //   the everyday model — plain ×2, told how many at the end ×2, told how many first ×2 → TWO people, 6 of 6
-  //   the stronger model — plain ×2 → all three, 2 of 2
-  // So the count sentence was never shipped, and the model is chosen by how many pictures a scene is drawn from.
-  assert.deepEqual([0, 1, 2].map(sceneModel), [STORY_MODEL, STORY_MODEL, STORY_MODEL]);
-  assert.deepEqual([3, 4].map(sceneModel), [STORY_CROWD_MODEL, STORY_CROWD_MODEL]);
-  assert.deepEqual([STORY_MODEL, STORY_CROWD_MODEL, STORY_CROWD_REFS], ["google/nano-banana", "google/nano-banana-pro", 3]);
+test("a told story is drawn on the good model — every picture of it — and on the next one down when it refuses", () => {
+  // (2026-11-23: three people from three portraits were TWO people on the everyday model six times out of six,
+  //  all three on the stronger one. 2026-11-24, the owner of a tester's Horror Story: "running a poop engine for
+  //  the stills and not the good one" — a refused scene fell to flux-dev. The tester's two scenes drawn by all
+  //  three models: the stronger one best, Seedream 4.5 close, the everyday one weakest; none refused.)
+  assert.deepEqual([STORY_MODEL, STORY_SECOND_MODEL, STORY_LAST_MODEL], ["google/nano-banana-pro", "bytedance/seedream-4.5", "google/nano-banana"]);
+  assert.deepEqual([...STORY_LADDER], [STORY_MODEL, STORY_SECOND_MODEL, STORY_LAST_MODEL]);
+  // each is asked in its own words — the same picture, the same references, the same shape
+  const refs = ["https://x.example/renders/a.jpg", "https://x.example/renders/b.jpg"];
+  assert.deepEqual(storyPictureInput(STORY_MODEL, { prompt: "p", refs, aspect: "16:9" }), { prompt: "p", image_input: refs, aspect_ratio: "16:9", output_format: "jpg", resolution: "1K" });
+  assert.deepEqual(storyPictureInput(STORY_SECOND_MODEL, { prompt: "p", refs, aspect: "9:16" }), { prompt: "p", image_input: refs, aspect_ratio: "9:16", size: "2K", max_images: 1 });
+  assert.deepEqual(storyPictureInput(STORY_LAST_MODEL, { prompt: "p", refs: [], aspect: "1:1" }), { prompt: "p", aspect_ratio: "1:1", output_format: "jpg" });
   const nar = read("app", "lib", "narrated-story.server.ts");
   const fn = nar.slice(nar.indexOf("async function drawScene("), nar.indexOf("/** A picture that came back with black bars baked in"));
-  assert.ok(fn.includes("async function drawScene(prompt: string, refs: string[], aspect: string, people = refs.length, strong = false): Promise<string | null> {"));
-  // (…and the LAST go of a scene whose cast came out wrong twice — tests/story-shots.test.ts)
-  assert.ok(fn.includes("const model = strong ? STORY_CROWD_MODEL : sceneModel(people);"));
-  assert.ok(fn.includes("const model = strong ? STORY_CROWD_MODEL : sceneModel(people);"), "by how many PEOPLE it is drawn from: a place's design sheet is not one of them (and the last go of a scene that came out wrong twice)");
-  assert.ok(fn.includes("...(m === STORY_MODEL ? {} : { resolution: \"1K\" })"), "the stronger model at its plainest size");
-  assert.ok(fn.includes("if (model === STORY_MODEL) return null;") && fn.includes("try { return await run(STORY_MODEL); } catch { return null; }"), "if the stronger one cannot be reached the scene is still drawn");
-  // a portrait is drawn from words alone — never the stronger model
+  assert.ok(fn.includes("async function drawScene(prompt: string, refs: string[], aspect: string): Promise<string | null> {"));
+  assert.ok(fn.includes("for (const m of STORY_LADDER) {") && fn.includes("return await persistRemote(await repRun(m, storyPictureInput(m, { prompt: full, refs, aspect }), 150_000), \"jpg\");"), "down the ladder until one draws it");
+  assert.ok(!/flux-dev|STORY_CROWD|sceneModel|strong/.test(fn), "no other way in, and no more 'stronger last go'");
+  // the portraits and the places' sheets go the same way
   assert.ok(nar.includes("drawScene(portraitPrompt(e, tmpl.sceneHint, safe), [], PORTRAIT_ASPECT)"));
   assert.ok(!nar.includes("castCountNote") && !read("app", "lib", "story-picture.ts").includes("castCountNote"), "the sentence that did nothing is not in the prompt");
 });

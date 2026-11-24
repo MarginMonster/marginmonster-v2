@@ -23,7 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FRAMED_FIX, FRAMED_SIZE, NOTHING_WRITTEN, PLACE_FRAMING, PLACE_SHEET_ASPECT, STORY_MODEL, STORY_PLACE_MAX,
-  framedIn, framedMeasure, inheritPlaces, castToken, placeEntry, placeIn, placeKey, placeNamed, placeNote, placeSheetPrompt, placesOf, placesStillIn, readCastToken, recurringPlaces, scenePlace, sceneModel,
+  framedIn, framedMeasure, inheritPlaces, castToken, placeEntry, placeIn, placeKey, placeNamed, placeNote, placeSheetPrompt, placesOf, placesStillIn, readCastToken, recurringPlaces, scenePlace,
 } from "../app/lib/story-picture.ts";
 import { storyToEditFrom } from "../app/lib/story-edit.ts";
 import { seriesBriefOf, seriesFromPayload, seriesPlaces, seriesWriterBrief } from "../app/lib/film-series.ts";
@@ -135,8 +135,8 @@ test("the design sheet: the place and nothing else, on a plain ground — so it 
   assert.ok(n.includes("a NEW view of the same place") && n.includes("The sheet's plain background and its three views are NOT part of this picture: this is a scene that fills the whole frame"));
   // …and how near the camera is, when there are people in it (without it a figure came out small)
   assert.ok(PLACE_FRAMING.includes("each one fills at least a third of the picture's height"));
-  // a design sheet is not a person: two people and their place stay on the everyday model
-  assert.equal(sceneModel(2), STORY_MODEL);
+  // every picture of a told story — a place's design sheet too — is drawn on the good model (story-picture.ts → STORY_LADDER)
+  assert.equal(STORY_MODEL, "google/nano-banana-pro");
 });
 
 test("the sheets travel in the cast's token — and only pictures on our own renders disk", () => {
@@ -193,7 +193,7 @@ test("where the pictures are drawn: one sheet per place, beside the portraits, t
   assert.ok(fn.includes("const setAt = wanted.find((p) => p.scenes.includes(i));"));
   assert.ok(fn.includes("const refs = [...people, ...(placeUrl ? [placeUrl] : [])];"));
   assert.ok(fn.includes("const placeNotes = place && placeUrl ? [placeNote(refs.length, place), ...(here.length && !cam ? [PLACE_FRAMING] : [])] : [];"), "the framing line only where there are people to frame — and only for a scene with no camera line of its own (it made every picture at a place the same medium two-shot)");
-  assert.ok(fn.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect, people.length, strong);"));
+  assert.ok(fn.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
   // a sheet that could not be drawn changes nothing: the scene is drawn from its words, as before
   assert.ok(fn.includes("const place = setAt ? sheetFor(setAt.name) : undefined;"));
   // what comes back: the token with the places in it, and the sheets themselves

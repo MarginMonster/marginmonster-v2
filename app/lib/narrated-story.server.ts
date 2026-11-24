@@ -39,7 +39,7 @@ import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { cameraLine, shotOf } from "./story-shots";
-import { FRAMED_FIX, FRAMED_SIZE, framedIn, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_CROWD_MODEL, STORY_MODEL, castEntry, creatureHidden, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
+import { FRAMED_FIX, FRAMED_SIZE, framedIn, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, creatureHidden, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, storyCastPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -74,23 +74,19 @@ export const narratorFor = (template: string | undefined, picked?: string | null
  *  creatures alike — and it draws ONLY who the scene names, whoever else is on a reference. */
 const CAST_LOCK = "CRITICAL: every character taken from a reference image is the EXACT same one here — the same face, body, colours, fur or skin, markings, hair and clothing, and nothing added to what it wears. A creature stays a creature and a cartoon character stays a cartoon character: never made human, never redrawn in another style. A real person stays the exact same individual at the same age. Each keeps its own colours whatever this scene's lighting. Draw ONLY the characters named for this picture — nobody else from the reference images.";
 
-/** One picture, on the everyday picture model, from a prompt of any length (the shared helpers cut a
- *  prompt at ~460 characters, which is where a scene's cast notes live). Null when it cannot be drawn. */
-async function drawScene(prompt: string, refs: string[], aspect: string, people = refs.length, strong = false): Promise<string | null> {
-  // (three people from three pictures go to the stronger model — story-picture.ts → sceneModel; if it
-  //  cannot be reached, the everyday one still draws the scene. `people`: how many of the references are
-  //  characters — a place's design sheet is not one: two people and their place drew right on the
-  //  everyday model four times out of four)
-  // (`strong`: a scene whose cast came out wrong twice is drawn a third time on the stronger model)
-  const model = strong ? STORY_CROWD_MODEL : sceneModel(people);
-  const run = async (m: string): Promise<string> => persistRemote(await repRun(m, { prompt: `${frameWords(aspect)} ${prompt} No watermark, no signature.`, ...(refs.length ? { image_input: refs } : {}), aspect_ratio: aspect, output_format: "jpg", ...(m === STORY_MODEL ? {} : { resolution: "1K" }) }, 150_000), "jpg");
-  try {
-    return await run(model);
-  } catch (e) {
-    console.error(`[narrated] a scene picture failed (${refs.length} refs, ${model.split("/")[1]}): ${e instanceof Error ? e.message.slice(0, 140) : e}`);
-    if (model === STORY_MODEL) return null;
-    try { return await run(STORY_MODEL); } catch { return null; }
+/** One picture from a prompt of any length (the shared helpers cut a prompt at ~460 characters, which is where
+ *  a scene's cast notes live), on the good model — and, when it refuses or cannot be reached, on the next one
+ *  down (story-picture.ts → STORY_LADDER). Null when none of them draws it. */
+async function drawScene(prompt: string, refs: string[], aspect: string): Promise<string | null> {
+  const full = `${frameWords(aspect)} ${prompt} No watermark, no signature.`;
+  for (const m of STORY_LADDER) {
+    try {
+      return await persistRemote(await repRun(m, storyPictureInput(m, { prompt: full, refs, aspect }), 150_000), "jpg");
+    } catch (e) {
+      console.error(`[narrated] a picture failed on ${m.split("/")[1]} (${refs.length} refs): ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+    }
   }
+  return null;
 }
 
 /** A picture that came back with black bars baked in (a wide composition inside a tall frame)? */
@@ -277,10 +273,9 @@ export async function narratedSceneSeeds(o: {
       let framedGoes = 0;
       for (let a = 0; a < 3 && !img; a++) {
         const withPlace = placeNotes.length > 0 && framedGoes < 2;
-        // (THE LAST GO OF A SCENE WHOSE CAST CAME OUT WRONG TWICE is drawn on the stronger model: the best of
-        //  three everyday goes was still an ordinary wolf — STORY_STRONG_RETRY=off keeps it on the everyday one)
-        const strong = a === 2 && !!best && best.check.seen.includes(false) && process.env.STORY_STRONG_RETRY !== "off";
-        const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect, people.length, strong);
+        // (every go is on the good model now — story-picture.ts → STORY_LADDER; the last go of a scene whose cast
+        //  came out wrong twice used to be the one moved up to it)
+        const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);
         if (got && (await letterboxed(got))) { barred = got; console.error(`[narrated] scene ${i + 1} came back letterboxed — drawing it again`); continue; }
         if (got && withPlace && (await framedPanel(got))) { framedGoes++; fix = FRAMED_FIX; console.error(`[narrated] scene ${i + 1} came back as a framed panel on a plain ground (${place?.name}) — drawing it again${framedGoes >= 2 ? " without the place's sheet" : ""}`); continue; }
         if (!got) { if (a >= 1) break; continue; } // two plain failures: stop asking this way
