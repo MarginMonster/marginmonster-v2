@@ -213,7 +213,7 @@ test("a clip never costs a story", () => {
   assert.ok(srv.includes("\"-an\", \"-vf\", `scale=${o.W}:${o.H}:force_original_aspect_ratio=increase,crop=${o.W}:${o.H},setsar=1`,"));
 
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("if (storyMotionOn()) {\n    try {"), "the whole step is tried, and a story is told over stills if it cannot be");
+  assert.ok(nar.includes("if (storyMotionOn(opts.pictures)) {\n    try {"), "the whole step is tried, and a story is told over stills if it cannot be");
   assert.ok(nar.includes("the pictures could not be brought to life — told over the still pictures"));
   // the engine is given the picture that goes into the cut (bars cropped off), and each scene's own length
   assert.ok(nar.includes("for (const s of stills) seeds.push(await withoutBars(s));"));

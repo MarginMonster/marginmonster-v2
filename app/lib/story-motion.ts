@@ -51,9 +51,22 @@ export const MOTION_STRETCH_MAX = 1.25;
  *  a line changed) when it covers at least this share of the scene as it is told now. */
 export const MOTION_REUSE_SHARE = 0.6;
 
-/** Is the motion on? (`falOn` = the provider's key is set.) */
-export const motionOn = (env: Record<string, string | undefined> | undefined, falOn: boolean): boolean =>
-  falOn && String(env?.STORY_MOTION || "").trim().toLowerCase() !== "off";
+/** THE LADDER (the owner, 2026-11-24): "a hierarchy for the video system (narrated with stills / simple,
+ *  narrated with stills to video mid, and acted premium)". A told story is its first two rungs, and which
+ *  one is its MAKER'S choice, story by story: "still" — told over its still pictures, each with its slow
+ *  push-in (the simple rung: nothing is spent on motion); or "moving" — every picture brought to life
+ *  (what a story is unless it says otherwise). The third rung is another way of telling: an acted film. */
+export type StoryPictures = "still" | "moving";
+export const storyPicturesOf = (v: unknown): StoryPictures => (String(v ?? "").trim().toLowerCase() === "still" ? "still" : "moving");
+/** The three rungs, by what a piece is. */
+export type VideoRung = "simple" | "moving" | "acted";
+export const videoRung = (o: { narrated: boolean; pictures?: unknown }): VideoRung =>
+  !o.narrated ? "acted" : storyPicturesOf(o.pictures) === "still" ? "simple" : "moving";
+
+/** Is the motion on — for this story? (`falOn` = the provider's key is set; `pictures` = its maker's
+ *  choice, when it made one.) */
+export const motionOn = (env: Record<string, string | undefined> | undefined, falOn: boolean, pictures?: unknown): boolean =>
+  falOn && String(env?.STORY_MOTION || "").trim().toLowerCase() !== "off" && storyPicturesOf(pictures) === "moving";
 
 /** The length asked for: the scene's own, in whole seconds, within what the engine makes. */
 export function motionSeconds(sceneSeconds: number): number {

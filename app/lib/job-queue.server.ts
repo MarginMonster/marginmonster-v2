@@ -1026,6 +1026,8 @@ async function runJob(
             translatedFrom: typeof payload.filmTranslatedFrom === "string" ? payload.filmTranslatedFrom : undefined,
             // THE STORY'S OWN CAST as the storyboard drew it (story-picture.ts)
             castRef: typeof payload.filmCastRef === "string" ? payload.filmCastRef : undefined,
+            // THE LADDER (story-motion.ts): told over still pictures, when its maker chose that
+            pictures: typeof payload.filmPictures === "string" ? payload.filmPictures : undefined,
             // A CHARACTER'S SHOW (character-series.ts): the line it ends on, and which episode this is
             signoff: typeof payload.filmSignoff === "string" ? payload.filmSignoff : undefined,
             show: (await import("./character-series")).showMeta(payload.filmShow),

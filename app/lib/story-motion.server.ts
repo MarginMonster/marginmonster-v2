@@ -30,7 +30,7 @@ export type MotionResult = {
   faults: Array<{ scene: number; error: string }>;
 };
 
-export const storyMotionOn = (): boolean => motionOn(process.env, falEnabled());
+export const storyMotionOn = (pictures?: unknown): boolean => motionOn(process.env, falEnabled(), pictures);
 
 const seconds = (file: string): number => { try { return ffprobeDuration(file); } catch { return 0; } };
 

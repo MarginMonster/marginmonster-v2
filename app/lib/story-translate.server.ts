@@ -152,6 +152,8 @@ export async function tellStoryAgain(opts: { shopId: string; assetId: string; la
       // …and the story's OWN cast (story-picture.ts): the telling in another language has the same people in
       // it — it says so in the Archive, and a scene redrawn from it later is drawn from the same portraits
       ...(castToken(castCardsOf(meta), placesOf(meta)) ? { filmCastRef: castToken(castCardsOf(meta), placesOf(meta)) } : {}),
+      // (a story made over still pictures is told again over still pictures — story-motion.ts)
+      ...(meta.pictures === "still" ? { filmPictures: "still" } : {}),
       filmLang: lang,
       filmTranslatedFrom: asset.id,
       productTitle: (told.title || asset.title || "A story").slice(0, 60),

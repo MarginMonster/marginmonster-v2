@@ -36,7 +36,7 @@ import { heroName } from "./film-heroes";
 import { posterFilters, posterLayout, posterName, posterScene } from "./story-poster";
 import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
-import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName } from "./story-motion";
+import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { cameraLine, shotOf } from "./story-shots";
 import { FRAMED_FIX, FRAMED_SIZE, framedIn, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_CROWD_MODEL, STORY_MODEL, castEntry, creatureHidden, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
@@ -497,6 +497,9 @@ export async function generateNarratedStory(opts: {
   /** THE STORY'S OWN CAST as the storyboard drew it (story-picture.ts → castToken): the portraits a scene
    *  drawn here is drawn from, and who the piece says is in it. */
   castRef?: string | null;
+  /** THE LADDER's first two rungs (story-motion.ts): "still" = told over its still pictures; anything
+   *  else = they move. */
+  pictures?: string | null;
   resume?: { ckTreatment?: string; ckApproved?: string; ckVoPath?: string; ckVoUrl?: string; ckWords?: string; ckImages?: string; ckMusic?: string; ckMotion?: string; ckCast?: string; ckPictureFaults?: string };
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template);
@@ -658,7 +661,7 @@ export async function generateNarratedStory(opts: {
   //     as long as the scene is told. A scene whose clip cannot be made keeps its still; the story is
   //     never held up or failed by it.
   let motion: MotionResult | null = null;
-  if (storyMotionOn()) {
+  if (storyMotionOn(opts.pictures)) {
     try {
       const seeds: string[] = [];
       for (const s of stills) seeds.push(await withoutBars(s));
@@ -741,6 +744,9 @@ export async function generateNarratedStory(opts: {
         ...(pictureFaults.length ? { pictureFaults } : {}),
         // THE PICTURES MOVE: how many scenes do, what was asked for now (seconds = what was paid for), and
         // why any scene kept its still
+        // (a story its maker asked for over STILL pictures says so — it did not lose its motion, it never
+        //  asked for any; one told again from it stays still)
+        ...(storyPicturesOf(opts.pictures) === "still" ? { pictures: "still" } : {}),
         ...(motion ? { motion: { engine: STORY_MOTION_ENGINE, scenes: motion.clips.filter(Boolean).length, of: stills.length, made: motion.made, reused: motion.reused, seconds: motion.seconds, ...(motion.faults.length ? { faults: motion.faults.slice(0, 8) } : {}) } } : {}),
       }),
     },
