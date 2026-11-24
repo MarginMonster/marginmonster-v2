@@ -30,6 +30,18 @@ test("the add-on engines are reconciled too (hailuo 25, seedance 75)", () => {
   assert.equal(surchargeShortfall("seedance", "bytedance/seedance-1-pro"), 0);
 });
 
+test("Seedance 2.5 and the live Replicate copies are what was paid for (2026-11-24)", () => {
+  // Seedance 2.5 on fal was unknown here, so a Seedance pick that GOT Seedance 2.5 was refunded its 75
+  assert.equal(surchargeShortfall("seedance", "bytedance/seedance-2.5/image-to-video"), 0);
+  assert.equal(surchargeShortfall("seedance", "bytedance/seedance-2.5"), 0);
+  // the Replicate slugs that replaced dead ones
+  assert.equal(surchargeShortfall("veo", "google/veo-3.1-fast"), 0);
+  assert.equal(engineKeyForModel("kwaivgi/kling-v2.6"), "kling26");
+  // the default engine by name, on both hosts (Auto IS Kling 3 Pro)
+  assert.equal(engineKeyForModel("fal-ai/kling-video/v3/pro/image-to-video"), "kling");
+  assert.equal(surchargeShortfall("veo31", "fal-ai/kling-video/v3/pro/image-to-video"), 75);
+});
+
 test("a free engine owes nothing however it is routed", () => {
   for (const m of [
     "fal-ai/kling-video/v2.6/pro/image-to-video",

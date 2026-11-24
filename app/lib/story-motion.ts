@@ -18,7 +18,9 @@
  * nothing is looped or played backwards. fal's own price page, read 2026-11-23: $1 per million video
  * tokens, tokens = height × width × 24 fps × seconds / 1024 — 720×1280 is $0.0216 a second, so a 66-second
  * story costs about $1.43 in motion. (480p is $0.0096 a second and visibly soft against the drawn picture
- * at the story's own size; Kling 2.5 Turbo is $0.042 a second.)
+ * at the story's own size. Kling 2.5 Turbo PRO — the endpoint this app calls, fal-ai/kling-video/v2.5-turbo/
+ * pro — is $0.07 a second ($0.35 for five seconds, $0.07 each second after: its fal page, read 2026-11-24);
+ * the $0.042 once written here is the STANDARD tier's price, which nothing here calls.)
  *
  * Everything here is plain logic (tests/story-motion.test.ts); the calls are in story-motion.server.ts.
  * A scene whose clip cannot be made keeps its still picture and its slow push-in — motion never costs a

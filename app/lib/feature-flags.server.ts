@@ -15,16 +15,22 @@ export function paidAdsEnabled(): boolean {
 
 /**
  * COGS experiment flags. These multiply per-image art spend and exist only for
- * CI / local sweeps. A presenter image ad sells for 5 tokens (~$0.30-0.50); the
- * default path (one compose + one retry) costs ~$0.06-0.08 and stays well under
- * that. Left set in the PRODUCTION env these flags would silently turn every
- * merchant render into a money-loser, so they are HARD-OFF in production
- * regardless of the env value — run sweeps off-prod.
+ * CI / local sweeps. A presenter image ad sells for 5 tokens (TOKEN_COST.image):
+ * $0.32 on Starter ($19/300), $0.22 on Studio and Legend ($39/900, $69/1600),
+ * $0.07 at the Creator floor ($6.99/500). The default path is one compose plus
+ * one retry on nano-banana-pro/edit at $0.15 a picture (fal.ai/models/fal-ai/
+ * nano-banana-pro/edit, read 2026-11-24) — $0.15 to $0.30 before the vision
+ * gate, so it is NOT "well under" the price any more (that was written at
+ * Seedream's ~$0.03): one compose is most of a Studio charge, and a retry puts
+ * it over. Left set in the PRODUCTION env these flags would multiply that
+ * again, so they are HARD-OFF in production regardless of the env value — run
+ * sweeps off-prod.
  *
  * presenterSpray    — PRESENTER_SPRAY=1 fans one image into PRESENTER_TRIES (5)
  *                     parallel composes + QA instead of one compose + one retry.
  * composeResolution — COMPOSE_RESOLUTION (e.g. "4K") raises output pixels and
- *                     ~doubles the per-edit price; undefined = engine default.
+ *                     doubles the per-edit price at 4K ($0.30; 1K and 2K are
+ *                     both $0.15); undefined = engine default (1K).
  */
 export function presenterSprayEnabled(): boolean {
   if (process.env.NODE_ENV === "production") return false;

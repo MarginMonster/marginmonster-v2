@@ -11,20 +11,30 @@
  *   — the clip's sound was thrown away. fal's own price page (read 2026-11-23): Kling 3 Pro is $0.112 a
  *   second silent and $0.168 with sound. A cartoon or anthem clip meant to cost 5 × $0.112 = $0.56 cost
  *   10 × $0.168 = $1.68; a film scene $0.84 instead of $0.56.
- *   (NOT the Commercial: it is pinned to Kling 2.6 Pro — commercial-ad-pipeline.server.ts, motionEngine —
- *   which has no sound and took its five seconds from the other branch below. I wrote the opposite in the
- *   commit that introduced this file, 2729542a; that message is wrong about commercials.)
+ *   (The Commercial was not on that branch: it is pinned to Kling 2.6 Pro — commercial-ad-pipeline.server.ts,
+ *   motionEngine. But Kling 2.6 Pro DOES make sound, and makes it unless told not to: fal's schema for
+ *   fal-ai/kling-video/v2.6/pro/image-to-video, read 2026-11-24, has `generate_audio` defaulting to TRUE,
+ *   and fal's price page the same day says $0.07 a second silent, $0.14 with sound. Until 2026-11-24 this
+ *   file sent it the Kling 2.5 body — `image_url` where its schema REQUIRES `start_image_url`, and no
+ *   `generate_audio` — so every Commercial beat was either refused by fal and rendered on another host, or
+ *   accepted and billed sound the Commercial lays its own voice and music over. Which of the two it was
+ *   cannot be told without a paid call; the body below is what its schema asks for either way.)
  *
- *   The same branch left out `negative_prompt`, which Kling 3 takes: "no talking mouth" for a narrated
+ *   The Kling 3 branch also left out `negative_prompt`, which Kling 3 takes: "no talking mouth" for a narrated
  *   cartoon, "nobody vanishes" for a kids' scene, "the product does not morph" never reached the model.
  *
  * The rules now, the same for every engine:
- *   - LENGTH is what the caller asked for, else the engine's own five seconds — never a silent ten.
+ *   - LENGTH is what the caller asked for, else the engine's own five seconds — never a silent ten. An
+ *     engine that makes only some lengths gets the nearest one it makes (klingTwoSeconds, seedanceSeconds).
  *   - SOUND is asked for, never assumed: `generateAudio: true` and nothing else turns it on. A pipeline
  *     asks exactly when it ships the clip's own sound (a Creator video, a product video, a film's
  *     dialogue shot). One that lays its own track over the clip does not pay for sound it will discard.
- *   - A NEGATIVE prompt goes to every engine whose schema has the field (Kling 2.x and Kling 3; not the
- *     Omni "O3" models, not Seedance, not Veo).
+ *     Every engine that CAN make sound (Kling 2.6, Kling 3, the O3 models, Veo, Seedance 2.5) is sent the
+ *     flag every time: in fal's schemas (read 2026-11-24) all but the O3 models make sound when it is left out.
+ *   - A NEGATIVE prompt goes to the Kling 2.x and Kling 3 engines (not the Omni "O3" models and not
+ *     Seedance, whose schemas have no such field). Veo's schema DOES have one (fal, read 2026-11-24) and
+ *     it has never been sent one — sending it would change what a premium engine draws, so that waits for
+ *     a render somebody has looked at.
  */
 
 export type FalVideoOpts = {
@@ -49,9 +59,27 @@ export function klingThreeSeconds(sec: number | undefined): number {
   return Number.isFinite(n) && n > 0 ? Math.max(3, Math.min(15, n)) : 5;
 }
 
-/** Does this model make its own sound when asked? (Kling 3, Kling O3, Veo.) */
+/** Kling 2.x (2.5 Turbo, 2.6) makes five seconds or ten and nothing else — `duration` "5" | "10" in fal's
+ *  schemas and 5 | 10 in Replicate's (both read 2026-11-24). A caller asking for any other length gets the
+ *  nearer of the two: up to seven seconds is five, anything longer is ten — so a fifteen-second Creator
+ *  video picked on Kling 2.6 comes back ten seconds long, and a three-second ask comes back five. (It used
+ *  to be sent as asked, which fal refuses for anything but 5 and 10.) Replicate's copies of these engines
+ *  have always rounded this way (animate-engines.ts). */
+export function klingTwoSeconds(sec: number | undefined): 5 | 10 {
+  const n = Number(sec);
+  return Number.isFinite(n) && n > 7 ? 10 : 5;
+}
+
+/** Seedance 2.5 makes any whole second from 4 to 30 (fal: "4"…"30"; Replicate: an integer, "from 4 to 30
+ *  seconds" in its readme — both read 2026-11-24); nothing said is its five. */
+export function seedanceSeconds(sec: number | undefined): number {
+  const n = Math.round(Number(sec));
+  return Number.isFinite(n) && n > 0 ? Math.max(4, Math.min(30, n)) : 5;
+}
+
+/** Does this model make its own sound when asked? (Kling 2.6, Kling 3, Kling O3, Veo, Seedance 2.5.) */
 export function modelMakesSound(model: string): boolean {
-  return /kling-video\/(?:v3|o3)\//.test(model) || /veo/.test(model);
+  return /kling-video\/(?:v3|o3|v2\.6)\//.test(model) || /veo/.test(model) || /seedance-2\.5/.test(model);
 }
 
 export function falVideoBody(model: string, opts: FalVideoOpts): Record<string, unknown> {
@@ -89,15 +117,40 @@ export function falVideoBody(model: string, opts: FalVideoOpts): Record<string, 
       ...(omni ? {} : { negative_prompt: opts.negativePrompt || DEFAULT_NEGATIVE_PROMPT }),
     };
   }
+  if (/seedance-2\.5/.test(model)) {
+    // SEEDANCE 2.5 (bytedance/seedance-2.5/image-to-video; fal's schema, read 2026-11-24): image_url,
+    // duration "4"…"30", resolution (720p keeps COGS sane), and generate_audio — which DEFAULTS TO TRUE, so
+    // leaving it out (as this did) asked for sound on every clip. fal bills the same with or without it, so
+    // that cost nothing; it is sent now so a clip has sound only when its pipeline ships the sound, as on
+    // every other engine. No negative_prompt in its schema, and its aspect_ratio is always "auto" for
+    // image-to-video (the clip takes the seed's shape), so neither is sent.
+    return { prompt: opts.prompt, image_url: opts.startImage, resolution: "720p", duration: String(seedanceSeconds(opts.durationSec)), generate_audio: opts.generateAudio === true };
+  }
   if (/seedance/.test(model)) {
-    // Seedance 2.5's schema is prompt + image_url + resolution + duration — it takes NEITHER a
-    // negative_prompt NOR an aspect flag (sending them 422s). 720p keeps COGS sane.
+    // SEEDANCE 1 PRO FAST (story-motion.ts; fal's schema, read 2026-11-24): image_url, duration "2"…"12",
+    // resolution (its default is 1080p — 720p is asked for by name), no sound, no negative_prompt, and an
+    // "auto" aspect that follows the seed. Its one caller asks a whole second from 2 to 12 (motionSeconds).
     return { prompt: opts.prompt, image_url: opts.startImage, resolution: "720p", duration: String(opts.durationSec ?? 5) };
   }
+  if (/kling-video\/v2\.6\//.test(model)) {
+    // KLING 2.6 PRO (fal's schema, read 2026-11-24): required ["prompt", "start_image_url"] — its seed is
+    // `start_image_url`, not the `image_url` of Kling 2.5 below — duration "5" | "10", negative_prompt, and
+    // generate_audio, which DEFAULTS TO TRUE: $0.14 a second with sound against $0.07 silent (fal's price
+    // page, the same day). So the flag is always sent, true only when asked.
+    return {
+      prompt: opts.prompt,
+      start_image_url: opts.startImage,
+      duration: String(klingTwoSeconds(opts.durationSec)),
+      generate_audio: opts.generateAudio === true,
+      negative_prompt: opts.negativePrompt || DEFAULT_NEGATIVE_PROMPT,
+    };
+  }
+  // KLING 2.5 TURBO PRO (fal's schema, read 2026-11-24): required ["prompt", "image_url"], duration "5" | "10",
+  // negative_prompt; it makes no sound and has no flag for it.
   return {
     prompt: opts.prompt,
     image_url: opts.startImage,
-    duration: String(opts.durationSec ?? 5),
+    duration: String(klingTwoSeconds(opts.durationSec)),
     negative_prompt: opts.negativePrompt || DEFAULT_NEGATIVE_PROMPT,
   };
 }

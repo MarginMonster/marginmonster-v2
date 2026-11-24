@@ -267,10 +267,15 @@ export const TOKEN_COST = {
   // only ~7% on Creator — positive but below real all-in profit.
   createImage: 5,
   // One-tap post-generation edit of a finished image (Enhance / Zoom / Remove
-  // bg / Replace). COGS: upscale/bgremove ~$0.002-0.006, but REPLACE runs
-  // nano-banana (~$0.039) — at 2 tokens that was a LOSS on the Creator floor
-  // ($0.028 < $0.039). Repriced 2 → 4 (2026-10-10): 4 tokens = $0.056 vs the
-  // $0.039 worst-case op ≈ 30% on Creator, and the cheap ops stay high-margin.
+  // bg / Replace). COGS: upscale (real-esrgan) ~$0.002, but bgremove is
+  // bria/remove-background at $0.018 an image (replicate.com/bria/remove-
+  // background, read 2026-11-24 — not the ~$0.002-0.006 once written here),
+  // REPLACE runs nano-banana ($0.039, replicate.com/google/nano-banana, same
+  // day), and bgswap pays bria ON TOP of a flux-dev backdrop ($0.025, same day)
+  // = $0.043 — the dearest op on the default (Pro) engine. At 2 tokens Replace was a LOSS on the Creator
+  // floor ($0.028 < $0.039). Repriced 2 → 4 (2026-10-10): 4 tokens = $0.056 vs
+  // the $0.043 worst-case op ≈ 23% on Creator (it was ≈ 30% against $0.039),
+  // and the cheap ops stay high-margin.
   quickEdit: 4,
   // Creator "edit a video" — ONE ffmpeg re-encode (trim / caption / speed) via
   // video-edit.server.ts. No provider call, no token-burning model: COGS is the
@@ -303,8 +308,13 @@ export const TOKEN_COST = {
   video: 150,
   // Faceless social video (Creator): AI stills + Ken-Burns + TTS + word-synced
   // captions + music bed — NO AI clips by default. MEASURED COGS on a real
-  // render ≈ $0.08 (script + MiniMax TTS + WhisperX + ~6 flux stills + musicgen),
-  // NOT the $0.15-0.40 once guessed. Repriced 80 → 30 (2026-10-08): the budget
+  // render ≈ $0.08 (script + MiniMax TTS + WhisperX + ~6 flux stills + musicgen)
+  // — but that was measured on flux stills. The b-roll is nano-banana now
+  // (brollStill, "pro" = google/nano-banana): $0.039 a still on Replicate
+  // (replicate.com/google/nano-banana, read 2026-11-24), so the 6-7 stills
+  // alone are ≈ $0.23-0.27 and the whole video is nearer $0.30 than $0.08
+  // (re-measure). So the "~20× margin" below is now ≈ 1.4× at the Creator floor
+  // (30 tokens = $0.42) and ≈ 6× on Starter ($1.90). Repriced 80 → 30 (2026-10-08): the budget
   // faceless market (faceless.video/AutoShorts/faceless.so) sells short clips at
   // ~$1-1.30 each, and 80 tokens was ~$5/video on Starter — over-packaged, not a
   // cost floor. 30 tokens keeps a ~20× margin and makes volume competitive

@@ -1,19 +1,25 @@
-/* Product-in-hand frame composer — Seedream v4 edit on fal (multi-image
- * reference). Takes the presenter portrait + the product photo and returns
- * frames of the presenter HOLDING the product; HeyGen then animates that
- * frame, so the product stays in hand for the whole ad (Arcads-style).
- * ~$0.03-0.04 per frame on the same FAL_KEY as the video engine.
+/* Product-in-hand frame composer — nano-banana-pro/edit on fal (multi-image
+ * reference; COMPOSE_MODEL can swap it). Takes the presenter portrait + the
+ * product photo and returns frames of the presenter HOLDING the product;
+ * HeyGen then animates that frame, so the product stays in hand for the whole
+ * ad (Arcads-style). $0.15 a picture at its default 1K or at 2K, twice that at
+ * 4K (fal.ai/models/fal-ai/nano-banana-pro/edit, read 2026-11-24), on the same
+ * FAL_KEY as the video engine. (This was written for Seedream v4 edit, $0.03 a
+ * picture on fal the same day — see edit-frame.ts for the request fields that
+ * outlived it.)
  *
- * Sync endpoint (images render in ~5-15s). Any failure throws — callers fall
- * back to the plain portrait so a bad compose never blocks a render. */
+ * Queue endpoint, polled (pictures render in ~5-15s). Any failure throws —
+ * callers fall back to the plain portrait so a bad compose never blocks a
+ * render. */
 
 import { hasCJK } from "./content-lang";
 import { composeResolution } from "./feature-flags.server";
+import { editCountFields, editFrameFields } from "./edit-frame";
 
 /** The compose engine. Overridable because "would a different model fix
  *  this?" is a question with a measurable answer, and swapping one should not
- *  need a code change to find out. Seedream v4 edit stays the default until
- *  something beats it on the harness. */
+ *  need a code change to find out. The default is nano-banana-pro/edit; it
+ *  replaced Seedream v4 edit, the engine this file was written for. */
 /** Masked inpainting — edits only what the mask exposes, leaves the rest byte-identical. */
 const FILL_MODEL = "fal-ai/flux-pro/v1/fill";
 
@@ -381,7 +387,8 @@ export async function submitCompose(
     : "";
   const finalPrompt = bgLockLead + prompt;
   const composeRes = composeResolution();
-  const submit = await fetch(`https://queue.fal.run/${composeModel()}`, {
+  const model = composeModel();
+  const submit = await fetch(`https://queue.fal.run/${model}`, {
     method: "POST",
     headers: { ...auth(), "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -395,14 +402,16 @@ export async function submitCompose(
         : (useBgImage && bgImageUrl)
         ? [portraitUrl, productImageUrl, bgImageUrl]
         : [portraitUrl, productImageUrl],
-      image_size: "portrait_4_3",
+      // The frame. Meant as 3:4 (Seedream's "portrait_4_3"), but nano-banana-pro/edit has no image_size and
+      // has been composing at its own "auto" — which stays, by name, until the owner says otherwise
+      // (edit-frame.ts).
+      ...editFrameFields(model, "portrait_4_3"),
       // Fine-print experiment: more output pixels = more room for small
       // lettering to resolve instead of scramble. Opt-in per environment
       // (e.g. "4K" doubles Nano Banana Pro's per-edit price); engines that
       // don't know the field ignore it.
       ...(composeRes ? { resolution: composeRes } : {}),
-      num_images: numImages,
-      max_images: numImages,
+      ...editCountFields(model, numImages),
     }),
   });
   if (!submit.ok) {

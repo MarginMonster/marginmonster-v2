@@ -25,6 +25,7 @@ import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { mirrorRender } from "./object-storage.server";
 import { falEnabled, falQueueHandleFor, falTts, pollAvatar, submitAvatar, FalRenderFailed } from "./fal-video.server";
+import { animateInputFor, animateRoute, VOICEOVER_MOTION_MODEL, voiceoverMotionInput } from "./animate-engines";
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { isPersonalVoice } from "./avatar-voice-catalog";
 import { isCharacterVoice } from "./character-voices";
@@ -162,77 +163,19 @@ export async function repCreate(model: string, input: Record<string, unknown>): 
 /* ---- Multi-engine image-to-video (the Arcads-style engine picker) ----
  * One adapter, per-model input mapping, and a HARD RULE: a premium engine
  * that rejects for any reason (schema drift, capacity, region) falls back to
- * the default engine instead of failing a paid generation. */
-/* RUN THE NEWEST (2026-10-12): we are a premium act and must not sit on stale
- * tiers (we once sat on kling-v1.6 for months while 2.0→2.6 shipped). The
- * default is now Kling 3 Pro — the newest Kling i2v on fal, same input schema
- * as v2.5/v2.6 pro (image_url, prompt, duration, negative_prompt), so the fal
- * adapter needs no change. Still fal-backed with the best Replicate engine as
- * the fallback: no key, no fal, or a fal reject still renders (and the engine
- * surcharge reconciles). v2.6 Pro stays available as a named "previous-gen"
- * option. Validate quality/COGS with a live test gen; revert the default to
- * v2.6 if v3's cost breaks the margin floor. */
-export const DEFAULT_FAL_ANIMATE_MODEL = "fal-ai/kling-video/v3/pro/image-to-video";
-export const DEFAULT_ANIMATE_MODEL = "kwaivgi/kling-v2.5-turbo-pro";
-/** See falAnimateModelFor. */
-export const SOUND_ENGINE_KEY = "kling3s";
-export const SOUND_FAL_ANIMATE_MODEL = "fal-ai/kling-video/o3/standard/image-to-video";
-
-/** fal-hosted engines, keyed the same way as the Replicate ones. */
-function falAnimateModelFor(engineKey: string | undefined): string | null {
-  switch (engineKey) {
-    case undefined: case "": case "kling": case "kling3": return DEFAULT_FAL_ANIMATE_MODEL; // Kling 3 Pro (newest)
-    case "kling26": return "fal-ai/kling-video/v2.6/pro/image-to-video"; // previous gen
-    case "kling25fal": return "fal-ai/kling-video/v2.5-turbo/pro/image-to-video";
-    // Kling 3 Omni, standard: the engine of a video that KEEPS ITS OWN SOUND (a Creator video). It is
-    // the cheapest Kling that makes sound ($0.112 a second with it — fal's page, 2026-11-23), it renders
-    // at the 720p we ship, and it is the model the owner picked by ear for films. Not on the engine
-    // menu (video-engines.ts): the server chooses it, a member never has to.
-    case SOUND_ENGINE_KEY: return SOUND_FAL_ANIMATE_MODEL;
-    case "veo31": return "fal-ai/veo3.1/fast/image-to-video";
-    // Seedance 2.5 (newest) runs on fal; a fal reject falls through to the
-    // Replicate seedance-1-pro in animateModelFor below, so it always renders.
-    case "seedance": return "bytedance/seedance-2.5/image-to-video";
-    default: return null; // an explicitly-named Replicate engine
-  }
-}
+ * the default engine instead of failing a paid generation.
+ *
+ * WHICH engine, on WHICH host, in WHAT order, and what Replicate is asked all live in animate-engines.ts —
+ * pure, so tests/animate-engines.test.ts can walk every engine key (this file talks to the database and no
+ * test can load it). Kling 3 Pro is the default on fal; Kling 2.6 Pro is on Replicate too, as
+ * kwaivgi/kling-v2.6 ($0.07 a second silent, $0.14 with sound — replicate.com/kwaivgi/kling-v2.6, read
+ * 2026-11-24), so it is no longer fal-only. */
+export { DEFAULT_ANIMATE_MODEL, DEFAULT_FAL_ANIMATE_MODEL, SOUND_ENGINE_KEY, SOUND_FAL_ANIMATE_MODEL } from "./animate-engines";
 
 /** A prediction id that carries its provider, so resume can re-attach to the
  *  right one instead of polling Replicate for a fal request. */
 const FAL_ID = "fal|";
 export function isFalAnimateId(id: string): boolean { return id.startsWith(FAL_ID); }
-
-function animateModelFor(engineKey: string | undefined): string {
-  switch (engineKey) {
-    case "veo": return "google/veo-3-fast";
-    case "kling26": return "kwaivgi/kling-v2.6-pro";
-    case "kling21": return "kwaivgi/kling-v2.1-master";
-    case "kling16": return "kwaivgi/kling-v1.6-standard";
-    case "seedance": return "bytedance/seedance-1-pro";
-    case "hailuo": return "minimax/hailuo-02";
-    case "kling":
-    default: return DEFAULT_ANIMATE_MODEL;
-  }
-}
-
-function animateInputFor(model: string, opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; aspect?: string }): Record<string, unknown> {
-  const neg = opts.negativePrompt || "object disappearing, product vanishing, flickering, fading in and out, morphing, distortion, extra objects, text, watermark, blur";
-  // 9:16 explicitly: Veo defaults to 16:9 landscape, and a landscape clip
-  // cover-cropped into our vertical assembler loses two-thirds of the frame.
-  // generate_audio:false — Veo renders native audio at +50% cost ($0.15/s vs
-  // $0.10/s) that this pipeline ALWAYS discards under its own MiniMax TTS +
-  // music bed, so paying for it was pure waste (~$0.40 on an 8s clip). The
-  // param + negative_prompt are confirmed in google/veo-3-fast's live Replicate
-  // input schema (verified 2026-10-10). Seedance/Hailuo below take NEITHER a
-  // negative_prompt NOR an audio flag (not in their schemas) — do not add them.
-  if (model === "google/veo-3-fast") return { prompt: opts.prompt, image: opts.startImage, aspect_ratio: opts.aspect === "16:9" ? "16:9" : "9:16", generate_audio: false, negative_prompt: neg };
-  if (model === "bytedance/seedance-1-pro") return { prompt: opts.prompt, image: opts.startImage, duration: 10, resolution: "720p" };
-  if (model === "minimax/hailuo-02") return { prompt: opts.prompt, first_frame_image: opts.startImage, duration: 10 };
-  // kling 2.x dropped cfg_scale and caps at 5s/10s per tier; 1.6 still takes it. A length only Kling 3
-  // makes (15 s, or anything between) lands on the nearer of the two rather than being refused.
-  if (/kling-v2/.test(model)) return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: (opts.durationSec ?? 5) > 7 ? 10 : 5 };
-  return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: 10, cfg_scale: 0.5 };
-}
 
 /** Start an image-to-video prediction on the chosen engine; falls back to the
  *  default engine if the premium one rejects. Returns the prediction id and
@@ -244,30 +187,25 @@ export async function animateCreate(
    *  music over the motion leaves it out (see fal-video-body.ts). */
   opts: { startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; generateAudio?: boolean; aspect?: string }
 ): Promise<{ id: string; model: string }> {
-  // fal first when the engine lives there (kling 2.6 pro is fal-only).
-  const falModel = falAnimateModelFor(engineKey);
-  if (falModel && falEnabled()) {
-    // A video sold with sound gets a second engine that makes sound before it is handed to the silent
-    // Replicate default: Kling 3 Pro, the same family.
-    const falModels = engineKey === SOUND_ENGINE_KEY ? [falModel, DEFAULT_FAL_ANIMATE_MODEL] : [falModel];
-    const { falVideoSubmit } = await import("./fal-video.server");
-    for (const m of falModels) {
-      try {
-        const rid = await falVideoSubmit(m, opts);
-        return { id: `${FAL_ID}${m}|${rid}`, model: m };
-      } catch (e) {
-        console.error(`[animate] ${m} rejected — falling back:`, e instanceof Error ? e.message.slice(0, 160) : e);
+  // The rungs, in order (animate-engines.ts): the engine's own model on each host it lives on — fal first,
+  // except where Replicate has the same model for less (Seedance 2.5) — then the Replicate default, whose
+  // refusal is the one that is thrown.
+  const route = animateRoute(engineKey, falEnabled());
+  for (let i = 0; i < route.length; i++) {
+    const { host, model } = route[i];
+    try {
+      if (host === "fal") {
+        const { falVideoSubmit } = await import("./fal-video.server");
+        const rid = await falVideoSubmit(model, opts);
+        return { id: `${FAL_ID}${model}|${rid}`, model };
       }
+      return { id: await repCreate(model, animateInputFor(model, opts)), model };
+    } catch (e) {
+      if (i === route.length - 1) throw e;
+      console.error(`[animate] ${model} rejected — falling back to ${route[i + 1].model}:`, e instanceof Error ? e.message.slice(0, 160) : e);
     }
   }
-  const model = animateModelFor(engineKey);
-  try {
-    return { id: await repCreate(model, animateInputFor(model, opts)), model };
-  } catch (e) {
-    if (model === DEFAULT_ANIMATE_MODEL) throw e;
-    console.error(`[animate] ${model} rejected — falling back to default:`, e instanceof Error ? e.message.slice(0, 160) : e);
-    return { id: await repCreate(DEFAULT_ANIMATE_MODEL, animateInputFor(DEFAULT_ANIMATE_MODEL, opts)), model: DEFAULT_ANIMATE_MODEL };
-  }
+  throw new Error(`[animate] no engine to try for "${engineKey}"`); // unreachable: every route ends on the default
 }
 
 /** A poll that can't read the prediction is NOT a failed prediction. The old
@@ -1561,23 +1499,26 @@ export async function generateUgcAd(params: UgcAdParams): Promise<string> {
         break; // hard failure → fall back to Kling below
       }
     }
-    // FALLBACK: Kling voiceover-style — the presenter moves naturally to camera
+    // FALLBACK: voiceover-style — the presenter moves naturally to camera
     // while the TTS narration carries the ad. Not lip-synced, but a legitimate
-    // UGC format, and Kling has been rock-solid on this account.
+    // UGC format. It ran on kwaivgi/kling-v1.6-standard, which is gone from
+    // Replicate (404, 2026-11-24) — so the last resort itself failed and the
+    // job refunded. Now Seedance 1 Lite, cheaper and live (VOICEOVER_MOTION_MODEL
+    // in animate-engines.ts says why). The engine LABEL stays "kling-voiceover":
+    // resume, assembly (lipSynced) and diag read that word as "the silent
+    // voiceover clip", whatever model drew it.
     if (!talkingUrl) {
-      console.log("[ugc] falling back to kling voiceover style");
+      console.log("[ugc] falling back to voiceover style");
       engine = "kling-voiceover";
       await ckpt({ ckEngine: engine }); // written BEFORE the create — see above
-      const klingId = await repCreate("kwaivgi/kling-v1.6-standard", {
-        start_image: animSourceDataUri,
-        prompt: `${avatar.desc}, speaking animatedly straight to the camera — expressive natural hand gestures, lively genuine head movement and warm shifting facial expressions, enthusiastic friendly energy, subtle breathing and lifelike micro-movements, authentic UGC selfie energy. If a product is held, it stays STILL and steady in the hand, fully visible the entire clip — same object, same label, same size and position, never rotating, turning, fading, vanishing, warping or re-forming. Plain studio background, vertical video.`,
-        // "glitching in and out of his hands" — the motion brief never
-        // mentioned the product, so nothing anchored it and the model treated
-        // it as scenery it could drop between frames.
-        negative_prompt: "object disappearing, product vanishing, flickering, fading in and out, object changing shape, label changing, hands passing through the product, morphing, distortion, extra people, extra fingers, deformed hands, stiff, frozen, robotic, text, watermark",
-        duration: 10,
-        cfg_scale: 0.5,
-      });
+      // "glitching in and out of his hands" — the motion brief never mentioned
+      // the product, so nothing anchored it and the model treated it as scenery
+      // it could drop between frames. (Kling was also told so in a negative
+      // prompt; Seedance has no such field, so the brief says it.)
+      const klingId = await repCreate(VOICEOVER_MOTION_MODEL, voiceoverMotionInput(
+        animSourceDataUri,
+        `${avatar.desc}, speaking animatedly straight to the camera — expressive natural hand gestures, lively genuine head movement and warm shifting facial expressions, enthusiastic friendly energy, subtle breathing and lifelike micro-movements, authentic UGC selfie energy. If a product is held, it stays STILL and steady in the hand, fully visible the entire clip — same object, same label, same size and position, never rotating, turning, fading, vanishing, warping or re-forming. Plain studio background, vertical video.`,
+      ));
       await ckpt({ ckKlingId: klingId }); // DISTINCT from ckOmniId — silent clip
       talkingUrl = await animatePoll(klingId, 12 * 60_000, "kling-fallback");
     }

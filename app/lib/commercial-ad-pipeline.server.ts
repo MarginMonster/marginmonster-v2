@@ -16,15 +16,20 @@
  *   voice      — minimax TTS (cartoon's path, commercial-cast voice)
  *   assembly   — ffmpeg: normalize, concat, letterbox, grade, VO, packshot
  *
- * COGS (re-verified 2026-10-15): 5 keyframes (nano-banana-pro @2K, ~$0.15 ea =
- * ~$0.75) + 5 clips (Kling 2.6 Pro, 5s silent, $0.07/s = ~$0.35 ea = ~$1.75) +
+ * COGS (re-verified 2026-10-15; prices re-read 2026-11-24): 5 keyframes
+ * (nano-banana-pro/edit at its default 1K — production sends no resolution —
+ * $0.15 each, the same at 2K: fal.ai/models/fal-ai/nano-banana-pro/edit = $0.75)
+ * + 5 clips (Kling 2.6 Pro, 5s silent, $0.07/s = $0.35 ea = $1.75 — fal's page
+ * for it, read 2026-11-24; WITH sound it is $0.14/s, which is why the request
+ * always says generate_audio false — fal-video-body.ts) +
  * ~6 TTS + 5 vision gates ≈ ~$2.75 per spot. The motion gate re-rolls a FAILING
  * beat once (up to 10 clips total) — worst case ~$4.55. EXPLICITLY pinned to
  * Kling 2.6 Pro (motionEngine below), NOT the Kling-3-Pro i2v default: at 3 Pro
  * ($0.112/s) the 10-clip worst case runs ~$6.65 vs the flat 150-token (~$6.45)
  * charge = underwater. On 2.6 it stays profit-positive even worst-case (~30%).
- * The clips are REQUESTED at 5s (animateInputFor duration:5), not 10s — the
- * ":349" trim comment describes an older model and does NOT mean we over-buy.
+ * The clips are REQUESTED at 5s (no length is asked, and both hosts' request
+ * builders default to five — fal-video-body.ts, animate-engines.ts), not 10s —
+ * the ":349" trim comment describes an older model and does NOT mean we over-buy.
  * + a music bed since 2026-11-23 (one 12 s musicgen loop, ~$0.03 — commercial-music.ts).
  */
 import crypto from "node:crypto";
@@ -35,6 +40,7 @@ import { spawn } from "node:child_process";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { composeResolution } from "./feature-flags.server";
+import { editFrameFields } from "./edit-frame";
 import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, claimFaults, claimRepairNote, dropFaultSentences, cleanPrice, priceRule } from "./ad-claims";
 import { catalogPriceFor } from "./catalog-import.server";
 import { trimToWord } from "./text-trim";
@@ -311,10 +317,14 @@ export async function sceneKeyframe(productImageUrl: string | undefined, scene: 
   const fidelity = productImageUrl
     ? " The product from the first reference image appears in the scene EXACTLY as it really is — same shape, colours, printed artwork and lettering, at its true real-world size."
     : "";
-  return falQueueImage(editModel(), {
+  // The frame: meant as 9:16 like the t2i branch above (Seedream's "portrait_16_9"), but nano-banana-pro/edit
+  // has no image_size, so every keyframe has come back at its own "auto" frame and been cover-cropped to 9:16
+  // by the assembler. That stays, by name, until the owner says otherwise (edit-frame.ts).
+  const model = editModel();
+  return falQueueImage(model, {
     prompt: `${scene}${continuity}${fidelity} ${CINE_STYLE}`,
     image_urls: refs,
-    image_size: "portrait_16_9",
+    ...editFrameFields(model, "portrait_16_9"),
     ...(res ? { resolution: res } : {}),
     num_images: 1,
   }, "scene compose");
@@ -347,10 +357,14 @@ export async function brandStill(prompt: string, refUrl?: string | string[], por
       num_images: 1,
     }, "brand still");
   }
-  return falQueueImage(editModel(), {
+  // The frame: meant as 3:4 or 1:1 like the t2i branch above, but nano-banana-pro/edit has no image_size and
+  // has been drawing these (forged presenter portraits among them — custom-avatars.server.ts) at its own
+  // "auto" frame. That stays, by name, until the owner says otherwise (edit-frame.ts).
+  const model = editModel();
+  return falQueueImage(model, {
     prompt,
     image_urls: refs,
-    image_size: portrait ? "portrait_4_3" : "square_hd",
+    ...editFrameFields(model, portrait ? "portrait_4_3" : "square_hd"),
     ...(res ? { resolution: res } : {}),
     num_images: 1,
   }, "brand still edit");
