@@ -17,6 +17,8 @@ import { LangToggle } from "../components/LangToggle";
 import { UI_LANG_NATIVE, readUiLang, tr } from "../lib/ui-i18n";
 import { useT, useUiLang } from "../lib/ui-lang";
 import { cookingCount } from "../lib/ready-notice.server";
+import { readThemeCookie } from "../lib/theme";
+import { useSetTheme, useTheme } from "../lib/use-theme";
 import { READY_POLL_MS, READY_SEEN_KEY, READY_SHOW_MS, pieceToAnnounce, readyName, seenAfter, type ReadyPiece, type ReadyState } from "../lib/ready-notice";
 
 const EMPTY_HUD = {
@@ -45,7 +47,10 @@ const writeModeCookie = (m: ShellMode) => {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const id = await getWebIdentity(request);
   const savedMode = readModeCookie(request.headers.get("Cookie"));
-  if (!id) return json({ authed: false, hud: EMPTY_HUD, isAdmin: false, savedMode, cooking: 0, cookingAt: 0 });
+  // LIGHT BY DEFAULT, DARK BY CHOICE (lib/theme.ts): which one this browser chose. Every page under the
+  // shell reads it from here (lib/use-theme.ts), signed in or not — the sign-in screen has a dark side too.
+  const theme = readThemeCookie(request.headers.get("Cookie"));
+  if (!id) return json({ authed: false, hud: EMPTY_HUD, isAdmin: false, savedMode, theme, cooking: 0, cookingAt: 0 });
   const { account, shop } = id;
   const lang = readUiLang(request);
   const plan = shop.activePlan;
@@ -73,6 +78,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({
     authed: true,
     savedMode,
+    theme,
     // how many pieces are rendering right now — while it is above zero the shell keeps looking for the
     // finished one, to say "… is ready" on whatever page the member is on (lib/ready-notice.ts)
     cooking: await cookingCount(shop.id),
@@ -1200,6 +1206,9 @@ function Crest({ size }: { size: number }) {
  * server-backed avatar can replace the localStorage one later. */
 function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
   const t = useT();
+  // THE LIGHTS (lib/theme.ts): the app is light unless its member turns them down here.
+  const theme = useTheme();
+  const setTheme = useSetTheme();
   const [open, setOpen] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1346,6 +1355,13 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
 
           {/* Actions */}
           <div className="wb-menu-links">
+            {/* DARK MODE — the owner, 2026-11-24: "dark mode toggle in setting but keeep it light". A switch
+                (it says which way it is), light until it is turned; and it says what it turns — the rooms
+                that have a dark side today — so it promises no more than it does. */}
+            <button type="button" className={`wb-menu-link wb-menu-theme${theme === "dark" ? " on" : ""}`} role="switch" aria-checked={theme === "dark"} onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+              <Ico n="moon" /> <span className="wb-menu-theme-l">{t("Dark mode")}<small>{t("The sign-in screen and the Movie Maker, lights down.")}</small></span>
+              <i className="wb-menu-sw" aria-hidden="true" />
+            </button>
             <button type="button" className="wb-menu-link" onClick={pickAvatar}><Ico n="camera" /> {t("Change avatar")}</button>
             {avatar && <button type="button" className="wb-menu-link" onClick={resetAvatar}><Ico n="refresh" /> {t("Remove photo")}</button>}
             <Link to="/web/logout" className="wb-menu-link danger">{t("Log out")}</Link>
@@ -1530,6 +1546,17 @@ body{font-family:Inter,-apple-system,sans-serif;}
   font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);padding:9px 8px;border-radius:9px;text-decoration:none;transition:background .12s;}
 .wb-menu-link:hover{background:rgba(12,122,70,.07);}
 .wb-menu-link svg{width:15px;height:15px;color:var(--ink2);flex:0 0 auto;}
+/* The dark-mode switch: its name, one small line saying what it turns, and a real switch at the end that
+   shows which way it is (never colour alone: the knob moves). */
+.wb-menu-theme-l{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;line-height:1.25;}
+.wb-menu-theme-l small{font-size:11px;font-weight:500;color:var(--ink2);}
+.wb-menu-sw{flex:0 0 auto;position:relative;width:34px;height:20px;border-radius:999px;background:#CFD3C4;transition:background .16s;}
+.wb-menu-sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(20,32,26,.35);transition:transform .16s;}
+.wb-menu-theme.on .wb-menu-sw{background:var(--green);}
+.wb-menu-theme.on .wb-menu-sw::after{transform:translateX(14px);}
+[dir="rtl"] .wb-menu-theme.on .wb-menu-sw::after{transform:translateX(-14px);}
+[dir="rtl"] .wb-menu-sw::after{left:auto;right:2px;}
+@media(prefers-reduced-motion:reduce){.wb-menu-sw,.wb-menu-sw::after{transition:none;}}
 .wb-menu-link.danger{color:#A23A2A;justify-content:flex-start;}
 .wb-menu-link.danger:hover{background:rgba(162,58,42,.08);}
 .wb-main{max-width:none;margin:0 auto;padding:10px clamp(18px,3vw,56px) 70px;}
