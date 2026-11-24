@@ -51,7 +51,7 @@ import { makeCastPoster } from "./story-poster.server";
 import { castForWriter } from "./dialogue-cast";
 import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
-import { EVENT_MAX, EVENT_MAX_LAST, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, revealPicture, sceneEvent, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging } from "./acted-staging";
+import { EVENT_MAX, EVENT_MAX_LAST, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, kinLooks, revealPicture, sceneEvent, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging } from "./acted-staging";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -722,8 +722,18 @@ export async function generateTestMovie(opts: {
     const head = ((entry || "").split(/[,:—–]/)[0] || "").toLowerCase().split(/\s+/).filter(Boolean);
     return castActors.find((c) => !!c.faceUrl && head.includes(nameKey(c.name)));
   };
-  const castNote = (entry: string) => { const a = actorOfEntry(entry); return a ? `${a.name.trim()}, ${castLooks[nameKey(a.name)] || "exactly as in their reference photo"}` : entry; };
-  const castBible = treatment.cast && treatment.cast.length ? `The recurring cast (keep them identical in every shot): ${treatment.cast.map(castNote).join("; ")}.` : "";
+  // RELATED PEOPLE LOOK IT (acted-staging.ts → kinLooks). The third live film of the sisters' idea drew them
+  // fifteen to twenty years apart — about forty with dark hair, about sixty with grey hair in a bun — each one
+  // drawn from her own words alone. So when the writer invented both of the two, and the idea, the cast or the
+  // lines make them related, every picture is told whose sister (brother, mother…) each one is and her age as a
+  // number — sisters, brothers, twins and cousins the SAME age — with no grey hair on a sister under sixty, and
+  // the picture of the two of them says it in so many words (kinNote). Only the pictures: the cast stays as
+  // written. Anybody with a cast photo is drawn from the photo, and then nothing here is changed.
+  const kin = (treatment.cast || []).some((e) => !!actorOfEntry(e)) ? null : kinLooks({ idea: opts.topic, cast: treatment.cast, lines: treatment.scenes.map((s) => s.caption || "") });
+  if (kin) console.log(`[testmovie] the two are ${kin.relation}: drawn as "${kin.entries.join('" and "')}"`);
+  const pictureEntry = (entry: string): string => { const k = kin && entry ? (treatment.cast || []).indexOf(entry) : -1; return kin && k >= 0 && k < 2 ? kin.entries[k] : entry; };
+  const castNote = (entry: string) => { const a = actorOfEntry(entry); return a ? `${a.name.trim()}, ${castLooks[nameKey(a.name)] || "exactly as in their reference photo"}` : pictureEntry(entry); };
+  const castBible = treatment.cast && treatment.cast.length ? `The recurring cast (keep them identical in every shot): ${treatment.cast.map(castNote).join("; ")}.${kin?.note ? ` ${kin.note}` : ""}` : "";
 
   // 2) CAST REFERENCE still (photoreal) — establishes the characters' look; the
   //    first scene seeds from it, then the chain carries continuity.
@@ -764,7 +774,7 @@ export async function generateTestMovie(opts: {
   const bibleFor = (n: string) => {
     const actor = castActors.find((c) => !!c.faceUrl && firstName(c.name) === firstName(n));
     if (actor) return `${actor.name.trim()}, ${castLooks[firstName(actor.name)] || (isCreature(actor) ? "the character in their reference picture" : "the person in their reference photo")}`;
-    return (treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || `${n}, a person`;
+    return pictureEntry((treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || "") || `${n}, a person`;
   };
   const faceFor = (n: string) => { const k = firstName(n); return abs(castActors.find((c) => { const nm = (c.name || "").toLowerCase(); return firstName(c.name) === k || (!!k && nm.split(/[\s,]/).includes(k)); })?.faceUrl); };
   const cleanSetting = (s: string) => (((s || "").split(/[.;]/)[0] || "")
@@ -1217,8 +1227,9 @@ export async function generateTestMovie(opts: {
     // had "Tell me you heard that too" a whole shot before the knock was heard. Its sound rule lets that sound
     // be made, exactly as described; one from out of sight is made by nothing in the picture; the take is
     // longer by it (heardSeconds) and keeps its head (clipHearsFirst). Only where the scene is told to the clip
-    // at all: a staged picture, in a film whose shots happen.
-    const heard = !silent && chainStaging && !implied ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;
+    // at all: a staged picture, in a film whose shots happen. (Never a reveal this film drew: its clip is told what
+    // is in its picture instead of the scene's words — acted-staging.ts → revealClip.)
+    const heard = !silent && chainStaging && !implied && !revealed ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;
     const voiceLine = heard
       ? heardTalk({
           event: clipEvent(eventAt(i), i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : EVENT_MAX), unseen: heard.unseen,
@@ -1253,11 +1264,14 @@ export async function generateTestMovie(opts: {
       // audio is the spoken voice". No talking directions place anybody in such a shot, so each of the two is
       // said to be on their side when what happens names them. (And: a sound in it from out of sight is made
       // by nothing in the picture; a horror film's last shot moves SLOWLY; neither of them grins at it.)
+      // THE REVEAL THIS FILM DREW (`revealed`): its clip is told what is in its picture and the one small thing it
+      // does there, in place — never the scene's own words: the third live film's were "nearer", and the engine
+      // pushed the fingers out into a big hand reaching at the lens (acted-staging.ts → revealClip).
       const sides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })).filter((p) => !!p.side);
       const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)])?.unseen;
       const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : "";
       try {
-        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, implied, face: scared });
+        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, implied, face: scared });
       } catch (e) {
         // (never a shot lost to its words: it is a held, quiet beat — and still told that nobody speaks)
         console.error(`[testmovie] shot ${i + 1}: the wordless shot's rules were not built — it is told to hold: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
@@ -1265,7 +1279,7 @@ export async function generateTestMovie(opts: {
       }
     } else if (chainStaging) {
       try {
-        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, implied });
+        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, implied });
       } catch (e) {
         // (never a shot lost to its staging: it is told what a shot was always told)
         console.error(`[testmovie] shot ${i + 1}: staging words not built — the shot is told to hold, as before: ${e instanceof Error ? e.message.slice(0, 140) : e}`);

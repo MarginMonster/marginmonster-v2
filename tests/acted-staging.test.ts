@@ -22,9 +22,9 @@ import { fileURLToPath } from "node:url";
 import {
   ACTED_STAGINGS, AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, EVENT_IDEAS, EVENT_IDEAS_SMALL, EVENT_MAX, EVENT_MAX_LAST, HEARD_AUDIO, HEARD_BEFORE_SAID,
   HEARD_FIRST_SECONDS, HEARD_NOT_DRAWN, HEARD_OPEN, HEARD_THEN, HEARD_UNSEEN, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, NOBODY_SPEAKS, ONE_TAKE,
-  REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, REVEAL_REACT, REVEAL_UNSEEN_REACT, SEEN_AT_THE_END, SILENT_SHOT_SECONDS, TWO_ALWAYS,
+  PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEEN_AT_THE_END, SILENT_SHOT_SECONDS, TWO_ALWAYS,
   ageAsk, ageOf, castAgeProblem, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, eventIdeas, faceNote, happensBrief, heardIn, heardSeconds,
-  heardTalk, isActedStaging, noRoomIn, ownTitle, relationOf, repairAges, revealPart, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot,
+  heardTalk, isActedStaging, kinLooks, kinNote, noRoomIn, ownTitle, relationOf, repairAges, revealClip, revealPart, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot,
   stagingClip, stagingPicture, stagingsFor, takeAgeFix, titleAsk, twoOnScreen, wordless,
   type ActedStaging,
 } from "../app/lib/acted-staging.ts";
@@ -437,7 +437,7 @@ test("the wiring: dealt per location, drawn into its master, said to its clips, 
   // SAID to a clip only when the picture it grows out of was drawn in a staging: not a frame the maker approved,
   // not an angle they added by hand, not a film with no master
   assert.ok(eng.includes("if (!chained) chainStaging = approvedFrames[i] || !master?.url || tr === \"angle\" ? null : stagingOf(master);"));
-  assert.ok(eng.includes("    } else if (chainStaging) {\n      try {\n        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, implied });\n      } catch (e) {"), "the film's last scene may say more (a horror film's says what is seen, and what it does); and no shot is lost to its staging");
+  assert.ok(eng.includes("    } else if (chainStaging) {\n      try {\n        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, implied });\n      } catch (e) {"), "the film's last scene may say more (a horror film's says what is seen, and what it does); and no shot is lost to its staging");
   assert.ok(eng.includes("let playRules = rules;\n    if (silent) {"), "…after the one kind of shot that is told something else: nobody speaks in it");
   // a film is never lost to its staging either: with none dealt, every place is drawn as it always was
   assert.ok(eng.includes("    } catch (e) {\n      // (a film is never lost to its staging: with none dealt, every place is drawn as it always was)\n      stagingAt.clear();"));
@@ -500,7 +500,7 @@ test("the clip of a shot nobody speaks in: NOBODY SPEAKS first, no quotation mar
   for (const kind of KINDS) {
     const base = clipRules(kind);
     for (const staging of [...KEYS, null] as Array<ActedStaging | null>) {
-      for (const extra of [{}, { unseen: true, reveal: true, face }]) {
+      for (const extra of [{}, { unseen: true, reveal: true, face }, { unseen: true, reveal: true, drawn: true, face }]) {
         const r = silentRules(base, { staging, event: scene, eventMax: EVENT_MAX_LAST, sides: [{ name: "Dagny", side: "left" }, { name: "Ylva", side: "right" }], ...extra });
         const fit = fitClipPrompt({ voice: NOBODY_SPEAKS, voiceDesc: "", ...r });
         const p = fit.prompt;
@@ -508,10 +508,19 @@ test("the clip of a shot nobody speaks in: NOBODY SPEAKS first, no quotation mar
         assert.ok(p.startsWith("NOBODY SPEAKS in this shot: no voice, no words, no whisper, no murmur — only the sounds of the place and of what happens in it."), at);
         assert.ok(quoteFree(p), `${at}: ${p}`);
         assert.ok(p.length <= KLING_PROMPT_MAX && fit.gaveUp === "", `${at}: ${p.length} ${fit.gaveUp}`);
-        assert.ok(p.includes(`This happens once, and it is the shot: ${said}`), at);
         // nothing about talking anywhere in it: no spoken-dialogue audio, no "the ONLY audio is the spoken voice", no sung vocal
         assert.ok(p.includes("No voice at all.") && !/spoken-dialogue|spoken voice|spoken words|vocal/.test(p), at);
         assert.ok(clipSilent(p), at);
+        if ("drawn" in extra) {
+          // THE REVEAL THIS FILM DREW: what is in its picture and the one small thing it does — never the scene's
+          // words ("pushes out … toward her shoulder"), never walking on, the camera still
+          assert.ok(p.includes(`This happens once, and it is the shot: ${revealClip(scene)} ${REVEAL_REACT}`) && p.includes(REVEAL_STAY), at);
+          assert.ok(!p.includes("pushes out") && !p.includes("toward her shoulder") && !p.includes(HEARD_UNSEEN) && !p.includes(REVEAL_MOVES), at);
+          assert.ok(!p.includes(ACTED_STAGINGS.walk.clip) && !p.includes(ACTED_STAGINGS.walk.camera || "(no camera)"), at);
+          assert.ok(p.includes("Neither Dagny nor Ylva smiles at any moment: both faces show fear."), at);
+          continue;
+        }
+        assert.ok(p.includes(`This happens once, and it is the shot: ${said}`), at);
         if ("reveal" in extra) assert.ok(p.includes(HEARD_UNSEEN) && p.includes(REVEAL_MOVES) && p.includes("Neither Dagny nor Ylva smiles at any moment: both faces show fear."), at);
       }
     }
@@ -704,7 +713,7 @@ test("a sound shot is longer by the sound, keeps its head, and is only made wher
   }
   assert.equal(heardSeconds("Dagny, stop moving for a second. Tell me you heard that too."), 9);
   const eng = read("app", "lib", "film-dialogue.server.ts");
-  assert.ok(eng.includes("const heard = !silent && chainStaging && !implied ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;"), "a staged picture in a film whose shots happen: where the scene is told at all (and never a reveal that could not be drawn — its words are not said)");
+  assert.ok(eng.includes("const heard = !silent && chainStaging && !implied && !revealed ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;"), "a staged picture in a film whose shots happen: where the scene is told at all (and never a reveal that could not be drawn — its words are not said)");
   assert.ok(eng.includes("const voiceLine = heard\n      ? heardTalk({"));
   // the trims: nothing before the line is cut or played fast — the first take and a re-rolled one alike
   assert.equal(eng.split("keepHead: clipHearsFirst(prompt)").length - 1, 2);
@@ -767,29 +776,36 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   for (const rule of [
     "It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter",
     "never in another room; the film draws it into that place's own picture",
-    "BARELY: only a part of it, the way a horror film shows it (a face pressed into a gap in the wall, one eye catching the light; the tips of long fingers curled over a broken edge), never a whole arm or a whole body reaching out into the light",
+    "BARELY: only a part of it, the way a horror film shows it — in a wall, its FACE pressed into a hole broken in the plaster, one eye catching the light; anywhere else, a tall shape standing in the dark with only its face in the light — never a hand, an arm or a body reaching out into the light",
     "close behind one of the two or between them, where the light gives out, never at the edge of the picture",
-    "Say its one or two wrongnesses in so many words (fingers far too long, with a joint too many; skin like old candle wax; an eye open far too wide that never blinks) — never just \"wrong\" or \"strange\".",
-    "what HAPPENS in that shot is IT, SLOWLY: it moves a little, it is nearer than it was — and the two FREEZE, and one of them slowly turns to it.",
+    "Say its one or two wrongnesses in so many words (skin like old candle wax; an eye open far too wide that never blinks; a face a little too high up) — never just \"wrong\" or \"strange\".",
+    "what HAPPENS in that shot is IT, SLOWLY and IN PLACE: its eye turns to them, or its head tilts — it never comes out of where it is, never comes nearer, never reaches for anybody — and the two FREEZE, and one of them slowly turns to it.",
     "Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so.",
   ]) assert.ok(SEEN_AT_THE_END.includes(rule), rule);
-  // what of it shows, by the words: a face, fingers (a hand, an arm, a reach), both — anything else, a figure
+  // (told "it moves a little, it is nearer than it was", the third live film's writer brought the fingers out of the
+  //  hole, and the engine made them a big hand reaching at the lens)
+  assert.ok(!SEEN_AT_THE_END.includes("nearer than it was") && !/fingers|joint too many/.test(SEEN_AT_THE_END));
+  // what of it shows: in a WALL, its face — whatever part of it the words name (a hand at the edge of a hole is a
+  // hand about to reach, and the engine finishes the reach); anywhere else, a figure in the dark
   assert.equal(revealPart("In a gap behind June a pale face presses forward, one eye watching Peggy."), "face");
-  assert.equal(revealPart("Behind Peggy, a pale hand pushes out through a split in the wallpaper and reaches toward her hair."), "hand");
-  assert.equal(revealPart("Long fingers curl round the edge as a face presses into the gap."), "both");
+  assert.equal(revealPart("Behind Peggy, a pale hand pushes out through a split in the wallpaper and reaches toward her hair."), "face");
+  assert.equal(revealPart("Long fingers curl round the edge as a face presses into the gap."), "face");
+  assert.equal(revealPart("Long grey fingers with one joint too many curl out of a fresh hole in the plaster between Colette and Prudence, creeping nearer to Prudence's hair."), "face", "THE THIRD LIVE FILM'S KIND OF SCENE");
   assert.equal(revealPart("In the dark corner behind June something tall stands perfectly still."), "figure");
+  assert.equal(revealPart("A hand reaches out of the dark doorway behind Peggy."), "figure");
+  assert.deepEqual(Object.keys(REVEAL_PARTS).sort(), ["face", "figure"], "the fingers form drew right and moved wrong: it is not drawn any more");
   const mood = "Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs.";
   const sides = [{ name: "Peggy", side: "left" }, { name: "June", side: "right" }];
-  // THE LIVE FILM'S KIND OF SCENE (a hand reaching out of the wallpaper toward the older one): drawn as its
-  // fingertips, out of a hole broken in real plaster, close behind HER — told who she is by her side of the picture
+  // THE LIVE FILMS' KIND OF SCENE (a hand reaching out of the wallpaper toward the older one): drawn as a FACE in
+  // a hole broken in real plaster, close behind HER — told who she is by her side of the picture — and told that
+  // no hand of it shows, since the scene's own words (given whole) name one
   const arm = "Behind Peggy, a pale hand pushes out through a split in the wallpaper and reaches slowly toward her hair; June keeps folding, she has not seen it.";
   const p = revealPicture({ moment: arm, mood, sides });
   assert.ok(p.startsWith("Edit this photo, a frame from a live-action horror film. Keep the camera and the framing, every window, door and lamp, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes. Peggy is the one on the left; June is the one on the right."));
   assert.ok(p.includes(REVEAL_DIM), "in light that has dimmed: in the place's ordinary light the thing read as stuck on");
-  assert.ok(p.includes(`(its words say WHAT it is and WHERE; never how much of it shows): ${arm} Show it like this, and no more of it: In the wall close behind Peggy, the one on the left, at the height of a head — not over a window or a door, well inside the picture — the plaster has been broken open from inside into a ragged hole: torn wallpaper curling outward, crumbled plaster and splintered wooden lath at its edges, deep black inside; ${REVEAL_PARTS.hand.seen}.`));
-  assert.ok(p.includes(`What is wrong with it: ${REVEAL_PARTS.hand.wrong}.`));
-  assert.ok(REVEAL_PARTS.hand.seen.includes("only the fingertips: never a whole hand or an arm, nothing reaching into the room"));
-  assert.ok(REVEAL_PARTS.hand.wrong.includes("far too long and thin, with one joint too many") && REVEAL_PARTS.hand.wrong.includes("never a claw"));
+  assert.ok(p.includes(`(its words say WHAT it is and WHERE; never how much of it shows): ${arm} Show it like this, and no more of it: In the wall close behind Peggy, the one on the left, at the height of a head — not over a window or a door, well inside the picture — the plaster has been broken open from inside into a ragged hole: torn wallpaper curling outward, crumbled plaster and splintered wooden lath at its edges, deep black inside; ${REVEAL_PARTS.face.seen}; only that FACE shows — no hand, no fingers and no arm of it anywhere in the picture.`));
+  assert.ok(p.includes(`What is wrong with it: ${REVEAL_PARTS.face.wrong}.`));
+  assert.ok(!revealPicture({ moment: "In a black gap torn in the wallpaper a pale face presses forward, watching them.", sides }).includes("no hand, no fingers"), "said only when the words name a hand");
   assert.ok(REVEAL_PARTS.face.seen.includes("a hand's width back inside it, half hidden by its broken edge, is a FACE that is not quite human: only one eye and a sliver of cheek catch the light"));
   assert.ok(REVEAL_PARTS.face.wrong.includes("the eye is open far too wide, the white showing all the way round it, and it does not blink") && !/\bwet\b/.test(REVEAL_PARTS.face.wrong), "(told 'wet', the model drew a crying woman)");
   assert.ok(p.includes(CREATURE_REAL), "CAUGHT on a real camera, a practical effect, never CGI — story-picture.ts's own words");
@@ -808,8 +824,9 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   const src = read("app", "lib", "acted-staging.ts");
   assert.ok(src.includes("import { CREATURE_REAL } from \"./story-picture.ts\";") && src.includes("import { TAKE_HIDDEN } from \"./take.ts\";"));
   for (const words of ["a practical-effects creature as a 1970s horror film would build it", "we see less than we want to"]) assert.ok(!src.includes(words), words);
-  // the clip: it moves SLOWLY, and the two FREEZE and one turns to it — whether or not a line was written for it
-  assert.ok(REVEAL_MOVES.startsWith("What is seen moves SLOWLY — slow, smooth and unhurried, never a jump, a lunge or a sudden move"));
+  // the clip: it moves only a little, in place, and the two FREEZE and one turns to it — whether or not a line was
+  // written for it. Not drawn here (a frame the maker approved, a place of its own): the scene's words, held in place
+  assert.equal(REVEAL_MOVES, "What is seen moves only a little, SLOWLY and IN PLACE — never a jump, a lunge or a reach, never out of where it is, never toward the camera — and it stays solid and real, half in shadow.");
   assert.equal(REVEAL_REACT, "Both of them FREEZE where they are — whatever their hands were doing stops dead — and then, slowly, one of them turns to look at it and stares; nobody screams, nobody runs, nobody looks at the camera.");
   const live = clipRules({ cartoon: false, sing: false });
   const moment = "Behind June, the tips of long grey fingers curl over the broken edge of a hole in the plaster; Peggy sees them, June has not turned round.";
@@ -817,6 +834,26 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.ok(!silentRules(live, { staging: "depth", event: moment }).look.includes(REVEAL_MOVES));
   assert.ok(stagedRules(live, { staging: "depth", event: moment, reveal: true }).lookShort.endsWith(`As the line is spoken, this happens once: ${moment} ${REVEAL_MOVES} ${REVEAL_REACT}`));
   assert.ok(!stagedRules(live, { staging: "depth", reveal: true }).look.includes(REVEAL_MOVES), "nothing written to happen: nothing to move");
+  // DRAWN HERE (the reveal picture came): told what is in that picture and the one thing it does, in place — never
+  // the scene's own words, which said "curl over", "creeping nearer", "pushes out"; the two stay where they are; the
+  // camera does not travel, even in a staging whose camera does
+  for (const staging of [...KEYS, null] as Array<ActedStaging | null>) {
+    for (const r of [silentRules(live, { staging, event: moment, reveal: true, drawn: true }), stagedRules(live, { staging: staging || "depth", event: moment, reveal: true, drawn: true })]) {
+      for (const note of [r.look, r.lookTight, r.lookShort]) {
+        assert.ok(note.includes(`${REVEAL_PARTS.face.clip} ${REVEAL_PARTS.face.moves} ${REVEAL_REACT}`) && note.includes(REVEAL_STAY), `${staging}: ${note}`);
+        assert.ok(!note.includes(moment) && !/fingers curl|turned round|Peggy|June/.test(note) && !note.includes(REVEAL_MOVES), `${staging}: ${note}`);
+      }
+      assert.ok(!r.steady.includes(ACTED_STAGINGS.walk.camera || "(no camera)") && !r.look.includes(ACTED_STAGINGS.walk.clip), `${staging}: the camera stays where it is`);
+    }
+  }
+  // …in the exact words of each form: one small thing, in place — never out, never nearer, never at the lens
+  assert.equal(REVEAL_PARTS.face.moves, "Only its EYE moves: it slides slowly round to look at them, and it never blinks. The face stays exactly where it is, back inside the hole — it never leans out, never pushes through, never grows, and its mouth stays shut. Nothing comes out of the wall, and nothing comes toward the camera.");
+  assert.equal(REVEAL_PARTS.figure.moves, "Only its HEAD moves: it tilts slowly to one side. It never takes a step, never raises its arms, never comes nearer, never grows, and nothing comes toward the camera.");
+  assert.equal(revealClip("In the dark corner behind June something tall stands perfectly still."), `${REVEAL_PARTS.figure.clip} ${REVEAL_PARTS.figure.moves}`);
+  for (const part of Object.values(REVEAL_PARTS)) assert.ok(quoteFree(part.clip) && quoteFree(part.moves) && /toward the camera\.$/.test(part.moves), part.moves);
+  // a sound-first shot is never what the reveal's line opens on: its clip is told what is in its picture instead
+  const heardReveal = stagedRules(live, { staging: "depth", event: "Three slow knocks from inside the wall, then pale fingers curl over the edge of the hole.", heard: true, reveal: true, drawn: true });
+  assert.ok(heardReveal.lookShort.includes(REVEAL_PARTS.face.clip) && heardReveal.steady === live.steady, "no sound rule: it is not a sound shot");
   // …and when its picture could not be drawn: the clip is NOT told what it is (told to show a thing its picture
   // has not got, the engine draws one of its own — the floating hand), and the two react to something never seen
   for (const r of [silentRules(live, { staging: "depth", event: moment, reveal: true, implied: true }), stagedRules(live, { staging: "depth", event: moment, reveal: true, implied: true })]) {
@@ -835,7 +872,8 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.ok(pro > at && kontext > pro, "the place's master is the ONE reference picture, on nano-banana-pro, then flux-kontext-pro");
   assert.ok(eng.includes("try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\"))); }"));
   assert.ok(eng.includes("const implied = lastHorror && !revealed && tr !== \"location\" && !approvedFrames[i];"));
-  assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, implied, face: scared });"));
+  assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, implied, face: scared });"));
+  assert.ok(eng.includes("others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, implied });"));
 });
 
 /* ---- A CUT TO ANOTHER PLACE IS A STRAIGHT CUT ---- */
@@ -987,6 +1025,77 @@ test("the writer is told: each one's age said plainly, and related people the ri
   assert.ok(engine.includes("fixed = takeAgeFix(cast, (JSON.parse(raw) as { cast?: unknown }).cast, { idea: topic, lines: spoken });"));
   assert.ok(engine.includes("const now = fixed || repairAges(cast, problem);"), "never filmed as written: put right here when asking again did not");
   assert.ok(engine.includes("...(ageNote ? { ageFit: ageNote } : {})"), "…and what happened rides on the treatment");
+  // …and two close in age LOOK it (the third film's sisters: one drawn about sixty, with grey hair in a bun)
+  assert.ok(AGES_FIT_RELATION.endsWith("Two who are close in age by what they are (sisters, brothers, cousins, a couple) LOOK it: no grey or white hair on either of them unless both are past sixty."));
+});
+
+/* ---- RELATED PEOPLE LOOK IT, IN THE PICTURES ----
+ * The third live film of the same idea (knock3): its "sisters" — written, most likely, "in her late forties" and "in
+ * her mid-fifties", which fit — were DRAWN fifteen to twenty years apart: about forty with a short dark crop and
+ * glasses, about sixty with grey hair in a bun. Drawn from those words on the master picture's own model, they came
+ * out the same way twice (scratchpad t45/acted/k3-sisters-before-*.jpg); from the words below, both about fifty,
+ * twice (k3-sisters-after-*.jpg). */
+
+const KNOCK3_CAST = [
+  "Colette, a woman in her late forties with a short dark crop, wire-rimmed glasses, a white shirt and a long grey cardigan",
+  "Prudence, a woman in her mid-fifties with grey hair pulled into a loose bun and a red plaid flannel shirt",
+];
+
+test("THE THIRD FILM'S SISTERS: ages that fit are DRAWN as sisters — the same age as a number, no grey hair under sixty, and the picture of the two told so", () => {
+  assert.equal(castAgeProblem({ idea: SISTERS_IDEA, cast: KNOCK3_CAST }), null, "the ages fit — the check let them through");
+  const kin = kinLooks({ idea: SISTERS_IDEA, cast: KNOCK3_CAST });
+  assert.ok(kin);
+  assert.equal(kin!.relation, "siblings");
+  assert.deepEqual(kin!.entries, [
+    "Colette, Prudence's sister, about 51 years old, a woman with a short dark crop, wire-rimmed glasses, a white shirt and a long grey cardigan",
+    "Prudence, Colette's sister, about 51 years old, a woman with hair pulled into a loose bun and a red plaid flannel shirt",
+  ]);
+  assert.ok(kin!.entries.every((e) => e.length <= PICTURE_DESC_MAX), "inside what the master picture's prompt keeps of each one");
+  assert.equal(kin!.note, "Colette and Prudence are sisters and look it: the same age — both about 51, the same generation, with a family likeness; neither one looks old enough to be the other's parent.");
+  // the master picture of the two of them says it, right after who they are — never when a reference photo is bound
+  const parts = { setting: "their late mother's bedroom at night", consistency: "Keep the two people clearly distinct.", comp: "wide cinematic landscape composition" };
+  const master = stagedTwoShot({ staging: "depth", ...parts, personA: kin!.entries[0], personB: kin!.entries[1] });
+  assert.ok(master.includes(`${kin!.entries[0]} on one side and ${kin!.entries[1]} on the other, both faces prominent and in focus — each in their own half of the frame, never one directly in front of the other. ${kin!.note} This is NOT an over-the-shoulder shot`));
+  assert.equal(kinNote(kin!.entries[0], kin!.entries[1]), kin!.note, "read back off the words the picture is given");
+  assert.ok(!stagedTwoShot({ staging: "depth", ...parts, personA: kin!.entries[0], personB: "Prudence — EXACTLY the person in reference image 1", faceNote: " WHO IS WHO: reference image 1 is Prudence and ONLY Prudence." }).includes("are sisters"));
+  assert.ok(!stagedTwoShot({ staging: "depth", ...parts, personA: KNOCK3_CAST[0], personB: "Sam, a man in his sixties" }).includes(" look it"), "nobody related: nothing said");
+  // the first film's sisters, once their ages were put right: the same — and Peggy's grey goes, her glasses stay
+  const first = kinLooks({ idea: SISTERS_IDEA, cast: repairAges(SISTERS_CAST, castAgeProblem({ idea: SISTERS_IDEA, cast: SISTERS_CAST })!), lines: SISTERS_LINES });
+  assert.deepEqual(first!.entries, ["Peggy, June's sister, about 50 years old, a woman with short hair, round glasses and a floral blouse", "June, Peggy's sister, about 50 years old, a woman with a long dark braid and a denim jacket"]);
+});
+
+test("the pictures' words for every relation: whose (sister, wife, mother…), the age as a number — and grey hair, only where it belongs", () => {
+  const look = (idea: string, cast: string[]) => kinLooks({ idea, cast });
+  // every way a cast entry says grey hair goes, for a sister under sixty — a grey cardigan, silver earrings and a
+  // white blouse stay; "a 47-year-old with" does not become "a with"
+  assert.deepEqual(look("Two sisters", ["Ann, a woman of about 52 with silver-streaked dark hair, silver earrings and a white blouse", "Bea, her younger sister, a 47-year-old with dark hair streaked with grey, greying at the temples"])!.entries,
+    ["Ann, Bea's sister, about 50 years old, a woman with dark hair, silver earrings and a white blouse", "Bea, Ann's sister, about 50 years old, with dark hair"]);
+  assert.deepEqual(look("Two sisters", ["Prudence, 58, grey-haired, in a plaid flannel shirt", "Colette (49), Prudence's younger sister, short dark crop and glasses"])!.entries,
+    ["Prudence, Colette's sister, about 54 years old, in a plaid flannel shirt", "Colette, Prudence's sister, about 54 years old, short dark crop and glasses"]);
+  const twins = look("Twin brothers find a door in the cellar.", ["Sam, a man in his early thirties with a buzz cut", "Max, a man in his early thirties with a ponytail"])!;
+  assert.deepEqual(twins.entries, ["Sam, Max's twin brother, about 32 years old, a man with a buzz cut", "Max, Sam's twin brother, about 32 years old, a man with a ponytail"]);
+  assert.ok(twins.note.startsWith("Sam and Max are twin brothers and look it: the same age — both about 32"));
+  // a couple: each their own age, and no grey under sixty
+  const couple = look("A married couple buy a farmhouse.", ["Ivy, a woman in her late fifties with grey hair", "Ned, a man in his early fifties with a salt-and-pepper beard"])!;
+  assert.deepEqual(couple.entries, ["Ivy, Ned's wife, about 58 years old, a woman", "Ned, Ivy's husband, about 52 years old, a man with a beard"]);
+  assert.equal(couple.note, "Ivy and Ned are a married couple and look it: about 58 and about 52.");
+  // a mother and her daughter: a generation apart — the mother's grey hair is hers to keep
+  const parent = look("A mother and her daughter hear knocking.", ["Mara, a woman in her sixties with grey hair", "Lily, a woman in her late thirties with red hair"])!;
+  assert.deepEqual(parent.entries, ["Mara, Lily's mother, about 65 years old, a woman with grey hair", "Lily, Mara's daughter, about 38 years old, a woman with red hair"]);
+  assert.equal(parent.note, "Mara is Lily's mother and looks it: about 65, and Lily about 38 — a generation apart.");
+  // nobody related, nobody's age said, not two: nothing
+  assert.equal(look("Two friends at a diner.", ["Ann, in her twenties", "Bea, in her seventies with white hair"]), null);
+  assert.equal(look("Two sisters", ["Ann, with a braid", "Bea, in her thirties"]), null);
+  assert.equal(look("Two sisters", ["Ann, in her thirties"]), null);
+  // the ways a cast list says an age with a bare number — and the numbers that are not ages
+  assert.deepEqual(["Prudence, 58, grey hair", "Ruth (30)", "Ann, a woman of about 52 with a raincoat", "Cy, around 40, a farmer", "Bo, about 6 feet tall", "Di, about 30 letters in her hand"].map((e) => ageOf(e)?.from ?? null), [58, 30, 52, 40, null, null]);
+  // the film: only the pictures, only a cast the writer invented (anybody with a cast photo is drawn from it)
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  assert.ok(eng.includes("const kin = (treatment.cast || []).some((e) => !!actorOfEntry(e)) ? null : kinLooks({ idea: opts.topic, cast: treatment.cast, lines: treatment.scenes.map((s) => s.caption || \"\") });"));
+  assert.ok(eng.includes("|| \"exactly as in their reference photo\"}` : pictureEntry(entry); };"), "the cast reference picture");
+  assert.ok(eng.includes("join(\"; \")}.${kin?.note ? ` ${kin.note}` : \"\"}` : \"\";"), "…which says what they are to each other");
+  assert.ok(eng.includes("return pictureEntry((treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || \"\") || `${n}, a person`;"), "each one's words in the master picture");
+  assert.ok(eng.includes("descA: bibleFor(spkA), descB: bibleFor(spkB)"));
 });
 
 /* ---- THE TITLE ----
