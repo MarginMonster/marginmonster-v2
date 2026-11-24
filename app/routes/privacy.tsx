@@ -56,7 +56,7 @@ export const LEGAL_CSS = `
 
 /* Single source of truth for the "Last updated" stamp, shared by both legal
  * pages. Bump this one line when either policy changes. */
-export const LEGAL_UPDATED = "24 October 2026";
+export const LEGAL_UPDATED = "24 November 2026";
 
 /* Masthead + footer so the legal pages read as part of the product rather
  * than a bare document. Kept verbatim on both routes (see LEGAL_CSS note). */

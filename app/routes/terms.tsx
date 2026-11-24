@@ -98,6 +98,26 @@ export default function Terms() {
           your choice, you stay responsible for what goes out, and you can turn it off at any time.
         </p>
 
+        <h2 id="songs"><a className="anchor" href="#songs">Songs and other material you bring</a></h2>
+        <p>
+          When you bring something into EasyMode — a song file, a link to a song or a video, a
+          photo — you confirm that you own it or have permission from its owner to use it the way
+          you are using it. Before we fetch a song from a link, and before we make a video from a
+          song, we ask you to confirm this, and we keep a record of your confirmation with the video.
+        </p>
+        <p>
+          Video and social platforms check the music in uploads against rights holders&rsquo;
+          catalogues. A video with a song you do not have the rights to can be muted, claimed,
+          blocked or taken down where you post it, and can count against the account that posted
+          it. That responsibility is yours.
+        </p>
+        <p>
+          <strong>Copyright complaints.</strong> If you believe something made with EasyMode uses
+          your work without permission, write to <a href="mailto:hello@easymodeapp.com">hello@easymodeapp.com</a> with
+          the work, where you found the copy, and how to reach you. We remove material when we
+          receive a valid notice, and we close the accounts of people who infringe repeatedly.
+        </p>
+
         <h2 id="ai"><a className="anchor" href="#ai">AI disclosure</a></h2>
         <p className="note">
           Content produced by EasyMode is AI-generated and is labelled as such when posted,

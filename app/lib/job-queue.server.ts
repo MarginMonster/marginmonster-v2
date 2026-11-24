@@ -933,6 +933,8 @@ async function runJob(
           shape: payload.lyricShape,
           section: (payload.section as string) || "creator",
           jobId: payload.__jobId as string | undefined,
+          // the member's "I own this song, or I have permission from its owner" — kept on the piece
+          songRights: payload.songRights,
           resume: {
             ckLvHeard: payload.ckLvHeard as string | undefined,
             ckLvPlan: payload.ckLvPlan as string | undefined,

@@ -126,7 +126,8 @@ const REP_SCHEMAS: Record<string, { fields: string[]; durations?: number[]; soun
   "google/veo-3.1-fast": { fields: ["prompt", "aspect_ratio", "duration", "image", "last_frame", "negative_prompt", "resolution", "generate_audio", "seed"], durations: [4, 6, 8], sound: true, enums: { aspect_ratio: ["16:9", "9:16"] } },
   "bytedance/seedance-2.5": { fields: ["prompt", "image", "last_frame_image", "reference_images", "reference_videos", "reference_audios", "duration", "resolution", "aspect_ratio", "generate_audio", "watermark", "output_format", "seed"], durations: Array.from({ length: 27 }, (_, i) => i + 4), sound: true, enums: { resolution: ["480p", "720p"], aspect_ratio: ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"] } },
   "bytedance/seedance-1-pro": { fields: ["prompt", "image", "last_frame_image", "duration", "resolution", "aspect_ratio", "fps", "camera_fixed", "seed"], durations: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
-  "minimax/hailuo-02": { fields: ["prompt", "first_frame_image", "last_frame_image", "duration", "resolution", "prompt_optimizer"], durations: [6, 10] },
+  // "10 seconds is only available for 768p resolution" — its default resolution is 1080p
+  "minimax/hailuo-02": { fields: ["prompt", "first_frame_image", "last_frame_image", "duration", "resolution", "prompt_optimizer"], durations: [6, 10], enums: { resolution: ["512p", "768p", "1080p"] } },
 };
 
 test("every Replicate engine on a route is asked only for fields its schema has, at a length it makes, its sound said out loud", () => {
@@ -158,10 +159,15 @@ test("each Replicate body, exactly", () => {
   assert.deepEqual(animateInputFor("bytedance/seedance-2.5", { ...opts, durationSec: 10, generateAudio: true }), { prompt: "a hero shot", image: opts.startImage, duration: 10, resolution: "720p", aspect_ratio: "adaptive", generate_audio: true });
   assert.equal(animateInputFor("bytedance/seedance-2.5", opts).duration, 5);
   assert.equal(animateInputFor("bytedance/seedance-2.5", opts).generate_audio, false);
-  // the default and the older Seedance and Hailuo: exactly as before
+  // the default and the older Seedance: exactly as before
   assert.deepEqual(animateInputFor(DEFAULT_ANIMATE_MODEL, { ...opts, durationSec: 10 }), { start_image: opts.startImage, prompt: "a hero shot", negative_prompt: "object disappearing, product vanishing, flickering, fading in and out, morphing, distortion, extra objects, text, watermark, blur", duration: 10 });
   assert.deepEqual(animateInputFor("bytedance/seedance-1-pro", opts), { prompt: "a hero shot", image: opts.startImage, duration: 10, resolution: "720p" });
-  assert.deepEqual(animateInputFor("minimax/hailuo-02", opts), { prompt: "a hero shot", first_frame_image: opts.startImage, duration: 10 });
+  // Hailuo 2: ten seconds exist only at 768p (its default, 1080p, makes six) — the owner's pick, 2026-11-24: "768p"
+  assert.deepEqual(animateInputFor("minimax/hailuo-02", opts), { prompt: "a hero shot", first_frame_image: opts.startImage, duration: 10, resolution: "768p" });
+  for (const a of [{}, { durationSec: 6 }, { durationSec: 15, aspect: "16:9" }]) {
+    const b = animateInputFor("minimax/hailuo-02", { ...opts, ...a });
+    assert.ok(!(b.duration === 10 && b.resolution !== "768p"), "never ten seconds at a resolution that has no ten seconds");
+  }
 });
 
 test("the talking ad's last resort is a live model, no dearer than the one that died", () => {

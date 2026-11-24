@@ -147,7 +147,11 @@ export function animateInputFor(model: string, opts: AnimateOpts): Record<string
   if (model === "bytedance/seedance-2.5") return { prompt: opts.prompt, image: opts.startImage, duration: seedanceSeconds(opts.durationSec), resolution: "720p", aspect_ratio: "adaptive", generate_audio: opts.generateAudio === true };
   // SEEDANCE 1 PRO and HAILUO 2 take neither a negative_prompt nor an audio flag — do not add them.
   if (model === "bytedance/seedance-1-pro") return { prompt: opts.prompt, image: opts.startImage, duration: 10, resolution: "720p" };
-  if (model === "minimax/hailuo-02") return { prompt: opts.prompt, first_frame_image: opts.startImage, duration: 10 };
+  // HAILUO 2: "10 seconds is only available for 768p resolution" (its llms.txt, read 2026-11-24), and its default
+  // resolution is 1080p — so ten seconds with no resolution named was a request it cannot make: refused, the
+  // Replicate default rendered instead and the +25 refunded, every time. The owner's choice (2026-11-24):
+  // "768p" — the full ten seconds, at 768p.
+  if (model === "minimax/hailuo-02") return { prompt: opts.prompt, first_frame_image: opts.startImage, duration: 10, resolution: "768p" };
   // KLING 2.6 (its page calls it "Kling 2.6 Pro"): start_image, negative_prompt, duration 5 | 10, and
   // generate_audio — DEFAULT TRUE, $0.14 a second with sound against $0.07 silent.
   if (model === "kwaivgi/kling-v2.6") return { start_image: opts.startImage, prompt: opts.prompt, negative_prompt: neg, duration: klingTwoSeconds(opts.durationSec), generate_audio: opts.generateAudio === true };

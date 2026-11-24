@@ -43,8 +43,10 @@ export const COVER_H = POSTER_H;
  *  new design must be a new name) — raise it and every cover is asked for again, the old one shown meanwhile. */
 export const COVER_V = 1;
 /** …and each family's own: raise ONE family's and only its covers are drawn again (the others are not
- *  touched — their files, their names, their records). */
-export const COVER_VERSION: Readonly<Record<CoverFamily, number>> = { story: COVER_V, film: COVER_V, horror: COVER_V, music: COVER_V, ad: COVER_V, creator: COVER_V, footage: COVER_V };
+ *  touched — their files, their names, their records). Ads and Creator videos are at 2: their first design
+ *  (an app's own template) was turned down — "The ads and creator ones need rethought" — and the owner chose
+ *  the redrawn A for both (2026-11-24), so any cover drawn in the first design is drawn again. */
+export const COVER_VERSION: Readonly<Record<CoverFamily, number>> = { story: COVER_V, film: COVER_V, horror: COVER_V, music: COVER_V, ad: 2, creator: 2, footage: COVER_V };
 
 export type CoverFamily = "story" | "film" | "horror" | "music" | "ad" | "creator" | "footage";
 export const COVER_FAMILIES: ReadonlyArray<CoverFamily> = ["story", "film", "horror", "music", "ad", "creator", "footage"];
@@ -176,10 +178,11 @@ export function localMedia(url: string | null | undefined): string | null {
 /** SHOULD THE ARCHIVE ASK FOR ONE? A video or a track of a known family, whose media is ours and still
  *  here, that has no cover of the current design — and is not a told story with its poster (that IS its
  *  cover). */
-/** FAMILIES WHOSE DESIGN IS BEING REDRAWN: not asked for until it is. The owner, seeing every family on a
- *  TEST page (2026-11-24): "The ads and creator ones need rethought" — so an ad's or a creator video's tile
- *  keeps the picture it had until the new design lands. */
-export const COVER_HELD: ReadonlySet<string> = new Set(["ad", "creator"]);
+/** FAMILIES WHOSE DESIGN IS BEING REDRAWN: not asked for until it is (a held family's tile keeps the picture
+ *  it had). None today. Ads and Creator videos were held while they were redrawn — the owner, seeing every
+ *  family on a TEST page (2026-11-24): "The ads and creator ones need rethought" — until he chose, the same
+ *  day, "A" for both (COVER_STYLE). The set stays, for the next family that is redrawn. */
+export const COVER_HELD: ReadonlySet<string> = new Set<string>();
 
 export function coverAsk(o: { kind: CoverKind | null; media: string | null | undefined; expired: boolean; poster: string | null; cover: { v: number } | null }): boolean {
   if (!o.kind || o.expired || !localMedia(o.media)) return false;
@@ -700,7 +703,7 @@ export function musicGraph(spec: CoverSpec): string {
  * five he kept each look like a real object of their own world — a one-sheet, a marquee, a record sleeve, a
  * viewfinder. The first ad and Creator covers were an app's own template (a coloured ground, a framed card).
  * So each is drawn again as an object of ITS world — three ways each, side by side on a TEST page for him to
- * choose (the families stay HELD until he has; COVER_STYLE is then his choice):
+ * choose. HIS CHOICE (2026-11-24): "A" — the print ad for ads, the thumbnail for Creator videos (COVER_STYLE):
  *   AD       A · a print ad: the picture, a clean band with the product's name set big, its packshot lifted
  *                over the fold, the length as a player shows it
  *            B · a sponsored post: a feed card — the account, the picture, the button bar, the row of hearts
@@ -714,7 +717,8 @@ export const COVER_OPTIONS = {
   ad: [{ key: "A", name: "Print ad" }, { key: "B", name: "Sponsored post" }, { key: "C", name: "Product spot" }],
   creator: [{ key: "A", name: "Thumbnail" }, { key: "B", name: "Short-video frame" }, { key: "C", name: "Channel template" }],
 } as const;
-/** The option drawn for each — only once its family is no longer HELD. */
+/** The option drawn for each — the owner's choice (2026-11-24: "A" for both). B and C stay drawable (a cover
+ *  spec may name one), so a change of mind is this line and a version step (COVER_VERSION). */
 export const COVER_STYLE: Readonly<{ ad: CoverStyle; creator: CoverStyle }> = { ad: "A", creator: "A" };
 
 const INK = "0x14201A";

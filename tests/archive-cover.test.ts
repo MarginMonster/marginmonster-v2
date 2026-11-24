@@ -128,7 +128,11 @@ test("its record: a file of ours beside the media, the design's version in its n
   // A DESIGN VERSION PER FAMILY: raising one family's draws ITS covers again and touches no other's
   assert.deepEqual(Object.keys(COVER_VERSION).sort(), [...COVER_FAMILIES].sort());
   for (const fam of ["story", "film", "horror", "music", "footage"] as const) assert.equal(COVER_VERSION[fam], COVER_V, `${fam} keeps the design the owner saw`);
+  // ads and Creator videos: their first design was turned down, the redrawn A chosen — a cover of the first is drawn again
+  assert.equal(COVER_VERSION.ad, 2);
+  assert.equal(COVER_VERSION.creator, 2);
   assert.ok(new RegExp(`-cover${COVER_VERSION.ad}\\.jpg$`).test(coverName("/renders/a.mp4", "p", "ad")));
+  assert.ok(coverName("/renders/a.mp4", "p", "creator").endsWith("-cover2.jpg"));
   assert.deepEqual(coverOf({ cover: "/renders/mv-1-abc-cover1.jpg" }), { src: "/renders/mv-1-abc-cover1.jpg", v: 1 });
   assert.deepEqual(coverOf(JSON.stringify({ cover: "/renders/a-cover12.jpg" })), { src: "/renders/a-cover12.jpg", v: 12 });
   for (const bad of [{ cover: "https://evil.example/a-cover1.jpg" }, { cover: "/renders/../a-cover1.jpg" }, { cover: "/renders/a.b-cover1.jpg" }, { cover: "/renders/a-poster.jpg" }, { cover: "/renders/a-cover.jpg" }, { cover: 3 }, {}, null, "{"]) {
@@ -398,22 +402,24 @@ test("a cleared piece takes its poster and its cover with it (they used to stay 
   assert.ok(src.includes('if (typeof u === "string" && u.startsWith("/renders/")) {'));
 });
 
-test("the ad and creator covers are HELD while they are redrawn (\"The ads and creator ones need rethought\"): those tiles keep their picture", async () => {
+test("nothing is HELD now: he chose \"A\" for the ads and the Creator videos (2026-11-24), so every family is asked for — and a first-design ad cover is drawn again", async () => {
   const { COVER_HELD, coverAsk } = await import("../app/lib/archive-cover.ts");
-  assert.deepEqual([...COVER_HELD].sort(), ["ad", "creator"]);
+  assert.deepEqual([...COVER_HELD], []);
   const base = { media: "/renders/x.mp4", expired: false, poster: null, cover: null };
-  assert.equal(coverAsk({ ...base, kind: { family: "ad", kids: false } }), false);
-  assert.equal(coverAsk({ ...base, kind: { family: "creator", kids: false } }), false);
-  // every other family is still asked for
-  for (const family of ["horror", "music", "film", "footage"] as const) assert.equal(coverAsk({ ...base, kind: { family, kids: false } }), true, family);
+  for (const family of ["ad", "creator", "horror", "music", "film", "footage"] as const) assert.equal(coverAsk({ ...base, kind: { family, kids: false } }), true, family);
+  // a cover of the turned-down first design (v1) is asked for again; one of the chosen design is not
+  assert.equal(coverAsk({ ...base, kind: { family: "ad", kids: false }, cover: { v: 1 } }), true);
+  assert.equal(coverAsk({ ...base, kind: { family: "creator", kids: false }, cover: { v: 1 } }), true);
+  assert.equal(coverAsk({ ...base, kind: { family: "ad", kids: false }, cover: { v: 2 } }), false);
+  assert.equal(coverAsk({ ...base, kind: { family: "music", kids: false }, cover: { v: 1 } }), false, "the other families are not touched");
 });
 
 test("ads and Creator videos, drawn again as objects of their own world — three options each, side by side for the owner", () => {
-  // three options a family, each named; the one in use is one of them; both stay HELD until he chooses
+  // three options a family, each named; HIS CHOICE (2026-11-24): "A" — the print ad and the thumbnail
   assert.deepEqual(COVER_OPTIONS.ad.map((o) => `${o.key} ${o.name}`), ["A Print ad", "B Sponsored post", "C Product spot"]);
   assert.deepEqual(COVER_OPTIONS.creator.map((o) => `${o.key} ${o.name}`), ["A Thumbnail", "B Short-video frame", "C Channel template"]);
-  assert.ok(["A", "B", "C"].includes(COVER_STYLE.ad) && ["A", "B", "C"].includes(COVER_STYLE.creator));
-  assert.deepEqual([...COVER_HELD].sort(), ["ad", "creator"]);
+  assert.deepEqual(COVER_STYLE, { ad: "A", creator: "A" });
+  assert.deepEqual([...COVER_HELD], []);
   const pk = pic(896, 1200);
   const draw = (family: "ad" | "creator", style: "A" | "B" | "C", o: Partial<CoverSpec> = {}) => coverGraph(spec(family, { style, seconds: 15, channel: "facts", ...o }));
   const all: Record<string, string> = {};

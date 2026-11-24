@@ -13,10 +13,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  BIG_GAP_EM, LYRIC_LOOKS, LYRIC_MAX_SECONDS, NO_GRID, PULSE, STILLS_MAX, STILLS_MIN, beatGrid, bigWord, chooseLines, chunkGraph,
-  directionBrief, fallbackDirection, gridFromBeats, isSongLink, lineWindows, linesFromHeard, linesFromTimed, lowOnsets, lyricAccent,
-  lyricAss, lyricEtaMinutes, lyricFrame, lyricLookOf, lyricShapeOf, motionFilter, pagesOf, parseDirection, pastedLines, pictureWords,
-  planOk, renderChunks, scenePlan, scrimAlpha, shotFrames, shotPulses, songFileOf, songTitleOf, stillPrompt, voicedWords,
+  BIG_GAP_EM, LINK_FETCHES_A_DAY, LINK_MAX_SECONDS, LINK_MSG, LINK_TIMEOUT_MS, LYRIC_LOOKS, LYRIC_MAX_SECONDS, NO_GRID, PULSE,
+  RIGHTS_ASK, RIGHTS_LINE, RIGHTS_NOTE, STILLS_MAX, STILLS_MIN, beatGrid, bigWord, chooseLines, chunkGraph,
+  directionBrief, fallbackDirection, gridFromBeats, isSongLink, lineWindows, linesFromHeard, linesFromTimed, linkFailure, linkTitleOf,
+  lowOnsets, lyricAccent, lyricAss, lyricEtaMinutes, lyricFrame, lyricLookOf, lyricShapeOf, motionFilter, pagesOf, parseDirection,
+  pastedLines, pictureWords, planOk, renderChunks, scenePlan, scrimAlpha, shotFrames, shotPulses, songFileOf, songRightsOf,
+  songTitleOf, stillPrompt, voicedWords, youTubeId, youTubeWatch, ytDlpArgs,
   type BeatGrid, type LyricLine, type LyricLook,
 } from "../app/lib/lyric-video.ts";
 import { readFontMetrics, textEms } from "../app/lib/font-metrics.ts";
@@ -439,11 +441,100 @@ test("one piece's graph: the shots joined, the shading laid on ONCE, the lyrics 
 
 /* ---------------------------------------------------------------- the server, the job, the route, the page (source) */
 
-test("the making (lyric-video.server.ts): listened to as the app listens to singing, checkpointed, the link seam, the piece", () => {
+/* ---------------------------------------------------------------- a song from a YouTube link, and whose it is */
+
+test("a link is a YouTube VIDEO's link or nothing — and the tool is handed an address written from its id alone", () => {
+  const id = "dQw4w9WgXcQ";
+  for (const good of [
+    `https://www.youtube.com/watch?v=${id}`, `http://youtube.com/watch?v=${id}&t=42s`, `youtube.com/watch?v=${id}`, `www.youtube.com/watch?feature=share&v=${id}`,
+    `https://m.youtube.com/watch?v=${id}`, `https://music.youtube.com/watch?v=${id}&list=RDAMVM${id}`, `https://youtu.be/${id}`, `youtu.be/${id}?si=abc123`,
+    `https://www.youtube.com/shorts/${id}`, `https://www.youtube.com/embed/${id}?autoplay=1`, `https://www.youtube.com/live/${id}`, `https://www.youtube-nocookie.com/embed/${id}`,
+    `  https://YOUTU.BE/${id}  `, `https://www.youtube.com./watch?v=${id}`, `https://www.youtube.com/watch?v=${id}#t=10`,
+  ]) assert.equal(youTubeId(good), id, good);
+  // an id may begin with "-" or "_" — still only ever inside the address we write
+  assert.equal(youTubeId("https://youtu.be/-abcdefghij"), "-abcdefghij");
+  assert.equal(youTubeWatch("-abcdefghij"), "https://www.youtube.com/watch?v=-abcdefghij");
+  for (const bad of [
+    "", "   ", "a song I like", "https://www.youtube.com/playlist?list=PL1234567890", "https://www.youtube.com/@somechannel", "https://www.youtube.com/channel/UC123",
+    "https://www.youtube.com/watch", "https://www.youtube.com/watch?v=short", `https://www.youtube.com/watch?v=${id}x`, `https://www.youtube.com/watch?v=${id}%00`,
+    `https://youtube.com.evil.example/watch?v=${id}`, `https://evilyoutube.com/watch?v=${id}`, `https://vimeo.com/${id}`, `https://soundcloud.com/a/b`,
+    `https://user:pass@www.youtube.com/watch?v=${id}`, `https://www.youtube.com:8443/watch?v=${id}`, `ftp://youtube.com/watch?v=${id}`, `file:///etc/passwd`,
+    `javascript:alert(1)//youtube.com/watch?v=${id}`, `--exec=rm https://youtu.be/${id}`, `https://youtu.be/${id}/more`, `https://www.youtube.com/shorts/${id}/x`,
+    `https://youtu.be/${id} https://youtu.be/${id}`, "x".repeat(2100),
+  ]) assert.equal(youTubeId(bad), null, bad.slice(0, 80));
+  assert.equal(youTubeWatch(id), `https://www.youtube.com/watch?v=${id}`);
+});
+
+test("what the fetching tool is asked: one video's audio, AAC first, nothing live, long, big — and no config on the machine", () => {
+  const a = ytDlpArgs("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "/data/renders/ytsrc-ab.%(ext)s");
+  assert.deepEqual(a.slice(-2), ["--", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"], "the address last, after the end of the options");
+  for (const flag of ["--ignore-config", "--no-playlist", "--no-progress", "--write-info-json"]) assert.ok(a.includes(flag), flag);
+  const opt = (k: string) => a[a.indexOf(k) + 1];
+  assert.equal(opt("--match-filter"), `!is_live & duration <= ${LINK_MAX_SECONDS}`);
+  assert.equal(opt("--max-filesize"), "60M");
+  assert.equal(opt("-f"), "bestaudio[ext=m4a]/bestaudio/best");
+  assert.equal(opt("-o"), "/data/renders/ytsrc-ab.%(ext)s");
+  assert.ok(!a.some((x) => /^--(?:exec|cookies|batch-file|config-location|load-info-json|plugin-dirs)/.test(x)), "nothing that runs or reads anything else");
+  assert.equal(LINK_MAX_SECONDS, 900);
+  assert.ok(LINK_TIMEOUT_MS <= 80_000, "a fetch ends well inside the 100 s the site's proxy allows a request");
+  assert.equal(LINK_FETCHES_A_DAY, 12);
+});
+
+test("why a fetch failed, from what the tool printed — and every answer tells the member what to do", () => {
+  const f = (err: string, more: Partial<{ code: number | null; out: string; timedOut: boolean }> = {}) => linkFailure({ code: 1, out: "", err, timedOut: false, ...more });
+  assert.equal(f("ERROR: [youtube] abc: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication."), "botCheck");
+  assert.equal(f("ERROR: unable to download video data: HTTP Error 429: Too Many Requests"), "botCheck");
+  assert.equal(f("ERROR: [youtube] abc: Private video. Sign in if you've been granted access to this video"), "gone");
+  assert.equal(f("ERROR: [youtube] abc: Video unavailable. This video has been removed by the uploader"), "gone");
+  assert.equal(f("ERROR: [youtube] abc: The uploader has not made this video available in your country"), "gone");
+  assert.equal(f("ERROR: [youtube] abc: Join this channel to get access to members-only content like this video"), "gone");
+  assert.equal(f("ERROR: [youtube] abc: Sign in to confirm your age. This video may be inappropriate for some users."), "age");
+  assert.equal(f("", { code: 0, out: "[youtube] abc: Downloading webpage\n[download] Night Drive does not pass filter (!is_live & duration <= 900), skipping .." }), "long");
+  assert.equal(f("ERROR: [youtube] abc: This live event will begin in 3 hours."), "long");
+  assert.equal(f("", { code: 0, out: "[download] File is larger than max-filesize (73400320 bytes > 62914560 bytes). Aborting." }), "big");
+  assert.equal(f("ERROR: [youtube] abc: Requested format is not available. Use --list-formats for a list of available formats"), "failed");
+  assert.equal(f("anything at all", { timedOut: true }), "slow");
+  assert.equal(f("ERROR: something new"), "failed");
+  for (const [k, v] of Object.entries(LINK_MSG)) assert.ok(/upload|try again|link the song/i.test(v) && v.length <= 140, `${k} says what to do, briefly`);
+});
+
+test("a fetched song's title: Artist - Track when YouTube knows them, else the video's title without the junk", () => {
+  assert.equal(linkTitleOf({ title: "Night Drive (Official Video)", track: "Night Drive", artist: "The Fake Band, A Friend" }), "The Fake Band - Night Drive");
+  assert.equal(linkTitleOf({ title: "Sunny Hill - Glass Kites [Official Audio] (HD)" }), "Sunny Hill - Glass Kites");
+  assert.equal(linkTitleOf({ title: "AC/DC style riff - Test Song (Lyrics)" }), "AC/DC style riff - Test Song", "a slash stays");
+  assert.equal(linkTitleOf({ title: "  " }), "");
+  assert.equal(linkTitleOf(null), "");
+  assert.ok(linkTitleOf({ title: "x".repeat(300) }).length <= 80);
+});
+
+test("WHOSE SONG IT IS — the confirmation the piece keeps, and nothing else counts as one", () => {
+  assert.equal(RIGHTS_LINE, "I own this song, or I have permission from its owner to use it.");
+  assert.ok(/muted, claimed or taken down/.test(RIGHTS_NOTE) && /Tick the box/.test(RIGHTS_ASK));
+  const at = "2026-11-24T18:30:00.000Z";
+  assert.deepEqual(songRightsOf({ confirmed: true, at, from: "upload" }), { confirmed: true, at, from: "upload" });
+  assert.deepEqual(songRightsOf({ confirmed: true, at, from: "youtube", link: "https://youtu.be/dQw4w9WgXcQ?si=x" }), { confirmed: true, at, from: "youtube", link: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" });
+  assert.deepEqual(songRightsOf({ confirmed: true, at, from: "youtube", link: "https://evil.example/x" }), { confirmed: true, at, from: "youtube" }, "a bad address is not kept");
+  for (const bad of [null, undefined, "yes", {}, { confirmed: "true", at, from: "upload" }, { confirmed: true, at: "yesterday", from: "upload" }, { confirmed: true, at, from: "radio" }, { confirmed: false, at, from: "upload" }]) {
+    assert.equal(songRightsOf(bad), null, JSON.stringify(bad));
+  }
+});
+
+test("the making (lyric-video.server.ts): listened to as the app listens to singing, checkpointed, the link, the piece", () => {
   const s = read("app", "lib", "lyric-video.server.ts");
-  assert.ok(s.includes('export const LINK_LATER = "Links are coming — upload the song file for now.";'));
-  assert.ok(/export async function songFromLink\(link: string\)[\s\S]{0,200}return \{ ok: false, message: LINK_LATER \};/.test(s), "today a link is answered, not fetched");
-  assert.ok(!/youtube-dl|yt-dlp|ytdl/i.test(s), "no YouTube downloader until the owner says so");
+  // THE LINK — his word, 2026-11-24: "use YouTube link but include regulatory things like 'you must have permissions
+  // from song owner'": a YouTube video's id or nothing, the tool handed only the address written from it
+  const link = s.slice(s.indexOf("export async function songFromLink("), s.indexOf("/* ----", s.indexOf("export async function songFromLink(")));
+  assert.ok(link.includes("const id = youTubeId(link);") && link.includes("if (!id) return { ok: false, message: LINK_MSG.notYouTube"));
+  assert.ok(link.indexOf("if (!id) return") < link.indexOf("runTool(bin,"), "nothing runs for a link that isn't a YouTube video's");
+  assert.ok(link.includes("const source = youTubeWatch(id);") && link.includes("runTool(bin, ytDlpArgs(source, "), "the tool gets our address, never the member's string");
+  assert.ok(link.includes("if (!fs.existsSync(bin)) return { ok: false, message: LINK_MSG.noTool"), "no tool on the machine: upload instead");
+  assert.ok(link.includes("if (recent.length >= LINK_FETCHES_A_DAY) return { ok: false, message: LINK_MSG.many"), "a day's cap per account");
+  assert.ok(link.includes("LINK_TIMEOUT_MS)") && link.includes("return { ok: false, message: LINK_MSG[why], why };"));
+  // it runs inside the member's request — never queued behind a film's encode
+  assert.ok(!link.includes("runFfmpeg(") && link.includes("runTool(ffmpegBin(), "), "its own short ffmpeg, not the encoder's turn");
+  assert.ok(link.includes("out = path.join(dir, `${name}.m4a`);") && link.includes("const name = `mvsong-${crypto.randomBytes(10).toString(\"hex\")}`;"), "kept where an upload goes, named as an upload is");
+  assert.ok(link.includes("} finally {\n    for (const f of mine())"), "the raw download and its facts never stay behind");
+  assert.ok(s.includes('export const ytDlpBin = (): string => process.env.YT_DLP_PATH || "/usr/local/bin/yt-dlp";'));
   assert.ok(s.includes("...LISTEN_AUDIO") && s.includes("separateSong(mixUrl)") && s.includes("createWhisperx(src, null, { sung })"));
   assert.ok(s.includes("voicedWords(v.words, voiced)") && s.includes("heardTooLittle("));
   for (const k of ["ckLvHeard", "ckLvPlan", "ckLvDirection", "ckLvStills"]) assert.ok(s.includes(`${k}: JSON.stringify(`), `${k} is checkpointed`);
@@ -452,9 +543,23 @@ test("the making (lyric-video.server.ts): listened to as the app listens to sing
   assert.ok(s.includes('"-filter_complex_script", graphFile') && s.includes('"-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-maxrate", "6M", "-bufsize", "12M"'));
   assert.ok(s.includes('"-c:a", "aac", "-b:a", "192k"') && s.includes('"-f", "concat", "-safe", "0"'));
   assert.ok(s.includes('title: `Lyric Video — ${(made.title || "your song").slice(0, 60)}`') && s.includes('type: "VIDEO_AD"') && s.includes('kind: "lyricvideo"'));
-  // born carrying its section and its job (what "my piece" is looked up by)
-  assert.ok(s.includes('section: o.section || "creator"') && s.includes("metaJson: JSON.stringify({ ...made.meta, ...(o.jobId ? { jobId: o.jobId } : {}) }),"));
+  // born carrying its section and its job (what "my piece" is looked up by) — and the member's word on whose song it is
+  assert.ok(s.includes('section: o.section || "creator"') && s.includes("metaJson: JSON.stringify({ ...made.meta, ...(o.jobId ? { jobId: o.jobId } : {}), ...(rights ? { songRights: rights } : {}) }),"));
+  assert.ok(s.includes("const rights = songRightsOf(o.songRights);"));
   assert.ok(s.includes("[NO-RETRY] [lyricvideo] that song is not one of our uploads"));
+});
+
+test("the image installs the fetching tool and the JavaScript runtime YouTube needs — checked, newest, never failing the build", () => {
+  const docker = read("Dockerfile");
+  assert.ok(docker.includes("RUN node scripts/fetch-yt-dlp.mjs /usr/local/bin || true"));
+  assert.ok(docker.indexOf("RUN node scripts/fetch-yt-dlp.mjs") > docker.indexOf("COPY . ."), "after the source is in (the script is part of it)");
+  const sc = read("scripts", "fetch-yt-dlp.mjs");
+  assert.ok(sc.includes('"https://github.com/yt-dlp/yt-dlp/releases/latest/download/"') && sc.includes('"https://github.com/denoland/deno/releases/latest/download/"'));
+  assert.ok(sc.includes("const h = checked(bin, sums, YT.file);") && sc.includes("const h = checked(zip, sum, DENO.file);"), "each checked against its release's own SHA-256");
+  assert.ok(sc.indexOf("checked(bin, sums, YT.file)") < sc.indexOf('install("yt-dlp", bin)') && sc.indexOf("checked(zip, sum, DENO.file)") < sc.indexOf('install("deno", unzipOne(zip))'), "checked before installed");
+  assert.ok(!/process\.exit\(\s*[1-9]/.test(sc), "it never fails the build");
+  assert.equal(sc.split("\ntry {").length - 1, 2, "each install in its own try");
+  assert.ok(sc.includes("say(`yt-dlp NOT installed") && sc.includes("say(`Deno NOT installed"), "a failure is said, and the build goes on");
 });
 
 test("the job: a GENERATE_VIDEO_AD of kind lyricvideo, resumed from its own checkpoints, nothing charged", () => {
@@ -464,16 +569,37 @@ test("the job: a GENERATE_VIDEO_AD of kind lyricvideo, resumed from its own chec
   const branch = q.slice(at, at + 1800);
   assert.ok(branch.includes('const { generateLyricVideo } = await import("./lyric-video.server");'));
   for (const k of ["ckLvHeard", "ckLvPlan", "ckLvDirection", "ckLvStills"]) assert.ok(branch.includes(`${k}: payload.${k} as string | undefined`), k);
+  assert.ok(branch.includes("songRights: payload.songRights,"), "the member's confirmation reaches the piece");
   assert.ok(!branch.includes("spendTokens") && !branch.includes("prePaid"), "no tokens");
 });
 
-test("the door (api.lyric-video.tsx): operators only, our own uploads only, the link seam, the Archive's tile", () => {
+test("the door (api.lyric-video.tsx): operators only, the member's word on whose song it is, our own disk only, the Archive's tile", () => {
   const r = read("app", "routes", "api.lyric-video.tsx");
   assert.ok(r.includes('if (!isAdminEmail(id.account.email)) return json({ error: "Not found" }, { status: 404 });'));
+  // THE TICK, checked on the server for BOTH intents, before anything is fetched or made
+  const tick = 'if (String(form.get("rights") || "") !== "yes") return json({ error: tr(lang, RIGHTS_ASK), needRights: true }, { status: 400 });';
+  assert.ok(r.includes(tick));
+  assert.ok(r.indexOf(tick) < r.indexOf('if (intent === "link") {') && r.indexOf(tick) < r.indexOf("enqueueJob("), "asked before the link and before the job");
+  assert.ok(r.includes('if (intent !== "link" && intent !== "make")'), "no third way past it");
+  assert.ok(r.includes("const got = await songFromLink(String(form.get(\"link\") || \"\").trim().slice(0, 2000), { shopId: id.shop.id });"));
+  assert.ok(r.includes("return json({ songUrl: `/renders/${path.basename(got.songPath)}`, name: got.name, title: got.title, seconds: got.seconds, source: got.source });"));
   assert.ok(r.includes("const file = songFileOf(String(form.get(\"songUrl\") || \"\"));") && r.includes('fs.existsSync(path.join(process.cwd(), "data", "renders", file))'));
   assert.ok(r.includes('enqueueJob(id.shop.id, "GENERATE_VIDEO_AD", {') && r.includes('contentType: "lyricvideo"') && r.includes('section: "creator"'));
-  assert.ok(r.includes("const got = await songFromLink(") && r.includes("productTitle: `Lyric Video — "));
+  // the record: when, and from where — the YouTube address written again from its id
+  assert.ok(r.includes('const linkId = youTubeId(String(form.get("songLink") || ""));'));
+  assert.ok(r.includes('songRights: { confirmed: true, at: new Date().toISOString(), from: linkId ? "youtube" : "upload", ...(linkId ? { link: youTubeWatch(linkId) } : {}) },'));
+  assert.ok(r.includes("productTitle: `Lyric Video — "));
   assert.ok(!/spendTokens|chargedTokens/.test(r), "nothing is charged");
+});
+
+test("the Terms say what the tick means: whose song, the platforms' claims, and where a rights holder writes", () => {
+  const terms = read("app", "routes", "terms.tsx");
+  assert.ok(terms.includes('<h2 id="songs"><a className="anchor" href="#songs">Songs and other material you bring</a></h2>'));
+  const sec = terms.slice(terms.indexOf('<h2 id="songs">'), terms.indexOf('<h2 id="ai">'));
+  assert.ok(/own it or have permission from its owner/.test(sec) && /keep a record of your confirmation/.test(sec));
+  assert.ok(/muted, claimed,\s+blocked or taken down/.test(sec));
+  assert.ok(/Copyright complaints/.test(sec) && sec.includes('href="mailto:hello@easymodeapp.com"') && /infringe repeatedly/.test(sec));
+  assert.ok(read("app", "routes", "privacy.tsx").includes('export const LEGAL_UPDATED = "24 November 2026";'), "the date moved with the change");
 });
 
 test("the page: a Lyric Video poster on the Music videos shelf for operators, and its one-screen builder", () => {
@@ -484,6 +610,13 @@ test("the page: a Lyric Video poster on the Music videos shelf for operators, an
   assert.ok(ui.includes("{lyricOn ? <LyricVideoBuilder t={t} /> : (<>"));
   assert.ok(ui.includes('fetch("/api/film-song-upload", { method: "POST", body: fd })') && ui.includes('fetch("/api/lyric-video", { method: "POST", body: fd })'));
   assert.ok(ui.includes('fd.set("intent", "link")') && ui.includes('fd.set("intent", "make")'));
+  // THE TICK: one box, asked before the link is fetched and before the video is made — never a silent grey button
+  assert.ok(ui.includes("<b>{t(RIGHTS_LINE)}</b>") && ui.includes("{t(RIGHTS_NOTE)} <a href=\"/terms#songs\""));
+  assert.ok(ui.includes('if (!rights) { askRights("link"); return; }') && ui.includes('if (!rights) { askRights("make"); return; }'));
+  assert.equal(ui.split('fd.set("rights", "yes")').length - 1, 2, "both requests carry it");
+  assert.ok(ui.includes('if (song.link) fd.set("songLink", song.link);'), "the YouTube address goes with the video, for the record");
+  assert.ok(ui.includes("setSong(null); setTitle(\"\"); setRights(false);"), "another song is another confirmation");
+  assert.ok(ui.includes('placeholder={t("Paste a YouTube link")}') && ui.includes('{t("Getting the song…")}'));
   assert.ok(ui.includes("{LYRIC_LOOKS.map((lk) => (") && ui.includes("src={`/landing/lyric-look-${lk.key}.jpg?v=1`}"));
   // the card, the builder's looks and its moving cover are on the disk
   for (const f of ["film-still-lyricvideo.jpg", "film-still-lyricvideo-tall.jpg", "film-loop-lyricvideo.mp4", "film-loop-lyricvideo-tall.mp4", "film-loop-lyricvideo.jpg", ...LOOKS.map((l) => `lyric-look-${l}.jpg`)]) {
@@ -495,7 +628,9 @@ test("the page: a Lyric Video poster on the Music videos shelf for operators, an
   const said = [...b.matchAll(/\bt\("((?:[^"\\]|\\.)*)"/g)].map((m) => JSON.parse(`"${m[1]}"`));
   const heroes = read("app", "lib", "film-heroes.ts");
   assert.ok(heroes.includes('name: "Lyric Video", kick: "Your song, words on screen", meta: "cut on the beat"'));
-  for (const k of [...new Set([...said, ...LYRIC_LOOKS.flatMap((l) => [l.label, l.blurb]), "Lyric Video", "Your song, words on screen", "cut on the beat"])]) {
+  for (const k of [...new Set([...said, ...LYRIC_LOOKS.flatMap((l) => [l.label, l.blurb]), "Lyric Video", "Your song, words on screen", "cut on the beat",
+    // said through constants (the server says them too), and every answer a link can get
+    RIGHTS_LINE, RIGHTS_NOTE, RIGHTS_ASK, ...Object.values(LINK_MSG)])]) {
     assert.equal(dict.split(`\n  ${JSON.stringify(k)}: `).length - 1, 5, k);
   }
 });

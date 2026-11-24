@@ -5,8 +5,12 @@
  * and it converts to a Lyric Video" — and, on whose songs may go in: "Allow copyrighted dog, fuck it, it's a
  * lyric video. Hundreds of people do it". Any song may go in. Nothing here asks whose it is.
  *
- * (The LINK half — our server fetching a song from a YouTube address — waits on his word: lyric-video.server.ts
- *  → songFromLink is the one place it goes, and today it answers that links are coming.)
+ * THE LINK — our server fetching a song from a YouTube address. His word, 2026-11-24: "use YouTube link but
+ * include regulatory things like 'you must have permissions from song owner'". So a link is fetched, and a video
+ * made, only for a member who has ticked that they own the song or have its owner's permission (RIGHTS_LINE);
+ * the piece keeps that confirmation (songRightsOf), and the Terms say what it means (/terms#songs). What a link
+ * may fetch and how the tool is asked are below (youTubeId, ytDlpArgs); the fetching is lyric-video.server.ts
+ * → songFromLink.
  *
  * Every decision is made in this file, where it can be tested; lyric-video.server.ts listens, draws and encodes.
  *
@@ -88,6 +92,116 @@ export function songFileOf(songUrl: string): string | null {
   try { p = new URL(String(songUrl || ""), "https://site.invalid").pathname; } catch { return null; }
   const m = /^\/renders\/(mvsong-[a-f0-9]{8,40}\.(?:mp3|wav|m4a|aac|ogg))$/i.exec(p);
   return m ? m[1] : null;
+}
+
+/* ---------------------------------------------------------------------------------------------------------
+ * A SONG FROM A YOUTUBE LINK, AND WHOSE IT IS
+ * ------------------------------------------------------------------------------------------------------- */
+
+/** What the member ticks before a link is fetched or a video is made — and what they are told when they haven't
+ *  (the owner, 2026-11-24: "you must have permissions from song owner"). */
+export const RIGHTS_LINE = "I own this song, or I have permission from its owner to use it.";
+export const RIGHTS_NOTE = "Songs you don't have the rights to can be muted, claimed or taken down where you post them.";
+export const RIGHTS_ASK = "Tick the box to confirm you have the rights to this song.";
+
+/** The hosts a link may name: YouTube's own, nothing else. (The fetching tool can read a thousand sites — it is
+ *  only ever handed an address written here from a video's id.) */
+const YT_HOSTS: ReadonlySet<string> = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "youtube-nocookie.com", "www.youtube-nocookie.com"]);
+const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+
+/** The video's id in a YouTube link — a watch page (www., m., music.), a youtu.be short link, a Short, an embed, a
+ *  live recording — or null for anything else: a playlist or a channel, another site, a port, a login, words. */
+export function youTubeId(link: string): string | null {
+  let s = String(link ?? "").trim();
+  if (!s || s.length > 2000 || /\s/.test(s)) return null;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) s = `https://${s}`;
+  let u: URL;
+  try { u = new URL(s); } catch { return null; }
+  if ((u.protocol !== "https:" && u.protocol !== "http:") || u.username || u.password || u.port) return null;
+  const host = u.hostname.toLowerCase().replace(/\.$/, "");
+  if (!YT_HOSTS.has(host)) return null;
+  const parts = u.pathname.split("/").filter(Boolean);
+  let id: string | null = null;
+  if (host === "youtu.be") id = parts.length === 1 ? parts[0] : null;
+  else if (parts.length === 1 && parts[0] === "watch") id = u.searchParams.get("v");
+  else if (parts.length === 2 && ["shorts", "embed", "live", "v", "e"].includes(parts[0])) id = parts[1];
+  return id && YT_ID.test(id) ? id : null;
+}
+/** The one address the fetching tool is handed — written from the id alone, never the member's own string. */
+export const youTubeWatch = (id: string): string => `https://www.youtube.com/watch?v=${id}`;
+
+/** The longest video a link may fetch, in seconds: a song with a long intro is under it; a three-hour mix is not. */
+export const LINK_MAX_SECONDS = 900;
+/** How many songs one account may fetch from links in a day (a lyric video is made from one). */
+export const LINK_FETCHES_A_DAY = 12;
+/** How long a fetch may take — inside the request, so well under the 100 s at which the site's proxy gives up. */
+export const LINK_TIMEOUT_MS = 75_000;
+
+/** What the fetching tool (yt-dlp) is asked: the audio of that ONE video — AAC (.m4a) when it has it, which needs
+ *  no re-encoding — with its facts in a .info.json beside it. No playlist, nothing live, nothing too long or big;
+ *  no config file on the machine can add to it. */
+export function ytDlpArgs(watchUrl: string, outTemplate: string): string[] {
+  return [
+    "--ignore-config", "--no-playlist", "--no-progress", "--no-mtime",
+    "--match-filter", `!is_live & duration <= ${LINK_MAX_SECONDS}`,
+    "--max-filesize", "60M",
+    "--socket-timeout", "20", "--retries", "2",
+    "-f", "bestaudio[ext=m4a]/bestaudio/best",
+    "--write-info-json",
+    "-o", outTemplate,
+    "--", watchUrl,
+  ];
+}
+
+/** What a member is told when a link can't be fetched (English source words — the route runs them through tr()). */
+export const LINK_MSG = {
+  notYouTube: "That isn't a YouTube video link — paste one from youtube.com or youtu.be, or upload the song file.",
+  noTool: "Links can't be fetched right now — upload the song file instead.",
+  botCheck: "YouTube wouldn't hand that song over right now — upload the song file instead.",
+  gone: "That video can't be reached — it may be private, removed or blocked. Try another link, or upload the song file.",
+  age: "That video is age-restricted, so we can't fetch it — upload the song file instead.",
+  long: "That video is too long or is a live stream — link the song itself, or upload the file.",
+  big: "That one's too big to fetch — link the song itself, or upload the file.",
+  slow: "That took too long — try again, or upload the song file.",
+  many: "That's a lot of songs fetched today — upload the file, or try again tomorrow.",
+  failed: "We couldn't fetch that song — try again, or upload the song file.",
+} as const;
+export type LinkFailure = keyof typeof LINK_MSG;
+
+/** WHY A FETCH FAILED, read from what the tool printed. */
+export function linkFailure(o: { code: number | null; out: string; err: string; timedOut: boolean }): LinkFailure {
+  const s = `${o.out || ""}\n${o.err || ""}`;
+  if (o.timedOut) return "slow";
+  if (/does not pass filter|live event|premieres? in|is a live stream/i.test(s)) return "long";
+  if (/larger than max-filesize/i.test(s)) return "big";
+  if (/not a bot|HTTP Error 429|Too Many Requests/i.test(s)) return "botCheck";
+  if (/confirm your age|age[- ]restricted|inappropriate for some users/i.test(s)) return "age";
+  if (/requested format is not available/i.test(s)) return "failed";
+  if (/private video|video unavailable|video is (?:not available|unavailable|no longer available)|has been removed|been terminated|members[- ]only|join this channel|available in your country|blocked it/i.test(s)) return "gone";
+  return "failed";
+}
+
+/** A song's title from what its video says of itself: "Artist - Track" when YouTube knows them (a music upload),
+ *  else the video's title — "(Official Video)" and the like taken off. A slash stays a slash ("AC/DC"). */
+export function linkTitleOf(info: { title?: unknown; track?: unknown; artist?: unknown } | null | undefined): string {
+  const str = (v: unknown) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "");
+  const track = str(info?.track);
+  const artist = str(info?.artist).split(/\s*,\s*/)[0] || "";
+  const raw = track ? (artist ? `${artist} - ${track}` : track) : str(info?.title);
+  return raw.replace(NAME_JUNK, " ").replace(/\s+/g, " ").replace(/\s*[-–|]\s*$/, "").trim().slice(0, 80);
+}
+
+/** THE CONFIRMATION, as a piece keeps it: when the member ticked RIGHTS_LINE, and where the song came from (the
+ *  YouTube address, written again from its id). Anything else is no confirmation at all. */
+export type SongRights = { confirmed: true; at: string; from: "upload" | "youtube"; link?: string };
+export function songRightsOf(v: unknown): SongRights | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (o.confirmed !== true || typeof o.at !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(o.at)) return null;
+  const from = o.from === "youtube" ? "youtube" : o.from === "upload" ? "upload" : null;
+  if (!from) return null;
+  const id = from === "youtube" && typeof o.link === "string" ? youTubeId(o.link) : null;
+  return { confirmed: true, at: o.at.slice(0, 32), from, ...(id ? { link: youTubeWatch(id) } : {}) };
 }
 
 /* ---------------------------------------------------------------------------------------------------------

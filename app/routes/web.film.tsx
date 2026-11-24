@@ -49,7 +49,7 @@ import { heroShelves } from "../lib/film-heroes";
 import { LYRIC_HERO } from "../lib/film-heroes";
 // (2026-11-24) FOUND FOOTAGE has its own builder (web.found-footage.tsx): a door to it on the Films shelf, operators only
 import { FOUND_FOOTAGE_DOOR } from "../lib/film-heroes";
-import { LYRIC_LOOKS, lyricEtaMinutes, songTitleOf, type LyricLook, type LyricShape } from "../lib/lyric-video";
+import { LYRIC_LOOKS, RIGHTS_ASK, RIGHTS_LINE, RIGHTS_NOTE, lyricEtaMinutes, songTitleOf, type LyricLook, type LyricShape } from "../lib/lyric-video";
 import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 import type { StoryToEdit } from "../lib/story-edit";
 import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
@@ -1294,11 +1294,13 @@ function LoopCover({ k, loop, tall, still, clip }: { k: string; /** it has a loo
 
 /* ───────── THE LYRIC VIDEO BUILDER (lyric-video.ts) ─────────
  * The owner, 2026-11-24: "simple active exciting lyrics … input link and it converts to a Lyric Video". So the
- * whole builder is: drop a song (a link goes to the server's one place for links, which today answers that links
- * are coming), paste the lyrics if you want the words spot-on, pick a look and a shape, press one button. The
- * song is uploaded where a Music Video's own track goes (api.film-song-upload); the video is made by the queue
- * (api.lyric-video.tsx → job "lyricvideo"). Operators only until the owner sets a price — nothing is charged. */
-type LyricSong = { url: string; name: string; seconds: number | null };
+ * whole builder is: drop a song or paste a YouTube link, tick that it's yours (or you have its owner's permission),
+ * paste the lyrics if you want the words spot-on, pick a look and a shape, press one button. An upload goes where
+ * a Music Video's own track goes (api.film-song-upload); a link is fetched to the same place (api.lyric-video.tsx →
+ * songFromLink); the video is made by the queue (job "lyricvideo"). THE TICK — his word, 2026-11-24: "include
+ * regulatory things like 'you must have permissions from song owner'" — is asked before a link is fetched and
+ * before a video is made, and the server checks it too. Operators only until the owner sets a price. */
+type LyricSong = { url: string; name: string; seconds: number | null; /** the YouTube address it was fetched from */ link?: string };
 const clockOf = (s: number | null): string => (s && s > 0 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}` : "");
 function LyricVideoBuilder({ t }: { t: ReturnType<typeof useT> }) {
   const [song, setSong] = useState<LyricSong | null>(null);
@@ -1315,13 +1317,24 @@ function LyricVideoBuilder({ t }: { t: ReturnType<typeof useT> }) {
   const [shape, setShape] = useState<LyricShape>("9:16");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState<number | null>(null);
+  // whose song it is: ticked before a link is fetched and before a video is made
+  const [rights, setRights] = useState(false);
+  const [rightsNeed, setRightsNeed] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const rightsRef = useRef<HTMLInputElement | null>(null);
   const minutes = lyricEtaMinutes(song?.seconds ?? 180);
+  /** Asked for the tick and it isn't there: say so where they are, and bring them to the box. */
+  const askRights = (where: "link" | "make") => {
+    setRightsNeed(true);
+    if (where === "link") setLinkNote(t(RIGHTS_ASK)); else setErr(t(RIGHTS_ASK));
+    try { rightsRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }); rightsRef.current?.focus({ preventScroll: true }); } catch { /* an old browser */ }
+  };
   // anything changed after a video was sent is the start of the next one
   useEffect(() => { setSent(null); }, [song, title, lyrics, look, shape]);
 
   const take = async (file?: File | null) => {
-    if (!file || busy) return;
+    if (!file || busy || fetching) return;
     setErr(""); setLinkNote(""); setBusy(true);
     // how long the song is, read in the browser — for the time the video will take
     const seconds = await new Promise<number | null>((resolve) => {
@@ -1348,24 +1361,30 @@ function LyricVideoBuilder({ t }: { t: ReturnType<typeof useT> }) {
   };
   const takeLink = async () => {
     const l = link.trim();
-    if (!l || busy) return;
-    setLinkNote(""); setErr(""); setBusy(true);
+    if (!l || busy || fetching) return;
+    if (!rights) { askRights("link"); return; }
+    setLinkNote(""); setErr(""); setFetching(true);
     try {
-      const fd = new FormData(); fd.set("intent", "link"); fd.set("link", l);
+      const fd = new FormData(); fd.set("intent", "link"); fd.set("link", l); fd.set("rights", "yes");
       const r = await fetch("/api/lyric-video", { method: "POST", body: fd });
-      const j = (await r.json().catch(() => ({}))) as { songUrl?: string; name?: string; error?: string };
-      if (j.songUrl) { setSong({ url: j.songUrl, name: j.name || l, seconds: null }); setTitle(songTitleOf(j.name || "")); setLinkOpen(false); }
-      else setLinkNote(j.error || t("Links are coming — upload the song file for now."));
-    } catch { setLinkNote(t("Links are coming — upload the song file for now.")); }
-    finally { setBusy(false); }
+      const j = (await r.json().catch(() => ({}))) as { songUrl?: string; name?: string; title?: string; seconds?: number | null; source?: string; error?: string };
+      if (j.songUrl) {
+        setSong({ url: j.songUrl, name: j.name || j.title || l, seconds: typeof j.seconds === "number" && j.seconds > 0 ? j.seconds : null, link: j.source || undefined });
+        setTitle((j.title || songTitleOf(j.name || "")).slice(0, 80));
+        setLinkOpen(false); setLink("");
+      } else setLinkNote(j.error || t("We couldn't fetch that song — try again, or upload the song file."));
+    } catch { setLinkNote(t("We couldn't fetch that song — try again, or upload the song file.")); }
+    finally { setFetching(false); }
   };
   const make = async () => {
     if (!song || sending) return;
+    if (!rights) { askRights("make"); return; }
     setErr(""); setSending(true);
     try {
       const fd = new FormData();
       fd.set("intent", "make"); fd.set("songUrl", song.url); fd.set("songName", song.name); fd.set("title", title);
-      fd.set("lyrics", lyrics); fd.set("look", look); fd.set("shape", shape);
+      fd.set("lyrics", lyrics); fd.set("look", look); fd.set("shape", shape); fd.set("rights", "yes");
+      if (song.link) fd.set("songLink", song.link);
       const r = await fetch("/api/lyric-video", { method: "POST", body: fd });
       const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (j.ok) setSent(minutes);
@@ -1376,14 +1395,16 @@ function LyricVideoBuilder({ t }: { t: ReturnType<typeof useT> }) {
 
   return (
     <div className="lv">
-      <p className="lv-intro">{t("Drop in a song — we catch every word, draw the pictures and cut them on the beat.")}</p>
+      <p className="lv-intro">{t("Drop in a song or paste a YouTube link — we catch every word, draw the pictures and cut them on the beat.")}</p>
       {/* 1 · THE SONG */}
       {song ? (
         <div className="lv-song">
           <span className="lv-song-ico" aria-hidden="true"><Ico n="music" size={20} /></span>
           <input className="lv-song-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder={t("Song title")} aria-label={t("Song title")} />
+          {song.link ? <span className="lv-song-src">{t("from YouTube")}</span> : null}
           {clockOf(song.seconds) ? <span className="lv-song-len">{clockOf(song.seconds)}</span> : null}
-          <button type="button" className="lv-song-x" onClick={() => { setSong(null); setTitle(""); }}>{t("Change")}</button>
+          {/* another song is another confirmation */}
+          <button type="button" className="lv-song-x" onClick={() => { setSong(null); setTitle(""); setRights(false); setRightsNeed(false); }}>{t("Change")}</button>
         </div>
       ) : (
         <div className={`lv-drop${drag ? " drag" : ""}${busy ? " busy" : ""}`} role="button" tabIndex={0} aria-busy={busy}
@@ -1402,16 +1423,29 @@ function LyricVideoBuilder({ t }: { t: ReturnType<typeof useT> }) {
         <div className="lv-linkrow">
           {linkOpen ? (
             <div className="lv-link">
-              <input value={link} onChange={(e) => { setLink(e.target.value); setLinkNote(""); }} placeholder={t("Paste a link to the song")} inputMode="url" maxLength={2000}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); takeLink(); } }} aria-label={t("Paste a link to the song")} />
-              <button type="button" onClick={takeLink} disabled={!link.trim() || busy}><Ico n="link" size={14} /> {t("Use link")}</button>
+              <input value={link} onChange={(e) => { setLink(e.target.value); setLinkNote(""); }} placeholder={t("Paste a YouTube link")} inputMode="url" maxLength={2000} readOnly={fetching}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); takeLink(); } }} aria-label={t("Paste a YouTube link")} />
+              <button type="button" onClick={takeLink} disabled={!link.trim() || busy || fetching} aria-busy={fetching}>
+                {fetching ? <><span className="mm-ptile-spin" aria-hidden="true" /> {t("Getting the song…")}</> : <><Ico n="link" size={14} /> {t("Use link")}</>}
+              </button>
             </div>
           ) : (
-            <button type="button" className="lv-linkbtn" onClick={() => setLinkOpen(true)}><Ico n="link" size={13} /> {t("Have a link instead?")}</button>
+            <button type="button" className="lv-linkbtn" onClick={() => setLinkOpen(true)}><Ico n="link" size={13} /> {t("Have a YouTube link?")}</button>
           )}
           {linkNote && <p className="lv-note" role="status">{linkNote}</p>}
         </div>
       )}
+
+      {/* WHOSE SONG — ticked before a link is fetched and before a video is made (the owner, 2026-11-24: "you must
+          have permissions from song owner"); the server checks it too, and the piece keeps it */}
+      <label className={`lv-rights${rights ? " on" : ""}${rightsNeed && !rights ? " need" : ""}`}>
+        <input ref={rightsRef} type="checkbox" checked={rights}
+          onChange={(e) => { const on = e.currentTarget.checked; setRights(on); if (on && rightsNeed) { setRightsNeed(false); setLinkNote(""); setErr(""); } }} />
+        <span className="lv-rights-txt">
+          <b>{t(RIGHTS_LINE)}</b>
+          <small>{t(RIGHTS_NOTE)} <a href="/terms#songs" target="_blank" rel="noopener noreferrer">{t("Terms")}</a></small>
+        </span>
+      </label>
 
       {/* 2 · THE WORDS (optional) */}
       <button type="button" className={`lv-lyr-toggle${lyricsOpen ? " on" : ""}`} aria-expanded={lyricsOpen} onClick={() => setLyricsOpen((v) => !v)}>
@@ -1447,7 +1481,7 @@ function LyricVideoBuilder({ t }: { t: ReturnType<typeof useT> }) {
       </div>
 
       {/* 5 · ONE BUTTON */}
-      <button type="button" className="mm-go lv-go" onClick={make} disabled={!song || sending || busy}>
+      <button type="button" className="mm-go lv-go" onClick={make} disabled={!song || sending || busy || fetching}>
         {sending ? <>… {t("Starting")}</> : <><Ico n="music" size={17} /> {t("Make my lyric video")}</>}
       </button>
       <div className="mm-eta"><span aria-hidden="true">⏱</span> {t("Ready in about {n} min · it lands in your Archive", { n: minutes })}</div>
@@ -1518,8 +1552,18 @@ a.fs-fmt.fs-door{display:block;text-decoration:none;color:inherit;}
 .lv-seg-wide{width:26px;height:15px;}
 .lv-go{margin-top:6px;}
 .lv .fs-ok a{color:inherit;font-weight:700;margin-left:4px;}
-.fs-theater .lv-intro,.fs-theater .lv-h,.fs-theater .lv-note,.fs-theater .lv-linkbtn{color:#D8CFBA;}
-.fs-theater .lv-drop,.fs-theater .lv-song,.fs-theater .lv-lyr-toggle,.fs-theater .lv-look:not(.on),.fs-theater .lv-seg button:not(.on){box-shadow:0 0 0 1px rgba(231,200,121,.5);}
+.lv-link button .mm-ptile-spin{width:14px;height:14px;border-width:2px;border-color:rgba(255,255,255,.45);border-top-color:#fff;}
+.lv-song-src{flex:0 0 auto;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#C4302B;background:color-mix(in srgb,#C4302B 11%,transparent);border-radius:6px;padding:3px 7px;white-space:nowrap;}
+.lv-rights{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card);cursor:pointer;transition:border-color .15s,box-shadow .15s;}
+.lv-rights input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--green);cursor:pointer;}
+.lv-rights-txt{display:grid;gap:3px;min-width:0;}
+.lv-rights-txt b{font-size:14px;line-height:1.35;font-weight:600;color:var(--ink);}
+.lv-rights-txt small{font-size:12px;line-height:1.45;color:var(--ink3,#6E7A72);}
+.lv-rights-txt a{color:var(--green);font-weight:700;white-space:nowrap;}
+.lv-rights.on{border-color:var(--green);}
+.lv-rights.need{border-color:#D14343;box-shadow:0 0 0 3px color-mix(in srgb,#D14343 20%,transparent);}
+.fs-theater .lv-intro,.fs-theater .lv-h,.fs-theater .lv-note,.fs-theater .lv-linkbtn,.fs-theater .lv-rights-txt small{color:#D8CFBA;}
+.fs-theater .lv-drop,.fs-theater .lv-song,.fs-theater .lv-lyr-toggle,.fs-theater .lv-look:not(.on),.fs-theater .lv-seg button:not(.on),.fs-theater .lv-rights:not(.on):not(.need){box-shadow:0 0 0 1px rgba(231,200,121,.5);}
 `;
 
 /** One face of the roster, as the page has it. */

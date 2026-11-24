@@ -17,15 +17,17 @@
  * RESUMES: the heard words, the plan, the direction and every picture as it is drawn are checkpointed on the
  * job (ckLv…), so a restart picks up where it stopped and never pays for a picture twice.
  *
- * NOT YET HIS DECISION: a song from a LINK (songFromLink, below). Admin-only until the owner sets a price
+ * A SONG FROM A LINK (songFromLink, below) — YouTube only, and only once the member has confirmed the song is
+ * theirs or they have its owner's permission (the owner, 2026-11-24). Admin-only until the owner sets a price
  * (api.lyric-video.tsx); no tokens are charged. */
 
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
-import { checkpointJob, download, ffprobeDuration, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
+import { checkpointJob, download, ffmpegBin, ffprobeDuration, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { createWhisperx, pictureRefused } from "./faceless-video.server";
 import { persistRemote, repRun } from "./image-generation.server";
 import { mirrorRender } from "./object-storage.server";
@@ -35,9 +37,10 @@ import { canDraw, readFontMetrics } from "./font-metrics";
 import { LISTEN_AUDIO, heardTooLittle, lyricWordTimes } from "./lyric-sync";
 import { barBox, listenedWords, type WordT } from "./narrated-core";
 import {
-  DIRECTION_SCHEMA, LYRIC_FPS, LYRIC_MAX_SECONDS, NO_GRID, beatGrid, chooseLines, chunkGraph, directionBrief, fallbackDirection,
-  lyricAccent, lyricAss, lyricFrame, lyricLookOf, lyricShapeOf, parseDirection, pastedLines, planOk, renderChunks, scenePlan,
-  scrimAlpha, shotFrames, shotPulses, songFileOf, songTitleOf, stillPrompt, voicedWords,
+  DIRECTION_SCHEMA, LINK_FETCHES_A_DAY, LINK_MSG, LINK_TIMEOUT_MS, LYRIC_FPS, LYRIC_MAX_SECONDS, NO_GRID, beatGrid, chooseLines,
+  chunkGraph, directionBrief, fallbackDirection, linkFailure, linkTitleOf, lyricAccent, lyricAss, lyricFrame, lyricLookOf,
+  lyricShapeOf, parseDirection, pastedLines, planOk, renderChunks, scenePlan, scrimAlpha, shotFrames, shotPulses, songFileOf,
+  songRightsOf, songTitleOf, stillPrompt, voicedWords, youTubeId, youTubeWatch, ytDlpArgs,
   type ArtDirection, type BeatGrid, type CropBox, type LyricLine, type LyricLook, type LyricShape, type ScenePlan,
 } from "./lyric-video";
 
@@ -48,20 +51,103 @@ const short = (e: unknown) => (e instanceof Error ? e.message : String(e)).repla
 const inFilter = (p: string): string => p.replace(/\\/g, "/").replace(/:/g, "\\:");
 
 /* ---------------------------------------------------------------------------------------------------------
- * THE LINK SEAM
+ * THE LINK — a song from a YouTube address
  * ------------------------------------------------------------------------------------------------------- */
 
-/** What a member is told when they paste a link instead of dropping a file. */
-export const LINK_LATER = "Links are coming — upload the song file for now.";
+/** Where the fetching tool is. The image installs it (scripts/fetch-yt-dlp.mjs, run by the Dockerfile) with the
+ *  JavaScript runtime YouTube's pages need (Deno — the image's Node is too old for it). A machine without it
+ *  answers every link "upload the file instead". */
+export const ytDlpBin = (): string => process.env.YT_DLP_PATH || "/usr/local/bin/yt-dlp";
 
-/** A SONG FROM A LINK — the one place the owner's "input link and it converts" goes in. Fetching a song from a
- *  YouTube address means OUR server downloading audio from YouTube: a different risk from the lyric video itself
- *  (YouTube's terms and anti-circumvention law — it is what gets converter sites sued) and a flaky one (YouTube
- *  blocks cloud hosts). That waits on his word. When he gives it, this function is all that changes: a link in,
- *  a song file on the renders disk out — everything after it is exactly as for an upload. Until then it says so. */
-export async function songFromLink(link: string): Promise<{ ok: true; songPath: string; name: string } | { ok: false; message: string }> {
-  void link;
-  return { ok: false, message: LINK_LATER };
+/** Each account's fetches in the last day. Kept in memory: a restart forgets them, which only ever errs kind. */
+const fetchedAt = new Map<string, number[]>();
+
+type Ran = { code: number | null; out: string; err: string; timedOut: boolean };
+/** Run a tool to its end or to `ms`, keeping the tail of what it printed. Never throws. */
+function runTool(bin: string, args: string[], ms: number): Promise<Ran> {
+  return new Promise((resolve) => {
+    let out = "", err = "", timedOut = false, settled = false;
+    const keep = (s: string, c: Buffer) => { const n = s + c.toString(); return n.length > 65536 ? n.slice(-32768) : n; };
+    let child: ReturnType<typeof spawn>;
+    try { child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] }); } catch (e) { resolve({ code: null, out: "", err: short(e), timedOut: false }); return; }
+    const timer = setTimeout(() => { timedOut = true; try { child.kill("SIGKILL"); } catch { /* gone */ } }, ms);
+    const finish = (code: number | null) => { if (settled) return; settled = true; clearTimeout(timer); resolve({ code, out, err, timedOut }); };
+    child.stdout?.on("data", (c: Buffer) => { out = keep(out, c); });
+    child.stderr?.on("data", (c: Buffer) => { err = keep(err, c); });
+    child.on("error", (e) => { err += `\n${short(e)}`; finish(null); });
+    child.on("close", (code) => finish(code));
+  });
+}
+
+export type FromLink =
+  | { ok: true; songPath: string; name: string; title: string; seconds: number | null; source: string }
+  | { ok: false; message: string; why: string };
+
+/** A SONG FROM A LINK. The owner, 2026-11-24: "use YouTube link but include regulatory things like 'you must have
+ *  permissions from song owner'". So it is fetched only for a member who has confirmed they own the song or have its
+ *  owner's permission (api.lyric-video.tsx refuses before this is called; the piece keeps the confirmation), and
+ *  only from YouTube: the video's id is read out of the link and the address written again from it. The audio of
+ *  that one video is fetched — no playlist, nothing live, nothing over LINK_MAX_SECONDS — and kept beside the
+ *  uploads as mvsong-<hex>.m4a (or .mp3 when YouTube had no AAC), exactly where an upload goes: everything after it
+ *  is as for an upload. It runs inside the member's request, so it never waits for the encoder's turn (a film may
+ *  hold it for minutes): AAC is kept as it is, and anything else is converted by its own short ffmpeg. */
+export async function songFromLink(link: string, o: { shopId?: string; log?: (s: string) => void } = {}): Promise<FromLink> {
+  const log = o.log || ((s: string) => console.log(`[lyricvideo] ${s}`));
+  const id = youTubeId(link);
+  if (!id) return { ok: false, message: LINK_MSG.notYouTube, why: "not a YouTube video link" };
+  const bin = ytDlpBin();
+  if (!fs.existsSync(bin)) return { ok: false, message: LINK_MSG.noTool, why: `no ${bin}` };
+  if (o.shopId) {
+    const now = Date.now();
+    const recent = (fetchedAt.get(o.shopId) || []).filter((t) => now - t < 24 * 3600_000);
+    if (recent.length >= LINK_FETCHES_A_DAY) return { ok: false, message: LINK_MSG.many, why: "the day's fetches are used" };
+    recent.push(now);
+    fetchedAt.set(o.shopId, recent);
+  }
+  const source = youTubeWatch(id);
+  const dir = RENDERS();
+  fs.mkdirSync(dir, { recursive: true });
+  const tag = crypto.randomBytes(8).toString("hex");
+  const mine = (): string[] => { try { return fs.readdirSync(dir).filter((f) => f.startsWith(`ytsrc-${tag}.`)); } catch { return []; } };
+  const t0 = Date.now();
+  try {
+    const ran = await runTool(bin, ytDlpArgs(source, path.join(dir, `ytsrc-${tag}.%(ext)s`)), LINK_TIMEOUT_MS);
+    const files = mine();
+    const media = files.find((f) => !/\.(?:json|part|ytdl|tmp|temp)$/i.test(f) && !/\.part-Frag/i.test(f));
+    if (!media) {
+      const why = linkFailure(ran);
+      log(`link ${id}: not fetched (${why}; exit ${ran.code}${ran.timedOut ? ", timed out" : ""}): ${(ran.err || ran.out).replace(/\s+/g, " ").slice(-300)}`);
+      return { ok: false, message: LINK_MSG[why], why };
+    }
+    let info: Record<string, unknown> | null = null;
+    const json = files.find((f) => f.endsWith(".info.json"));
+    if (json) { try { info = JSON.parse(fs.readFileSync(path.join(dir, json), "utf8")) as Record<string, unknown>; } catch { info = null; } }
+    const name = `mvsong-${crypto.randomBytes(10).toString("hex")}`;
+    let out = "";
+    if (/\.m4a$/i.test(media)) {
+      out = path.join(dir, `${name}.m4a`);
+      fs.renameSync(path.join(dir, media), out);
+    } else {
+      out = path.join(dir, `${name}.mp3`);
+      const ex = await runTool(ffmpegBin(), ["-y", "-v", "error", "-i", path.join(dir, media), "-vn", "-map", "0:a:0", "-c:a", "libmp3lame", "-q:a", "2", out], 60_000);
+      if (ex.code !== 0 || !fs.existsSync(out)) {
+        try { fs.rmSync(out, { force: true }); } catch { /* best effort */ }
+        log(`link ${id}: fetched (${media}) but not made an MP3: ${ex.err.replace(/\s+/g, " ").slice(-200)}`);
+        return { ok: false, message: LINK_MSG.failed, why: "the audio could not be read" };
+      }
+    }
+    if (fs.statSync(out).size < 4096) {
+      try { fs.rmSync(out, { force: true }); } catch { /* best effort */ }
+      return { ok: false, message: LINK_MSG.failed, why: "the audio came out empty" };
+    }
+    let seconds: number | null = typeof info?.duration === "number" && (info.duration as number) > 0 ? (info.duration as number) : null;
+    if (seconds === null) { try { seconds = ffprobeDuration(out); } catch { seconds = null; } }
+    const title = linkTitleOf(info as { title?: unknown; track?: unknown; artist?: unknown } | null);
+    log(`link ${id}: fetched in ${((Date.now() - t0) / 1000).toFixed(1)}s → ${path.basename(out)} (${seconds ? `${Math.round(seconds)}s` : "length unknown"})`);
+    return { ok: true, songPath: out, name: (typeof info?.title === "string" ? (info.title as string) : title).slice(0, 200), title, seconds, source };
+  } finally {
+    for (const f of mine()) { try { fs.rmSync(path.join(dir, f), { force: true }); } catch { /* best effort */ } }
+  }
 }
 
 /* ---------------------------------------------------------------------------------------------------------
@@ -321,6 +407,9 @@ export type LyricVideoOptions = {
   section?: string;
   jobId?: string;
   resume?: { ckLvHeard?: string; ckLvPlan?: string; ckLvDirection?: string; ckLvStills?: string };
+  /** the member's confirmation that the song is theirs or they have its owner's permission (songRightsOf) —
+   *  kept on the piece */
+  songRights?: unknown;
 };
 
 export type LyricVideoMade = { outName: string; outPath: string; title: string; lines: LyricLine[]; plan: ScenePlan; ass: string; meta: Record<string, unknown> };
@@ -433,6 +522,9 @@ export async function makeLyricVideo(o: LyricVideoOptions & { songPath?: string;
  *  the same two fields onto a piece made elsewhere; here they are simply there from the start). */
 export async function generateLyricVideo(o: LyricVideoOptions): Promise<string> {
   const made = await makeLyricVideo(o);
+  // THE RECORD OF WHOSE SONG IT IS, on the piece itself (a job row is not kept for ever): when the member
+  // confirmed they own it or have its owner's permission, and the YouTube address it was fetched from
+  const rights = songRightsOf(o.songRights);
   const asset = await db.asset.create({
     data: {
       shopId: o.shopId,
@@ -440,7 +532,7 @@ export async function generateLyricVideo(o: LyricVideoOptions): Promise<string> 
       status: "PENDING",
       title: `Lyric Video — ${(made.title || "your song").slice(0, 60)}`,
       bodyJson: JSON.stringify({ style: "LYRICVIDEO", videoUrl: `/renders/${made.outName}`, prompt: made.title || "" }),
-      metaJson: JSON.stringify({ ...made.meta, ...(o.jobId ? { jobId: o.jobId } : {}) }),
+      metaJson: JSON.stringify({ ...made.meta, ...(o.jobId ? { jobId: o.jobId } : {}), ...(rights ? { songRights: rights } : {}) }),
     },
   });
   return asset.id;

@@ -16,6 +16,11 @@ RUN npm ci
 COPY . .
 RUN npx prisma generate && npm run build
 
+# yt-dlp + Deno for the Lyric Video's "paste a YouTube link" (scripts/fetch-yt-dlp.mjs): the newest releases on
+# every build (YouTube changes often), each checked against its published SHA-256. Never fails the build —
+# without them a link is answered "upload the song file instead".
+RUN node scripts/fetch-yt-dlp.mjs /usr/local/bin || true
+
 ENV NODE_ENV=production
 EXPOSE 3000
 
