@@ -49,7 +49,7 @@ import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, s
 import type { StoryToEdit } from "../lib/story-edit";
 import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
 // (2026-11-23) a story's pictures move — what that takes is said beside Generate
-import { storyTypicalSeconds } from "../lib/story-motion";
+import { storyPicturesOf, storyTypicalSeconds, type StoryPictures } from "../lib/story-motion";
 import { storyMotionOn } from "../lib/story-motion.server";
 // (2026-11-23) THE STORY'S OWN CAST: a portrait for every character a story invents — shown, and kept
 import { castCardsOf, castToken, keepGuess, placesOf, readCastToken, type StoryCastRef } from "../lib/story-picture";
@@ -956,6 +956,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(cast ? { cast } : {}),
         ...(cast && filmLockVoices ? { filmLockVoices: true } : {}),
         ...(narrated ? { filmMode: "narrated", ...(filmNarrator ? { filmNarrator } : {}) } : {}),
+        // THE LADDER (story-motion.ts): a told story asked for over STILL pictures — nothing is spent on motion
+        ...(narrated && storyPicturesOf(form.get("filmPictures")) === "still" ? { filmPictures: "still" } : {}),
         ...(filmCaptions !== "off" || narrated ? { filmCaptions } : {}),
         ...(filmGenre ? { filmGenre } : {}),
         ...(filmPace ? { filmPace } : {}),
@@ -1691,7 +1693,10 @@ export default function FilmStudio() {
   // ───── The STORY builder (Short Film · Moral Story · Horror Story · Kids Cartoon) ─────
   // The same tap-a-card flow as the Music Video (the owner: "we need the other film creators to have
   // the same setup as music video with all of the bells and whistle pickers").
-  type StoryCard = "cast" | "told" | "length" | "shape" | "captions" | "voice";
+  type StoryCard = "cast" | "told" | "length" | "shape" | "captions" | "voice" | "motion";
+  // THE LADDER's first two rungs (story-motion.ts): do a told story's pictures move? They do unless its maker
+  // says otherwise — and the choice is only offered where the server can make them move at all.
+  const [pictures, setPictures] = useState<StoryPictures>("moving");
   const [storyCard, setStoryCard] = useState<StoryCard | null>(null);
   const [storyDone, setStoryDone] = useState<Record<string, boolean>>({});
   const tapStory = (key: StoryCard) => { setStoryCard((cur) => (cur === key ? null : key)); setStoryDone((sd) => (sd[key] ? sd : { ...sd, [key]: true })); };
@@ -1892,7 +1897,7 @@ export default function FilmStudio() {
     const openNarrated = !!nt?.dialogue && h.told === "narrated" && (d.narratable || []).includes(h.tmpl);
     setHeroId(h.id);
     setTemplate(h.tmpl); setScenes(nt?.lipSyncSinger ? mvWant : openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)); setTreatment(null); setFrames([]); setCast([]);
-    setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({});
+    setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({}); setPictures("moving");
     if (nt?.dialogue) setFilmAspect(openNarrated ? "9:16" : "16:9");
     // another format is an ordinary new film (a next episode sets its series again right after this)
     setSeries(null); setSeriesCast([]); setSeriesOwn([]);
@@ -2616,7 +2621,7 @@ export default function FilmStudio() {
             ? t("Here's your video, shot by shot. Tap any line to change it. A green Performance is sung to camera; a purple Cut scene breaks to props or scenery with no singing (tap the pill to switch).")
             : (hasStills
               ? t("Swipe through your story — this is exactly what renders. Re-roll any scene that's off, then Generate.")
-              : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life."))}{narrated && seeds ? <> {t("The narrator reads each scene's words over its picture.")}{d.storyMotion ? <> {t("In the finished story every picture moves.")}</> : null}</> : null}</div>
+              : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life."))}{narrated && seeds ? <> {t("The narrator reads each scene's words over its picture.")}{d.storyMotion && pictures !== "still" ? <> {t("In the finished story every picture moves.")}</> : null}</> : null}</div>
           {/* THE STORY'S CAST, the way a film opens on its stars: who the maker picked (their own pictures) and
               every character the story invented — each with the ONE portrait every scene it is in is drawn
               from (story-picture.ts). Tap a face to see it whole. */}
@@ -3768,6 +3773,31 @@ export default function FilmStudio() {
                 : <><span className="mm-card-top"><span className="mm-card-ico c5"><Ico n="sliders" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The lens")}</span><b>{t("Engine")}</b></span></span>
                     <span className="mm-val">{dialogueEngine === "veo" ? t("Veo 3 · premium") : t("Kling 3 · recommended")}</span></>}
             </button>
+            {/* 6 · Motion — a told story only (the owner's ladder, 2026-11-24: "narrated with stills / simple,
+                narrated with stills to video mid, and acted premium"): the pictures come to life, or the
+                story is told over them as they are. Acted is another poster, not a setting. With it a told
+                story's cards are six — two full rows of three, three full rows of two. */}
+            {narrated && d.storyMotion && (
+              <button type="button" style={{ order: 13 }} className={`mm-card${storyCard === "motion" ? " on" : ""}${storyDone.motion ? " done" : ""}`} onClick={() => tapStory("motion")}>
+                <span className="mm-step" aria-hidden="true">{storyDone.motion ? <Ico n="check" size={13} /> : 6}</span>
+                <span className="mm-card-top"><span className="mm-card-ico c2"><Ico n="play" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The pictures")}</span><b>{t("Motion")}</b></span></span>
+                <span className="mm-val">{pictures === "still" ? t("Still · told over the pictures") : t("Moving · every picture comes to life")}</span>
+              </button>
+            )}
+            {storyCard === "motion" && narrated && d.storyMotion && (
+              <div className="mm-opts mm-opts-grid" style={{ order: 14 }}>
+                <div className="mm-opts-h">{t("Do the pictures move?")}</div>
+                <div className="mm-opts-sub">{t("Moving brings every scene's picture to life — the fuller film. Still tells the story over the pictures themselves: simpler, and ready sooner.")}</div>
+                <div className="mm-lenpick mm-motionpick" role="group" aria-label={t("Motion")}>
+                  {([["moving", "Moving", "every picture comes to life"], ["still", "Still", "told over the pictures · ready sooner"]] as const).map(([k, name, line]) => (
+                    <button type="button" key={k} className={`mm-lenopt${pictures === k ? " on" : ""}`} aria-pressed={pictures === k} onClick={() => setPictures(k)}>
+                      <b>{t(name)}</b>
+                      <small>{t(line)}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {storyCard === "cast" && (
               <div className="mm-opts mm-opts-grid" style={{ order: 2 }}>
@@ -4203,11 +4233,12 @@ export default function FilmStudio() {
           {isStoryboard && !narrated && lockVoices && cast.some((c) => c.voiceId) && <input type="hidden" name="filmLockVoices" value="1" />}
           {isStoryboard && series && <input type="hidden" name="seriesFrom" value={series.from} />}
           {isStoryboard && narrated && editing && <input type="hidden" name="editFrom" value={editing.from} />}
+          {isStoryboard && narrated && pictures === "still" && <input type="hidden" name="filmPictures" value="still" />}
           <button type="submit" className={`fs-go${storySent ? " is-sent" : ""}`} disabled={!canGo || storySent}>
             {generating ? <>… {t("Starting your film")}</> : storySent ? <><Ico n="check" size={16} /> {t("Rendering — it lands in your Archive")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(heroTitle), cost }) : t("Generate {name} · Free", { name: t(heroTitle) })}</>}
           </button>
           <div className="fs-eta" aria-live="polite" title={t("A rough estimate — longer films and lip-sync take more time.")}>
-            <span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, narrated, moves: d.storyMotion, scenes, engine: dialogueEngine })}</b>
+            <span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, narrated, moves: d.storyMotion && pictures !== "still", scenes, engine: dialogueEngine })}</b>
           </div>
         </Form>
         <p className="fs-cost">

@@ -151,9 +151,10 @@ test("the wait is said honestly: a story whose pictures move takes minutes longe
   const film = read("app", "routes", "web.film.tsx");
   assert.ok(film.includes("storyMotion: storyMotionOn(),"));
   assert.ok(film.includes("if (opts.moves) { const s = storyTypicalSeconds(n, true); lo = Math.max(3, Math.round((s * 0.8) / 60)); hi = Math.round((s * 1.35) / 60); }"));
-  assert.ok(film.includes("narrated, moves: d.storyMotion, scenes, engine: dialogueEngine })}"));
+  // (…unless its maker chose STILL pictures on the storyboard's Motion card — tests/video-ladder.test.ts)
+  assert.ok(film.includes("narrated, moves: d.storyMotion && pictures !== \"still\", scenes, engine: dialogueEngine })}"));
   // …and the storyboard says the pictures will move, in every language
-  assert.ok(film.includes("{d.storyMotion ? <> {t(\"In the finished story every picture moves.\")}</> : null}"));
+  assert.ok(film.includes("{d.storyMotion && pictures !== \"still\" ? <> {t(\"In the finished story every picture moves.\")}</> : null}"));
   assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("\n  \"In the finished story every picture moves.\": ").length - 1, 5);
 });
 
