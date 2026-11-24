@@ -132,3 +132,10 @@ test("A HOUSE TAKE KEEPS THE HOUSE: the room is drawn once and kept on the take'
   const make = srv.slice(srv.indexOf("export async function makeHouseTake"), srv.indexOf("export async function generateHouseTake"));
   assert.ok(!make.includes("db."), "makeHouseTake touches no row");
 });
+
+test("the Archive's in-progress card expects a take to take about eight and a half minutes (not a single clip's three)", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../app/routes/web.archive.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(src.includes("const TAKE_TYPICAL_SEC = 510;"));
+  assert.ok(src.includes(': (j.type === "GENERATE_VIDEO_AD" && p.contentType === "take") ? TAKE_TYPICAL_SEC'));
+});
