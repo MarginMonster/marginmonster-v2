@@ -210,7 +210,9 @@ async function dress(inPath: string, look: CameraLook, w: number, h: number): Pr
     }
     const script = path.join(dir, `take-${id}-graph.txt`), out = path.join(dir, `take-${id}.mp4`);
     fs.writeFileSync(script, d.filter);
-    const r = await run("ffmpeg", ["-v", "error", "-y", ...inputs, "-filter_complex_script", script, "-map", "[v]", "-map", "0:a?", ...(d.audio ? ["-af", d.audio] : []),
+    // (a time-lapse re-times the sound with the picture, inside the graph: [a] is its sound then)
+    const sound = d.audioInGraph ? ["-map", "[a]"] : ["-map", "0:a?", ...(d.audio ? ["-af", d.audio] : [])];
+    const r = await run("ffmpeg", ["-v", "error", "-y", ...inputs, "-filter_complex_script", script, "-map", "[v]", ...sound,
       "-c:v", "libx264", "-preset", "medium", "-crf", "22", "-maxrate", "7M", "-bufsize", "14M", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out], 300_000);
     fs.rmSync(script, { force: true });
     for (const f of fs.readdirSync(dir)) if (f.startsWith(`take-${id}-chrome`)) fs.rmSync(path.join(dir, f), { force: true });

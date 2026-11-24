@@ -12,18 +12,74 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CAMERA_LOOKS, cameraLookOf, dressFilter, filterPath, handheld } from "../app/lib/camera-dress.ts";
+import { CAMERA_LOOKS, CAM_DAYS, camDate, cameraLookOf, clockAt, clockExpr, clockText, dressFilter, filterPath, handheld, timeLapseOf } from "../app/lib/camera-dress.ts";
 
 const FONT = "C:/fonts/Poppins-Bold.ttf";
+const MONO = "C:/fonts/JetBrainsMono-Regular.ttf";
 const count = (s: string, sub: string) => s.split(sub).length - 1;
 
-test("three cameras, and which one is the maker's pick", () => {
-  assert.deepEqual(CAMERA_LOOKS.map((l) => l.key), ["phone", "camcorder", "bare"]);
+test("four cameras, and which one is the maker's pick", () => {
+  assert.deepEqual(CAMERA_LOOKS.map((l) => l.key), ["phone", "camcorder", "bare", "house"]);
   for (const l of CAMERA_LOOKS) assert.ok(l.name && l.line.length <= 60, l.key);
   assert.equal(cameraLookOf("phone"), "phone");
   assert.equal(cameraLookOf(" Camcorder "), "camcorder");
   assert.equal(cameraLookOf("bare"), "bare");
-  for (const v of [undefined, null, "", "iphone", "vhs", 1]) assert.equal(cameraLookOf(v), null, String(v));
+  assert.equal(cameraLookOf("HOUSE"), "house");
+  for (const v of [undefined, null, "", "iphone", "vhs", "cctv", 1]) assert.equal(cameraLookOf(v), null, String(v));
+});
+
+test("THE HOUSE CAMERA (\"Found footage from house camera POVs also\" — \"Like this overlay\"): fixed, its clock burned into the top-left corner, counting", () => {
+  const d = dressFilter({ look: "house", w: 1280, h: 720, font: FONT, fontMono: MONO, clock: { date: camDate(2026, 11, 16), start: 3 * 3600 + 12 * 60 } });
+  // nobody holds it: no sway, no turn, nothing enlarged and slid about
+  assert.ok(!/rotate=|scale=\d+:\d+:flags=bicubic|crop=/.test(d.filter), "no hand");
+  // the camera's own picture: a little soft and noisy, its own stepped frame rate
+  assert.ok(d.filter.startsWith("[0:v]gblur=sigma=") && d.filter.includes("noise=alls=7:allf=t") && d.filter.includes("fps=15"));
+  assert.ok(d.filter.endsWith("format=yuv420p[v]") && d.audio === null && !d.audioInGraph && !d.chrome);
+  // THE CLOCK, as the owner's reference shows it: the date, the weekday and the time — white, with a dark edge —
+  // in the top-left corner, sized from the frame (3.1% of its width) and drawn in the fixed-width face
+  assert.ok(d.filter.includes(`drawtext=fontfile='${filterPath(MONO)}':fontcolor=white:borderw=3:bordercolor=0x101010:fontsize=40:x=24:y=28:text='2026-11-16 MON %{eif\\:mod(floor((11520+t)/3600),24)\\:d\\:2}\\:%{eif\\:mod(floor((11520+t)/60),60)\\:d\\:2}\\:%{eif\\:mod(floor((11520+t)),60)\\:d\\:2}'`), d.filter);
+  // its own night: infrared grey when asked
+  assert.ok(dressFilter({ look: "house", w: 1280, h: 720, font: FONT, ir: true }).filter.includes("hue=s=0"));
+  assert.ok(!d.filter.includes("hue=s=0"));
+  // a camera's name in the other corner, when there is more than one camera — read as plain text
+  const named = dressFilter({ look: "house", w: 1280, h: 720, font: FONT, camName: "CAM 2: it's" }).filter;
+  assert.ok(named.includes(":x=24:y=h-th-28:expansion=none:text='CAM 2 its'"));
+  // without a monospaced face it falls back to the one it has
+  assert.ok(dressFilter({ look: "house", w: 1280, h: 720, font: FONT }).filter.includes(`fontfile='${filterPath(FONT)}'`));
+  // (looked at on a real picture: "2026-11-16 MON 03:12:02" two seconds in — scratchpad t45/cam/clk-plain.png)
+  assert.equal(clockText(clockAt({ date: "", start: 3 * 3600 + 12 * 60 }, null, 2.4)), "03:12:02");
+});
+
+test("A TIME-LAPSE is a scene setting (\"hours go by on the counter in seconds\"): the first part played fast while the clock races, then real time — picture, clock and sound together", () => {
+  const clock = { date: camDate(2026, 11, 16), start: 1 * 3600 + 4 * 60 + 10 };
+  const lapse = { fast: 6, speed: 8, hours: 2.5 };
+  const d = dressFilter({ look: "house", w: 1280, h: 720, font: FONT, clock, timelapse: lapse, seconds: 10 });
+  // the picture: the first six seconds at eight times their speed, the rest as it was, joined
+  assert.ok(d.filter.startsWith("[0:v]split=2[tl0][tl1];[tl0]trim=end=6,setpts=(PTS-STARTPTS)/8[tlf];[tl1]trim=start=6,setpts=PTS-STARTPTS[tlr];[tlf][tlr]concat=n=2:v=1:a=0,gblur="));
+  // the sound: the fast part is silent (a camera's time-lapse has none), the rest is the take's own, in step
+  assert.ok(d.audioInGraph && d.filter.endsWith(";[0:a]atrim=start=6,asetpts=PTS-STARTPTS,adelay=750|750,apad=pad_dur=0.1[a]"));
+  // the clock: 2½ hours pass in the ¾ second the fast part lasts once it is fast, then it runs at real time
+  assert.equal(clockExpr(clock, lapse), "(3850+if(lt(t,0.7500),t*12000.000,9000.000+t-0.7500))");
+  // (read off the real frames of a dressed test clip — scratchpad t45/cam/clk-stack.png:
+  //  01:04:10 · 02:10:50 · 03:04:10 · 03:34:10 · 03:34:10 · 03:34:10 · 03:34:12)
+  const at = (t: number) => clockText(clockAt(clock, lapse, t));
+  //  (the camera's frames are 1/15 s apart: the second one read was at 1/3 s)
+  assert.deepEqual([0, 1 / 3, 0.6, 0.75, 0.8, 1.5, 3].map(at), ["01:04:10", "02:10:50", "03:04:10", "03:34:10", "03:34:10", "03:34:10", "03:34:12"]);
+  // a time-lapse is only played when there is take enough for both parts, and within sane bounds
+  assert.equal(timeLapseOf({ fast: 9, speed: 4, hours: 2 }, 10), null, "less than two seconds of real time left");
+  assert.equal(timeLapseOf({ fast: 0.5, speed: 4, hours: 2 }, 10), null, "less than a second played fast");
+  assert.equal(timeLapseOf(null, 10), null);
+  assert.deepEqual(timeLapseOf({ fast: 9, speed: 99, hours: 40 }, 15), { fast: 9, speed: 24, hours: 12 });
+  assert.deepEqual(timeLapseOf({ fast: 9 }, 15), { fast: 9, speed: 8, hours: 2 });
+  // a setting that cannot be played leaves the take at real time (the clock simply counts)
+  assert.ok(!dressFilter({ look: "house", w: 1280, h: 720, font: FONT, timelapse: { fast: 9, speed: 4, hours: 2 }, seconds: 10 }).audioInGraph);
+  // a clock that runs past midnight starts the day again
+  assert.equal(clockText(86400 + 61), "00:01:01");
+  assert.equal(clockText(-1), "23:59:59");
+  // the weekday is the date's own
+  assert.equal(camDate(2026, 11, 16), "2026-11-16 MON");
+  assert.equal(camDate(2026, 11, 24), "2026-11-24 TUE");
+  assert.equal(CAM_DAYS.length, 7);
 });
 
 test("a path goes into a filter with its colon escaped", () => {

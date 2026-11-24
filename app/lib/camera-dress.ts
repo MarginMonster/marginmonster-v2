@@ -26,17 +26,81 @@
  * Pure: no ffmpeg is run here (tests/camera-dress.test.ts reads the graphs; the looks themselves were
  * LOOKED at, frame by frame, on a real take — scratchpad t45/camera/). */
 
-export type CameraLook = "phone" | "camcorder" | "bare";
+export type CameraLook = "phone" | "camcorder" | "bare" | "house";
 
 export const CAMERA_LOOKS: ReadonlyArray<{ key: CameraLook; name: string; line: string }> = [
   { key: "phone", name: "Phone", line: "A phone's recording screen over a clear picture." },
   { key: "camcorder", name: "Camcorder", line: "Tape: REC, the date in the corner, grain." },
   { key: "bare", name: "No overlay", line: "Only a shaky hand and a little grain." },
+  { key: "house", name: "House camera", line: "A camera high in the corner, its clock running." },
 ];
 
 export const cameraLookOf = (v: unknown): CameraLook | null => {
   const k = String(v ?? "").trim().toLowerCase();
-  return k === "phone" || k === "camcorder" || k === "bare" ? k : null;
+  return k === "phone" || k === "camcorder" || k === "bare" || k === "house" ? k : null;
+};
+
+/* ---- THE HOUSE CAMERA'S CLOCK ----
+ * The owner, 2026-11-24: "Found footage from house camera POVs also" — "Like this overlay" (a home security
+ * camera: a fixed, high, wide view of a room, the date and time burned into its top-left corner in a blocky
+ * white face with a dark edge) — and: "Need designated editing tools for found footage (like time lapse) hours
+ * go by on the counter in seconds and the creepy hero stands over someone sleeping … if we put it as a scene
+ * setting it would maximize easiness". So the clock is the camera's own, and a TIME-LAPSE is a setting, not a
+ * prompt: the first part of the take is played fast while its clock races through the hours, then the take
+ * drops to real time — and the clock with it. */
+
+/** The weekday a camera prints after its date (MON … SUN). */
+export const CAM_DAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
+
+export type HouseClock = {
+  /** the date as the camera prints it, e.g. "2026-11-16 MON" */
+  date: string;
+  /** the time on the clock when the take starts, in seconds after midnight */
+  start: number;
+};
+/** A TIME-LAPSE: the first `fast` seconds of the take are played `speed` times faster, and while they are, the
+ *  clock races through `hours` hours; then everything is real time. */
+export type TimeLapse = { fast: number; speed: number; hours: number };
+
+/** The date a camera prints for a day (the weekday is the day's own). */
+export function camDate(y: number, m: number, d: number): string {
+  const day = CAM_DAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")} ${day}`;
+}
+
+/** A time-lapse as it can safely be played: at least one second of the take stays fast, at least two stay
+ *  real time, the speed is 2–24× and the clock passes between a minute and twelve hours. Null when there is
+ *  not enough take for both parts. */
+export function timeLapseOf(t: Partial<TimeLapse> | null | undefined, takeSeconds: number): TimeLapse | null {
+  if (!t) return null;
+  const fast = Number(t.fast), speed = Number(t.speed), hours = Number(t.hours);
+  if (!(fast >= 1) || !(takeSeconds - fast >= 2)) return null;
+  return {
+    fast: Math.round(fast * 100) / 100,
+    speed: Math.max(2, Math.min(24, Number.isFinite(speed) ? speed : 8)),
+    hours: Math.max(1 / 60, Math.min(12, Number.isFinite(hours) ? hours : 2)),
+  };
+}
+
+/** The clock's seconds after midnight at the dressed take's time `t`, as an ffmpeg expression (and the same
+ *  sum as a number, for tests): real time; or, in a time-lapse, racing until the fast part has been played. */
+export function clockExpr(clock: HouseClock, lapse: TimeLapse | null): string {
+  const s0 = Math.max(0, Math.round(clock.start));
+  if (!lapse) return `(${s0}+t)`;
+  const shown = lapse.fast / lapse.speed;                  // how long the fast part lasts once it is played fast
+  const rate = (lapse.hours * 3600) / shown;               // clock seconds for every second shown
+  return `(${s0}+if(lt(t,${shown.toFixed(4)}),t*${rate.toFixed(3)},${(shown * rate).toFixed(3)}+t-${shown.toFixed(4)}))`;
+}
+export function clockAt(clock: HouseClock, lapse: TimeLapse | null, t: number): number {
+  const s0 = Math.max(0, Math.round(clock.start));
+  if (!lapse) return s0 + t;
+  const shown = lapse.fast / lapse.speed, rate = (lapse.hours * 3600) / shown;
+  return s0 + (t < shown ? t * rate : shown * rate + t - shown);
+}
+/** "HH:MM:SS" for seconds after midnight (a clock that passes midnight starts the day again). */
+export const clockText = (secs: number): string => {
+  const s = ((Math.floor(secs) % 86400) + 86400) % 86400;
+  return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map((n) => String(n).padStart(2, "0")).join(":");
 };
 
 /** A path as an ffmpeg FILTER wants it: forward slashes, and the drive's colon escaped. */
@@ -89,6 +153,16 @@ export type DressOptions = {
   stamp?: { date: string; time: string };
   /** 0…3: how unsteady the hand is. Unset = the look's own (phone 1, camcorder 1.6, bare 1.4). */
   shake?: number;
+  /** THE HOUSE CAMERA: its clock (unset: a night in November, 03:12:00) … */
+  clock?: HouseClock;
+  /** …a time-lapse, when the scene is one (house camera only) … */
+  timelapse?: TimeLapse | null;
+  /** …the length of the take in seconds (needed for a time-lapse) … */
+  seconds?: number;
+  /** …the camera's own name in the corner (e.g. "CAM 2"), when there is more than one … */
+  camName?: string;
+  /** …and night vision: the picture in the camera's infrared grey. */
+  ir?: boolean;
 };
 
 export type Dress = {
@@ -100,6 +174,9 @@ export type Dress = {
   filter: string;
   /** an -af chain for the take's sound, or null to leave it as it is */
   audio: string | null;
+  /** true when the graph itself writes the sound as [a] (a time-lapse re-times the sound with the picture):
+   *  the caller maps "[a]" instead of the take's own sound, and passes no -af. */
+  audioInGraph?: boolean;
 };
 
 /** The graph that dresses a take as one camera. */
@@ -110,6 +187,50 @@ export function dressFilter(o: DressOptions): Dress {
   const tall = h >= w;
   const text = (s: string, size: number, x: string, y: string, color = "white", extra = "") =>
     `drawtext=fontfile='${font}':text='${s}':fontsize=${r(size)}:fontcolor=${color}:x=${x}:y=${y}${extra}`;
+
+  if (o.look === "house") {
+    // THE HOUSE CAMERA. Nobody holds it: no sway, no hand. It records at a camera's own low frame rate (the
+    // motion steps a little), its picture is a little soft and noisy, and its clock is burned into the top-left
+    // corner the way the owner's reference shows it — a blocky white face with a dark edge, the date, the
+    // weekday and the time — counting, or racing through the hours in a time-lapse.
+    const lapse = timeLapseOf(o.timelapse, Number(o.seconds) || 0);
+    const clock = o.clock || { date: camDate(2026, 11, 16), start: 3 * 3600 + 12 * 60 };
+    const mono = filterPath(o.fontMono || o.font);
+    const fsz = r(0.031 * w), m = r(0.019 * w), edge = Math.max(2, r(fsz / 14));
+    const C = clockExpr(clock, lapse);
+    // (the time is three numbers worked out from the clock, each two digits; the colons between them are the
+    //  camera's own. Separators inside %{…} and every literal colon are escaped for the filter's own parser.)
+    const part = (e: string) => `%{eif\\:${e}\\:d\\:2}`;
+    const time = [part(`mod(floor(${C}/3600),24)`), part(`mod(floor(${C}/60),60)`), part(`mod(floor(${C}),60)`)].join("\\:");
+    const face = `fontfile='${mono}':fontcolor=white:borderw=${edge}:bordercolor=0x101010`;
+    const stamp = `drawtext=${face}:fontsize=${fsz}:x=${m}:y=${r(m * 1.15)}:text='${clock.date.replace(/'/g, "").replace(/:/g, "\\:")} ${time}'`;
+    const name = o.camName ? `,drawtext=${face}:fontsize=${r(fsz * 0.78)}:x=${m}:y=h-th-${r(m * 1.15)}:expansion=none:text='${o.camName.replace(/['\\%:]/g, "").slice(0, 24)}'` : "";
+    const look = [
+      // the camera's own picture: a little soft, a little noise that moves, its stepped frame rate
+      `gblur=sigma=${(0.55 * Math.max(1, u)).toFixed(2)}`,
+      ...(o.ir ? ["hue=s=0", "eq=contrast=1.08:brightness=0.02"] : ["eq=contrast=1.03:saturation=0.9"]),
+      "noise=alls=7:allf=t",
+      "fps=15",
+    ].join(",");
+    if (!lapse) {
+      return { filter: `[0:v]${look},${stamp}${name},format=yuv420p[v]`, audio: null };
+    }
+    // THE TIME-LAPSE: the first part of the take played fast (its sound dropped — a camera's time-lapse is
+    // silent), the rest at real time with its own sound, joined at the cut.
+    const shown = lapse.fast / lapse.speed;
+    const ms = Math.round(shown * 1000);
+    return {
+      filter: [
+        `[0:v]split=2[tl0][tl1]`,
+        `[tl0]trim=end=${lapse.fast},setpts=(PTS-STARTPTS)/${lapse.speed}[tlf]`,
+        `[tl1]trim=start=${lapse.fast},setpts=PTS-STARTPTS[tlr]`,
+        `[tlf][tlr]concat=n=2:v=1:a=0,${look},${stamp}${name},format=yuv420p[v]`,
+        `[0:a]atrim=start=${lapse.fast},asetpts=PTS-STARTPTS,adelay=${ms}|${ms},apad=pad_dur=0.1[a]`,
+      ].join(";"),
+      audio: null,
+      audioInGraph: true,
+    };
+  }
 
   if (o.look === "bare") {
     const hand = handheld(w, h, o.shake ?? 1.4);
