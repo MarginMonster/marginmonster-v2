@@ -387,3 +387,13 @@ test("a cleared piece takes its poster and its cover with it (they used to stay 
   // …and only files of our own renders folder
   assert.ok(src.includes('if (typeof u === "string" && u.startsWith("/renders/")) {'));
 });
+
+test("the ad and creator covers are HELD while they are redrawn (\"The ads and creator ones need rethought\"): those tiles keep their picture", async () => {
+  const { COVER_HELD, coverAsk } = await import("../app/lib/archive-cover.ts");
+  assert.deepEqual([...COVER_HELD].sort(), ["ad", "creator"]);
+  const base = { media: "/renders/x.mp4", expired: false, poster: null, cover: null };
+  assert.equal(coverAsk({ ...base, kind: { family: "ad", kids: false } }), false);
+  assert.equal(coverAsk({ ...base, kind: { family: "creator", kids: false } }), false);
+  // every other family is still asked for
+  for (const family of ["horror", "music", "film", "footage"] as const) assert.equal(coverAsk({ ...base, kind: { family, kids: false } }), true, family);
+});

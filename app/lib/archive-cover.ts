@@ -173,8 +173,14 @@ export function localMedia(url: string | null | undefined): string | null {
 /** SHOULD THE ARCHIVE ASK FOR ONE? A video or a track of a known family, whose media is ours and still
  *  here, that has no cover of the current design — and is not a told story with its poster (that IS its
  *  cover). */
+/** FAMILIES WHOSE DESIGN IS BEING REDRAWN: not asked for until it is. The owner, seeing every family on a
+ *  TEST page (2026-11-24): "The ads and creator ones need rethought" — so an ad's or a creator video's tile
+ *  keeps the picture it had until the new design lands. */
+export const COVER_HELD: ReadonlySet<string> = new Set(["ad", "creator"]);
+
 export function coverAsk(o: { kind: CoverKind | null; media: string | null | undefined; expired: boolean; poster: string | null; cover: { v: number } | null }): boolean {
   if (!o.kind || o.expired || !localMedia(o.media)) return false;
+  if (COVER_HELD.has(o.kind.family)) return false;
   if (o.poster && posterIsCover(o.kind.family)) return false;
   return !o.cover || o.cover.v < COVER_V;
 }
