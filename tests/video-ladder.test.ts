@@ -73,3 +73,11 @@ test("the maker's choice is a sixth card on a told story's storyboard — Moving
     assert.ok(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1 >= 5, k);
   }
 });
+
+test("the two choices share the row", () => {
+  // seen on the live page the hour it shipped: the picker has three columns (it was made for lengths and
+  // shapes), so two choices left a third of the row empty
+  const film = read("app", "routes", "web.film.tsx");
+  assert.ok(film.includes(".mm-lenpick.mm-motionpick{grid-template-columns:1fr 1fr;}"), "two classes: it must beat the picker's own three columns, which come later in the sheet");
+  assert.ok(film.indexOf(".mm-lenpick.mm-motionpick{") < film.indexOf(".mm-lenpick{display:grid;grid-template-columns:repeat(3,1fr);"));
+});

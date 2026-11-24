@@ -4851,6 +4851,11 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-told:disabled{opacity:.5;cursor:default;}
 @media(max-width:520px){.mm-toldpick{grid-template-columns:1fr;}}
 .mm-shapepick .mm-lenopt{gap:5px;}
+/* (the Motion card has two choices: they share the row — three columns left a third of it empty) */
+.mm-lenpick.mm-motionpick{grid-template-columns:1fr 1fr;}
+.mm-motionpick .mm-lenopt{gap:4px;padding:13px 10px;}
+.mm-motionpick .mm-lenopt b{font-size:15.5px;}
+.mm-motionpick .mm-lenopt small{font-size:11.5px;line-height:1.35;text-align:center;}
 .mm-shapepick .mm-lenopt b{font-size:14.5px;}
 .mm-shape{display:block;border:2px solid currentColor;border-radius:4px;color:var(--ink3,#9AA39B);background:rgba(20,32,26,.04);}
 .mm-shape.s16x9{width:44px;height:25px;margin:9px 0;}
@@ -5455,8 +5460,9 @@ a.mm-pace-auto{text-decoration:none;}
      3 · THE FINIAL, where a row of posters ends: an item OF the row, after its last poster (below 980px it
          is also the row's end margin). From 980px, where four stand across, only a row with a place to
          spare has one — in the middle of the room that is left. It is drawn THROUGH the rosette (a mask),
-         so it takes the gold of the page it is on: the shell's deep gold on the cream, the lobby's pale
-         gold in the dark theme (FS_THEATER). */
+         so it takes the gold it is told. A shelf is a cream card in BOTH themes (in the dark it is a cream
+         card on the dark page, like the ticket on the sign-in screen), so the finial is the shell's deep
+         gold in both. */
 @keyframes fsThTurn{to{transform:rotate(360deg)}}
 @media(max-width:640px){
   .fs-head::after{content:"";position:absolute;z-index:2;right:-96px;bottom:-100px;width:200px;height:200px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.32;pointer-events:none;animation:fsThTurn 170s linear infinite;}
@@ -5505,12 +5511,14 @@ a.mm-pace-auto{text-decoration:none;}
  *                do a dark green background instead of the brown"): near-black green, a lighter green
  *                where the light falls, the lobby's gold #E7C879 — and a phone's tab bar with them
  *   THE SCREEN   the hero and a format's banner get a thin gold edge
- *   THE CASES    each shelf is a cinema's lit poster case: a deep green tray, a thin gold frame, a strip of light
- *                along its top in the shelf's own colour (storybook gold · the stage's green · the music
- *                video's violet) — and the posters in it are cream lobby cards under that light
+ *   THE SHELVES  each shelf is the LIGHT theme's own cream card, laid on the dark the way the sign-in ticket
+ *                is — a gold hairline edge, a deep doubled shadow, and nothing in it repainted (but the
+ *                thin bar a mouse gives a row: it loses its white track). They were deep green "poster
+ *                cases" first; he looked and said: "these cards even in dark should take on the lighter
+ *                theme overlay like login right? To make it flow".
  *   THE TICKETS  "Next episode" cards are cream tickets with a perforation, under a sign-painted heading
- *   THE GOLD     the shell's own two great rosettes, behind the page, in the gold cut (as in the lobby) —
- *                and the pale gold of a row's finial (the page's own three rosettes are in both themes)
+ *   THE GOLD     the shell's own two great rosettes, behind the page, in the gold cut (as in the lobby);
+ *                the page's own three rosettes are in both themes, and are not touched here
  *
  * SCOPE. Every rule for the page itself starts with .fs-theater (the class this route's root carries in the
  * dark theme only), so it can style nothing else even if it were left on the page. The few rules for the
@@ -5577,10 +5585,8 @@ html .wb::after{opacity:.11;}
 .fs-theater .fs-hero-back{border-color:rgba(231,200,121,.45);}
 
 /* (the page's own three rosettes — in the hero's corner, a banner's corner, at the end of a row — are in
-   BOTH themes: see THE GOLD in the page's stylesheet. Here a row's finial only changes its gold: the pale
-   gold of the lobby, where the cream page has the shell's deep one.) */
-.fs-theater .fs-shelf{--fs-rose:#E7C879;}
-.fs-theater .fs-shelf .fs-fmtgrid::after{opacity:.34;}
+   BOTH themes: see THE GOLD in the page's stylesheet. Nothing of them is changed here: a row's finial stands
+   on its shelf's cream card in the dark too, so it keeps the shell's deep gold.) */
 
 /* ---- THE TICKETS: a kept music video, and Next episode ---- */
 .fs-theater .mm-kept{box-shadow:0 0 0 1px rgba(231,200,121,.5);}
@@ -5591,22 +5597,23 @@ html .wb::after{opacity:.11;}
 /* (the perforation between a ticket's picture and its words) */
 .fs-theater .fs-ep-txt{align-self:stretch;justify-content:center;padding-inline-start:10px;border-inline-start:2px dashed rgba(107,79,14,.42);}
 
-/* ---- THE CASES: each shelf is a lit poster case ---- */
-.fs-theater .fs-shelf{--lit:#E7C879;--lit-rgb:231,200,121;--lit-a:.2;border-color:rgba(231,200,121,.44);background:radial-gradient(78% 150px at 50% 0,rgba(var(--lit-rgb),var(--lit-a)),rgba(var(--lit-rgb),0) 72%),radial-gradient(60% 70px at 50% 100%,rgba(231,200,121,.1),rgba(231,200,121,0) 72%),linear-gradient(180deg,#153826,#0F2A1C);}
-.fs-theater .fs-shelf.is-acted{--lit:#8FE9BC;--lit-rgb:143,233,188;--lit-a:.15;}
-.fs-theater .fs-shelf.is-sung{--lit:#C9B8FF;--lit-rgb:201,184,255;--lit-a:.16;}
-/* (the shelf's accent was a bar down its left side: it is the strip of light along the top of the case) */
-.fs-theater .fs-shelf::before{left:9%;right:9%;top:0;bottom:auto;width:auto;height:2px;border-radius:0 0 3px 3px;opacity:1;background:linear-gradient(90deg,rgba(var(--lit-rgb),0),var(--lit) 24%,#FFF6DC 50%,var(--lit) 76%,rgba(var(--lit-rgb),0));box-shadow:0 0 14px 1px rgba(var(--lit-rgb),.5);}
-.fs-theater .fs-shelf-ico{box-shadow:0 0 0 1px rgba(255,253,247,.16),0 0 20px -4px rgba(var(--lit-rgb),.7);}
-.fs-theater .fs-shelf-name{color:#FFFDF7;}
-.fs-theater .fs-shelf-txt span{color:#D8CFBA;}
-.fs-theater .fs-shelf-tag{color:var(--lit);background:#1C4531;box-shadow:inset 0 0 0 1px rgba(var(--lit-rgb),.42);}
-/* the posters: cream lobby cards under the light (their picture, their name, their line — as they were) */
-.fs-theater .fs-fmt{border-color:rgba(231,200,121,.66);background:linear-gradient(176deg,#FFFDF7,#F7F0DE);box-shadow:0 0 0 1px rgba(5,18,12,.7),0 12px 20px -12px #000,0 0 22px -8px rgba(231,200,121,.5);}
-.fs-theater .fs-fmt:hover{box-shadow:0 0 0 1px rgba(5,18,12,.7),0 14px 22px -12px #000,0 0 30px -8px rgba(231,200,121,.72);}
-/* (the poster that flies when a format is entered: a ring of gold — its old shadow was dark on dark) */
+/* ---- THE SHELVES: light cards on the dark page, as the sign-in ticket is ----
+   They were deep green "poster cases" at first, and the owner, 2026-11-24, with the Films shelf beside the
+   sign-in ticket: "Now buddy, these cards even in dark should take on the lighter theme overlay like login
+   right? To make it flow". So a shelf here IS the light theme's shelf card, and nothing of it is repainted:
+   its cream ground, its ink title and grey line, its coloured bar and tag, its poster cards, its deep-gold
+   finial. It only gets what a cream card needs to sit on a dark page, the way the ticket has it — a gold
+   hairline for an edge (the card's own 1px border in the lobby's gold, the dark showing under it rather than
+   the cream) and a deep, doubled shadow.
+   The edge is said by a rule of TWO classes, so the page's own rule for a shelf falling away (three) still
+   takes it; and the shadow is cast only while a shelf stands, so nothing of one is left as a poster flies. */
+.fs-theater .fs-shelf{border-color:rgba(231,200,121,.6);background-clip:padding-box;}
+.fs-theater .fs-shelves:not(.throw) .fs-shelf{box-shadow:0 34px 60px -30px #000,0 14px 26px -16px rgba(0,0,0,.55);}
+/* (where there is a mouse a row has a thin bar, and a bar's track is a square: left as it comes, its white
+   corner stands out past the card's round one, on the dark. So no track — and the thumb in the finial's gold) */
+.fs-theater .fs-shelf .fs-fmtgrid{scrollbar-color:#B08526 transparent;}
+/* (the poster that flies when a format is entered crosses the dark page: a ring of gold — its own shadow is dark on dark) */
 .fs-theater .fs-fmtgrid.throw .fs-fmt.zoom{box-shadow:0 0 0 2px #E7C879,0 24px 40px -20px #000;}
-.fs-theater .fs-shelf .fs-fmtgrid{scrollbar-color:rgba(231,200,121,.5) transparent;}
 
 /* ---- THE WORKBENCH: the cream cards are kept; what stands between them reads on the dark ---- */
 .fs-theater .mm-hint{color:#D8CFBA;}
@@ -5619,8 +5626,8 @@ html .wb::after{opacity:.11;}
 .fs-theater .mm > .fs-err{color:#FFB4A6;}
 .fs-theater .mm > .mm-storyboard > .mm-sb-head{color:#D8CFBA;}
 
-/* ---- a ring that is seen on the dark ---- */
-.fs-theater .fs-fmt:focus-visible,.fs-theater .fs-ep-card:focus-visible,.fs-theater .fs-head-tag:focus-visible,.fs-theater .fs-hero-back:focus-visible{outline:2px solid #E7C879;outline-offset:2px;}
+/* ---- a ring that is seen on the dark (a poster stands on its shelf's cream card: it keeps the shell's green ring) ---- */
+.fs-theater .fs-ep-card:focus-visible,.fs-theater .fs-head-tag:focus-visible,.fs-theater .fs-hero-back:focus-visible{outline:2px solid #E7C879;outline-offset:2px;}
 
 /* ---- less motion: the room's two rosettes stand still (the shell stops them too; the page's own three are
    stopped by the page's stylesheet) ---- */
