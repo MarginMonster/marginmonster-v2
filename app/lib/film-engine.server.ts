@@ -46,6 +46,8 @@ import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 import { episodeTitle, seriesWriterBrief, type SeriesBrief } from "./film-series";
 import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from "./dialogue-fit";
 import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
+// (2026-11-24) a told story's places: a scene set at one says so in its own words
+import { placeNamed } from "./story-picture";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -359,7 +361,7 @@ const TREATMENT_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        properties: { visual: { type: "string" }, caption: { type: "string" }, where: { type: "string" }, shot: { type: "string" }, tone: { type: "string" }, singer: { type: "string" } },
+        properties: { visual: { type: "string" }, caption: { type: "string" }, where: { type: "string" }, place: { type: "string" }, shot: { type: "string" }, tone: { type: "string" }, singer: { type: "string" } },
         required: ["visual"],
       },
     },
@@ -606,7 +608,7 @@ export async function previewFilmTreatment(opts: {
       // THE STORY'S PLACES (story-picture.ts): the first Horror Story made in one press had a ferry that was
       // a rowing boat, then a ship, then a ferry — each picture drew "the ferry" from the word. A place the
       // story comes back to is described ONCE, here, and drawn from one design sheet of it.
-      `Also return "places": the ONE or TWO places or things this story keeps coming back to — a house, a boat, a shop, a street, a car — each written as "name: look": a short plain name ("the ferry", "the lighthouse", "the bakery"), a colon, then ONE fixed description of 15-30 words — its shape, colours and materials, and two or three details that make it THIS one and no other (e.g. "the ferry: an old low black wooden river ferry with a small square wheelhouse at its stern, one iron lantern hook at its bow and a worn plank deck with a low rail"). Only what at least TWO pictures are set at, in or on; never a person or an animal; no weather or time of day in it; an empty list when the story has no such place. Every VISUAL set there calls it by that exact name ("on the ferry", "at the door of the lighthouse").\n`
+      `Also return "places": the ONE or TWO places or things this story keeps coming back to — a house, a boat, a shop, a street, a car — each written as "name: look": a short plain name ("the ferry", "the lighthouse", "the bakery"), a colon, then ONE fixed description of 15-30 words — its shape, colours and materials, and two or three details that make it THIS one and no other (e.g. "the ferry: an old low black wooden river ferry with a small square wheelhouse at its stern, one iron lantern hook at its bow and a worn plank deck with a low rail"). Only what at least TWO pictures are set at, in or on; never a person or an animal; no weather or time of day in it; an empty list when the story has no such place. Every VISUAL set there calls it by that exact name ("on the ferry", "at the door of the lighthouse"). And every scene also has a third field, PLACE: the name of the one of them that picture is set at, in or on — exactly as it is written in "places" — or "" when it is set somewhere else.\n`
     : tmpl.dialogue
     ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FIVE fields:\n` +
       `• VISUAL — what we SEE: a TWO-SHOT framing BOTH characters together in the place; they STAY put (NO standing up, sitting down, walking, turning away or crossing — big moves make the AI morph faces/clothing); a still, tense TALKING beat with only small gestures and changing expressions; keep hands EMPTY by default — do NOT add cigarettes, drinks, phones or handheld props for flavour (they warp badly in AI video), only include one if the user's theme specifically involves it; NO readable text, documents, papers, boards, signage or screens in view.\n` +
@@ -738,6 +740,9 @@ export async function previewFilmTreatment(opts: {
   const singers: number[] = featured.length ? defaultFeaturePlan(outRoles, sceneSec, featIdx) : list.map(() => -1);
   // FTC backstop (captions are burned on screen): strip an endorsement
   // possessive from a third-party trademark the writer may have slipped in.
+  // (a told story's writer marks which of the story's places each scene is set at — read here, before the
+  //  scenes are tidied, and folded into the scene's own words at the end: story-picture.ts → placeNamed)
+  const saidPlaces = list.map((s) => (typeof (s as { place?: unknown }).place === "string" ? String((s as { place?: unknown }).place) : ""));
   list = list.map((s, i) => ({
     visual: s.visual,
     caption: s.caption ? dropOrgEndorsementPossessive(s.caption) : undefined,
@@ -849,6 +854,8 @@ export async function previewFilmTreatment(opts: {
   const places = narrated && Array.isArray(parsed.places)
     ? parsed.places.filter((p): p is string => typeof p === "string").map((p) => p.replace(/\s+/g, " ").trim().slice(0, 400)).filter((p) => p.length > 12).slice(0, 2)
     : [];
+  // …and a scene set at one of them says so in its own words ("At the ferry: …") when they did not already
+  if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed(s.visual, saidPlaces[i], places) }));
   return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 

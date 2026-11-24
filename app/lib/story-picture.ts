@@ -248,6 +248,22 @@ export function placeIn(visual: string, name: string): boolean {
   return key.includes(" ") && last.length >= 4 && text.includes(` ${last} `);
 }
 
+/** THE WORDS SAY WHERE. The writer also states which of the story's places each scene is set at; a scene whose
+ *  own words do not name it ("inside the wheelhouse doorway" — the ferry's; found on the first live story
+ *  with places, 2026-11-24: that one scene was drawn with no sheet) gets the name put in front of them:
+ *  "At the ferry: …". So a scene's words stay the ONE thing its picture is drawn from — and the maker can
+ *  read where it is set, and change it. Words that already name one of the story's places are believed
+ *  as they are, whatever the writer's mark says. */
+export function placeNamed(visual: string | null | undefined, place: string | null | undefined, entries: ReadonlyArray<string | null | undefined>): string {
+  const v = String(visual || "").trim();
+  const want = placeKey(String(place || ""));
+  if (!v || !want) return v;
+  const places = (entries || []).map((e) => placeEntry(String(e || ""))).filter((p) => p.name);
+  const hit = places.find((p) => placeKey(p.name) === want);
+  if (!hit || places.some((p) => placeIn(v, p.name))) return v;
+  return `At ${hit.name}: ${v}`;
+}
+
 /** Which of the story's places a scene is set at: the first in the list that its words name — or -1. */
 export const scenePlace = (visual: string, places: ReadonlyArray<{ name: string }>): number => places.findIndex((p) => placeIn(visual || "", p.name));
 

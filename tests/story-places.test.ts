@@ -23,7 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   NOTHING_WRITTEN, PLACE_FRAMING, PLACE_SHEET_ASPECT, STORY_MODEL, STORY_PLACE_MAX,
-  castToken, placeEntry, placeIn, placeKey, placeNote, placeSheetPrompt, placesOf, placesStillIn, readCastToken, recurringPlaces, scenePlace, sceneModel,
+  castToken, placeEntry, placeIn, placeKey, placeNamed, placeNote, placeSheetPrompt, placesOf, placesStillIn, readCastToken, recurringPlaces, scenePlace, sceneModel,
 } from "../app/lib/story-picture.ts";
 import { storyToEditFrom } from "../app/lib/story-edit.ts";
 
@@ -69,6 +69,35 @@ test("which scenes are set there: the ones whose words call the place by its nam
   assert.deepEqual(SCENES.map((v) => scenePlace(v, places)), [0, -1, 0, 0, -1, 0]);
   assert.equal(scenePlace("Corin ties up the ferry below the chapel", places), 0);
   assert.equal(scenePlace("Corin kneels in the chapel", places), 1);
+});
+
+test("the words say where: a scene the writer set at a place, whose words do not name it, is given the name", () => {
+  // The first story made on the live site with places (2026-11-24, the same ferry story): five scenes named
+  // "the ferry" and were drawn from its sheet — the same boat in each. The sixth, "…inside the wheelhouse
+  // doorway…", is the ferry's wheelhouse and never says so: it was drawn with no sheet.
+  const RIVER = "the river: a wide black slow-moving river with a thick rolling fog hanging low over its surface";
+  const six = "Maren stands facing Corin inside the wheelhouse doorway, her hollow grey eyes inches from his face.";
+  assert.equal(placeNamed(six, "the ferry", [FERRY, RIVER]), `At the ferry: ${six}`);
+  assert.equal(placeNamed(six, "The Ferry", [FERRY]), `At the ferry: ${six}`, "the place's own name, as the story lists it");
+  // words that already name one of the story's places are believed as they are — whatever the mark says
+  assert.equal(placeNamed(SCENES[0], "the ferry", [FERRY, RIVER]), SCENES[0]);
+  assert.equal(placeNamed("On the river, Maren stands motionless upon the black water.", "the ferry", [FERRY, RIVER]), "On the river, Maren stands motionless upon the black water.");
+  // no mark, a mark that is no place of this story, no words: nothing is added
+  assert.equal(placeNamed(six, "", [FERRY]), six);
+  assert.equal(placeNamed(six, "the chapel", [FERRY]), six);
+  assert.equal(placeNamed(six, "the ferry", []), six);
+  assert.equal(placeNamed("", "the ferry", [FERRY]), "");
+  // …and with it the sixth scene is one of the ferry's
+  const visuals = [...SCENES.slice(0, 5), placeNamed(six, "the ferry", [FERRY])];
+  assert.deepEqual(recurringPlaces(visuals, [FERRY])[0].scenes, [0, 2, 3, 5]);
+  // the writer: asked for each scene's place, read before the scenes are tidied, folded into the words at the end
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.ok(engine.includes("And every scene also has a third field, PLACE: the name of the one of them that picture is set at, in or on"));
+  assert.ok(engine.includes("where: { type: \"string\" }, place: { type: \"string\" }, shot: { type: \"string\" },"));
+  const read1 = engine.indexOf("const saidPlaces = list.map((s) => (typeof (s as { place?: unknown }).place === \"string\"");
+  const tidy = engine.indexOf("list = list.map((s, i) => ({\n    visual: s.visual,");
+  const fold = engine.indexOf("if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed(s.visual, saidPlaces[i], places) }));");
+  assert.ok(read1 > 0 && tidy > read1 && fold > tidy, "read, tidied, then folded");
 });
 
 test("a sheet is drawn for a place the story COMES BACK to — two scenes or more, two places at most", () => {
