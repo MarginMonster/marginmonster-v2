@@ -2,6 +2,8 @@
  * Two small indexed reads of the signed-in shop's own rows; nothing is written. */
 import { db } from "../db.server";
 import type { ReadyState } from "./ready-notice";
+import { posterOf } from "./story-poster";
+import { storyStars } from "./story-picture";
 
 /** The job types that make a piece a member waits for. */
 const MAKING = ["GENERATE_VIDEO_AD", "GENERATE_IMAGE_AD", "GENERATE_SONG", "GENERATE_BLOG_POST"] as const;
@@ -30,9 +32,13 @@ export async function readyState(shopId: string): Promise<ReadyState> {
     const v = await db.asset.findFirst({
       where: { shopId, type: "VIDEO_AD", status: { not: "FAILED" } },
       orderBy: { createdAt: "desc" },
-      select: { id: true, title: true, createdAt: true },
+      select: { id: true, title: true, createdAt: true, metaJson: true },
     });
-    return { cooking, newest: v ? { id: v.id, title: v.title || "", at: v.createdAt.toISOString() } : null };
+    if (!v) return { cooking, newest: null };
+    // (a film that made its own poster is announced as a premiere: its poster, and who is in it)
+    const poster = posterOf(v.metaJson);
+    const cast = poster ? storyStars(v.metaJson).map((s) => s.name).slice(0, 3) : [];
+    return { cooking, newest: { id: v.id, title: v.title || "", at: v.createdAt.toISOString(), ...(poster ? { poster, cast } : {}) } };
   } catch {
     return { cooking, newest: null };
   }

@@ -12,7 +12,7 @@
  */
 
 /** The newest finished video of the signed-in shop. */
-export type ReadyPiece = { id: string; title: string; at: string };
+export type ReadyPiece = { id: string; title: string; at: string; /** the film's own poster, when it made one (story-poster.ts) — it is then announced as a premiere */ poster?: string | null; /** who is in it, as its "Starring" row has them — three at most */ cast?: string[] };
 /** What one look returns: how many pieces are rendering now, and the newest finished video (if any). */
 export type ReadyState = { cooking: number; newest: ReadyPiece | null };
 

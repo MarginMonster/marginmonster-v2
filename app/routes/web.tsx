@@ -172,6 +172,26 @@ function ReadyNotice({ cooking, stamp }: { cooking: number; stamp: number }) {
   }, [piece]);
   useEffect(() => { if (loc.pathname === "/web/archive") setPiece(null); }, [loc.pathname]);
   if (!piece) return null;
+  // NOW SHOWING: a film that made its own poster is announced as a premiere — the poster (the light crosses
+  // it once), a marquee, its title and who is in it. Anything without a poster is announced as before.
+  if (piece.poster) {
+    const cut = piece.title.indexOf(" — ");
+    const name = cut >= 0 ? piece.title.slice(cut + 3) : piece.title;
+    const billed = (piece.cast || []).filter(Boolean).slice(0, 3).join(" · ") || (cut >= 0 ? piece.title.slice(0, cut) : "");
+    const to = `/web/archive?open=${encodeURIComponent(piece.id)}`;
+    return (
+      <div className="wb-ready is-premiere" role="status" aria-live="polite">
+        <Link className="wb-ready-poster" to={to} onClick={() => setPiece(null)} tabIndex={-1} aria-hidden="true"><img src={piece.poster} alt="" /></Link>
+        <span className="wb-ready-body">
+          <span className="wb-ready-now"><span className="wb-ready-bulbs" aria-hidden="true"><i /><i /><i /></span>{t("Now showing")}<span className="wb-ready-bulbs is-after" aria-hidden="true"><i /><i /><i /></span></span>
+          <b className="wb-ready-title">{readyName(name, 60)}</b>
+          {billed ? <span className="wb-ready-cast">{billed}</span> : null}
+        </span>
+        <Link className="wb-ready-go" to={to} onClick={() => setPiece(null)}>{t("Watch it")}</Link>
+        <button type="button" className="wb-ready-x" aria-label={t("Dismiss")} onClick={() => setPiece(null)}>✕</button>
+      </div>
+    );
+  }
   return (
     <div className="wb-ready" role="status" aria-live="polite">
       <span className="wb-ready-ic" aria-hidden="true"><Ico n="check" /></span>
@@ -1998,9 +2018,32 @@ body{font-family:Inter,-apple-system,sans-serif;}
   .wb-ready{left:16px;right:16px;max-width:none;transform:none;bottom:calc(98px + env(safe-area-inset-bottom,0px));animation-name:wbReadyInPhone;}
   .wb-ready-go,.wb-ready-x{min-height:44px;}
   .wb-ready-x{width:44px;height:44px;}
+  /* (the premiere on a phone: the marquee keeps to one line — bulbs on one side only) */
+  .wb-ready.is-premiere{gap:10px;}
+  .wb-ready.is-premiere .wb-ready-now{letter-spacing:.13em;}
+  .wb-ready.is-premiere .wb-ready-bulbs.is-after{display:none;}
   @keyframes wbReadyInPhone{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 }
+/* NOW SHOWING — the premiere: the film's own poster, a marquee, its title and its cast */
+.wb-ready.is-premiere{align-items:center;gap:12px;padding:10px 10px 10px 10px;border-radius:18px;}
+.wb-ready-poster{position:relative;flex:0 0 auto;display:block;width:56px;aspect-ratio:4/5;border-radius:8px;overflow:hidden;background:#0b0f0d;box-shadow:0 0 0 1px rgba(231,200,121,.55),0 8px 18px -8px #000;}
+.wb-ready-poster img{display:block;width:100%;height:100%;object-fit:cover;}
+.wb-ready-poster::after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.6) 50%,transparent 62%);transform:translateX(-130%);animation:wbShine 1.5s ease-out .55s 2 backwards;}
+@keyframes wbShine{from{transform:translateX(-130%)}to{transform:translateX(130%)}}
+.wb-ready-body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.wb-ready-now{display:inline-flex;align-items:center;gap:7px;font-family:Poppins,sans-serif;font-size:9.5px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#E7C879;line-height:1.4;white-space:nowrap;}
+.wb-ready-bulbs{display:inline-flex;gap:4px;}
+.wb-ready-bulbs i{width:5px;height:5px;border-radius:50%;background:#E7C879;opacity:.28;animation:wbBulb 1.2s linear infinite;}
+.wb-ready-bulbs i:nth-child(2){animation-delay:.2s;}
+.wb-ready-bulbs i:nth-child(3){animation-delay:.4s;}
+.wb-ready-bulbs.is-after i:nth-child(1){animation-delay:.6s;}
+.wb-ready-bulbs.is-after i:nth-child(2){animation-delay:.8s;}
+.wb-ready-bulbs.is-after i:nth-child(3){animation-delay:1s;}
+@keyframes wbBulb{0%,100%{opacity:.28;box-shadow:none}18%,42%{opacity:1;box-shadow:0 0 7px 1px rgba(231,200,121,.75)}60%{opacity:.28;box-shadow:none}}
+.wb-ready-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-family:Poppins,sans-serif;font-size:14.5px;font-weight:800;line-height:1.22;color:#fff;}
+.wb-ready-cast{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#C9D3CC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 @media(prefers-reduced-motion:reduce){.wb-ready{animation:none;}}
+@media(prefers-reduced-motion:reduce){.wb-ready-poster::after{animation:none;}.wb-ready-bulbs i{animation:none;opacity:.9;}}
 
 /* ---- Helpurr — the AI helper (floating sidekick) ---- */
 .mm-fab{position:fixed;z-index:10600;bottom:30px;right:20px;width:66px;height:66px;border:0;cursor:pointer;padding:0;background:transparent;transition:transform .15s;}

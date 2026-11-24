@@ -39,6 +39,8 @@ import { SPIN_STAGE_CSS } from "../components/SpinStage";
 import { useModalA11y } from "../lib/use-modal-a11y";
 import { favouritesFirst } from "../lib/favourites";
 import { nameTok } from "../lib/character-prompts";
+// (2026-11-24) the slate that claps when a film is sent off
+import { slateTitle } from "../lib/film-slate";
 // (2026-11-24) an acted film made in one press is cast with the people picked on the Cast card
 import { pickedAsCast } from "../lib/dialogue-cast";
 import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
@@ -1001,6 +1003,32 @@ type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: st
 // so it may still be re-picked when the rest of the cast changes.
 // kind / look = what a cast member IS and looks like when they came from the cast (a cartoon character
 // and a monster are drawn and filmed as what they are, not as people).
+/* THE SLATE. Pressing Generate is "action!" — so the page claps a slate, and it is THIS film's slate: its
+ * title (the first words of the idea when nothing is written yet), its format, how many scenes, today's
+ * date, and its director: you. One clap, no sound; with reduced motion it is simply shut. (The owner,
+ * 2026-11-24: "genius level artistic detail additions that make the app feel alive".) */
+function Slate({ title, format, scenes }: { title: string; format: string; scenes: number }) {
+  const t = useT();
+  // (the date is the member's own, so it is read once the page is theirs — never on the server)
+  const [when, setWhen] = useState("");
+  useEffect(() => { try { setWhen(new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })); } catch { setWhen(""); } }, []);
+  return (
+    <div className="fs-slate" role="img" aria-label={t("Slate: {title}", { title })}>
+      <span className="fs-slate-stick" aria-hidden="true" />
+      <div className="fs-slate-board" aria-hidden="true">
+        <span className="fs-slate-bar" />
+        <div className="fs-slate-prod"><i>{t("Production")}</i><b>{title}</b></div>
+        <div className="fs-slate-cells">
+          <span><i>{t("Director")}</i><b>{t("You")}</b></span>
+          <span><i>{t("Scenes")}</i><b>{scenes}</b></span>
+          <span><i>{t("Date")}</i><b>{when || "—"}</b></span>
+        </div>
+        <div className="fs-slate-fmt">{format}</div>
+      </div>
+    </div>
+  );
+}
+
 type CastMember = { name: string; desc: string; faceUrl: string | null; voiceId: string | null; autoVoice?: boolean; kind?: "person" | "cartoon" | "monster"; look?: string };
 
 // Backdrop presets — like the avatar-AI backdrop picker: tap one to set a scene's
@@ -2597,12 +2625,12 @@ export default function FilmStudio() {
                   : (own.length > 0 || places.length > 0) && <span>{places.length > 0 && own.length === 0 ? t("It looks like this in every scene.") : t("They look like this in every scene.")}</span>}</div>
                 {recastFetcher.state === "idle" && recastFetcher.data?.error && <p className="fs-err">{recastFetcher.data.error}</p>}
                 <div className="mm-stars-row">
-                  {stars.map((c) => {
+                  {stars.map((c, k) => {
                     // (one of the story's OWN characters can be drawn again — ↻, the scenes' own control; a
                     //  presenter the maker picked is who they are)
                     const mine = own.some((o) => o.name === c.name && o.img === c.img);
                     return (
-                      <div key={`${c.name}|${c.img}`} className="mm-star">
+                      <div key={`${c.name}|${c.img}`} className="mm-star" style={{ ["--i" as string]: k }}>
                         <button type="button" className="mm-star-pic" onClick={() => setZoomImg(c.img)} title={c.look ? `${c.name} — ${c.look}` : c.name}>
                           <img src={c.img} alt={c.name} loading="lazy" />
                           {recasting?.name === c.name && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
@@ -2613,8 +2641,8 @@ export default function FilmStudio() {
                       </div>
                     );
                   })}
-                  {places.map((p) => (
-                    <div key={`place|${p.img}`} className="mm-star is-place">
+                  {places.map((p, k) => (
+                    <div key={`place|${p.img}`} className="mm-star is-place" style={{ ["--i" as string]: stars.length + k }}>
                       <button type="button" className="mm-star-pic" onClick={() => setZoomImg(p.img)} title={`${p.name} — ${p.look}`}>
                         <img src={p.img} alt={p.name} loading="lazy" />
                         <span className="mm-star-tag"><Ico n="image" size={10} /> {t("Place")}</span>
@@ -4159,9 +4187,10 @@ export default function FilmStudio() {
         {d.hasPlan && !affordable && <p className="fs-err">{t("Not enough tokens for this length — shorten it, or top up on the Plans page.")}</p>}
         {d.hasPlan && tmpl?.needsProduct && !productReady && <p className="fs-err">{t("Add your product above to generate a skit.")}</p>}
         {actionData?.error && <p className="fs-err">{actionData.error}</p>}
-        {actionData?.ok && (
+        {actionData?.ok && (<>
+          <Slate title={slateTitle(seeds?.treatment?.title || treatment?.title, topic, t(hero?.name || "Film"))} format={t(hero?.name || "Film")} scenes={scenes} />
           <p className="fs-ok"><Ico n="check" size={14} /> {t("Rolling! Your film is rendering — it'll land in your Archive when it's done. You can keep working.")}</p>
-        )}
+        </>)}
       </div>
       </>)}
             </div>
@@ -4446,6 +4475,22 @@ ${CAST_ID_CSS}
 .fs-bal.low{color:#B3421E;}
 .fs-err{font-size:12.5px;color:#B3421E;margin:8px 0 0;font-weight:600;}
 .fs-ok{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--green,#0C7A46);font-weight:700;margin:10px 0 0;}
+/* THE SLATE — it claps once when a film is sent off (Slate). The stick is hinged at its left end. */
+.fs-slate{position:relative;z-index:2;width:min(100%,290px);margin:22px 0 4px;padding-top:21px;font-family:Poppins,sans-serif;}
+.fs-slate-stick,.fs-slate-bar{display:block;height:19px;background:repeating-linear-gradient(-55deg,#FAF7EE 0 17px,#14201A 17px 34px);}
+.fs-slate-stick{position:absolute;top:0;left:0;right:0;border-radius:5px;box-shadow:0 2px 5px -2px rgba(20,32,26,.55);transform-origin:9px 60%;animation:fsClap .66s cubic-bezier(.45,0,.9,.45) .18s both;}
+.fs-slate-board{overflow:hidden;border-radius:5px 5px 12px 12px;background:#14201A;color:#FAF7EE;box-shadow:0 16px 28px -18px rgba(20,32,26,.7);}
+.fs-slate-bar{background:repeating-linear-gradient(55deg,#FAF7EE 0 17px,#14201A 17px 34px);}
+.fs-slate-prod{padding:10px 14px 8px;border-bottom:1px solid rgba(250,247,238,.22);}
+.fs-slate i{display:block;font-style:normal;font-size:8.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#9FB0A6;line-height:1.5;}
+.fs-slate-prod b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:15.5px;font-weight:800;line-height:1.22;}
+.fs-slate-cells{display:grid;grid-template-columns:1fr auto 1fr;}
+.fs-slate-cells span{min-width:0;padding:8px 14px 9px;}
+.fs-slate-cells span+span{border-left:1px solid rgba(250,247,238,.22);}
+.fs-slate-cells b{display:block;font-size:14px;font-weight:800;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fs-slate-fmt{padding:5px 14px 7px;border-top:1px solid rgba(250,247,238,.22);font-size:9.5px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#E7C879;}
+@keyframes fsClap{0%{transform:rotate(-15deg)}58%{transform:rotate(0deg)}72%{transform:rotate(-2.6deg)}100%{transform:rotate(0deg)}}
+@media(prefers-reduced-motion:reduce){.fs-slate-stick{animation:none;}}
 .fs-board{display:flex;flex-direction:column;gap:14px;margin-top:8px;}
 .fs-shot{display:flex;gap:14px;align-items:flex-start;padding:12px;border:1.5px solid var(--line,#E4DFCF);border-radius:14px;background:var(--cream,#FBF6E6);transition:border-color .15s,box-shadow .15s;}
 .fs-shot.set{border-color:var(--green2,#1FA463);background:#fff;box-shadow:0 4px 14px rgba(20,32,26,.06);}
@@ -4983,6 +5028,11 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-star-lk{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:11px;font-weight:600;line-height:1.3;color:var(--ink2,#4A554E);}
 .mm-star-pic:focus-visible{outline:3px solid var(--green,#0C7A46);outline-offset:2px;}
 .mm-star .mm-sb-reroll{top:5px;right:5px;}
+/* THE WALK-ON: the cast come on one by one, then the places — the way a film's titles bring on its stars.
+   (A character drawn again is a new card, so they walk on again.) */
+.mm-stars-row .mm-star{animation:mmStarOn .52s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 120ms);}
+@keyframes mmStarOn{from{opacity:0;transform:translateY(16px) scale(.94) rotate(-1.6deg)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.mm-stars-row .mm-star{animation:none;}}
 .mm-star.is-place{flex-basis:144px;width:144px;}
 .mm-star.is-place .mm-star-pic{width:144px;}
 .mm-star.is-place .mm-star-pic img{object-position:center;}

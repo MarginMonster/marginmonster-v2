@@ -229,7 +229,7 @@ test("the page: the token keeps its places, a scene drawn again knows them, and 
   assert.ok(page.includes("const r = await recastStoryCharacter({ template: tmpl.key, treatment: { title: \"\", musicMood: \"\", cast: castBible, places: placeBible, scenes: scenesNow }, cast: storyCast,"));
   // the row: the places stand beside the cast, read from the same token the portraits travel in
   assert.ok(page.includes("const places = readCastToken(seeds.castRef).places;"));
-  assert.ok(page.includes("<div key={`place|${p.img}`} className=\"mm-star is-place\">"));
+  assert.ok(page.includes("<div key={`place|${p.img}`} className=\"mm-star is-place\" style={{ [\"--i\" as string]: stars.length + k }}>"), "…and walks on after the last of the cast (tests/alive-details.test.ts)");
   assert.ok(page.includes("<span className=\"mm-star-tag\"><Ico n=\"image\" size={10} /> {t(\"Place\")}</span>"));
   assert.ok(page.includes("<span className=\"mm-star-nm\">{p.name.charAt(0).toUpperCase() + p.name.slice(1)}</span>"));
   // a design sheet is square: its card is as tall as a portrait's and as wide as it is tall — shown whole

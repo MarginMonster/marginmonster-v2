@@ -1381,6 +1381,17 @@ ${FORGE_CSS}
 .wa-shelfnote svg{flex:0 0 auto;margin-top:2px;}
 .wa-poster{position:relative;display:block;width:100%;padding:0;border:0;background:#0b0f0d;cursor:pointer;font:inherit;color:inherit;}
 .wa-poster video,.wa-poster img{width:100%;aspect-ratio:4/5;height:auto;object-fit:cover;display:block;pointer-events:none;}
+/* A POSTER CATCHES THE LIGHT (films that made their own): a band of light crosses it once as the shelf
+   comes up — each a beat after the one before — and again whenever a pointer rests on it. */
+.wa-poster.has-poster{overflow:hidden;}
+.wa-poster.has-poster img{transition:transform .5s cubic-bezier(.2,.7,.2,1);}
+.wa-poster.has-poster::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.38) 50%,transparent 60%);transform:translateX(-130%);animation:waShine 1.25s ease-out calc(.35s + var(--k,0) * 110ms) 1 backwards;}
+@keyframes waShine{from{transform:translateX(-130%)}to{transform:translateX(130%)}}
+@media(hover:hover){
+  .wa-poster.has-poster:hover img{transform:scale(1.035);}
+  .wa-poster.has-poster:hover::after{transform:translateX(130%);transition:transform .9s ease-out;}
+}
+@media(prefers-reduced-motion:reduce){.wa-poster.has-poster::after{animation:none;}.wa-poster.has-poster img,.wa-poster.has-poster:hover::after{transition:none;}}
 .wa-play{position:absolute;inset:0;display:grid;place-items:center;font-size:32px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.65);pointer-events:none;}
 /* Audio has no still — a soft green-on-cream panel with a music glyph stands
    in on the tile; the real <audio> player lives in the viewer. */
@@ -2836,11 +2847,13 @@ export default function WebArchive() {
         </div>
       ) : (
         <div className="wb-assets">
-          {visibleShelf.map((a) => {
+          {visibleShelf.map((a, k) => {
             const [cc, cl] = chipFor(a);
             return (
               <div className={`wb-asset${selecting && picked.has(a.id) ? " wa-picked" : ""}`} key={a.id}>
-                <button type="button" className="wa-poster" onClick={() => (selecting ? togglePick(a.id) : setViewer(a))}
+                {/* a film's own POSTER catches the light: once as the shelf comes up (one after another), and
+                    again under a pointer */}
+                <button type="button" className={`wa-poster${a.poster ? " has-poster" : ""}`} style={a.poster ? { ["--k" as string]: Math.min(k, 11) } : undefined} onClick={() => (selecting ? togglePick(a.id) : setViewer(a))}
                   title={selecting ? (picked.has(a.id) ? t("Unselect") : t("Select")) : a.isAudio ? t("Open & play") : t("Open it big")}
                   aria-pressed={selecting ? picked.has(a.id) : undefined}>
                   {selecting && <span className={`wa-sel${picked.has(a.id) ? " on" : ""}`} aria-hidden="true"><Ico n="check" size={14} /></span>}
