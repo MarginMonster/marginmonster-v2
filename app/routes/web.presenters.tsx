@@ -7,7 +7,7 @@ import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { db } from "../db.server";
 import { requireWebIdentity } from "../lib/web-auth.server";
-import { LIVE_AVATARS, STOCK_CHARACTERS, OUTFITS, FIRST_STYLE_LABEL, avatarImg, baseAvatarId, DESIGNED_VOICES, privateCastFor, type Avatar, type CharacterKind } from "../lib/avatars";
+import { LIVE_AVATARS, STOCK_CHARACTERS, OUTFITS, FIRST_STYLE_LABEL, avatarImg, baseAvatarId, styleId, DESIGNED_VOICES, privateCastFor, type Avatar, type CharacterKind } from "../lib/avatars";
 import { AVATAR_VOICES, DEFAULT_AVATAR_VOICE } from "../lib/avatar-voice-catalog";
 import { TOKEN_COST } from "../lib/plan-config";
 import { stockSpin, stockCut, stockLooks, customSpin, customCut, spinFrame, type Spin } from "../lib/presenter-kits";
@@ -121,9 +121,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // (a character with STYLES calls its first look "Classic" — "Casual" is an outfit, and a werewolf has none)
       label: a.styles?.length && v === 0 ? FIRST_STYLE_LABEL : OUTFITS[v].label, img: avatarImg(a.id, v), cut: stockCut(a.id, v), spin: stockSpin(a.id, v), spinState: "none",
     }));
-    // ANOTHER STYLE of the same character (avatars.ts → AvatarStyle) stands after its looks: its own picture,
-    // shown as it was made (no cut-out, no 3D view)
-    for (const st of a.styles || []) looks.push({ label: st.label, img: st.img, cut: null, spin: null, spinState: "none" });
+    // ANOTHER STYLE of the same character (avatars.ts → AvatarStyle) stands after its looks: its own picture —
+    // and its own KIT, built under the style's own id (kits/howl~film/): the cut-out it stands on the shared
+    // backdrop with, and the rotation it turns in. ("No 3D option for Howl new style" — the owner, the day
+    // the film look shipped as a flat picture.) A style whose kit has not been built shows its picture.
+    for (const st of a.styles || []) {
+      const kit = styleId(a.id, st.key);
+      looks.push({ label: st.label, img: st.img, cut: stockCut(kit, 0), spin: stockSpin(kit, 0), spinState: "none" });
+    }
     return {
       id: a.id, rowId: "", name: a.name, custom: false, kind: a.kind || "person",
       vibe: a.vibe, about: sentence(a.desc), gender: a.gender, age: ageText(a), energy: a.energy,

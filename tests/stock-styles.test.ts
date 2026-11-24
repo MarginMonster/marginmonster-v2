@@ -47,11 +47,37 @@ test("a style is cast by its own id, and still belongs to its character", () => 
 test("where it shows: one more look on the character's page, one more star in the show picker", () => {
   const cast = read("app", "routes", "web.presenters.tsx");
   assert.ok(cast.includes("label: a.styles?.length && v === 0 ? FIRST_STYLE_LABEL : OUTFITS[v].label,"), "the first look of a character with styles is \"Classic\", not an outfit's name");
-  assert.ok(cast.includes("for (const st of a.styles || []) looks.push({ label: st.label, img: st.img, cut: null, spin: null, spinState: \"none\" });"), "shown as it was made — no cut-out, no 3D view");
+  assert.ok(cast.includes("const kit = styleId(a.id, st.key);\n      looks.push({ label: st.label, img: st.img, cut: stockCut(kit, 0), spin: stockSpin(kit, 0), spinState: \"none\" });"), "a style asks for its own kit, by its own id");
   assert.ok(cast.includes("(showsBy[baseAvatarId(star.id)] ||= []).push({"), "a show starring a style is listed on the character's own page");
   const ch = read("app", "routes", "web.channels.tsx");
   assert.ok(ch.includes("...(a.styles || []).map((st) => ({ id: styleId(a.id, st.key), name: a.name, tag: st.label, img: st.img, kind, look: (st.desc || \"\").slice(0, 220), voiceId })),"), "the same name and voice, its own picture and words");
   assert.ok(ch.includes("<span>{r.name}{r.tag ? <> · {t(r.tag)}</> : null}</span>"), "told apart in the picker");
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["Classic", "Film"]) assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
+});
+
+test("a style turns in 3D like any other look: it has a kit of its own, under its own id", () => {
+  // The owner, the day the film look shipped (2026-11-24): "No 3D option for Howl new style" — the first look
+  // turned, the new one was a flat picture.
+  const kits = JSON.parse(read("app", "lib", "presenter-kits.json")) as Record<string, { cuts?: number; v?: number; spins?: Array<{ n: number; w: number; h: number; dir: number } | null> }>;
+  const id = styleId("howl", "film");
+  const kit = kits[id];
+  assert.ok(kit && kit.cuts === 1 && (kit.v || 0) >= 1, "the style's kit is recorded under the style's own id");
+  const spin = kit.spins?.[0];
+  assert.ok(spin && spin.n === 60 && spin.w > 300 && spin.h === 900);
+  assert.ok(spin!.dir === 1 || spin!.dir === -1, "it MEASURED as one full turn — a half turn (dir 0) is never shown");
+  // every frame of it is on our own disk, and so is the cut-out it stands on the shared backdrop with
+  const dir = path.join(root, "public", "kits", id);
+  for (let i = 0; i < spin!.n; i++) assert.ok(fs.existsSync(path.join(dir, `s${String(i).padStart(2, "0")}.webp`)), `frame ${i}`);
+  assert.ok(fs.existsSync(path.join(dir, "o0.webp")));
+  // (the page finds them the way it finds any look's: /kits/<id>/…)
+  const lookup = read("app", "lib", "presenter-kits.ts");
+  assert.ok(lookup.includes("return { base: `/kits/${id}/${lookPrefix(look)}`,") && lookup.includes("`/kits/${id}/o${look}.webp?v=${k.v || 1}`"));
+  // the first look's kit is untouched, and is still its own
+  assert.ok(kits.howl?.spins?.[0]?.n === 60 && fs.existsSync(path.join(root, "public", "kits", "howl", "s00.webp")));
+  // the build knows a style when it is given one: its own picture, its own words, one look
+  const build = read("scripts", "build-presenter-kits.ts");
+  assert.ok(build.includes("const style = base?.styles?.find((s) => styleId(base.id, s.key) === id);"));
+  assert.ok(build.includes('if (st) return v === 0 ? path.join(root, "public", ...st.style.img.split("?")[0].split("/").filter(Boolean)) : "";'));
+  assert.ok(build.includes("...STOCK_CHARACTERS.flatMap((a) => (a.styles || []).map((s) => styleId(a.id, s.key))),"), "a full rebuild builds the styles too");
 });

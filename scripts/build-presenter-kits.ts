@@ -29,7 +29,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { LIVE_AVATARS, PRIVATE_AVATARS, STOCK_CHARACTERS, AVATAR_BY_ID, OUTFITS } from "../app/lib/avatars";
+import { LIVE_AVATARS, PRIVATE_AVATARS, STOCK_CHARACTERS, AVATAR_BY_ID, OUTFITS, STYLE_SEP, baseAvatarId, styleId } from "../app/lib/avatars";
 import { lookPrefix, type SpinMeta } from "../app/lib/presenter-kits";
 import { buildSpin, cutOutPortrait, fillMatte, matteByFrames, measureTurn, spinFrames, spinSheet, type KitSpin, type KitTools } from "../app/lib/presenter-kit-core";
 
@@ -59,7 +59,11 @@ const tmpRoot = path.resolve(value("--tmp") || path.join(os.tmpdir(), "easymode-
 const jobs = Math.max(1, Math.min(6, parseInt(value("--jobs") || "3", 10) || 3));
 if (!token && !(reframe && !rematte && !doCuts)) { console.error("REPLICATE_API_TOKEN is not set (.env)"); process.exit(1); }
 
-const cast = ids.length ? ids : [...LIVE_AVATARS, ...PRIVATE_AVATARS, ...STOCK_CHARACTERS].map((a) => a.id);
+const cast = ids.length ? ids : [
+  ...[...LIVE_AVATARS, ...PRIVATE_AVATARS, ...STOCK_CHARACTERS].map((a) => a.id),
+  // …and every STYLE of a stock character, each a kit of its own ("howl~film")
+  ...STOCK_CHARACTERS.flatMap((a) => (a.styles || []).map((s) => styleId(a.id, s.key))),
+];
 const manifestFile = path.join(root, "app", "lib", "presenter-kits.json");
 type Entry = { cuts?: number; v?: number; spins?: Array<SpinMeta | null> };
 const pause = (ms: number) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
@@ -88,13 +92,29 @@ const record = (id: string, change: (e: Entry) => Entry) => {
 };
 const pct = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(2)}%`;
 
+/** A STYLE of a stock character ("howl~film" — stock-characters.ts) has a kit of its own, under its own id:
+ *  one portrait (the style's picture), so one cut-out and one rotation, made from the style's own words.
+ *  The owner, 2026-11-24, on Howl's film look the day it shipped: "No 3D option for Howl new style". */
+const styleOf = (id: string) => {
+  const base = id.includes(STYLE_SEP) ? AVATAR_BY_ID[baseAvatarId(id)] : undefined;
+  const style = base?.styles?.find((s) => styleId(base.id, s.key) === id);
+  return base && style ? { base, style } : null;
+};
+/** Where a presenter's portrait in one outfit is — a style has only its one. */
+const portraitOf = (id: string, v: number): string => {
+  const st = styleOf(id);
+  if (st) return v === 0 ? path.join(root, "public", ...st.style.img.split("?")[0].split("/").filter(Boolean)) : "";
+  return path.join(root, "public", "avatars", `${id}_${v}.jpg`);
+};
+
 async function one(id: string, look: number | null): Promise<void> {
-  const avatar = AVATAR_BY_ID[id];
+  const st = styleOf(id);
+  const avatar = st ? { ...st.base, continuity: st.style.continuity || st.base.continuity } : AVATAR_BY_ID[id];
   if (!avatar) throw new Error(`unknown presenter "${id}"`);
-  const tag = look === null ? id : `${id} ${OUTFITS[look].label.toLowerCase()}`;
+  const tag = look === null ? id : `${id} ${st ? st.style.label.toLowerCase() : OUTFITS[look].label.toLowerCase()}`;
   const tools: KitTools = { token, ffmpeg: "ffmpeg", ffprobe: "ffprobe", log: (m) => console.log(`  [${tag}] ${m}`) };
   const outDir = path.join(root, "public", "kits", id);
-  const portrait = (v: number) => path.join(root, "public", "avatars", `${id}_${v}.jpg`);
+  const portrait = (v: number) => portraitOf(id, v);
   if (look === null) {
     // the cut-outs: one job per presenter
     let made = 0;
@@ -152,7 +172,7 @@ for (const id of cast) {
   if (doSpin) {
     for (let v = 0; v < OUTFITS.length; v++) {
       if (onlyLook !== null && v !== onlyLook) continue;
-      if (fs.existsSync(path.join(root, "public", "avatars", `${id}_${v}.jpg`))) queue.push({ id, look: v });
+      if (fs.existsSync(portraitOf(id, v))) queue.push({ id, look: v });
     }
   }
 }
