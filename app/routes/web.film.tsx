@@ -4188,7 +4188,7 @@ export default function FilmStudio() {
         {d.hasPlan && tmpl?.needsProduct && !productReady && <p className="fs-err">{t("Add your product above to generate a skit.")}</p>}
         {actionData?.error && <p className="fs-err">{actionData.error}</p>}
         {actionData?.ok && (<>
-          <Slate title={slateTitle(seeds?.treatment?.title || treatment?.title, topic, t(hero?.name || "Film"))} format={t(hero?.name || "Film")} scenes={scenes} />
+          <Slate title={slateTitle(seeds?.treatment?.title || treatment?.title || (series ? `${series.title} — ${t("Episode {n}", { n: series.episode })}` : ""), topic, t(hero?.name || "Film"))} format={t(hero?.name || "Film")} scenes={scenes} />
           <p className="fs-ok"><Ico n="check" size={14} /> {t("Rolling! Your film is rendering — it'll land in your Archive when it's done. You can keep working.")}</p>
         </>)}
       </div>

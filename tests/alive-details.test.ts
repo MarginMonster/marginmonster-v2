@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { slateTitle } from "../app/lib/film-slate.ts";
+import { REEL_FRAMES, cookingReel, cookingTitle } from "../app/lib/story-picture.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // (a checkout with CRLF line endings must read the same as one with LF)
@@ -46,7 +47,9 @@ test("the slate claps ONCE when a film is sent off: this film's title, its direc
   // the date is the member's own day: read in the browser, never on the server
   assert.ok(fn.includes("useEffect(() => { try { setWhen(new Date().toLocaleDateString(undefined, { month: \"short\", day: \"numeric\" })); } catch { setWhen(\"\"); } }, []);"));
   // shown with the "Rolling!" notice — the title the storyboard has, else the idea, else the format
-  assert.ok(page.includes("<Slate title={slateTitle(seeds?.treatment?.title || treatment?.title, topic, t(hero?.name || \"Film\"))} format={t(hero?.name || \"Film\")} scenes={scenes} />"));
+  // (a next episode made with the idea box empty has no title yet — but it has a series: seen live, the
+  //  slate of "The Keeper of the Hour — Episode 2" said only "Short Story")
+  assert.ok(page.includes("<Slate title={slateTitle(seeds?.treatment?.title || treatment?.title || (series ? `${series.title} — ${t(\"Episode {n}\", { n: series.episode })}` : \"\"), topic, t(hero?.name || \"Film\"))} format={t(hero?.name || \"Film\")} scenes={scenes} />"));
   assert.ok(page.indexOf("<Slate title=") < page.indexOf("{t(\"Rolling! Your film is rendering"), "the slate, then the words");
   // one clap (the stick is hinged at its left end and bounces once); shut for anyone who asks for less motion
   assert.ok(page.includes("transform-origin:9px 60%;animation:fsClap .66s cubic-bezier(.45,0,.9,.45) .18s both;"));
@@ -113,4 +116,46 @@ test("every word these four show is in all five languages", () => {
   for (const k of ["Production", "Director", "You", "Date", "Now showing", "Slate: {title}", "Scenes", "Watch it", "Dismiss"]) {
     assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
   }
+});
+
+/* THE REEL. A story's pictures exist minutes before its film does, so the tile that says "Rendering · ~3 min
+ * left" is not a spinner on a green card: the story's own pictures pass behind it. */
+test("while a story renders, its own pictures pass behind the spinner — and the tile carries its title", () => {
+  const six = Array.from({ length: 6 }, (_, k) => `/renders/img-${k}.jpg`);
+  assert.equal(REEL_FRAMES, 4);
+  // a storyboard's pictures are sent with the job (as the page had them: on any of our hosts)
+  assert.deepEqual(cookingReel({ approvedSceneImgs: six.map((u) => `https://marginmonster-fiew.onrender.com${u}`) }), ["/renders/img-0.jpg", "/renders/img-2.jpg", "/renders/img-3.jpg", "/renders/img-5.jpg"], "four frames, first to last");
+  // a story made in one press keeps each picture as it is drawn (a JSON list in the job's own notes)
+  assert.deepEqual(cookingReel({ ckImages: JSON.stringify(six) }), ["/renders/img-0.jpg", "/renders/img-2.jpg", "/renders/img-3.jpg", "/renders/img-5.jpg"]);
+  assert.deepEqual(cookingReel(JSON.stringify({ ckImages: JSON.stringify(six.slice(0, 3)) })), ["/renders/img-0.jpg", "/renders/img-1.jpg", "/renders/img-1.jpg", "/renders/img-2.jpg"], "three scenes: the middle one is held");
+  assert.deepEqual(cookingReel({ approvedSceneImgs: [null, null], ckImages: JSON.stringify(six.slice(0, 2)) }), ["/renders/img-0.jpg", "/renders/img-0.jpg", "/renders/img-1.jpg", "/renders/img-1.jpg"], "nothing sent with the job: what it has drawn so far");
+  // one picture is not a reel; a picture that is not ours is never shown
+  assert.deepEqual(cookingReel({ ckImages: JSON.stringify(six.slice(0, 1)) }), []);
+  assert.deepEqual(cookingReel({ approvedSceneImgs: ["https://evil.example/a.jpg", "/renders/../b.jpg", "/renders/ok-1.jpg", "/avatars/x.png", 7, null] }), []);
+  assert.deepEqual(cookingReel({ approvedSceneImgs: ["https://evil.example/a.jpg", "/renders/ok-1.jpg", "/renders/ok-2.png"] }), ["/renders/ok-1.jpg", "/renders/ok-1.jpg", "/renders/ok-2.png", "/renders/ok-2.png"]);
+  for (const bad of [null, undefined, "", "{", 4, [], {}, { ckImages: "not json" }]) assert.deepEqual(cookingReel(bad), []);
+  // the title, once the writer has given it one: the job's own script, then the one the page approved
+  assert.equal(cookingTitle({ ckTreatment: JSON.stringify({ title: "The  Keeper of\nthe Hour — Episode 2" }) }), "The Keeper of the Hour — Episode 2");
+  assert.equal(cookingTitle({ approvedTreatment: JSON.stringify({ title: "The Bride of the Black Water", scenes: [] }) }), "The Bride of the Black Water");
+  assert.equal(cookingTitle({ approvedTreatment: { title: "An object, not a string" } }), "An object, not a string");
+  for (const none of [{}, { ckTreatment: "{" }, { ckTreatment: JSON.stringify({ title: 4 }) }, null, "x"]) assert.equal(cookingTitle(none), "");
+  assert.ok(cookingTitle({ ckTreatment: JSON.stringify({ title: "x".repeat(300) }) }).length <= 80);
+
+  // THE ARCHIVE: a film's tile only, never a failed one; its title where an ad's product would be named
+  const arc = read("app", "routes", "web.archive.tsx");
+  assert.ok(arc.includes("const isFilm = j.type === \"GENERATE_VIDEO_AD\" && p.contentType === \"film\";"));
+  assert.ok(arc.includes("const reel = isFilm && !failed ? cookingReel(p) : [];"));
+  assert.ok(arc.includes("productTitle: p.productTitle || (isFilm ? cookingTitle(p) : \"\"), reel, etaSec,"));
+  assert.ok(arc.includes("className={`wb-cookimg${j.reel.length ? \" has-reel\" : \"\"}`}"));
+  assert.ok(arc.includes("{j.reel.map((src, k) => <i key={`${k}|${src}`} style={{ backgroundImage: `url(${src})`, [\"--k\" as string]: k }} />)}"));
+  assert.ok(arc.includes("<span className=\"wb-reel\" aria-hidden=\"true\">"), "decoration: the tile's words already say what is happening");
+  // its look: four frames a cycle (each a quarter of it), held and let drift; still for reduced motion
+  const shell = read("app", "routes", "web.tsx");
+  assert.ok(shell.includes(".wb-reel i{position:absolute;inset:-4%;background-size:cover;background-position:center;opacity:0;animation:wbReel 12s linear infinite;animation-delay:calc(var(--k,0) * 3s);}"));
+  assert.ok(shell.includes("@keyframes wbReel{0%{opacity:0;transform:scale(1)}4%{opacity:1}25%{opacity:1}30%{opacity:0;transform:scale(1.07)}100%{opacity:0;transform:scale(1.07)}}"));
+  assert.equal(12 / REEL_FRAMES, 3, "a frame every three seconds of a twelve-second cycle");
+  assert.ok(shell.includes("@media(prefers-reduced-motion:reduce){.wb-reel i{animation:none;}.wb-reel i:first-child{opacity:1;}}"));
+  // the spinner and its words stay on top, and readable
+  assert.ok(shell.includes(".wb-reel::after{content:\"\";position:absolute;inset:0;z-index:1;background:linear-gradient(rgba(10,14,12,.34),rgba(10,14,12,.6));}"));
+  assert.ok(shell.includes(".wb-bufwrap{position:relative;z-index:1;display:grid;place-items:center;gap:9px;}"));
 });

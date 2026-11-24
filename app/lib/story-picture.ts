@@ -375,6 +375,44 @@ export function placesOf(meta: unknown): StoryPlaceRef[] {
 export const placesStillIn = (refs: ReadonlyArray<StoryPlaceRef>, entries: ReadonlyArray<string | null | undefined>): StoryPlaceRef[] =>
   (refs || []).filter((r) => (entries || []).some((e) => placeKey(placeEntry(String(e || "")).name) === placeKey(r.name)));
 
+/* ---- THE REEL: WHILE IT RENDERS, IT IS ALREADY A FILM ----
+ * A story's pictures exist minutes before its film does: a storyboard's are sent with the job, and a story
+ * made in one press keeps each as it is drawn. So the tile that says "Rendering · ~3 min left" need not be a
+ * spinner on a green card — the story's own pictures pass behind it, four frames spread over the story,
+ * and it carries the story's title as soon as the writer has given it one. (The owner, 2026-11-24: "genius
+ * level artistic detail additions that make the app feel alive".) Read from the job's own payload; only
+ * pictures on our own renders disk are ever shown. */
+export const REEL_FRAMES = 4;
+const payloadOf = (payload: unknown): Record<string, unknown> => {
+  let p = payload;
+  if (typeof p === "string") { try { p = JSON.parse(p); } catch { return {}; } }
+  return p && typeof p === "object" && !Array.isArray(p) ? (p as Record<string, unknown>) : {};
+};
+/** The frames of a rendering story's reel: REEL_FRAMES of its pictures, first to last — or none when it
+ *  has fewer than two pictures yet (one picture is not a reel). */
+export function cookingReel(payload: unknown): string[] {
+  const o = payloadOf(payload);
+  const listOf = (v: unknown): unknown[] => {
+    let l = v;
+    if (typeof l === "string") { try { l = JSON.parse(l); } catch { l = []; } }
+    return Array.isArray(l) ? l : [];
+  };
+  const sent = listOf(o.approvedSceneImgs);
+  const list = sent.some(Boolean) ? sent : listOf(o.ckImages);
+  const own = list.map((u) => ownRenderPath(typeof u === "string" ? u : "")).filter((u): u is string => !!u).filter((u, k, a) => a.indexOf(u) === k);
+  if (own.length < 2) return [];
+  return Array.from({ length: REEL_FRAMES }, (_, k) => own[Math.round((k * (own.length - 1)) / (REEL_FRAMES - 1))]);
+}
+/** The title of a film that is still rendering, once it has one (its approved or checkpointed script). */
+export function cookingTitle(payload: unknown): string {
+  const o = payloadOf(payload);
+  for (const key of ["ckTreatment", "approvedTreatment"]) {
+    const t = payloadOf(o[key]).title;
+    if (typeof t === "string" && t.trim()) return t.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+  }
+  return "";
+}
+
 /* ---- KEEP IN MY CAST ----
  * A character a story invented can be kept: the portrait the story drew becomes one of the maker's own
  * characters (app/routes/api.character.tsx, intent "adopt" → the same "Register" as any other character),

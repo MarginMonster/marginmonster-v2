@@ -1734,6 +1734,15 @@ body{font-family:Inter,-apple-system,sans-serif;}
 .wb-cookimg{position:relative;aspect-ratio:4/5;height:auto;background-color:#0A5F38;background-image:linear-gradient(160deg,#0E8A4F,#0A5F38 55%,#084A2C);background-size:cover;background-position:center;display:grid;place-items:center;overflow:hidden;}
 .wb-cookimg::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 32%,rgba(255,255,255,.13) 50%,transparent 68%);animation:wbShimmer 1.7s linear infinite;}
 @keyframes wbShimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+/* THE REEL — while a story renders, its own pictures pass behind the spinner: four frames, each held and
+   let drift a little, then the next; film perforations down both edges; dimmed so the words stay readable */
+.wb-reel{position:absolute;inset:0;overflow:hidden;}
+.wb-reel i{position:absolute;inset:-4%;background-size:cover;background-position:center;opacity:0;animation:wbReel 12s linear infinite;animation-delay:calc(var(--k,0) * 3s);}
+.wb-reel::after{content:"";position:absolute;inset:0;z-index:1;background:linear-gradient(rgba(10,14,12,.34),rgba(10,14,12,.6));}
+.wb-reel::before{content:"";position:absolute;inset:0;z-index:2;opacity:.55;background:radial-gradient(circle,rgba(250,247,238,.95) 0 2.4px,transparent 3px) left 4px top 0/10px 19px repeat-y,radial-gradient(circle,rgba(250,247,238,.95) 0 2.4px,transparent 3px) right 4px top 0/10px 19px repeat-y;}
+@keyframes wbReel{0%{opacity:0;transform:scale(1)}4%{opacity:1}25%{opacity:1}30%{opacity:0;transform:scale(1.07)}100%{opacity:0;transform:scale(1.07)}}
+.wb-cookimg.has-reel::after{display:none;}
+@media(prefers-reduced-motion:reduce){.wb-reel i{animation:none;}.wb-reel i:first-child{opacity:1;}}
 .wb-bufwrap{position:relative;z-index:1;display:grid;place-items:center;gap:9px;}
 /* GStyle buffer: the actual engine-turned rosette the embedded app spins in its
  * Autopilot card — the same hypotrochoid geometry, served from
