@@ -24,7 +24,8 @@ import { fileURLToPath } from "node:url";
 import { keepGuess, ownRenderPath } from "../app/lib/story-picture.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8");
+// (a checkout with CRLF line endings must read the same as one with LF: some pins below span two lines)
+const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
 
 test("only one of our own render pictures can be kept, by its bare path", () => {
   assert.equal(ownRenderPath("/renders/img-1795480165824-e22ab06e7d02effa97.jpg"), "/renders/img-1795480165824-e22ab06e7d02effa97.jpg");

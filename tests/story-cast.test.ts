@@ -21,7 +21,8 @@ import { storyToEditFrom } from "../app/lib/story-edit.ts";
 import { nextEpisodeCards } from "../app/lib/film-series.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8");
+// (a checkout with CRLF line endings must read the same as one with LF: some pins below span two lines)
+const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
 
 const WALTER = "Walter, an elderly night watchman with a grey moustache, a flat cap and a long brown coat";
 const MARA = "MARA (a young baker with flour on her apron and a red headscarf)";
