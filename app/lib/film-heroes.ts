@@ -56,6 +56,28 @@ export const FILM_HEROES: FilmHero[] = [
 
 export const heroById = (id: string | null | undefined): FilmHero | undefined => FILM_HEROES.find((h) => h.id === id);
 
+/* THE LYRIC VIDEO (lyric-video.ts) — the owner, 2026-11-24: "Add to music section "Lyric Video creator"". A member's
+ * own song, its words big and timed over pictures cut on its beat. It is not a film template (nothing is written,
+ * acted or sung by us), so it is NOT one of FILM_HEROES and heroById does not know it: the Movie Maker stands its
+ * poster on the "Music videos" shelf after the sung heroes, and opens its own builder — for operators only until
+ * the owner sets a price. (Its two lines fit a phone card: 44 characters.) */
+export const LYRIC_HERO: FilmHero = { id: "lyricvideo", tmpl: "lyricvideo", told: null, media: "lyricvideo", name: "Lyric Video", kick: "Your song, words on screen", meta: "cut on the beat", tint: "t-lyric" };
+
+/* THE WAY INTO FOUND FOOTAGE — the owner, 2026-11-24: "Put found footage routes into the app and body cam". Found
+ * footage has its own builder (routes/web.found-footage.tsx — a phone, a house camera, a body cam), so it is a DOOR on
+ * the Films shelf, not a hero this page builds: its poster leads there. Operators only, like the builder itself.
+ * (Deep links work too: ?camera=bodycam, ?scare=traffic, ?scare=overbed.) Its two lines fit a phone card: 45. */
+export const FOUND_FOOTAGE_DOOR = {
+  id: "foundfootage",
+  href: "/web/found-footage",
+  name: "Found Footage",
+  kick: "Caught on camera",
+  meta: "phone, house cam, body cam",
+  still: "/landing/ff-scare-smile.jpg",
+  clip: "/landing/ff-cam-house.mp4",
+  tint: "t-ff",
+} as const;
+
 /** The hero a film WAS made as — from the engine's own two facts (template, narrated or not). */
 export const heroOf = (tmplKey: string, narrated: boolean): FilmHero | undefined =>
   FILM_HEROES.find((h) => h.tmpl === tmplKey && (h.told === null || (h.told === "narrated") === narrated));

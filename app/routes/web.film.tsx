@@ -45,6 +45,11 @@ import { slateTitle } from "../lib/film-slate";
 import { pickedAsCast } from "../lib/dialogue-cast";
 // (2026-11-24) the posters stand on three shelves: told · acted · sung
 import { heroShelves } from "../lib/film-heroes";
+// (2026-11-24) THE LYRIC VIDEO: a member's own song, its words on screen — a poster on the sung shelf, its own builder
+import { LYRIC_HERO } from "../lib/film-heroes";
+// (2026-11-24) FOUND FOOTAGE has its own builder (web.found-footage.tsx): a door to it on the Films shelf, operators only
+import { FOUND_FOOTAGE_DOOR } from "../lib/film-heroes";
+import { LYRIC_LOOKS, lyricEtaMinutes, songTitleOf, type LyricLook, type LyricShape } from "../lib/lyric-video";
 import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 import type { StoryToEdit } from "../lib/story-edit";
 import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
@@ -216,6 +221,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // monster can be cast as a music video's star or co-star. Nobody else is offered them there until a
     // finished video has been watched — the music video was built around a real-looking singer.
     mvCreatures: isAdminEmail(account.email),
+    // THE LYRIC VIDEO (lyric-video.ts): operators only until the owner sets a price (api.lyric-video.tsx says so too)
+    lyricVideo: isAdminEmail(account.email),
+    // FOUND FOOTAGE's door (its builder, web.found-footage.tsx, is operators-only too — it 404s for anyone else)
+    foundFootage: isAdminEmail(account.email),
     hasPlan: !!shop.activePlan?.active,
     trialing: planTrialing(shop.activePlan),
     canFilm: capabilitiesFor(shop.activePlan).has("creatorvideo"),
@@ -1235,16 +1244,17 @@ function HeroReel({ clips, onShow }: { clips: ReelClip[]; onShow: (key: string) 
 /** A format card's cover: its still, and the format's loop playing over it while a pointer is on the card
  *  (or it has keyboard focus) — on a touch screen, while the card is on screen. The clip is fetched the
  *  first time it is needed, in the cut that fits the card (16:9 on a wide screen, 4:5 on a phone). */
-function LoopCover({ k }: { k: string }) {
+function LoopCover({ k, loop, tall, still, clip }: { k: string; /** it has a loop and a phone cut though its key is not in LOOP_KEYS / TALL_STILLS (the Lyric Video's card) */ loop?: boolean; tall?: boolean; /** a cover not named after a film key — its picture and its clip by address, one cut for every screen (the Found Footage door) */ still?: string; clip?: string }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const [on, setOn] = useState(false);
-  const has = LOOP_KEYS.includes(k);
+  const has = !!clip || (loop ?? LOOP_KEYS.includes(k));
   useEffect(() => {
     const v = ref.current;
     const card = v ? (v.closest(".fs-fmt") as HTMLElement | null) : null;
     if (!v || !card || !window.matchMedia) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const start = () => {
+      if (clip && !v.getAttribute("src")) v.src = clip;
       if (!v.getAttribute("src")) v.src = `/landing/film-loop-${k}${window.matchMedia("(min-width:640px)").matches ? "" : "-tall"}.mp4?v=${LOOP_V}`;
       v.muted = true;
       v.play().catch(() => undefined);
@@ -1266,10 +1276,10 @@ function LoopCover({ k }: { k: string }) {
     const io = new IntersectionObserver((entries) => { for (const e of entries) (e.isIntersecting ? start : stop)(); }, { threshold: 0.65 });
     io.observe(card);
     return () => io.disconnect();
-  }, [k]);
+  }, [k, clip]);
   return (
     <>
-      {TALL_STILLS.has(k) ? (
+      {still ? <img src={still} alt="" loading="lazy" onError={stillFallback} /> : (tall ?? TALL_STILLS.has(k)) ? (
         <picture>
           <source media="(max-width:639px)" srcSet={`/landing/film-still-${k}-tall.jpg?v=${STILL_V}`} />
           <img src={stillOf(k)} alt="" loading="lazy" onError={stillFallback} />
@@ -1281,6 +1291,236 @@ function LoopCover({ k }: { k: string }) {
     </>
   );
 }
+
+/* ───────── THE LYRIC VIDEO BUILDER (lyric-video.ts) ─────────
+ * The owner, 2026-11-24: "simple active exciting lyrics … input link and it converts to a Lyric Video". So the
+ * whole builder is: drop a song (a link goes to the server's one place for links, which today answers that links
+ * are coming), paste the lyrics if you want the words spot-on, pick a look and a shape, press one button. The
+ * song is uploaded where a Music Video's own track goes (api.film-song-upload); the video is made by the queue
+ * (api.lyric-video.tsx → job "lyricvideo"). Operators only until the owner sets a price — nothing is charged. */
+type LyricSong = { url: string; name: string; seconds: number | null };
+const clockOf = (s: number | null): string => (s && s > 0 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}` : "");
+function LyricVideoBuilder({ t }: { t: ReturnType<typeof useT> }) {
+  const [song, setSong] = useState<LyricSong | null>(null);
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const [err, setErr] = useState("");
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [link, setLink] = useState("");
+  const [linkNote, setLinkNote] = useState("");
+  const [lyricsOpen, setLyricsOpen] = useState(false);
+  const [lyrics, setLyrics] = useState("");
+  const [look, setLook] = useState<LyricLook>("bold");
+  const [shape, setShape] = useState<LyricShape>("9:16");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState<number | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const minutes = lyricEtaMinutes(song?.seconds ?? 180);
+  // anything changed after a video was sent is the start of the next one
+  useEffect(() => { setSent(null); }, [song, title, lyrics, look, shape]);
+
+  const take = async (file?: File | null) => {
+    if (!file || busy) return;
+    setErr(""); setLinkNote(""); setBusy(true);
+    // how long the song is, read in the browser — for the time the video will take
+    const seconds = await new Promise<number | null>((resolve) => {
+      let settled = false;
+      const done = (v: number | null) => { if (!settled) { settled = true; resolve(v); } };
+      try {
+        const u = URL.createObjectURL(file);
+        const a = new Audio();
+        a.preload = "metadata";
+        a.onloadedmetadata = () => { done(Number.isFinite(a.duration) ? a.duration : null); URL.revokeObjectURL(u); };
+        a.onerror = () => { done(null); URL.revokeObjectURL(u); };
+        a.src = u;
+        window.setTimeout(() => done(null), 6000);
+      } catch { done(null); }
+    });
+    try {
+      const fd = new FormData(); fd.set("song", file);
+      const r = await fetch("/api/film-song-upload", { method: "POST", body: fd });
+      const j = (await r.json().catch(() => ({}))) as { songUrl?: string; name?: string; error?: string };
+      if (j.songUrl) { const name = j.name || file.name; setSong({ url: j.songUrl, name, seconds }); setTitle(songTitleOf(name)); }
+      else setErr(j.error || t("Couldn't upload that song — mind trying again?"));
+    } catch { setErr(t("Couldn't upload that song — mind trying again?")); }
+    finally { setBusy(false); }
+  };
+  const takeLink = async () => {
+    const l = link.trim();
+    if (!l || busy) return;
+    setLinkNote(""); setErr(""); setBusy(true);
+    try {
+      const fd = new FormData(); fd.set("intent", "link"); fd.set("link", l);
+      const r = await fetch("/api/lyric-video", { method: "POST", body: fd });
+      const j = (await r.json().catch(() => ({}))) as { songUrl?: string; name?: string; error?: string };
+      if (j.songUrl) { setSong({ url: j.songUrl, name: j.name || l, seconds: null }); setTitle(songTitleOf(j.name || "")); setLinkOpen(false); }
+      else setLinkNote(j.error || t("Links are coming — upload the song file for now."));
+    } catch { setLinkNote(t("Links are coming — upload the song file for now.")); }
+    finally { setBusy(false); }
+  };
+  const make = async () => {
+    if (!song || sending) return;
+    setErr(""); setSending(true);
+    try {
+      const fd = new FormData();
+      fd.set("intent", "make"); fd.set("songUrl", song.url); fd.set("songName", song.name); fd.set("title", title);
+      fd.set("lyrics", lyrics); fd.set("look", look); fd.set("shape", shape);
+      const r = await fetch("/api/lyric-video", { method: "POST", body: fd });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (j.ok) setSent(minutes);
+      else setErr(j.error || t("Couldn't start it — mind trying again?"));
+    } catch { setErr(t("Couldn't start it — mind trying again?")); }
+    finally { setSending(false); }
+  };
+
+  return (
+    <div className="lv">
+      <p className="lv-intro">{t("Drop in a song — we catch every word, draw the pictures and cut them on the beat.")}</p>
+      {/* 1 · THE SONG */}
+      {song ? (
+        <div className="lv-song">
+          <span className="lv-song-ico" aria-hidden="true"><Ico n="music" size={20} /></span>
+          <input className="lv-song-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder={t("Song title")} aria-label={t("Song title")} />
+          {clockOf(song.seconds) ? <span className="lv-song-len">{clockOf(song.seconds)}</span> : null}
+          <button type="button" className="lv-song-x" onClick={() => { setSong(null); setTitle(""); }}>{t("Change")}</button>
+        </div>
+      ) : (
+        <div className={`lv-drop${drag ? " drag" : ""}${busy ? " busy" : ""}`} role="button" tabIndex={0} aria-busy={busy}
+          onClick={() => fileRef.current?.click()}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileRef.current?.click(); } }}
+          onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
+          onDrop={(e) => { e.preventDefault(); setDrag(false); take(e.dataTransfer.files?.[0]); }}>
+          <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg" hidden onChange={(e) => { take(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
+          <span className="lv-drop-ico" aria-hidden="true">{busy ? <span className="mm-ptile-spin" /> : <Ico n="upload" size={24} />}</span>
+          <b>{busy ? t("Uploading your song…") : t("Drop your song here")}</b>
+          <span>{t("or tap to choose · MP3, WAV or M4A, up to 25 MB")}</span>
+        </div>
+      )}
+      {song && (song.seconds || 0) > 360 && <p className="lv-note" role="status">{t("A song over 6 minutes is made into a 6-minute video, faded out at the end.")}</p>}
+      {!song && (
+        <div className="lv-linkrow">
+          {linkOpen ? (
+            <div className="lv-link">
+              <input value={link} onChange={(e) => { setLink(e.target.value); setLinkNote(""); }} placeholder={t("Paste a link to the song")} inputMode="url" maxLength={2000}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); takeLink(); } }} aria-label={t("Paste a link to the song")} />
+              <button type="button" onClick={takeLink} disabled={!link.trim() || busy}><Ico n="link" size={14} /> {t("Use link")}</button>
+            </div>
+          ) : (
+            <button type="button" className="lv-linkbtn" onClick={() => setLinkOpen(true)}><Ico n="link" size={13} /> {t("Have a link instead?")}</button>
+          )}
+          {linkNote && <p className="lv-note" role="status">{linkNote}</p>}
+        </div>
+      )}
+
+      {/* 2 · THE WORDS (optional) */}
+      <button type="button" className={`lv-lyr-toggle${lyricsOpen ? " on" : ""}`} aria-expanded={lyricsOpen} onClick={() => setLyricsOpen((v) => !v)}>
+        <Ico n="pencil" size={14} /> <b>{t("Paste the lyrics")}</b> <em>{t("optional — for spot-on words")}</em>
+      </button>
+      {lyricsOpen && (
+        <textarea className="lv-lyrics" rows={7} value={lyrics} onChange={(e) => setLyrics(e.target.value)} maxLength={12000}
+          placeholder={t("One line of the song per line. Leave it empty and we'll listen for the words.")} />
+      )}
+
+      {/* 3 · THE LOOK — a real frame of each */}
+      <div className="lv-h">{t("The look")}</div>
+      <div className="lv-looks" role="radiogroup" aria-label={t("The look")}>
+        {LYRIC_LOOKS.map((lk) => (
+          <button type="button" role="radio" aria-checked={look === lk.key} key={lk.key} className={`lv-look is-${lk.key}${look === lk.key ? " on" : ""}`} onClick={() => setLook(lk.key)}>
+            <span className="lv-look-pic"><img src={`/landing/lyric-look-${lk.key}.jpg?v=1`} alt="" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+              {look === lk.key && <span className="lv-look-chk" aria-hidden="true"><Ico n="check" size={12} /></span>}</span>
+            <b>{t(lk.label)}</b>
+            <span>{t(lk.blurb)}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* 4 · THE SHAPE */}
+      <div className="lv-h">{t("The shape")}</div>
+      <div className="lv-seg" role="radiogroup" aria-label={t("The shape")}>
+        <button type="button" role="radio" aria-checked={shape === "9:16"} className={shape === "9:16" ? "on" : ""} onClick={() => setShape("9:16")}>
+          <i className="lv-seg-tall" aria-hidden="true" /> <b>{t("Vertical")}</b> <small>{t("for Reels, TikTok, Shorts")}</small>
+        </button>
+        <button type="button" role="radio" aria-checked={shape === "16:9"} className={shape === "16:9" ? "on" : ""} onClick={() => setShape("16:9")}>
+          <i className="lv-seg-wide" aria-hidden="true" /> <b>{t("Wide")}</b> <small>{t("for YouTube")}</small>
+        </button>
+      </div>
+
+      {/* 5 · ONE BUTTON */}
+      <button type="button" className="mm-go lv-go" onClick={make} disabled={!song || sending || busy}>
+        {sending ? <>… {t("Starting")}</> : <><Ico n="music" size={17} /> {t("Make my lyric video")}</>}
+      </button>
+      <div className="mm-eta"><span aria-hidden="true">⏱</span> {t("Ready in about {n} min · it lands in your Archive", { n: minutes })}</div>
+      <p className="mm-note">{t("Free while we test it — pricing comes later.")}</p>
+      {err && <p className="fs-err">{err}</p>}
+      {sent !== null && (
+        <p className="fs-ok" role="status"><Ico n="check" size={14} /> {t("Rolling! Your lyric video lands in your Archive in about {n} min.", { n: sent })} <a href="/web/archive">{t("Open the Archive")}</a></p>
+      )}
+    </div>
+  );
+}
+
+/* The Lyric Video's styles: its card's badge on the shelf, and its builder. In the page's own colours (the theme's
+ * variables), so it is right in the light and the dark alike; a phone first (two looks to a row), four looks to a
+ * row on a wide screen. */
+const LV_STYLE = `
+.t-lyric{background:linear-gradient(135deg,#F2A93B,#C2487E);}
+.t-ff{background:linear-gradient(135deg,#5B6B60,#1A2420);}
+a.fs-fmt.fs-door{display:block;text-decoration:none;color:inherit;}
+.lv{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;max-width:760px;margin:0 auto;padding:4px 0 28px;}
+.lv-intro{margin:2px 0 4px;color:var(--ink2);font-size:14.5px;line-height:1.45;text-align:center;}
+.lv-drop{display:grid;justify-items:center;gap:6px;padding:26px 18px;border:2px dashed var(--line);border-radius:18px;background:var(--card);cursor:pointer;text-align:center;transition:border-color .15s,background .15s,transform .15s;}
+.lv-drop:hover,.lv-drop:focus-visible,.lv-drop.drag{border-color:var(--green);background:color-mix(in srgb,var(--green) 7%,var(--card));}
+.lv-drop.drag{transform:scale(1.01);}
+.lv-drop.busy{cursor:progress;opacity:.85;}
+.lv-drop b{font-size:17px;color:var(--ink);}
+.lv-drop span{font-size:13px;color:var(--ink3,#6E7A72);}
+.lv-drop-ico{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:color-mix(in srgb,var(--green) 14%,transparent);color:var(--green);}
+.lv-drop-ico svg{stroke:currentColor;}
+.lv-song{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:16px;background:var(--card);}
+.lv-song-ico{flex:0 0 auto;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(135deg,#F2A93B,#C2487E);color:#fff;}
+.lv-song-ico svg{stroke:#fff;}
+.lv-song-title{flex:1 1 0;width:0;min-width:0;border:0;background:transparent;color:var(--ink);font:700 16px Poppins,sans-serif;padding:6px 2px;border-bottom:1px dashed transparent;}
+.lv-song-title:focus{outline:none;border-bottom-color:var(--green);}
+.lv-song-len{flex:0 0 auto;font-size:13px;color:var(--ink3,#6E7A72);font-variant-numeric:tabular-nums;}
+.lv-song-x{flex:0 0 auto;min-height:36px;border:1px solid var(--line);background:transparent;color:var(--ink2);border-radius:10px;padding:0 12px;font-weight:600;cursor:pointer;}
+.lv-linkrow{display:grid;gap:6px;justify-items:center;}
+.lv-linkbtn{border:0;background:transparent;color:var(--ink2);font-size:13px;font-weight:600;cursor:pointer;min-height:32px;display:inline-flex;align-items:center;gap:6px;}
+.lv-linkbtn svg,.lv-link svg,.lv-lyr-toggle svg{stroke:currentColor;}
+.lv-link{display:flex;gap:8px;width:100%;}
+.lv-link input{flex:1;min-width:0;min-height:44px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:var(--card);color:var(--ink);font-size:14px;}
+.lv-link button{flex:0 0 auto;min-height:44px;border:0;border-radius:12px;padding:0 14px;background:var(--green);color:#fff;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+.lv-link button:disabled{opacity:.5;cursor:default;}
+.lv-note{margin:0;font-size:13px;color:var(--ink2);text-align:center;}
+.lv-lyr-toggle{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:46px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);cursor:pointer;text-align:left;}
+.lv-lyr-toggle em{font-style:normal;font-size:12.5px;color:var(--ink3,#6E7A72);}
+.lv-lyr-toggle.on{border-color:var(--green);}
+.lv-lyrics{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--card);color:var(--ink);font:14px/1.5 Poppins,sans-serif;resize:vertical;}
+.lv-h{margin-top:6px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3,#6E7A72);}
+.lv-looks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+@media(min-width:640px){.lv-looks{grid-template-columns:repeat(4,minmax(0,1fr));}}
+.lv-look{display:grid;gap:3px;padding:6px 6px 10px;border:2px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);text-align:left;cursor:pointer;transition:border-color .15s,transform .15s;}
+.lv-look:hover{transform:translateY(-1px);}
+.lv-look.on{border-color:var(--green);box-shadow:0 8px 22px -14px var(--green);}
+.lv-look b{font-size:14px;padding:0 4px;}
+.lv-look > span:not(.lv-look-pic){font-size:12px;line-height:1.3;color:var(--ink3,#6E7A72);padding:0 4px;}
+.lv-look-pic{position:relative;display:block;aspect-ratio:4/5;border-radius:11px;overflow:hidden;background:linear-gradient(160deg,#1d1a2e,#0c0b14);margin-bottom:4px;}
+.lv-look-pic img{width:100%;height:100%;object-fit:cover;display:block;}
+.lv-look-chk{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--green);}
+.lv-look-chk svg{stroke:#fff;}
+.lv-seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.lv-seg button{display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:10px;min-height:56px;padding:8px 12px;border:2px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);text-align:left;cursor:pointer;}
+.lv-seg button.on{border-color:var(--green);}
+.lv-seg b{font-size:14px;}
+.lv-seg small{grid-column:2;font-size:11.5px;color:var(--ink3,#6E7A72);}
+.lv-seg i{grid-row:span 2;display:block;border:2px solid currentColor;border-radius:4px;opacity:.7;}
+.lv-seg-tall{width:14px;height:24px;}
+.lv-seg-wide{width:26px;height:15px;}
+.lv-go{margin-top:6px;}
+.lv .fs-ok a{color:inherit;font-weight:700;margin-left:4px;}
+.fs-theater .lv-intro,.fs-theater .lv-h,.fs-theater .lv-note,.fs-theater .lv-linkbtn{color:#D8CFBA;}
+.fs-theater .lv-drop,.fs-theater .lv-song,.fs-theater .lv-lyr-toggle,.fs-theater .lv-look:not(.on),.fs-theater .lv-seg button:not(.on){box-shadow:0 0 0 1px rgba(231,200,121,.5);}
+`;
 
 /** One face of the roster, as the page has it. */
 type RosterFace = SerializeFrom<typeof loader>["roster"][number];
@@ -1486,7 +1726,9 @@ export default function FilmStudio() {
   // account is offered are the ones whose template it has (and, for a narrated one, that can be narrated).
   const heroes = heroesFor(d.templates.map((x) => x.key), d.narratable || []);
   const [heroId, setHeroId] = useState(() => FILM_HEROES.find((h) => h.tmpl === (d.templates[0]?.key || "musicvideo"))?.id || "musicvideo");
-  const hero = heroById(heroId);
+  // THE LYRIC VIDEO is open (its own builder, not a film template's — so the format it was opened over stays as it was)
+  const [lyricOn, setLyricOn] = useState(false);
+  const hero = lyricOn ? LYRIC_HERO : heroById(heroId);
   // The Veo dialogue pipeline supports the per-scene storyboard (approve each frame).
   const isStoryboard = !!tmpl?.dialogue; // any dialogue card (Short Film, Moral, Horror) → the chat-flow UI + dialogue engine
   // Test Movie can render its spoken dialogue on either engine: Veo (default,
@@ -2029,6 +2271,9 @@ export default function FilmStudio() {
     // format's own banner + builder fade in where the hero was. No position math to get wrong.
     const reduce = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     setZoomKey(key); setAnim("in");
+    // (the Lyric Video is not a film hero — switchHero passes it by — so opening it is said here, and the format
+    //  that was open before it is kept as it was)
+    setLyricOn(key === LYRIC_HERO.id);
     // (going back to the posters and into the SAME format again keeps what was being made there: it used to
     //  come back blank — script, cast and pictures gone — because every entry reset the builder)
     // (`key` is a hero's id; two heroes can share a template — Horror Story and Horror Film — so the test
@@ -2037,7 +2282,7 @@ export default function FilmStudio() {
   };
   const exitFormat = () => {
     setAnim("out");
-    window.setTimeout(() => { setEntered(false); setAnim(""); }, 300);
+    window.setTimeout(() => { setEntered(false); setAnim(""); setLyricOn(false); }, 300);
   };
   const pickCatalog = (idx: number) => {
     const p = d.products[idx];
@@ -3090,6 +3335,8 @@ export default function FilmStudio() {
   return (
     <div className={`fs-wrap${theme === "dark" ? " fs-theater" : ""}`} data-theme={theme}>
       <style dangerouslySetInnerHTML={{ __html: FS_STYLE }} />
+      {/* the Lyric Video's card badge and builder, and the Found Footage door (LV_STYLE) — only where they are offered */}
+      {(d.lyricVideo || d.foundFootage) && <style dangerouslySetInnerHTML={{ __html: LV_STYLE }} />}
       {/* THE THEATER: this section's DARK theme. Its own stylesheet, mounted only while the dark is chosen
           and only by this page — so the dark (the shell's too) arrives with the Movie Maker and leaves with
           it, and the light theme is the cream page it was. The shell's part is shared (lib/theater-shell.ts)
@@ -3197,6 +3444,30 @@ export default function FilmStudio() {
                 {h.kick ? <span className="fs-fmt-sub">{t(h.kick)}{h.meta ? <em> · {t(h.meta)}</em> : null}</span> : null}
               </button>
             ))}
+            {/* THE LYRIC VIDEO (film-heroes.ts → LYRIC_HERO): after the sung heroes — operators only until it has a price */}
+            {sh.key === "sung" && d.lyricVideo && (
+              <button type="button" role="tab" key={LYRIC_HERO.id} className={`fs-fmt${zoomKey === LYRIC_HERO.id ? " zoom" : ""}`}
+                aria-selected={lyricOn} onClick={() => enterFormat(LYRIC_HERO.id)}>
+                <span className="fs-fmt-cover">
+                  <LoopCover k={LYRIC_HERO.media} loop tall />
+                  <span className={`fs-fmt-ico ${LYRIC_HERO.tint}`} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h11M3 11h11M3 16h7" /><path d="M18 17V5l3 1" /><circle cx="16" cy="17" r="2" /></svg></span>
+                  <span className="fs-fmt-label"><b>{t(LYRIC_HERO.name)}</b></span>
+                </span>
+                <span className="fs-fmt-sub">{t(LYRIC_HERO.kick)}<em> · {t(LYRIC_HERO.meta)}</em></span>
+              </button>
+            )}
+            {/* THE WAY INTO FOUND FOOTAGE (film-heroes.ts → FOUND_FOOTAGE_DOOR): its own builder, at the end of the Films
+                shelf — a door, not a hero this page builds. Operators only, like the builder it opens. */}
+            {sh.key === "acted" && d.foundFootage && (
+              <a role="tab" aria-selected={false} key={FOUND_FOOTAGE_DOOR.id} className="fs-fmt fs-door" href={FOUND_FOOTAGE_DOOR.href}>
+                <span className="fs-fmt-cover">
+                  <LoopCover k={FOUND_FOOTAGE_DOOR.id} still={FOUND_FOOTAGE_DOOR.still} clip={FOUND_FOOTAGE_DOOR.clip} />
+                  <span className={`fs-fmt-ico ${FOUND_FOOTAGE_DOOR.tint}`} aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2" /><path d="M16 10l6-3v10l-6-3" /><circle cx="6" cy="9.5" r="1" /></svg></span>
+                  <span className="fs-fmt-label"><b>{t(FOUND_FOOTAGE_DOOR.name)}</b></span>
+                </span>
+                <span className="fs-fmt-sub">{t(FOUND_FOOTAGE_DOOR.kick)}<em> · {t(FOUND_FOOTAGE_DOOR.meta)}</em></span>
+              </a>
+            )}
           </div>
             </section>
             ))}
@@ -3213,7 +3484,9 @@ export default function FilmStudio() {
               <div className="fs-hero-ttl">{t(heroTitle)}</div>
               <div className="fs-hero-sub">{t(hero?.kick || "")}{hero?.meta ? ` · ${t(hero.meta)}` : ""}</div>
             </div>
-            <div className="fs-stepsin" key={template}>
+            <div className="fs-stepsin" key={lyricOn ? LYRIC_HERO.id : template}>
+            {/* THE LYRIC VIDEO has its own builder (LyricVideoBuilder, below); every other format, the builders here */}
+            {lyricOn ? <LyricVideoBuilder t={t} /> : (<>
 
       {/* ───────── Music Video — the card builder (elegant, Studio-style) ─────────
           One topic field + four summary cards you tap to edit, then Generate.
@@ -4272,6 +4545,7 @@ export default function FilmStudio() {
         </>)}
       </div>
       </>)}
+            </>)}
             </div>
           </div>
         )}

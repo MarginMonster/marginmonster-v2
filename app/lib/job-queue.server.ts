@@ -917,6 +917,37 @@ async function runJob(
     }
 
     case "GENERATE_VIDEO_AD": {
+      // LYRIC VIDEO (lyric-video.server.ts) — a member's song in; its words, timed and alive, over pictures cut on
+      // its beat. Queued only for an operator until the owner sets a price (api.lyric-video.tsx), and no tokens
+      // are charged — so there is nothing to refund. A restart resumes from its own checkpoints (ckLv…): the heard
+      // words, the plan, the direction, each picture as it is drawn.
+      if (payload.contentType === "lyricvideo") {
+        const { generateLyricVideo } = await import("./lyric-video.server");
+        await generateLyricVideo({
+          shopId,
+          songUrl: typeof payload.lyricSongUrl === "string" ? payload.lyricSongUrl : "",
+          songName: typeof payload.lyricSongName === "string" ? payload.lyricSongName : undefined,
+          title: typeof payload.lyricTitle === "string" ? payload.lyricTitle : undefined,
+          lyrics: typeof payload.lyricText === "string" ? payload.lyricText : "",
+          look: payload.lyricLook,
+          shape: payload.lyricShape,
+          section: (payload.section as string) || "creator",
+          jobId: payload.__jobId as string | undefined,
+          resume: {
+            ckLvHeard: payload.ckLvHeard as string | undefined,
+            ckLvPlan: payload.ckLvPlan as string | undefined,
+            ckLvDirection: payload.ckLvDirection as string | undefined,
+            ckLvStills: payload.ckLvStills as string | undefined,
+          },
+        });
+        // (the piece is created carrying its section and this job — lyric-video.server.ts → generateLyricVideo)
+        try {
+          const takes = await db.asset.count({ where: { shopId, type: "VIDEO_AD" } });
+          if (takes >= 1) await unlockAchievement(shopId, "FIRST_TAKE");
+          await checkCreationAchievements(shopId);
+        } catch { /* non-fatal */ }
+        break;
+      }
       // Faceless social video (Creator) — no brand profile, no product. Handled
       // before the product-ad plumbing below; gated at the "video" capability.
       if (payload.contentType === "faceless") {

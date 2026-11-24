@@ -74,6 +74,7 @@ import { cookingReel, cookingTitle, keepGuess, storyStars } from "../lib/story-p
 import { showMeta } from "../lib/character-series";
 // (2026-11-24) a story film's poster is its cover on the shelf
 import { posterOf } from "../lib/story-poster";
+import { lyricEtaMinutes } from "../lib/lyric-video";
 // (2026-11-24) …and every other video and track wears a cover in its family's style, made by the Archive itself
 import { COVER_LABEL, coverAsk, coverKind, coverOf, type CoverFamily } from "../lib/archive-cover";
 import { coverFailedLately } from "../lib/archive-cover.server";
@@ -119,7 +120,8 @@ function pickedButMissed(metaJson: string | null, bodyJson: string | null): stri
 }
 
 /** The kinds every Movie Maker pipeline writes on its finished film. */
-const FILM_KINDS = new Set(["testmovie", "narrated", "musicvideo", "film", "avatardialogue", "enginetest"]);
+// (a LYRIC VIDEO is a film too — lyric-video.server.ts makes it with kind "lyricvideo")
+const FILM_KINDS = new Set(["testmovie", "narrated", "musicvideo", "film", "avatardialogue", "enginetest", "lyricvideo"]);
 
 /** A Creator video: a scene the member described, animated — not a product ad. The pipeline stamps
  *  `creative` on it; one made before 2026-11-23 is known by the brief every such video was built from. */
@@ -423,6 +425,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // minutes end to end (a house take rolled through the real server path: 506 s, 2026-11-24). At the
       // 180 s of a single clip its card said "taking longer" from the third minute of a healthy take.
       : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "take") ? TAKE_TYPICAL_SEC
+      // A LYRIC VIDEO: listening, a dozen pictures, the encode — longer for a longer song (lyric-video.ts)
+      : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "lyricvideo") ? lyricEtaMinutes(typeof p.lyricSeconds === "number" ? p.lyricSeconds : 180) * 60
       : TYPICAL[j.type];
     const etaSec = generating ? Math.round(typical - elapsedSec) : 0;
     const pl = p as { chargedTokens?: number };
