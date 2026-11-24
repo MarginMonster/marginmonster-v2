@@ -61,7 +61,13 @@ test("the writer is given all of it — the idea's rules right after the idea, a
   assert.ok(eng.includes("    ? HORROR_SAFETY\n    : STORY_SAFETY;") || eng.includes("    ? HORROR_SAFETY\r\n    : STORY_SAFETY;"));
   assert.ok(!eng.includes("CAST ONLY ADULTS") && !eng.includes("recast any such role as an adult"));
   // a chosen creature in a horror idea: by its look; an acted film's two are then the idea's own people
-  assert.ok(eng.includes("const threatNames = tmpl.key === \"horror\" ? picked.filter((c) => keepGuess(c.desc).kind === \"monster\").map((c) => c.name) : [];"));
+  assert.ok(eng.includes("const threatNames = tmpl.key === \"horror\" ? picked.filter((c) => c.kind === \"monster\" || (!c.kind && keepGuess(c.desc).kind === \"monster\")).map((c) => c.name) : [];"));
+  // WHAT IT IS RIDES ALONG from the page (the third live preview: the werewolf's film look, "a huge, lean werewolf
+  // that…", was guessed a person — cut at its comma — and kept in the cast)
+  assert.ok(eng.includes("kind: c?.kind === \"monster\" || c?.kind === \"cartoon\" ? c.kind : undefined"));
+  const film = read("app", "routes", "web.film.tsx");
+  assert.equal(film.split("cast: storyCast.map((c) => ({ name: c.name, desc: c.look, kind: c.kind }))").length - 1, 2, "the free write and the one-press story");
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("cast: (opts.cast || []).map((c) => ({ name: c.name, desc: c.look, kind: c.kind }))"));
   // A TOLD story keeps the creature in its cast (seen only the way the idea sees it)…
   assert.ok(eng.includes("${noSlop}${actedThreat ? \"\" : chosenThreat(threatNames, acted)}`"));
   // …an ACTED film is given only the chosen PEOPLE as its cast (none: it invents the two, as any acted film does),

@@ -141,8 +141,10 @@ export function pickedAsCast(picked: ReadonlyArray<PickedCast | null | undefined
 
 /** Who the WRITER is told the cast is, when the script is written by the film itself: each one's name and
  *  the words they were described with (film-engine → "THE CAST IS ALREADY CHOSEN"). */
-export function castForWriter(cast: ReadonlyArray<{ name?: string | null; faceUrl?: string | null; look?: string | null } | null | undefined> | null | undefined): Array<{ name: string; desc: string }> {
+export function castForWriter(cast: ReadonlyArray<{ name?: string | null; faceUrl?: string | null; look?: string | null; kind?: string | null } | null | undefined> | null | undefined): Array<{ name: string; desc: string; kind?: "cartoon" | "monster" }> {
   return (cast || [])
-    .filter((c): c is { name: string; faceUrl: string; look?: string | null } => !!c && !!String(c.name || "").trim() && !!c.faceUrl)
-    .map((c) => ({ name: c.name.trim(), desc: String(c.look || "").replace(/\s+/g, " ").trim().slice(0, 220) }));
+    .filter((c): c is { name: string; faceUrl: string; look?: string | null; kind?: string | null } => !!c && !!String(c.name || "").trim() && !!c.faceUrl)
+    // (…and WHAT it is, when it is not a person: the writer's "is it a creature?" was a guess from the look's
+    //  first words, and "a huge, lean werewolf that…" was cut at its comma and read as a person — premise-rules.ts)
+    .map((c) => ({ name: c.name.trim(), desc: String(c.look || "").replace(/\s+/g, " ").trim().slice(0, 220), ...(c.kind === "monster" || c.kind === "cartoon" ? { kind: c.kind } : {}) }));
 }

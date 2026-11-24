@@ -460,7 +460,7 @@ export async function previewFilmTreatment(opts: {
   mode?: "narrated";
   /** The cast the maker PICKED for a story format, before a word was written: each one's name and what
    *  they are. The writer writes FOR them instead of inventing a cast of its own. */
-  cast?: Array<{ name: string; desc?: string }>;
+  cast?: Array<{ name: string; desc?: string; /** what it is, when it is not a person */ kind?: string }>;
   /** Music Video: how long each scene is — 10 seconds (the default) or 5. The video runs
    *  sceneCount × this many seconds, and the song is written for THAT length. */
   sceneSeconds?: SceneSeconds;
@@ -490,7 +490,7 @@ export async function previewFilmTreatment(opts: {
   const videoSecs = scenes * sceneSec;
   // who the maker cast (story formats only — a music video names its artist its own way)
   const picked = tmpl.lipSyncSinger ? [] : (opts.cast || [])
-    .map((c) => ({ name: (c?.name || "").trim().slice(0, 40), desc: (c?.desc || "").trim().replace(/\s+/g, " ").slice(0, 220) }))
+    .map((c) => ({ name: (c?.name || "").trim().slice(0, 40), desc: (c?.desc || "").trim().replace(/\s+/g, " ").slice(0, 220), kind: c?.kind === "monster" || c?.kind === "cartoon" ? c.kind : undefined }))
     .filter((c) => c.name).slice(0, 4);
   // THE TELLER (a character's show): one of the chosen cast, by their own name as it is in `picked`
   const tellerWanted = narrated ? String(opts.teller || "").replace(/\s+/g, " ").trim().toLowerCase() : "";
@@ -564,7 +564,9 @@ export async function previewFilmTreatment(opts: {
   // chosenThreat): the tester's "a dark shadow standing under the old tree", made with the werewolf chosen, came
   // back with the werewolf standing beside the boy — a grown man by then — in a lit bedroom from the first shot.
   // In an acted film the chosen creature is then the THING, not one of the two who talk.
-  const threatNames = tmpl.key === "horror" ? picked.filter((c) => keepGuess(c.desc).kind === "monster").map((c) => c.name) : [];
+  // (what each one IS comes from the page when it knows — a guess from the look's first words read "a huge, lean
+  //  werewolf that…" as a person, cut at its comma, and the third live preview kept the werewolf in the cast)
+  const threatNames = tmpl.key === "horror" ? picked.filter((c) => c.kind === "monster" || (!c.kind && keepGuess(c.desc).kind === "monster")).map((c) => c.name) : [];
   const actedThreat = acted && threatNames.length > 0;
   // …and in an ACTED film it is told apart from the cast, not as one of it: told "the cast is already chosen:
   // Howl … (a chosen creature that is the threat excepted)", the writer kept Howl in "cast" and invented one boy

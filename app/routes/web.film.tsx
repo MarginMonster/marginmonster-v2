@@ -502,7 +502,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const castNamesRaw = ((form.get("filmCastNames") as string) || "").trim();
     if (castNamesRaw) { try { const a = JSON.parse(castNamesRaw); if (Array.isArray(a)) castNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     try {
-      const args = { shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, sceneSeconds: filmSceneSeconds, contentLang: writeLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(tmpl.lipSyncSinger ? { featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name) } : {}), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) } : {}), ...(series ? { series } : {}) };
+      const args = { shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, sceneSeconds: filmSceneSeconds, contentLang: writeLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(tmpl.lipSyncSinger ? { featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name) } : {}), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look, kind: c.kind })) } : {}), ...(series ? { series } : {}) };
       let treatment;
       // One more go before the maker is told it failed: the first write after a restart failed once on
       // the live site (2026-11-21) and the very same request then succeeded twelve times running.
@@ -686,7 +686,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (narrated) {
         // NARRATED: one picture a scene; picked cast are drawn from their own pictures.
         let tr0 = approvedTreatment as unknown as import("../lib/film-engine.server").FilmTreatment | undefined;
-        if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: writeLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look })), series });
+        if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: writeLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look, kind: c.kind })), series });
         const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
         // (the story's own cast is drawn here — a portrait each — unless it is the next episode of a series,
         //  which opens with the faces the last one had)

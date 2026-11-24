@@ -147,7 +147,8 @@ test("an acted film made in one press is cast with the people the maker picked",
   assert.deepEqual(castForWriter(pickedAsCast(picks, ok)), [
     { name: "OMAR", desc: "a warm man in his thirties with a short black beard" },
     { name: "ROSA", desc: "a woman in her seventies with short silver hair" },
-    { name: "Howl", desc: "a huge upright werewolf with shaggy dark-grey fur" },
+    // (…and what it IS, when it is not a person — the writer used to guess it from the look's first words)
+    { name: "Howl", desc: "a huge upright werewolf with shaggy dark-grey fur", kind: "monster" },
   ]);
   assert.deepEqual(castForWriter([{ name: "Maya", faceUrl: "/avatars/maya.png" }, { name: "Uncast", faceUrl: null }, { name: " ", faceUrl: "/x.png" }, null]), [{ name: "Maya", desc: "" }], "only who has a picture: an uncast role is the writer's to invent");
   assert.deepEqual(castForWriter(undefined), []);
