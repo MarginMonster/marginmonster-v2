@@ -177,8 +177,13 @@ export default function AutoPost() {
       <style dangerouslySetInnerHTML={{ __html: AP_CSS }} />
       <header className="ap-head">
         <span className="ap-head-rose" aria-hidden="true" />
-        {/* the same moving band every other section opens with */}
-        <span className="ap-head-media" aria-hidden="true"><HeroVideo name="autopost" still={1} clip={1} className="ap-head-img" /></span>
+        {/* the same moving band every other section opens with. THE PICTURE is the owner's own brief
+            (2026-11-24): "Autopost should be Cellphone with social media, and laptop with social media
+            busting with interactions coming out of the screens" — the two devices at the right, the
+            reactions pouring out of both screens toward the title (it replaced a phone with paper planes).
+            Composed for this band: a short wide strip on a desktop, close to a square on a phone, its left
+            edge fading into the green — see .ap-head-img for where each looks. */}
+        <span className="ap-head-media" aria-hidden="true"><HeroVideo name="autopost" still={2} clip={6} className="ap-head-img" /></span>
         <div className="ap-head-copy">
           <span className="ap-eyebrow"><Ico n="rocket" size={13} /> {t("Hands off")}</span>
           <h1>{t("Auto-post")}</h1>
@@ -527,7 +532,7 @@ const AP_CSS = `
 .ap-head{position:relative;isolation:isolate;overflow:hidden;display:flex;align-items:center;min-height:150px;margin-bottom:20px;border-radius:22px;background:radial-gradient(120% 160% at 0% 0%,#3A8660 0%,#226043 42%,#143F2B 100%);box-shadow:0 24px 54px -28px rgba(8,62,39,.62),inset 0 0 0 1px rgba(255,255,255,.08);}
 .ap-head-rose{position:absolute;z-index:0;left:-130px;bottom:-190px;width:380px;height:380px;background:url(/gstyle-rosette.svg) center/contain no-repeat;opacity:.3;mix-blend-mode:screen;pointer-events:none;animation:apspin 115s linear infinite;}
 .ap-head-media{position:absolute;z-index:0;right:0;top:0;bottom:0;width:56%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 46%);mask-image:linear-gradient(90deg,transparent,#000 46%);}
-.ap-head-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 56%;display:block;}
+.ap-head-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 57%;display:block;}
 @keyframes apspin{to{transform:rotate(360deg);}}
 .ap-head-copy{position:relative;z-index:1;max-width:58%;padding:26px clamp(22px,3.4vw,48px);}
 .ap-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:#E7C879;text-transform:uppercase;letter-spacing:.09em;}
@@ -610,6 +615,6 @@ a.ap-week-c:focus-visible{outline:3px solid var(--green,#0C7A46);outline-offset:
 .ap-q-empty{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:16px;padding:18px;border-radius:14px;background:#FBFAF4;border:1px dashed #D9D5C2;}
 .ap-q-empty p{margin:0;font-size:14px;line-height:1.5;color:var(--ink,#14201A);}
 @media(max-width:640px){.ap-q{padding:16px;margin-top:20px;}.ap-q-row{grid-template-columns:52px minmax(0,1fr);}.ap-q-time{grid-column:1 / -1;font-size:13px;}.ap-q-acts{grid-column:1 / -1;justify-content:stretch;}.ap-q-act{flex:1 1 0;}.ap-q-btn{width:100%;}.ap-q-per{width:100%;}.ap-q-per-l{flex:1 1 auto;}.ap-q-edit{padding:12px;}.ap-q-edit-acts .ap-q-btn{flex:1 1 0;}}
-@media(max-width:640px){.ap-head{min-height:0;border-radius:18px;margin-bottom:16px;}.ap-head-copy{max-width:66%;padding:20px 18px;}.ap-head-media{width:50%;}.ap-head p{font-size:13.5px;}.ap-grid{gap:12px;}.ap-card{padding:16px 16px 15px;}}
+@media(max-width:640px){.ap-head{min-height:0;border-radius:18px;margin-bottom:16px;}.ap-head-copy{max-width:66%;padding:20px 18px;}.ap-head-media{width:50%;}.ap-head-img{object-position:100% 50%;}.ap-head p{font-size:13.5px;}.ap-grid{gap:12px;}.ap-card{padding:16px 16px 15px;}}
 @media(prefers-reduced-motion:reduce){.ap-head-rose{animation:none;}.ap-card{transition:none;}.ap-card:hover{transform:none;}}
 `;

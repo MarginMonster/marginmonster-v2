@@ -594,7 +594,7 @@ export default function WebDashboard() {
               <PathImg key={`${set}-marketing`} idx={2} img="marketing" v={2} eyebrow={t("Product ads")} title={t("Ad Maker")} sub={t("Turn your product into a ready-to-post ad")} cue={t("Open Ad Maker")} onClick={() => { setMode("marketing"); navigate("/web/studio"); }} />,
               <PathImg key={`${set}-film`} idx={3} img="film" v={3} eyebrow={t("Entertainment")} title={t("Movie Maker")} sub={t("Films, cartoons, music videos & episodes")} cue={t("Open Movie Maker")} onClick={() => navigate("/web/film")} />,
               <PathImg key={`${set}-presenter`} idx={4} img="presenter" v={3} eyebrow={t("Your AI cast")} title={t("Presenters")} sub={t("Craft avatars, costumes & wardrobes")} cue={t("Open Presenters")} onClick={() => navigate("/web/presenters")} />,
-              <PathImg key={`${set}-autopost`} idx={5} img="autopost" v={1} eyebrow={t("Hands off")} title={t("Auto-post")} sub={t("Link your socials, run channels & campaigns that post themselves")} cue={t("Open Auto-post")} onClick={() => navigate("/web/autopost")} />,
+              <PathImg key={`${set}-autopost`} idx={5} img="autopost" v={2} cv={6} eyebrow={t("Hands off")} title={t("Auto-post")} sub={t("Link your socials, run channels & campaigns that post themselves")} cue={t("Open Auto-post")} onClick={() => navigate("/web/autopost")} />,
               <PathImg key={`${set}-archive`} idx={6} img="archive" v={4} eyebrow={t("Your library")} title={t("Archive")} sub={t("Every piece you've made, ready to post")} cue={t("Open Archive")} onClick={() => navigate("/web/archive")} />,
             ])}
           </div>
@@ -1024,7 +1024,10 @@ export default function WebDashboard() {
 /** How many tiles the front door has — the phone carousel's loop length and its "2/6" chip read it. */
 const TILES = 6;
 
-function PathImg({ img, v, eyebrow, title, sub, cue, idx, onClick }: { img: string; v: number; eyebrow: string; title: string; sub: string; cue: string; idx: number; onClick: () => void }) {
+/* (`v` is the still's cache version and `cv` the clip's: both files are served "immutable" for a year, so a
+   picture that is replaced must change its number — here, on its section's own header, and in the sign-in
+   lobby's wall (AuthLobby), which shows the same files at the same addresses.) */
+function PathImg({ img, v, cv = 5, eyebrow, title, sub, cue, idx, onClick }: { img: string; v: number; cv?: number; eyebrow: string; title: string; sub: string; cue: string; idx: number; onClick: () => void }) {
   const play = (e: { currentTarget: HTMLElement }) => {
     try { if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return; } catch { /* ignore */ }
     const el = e.currentTarget.querySelector("video");
@@ -1039,7 +1042,7 @@ function PathImg({ img, v, eyebrow, title, sub, cue, idx, onClick }: { img: stri
       <span className="wd-path-count" aria-hidden="true">{idx}/{TILES}</span>
       <span className="wd-path-hero" style={{ backgroundImage: `url(/landing/${img}-hero.jpg?v=${v})` }} aria-hidden="true">
         <video className="wd-path-vid" muted loop playsInline preload="none" poster={`/landing/${img}-hero.jpg?v=${v}`} aria-hidden="true">
-          <source src={`/landing/${img}-hero.mp4?v=5`} type="video/mp4" />
+          <source src={`/landing/${img}-hero.mp4?v=${cv}`} type="video/mp4" />
         </video>
       </span>
       <span className="wd-path-body">

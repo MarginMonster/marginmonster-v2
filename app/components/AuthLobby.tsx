@@ -100,7 +100,7 @@ const HOUSE_CARDS: Record<House, Card> = {
   ad: { key: "ad", house: "ad", name: "Ad Maker", still: { src: "/landing/lobby-ad.jpg?v=1", w: 540, h: 960 }, clip: "/landing/lobby-ad.mp4?v=1", at: "50% 45%" },
   creator: { key: "creator", house: "creator", name: "Creator", icon: "palette", clip: "/landing/creator-hero.mp4?v=5", at: "70% 50%" },
   cast: { key: "cast", house: "cast", name: "Presenters", icon: "presenter", clip: "/landing/presenter-hero.mp4?v=5", at: "12% 50%", zoom: 1.15 },
-  autopost: { key: "autopost", house: "autopost", name: "Auto-post", still: { src: "/landing/autopost-hero.jpg?v=1", w: 1344, h: 768 }, clip: "/landing/autopost-hero.mp4?v=5", at: "18% 50%" },
+  autopost: { key: "autopost", house: "autopost", name: "Auto-post", still: { src: "/landing/autopost-hero.jpg?v=2", w: 1152, h: 652 }, clip: "/landing/autopost-hero.mp4?v=6", at: "88% 50%" },
 };
 const isHouse = (k: string): k is House => k in HOUSE_CARDS;
 

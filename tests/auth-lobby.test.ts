@@ -202,8 +202,8 @@ test("only the app's own showcase art, and every piece is a file that is there",
   // …or written out: the other houses' pieces. Nothing else, from nowhere else.
   const written = [...new Set([...component.matchAll(/"(\/[a-z][^"]*\.(?:jpg|mp4)[^"]*)"/g)].map((m) => m[1]))].sort();
   assert.deepEqual(written, [
-    "/landing/autopost-hero.jpg?v=1",
-    "/landing/autopost-hero.mp4?v=5",
+    "/landing/autopost-hero.jpg?v=2",
+    "/landing/autopost-hero.mp4?v=6",
     "/landing/creator-hero.mp4?v=5",
     "/landing/lobby-ad.jpg?v=1",
     "/landing/lobby-ad.mp4?v=1",
@@ -226,8 +226,12 @@ test("only the app's own showcase art, and every piece is a file that is there",
   // the sections' clips are the Dashboard's own doors, at the Dashboard's own addresses: a visitor who signs
   // in has them already
   const dash = read("app", "routes", "web._index.tsx");
-  assert.ok(dash.includes("<source src={`/landing/${img}-hero.mp4?v=5`} type=\"video/mp4\" />"));
-  assert.ok(dash.includes('img="autopost" v={1}') && dash.includes("backgroundImage: `url(/landing/${img}-hero.jpg?v=${v})`"));
+  // (a clip's number is 5 unless its door says otherwise — Auto-post's picture was replaced on 2026-11-24, so
+  // its still is 2 and its clip 6, here and on the door)
+  assert.ok(dash.includes("function PathImg({ img, v, cv = 5, eyebrow,") && dash.includes("<source src={`/landing/${img}-hero.mp4?v=${cv}`} type=\"video/mp4\" />"));
+  assert.ok(dash.includes('img="autopost" v={2} cv={6}') && dash.includes("backgroundImage: `url(/landing/${img}-hero.jpg?v=${v})`"));
+  assert.deepEqual([...dash.matchAll(/<PathImg [^>]*? cv=\{(\d+)\}/g)].map((m) => m[1]), ["6"], "only the replaced one carries its own clip number");
+  assert.ok(read("app", "routes", "web.autopost.tsx").includes('<HeroVideo name="autopost" still={2} clip={6} className="ap-head-img" />'), "…and the section's own header asks for the same two addresses");
   for (const img of ["creator", "marketing", "presenter", "autopost"]) assert.ok(dash.includes(`img="${img}"`), img);
 
   // WHAT COMES WITH THE PAGE is light: a card's still is sent only when it is small. Two houses' only stills
