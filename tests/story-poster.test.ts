@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  POSTER_FOOT_ALPHA, POSTER_FOOT_RISE, POSTER_FOOT_SHEETS, POSTER_H, POSTER_SIZES, POSTER_W,
+  POSTER_FOOT_CURVE, POSTER_FOOT_DEPTH, POSTER_FOOT_RISE, POSTER_H, POSTER_SIZES, POSTER_W,
   posterFilters, posterLayout, posterLines, posterName, posterOf, posterScene, posterTitle,
 } from "../app/lib/story-poster.ts";
 
@@ -99,20 +99,29 @@ test("the billing: the cast's names in capitals, three at most, never running of
   assert.equal(lay(["Tobias"]).episode, "");
 });
 
-test("the frame: cropped to 4:5, a plain-black foot in fine steps, a gold rule, then the words — nothing an ffmpeg filter chokes on", () => {
+test("the frame: cropped to 4:5, a foot that darkens without changing a colour, a gold rule, then the words — nothing an ffmpeg filter chokes on", () => {
   const layout = posterLayout({ title: "The Week the Boat Didn't Come — Episode 2: The Mended Hull", cast: ["Tobias", "Ines", "Marta"] })!;
   const f = posterFilters(layout, "C:\\fonts\\Poppins-Bold.ttf");
-  assert.ok(f.startsWith("scale=800:1000:force_original_aspect_ratio=increase,crop=800:1000,setsar=1,"));
-  // the foot: plain black (the app's green-black ink turned faces green), many thin sheets (24 showed as stripes)
-  const sheets = f.split(",").filter((p) => p.startsWith("drawbox=x=0:"));
-  assert.equal(sheets.length, POSTER_FOOT_SHEETS);
-  assert.ok(sheets.every((p) => p.includes(`color=black@${POSTER_FOOT_ALPHA}:t=fill`)));
-  assert.ok(POSTER_FOOT_SHEETS >= 48 && POSTER_FOOT_ALPHA <= 0.05 && POSTER_FOOT_RISE <= 180);
-  const under = 1 - Math.pow(1 - POSTER_FOOT_ALPHA, POSTER_FOOT_SHEETS);
-  assert.ok(under > 0.85 && under < 0.95, `under the last line the picture is ${Math.round(under * 100)}% black`);
-  // each sheet starts lower than the last and reaches the bottom
-  const ys = sheets.map((p) => Number(/y=(\d+)/.exec(p)![1]));
-  assert.ok(ys.every((y, k) => k === 0 || y > ys[k - 1]) && sheets.every((p, k) => p.includes(`h=${1000 - ys[k]}:`)));
+  assert.ok(f.startsWith("scale=800:1000:force_original_aspect_ratio=increase,crop=800:1000,setsar=1,format=gbrp,geq="));
+  // THE FOOT is ONE gradient, computed in RGB: every channel of a pixel is scaled by the same factor.
+  // (Stacked translucent sheets of black — 24, then 60 — were both tried and LOOKED at: the first showed as
+  //  stripes on a pale sky, the second left a green cast, because each tiny blend rounds every channel and
+  //  the brightness fell while the colour did not. A grey blanket came out moss on the first live poster.)
+  assert.ok(!f.includes("drawbox=x=0:"), "no stacked sheets");
+  const geq = /geq=r='r\(X,Y\)\*(\([^']+\))':g='g\(X,Y\)\*(\([^']+\))':b='b\(X,Y\)\*(\([^']+\))'/.exec(f);
+  assert.ok(geq, "one geq, three channels");
+  assert.ok(geq![1] === geq![2] && geq![2] === geq![3], "the SAME factor for red, green and blue");
+  const m = /^\(1-([\d.]+)\*pow\(clip\(\(Y-(\d+)\)\/(\d+),0,1\),([\d.]+)\)\)$/.exec(geq![1]);
+  assert.ok(m, geq![1]);
+  const [depth, from, span, curve] = [Number(m![1]), Number(m![2]), Number(m![3]), Number(m![4])];
+  assert.deepEqual([depth, curve], [POSTER_FOOT_DEPTH, POSTER_FOOT_CURVE]);
+  assert.equal(from + span, 1000 - 56, "it reaches its full depth at the bottom margin");
+  assert.ok(POSTER_FOOT_DEPTH >= 0.85 && POSTER_FOOT_DEPTH <= 0.95 && POSTER_FOOT_CURVE < 1 && POSTER_FOOT_RISE <= 180);
+  // how dark the picture is where the words begin (the rule), by that very formula: enough to read white type on
+  const ruleY = Number(/drawbox=x=56:y=(\d+):w=72:h=5:color=0xE7C879@1:t=fill/.exec(f)![1]);
+  assert.equal(ruleY - from, POSTER_FOOT_RISE, "the foot begins a fixed rise above the words");
+  const darkAtRule = depth * Math.pow((ruleY - from) / span, curve);
+  assert.ok(darkAtRule > 0.3 && darkAtRule < 0.6, `where the words begin the picture is ${Math.round(darkAtRule * 100)}% darker`);
   // the words: billing in gold, the title in white, the episode in gold; every one with the font and no expansion
   const texts = f.split(",drawtext=").slice(1);
   assert.equal(texts.length, 1 + layout.lines.length + 1);

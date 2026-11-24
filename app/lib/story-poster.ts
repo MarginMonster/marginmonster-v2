@@ -13,10 +13,11 @@
  *     is part of an episode's title already). A title no font here can draw gets no poster — never boxes.
  *   · It never fails a film: no poster → the shelf shows the first frame, as it always did.
  *
- * What looking at the first seven taught (2026-11-24, real story pictures): a title set as big as it
- * would go, on three lines, buried the people it was billing; a foot of the app's green-black ink turned
- * their faces green; and two dozen sheets of it showed as stripes on a pale sky. So a big size is for a
- * SHORT title, the foot is plain black and begins just above the words, and it is laid in fine steps.
+ * What looking at them taught (2026-11-24, real story pictures — seven drawn here, then the first one made
+ * on the live site): a title set as big as it would go, on three lines, buried the people it was billing;
+ * a foot of the app's green-black ink turned their faces green; two dozen sheets of it showed as stripes
+ * on a pale sky; and sixty finer sheets of plain black still left a green cast, because each tiny blend
+ * rounds. So a big size is for a SHORT title, and the foot is one true gradient, computed in RGB.
  *
  * Pure (no disk, no ffmpeg): the layout and the filter text. tests/story-poster.test.ts holds it. */
 import { drawable, hasWide, namedIn, textWidth } from "./narrated-core.ts";
@@ -24,11 +25,11 @@ import { drawable, hasWide, namedIn, textWidth } from "./narrated-core.ts";
 /** The poster: 4:5, twice the width of a shelf tile on a phone. */
 export const POSTER_W = 800;
 export const POSTER_H = 1000;
-/** The foot's gradient: how far above the words it begins, how many sheets of black, how strong each is
- *  (60 sheets at 0.04 → 91% black at the very bottom, 4% where it begins — steps too fine to see). */
+/** The foot's gradient: how far above the words it begins, how dark it is at the very bottom (0–1), and how
+ *  quickly it gets there (under 1 = most of the darkening happens early, so the words sit on solid ground). */
 export const POSTER_FOOT_RISE = 150;
-export const POSTER_FOOT_SHEETS = 60;
-export const POSTER_FOOT_ALPHA = 0.04;
+export const POSTER_FOOT_DEPTH = 0.9;
+export const POSTER_FOOT_CURVE = 0.8;
 /** Side and bottom margins, and the film section's gold. */
 const PAD = 56;
 const GOLD = "0xE7C879";
@@ -138,15 +139,14 @@ export function posterFilters(layout: PosterLayout, font: string): string {
   const castY = titleTop - 44;
   const ruleY = (layout.cast ? castY : titleTop) - 26;
   const out: string[] = [`scale=${W}:${H}:force_original_aspect_ratio=increase`, `crop=${W}:${H}`, "setsar=1"];
-  // THE FOOT: a dark gradient under the words, drawn the one way ffmpeg can in a single pass — translucent
-  // sheets of black, each starting a little lower than the last and all reaching the bottom, so they STACK:
-  // one sheet deep where the foot begins (barely there), all of them under the last line (nearly solid).
+  // THE FOOT: one true gradient under the words, computed in RGB — every channel of a pixel is scaled by the
+  // same factor, so the picture gets darker and keeps its colours. (Translucent sheets of black, stacked,
+  // were tried first: sixty tiny blends each ROUND every channel, the brightness fell while the colour did
+  // not, and the foot of the first live poster had a green cast — a grey blanket turned moss.)
   const from = Math.max(0, ruleY - POSTER_FOOT_RISE);
-  const step = (H - PAD - from) / POSTER_FOOT_SHEETS;
-  for (let b = 0; b < POSTER_FOOT_SHEETS; b++) {
-    const y = Math.round(from + b * step);
-    out.push(`drawbox=x=0:y=${y}:w=${W}:h=${H - y}:color=black@${POSTER_FOOT_ALPHA}:t=fill`);
-  }
+  const span = H - PAD - from;
+  const keep = `(1-${POSTER_FOOT_DEPTH}*pow(clip((Y-${from})/${span},0,1),${POSTER_FOOT_CURVE}))`;
+  out.push("format=gbrp", `geq=r='r(X,Y)*${keep}':g='g(X,Y)*${keep}':b='b(X,Y)*${keep}'`);
   out.push(`drawbox=x=${PAD}:y=${ruleY}:w=72:h=5:color=${GOLD}@1:t=fill`);
   const text = (s: string, size: number, color: string, y: number) =>
     `drawtext=expansion=none:fontfile='${f}':text='${s}':fontsize=${size}:fontcolor=${color}:shadowcolor=black@0.55:shadowx=0:shadowy=2:x=${PAD}:y=${y}`;
