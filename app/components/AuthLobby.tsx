@@ -31,7 +31,8 @@
  * Then, looking at it on his laptop: "Looks pretty clean, but maybe we do a dark green background instead of
  * the brown" — "We would also benefit here to showcase some features" — "or maybe same concept but with the
  * lite theme show both" — "dark mode toggle in setting but keeep it light". Both were built and shown to him
- * side by side, and he chose: "Make dark default, that looks slick as tits" (lib/theme.ts → DEFAULT_THEME).
+ * side by side, and he chose: "Make dark default, that looks slick as tits" — and, the same day, turned it
+ * back: "Light mode as the default - dark mode as option." (lib/theme.ts → DEFAULT_THEME).
  * So:
  *
  *   TWO LIGHTS, ONE LOBBY. By night (the default) it is the deep-green room described below. By day (a
