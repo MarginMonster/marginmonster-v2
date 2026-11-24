@@ -214,7 +214,28 @@ export async function narratedSceneSeeds(o: {
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, todo.length) }, () => worker()));
+  // (the cast is billed in the story's own order — a character drawn again does not move to the end of the row)
+  const billed = (c: StoryCastRef): number => { const k = others.findIndex((e) => sameCharacter(c.name, castEntry(e).name)); return k < 0 ? others.length : k; };
+  cards.sort((a, b) => billed(a) - billed(b));
   return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards) || null, castCards: cards, sceneFaults: faultsOut, sceneChecks: checksOut };
+}
+
+/** DRAW ONE CHARACTER AGAIN. The maker does not like how Walter came out: his portrait is dropped, a new one
+ *  is drawn, and every scene that names him is drawn again from it — nobody else changes, and no other
+ *  scene is touched. Null when there is nothing to do: the story has no such character of its own, no
+ *  scene names them, or it is an older storyboard that still draws from one sheet. */
+export async function recastStoryCharacter(o: {
+  template?: string; treatment: FilmTreatment; cast?: StoryCast; aspect?: string; castRef?: string | null; name: string;
+}): Promise<(Awaited<ReturnType<typeof narratedSceneSeeds>> & { scenes: number[] }) | null> {
+  const carried = readCastToken(o.castRef);
+  if (carried.sheet) return null;
+  const entry = (o.treatment.cast || []).find((e) => !!e && sameCharacter(castEntry(e).name, o.name));
+  if (!entry) return null;
+  const scenes = o.treatment.scenes.map((s, i) => (namedIn(entryName(entry), s?.visual || "") ? i : -1)).filter((i) => i >= 0);
+  if (!scenes.length) return null;
+  const kept = carried.refs.filter((r) => !sameCharacter(r.name, o.name));
+  const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept) || null });
+  return { ...r, scenes };
 }
 
 /** The narrator reads the whole story. Returns the mp3 on the renders disk and a URL a provider can

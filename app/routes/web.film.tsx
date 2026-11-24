@@ -31,7 +31,7 @@ import { FEATURE_MIN_SECONDS } from "../lib/mv-feature";
 import type { Recast } from "../lib/mv-recast";
 import { MV_DRAFT_KEY, draftScenes, packDraft, readDraft, type MvDraft } from "../lib/mv-draft";
 import { FILM_HEROES, heroById, heroesFor } from "../lib/film-heroes";
-import { CAPTION_STYLES, captionStyleOf, type CaptionStyle } from "../lib/narrated-core";
+import { CAPTION_STYLES, captionStyleOf, entryName, namedIn, type CaptionStyle } from "../lib/narrated-core";
 import { DESIGNED_VOICES, LIVE_AVATARS, OUTFITS, STOCK_CHARACTERS, avatarImg, type Avatar } from "../lib/avatars";
 import { stockCut, stockLooks, stockSpin, type Spin } from "../lib/presenter-kits";
 import { CastFigure, CastHoverCard, CastIdCard, CAST_ID_CSS, castAgeText, castSentence, idCardOf, useCastPeek, type CastCardSource } from "../components/CastIdCard";
@@ -745,6 +745,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
+  // FREE — DRAW ONE OF A TOLD STORY'S OWN CHARACTERS AGAIN (story-picture.ts): the maker does not like how
+  // one of them came out. A new portrait, and every scene that names them drawn again from it — nobody else
+  // changes, no other scene is touched, no word is rewritten.
+  if (intent === "recastStoryCharacter") {
+    const name = ((form.get("castName") as string) || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (!narrated || !name) return json({ error: tr(lang, "Preview the scenes first.") });
+    let tObj: { scenes?: unknown; cast?: unknown } = {};
+    try { tObj = JSON.parse(((form.get("approvedTreatment") as string) || "").trim() || "{}"); } catch { /* nothing to draw from */ }
+    const scenesNow = Array.isArray(tObj.scenes) ? (tObj.scenes as Array<{ visual?: unknown; caption?: unknown }>).slice(0, 12).map((x) => ({ visual: String(x?.visual || "").slice(0, 1500), caption: String(x?.caption || "") })) : [];
+    const castBible = Array.isArray(tObj.cast) ? (tObj.cast as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 8) : [];
+    if (!scenesNow.length) return json({ error: tr(lang, "Preview the scenes first.") });
+    try {
+      const { recastStoryCharacter } = await import("../lib/narrated-story.server");
+      const r = await recastStoryCharacter({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, scenes: scenesNow }, cast: storyCast, aspect: ((form.get("filmAspect") as string) || "").trim(), castRef: ((form.get("castRef") as string) || "").trim().slice(0, 4000) || null, name });
+      if (!r || !r.scenes.some((i) => r.sceneImgs[i])) return json({ error: tr(lang, "Couldn't draw {name} again — try again.", { name }), recastName: name });
+      return json({ ok: true, recastName: name, scenes: r.scenes, sceneImgs: r.sceneImgs, sceneFaults: r.sceneFaults, sceneChecks: r.sceneChecks, castRef: r.castRef, castCards: r.castCards });
+    } catch (e) {
+      return json({ error: tr(lang, "Couldn't draw {name} again — try again.", { name }), recastName: name, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+    }
+  }
+
   // PAID — enqueue the render. Charge by the ACTUAL scene count (the approved
   // treatment's length if one was approved, else the slider), so the quote the
   // merchant saw == the debit. The queue's refundPrepaidOnce returns chargedTokens
@@ -1346,6 +1367,9 @@ export default function FilmStudio() {
     try { localStorage.setItem("mm-wardrobe-v1", JSON.stringify({ outfits, outfitStyles })); } catch { /* quota / private mode */ }
   }, [outfits, outfitStyles]);
   const [rerollingScene, setRerollingScene] = useState<number | null>(null);
+  // DRAW ONE CHARACTER AGAIN (a told story's own cast): who is being redrawn, and the scenes that follow them
+  const [recasting, setRecasting] = useState<{ name: string; scenes: number[] } | null>(null);
+  const recastFetcher = useFetcher<{ ok?: boolean; recastName?: string; scenes?: number[]; sceneImgs?: (string | null)[]; sceneFaults?: (number | null)[]; sceneChecks?: unknown[]; castRef?: string | null; castCards?: StoryCastRef[]; error?: string }>();
   // Storyboard (dialogue): per-scene approved frames + which scene is rendering now.
   const previewFrameFetcher = useFetcher<{ frameUrl?: string; sceneIndex?: number; error?: string }>();
   const [frames, setFrames] = useState<(string | null)[]>([]);
@@ -1996,7 +2020,7 @@ export default function FilmStudio() {
   // (`who` — the people in the scene BY NAME — rides only with the Cast editor's own re-roll: the scene's
   //  words are then rewritten for them first, mv-recast.ts. A plain re-roll keeps the maker's words.)
   const rerollScene = (i: number, propOverride?: string, castOverride?: string[], singerOverride?: string, wearOverride?: Record<string, string>, who?: Recast) => {
-    if (!seeds || (!narrated && !seeds.artistRef && !seeds.castRef)) return;
+    if (!seeds || recasting || (!narrated && !seeds.artistRef && !seeds.castRef)) return;
     const pk = propOverride !== undefined ? propOverride : (seeds.propForScene[i] || "");
     // Resolve THIS scene's co-stars → their styled refs so the re-roll composes the right faces. (In a
     // co-star's own performance the list may hold the ARTIST — beside them — whose picture is the hero's.)
@@ -2015,6 +2039,33 @@ export default function FilmStudio() {
       { method: "post" }
     );
   };
+  // DRAW ONE CHARACTER AGAIN — the ↻ on a face in a told story's "Starring" row. The maker does not like how
+  // one of the story's own characters came out: a new portrait is drawn, and every scene that names them is
+  // drawn again from it. Nobody else changes, no other scene is touched, no word is rewritten.
+  const recastCharacter = (name: string) => {
+    if (!seeds || !narrated || recasting || rerollingScene !== null) return;
+    const entry = (seeds.treatment.cast || []).find((e) => entryName(e).trim().toLowerCase() === name.trim().toLowerCase());
+    const theirs = entry ? seeds.treatment.scenes.map((s, i) => (namedIn(entryName(entry), s?.visual || "") ? i : -1)).filter((i) => i >= 0) : [];
+    setRecasting({ name, scenes: theirs });
+    recastFetcher.submit(
+      { intent: "recastStoryCharacter", template, filmMode: "narrated", filmAspect, approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}), castRef: seeds.castRef || "", castName: name },
+      { method: "post" }
+    );
+  };
+  useEffect(() => {
+    const rd = recastFetcher.data;
+    if (recastFetcher.state !== "idle" || !rd) return;
+    if (rd.ok && Array.isArray(rd.scenes) && Array.isArray(rd.sceneImgs)) {
+      const done = rd.scenes, imgs = rd.sceneImgs, nf = rd.sceneFaults || [], nc = rd.sceneChecks || [];
+      const got = (j: number) => done.includes(j) && !!imgs[j];
+      setSeeds((prev) => (prev ? { ...prev,
+        ...(typeof rd.castRef === "string" && rd.castRef && Array.isArray(rd.castCards) ? { castRef: rd.castRef, castCards: rd.castCards } : {}),
+        imgs: prev.imgs.map((u, j) => (got(j) ? imgs[j] : u)),
+        faults: prev.imgs.map((_, j) => (got(j) ? nf[j] ?? null : (prev.faults || [])[j] ?? null)),
+        checks: prev.imgs.map((_, j) => (got(j) ? nc[j] ?? null : (prev.checks || [])[j] ?? null)) } : prev));
+    }
+    setRecasting(null);
+  }, [recastFetcher.state, recastFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   /** WHY a still is flagged, in two words — from what the check read off it (mv-cast.ts CastCheck). The
    *  flag used to say only "Worth a re-roll", with the reason in a tooltip a phone does not have. */
   const flagWhy = (i: number): string => {
@@ -2507,15 +2558,27 @@ export default function FilmStudio() {
             if (!stars.length) return null;
             return (
               <div className="mm-stars">
-                <div className="mm-stars-h"><b>{t("Starring")}</b>{own.length > 0 && <span>{t("They look like this in every scene.")}</span>}</div>
+                <div className="mm-stars-h"><b>{t("Starring")}</b>{recasting
+                  ? <span role="status">{t("Drawing {name} again — the scenes they are in follow.", { name: recasting.name })}</span>
+                  : own.length > 0 && <span>{t("They look like this in every scene.")}</span>}</div>
+                {recastFetcher.state === "idle" && recastFetcher.data?.error && <p className="fs-err">{recastFetcher.data.error}</p>}
                 <div className="mm-stars-row">
-                  {stars.map((c) => (
-                    <button type="button" key={`${c.name}|${c.img}`} className="mm-star" onClick={() => setZoomImg(c.img)} title={c.look ? `${c.name} — ${c.look}` : c.name}>
-                      <img src={c.img} alt="" loading="lazy" />
-                      <span className="mm-star-nm">{c.name}</span>
-                      {c.look ? <span className="mm-star-lk">{c.look}</span> : null}
-                    </button>
-                  ))}
+                  {stars.map((c) => {
+                    // (one of the story's OWN characters can be drawn again — ↻, the scenes' own control; a
+                    //  presenter the maker picked is who they are)
+                    const mine = own.some((o) => o.name === c.name && o.img === c.img);
+                    return (
+                      <div key={`${c.name}|${c.img}`} className="mm-star">
+                        <button type="button" className="mm-star-pic" onClick={() => setZoomImg(c.img)} title={c.look ? `${c.name} — ${c.look}` : c.name}>
+                          <img src={c.img} alt={c.name} loading="lazy" />
+                          {recasting?.name === c.name && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
+                        </button>
+                        {mine && <button type="button" className="mm-sb-reroll" onClick={() => recastCharacter(c.name)} disabled={!!recasting || rerollingScene !== null} title={t("Draw {name} again — the scenes they are in are drawn again too", { name: c.name })} aria-label={t("Draw {name} again", { name: c.name })}><Ico n="refresh" size={12} /></button>}
+                        <span className="mm-star-nm">{c.name}</span>
+                        {c.look ? <span className="mm-star-lk">{c.look}</span> : null}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -2544,12 +2607,12 @@ export default function FilmStudio() {
                 <div className={`mm-sc${isMv ? (perform ? " is-perform" : " is-broll") : ""}${editing ? " is-editing" : ""}`} data-check={isMv && seeds && (seeds.checks || [])[i] != null ? JSON.stringify((seeds.checks || [])[i]) : undefined}>
                   <div className="mm-sc-frame" style={(isMv ? mvAspect : narrated ? filmAspect : "9:16") !== "9:16" ? { aspectRatio: (isMv ? mvAspect : filmAspect) === "16:9" ? "16 / 9" : "1 / 1" } : undefined}>
                     {u ? <img src={u} alt={t("Scene {n}", { n: i + 1 })} loading="lazy" className="mm-sc-zoomable" onClick={() => setZoomImg(u)} /> : <span className="mm-sc-load wb-cookimg" aria-hidden="true"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
-                    {rerollingScene === i && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
+                    {(rerollingScene === i || !!recasting?.scenes.includes(i)) && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     <span className="mm-sb-num">{i + 1}</span>
                     {/* the picture was looked at and something was still off (someone missing, doubled, or a stray microphone) */}
-                    {flagged && <button type="button" className="mm-sb-flag" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={narrated ? t("We checked this picture and something looks off. Tap to draw it again.") : t("We checked this picture and something looks off — someone missing or doubled, the wrong clothes, or a stray microphone. Tap to draw it again.")}><Ico n="refresh" size={11} /> {flagWhy(i)}</button>}
+                    {flagged && <button type="button" className="mm-sb-flag" onClick={() => rerollScene(i)} disabled={rerollingScene !== null || !!recasting} title={narrated ? t("We checked this picture and something looks off. Tap to draw it again.") : t("We checked this picture and something looks off — someone missing or doubled, the wrong clothes, or a stray microphone. Tap to draw it again.")}><Ico n="refresh" size={11} /> {flagWhy(i)}</button>}
                     <button type="button" className="mm-sc-x" onClick={() => sbRemoveScene(i)} disabled={strip.scenes.length <= 1} title={t("Remove this scene")} aria-label={t("Remove scene {n}", { n: i + 1 })}>✕</button>
-                    {seeds && (narrated || seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={12} /></button>}
+                    {seeds && (narrated || seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null || !!recasting} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={12} /></button>}
                   </div>
                   <div className="mm-sc-bd">
                     {isMv
@@ -4862,14 +4925,15 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-stars-h b{font-family:Poppins,sans-serif;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--ink,#14201A);}
 .mm-stars-h span{font-size:12px;font-weight:600;color:var(--ink2,#4A554E);line-height:1.35;}
 .mm-stars-row{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
-.mm-star{flex:0 0 108px;width:108px;min-width:0;display:flex;flex-direction:column;gap:5px;padding:0;border:0;background:none;text-align:left;cursor:zoom-in;scroll-snap-align:start;font:inherit;color:inherit;}
-.mm-star img{display:block;width:108px;height:144px;object-fit:cover;object-position:center top;border-radius:14px;background:#EDE9DF;border:1px solid var(--line,#E4DFCF);box-shadow:0 8px 18px -10px rgba(20,32,26,.35);transition:transform .16s cubic-bezier(.2,.7,.2,1),box-shadow .16s;}
+.mm-star{position:relative;flex:0 0 108px;width:108px;min-width:0;display:flex;flex-direction:column;gap:5px;scroll-snap-align:start;}
+.mm-star-pic{position:relative;display:block;width:108px;height:144px;padding:0;border:0;border-radius:14px;overflow:hidden;background:#EDE9DF;cursor:zoom-in;font:inherit;color:inherit;box-shadow:0 0 0 1px var(--line,#E4DFCF),0 8px 18px -10px rgba(20,32,26,.35);transition:transform .16s cubic-bezier(.2,.7,.2,1),box-shadow .16s;}
+.mm-star-pic img{display:block;width:100%;height:100%;object-fit:cover;object-position:center top;}
 .mm-star-nm{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-family:Poppins,sans-serif;font-size:12.5px;font-weight:800;line-height:1.2;color:var(--ink,#14201A);}
 .mm-star-lk{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:11px;font-weight:600;line-height:1.3;color:var(--ink2,#4A554E);}
-.mm-star:focus-visible{outline:none;}
-.mm-star:focus-visible img{outline:3px solid var(--green,#0C7A46);outline-offset:2px;}
-@media(hover:hover){.mm-star:hover img{transform:translateY(-3px);box-shadow:0 14px 24px -12px rgba(20,32,26,.45);}}
-@media(prefers-reduced-motion:reduce){.mm-star img{transition:none;}.mm-star:hover img{transform:none;}}
+.mm-star-pic:focus-visible{outline:3px solid var(--green,#0C7A46);outline-offset:2px;}
+.mm-star .mm-sb-reroll{top:5px;right:5px;}
+@media(hover:hover){.mm-star-pic:hover{transform:translateY(-3px);box-shadow:0 0 0 1px var(--line,#E4DFCF),0 14px 24px -12px rgba(20,32,26,.45);}}
+@media(prefers-reduced-motion:reduce){.mm-star-pic{transition:none;}.mm-star-pic:hover{transform:none;}}
 /* Horizontal, swipeable FILMSTRIP — each scene's still + what-happens + words, like a video editor.
    Compact vertically so it never turns the page into a doom-scroll. */
 .mm-sb-strip{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 12px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}

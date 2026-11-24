@@ -162,12 +162,12 @@ test("the storyboard opens on the story's cast — the maker's picks and the sto
   assert.ok(page.includes("...pickedCast.map((r) => ({ name: r.name, look: r.kind && r.kind !== \"person\" ? (r.look || \"\") : \"\", img: r.img })),"));
   assert.ok(page.includes("...own.filter((c) => !pickedCast.some((r) => nameTok(r.name) === nameTok(c.name))),"), "nobody is shown twice");
   assert.ok(page.includes("if (!stars.length) return null;"), "a story with nobody in it has no row");
-  assert.ok(page.includes("<div className=\"mm-stars-h\"><b>{t(\"Starring\")}</b>{own.length > 0 && <span>{t(\"They look like this in every scene.\")}</span>}</div>"));
-  assert.ok(page.includes("<button type=\"button\" key={`${c.name}|${c.img}`} className=\"mm-star\" onClick={() => setZoomImg(c.img)} title={c.look ? `${c.name} — ${c.look}` : c.name}>"), "a face opens whole");
+  assert.ok(page.includes("<div className=\"mm-stars-h\"><b>{t(\"Starring\")}</b>{recasting") && page.includes(": own.length > 0 && <span>{t(\"They look like this in every scene.\")}</span>}</div>"));
+  assert.ok(page.includes("<button type=\"button\" className=\"mm-star-pic\" onClick={() => setZoomImg(c.img)} title={c.look ? `${c.name} — ${c.look}` : c.name}>"), "a face opens whole");
   // a phone: the row scrolls sideways inside itself, a face is a finger wide
   assert.ok(page.includes(".mm-stars-row{display:flex;gap:10px;overflow-x:auto;"));
-  assert.ok(page.includes(".mm-star{flex:0 0 108px;width:108px;min-width:0;"));
-  assert.ok(page.includes(".mm-star img{display:block;width:108px;height:144px;object-fit:cover;object-position:center top;"), "a full-length portrait is shown from the head down");
+  assert.ok(page.includes(".mm-star{position:relative;flex:0 0 108px;width:108px;min-width:0;"));
+  assert.ok(page.includes(".mm-star-pic{position:relative;display:block;width:108px;height:144px;") && page.includes(".mm-star-pic img{display:block;width:100%;height:100%;object-fit:cover;object-position:center top;}"), "a full-length portrait is shown from the head down");
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["Starring", "They look like this in every scene."]) assert.equal(dict.split(`${JSON.stringify(k)}:`).length - 1, 5, k);
 });
@@ -254,6 +254,36 @@ test("a picture kept with someone still missing says so: the scene is flagged, b
   assert.ok(page.includes(": narrated ? 15 : 0) + Math.ceil(scenes / (narrated ? 4 : 3)) * seedWaveSec);"));
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["Split picture", "{name} is missing", "We checked this picture and something looks off. Tap to draw it again."]) assert.equal(dict.split(`${JSON.stringify(k)}:`).length - 1, 5, k);
+});
+
+test("one character can be drawn again: a new portrait, and only the scenes that name them follow", () => {
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  const fn = nar.slice(nar.indexOf("export async function recastStoryCharacter("), nar.indexOf("/** The narrator reads the whole story."));
+  assert.ok(fn.includes("if (carried.sheet) return null;"), "an older storyboard draws from one sheet: nothing to recast");
+  assert.ok(fn.includes("const entry = (o.treatment.cast || []).find((e) => !!e && sameCharacter(castEntry(e).name, o.name));") && fn.includes("if (!entry) return null;"), "only a character the story has");
+  assert.ok(fn.includes("const scenes = o.treatment.scenes.map((s, i) => (namedIn(entryName(entry), s?.visual || \"\") ? i : -1)).filter((i) => i >= 0);"), "the scenes that name them — the same rule the drawing uses");
+  assert.ok(fn.includes("if (!scenes.length) return null;"));
+  // their portrait is dropped from what is carried in → the drawing makes a new one; everyone else is kept
+  assert.ok(fn.includes("const kept = carried.refs.filter((r) => !sameCharacter(r.name, o.name));"));
+  assert.ok(fn.includes("const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept) || null });"));
+  // …and the cast stays in the story's own order (a redrawn character does not move to the end of the row)
+  assert.ok(nar.includes("cards.sort((a, b) => billed(a) - billed(b));"));
+  const page = read("app", "routes", "web.film.tsx");
+  // the action: a told story only, the words as they are now, never a rewrite
+  assert.ok(page.includes("if (intent === \"recastStoryCharacter\") {"));
+  assert.ok(page.includes("if (!narrated || !name) return json({ error: tr(lang, \"Preview the scenes first.\") });"));
+  assert.ok(page.includes("return json({ ok: true, recastName: name, scenes: r.scenes, sceneImgs: r.sceneImgs, sceneFaults: r.sceneFaults, sceneChecks: r.sceneChecks, castRef: r.castRef, castCards: r.castCards });"));
+  // the page: the ↻ is the scenes' own control, on the story's OWN characters only; one thing is drawn at a time
+  assert.ok(page.includes("const mine = own.some((o) => o.name === c.name && o.img === c.img);"));
+  assert.ok(page.includes("{mine && <button type=\"button\" className=\"mm-sb-reroll\" onClick={() => recastCharacter(c.name)} disabled={!!recasting || rerollingScene !== null}"));
+  assert.ok(page.includes("if (!seeds || !narrated || recasting || rerollingScene !== null) return;"));
+  assert.ok(page.includes("if (!seeds || recasting || (!narrated && !seeds.artistRef && !seeds.castRef)) return;"), "no scene is re-rolled while a character is being drawn");
+  assert.ok(page.includes("{(rerollingScene === i || !!recasting?.scenes.includes(i)) && <span className=\"mm-sb-busy mm-sb-busy-rose\">"), "the scenes that follow show it");
+  // only the pictures that came back replace the old ones; the cast and the flags come with them
+  assert.ok(page.includes("const got = (j: number) => done.includes(j) && !!imgs[j];"));
+  assert.ok(page.includes("imgs: prev.imgs.map((u, j) => (got(j) ? imgs[j] : u)),"));
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  for (const k of ["Draw {name} again", "Draw {name} again — the scenes they are in are drawn again too", "Drawing {name} again — the scenes they are in follow.", "Couldn't draw {name} again — try again."]) assert.equal(dict.split(`${JSON.stringify(k)}:`).length - 1, 5, k);
 });
 
 test("the next episode says who comes back, before a word is written", () => {
