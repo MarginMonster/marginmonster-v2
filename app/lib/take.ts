@@ -157,6 +157,8 @@ const HELD: Record<CameraLook, string> = {
   bare: "Handheld, at night, one small light on",
   // (a house camera is nobody's: it is screwed to the wall, and the take's way in is the room itself)
   house: "Recorded at night by a fixed security camera mounted high in the corner of the room, in infrared; the camera never moves, pans, tilts or zooms",
+  // (a body camera is worn on the chest of the one walking in: it sees what they face, bobbing with each step)
+  bodycam: "Recorded at night by a body camera worn on the chest of the one walking in, through its wide-angle lens; the picture bobs gently with every step; a flashlight held beside it lights the way",
 };
 
 /** How a host's prompt names the reference picture (the scene the take arrives at). */

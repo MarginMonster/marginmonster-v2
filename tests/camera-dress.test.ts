@@ -18,14 +18,33 @@ const FONT = "C:/fonts/Poppins-Bold.ttf";
 const MONO = "C:/fonts/JetBrainsMono-Regular.ttf";
 const count = (s: string, sub: string) => s.split(sub).length - 1;
 
-test("four cameras, and which one is the maker's pick", () => {
-  assert.deepEqual(CAMERA_LOOKS.map((l) => l.key), ["phone", "camcorder", "bare", "house"]);
+test("five cameras, and which one is the maker's pick", () => {
+  assert.deepEqual(CAMERA_LOOKS.map((l) => l.key), ["phone", "camcorder", "bare", "house", "bodycam"]);
   for (const l of CAMERA_LOOKS) assert.ok(l.name && l.line.length <= 60, l.key);
   assert.equal(cameraLookOf("phone"), "phone");
   assert.equal(cameraLookOf(" Camcorder "), "camcorder");
   assert.equal(cameraLookOf("bare"), "bare");
   assert.equal(cameraLookOf("HOUSE"), "house");
-  for (const v of [undefined, null, "", "iphone", "vhs", "cctv", 1]) assert.equal(cameraLookOf(v), null, String(v));
+  assert.equal(cameraLookOf("bodycam"), "bodycam");
+  for (const v of [undefined, null, "", "iphone", "vhs", "cctv", "body cam", 1]) assert.equal(cameraLookOf(v), null, String(v));
+});
+
+test("THE BODY CAM (\"What about body cam footage\"): worn on a chest — it bobs with each step; its date, time and number top-right; no maker's mark", () => {
+  const d = dressFilter({ look: "bodycam", w: 1904, h: 1088, font: FONT, fontMono: MONO, clock: { date: "2026-11-24", start: 3 * 3600 + 12 * 60 + 44 } });
+  // the chest: the picture enlarged and moved inside its margin, dropping and rising twice a stride
+  assert.ok(d.filter.startsWith("[0:v]scale=2038:1164:flags=bicubic,rotate=a='0.006*sin(2*PI*0.925*t+0.4)':fillcolor=black,crop=1904:1088:"));
+  assert.ok(d.filter.includes("abs(sin(PI*1.85*t))"), "a step's drop and rise");
+  // its sensor: over-sharpened, a little washed, noisy; thirty frames a second
+  assert.ok(d.filter.includes("unsharp=5:5:0.9:5:5:0") && d.filter.includes("noise=alls=10:allf=t") && d.filter.includes("fps=30"));
+  // top-right: the date, a T, the time counting, the zone — and under it the camera's own number
+  assert.ok(d.filter.includes(`:x=w-tw-42:y=42:text='2026-11-24 T%{eif\\:mod(floor((11564+t)/3600),24)\\:d\\:2}\\:`) && d.filter.includes(" -0500'"));
+  assert.ok(d.filter.includes(":expansion=none:text='BODYCAM 412'"));
+  assert.ok(dressFilter({ look: "bodycam", w: 1280, h: 720, font: FONT, camName: "UNIT 12: x" }).filter.includes("text='UNIT 12 x'"));
+  // a generic camera: no real maker's name is ever drawn
+  assert.ok(!/axon|motorola|watchguard|getac/i.test(d.filter));
+  // its microphone: close, thin, a little crunchy
+  assert.equal(d.audio, "highpass=f=220,lowpass=f=6000,acompressor=threshold=-22dB:ratio=4:attack=5:release=120");
+  assert.ok(!d.audioInGraph && !d.chrome && d.filter.endsWith("format=yuv420p[v]"));
 });
 
 test("THE HOUSE CAMERA (\"Found footage from house camera POVs also\" — \"Like this overlay\"): fixed, its clock burned into the top-left corner, counting", () => {

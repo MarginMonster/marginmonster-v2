@@ -26,19 +26,38 @@
  * Pure: no ffmpeg is run here (tests/camera-dress.test.ts reads the graphs; the looks themselves were
  * LOOKED at, frame by frame, on a real take — scratchpad t45/camera/). */
 
-export type CameraLook = "phone" | "camcorder" | "bare" | "house";
+export type CameraLook = "phone" | "camcorder" | "bare" | "house" | "bodycam";
 
 export const CAMERA_LOOKS: ReadonlyArray<{ key: CameraLook; name: string; line: string }> = [
   { key: "phone", name: "Phone", line: "A phone's recording screen over a clear picture." },
   { key: "camcorder", name: "Camcorder", line: "Tape: REC, the date in the corner, grain." },
   { key: "bare", name: "No overlay", line: "Only a shaky hand and a little grain." },
   { key: "house", name: "House camera", line: "A camera high in the corner, its clock running." },
+  { key: "bodycam", name: "Body cam", line: "Worn on a chest: it bobs with every step." },
 ];
 
 export const cameraLookOf = (v: unknown): CameraLook | null => {
   const k = String(v ?? "").trim().toLowerCase();
-  return k === "phone" || k === "camcorder" || k === "bare" || k === "house" ? k : null;
+  return k === "phone" || k === "camcorder" || k === "bare" || k === "house" || k === "bodycam" ? k : null;
 };
+
+/** THE CHEST. A body camera is worn, not held: the picture rises and drops with every step (twice a stride,
+ *  at a walking cadence) and rolls a little from side to side once a stride. Like the hand (handheld), the
+ *  picture is enlarged by a margin and a window of the original size moves inside it, so the frame's edge
+ *  never shows. */
+export function chestBob(w: number, h: number): string {
+  const margin = 0.035;
+  const W = even(w * (1 + 2 * margin)), H = even(h * (1 + 2 * margin));
+  const sx = (w * margin * 0.35).toFixed(2), sy = (h * margin * 0.8).toFixed(2);
+  // (|sin| gives the step's drop-and-rise at 1.85 steps a second; a slower sway rides on it)
+  const X = `(iw-ow)/2+${sx}*(sin(2*PI*0.925*t)+0.3*sin(2*PI*2.3*t+0.6))/1.3`;
+  const Y = `(ih-oh)/2+${sy}*(abs(sin(PI*1.85*t))-0.5+0.25*sin(2*PI*0.41*t+1.1))/1.25`;
+  return [
+    `scale=${W}:${H}:flags=bicubic`,
+    `rotate=a='0.006*sin(2*PI*0.925*t+0.4)':fillcolor=black`,
+    `crop=${even(w)}:${even(h)}:x='${X}':y='${Y}'`,
+  ].join(",");
+}
 
 /* ---- THE HOUSE CAMERA'S CLOCK ----
  * The owner, 2026-11-24: "Found footage from house camera POVs also" — "Like this overlay" (a home security
@@ -199,6 +218,34 @@ export function dressFilter(o: DressOptions): Dress {
   const tall = h >= w;
   const text = (s: string, size: number, x: string, y: string, color = "white", extra = "") =>
     `drawtext=fontfile='${font}':text='${s}':fontsize=${r(size)}:fontcolor=${color}:x=${x}:y=${y}${extra}`;
+
+  if (o.look === "bodycam") {
+    // THE BODY CAM (the owner, 2026-11-24: "What about body cam footage police shot channel"). Worn on a
+    // chest: it bobs with every step (chestBob); a small, hard sensor — over-sharpened, a little washed, noisy
+    // in the dark; thirty frames a second; and in its top-right corner the date with a T before the time and
+    // the zone after it, and under it the camera's own number. A generic camera on purpose: no maker's name
+    // or mark is drawn.
+    const clock = o.clock || { date: camDate(2026, 11, 24).slice(0, 10), start: 3 * 3600 + 12 * 60 + 44 };
+    const day = clock.date.slice(0, 10).replace(/:/g, "");
+    const mono = filterPath(o.fontMono || o.font);
+    const fsz = r(0.025 * w), m = r(0.022 * w), edge = Math.max(2, r(fsz / 12));
+    const C = clockExpr(clock, null);
+    const part = (e: string) => `%{eif\\:${e}\\:d\\:2}`;
+    const time = [part(`mod(floor(${C}/3600),24)`), part(`mod(floor(${C}/60),60)`), part(`mod(floor(${C}),60)`)].join("\\:");
+    const face = `fontfile='${mono}':fontcolor=white:borderw=${edge}:bordercolor=0x0A0A0A`;
+    const unit = (o.camName || "BODYCAM 412").replace(/['\\%:]/g, "").slice(0, 28);
+    const look = [
+      chestBob(w, h),
+      "unsharp=5:5:0.9:5:5:0",
+      "eq=contrast=1.1:saturation=0.82:gamma=0.97",
+      "noise=alls=10:allf=t",
+      "fps=30",
+      `drawtext=${face}:fontsize=${fsz}:x=w-tw-${m}:y=${m}:text='${day} T${time} -0500'`,
+      `drawtext=${face}:fontsize=${fsz}:x=w-tw-${m}:y=${m + r(fsz * 1.3)}:expansion=none:text='${unit}'`,
+    ].join(",");
+    // a body camera's microphone: close, thin and a little crunchy
+    return { filter: `[0:v]${look},format=yuv420p[v]`, audio: "highpass=f=220,lowpass=f=6000,acompressor=threshold=-22dB:ratio=4:attack=5:release=120" };
+  }
 
   if (o.look === "house") {
     // THE HOUSE CAMERA. Nobody holds it: no sway, no hand. It records at a camera's own low frame rate (the
