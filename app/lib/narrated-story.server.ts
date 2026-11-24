@@ -32,6 +32,7 @@ import { voiceLangOpts, normalizeContentLang } from "./content-lang";
 import { AVATAR_VOICE_IDS } from "./avatar-voice-catalog";
 import { characterVoice, isCharacterVoice } from "./character-voices";
 import { heroName } from "./film-heroes";
+import { posterFilters, posterLayout, posterName, posterScene } from "./story-poster";
 import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName } from "./story-motion";
@@ -91,6 +92,25 @@ async function letterboxed(rendersUrl: string | null): Promise<boolean> {
   if (!fs.existsSync(file)) return false;
   try { return barsIn((await runFfmpeg(["-loop", "1", "-i", file, "-vf", "cropdetect=limit=10:round=2:reset=0", "-frames:v", "5", "-f", "null", "-"])).stderr); }
   catch { return false; }
+}
+
+/** THE POSTER (story-poster.ts): the film's cover on the shelf. One ffmpeg frame — the picture with the most
+ *  of the cast in it, cropped to the shelf's shape, with the title and the cast's names. Returns its
+ *  /renders address; null when there is nothing to draw it from. Throws when it cannot be drawn (no font
+ *  for these words, ffmpeg) — the caller ships the film without one. */
+async function makeStoryPoster(o: { stills: string[]; visuals: string[]; names: string[]; title: string; videoName: string }): Promise<string | null> {
+  const layout = posterLayout({ title: o.title, cast: o.names });
+  if (!layout) return null;
+  const k = posterScene(o.visuals, o.names, o.stills.map((s) => !!s && fs.existsSync(s)));
+  if (k < 0) return null;
+  // (the same resolver the captions use: it THROWS for words no font here can draw — then no poster, never boxes)
+  const font = await resolveTextFont([...layout.lines, layout.cast, layout.episode].join(" "));
+  const name = posterName(o.videoName);
+  const outPath = path.join(RENDERS(), name);
+  const r = await runFfmpeg(["-y", "-i", o.stills[k], "-vf", posterFilters(layout, font), "-frames:v", "1", "-q:v", "3", outPath]);
+  if (r.status !== 0 || !fs.existsSync(outPath) || fs.statSync(outPath).size < 5000) throw new Error(`poster ffmpeg ${r.status}: ${r.stderr.slice(-200)}`);
+  try { await mirrorRender(name, fs.readFileSync(outPath)); } catch { /* non-fatal, as everywhere else */ }
+  return `/renders/${name}`;
 }
 
 /** One still per scene. WHO is in a picture is whoever its VISUAL names (see sceneCast) — a scene that
@@ -583,6 +603,16 @@ export async function generateNarratedStory(opts: {
   await assembleNarrated({ stills, clips: motion?.clips, windows, voPath, musicPath, cards: wordsDrawable ? cards : [], style, fontFile, W, H, outPath, jobId });
   try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
 
+  // THE POSTER — who is billed: the cast the maker picked, then the story's own. It never fails the film:
+  // without one the shelf shows the first frame, as it always did. (STORY_POSTER=off turns it off.)
+  let poster: string | null = null;
+  if (process.env.STORY_POSTER !== "off") {
+    try {
+      const billed = [...(opts.cast || []).map((c) => c?.name || ""), ...readCastToken(storyCastRef).refs.map((c) => c.name)].filter(Boolean);
+      poster = await makeStoryPoster({ stills, visuals: treatment.scenes.map((s) => s.visual || ""), names: billed, title: treatment.title || opts.topic || "", videoName: outName });
+    } catch (e) { console.error(`[narrated] no poster (the shelf shows the first frame): ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
+  }
+
   const voiceName = characterVoice(narrator)?.label || narrator;
   const asset = await db.asset.create({
     data: {
@@ -608,6 +638,8 @@ export async function generateNarratedStory(opts: {
         // says which story it came from.
         lang: normalizeContentLang(lang),
         pictures: stills.map((f) => `/renders/${path.basename(f)}`),
+        // THE POSTER (story-poster.ts): its cover on the shelf — the title and the cast over its most "cast" picture
+        ...(poster ? { poster } : {}),
         ...(musicPath ? { music: path.basename(musicPath) } : {}),
         ...(opts.translatedFrom ? { translatedFrom: String(opts.translatedFrom).slice(0, 64) } : {}),
         // THE STORY'S OWN CAST: the characters it invented, each with its portrait (story-picture.ts)

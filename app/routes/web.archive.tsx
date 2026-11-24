@@ -71,6 +71,8 @@ import { isValidTimeZone, zonedDateString, zonedInstant } from "../lib/timezone"
 import { storyHeroOf } from "../lib/film-series";
 // (2026-11-23) a finished film says who is in it — its cast, on the piece itself
 import { keepGuess, storyStars } from "../lib/story-picture";
+// (2026-11-24) a story film's poster is its cover on the shelf
+import { posterOf } from "../lib/story-poster";
 // (2026-11-24) KEEP IN MY CAST: a story's own character, registered from the finished film
 import { CharacterForge, FORGE_CSS, type ForgeSeed } from "../components/CharacterForge";
 import { VOICE_UI_CSS } from "../components/VoicePicker";
@@ -503,6 +505,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // Is it a STORY film (acted or narrated)? Those can be continued: the viewer's "Next episode" opens
         // the Movie Maker on the next episode of its series (film-series.ts → storyHeroOf / episodeCardFor).
         canContinue: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson),
+        // ITS POSTER (story-poster.ts): a story film is shown on the shelf as its poster — title and cast over
+        // its most "cast" picture — instead of whatever its first frame happened to be. null = the first frame.
+        poster: a.type === "VIDEO_AD" ? posterOf(a.metaJson) : null,
         // WHO IS IN IT: the presenters the maker cast, then the characters the story invented, each with
         // the picture it was drawn from (story-picture.ts → storyStars). Shown under the title, "Starring".
         // (…a telling in another language too: it is not an episode of anything, but the same people are in it)
@@ -2842,7 +2847,10 @@ export default function WebArchive() {
                   {/* A cached first-frame JPG, NOT the video — iOS won't paint a <video>
                       frame unprompted, so loading videos just to show a poster made the
                       grid sit black and feel broken. The real <video> loads in the viewer. */}
-                  {a.isVideo && a.media && <img src={`/vthumb/${a.media.split("?")[0].split("/").pop()}`} alt={a.title} loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />}
+                  {/* (a story film has a POSTER — its title and cast over its best picture; if that file is ever
+                      missing the tile falls back to the first frame, and only then to nothing) */}
+                  {a.isVideo && a.media && <img src={a.poster || `/vthumb/${a.media.split("?")[0].split("/").pop()}`} alt={a.title} loading="lazy" decoding="async"
+                    onError={(e) => { const el = e.currentTarget; const first = `/vthumb/${(a.media || "").split("?")[0].split("/").pop()}`; if (a.poster && el.dataset.fell !== "1") { el.dataset.fell = "1"; el.src = first; } else el.style.visibility = "hidden"; }} />}
                   {!a.isVideo && !a.isAudio && a.media && <img src={a.media} alt={a.title} loading="lazy" />}
                   {/* Audio has no still — the tile is a play affordance; the real
                       <audio> player lives in the viewer. (An <img src=mp3> would
@@ -3144,6 +3152,9 @@ export default function WebArchive() {
                     {/* A narrated story's WORDS can be changed and the story told again with the same pictures:
                         it opens in the Movie Maker's own storyboard (story-edit.ts) and lands as a new piece. */}
                     {viewer.tellIn && viewer.media && !viewer.expired && <a className="wa-vbtn ghost" href={`/web/film?edit=${viewer.id}`} title={t("Change the words — it is told again with the same pictures")}><Ico n="sliders" /> {t("Edit story")}</a>}
+                    {/* THE FILM'S POSTER (story-poster.ts), to keep: its title and cast over its best picture — a
+                        ready-made picture to post ahead of the film. */}
+                    {viewer.poster && !viewer.expired && <a className="wa-vbtn ghost" href={viewer.poster} download={`${(viewer.title || "poster").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "poster"}.jpg`} title={t("Save this film's poster — its title and cast over its best picture")}><Ico n="image" /> {t("Poster")}</a>}
                     {/* A narrated story, told again in another language: the same pictures and the same
                         storyteller, as a piece of its own. (Only the languages it is not already in.) */}
                     {viewer.tellIn && viewer.tellIn.length > 0 && viewer.media && !viewer.expired && (
