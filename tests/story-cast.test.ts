@@ -246,11 +246,13 @@ test("a picture kept with someone still missing says so: the scene is flagged, b
   // the flag is the music video's own — one thing to learn — and a told story's says WHO
   assert.ok(page.includes("const flagged = (isMv || narrated) && !!seeds && ((seeds.faults || [])[i] || 0) > 0 && rerollingScene !== i;"));
   assert.ok(page.includes("if (c.panels === true) return t(\"Split picture\");"));
-  assert.ok(page.includes("if (gone.length === 1 && (c.seen || []).filter((x) => x === false).length === 1) return t(\"{name} is missing\", { name: gone[0] });"));
+  assert.ok(page.includes("if (gone.length === 1 && gone[0].length <= 16 && (c.seen || []).filter((x) => x === false).length === 1) return t(\"{name} is missing\", { name: gone[0] });"), "one missing, with a name short enough for the flag");
   assert.ok(page.indexOf("return t(\"{name} is missing\"") < page.indexOf("return t(\"Missing someone\");"), "the name first; two missing is 'Missing someone'");
   assert.ok(page.includes("title={narrated ? t(\"We checked this picture and something looks off. Tap to draw it again.\") : t("));
-  // on a phone the picture is a third of the card: the flag wraps inside it
-  assert.ok(page.includes(".mm-sb-list.is-told .mm-sb-flag{max-width:calc(100% - 14px);white-space:normal;"));
+  // on a phone the picture is a third of the card: the flag wraps inside it — and stops short of the
+  // re-roll button that shares its row (30 px in the corner; in a mock the flag ran under it)
+  assert.ok(page.includes(".mm-sb-list.is-told .mm-sb-flag{max-width:calc(100% - 48px);white-space:normal;"));
+  assert.ok(page.includes(".mm-sc .mm-sb-reroll{top:auto;bottom:6px;right:6px;width:28px;height:28px;}"), "the button the flag must leave room for");
   // the wait is said honestly: portraits first, then four pictures at a time, each drawn and looked at
   assert.ok(page.includes("const seedWaveSec = narrated ? 24 : !tmpl?.lipSyncSinger ? 9 : mvCast ? 27 : mvAspect === \"9:16\" ? 25 : 12;"));
   assert.ok(page.includes(": narrated ? 15 : 0) + Math.ceil(scenes / (narrated ? 4 : 3)) * seedWaveSec);"));

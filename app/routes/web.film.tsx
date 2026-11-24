@@ -2074,7 +2074,8 @@ export default function FilmStudio() {
     if (c.panels === true) return t("Split picture");
     // (a told story knows WHO it looked for: "Marta is missing")
     const gone = (c.seen || []).map((x, k) => (x === false ? (c.who || [])[k] || "" : "")).filter(Boolean);
-    if (gone.length === 1 && (c.seen || []).filter((x) => x === false).length === 1) return t("{name} is missing", { name: gone[0] });
+    // (…a short name: the flag sits on a third of a phone-wide card, and a long one filled half the picture)
+    if (gone.length === 1 && gone[0].length <= 16 && (c.seen || []).filter((x) => x === false).length === 1) return t("{name} is missing", { name: gone[0] });
     if ((c.seen || []).some((x) => x === false)) return t("Missing someone");
     if (c.twin === true) return t("Someone doubled");
     if ((c.dressed || []).some((x) => x === false)) return t("Wrong clothes");
@@ -4710,8 +4711,9 @@ a.mm-pace-auto{text-decoration:none;}
   .mm-sb-list.is-told .mm-sc{flex-direction:row;}
   .mm-sb-list.is-told .mm-sc-frame{flex:0 0 36%;width:36%;aspect-ratio:auto !important;min-height:176px;}
   .mm-sb-list.is-told .mm-sc-bd{flex:1;min-width:0;}
-  /* (the picture is a third of the card here: a flag that names someone — "Marta is missing" — wraps inside it) */
-  .mm-sb-list.is-told .mm-sb-flag{max-width:calc(100% - 14px);white-space:normal;text-align:left;line-height:1.15;padding:5px 9px;border-radius:12px;}
+  /* (the picture is a third of the card here: a flag that names someone — "Marta is missing" — wraps inside
+     it, and stops short of the re-roll button in the same corner row; seen in a mock: it ran under the button) */
+  .mm-sb-list.is-told .mm-sb-flag{max-width:calc(100% - 48px);white-space:normal;overflow-wrap:anywhere;text-align:left;line-height:1.15;padding:5px 9px;border-radius:12px;}
 }
 .mm-card:hover{border-color:var(--green2,#1EA85C);box-shadow:0 10px 26px -18px rgba(20,32,26,.26);}
 .mm-card.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 14px 30px -20px rgba(12,122,70,.4);}
