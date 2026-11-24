@@ -25,7 +25,7 @@
  * tests/archive-series.test.ts holds it. */
 
 import { seriesOf } from "./film-series.ts";
-import { showMeta } from "./character-series.ts";
+import { showMeta, showMetaNeedle } from "./character-series.ts";
 
 /** What a film in a series carries on the page: its series' key and title, and which episode it is. */
 export type SeriesTag = { key: string; title: string; episode: number };
@@ -111,6 +111,41 @@ export function seriesTags(rows: ReadonlyArray<{ id: string; metaJson?: unknown 
   }
   return out;
 }
+
+/** A SERIES' TRUE SIZE. The page loads the newest sixty films, so the episodes ON THE SHELF can be fewer
+ *  than the series has — and a cover that says "1 episode" over a six-episode show is wrong about the one
+ *  thing it is there to say. So the loader counts each series on its page once (seriesRefs → one small
+ *  count each), and the cover shows that number.
+ *
+ *  seriesRefs: the series among the loaded films, each once, newest first — its key (what the page knows it
+ *  by) and what it is (which the page is never told). */
+export type SeriesRef = { key: string; kind: "film" | "show"; id: string };
+export function seriesRefs(rows: ReadonlyArray<{ id: string; metaJson?: unknown }>): SeriesRef[] {
+  const out: SeriesRef[] = [];
+  const seen = new Set<string>();
+  for (const r of rows || []) {
+    if (!r || typeof r.id !== "string" || !r.id) continue;
+    const meta = metaOf(r.metaJson);
+    if (typeof meta.translatedFrom === "string" && meta.translatedFrom.trim()) continue;
+    const s = ownSeries(meta);
+    if (!s) continue;
+    const key = seriesKey(s.kind, s.id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, kind: s.kind, id: s.id });
+  }
+  return out;
+}
+/** The text every episode of a series carries in its stored meta (both writers put the id first:
+ *  film-series.ts → seriesMeta, character-series.ts → showMetaNeedle). A film series' FIRST film names no
+ *  series — it is counted apart, by its own id. */
+export const seriesNeedle = (ref: { kind: "film" | "show"; id: string }): string =>
+  ref.kind === "show" ? showMetaNeedle(ref.id) : `"series":{"id":${JSON.stringify(String(ref.id).slice(0, 64))}`;
+/** What a cover says: the series' own count when it is known and larger than what the shelf holds. */
+export const episodesOf = (onShelf: number, total: number | null | undefined): number => {
+  const t = typeof total === "number" && Number.isFinite(total) ? Math.floor(total) : 0;
+  return Math.max(Math.max(0, Math.floor(onShelf || 0)), t);
+};
 
 /** INSIDE ITS SERIES an episode is called by its OWN name. The band above the cards already says the series'
  *  name and the small line above each title already says which episode it is — so "The Lighthouse Keeper —

@@ -75,7 +75,7 @@ import { showMeta } from "../lib/character-series";
 // (2026-11-24) a story film's poster is its cover on the shelf
 import { posterOf } from "../lib/story-poster";
 // (2026-11-24) a series is ONE card on the shelf — its cover, and how many episodes are inside
-import { archiveShelf, episodeOwnLabel, seriesOnShelf, seriesTags, type SeriesItem } from "../lib/archive-series";
+import { archiveShelf, episodeOwnLabel, episodesOf, seriesNeedle, seriesOnShelf, seriesRefs, seriesTags, type SeriesItem } from "../lib/archive-series";
 // (2026-11-24) KEEP IN MY CAST: a story's own character, registered from the finished film
 import { CharacterForge, FORGE_CSS, type ForgeSeed } from "../components/CharacterForge";
 import { VOICE_UI_CSS } from "../components/VoicePicker";
@@ -468,6 +468,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // film series ("Next episode") or a character's show. Worked out from the meta these films already
   // carry, over the films this page loaded: nothing more is read. Each gets a short hashed key.
   const seriesTagOf = seriesTags(assets.filter((a) => a.type === "VIDEO_AD"));
+  // …and each of those series' TRUE size. The page loads the newest sixty films, so a show whose older
+  // episodes are further back would say "1 episode" on its cover — seen on the owner's own Archive the hour
+  // this shipped. One small count per series on this page (twelve at most; a count that fails leaves the
+  // cover counting what is on the shelf).
+  const seriesTotals: Record<string, number> = {};
+  await Promise.all(seriesRefs(assets.filter((a) => a.type === "VIDEO_AD")).slice(0, 12).map(async (ref) => {
+    try {
+      const [named, first] = await Promise.all([
+        db.asset.count({ where: { shopId: shop.id, type: "VIDEO_AD", metaJson: { contains: seriesNeedle(ref) } } }),
+        // (a film series' first film names no series itself: it is one more, while it still exists)
+        ref.kind === "film" ? db.asset.count({ where: { id: ref.id, shopId: shop.id, type: "VIDEO_AD" } }) : Promise.resolve(0),
+      ]);
+      seriesTotals[ref.key] = named + first;
+    } catch { /* the cover then counts the shelf */ }
+  }));
   const mapAsset = (a: (typeof assets)[number]) => {
       let body: { videoUrl?: string; imageUrl?: string; audioUrl?: string; title?: string; html?: string; needsRegen?: boolean } = {};
       try { body = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
@@ -595,6 +610,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     cooking: cookingCards.filter((c) => c.status === "generating").length,
     cookingCards,
     totals: inWhen,
+    // how many episodes each series on this page has in all, by its key (archive-series.ts)
+    seriesTotals,
     // WHEN (2026-11-22): the open window, and what every window holds (the numbers on its chips)
     when,
     whenCounts,
@@ -1930,6 +1947,7 @@ button.wa-colchip.wa-coladd{font-size:12px;}
 .wa-serieshead-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:5px;}
 .wa-serieshead-txt b{font-family:Poppins,sans-serif;font-size:15px;font-weight:800;line-height:1.25;overflow-wrap:anywhere;}
 .wa-serieshead .wa-series-tag{position:static;max-width:100%;background:rgba(231,200,121,.12);box-shadow:inset 0 0 0 1px rgba(231,200,121,.34);}
+.wa-series-more{font-size:11.5px;line-height:1.35;color:rgba(246,231,193,.78);}
 .wa-epno{display:block;margin:0 0 2px;font-family:Poppins,sans-serif;font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8a6207;}
 /* ── THE TOP OF THE SHELF ON A PHONE (2026-11-24) ─────────────────────────────────────────────────────
    The owner, looking at it on his phone: "the archive looks … bananas with all the tiny cards and
@@ -2161,7 +2179,7 @@ function ColNameForm({ initial = "", label, busy, error, dark, onSave, onCancel 
 
 export default function WebArchive() {
   const t = useT();
-  const { section, q, when, whenCounts, assets, stills, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, nextShow, collections, col } = useLoaderData<typeof loader>();
+  const { section, q, when, whenCounts, assets, stills, cooking, cookingCards, canPost, linkedCount, linked, tokens, hasPlan, cost, totals, seriesTotals, nextShow, collections, col } = useLoaderData<typeof loader>();
   const isCreator = section === "creator";
   // Preserve the section across tab links, "show more", and revalidation so the
   // Gallery stays the Gallery.
@@ -2574,6 +2592,8 @@ export default function WebArchive() {
   const viewShelf = viewerSeries ? viewerSeries.episodes.flatMap((id) => { const a = pieceById.get(id); return a ? [a] : []; }) : cardPieces;
   // the count on a series, in words
   const episodesLabel = (n: number) => (n === 1 ? t("1 episode") : t("{n} episodes", { n }));
+  // (a series' OWN count — the loader's — when the shelf holds only its newest ones)
+  const episodesIn = (s: SeriesItem) => episodesOf(s.count, seriesTotals?.[s.key]);
   // where a series' card leads, and the way back out of one: the address as it is — the search, the window,
   // the collection, the section, how much is loaded — with only the series changed
   const seriesHref = (key: string) => { const n = new URLSearchParams(searchParams); n.delete("open"); n.set("tab", tab); n.set("series", key); return `?${n.toString()}`; };
@@ -3095,7 +3115,9 @@ export default function WebArchive() {
           <Link to={shelfHref} preventScrollReset className="wa-series-back"><Ico n="arrow" size={13} /> {t("Back")}</Link>
           <span className="wa-serieshead-txt">
             <b>{openSeries.title}</b>
-            <span className="wa-series-tag"><Ico n="film" size={12} /> {episodesLabel(openSeries.count)}</span>
+            <span className="wa-series-tag"><Ico n="film" size={12} /> {episodesLabel(episodesIn(openSeries))}</span>
+            {/* the shelf holds the newest films: when a series has older episodes than it shows, it says so */}
+            {episodesIn(openSeries) > openSeries.count && <span className="wa-series-more">{t("Showing the newest {n} — the older ones are further back.", { n: openSeries.count })}</span>}
           </span>
         </div>
       )}
@@ -3135,13 +3157,13 @@ export default function WebArchive() {
               return (
                 <Link key={`series|${s.key}`} to={seriesHref(s.key)} preventScrollReset data-series={s.key}
                   className={`wb-asset wa-series${selecting ? " off" : ""}`} aria-disabled={selecting || undefined} tabIndex={selecting ? -1 : undefined}
-                  onClick={(e) => { if (selecting) e.preventDefault(); }} title={`${s.title} · ${episodesLabel(s.count)}`}>
+                  onClick={(e) => { if (selecting) e.preventDefault(); }} title={`${s.title} · ${episodesLabel(episodesIn(s))}`}>
                   <span className={`wa-poster wa-series-cover${isPoster ? " has-poster" : ""}`} style={isPoster ? { ["--k" as string]: Math.min(k, 11) } : undefined}>
                     {s.cover
                       ? <img src={s.cover} alt="" loading="lazy" decoding="async"
                           onError={(e) => { const el = e.currentTarget; if (s.frame && s.frame !== s.cover && el.dataset.fell !== "1") { el.dataset.fell = "1"; el.src = s.frame; } else el.style.visibility = "hidden"; }} />
                       : <span className="wa-series-blank"><Ico n="film" size={32} /></span>}
-                    <span className="wa-series-tag"><Ico n="film" size={12} /> {episodesLabel(s.count)}</span>
+                    <span className="wa-series-tag"><Ico n="film" size={12} /> {episodesLabel(episodesIn(s))}</span>
                   </span>
                   <span className="m">
                     <span className="wa-title">{s.title}</span>

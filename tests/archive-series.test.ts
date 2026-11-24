@@ -19,7 +19,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { archiveShelf, episodeOwnLabel, firstFrameOf, seriesKey, seriesOnShelf, seriesTags, type ShelfItem, type ShelfPiece } from "../app/lib/archive-series.ts";
+import { archiveShelf, episodeOwnLabel, episodesOf, firstFrameOf, seriesKey, seriesNeedle, seriesOnShelf, seriesRefs, seriesTags, type ShelfItem, type ShelfPiece } from "../app/lib/archive-series.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // (a checkout with CRLF line endings must read the same as one with LF)
@@ -204,8 +204,8 @@ const loader = src.slice(src.indexOf("export const loader"), src.indexOf("export
 const page = src.slice(src.indexOf("export default function WebArchive()"));
 
 test("the loader tags the films it already loaded — nothing more is read, and no id goes to the page", () => {
-  assert.ok(src.includes('import { archiveShelf, episodeOwnLabel, seriesOnShelf, seriesTags, type SeriesItem } from "../lib/archive-series";'));
-  assert.ok(loader.includes('const seriesTagOf = seriesTags(assets.filter((a) => a.type === "VIDEO_AD"));'), "worked out over the films of this page — no query, no await");
+  assert.ok(src.includes('import { archiveShelf, episodeOwnLabel, episodesOf, seriesNeedle, seriesOnShelf, seriesRefs, seriesTags, type SeriesItem } from "../lib/archive-series";'));
+  assert.ok(loader.includes('const seriesTagOf = seriesTags(assets.filter((a) => a.type === "VIDEO_AD"));'), "which films are episodes: worked out over the films of this page — no query, no await");
   assert.ok(loader.includes("series: seriesTagOf.get(a.id) || null,"));
   assert.ok(loader.indexOf("const seriesTagOf = ") < loader.indexOf("const mapAsset = "));
   // the show's own line is exactly what it was: its name and number, never its id
@@ -244,7 +244,7 @@ test("on the Videos tab a series is one card; inside an open series the shelf is
   // the header of an open series: the way back, its title, how many — and its episodes say which they are
   const head = page.slice(page.indexOf("{openSeries && (\n        <div className=\"wa-serieshead\""), page.indexOf("{/* Finished pieces: poster-frame tiles"));
   assert.ok(head.includes('<Link to={shelfHref} preventScrollReset className="wa-series-back"><Ico n="arrow" size={13} /> {t("Back")}</Link>'));
-  assert.ok(head.includes("<b>{openSeries.title}</b>") && head.includes("{episodesLabel(openSeries.count)}"));
+  assert.ok(head.includes("<b>{openSeries.title}</b>") && head.includes("{episodesLabel(episodesIn(openSeries))}"));
   assert.ok(page.includes('const episodesLabel = (n: number) => (n === 1 ? t("1 episode") : t("{n} episodes", { n }));'));
   assert.ok(page.includes('{openSeries && a.series && <span className="wa-epno">{t("Episode {n}", { n: a.series.episode })}</span>}'));
   // an episode's own card is the card it always was (the lines other tests hold are still here)
@@ -289,7 +289,7 @@ test("a series' card is a way in and nothing else: nothing on the page keeps, de
   assert.ok(card.includes("onClick={(e) => { if (selecting) e.preventDefault(); }}"));
   // what it shows: its cover (a poster catches the light like any poster), the count, its title
   assert.ok(card.includes("const isPoster = !!s.cover && s.cover !== s.frame;"));
-  assert.ok(card.includes('<span className="wa-series-tag"><Ico n="film" size={12} /> {episodesLabel(s.count)}</span>'));
+  assert.ok(card.includes('<span className="wa-series-tag"><Ico n="film" size={12} /> {episodesLabel(episodesIn(s))}</span>'));
   assert.ok(card.includes('<span className="wa-title">{s.title}</span>'));
   assert.ok(card.includes("el.src = s.frame;"), "a poster whose file is missing falls back to the film's first frame");
   // "Select all" and the Select button count the pieces that stand on the shelf as their own cards
@@ -519,4 +519,37 @@ test("inside its series an episode is called by its own name", () => {
   assert.equal(episodeOwnLabel("The Lighthouse Keeper — Episode 2: "), "The Lighthouse Keeper — Episode 2:");
   assert.equal(episodeOwnLabel(""), "");
   assert.equal(episodeOwnLabel(null), "");
+});
+
+test("a series' cover says how many episodes it HAS — not how many the page happened to load", () => {
+  // Seen on the owner's own Archive the hour the covers shipped: two series said "1 episode", because the
+  // page loads the newest sixty films and counted only the episodes among those.
+  const film = (id: string, series?: { id: string; title: string; episode: number }, more: Record<string, unknown> = {}) => ({ id, metaJson: JSON.stringify({ ...(series ? { series } : {}), ...more }) });
+  const rows = [
+    film("f9", { id: "f1", title: "The Lighthouse Keeper", episode: 6 }),
+    film("s3", undefined, { show: { id: "show-1", name: "Night tales", episode: 3, star: "Howl" } }),
+    film("f8", { id: "f1", title: "The Lighthouse Keeper", episode: 5 }),
+    film("plain"),
+    // a telling in another language is not an episode of anything
+    film("tr", { id: "f1", title: "The Lighthouse Keeper", episode: 5 }, { translatedFrom: "f8" }),
+  ];
+  const refs = seriesRefs(rows);
+  assert.deepEqual(refs.map((r) => [r.kind, r.id]), [["film", "f1"], ["show", "show-1"]], "each series once, newest first");
+  assert.deepEqual(refs.map((r) => r.key), [seriesKey("film", "f1"), seriesKey("show", "show-1")]);
+  // what marks an episode in a stored film — the id comes first in what both writers store
+  assert.equal(seriesNeedle({ kind: "film", id: "f1" }), '"series":{"id":"f1"');
+  assert.ok(JSON.stringify({ series: { id: "f1", title: "The Lighthouse Keeper", episode: 6 } }).includes(seriesNeedle({ kind: "film", id: "f1" })));
+  assert.equal(seriesNeedle({ kind: "show", id: "show-1" }), '"show":{"id":"show-1"');
+  // the cover: the series' own count when it is known and larger; never less than what is on the shelf
+  assert.equal(episodesOf(1, 6), 6);
+  assert.equal(episodesOf(3, undefined), 3);
+  assert.equal(episodesOf(3, 2), 3, "an episode made a moment ago is on the shelf before the count knows it");
+  assert.equal(episodesOf(0, NaN), 0);
+  // the loader counts once per series on the page, and a film series' first film is one more
+  assert.ok(loader.includes('db.asset.count({ where: { shopId: shop.id, type: "VIDEO_AD", metaJson: { contains: seriesNeedle(ref) } } }),'));
+  assert.ok(loader.includes('ref.kind === "film" ? db.asset.count({ where: { id: ref.id, shopId: shop.id, type: "VIDEO_AD" } }) : Promise.resolve(0),'));
+  assert.ok(loader.includes(".slice(0, 12).map(async (ref) => {"), "twelve small counts at most");
+  assert.ok(page.includes("const episodesIn = (s: SeriesItem) => episodesOf(s.count, seriesTotals?.[s.key]);"));
+  // an opened series that shows fewer than it has says so
+  assert.ok(page.includes('{episodesIn(openSeries) > openSeries.count && <span className="wa-series-more">{t("Showing the newest {n} — the older ones are further back.", { n: openSeries.count })}</span>}'));
 });
