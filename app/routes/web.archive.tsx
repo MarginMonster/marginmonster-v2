@@ -72,7 +72,7 @@ import { storyHeroOf } from "../lib/film-series";
 // (2026-11-23) a finished film says who is in it — its cast, on the piece itself
 import { storyStars } from "../lib/story-picture";
 import { adWordsOf } from "../lib/ad-words";
-import { tellChoices } from "../lib/story-translate";
+import { isNarratedStory, tellChoices } from "../lib/story-translate";
 import { tellStoryAgain } from "../lib/story-translate.server";
 import { isAdminEmail } from "../lib/admin.server";
 // (2026-11-22) Collections — named shelves a piece can sit on; every query is in collections.server.ts
@@ -502,7 +502,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         canContinue: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson),
         // WHO IS IN IT: the presenters the maker cast, then the characters the story invented, each with
         // the picture it was drawn from (story-picture.ts → storyStars). Shown under the title, "Starring".
-        stars: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson) ? storyStars(a.metaJson) : [],
+        // (…a telling in another language too: it is not an episode of anything, but the same people are in it)
+        stars: a.type === "VIDEO_AD" && (!!storyHeroOf(a.metaJson) || isNarratedStory(a.metaJson)) ? storyStars(a.metaJson) : [],
         // A NARRATED story can be told again in another language — same pictures, same storyteller
         // (story-translate.ts). Every language but its own, by their own names — each one either already
         // told (`have`: that piece, to open) or still to make; null for anything else.

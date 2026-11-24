@@ -154,6 +154,8 @@ test("the cast rides with the story: storyboard → job → the finished piece",
   assert.ok(page.includes("setSeeds((prev) => (prev ? { ...prev, ...(cast || {}),"));
   // an edited story opens with the cast it was made with
   assert.ok(page.includes("castRef: st.castRef || null, castRefs: [], faults: [], checks: [], castCards: st.ownCast || [] });"));
+  // …and the same story told in another language has the same people in it
+  assert.ok(read("app", "lib", "story-translate.server.ts").includes("...(castToken(castCardsOf(meta)) ? { filmCastRef: castToken(castCardsOf(meta)) } : {}),"));
 });
 
 test("the storyboard opens on the story's cast — the maker's picks and the story's own, one row", () => {
@@ -203,7 +205,7 @@ test("the finished film says who is in it: the maker's cast, then the story's ow
   assert.equal(storyStars({ cast: Array.from({ length: 9 }, (_, k) => ({ name: `P${k}`, faceUrl: `/avatars/p${k}.png` })) }).length, 6);
   // the Archive: story films only, under the title
   const a = read("app", "routes", "web.archive.tsx");
-  assert.ok(a.includes("stars: a.type === \"VIDEO_AD\" && !!storyHeroOf(a.metaJson) ? storyStars(a.metaJson) : [],"));
+  assert.ok(a.includes("stars: a.type === \"VIDEO_AD\" && (!!storyHeroOf(a.metaJson) || isNarratedStory(a.metaJson)) ? storyStars(a.metaJson) : [],"), "story films — and a story told again in another language");
   assert.ok(a.includes("{viewer.stars && viewer.stars.length > 0 && ("));
   assert.ok(a.includes("<b>{t(\"Starring\")}</b>"));
   assert.ok(a.includes("<span key={`${c.name}|${c.img}`} className=\"wa-vstar\" title={c.look ? `${c.name} — ${c.look}` : c.name}><img src={c.img} alt=\"\" loading=\"lazy\" /><i>{c.name}</i></span>"));

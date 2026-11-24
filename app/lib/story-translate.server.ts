@@ -15,6 +15,7 @@ import { enqueueJob } from "./job-queue.server";
 import { refundTokens, spendTokens } from "./tokens.server";
 import { estimateFilmTokens } from "./plan-config";
 import { CONTENT_LANG_NATIVE, normalizeContentLang } from "./content-lang";
+import { castCardsOf, castToken } from "./story-picture";
 import { canTellIn, isNarratedStory, storyLangOf, storyPicturesFrom, storyWordsToTranslate, toldFrom, translateAsk, translatedTreatment } from "./story-translate";
 
 /** Why nothing was started. The caller owns the sentence (and the member's language). */
@@ -148,6 +149,9 @@ export async function tellStoryAgain(opts: { shopId: string; assetId: string; la
       ...(typeof meta.captions === "string" && meta.captions ? { filmCaptions: meta.captions } : {}),
       ...(typeof meta.aspect === "string" && meta.aspect ? { filmAspect: meta.aspect } : {}),
       ...(Array.isArray(meta.cast) && meta.cast.length ? { cast: meta.cast } : {}),
+      // …and the story's OWN cast (story-picture.ts): the telling in another language has the same people in
+      // it — it says so in the Archive, and a scene redrawn from it later is drawn from the same portraits
+      ...(castToken(castCardsOf(meta)) ? { filmCastRef: castToken(castCardsOf(meta)) } : {}),
       filmLang: lang,
       filmTranslatedFrom: asset.id,
       productTitle: (told.title || asset.title || "A story").slice(0, 60),
