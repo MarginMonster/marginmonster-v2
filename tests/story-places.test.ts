@@ -97,7 +97,7 @@ test("the words say where: a scene the writer set at a place, whose words do not
   assert.ok(engine.includes("where: { type: \"string\" }, place: { type: \"string\" }, shot: { type: \"string\" },"));
   const read1 = engine.indexOf("const saidPlaces = list.map((s) => (typeof (s as { place?: unknown }).place === \"string\"");
   const tidy = engine.indexOf("list = list.map((s, i) => ({\n    visual: s.visual,");
-  const fold = engine.indexOf("if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed(s.visual, saidPlaces[i], places) }));");
+  const fold = engine.indexOf("if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed(s.visual, placeMarks[i], places) }));");
   assert.ok(read1 > 0 && tidy > read1 && fold > tidy, "read, tidied, then folded");
 });
 
@@ -376,8 +376,44 @@ test("the places a story inherited are kept whether or not its writer lists them
   assert.deepEqual(inheritPlaces([SHOP], undefined as unknown as string[], ep2), [SHOP]);
   // the writer step: read, then checked against the series it continues — a told story only
   const engine = read("app", "lib", "film-engine.server.ts");
-  assert.ok(engine.includes("const places = narrated ? inheritPlaces(listed, series?.places || [], list.map((s) => s.visual)) : [];"));
+  assert.ok(engine.includes("let places = narrated ? inheritPlaces(listed, series?.places || [], list.map((s) => s.visual)) : [];"));
   // and with the place back in the list, the sheet the episode arrived with is used from its first scene
   const visuals = ["Finn waits by the fountain.", "Edda unlocks the door of the clock tower."];
   assert.deepEqual(recurringPlaces(visuals, inheritPlaces([], [TOWER], visuals), ["the clock tower"]).map((p) => p.scenes), [[1]]);
+});
+
+test("a story whose writer listed no place is asked again, about nothing else", async () => {
+  // With a shot list in its brief the live writer returned an empty "places" three times out of three
+  // (2026-11-24) — and a story's ring of stones was low boulders, then tall megaliths, then an arch.
+  const { placesAsk, takePlaces } = await import("../app/lib/story-picture.ts");
+  const visuals = [
+    "Howl crouches low behind a fallen log at the forest's edge.",
+    "Wide shot of the clearing: thirteen bare black stones ringing bonfire light, Konrad and Greta small figures.",
+    "Over Konrad's dark shoulder, looking across the clearing at Greta.",
+    "Near and far: Howl's clawed hand gripping the fallen log; far off, Greta inside the stone ring.",
+  ];
+  const q = placesAsk(visuals);
+  assert.ok(q.startsWith("These are the pictures of ONE illustrated story, in order:\n1. Howl crouches low behind a fallen log at the forest's edge.\n2. Wide shot of the clearing"));
+  assert.ok(q.includes("Name the ONE or TWO places or things that at least TWO of these pictures are set at, in, on or beside"));
+  assert.ok(q.includes("a short plain name beginning with \"the\" (use the words the pictures already use for it)"));
+  assert.ok(q.includes("Never a person or an animal; no weather and no time of day in it."));
+  assert.ok(q.endsWith("Reply with ONLY this JSON: {\"places\": [\"name: look\"], \"scenes\": [\"a name, or an empty string, for each picture\"]}."));
+  // its answer, checked: a mark per scene, only a listed name, and only a place TWO scenes share
+  const ring = "the stone ring: thirteen bare black standing stones, waist-high and rough, in a ring around one fire pit of ash, pale stripped trees close behind them";
+  assert.deepEqual(takePlaces({ places: [ring, "the fallen log: a mossy log"], scenes: ["the fallen log", "The Stone Ring", "the stone ring", "the stone ring", "extra"] }, 4), {
+    places: [ring],
+    marks: ["", "the stone ring", "the stone ring", "the stone ring"],
+  }, "the log is in one scene only — it is no recurring place");
+  assert.deepEqual(takePlaces({ places: [ring], scenes: ["", "the stone ring"] }, 4), { places: [], marks: ["", "", "", ""] }, "one scene is not a place the story comes back to");
+  assert.deepEqual(takePlaces({ places: ["x", 4, "no colon here at all, just words"], scenes: [] }, 3), { places: [], marks: ["", "", ""] });
+  assert.deepEqual(takePlaces(null, 2), { places: [], marks: ["", ""] });
+  assert.equal(takePlaces({ places: [ring, ring.replace("stone ring", "old well"), ring.replace("stone ring", "third place")], scenes: ["the stone ring", "the stone ring", "the old well", "the old well"] }, 4).places.length, 2, "two at most");
+
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.ok(engine.includes("if (narrated && !places.length && list.length >= 3 && process.env.STORY_PLACES !== \"off\") {"), "a told story only, only when none was listed, and never with places switched off");
+  assert.ok(engine.includes("const asked = takePlaces(JSON.parse(raw), list.length);"));
+  assert.ok(engine.includes("if (asked.places.length) { places = asked.places; placeMarks = asked.marks; }"));
+  assert.ok(engine.includes("the places could not be asked for, the story is drawn from its words"), "never fatal");
+  // …and a scene it marks says so in its own words, exactly as when the writer had marked it
+  assert.ok(engine.indexOf("places = asked.places; placeMarks = asked.marks;") < engine.indexOf("visual: placeNamed(s.visual, placeMarks[i], places)"));
 });

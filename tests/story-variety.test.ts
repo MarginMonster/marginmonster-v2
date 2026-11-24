@@ -86,6 +86,10 @@ test("what the writer is told: names from the hand, the opening, and an angle on
   assert.ok(brief.includes('And not the way these began: "They say the woods go quiet right before…".'));
   assert.ok(brief.includes("• WHERE THE THEME LEAVES IT OPEN — the theme above always wins; but for whatever it does not decide, do not fall back on the usual: the kind of horror: "));
   assert.ok(brief.includes("; how it ends: "));
+  // THE TITLE: six stories from one empty idea gave "The X That Y" three times and "The Thirteenth Z" twice
+  assert.ok(brief.includes("• THE TITLE — two to five words, and its own: never \"The … That …\", never \"The … of …\" with a number in it (\"The Thirteenth …\", \"The Seventh …\"), never \"The Last …\" or \"The Keeper …\"."));
+  assert.ok(!brief.includes("And unlike these earlier ones"), "nothing to steer away from yet");
+  assert.ok(freshBrief({ template: "horror", fresh, used: { ...used, titles: ["The Buyer in the Glass", 'Say "Listen"'] }, narrated: true, open: true, english: true }).includes("And unlike these earlier ones in shape and in words: \"The Buyer in the Glass\", \"Say 'Listen'\"."));
   // an episode of a series keeps its own world: names and the opening only
   const episode = freshBrief({ template: "horror", fresh, used, narrated: true, open: false, english: true });
   assert.ok(episode.includes("• NAMES") && episode.includes("• THE OPENING") && !episode.includes("WHERE THE THEME LEAVES IT OPEN"));
@@ -114,7 +118,14 @@ test("what this maker's stories already used is read off the stories themselves"
   assert.deepEqual(used.names, ["Howl", "Marla", "Edda", "Alder", "OMAR", "Rosa"], "the name each entry starts with — a title taken off, nobody twice");
   assert.deepEqual(used.openers, ["I smelled her fear before I saw", "They say the woods go quiet right"], "how each TOLD story began — a film's first line of dialogue is not an opening");
   assert.deepEqual(used.keys, ["kind:outpost", "ending:carried"]);
-  assert.deepEqual(usedBefore([]), { names: [], openers: [], keys: [] });
+  assert.deepEqual(usedBefore([]), { names: [], openers: [], keys: [], titles: [] });
+  // …and their titles — a story's own; an episode's title is its show's
+  const titled = usedBefore([
+    { bodyJson: JSON.stringify({ treatment: { title: "The Tide That Knows Your Name", scenes: [] } }) },
+    { bodyJson: JSON.stringify({ treatment: { title: "Howl: Night tales — Episode 2: What Hunts the Hunter", scenes: [] } }) },
+    { bodyJson: JSON.stringify({ treatment: { title: "the tide that knows your name", scenes: [] } }) },
+  ]);
+  assert.deepEqual(titled.titles, ["The Tide That Knows Your Name", "What Hunts the Hunter"], "an episode's OWN name counts; its show's name does not");
 });
 
 test("the writer is dealt its hand where the story is written — a story format only, and the cast it was given keeps its names", () => {

@@ -71,9 +71,14 @@ export const motionReusable = (have: number, need: number): boolean =>
  *  werewolf standing over a puddle; the engine read the words and made him leap, drop to all fours and
  *  grow extra figures behind him, and in another scene blew a small campfire up to fill the frame — live,
  *  2026-11-24, the owner: "characters breaking".) `shot` is how the scene is seen (story-shots.ts): somebody
- *  caught mid-stride walks toward us; a face barely moves; with no plan, the small motion of every scene. */
-export function motionPrompt(visual: string, shot?: string | null): string {
-  const what = String(visual || "").replace(/\s+/g, " ").trim().slice(0, 600);
+ *  caught mid-stride walks toward us; a face barely moves; with no plan, the small motion of every scene.
+ *  …AND THE SCENE'S WORDS ARE NOT SENT AT ALL. Moved to the end of the prompt as "what the picture shows",
+ *  they were still acted out in the first whole story made that way: "inside the stone ring" grew a glowing
+ *  ring around the woman standing in it, and "small figures pacing… chanting" grew extra figures. The
+ *  picture is the scene; the engine is told only how to let it breathe. (`visual` stays in the signature:
+ *  every caller has it, and a later engine may want it.) */
+export function motionPrompt(_visual: string, shot?: string | null): string {
+  const what = "";
   const seen = isStoryShot(shot) ? shot : null;
   const move = shotMotion(seen) || "Everybody holds their place; only small movement. The camera drifts slowly forward, steady and smooth.";
   const hold = seen === "walk"

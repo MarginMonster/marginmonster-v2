@@ -162,7 +162,7 @@ export const SHORT_PLACES: Deck = [
  *  are what the piece remembers (treatment.fresh), so the next story is dealt something else. */
 export type Fresh = { names: { f: string[]; m: string[]; small: string[] }; hook: string; kind?: string; ending?: string; theme?: string; world?: string; place?: string };
 /** What this maker's earlier stories already used. */
-export type Used = { names: string[]; openers: string[]; keys: string[] };
+export type Used = { names: string[]; openers: string[]; keys: string[]; titles?: string[] };
 
 const lettersOf = (s: string): string => s.toLowerCase().replace(/[^\p{L}]/gu, "");
 /** Do two names sound like each other? The same first three letters ("Marla" / "Marion" / "Maren"), or one
@@ -191,7 +191,7 @@ const anglesOf = (template: string): Array<{ field: "kind" | "ending" | "theme" 
 
 /** Deal a story its hand. `used` is what the maker's earlier stories had; `keep` are names that must stay
  *  usable whatever was used before (the cast already chosen, a series' own cast). */
-export function dealFresh(template: string, rand: () => number = Math.random, used: Used = { names: [], openers: [], keys: [] }, keep: ReadonlyArray<string> = []): Fresh {
+export function dealFresh(template: string, rand: () => number = Math.random, used: Used = { names: [], openers: [], keys: [], titles: [] }, keep: ReadonlyArray<string> = []): Fresh {
   const taken = [...used.names, ...keep];
   const clash = (n: string): boolean => taken.some((t) => soundsLike(t, n));
   const fresh: Fresh = {
@@ -232,6 +232,9 @@ export function freshBrief(o: { template: string; fresh: Fresh; used?: Used; nar
     const before = used.openers.slice(0, 6).map((s) => `"${s.replace(/"/g, "'")}…"`).join("; ");
     lines.push(`• THE OPENING — ${f.hook}. Never begin with ${WORN_OPENERS.map((w) => `"${w}"`).join(", ")}, or anything shaped like them.${before ? ` And not the way these began: ${before}.` : ""}`);
   }
+  // THE TITLE: a writer left alone titles everything "The X That Y" or "The Thirteenth Z"
+  const titled = (used.titles || []).slice(0, 8).map((s) => `"${s.replace(/"/g, "'")}"`).join(", ");
+  lines.push(`• THE TITLE — two to five words, and its own: never "The … That …", never "The … of …" with a number in it ("The Thirteenth …", "The Seventh …"), never "The Last …" or "The Keeper …".${titled ? ` And unlike these earlier ones in shape and in words: ${titled}.` : ""}`);
   if (o.open) {
     const angle: string[] = [];
     if (o.template === "horror") {
@@ -264,6 +267,7 @@ export function usedBefore(rows: ReadonlyArray<{ bodyJson?: unknown }>): Used {
   const names: string[] = [];
   const openers: string[] = [];
   const keys: string[] = [];
+  const titles: string[] = [];
   for (const r of rows || []) {
     let b: unknown = r.bodyJson;
     if (typeof b === "string") { try { b = JSON.parse(b); } catch { continue; } }
@@ -280,6 +284,12 @@ export function usedBefore(rows: ReadonlyArray<{ bodyJson?: unknown }>): Used {
     const open = first && !/^[\p{L}][\p{L} .'-]{0,30}:\s/u.test(first) ? first.split(" ").slice(0, 7).join(" ").replace(/[.,;:!?…]+$/, "") : "";
     if (open && !openers.some((x) => x.toLowerCase() === open.toLowerCase())) openers.push(open);
     for (const k of freshKeys(t.fresh as Partial<Fresh>)) if (!keys.includes(k)) keys.push(k);
+    // (an episode's title is its show's or its series' — what is steered away from is its OWN name: three
+    //  episodes of one show were "What Follows the Trail", "What Hunts the Hunter", "What Answers in the Pines")
+    const whole = oneLine(t.title);
+    const own = /\b(?:episode|ep\.?)\s*\d+\s*[:—–-]\s*(.+)$/i.exec(whole);
+    const title = own ? oneLine(own[1]) : /\b(?:episode|ep\.?)\s*\d+\b/i.test(whole) ? "" : whole;
+    if (title && title.length <= 70 && !titles.some((x) => x.toLowerCase() === title.toLowerCase())) titles.push(title);
   }
-  return { names: names.slice(0, 40), openers: openers.slice(0, 8), keys: keys.slice(0, 16) };
+  return { names: names.slice(0, 40), openers: openers.slice(0, 8), keys: keys.slice(0, 16), titles: titles.slice(0, 8) };
 }

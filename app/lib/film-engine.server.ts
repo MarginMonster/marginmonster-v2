@@ -47,7 +47,7 @@ import { episodeTitle, seriesWriterBrief, type SeriesBrief } from "./film-series
 import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from "./dialogue-fit";
 import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 // (2026-11-24) a told story's places: a scene set at one says so in its own words
-import { inheritPlaces, placeNamed } from "./story-picture";
+import { inheritPlaces, placeNamed, placesAsk, takePlaces } from "./story-picture";
 import { tellerVisual } from "./character-series";
 import { planShots, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
@@ -918,9 +918,25 @@ export async function previewFilmTreatment(opts: {
   // …and THE SERIES' OWN PLACES are kept whether or not this episode's writer listed them: a place of the
   // series that these scenes name is listed under its own name and words, so it is drawn from its own sheet
   // (story-picture.ts → inheritPlaces: an episode 2 named "the clock tower" five times and listed nothing)
-  const places = narrated ? inheritPlaces(listed, series?.places || [], list.map((s) => s.visual)) : [];
+  let places = narrated ? inheritPlaces(listed, series?.places || [], list.map((s) => s.visual)) : [];
+  let placeMarks = saidPlaces;
+  // THE WRITER LISTED NO PLACE: it is asked again, about nothing else (story-picture.ts → placesAsk). One
+  // short question, only then; a story it cannot be answered for is drawn from its words, as before.
+  if (narrated && !places.length && list.length >= 3 && process.env.STORY_PLACES !== "off") {
+    try {
+      const raw = await anthropicText(placesAsk(list.map((s) => s.visual)), {
+        model: "claude-sonnet-5", maxTokens: 600,
+        jsonSchema: { name: "story_places", schema: { type: "object", properties: { places: { type: "array", items: { type: "string" } }, scenes: { type: "array", items: { type: "string" } } }, required: ["places", "scenes"], additionalProperties: false } },
+      });
+      const asked = takePlaces(JSON.parse(raw), list.length);
+      console.log(`[film] the writer listed no place — asked again: ${asked.places.length ? asked.places.map((p) => p.split(":")[0]).join(", ") : "none shared by two pictures"}`);
+      if (asked.places.length) { places = asked.places; placeMarks = asked.marks; }
+    } catch (e) {
+      console.error(`[film] the places could not be asked for, the story is drawn from its words: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+    }
+  }
   // …and a scene set at one of them says so in its own words ("At the ferry: …") when they did not already
-  if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed(s.visual, saidPlaces[i], places) }));
+  if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed(s.visual, placeMarks[i], places) }));
   // (what it was dealt, so the maker's next story is dealt something else)
   const dealt = fresh ? { hook: fresh.hook, ...Object.fromEntries(freshKeys(series ? null : fresh).map((k) => k.split(":"))) } : null;
   return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, ...(dealt ? { fresh: dealt } : {}), ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };

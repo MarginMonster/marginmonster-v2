@@ -89,7 +89,9 @@ test("what it is told — the scene as written, nobody talking, nothing changed"
   // picture SHOWS — leading the prompt, they were acted out (a werewolf standing over a puddle leapt,
   // dropped to all fours and grew extra figures behind him: live, 2026-11-24)
   assert.ok(p.startsWith("One continuous shot of this exact picture coming to life. Everybody holds their place; only small movement."));
-  assert.ok(p.endsWith("(What the picture shows: Pip and Tansy walk together along the path, Pip balancing apples atop Tansy's broad shell.)"));
+  // …and the scene's WORDS are not sent at all: even last, "inside the stone ring" grew a glowing ring
+  assert.ok(!p.includes("Pip") && !p.includes("Tansy") && !p.includes("What the picture shows"), "the picture is the scene — the engine is told only how to let it breathe");
+  assert.ok(p.endsWith("The same faces, the same designs, the same place; no cuts, no writing."));
   assert.ok(p.includes("HOLD THE PICTURE: every person and creature keeps the body, the pose, the size and the place it has in the picture — nobody crouches, stands up, jumps, lunges, falls, changes shape or walks out."));
   assert.ok(p.includes("Nothing new appears — no extra person, creature, face, eye or hand; a fire or a flame stays exactly the size it is."));
   // …and it follows how the scene is SEEN: somebody caught mid-stride walks; a face barely moves
@@ -103,7 +105,7 @@ test("what it is told — the scene as written, nobody talking, nothing changed"
   // a scene with nothing written still moves; a very long description is cut, the rules never are
   assert.ok(motionPrompt("").startsWith("One continuous shot") && !motionPrompt("").includes("What the picture shows"));
   const long = motionPrompt("x".repeat(2000));
-  assert.ok(long.length < 1700 && long.endsWith(`no cuts, no writing. (What the picture shows: ${"x".repeat(600)})`), "the scene's words are cut at 600; the rules are whole and come first");
+  assert.ok(long.length < 1100 && long.endsWith("no cuts, no writing.") && !long.includes("xxx"), "however long the scene's words, the engine gets the rules and nothing else");
 });
 
 test("what it costs is known, and it can be turned off", () => {

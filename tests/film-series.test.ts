@@ -67,6 +67,10 @@ test("episode numbers: a first film starts a series, an episode continues its ow
 
 test("titles: '<Series> — Episode <N>', a first film keeps its own, a series title has no 'Episode …' in it", () => {
   assert.equal(episodeTitle("The Lighthouse Keeper", 2), "The Lighthouse Keeper — Episode 2");
+  // a name cut to fit never ends mid-phrase (live, 2026-11-24: "… — Episode 3: The Rules in the")
+  assert.equal(episodeTitle("TEST Howl: Night tales", 3, "The Rules in the Thirteen Stones"), "TEST Howl: Night tales — Episode 3: The Rules");
+  assert.equal(episodeTitle("TEST Howl: Night tales", 3, "The Rules in the Stones"), "TEST Howl: Night tales — Episode 3: The Rules in the Stones", "a name that fits is not touched");
+  assert.equal(episodeTitle("A Show With A Long Enough Name To Leave Room", 4, "The Of And The Remainder Of It All"), "A Show With A Long Enough Name To Leave — Episode 4", "nothing but little words left → no name");
   assert.equal(episodeTitle("The Lighthouse Keeper", 2, "The Lighthouse Keeper — Episode 2: The Bell"), "The Lighthouse Keeper — Episode 2: The Bell");
   assert.equal(episodeTitle("The Lighthouse Keeper", 3, "The Bell Tolls Again"), "The Lighthouse Keeper — Episode 3: The Bell Tolls Again");
   assert.equal(episodeTitle("The Lighthouse Keeper", 2, "The Lighthouse Keeper"), "The Lighthouse Keeper — Episode 2");

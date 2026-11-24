@@ -154,8 +154,11 @@ export function episodeTitle(seriesTitle: string, episode: number, writerTitle?:
   if (!name) return base;
   const room = EPISODE_TITLE_MAX - base.length - 2;
   if (room < 8) return base;
-  const fit = headWords(name, room);
-  return fit ? `${base}: ${fit}` : base;
+  // (a name cut to fit must not end mid-phrase — "The Rules in the" for "The Rules in the Thirteen Stones":
+  //  the little words left dangling at the cut go too, and a name that is only an article is no name)
+  const cut = headWords(name, room);
+  const fit = cut === name ? cut : cut.replace(/(?:\s+(?:the|a|an|of|in|on|at|to|and|or|for|with|from|by|that|who|which))+$/i, "").trim();
+  return fit && !/^(?:the|a|an)$/i.test(fit) ? `${base}: ${fit}` : base;
 }
 
 /** The words a finished film TOLD, in order: a narrated story's narration, an acted film's script

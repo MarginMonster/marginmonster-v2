@@ -32,7 +32,7 @@ const oneLine = (s: string): string => s.replace(/[\u0000-\u001f\u007f]+/g, " ")
 export const EDIT_MIN_SCENES = 3;
 export const EDIT_MAX_SCENES = 12;
 
-export type EditScene = { visual: string; caption: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll" };
+export type EditScene = { visual: string; caption: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll"; /** how the scene is SEEN (story-shots.ts) — kept, so a story told again keeps its shot plan */ cam?: string };
 export type StoryToEdit = {
   /** the story it was opened from (this shop's own — the loader checked) */
   from: string;
@@ -83,6 +83,7 @@ export function storyToEditFrom(
     ...(str(s.shot) ? { shot: oneLine(str(s.shot)).slice(0, 60) } : {}),
     ...(str(s.tone) ? { tone: oneLine(str(s.tone)).slice(0, 60) } : {}),
     ...(s.kind === "perform" || s.kind === "broll" ? { kind: s.kind } : {}),
+    ...(typeof s.cam === "string" && /^[a-z]{2,12}$/.test(s.cam) ? { cam: s.cam } : {}),
   }));
   // (a story is told in the scenes that have something to say — as the render itself does)
   if (scenes.length !== tr.scenes.length || scenes.filter((s) => s.caption).length < EDIT_MIN_SCENES) return null;

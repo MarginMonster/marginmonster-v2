@@ -212,7 +212,7 @@ test("the star tells it: a show told in its star's own voice is told BY them —
   assert.ok(engine.indexOf("THE TELLER: ${teller}") < engine.indexOf("THE SIGN-OFF: the last scene's CAPTION"));
   // …and whatever it wrote, a VISUAL gets the name back
   assert.ok(engine.includes("if (teller) list = list.map((s) => ({ ...s, visual: tellerVisual(s.visual, teller) }));"));
-  assert.ok(engine.indexOf("visual: tellerVisual(s.visual, teller)") < engine.indexOf("visual: placeNamed(s.visual, saidPlaces[i], places)"), "before a place is put in front of the words");
+  assert.ok(engine.indexOf("visual: tellerVisual(s.visual, teller)") < engine.indexOf("visual: placeNamed(s.visual, placeMarks[i], places)"), "before a place is put in front of the words");
   // carried from the show to the writer
   assert.ok(read("app", "lib", "job-queue.server.ts").includes("teller: typeof payload.filmTeller === \"string\" ? payload.filmTeller : undefined,"));
 });

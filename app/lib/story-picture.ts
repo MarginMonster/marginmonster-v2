@@ -111,6 +111,44 @@ export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<st
   return out.length ? ` ${out.join(". ")}.` : "";
 }
 
+/* THE PLACES, ASKED FOR ON THEIR OWN. The story's writer is asked for them with everything else, and may
+ * answer with an empty list — it did three times out of three on the live site once its brief also carried
+ * a shot list (2026-11-24), and a story's ring of stones was then low boulders, tall megaliths and an arch.
+ * A story whose writer listed no place is asked again, about nothing else: its pictures' own words, in
+ * order, and which place two or more of them share. */
+
+/** The question. `visuals` are the scenes' picture descriptions, in order. */
+export function placesAsk(visuals: ReadonlyArray<string>): string {
+  const list = (visuals || []).map((v, i) => `${i + 1}. ${String(v || "").replace(/\s+/g, " ").trim().slice(0, 400)}`).join("\n");
+  return (
+    `These are the pictures of ONE illustrated story, in order:\n${list}\n\n` +
+    `Name the ONE or TWO places or things that at least TWO of these pictures are set at, in, on or beside — a house, a clearing, a boat, a ring of stones. Write each as "name: look": a short plain name beginning with "the" (use the words the pictures already use for it), a colon, then ONE fixed description of 15-30 words — its shape, colours and materials, and two or three details that make it THIS one and no other — true to every picture set there. Never a person or an animal; no weather and no time of day in it.\n` +
+    `Then, for EACH picture in order, give the name of the one of them that picture is set at — exactly as you wrote it — or "" when it is set somewhere else.\n` +
+    `If no place is shared by two pictures, both lists are empty. Reply with ONLY this JSON: {"places": ["name: look"], "scenes": ["a name, or an empty string, for each picture"]}.`
+  );
+}
+
+/** Its answer, checked: two places at most, each "name: look"; one mark per scene, and only a name that
+ *  was listed. Nothing usable → no places (the story is drawn from its words, as before). */
+export function takePlaces(answer: unknown, scenes: number): { places: string[]; marks: string[] } {
+  const a = answer && typeof answer === "object" && !Array.isArray(answer) ? (answer as Record<string, unknown>) : {};
+  const places = (Array.isArray(a.places) ? a.places : [])
+    .filter((p): p is string => typeof p === "string")
+    .map((p) => p.replace(/\s+/g, " ").trim().slice(0, 400))
+    .filter((p) => p.length > 12 && !!placeEntry(p).name && !!placeEntry(p).look)
+    .slice(0, STORY_PLACE_MAX);
+  const n = Math.max(0, Math.floor(scenes || 0));
+  const said = Array.isArray(a.scenes) ? a.scenes : [];
+  const marks = Array.from({ length: n }, (_, i) => {
+    const m = typeof said[i] === "string" ? String(said[i]).replace(/\s+/g, " ").trim() : "";
+    const hit = m ? places.find((p) => placeKey(placeEntry(p).name) === placeKey(m)) : undefined;
+    return hit ? placeEntry(hit).name : "";
+  });
+  // (a place only ONE scene is set at is no recurring place)
+  const kept = places.filter((p) => marks.filter((m) => placeKey(m) === placeKey(placeEntry(p).name)).length >= 2);
+  return { places: kept, marks: marks.map((m) => (kept.some((p) => placeKey(placeEntry(p).name) === placeKey(m)) ? m : "")) };
+}
+
 /** A CREATURE STAYS THAT CREATURE. The line a scene's picture is given for each of its cast who is not a
  *  person: a werewolf whose scene said "crouches" came back an ordinary black wolf (three goes running), and
  *  one whose sleeve was gripped came back a man with a wolf's head, in a clean shirt and a wristwatch (live,
