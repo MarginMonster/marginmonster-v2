@@ -375,3 +375,15 @@ test("every word the shelf says about a family is in all five languages", () => 
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of Object.values(COVER_LABEL)) assert.equal(dict.split(`\n  ${JSON.stringify(k)}:`).length - 1, 5, k);
 });
+
+test("a cleared piece takes its poster and its cover with it (they used to stay behind as orphaned files)", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../app/lib/storage-cleanup.server.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(src.includes("select: { id: true, bodyJson: true, metaJson: true, shopId: true },"));
+  assert.ok(src.includes("const shownBy = [posterOf(a.metaJson), coverOf(a.metaJson)?.src];"));
+  assert.ok(src.includes("for (const u of [b.videoUrl, b.imageUrl, ...shownBy]) {"));
+  // …only once the row was really deleted (a piece kept at the last moment keeps its pictures too)
+  assert.ok(src.indexOf("if (count !== 1) continue;") < src.indexOf("const shownBy"));
+  // …and only files of our own renders folder
+  assert.ok(src.includes('if (typeof u === "string" && u.startsWith("/renders/")) {'));
+});

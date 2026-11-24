@@ -1,4 +1,6 @@
 import { db } from "../db.server";
+import { posterOf } from "./story-poster";
+import { coverOf } from "./archive-cover";
 import fs from "node:fs";
 import path from "node:path";
 import { parseSchedule } from "./questlines";
@@ -122,7 +124,7 @@ export async function purgeStaleUnkept(): Promise<void> {
     const cutoff = new Date(now - CACHE_DAYS * 86_400_000);
     const stale = await db.asset.findMany({
       where: { type: { in: ["VIDEO_AD", "IMAGE_AD"] }, status: "PENDING", createdAt: { lt: cutoff } },
-      select: { id: true, bodyJson: true, shopId: true },
+      select: { id: true, bodyJson: true, metaJson: true, shopId: true },
       take: 1000,
     });
     if (!stale.length) return;
@@ -160,7 +162,10 @@ export async function purgeStaleUnkept(): Promise<void> {
         if (count !== 1) continue; // Kept, posted or already gone — leave the file alone
         cleared++;
         const b = JSON.parse(a.bodyJson || "{}");
-        for (const u of [b.videoUrl, b.imageUrl]) {
+        // (…and the pictures the piece was SHOWN by: its poster and its Archive cover — files of their own that
+        //  outlived the piece and were never cleared)
+        const shownBy = [posterOf(a.metaJson), coverOf(a.metaJson)?.src];
+        for (const u of [b.videoUrl, b.imageUrl, ...shownBy]) {
           if (typeof u === "string" && u.startsWith("/renders/")) {
             const base = path.basename(u);
             const fp = path.join(rendersDir, base);
