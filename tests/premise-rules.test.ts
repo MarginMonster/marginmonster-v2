@@ -32,6 +32,12 @@ test("the idea is the story: its people, its place, its events in order, and its
   for (const said of ["two children stay two children, a boy stays a boy", "a house stays a house, a bedroom stays a bedroom", "The SAME EVENTS, in the SAME ORDER", "\"a dark shadow\" stays a shadow, \"a ghost lady\" stays a ghost woman", "never turned into a werewolf, a demon, a monster or anything it did not name", "THE IDEA WINS (the safety limits at the very end still hold)"]) {
     assert.ok(PREMISE_WINS.includes(said), said);
   }
+  // THE FIRST LIVE PREVIEWS with these rules (2026-11-24): the two children stayed children — but "they locked
+  // the door" came back "locked the door in her mind", the mother "away from home" was turned into the woman on
+  // the porch by a twist, and the film's boy never ran to his parents' room
+  assert.ok(PREMISE_WINS.includes("when the idea MOVES them (\"he ran to his parents' room\"), the story moves there too"));
+  assert.ok(PREMISE_WINS.includes("for real, never as a figure of speech (\"they locked the door\" is a door being locked)"));
+  assert.ok(PREMISE_WINS.includes("a twist may come only AFTER its last event, and never undoes or contradicts anything it said (\"their mom is away from home\" stays away)"));
   // an idea is a paragraph, not a line (a tester's came to the writer ending "…the roots of a big tr")
   assert.equal(IDEA_MAX, 1200);
 });
@@ -57,6 +63,10 @@ test("the writer is given all of it — the idea's rules right after the idea, a
   // a chosen creature in a horror idea: by its look; an acted film's two are then the idea's own people
   assert.ok(eng.includes("const threatNames = tmpl.key === \"horror\" ? picked.filter((c) => keepGuess(c.desc).kind === \"monster\").map((c) => c.name) : [];"));
   assert.ok(eng.includes("${noSlop}${chosenThreat(threatNames, acted)}`"));
+  // …and its cast is the two who talk, never empty (the first live preview came back with "cast": [])
+  assert.ok(eng.includes(" is EXACTLY TWO entries: the two who talk, the idea's own people") && eng.includes(" is never empty.\" :"));
+  // an acted film goes where the idea goes
+  assert.ok(eng.includes("but when the IDEA moves them (\"he ran to his parents' room\"), that IS such a move: the shots that come after it are in the new place."));
   // the Movie Maker sends the whole idea
   const page = read("app", "routes", "web.film.tsx");
   assert.ok(page.includes("const topic = ((form.get(\"filmTopic\") as string) || \"\").trim().slice(0, IDEA_MAX);"));

@@ -567,7 +567,7 @@ export async function previewFilmTreatment(opts: {
   const threatNames = tmpl.key === "horror" ? picked.filter((c) => keepGuess(c.desc).kind === "monster").map((c) => c.name) : [];
   const actedThreat = acted && threatNames.length > 0;
   const pickedLine = picked.length
-    ? `\nTHE CAST IS ALREADY CHOSEN — write the story for exactly these characters: ${picked.map((c) => `${c.name}${c.desc ? ` — ${c.desc}` : ""}`).join("; ")}. Return them as "cast": ONE entry each${actedThreat ? " (a chosen creature that is the threat — below — excepted)" : ""}, in this order, EACH STARTING WITH THE CHARACTER'S EXACT NAME followed by that fixed look (e.g. "${picked[0].name}, …"). Use these exact names in every scene and never rename them. A character who is a creature or a cartoon stays exactly that — never turn them into a person.${narrated ? " If the story needs someone else who comes back (a victim, a friend, a parent), you may add up to TWO more recurring characters: give each a simple first name and add them to \"cast\" after the chosen ones, each entry starting with the name followed by one fixed, vivid look." : actedThreat ? " When a chosen creature is the threat, the two who talk are the idea's own people: invent each of them who was not chosen — a simple ONE-WORD first name and one fixed, vivid look that gives their age the way the idea does — and add them to \"cast\"." : picked.length < 2 ? " The story needs a second voice: invent ONE more character with a simple first name, described just as vividly, and add them to \"cast\" after the first." : " Do NOT add any other named character."}${noSlop}${chosenThreat(threatNames, acted)}`
+    ? `\nTHE CAST IS ALREADY CHOSEN — write the story for exactly these characters: ${picked.map((c) => `${c.name}${c.desc ? ` — ${c.desc}` : ""}`).join("; ")}. Return them as "cast": ONE entry each${actedThreat ? " (a chosen creature that is the threat — below — excepted)" : ""}, in this order, EACH STARTING WITH THE CHARACTER'S EXACT NAME followed by that fixed look (e.g. "${picked[0].name}, …"). Use these exact names in every scene and never rename them. A character who is a creature or a cartoon stays exactly that — never turn them into a person.${narrated ? " If the story needs someone else who comes back (a victim, a friend, a parent), you may add up to TWO more recurring characters: give each a simple first name and add them to \"cast\" after the chosen ones, each entry starting with the name followed by one fixed, vivid look." : actedThreat ? " When a chosen creature is the threat, \"cast\" is EXACTLY TWO entries: the two who talk, the idea's own people (who it is about, and whoever the idea gives them) — each entry a simple ONE-WORD first name followed by one fixed, vivid look that gives their age the way the idea does (e.g. \"Omar, a 9-year-old boy with…\"). \"cast\" is never empty." : picked.length < 2 ? " The story needs a second voice: invent ONE more character with a simple first name, described just as vividly, and add them to \"cast\" after the first." : " Do NOT add any other named character."}${noSlop}${chosenThreat(threatNames, acted)}`
     : "";
   const castLine = pickedLine ? pickedLine : tmpl.castBible
     ? (tmpl.sing && !tmpl.childSafe
@@ -709,7 +709,7 @@ export async function previewFilmTreatment(opts: {
       // (a sound comes FIRST, in the shot whose line answers it; heard from out of sight, it is made by nothing
       //  on screen; and what is said about it is what is heard — the owner's knocking film, 2026-11-24)
       `${HEARD_BEFORE_SAID}\n` +
-      `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places.\n` +
+      `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places — but when the IDEA moves them ("he ran to his parents' room"), that IS such a move: the shots that come after it are in the new place.\n` +
       // (a horror film ends on something SEEN — said last, so it is read as the exception to the line above)
       (tmpl.key === "horror" ? `${SEEN_AT_THE_END}\n` : "")
     : tmpl.sung
@@ -949,11 +949,14 @@ export async function previewFilmTreatment(opts: {
   // despite being told the EXACT names. So read the name it ACTUALLY used for each cast slot (the leading
   // token of that cast description) and HARD-SUBSTITUTE it with the provided name across the whole
   // treatment — the only thing that reliably kills "AI slop" names + lets the per-scene cast match.
-  if (cast && cast.length && (artistName || castNames.length || picked.length)) {
+  // (a chosen creature that is an acted film's THREAT has no cast entry — premise-rules.ts → chosenThreat — so it
+  //  is not one of the names the cast is held to: matched by place, the boy in the first entry was renamed after it)
+  const castPicked = actedThreat ? picked.filter((c) => !threatNames.includes(c.name)) : picked;
+  if (cast && cast.length && (artistName || castNames.length || castPicked.length)) {
     const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const subs: Array<{ from: string; to: string }> = [];
     cast.forEach((desc, i) => {
-      const want = picked.length ? picked[i]?.name : i === 0 ? artistName : castNames[i - 1];
+      const want = castPicked.length ? castPicked[i]?.name : i === 0 ? artistName : castNames[i - 1];
       if (!want) return;
       const used = (desc.split(/[,—:–(-]/)[0] || "").trim();
       // Only treat the leading token as a name to swap if it LOOKS like one (1-3 capitalised words) and differs.
@@ -975,7 +978,7 @@ export async function previewFilmTreatment(opts: {
   // Only a cast the WRITER invented: people the maker picked are drawn from their own photos (film-dialogue
   // keeps the written look of anybody with a cast photo out of every prompt), and their ages are the maker's.
   let ageNote: FilmTreatment["ageFit"];
-  if (storyFormat && !picked.length && cast && cast.length === 2) {
+  if (storyFormat && !castPicked.length && cast && cast.length === 2) {
     const spoken = list.map((s) => s.caption || "");
     const problem = castAgeProblem({ idea: topic, cast, lines: spoken });
     if (problem) {
