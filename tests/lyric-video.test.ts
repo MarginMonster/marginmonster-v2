@@ -17,8 +17,8 @@ import {
   RIGHTS_ASK, RIGHTS_LINE, RIGHTS_NOTE, STILLS_MAX, STILLS_MIN, beatGrid, bigWord, chooseLines, chunkGraph,
   directionBrief, fallbackDirection, gridFromBeats, isSongLink, lineWindows, linesFromHeard, linesFromTimed, linkFailure, linkTitleOf,
   lowOnsets, lyricAccent, lyricAss, lyricEtaMinutes, lyricFrame, lyricLookOf, lyricShapeOf, motionFilter, pagesOf, parseDirection,
-  pastedLines, pictureWords, planOk, renderChunks, scenePlan, scrimAlpha, shotFrames, shotPulses, songFileOf, songRightsOf,
-  songTitleOf, stillPrompt, toolDetail, voicedWords, youTubeId, youTubeWatch, ytDlpArgs,
+  pastedLines, pictureWords, planOk, redactLogins, renderChunks, scenePlan, scrimAlpha, shotFrames, shotPulses, songFileOf,
+  songRightsOf, songTitleOf, stillPrompt, toolDetail, voicedWords, youTubeId, youTubeWatch, ytDlpArgs,
   type BeatGrid, type LyricLine, type LyricLook,
 } from "../app/lib/lyric-video.ts";
 import { readFontMetrics, textEms } from "../app/lib/font-metrics.ts";
@@ -484,6 +484,11 @@ test("what the fetching tool is asked: one video's audio, AAC first, nothing liv
     assert.ok(!ytDlpArgs("u", "o", { potCli: bad }).includes("--extractor-args"), bad);
   }
   assert.deepEqual(p.slice(-2), ["--", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"]);
+  // the proxy (YT_DLP_PROXY) — YouTube blocks our server's own address; only a proxy address, nothing else
+  const x = ytDlpArgs("u", "o", { proxy: "http://user:secret@proxy.example:8000" });
+  assert.equal(x[x.indexOf("--proxy") + 1], "http://user:secret@proxy.example:8000");
+  assert.ok(ytDlpArgs("u", "o", { proxy: "socks5h://p.example:1080" }).includes("--proxy"));
+  for (const bad of ["", "proxy.example:8000", "file:///etc/passwd", "http://a b", "--exec=x"]) assert.ok(!ytDlpArgs("u", "o", { proxy: bad }).includes("--proxy"), bad);
   assert.equal(LINK_MAX_SECONDS, 900);
   assert.ok(LINK_TIMEOUT_MS <= 80_000, "a fetch ends well inside the 100 s the site's proxy allows a request");
   assert.equal(LINK_FETCHES_A_DAY, 12);
@@ -526,6 +531,10 @@ test("an operator sees why a fetch was refused: the tool's errors, warnings and 
   assert.ok(!d.includes("some request number"), "not the whole log");
   assert.ok(d.split("\n").length <= 12 && d.length <= 1800);
   assert.equal(toolDetail("", ""), "");
+  // a proxy's login is never shown or logged
+  const leak = toolDetail("", "WARNING: [youtube] Unable to connect via http://user:s3cret@proxy.example:8000 — retrying\nERROR: [youtube] x: HTTP Error 407");
+  assert.ok(!leak.includes("s3cret") && !leak.includes("user:") && leak.includes("http://***@proxy.example:8000"));
+  assert.equal(redactLogins("socks5h://a:b@h:1 and https://plain.example/x"), "socks5h://***@h:1 and https://plain.example/x");
 });
 
 test("a fetched song's title: Artist - Track when YouTube knows them, else the video's title without the junk", () => {
@@ -561,7 +570,7 @@ test("the making (lyric-video.server.ts): listened to as the app listens to sing
   assert.ok(link.includes("if (recent.length >= LINK_FETCHES_A_DAY) return { ok: false, message: LINK_MSG.many"), "a day's cap per account");
   assert.ok(link.includes("LINK_TIMEOUT_MS)") && link.includes("return { ok: false, message: LINK_MSG[why], why, detail };"));
   // the PO-token program goes in when the machine has it, and the run is verbose so a refusal says why
-  assert.ok(link.includes("{ potCli: fs.existsSync(pot) ? pot : undefined, verbose: true }"));
+  assert.ok(link.includes("{ potCli: fs.existsSync(pot) ? pot : undefined, verbose: true, proxy: process.env.YT_DLP_PROXY || undefined }"));
   assert.ok(s.includes('export const potBin = (): string => process.env.BGUTIL_POT_PATH || "/usr/local/bin/bgutil-pot";'));
   // …and only an operator is shown what the tool said
   assert.ok(read("app", "routes", "api.lyric-video.tsx").includes("...(isAdminEmail(id.account.email) && got.detail ? { detail: got.detail } : {})"));

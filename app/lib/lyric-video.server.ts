@@ -116,7 +116,8 @@ export async function songFromLink(link: string, o: { shopId?: string; log?: (s:
   const t0 = Date.now();
   try {
     const pot = potBin();
-    const ran = await runTool(bin, ytDlpArgs(source, path.join(dir, `ytsrc-${tag}.%(ext)s`), { potCli: fs.existsSync(pot) ? pot : undefined, verbose: true }), LINK_TIMEOUT_MS);
+    // YT_DLP_PROXY: where the fetch goes out from — YouTube blocks the server's own address (ytDlpArgs)
+    const ran = await runTool(bin, ytDlpArgs(source, path.join(dir, `ytsrc-${tag}.%(ext)s`), { potCli: fs.existsSync(pot) ? pot : undefined, verbose: true, proxy: process.env.YT_DLP_PROXY || undefined }), LINK_TIMEOUT_MS);
     const files = mine();
     const media = files.find((f) => !/\.(?:json|part|ytdl|tmp|temp)$/i.test(f) && !/\.part-Frag/i.test(f));
     if (!media) {

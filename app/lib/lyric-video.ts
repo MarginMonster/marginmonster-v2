@@ -141,12 +141,18 @@ export const LINK_TIMEOUT_MS = 75_000;
  *  no re-encoding — with its facts in a .info.json beside it. No playlist, nothing live, nothing too long or big;
  *  no config file on the machine can add to it. `potCli`: the PO-token program (bgutil-pot, installed by
  *  scripts/fetch-yt-dlp.mjs) its plugin calls for each request — YouTube refuses cloud servers without one more
- *  often than with. `verbose`: the tool says which helpers it loaded and why it was refused (toolDetail). */
-export function ytDlpArgs(watchUrl: string, outTemplate: string, o: { potCli?: string; verbose?: boolean } = {}): string[] {
+ *  often than with. `verbose`: the tool says which helpers it loaded and why it was refused (toolDetail).
+ *  `proxy`: where the fetch goes out from. From our server YouTube answered "HTTP Error 429: Too Many Requests",
+ *  then "Sign in to confirm you're not a bot" (2026-11-24, live) — its block is on the server's own address, before
+ *  any token is asked for — so a link works only through another address: a residential proxy, set as the
+ *  YT_DLP_PROXY environment variable (the owner's account and money, his call). The PO-token helper is handed the
+ *  same proxy by its plugin. */
+export function ytDlpArgs(watchUrl: string, outTemplate: string, o: { potCli?: string; verbose?: boolean; proxy?: string } = {}): string[] {
   return [
     "--ignore-config", "--no-playlist", "--no-progress", "--no-mtime",
     ...(o.verbose ? ["--verbose"] : []),
     ...(o.potCli && /^\/[\w./-]+$/.test(o.potCli) ? ["--extractor-args", `youtubepot-bgutilcli:cli_path=${o.potCli}`] : []),
+    ...(o.proxy && /^(?:https?|socks5h?|socks4a?):\/\/[^\s'"]+$/i.test(o.proxy) ? ["--proxy", o.proxy] : []),
     "--match-filter", `!is_live & duration <= ${LINK_MAX_SECONDS}`,
     "--max-filesize", "60M",
     "--socket-timeout", "20", "--retries", "2",
@@ -162,8 +168,10 @@ export function ytDlpArgs(watchUrl: string, outTemplate: string, o: { potCli?: s
 export function toolDetail(out: string, err: string): string {
   const keep = /ERROR|WARNING|\[pot\]|PO Token|JS runtime|JavaScript|\bdeno\b|[Pp]lugin|not a bot|HTTP Error|\[debug\] yt-dlp version/;
   const lines = `${out || ""}\n${err || ""}`.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && keep.test(l));
-  return lines.slice(-12).join("\n").slice(-1800);
+  return redactLogins(lines.slice(-12).join("\n").slice(-1800));
 }
+/** A proxy's login never leaves the server in anything shown or logged: "http://user:pass@host" → "http://***@host". */
+export const redactLogins = (s: string): string => String(s || "").replace(/([a-z][a-z0-9+.-]*:\/\/)[^@\s'"/]+@/gi, "$1***@");
 
 /** What a member is told when a link can't be fetched (English source words — the route runs them through tr()). */
 export const LINK_MSG = {
