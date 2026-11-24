@@ -765,7 +765,8 @@ export default function WebDashboard() {
           <input className="wb-in" name="tagline" placeholder={t("Slow mornings, served hot.")} defaultValue={d.brand?.tagline || ""} />
           <label className="wb-lbl">{t("Content language — everything generates in this language")}</label>
           <select className="wb-sel" name="contentLang" defaultValue={d.contentLang}>
-            {Object.entries(d.langs).map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+            {/* (a name is shown without the script note the writer is given — "Urdu", not "Urdu (… in Urdu script)") */}
+            {Object.entries(d.langs).map(([code, name]) => <option key={code} value={code}>{String(name).replace(/ \(.*\)$/, "")}</option>)}
           </select>
           <div style={{ marginTop: 14 }}>
             <button className="wb-btn ghost" disabled={busy}>{d.hasBrand ? t("Update brand voice") : t("Save brand voice")}</button>

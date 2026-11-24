@@ -24,11 +24,15 @@ import {
   runFfmpeg,
   ffprobeDuration,
   probeVideoDims,
+  resolveCaptionFont,
   resolveTextFont,
   assertPlayableVideo,
   download,
 } from "./ugc-ad-pipeline.server";
 import { mirrorRender, storageEnabled } from "./object-storage.server";
+import { needsShaping } from "./content-lang";
+import { captionGraph } from "./caption-burn.server";
+import { subtitleCards, subtitleChars } from "./narrated-core";
 
 export type VideoEditOp = "trim" | "caption" | "speed";
 
@@ -179,6 +183,7 @@ export async function editVideo(params: EditVideoParams): Promise<string> {
   fs.mkdirSync(rendersDir(), { recursive: true });
   const fileName = `vid-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.mp4`;
   const outPath = path.join(rendersDir(), fileName);
+  let captionCleanup = () => {};
 
   try {
     const srcPath = await materializeSource(params.sourceVideoUrl, tmpDir);
@@ -197,6 +202,19 @@ export async function editVideo(params: EditVideoParams): Promise<string> {
       if (end - start < 0.1) throw new Error(`[video-edit] trim window too small after clamping to ${dur.toFixed(2)}s`);
       // -ss/-to as OUTPUT options (after -i) for frame-accurate, re-encoded cuts.
       args = ["-y", "-i", srcPath, "-ss", start.toFixed(3), "-to", end.toFixed(3), ...encodeTail(outPath)];
+    } else if (op === "caption" && needsShaping(params.captionText)) {
+      // HINDI, URDU (content-lang.ts → needsShaping): drawtext cannot shape them — the caption is drawn by
+      // the subtitle renderer, the way a story's subtitles are (caption-burn.server.ts), in a line or two
+      // along the bottom for the whole clip, in the face that has the script
+      const dims = probeVideoDims(srcPath);
+      const W = dims?.w && dims.w > 0 ? dims.w : 720, H = dims?.h && dims.h > 0 ? dims.h : 1280;
+      const text = (params.captionText || "").replace(/\s+/g, " ").trim();
+      const cards = subtitleCards([text], [{ t0: 0, t1: (ffprobeDuration(srcPath) || 1) + 1 }], subtitleChars(W, H));
+      if (!cards.length) throw new Error("[video-edit] caption needs non-empty captionText");
+      const cap = captionGraph(cards, "subtitles", await resolveCaptionFont(text), W, H);
+      captionCleanup = cap.cleanup;
+      if (!cap.plain.length) throw new Error("[video-edit] no font here draws these words");
+      args = ["-y", "-i", srcPath, "-vf", cap.plain.join(","), ...encodeTail(outPath)];
     } else if (op === "caption") {
       const safe = captionSafe(params.captionText || "");
       if (!safe) throw new Error("[video-edit] caption needs non-empty captionText");
@@ -255,6 +273,7 @@ export async function editVideo(params: EditVideoParams): Promise<string> {
     try { fs.rmSync(outPath, { force: true }); } catch { /* nothing to remove */ }
     throw e instanceof Error ? e : new Error(`[video-edit] ${String(e)}`);
   } finally {
+    captionCleanup();
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best-effort */ }
   }
 }

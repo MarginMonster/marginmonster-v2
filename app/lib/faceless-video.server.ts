@@ -12,7 +12,9 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
-import { repCreate, repPoll, downloadBuffer, runFfmpeg, ffprobeDuration, resolveTextFont, checkpointJob } from "./ugc-ad-pipeline.server";
+import { repCreate, repPoll, downloadBuffer, runFfmpeg, ffprobeDuration, resolveCaptionFont, checkpointJob } from "./ugc-ad-pipeline.server";
+import { captionGraph } from "./caption-burn.server";
+import { speechModelVoice } from "./story-voice";
 import { readVoiceSound } from "./voice-sound.server";
 import { brollStill } from "./image-generation.server";
 import { musicBedToDisk } from "./music-generation.server";
@@ -22,7 +24,7 @@ import { ownNarratorVoice } from "./voice-clone.server";
 import { SUNG_VAD } from "./lyric-sync";
 import { langDirective, normalizeContentLang, voiceLangOpts } from "./content-lang";
 import { trimTitle } from "./text-trim";
-import { boldCards, captionFilters, listenAgain, listenQuality, listenedWords, sceneWindows, scriptWordTimes, sureWords, timingRecord, type Span, type TimingRecord, type Window } from "./narrated-core";
+import { boldCards, listenAgain, listenQuality, listenedWords, sceneWindows, scriptWordTimes, sureWords, timingRecord, type Span, type TimingRecord, type Window } from "./narrated-core";
 
 // Truncate on a sentence boundary so a hard char-cap never feeds the writer a
 // dangling half-spec ("…holds up to 2L and is made from"). Falls back to the
@@ -199,8 +201,10 @@ async function assembleFaceless(opts: {
     : norm.map(() => voDur / N);
   const hasMusic = !!opts.musicPath && fs.existsSync(opts.musicPath);
   // the same big few-words cards the narrated stories use (narrated-core): one size, the punctuation a
-  // card ends on not drawn, and a script without spaces (Chinese) cut and measured as it is drawn
-  const captions = captionFilters(opts.caps, "bold", opts.fontFile, 720, 1280);
+  // card ends on not drawn, and a script without spaces (Chinese) cut and measured as it is drawn — drawn
+  // the way the stories draw them too (caption-burn.server.ts): Hindi and Urdu by the subtitle renderer
+  const cap = captionGraph(opts.caps, "bold", opts.fontFile, 720, 1280);
+  const captions = cap.plain;
 
   // Build the whole ffmpeg arg list for a given quality rung. Captions, the
   // music bed and the Ken-Burns motion are all nice-to-have; the VO over the
@@ -279,12 +283,14 @@ async function assembleFaceless(opts: {
 
   await beat();
   let lastErr = "";
-  for (const [cap, kb, mus] of rungs) {
-    const run = await runFfmpeg(buildArgs(cap, kb, mus));
-    if (run.status === 0 && produced()) return;
-    lastErr = (run.stderr || "").slice(-240);
-    await beat(); // heartbeat between rungs so a multi-encode assembly can't near the 25-min reaper
-  }
+  try {
+    for (const [withCaps, kb, mus] of rungs) {
+      const run = await runFfmpeg(buildArgs(withCaps, kb, mus));
+      if (run.status === 0 && produced()) return;
+      lastErr = (run.stderr || "").slice(-240);
+      await beat(); // heartbeat between rungs so a multi-encode assembly can't near the 25-min reaper
+    }
+  } finally { cap.cleanup(); }
   throw new Error(`[faceless] ffmpeg failed after ${rungs.length} rungs: ${lastErr}`);
 }
 
@@ -366,7 +372,8 @@ export async function generateFacelessVideo(opts: {
   // The merchant's own recorded voice ("own:<voiceId>") narrates while it is still one of the shop's
   // voices; a voice removed since quietly falls back to a stock narrator, so a channel keeps posting.
   const ownVoice = await ownNarratorVoice(opts.shopId, opts.voiceKey);
-  const voiceId = ownVoice || VOICE_MAP[opts.voiceKey || ""] || VOICE_MAP[`${script.voiceGender || "f"}-warm`] || VOICE_MAP["f-warm"];
+  // (in Hindi and Urdu a stock voice is read by MiniMax's own Hindi voice of the same kind — story-voice.ts)
+  const voiceId = ownVoice || speechModelVoice(VOICE_MAP[opts.voiceKey || ""] || VOICE_MAP[`${script.voiceGender || "f"}-warm`] || VOICE_MAP["f-warm"], lang);
 
   // 2) VOICEOVER — one MiniMax read (turbo fallback). Persist to a public
   //    /renders mp3 so WhisperX can fetch it and it survives a restart.
@@ -545,7 +552,7 @@ export async function generateFacelessVideo(opts: {
   let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
   // (the resolver only fails for words Poppins cannot draw — Chinese with no font fetched: the video
   //  ships without captions then. Drawing them with Poppins made every caption a row of boxes.)
-  try { fontFile = await resolveTextFont(fullScript); }
+  try { fontFile = await resolveCaptionFont(fullScript); }
   catch (e) { caps = []; console.error(`[faceless] no font for these words — no captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   const outName = `vid-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);

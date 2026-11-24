@@ -40,3 +40,44 @@ export function fontMagic(head: ArrayLike<number> | null | undefined): boolean {
 /** Is this download really the font — big enough to hold Chinese, and a font at all? */
 export const looksLikeCjkFont = (bytes: ArrayLike<number> | null | undefined): boolean =>
   !!bytes && bytes.length >= CJK_FONT_MIN_BYTES && fontMagic(bytes);
+
+/* THE FONTS FOR WORDS THAT ARE SHAPED — Hindi and Urdu (content-lang.ts → needsShaping). They are drawn by
+ * the subtitle renderer (libass, which shapes them), never by drawtext, from fonts SHIPPED in public/fonts:
+ * they are small, so — unlike the Chinese one — nothing is fetched and nothing can fail to arrive.
+ *   Devanagari  Poppins-Bold.ttf, the caption font itself: it has Devanagari, conjuncts and all (drawn and
+ *               looked at, 2026-11-24: क्षेत्र धर्म विद्यालय स्त्री क्रिकेट शुद्ध कार्य — every one right)
+ *   Urdu        NotoNastaliqUrdu-Bold.ttf (Google's Noto, SIL Open Font License; the "full" build from
+ *               notofonts.github.io, 296,168 bytes — it has Latin too, so a brand name in an Urdu line is
+ *               drawn in the same face). Nastaliq is how Urdu is written and read in Pakistan; Naskh reads
+ *               as Arabic.
+ * `box` / `top` / `bottom`: the font's own OS/2 "win" box in ems, as font-metrics.ts reads it (a test holds
+ * them to the files) — the renderer sizes a font by that box, not by its em, and stands a line on its foot.
+ * The rest is the look, measured on rendered frames (scratchpad langs/measure-glyph.mjs): */
+export type ShapedFace = {
+  family: string;
+  file: string;
+  box: number; top: number; bottom: number;
+  /** the em it is drawn at ÷ the em of the Latin card in the same place (Nastaliq's letters sit small in their em) */
+  scale: number;
+  /** the widest one counted letter (narrated-core → textWidth) was measured to draw, in ems, with room to
+   *  spare: Hindi in Poppins 0.48–0.58 (Latin capitals 0.59), Urdu in Nastaliq 0.38–0.47 */
+  glyph: number;
+  /** from one subtitle line's baseline to the next, in ems (Nastaliq's words are 2–2.5 ems tall) */
+  lineGap: number;
+  /** subtitles on a dark box like the Latin ones — or outlined, with a shadow: the renderer boxes every
+   *  letter, and Nastaliq's tall sloping words make that a ragged ladder (looked at) */
+  boxed: boolean;
+};
+export const SHAPED_FACES: Readonly<Record<"deva" | "urdu", ShapedFace>> = {
+  deva: { family: "Poppins", file: "Poppins-Bold.ttf", box: 1.762, top: 1.135, bottom: 0.627, scale: 1, glyph: 0.62, lineGap: 1.85, boxed: true },
+  urdu: { family: "Noto Nastaliq Urdu", file: "NotoNastaliqUrdu-Bold.ttf", box: 3.286, top: 1.904, bottom: 1.382, scale: 1.15, glyph: 0.5, lineGap: 2.5, boxed: false },
+};
+const ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+const DEVANAGARI = /[ऀ-ॿ꣠-ꣿ]/;
+/** The face that draws these words — Urdu (any Arabic-script word) in Nastaliq, Hindi in Poppins — or null
+ *  when neither does (another shaped script: no words, never boxes). */
+export function shapedFaceFor(text: string): ShapedFace | null {
+  if (ARABIC_SCRIPT.test(text)) return SHAPED_FACES.urdu;
+  if (DEVANAGARI.test(text)) return SHAPED_FACES.deva;
+  return null;
+}

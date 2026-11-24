@@ -37,12 +37,15 @@ test("only a narrated story can be told again, and only in a language it is not 
   assert.equal(storyLangOf(J({ kind: "narrated" }), "fr"), "fr");
   assert.equal(storyLangOf(J({ kind: "narrated" }), null), "en");
   assert.equal(storyLangOf(J({ lang: "klingon" }), "de"), "en", "an unknown code is English");
-  assert.deepEqual(translateTargets("en"), [{ code: "es", name: "Español" }, { code: "fr", name: "Français" }, { code: "de", name: "Deutsch" }, { code: "zh", name: "中文" }]);
-  assert.deepEqual(translateTargets("es").map((t) => t.code), ["en", "fr", "de", "zh"]);
+  assert.deepEqual(translateTargets("en"), [{ code: "es", name: "Español" }, { code: "fr", name: "Français" }, { code: "de", name: "Deutsch" }, { code: "zh", name: "中文" }, { code: "hi", name: "हिन्दी" }, { code: "ur", name: "اردو" }]);
+  assert.deepEqual(translateTargets("es").map((t) => t.code), ["en", "fr", "de", "zh", "hi", "ur"]);
   assert.equal(canTellIn("es", "en"), true);
   assert.equal(canTellIn("ES", "en"), true);
   assert.equal(canTellIn("en", "en"), false, "not into itself");
-  assert.equal(canTellIn("ur", "en"), false, "only the languages stories are written in");
+  // (2026-11-24: Hindi and Urdu are story languages now — a tester in Pakistan asked for Urdu)
+  assert.equal(canTellIn("ur", "en"), true);
+  assert.equal(canTellIn("hi", "ur"), true);
+  assert.equal(canTellIn("ja", "en"), false, "only the languages stories are written in");
   assert.equal(canTellIn("", "en"), false);
   assert.equal(canTellIn(null, "en"), false);
 });
@@ -113,7 +116,7 @@ test("a re-telling is not an episode: a series continues from the original, in t
   assert.deepEqual(cards.map((c) => c.from), ["o1"]);
   // …but it can itself be told in yet another language
   assert.equal(isNarratedStory(retold.metaJson), true);
-  assert.deepEqual(translateTargets(storyLangOf(retold.metaJson, "en")).map((t) => t.code), ["en", "fr", "de", "zh"]);
+  assert.deepEqual(translateTargets(storyLangOf(retold.metaJson, "en")).map((t) => t.code), ["en", "fr", "de", "zh", "hi", "ur"]);
 });
 
 test("the pipeline tells it in the language asked, and a finished story records what a re-telling needs", () => {
@@ -192,17 +195,21 @@ test("a language a story is already told in opens that telling; only the others 
     { code: "fr", name: "Français" },
     { code: "de", name: "Deutsch" },
     { code: "zh", name: "中文", have: "zh2" },
-  ], "Spanish and Chinese are there to open (the newest one); French and German are still to make — and an acted film is nobody's telling");
+    { code: "hi", name: "हिन्दी" },
+    { code: "ur", name: "اردو" },
+  ], "Spanish and Chinese are there to open (the newest one); French, German, Hindi and Urdu are still to make — and an acted film is nobody's telling");
   // on a telling: the same family, seen from its own language
   assert.deepEqual(of("es1"), [
     { code: "en", name: "English", have: "first" },
     { code: "fr", name: "Français" },
     { code: "de", name: "Deutsch" },
     { code: "zh", name: "中文", have: "zh2" },
+    { code: "hi", name: "हिन्दी" },
+    { code: "ur", name: "اردو" },
   ]);
-  assert.deepEqual(of("zh1").map((c) => c.have || "-"), ["first", "es1", "-", "-"], "its own language is not offered — not even its twin");
+  assert.deepEqual(of("zh1").map((c) => c.have || "-"), ["first", "es1", "-", "-", "-", "-"], "its own language is not offered — not even its twin");
   // a telling whose first story is gone stands by itself; a stranger's telling is not family
-  assert.deepEqual(of("other").map((c) => c.have || "-"), ["-", "-", "-", "-"]);
+  assert.deepEqual(of("other").map((c) => c.have || "-"), ["-", "-", "-", "-", "-", "-"]);
   assert.equal(tellChoices(rows[4], rows, "en"), null, "not a narrated story");
   assert.equal(toldFrom(rows[0].metaJson), "first");
   assert.equal(toldFrom(rows[5].metaJson), "");

@@ -19,7 +19,8 @@ import { drawable as cardDrawable } from "../app/lib/narrated-core.ts";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (f: string) => fs.readFileSync(path.join(root, "app", "lib", f), "utf8").replace(/\r\n/g, "\n");
 
-// (a faceless video draws its captions through narrated-core's captionFilters since 2026-11-23 — it has no drawtext of its own)
+// (a faceless video draws its captions through narrated-core's captionFilters since 2026-11-23 — by way of
+//  caption-burn.server.ts's captionGraph since 2026-11-24 — it has no drawtext of its own)
 const VIDEO_FILES = ["ugc-ad-pipeline.server.ts", "film-engine.server.ts", "video-edit.server.ts", "narrated-core.ts"];
 
 test("the caption cards and the timed words keep a percent sign — and still agree with each other", () => {
@@ -53,5 +54,6 @@ test("every caption drawtext is literal — a kept % would otherwise blank the w
   assert.equal(total, 6, "ugc ×2, narrated-core ×2, film-engine, video-edit");
   const faceless = read("faceless-video.server.ts");
   assert.ok(!faceless.includes("drawtext="), "a faceless video has no caption drawing of its own");
-  assert.ok(faceless.includes("const captions = captionFilters(opts.caps, \"bold\", opts.fontFile, 720, 1280);"), "it draws the same cards the stories do");
+  // (…drawn the way the stories draw them: caption-burn.server.ts — Hindi and Urdu by the subtitle renderer)
+  assert.ok(faceless.includes("const cap = captionGraph(opts.caps, \"bold\", opts.fontFile, 720, 1280);\n  const captions = cap.plain;"), "it draws the same cards the stories do");
 });

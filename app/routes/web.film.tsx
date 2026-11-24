@@ -15,7 +15,8 @@ import { useT } from "../lib/ui-lang";
 import { estimateSpeakSeconds, clipFill, secondsLabel, CLIP_MAX_SECONDS, TYPICAL_SHOT_SECONDS } from "../lib/speech-meter";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { readUiLang, tr } from "../lib/ui-i18n";
-import { normalizeContentLang } from "../lib/content-lang";
+import { CONTENT_LANG_NATIVE, askedContentLang, normalizeContentLang } from "../lib/content-lang";
+import { LangToggle } from "../components/LangToggle";
 import { db } from "../db.server";
 import { isAdminEmail } from "../lib/admin.server";
 import { planTrialing, refundTokens, spendTokens, tokensRemainingLive } from "../lib/tokens.server";
@@ -468,6 +469,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const clampScenes = (n: number) => (narrated ? clampNarrated(n) : Math.max(tmpl.minScenes, Math.min(maxScenes, Math.round(n || tmpl.defaultScenes))));
   // The cast the maker picked before the script was written (story formats).
   const storyCast = tmpl.lipSyncSinger ? [] : parseStoryCast(form.get("filmCast") as string);
+  // THE LANGUAGE IT IS TOLD IN — the story formats' "Told in" (the account's content language, set from the
+  // page as it is picked): sent with every write and with the render, so a story is never written in one
+  // language and voiced in another while that setting is still on its way. Unknown or absent: the shop's.
+  const askedLang = tmpl.lipSyncSinger || tmpl.sung ? null : askedContentLang(form.get("filmLang"));
+  const writeLang = askedLang || shop.contentLang;
   // NEXT EPISODE: the series this story continues (story formats only — never a music video)
   const seriesFrom = ((form.get("seriesFrom") as string) || "").trim();
   const seriesHit = seriesFrom && tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung && (intent === "previewFilmTreatment" || intent === "previewFilmScenes" || intent === "film")
@@ -496,7 +502,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const castNamesRaw = ((form.get("filmCastNames") as string) || "").trim();
     if (castNamesRaw) { try { const a = JSON.parse(castNamesRaw); if (Array.isArray(a)) castNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     try {
-      const args = { shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, sceneSeconds: filmSceneSeconds, contentLang: shop.contentLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(tmpl.lipSyncSinger ? { featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name) } : {}), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) } : {}), ...(series ? { series } : {}) };
+      const args = { shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, sceneSeconds: filmSceneSeconds, contentLang: writeLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(tmpl.lipSyncSinger ? { featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name) } : {}), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look })) } : {}), ...(series ? { series } : {}) };
       let treatment;
       // One more go before the maker is told it failed: the first write after a restart failed once on
       // the live site (2026-11-21) and the very same request then succeeded twelve times running.
@@ -680,7 +686,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (narrated) {
         // NARRATED: one picture a scene; picked cast are drawn from their own pictures.
         let tr0 = approvedTreatment as unknown as import("../lib/film-engine.server").FilmTreatment | undefined;
-        if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look })), series });
+        if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: writeLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look })), series });
         const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
         // (the story's own cast is drawn here — a portrait each — unless it is the next episode of a series,
         //  which opens with the faces the last one had)
@@ -979,6 +985,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(cast ? { cast } : {}),
         ...(cast && filmLockVoices ? { filmLockVoices: true } : {}),
         ...(narrated ? { filmMode: "narrated", ...(filmNarrator ? { filmNarrator } : {}) } : {}),
+        // (…told in the language it was written in — an edited story's own, below, wins)
+        ...(narrated && askedLang ? { filmLang: askedLang } : {}),
         // THE LADDER (story-motion.ts): a told story asked for over STILL pictures — nothing is spent on motion
         ...(narrated && storyPicturesOf(form.get("filmPictures")) === "still" ? { filmPictures: "still" } : {}),
         ...(filmCaptions !== "off" || narrated ? { filmCaptions } : {}),
@@ -2071,6 +2079,23 @@ export default function FilmStudio() {
   const wipeNote = (prefix: string) => (wipeArm.startsWith(prefix)
     ? <p className="mm-note mm-shape-warn" role="status">{t("That starts your script over — tap it again to go ahead.")}</p>
     : null);
+  // THE LANGUAGE A STORY IS TOLD IN (content-lang.ts) — written, spoken and captioned. It is the account's
+  // content language (the Studio's "Writing in" is the same setting), picked here for the story formats and
+  // sent with every write and with the render (the action → askedLang). A story already written in another
+  // language starts over — its words ARE the story — asked first, like every other start-over. Not for a
+  // sung format (its song's language is the music model's), nor for a finished story being edited (it keeps
+  // its own).
+  const langOn = isStoryboard && !tmpl?.lipSyncSinger && !tmpl?.sung && !editing;
+  const langFetcher = useFetcher();
+  const [storyLang, setStoryLang] = useState<string>(d.outputLang);
+  const pickStoryLang = (code: string) => {
+    if (code === storyLang) { setWipeArm(""); return; }
+    orArm(`lang:${code}`, true, () => {
+      setStoryLang(code);
+      langFetcher.submit({ intent: "setLang", contentLang: code }, { method: "post", action: "/web" });
+      setTreatment(null); setSeeds(null); setFrames([]); setCast([]);
+    });
+  };
   /** A REWRITE KEEPS ITS CASTING: whoever is still in the story BY NAME keeps the face and the voice the
    *  maker gave them (a rewrite used to hand back a blank cast, every portrait and voice to be picked again). */
   const keepCasting = (next: CastMember[], prev: CastMember[]): CastMember[] => {
@@ -2339,7 +2364,7 @@ export default function FilmStudio() {
   };
   const writeTreatment = () => {
     treatmentFetcher.submit(
-      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(series && isStoryboard ? { seriesFrom: series.from } : {}) },
+      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(series && isStoryboard ? { seriesFrom: series.from } : {}), ...(langOn ? { filmLang: storyLang } : {}) },
       { method: "post" }
     );
   };
@@ -2347,7 +2372,7 @@ export default function FilmStudio() {
   const firePreviewScenes = (tr?: Treatment | null) => {
     const useTr = tr || treatment;
     sceneSeedsFetcher.submit(
-      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(Object.keys(outfitImgs).length ? { filmOutfitImgs: JSON.stringify(outfitImgs) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}), ...(series && isStoryboard ? { seriesFrom: series.from } : {}) },
+      { intent: "previewFilmScenes", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(filmProps.length ? { filmProps: JSON.stringify(filmProps) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(artistPick ? { filmHeroUrl: artistPick } : {}), ...(castExtra.length ? { filmCastExtra: JSON.stringify(castExtra) } : {}), ...(useTr && castExtra.length ? { filmCastForScene: JSON.stringify(resolveCastMap(useTr.scenes)) } : {}), ...(Object.keys(outfits).length ? { filmOutfits: JSON.stringify(outfits) } : {}), ...(Object.keys(outfitImgs).length ? { filmOutfitImgs: JSON.stringify(outfitImgs) } : {}), ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(useTr ? { approvedTreatment: JSON.stringify(useTr) } : {}), ...(series && isStoryboard ? { seriesFrom: series.from } : {}), ...(langOn ? { filmLang: storyLang } : {}) },
       { method: "post" }
     );
   };
@@ -4018,6 +4043,15 @@ export default function FilmStudio() {
         <textarea id="fs-topic-in" rows={3} value={topic} onChange={(e) => setTopic(e.target.value)}
           placeholder={isStoryboard && series ? t("What happens next? Leave it empty and we'll decide.") : tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={IDEA_MAX} />
         {ideaChanged && (seeds || treatment) && <p className="mm-note mm-idea-kept" role="status">{isStoryboard && !narrated ? t("Your script stays as it is — Rewrite to use the new idea.") : t("What you've made stays as it is — start over to use the new idea.")}</p>}
+        {/* THE LANGUAGE IT IS TOLD IN — हिन्दी and اردو among them (2026-11-24, a tester in Pakistan) */}
+        {langOn && (
+          <div className="fs-toldin">
+            <span>{t("Told in")}</span>
+            <LangToggle value={storyLang} labels={CONTENT_LANG_NATIVE} align="left" onPick={pickStoryLang}
+              title={t("The language the story is written, spoken and captioned in")} />
+          </div>
+        )}
+        {langOn && wipeNote("lang:")}
         {!isStoryboard && (
         <div className="fs-len fs-len-topic">
           <span>{t("Scenes")}</span>
@@ -4222,6 +4256,8 @@ export default function FilmStudio() {
               <div className="mm-opts mm-opts-grid" style={{ order: 12 }}>
                 <div className="mm-opts-h">{t("Who tells it?")}</div>
                 <div className="mm-opts-sub">{t("Tap a voice to pick it, the play button to hear it. A character voice is performed — a hollow whisper for a ghost story, a giggle for a bedtime one.")}</div>
+                {/* (story-voice.ts: in Hindi and Urdu a people's voice is read by a native speaker of its own kind) */}
+                {langOn && (storyLang === "hi" || storyLang === "ur") && <div className="mm-opts-sub">{t("Told in {lang}, a people's voice is read by a native speaker of the same kind — a man's by a man, a woman's by a woman. Character voices and your own voice speak it themselves.", { lang: CONTENT_LANG_NATIVE[storyLang] })}</div>}
                 {d.myVoices.length > 0 && <><div className="mm-vo-h">{t("My voices")}</div><div className="mm-vopick">{d.myVoices.map((v) => voiceTile(v.voiceId, v.label, t("your own voice")))}</div></>}
                 <div className="mm-vo-h">{t("Character voices")}</div>
                 <div className="mm-vopick">{CHARACTER_VOICES.map((v) => voiceTile(v.id, t(v.label), t(v.blurb)))}</div>
@@ -4551,6 +4587,7 @@ export default function FilmStudio() {
           {narrated && <input type="hidden" name="filmMode" value="narrated" />}
           {narrated && seeds?.castRef && <input type="hidden" name="filmCastRef" value={seeds.castRef} />}
           {narrated && <input type="hidden" name="filmNarrator" value={narratorId} />}
+          {narrated && langOn && <input type="hidden" name="filmLang" value={storyLang} />}
           {isStoryboard && <input type="hidden" name="filmCaptions" value={captions} />}
           {isStoryboard && pickedCast.length > 0 && <input type="hidden" name="filmCast" value={filmCastJson} />}
           {tmpl?.lipSyncSinger && <input type="hidden" name="filmGenre" value={filmGenre} />}
@@ -5186,6 +5223,8 @@ ${CAST_ID_CSS}
 .fs-epline-x.is-arm{border-color:#D9A53A;box-shadow:0 0 0 2px #EBD9A8;background:#FFF7E3;color:#7A5A12;}
 /* scene-count row that lives under the describe-first box in the classic (non-MV) builder */
 .fs-len-topic{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#E4DFCF);font-size:13px;font-weight:700;color:var(--ink2,#55605A);flex-wrap:wrap;}
+/* THE LANGUAGE A STORY IS TOLD IN — under the idea box: the same pill as the Studio's "Writing in" (one setting) */
+.fs-toldin{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.5px;font-weight:700;color:var(--ink2,#55605A);flex-wrap:wrap;}
 .mm-hint{font-size:12.5px;color:var(--ink2,#4A554E);margin:18px 4px 10px;display:flex;align-items:center;gap:7px;}
 /* The cards are a horizontal SLIDER (swipe through them like a wheel) — one row, so tapping a card
    opens its options directly beneath the row (adjacent), never buried under the other cards. */

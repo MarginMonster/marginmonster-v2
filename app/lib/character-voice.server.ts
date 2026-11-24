@@ -17,7 +17,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { downloadBuffer, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { mirrorRender } from "./object-storage.server";
-import { characterVoice, type CreatureChain } from "./character-voices";
+import { characterVoice, type CharacterVoice, type CreatureChain } from "./character-voices";
 import { actedPassages, chainGraph, elevenInput } from "./character-voice-core";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -52,6 +52,21 @@ export type SpokenLine = {
 export async function speakCharacter(voiceId: string, text: string, opts: { lang?: string | null; stage?: string } = {}): Promise<SpokenLine> {
   const voice = characterVoice(voiceId);
   if (!voice) throw new Error(`[character-voice] "${voiceId}" is not a character voice`);
+  return speakAs(voice, voiceId, text, opts);
+}
+
+/** Read `text` in one of ElevenLabs' own stock voices ("Mark", "Hope"…), plainly: no acting directions, no
+ *  creature chain — the same passages, joins and loudness as a character's. For a language the everyday
+ *  speech model has no voice for: a story told in Urdu (story-voice.ts). Throws when it cannot be read. */
+export async function speakStock(elevenVoice: string, text: string, opts: { lang?: string | null; stage?: string } = {}): Promise<SpokenLine> {
+  const plain: CharacterVoice = {
+    id: `stock:${elevenVoice}`, key: elevenVoice, label: elevenVoice, blurb: "", kind: "cartoon", gender: "m", style: "",
+    acting: { voice: elevenVoice, before: "", stability: 0.5, style: 0, speed: 1 },
+  };
+  return speakAs(plain, plain.id, text, opts);
+}
+
+async function speakAs(voice: CharacterVoice, voiceId: string, text: string, opts: { lang?: string | null; stage?: string }): Promise<SpokenLine> {
   const prompts = actedPassages(voice, text);
   if (!prompts.length) throw new Error("[character-voice] nothing to say");
   const stage = opts.stage || "character-voice";

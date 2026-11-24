@@ -120,7 +120,7 @@ test("the pipelines try it first and fall back to the same cards drawn as Bold â
   assert.ok(burn.includes("const plain = captionFilters(cards, style, fontFile, W, H);"));
   assert.ok(burn.includes("if (style === \"highlight\" && plain.length && !cards.some((c) => hasWide(c.text))) {"));
   assert.ok(burn.includes("styled = [`ass=filename='${inFilter(file)}':fontsdir='${inFilter(path.dirname(fontFile))}'`];"), "the renderer is handed the file and the folder its font is in");
-  assert.ok(burn.includes("export const fontFamilyOf = (fontFile: string): string => (/NotoSansSC/i.test(path.basename(fontFile)) ? \"Noto Sans SC\" : \"Poppins\");"));
+  assert.ok(burn.includes("export const fontFamilyOf = (fontFile: string): string => (/NotoSansSC/i.test(path.basename(fontFile)) ? \"Noto Sans SC\" : /NotoNastaliqUrdu/i.test(path.basename(fontFile)) ? \"Noto Nastaliq Urdu\" : \"Poppins\");"));
   const nar = read("app", "lib", "narrated-story.server.ts");
   assert.ok(nar.includes("const cards: Card[] = style === \"bold\" || style === \"highlight\"\n    ? boldCards(timed, normalizeContentLang(lang))"));
   assert.ok(nar.includes("const cap = captionGraph(o.cards, o.style, o.fontFile, o.W, o.H);"));

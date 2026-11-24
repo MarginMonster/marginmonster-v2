@@ -14,6 +14,9 @@
  *
  * Captions are also used by the acted films (film-dialogue), which is why the styles live here. */
 
+import { hasRtl, needsShaping } from "./content-lang.ts";
+import type { ShapedFace } from "./caption-font.ts";
+
 /** `last` marks the final word of a scene (set by scriptWordTimes): a caption card never runs past it. */
 /** (`score` is the listener's own word for how sure it is of a HEARD word, 0 to 1 — see sureWords.) */
 export type WordT = { word: string; start: number; end: number; last?: boolean; score?: number };
@@ -50,10 +53,13 @@ const WIDE_ALL = new RegExp(WIDE.source, "g");
 const AFTER_WIDE = new RegExp(`(?<=${WIDE.source})`).source;
 /** Is any of this text in a script written without spaces — square glyphs, each about 1.7 letters wide? */
 export const hasWide = (s: string): boolean => WIDE.test(s);
+/** A mark that sits ON the letter before it — a Hindi vowel sign above or below its consonant, an Urdu
+ *  vowel mark — takes no room of its own (nor do the joiners). */
+const NO_WIDTH = /[\p{Mn}\p{Me}‌‍]/u;
 /** How wide a text draws, in Latin letters (what every line budget here is counted in). */
 export function textWidth(s: string): number {
   let n = 0;
-  for (const ch of s) n += WIDE.test(ch) ? 1.7 : 1;
+  for (const ch of s) n += WIDE.test(ch) ? 1.7 : NO_WIDTH.test(ch) ? 0 : 1;
   return n;
 }
 /** How long a unit takes to say, next to its neighbours: a word is one, a Chinese word is its glyphs. */
@@ -141,8 +147,15 @@ export const MIN_SCENE_S = 1.2;
  * listen) is anything counted into place as before. */
 /** How long an unheard word is given when nothing says otherwise: an ordinary speaking pace. */
 export const SAY_PACE = 0.42;
+/** (Urdu is typed with the Arabic forms of some of its letters as often as with its own — ك ي ه for ک ی ہ,
+ *  ہ for ھ — and the listener writes either; Urdu, Arabic and Hindi digits are the digits. The same here.) */
+const SAME_LETTER: Record<string, string> = { "ك": "ک", "ي": "ی", "ى": "ی", "ه": "ہ", "ە": "ہ", "ھ": "ہ" };
+const digitOf = (c: string): string => { const p = c.codePointAt(0)!; return String(p >= 0x06F0 ? p - 0x06F0 : p - 0x0660); };
 /** A word as it is compared: its letters and digits alone, lower-case, accents folded. */
-const atomOf = (w: string): string => w.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]/gu, "");
+const atomOf = (w: string): string => w.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]/gu, "")
+  .replace(/[كيىهەھ]/g, (c) => SAME_LETTER[c])
+  .replace(/[٠-٩۰-۹]/g, digitOf)
+  .replace(/[०-९]/g, (c) => String(c.codePointAt(0)! - 0x0966));
 /** What is compared for one unit: the word itself — or, in a script without spaces, each of its glyphs
  *  (the listener hears such a script glyph by glyph). */
 function unitAtoms(u: string): string[] {
@@ -481,8 +494,31 @@ export function trimToSound(windows: Window[], silenceReport: string): Window[] 
 
 /** Letters, digits and the punctuation that can be drawn without quoting trouble. An apostrophe becomes
  *  the typographic one: a straight one would end the text inside the filter. A dash between words
- *  becomes a space, so "door—open" does not close up into one word. */
-export const drawable = (s: string): string => s.replace(/[']/g, "’").replace(/[—–]/g, " ").replace(/[^\p{L}\p{N} .,!?$%’…-]/gu, "").replace(/\s+/g, " ").trim();
+ *  becomes a space, so "door—open" does not close up into one word.
+ *  (Hindi and Urdu — scripts that are SHAPED — keep their marks: see shapedDrawable.) */
+export const drawable = (s: string): string => (needsShaping(s) ? shapedDrawable(s) : s.replace(/[']/g, "’").replace(/[—–]/g, " ").replace(/[^\p{L}\p{N} .,!?$%’…-]/gu, "").replace(/\s+/g, " ").trim());
+
+/* ---- scripts that are SHAPED (Hindi, Urdu — content-lang.ts → needsShaping) ----
+ * Their marks are half of every word: a Hindi vowel sign (ा ि ी ु े ो ं ्…) is a mark, not a letter, and
+ * the old allow-list dropped every one — "पुरानी हवेली" came out "परन हवल". So the marks stay, and so do
+ * the joiners Urdu uses inside a word. Their own sentence marks — the Urdu full stop ۔, comma ، and
+ * question mark ؟, the Hindi danda । — are read here as ours, so every rule below (a card ends with its
+ * sentence, a pause is where a line turns) works the same; they are drawn as the script's own again
+ * (nativeMarks). The text is put in its composed form first, as it is drawn. */
+const AS_OURS: Record<string, string> = { "۔": ".", "؟": "?", "،": ",", "؛": ",", "।": ".", "॥": ".", "٪": "%" };
+function shapedDrawable(s: string): string {
+  return s.normalize("NFC").replace(/[']/g, "’").replace(/[—–]/g, " ").replace(/[۔؟،؛।॥٪]/g, (m) => AS_OURS[m])
+    .replace(/[^\p{L}\p{M}\p{N}‌‍ .,!?$%’…-]/gu, "").replace(/\s+/g, " ").trim();
+}
+const ARABIC_LETTER = "\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF";
+const URDU_MARK_AFTER = new RegExp(`(?<=[${ARABIC_LETTER}]\\p{M}*)[.,?]`, "gu");
+const URDU_MARK: Record<string, string> = { ".": "۔", ",": "،", "?": "؟" };
+const DANDA_AFTER = /(?<=[ऀ-ॿ])\./g;
+/** The marks drawable() read as ours, drawn as the script's own again — after an Urdu word the Urdu full
+ *  stop, comma and question mark, after a Hindi one the danda. Anything else is left as it is ("3.5"). */
+export function nativeMarks(s: string): string {
+  return s.replace(URDU_MARK_AFTER, (m) => URDU_MARK[m]).replace(DANDA_AFTER, "।");
+}
 
 /** The SCRIPT's own words, each given the time it is said — so the captions say exactly what was written
  *  (a name spelt right, "1981" as written, nothing a transcriber misheard) and still move in step with
@@ -742,13 +778,26 @@ const LEAN: Record<string, Set<string>> = {
   es: new Set("el la los las un una unos unas y e o u pero de del en a al con por para sin sobre que cuando si porque su sus mi mis tu tus no se me te lo le nos".split(" ")),
   fr: new Set("le la les un une des et ou mais de du en à au aux avec pour par sans sur dans que qui quand si car son sa ses mon ma mes ton ta tes ne se me te je tu il elle on nous vous ils elles".split(" ")),
   de: new Set("der die das den dem des ein eine einen einem einer und oder aber von zu zum zur in im an am auf mit für aus bei nach über unter dass wenn weil sein seine ihr ihre mein meine kein keine nicht".split(" ")),
+  // (Hindi and Urdu: the joining words, "a", "this" / "that", the possessives, "not")
+  hi: new Set("और या लेकिन मगर बल्कि कि जो जब अगर क्योंकि जैसे एक यह वह ये वो इस उस इन उन मेरा मेरी मेरे तेरा तेरी तेरे उसका उसकी उसके इसका इसकी इसके उनका उनकी उनके हमारा हमारी हमारे तुम्हारा तुम्हारी तुम्हारे आपका आपकी आपके अपना अपनी अपने कोई कुछ हर बहुत न नहीं मत".split(" ")),
+  ur: new Set("اور یا لیکن مگر بلکہ کہ جو جب اگر کیونکہ جیسے ایک یہ وہ اس ان میرا میری میرے تیرا تیری تیرے اپنا اپنی اپنے ہمارا ہماری ہمارے تمہارا تمہاری تمہارے کوئی کچھ ہر بہت نہ نہیں مت".split(" ")),
 };
+/* …and in Hindi and Urdu, words that lean on what came BEFORE them: the postpositions — "of", "to", "in",
+ * "from" come AFTER their noun (का की के को में से ने तक) — "also" and "only", and the helping verbs that
+ * follow a verb (था, गया, रहा). A card that STARTS with one reads as a stumble: "उस रात गाँव / की पुरानी
+ * हवेली" for "उस रात / गाँव की पुरानी हवेली". (Urdu میں is "in" and also "I": "I" opens its sentence,
+ * where no card is cut, so it costs nothing there.) */
+const LEAN_BACK: Record<string, Set<string>> = {
+  hi: new Set("का की के को में से ने तक भी ही वाला वाली वाले लिए है हैं था थी थे हूँ गया गई गए रहा रही रहे".split(" ")),
+  ur: new Set("کا کی کے کو میں سے نے تک بھی ہی والا والی والے لیے لئے ہے ہیں تھا تھی تھے ہوں گیا گئی گئے رہا رہی رہے".split(" ")),
+};
+const NONE: ReadonlySet<string> = new Set();
 
 /** One phrase in cards of up to three words on one line — the cut that reads best, not the first that
- *  fits: a card is not left ending on a word that leans on the next one, a word is not left on a card by
- *  itself (unless it is a clause by itself), and where the sentence breathes — a comma — is where a card
- *  ends, not somewhere in the middle of one. */
-function phraseCards(ph: WordT[], lean: Set<string>): WordT[][] {
+ *  fits: a card is not left ending on a word that leans on the next one (nor starting on one that leans
+ *  on the last), a word is not left on a card by itself (unless it is a clause by itself), and where the
+ *  sentence breathes — a comma — is where a card ends, not somewhere in the middle of one. */
+function phraseCards(ph: WordT[], lean: ReadonlySet<string>, back: ReadonlySet<string> = NONE): WordT[][] {
   const n = ph.length;
   const fits = (i: number, j: number): boolean => j - i === 1 || textWidth(ph.slice(i, j).map((w) => w.word).join(" ")) <= BOLD_LINE;
   const best: number[] = new Array(n + 1).fill(Infinity);
@@ -762,6 +811,7 @@ function phraseCards(ph: WordT[], lean: Set<string>): WordT[][] {
       const breathes = /,$/.test(last);
       let cost = best[i] + 1; // a card
       if (j < n && lean.has(last.toLowerCase())) cost += 3; // it ends leaning on the next card
+      if (i > 0 && back.has(ph[i].word.replace(/[.,!?…]+$/u, ""))) cost += 3; // …or starts leaning on the last one
       if (len === 1 && n > 1) cost += j === n ? 3 : 2; // a word by itself — worst of all as the phrase's last card
       if (j < n && breathes) cost -= 1.5; // it ends where the sentence breathes
       for (let k = i; k < j - 1; k++) if (/,$/.test(ph[k].word)) cost += 2; // …and does not breathe in the middle
@@ -776,7 +826,7 @@ function phraseCards(ph: WordT[], lean: Set<string>): WordT[][] {
 
 /** BOLD: the words, a few at a time (up to three words, one line), each card up exactly while it is
  *  being said. Give it scriptWordTimes() for the script's own spelling, and the language the words are
- *  in (en, es, fr, de — anything else is cut as English).
+ *  in (en, es, fr, de, hi, ur — anything else is cut as English).
  *
  *  A card never holds the end of one sentence and the start of the next ("HOWL, ONCE. A" — seen in the
  *  first real render), never runs past the end of its scene, and does not draw the comma or full stop it
@@ -808,7 +858,8 @@ export function boldCards(words: WordT[], lang?: string | null): Card[] {
       chunks = split.map((g) => ph.slice(from, (from += g.length)));
     } else {
       // 2) each phrase in cards of up to three words on one line, cut where it reads best (phraseCards)
-      chunks = phraseCards(ph, LEAN[(lang || "en").toLowerCase().slice(0, 2)] || LEAN.en);
+      const code = (lang || "en").toLowerCase().slice(0, 2);
+      chunks = phraseCards(ph, LEAN[code] || LEAN.en, LEAN_BACK[code]);
     }
     for (const ch of chunks) {
       const upTo = (k: number): string => drawable(joinUnits(ch.slice(0, k + 1).map((w) => w.word))).toUpperCase().replace(/[.,…]+$/u, "").trim();
@@ -1056,6 +1107,84 @@ export function highlightAss(cards: Card[], fontFamily: string, W: number, H: nu
       const before = ws.slice(0, k).map((x) => x.text).join("") + lead;
       const after = ws.slice(k + 1).map((x) => x.text).join("");
       say(a, b, `${assText(before)}{\\c${lit}}${assText(w.text.slice(lead.length))}{\\c${white}}${assText(after)}`);
+    });
+  }
+  return lines.length ? [...head, ...lines, ""].join("\n") : "";
+}
+
+/* ---- captions in a script that is SHAPED: Hindi, Urdu ----
+ * drawtext cannot draw them (content-lang.ts → needsShaping), so EVERY look — Bold, Highlight, Subtitles —
+ * is an .ass file for the subtitle renderer, which shapes them: the same cards, in the same place on the
+ * frame and at the same size as the Latin look, in the face that has the script (caption-font.ts).
+ *   · Urdu runs right to left. The renderer lays every line out left to right unless the file asks it to
+ *     find each line's own direction (Encoding -1), and an Urdu line that opens on a brand name would then
+ *     start at the wrong end — so the file asks, and every Urdu line opens with a right-to-left mark.
+ *   · every line stands on its own baseline (\pos), not on the renderer's own spacing: Nastaliq's box is
+ *     three and a third ems tall, and the renderer would push two subtitle lines apart by all of it.
+ *   · the full stops and commas drawable() read as ours are drawn as the script's own (nativeMarks).
+ *   · Bold and Highlight sit where the Latin card sits: its baseline is 0.683 of its letter height under
+ *     the top drawtext gives it (ASS_FOOT less Poppins' foot); a shaped card stands on that same line. */
+export function shapedAss(cards: Card[], look: "bold" | "highlight" | "subtitles", face: ShapedFace, W: number, H: number): string {
+  const shown = cards.filter((c) => c.text && c.t1 > c.t0);
+  if (!shown.length) return "";
+  const u = Math.min(W, H) / 720;
+  const white = assColour("FFFFFF"), lit = assColour(HIGHLIGHT_RGB);
+  const fam = face.family.replace(/[,\r\n]/g, " ");
+  const boxed = face.boxed;
+  const head = [
+    "[Script Info]", "ScriptType: v4.00+", `PlayResX: ${W}`, `PlayResY: ${H}`, "WrapStyle: 2", "ScaledBorderAndShadow: yes", "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    // Bold and Highlight: white, a heavy black outline — the Latin card's look
+    `Style: Cap,${fam},${Math.round(54 * u * face.box)},${white},${white},&H00000000&,&H00000000&,-1,0,0,0,100,100,0,0,1,${Math.max(4, Math.round(8 * u))},0,2,0,0,0,-1`,
+    // Subtitles: on a soft dark box (black at 45%, the Latin line's) — or outlined, with a soft shadow
+    `Style: Sub,${fam},${Math.round(34 * u * face.box)},${white},${white},${boxed ? "&H8C000000&" : "&H26000000&"},${boxed ? "&H8C000000&" : "&H80000000&"},-1,0,0,0,100,100,0,0,${boxed ? 3 : 1},${boxed ? Math.max(4, Math.round(6 * u)) : Math.max(2, Math.round(2.5 * u))},${boxed ? 0 : Math.max(1, Math.round(2 * u))},2,0,0,0,-1`, "",
+    "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  ];
+  const rtl = (t: string) => (hasRtl(t) ? "‏" : "");
+  const show = (t: string) => assText(nativeMarks(t));
+  const lines: string[] = [];
+  // a line standing on `baseline`: the renderer's \an2 point is the foot of the font's box under it
+  const at = (baseline: number, em: number) => {
+    const foot = Math.min(Math.round(baseline + face.bottom * em), H - Math.round(4 * u));
+    return `{\\an2\\pos(${Math.round(W / 2)},${foot})\\fs${Math.round(em * face.box)}}`;
+  };
+  const say = (style: "Cap" | "Sub", a: number, b: number, place: string, text: string) => {
+    if (b - a > 0.005) lines.push(`Dialogue: 0,${assTime(a)},${assTime(b)},${style},,0,0,0,,${place}${text}`);
+  };
+  for (const c of shown) {
+    const rows = c.text.split("\n").map((r) => r.trim()).filter(Boolean);
+    if (!rows.length) continue;
+    if (look === "subtitles") {
+      const emLat = Math.round(34 * u);
+      const base = W > H ? Math.round(70 * u) : W === H ? Math.round(H * 0.12) : Math.round(H * 0.2);
+      // as big as the look asks — smaller only when a line would not fit the frame
+      const widest = Math.max(1, ...rows.map((r) => textWidth(r)));
+      const em = Math.max(Math.round(18 * u), Math.min(emLat * face.scale, (W * 0.92) / (widest * face.glyph)));
+      const bottom = H - base + Math.round(0.72 * emLat);
+      rows.forEach((r, li) => say("Sub", c.t0, c.t1, at(bottom - (rows.length - 1 - li) * face.lineGap * em, em), rtl(r) + show(r)));
+      continue;
+    }
+    // BOLD / HIGHLIGHT: the Latin card's size for this many letters — and no wider than the frame holds
+    const w = textWidth(rows.join(" "));
+    const emLat = Math.round(Math.max(30, Math.min(54, Math.floor((720 * 0.9) / (Math.max(BOLD_LINE, w) * 0.62)))) * u);
+    const em = Math.max(Math.round(24 * u), Math.min(emLat * face.scale, (720 * 0.9 * u) / (Math.max(1, w) * face.glyph)));
+    const top = W > H ? H - Math.round(150 * u) : H - Math.round(H * 0.28);
+    const base = top + Math.round(0.683 * emLat);
+    if (rows.length > 1 || look === "bold" || !c.words || !c.words.length) {
+      rows.forEach((r, li) => say("Cap", c.t0, c.t1, at(base - (rows.length - 1 - li) * face.lineGap * em, em), rtl(r) + show(r)));
+      continue;
+    }
+    // HIGHLIGHT: one line for every word, while it is said — the card, with that word lit
+    const ws = c.words;
+    const place = at(base, em);
+    ws.forEach((wd, k) => {
+      const a = k === 0 ? c.t0 : Math.max(c.t0, Math.min(wd.t0, c.t1));
+      const b = k + 1 < ws.length ? Math.max(a, Math.min(ws[k + 1].t0, c.t1)) : c.t1;
+      const lead = /^[\s,]*/.exec(wd.text)![0];
+      const before = ws.slice(0, k).map((x) => x.text).join("") + lead;
+      const after = ws.slice(k + 1).map((x) => x.text).join("");
+      say("Cap", a, b, place, `${rtl(c.text)}${show(before)}{\\c${lit}}${show(wd.text.slice(lead.length))}{\\c${white}}${show(after)}`);
     });
   }
   return lines.length ? [...head, ...lines, ""].join("\n") : "";

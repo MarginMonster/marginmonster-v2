@@ -29,7 +29,7 @@ import { animateInputFor, animateRoute, VOICEOVER_MOTION_MODEL, voiceoverMotionI
 import { AVATAR_BY_ID, OUTFITS } from "./avatars";
 import { isPersonalVoice } from "./avatar-voice-catalog";
 import { isCharacterVoice } from "./character-voices";
-import { hasCJK, langDirective, voiceLangOpts } from "./content-lang";
+import { hasCJK, langDirective, needsShaping, voiceLangOpts } from "./content-lang";
 import { scriptTooShort, capScript, endStop } from "./script-length";
 import { CLAIMS_GUARDRAIL, stripPromoTag, dropOrgEndorsementPossessive, writeClaimFree, cleanPrice, priceRule } from "./ad-claims";
 import { catalogPriceFor } from "./catalog-import.server";
@@ -37,7 +37,7 @@ import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 import { captionChunks, CJK_OPTS, LATIN_OPTS } from "./caption-chunks";
 import { ffmpegTurn } from "./ffmpeg-turn";
-import { CJK_FONT_FILE, CJK_FONT_MIN_BYTES, CJK_FONT_SOURCES, fontMagic, looksLikeCjkFont } from "./caption-font";
+import { CJK_FONT_FILE, CJK_FONT_MIN_BYTES, CJK_FONT_SOURCES, fontMagic, looksLikeCjkFont, shapedFaceFor } from "./caption-font";
 
 /** Merge stage checkpoints into the job payload (kept local to avoid a
  *  circular import with job-queue.server). Never fatal. Shared by the cartoon
@@ -575,6 +575,11 @@ function captionSafe(s: string): string {
 let cjkFontFetch: Promise<string> | null = null;
 export async function resolveTextFont(text: string): Promise<string> {
   const poppins = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
+  // HINDI, URDU (content-lang.ts → needsShaping): this font is for drawtext, and drawtext on the server
+  // cannot shape them — Hindi's vowel signs land on the wrong side, Urdu falls apart into loose letters.
+  // So it THROWS, the rule every caller already follows for a font it cannot have: no words, never broken
+  // ones. Captions drawn by the subtitle renderer ask resolveCaptionFont instead.
+  if (needsShaping(text)) throw new Error("[fonts] these words have to be shaped (Hindi, Urdu…) — drawtext cannot draw them");
   if (!hasCJK(text)) return poppins;
   const dir = path.join(process.cwd(), "data", "renders", "fonts");
   const f = path.join(dir, CJK_FONT_FILE);
@@ -612,6 +617,18 @@ export async function resolveTextFont(text: string): Promise<string> {
     })().finally(() => { cjkFontFetch = null; });
   }
   return cjkFontFetch;
+}
+
+/** The font for captions the SUBTITLE RENDERER draws (caption-burn.server.ts → captionGraph): Hindi and Urdu
+ *  words get the face that has their script, shipped in public/fonts (caption-font.ts → SHAPED_FACES) —
+ *  the renderer shapes them; anything else, resolveTextFont's font. Throws when no face here draws the
+ *  words (the callers then draw none). */
+export async function resolveCaptionFont(text: string): Promise<string> {
+  if (!needsShaping(text)) return resolveTextFont(text);
+  const face = shapedFaceFor(text);
+  const f = face ? path.join(process.cwd(), "public", "fonts", face.file) : "";
+  if (!f || !fs.existsSync(f)) throw new Error(`[fonts] no face here draws these words${face ? ` (${face.file} is missing)` : ""}`);
+  return f;
 }
 
 function buildCaptionFilters(script: string, duration: number, fontFile: string): string[] {
@@ -775,6 +792,9 @@ export async function assemble(opts: {
   // the video without burned captions instead of burning tofu boxes.
   let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
   let script = opts.script;
+  // HINDI, URDU: these captions are drawtext's, and drawtext cannot shape them (content-lang.ts →
+  // needsShaping) — the ad ships with its voice and without burned-in words, never with broken ones.
+  if (needsShaping(script)) { console.log("[assemble] words drawtext cannot shape (Hindi, Urdu…) — no burned-in captions"); script = ""; }
   try { fontFile = await resolveTextFont(script); }
   catch (e) { if (hasCJK(script)) { console.error("[assemble] no CJK font — skipping captions:", e instanceof Error ? e.message : e); script = ""; } }
   // TRUST BUT VERIFY the caller's lipSynced flag: mapping the clip's own audio

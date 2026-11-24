@@ -22,7 +22,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import os from "node:os";
 import { db } from "../db.server";
-import { checkpointJob, downloadBuffer, ffprobeDuration, repCreate, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
+import { checkpointJob, downloadBuffer, ffprobeDuration, repCreate, repPoll, resolveCaptionFont, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { captionGraph } from "./caption-burn.server";
 import { listenAgain, listenQuality, listenedWords, sureWords, timingRecord, type Span } from "./narrated-core";
 import { persistRemote, renderCreativeSeed, repRun } from "./image-generation.server";
@@ -329,9 +329,21 @@ export async function narrate(text: string, voice: string, lang: string | null |
     const made = await speakCharacter(voice, text, { lang: normalizeContentLang(lang), stage: "narration" });
     return { path: made.path, url: `${base}${made.url}` };
   }
+  // HINDI AND URDU are read by a native voice of the narrator's own kind (story-voice.ts) — Urdu by
+  // ElevenLabs, and should that fail, by the Hindi voice on the speech model below
+  const { storyReader } = await import("./story-voice");
+  const reader = storyReader(voice, lang);
+  if (reader.engine === "eleven") {
+    try {
+      const { speakStock } = await import("./character-voice.server");
+      const made = await speakStock(reader.voice, text, { lang: normalizeContentLang(lang), stage: "narration" });
+      return { path: made.path, url: `${base}${made.url}` };
+    } catch (e) { console.error(`[narrated] ${reader.voice} could not read the story — ${reader.backup} reads it: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
+  }
+  const reads = reader.engine === "eleven" ? reader.backup || voice : reader.voice;
   let url = "";
-  try { url = await repPoll(await repCreate("minimax/speech-02-hd", { text, voice_id: voice, ...voiceLangOpts(lang) }), 4 * 60_000, "narration"); }
-  catch { url = await repPoll(await repCreate("minimax/speech-02-turbo", { text, voice_id: voice, ...voiceLangOpts(lang) }), 4 * 60_000, "narration"); }
+  try { url = await repPoll(await repCreate("minimax/speech-02-hd", { text, voice_id: reads, ...voiceLangOpts(lang) }), 4 * 60_000, "narration"); }
+  catch { url = await repPoll(await repCreate("minimax/speech-02-turbo", { text, voice_id: reads, ...voiceLangOpts(lang) }), 4 * 60_000, "narration"); }
   const buf = await downloadBuffer(url);
   if (buf.length < 8_000) throw new Error("[narrated] the narration came back empty");
   fs.mkdirSync(RENDERS(), { recursive: true });
@@ -678,8 +690,9 @@ export async function generateNarratedStory(opts: {
   let fontFile = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
   // (the resolver only fails for words Poppins cannot draw — Chinese with no font fetched: the story is
   //  then told without words on screen. Drawing them with Poppins made every caption a row of boxes.)
+  // (Hindi, Urdu: the face that has the script — the subtitle renderer draws them, caption-burn.server.ts)
   let wordsDrawable = true;
-  try { fontFile = await resolveTextFont(lines.join(" ")); }
+  try { fontFile = await resolveCaptionFont(lines.join(" ")); }
   catch (e) { wordsDrawable = false; console.error(`[narrated] no font for these words — told without captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   const outName = `nar-${Date.now()}-${rid()}.mp4`;
   const outPath = path.join(RENDERS(), outName);

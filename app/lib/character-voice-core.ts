@@ -20,10 +20,12 @@ export const PASSAGE_MAX = 600;
 
 /** A sentence ends at . ! ? … (and any closing quote) when what follows STARTS a sentence — a capital or
  *  a digit. "I've been waiting... such a long time." is one sentence: the dots are a pause, and a mid-line
- *  direction dropped into that pause is not where the approved takes have it. (。！？ end one outright.) */
+ *  direction dropped into that pause is not where the approved takes have it. (。！？ end one outright, and
+ *  so do Urdu's ۔ ؟ and Hindi's । ॥ — scripts with no capitals: a long story told in them was otherwise
+ *  cut into passages in the middle of a sentence, with a breath where none is.) */
 const sentencesOf = (text: string): string[] =>
   text.replace(/\s+/g, " ").trim()
-    .split(/(?<=[.!?…]["'”’)\]]?)\s+(?=["'“‘(\[]?[\p{Lu}\p{N}])|(?<=[。！？])\s*/u)
+    .split(/(?<=[.!?…]["'”’)\]]?)\s+(?=["'“‘(\[]?[\p{Lu}\p{N}])|(?<=[。！？])\s*|(?<=[۔؟।॥])\s+|(?<=[!?]["'”’)\]]?)\s+(?=[ऀ-ॿ؀-ۿ])/u)
     .map((s) => s.trim()).filter(Boolean);
 
 /** Cut a text into passages at sentence ends, none longer than PASSAGE_MAX (a single sentence longer

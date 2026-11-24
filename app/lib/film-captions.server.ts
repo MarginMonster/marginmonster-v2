@@ -14,7 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { checkpointJob, ffprobeDuration, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
+import { checkpointJob, ffprobeDuration, repPoll, resolveCaptionFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { mirrorRender } from "./object-storage.server";
 import { LISTEN_AUDIO, heardTooLittle, lyricWordTimes } from "./lyric-sync";
@@ -28,7 +28,7 @@ const RENDERS = () => path.join(process.cwd(), "data", "renders");
  *  film was left as it was. `listenMs` caps the wait for the word timings (a quick edit in the shot editor
  *  can't hold its request open for minutes); past it the lines are timed by shot length instead. */
 export async function captionFilm(o: {
-  filmPath: string; lines: string[]; clipDurs: number[]; style: CaptionStyle; /** the language it is spoken in (en, es, fr, de, zh) */ lang: string; jobId?: string; listenMs?: number;
+  filmPath: string; lines: string[]; clipDurs: number[]; style: CaptionStyle; /** the language it is spoken in (en, es, fr, de, zh, hi, ur) */ lang: string; jobId?: string; listenMs?: number;
 }): Promise<CaptionStyle> {
   if (o.style === "off" || !fs.existsSync(o.filmPath)) return "off";
   const lines = o.lines.map((l) => (l || "").replace(/\s+/g, " ").trim());
@@ -94,8 +94,9 @@ export async function captionFilm(o: {
 async function burnCards(filmPath: string, tmp: string, cards: Card[], style: CaptionStyle, sample: string, W: number, H: number, total: number): Promise<boolean> {
   let font = path.join(process.cwd(), "public", "fonts", "Poppins-Bold.ttf");
   // (the resolver only fails for words Poppins cannot draw — Chinese with no font fetched: no captions
-  //  then, the film as it is. Drawing them with Poppins made every caption a row of boxes.)
-  try { font = await resolveTextFont(sample); }
+  //  then, the film as it is. Drawing them with Poppins made every caption a row of boxes. Hindi and
+  //  Urdu get the face that has their script: the subtitle renderer draws them — caption-burn.server.ts)
+  try { font = await resolveCaptionFont(sample); }
   catch (e) { console.error(`[captions] no font for these words — the film ships without captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); return false; }
   // the look that was asked for (Highlight is a file for the subtitle renderer), then the same cards as
   // plain drawn text: a renderer that fails must not cost the film its words (caption-burn.server.ts)
