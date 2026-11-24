@@ -678,7 +678,7 @@ test("a narrated story's card does not promise ten minutes", () => {
   const archive = read("app", "routes", "web.archive.tsx");
   // (the sum moved to story-motion.ts when a story's pictures began to move: over stills it is the same
   //  sixty seconds and twelve a scene; with moving pictures a clip a scene is added — tests/story-motion.test.ts)
-  assert.ok(archive.includes('const typical = (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film" && p.filmMode === "narrated")\n      // (…and since its pictures MOVE — story-motion.ts — a clip a scene on top of that)\n      ? storyTypicalSeconds(typeof p.filmScenes === "number" ? p.filmScenes : 6, storyMotionOn())\n      : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film")\n      ? Math.max(600,'));
+  assert.ok(archive.includes('const typical = (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film" && p.filmMode === "narrated")\n      // (…and since its pictures MOVE — story-motion.ts — a clip a scene on top of that; unless its maker\n      //  asked for it over STILL pictures, the ladder\'s simple rung, which is the quick one)\n      ? storyTypicalSeconds(typeof p.filmScenes === "number" ? p.filmScenes : 6, storyMotionOn(p.filmPictures))\n      : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film")\n      ? Math.max(600,'));
   const core = read("app", "lib", "story-motion.ts");
   assert.ok(core.includes("60 + Math.max(1, scenes) * 12 + (moves ? "));
 });
