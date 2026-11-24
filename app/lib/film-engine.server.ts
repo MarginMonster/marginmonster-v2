@@ -47,7 +47,7 @@ import { episodeTitle, seriesWriterBrief, type SeriesBrief } from "./film-series
 import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from "./dialogue-fit";
 import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 // (2026-11-24) a told story's places: a scene set at one says so in its own words
-import { placeNamed } from "./story-picture";
+import { inheritPlaces, placeNamed } from "./story-picture";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -856,9 +856,13 @@ export async function previewFilmTreatment(opts: {
   //  the idea box or the format's name — an episode made from an empty idea box was "… Episode 2: Short Film")
   if (series) outTitle = episodeTitle(series.title, series.episode, parsed.title ? outTitle : "");
   // A TOLD STORY'S PLACES (story-picture.ts): two at most, each "name: look", as the writer gave them
-  const places = narrated && Array.isArray(parsed.places)
+  const listed = narrated && Array.isArray(parsed.places)
     ? parsed.places.filter((p): p is string => typeof p === "string").map((p) => p.replace(/\s+/g, " ").trim().slice(0, 400)).filter((p) => p.length > 12).slice(0, 2)
     : [];
+  // …and THE SERIES' OWN PLACES are kept whether or not this episode's writer listed them: a place of the
+  // series that these scenes name is listed under its own name and words, so it is drawn from its own sheet
+  // (story-picture.ts → inheritPlaces: an episode 2 named "the clock tower" five times and listed nothing)
+  const places = narrated ? inheritPlaces(listed, series?.places || [], list.map((s) => s.visual)) : [];
   // …and a scene set at one of them says so in its own words ("At the ferry: …") when they did not already
   if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed(s.visual, saidPlaces[i], places) }));
   return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };

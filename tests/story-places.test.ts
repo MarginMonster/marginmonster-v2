@@ -23,7 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FRAMED_FIX, FRAMED_SIZE, NOTHING_WRITTEN, PLACE_FRAMING, PLACE_SHEET_ASPECT, STORY_MODEL, STORY_PLACE_MAX,
-  framedIn, framedMeasure, castToken, placeEntry, placeIn, placeKey, placeNamed, placeNote, placeSheetPrompt, placesOf, placesStillIn, readCastToken, recurringPlaces, scenePlace, sceneModel,
+  framedIn, framedMeasure, inheritPlaces, castToken, placeEntry, placeIn, placeKey, placeNamed, placeNote, placeSheetPrompt, placesOf, placesStillIn, readCastToken, recurringPlaces, scenePlace, sceneModel,
 } from "../app/lib/story-picture.ts";
 import { storyToEditFrom } from "../app/lib/story-edit.ts";
 import { seriesBriefOf, seriesFromPayload, seriesPlaces, seriesWriterBrief } from "../app/lib/film-series.ts";
@@ -215,7 +215,7 @@ test("the writer is asked for the story's places — a told story only — and t
   assert.ok(engine.includes("const NARRATED_SCHEMA = { ...TREATMENT_SCHEMA, required: [...TREATMENT_SCHEMA.required, \"places\"] } as const;"));
   assert.ok(engine.includes("schema: (narrated ? NARRATED_SCHEMA : TREATMENT_SCHEMA) as unknown as Record<string, unknown> },"), "a film that is acted or sung is not asked");
   // kept only for a told story; two at most; nothing too short to be a description
-  assert.ok(engine.includes("const places = narrated && Array.isArray(parsed.places)"));
+  assert.ok(engine.includes("const listed = narrated && Array.isArray(parsed.places)"));
   assert.ok(engine.includes(".filter((p) => p.length > 12).slice(0, 2)"));
   assert.ok(engine.includes("...(places.length ? { places } : {}), cast,"));
 });
@@ -348,4 +348,36 @@ test("a scene that comes back as a framed panel on a plain ground is drawn again
   assert.ok(m.includes("\"-vf\", `scale=${FRAMED_SIZE}:${FRAMED_SIZE}`, \"-frames:v\", \"1\", \"-f\", \"rawvideo\", \"-pix_fmt\", \"rgb24\", raw]);"));
   assert.ok(m.includes("return framedIn(new Uint8Array(fs.readFileSync(raw)));") && m.includes("} catch { return false; }"));
   assert.ok(m.includes("finally { try { fs.unlinkSync(raw); } catch { /* nothing to clear */ } }"), "the scratch file is cleared either way");
+});
+
+/* TOLD, THEN CHECKED. Episode 2 of the clock-tower story, made on the live site the hour the hand-on shipped:
+ * the writer named "the clock tower" in five of six scenes — and listed no places. The tower's sheet went
+ * unused; drawn from words, the tower was a church with a spire in one scene and a gothic steeple in another. */
+test("the places a story inherited are kept whether or not its writer lists them", () => {
+  const TOWER = "the clock tower: a tall narrow stone clock tower in the town square with a round white clock face and a spiral iron staircase inside";
+  const SHOP = "the workshop: a cramped clockmaker's workshop with a cluttered bench under one green lamp";
+  const ep2 = [
+    "Finn stands in the square at dawn, staring up at the clock tower.",
+    "Finn climbs the spiral iron staircase inside the clock tower.",
+    "Inside the workshop, Mr. Callum holds a small brass gear up to the lamplight.",
+  ];
+  // the writer listed nothing: the tower its scenes name is listed for it, under its own name and words
+  assert.deepEqual(inheritPlaces([], [TOWER], ep2), [TOWER]);
+  // …listed the tower in other words: the words that match its sheet win, and its own new place follows
+  assert.deepEqual(inheritPlaces(["The Clock Tower: a grand gothic steeple with a golden dial", SHOP], [TOWER], ep2), [TOWER, SHOP]);
+  // …listed it and its scenes do not happen to name it: still its place
+  assert.deepEqual(inheritPlaces(["the clock tower: something else entirely here"], [TOWER], ["Finn waits by the fountain."]), [TOWER]);
+  // an episode set somewhere else does not drag the old place along
+  assert.deepEqual(inheritPlaces([SHOP], [TOWER], ["Inside the workshop, Edda mends a gear.", "Finn sweeps the workshop floor."]), [SHOP]);
+  assert.deepEqual(inheritPlaces([], [TOWER], ["Finn waits by the fountain."]), []);
+  // two at most, the inherited ones first; nothing twice; a story with no earlier places is as it was
+  assert.deepEqual(inheritPlaces([SHOP, "the bakery: a corner bakery with a blue door and a striped awning"], [TOWER, TOWER], ep2), [TOWER, SHOP]);
+  assert.deepEqual(inheritPlaces([SHOP], [], ep2), [SHOP]);
+  assert.deepEqual(inheritPlaces([SHOP], undefined as unknown as string[], ep2), [SHOP]);
+  // the writer step: read, then checked against the series it continues — a told story only
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.ok(engine.includes("const places = narrated ? inheritPlaces(listed, series?.places || [], list.map((s) => s.visual)) : [];"));
+  // and with the place back in the list, the sheet the episode arrived with is used from its first scene
+  const visuals = ["Finn waits by the fountain.", "Edda unlocks the door of the clock tower."];
+  assert.deepEqual(recurringPlaces(visuals, inheritPlaces([], [TOWER], visuals), ["the clock tower"]).map((p) => p.scenes), [[1]]);
 });

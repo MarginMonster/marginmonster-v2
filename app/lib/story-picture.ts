@@ -283,6 +283,24 @@ export function recurringPlaces(visuals: ReadonlyArray<string | null | undefined
     .map(({ name, look, scenes }) => ({ name, look, scenes }));
 }
 
+/** THE PLACES A STORY INHERITED ARE KEPT WHETHER OR NOT ITS WRITER LISTS THEM (told, then checked). The second
+ *  episode of a story set at a clock tower named "the clock tower" in five of its six scenes and listed no
+ *  places at all (live, 2026-11-24) — so the tower's own sheet went unused and the tower, drawn from words,
+ *  came out as a church with a spire. A place the story before it had, that this story's scenes name (or its
+ *  writer listed under the same name), is listed under THAT name and THOSE words — first — so it is drawn
+ *  from its own sheet. `earlier`: the earlier story's entries ("name: look"). Two at most. */
+export function inheritPlaces(listed: ReadonlyArray<string | null | undefined>, earlier: ReadonlyArray<string | null | undefined>, visuals: ReadonlyArray<string | null | undefined>): string[] {
+  const named = (e: string): string => placeKey(placeEntry(e).name);
+  const mine = (listed || []).map((e) => String(e || "")).filter((e) => !!named(e));
+  const old = (earlier || []).map((e) => String(e || "")).filter((e, k, a) => {
+    const key = named(e);
+    if (!key || a.findIndex((x) => named(String(x || "")) === key) !== k) return false;
+    return mine.some((m) => named(m) === key) || (visuals || []).some((v) => placeIn(String(v || ""), placeEntry(e).name));
+  });
+  const rest = mine.filter((m) => !old.some((o) => named(o) === named(m)));
+  return [...old, ...rest].slice(0, STORY_PLACE_MAX);
+}
+
 /** What the picture model is asked for: the place and nothing else, as a sheet an artist copies a design from. */
 export function placeSheetPrompt(place: { name: string; look: string }, sceneHint: string, safe = ""): string {
   return `${safe}A DESIGN SHEET of one place, for artists to copy it from: ${place.name} — ${place.look}. The same place is shown in three views on a plain pale-grey studio background — two different views of the whole of it, and one close view of its most recognisable part — like a scale model photographed on a table: no scenery, no sky, no ground, no weather around it. Style: ${sceneHint}. No people, no animals, no figures anywhere. ${NOTHING_WRITTEN}`;
