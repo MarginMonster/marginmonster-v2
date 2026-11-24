@@ -331,6 +331,10 @@ export interface FilmScene {
 }
 export interface FilmTreatment {
   title?: string; scenes: FilmScene[]; musicMood: string; cast?: string[];
+  /** A NARRATED story's places (story-picture.ts → "the story's places"): the one or two places or things it
+   *  keeps coming back to, each as "name: look" — every scene whose words name one is drawn from that
+   *  place's own design sheet, so it is the same place each time. */
+  places?: string[];
   /** A music video's lyric, counted against what its video needs — set when the sheet had to be rewritten
    *  to fit (film-engine previewFilmTreatment): how many words it has now, how many are wanted, how many
    *  it was written with, the rounds of rewriting, whether it fits, and what went wrong if anything did. */
@@ -350,6 +354,7 @@ const TREATMENT_SCHEMA = {
     title: { type: "string" },
     musicMood: { type: "string" },
     cast: { type: "array", items: { type: "string" } },
+    places: { type: "array", items: { type: "string" } },
     scenes: {
       type: "array",
       items: {
@@ -597,7 +602,11 @@ export async function previewFilmTreatment(opts: {
     ? `\nWrite it as a NARRATED STORY: a storyteller's voice tells it over illustrated scenes — nobody speaks on camera. Return EXACTLY ${scenes} scenes. Each scene has TWO fields:\n` +
       `• VISUAL — the ONE picture we see while that part is told, in at most 45 words: a single vivid, specific moment (${tmpl.sceneHint}) — who is in it, where, doing what, the light and the mood. Call every character who is IN the picture by their NAME exactly as in "cast" (never just "he", "she", "the creature" or "the clerk"); a picture nobody is in names nobody. Anything that is seen in more than one picture (a kite, a car, a house, a toy) is described with the SAME few words every time, so it is drawn the same. A different moment every scene. It is ONE moment only — a picture cannot show two times: never "then", "until", "later" or a before-and-after in a VISUAL (three stories made on 2026-11-22: a scene written as two moments was drawn as two panels). A picture has the story's cast and at most ONE other person — never an extra "unnamed" figure beside two of the cast (the picture model then leaves one of the cast out). And nothing in it is WRITTEN: no sign with words, label, notice, number or name on a door — say what a thing looks like, never what it says.\n` +
       `• CAPTION — the NARRATOR'S words for that scene, written to be READ ALOUD: 2-3 sentences, about 25-35 words. Plain, vivid, concrete storytelling — no "NAME:" labels, no stage directions, no headings. The FIRST scene opens with a hook that makes a viewer stay. Each scene picks up exactly where the last one left off. The LAST scene lands the ending${tmpl.key === "moral" ? " and says the lesson in one clear closing line" : tmpl.key === "horror" ? " on the chilling twist — the last line should make the skin crawl" : ""}.\n` +
-      `Read in order, the captions are the whole story, start to finish, in one voice.\n`
+      `Read in order, the captions are the whole story, start to finish, in one voice.\n` +
+      // THE STORY'S PLACES (story-picture.ts): the first Horror Story made in one press had a ferry that was
+      // a rowing boat, then a ship, then a ferry — each picture drew "the ferry" from the word. A place the
+      // story comes back to is described ONCE, here, and drawn from one design sheet of it.
+      `Also return "places": the ONE or TWO places or things this story keeps coming back to — a house, a boat, a shop, a street, a car — each written as "name: look": a short plain name ("the ferry", "the lighthouse", "the bakery"), a colon, then ONE fixed description of 15-30 words — its shape, colours and materials, and two or three details that make it THIS one and no other (e.g. "the ferry: an old low black wooden river ferry with a small square wheelhouse at its stern, one iron lantern hook at its bow and a worn plank deck with a low rail"). Only what at least TWO pictures are set at, in or on; never a person or an animal; no weather or time of day in it; an empty list when the story has no such place. Every VISUAL set there calls it by that exact name ("on the ferry", "at the door of the lighthouse").\n`
     : tmpl.dialogue
     ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FIVE fields:\n` +
       `• VISUAL — what we SEE: a TWO-SHOT framing BOTH characters together in the place; they STAY put (NO standing up, sitting down, walking, turning away or crossing — big moves make the AI morph faces/clothing); a still, tense TALKING beat with only small gestures and changing expressions; keep hands EMPTY by default — do NOT add cigarettes, drinks, phones or handheld props for flavour (they warp badly in AI video), only include one if the user's theme specifically involves it; NO readable text, documents, papers, boards, signage or screens in view.\n` +
@@ -836,7 +845,11 @@ export async function previewFilmTreatment(opts: {
   // (the WRITER'S OWN title only: with none, an episode is just "<Series> — Episode <N>". It used to borrow
   //  the idea box or the format's name — an episode made from an empty idea box was "… Episode 2: Short Film")
   if (series) outTitle = episodeTitle(series.title, series.episode, parsed.title ? outTitle : "");
-  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
+  // A TOLD STORY'S PLACES (story-picture.ts): two at most, each "name: look", as the writer gave them
+  const places = narrated && Array.isArray(parsed.places)
+    ? parsed.places.filter((p): p is string => typeof p === "string").map((p) => p.replace(/\s+/g, " ").trim().slice(0, 400)).filter((p) => p.length > 12).slice(0, 2)
+    : [];
+  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 
 // ---- Assembly ---------------------------------------------------------------

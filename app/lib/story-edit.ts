@@ -16,7 +16,7 @@
 import { heroOf } from "./film-heroes.ts";
 import { trimTitle } from "./text-trim.ts";
 import { isNarratedStory, storyLangOf, toldFrom } from "./story-translate.ts";
-import { castCardsOf, castStillIn, castToken, type StoryCastRef } from "./story-picture.ts";
+import { castCardsOf, castStillIn, castToken, placesOf, placesStillIn, type StoryCastRef } from "./story-picture.ts";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -48,7 +48,7 @@ export type StoryToEdit = {
   cast: Array<{ name: string; faceUrl?: string }>;
   /** the idea it was made from */
   topic: string;
-  treatment: { title: string; scenes: EditScene[]; musicMood: string; cast: string[] };
+  treatment: { title: string; scenes: EditScene[]; musicMood: string; cast: string[]; /** the places it comes back to, each "name: look" (story-picture.ts) */ places?: string[] };
   /** one for each scene, in order — or all null when they were not kept (the storyboard says so, and
    *  the story is then drawn again) */
   pictures: (string | null)[];
@@ -91,6 +91,10 @@ export function storyToEditFrom(
   const captions = str(meta.captions);
   const castList = (Array.isArray(tr.cast) ? tr.cast : []).map((c) => oneLine(str(c)).slice(0, 300)).filter(Boolean).slice(0, 8);
   const ownCast = castStillIn(castCardsOf(meta), castList);
+  // THE STORY'S PLACES come back with it: the list the writer gave, and the design sheet each was drawn
+  // from — so a scene added or drawn again while editing is set in the same ferry, not a new one
+  const placeList = (Array.isArray(tr.places) ? tr.places : []).map((p) => oneLine(str(p)).slice(0, 400)).filter(Boolean).slice(0, 2);
+  const ownPlaces = placesStillIn(placesOf(meta), placeList);
   return {
     from: asset.id,
     // (what the storyboard CALLS the story it has open — short enough for one line on a phone)
@@ -111,11 +115,12 @@ export function storyToEditFrom(
       scenes,
       musicMood: oneLine(str(tr.musicMood)).slice(0, 200),
       cast: castList,
+      ...(placeList.length ? { places: placeList } : {}),
     },
     pictures: kept ? pictures!.map((p) => p) : scenes.map(() => null),
     picturesKept: kept,
     ownCast,
-    castRef: castToken(ownCast),
+    castRef: castToken(ownCast, ownPlaces),
   };
 }
 

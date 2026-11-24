@@ -37,7 +37,7 @@ import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
-import { NOTHING_WRITTEN, ONE_PICTURE, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_MODEL, castEntry, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, portraitPrompt, readCastToken, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept } from "./story-picture";
+import { NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_MODEL, castEntry, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
@@ -71,10 +71,12 @@ const CAST_LOCK = "CRITICAL: every character taken from a reference image is the
 
 /** One picture, on the everyday picture model, from a prompt of any length (the shared helpers cut a
  *  prompt at ~460 characters, which is where a scene's cast notes live). Null when it cannot be drawn. */
-async function drawScene(prompt: string, refs: string[], aspect: string): Promise<string | null> {
+async function drawScene(prompt: string, refs: string[], aspect: string, people = refs.length): Promise<string | null> {
   // (three people from three pictures go to the stronger model — story-picture.ts → sceneModel; if it
-  //  cannot be reached, the everyday one still draws the scene)
-  const model = sceneModel(refs.length);
+  //  cannot be reached, the everyday one still draws the scene. `people`: how many of the references are
+  //  characters — a place's design sheet is not one: two people and their place drew right on the
+  //  everyday model four times out of four)
+  const model = sceneModel(people);
   const run = async (m: string): Promise<string> => persistRemote(await repRun(m, { prompt: `${frameWords(aspect)} ${prompt} No watermark, no signature.`, ...(refs.length ? { image_input: refs } : {}), aspect_ratio: aspect, output_format: "jpg", ...(m === STORY_MODEL ? {} : { resolution: "1K" }) }, 150_000), "jpg");
   try {
     return await run(model);
@@ -119,7 +121,7 @@ async function makeStoryPoster(o: { stills: string[]; visuals: string[]; names: 
  *  re-draws a single scene. Returns /renders URLs made absolute (null where a still could not be made). */
 export async function narratedSceneSeeds(o: {
   template?: string; treatment: FilmTreatment; cast?: StoryCast; aspect?: string; /** draw only this scene, or only these */ only?: number | number[]; castRef?: string | null;
-}): Promise<{ sceneImgs: (string | null)[]; castRef: string | null; /** the story's own characters, each with its portrait — to be shown */ castCards: StoryCastRef[]; /** for each scene drawn: how wrong the picture that was KEPT still is (0 = nothing; null = not drawn here), and what the look read off it */ sceneFaults: (number | null)[]; sceneChecks: (StoryKept | null)[] }> {
+}): Promise<{ sceneImgs: (string | null)[]; castRef: string | null; /** the story's own characters, each with its portrait — to be shown */ castCards: StoryCastRef[]; /** the places the story comes back to, each with its design sheet — to be shown */ placeCards: StoryPlaceRef[]; /** for each scene drawn: how wrong the picture that was KEPT still is (0 = nothing; null = not drawn here), and what the look read off it */ sceneFaults: (number | null)[]; sceneChecks: (StoryKept | null)[] }> {
   const tmpl = filmTemplate(o.template);
   const { aspect } = storyFrame(o.aspect);
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -142,6 +144,18 @@ export async function narratedSceneSeeds(o: {
   // (only who THIS story still has a character for, and only a portrait that is still on our disk: the
   //  next episode of a series arrives with last episode's cast, and a missing file is drawn again)
   const cards: StoryCastRef[] = castStillIn(carried.refs, others).filter((c) => fs.existsSync(path.join(RENDERS(), path.basename(c.img))));
+
+  // THE STORY'S PLACES (story-picture.ts): a place at least two scenes are set at gets ONE design sheet —
+  // drawn once, beside the portraits, carried in the same token — and every scene set there is drawn with
+  // it, so the ferry of scene 1 is the ferry of scene 6. (STORY_PLACES=off: places are drawn from words.)
+  const placeList = (o.treatment.places || []).filter((e): e is string => typeof e === "string" && !!e.trim());
+  const wanted = process.env.STORY_PLACES !== "off" && !sheetRef ? recurringPlaces(scenes.map((s) => s?.visual || ""), placeList) : [];
+  const placeCards: StoryPlaceRef[] = placesStillIn(carried.places, placeList).filter((c) => fs.existsSync(path.join(RENDERS(), path.basename(c.img))));
+  const sheetFor = (name: string): StoryPlaceRef | undefined => placeCards.find((c) => placeKey(c.name) === placeKey(name));
+  const needPlaces = wanted.filter((p) => p.scenes.some((i) => todo.includes(i)) && !sheetFor(p.name));
+  // (started now, awaited after the portraits: the two are drawn side by side, so a story's pictures take no longer)
+  const sheetsDrawing = Promise.all(needPlaces.map(async (p) => ({ p, img: await drawScene(placeSheetPrompt(p, tmpl.sceneHint, safe), [], PLACE_SHEET_ASPECT) })));
+
   if (!sheetRef) {
     const need = others
       .filter((e) => who.some((w) => w.others.includes(e)) && !!castEntry(e).name && !cards.some((c) => sameCharacter(c.name, castEntry(e).name)))
@@ -153,6 +167,8 @@ export async function narratedSceneSeeds(o: {
     if (need.length) console.log(`[narrated] the story's own cast: ${drawn.filter((d) => d.img).length} of ${need.length} portraits drawn (${need.map((e) => entryName(e)).join(", ")})`);
   }
   const cardFor = (e: string): StoryCastRef | undefined => cards.find((c) => sameCharacter(c.name, castEntry(e).name));
+  for (const d of await sheetsDrawing) if (d.img) placeCards.push({ name: d.p.name, look: d.p.look, img: d.img });
+  if (needPlaces.length) console.log(`[narrated] the story's places: ${needPlaces.filter((p) => sheetFor(p.name)).length} of ${needPlaces.length} design sheets drawn (${needPlaces.map((p) => `${p.name} ×${p.scenes.length}`).join(", ")})`);
 
   const out: (string | null)[] = new Array(scenes.length).fill(null);
   // A PICTURE KEPT WITH SOMETHING STILL WRONG SAYS SO (the best of three goes can still be missing someone):
@@ -171,10 +187,17 @@ export async function narratedSceneSeeds(o: {
       const chosen = who[k].picked.map((p) => picked[p]).slice(0, sheet ? 2 : 3);
       const own = sheet ? [] : who[k].others.map(cardFor).filter((c): c is StoryCastRef => !!c).slice(0, Math.max(0, 3 - chosen.length));
       const here: Array<{ name: string; look?: string; faceUrl?: string | null }> = [...chosen, ...own.map((c) => ({ name: c.name, look: c.look, faceUrl: c.img }))];
-      const refs = [...here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u), ...(sheet ? [sheet] : [])];
+      const people = [...here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u), ...(sheet ? [sheet] : [])];
+      // WHERE IT IS SET: the design sheet of the place this scene's words name, as one more reference —
+      // after the people, and not counted as one of them when the picture model is chosen
+      const setAt = wanted.find((p) => p.scenes.includes(i));
+      const place = setAt ? sheetFor(setAt.name) : undefined;
+      const placeUrl = place ? abs(place.img) : null;
+      const refs = [...people, ...(placeUrl ? [placeUrl] : [])];
       const notes: string[] = [];
       here.forEach((c, n) => notes.push(`${c.name} is the character in reference image ${n + 1}${c.look ? ` (${c.look.slice(0, 160)})` : ""}.`));
       if (sheet) notes.push(`Reference image ${here.length + 1} is a sheet of other characters: from it take ONLY ${who[k].others.map((e) => e.slice(0, 200)).join("; and ")}.`);
+      if (place && placeUrl) { notes.push(placeNote(refs.length, place)); if (here.length) notes.push(PLACE_FRAMING); }
       // (a character with no picture of its own here — its portrait could not be drawn, or it is a fourth
       //  in one scene — is drawn from its words, as every invented character once was)
       const unpictured = sheet ? [] : who[k].others.filter((e) => !own.some((c) => c === cardFor(e)));
@@ -215,7 +238,7 @@ export async function narratedSceneSeeds(o: {
       let best: { img: string; faults: number; check: StoryCheck } | null = null;
       let fix = "";
       for (let a = 0; a < 3 && !img; a++) {
-        const got = await drawScene(`${prompt}${fix}`, refs, aspect);
+        const got = await drawScene(`${prompt}${fix}`, refs, aspect, people.length);
         if (got && (await letterboxed(got))) { barred = got; console.error(`[narrated] scene ${i + 1} came back letterboxed — drawing it again`); continue; }
         if (!got) { if (a >= 1) break; continue; } // two plain failures: stop asking this way
         const seenAs = await lookAt(got);
@@ -237,7 +260,7 @@ export async function narratedSceneSeeds(o: {
   // (the cast is billed in the story's own order — a character drawn again does not move to the end of the row)
   const billed = (c: StoryCastRef): number => { const k = others.findIndex((e) => sameCharacter(c.name, castEntry(e).name)); return k < 0 ? others.length : k; };
   cards.sort((a, b) => billed(a) - billed(b));
-  return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards) || null, castCards: cards, sceneFaults: faultsOut, sceneChecks: checksOut };
+  return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards, placeCards) || null, castCards: cards, placeCards, sceneFaults: faultsOut, sceneChecks: checksOut };
 }
 
 /** DRAW ONE CHARACTER AGAIN. The maker does not like how Walter came out: his portrait is dropped, a new one
@@ -254,7 +277,7 @@ export async function recastStoryCharacter(o: {
   const scenes = o.treatment.scenes.map((s, i) => (namedIn(entryName(entry), s?.visual || "") ? i : -1)).filter((i) => i >= 0);
   if (!scenes.length) return null;
   const kept = carried.refs.filter((r) => !sameCharacter(r.name, o.name));
-  const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept) || null });
+  const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept, carried.places) || null });
   return { ...r, scenes };
 }
 
@@ -644,6 +667,8 @@ export async function generateNarratedStory(opts: {
         ...(opts.translatedFrom ? { translatedFrom: String(opts.translatedFrom).slice(0, 64) } : {}),
         // THE STORY'S OWN CAST: the characters it invented, each with its portrait (story-picture.ts)
         ...(readCastToken(storyCastRef).refs.length ? { castCards: readCastToken(storyCastRef).refs } : {}),
+        // …and its PLACES: the design sheet each recurring place was drawn from (story-picture.ts)
+        ...(readCastToken(storyCastRef).places.length ? { places: readCastToken(storyCastRef).places } : {}),
         // what its timing was made from — for the operator alone (web.archive's loader)
         timing,
         // THE PICTURES MOVE: how many scenes do, what was asked for now (seconds = what was paid for), and

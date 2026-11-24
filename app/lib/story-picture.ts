@@ -160,33 +160,39 @@ export const STORY_CROWD_MODEL = "google/nano-banana-pro";
 export const STORY_CROWD_REFS = 3;
 export const sceneModel = (refs: number): string => (refs >= STORY_CROWD_REFS ? STORY_CROWD_MODEL : STORY_MODEL);
 
-/** The token: the portraits, each by its own address on OUR renders disk and nothing else (it comes back
- *  from a browser — an address anywhere else is not a portrait of ours and is dropped). "" = none. */
-export function castToken(refs: ReadonlyArray<StoryCastRef>): string {
-  const kept = refs
+/** The token: the portraits — and the story's PLACES (below), which travel with them — each by its own
+ *  address on OUR renders disk and nothing else (it comes back from a browser — an address anywhere else
+ *  is not a picture of ours and is dropped). "" = none. */
+export function castToken(refs: ReadonlyArray<StoryCastRef>, places: ReadonlyArray<StoryPlaceRef> = []): string {
+  const pack = (list: ReadonlyArray<{ name?: string; look?: string; img?: string }>, most: number) => (list || [])
     .map((r) => ({ n: String(r?.name || "").trim().slice(0, 40), l: String(r?.look || "").trim().slice(0, 200), i: String(r?.img || "").replace(/^https?:\/\/[^/]+/, "").split("?")[0] }))
     .filter((r) => r.n && OWN_RENDER.test(r.i))
-    .slice(0, STORY_CAST_MAX);
-  return kept.length ? JSON.stringify({ v: 2, c: kept }) : "";
+    .slice(0, most);
+  const kept = pack(refs, STORY_CAST_MAX);
+  const where = pack(places, STORY_PLACE_MAX);
+  return kept.length || where.length ? JSON.stringify({ v: 2, c: kept, ...(where.length ? { p: where } : {}) }) : "";
 }
 
 /** Read it back. A storyboard opened before this carries the address of the one SHEET instead — handed
  *  back as `sheet`, and used the way it was. Anything else is nothing at all. */
-export function readCastToken(token: string | null | undefined): { refs: StoryCastRef[]; sheet: string | null } {
+export function readCastToken(token: string | null | undefined): { refs: StoryCastRef[]; sheet: string | null; places: StoryPlaceRef[] } {
   const t = String(token || "").trim();
-  if (!t) return { refs: [], sheet: null };
-  if (!t.startsWith("{")) return { refs: [], sheet: /^(?:https?:\/\/[^\s"']+|\/renders\/[a-zA-Z0-9_.-]+)$/.test(t) ? t : null };
+  if (!t) return { refs: [], sheet: null, places: [] };
+  if (!t.startsWith("{")) return { refs: [], sheet: /^(?:https?:\/\/[^\s"']+|\/renders\/[a-zA-Z0-9_.-]+)$/.test(t) ? t : null, places: [] };
   try {
-    const j = JSON.parse(t) as { v?: unknown; c?: unknown };
-    if (j?.v !== 2 || !Array.isArray(j.c)) return { refs: [], sheet: null };
-    const refs: StoryCastRef[] = [];
-    for (const r of j.c as Array<{ n?: unknown; l?: unknown; i?: unknown }>) {
-      const name = typeof r?.n === "string" ? r.n.trim().slice(0, 40) : "";
-      const img = typeof r?.i === "string" ? r.i : "";
-      if (name && OWN_RENDER.test(img) && !refs.some((x) => sameCharacter(x.name, name))) refs.push({ name, look: typeof r?.l === "string" ? r.l.slice(0, 200) : "", img });
-    }
-    return { refs: refs.slice(0, STORY_CAST_MAX), sheet: null };
-  } catch { return { refs: [], sheet: null }; }
+    const j = JSON.parse(t) as { v?: unknown; c?: unknown; p?: unknown };
+    if (j?.v !== 2 || !Array.isArray(j.c)) return { refs: [], sheet: null, places: [] };
+    const unpack = (list: unknown, most: number): StoryCastRef[] => {
+      const out: StoryCastRef[] = [];
+      for (const r of (Array.isArray(list) ? list : []) as Array<{ n?: unknown; l?: unknown; i?: unknown }>) {
+        const name = typeof r?.n === "string" ? r.n.trim().slice(0, 40) : "";
+        const img = typeof r?.i === "string" ? r.i : "";
+        if (name && OWN_RENDER.test(img) && !out.some((x) => sameCharacter(x.name, name))) out.push({ name, look: typeof r?.l === "string" ? r.l.slice(0, 200) : "", img });
+      }
+      return out.slice(0, most);
+    };
+    return { refs: unpack(j.c, STORY_CAST_MAX), sheet: null, places: unpack(j.p, STORY_PLACE_MAX) };
+  } catch { return { refs: [], sheet: null, places: [] }; }
 }
 
 /** The cast a FINISHED story kept (its meta.castCards), checked the way the token is — so a story opened
@@ -197,6 +203,92 @@ export function castCardsOf(meta: unknown): StoryCastRef[] {
   const cards = m && typeof m === "object" && !Array.isArray(m) ? (m as { castCards?: unknown }).castCards : null;
   return Array.isArray(cards) ? readCastToken(castToken(cards as StoryCastRef[])).refs : [];
 }
+
+/* ---- THE STORY'S PLACES ----
+ * The people of a story hold still now; its world did not. In the first Horror Story made in one press
+ * (2026-11-24) the night ferry was a rowing boat in scene 1, a ship with a great wheel in scene 3 and a
+ * ferry with a wheelhouse in scene 6 — every picture drew "the ferry" from the word alone.
+ *
+ * Tried on two worlds before a line of this was written (the ferry, a lighthouse — the same scenes drawn
+ * three ways and LOOKED at): saying the place in the same words every time still gave three different
+ * buildings; ONE picture of the place, given as a reference, gave the same place in every scene. But not any
+ * picture: handed an establishing view, the everyday picture model gives that same view back with a tiny
+ * figure painted into it (3 of 6). What it cannot copy as a scene is a DESIGN SHEET — the place on a plain
+ * background, three views, no scenery — and with one line saying how near the camera is, it drew a new
+ * view of the right place every time (6 of 6; 4 of 4 with two people in it as well).
+ *
+ * So a place the story comes back to gets one design sheet, drawn once, and every scene whose words name
+ * that place is drawn with it. The sheets travel in the cast's token (castToken) and are shown with the
+ * cast: a story has its people and its places. */
+export type StoryPlaceRef = { name: string; look: string; img: string };
+/** No more places than this get a sheet (a short story comes back to one, sometimes two). */
+export const STORY_PLACE_MAX = 2;
+/** A design sheet is square: three views side by side and above one another. */
+export const PLACE_SHEET_ASPECT = "1:1";
+
+/** A places-list entry as a place: "the ferry: an old low black wooden ferry with…" → its name and its look. */
+export function placeEntry(entry: string): { name: string; look: string } {
+  const e = String(entry || "").replace(/\s+/g, " ").trim();
+  const head = e.split(/[,:—–(]/)[0] || "";
+  return { name: head.trim().slice(0, 40).trim(), look: e.slice(head.length).replace(/^[\s,:—–(]+/, "").replace(/\)\s*\.?\s*$/, "").trim().slice(0, 320) };
+}
+
+const placeWords = (s: string): string[] => String(s || "").toLowerCase().replace(/[’']s\b/g, "").replace(/[^\p{L}\p{N} ]/gu, " ").split(/\s+/).filter(Boolean);
+/** What a place is called by in a scene's words: its name without the article — "the old ferry" → "old ferry". */
+export const placeKey = (name: string): string => placeWords(name).filter((w, k) => k > 0 || !/^(?:the|a|an|this|that|his|her|their|our|my)$/.test(w)).join(" ");
+
+/** Do a scene's words set it at this place? They call it by its name ("the ferry", "the ferry's wheel"),
+ *  or by the last word of a longer name ("the old ferry" is also "the ferry"). */
+export function placeIn(visual: string, name: string): boolean {
+  const key = placeKey(name);
+  if (!key) return false;
+  const text = ` ${placeWords(visual).join(" ")} `;
+  if (text.includes(` ${key} `)) return true;
+  const last = key.split(" ").pop() || "";
+  return key.includes(" ") && last.length >= 4 && text.includes(` ${last} `);
+}
+
+/** Which of the story's places a scene is set at: the first in the list that its words name — or -1. */
+export const scenePlace = (visual: string, places: ReadonlyArray<{ name: string }>): number => places.findIndex((p) => placeIn(visual || "", p.name));
+
+/** The places worth a sheet: the ones at least TWO of the story's scenes are set at (a place seen once
+ *  cannot drift) — the most used first, STORY_PLACE_MAX at most — each with the scenes that are set there
+ *  (a scene is set at one place: the first of the list it names). */
+export function recurringPlaces(visuals: ReadonlyArray<string | null | undefined>, entries: ReadonlyArray<string | null | undefined>): Array<{ name: string; look: string; scenes: number[] }> {
+  const places = (entries || []).map((e) => placeEntry(String(e || ""))).filter((p, k, a) => p.name && p.look.length > 12 && a.findIndex((x) => placeKey(x.name) === placeKey(p.name)) === k);
+  const at = (visuals || []).map((v) => scenePlace(String(v || ""), places));
+  return places
+    .map((p, k) => ({ ...p, scenes: at.map((x, i) => (x === k ? i : -1)).filter((i) => i >= 0), k }))
+    .filter((p) => p.scenes.length >= 2)
+    .sort((a, b) => b.scenes.length - a.scenes.length || a.k - b.k)
+    .slice(0, STORY_PLACE_MAX)
+    .map(({ name, look, scenes }) => ({ name, look, scenes }));
+}
+
+/** What the picture model is asked for: the place and nothing else, as a sheet an artist copies a design from. */
+export function placeSheetPrompt(place: { name: string; look: string }, sceneHint: string, safe = ""): string {
+  return `${safe}A DESIGN SHEET of one place, for artists to copy it from: ${place.name} — ${place.look}. The same place is shown in three views on a plain pale-grey studio background — two different views of the whole of it, and one close view of its most recognisable part — like a scale model photographed on a table: no scenery, no sky, no ground, no weather around it. Style: ${sceneHint}. No people, no animals, no figures anywhere. ${NOTHING_WRITTEN}`;
+}
+
+/** What a scene's picture is told about the place it is set at, given as reference image `n`. */
+export function placeNote(n: number, place: { name: string; look: string }): string {
+  return `Reference image ${n} is a design sheet of ${place.name} (${place.look.slice(0, 220)}) — the PLACE this picture is set in. It is the SAME one here: the same shapes, colours, materials and details. Show it from wherever this moment is seen (on it, inside it, beside it, far off): a NEW view of the same place. The sheet's plain background and its three views are NOT part of this picture.`;
+}
+/** …and, when the scene has people in it, how near the camera is. (Without it a figure comes out small.) */
+export const PLACE_FRAMING = "FRAMING: this is a picture of the CHARACTERS in that place, not a picture of the place. The camera is near them — each one fills at least a third of the picture's height, and their faces are clear — and only the part of the place around them is in view.";
+
+/** The places a FINISHED story kept (its meta.places), checked the way the token is. */
+export function placesOf(meta: unknown): StoryPlaceRef[] {
+  let m: unknown = meta;
+  if (typeof m === "string") { try { m = JSON.parse(m); } catch { return []; } }
+  const places = m && typeof m === "object" && !Array.isArray(m) ? (m as { places?: unknown }).places : null;
+  return Array.isArray(places) ? readCastToken(castToken([], places as StoryPlaceRef[])).places : [];
+}
+
+/** The carried sheets this story still has a place for (by name) — a storyboard whose place was renamed, or
+ *  the next telling of another story, does not inherit a sheet that is not its own. */
+export const placesStillIn = (refs: ReadonlyArray<StoryPlaceRef>, entries: ReadonlyArray<string | null | undefined>): StoryPlaceRef[] =>
+  (refs || []).filter((r) => (entries || []).some((e) => placeKey(placeEntry(String(e || "")).name) === placeKey(r.name)));
 
 /* ---- KEEP IN MY CAST ----
  * A character a story invented can be kept: the portrait the story drew becomes one of the maker's own

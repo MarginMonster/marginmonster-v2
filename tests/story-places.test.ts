@@ -1,0 +1,220 @@
+/* THE STORY'S PLACES — the same ferry in scene 1 and in scene 6.
+ *
+ * A story's people have held still since 2026-11-23 (one portrait each: tests/story-cast.test.ts). Its world
+ * did not. The first Horror Story made in one press (2026-11-24, "The Bride of the Black Water") had a night
+ * ferry that was a rowing boat in scene 1, a ship with a great wheel in scene 3 and a ferry with a
+ * wheelhouse in scene 6: every picture drew "the ferry" from the word.
+ *
+ * Tried before any of this was written — two worlds (that ferry, a lighthouse), the same scenes drawn three
+ * ways, every picture LOOKED at:
+ *   as today                          three different boats; three different lighthouses
+ *   the place in the same words       closer in mood, still three different buildings
+ *   ONE picture of it as a reference  the same place in every scene
+ * …but not any picture. Handed an establishing view, the everyday picture model hands the same far view
+ * back with a small figure painted in (3 of 6). What it cannot copy as a scene is a DESIGN SHEET — the
+ * place on a plain background, three views, no scenery; with one line saying how near the camera is it
+ * drew a new view of the right place 6 times of 6, and 4 of 4 with two people in it as well. So one extra
+ * everyday picture per place, and no stronger model.
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  NOTHING_WRITTEN, PLACE_FRAMING, PLACE_SHEET_ASPECT, STORY_MODEL, STORY_PLACE_MAX,
+  castToken, placeEntry, placeIn, placeKey, placeNote, placeSheetPrompt, placesOf, placesStillIn, readCastToken, recurringPlaces, scenePlace, sceneModel,
+} from "../app/lib/story-picture.ts";
+import { storyToEditFrom } from "../app/lib/story-edit.ts";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// (a checkout with CRLF line endings must read the same as one with LF)
+const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
+
+const FERRY = "the ferry: an old low black wooden river ferry with a small square wheelhouse at its stern, one iron lantern hook at its bow and a worn plank deck with a low rail";
+const CHAPEL = "the chapel: a small white clapboard chapel with a crooked steeple and one round window";
+// (the scenes of that Horror Story, as a writer told to name the place would write them)
+const SCENES = [
+  "Corin stands at the wheel of the ferry, one hand on its spokes, staring into the fog, his lantern at his side.",
+  "Maren stands on the black water in the fog, her gown trailing, far from any shore.",
+  "Corin grips the rail of the ferry, never looking at the pale figure beyond the bow.",
+  "Maren steps onto the ferry's deck without a ripple, water pooling at her bare feet.",
+  "Corin kneels frozen on the deck while Maren bends over him, her hollow eyes close to his.",
+  "The empty ferry drifts against a reed bank at grey dawn, its lantern cold on its hook.",
+];
+
+test("a place as the writer gives it: a short name, a colon, one fixed look", () => {
+  assert.deepEqual(placeEntry(FERRY), { name: "the ferry", look: "an old low black wooden river ferry with a small square wheelhouse at its stern, one iron lantern hook at its bow and a worn plank deck with a low rail" });
+  assert.deepEqual(placeEntry("  The Lighthouse — a tall white stone tower with one red band  "), { name: "The Lighthouse", look: "a tall white stone tower with one red band" });
+  assert.deepEqual(placeEntry("the bakery (a corner shop with a blue door)"), { name: "the bakery", look: "a corner shop with a blue door" });
+  assert.deepEqual(placeEntry(""), { name: "", look: "" });
+  // what it is called by in a scene's words: its name without the article
+  assert.equal(placeKey("the ferry"), "ferry");
+  assert.equal(placeKey("The Old Ferry"), "old ferry");
+  assert.equal(placeKey("Corin's ferry"), "corin ferry");
+  assert.equal(placeKey("a"), "", "an article alone names nothing");
+});
+
+test("which scenes are set there: the ones whose words call the place by its name", () => {
+  assert.ok(placeIn("Corin stands at the wheel of the ferry", "the ferry"));
+  assert.ok(placeIn("Maren steps onto the ferry's deck", "the ferry"), "…'s");
+  assert.ok(placeIn("The Ferry drifts against a reed bank", "the ferry"), "whatever the capitals");
+  assert.ok(placeIn("the empty ferry at dawn", "the old ferry"), "a longer name is also known by its last word");
+  assert.ok(!placeIn("Maren stands on the black water", "the ferry"));
+  assert.ok(!placeIn("a ferryman rows across", "the ferry"), "a whole word, not a part of one");
+  assert.ok(!placeIn("the wheelhouse door stands open", "the house"));
+  assert.ok(!placeIn("anything at all", ""), "no name, no place");
+  // a scene is set at ONE place: the first in the story's list that it names
+  const places = [placeEntry(FERRY), placeEntry(CHAPEL)];
+  assert.deepEqual(SCENES.map((v) => scenePlace(v, places)), [0, -1, 0, 0, -1, 0]);
+  assert.equal(scenePlace("Corin ties up the ferry below the chapel", places), 0);
+  assert.equal(scenePlace("Corin kneels in the chapel", places), 1);
+});
+
+test("a sheet is drawn for a place the story COMES BACK to — two scenes or more, two places at most", () => {
+  assert.equal(STORY_PLACE_MAX, 2);
+  assert.deepEqual(recurringPlaces(SCENES, [FERRY]), [{ ...placeEntry(FERRY), scenes: [0, 2, 3, 5] }]);
+  // a place seen once cannot drift: no sheet
+  assert.deepEqual(recurringPlaces([...SCENES, "Corin kneels in the chapel at noon."], [FERRY, CHAPEL]).map((p) => p.name), ["the ferry"]);
+  // the most used first; never a third; a place listed twice counts once; an entry with no look is no design
+  const three = recurringPlaces(
+    ["at the mill", "at the mill", "in the barn", "in the barn", "in the barn", "by the well", "by the well"],
+    ["the mill: a grey stone watermill with a broken wheel and ivy on its north wall", "the barn: a red timber barn with a sagging roof and one white door", "the well: a round mossy stone well with a wooden crank and a tin bucket", "The Barn: listed twice by mistake, described differently here"],
+  );
+  assert.deepEqual(three.map((p) => [p.name, p.scenes]), [["the barn", [2, 3, 4]], ["the mill", [0, 1]]]);
+  assert.deepEqual(recurringPlaces(["on the ferry", "on the ferry"], ["the ferry", "the ferry: a boat"]), [], "nothing to draw it from");
+  assert.deepEqual(recurringPlaces(SCENES, []), []);
+  assert.deepEqual(recurringPlaces([], [FERRY]), []);
+  // (a story written before the writer was asked for places has none — nothing changes for it)
+  assert.deepEqual(recurringPlaces(SCENES, undefined as unknown as string[]), []);
+});
+
+test("the design sheet: the place and nothing else, on a plain ground — so it cannot be copied as a scene", () => {
+  const p = placeSheetPrompt(placeEntry(FERRY), "dark cinematic horror illustration");
+  assert.ok(p.startsWith("A DESIGN SHEET of one place, for artists to copy it from: the ferry — an old low black wooden river ferry"));
+  assert.ok(p.includes("shown in three views on a plain pale-grey studio background"));
+  assert.ok(p.includes("no scenery, no sky, no ground, no weather around it"), "an establishing view was handed back with a figure painted into it");
+  assert.ok(p.includes("Style: dark cinematic horror illustration."), "in the story's own style");
+  assert.ok(p.includes("No people, no animals, no figures anywhere.") && p.endsWith(NOTHING_WRITTEN));
+  assert.ok(placeSheetPrompt(placeEntry(FERRY), "x", "Wholesome, child-safe. ").startsWith("Wholesome, child-safe. A DESIGN SHEET"));
+  assert.equal(PLACE_SHEET_ASPECT, "1:1");
+  // what a scene is told about it: which reference it is, that it is the SAME one, and a NEW view of it
+  const n = placeNote(3, placeEntry(FERRY));
+  assert.ok(n.startsWith("Reference image 3 is a design sheet of the ferry (an old low black wooden river ferry"));
+  assert.ok(n.includes("the PLACE this picture is set in") && n.includes("the same shapes, colours, materials and details"));
+  assert.ok(n.includes("a NEW view of the same place") && n.includes("The sheet's plain background and its three views are NOT part of this picture."));
+  // …and how near the camera is, when there are people in it (without it a figure came out small)
+  assert.ok(PLACE_FRAMING.includes("each one fills at least a third of the picture's height"));
+  // a design sheet is not a person: two people and their place stay on the everyday model
+  assert.equal(sceneModel(2), STORY_MODEL);
+});
+
+test("the sheets travel in the cast's token — and only pictures on our own renders disk", () => {
+  const cards = [{ name: "Corin", look: "a weathered night ferryman", img: "/renders/c1.jpg" }];
+  const places = [{ name: "the ferry", look: "an old low black wooden river ferry", img: "https://easymodeapp.com/renders/f1.jpg?v=2" }];
+  const token = castToken(cards, places);
+  assert.equal(token, JSON.stringify({ v: 2, c: [{ n: "Corin", l: "a weathered night ferryman", i: "/renders/c1.jpg" }], p: [{ n: "the ferry", l: "an old low black wooden river ferry", i: "/renders/f1.jpg" }] }));
+  assert.deepEqual(readCastToken(token), { refs: cards, sheet: null, places: [{ name: "the ferry", look: "an old low black wooden river ferry", img: "/renders/f1.jpg" }] });
+  // a story with a place and nobody of its own still has a token
+  assert.deepEqual(readCastToken(castToken([], places)).places.map((p) => p.name), ["the ferry"]);
+  assert.deepEqual(readCastToken(castToken([], places)).refs, []);
+  // a token written before places has none, and reads as it always did
+  assert.equal(castToken(cards), JSON.stringify({ v: 2, c: [{ n: "Corin", l: "a weathered night ferryman", i: "/renders/c1.jpg" }] }));
+  assert.deepEqual(readCastToken(castToken(cards)).places, []);
+  // what is not a picture of ours never gets in, written or read; two at most; nothing twice
+  assert.equal(castToken([], [{ name: "x", look: "", img: "https://evil.example/x.jpg" }, { name: "y", look: "", img: "/renders/../y.jpg" }, { name: "", look: "", img: "/renders/z.jpg" }]), "");
+  assert.deepEqual(readCastToken(JSON.stringify({ v: 2, c: [], p: [{ n: "a", l: "", i: "https://evil.example/a.jpg" }, { n: "b", l: 4, i: "/renders/b.png" }, { n: "B", l: "", i: "/renders/b2.png" }, "nonsense"] })).places, [{ name: "b", look: "", img: "/renders/b.png" }]);
+  assert.equal(readCastToken(castToken([], Array.from({ length: 5 }, (_, k) => ({ name: `p${k}`, look: "", img: `/renders/p${k}.jpg` })))).places.length, STORY_PLACE_MAX);
+  // a full token still fits the form field it rides in (4,000)
+  const fat = (n: number) => Array.from({ length: n }, (_, k) => ({ name: "N".repeat(60) + k, look: "l".repeat(900), img: `/renders/${"a".repeat(40)}${k}.jpg` }));
+  assert.ok(castToken(fat(4), fat(2)).length < 2100, `a full token is ${castToken(fat(4), fat(2)).length} characters`);
+});
+
+test("a finished story keeps its places, and a carried sheet is only used by a story that still has that place", () => {
+  const meta = { kind: "narrated", places: [{ name: "the ferry", look: "an old low black wooden river ferry", img: "/renders/f1.jpg" }, { name: "elsewhere", look: "", img: "https://evil.example/e.jpg" }] };
+  assert.deepEqual(placesOf(meta), [{ name: "the ferry", look: "an old low black wooden river ferry", img: "/renders/f1.jpg" }]);
+  assert.deepEqual(placesOf(JSON.stringify(meta)).length, 1);
+  for (const m of [null, undefined, "", "{", 3, [], {}, { places: "x" }]) assert.deepEqual(placesOf(m), []);
+  const carried = placesOf(meta);
+  assert.deepEqual(placesStillIn(carried, [FERRY]), carried);
+  assert.deepEqual(placesStillIn(carried, ["The Ferry: described anew"]), carried, "by its name, whatever the capitals");
+  assert.deepEqual(placesStillIn(carried, [CHAPEL]), [], "another story's ferry is not this story's chapel");
+  assert.deepEqual(placesStillIn(carried, []), []);
+  // the pipeline writes them onto the finished piece beside its cast
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("...(readCastToken(storyCastRef).places.length ? { places: readCastToken(storyCastRef).places } : {}),"));
+});
+
+test("where the pictures are drawn: one sheet per place, beside the portraits, then every scene set there", () => {
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  const fn = nar.slice(nar.indexOf("export async function narratedSceneSeeds("), nar.indexOf("/** DRAW ONE CHARACTER AGAIN."));
+  // which places: the ones the WHOLE story comes back to (not only the scenes drawn in this call) — and one switch
+  assert.ok(fn.includes("const wanted = process.env.STORY_PLACES !== \"off\" && !sheetRef ? recurringPlaces(scenes.map((s) => s?.visual || \"\"), placeList) : [];"));
+  // a sheet that came in with the token is used again when it is still this story's and still on our disk
+  assert.ok(fn.includes("const placeCards: StoryPlaceRef[] = placesStillIn(carried.places, placeList).filter((c) => fs.existsSync(path.join(RENDERS(), path.basename(c.img))));"));
+  assert.ok(fn.includes("const needPlaces = wanted.filter((p) => p.scenes.some((i) => todo.includes(i)) && !sheetFor(p.name));"), "only a sheet a scene being drawn NOW needs, and does not have");
+  // drawn on the everyday model, square, from words alone — STARTED before the portraits and awaited after
+  // them, so a story's pictures take no longer than they did
+  const start = fn.indexOf("const sheetsDrawing = Promise.all(needPlaces.map(async (p) => ({ p, img: await drawScene(placeSheetPrompt(p, tmpl.sceneHint, safe), [], PLACE_SHEET_ASPECT) })));");
+  const portraits = fn.indexOf("const drawn = await Promise.all(need.map(async (e) =>");
+  const done = fn.indexOf("for (const d of await sheetsDrawing) if (d.img) placeCards.push({ name: d.p.name, look: d.p.look, img: d.img });");
+  assert.ok(start > 0 && portraits > start && done > portraits, "started, then the portraits, then awaited");
+  // a scene: the people first, the place's sheet LAST — and not counted as a person when the model is chosen
+  assert.ok(fn.includes("const setAt = wanted.find((p) => p.scenes.includes(i));"));
+  assert.ok(fn.includes("const refs = [...people, ...(placeUrl ? [placeUrl] : [])];"));
+  assert.ok(fn.includes("if (place && placeUrl) { notes.push(placeNote(refs.length, place)); if (here.length) notes.push(PLACE_FRAMING); }"), "the framing line only where there are people to frame");
+  assert.ok(fn.includes("const got = await drawScene(`${prompt}${fix}`, refs, aspect, people.length);"));
+  // a sheet that could not be drawn changes nothing: the scene is drawn from its words, as before
+  assert.ok(fn.includes("const place = setAt ? sheetFor(setAt.name) : undefined;"));
+  // what comes back: the token with the places in it, and the sheets themselves
+  assert.ok(fn.includes("castRef: carried.sheet || castToken(cards, placeCards) || null, castCards: cards, placeCards,"));
+});
+
+test("the writer is asked for the story's places — a told story only — and they ride with its treatment", () => {
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.ok(engine.includes("places: { type: \"array\", items: { type: \"string\" } },"), "in what the writer may return");
+  const ask = engine.indexOf("Also return \"places\": the ONE or TWO places or things this story keeps coming back to");
+  const narr = engine.indexOf("Write it as a NARRATED STORY: a storyteller's voice tells it over illustrated scenes");
+  const acted = engine.indexOf("Write it as a SHORT FILM SCENE with CHARACTER DIALOGUE.");
+  assert.ok(narr > 0 && ask > narr && ask < acted, "asked in the told story's brief and nowhere else");
+  assert.ok(engine.includes("Only what at least TWO pictures are set at, in or on; never a person or an animal; no weather or time of day in it; an empty list when the story has no such place."));
+  assert.ok(engine.includes("Every VISUAL set there calls it by that exact name"), "that is how a scene is known to be set there");
+  // kept only for a told story; two at most; nothing too short to be a description
+  assert.ok(engine.includes("const places = narrated && Array.isArray(parsed.places)"));
+  assert.ok(engine.includes(".filter((p) => p.length > 12).slice(0, 2)"));
+  assert.ok(engine.includes("...(places.length ? { places } : {}), cast,"));
+});
+
+test("the page: the token keeps its places, a scene drawn again knows them, and the storyboard shows them", () => {
+  const page = read("app", "routes", "web.film.tsx");
+  assert.ok(page.includes("const castRefIn = (name: string): string => { const t = readCastToken(((form.get(name) as string) || \"\").trim().slice(0, 4000)); return castToken(t.refs, t.places); };"));
+  // a re-rolled scene, and the scenes drawn again with ONE character, are set where they were
+  assert.ok(page.includes("if (Array.isArray(tObj.places)) placeBible = tObj.places.filter((x: unknown) => typeof x === \"string\").slice(0, 2);"));
+  assert.ok(page.includes("treatment: { title: \"\", musicMood: \"\", cast: castBible, places: placeBible, scenes: scenesNow.map("));
+  assert.ok(page.includes("const r = await recastStoryCharacter({ template: tmpl.key, treatment: { title: \"\", musicMood: \"\", cast: castBible, places: placeBible, scenes: scenesNow }, cast: storyCast,"));
+  // the row: the places stand beside the cast, read from the same token the portraits travel in
+  assert.ok(page.includes("const places = readCastToken(seeds.castRef).places;"));
+  assert.ok(page.includes("<div key={`place|${p.img}`} className=\"mm-star is-place\">"));
+  assert.ok(page.includes("<span className=\"mm-star-tag\"><Ico n=\"image\" size={10} /> {t(\"Place\")}</span>"));
+  assert.ok(page.includes("<span className=\"mm-star-nm\">{p.name.charAt(0).toUpperCase() + p.name.slice(1)}</span>"));
+  // a design sheet is square: its card is as tall as a portrait's and as wide as it is tall — shown whole
+  assert.ok(page.includes(".mm-star.is-place{flex-basis:144px;width:144px;}") && page.includes(".mm-star.is-place .mm-star-pic{width:144px;}") && page.includes(".mm-star.is-place .mm-star-pic img{object-position:center;}"));
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  for (const k of ["Place", "It looks like this in every scene."]) assert.equal(dict.split(`${JSON.stringify(k)}:`).length - 1, 5, k);
+});
+
+test("a story opened again to be edited comes back with its places", () => {
+  const treatment = { title: "The Bride of the Black Water", musicMood: "low strings", cast: ["Corin, a weathered night ferryman"], places: [FERRY, 7, ""], scenes: SCENES.map((visual) => ({ visual, caption: "They say old Corin has ferried these waters longer than anyone can remember." })) };
+  const asset = {
+    id: "a1", title: "Horror Story — The Bride of the Black Water",
+    metaJson: JSON.stringify({ kind: "narrated", template: "horror", aspect: "9:16", places: [{ name: "the ferry", look: "an old low black wooden river ferry", img: "/renders/f1.jpg" }, { name: "the chapel", look: "", img: "/renders/ch.jpg" }] }),
+    bodyJson: JSON.stringify({ videoUrl: "/renders/nar-1-abc.mp4", treatment }),
+  };
+  const st = storyToEditFrom(asset, SCENES.map((_, i) => `/renders/s${i}.jpg`));
+  assert.ok(st);
+  assert.deepEqual(st!.treatment.places, [FERRY], "the list the writer gave — only what is a description");
+  assert.deepEqual(readCastToken(st!.castRef).places, [{ name: "the ferry", look: "an old low black wooden river ferry", img: "/renders/f1.jpg" }], "the ferry's own sheet; not a sheet the story no longer has a place for");
+  // a story made before places: nothing added, the token as it was
+  const old = storyToEditFrom({ ...asset, metaJson: JSON.stringify({ kind: "narrated", template: "horror", aspect: "9:16" }), bodyJson: JSON.stringify({ videoUrl: "/renders/nar-1-abc.mp4", treatment: { ...treatment, places: undefined } }) }, null);
+  assert.ok(old && !("places" in old.treatment) && old.castRef === "");
+});

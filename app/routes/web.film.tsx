@@ -441,7 +441,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const series = seriesHit?.brief || null;
   // THE STORY'S OWN CAST as it comes in: what the page hands back (the storyboard's own portraits), else the
   // last episode's. Read through the token's own check — only portraits on our own renders disk survive it.
-  const castRefIn = (name: string): string => castToken(readCastToken(((form.get(name) as string) || "").trim().slice(0, 4000)).refs);
+  const castRefIn = (name: string): string => { const t = readCastToken(((form.get(name) as string) || "").trim().slice(0, 4000)); return castToken(t.refs, t.places); };
   const seriesCastRef = seriesHit?.ownCast || "";
 
   // Product (skit): title + photo required for product templates.
@@ -709,11 +709,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // the scene as it reads NOW (the maker may have edited the words), drawn again on its own
         let scenesNow: Array<{ visual: string; caption?: string }> = [];
         let castBible: string[] = [];
-        try { const tObj = JSON.parse(((form.get("approvedTreatment") as string) || "").trim() || "{}"); if (Array.isArray(tObj.scenes)) scenesNow = tObj.scenes; if (Array.isArray(tObj.cast)) castBible = tObj.cast.filter((x: unknown) => typeof x === "string"); } catch { /* fall back to the one scene */ }
+        // (the story's PLACES ride with its treatment: a scene drawn again is set where it was — story-picture.ts)
+        let placeBible: string[] = [];
+        try { const tObj = JSON.parse(((form.get("approvedTreatment") as string) || "").trim() || "{}"); if (Array.isArray(tObj.scenes)) scenesNow = tObj.scenes; if (Array.isArray(tObj.cast)) castBible = tObj.cast.filter((x: unknown) => typeof x === "string"); if (Array.isArray(tObj.places)) placeBible = tObj.places.filter((x: unknown) => typeof x === "string").slice(0, 2); } catch { /* fall back to the one scene */ }
         if (!scenesNow[sceneIndex]) { scenesNow = []; scenesNow[sceneIndex] = { visual: sceneVisual }; for (let k = 0; k < sceneIndex; k++) scenesNow[k] = { visual: "" }; }
         else scenesNow[sceneIndex] = { ...scenesNow[sceneIndex], visual: sceneVisual };
         const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
-        const r = await narratedSceneSeeds({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, scenes: scenesNow.map((x) => ({ visual: String(x?.visual || ""), caption: String(x?.caption || "") })) }, cast: storyCast, aspect: rerollAspect, only: sceneIndex, castRef: castRef || null });
+        const r = await narratedSceneSeeds({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, places: placeBible, scenes: scenesNow.map((x) => ({ visual: String(x?.visual || ""), caption: String(x?.caption || "") })) }, cast: storyCast, aspect: rerollAspect, only: sceneIndex, castRef: castRef || null });
         img = r.sceneImgs[sceneIndex] || null;
         ownCast = { castRef: r.castRef, castCards: r.castCards };
         faults = r.sceneFaults[sceneIndex] ?? null; check = r.sceneChecks[sceneIndex] ?? null;
@@ -756,14 +758,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "recastStoryCharacter") {
     const name = ((form.get("castName") as string) || "").replace(/\s+/g, " ").trim().slice(0, 40);
     if (!narrated || !name) return json({ error: tr(lang, "Preview the scenes first.") });
-    let tObj: { scenes?: unknown; cast?: unknown } = {};
+    let tObj: { scenes?: unknown; cast?: unknown; places?: unknown } = {};
     try { tObj = JSON.parse(((form.get("approvedTreatment") as string) || "").trim() || "{}"); } catch { /* nothing to draw from */ }
     const scenesNow = Array.isArray(tObj.scenes) ? (tObj.scenes as Array<{ visual?: unknown; caption?: unknown }>).slice(0, 12).map((x) => ({ visual: String(x?.visual || "").slice(0, 1500), caption: String(x?.caption || "") })) : [];
     const castBible = Array.isArray(tObj.cast) ? (tObj.cast as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 8) : [];
+    const placeBible = Array.isArray(tObj.places) ? (tObj.places as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 2) : [];
     if (!scenesNow.length) return json({ error: tr(lang, "Preview the scenes first.") });
     try {
       const { recastStoryCharacter } = await import("../lib/narrated-story.server");
-      const r = await recastStoryCharacter({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, scenes: scenesNow }, cast: storyCast, aspect: ((form.get("filmAspect") as string) || "").trim(), castRef: ((form.get("castRef") as string) || "").trim().slice(0, 4000) || null, name });
+      const r = await recastStoryCharacter({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, places: placeBible, scenes: scenesNow }, cast: storyCast, aspect: ((form.get("filmAspect") as string) || "").trim(), castRef: ((form.get("castRef") as string) || "").trim().slice(0, 4000) || null, name });
       if (!r || !r.scenes.some((i) => r.sceneImgs[i])) return json({ error: tr(lang, "Couldn't draw {name} again — try again.", { name }), recastName: name });
       return json({ ok: true, recastName: name, scenes: r.scenes, sceneImgs: r.sceneImgs, sceneFaults: r.sceneFaults, sceneChecks: r.sceneChecks, castRef: r.castRef, castCards: r.castCards });
     } catch (e) {
@@ -2583,12 +2586,15 @@ export default function FilmStudio() {
               ...pickedCast.map((r) => ({ name: r.name, look: r.kind && r.kind !== "person" ? (r.look || "") : "", img: r.img })),
               ...own.filter((c) => !pickedCast.some((r) => nameTok(r.name) === nameTok(c.name))),
             ].filter((c) => c.name && c.img);
-            if (!stars.length) return null;
+            // THE STORY'S PLACES (story-picture.ts): what it keeps coming back to, drawn ONCE as a design sheet
+            // that every scene set there is drawn from — the same ferry in scene 1 and in scene 6
+            const places = readCastToken(seeds.castRef).places;
+            if (!stars.length && !places.length) return null;
             return (
               <div className="mm-stars">
                 <div className="mm-stars-h"><b>{t("Starring")}</b>{recasting
                   ? <span role="status">{t("Drawing {name} again — the scenes they are in follow.", { name: recasting.name })}</span>
-                  : own.length > 0 && <span>{t("They look like this in every scene.")}</span>}</div>
+                  : (own.length > 0 || places.length > 0) && <span>{places.length > 0 && own.length === 0 ? t("It looks like this in every scene.") : t("They look like this in every scene.")}</span>}</div>
                 {recastFetcher.state === "idle" && recastFetcher.data?.error && <p className="fs-err">{recastFetcher.data.error}</p>}
                 <div className="mm-stars-row">
                   {stars.map((c) => {
@@ -2607,6 +2613,16 @@ export default function FilmStudio() {
                       </div>
                     );
                   })}
+                  {places.map((p) => (
+                    <div key={`place|${p.img}`} className="mm-star is-place">
+                      <button type="button" className="mm-star-pic" onClick={() => setZoomImg(p.img)} title={`${p.name} — ${p.look}`}>
+                        <img src={p.img} alt={p.name} loading="lazy" />
+                        <span className="mm-star-tag"><Ico n="image" size={10} /> {t("Place")}</span>
+                      </button>
+                      <span className="mm-star-nm">{p.name.charAt(0).toUpperCase() + p.name.slice(1)}</span>
+                      {p.look ? <span className="mm-star-lk">{p.look}</span> : null}
+                    </div>
+                  ))}
                 </div>
               </div>
             );
@@ -4967,6 +4983,10 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-star-lk{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:11px;font-weight:600;line-height:1.3;color:var(--ink2,#4A554E);}
 .mm-star-pic:focus-visible{outline:3px solid var(--green,#0C7A46);outline-offset:2px;}
 .mm-star .mm-sb-reroll{top:5px;right:5px;}
+.mm-star.is-place{flex-basis:144px;width:144px;}
+.mm-star.is-place .mm-star-pic{width:144px;}
+.mm-star.is-place .mm-star-pic img{object-position:center;}
+.mm-star-tag{position:absolute;left:6px;bottom:6px;display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:999px;background:rgba(20,32,26,.78);color:#fff;font-family:Poppins,sans-serif;font-size:10px;font-weight:800;letter-spacing:.04em;line-height:1;}
 @media(hover:hover){.mm-star-pic:hover{transform:translateY(-3px);box-shadow:0 0 0 1px var(--line,#E4DFCF),0 14px 24px -12px rgba(20,32,26,.45);}}
 @media(prefers-reduced-motion:reduce){.mm-star-pic{transition:none;}.mm-star-pic:hover{transform:none;}}
 /* Horizontal, swipeable FILMSTRIP — each scene's still + what-happens + words, like a video editor.

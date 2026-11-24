@@ -57,7 +57,7 @@ test("the token carries the portraits — and only pictures on our own renders d
   ];
   const token = castToken(cards);
   assert.equal(token, JSON.stringify({ v: 2, c: [{ n: "Walter", l: "an elderly night watchman", i: "/renders/ab12cd34ef56.jpg" }, { n: "Mara", l: "a young baker", i: "/renders/0011223344aa.jpg" }] }));
-  assert.deepEqual(readCastToken(token), { refs: [{ name: "Walter", look: "an elderly night watchman", img: "/renders/ab12cd34ef56.jpg" }, { name: "Mara", look: "a young baker", img: "/renders/0011223344aa.jpg" }], sheet: null });
+  assert.deepEqual(readCastToken(token), { refs: [{ name: "Walter", look: "an elderly night watchman", img: "/renders/ab12cd34ef56.jpg" }, { name: "Mara", look: "a young baker", img: "/renders/0011223344aa.jpg" }], sheet: null, places: [] });
   // what is NOT a portrait of ours never gets in, written or read
   const bad = [
     { name: "A", look: "", img: "https://evil.example/x.jpg" },
@@ -76,10 +76,10 @@ test("the token carries the portraits — and only pictures on our own renders d
   const fat = Array.from({ length: 4 }, (_, k) => ({ name: "N".repeat(60) + k, look: "l".repeat(900), img: `/renders/${"a".repeat(40)}${k}.jpg` }));
   assert.ok(castToken(fat).length < 1400, `a full token is ${castToken(fat).length} characters`);
   // nothing, and nonsense
-  for (const t of ["", null, undefined, "{", "{}", "[1,2]", JSON.stringify({ v: 1, c: [] }), "not a token"]) assert.deepEqual(readCastToken(t as string), { refs: [], sheet: null }, String(t));
+  for (const t of ["", null, undefined, "{", "{}", "[1,2]", JSON.stringify({ v: 1, c: [] }), "not a token"]) assert.deepEqual(readCastToken(t as string), { refs: [], sheet: null, places: [] }, String(t));
   // a storyboard opened BEFORE this still hands back the address of the one sheet — used the way it was
-  assert.deepEqual(readCastToken("https://easymodeapp.com/renders/sheet123.jpg"), { refs: [], sheet: "https://easymodeapp.com/renders/sheet123.jpg" });
-  assert.deepEqual(readCastToken("/renders/sheet123.jpg"), { refs: [], sheet: "/renders/sheet123.jpg" });
+  assert.deepEqual(readCastToken("https://easymodeapp.com/renders/sheet123.jpg"), { refs: [], sheet: "https://easymodeapp.com/renders/sheet123.jpg", places: [] });
+  assert.deepEqual(readCastToken("/renders/sheet123.jpg"), { refs: [], sheet: "/renders/sheet123.jpg", places: [] });
 });
 
 test("a finished story keeps its cast; only who is still in the story is carried on", () => {
@@ -127,7 +127,7 @@ test("where the pictures are drawn: a portrait each, the reference in every scen
   assert.ok(fn.includes("castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: \"claude-sonnet-4-6\" }) : Promise.resolve(\"\"),"));
   assert.ok(fn.includes("fix = storyFix(seenAs!, here.map((c) => c.name));"));
   // what goes back: the pictures, the token, and the cards to show (an older storyboard keeps its sheet)
-  assert.ok(fn.includes("return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards) || null, castCards: cards, sceneFaults: faultsOut, sceneChecks: checksOut };"));
+  assert.ok(fn.includes("return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards, placeCards) || null, castCards: cards, placeCards, sceneFaults: faultsOut, sceneChecks: checksOut };"), "…and the story's places travel in the same token (tests/story-places.test.ts)");
   assert.ok(fn.includes("const sheet = who[k].others.length && sheetRef ? sheetRef : null;"));
 });
 
@@ -142,7 +142,7 @@ test("the cast rides with the story: storyboard → job → the finished piece",
   assert.ok(jq.includes("ckCast: payload.ckCast as string | undefined,"));
   const page = read("app", "routes", "web.film.tsx");
   // the action never trusts the page's token: it is read and written again, and only then queued
-  assert.ok(page.includes("const castRefIn = (name: string): string => castToken(readCastToken(((form.get(name) as string) || \"\").trim().slice(0, 4000)).refs);"));
+  assert.ok(page.includes("const castRefIn = (name: string): string => { const t = readCastToken(((form.get(name) as string) || \"\").trim().slice(0, 4000)); return castToken(t.refs, t.places); };"));
   assert.ok(page.includes("...(narrated && (castRefIn(\"filmCastRef\") || seriesCastRef) ? { filmCastRef: castRefIn(\"filmCastRef\") || seriesCastRef } : {}),"));
   assert.ok(page.includes("{narrated && seeds?.castRef && <input type=\"hidden\" name=\"filmCastRef\" value={seeds.castRef} />}"));
   // drawing them all: the cards come back with the pictures; the next episode opens with the last one's faces
@@ -156,7 +156,7 @@ test("the cast rides with the story: storyboard → job → the finished piece",
   // an edited story opens with the cast it was made with
   assert.ok(page.includes("castRef: st.castRef || null, castRefs: [], faults: [], checks: [], castCards: st.ownCast || [] });"));
   // …and the same story told in another language has the same people in it
-  assert.ok(read("app", "lib", "story-translate.server.ts").includes("...(castToken(castCardsOf(meta)) ? { filmCastRef: castToken(castCardsOf(meta)) } : {}),"));
+  assert.ok(read("app", "lib", "story-translate.server.ts").includes("...(castToken(castCardsOf(meta), placesOf(meta)) ? { filmCastRef: castToken(castCardsOf(meta), placesOf(meta)) } : {}),"), "…and its places");
 });
 
 test("the storyboard opens on the story's cast — the maker's picks and the story's own, one row", () => {
@@ -164,8 +164,8 @@ test("the storyboard opens on the story's cast — the maker's picks and the sto
   assert.ok(page.includes("{narrated && seeds && (() => {"));
   assert.ok(page.includes("...pickedCast.map((r) => ({ name: r.name, look: r.kind && r.kind !== \"person\" ? (r.look || \"\") : \"\", img: r.img })),"));
   assert.ok(page.includes("...own.filter((c) => !pickedCast.some((r) => nameTok(r.name) === nameTok(c.name))),"), "nobody is shown twice");
-  assert.ok(page.includes("if (!stars.length) return null;"), "a story with nobody in it has no row");
-  assert.ok(page.includes("<div className=\"mm-stars-h\"><b>{t(\"Starring\")}</b>{recasting") && page.includes(": own.length > 0 && <span>{t(\"They look like this in every scene.\")}</span>}</div>"));
+  assert.ok(page.includes("if (!stars.length && !places.length) return null;"), "a story with nobody in it — and no place it comes back to — has no row");
+  assert.ok(page.includes("<div className=\"mm-stars-h\"><b>{t(\"Starring\")}</b>{recasting") && page.includes(": (own.length > 0 || places.length > 0) && <span>{places.length > 0 && own.length === 0 ? t(\"It looks like this in every scene.\") : t(\"They look like this in every scene.\")}</span>}</div>"));
   assert.ok(page.includes("<button type=\"button\" className=\"mm-star-pic\" onClick={() => setZoomImg(c.img)} title={c.look ? `${c.name} — ${c.look}` : c.name}>"), "a face opens whole");
   // a phone: the row scrolls sideways inside itself, a face is a finger wide
   assert.ok(page.includes(".mm-stars-row{display:flex;gap:10px;overflow-x:auto;"));
@@ -230,7 +230,8 @@ test("three people from three pictures are drawn by the stronger model — and o
   assert.deepEqual([STORY_MODEL, STORY_CROWD_MODEL, STORY_CROWD_REFS], ["google/nano-banana", "google/nano-banana-pro", 3]);
   const nar = read("app", "lib", "narrated-story.server.ts");
   const fn = nar.slice(nar.indexOf("async function drawScene("), nar.indexOf("/** A picture that came back with black bars baked in"));
-  assert.ok(fn.includes("const model = sceneModel(refs.length);"));
+  assert.ok(fn.includes("async function drawScene(prompt: string, refs: string[], aspect: string, people = refs.length): Promise<string | null> {"));
+  assert.ok(fn.includes("const model = sceneModel(people);"), "by how many PEOPLE it is drawn from: a place's design sheet is not one of them");
   assert.ok(fn.includes("...(m === STORY_MODEL ? {} : { resolution: \"1K\" })"), "the stronger model at its plainest size");
   assert.ok(fn.includes("if (model === STORY_MODEL) return null;") && fn.includes("try { return await run(STORY_MODEL); } catch { return null; }"), "if the stronger one cannot be reached the scene is still drawn");
   // a portrait is drawn from words alone — never the stronger model
@@ -276,7 +277,7 @@ test("one character can be drawn again: a new portrait, and only the scenes that
   assert.ok(fn.includes("if (!scenes.length) return null;"));
   // their portrait is dropped from what is carried in → the drawing makes a new one; everyone else is kept
   assert.ok(fn.includes("const kept = carried.refs.filter((r) => !sameCharacter(r.name, o.name));"));
-  assert.ok(fn.includes("const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept) || null });"));
+  assert.ok(fn.includes("const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept, carried.places) || null });"), "nobody else changes — and neither do the story's places");
   // …and the cast stays in the story's own order (a redrawn character does not move to the end of the row)
   assert.ok(nar.includes("cards.sort((a, b) => billed(a) - billed(b));"));
   const page = read("app", "routes", "web.film.tsx");
