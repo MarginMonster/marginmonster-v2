@@ -38,7 +38,8 @@ import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
-import { FRAMED_FIX, FRAMED_SIZE, framedIn, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_MODEL, castEntry, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
+import { cameraLine, shotOf } from "./story-shots";
+import { FRAMED_FIX, FRAMED_SIZE, framedIn, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_CROWD_MODEL, STORY_MODEL, castEntry, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -73,12 +74,13 @@ const CAST_LOCK = "CRITICAL: every character taken from a reference image is the
 
 /** One picture, on the everyday picture model, from a prompt of any length (the shared helpers cut a
  *  prompt at ~460 characters, which is where a scene's cast notes live). Null when it cannot be drawn. */
-async function drawScene(prompt: string, refs: string[], aspect: string, people = refs.length): Promise<string | null> {
+async function drawScene(prompt: string, refs: string[], aspect: string, people = refs.length, strong = false): Promise<string | null> {
   // (three people from three pictures go to the stronger model — story-picture.ts → sceneModel; if it
   //  cannot be reached, the everyday one still draws the scene. `people`: how many of the references are
   //  characters — a place's design sheet is not one: two people and their place drew right on the
   //  everyday model four times out of four)
-  const model = sceneModel(people);
+  // (`strong`: a scene whose cast came out wrong twice is drawn a third time on the stronger model)
+  const model = strong ? STORY_CROWD_MODEL : sceneModel(people);
   const run = async (m: string): Promise<string> => persistRemote(await repRun(m, { prompt: `${frameWords(aspect)} ${prompt} No watermark, no signature.`, ...(refs.length ? { image_input: refs } : {}), aspect_ratio: aspect, output_format: "jpg", ...(m === STORY_MODEL ? {} : { resolution: "1K" }) }, 150_000), "jpg");
   try {
     return await run(model);
@@ -124,7 +126,7 @@ async function makeStoryPoster(o: { stills: string[]; visuals: string[]; names: 
   const k = posterScene(o.visuals, o.names, o.stills.map((s) => !!s && fs.existsSync(s)));
   if (k < 0) return null;
   // (the same resolver the captions use: it THROWS for words no font here can draw — then no poster, never boxes)
-  const font = await resolveTextFont([...layout.lines, layout.cast, layout.episode].join(" "));
+  const font = await resolveTextFont([...layout.lines, layout.cast, layout.episode, layout.episode2 || ""].join(" "));
   const name = posterName(o.videoName);
   const outPath = path.join(RENDERS(), name);
   const r = await runFfmpeg(["-y", "-i", o.stills[k], "-vf", posterFilters(layout, font), "-frames:v", "1", "-q:v", "3", outPath]);
@@ -205,7 +207,9 @@ export async function narratedSceneSeeds(o: {
       const sheet = who[k].others.length && sheetRef ? sheetRef : null;
       const chosen = who[k].picked.map((p) => picked[p]).slice(0, sheet ? 2 : 3);
       const own = sheet ? [] : who[k].others.map(cardFor).filter((c): c is StoryCastRef => !!c).slice(0, Math.max(0, 3 - chosen.length));
-      const here: Array<{ name: string; look?: string; faceUrl?: string | null }> = [...chosen, ...own.map((c) => ({ name: c.name, look: c.look, faceUrl: c.img }))];
+      const here: Array<{ name: string; look?: string; faceUrl?: string | null; kind?: "person" | "cartoon" | "monster" }> = [...chosen, ...own.map((c) => ({ name: c.name, look: c.look, faceUrl: c.img, kind: keepGuess(c.look || "").kind }))];
+      // HOW THIS SCENE IS SEEN (story-shots.ts): the camera line its picture is given — none for a scene with no plan
+      const cam = shotOf(scene);
       const people = [...here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u), ...(sheet ? [sheet] : [])];
       // WHERE IT IS SET: the design sheet of the place this scene's words name, as one more reference —
       // after the people, and not counted as one of them when the picture model is chosen
@@ -215,10 +219,15 @@ export async function narratedSceneSeeds(o: {
       const refs = [...people, ...(placeUrl ? [placeUrl] : [])];
       const notes: string[] = [];
       here.forEach((c, n) => notes.push(`${c.name} is the character in reference image ${n + 1}${c.look ? ` (${c.look.slice(0, 160)})` : ""}.`));
+      // A CREATURE STAYS THAT CREATURE (story-picture.ts → creatureNote): a werewolf asked to "crouch" came back
+      // an ordinary wolf, and one gripped by the sleeve came back a man with a wolf's head in a clean shirt.
+      here.forEach((c) => { const note = creatureNote(c.name, c.kind); if (note) notes.push(note); });
       if (sheet) notes.push(`Reference image ${here.length + 1} is a sheet of other characters: from it take ONLY ${who[k].others.map((e) => e.slice(0, 200)).join("; and ")}.`);
       // (the place's own lines are kept apart: a scene that keeps coming back as a framed panel is drawn once
       //  more WITHOUT its place's sheet — from its words, as every scene was before there were sheets)
-      const placeNotes = place && placeUrl ? [placeNote(refs.length, place), ...(here.length ? [PLACE_FRAMING] : [])] : [];
+      // (the "camera is near them" line is for a scene with NO camera line of its own — it made every picture
+      //  at a place the same medium two-shot; a planned scene says where the camera is itself)
+      const placeNotes = place && placeUrl ? [placeNote(refs.length, place), ...(here.length && !cam ? [PLACE_FRAMING] : [])] : [];
       // (a character with no picture of its own here — its portrait could not be drawn, or it is a fourth
       //  in one scene — is drawn from its words, as every invented character once was)
       const unpictured = sheet ? [] : who[k].others.filter((e) => !own.some((c) => c === cardFor(e)));
@@ -227,7 +236,7 @@ export async function narratedSceneSeeds(o: {
       const written = (scene.visual || "").replace(/\s+/g, " ").trim();
       const visual = oneMoment(noLettering(written));
       const twoMoments = oneMoment(written) !== written;
-      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NOTHING_WRITTEN}`;
+      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NOTHING_WRITTEN}`;
       // …and THE PICTURE IS LOOKED AT before it is kept: is each of the maker's cast in it (never asked
       // about clothes — a story dresses people for the part), and is it one picture. The cast is looked for
       // whenever the scene has any; panels only where the words described two moments (that is when a
@@ -263,7 +272,10 @@ export async function narratedSceneSeeds(o: {
       let framedGoes = 0;
       for (let a = 0; a < 3 && !img; a++) {
         const withPlace = placeNotes.length > 0 && framedGoes < 2;
-        const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect, people.length);
+        // (THE LAST GO OF A SCENE WHOSE CAST CAME OUT WRONG TWICE is drawn on the stronger model: the best of
+        //  three everyday goes was still an ordinary wolf — STORY_STRONG_RETRY=off keeps it on the everyday one)
+        const strong = a === 2 && !!best && best.check.seen.includes(false) && process.env.STORY_STRONG_RETRY !== "off";
+        const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect, people.length, strong);
         if (got && (await letterboxed(got))) { barred = got; console.error(`[narrated] scene ${i + 1} came back letterboxed — drawing it again`); continue; }
         if (got && withPlace && (await framedPanel(got))) { framedGoes++; fix = FRAMED_FIX; console.error(`[narrated] scene ${i + 1} came back as a framed panel on a plain ground (${place?.name}) — drawing it again${framedGoes >= 2 ? " without the place's sheet" : ""}`); continue; }
         if (!got) { if (a >= 1) break; continue; } // two plain failures: stop asking this way
@@ -271,7 +283,7 @@ export async function narratedSceneSeeds(o: {
         const faults = seenAs ? storyFaults(seenAs) : 0;
         if (!faults) { img = got; break; }
         if (!best || faults < best.faults) best = { img: got, faults, check: seenAs! };
-        fix = storyFix(seenAs!, here.map((c) => c.name));
+        fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || "person"));
         console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${seenAs!.panels ? "split into panels" : ""}${seenAs!.panels && seenAs!.seen.includes(false) ? ", " : ""}${seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : ""} — drawing it again`);
       }
       if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }
@@ -480,7 +492,7 @@ export async function generateNarratedStory(opts: {
   /** THE STORY'S OWN CAST as the storyboard drew it (story-picture.ts → castToken): the portraits a scene
    *  drawn here is drawn from, and who the piece says is in it. */
   castRef?: string | null;
-  resume?: { ckTreatment?: string; ckApproved?: string; ckVoPath?: string; ckVoUrl?: string; ckWords?: string; ckImages?: string; ckMusic?: string; ckMotion?: string; ckCast?: string };
+  resume?: { ckTreatment?: string; ckApproved?: string; ckVoPath?: string; ckVoUrl?: string; ckWords?: string; ckImages?: string; ckMusic?: string; ckMotion?: string; ckCast?: string; ckPictureFaults?: string };
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template);
   const { aspect, W, H } = storyFrame(opts.aspect);
@@ -597,6 +609,8 @@ export async function generateNarratedStory(opts: {
   // 4) THE PICTURES — the ones the maker approved, else drawn now
   // (…and the story's own cast: what the storyboard drew, or what is drawn here — kept across a restart)
   let storyCastRef = resume.ckCast || opts.castRef || "";
+  let pictureFaults: ReturnType<typeof keptFaults> = [];
+  if (resume.ckPictureFaults) { try { const p = JSON.parse(resume.ckPictureFaults); if (Array.isArray(p)) pictureFaults = p; } catch { /* none kept */ } }
   let imgs: (string | null)[] = [];
   if (resume.ckImages) { try { imgs = JSON.parse(resume.ckImages) as (string | null)[]; } catch { imgs = []; } }
   if (imgs.length !== treatment.scenes.length) {
@@ -607,6 +621,10 @@ export async function generateNarratedStory(opts: {
       const missing = treatment.scenes.map((_, i) => i).filter((i) => !approved[i]);
       const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null });
       if (drawn.castRef) storyCastRef = drawn.castRef;
+      // (a picture KEPT with somebody still wrong — the best of its goes — is written down: nobody reads
+      //  this server's log, and a story made in one press has no storyboard to flag it on)
+      pictureFaults = keptFaults(drawn.sceneChecks);
+      if (pictureFaults.length) await ckpt({ ckPictureFaults: JSON.stringify(pictureFaults) });
       imgs = treatment.scenes.map((_, i) => approved[i] || drawn.sceneImgs[i] || null);
     }
     await ckpt({ ckImages: JSON.stringify(imgs), ...(storyCastRef ? { ckCast: storyCastRef } : {}) });
@@ -641,7 +659,7 @@ export async function generateNarratedStory(opts: {
       for (const s of stills) seeds.push(await withoutBars(s));
       const end = windows[windows.length - 1].t1 + TAIL_S;
       motion = await animateScenes({
-        seeds, visuals: treatment.scenes.map((s) => s.visual || s.caption || ""),
+        seeds, visuals: treatment.scenes.map((s) => s.visual || s.caption || ""), cams: treatment.scenes.map((s) => s.cam),
         told: windows.map((w, i) => (i === windows.length - 1 ? end : w.t1) - w.t0),
         base, W, H, jobId, ckMotion: resume.ckMotion,
       });
@@ -714,6 +732,8 @@ export async function generateNarratedStory(opts: {
         ...(opts.show ? { show: { ...opts.show, ...(showEpisodeName ? { title: showEpisodeName } : {}) } } : {}),
         // what its timing was made from — for the operator alone (web.archive's loader)
         timing,
+        // …and which of its pictures were KEPT with somebody still not right (the best of three goes)
+        ...(pictureFaults.length ? { pictureFaults } : {}),
         // THE PICTURES MOVE: how many scenes do, what was asked for now (seconds = what was paid for), and
         // why any scene kept its still
         ...(motion ? { motion: { engine: STORY_MOTION_ENGINE, scenes: motion.clips.filter(Boolean).length, of: stills.length, made: motion.made, reused: motion.reused, seconds: motion.seconds, ...(motion.faults.length ? { faults: motion.faults.slice(0, 8) } : {}) } } : {}),

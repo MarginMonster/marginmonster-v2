@@ -156,7 +156,7 @@ test("a story makes its poster when it is made — and never fails for want of o
   const nar = read("app", "lib", "narrated-story.server.ts");
   const fn = nar.slice(nar.indexOf("async function makeStoryPoster("), nar.indexOf("/** One still per scene."));
   assert.ok(fn.includes("const k = posterScene(o.visuals, o.names, o.stills.map((s) => !!s && fs.existsSync(s)));") && fn.includes("if (k < 0) return null;"));
-  assert.ok(fn.includes("const font = await resolveTextFont([...layout.lines, layout.cast, layout.episode].join(\" \"));"), "the captions' own font rule: no font for these words → no words drawn, never boxes");
+  assert.ok(fn.includes("const font = await resolveTextFont([...layout.lines, layout.cast, layout.episode, layout.episode2 || \"\"].join(\" \"));"), "the captions' own font rule: no font for these words → no words drawn, never boxes");
   assert.ok(fn.includes("const r = await runFfmpeg([\"-y\", \"-i\", o.stills[k], \"-vf\", posterFilters(layout, font), \"-frames:v\", \"1\", \"-q:v\", \"3\", outPath]);"));
   assert.ok(!/repRun|anthropic|fal/i.test(fn), "no model is asked: it costs nothing");
   // made after the film itself is safe on disk, inside a try: a film without a poster is still a film
@@ -200,7 +200,7 @@ test("an acted film makes its poster from pictures already on the disk — and n
   assert.ok(srv.includes(".filter((c, k, a) => a.findIndex((x) => x.input === c.input) === k)"));
   assert.ok(srv.includes(".slice(0, POSTER_CAST_MAX);") && srv.includes("if (!pictured.length) return null;"));
   assert.ok(srv.includes("const layout = posterLayout({ title: o.title, cast: pictured.map((c) => c.name) });"), "the billing is the people shown, in the order shown");
-  assert.ok(srv.includes("const font = await resolveTextFont([...layout.lines, layout.cast, layout.episode].join(\" \"));"), "the captions' own font rule");
+  assert.ok(srv.includes("const font = await resolveTextFont([...layout.lines, layout.cast, layout.episode, layout.episode2 || \"\"].join(\" \"));"), "the captions' own font rule");
   assert.ok(srv.includes("\"-filter_complex\", castPosterGraph(pictured.length, layout, font), \"-frames:v\", \"1\", \"-q:v\", \"3\", outPath]);"));
   // a picture is opened as a FILE of ours when it is one (a stock portrait, a render, an upload), by its
   // bare name only — a name that could climb out of its folder is never joined to a path

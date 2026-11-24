@@ -1091,6 +1091,8 @@ export const entryName = (entry: string): string => ((entry || "").split(/[,:—
  * A character is IN a picture when its words name them as somebody — not only as whose a place or a thing
  * is. "Edda's hand on the rail" is Edda; "Edda's cottage" is a cottage. */
 const OF_THEIR_OWN = /^(?:hands?|face|eyes?|arms?|shoulders?|hair|back|fingers?|feet|foot|head|coat|cloak|dress|gown|scarf|hat|cap|side|lap|knees?|cheeks?|mouth|lips|chest|neck|sleeves?|apron|jacket|boots|shoes|grip|grasp|gaze|smile|expression|shell|tail|paws?|fur|wings?|beak|ears?|nose|whiskers|claws|breath|shadow|voice|body|figure|silhouette|reflection)$/i;
+const GONE_AFTER = /^\s*(?:is|was|has|had)?\s*(?:no longer\b|not (?:there|here)\b|nowhere\b|gone\b(?!\s+(?:still|quiet|silent|pale|white|cold|rigid|grey|gray|slack))|vanished\b|disappeared\b|missing\b)/i;
+const GONE_BEFORE = /\b(?:no sign of|no trace of|without|instead of|(?:search(?:es|ing|ed)?|look(?:s|ing|ed)?|call(?:s|ing|ed)?|wait(?:s|ing|ed)?) for)\s+$/i;
 /** Is this character IN the picture these words describe? Named, and at least once as somebody: not as the
  *  owner of something ("Edda's cottage"), unless what is theirs is part of them ("Edda's hand", "her" coat
  *  is not asked — only what follows the name, four words on). */
@@ -1105,6 +1107,13 @@ export function presentIn(name: string, text: string): boolean {
     for (const m of t.matchAll(re)) {
       const after = t.slice((m.index || 0) + m[0].length);
       const owns = /^['’]s?(?![\p{L}\p{N}])/u.exec(after);
+      // NAMED AS SOMEBODY WHO IS NOT THERE ("…and Marla is no longer standing there", "no sign of Edda",
+      // "where Finn had stood"): the last picture of a story said exactly that, so the woman's portrait went
+      // to the picture model, she was asked for, and the right picture — without her — was the one refused.
+      const lead = t.slice(Math.max(0, (m.index || 0) - 30), (m.index || 0) + (m[1] ? m[1].length : 0));
+      // (…unless the words go straight on to what they are doing: "waits for Finn, who walks toward her")
+      const goesOn = /^\s*,?\s*(?:who|as (?:he|she|they|it))\b/i.test(after);
+      if (!owns && (GONE_AFTER.test(after) || (GONE_BEFORE.test(lead) && !goesOn) || (/\bwhere\s+$/i.test(lead) && /^\s*(?:was|stood|sat|lay|had been|had stood|used to)\b/i.test(after)))) continue;
       if (!owns) return true; // named as somebody
       const next = after.slice(owns[0].length).split(/[^\p{L}\p{N}'’-]+/u).filter(Boolean).slice(0, 4);
       if (next.some((w) => OF_THEIR_OWN.test(w))) return true; // their hand, their coat: they are there

@@ -49,6 +49,8 @@ import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 // (2026-11-24) a told story's places: a scene set at one says so in its own words
 import { inheritPlaces, placeNamed } from "./story-picture";
 import { tellerVisual } from "./character-series";
+import { planShots, shotListBrief } from "./story-shots";
+import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -231,7 +233,7 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     key: "horror",
     name: "Horror Story",
     brief: "a short SUSPENSEFUL HORROR STORY: a creepy, atmospheric scene where a small cast speak their own tense dialogue, building dread to a chilling twist; unsettling and spooky, NOT gory or graphically violent",
-    sceneHint: "a dark, moody, cinematic horror scene — deep shadows, eerie atmosphere, cold desaturated color grade, suspenseful; unsettling but not graphically gory",
+    sceneHint: "a dark, moody, cinematic horror scene, photorealistic like a frame from a live-action horror film — deep shadows, eerie atmosphere, cold desaturated color grade, suspenseful; unsettling but not graphically gory",
     musicHint: "tense, eerie, suspenseful horror score — low drones, uneasy strings",
     faceMood: "Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs.",
     defaultScenes: 4,
@@ -325,6 +327,10 @@ export interface FilmScene {
   where?: string;
   shot?: string;
   tone?: string;
+  /** A TOLD story's SHOT PLAN (story-shots.ts): how this scene is SEEN — "wide", "walk", "depth", "over",
+   *  "close", "low", "two" or "detail". Dealt before the story is written; the picture and its motion follow
+   *  it. Absent on every story written before 2026-11-24, and on a scene the maker added by hand. */
+  cam?: string;
   /** Music Video pre-editor override: "perform" = the artist sings (lip-synced); "broll" = a cut
    *  scene (props/dancing/scenery, no lip-sync). Absent → the pipeline's SHOTLIST cadence decides. */
   kind?: "perform" | "broll";
@@ -338,6 +344,9 @@ export interface FilmTreatment {
    *  keeps coming back to, each as "name: look" — every scene whose words name one is drawn from that
    *  place's own design sheet, so it is the same place each time. */
   places?: string[];
+  /** FRESH EVERY TIME (story-variety.ts): what this story was dealt — the kind of opening and, where its
+   *  idea left it open, its angle. Kept so the maker's NEXT story is dealt something else. */
+  fresh?: { hook?: string; kind?: string; ending?: string; theme?: string; world?: string; place?: string };
   /** A music video's lyric, counted against what its video needs — set when the sheet had to be rewritten
    *  to fit (film-engine previewFilmTreatment): how many words it has now, how many are wanted, how many
    *  it was written with, the rounds of rewriting, whether it fits, and what went wrong if anything did. */
@@ -493,6 +502,30 @@ export async function previewFilmTreatment(opts: {
   const langLine = langCode === "en" ? "" : `\nLANGUAGE: write every caption — the words that are spoken, narrated or sung — and the title in ${langName}. Keep every name exactly as given. Each "visual" and the musicMood stay in English: they are instructions for the picture and the music, never shown or said.`;
   /** the same, for an ask that is about the words alone (a re-fit of the lyrics) */
   const langWordsLine = langCode === "en" ? "" : ` The words stay in ${langName}.`;
+  // FRESH EVERY TIME (story-variety.ts) — a STORY format is dealt its names, its kind of opening and, where
+  // the idea leaves it open, its angle; never what this maker's last stories were dealt. (The owner,
+  // 2026-11-24: "some of the stories or character generic names seem to be similar or repetetive".)
+  // …and A TOLD STORY IS DEALT ITS SHOT PLAN (story-shots.ts): how each scene is SEEN.
+  const storyFormat = !!tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung;
+  let usedByMaker: Used = { names: [], openers: [], keys: [] };
+  if (storyFormat) {
+    try {
+      usedByMaker = usedBefore(await db.asset.findMany({ where: { shopId: opts.shopId, type: "VIDEO_AD" }, orderBy: { createdAt: "desc" }, take: 14, select: { bodyJson: true } }));
+    } catch { /* a story is written without the list */ }
+  }
+  // (names that must stay usable: the cast the maker chose, and a series' own people)
+  const keptNames = [...picked.map((c) => c.name), ...(series?.characters || []).map((c) => String(c).split(/[,:—–(]/)[0].trim()).filter(Boolean)];
+  const fresh: Fresh | null = storyFormat ? dealFresh(tmpl.key, Math.random, { ...usedByMaker, names: usedByMaker.names.filter((n) => !keptNames.some((k) => k.toLowerCase() === n.toLowerCase())) }, keptNames) : null;
+  const freshLine = fresh
+    ? freshBrief({ template: tmpl.key, fresh, used: { ...usedByMaker, names: usedByMaker.names.filter((n) => !keptNames.some((k) => k.toLowerCase() === n.toLowerCase())) }, narrated, open: !series, english: langCode === "en", small: !!tmpl.childSafe, language: langName })
+    : "";
+  const camPlan = narrated ? planShots(scenes) : [];
+  // (the example a cast is described by carries a DEALT name: the one it used to carry, "Pip", came back
+  //  as a character's name in story after story)
+  const exName = fresh ? (tmpl.childSafe ? fresh.names.small[0] : fresh.names.f[0]) || "Pip" : "Pip";
+  const exLook = tmpl.childSafe
+    ? "a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"
+    : "a wiry night-bus driver in her forties with a shaved head, round glasses, a mustard cardigan and a steel thermos";
   const artistName = (opts.artistName || "").trim().slice(0, 60);
   const castNames = (opts.castNames || []).map((n) => (n || "").trim()).filter(Boolean).slice(0, 4);
   const coStars = castNames.length
@@ -521,8 +554,8 @@ export async function previewFilmTreatment(opts: {
       // writer invents for one is exactly two, each with ONE word for a name — "Grandpa Joe" was read as
       // "Joe" by the shot builder and matched nobody's portrait, and a third character had no mouth at all.
       : tmpl.dialogue && !narrated
-      ? `\nFirst invent the TWO characters who carry this scene and return them as "cast": exactly two entries, each ONE vivid, FIXED visual description to reuse in every shot, starting with the character's name — a simple ONE-WORD first name (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"; never a title or two words such as "Grandpa Joe" or "Mr. Alvarez"). Every shot's VISUAL features these same two, described the same way.${noSlop}`
-      : `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "Pip, a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"). Every scene's VISUAL must feature these same named characters, described the same way.${noSlop}`)
+      ? `\nFirst invent the TWO characters who carry this scene and return them as "cast": exactly two entries, each ONE vivid, FIXED visual description to reuse in every shot, starting with the character's name — a simple ONE-WORD first name (e.g. "${exName}, ${exLook}"; never a title or two words such as "Grandpa Joe" or "Mr. Alvarez"). Every shot's VISUAL features these same two, described the same way.${noSlop}`
+      : `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "${exName}, ${exLook}"). Every scene's VISUAL must feature these same named characters, described the same way.${noSlop}`)
     : "";
   const prodLine = tmpl.needsProduct && opts.productTitle
     ? `\nTHE PRODUCT being advertised: "${opts.productTitle.slice(0, 80)}"${opts.productDescription ? ` — ${opts.productDescription.slice(0, 300)}` : ""}. Make it the HERO of the gag — the funny payoff features or revolves around this exact product. Say ONLY what is true of it; invent no claims, specs, prices or reviews.`
@@ -668,6 +701,9 @@ export async function previewFilmTreatment(opts: {
     genderLine +
     prodLine +
     captionLine +
+    // HOW EACH SCENE IS SEEN (story-shots.ts), and what keeps this story unlike the last (story-variety.ts)
+    shotListBrief(camPlan) +
+    freshLine +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
     safetyLine;
   const write = async (p: string): Promise<FilmTreatment> => {
@@ -869,6 +905,8 @@ export async function previewFilmTreatment(opts: {
   }
   // THE STAR TELLS IT: the words are "I", the pictures are still drawn from a NAME (character-series.ts)
   if (teller) list = list.map((s) => ({ ...s, visual: tellerVisual(s.visual, teller) }));
+  // THE SHOT PLAN: each scene keeps how it is seen — the picture and its motion are made to it
+  if (camPlan.length) list = list.map((s, i) => (camPlan[i] ? { ...s, cam: camPlan[i] } : s));
   // an episode is called "<Series> — Episode <N>" (the writer's short episode name may follow a colon)
   // (the WRITER'S OWN title only: with none, an episode is just "<Series> — Episode <N>". It used to borrow
   //  the idea box or the format's name — an episode made from an empty idea box was "… Episode 2: Short Film")
@@ -883,7 +921,9 @@ export async function previewFilmTreatment(opts: {
   const places = narrated ? inheritPlaces(listed, series?.places || [], list.map((s) => s.visual)) : [];
   // …and a scene set at one of them says so in its own words ("At the ferry: …") when they did not already
   if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed(s.visual, saidPlaces[i], places) }));
-  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
+  // (what it was dealt, so the maker's next story is dealt something else)
+  const dealt = fresh ? { hook: fresh.hook, ...Object.fromEntries(freshKeys(series ? null : fresh).map((k) => k.split(":"))) } : null;
+  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, ...(dealt ? { fresh: dealt } : {}), ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 
 // ---- Assembly ---------------------------------------------------------------

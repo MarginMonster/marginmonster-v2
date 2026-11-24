@@ -11,6 +11,7 @@
 
 import { db } from "../db.server";
 import { TOKEN_COST, estimateFilmTokens } from "./plan-config";
+import { dealFresh, freshAngle } from "./story-variety";
 import { SHOW_SCENES, episodeIdeaPrompt, episodeTopic, parseStar, showOf, showTeller, signoffOf, tidyIdea, type Show, type ShowStar } from "./character-series";
 import { spendTokens, refundTokens, tokensRemainingLive } from "./tokens.server";
 import { enqueueJob } from "./job-queue.server";
@@ -78,7 +79,7 @@ export async function nextTopic(niche: string, format: string, recent: string[],
 /** One fresh premise for the next EPISODE of a character's show (character-series.ts) — never the same
  *  as a recent one. On any failure it falls back to what the show is about, so an episode is never blocked
  *  on the idea. */
-export async function nextEpisodeIdea(o: { seriesName: string; about: string; show: Show; star: ShowStar; recent: string[]; episode: number }, lang?: string | null): Promise<string> {
+export async function nextEpisodeIdea(o: { seriesName: string; about: string; show: Show; star: ShowStar; recent: string[]; episode: number; angle?: string }, lang?: string | null): Promise<string> {
   const fallback = o.about || o.show.line;
   try { return tidyIdea(await anthropicText(`${episodeIdeaPrompt(o)}${langDirective(lang)}`, { maxTokens: 90 }), fallback); }
   catch { return tidyIdea("", fallback); }
@@ -174,7 +175,9 @@ export async function tickDueSeries(): Promise<void> {
           star = parseStar(s.characterJson);
           show = showOf(s.format);
           if (!star || !show) { await pause(s.id, "no-character"); continue; }
-          topic = await nextEpisodeIdea({ seriesName: s.name, about: s.niche, show, star, recent, episode: s.dropsMade + 1 }, shop.contentLang);
+          // (dealt an angle of its own — story-variety.ts; the ENDING is dealt later, to the story's writer)
+          const angle = freshAngle(show.template, { ...dealFresh(show.template), ending: undefined });
+          topic = await nextEpisodeIdea({ seriesName: s.name, about: s.niche, show, star, recent, episode: s.dropsMade + 1, angle }, shop.contentLang);
         } else {
           topic = await nextTopic(s.niche, s.format, recent, shop.contentLang);
         }

@@ -117,7 +117,7 @@ test("where the pictures are drawn: a portrait each, the reference in every scen
   assert.ok(fn.includes("const cards: StoryCastRef[] = castStillIn(carried.refs, others).filter((c) => fs.existsSync(path.join(RENDERS(), path.basename(c.img))));"));
   // in a scene: the maker's cast first, then the story's own — three reference pictures at most
   assert.ok(fn.includes("const own = sheet ? [] : who[k].others.map(cardFor).filter((c): c is StoryCastRef => !!c).slice(0, Math.max(0, 3 - chosen.length));"));
-  assert.ok(fn.includes("const here: Array<{ name: string; look?: string; faceUrl?: string | null }> = [...chosen, ...own.map((c) => ({ name: c.name, look: c.look, faceUrl: c.img }))];"));
+  assert.ok(fn.includes("const here: Array<{ name: string; look?: string; faceUrl?: string | null; kind?: \"person\" | \"cartoon\" | \"monster\" }> = [...chosen, ...own.map((c) => ({ name: c.name, look: c.look, faceUrl: c.img, kind: keepGuess(c.look || \"\").kind }))];"), "each with what KIND of somebody they are (a creature is told to stay one)");
   assert.ok(fn.includes("here.forEach((c, n) => notes.push(`${c.name} is the character in reference image ${n + 1}${c.look ? ` (${c.look.slice(0, 160)})` : \"\"}.`));"));
   // …a character with no portrait is still drawn, from its words
   assert.ok(fn.includes("const unpictured = sheet ? [] : who[k].others.filter((e) => !own.some((c) => c === cardFor(e)));"));
@@ -125,7 +125,7 @@ test("where the pictures are drawn: a portrait each, the reference in every scen
   // THE LOOK now asks about them too — the question and the fix are the ones the picked cast always had
   assert.ok(fn.includes("const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);"));
   assert.ok(fn.includes("castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: \"claude-sonnet-4-6\" }) : Promise.resolve(\"\"),"));
-  assert.ok(fn.includes("fix = storyFix(seenAs!, here.map((c) => c.name));"));
+  assert.ok(fn.includes("fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || \"person\"));"), "the fix says what a creature must be");
   // what goes back: the pictures, the token, and the cards to show (an older storyboard keeps its sheet)
   assert.ok(fn.includes("return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards, placeCards) || null, castCards: cards, placeCards, sceneFaults: faultsOut, sceneChecks: checksOut };"), "…and the story's places travel in the same token (tests/story-places.test.ts)");
   assert.ok(fn.includes("const sheet = who[k].others.length && sheetRef ? sheetRef : null;"));
@@ -230,8 +230,10 @@ test("three people from three pictures are drawn by the stronger model — and o
   assert.deepEqual([STORY_MODEL, STORY_CROWD_MODEL, STORY_CROWD_REFS], ["google/nano-banana", "google/nano-banana-pro", 3]);
   const nar = read("app", "lib", "narrated-story.server.ts");
   const fn = nar.slice(nar.indexOf("async function drawScene("), nar.indexOf("/** A picture that came back with black bars baked in"));
-  assert.ok(fn.includes("async function drawScene(prompt: string, refs: string[], aspect: string, people = refs.length): Promise<string | null> {"));
-  assert.ok(fn.includes("const model = sceneModel(people);"), "by how many PEOPLE it is drawn from: a place's design sheet is not one of them");
+  assert.ok(fn.includes("async function drawScene(prompt: string, refs: string[], aspect: string, people = refs.length, strong = false): Promise<string | null> {"));
+  // (…and the LAST go of a scene whose cast came out wrong twice — tests/story-shots.test.ts)
+  assert.ok(fn.includes("const model = strong ? STORY_CROWD_MODEL : sceneModel(people);"));
+  assert.ok(fn.includes("const model = strong ? STORY_CROWD_MODEL : sceneModel(people);"), "by how many PEOPLE it is drawn from: a place's design sheet is not one of them (and the last go of a scene that came out wrong twice)");
   assert.ok(fn.includes("...(m === STORY_MODEL ? {} : { resolution: \"1K\" })"), "the stronger model at its plainest size");
   assert.ok(fn.includes("if (model === STORY_MODEL) return null;") && fn.includes("try { return await run(STORY_MODEL); } catch { return null; }"), "if the stronger one cannot be reached the scene is still drawn");
   // a portrait is drawn from words alone — never the stronger model

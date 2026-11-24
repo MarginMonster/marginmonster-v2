@@ -24,6 +24,8 @@
  * A scene whose clip cannot be made keeps its still picture and its slow push-in — motion never costs a
  * story. STORY_MOTION=off in the environment turns the whole thing off. */
 
+import { isStoryShot, shotMotion } from "./story-shots.ts";
+
 export const STORY_MOTION_MODEL = "fal-ai/bytedance/seedance/v1/pro/fast/image-to-video";
 /** What the piece records as its motion engine. */
 export const STORY_MOTION_ENGINE = "seedance-1-pro-fast";
@@ -63,11 +65,21 @@ export function motionSeconds(sceneSeconds: number): number {
 export const motionReusable = (have: number, need: number): boolean =>
   have > 1 && need > 0 && have >= Math.min(need, MOTION_MAX_S) * MOTION_REUSE_SHARE;
 
-/** What the engine is told. `visual` is the scene as the story's writer described it — what is IN the
- *  picture and what is happening; the rest is the same for every scene. */
-export function motionPrompt(visual: string): string {
+/** What the engine is told. THE PICTURE IS HELD: it comes first, and the scene's own words come last, as
+ *  what the picture SHOWS — not as something to act out. (They used to lead the prompt. A scene written
+ *  "Howl's eyes reflect in a dark puddle… a second pair of eyes behind him" was a correct still of a
+ *  werewolf standing over a puddle; the engine read the words and made him leap, drop to all fours and
+ *  grow extra figures behind him, and in another scene blew a small campfire up to fill the frame — live,
+ *  2026-11-24, the owner: "characters breaking".) `shot` is how the scene is seen (story-shots.ts): somebody
+ *  caught mid-stride walks toward us; a face barely moves; with no plan, the small motion of every scene. */
+export function motionPrompt(visual: string, shot?: string | null): string {
   const what = String(visual || "").replace(/\s+/g, " ").trim().slice(0, 600);
-  return `${what ? `${what} ` : ""}One continuous shot of this exact picture coming to life: the people and creatures in it breathe, blink and move a little, naturally, as they would in this moment; hair, cloth, leaves, water, light and weather move. Nobody speaks — mouths stay closed, or only smile, gasp or react. The camera drifts slowly forward, steady and smooth. Everyone and everything stays exactly as drawn — the same faces, the same designs, the same place; nothing new appears, nobody leaves, no cuts, no writing.`;
+  const seen = isStoryShot(shot) ? shot : null;
+  const move = shotMotion(seen) || "Everybody holds their place; only small movement. The camera drifts slowly forward, steady and smooth.";
+  const hold = seen === "walk"
+    ? "Apart from that walk, HOLD THE PICTURE: every person and creature keeps the body, the build and the clothes it has in the picture — nobody crouches, jumps, lunges, falls or changes shape."
+    : "HOLD THE PICTURE: every person and creature keeps the body, the pose, the size and the place it has in the picture — nobody crouches, stands up, jumps, lunges, falls, changes shape or walks out.";
+  return `One continuous shot of this exact picture coming to life. ${move} ${hold} Nothing new appears — no extra person, creature, face, eye or hand; a fire or a flame stays exactly the size it is. What moves is small and natural: breathing, a slow blink, a head or a hand turning a little, fur, hair and cloth in the air, leaves, mist, rain, water and light. Nobody speaks — mouths stay closed, or only gasp or react. The same faces, the same designs, the same place; no cuts, no writing.${what ? ` (What the picture shows: ${what})` : ""}`;
 }
 
 /** How a clip `have` seconds long fills a scene told in `need` seconds: as it is when it is long enough

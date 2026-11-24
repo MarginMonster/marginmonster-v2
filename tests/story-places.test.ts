@@ -192,8 +192,8 @@ test("where the pictures are drawn: one sheet per place, beside the portraits, t
   // a scene: the people first, the place's sheet LAST — and not counted as a person when the model is chosen
   assert.ok(fn.includes("const setAt = wanted.find((p) => p.scenes.includes(i));"));
   assert.ok(fn.includes("const refs = [...people, ...(placeUrl ? [placeUrl] : [])];"));
-  assert.ok(fn.includes("const placeNotes = place && placeUrl ? [placeNote(refs.length, place), ...(here.length ? [PLACE_FRAMING] : [])] : [];"), "the framing line only where there are people to frame");
-  assert.ok(fn.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect, people.length);"));
+  assert.ok(fn.includes("const placeNotes = place && placeUrl ? [placeNote(refs.length, place), ...(here.length && !cam ? [PLACE_FRAMING] : [])] : [];"), "the framing line only where there are people to frame — and only for a scene with no camera line of its own (it made every picture at a place the same medium two-shot)");
+  assert.ok(fn.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect, people.length, strong);"));
   // a sheet that could not be drawn changes nothing: the scene is drawn from its words, as before
   assert.ok(fn.includes("const place = setAt ? sheetFor(setAt.name) : undefined;"));
   // what comes back: the token with the places in it, and the sheets themselves

@@ -52,7 +52,7 @@ export async function makeCastPoster(o: {
   const layout = posterLayout({ title: o.title, cast: pictured.map((c) => c.name) });
   if (!layout) return null;
   // (the captions' own rule: no font for these words → no words drawn, so no poster — never boxes)
-  const font = await resolveTextFont([...layout.lines, layout.cast, layout.episode].join(" "));
+  const font = await resolveTextFont([...layout.lines, layout.cast, layout.episode, layout.episode2 || ""].join(" "));
   const name = posterName(o.videoName);
   const outPath = path.join(RENDERS(), name);
   const r = await runFfmpeg(["-y", ...pictured.flatMap((c) => ["-i", c.input]), "-filter_complex", castPosterGraph(pictured.length, layout, font), "-frames:v", "1", "-q:v", "3", outPath]);

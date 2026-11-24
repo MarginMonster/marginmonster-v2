@@ -39,6 +39,8 @@ export async function animateScenes(o: {
   seeds: string[];
   /** each scene as its writer described it */
   visuals: string[];
+  /** how each scene is SEEN (story-shots.ts) — the motion follows it; absent for a story with no shot plan */
+  cams?: Array<string | null | undefined>;
   /** how long each scene is told, in seconds */
   told: number[];
   /** this app's own origin */
@@ -74,7 +76,7 @@ export async function animateScenes(o: {
         // the engine fetches the picture from this app's own address — a name that address will not serve
         // is a clip that cannot be made, and is said so here rather than by the provider a minute later
         if (!servable(path.basename(seed)) || !fs.existsSync(seed)) throw new Error(`the picture cannot be fetched (${path.basename(seed)})`);
-        id = await falVideoSubmit(STORY_MOTION_MODEL, { startImage: `${o.base}/renders/${path.basename(seed)}`, prompt: motionPrompt(o.visuals[i] || ""), durationSec: ask });
+        id = await falVideoSubmit(STORY_MOTION_MODEL, { startImage: `${o.base}/renders/${path.basename(seed)}`, prompt: motionPrompt(o.visuals[i] || "", o.cams?.[i]), durationSec: ask });
         ids[name] = id;
         await saveIds();
       }

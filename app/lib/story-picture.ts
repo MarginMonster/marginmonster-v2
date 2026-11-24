@@ -69,7 +69,7 @@ const NTH = ["2nd", "3rd", "4th"];
 export function storyCastPrompt(refs: number): string {
   const n = Math.max(1, Math.min(3, Math.round(refs || 1)));
   const who = `The FIRST image is a picture from an illustrated story. The ${n === 1 ? "image after it is the one character" : `${n} images after it are the ${n} characters`} who must be in it (${Array.from({ length: n }, (_, k) => `character ${k + 1} is the ${NTH[k]} image`).join(", ")}).`;
-  return `${who} For EACH character, first write down in a few words what identifies them in their OWN image — for a person: hair colour, hair length and style, skin tone, apparent age, beard or none; for a creature or cartoon: what kind of creature, its colours, the shape of its ears, and its markings — and then the one in the first image who is closest to that, in the same few words (or "nobody"). Then COMPARE the two descriptions you wrote and say whether that character IS in the first image. It is the same individual only if the hair colour, the skin tone and the apparent age all agree (for a creature or cartoon: the kind of creature, its colours, its ears and its markings). Seen from behind, small in the frame or in different clothes still counts — clothes do NOT matter, a story dresses people for the part. If your two descriptions differ in hair colour (silver against brown, red against black), in skin tone or clearly in age — or, for a creature, in its colour, its ears or its markings — the answer is false. Reply with ONLY this JSON: {"own": ["…" for each character], "inPicture": ["…" for each], "seen": [true or false for each, in order]}.`;
+  return `${who} For EACH character, first write down in a few words what identifies them in their OWN image — for a person: hair colour, hair length and style, skin tone, apparent age, beard or none; for a creature or cartoon: what kind of creature, HOW IT IS BUILT (standing upright on two legs like a person, or going on four legs like an animal; a body covered in fur, scales or bare skin), its colours, the shape of its ears, its markings, and what it wears — and then the one in the first image who is closest to that, in the same few words (or "nobody"). Then COMPARE the two descriptions you wrote and say whether that character IS in the first image. It is the same individual only if the hair colour, the skin tone and the apparent age all agree (for a creature or cartoon: the kind of creature, how it is built, its colours, its ears and its markings). Seen from behind, small in the frame or in different clothes still counts — for a PERSON clothes do NOT matter, a story dresses people for the part. A creature or cartoon is another matter: an ordinary animal on four legs is NOT an upright creature, and a human being with that creature's head — a person's body in ordinary clothes — is NOT that creature either. If your two descriptions differ in hair colour (silver against brown, red against black), in skin tone or clearly in age — or, for a creature, in what kind of creature it is, in how it is built, in its colour, its ears or its markings — the answer is false. Reply with ONLY this JSON: {"own": ["…" for each character], "inPicture": ["…" for each], "seen": [true or false for each, in order]}.`;
 }
 
 /** ONE PICTURE OR SEVERAL. Asked outright ("is it split into panels?") the reader passed a picture that
@@ -99,12 +99,38 @@ export function parseStoryPanels(raw: string): boolean | null {
 export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length;
 
 /** What to tell the picture model on the next go: the fault, named. `names` in the order of the references. */
-export function storyFix(c: StoryCheck, names: string[]): string {
+export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<string | undefined> = []): string {
   const out: string[] = [];
   if (c.panels) out.push("The last try was split into panels — draw ONE single picture of one moment that fills the whole frame");
-  const gone = c.seen.map((s, k) => (s ? "" : (names[k] || `the character in reference image ${k + 1}`))).filter(Boolean);
+  const missing = c.seen.map((s, k) => (s ? -1 : k)).filter((k) => k >= 0);
+  const gone = missing.map((k) => names[k] || `the character in reference image ${k + 1}`);
   if (gone.length) out.push(`${gone.join(" and ")} ${gone.length === 1 ? "was" : "were"} missing or drawn as someone else in the last try — draw ${gone.length === 1 ? "them" : "each of them"} EXACTLY as in their reference image: the same face, hair colour and hair`);
+  // (a creature that came back as an animal, or as a person, is told what it IS)
+  const beasts = missing.filter((k) => kinds[k] === "monster" || kinds[k] === "cartoon").map((k) => names[k]).filter(Boolean);
+  if (beasts.length) out.push(`${beasts.join(" and ")} must have the reference image's own BODY — the same build, standing the same way, covered in the same fur or skin, in the same clothing in the same state: not an ordinary animal, and not a human being with that head`);
   return out.length ? ` ${out.join(". ")}.` : "";
+}
+
+/** A CREATURE STAYS THAT CREATURE. The line a scene's picture is given for each of its cast who is not a
+ *  person: a werewolf whose scene said "crouches" came back an ordinary black wolf (three goes running), and
+ *  one whose sleeve was gripped came back a man with a wolf's head, in a clean shirt and a wristwatch (live,
+ *  2026-11-24). "" for a person. */
+export function creatureNote(name: string, kind: string | null | undefined): string {
+  const n = String(name || "").replace(/\s+/g, " ").trim();
+  if (!n || (kind !== "monster" && kind !== "cartoon")) return "";
+  const what = kind === "monster" ? "a creature" : "a cartoon character";
+  return `${n} is ${what} — not a person and not an ordinary animal: whatever ${n} is doing here (standing, crouching, walking, seen from behind), ${n} has exactly the BODY of the reference image — the same build, upright or not as it is there, the same fur, skin and colours all over, and the same clothing in the same state. Never drawn as an everyday animal; never as a human being wearing that head, a mask or a costume.`;
+}
+
+/** What a piece records about the pictures it KEPT with somebody still not right (the best of three goes):
+ *  which scene, who, and whether it was split into panels. [] when every picture passed its look. */
+export function keptFaults(checks: ReadonlyArray<StoryKept | null | undefined>): Array<{ scene: number; missing: string[]; panels?: true }> {
+  const out: Array<{ scene: number; missing: string[]; panels?: true }> = [];
+  (checks || []).forEach((c, i) => {
+    if (!c || !storyFaults(c)) return;
+    out.push({ scene: i + 1, missing: (c.who || []).filter((_, k) => c.seen[k] === false).map((n) => String(n).slice(0, 40)).slice(0, 3), ...(c.panels ? { panels: true as const } : {}) });
+  });
+  return out.slice(0, 24);
 }
 
 /* ---- THE STORY'S OWN CAST ----

@@ -60,7 +60,11 @@ test("the next episode's premise: this star, this show, and never an episode tha
   assert.ok(p.includes("What the show is about, in its maker's words: \"things heard in the woods after dark\"."));
   assert.ok(p.includes("The kind of show: each episode is ONE creepy tale told at night"));
   assert.ok(p.includes("Give the premise of EPISODE 3: ONE line, at most 25 words — what happens to Howl, specific and new."));
-  assert.ok(p.includes("It must NOT repeat or closely resemble any of these earlier episodes:\n- Howl finds a lantern nobody lit\n- Howl hears his name from the well\n"));
+  assert.ok(p.includes("It must NOT repeat or closely resemble any of these earlier episodes — not their situation, not their setting, not who the star meets:\n- Howl finds a lantern nobody lit\n- Howl hears his name from the well\n"));
+  // an angle, when one was dealt, is said before the list — and none is said when none was
+  assert.ok(!p.includes("This episode's angle"));
+  const angled = episodeIdeaPrompt({ seriesName: "S", about: "", show: showOf("nights")!, star: HOWL, recent: [], episode: 2, angle: "the kind of horror: a reflection that is a moment behind — or a moment ahead" });
+  assert.ok(angled.includes("This episode's angle, dealt for it alone — follow it unless what the show is about rules it out: the kind of horror: a reflection that is a moment behind — or a moment ahead.\n"));
   assert.ok(p.includes("no real named people, brands, prices or statistics. Anyone in danger is an adult."));
   // a first episode has nothing to avoid; a person is not called a creature
   const first = episodeIdeaPrompt({ seriesName: "Rosa: Lessons", about: "", show: showOf("lessons")!, star: { ...HOWL, name: "Rosa", kind: "person", look: "" }, recent: [], episode: 1 });
@@ -106,7 +110,9 @@ test("the channel that runs it: two new columns, a third kind of drop, an episod
   // the star and the show are read from the channel's own row — and a channel without them is paused, not guessed
   assert.ok(eng.includes("star = parseStar(s.characterJson);") && eng.includes("show = showOf(s.format);"));
   assert.ok(eng.includes("if (!star || !show) { await pause(s.id, \"no-character\"); continue; }"));
-  assert.ok(eng.includes("topic = await nextEpisodeIdea({ seriesName: s.name, about: s.niche, show, star, recent, episode: s.dropsMade + 1 }, shop.contentLang);"));
+  // (…dealt an angle of its own, so episode 7 is not episode 3 in another coat: tests/story-variety.test.ts)
+  assert.ok(eng.includes("const angle = freshAngle(show.template, { ...dealFresh(show.template), ending: undefined });"));
+  assert.ok(eng.includes("topic = await nextEpisodeIdea({ seriesName: s.name, about: s.niche, show, star, recent, episode: s.dropsMade + 1, angle }, shop.contentLang);"));
   // THE CLAIM is the one every drop makes (a slot is claimed before anything is queued, so two ticks never make two)
   assert.ok(eng.indexOf("if (claim.count !== 1) continue;") < eng.indexOf("filmTemplate: show.template, filmMode: \"narrated\""));
   // the episode: a told story, the star cast from their own picture, their own voice telling it, the sign-off, which episode

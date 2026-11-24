@@ -68,7 +68,7 @@ export function parseStar(raw: unknown): ShowStar | null {
 export const signoffOf = (raw: unknown): string => oneLine(raw).replace(/^["“”']+|["“”']+$/g, "").slice(0, 120);
 
 /** What the idea-writer is asked: ONE fresh premise for the next episode of this character's show. */
-export function episodeIdeaPrompt(o: { seriesName: string; about: string; show: Show; star: ShowStar; recent: ReadonlyArray<string>; episode: number }): string {
+export function episodeIdeaPrompt(o: { seriesName: string; about: string; show: Show; star: ShowStar; recent: ReadonlyArray<string>; episode: number; /** FRESH EVERY TIME (story-variety.ts): the angle this episode was dealt */ angle?: string }): string {
   const what = o.star.kind === "person" ? "" : o.star.kind === "monster" ? " (a creature — it stays one)" : " (a cartoon character — it stays one)";
   const recent = (o.recent || []).map((t) => oneLine(t)).filter(Boolean).slice(-12);
   return (
@@ -77,7 +77,10 @@ export function episodeIdeaPrompt(o: { seriesName: string; about: string; show: 
     (oneLine(o.about) ? `What the show is about, in its maker's words: "${oneLine(o.about).replace(/"/g, "'").slice(0, 160)}".\n` : "") +
     `The kind of show: ${o.show.brief}.\n` +
     `Give the premise of EPISODE ${Math.max(1, Math.floor(o.episode || 1))}: ONE line, at most 25 words — what happens to ${o.star.name}, specific and new. No title, no quotes, no numbering, no hashtags.\n` +
-    (recent.length ? `It must NOT repeat or closely resemble any of these earlier episodes:\n- ${recent.join("\n- ")}\n` : "") +
+    // (two episodes of one werewolf's show, a day apart, were the same story — a woman alone in the woods,
+    //  and something worse than the werewolf behind her: an angle is DEALT, so episode 7 is not episode 3)
+    (oneLine(o.angle) ? `This episode's angle, dealt for it alone — follow it unless what the show is about rules it out: ${oneLine(o.angle).slice(0, 240)}.\n` : "") +
+    (recent.length ? `It must NOT repeat or closely resemble any of these earlier episodes — not their situation, not their setting, not who the star meets:\n- ${recent.join("\n- ")}\n` : "") +
     `Keep it true to life and general: no real named people, brands, prices or statistics. Anyone in danger is an adult.\n` +
     `Return ONLY the premise line.`
   );

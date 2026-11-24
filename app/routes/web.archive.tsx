@@ -507,6 +507,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         opsTiming: operator ? (() => { try { return timingLine(JSON.parse(a.metaJson || "{}").timing) || undefined; } catch { return undefined; } })() : undefined,
         // …and how many of a story's pictures move, what was paid for, why any did not (story-motion.ts)
         opsMotion: operator ? (() => { try { const m = JSON.parse(a.metaJson || "{}").motion; return m && typeof m === "object" ? m : undefined; } catch { return undefined; } })() : undefined,
+        // …and which of a story's pictures were KEPT with somebody still not right — the best of three goes
+        // (story-picture.ts → keptFaults): a story made in one press has no storyboard to flag them on
+        opsPictures: operator ? (() => { try { const p = JSON.parse(a.metaJson || "{}").pictureFaults; return Array.isArray(p) && p.length ? p.slice(0, 24) : undefined; } catch { return undefined; } })() : undefined,
         // Is it a STORY film (acted or narrated)? Those can be continued: the viewer's "Next episode" opens
         // the Movie Maker on the next episode of its series (film-series.ts → storyHeroOf / episodeCardFor).
         canContinue: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson),

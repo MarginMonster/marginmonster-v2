@@ -85,14 +85,25 @@ test("the same picture told again moves without being paid for twice — a re-dr
 
 test("what it is told — the scene as written, nobody talking, nothing changed", () => {
   const p = motionPrompt("Pip and Tansy walk together along the path,\n Pip balancing apples atop Tansy's broad shell.");
-  assert.ok(p.startsWith("Pip and Tansy walk together along the path, Pip balancing apples atop Tansy's broad shell. One continuous shot of this exact picture coming to life:"));
-  assert.ok(p.includes("Nobody speaks — mouths stay closed, or only smile, gasp or react."), "a told story: a mouth moving under the narrator reads as a fault");
-  assert.ok(p.includes("Everyone and everything stays exactly as drawn — the same faces, the same designs, the same place; nothing new appears, nobody leaves, no cuts, no writing."));
+  // THE PICTURE IS HELD: the engine's instructions lead, and the scene's own words come last, as what the
+  // picture SHOWS — leading the prompt, they were acted out (a werewolf standing over a puddle leapt,
+  // dropped to all fours and grew extra figures behind him: live, 2026-11-24)
+  assert.ok(p.startsWith("One continuous shot of this exact picture coming to life. Everybody holds their place; only small movement."));
+  assert.ok(p.endsWith("(What the picture shows: Pip and Tansy walk together along the path, Pip balancing apples atop Tansy's broad shell.)"));
+  assert.ok(p.includes("HOLD THE PICTURE: every person and creature keeps the body, the pose, the size and the place it has in the picture — nobody crouches, stands up, jumps, lunges, falls, changes shape or walks out."));
+  assert.ok(p.includes("Nothing new appears — no extra person, creature, face, eye or hand; a fire or a flame stays exactly the size it is."));
+  // …and it follows how the scene is SEEN: somebody caught mid-stride walks; a face barely moves
+  const walk = motionPrompt("Howl walks toward the camera through the pines.", "walk");
+  assert.ok(walk.includes("Whoever is mid-stride walks slowly and steadily toward the camera") && walk.includes("Apart from that walk, HOLD THE PICTURE") && !walk.includes("or walks out"));
+  assert.ok(motionPrompt("A face.", "close").includes("Almost still: a breath, the eyes moving, one slow blink."));
+  assert.equal(motionPrompt("x", "nonsense"), motionPrompt("x"), "an unknown shot is no shot");
+  assert.ok(p.includes("Nobody speaks — mouths stay closed, or only gasp or react."), "a told story: a mouth moving under the narrator reads as a fault");
+  assert.ok(p.includes("The same faces, the same designs, the same place; no cuts, no writing."));
   assert.ok(p.includes("The camera drifts slowly forward, steady and smooth."));
   // a scene with nothing written still moves; a very long description is cut, the rules never are
-  assert.ok(motionPrompt("").startsWith("One continuous shot"));
+  assert.ok(motionPrompt("").startsWith("One continuous shot") && !motionPrompt("").includes("What the picture shows"));
   const long = motionPrompt("x".repeat(2000));
-  assert.ok(long.length < 1200 && long.endsWith("no cuts, no writing."));
+  assert.ok(long.length < 1700 && long.endsWith(`no cuts, no writing. (What the picture shows: ${"x".repeat(600)})`), "the scene's words are cut at 600; the rules are whole and come first");
 });
 
 test("what it costs is known, and it can be turned off", () => {
