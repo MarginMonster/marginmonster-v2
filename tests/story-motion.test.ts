@@ -147,7 +147,7 @@ test("the wait is said honestly: a story whose pictures move takes minutes longe
   assert.equal(storyTypicalSeconds(0, false), storyTypicalSeconds(1, false));
   // the Archive's card counts down from it, and the builder says it beside Generate
   const arch = read("app", "routes", "web.archive.tsx");
-  assert.ok(arch.includes("? storyTypicalSeconds(typeof p.filmScenes === \"number\" ? p.filmScenes : 6, storyMotionOn())"));
+  assert.ok(arch.includes("? storyTypicalSeconds(typeof p.filmScenes === \"number\" ? p.filmScenes : 6, storyMotionOn(p.filmPictures))"), "a story asked for over still pictures is timed as one (tests/video-ladder.test.ts)");
   const film = read("app", "routes", "web.film.tsx");
   assert.ok(film.includes("storyMotion: storyMotionOn(),"));
   assert.ok(film.includes("if (opts.moves) { const s = storyTypicalSeconds(n, true); lo = Math.max(3, Math.round((s * 0.8) / 60)); hi = Math.round((s * 1.35) / 60); }"));

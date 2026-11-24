@@ -74,6 +74,8 @@ import { cookingReel, cookingTitle, keepGuess, storyStars } from "../lib/story-p
 import { showMeta } from "../lib/character-series";
 // (2026-11-24) a story film's poster is its cover on the shelf
 import { posterOf } from "../lib/story-poster";
+// (2026-11-24) a series is ONE card on the shelf — its cover, and how many episodes are inside
+import { archiveShelf, episodeOwnLabel, seriesOnShelf, seriesTags, type SeriesItem } from "../lib/archive-series";
 // (2026-11-24) KEEP IN MY CAST: a story's own character, registered from the finished film
 import { CharacterForge, FORGE_CSS, type ForgeSeed } from "../components/CharacterForge";
 import { VOICE_UI_CSS } from "../components/VoicePicker";
@@ -377,7 +379,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const inLine = jobs.filter((j) => j.status === "PENDING" && (!j.runAt || j.runAt.getTime() <= nowMs));
   const places = inLine.length ? await placesInLine(inLine.map((j) => ({ id: j.id, type: j.type, payload: j.payload }))).catch(() => new Map<string, number | null>()) : new Map<string, number | null>();
   for (const j of jobs) {
-    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string; contentType?: string; filmScenes?: number; filmMode?: string } = {};
+    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string; contentType?: string; filmScenes?: number; filmMode?: string; filmPictures?: string } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
     // Unified archive: every cooking tile shows, whichever section started it.
     const due = !j.runAt || j.runAt.getTime() <= nowMs;
@@ -407,8 +409,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // (2026-11-23): 72 s for four scenes whose pictures were kept, about two minutes for six drawn new.
     // Under the film's estimate its card read "~10 min" for a piece that landed in one.
     const typical = (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film" && p.filmMode === "narrated")
-      // (…and since its pictures MOVE — story-motion.ts — a clip a scene on top of that)
-      ? storyTypicalSeconds(typeof p.filmScenes === "number" ? p.filmScenes : 6, storyMotionOn())
+      // (…and since its pictures MOVE — story-motion.ts — a clip a scene on top of that; unless its maker
+      //  asked for it over STILL pictures, the ladder's simple rung, which is the quick one)
+      ? storyTypicalSeconds(typeof p.filmScenes === "number" ? p.filmScenes : 6, storyMotionOn(p.filmPictures))
       : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film")
       ? Math.max(600, (typeof p.filmScenes === "number" ? p.filmScenes : 8) * 60)
       : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "commercial") ? COMMERCIAL_TYPICAL_SEC
@@ -461,6 +464,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Which collections each loaded piece is on (its chips in the viewer) — one read for the page, and none
   // at all for a shop that has no collections.
   const colsOf = collections.length ? await collectionIdsByAsset(shop.id, [...assets, ...stills].map((a) => a.id)) : {};
+  // SERIES ON THE SHELF (archive-series.ts): which of the loaded films are episodes of one storyline — a
+  // film series ("Next episode") or a character's show. Worked out from the meta these films already
+  // carry, over the films this page loaded: nothing more is read. Each gets a short hashed key.
+  const seriesTagOf = seriesTags(assets.filter((a) => a.type === "VIDEO_AD"));
   const mapAsset = (a: (typeof assets)[number]) => {
       let body: { videoUrl?: string; imageUrl?: string; audioUrl?: string; title?: string; html?: string; needsRegen?: boolean } = {};
       try { body = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
@@ -523,6 +530,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // A CHARACTER'S SHOW (character-series.ts): the show this piece is an episode of, and which one —
         // the viewer says so and leads back to the show. null for everything else.
         show: a.type === "VIDEO_AD" ? (() => { try { const s = showMeta(JSON.parse(a.metaJson || "{}").show); return s ? { name: s.name, episode: s.episode } : null; } catch { return null; } })() : null,
+        // THE SERIES IT IS AN EPISODE OF, for the shelf (archive-series.ts): a film series or a show — the
+        // series' hashed key (never an id), its title, and which episode this is. The shelf draws a series
+        // as ONE card. null for everything else, a telling in another language included.
+        series: seriesTagOf.get(a.id) || null,
         // A NARRATED story can be told again in another language — same pictures, same storyteller
         // (story-translate.ts). Every language but its own, by their own names — each one either already
         // told (`have`: that piece, to open) or still to make; null for anything else.
@@ -1884,6 +1895,106 @@ button.wa-colchip.wa-coladd{font-size:12px;}
   .wa-colchip button::before{content:"";position:absolute;inset:-11px;}
   .wa-toast-link{display:inline-flex;align-items:center;box-sizing:border-box;}
 }
+/* ── SERIES ON THE SHELF (2026-11-24) ─────────────────────────────────────────────────────────────────
+   A storyline is ONE card: its cover, with the top edges of two more posters showing behind it — "there
+   are more in here" — a gold tag that counts the episodes, and its title. The two edges sit in the gap
+   above the card, so the card is exactly the size of its neighbours and nothing in the grid moves. */
+.wb-asset.wa-series{position:relative;display:flex;flex-direction:column;overflow:visible;text-decoration:none;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.wa-series::before,.wa-series::after{content:"";position:absolute;height:6px;border-radius:8px 8px 0 0;background:#102A1D;pointer-events:none;transition:transform .28s cubic-bezier(.2,.7,.2,1);}
+.wa-series::before{left:7%;right:7%;top:-7px;opacity:.72;}
+.wa-series::after{left:15%;right:15%;top:-12px;opacity:.36;}
+.wa-series .wa-series-cover{border-radius:15px 15px 0 0;overflow:hidden;}
+.wa-creator .wa-series .wa-series-cover{border-radius:16px;}
+.wa-series-blank{display:grid;place-items:center;aspect-ratio:4/5;color:#E7C879;opacity:.5;}
+.wa-series-tag{position:absolute;top:8px;inset-inline-start:8px;z-index:1;display:inline-flex;align-items:center;gap:5px;max-width:calc(100% - 16px);box-sizing:border-box;padding:5px 10px 5px 8px;border-radius:999px;background:rgba(16,42,29,.92);color:#E7C879;font:800 11.5px/1.2 Poppins,sans-serif;letter-spacing:.02em;white-space:nowrap;box-shadow:inset 0 0 0 1px rgba(231,200,121,.36),0 2px 8px rgba(0,0,0,.28);}
+.wa-series .m,.wa-series .s{display:block;}
+.wa-series .m{overflow-wrap:anywhere;}
+.wa-series-open{display:flex;align-items:center;gap:5px;min-height:32px;margin-top:8px;font-family:Poppins,sans-serif;font-size:12px;font-weight:800;color:var(--green,#0C7A46);}
+[dir="rtl"] .wa-series-open svg{transform:scaleX(-1);}
+.wa-series:focus-visible{outline:3px solid var(--green,#0C7A46);outline-offset:3px;}
+/* (while pieces are being picked a series stands aside: it is never picked, kept or deleted as one) */
+.wa-series.off{opacity:.45;cursor:default;}
+@media(hover:hover){
+  .wa-series:not(.off):hover::before{transform:translateY(-1px);}
+  .wa-series:not(.off):hover::after{transform:translateY(-3px);}
+  .wa-series:not(.off):hover .wa-series-open{text-decoration:underline;}
+}
+@media(prefers-reduced-motion:reduce){.wa-series::before,.wa-series::after{transition:none;}.wa-series:hover::before,.wa-series:hover::after{transform:none;}}
+/* …and an OPEN series: the way back, its title, how many episodes — over only its episodes, in order. */
+.wa-serieshead{display:flex;align-items:center;gap:12px;margin:2px 0 14px;padding:10px 14px 10px 10px;border-radius:16px;background:#102A1D;color:#F6E7C1;box-shadow:inset 0 0 0 1px rgba(231,200,121,.2);scroll-margin-top:12px;}
+.wa-series-back{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:36px;box-sizing:border-box;padding:0 14px 0 10px;border-radius:999px;background:rgba(246,231,193,.1);color:#F6E7C1;font:800 12.5px/1 Poppins,sans-serif;text-decoration:none;}
+.wa-series-back:hover{background:rgba(246,231,193,.18);}
+.wa-series-back:focus-visible{outline:3px solid #E7C879;outline-offset:2px;}
+.wa-series-back svg{transform:scaleX(-1);}
+[dir="rtl"] .wa-series-back svg{transform:none;}
+.wa-serieshead-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:5px;}
+.wa-serieshead-txt b{font-family:Poppins,sans-serif;font-size:15px;font-weight:800;line-height:1.25;overflow-wrap:anywhere;}
+.wa-serieshead .wa-series-tag{position:static;max-width:100%;background:rgba(231,200,121,.12);box-shadow:inset 0 0 0 1px rgba(231,200,121,.34);}
+.wa-epno{display:block;margin:0 0 2px;font-family:Poppins,sans-serif;font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8a6207;}
+/* ── THE TOP OF THE SHELF ON A PHONE (2026-11-24) ─────────────────────────────────────────────────────
+   The owner, looking at it on his phone: "the archive looks … bananas with all the tiny cards and
+   options" — seven rows of controls before the first piece. Now: the tabs, then ONE row — search ·
+   Filter · Select — then the pieces. Everything that sifts the shelf opens from "Filter" as one panel; a
+   filter that is on is named in one quiet line; "Show older pieces" stands at the END of the shelf; the
+   two notes are said at the foot of the page; and a card is its cover, its title and one badge.
+   A wide screen keeps its bar: there the panel is not a box (display: contents) and none of this shows. */
+.wa-filterbtn,.wa-onfilters,.wa-foot,.wa-cd.wa-cd-st{display:none;}
+.wa-sheet{display:contents;}
+.wa-filterbtn-n{display:inline-grid;place-items:center;min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:999px;background:var(--green,#0C7A46);color:#fff;font:800 10.5px/1 Poppins,sans-serif;font-variant-numeric:tabular-nums;}
+.wa-count.in-series{display:none;}
+.wa-older{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px 14px;margin:20px 0 0;font-size:12.5px;color:var(--ink2,#5b6b61);text-align:center;}
+.wa-older-btn{display:inline-flex;align-items:center;min-height:40px;box-sizing:border-box;padding:0 18px;border-radius:999px;border:1px solid #BFE2CD;background:#EAF6EF;color:var(--green,#0C7A46);font:800 13px/1 Poppins,sans-serif;text-decoration:none;white-space:nowrap;}
+.wa-older-btn:hover{background:#DCF0E5;}
+@keyframes waSheetIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:640px){
+  .wa-autonote{display:none;}
+  .wa-foot .wa-autonote{display:flex;margin:0;}
+  .wa-bar{align-items:center;gap:8px;margin-bottom:12px;}
+  .wa-bar .wa-search{order:0;flex:1 1 0;min-width:0;}
+  .wa-bar .wa-search input{text-overflow:ellipsis;}
+  .wa-filterbtn{display:inline-flex;order:1;flex:0 0 auto;}
+  .wa-filterbtn[aria-expanded="true"]{border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+  .wa-bar .wa-selbtn{order:2;flex:0 0 auto;align-self:center;}
+  .wa-selbtn.on{justify-content:center;min-width:44px;padding-inline:0;}
+  .wa-selbtn.on .wa-selbtn-l{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
+  .wa-bar .wa-qchip{order:3;flex:1 1 100%;justify-content:space-between;box-sizing:border-box;min-height:44px;}
+  .wa-sheet{order:4;flex:1 1 100%;display:none;flex-direction:column;gap:12px;box-sizing:border-box;padding:12px;border:1px solid var(--line,#E1DECD);border-radius:16px;background:#fff;box-shadow:0 16px 34px -20px rgba(20,32,26,.42);}
+  .wa-sheet.open{display:flex;animation:waSheetIn .18s ease;}
+  .wa-sheet .wa-filters{flex:0 0 auto;}
+  .wa-sheet .wa-when{flex-wrap:wrap;overflow:visible;max-width:100%;margin-inline:0;padding:0;}
+  .wa-sheet .wa-pick{margin-top:0;}
+  .wa-sheet .wa-filters + .wa-filters{padding-top:12px;border-top:1px solid var(--line,#E1DECD);}
+  .wa-bar .wa-count{display:none;}
+  .wa-onfilters{display:flex;align-items:center;gap:8px;margin:-4px 0 8px;font-size:12.5px;font-weight:600;line-height:1.3;color:var(--ink2,#4A554E);}
+  .wa-onfilters svg{flex:0 0 auto;color:var(--green,#0C7A46);}
+  .wa-onfilters > span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .wa-onfilters .wa-linkbtn{flex:0 0 auto;min-width:44px;min-height:44px;padding:0 6px;font-weight:800;}
+  .wa-clearnote{display:none;}
+  .wa-clearnote.is-rescue{display:flex;}
+  .wa-older{margin-top:16px;}
+  .wa-older-btn{min-height:44px;}
+  .wa-foot{display:block;margin-top:22px;padding-top:14px;border-top:1px solid var(--line,#E1DECD);}
+  .wa-foot .wa-shelfnote{margin-bottom:10px;}
+  /* THE CARDS: a cover, its title, when it was made — and ONE badge, on the cover (the countdown for a
+     piece on the clock, "Kept" or "Posted" for one that is not). Download and Delete are in the opened
+     piece and in Select; the row of chip + two 44px squares under every title is a wide screen's. */
+  .wa-tileacts{display:none;}
+  .wa-kind{display:none;}
+  .wa-cd.wa-cd-st{display:block;}
+  .wb-asset .m{padding:9px 10px 11px;font-size:13px;line-height:1.3;}
+  .wb-asset .s{font-size:11px;margin-top:3px;}
+  .wa-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;}
+  /* …and the series' card and header at this width (the grid's gap here is 12px: the edges keep clear of the row above) */
+  .wa-series::before{top:-6px;height:5px;}
+  .wa-series::after{top:-10px;height:5px;}
+  .wa-series .wa-series-cover{border-radius:13px 13px 0 0;}
+  .wa-series-tag{top:6px;inset-inline-start:6px;padding:4px 8px 4px 7px;font-size:10.5px;}
+  .wa-series-open{display:none;}
+  .wa-serieshead{gap:10px;padding:8px 12px 8px 8px;}
+  .wa-series-back{min-height:44px;}
+  .wa-epno{font-size:10px;}
+}
+@media(prefers-reduced-motion:reduce){.wa-sheet.open{animation:none;}}
 `;
 
 /** One shape in the viewer's "Every size" panel: tap → made on the server → a Save link. */
@@ -2072,6 +2183,13 @@ export default function WebArchive() {
   // …and by who is in it / what it's for (the menus beside the chips); "" = any
   const [who, setWho] = useState("");
   const [prod, setProd] = useState("");
+  // THE FILTER PANEL (2026-11-24). On a phone the top of the Archive was seven rows of controls before the
+  // first piece. Now it is the tabs and one row — search · Filter · Select — and every way to sift the
+  // shelf (when, kind, clearing soon, kept, who, what, which collection) sits in ONE panel that "Filter"
+  // opens. Where the controls LIVE is all that changed: each is the control it was, with the same address
+  // and the same counts, and on a wide screen they stand in the bar as they always did. Open or shut is
+  // all this remembers.
+  const [sheet, setSheet] = useState(false);
   // WHEN (2026-11-22): the date filter. The window is the LOADER's — it is applied where the paging is —
   // so its chips are links, and it survives a reload the way the search does. `whenLit` is the chip to
   // light: the one just tapped, at once, not a beat later when the loader has answered.
@@ -2382,6 +2500,23 @@ export default function WebArchive() {
   }, [actionData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shelf = tab === "stills" ? stills : assets.filter((a) => A_KIND[a.type] === tab);
+  // SERIES ON THE SHELF (2026-11-24, archive-series.ts). On the Videos tab the episodes of one series — a
+  // film series, or a character's show — are ONE card: its cover, its title, "N episodes". A tap opens it:
+  // ?series=<its key>, which lives in the address beside the tab, the search, the window and the
+  // collection, so Back, a reload and a link all hold. Inside, the shelf is that series' episodes only —
+  // 1, 2, 3… — as the cards they always were. `seriesGoing` opens (and closes) it the moment it is tapped,
+  // not a beat later when the loader has answered — the way `whenLit` lights a chip.
+  const seriesGoing = nav.state === "loading" && nav.location && typeof window !== "undefined" && nav.location.pathname === window.location.pathname
+    ? new URLSearchParams(nav.location.search).get("series") || ""
+    : null;
+  const seriesAsked = (seriesGoing ?? searchParams.get("series") ?? "").slice(0, 40);
+  // (looked for on the tab's WHOLE shelf, so a chip that hides every episode does not throw the member out
+  //  of the series; a key that matches nothing — an old link, a series since deleted — is no series at all)
+  const openSeries = tab === "video" && seriesAsked ? seriesOnShelf(shelf, seriesAsked) : null;
+  const pieceById = new Map(shelf.map((a) => [a.id, a] as const));
+  // WHAT THE CHIPS SIFT, COUNT AND KEEP: the open series' episodes, in episode order — or the tab's shelf,
+  // exactly as before. (Paging and the empty states stay on `shelf`: they describe the library.)
+  const sift = openSeries ? openSeries.episodes.flatMap((id) => { const a = pieceById.get(id); return a ? [a] : []; }) : shelf;
   // The true library count for the open tab, so the note under the shelf
   // matches the number on the tab itself.
   const tabTotal = totals?.[tab] ?? shelf.length;
@@ -2391,13 +2526,13 @@ export default function WebArchive() {
   // already posted. The chip row only shows on video/image, where clearing is a
   // real concept and the volume lives.
   const isKept = (a: { status: string }) => a.status === "APPROVED" || a.status === "PUBLISHED";
-  const clearingCount = shelf.filter((a) => a.daysLeft != null).length;
-  const keptCount = shelf.filter((a) => isKept(a)).length;
+  const clearingCount = sift.filter((a) => a.daysLeft != null).length;
+  const keptCount = sift.filter((a) => isKept(a)).length;
   // Films / Faceless only when the Videos tab holds a MIX (a chip that matches everything is noise).
-  const filmCount = tab === "video" ? shelf.filter((a) => a.group === "film").length : 0;
-  const facelessCount = tab === "video" ? shelf.filter((a) => a.group === "faceless").length : 0;
-  const showFilms = filmCount > 0 && filmCount < shelf.length;
-  const showFaceless = facelessCount > 0 && facelessCount < shelf.length;
+  const filmCount = tab === "video" ? sift.filter((a) => a.group === "film").length : 0;
+  const facelessCount = tab === "video" ? sift.filter((a) => a.group === "faceless").length : 0;
+  const showFilms = filmCount > 0 && filmCount < sift.length;
+  const showFaceless = facelessCount > 0 && facelessCount < sift.length;
   const canFilter = (tab === "video" || tab === "image" || tab === "stills") && (clearingCount > 0 || keptCount > 0 || showFilms || showFaceless);
   // What actually renders + what the viewer arrows cycle through. Pagination and
   // the empty state stay on the unfiltered `shelf` — they describe the library,
@@ -2406,23 +2541,71 @@ export default function WebArchive() {
   // Who's in it / what it's for: the presenters and products this tab holds, most-used first.
   const optsOf = (key: "presenter" | "product"): Array<[string, number]> => {
     const m = new Map<string, number>();
-    for (const a of shelf) { const v = a.details?.[key]; if (v) m.set(v, (m.get(v) || 0) + 1); }
+    for (const a of sift) { const v = a.details?.[key]; if (v) m.set(v, (m.get(v) || 0) + 1); }
     return [...m.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]));
   };
   const whoOpts = optsOf("presenter");
   const prodOpts = optsOf("product");
   const visibleShelf = (!canFilter || filter === "all"
-    ? shelf
+    ? sift
     : filter === "clearing"
-      ? shelf.filter((a) => a.daysLeft != null)
+      ? sift.filter((a) => a.daysLeft != null)
       : filter === "films"
-        ? shelf.filter((a) => a.group === "film")
+        ? sift.filter((a) => a.group === "film")
         : filter === "faceless"
-          ? shelf.filter((a) => a.group === "faceless")
-          : shelf.filter((a) => isKept(a)))
+          ? sift.filter((a) => a.group === "faceless")
+          : sift.filter((a) => isKept(a)))
     .filter((a) => (!who || a.details?.presenter === who) && (!prod || a.details?.product === prod));
+  // WHAT THE SHELF DRAWS (2026-11-24). On the Videos tab each series is ONE card, standing where its newest
+  // episode stood (archive-series.ts → archiveShelf); inside an open series, and on every other tab, each
+  // piece is its own card as before. A series narrowed by a chip or a search is what is left of it: it
+  // still shows as its card, counting the episodes that are on the shelf.
+  type ShelfCard = { a: (typeof shelf)[number]; series?: undefined } | { series: SeriesItem; a?: undefined };
+  const shelfCards: ShelfCard[] = tab === "video" && !openSeries
+    ? archiveShelf(visibleShelf).flatMap((it): ShelfCard[] => { if (it.kind === "series") return [{ series: it }]; const a = pieceById.get(it.id); return a ? [{ a }] : []; })
+    : visibleShelf.map((a) => ({ a }));
+  // …and the pieces that stand on it as cards of their own: what Select picks from and what the viewer's
+  // arrows walk. An episode inside a closed series is not one of them — nothing on this page keeps,
+  // deletes or picks a whole series in one press.
+  const cardPieces = shelfCards.flatMap((c) => (c.a ? [c.a] : []));
+  // (an episode opened by its address — ?open= — while its series is still one card: its arrows walk its
+  //  own series, in episode order)
+  const viewerSeries = viewer?.series && tab === "video" && !cardPieces.some((c) => c.id === viewer.id) ? seriesOnShelf(visibleShelf, viewer.series.key) : null;
+  const viewShelf = viewerSeries ? viewerSeries.episodes.flatMap((id) => { const a = pieceById.get(id); return a ? [a] : []; }) : cardPieces;
+  // the count on a series, in words
+  const episodesLabel = (n: number) => (n === 1 ? t("1 episode") : t("{n} episodes", { n }));
+  // where a series' card leads, and the way back out of one: the address as it is — the search, the window,
+  // the collection, the section, how much is loaded — with only the series changed
+  const seriesHref = (key: string) => { const n = new URLSearchParams(searchParams); n.delete("open"); n.set("tab", tab); n.set("series", key); return `?${n.toString()}`; };
+  const shelfHref = (() => { const n = new URLSearchParams(searchParams); n.delete("open"); n.delete("series"); n.set("tab", tab); return `?${n.toString()}`; })();
+  // …and "Show older pieces" at the foot of the shelf: the same address with more of it loaded
+  const olderHref = (() => { const n = new URLSearchParams(searchParams); n.delete("open"); n.set("tab", tab); n.set("show", String(nextShow ?? "")); return `?${n.toString()}`; })();
+  const leaveSeries = () => { if (searchParams.get("series")) setSearchParams((p) => { const n = new URLSearchParams(p); n.delete("series"); return n; }, { replace: true, preventScrollReset: true }); };
+  // OPENING A SERIES BRINGS ITS HEADER TO THE TOP; LEAVING ONE RETURNS TO ITS CARD. The page above the shelf
+  // is long, and the shelf behind a series is longer: without this a tap on a card far down the page left
+  // the member looking at whatever now sat at that height. A new shelf also ends a selection, as a When
+  // chip does. (Run again when the address has settled: a Back press restores the scroll it remembered,
+  // which is where the series' header was, not where its card is.)
+  const openKey = openSeries?.key || null;
+  const urlSeries = searchParams.get("series") || "";
+  const seriesHead = useRef<HTMLDivElement | null>(null);
+  const seriesWas = useRef<string | null>(null);
+  useEffect(() => {
+    const was = seriesWas.current;
+    if (openKey) {
+      if (was === openKey) return;
+      seriesWas.current = openKey;
+      if (selecting) endSelect();
+      seriesHead.current?.scrollIntoView({ block: "start" });
+      return;
+    }
+    if (!was) return;
+    if (selecting) endSelect();
+    document.querySelector(`[data-series="${was.replace(/[^a-z0-9]/g, "")}"]`)?.scrollIntoView({ block: "center" });
+    if (!urlSeries) seriesWas.current = null;
+  }, [openKey, urlSeries]); // eslint-disable-line react-hooks/exhaustive-deps
   // "Keep all": what is on the clock in the open tab, saved in one tap.
-  const clearingIds = shelf.filter((a) => a.daysLeft != null).map((a) => a.id);
+  const clearingIds = sift.filter((a) => a.daysLeft != null).map((a) => a.id);
   const keepAll = () => submit({ intent: "keepMany", assetIds: clearingIds.join(",") }, { method: "post" });
   const keptManyN = actionData && "keptMany" in actionData ? Number((actionData as { keptMany?: unknown }).keptMany) || 0 : 0;
   // a bulk delete never takes a posted piece — say so when some were left
@@ -2479,16 +2662,17 @@ export default function WebArchive() {
     }
     setToast({ msg: dlSay(dlSummary(started, plan.skipped, failed)), ms: 6000 });
   };
-  const vIdx = viewer ? visibleShelf.findIndex((c) => c.id === viewer.id) : -1;
-  const openAt = (idx: number) => { const n = visibleShelf[(idx % visibleShelf.length + visibleShelf.length) % visibleShelf.length]; if (n) setViewer(n); };
+  const vIdx = viewer ? viewShelf.findIndex((c) => c.id === viewer.id) : -1;
+  const openAt = (idx: number) => { const n = viewShelf[(idx % viewShelf.length + viewShelf.length) % viewShelf.length]; if (n) setViewer(n); };
   // Keyboard: Escape closes, arrows cycle the current tab's pieces.
   // The handler reads the shelf + index off a ref so the listener can bind ONCE
   // per open piece instead of re-binding every render — visibleShelf is a fresh
   // array each render (shelf itself is assets.filter(...)), so depending on it
   // defeated the point. The ref is refreshed each render (free) and the effect
   // only re-runs when the open piece changes identity.
-  const navRef = useRef({ shelf: visibleShelf, vIdx });
-  navRef.current = { shelf: visibleShelf, vIdx };
+  // (2026-11-24: what the arrows walk is `viewShelf` — the cards on the page; see SERIES ON THE SHELF.)
+  const navRef = useRef({ shelf: viewShelf, vIdx });
+  navRef.current = { shelf: viewShelf, vIdx };
   // KEEP IN MY CAST: the character a story invented, opened in the one character dialog (CharacterForge).
   // While it is open it has the keyboard: Esc closes IT, and the arrows move the caret in its name box —
   // not the piece behind it.
@@ -2552,6 +2736,34 @@ export default function WebArchive() {
     queueIds(ids);
   };
 
+  // THE FILTER PANEL, counted and named (2026-11-24). `sheetHas`: is there anything to sift at all (no
+  // button otherwise). `onLabels`: the filters that are on, in the words on their own chips — a phone's one
+  // quiet line under the controls. `filtersOn`: the number on the button. (The open collection is counted
+  // but not named in that line: its own line, just below it, names it and has its own "Show all".)
+  const sheetHas = showWhen || canFilter || whoOpts.length > 1 || prodOpts.length > 1 || !!who || !!prod || collections.length > 0;
+  const chipOn = canFilter && filter !== "all";
+  const onLabels = [
+    whenOpen !== "all" ? t(WHEN_LABEL[whenOpen]) : "",
+    chipOn ? t(filter === "films" ? "Films" : filter === "faceless" ? "Faceless" : filter === "clearing" ? "Clearing soon" : "Kept") : "",
+    who,
+    prod.length > 42 ? `${prod.slice(0, 40)}…` : prod,
+  ].filter(Boolean);
+  const filtersOn = onLabels.length + (colOpen ? 1 : 0);
+  // ONE TAP CLEARS WHAT THAT LINE NAMES: the chips and menus at once, and the window through the address
+  // (the search, the collection and an open series stay — each has its own way out).
+  const clearFilters = () => {
+    setFilter("all"); setWho(""); setProd(""); setSheet(false);
+    if (whenOpen === "all") return;
+    endSelect();
+    const n = new URLSearchParams(searchParams);
+    n.delete("when"); n.delete("show"); n.delete("open"); n.set("tab", tab);
+    navigate(`?${n.toString()}`, { preventScrollReset: true });
+  };
+  // The way to auto-posting, in one line: under the heading on a wide screen, at the foot of the page on a phone.
+  const autoNote = !canPost
+    ? <p className="wa-autonote"><Ico n="rocket" size={13} /> <span>{t("Want one-tap posting?")} <Link to="/web/connect">{t("Link your socials")}</Link> · <Link to="/web/autopost">{t("See everything that can post itself")}</Link></span></p>
+    : <p className="wa-autonote"><Ico n="rocket" size={13} /> <span><Link to="/web/autopost">{t("Auto-post")}</Link> — {t("channels and campaigns that post themselves.")}</span></p>;
+
   return (
     <div className={isCreator ? "wa-creator" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WA_CSS }} />
@@ -2573,9 +2785,9 @@ export default function WebArchive() {
           </p>
         </div>
       </div>
-      {!canPost
-        ? <p className="wa-autonote"><Ico n="rocket" size={13} /> <span>{t("Want one-tap posting?")} <Link to="/web/connect">{t("Link your socials")}</Link> · <Link to="/web/autopost">{t("See everything that can post itself")}</Link></span></p>
-        : <p className="wa-autonote"><Ico n="rocket" size={13} /> <span><Link to="/web/autopost">{t("Auto-post")}</Link> — {t("channels and campaigns that post themselves.")}</span></p>}
+      {/* (2026-11-24: a wide screen's place for this line. On a phone it is said at the foot of the page —
+          see THE FOOT — so the tabs and the search are the first things under the heading.) */}
+      {autoNote}
       {!hasPlan && <p className="wa-wallet">{t("Pick a plan to generate.")}</p>}
       {err && !viewer && <div className="wb-err">{err}</div>}
       {ok && <div className="wb-ok">{ok}</div>}
@@ -2596,7 +2808,7 @@ export default function WebArchive() {
           const n = (totals?.[k] ?? assets.filter((a) => A_KIND[a.type] === k).length)
             + (colOpen ? 0 : cookingCards.filter((j) => j.kind === k && j.status === "generating").length);
           return (
-            <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setFilter("all"); setWho(""); setProd(""); endSelect(); }}>
+            <button type="button" key={k} className={`ws-tab${tab === k ? " on" : ""}`} onClick={() => { setTab(k); setFilter("all"); setWho(""); setProd(""); endSelect(); setSheet(false); leaveSeries(); }}>
               <Ico n={icon} /> {label} · {n}
             </button>
           );
@@ -2625,6 +2837,19 @@ export default function WebArchive() {
             <Link to={`?tab=${tab}${whenQ}${colQ}${isCreator ? "&section=creator" : ""}`} preventScrollReset aria-label={t("Clear")}><Ico n="x" size={12} /></Link>
           </span>
         )}
+        {/* THE FILTER PANEL (2026-11-24). On a phone this one button, beside the search box, opens everything
+            that sifts the shelf — when, kind, clearing soon, kept, who, what, which collection — as a single
+            panel; the number on it is how many are on. A choice made in the panel shuts it, so the shelf it
+            changed is what is looked at. On a wide screen there is no button and the panel is not a box at
+            all (display: contents): its chips stand in the bar exactly as they did. Nothing inside it was
+            changed — it is only where these controls live. */}
+        {sheetHas && (
+          <button type="button" className={`wa-filterchip wa-filterbtn${filtersOn > 0 ? " on" : ""}`} aria-expanded={sheet} aria-controls="wa-sheet" onClick={() => setSheet((v) => !v)}>
+            <Ico n="sliders" /> {t("Filter")}{filtersOn > 0 && <b className="wa-filterbtn-n">{filtersOn}</b>}
+          </button>
+        )}
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+        <div id="wa-sheet" className={`wa-sheet${sheet ? " open" : ""}`} onClick={(e) => { if ((e.target as Element).closest("a.wa-filterchip, button.wa-filterchip")) setSheet(false); }} onChange={() => setSheet(false)}>
         {/* COLLECTIONS: the open collection is NOT repeated here as a chip. It was, on the first day
             (2026-11-23) — and the page then named it three times: this chip, the Collections menu showing it
             selected, and the line under the filters that counts it. The menu chooses and the line below
@@ -2648,7 +2873,7 @@ export default function WebArchive() {
         )}
         {canFilter && (
           <div className="wa-filters" role="group" aria-label={t("Filter pieces")}>
-            <button type="button" className={`wa-filterchip${filter === "all" ? " on" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>{t("All")} · {shelf.length}</button>
+            <button type="button" className={`wa-filterchip${filter === "all" ? " on" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>{t("All")} · {sift.length}</button>
             {showFilms && (
               <button type="button" className={`wa-filterchip${filter === "films" ? " on" : ""}`} aria-pressed={filter === "films"} onClick={() => setFilter("films")}><Ico n="film" /> {t("Films")} · {filmCount}</button>
             )}
@@ -2700,10 +2925,14 @@ export default function WebArchive() {
             )}
           </div>
         )}
+        </div>
         {/* Select mode: tap pieces, then Keep or Delete them together */}
-        {tab !== "blog" && visibleShelf.length >= 2 && (
-          <button type="button" className={`wa-filterchip wa-selbtn${selecting ? " on" : ""}`} aria-pressed={selecting} onClick={() => (selecting ? endSelect() : setSelecting(true))}>
-            <Ico n="check" /> {selecting ? t("Done selecting") : t("Select")}
+        {/* (2026-11-24: counted over the pieces that stand on the shelf as cards of their own — a series'
+            card is never picked, so its episodes are never kept or deleted as one. On a phone it shares the
+            search box's row, and while selecting it is the lit tick alone — the bar below has "Done".) */}
+        {tab !== "blog" && cardPieces.length >= 2 && (
+          <button type="button" className={`wa-filterchip wa-selbtn${selecting ? " on" : ""}`} aria-pressed={selecting} title={selecting ? t("Done selecting") : t("Select")} onClick={() => { if (selecting) endSelect(); else { setSheet(false); setSelecting(true); } }}>
+            <Ico n="check" /> <span className="wa-selbtn-l">{selecting ? t("Done selecting") : t("Select")}</span>
           </button>
         )}
         {/* Only when there is genuinely more of THIS type to load. The library
@@ -2718,7 +2947,9 @@ export default function WebArchive() {
           // the browser, so the tab label ("Images · 77") and the shelf under it
           // disagreed with no explanation, and the note said "60 of 87" on a tab
           // showing neither number.
-          <p className="wa-count">
+          // (2026-11-24: a wide screen's line. On a phone, and inside an open series, the same thing is
+          //  said at the FOOT of the shelf — where older pieces are actually wanted.)
+          <p className={`wa-count${openSeries ? " in-series" : ""}`}>
             {shelf.length === 0
               // None of THIS type are in the recent window (older ones got crowded
               // out by newer pieces of other types) — don't pretend there are none.
@@ -2729,6 +2960,15 @@ export default function WebArchive() {
           </p>
         )}
       </div>
+      {/* WHAT IS ON (2026-11-24, a phone's line): with the filters behind one button, a filter that is on
+          must not be out of sight — so it is named here, in one quiet line, with a one-tap Clear. Nothing
+          on, no line. (A wide screen shows the lit chips themselves, and not this.) */}
+      {onLabels.length > 0 && (
+        <p className="wa-onfilters" role="status">
+          <Ico n="sliders" size={13} /> <span>{onLabels.join(" · ")}</span>
+          <button type="button" className="wa-linkbtn" onClick={clearFilters}>{t("Clear")}</button>
+        </p>
+      )}
       {/* COLLECTIONS (2026-11-22): a new one from the Collections menu — named here, then opened */}
       {colForm === "filter" && (
         <ColNameForm label={t("Create")} busy={colBusy} error={colErr} onSave={(name) => colSubmit({ intent: "colCreate", name })} onCancel={() => setColForm(null)} />
@@ -2751,7 +2991,9 @@ export default function WebArchive() {
       {(tab === "video" || tab === "image") && shelf.some((a) => a.daysLeft != null) && (
         // It said to open a piece and hit "Keep" — an opened piece has no button that reads Keep:
         // keeping is the heart over the clip, and the viewer's own note says "tap the heart".
-        <p className="wa-shelfnote"><Ico n="hourglass" /> {t("Un-kept videos & photos clear after 30 days — open a piece and tap the heart to save it for good.")}
+        // (2026-11-24: on a phone this line stands at the FOOT of the shelf — every un-kept card already
+        //  carries its own countdown — and up here only while "Clearing soon" is on, where "Keep all" is.)
+        <p className={`wa-shelfnote wa-clearnote${filter === "clearing" ? " is-rescue" : ""}`}><Ico n="hourglass" /> {t("Un-kept videos & photos clear after 30 days — open a piece and tap the heart to save it for good.")}
           {filter === "clearing" && clearingIds.length > 1 && (
             <>{" "}<button type="button" className="wa-linkbtn wa-keepall" onClick={keepAll} disabled={nav.state !== "idle"}><Ico n="heart" /> {t("Keep all {n}", { n: clearingIds.length })}</button></>
           )}
@@ -2846,6 +3088,18 @@ export default function WebArchive() {
         </div>
       )}
 
+      {/* AN OPEN SERIES (2026-11-24): the shelf below holds only its episodes — 1, 2, 3… — as the cards they
+          always were. This is its header: the way back to the shelf, its title, how many episodes. */}
+      {openSeries && (
+        <div className="wa-serieshead" ref={seriesHead} role="group" aria-label={openSeries.title}>
+          <Link to={shelfHref} preventScrollReset className="wa-series-back"><Ico n="arrow" size={13} /> {t("Back")}</Link>
+          <span className="wa-serieshead-txt">
+            <b>{openSeries.title}</b>
+            <span className="wa-series-tag"><Ico n="film" size={12} /> {episodesLabel(openSeries.count)}</span>
+          </span>
+        </div>
+      )}
+
       {/* Finished pieces: poster-frame tiles (media) or read rows (blogs). */}
       {tab === "blog" ? (
         <div className="wa-blogrows">
@@ -2870,7 +3124,34 @@ export default function WebArchive() {
         </div>
       ) : (
         <div className="wb-assets">
-          {visibleShelf.map((a, k) => {
+          {shelfCards.map((c, k) => {
+            // A SERIES IS ONE CARD (2026-11-24): its cover — the newest episode's poster — with the edges of
+            // more posters showing behind it, a gold tag that counts the episodes, and its title. A tap opens
+            // the series. It is a way IN and nothing else: no keep, no delete, no tick — nothing on this page
+            // acts on a whole series in one press, and while pieces are being picked it stands aside.
+            if (c.series) {
+              const s = c.series;
+              const isPoster = !!s.cover && s.cover !== s.frame;
+              return (
+                <Link key={`series|${s.key}`} to={seriesHref(s.key)} preventScrollReset data-series={s.key}
+                  className={`wb-asset wa-series${selecting ? " off" : ""}`} aria-disabled={selecting || undefined} tabIndex={selecting ? -1 : undefined}
+                  onClick={(e) => { if (selecting) e.preventDefault(); }} title={`${s.title} · ${episodesLabel(s.count)}`}>
+                  <span className={`wa-poster wa-series-cover${isPoster ? " has-poster" : ""}`} style={isPoster ? { ["--k" as string]: Math.min(k, 11) } : undefined}>
+                    {s.cover
+                      ? <img src={s.cover} alt="" loading="lazy" decoding="async"
+                          onError={(e) => { const el = e.currentTarget; if (s.frame && s.frame !== s.cover && el.dataset.fell !== "1") { el.dataset.fell = "1"; el.src = s.frame; } else el.style.visibility = "hidden"; }} />
+                      : <span className="wa-series-blank"><Ico n="film" size={32} /></span>}
+                    <span className="wa-series-tag"><Ico n="film" size={12} /> {episodesLabel(s.count)}</span>
+                  </span>
+                  <span className="m">
+                    <span className="wa-title">{s.title}</span>
+                    <span className="s"><span className="wa-kind">{t("Series")} · </span><span suppressHydrationWarning>{new Date(s.latestWhen).toLocaleDateString()}</span></span>
+                    <span className="wa-series-open">{t("All episodes")} <Ico n="arrow" size={12} /></span>
+                  </span>
+                </Link>
+              );
+            }
+            const a = c.a;
             const [cc, cl] = chipFor(a);
             return (
               <div className={`wb-asset${selecting && picked.has(a.id) ? " wa-picked" : ""}`} key={a.id}>
@@ -2912,9 +3193,16 @@ export default function WebArchive() {
                   {/* (the tooltip said "hit Keep" — there is no such button in the
                       opened piece: keeping is the heart) */}
                   {a.daysLeft != null && !a.expired && <span className={`wa-cd${a.daysLeft <= 5 ? " urgent" : ""}`} title={a.daysLeft === 1 ? t("Auto-clears in {n} day — open it and tap the heart to keep it", { n: a.daysLeft }) : t("Auto-clears in {n} days — open it and tap the heart to keep it", { n: a.daysLeft })}><Ico n="hourglass" /> {a.daysLeft}d</span>}
+                  {/* (2026-11-24) ON A PHONE A CARD CARRIES ONE BADGE, and it is on the cover: the countdown
+                      above for a piece still on the clock, this one for a piece that is kept or posted. The
+                      row of chip + download + delete under the title is a wide screen's — on a phone those
+                      live in the opened piece, and in Select. */}
+                  {isKept(a) && a.media && <span className="wa-cd wa-cd-st"><Ico n={a.status === "PUBLISHED" ? "check" : "heart"} /> {cl}</span>}
                 </button>
                 <div className="m">
-                  {a.title}
+                  {/* inside its series an episode says which one it is — the shelf there is in episode order */}
+                  {openSeries && a.series && <span className="wa-epno">{t("Episode {n}", { n: a.series.episode })}</span>}
+                  <span className="wa-title">{openSeries && a.series ? episodeOwnLabel(a.title) : a.title}</span>
                   {/* Rendered on the server in UTC and on the client in the
                       viewer's zone, so these two disagree for anything made
                       after early evening local time. That mismatch aborted
@@ -2922,7 +3210,7 @@ export default function WebArchive() {
                       "switch to client rendering"), which is why the Archive
                       re-rendered itself from scratch on every visit. Keep the
                       local date; let React reconcile this one node. */}
-                  <div className="s">{a.isVideo ? t("Video") : a.isAudio ? t("Music") : t("Image ad")} · <span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>
+                  <div className="s"><span className="wa-kind">{a.isVideo ? t("Video") : a.isAudio ? t("Music") : t("Image ad")} · </span><span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>
                   <div className="wa-tileacts">
                     <span className={`wa-chip ${cc}`}>{cl}</span>
                     {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo, a.isAudio)} title={t("Download")}><Ico n="download" /></a>}
@@ -2934,6 +3222,20 @@ export default function WebArchive() {
             );
           })}
         </div>
+      )}
+
+      {/* OLDER PIECES, ASKED FOR WHERE THEY ARE WANTED (2026-11-24): at the end of the shelf — the reader has
+          just reached the oldest piece on the page — not in a line above the first one. Offered on exactly
+          the terms of the line in the bar; inside an open series it stays in the series. */}
+      {nextShow != null && shelf.length < tabTotal && (
+        <p className="wa-older">
+          <span>
+            {shelf.length === 0
+              ? <>{t("Your")} <b>{tabTotal}</b> {t(TAB_PLURAL[tab])} {t("are further back.")}</>
+              : <>{t("Showing")} <b>{shelf.length}</b> {t("of")} <b>{tabTotal}</b>{" "}{t(TAB_PLURAL[tab])}.</>}
+          </span>
+          <Link to={olderHref} preventScrollReset className="wa-older-btn">{t("Show older pieces")} →</Link>
+        </p>
       )}
 
       {/* Wipeouts live below the finished work, not mixed into it. */}
@@ -2965,6 +3267,17 @@ export default function WebArchive() {
         </div>
       )}
 
+      {/* THE FOOT OF THE PAGE, ON A PHONE (2026-11-24). Two quiet lines that used to stand between the
+          controls and the first piece — what clears after 30 days, and the way to auto-posting — are said
+          here instead, once the pieces have been seen. (A wide screen keeps them where they were and does
+          not show this. While "Clearing soon" is on, the 30-day line is up top with "Keep all", not here.) */}
+      <div className="wa-foot">
+        {(tab === "video" || tab === "image") && shelf.some((a) => a.daysLeft != null) && filter !== "clearing" && (
+          <p className="wa-shelfnote"><Ico n="hourglass" /> {t("Un-kept videos & photos clear after 30 days — open a piece and tap the heart to save it for good.")}</p>
+        )}
+        {autoNote}
+      </div>
+
       {/* Fullscreen viewer: media plays big / blogs read in a scroll pane.
           Portaled to document.body so it escapes .wb-main's stacking context
           and its z-index:10500 scrim paints above the shell nav (z-index:30);
@@ -2974,11 +3287,11 @@ export default function WebArchive() {
           <div className={`wa-viewer${viewer.media && viewer.type !== "BLOG_POST" && !viewer.isAudio ? " vmedia" : ""}${vidWide && viewer.isVideo ? " wa-wide" : ""}`} onClick={(e) => e.stopPropagation()}>
             <button type="button" className="wa-vx" aria-label={t("Close")} onClick={() => setViewer(null)}>✕</button>
             <div className={`wa-vstage${viewer.media && viewer.type !== "BLOG_POST" && !viewer.isAudio ? " media" : ""}`}>
-              {visibleShelf.length > 1 && vIdx >= 0 && (
+              {viewShelf.length > 1 && vIdx >= 0 && (
                 <>
                   <button type="button" className="wa-vnav prev" aria-label={t("Previous")} onClick={() => openAt(vIdx - 1)}>‹</button>
                   <button type="button" className="wa-vnav next" aria-label={t("Next")} onClick={() => openAt(vIdx + 1)}>›</button>
-                  <span className="wa-vcount">{vIdx + 1} / {visibleShelf.length}</span>
+                  <span className="wa-vcount">{vIdx + 1} / {viewShelf.length}</span>
                 </>
               )}
               {/* Keep = a heart TOGGLE over the clip's top-right. Outline → tap to
@@ -3318,8 +3631,10 @@ export default function WebArchive() {
       {selecting && (
         <div className="wa-bulk" ref={bulkRef} role="toolbar" aria-label={t("Selected pieces")}>
           <span className="wa-bulk-n">{picked.size === 1 ? t("1 selected") : t("{n} selected", { n: picked.size })}</span>
-          <button type="button" className="wa-bulk-link" onClick={() => setPicked(picked.size >= visibleShelf.length ? new Set() : new Set(visibleShelf.map((a) => a.id)))}>
-            {picked.size >= visibleShelf.length ? t("Clear") : t("Select all {n}", { n: visibleShelf.length })}
+          {/* (2026-11-24: "all" is every piece that stands on the shelf as its own card — never the episodes
+              inside a series' card, which are not on the page to be looked at before they are kept or deleted) */}
+          <button type="button" className="wa-bulk-link" onClick={() => setPicked(picked.size >= cardPieces.length ? new Set() : new Set(cardPieces.map((a) => a.id)))}>
+            {picked.size >= cardPieces.length ? t("Clear") : t("Select all {n}", { n: cardPieces.length })}
           </button>
           <span className="wa-bulk-sp" />
           {/* DOWNLOAD (2026-11-22): the media file of every picked piece that has one, one after another.
