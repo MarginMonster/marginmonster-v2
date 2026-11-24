@@ -327,7 +327,7 @@ test("THE BODY CAM (\"What about body cam footage\"): a welfare check — worn, 
 });
 
 test("THE BODY CAM'S POLICE DRAMA (\"doesn't nessesarily need to be horror\"): the driver speaks to the engine, the officer and the radio are their own tracks — fiction, nobody hurt, nobody the default", async () => {
-  const { castTake, dramaPrompt, DRAMA_BOUNDS, TAKE_OFFICER_VOICE } = await import("../app/lib/take.ts");
+  const { castTake, dramaPrompt, DRAMA_BOUNDS, DRAMA_RUN_AT, TAKE_OFFICER_VOICE } = await import("../app/lib/take.ts");
   const tr = takeIdea("traffic")!;
   assert.ok(tr.genre === "drama" && tr.seconds === 15 && tr.name.length <= 22 && tr.line.length <= 60);
   assert.deepEqual(tr.cams, ["bodycam"]);
@@ -343,24 +343,29 @@ test("THE BODY CAM'S POLICE DRAMA (\"doesn't nessesarily need to be horror\"): t
   assert.ok(still.startsWith("Wide 16:9 picture. A single frame from a body camera's own recording at night") && still.includes(DRAMA_BOUNDS) && !still.includes(TAKE_WRONG));
   assert.ok(DRAMA_BOUNDS.includes("no real police department, no badge, patch, insignia") && DRAMA_BOUNDS.includes("no weapon drawn; nobody hurt"));
   assert.ok(takeOpensPrompt(tr, "16:9").includes("The SAME place and the SAME body camera as the reference image") && takeOpensPrompt(tr, "16:9").includes(DRAMA_BOUNDS));
-  // THE DIRECTION: the driver's own words, quoted, at about their second — and ONLY the driver's
+  // THE DIRECTION: the driver's own words, quoted ONCE each, at their second — and ONLY the driver's
   const p = takePrompt(tr, "bodycam");
   assert.equal(p, dramaPrompt(tr, "bodycam", "<<<image_1>>>"));
-  assert.ok(p.includes(`At about 4 seconds the driver says: "I'm not getting out of the car. I didn't do anything."`) && p.includes(`At about 13 seconds the driver says: "Okay! Okay."`));
-  assert.ok(p.indexOf("At about 4 seconds") < p.indexOf("FROM THE SEVENTH SECOND:") && p.indexOf("LAST FIVE SECONDS:") < p.indexOf("At about 13 seconds"));
-  assert.ok(p.includes("Only the driver speaks in this shot; the officer wearing the camera says nothing and is never seen except the hands."));
+  assert.ok(p.includes(`AT THE SIXTH SECOND — not before — the driver says, once: "I'm not getting out of the car. I didn't do anything."`));
+  assert.ok(p.includes(`AT THE FOURTEENTH SECOND — not before — the driver says, once: "Okay! Okay."`));
+  assert.ok(p.indexOf("FROM THE NINTH SECOND:") < p.indexOf("LAST FOUR SECONDS:") && p.indexOf("LAST FOUR SECONDS:") < p.indexOf("AT THE FOURTEENTH SECOND"));
+  assert.ok(p.includes("Each line is said once, at its moment, and never before it. Only the driver speaks in this shot; the officer wearing the camera says nothing and is never seen except the hands."));
   assert.ok(p.includes("A FICTIONAL police drama, and nobody is hurt: no weapon is drawn or fired, nobody is struck, no blood.") && p.includes("exactly as in <<<image_1>>>, "));
   // the officer's lines and the dispatcher's are NOT in it in any form (they are their own voices, laid on after)
   for (const s of tr.script!) assert.ok(!p.includes(s.text.replace(/[!.]+$/, "")), s.text);
-  assert.ok(!p.includes("County Road") && !p.includes("Plate comes back"));
+  assert.ok(!p.includes("copy your stop") && !p.includes("Plate comes back"));
   assert.ok(p.length <= TAKE_PROMPT_MAX && !/\b(gun|shoots?|shot fired|punch|kick|taser|blood)\b/i.test(p.replace("no blood", "").replace("no weapon is drawn or fired", "")));
-  // THE TRACKS: the radio first, then the officer's three lines at their own times — the officer's voice, firm
+  // THE TRACKS: the radio during the walk-up, the officer's question as the camera reaches the window, then the chase
+  // and the handcuffs — the officer's voice, firm
   assert.deepEqual(takeLines(tr), [
-    { at: 0.2, text: "Unit twelve, copy your stop on County Road nine. Plate comes back expired.", radio: true },
-    { at: 2.4, text: "Step out of the car for me." },
-    { at: 7.4, text: "Hey! Stop! Stop!" },
-    { at: 10.6, text: "Hands behind your back." },
+    { at: 0.2, text: "Unit twelve, copy your stop. Plate comes back expired.", radio: true },
+    { at: 4.6, text: "Step out of the car for me." },
+    { at: 9.4, text: "Hey! Stop! Stop!" },
+    { at: 11.4, text: "Hands behind your back." },
   ]);
+  // (the officer's question comes before the driver answers it, and nothing of ours is laid over the driver's answer)
+  const answer = tr.speaks![0];
+  assert.ok(tr.script![0].at < answer.at && tr.script![1].at >= DRAMA_RUN_AT && tr.script![1].at > answer.at + 2.5);
   assert.deepEqual(TAKE_OFFICER_VOICE, { id: "English_Trustworth_Man", emotion: "angry", speed: 1 });
   // the server: the driver is picked for each take, the take is fifteen seconds, and a drama that speaks is NOT rolled again
   const srv = read("app", "lib", "take.server.ts");
@@ -368,6 +373,38 @@ test("THE BODY CAM'S POLICE DRAMA (\"doesn't nessesarily need to be horror\"): t
   assert.ok(srv.includes("const seconds = take.seconds || TAKE_SECONDS;") && srv.includes("direction, aspect, seconds });"));
   assert.ok(srv.includes('const silent = take.genre !== "drama";') && srv.includes("for (let again = 0; silent && again < rerolls() && wordsIn(spoke) > 0; again++) {"));
   assert.ok(srv.includes('const voice = l.radio ? TAKE_RADIO_VOICE : take.genre === "drama" ? TAKE_OFFICER_VOICE : TAKE_VOICE;'));
+});
+
+test("NO VOICE WITHOUT A MOUTH IN VIEW: the walk-up is silent, every quoted line comes after the window, once — and no other take quotes anything at all", async () => {
+  // the live traffic stop (2026-11-24): told "at about 4 seconds", the engine ALSO said the driver's line at 0.4–1.5 s,
+  // while the camera was still walking up the road and the car was far away — a voice with no mouth, said twice
+  const { dramaLines, DRAMA_WINDOW_AT } = await import("../app/lib/take.ts");
+  const { HOUSE_SCARES, houseScarePrompt, parseHouseScare } = await import("../app/lib/house-cam.ts");
+  const tr = takeIdea("traffic")!;
+  for (const ref of [TAKE_REF.replicate, TAKE_REF.fal]) {
+    const p = takePrompt(tr, "bodycam", ref);
+    const walk = p.slice(p.indexOf("FIRST FOUR SECONDS — THE WALK-UP, IN SILENCE:"), p.indexOf("BY THE FIFTH SECOND"));
+    assert.ok(walk.includes("Nobody speaks while the camera walks up: no voice and no word at all, only footsteps and an idling engine.") && !/["“”]/.test(walk), "the walk-up is silent");
+    // every quotation comes AFTER the camera is at the window with the face in view — and each line only once
+    const window = p.indexOf(`BY THE FIFTH SECOND the camera lifts to the driver's open window and stops: there, exactly as in ${ref}`);
+    const inView = p.indexOf("Only now, with the camera at the window and the driver's face in full view, the driver speaks.");
+    assert.ok(window > 0 && inView > window);
+    const quotes = [...p.matchAll(/"([^"]+)"/g)];
+    assert.equal(quotes.length, tr.speaks!.length);
+    for (const q of quotes) assert.ok(q.index! > inView, `"${q[1]}" is said only once the face is in view`);
+    for (const s of tr.speaks!) assert.equal(p.split(`"${s.text}"`).length - 1, 1, `"${s.text}" is quoted once`);
+    // each quoted line is told its second, and "not before"
+    assert.ok(/AT THE SIXTH SECOND — not before — the driver says, once: "I'm not getting out/.test(p));
+  }
+  // the lines as quoted: never before the window (a line timed during the walk-up is moved to it), a line written twice said once
+  assert.deepEqual(dramaLines({ speaks: [{ at: 0.4, text: "Leave me alone." }, { at: 7, text: "leave me ALONE" }, { at: 12, text: '"Okay."' }] }), [{ at: DRAMA_WINDOW_AT + 1, text: "Leave me alone." }, { at: 12, text: "'Okay.'" }]);
+  assert.ok(tr.speaks!.every((s) => s.at > DRAMA_WINDOW_AT), "the ready-made lines are timed after the window");
+  // EVERY OTHER TAKE QUOTES NOTHING — so nothing can be said before a mouth is in view (handheld, body-cam horror, house)
+  for (const i of SCARES) for (const c of i.cams || HAND_CAMS) for (const ref of [TAKE_REF.replicate, TAKE_REF.fal]) assert.ok(!/["“”]/.test(takePrompt(i, c, ref)), `${i.key}/${c}`);
+  for (const s of HOUSE_SCARES) for (const ir of [true, false]) assert.ok(!/["“”]/.test(houseScarePrompt(s, "<<<image_1>>>", { ir })), `${s.key}/ir ${ir}`);
+  const own = parseHouseScare({ title: "x", who: "she", thing: 'a tall woman in a "grey" nightgown', set: "", door: "the half-open door on the right", stands: 'stands “still” at the foot of the bed', waits: "", acts: "turns her head up toward the camera, slowly", sound: "" }, "bedroom")!;
+  assert.ok(own && !/["“”]/.test(houseScarePrompt(own, "<<<image_1>>>")), "a written house scare has its quotes taken out");
+  assert.equal(parseHouseScare({ title: "x", who: "she", thing: "a tall woman who whispers your name", set: "", door: "the half-open door on the right", stands: "stands at the foot of the bed", waits: "", acts: "turns her head up toward the camera, slowly", sound: "" }, "bedroom"), null, "a thing that speaks is not followed");
 });
 
 test("THE BUILDER'S RULES: what can film what, the shape that follows the camera, and the job a form asks for", async () => {

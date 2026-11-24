@@ -195,19 +195,23 @@ export const TAKE_IDEAS: ReadonlyArray<TakeIdea> = [
       "the driver throws the door open, gets out, pulls free of the officer's reaching hand and runs along the side of the car; the camera follows at a run for a few steps, bouncing hard.",
       "the driver is caught at the back of the car and turned to face it, hands behind the back, and the officer's hands click handcuffs onto the driver's wrists. The driver stops struggling.",
     ],
+    // THE TIMES (the live take of 2026-11-24 — the walk-up 0–4 s, at the window 5–9 s, out of the car 10–11 s,
+    // the handcuffs to the end): the radio during the walk-up, the officer's question as the camera reaches the
+    // window, the driver's answer after it (never before the window: told it "at about 4 seconds", the engine
+    // ALSO said it at 0.4 s, from a car still far down the road), the chase, the handcuffs.
     speaks: [
-      { at: 4, text: "I'm not getting out of the car. I didn't do anything." },
-      { at: 12.5, text: "Okay! Okay." },
+      { at: 6, text: "I'm not getting out of the car. I didn't do anything." },
+      { at: 13.5, text: "Okay! Okay." },
     ],
     script: [
-      { at: 2.4, text: "Step out of the car for me." },
-      { at: 7.4, text: "Hey! Stop! Stop!" },
-      { at: 10.6, text: "Hands behind your back." },
+      { at: 4.6, text: "Step out of the car for me." },
+      { at: 9.4, text: "Hey! Stop! Stop!" },
+      { at: 11.4, text: "Hands behind your back." },
     ],
     says: ["Step out of the car for me.", "Hands behind your back."],
     asks: "found",
     sound: "an idling engine, footsteps on gravel, a car door, heavy breathing",
-    radio: "Unit twelve, copy your stop on County Road nine. Plate comes back expired.",
+    radio: "Unit twelve, copy your stop. Plate comes back expired.",
     cast: [
       "a man in his fifties with a grey beard, a faded work jacket and a trucker cap, at the wheel of an old pickup truck",
       "a young woman in her twenties in an oversized hoodie, her hair tied up, at the wheel of a small hatchback",
@@ -286,25 +290,51 @@ export function takePrompt(t: Take, camera: CameraLook = "phone", ref: string = 
   return text.length <= TAKE_PROMPT_MAX ? text : text.slice(0, TAKE_PROMPT_MAX);
 }
 
+/** A DRAMA'S MOMENTS, in seconds of the take: the camera is at the window by DRAMA_WINDOW_AT; the driver gets out
+ *  from DRAMA_RUN_AT. (The live take of 2026-11-24: at the window 5–9 s, out of the car 10–11 s.) */
+export const DRAMA_WINDOW_AT = 5;
+export const DRAMA_RUN_AT = 9;
+const ORDINAL = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth", "eleventh", "twelfth", "thirteenth", "fourteenth", "fifteenth"];
+const CARDINAL = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const nth = (s: number) => ORDINAL[Math.max(1, Math.min(15, Math.round(s)))];
+
+/** The lines a drama gives the engine, as they will be quoted: each ONCE (a line written twice is said once), and
+ *  never before the camera is at the window — a line timed earlier is moved to the window (a voice with no mouth in
+ *  view, from a car still far down the road, is what the engine made of a line timed during the walk-up). */
+export function dramaLines(t: Pick<Take, "speaks">): Array<{ at: number; text: string }> {
+  const seen = new Set<string>();
+  const out: Array<{ at: number; text: string }> = [];
+  for (const s of t.speaks || []) {
+    const text = one(s.text, 120).replace(/["“”]/g, "'");
+    const key = text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ at: Math.max(DRAMA_WINDOW_AT + 1, Math.min(14, Math.round(Number(s.at) || 0))), text });
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
+
 /** A DRAMA's direction: one continuous body-cam take, its beats at their times — and the one place a found-footage
- *  take gives the engine words: the person ON camera's own lines, quoted, at about their second (the engine moves
- *  the mouth it can see, which here is the right one). The one wearing the camera says nothing in the shot (their
- *  lines and the radio are laid on afterwards); nobody is hurt. */
+ *  take gives the engine words: the person ON camera's own lines, quoted ONCE each, at their second, and only once
+ *  the camera is at the window with their face in view (the engine moves the mouth it can see, which here is the
+ *  right one). The walk-up is silent; the one wearing the camera says nothing in the shot (their lines and the
+ *  radio are laid on afterwards); nobody is hurt. */
 export function dramaPrompt(t: Take, camera: CameraLook = "bodycam", ref: string = TAKE_REF.replicate): string {
   const who = one(t.who, 40) || "the driver";
   const [b1, b2, b3] = t.beats.map((b) => one(b, 420));
-  const said = (t.speaks || []).map((s) => ({ at: Math.round(Number(s.at) || 0), text: one(s.text, 120).replace(/["“”]/g, "'") })).filter((s) => s.text);
-  const quote = (s: { at: number; text: string }) => `At about ${s.at} seconds ${who} says: "${s.text}"`;
-  const early = said.filter((s) => s.at < 7), late = said.filter((s) => s.at >= 7);
+  const said = dramaLines(t);
+  const quote = (s: { at: number; text: string }) => `AT THE ${nth(s.at).toUpperCase()} SECOND — not before — ${who} says, once: "${s.text}"`;
+  const atWindow = said.filter((s) => s.at < DRAMA_RUN_AT), later = said.filter((s) => s.at >= DRAMA_RUN_AT);
   const text = [
     `${HELD[camera]}. One continuous take, no cuts, nothing written on screen. A FICTIONAL police drama, and nobody is hurt: no weapon is drawn or fired, nobody is struck, no blood.`,
-    `FIRST TWO SECONDS: ${stop(one(t.first, 260))}`,
-    `THEN the camera ${one(t.finds, 160)} and stops: there, exactly as in ${ref}, ${stop(b1)}`,
-    ...early.map(quote),
-    `FROM THE SEVENTH SECOND: ${stop(b2)}`,
-    `LAST FIVE SECONDS: ${stop(b3)}`,
-    ...late.map(quote),
-    `Only ${who} speaks in this shot; the officer wearing the camera says nothing and is never seen except the hands. Nothing flashes but the patrol car's red and blue lights; the picture never glitches.`,
+    `FIRST ${CARDINAL[DRAMA_WINDOW_AT - 1].toUpperCase()} SECONDS — THE WALK-UP, IN SILENCE: ${stop(one(t.first, 260))} Nobody speaks while the camera walks up: no voice and no word at all, only footsteps and an idling engine.`,
+    `BY THE ${nth(DRAMA_WINDOW_AT).toUpperCase()} SECOND the camera ${one(t.finds, 160)} and stops: there, exactly as in ${ref}, ${stop(b1)}`,
+    ...(atWindow.length ? [`Only now, with the camera at the window and ${who}'s face in full view, ${who} speaks.`] : []),
+    ...atWindow.map(quote),
+    `FROM THE ${nth(DRAMA_RUN_AT).toUpperCase()} SECOND: ${stop(b2)}`,
+    `LAST FOUR SECONDS: ${stop(b3)}`,
+    ...later.map(quote),
+    `Each line is said once, at its moment, and never before it. Only ${who} speaks in this shot; the officer wearing the camera says nothing and is never seen except the hands. Nothing flashes but the patrol car's red and blue lights; the picture never glitches.`,
     `Sound: ${one(t.sound, 90) || "footsteps on gravel"}; a police radio crackles faintly. No music.`,
   ].join(" ");
   return text.length <= TAKE_PROMPT_MAX ? text : text.slice(0, TAKE_PROMPT_MAX);

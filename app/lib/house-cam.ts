@@ -281,8 +281,9 @@ export function parseHouseScare(raw: unknown, roomKey: string): (HouseScare & { 
   const stands = one(o.stands, 260).replace(/\.$/, ""), waits = one(o.waits, 180), acts = one(o.acts, 260).replace(/\.$/, "");
   if (!pro || !/^(a|an)\s/i.test(thing) || thing.length < 12 || stands.length < 12 || acts.length < 12) return null;
   if (!/\b(door|doorway|hall|hallway|stairs|window)\b/i.test(door)) return null;
-  // it never speaks: a writer who has it say anything is not followed
-  if (/\b(speaks?|says?|whispers?|screams?|shouts?|laughs?|mouths?)\b/i.test(`${stands} ${acts}`)) return null;
+  // it never speaks: a writer who has it say anything is not followed (nothing in a house take is ever quoted
+  // either — every field has its quotation marks taken out)
+  if (/\b(speaks?|says?|whispers?|screams?|shouts?|laughs?|mouths?)\b/i.test(`${thing} ${stands} ${acts}`)) return null;
   const Pro = cap(pro), poss = pro === "she" ? "her" : pro === "he" ? "his" : "its";
   const the = thing.replace(/^(a|an)\s+/i, "the ");
   const doorThe = door.replace(/^(a|an)\s+/i, "the ");
