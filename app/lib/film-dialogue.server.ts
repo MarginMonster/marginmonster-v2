@@ -51,7 +51,7 @@ import { makeCastPoster } from "./story-poster.server";
 import { castForWriter } from "./dialogue-cast";
 import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
-import { EVENT_MAX_LAST, clipEvent, clipMoves, dealStagings, isActedStaging, sceneEvent, stagedRules, type ActedStaging } from "./acted-staging";
+import { EVENT_MAX, EVENT_MAX_LAST, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, revealPicture, sceneEvent, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging } from "./acted-staging";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -212,13 +212,18 @@ async function dialogueClip(engine: string, seedAbs: string, prompt: string, sta
 /** Render ONE dialogue clip end-to-end (render + download + head/tail + interior-pause trims)
  *  → a local file path. The render loop does this inline; the SECTION EDITOR's regenerate
  *  reuses it to re-roll a single shot from its stored seed + prompt. `last` = the film's final
- *  shot, which keeps a beat of quiet after its line exactly as in the first render. */
+ *  shot, which keeps a beat of quiet after its line exactly as in the first render.
+ *  WHAT KIND OF SHOT IT WAS is read off the prompt it was made from (acted-staging.ts), so a re-rolled
+ *  shot is trimmed exactly as its first take was: one nobody speaks in is kept whole (clipSilent), one that
+ *  opens on a sound keeps its head (clipHearsFirst), one in which something is done keeps its pause
+ *  (clipMoves). Its length is the stored one (`durSec`): a wordless shot's SILENT_SHOT_SECONDS, a sound
+ *  shot's heardSeconds — never re-measured from a line it does not have. */
 export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: string, prompt: string, durSec: number, aspect: "9:16" | "16:9" | "1:1", stage: string, chained = false, host?: KlingHost, opts: { last?: boolean } = {}): Promise<string> {
   const clipUrl = await dialogueClip(engine, seedAbs, prompt, stage, durSec, aspect, host);
   const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
   await download(clipUrl, rawPath);
   if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error("[regen] clip did not download");
-  return trimClip(rawPath, { chained, last: !!opts.last, moves: clipMoves(prompt) });
+  return trimClip(rawPath, { chained, last: !!opts.last, moves: clipMoves(prompt), silent: clipSilent(prompt), keepHead: clipHearsFirst(prompt) });
 }
 
 /** What a rendered take SAYS, word by word with times — heard by whisperx (it hears the language too), so
@@ -238,8 +243,16 @@ async function heardWords(clipPath: string): Promise<TimedWord[] | null> {
 
 /** A raw take → the clip that goes in the film: dead air off both ends, then the one long mid-line pause
  *  taken down to a beat — both decided on the heard words where they come back. */
-async function trimClip(rawPath: string, opts: { chained: boolean; last: boolean; /** something is DONE in this shot (acted-staging.ts → clipMoves) */ moves?: boolean }): Promise<string> {
+async function trimClip(rawPath: string, opts: { chained: boolean; last: boolean; /** something is DONE in this shot (acted-staging.ts → clipMoves) */ moves?: boolean; /** nobody speaks in this shot (acted-staging.ts → clipSilent) */ silent?: boolean; /** the shot OPENS ON A SOUND (acted-staging.ts → clipHearsFirst) */ keepHead?: boolean }): Promise<string> {
+  // A SHOT NOBODY SPEAKS IN IS KEPT WHOLE. Every trim below looks for where the SPEECH starts and stops: the
+  // listen (there are no words to hear), the lead-in before "the first word" (cut, or played fast), the tail
+  // after "the last word", the hold after a last line, the pause in the middle of a line. With no line, the
+  // first sound in the take would pass for its first word — and the quiet before the thing moves, which is
+  // the shot, would be cut away.
+  if (opts.silent) return rawPath;
   const words = await heardWords(rawPath);
+  // (a shot that OPENS ON A SOUND keeps everything before its first word: that is where the sound is. Cut,
+  //  the knock is gone; played fast, three slow knocks become three quick ones — the owner's "knocking fast")
   const t = await trimTrailingSilence(rawPath, { ...opts, words });
   // A shot in which something HAPPENS keeps its mid-line pause. Taking a pause out of the middle of a take
   // cannot be seen while two people stand still — which is what every shot was when that cut was written;
@@ -313,8 +326,10 @@ async function cropPanelSeed(panelRelUrl: string, side: "left" | "right"): Promi
  *  clip's last frame — its first frames are what makes that cut invisible, so its lead-in is played
  *  FAST rather than cut off; a clip that opens on a new picture just has the lead-in cut. `last` = the
  *  film's final shot: it keeps a full beat after its line, holding its last frame if the take ran out
- *  first. Re-encodes for frame-accurate edits. Returns a NEW path, or the original if nothing changes. */
-async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; last?: boolean; words?: TimedWord[] | null } = {}): Promise<{ path: string; shift: number }> {
+ *  first. `keepHead` = the shot OPENS ON A SOUND (acted-staging.ts → clipHearsFirst): everything before its
+ *  first word is kept, at its own speed — only the dead tail goes. Re-encodes for frame-accurate edits.
+ *  Returns a NEW path, or the original if nothing changes. */
+async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; last?: boolean; words?: TimedWord[] | null; keepHead?: boolean } = {}): Promise<{ path: string; shift: number }> {
   const ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"];
   const usable = (p: string) => { try { return fs.existsSync(p) && ffprobeDuration(p) > 0.8; } catch { return false; } };
   let result = inPath;
@@ -329,7 +344,9 @@ async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; la
     const measured = parseSilences(err);
     const how = { chained: !!opts.chained, last: !!opts.last };
     // the heard words decide where the line is, when the measured quiet backs them up; else silence alone
-    const plan = (opts.words && planFromWords(opts.words, measured, dur, how)) || planClipTrim(measured, dur, how);
+    const planned = (opts.words && planFromWords(opts.words, measured, dur, how)) || planClipTrim(measured, dur, how);
+    // (a shot that opens on a sound: nothing before the line is cut or sped up — the sound is there)
+    const plan = opts.keepHead ? { ...planned, cutHead: 0, retime: null } : planned;
     holdEnd = plan.holdEnd;
     if (isNoopTrim(plan, dur)) return { path: inPath, shift: 0 };
     const out = inPath.replace(/\.mp4$/i, "-trim.mp4");
@@ -430,11 +447,21 @@ async function collapseInteriorPause(inPath: string, words?: TimedWord[] | null)
   return inPath;
 }
 
+/** A STRAIGHT CUT, in the assembler's own terms: a one-frame xfade at 30 fps. ffmpeg's xfade shows the
+ *  first clip up to the cut and the second from the next frame — no frame of the two mixed (measured on the
+ *  ffmpeg the server runs, 6.1.1, and on 8.1: 0 blended frames, where the 0.32 s dissolve gave 5) — and the
+ *  sound crosses in 34 ms, too short to hear as anything but a cut, long enough never to click. */
+export const HARD_CUT_SECONDS = 0.034;
+
 /** Concatenate the Veo clips, KEEPING their dialogue audio (unlike the main
  *  engine, which strips clip audio for a narrator/music bed). Degrade ladder:
  *  with audio → silent, so a clip that came back without an audio stream can't
- *  sink the whole render. */
-export async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>, aspect: "9:16" | "16:9" | "1:1" = "9:16"): Promise<void> {
+ *  sink the whole render.
+ *  `hardSeams` = the clip indices whose seam-before is a STRAIGHT CUT (HARD_CUT_SECONDS): a cut to ANOTHER
+ *  PLACE, and a horror film's last shot drawn into its place's own picture. The owner's knocking film
+ *  reached its last shot through a half-second double exposure of two rooms — a dissolve says "time passes"
+ *  or "a dream", never "and then, there". A shot that continues the last one keeps its invisible 0.18 s. */
+export async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>, aspect: "9:16" | "16:9" | "1:1" = "9:16", hardSeams?: Set<number>): Promise<void> {
   const N = clips.length;
   if (!N) throw new Error("[testmovie] no clips");
   const beat = async () => { if (jobId) await checkpointJob(jobId, { ckBeat: Date.now() }); };
@@ -455,10 +482,11 @@ export async function assembleTestMovie(clips: string[], outPath: string, jobId?
   const buildXfade = (): string[] | null => {
     if (N < 2) return null;
     // Chained cuts (clip N seeded from clip N-1's real last frame) are near-identical, so a
-    // tiny 0.18s dissolve is effectively invisible. A REFRAME seam (new location / camera
-    // angle / re-anchor) jumps more, so it gets a longer, softer 0.32s dissolve that reads
-    // as a deliberate cut to a new camera instead of a hitch. softSeams holds those indices.
-    const fadeFor = (i: number) => (softSeams?.has(i) ? 0.32 : 0.18);
+    // tiny 0.18s dissolve is effectively invisible. A REFRAME seam (camera angle / re-anchor
+    // in the same place) jumps more, so it gets a longer, softer 0.32s dissolve. softSeams
+    // holds those indices. A cut to ANOTHER PLACE (and a horror film's reveal) is a straight
+    // cut — hardSeams wins over both (2026-11-24: a dissolve between two rooms read as a ghost).
+    const fadeFor = (i: number) => (hardSeams?.has(i) ? HARD_CUT_SECONDS : softSeams?.has(i) ? 0.32 : 0.18);
     const durs = clips.map((c) => { try { return ffprobeDuration(c); } catch { return 0; } });
     if (durs.some((d) => !(d > 0.62))) return null; // every clip must outlast the longest fade + margin
     const a: string[] = ["-y"];
@@ -721,7 +749,14 @@ export async function generateTestMovie(opts: {
   //     is — is its location's STAGING, dealt below: acted-staging.ts. One master per
   //     location is still the seed of every clip there, and both faces are still in it.)
   const firstName = nameTok;
-  const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
+  // WHO SPEAKS (acted-staging.ts → twoOnScreen). A SHOT NOBODY SPEAKS IN — a horror film's last shot has no
+  // line; a maker can empty one in the storyboard — names nobody (null), so it does not change who the two
+  // are: a film whose only wordless shot is the last is the two-hander it would be without it. And when the
+  // other one's only shot IS the silent one (a two-shot horror film: a line, then the scare), the second
+  // person is the other name on the cast list, when that list is exactly two. A film with no wordless shot
+  // is read exactly as it always was.
+  const leads = treatment.scenes.map((s) => (wordless(s.caption) ? null : splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || ""));
+  const allSpeakers = twoOnScreen(leads, treatment.cast, castActors.map((c) => c.name));
   const isTwoHander = allSpeakers.length === 2;
   const [spkA, spkB] = allSpeakers;
   // A character's look in words: the TRUE one read off their cast photo when they have one, else the
@@ -940,6 +975,8 @@ export async function generateTestMovie(opts: {
   /** The voice to put on shot i, or null: only clips where ONE person speaks (re-voicing an exchange
    *  would give both people the same voice). */
   const clipVoiceAt = (i: number): string | null => {
+    // (a shot nobody speaks in has no voice to give anybody — whatever name its emptied caption still carries)
+    if (wordless(treatment.scenes[i]?.caption)) return null;
     const t = splitExchange(treatment.scenes[i]?.caption || "");
     const lead = t[0]?.speaker || "";
     if (!lead) return null;
@@ -1010,10 +1047,22 @@ export async function generateTestMovie(opts: {
   ];
   let anchorCount = 0;
   const softSeams = new Set<number>();
+  // …and the seams that are a STRAIGHT CUT: a cut to another place, and a horror film's reveal
+  // (assembleTestMovie → hardSeams). Kept on the piece as `cut: "hard"`, so a re-cut can keep them.
+  const hardSeams = new Set<number>();
   let sinceAnchor = clips.length; // resume-safe-ish: force an early re-anchor after a restart
+  // What changes a picture or a clip today rides the one switch the staging does (ACTED_STAGING=off: every
+  // film as before) — the reveal drawn into its place, the shot that opens on a sound, the face that does not
+  // smile at what frightens it (acted-staging.ts).
+  const staged = process.env.ACTED_STAGING !== "off";
+  const horror = tmpl.key === "horror";
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
-    const turns = splitExchange(scene.caption || "");
+    // A SHOT NOBODY SPEAKS IN (acted-staging.ts → wordless): a horror film's last shot has no line, and a
+    // maker can empty one in the storyboard. It has no speaker and no words — whatever name its caption may
+    // still carry — and below it gets its own prompt, its own length, and none of the steps that need a line.
+    const silent = wordless(scene.caption);
+    const turns = silent ? [{ speaker: "", line: "" }] : splitExchange(scene.caption || "");
     // EXCHANGE-PER-CLIP: a shot now holds a short back-and-forth — turnA speaks, turnB
     // replies — so the clip is FULL of dialogue (Kling speaks ~0.28s/word, so a single line
     // only half-filled a clip and left it to pad with dead ambient standing-around). turnB is
@@ -1039,6 +1088,24 @@ export async function generateTestMovie(opts: {
     const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, scene.visual);
     const sideFor = sideForMaster(master);
     let seedAbs = abs(approvedFrames[i]);
+    // THE REVEAL (acted-staging.ts → revealPicture). A horror film's last shot is in the SAME place as the shot
+    // before it, and the thing the story has been circling is drawn INTO that place's own picture: its master,
+    // edited — the same room, camera, light and two people — with the thing added by the creature recipe the
+    // horror stories use (photographed, a practical effect, mostly in shadow, as slightly wrong as the scene
+    // says). It used to be given a place of its own and drawn whole: a different bedroom, reached through a
+    // dissolve, with a mannequin's arm in its wall (the owner: "more odd than actual realism"). A picture that
+    // will not come leaves the shot to be seeded as any other; a frame the maker approved is never drawn over.
+    const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);
+    let revealed = false;
+    if (!seedAbs && lastHorror && tr !== "location" && master?.url && stagingOf(master)) {
+      const ask = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood });
+      for (let attempt = 0; attempt < 2 && ask && !seedAbs; attempt++) {
+        // (the master is the ONE reference image; the ask is ~1,400 characters, and renderStyledSeed keeps 2,000)
+        seedAbs = abs(await removeLetterbox(await renderStyledSeed(ask, abs(master.url)!, aspect, 2000)));
+      }
+      if (seedAbs) { revealed = true; sinceAnchor = 0; console.log(`[testmovie] shot ${i + 1}: the reveal — drawn into the place's own picture (${locKeyAt(i).slice(0, 40)})`); }
+      else console.error(`[testmovie] shot ${i + 1}: the reveal's picture did not come — the shot is seeded as any other`);
+    }
     if (!seedAbs && master?.url) {
       if (tr === "location") {
         seedAbs = abs(master.url); sinceAnchor = 0; if (i > 0) softSeams.add(i);
@@ -1061,9 +1128,11 @@ export async function generateTestMovie(opts: {
         //  them doing — not "in the same positions"; each still on the SIDE of the frame the master has them
         //  on, which is how a line finds its mouth. Any other film: the words it always had.)
         const now = stagingOf(master) ? clipEvent(eventAt(i), 110) : "";
+        // (a moment that is a sound from out of sight is HEARD, not drawn — acted-staging.ts → HEARD_NOT_DRAWN)
+        const unheard = now && heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)])?.unseen ? ` ${HEARD_NOT_DRAWN}` : "";
         const reangled = await removeLetterbox(await renderSceneSeedChained(
           now
-            ? `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people on the same sides of the frame, ONLY the camera angle changes. At this moment: ${now} ${NO_TEXT}`
+            ? `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people on the same sides of the frame, ONLY the camera angle changes. At this moment: ${now}${unheard} ${NO_TEXT}`
             : `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people in the same positions, ONLY the camera angle changes. ${NO_TEXT}`,
           abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
         ));
@@ -1087,6 +1156,8 @@ export async function generateTestMovie(opts: {
     // gets the softer dissolve, and the shot may simply start on its line.
     const chained = i > 0 && !!prevFrameUrl && seedAbs === abs(prevFrameUrl);
     if (i > 0 && !chained) softSeams.add(i);
+    // …and a cut to ANOTHER PLACE, or to the reveal, is a straight cut — never a dissolve
+    if (i > 0 && !chained && (tr === "location" || revealed)) hardSeams.add(i);
     // THE STAGING THIS SHOT IS PLAYED IN (acted-staging.ts) is that of the PICTURE it grows out of: the
     // location's own master, or a re-anchor on it. A frame the maker approved, an angle they added by hand,
     // a seed composed without a master — none of those is a staged picture, and its shot is told what a shot
@@ -1117,10 +1188,29 @@ export async function generateTestMovie(opts: {
     // HOW to say it — Veo reads flat unless told the emotion. Use the scripter's per-beat
     // tone if present, else infer from the words, and hard-ban mumbling + dead air.
     const tone = (scene.tone || "").trim();
-    const deliver = tone
+    // …and THE FACE it is said with (acted-staging.ts → faceNote): in a horror film neither of the two smiles,
+    // in any film the one who says a frightened line does not — unless the script makes the smile the horror.
+    // (The owner's knocking film: the older sister smiled through its most frightening line. The delivery said
+    // how the line SOUNDS; nothing said what her face does.)
+    const otherName = [spkA, spkB].find((n) => !!n && fnm(n) !== fnm(speaker)) || "";
+    const face = staged && !silent ? faceNote({ horror, tone, visual: scene.visual, speaker, other: turnB ? turnB.speaker : otherName }) : "";
+    const deliver = `${tone
       ? `Deliver it ${tone} — put that exact emotion and energy into the voice, expressively, NEVER flat or monotone.`
-      : `Deliver it with the REAL emotion the words carry — an angry line sounds angry, a threat sounds menacing, hurt shows as hurt — with natural intonation and emphasis, NEVER flat or monotone.`;
-    const voiceLine = (turnB && turnB.speaker && turnB.line)
+      : `Deliver it with the REAL emotion the words carry — an angry line sounds angry, a threat sounds menacing, hurt shows as hurt — with natural intonation and emphasis, NEVER flat or monotone.`}${face ? ` ${face}` : ""}`;
+    // A SOUND THEY HEAR (acted-staging.ts → heardIn). When this shot's scene is a sound — a knock, footsteps, a
+    // voice — the shot OPENS on it, heard alone, and its line answers it (heardTalk): the owner's knocking film
+    // had "Tell me you heard that too" a whole shot before the knock was heard. Its sound rule lets that sound
+    // be made, exactly as described; one from out of sight is made by nothing in the picture; the take is
+    // longer by it (heardSeconds) and keeps its head (clipHearsFirst). Only where the scene is told to the clip
+    // at all: a staged picture, in a film whose shots happen.
+    const heard = !silent && chainStaging ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;
+    const voiceLine = heard
+      ? heardTalk({
+          event: clipEvent(eventAt(i), i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : EVENT_MAX), unseen: heard.unseen,
+          speaker, side: sSide, line: turnB && turnB.speaker && turnB.line ? turnA.line : line, other: otherName, otherSide: oSide, deliver,
+          reply: turnB && turnB.speaker && turnB.line ? { speaker: turnB.speaker, side: sideB, line: turnB.line } : null,
+        })
+      : (turnB && turnB.speaker && turnB.line)
       ? `This two-shot is a short back-and-forth between TWO people, one speaking at a time. FIRST, ${turnA.speaker}${sSide ? ` (on the ${sSide} side of the frame)` : ""} says, in accurate lip-sync: "${turnA.line}". THEN ${turnB.speaker}${sideB ? ` (on the ${sideB} side)` : ""} replies, in accurate lip-sync: "${turnB.line}". ONLY ONE person speaks at a time: ${turnA.speaker} goes FIRST — only ${turnA.speaker}'s mouth moves while ${turnB.speaker} stays silent, listening and reacting — THEN ${turnB.speaker} answers — only ${turnB.speaker}'s mouth moves while ${turnA.speaker} stays silent, listening. There are exactly TWO distinct voices: ${turnA.speaker}'s voice on the first line and ${turnB.speaker}'s voice on the second — they NEVER talk at the same time, never overlap, and NO third voice, murmur or gibberish appears anywhere. Each person says their line exactly ONCE, word for word, clearly and articulately, beginning right away with no long pauses, so the two lines fill the whole shot back-to-back. ${deliver}`
       : speaker
       ? `${sSide ? `In this two-shot BOTH people are visible, but the ONLY one who speaks is the person on the ${sSide.toUpperCase()} side of the frame — that is ${speaker}. The person on the ${oSide.toUpperCase()} does NOT speak. ` : ""}There is ONLY ONE voice in this entire clip — ${speaker}'s. ${speaker}${sSide ? ` (on the ${sSide})` : ""} says exactly this one line and nothing else: "${line}". Say it through exactly ONCE, word for word — do NOT repeat, echo, loop or restate any word or phrase, and add no words that are not in the line. The MOMENT the line is finished, ${speaker} stops speaking and simply holds a natural, quiet expression for the rest of the shot — no extra, improvised or filler words. ${deliver} Speak CLEARLY and crisply — every word fully articulated and intelligible, no mumbling, slurring or trailing off — BEGIN speaking right away and keep a natural, connected pace, in accurate lip-sync. ONLY ${speaker}'s mouth moves. The OTHER character${oSide ? ` (on the ${oSide})` : ""} is COMPLETELY SILENT the whole time — absolutely no talking, murmuring, mumbling, whispering, muttering or background speech of any kind; their mouth stays closed and still, only listening and reacting. Do NOT generate any second voice, murmur or gibberish anywhere in the clip — one clear voice only. Keep ${speaker}'s voice the SAME as in every other shot.`
@@ -1140,11 +1230,27 @@ export async function generateTestMovie(opts: {
     // is no actual things occurring, it's just them speaking".) Nothing is named that the scene does not name:
     // a clip prompt that names a thing can ADD it (story-motion.ts), so the thing itself is in the picture the
     // shot grows out of, put there by the writer's scene. Not a staged picture → the rules as they always were.
-    const otherName = [spkA, spkB].find((n) => !!n && fnm(n) !== fnm(speaker)) || "";
     let playRules = rules;
-    if (chainStaging) {
+    if (silent) {
+      // NOBODY SPEAKS IN THIS SHOT (acted-staging.ts → silentRules). The rules say how the two stand (in the
+      // staging of the picture, when it has one), the ONE thing the scene's own words say happens — in a
+      // horror ending that IS the shot — and nothing about talking: no "spoken-dialogue audio", no "the ONLY
+      // audio is the spoken voice". No talking directions place anybody in such a shot, so each of the two is
+      // said to be on their side when what happens names them. (And: a sound in it from out of sight is made
+      // by nothing in the picture; a horror film's last shot moves SLOWLY; neither of them grins at it.)
+      const sides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })).filter((p) => !!p.side);
+      const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)])?.unseen;
+      const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : "";
       try {
-        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [] });
+        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, face: scared });
+      } catch (e) {
+        // (never a shot lost to its words: it is a held, quiet beat — and still told that nobody speaks)
+        console.error(`[testmovie] shot ${i + 1}: the wordless shot's rules were not built — it is told to hold: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+        try { playRules = silentRules(rules); } catch { /* the rules as they came: the prompt still opens on NOBODY SPEAKS */ }
+      }
+    } else if (chainStaging) {
+      try {
+        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror });
       } catch (e) {
         // (never a shot lost to its staging: it is told what a shot was always told)
         console.error(`[testmovie] shot ${i + 1}: staging words not built — the shot is told to hold, as before: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
@@ -1152,25 +1258,35 @@ export async function generateTestMovie(opts: {
     }
     // Voice timbre ("X's voice is warm…") rides separately so the fitter can drop it last of all.
     const voiceDesc = (turnB && turnB.speaker && turnB.line) ? `${voiceDescFor(turnA.speaker)}${voiceDescFor(turnB.speaker)}` : speaker ? speakerVoiceDesc : "";
-    const fitted = fitClipPrompt({ voice: voiceLine, voiceDesc, ...playRules });
+    // (A SHOT NOBODY SPEAKS IN opens on NOBODY SPEAKS instead of the talking directions — which would have
+    //  told the engine to say `""` — and carries no voice timbre: this engine speaks any quoted text it is
+    //  handed and moves whatever mouth it can see to it, so such a prompt has no quotation in it at all.)
+    const fitted = fitClipPrompt({ voice: silent ? NOBODY_SPEAKS : voiceLine, voiceDesc: silent ? "" : voiceDesc, ...playRules });
     const prompt = fitted.prompt;
     if (fitted.gaveUp) console.log(`[testmovie] shot ${i + 1}: prompt fitted to ${prompt.length} chars by giving up: ${fitted.gaveUp}`);
+    if (silent) console.log(`[testmovie] shot ${i + 1}: nobody speaks in it — ${SILENT_SHOT_SECONDS} s of what happens, kept whole`);
+    if (heard) console.log(`[testmovie] shot ${i + 1}: opens on a sound${heard.unseen ? " from out of sight" : ""} (${heard.sound.slice(0, 90)}) — ${heardSeconds(line)} s, its head kept`);
 
     // Size the clip to the SPOKEN LINE (word-metered) instead of a flat 10s. A clip that
     // outlasts its line is exactly what makes Kling pad the dead air — with silence (a
     // pause) or by looping words — so matching the length to the words starves both.
-    const clipSecs = clipSecondsFor(line);
+    // (A shot nobody speaks in has no words to be sized by: it is SILENT_SHOT_SECONDS long. One that opens on
+    //  a sound is its line's length and the sound's — acted-staging.ts → heardSeconds.)
+    const clipSecs = silent ? SILENT_SHOT_SECONDS : heard ? heardSeconds(line) : clipSecondsFor(line);
     const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs, aspect);
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, rawPath);
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
     // dead air off both ends (a continuing shot keeps its opening frames; the film's last shot holds a beat
     // longer), and a long mid-line pause taken down to a beat — on the heard words where they come back
-    const dry = await trimClip(rawPath, { chained, last: i === treatment.scenes.length - 1, moves: clipMoves(prompt) });
+    // (a shot nobody speaks in is kept whole: there is no line to find the ends of; one that opens on a sound
+    //  keeps everything before its line — read off the prompt, as a re-roll reads it)
+    const dry = await trimClip(rawPath, { chained, last: i === treatment.scenes.length - 1, moves: clipMoves(prompt), silent, keepHead: clipHearsFirst(prompt) });
     // A CREATURE'S LINES get its creature chain — the same one its voice-over goes through — laid over
     // this clip's own audio, in sync with the picture. Only on a shot where the creature is the ONE who
     // speaks: the chain is over the whole track, and a second speaker would be dragged through it too.
-    const soloVoice = turnB ? null : characterVoice(castActors.find((c) => fnm(c.name) === fnm(speaker))?.voiceId);
+    // (…and never on a shot nobody speaks in: it has no line to lay a voice over.)
+    const soloVoice = turnB || silent ? null : characterVoice(castActors.find((c) => fnm(c.name) === fnm(speaker))?.voiceId);
     const outPath = soloVoice?.acting.chain ? await chainClipVoice(dry, soloVoice.acting.chain) : dry;
     if (outPath !== dry && soloVoice) { shotVoice[clips.length] = soloVoice.id; voicesLocked++; }
     clips.push(outPath);
@@ -1192,7 +1308,7 @@ export async function generateTestMovie(opts: {
   // 4) ASSEMBLE — concat the clips keeping the dialogue audio.
   const outName = `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleTestMovie(clips, outPath, jobId, softSeams, aspect);
+  await assembleTestMovie(clips, outPath, jobId, softSeams, aspect, hardSeams);
   // 4a) LOUDNESS — an acted film's sound is whatever the video model performed, and it came out much
   // quieter than a narrated story (-24 dB against -18 on the first two made side by side). Levelled to
   // the same loudness; never fatal.
@@ -1206,7 +1322,8 @@ export async function generateTestMovie(opts: {
     const lang = (await db.shop.findUnique({ where: { id: opts.shopId }, select: { contentLang: true } }))?.contentLang;
     captioned = await captionFilm({
       filmPath: outPath, style: wantCaptions, jobId, lang: normalizeContentLang(lang),
-      lines: treatment.scenes.slice(0, clips.length).map((sc) => splitExchange(sc.caption || "").map((t) => t.line).join(" ")),
+      // (a shot nobody speaks in has no card: an emptied line must not leave its speaker's name on screen)
+      lines: treatment.scenes.slice(0, clips.length).map((sc) => (wordless(sc.caption) ? "" : splitExchange(sc.caption || "").map((t) => t.line).join(" "))),
       clipDurs: clips.map((c) => { try { return ffprobeDuration(c); } catch { return 0; } }),
     });
   }
@@ -1249,7 +1366,10 @@ export async function generateTestMovie(opts: {
         // the line it speaks, so the editor can list, preview and (later) re-edit each one.
         shots: clips.map((c, i) => ({
           url: `/renders/${path.basename(c)}`,
-          caption: (treatment.scenes[i]?.caption || "").slice(0, 200),
+          // (a shot nobody speaks in is recorded as that — and with no caption, so that a later re-cut of the
+          //  film, which draws each shot's caption again, draws nothing over it)
+          caption: wordless(treatment.scenes[i]?.caption) ? "" : (treatment.scenes[i]?.caption || "").slice(0, 200),
+          ...(wordless(treatment.scenes[i]?.caption) ? { wordless: true } : {}),
           // Regenerate inputs (section editor Phase 3): re-roll this one shot from its seed.
           seed: shotSeeds[i] || undefined,
           prompt: shotPrompts[i] || undefined,
@@ -1260,6 +1380,9 @@ export async function generateTestMovie(opts: {
           voice: shotVoice[i] || undefined,
           // the staging this shot was played in (acted-staging.ts) — its prompt, above, has the words
           staging: shotStaged[i] || undefined,
+          // the cut INTO this shot is a straight one (another place, or a horror film's reveal) — so that a
+          // re-cut of the film (film-edit.server.ts → finishCut) can keep it one instead of dissolving
+          ...(hardSeams.has(i) ? { cut: "hard" } : {}),
         })),
       }),
     },

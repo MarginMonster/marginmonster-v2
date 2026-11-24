@@ -14,7 +14,8 @@ test("every saved edit is finished like a render: soft seams, loudness, captions
   assert.ok(save.includes("finishCut("), "saveCut finishes the cut");
   assert.ok(!save.includes("assembleTestMovie("), "no bare re-assembly left in saveCut");
   const fin = src.slice(src.indexOf("async function finishCut"), src.indexOf("async function saveCut"));
-  assert.ok(fin.includes("outPath, undefined, soft, film.aspect)"), "a new picture keeps its softer dissolve");
+  assert.ok(fin.includes("outPath, undefined, soft, film.aspect, hard)"), "a new picture keeps its softer dissolve — and a cut to another place stays straight");
+  assert.ok(fin.includes("if (i > 0 && p.shot.cut === \"hard\") hard.add(i); else if (i > 0 && !p.shot.chained) soft.add(i);"));
   assert.ok(fin.includes("!p.shot.chained"), "only a continuing shot gets the invisible short dissolve");
   assert.ok(fin.includes("levelFilm(outPath)"), "levelled to the catalogue's loudness");
   assert.ok(fin.includes("captionFilm("), "captions drawn again");

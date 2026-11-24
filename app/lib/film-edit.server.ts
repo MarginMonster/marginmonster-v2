@@ -37,7 +37,7 @@ const newName = (suffix: string) => `tm-edit-${Date.now()}-${crypto.randomBytes(
 /** One shot of a finished film. `seed` + `prompt` + `dur` are what it was rendered from (a re-roll
  *  renders from them again); `chained` = it continues the previous shot (seeded from its last frame);
  *  `voice` = the cast voice that was put on it ("Lock these voices"), so a re-roll gets it too. */
-export type Shot = { url: string; caption?: string; seed?: string; prompt?: string; dur?: number; chained?: boolean; voice?: string };
+export type Shot = { url: string; caption?: string; seed?: string; prompt?: string; dur?: number; chained?: boolean; voice?: string; /** a cut to another place, or to the reveal: joined STRAIGHT (film-dialogue.server.ts → assembleTestMovie) */ cut?: "hard" };
 export type ShotOp = "trim" | "speed" | "volume" | "delete";
 type Aspect = "9:16" | "16:9" | "1:1";
 type CutResult = { ok: boolean; videoUrl?: string; shots?: Shot[]; error?: string };
@@ -85,9 +85,11 @@ function spokenLine(s: Shot, film: Film): string {
  *  quietly took the film's captions off, made it ~8 dB quieter and hardened every soft seam.
  *  Returns the caption style the new cut carries. */
 async function finishCut(film: Film, shopId: string, parts: Array<{ shot: Shot; path: string }>, outPath: string, opts: { listenMs?: number } = {}): Promise<CaptionStyle> {
-  const soft = new Set<number>();
-  parts.forEach((p, i) => { if (i > 0 && !p.shot.chained) soft.add(i); });
-  await assembleTestMovie(parts.map((p) => p.path), outPath, undefined, soft, film.aspect);
+  // (a shot the film was cut to STRAIGHT — another place, the reveal — stays a straight cut when the film is
+  //  cut again after a trim or a re-roll; it used to dissolve back into the new place)
+  const soft = new Set<number>(), hard = new Set<number>();
+  parts.forEach((p, i) => { if (i > 0 && p.shot.cut === "hard") hard.add(i); else if (i > 0 && !p.shot.chained) soft.add(i); });
+  await assembleTestMovie(parts.map((p) => p.path), outPath, undefined, soft, film.aspect, hard);
   if (!(fs.existsSync(outPath) && ffprobeDuration(outPath) > 1)) return "off";
   try { await levelFilm(outPath); } catch { /* left as it was */ }
   const style = captionStyleOf(film.meta.captions, "off");

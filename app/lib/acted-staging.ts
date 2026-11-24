@@ -35,6 +35,10 @@
  *
  * Pure. tests/acted-staging.test.ts holds it. */
 
+import { CLIP_MAX_SECONDS, clipSecondsFor } from "./speech-meter.ts";
+import { CREATURE_REAL } from "./story-picture.ts";
+import { TAKE_HIDDEN } from "./take.ts";
+
 export type ActedStaging = "apart" | "depth" | "levels" | "across" | "walk" | "doing";
 
 type StagingSpec = {
@@ -203,8 +207,11 @@ export function stagedTwoShot(o: {
     : "A single photorealistic frame from a live-action film";
   const act = oneLine(o.act).replace(/[\s.!?;,]+$/, "");
   const mood = oneLine(o.mood);
+  // (a moment that is a sound from out of sight: told to put everything the moment names IN the picture, the
+  //  picture model draws whoever is making it — a hand knocking. A picture cannot hold a sound.)
+  const unheard = act && heardIn(act, [o.personA, o.personB].map((p) => (oneLine(p).split(/[,—–(:]/)[0] || "").trim()))?.unseen ? ` ${HEARD_NOT_DRAWN}` : "";
   const moment = act
-    ? ` THE MOMENT this frame is taken at: ${act} — everything it names (what somebody holds, what is being done, what is in the place) is IN the picture, seen the way the moment says it is seen, and well above the picture's bottom edge. Draw the instant it BEGINS, before it is done, so that it can happen in the seconds that follow: ONE picture of ONE instant — never a split screen, panels or a before-and-after. Where the moment says how somebody is placed (standing, sitting, crouching, walking), the moment decides; the distance between the two, the camera and their faces stay as described above.`
+    ? ` THE MOMENT this frame is taken at: ${act} — everything it names (what somebody holds, what is being done, what is in the place) is IN the picture, seen the way the moment says it is seen, and well above the picture's bottom edge.${unheard} Draw the instant it BEGINS, before it is done, so that it can happen in the seconds that follow: ONE picture of ONE instant — never a split screen, panels or a before-and-after. Where the moment says how somebody is placed (standing, sitting, crouching, walking), the moment decides; the distance between the two, the camera and their faces stay as described above.`
     : "";
   const tail = o.cartoon
     ? `Clean cheerful cartoon lighting, soft candy colors, rounded friendly shapes, ${o.comp}, no on-screen text, no watermark.`
@@ -265,13 +272,15 @@ const CAMERA_LOCKED = "The camera stays LOCKED and level";
 /** How the one thing that happens in a shot is introduced to the engine. */
 const EVENT_LEAD = "As the line is spoken, this happens once:";
 
-/** Is something DONE in this shot — was its clip told an event, or a walk? (Read off the prompt the shot
- *  was rendered from, so a shot rolled again later is treated the way it was the first time.) The cut that
- *  takes a long pause out of the MIDDLE of a take was made for two people standing still, where it cannot
- *  be seen; in a shot where somebody is moving it would make them jump — so such a shot keeps its pause. */
+/** Is something DONE in this shot — was its clip told an event, or a walk, or does it open on a sound?
+ *  (Read off the prompt the shot was rendered from, so a shot rolled again later is treated the way it was
+ *  the first time.) The cut that takes a long pause out of the MIDDLE of a take was made for two people
+ *  standing still, where it cannot be seen; in a shot where somebody is moving it would make them jump —
+ *  and in one that opens on a sound it would close the gaps between three slow knocks — so such a shot
+ *  keeps its pause. */
 export const clipMoves = (prompt: string | null | undefined): boolean => {
   const p = String(prompt || "");
-  return p.includes(EVENT_LEAD) || p.includes(ACTED_STAGINGS.walk.clip);
+  return p.includes(EVENT_LEAD) || p.includes(ACTED_STAGINGS.walk.clip) || p.includes(HEARD_MARK);
 };
 const lockOf = (note: string): string => {
   const m = HOLDS.exec(note);
@@ -285,12 +294,16 @@ const lockOf = (note: string): string => {
  *  else's. Three sizes, as before, so the prompt builder can still step down when a line is long; the event
  *  is in every one of them. `others` = who is on which side of the frame, for anybody the talking directions
  *  did not already place (said only when the event names them); `eventMax` = how much of the scene's words
- *  is said (EVENT_MAX unless told). Not a staging → the rules as they came. */
-export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; others?: ReadonlyArray<{ name: string; side: string }> }): T {
+ *  is said (EVENT_MAX unless told). Not a staging → the rules as they came.
+ *  `heard` = THE SHOT OPENS ON A SOUND (heardIn, below): the scene's words lead the whole prompt instead
+ *  (heardTalk), so the note says only what follows them, and the sound rule lets that sound be heard.
+ *  `reveal` = a horror film's last shot: what is seen in it moves SLOWLY (REVEAL_MOVES). */
+export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; others?: ReadonlyArray<{ name: string; side: string }>; heard?: boolean; reveal?: boolean }): T {
   if (!isActedStaging(o.staging)) return base;
   const spec = ACTED_STAGINGS[o.staging];
   const event = clipEvent(o.event, o.eventMax && o.eventMax > 0 ? o.eventMax : EVENT_MAX);
-  const who = event
+  const heard = !!o.heard && !!event;
+  const who = event && !heard
     ? (o.others || []).map((p) => {
         const name = oneLine(p?.name);
         const side = oneLine(p?.side);
@@ -300,19 +313,380 @@ export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown
         return said ? `${said[0]} is on the ${side}.` : "";
       }).filter(Boolean).join(" ")
     : "";
-  const does = event ? `${who ? `${who} ` : ""}${EVENT_LEAD} ${event}` : "Only natural talking, small gestures and shifts of weight.";
+  const slow = event && o.reveal ? ` ${REVEAL_MOVES}` : "";
+  const does = heard ? HEARD_AFTER : event ? `${who ? `${who} ` : ""}${EVENT_LEAD} ${event}${slow}` : "Only natural talking, small gestures and shifts of weight.";
   const rest = event ? "Nothing else" : "Nothing";
   const alive = /background stays/.test(base.look) ? " The background stays gently alive." : "";
   // (where the camera travels, what is BEHIND them cannot stay "identical … throughout" — told that, two
   //  people walk on the spot: it is the PLACE that stays the same)
   const lock = (note: string): string => (spec.camera ? lockOf(note).replace(/\bbackground\b/g, "place") : lockOf(note));
+  const steady = spec.camera ? base.steady.replace(CAMERA_LOCKED, spec.camera) : base.steady;
   return {
     ...base,
     look: `${lock(base.look)} ${spec.clip} ${does}${alive} ${rest} new enters and no new object appears; anything held keeps its exact size and shape.`,
     lookTight: `${lock(base.lookTight)} ${spec.clip} ${does} ${rest} new enters; held things keep their size and shape.`,
     lookShort: `${lock(base.lookShort)} ${spec.clip} ${does}`,
-    steady: spec.camera ? base.steady.replace(CAMERA_LOCKED, spec.camera) : base.steady,
+    // (told "no music or sound effects", the engine has no leave to make the knock the shot opens on)
+    steady: heard ? steady.replace(SPOKEN_AUDIO, HEARD_AUDIO) : steady,
   };
+}
+
+/* ---- A SHOT NOBODY SPEAKS IN ----
+ *
+ * The first free horror script written on the live site after "THE LAST SHOT IS SEEN, NOT SAID" went out
+ * (2026-11-24) came back with a last shot that had NO line — and nothing in the pipeline had ever met one:
+ * the engine was told to say `""`, the shot was sized by zero words, and every step after it (the listen,
+ * the trim to the end of the speech, the voices, the captions) ran on a line that was not there.
+ *
+ * It is the right ending for a horror film — the owner, of found footage, the same day: "there would need to
+ * be some type of exchange at the bare minimum (voice saying \"babe whats wrong\" then boom the scare shot)".
+ * An exchange, then a shot in which something is SEEN and nobody talks. So a wordless shot is a real kind of
+ * shot, anywhere in any acted film (a maker can also empty a line in the storyboard):
+ *
+ *   · THE ENGINE IS TOLD NOBODY SPEAKS, and is given no quoted words at all. Learned on this same engine
+ *     (take.ts): it speaks ANY quoted text it is handed and moves whatever mouth it can see to it — the
+ *     creature's, if that is the one in view; told "NOBODY SPEAKS … no voice at all" with no quotation
+ *     anywhere in the prompt, three takes of three came back with no speech and every mouth shut.
+ *   · WHAT HAPPENS is still said — in a horror ending it IS the shot — and so is how the two stand.
+ *   · ITS LENGTH is a number of seconds, not a count of no words.
+ *   · EVERYTHING THAT NEEDS A LINE steps over it: who the film's two speakers are, the voices, the listen
+ *     and the speech trims, the captions. */
+
+/** How long a shot nobody speaks in runs, in seconds — the shortest shot the engine makes, the length the
+ *  action shot the owner called a banger was, what the Length card counts every shot as, and what the
+ *  storyboard's own meter makes of an empty line (speech-meter.ts → clipSecondsFor("")). */
+export const SILENT_SHOT_SECONDS = 5;
+
+const LABEL_LEAD = /^\s*[\p{L}][\p{L}\p{N} .'’-]{0,30}:\s*/u;
+const LABEL_ANY = /\p{Lu}[\p{L}'’-]{1,20}:/gu;
+const ASIDE = /\([^()]*\)|\[[^[\]]*\]|\*[^*]*\*|<[^<>]*>/g;
+const NO_LINE = /^(?:none|null|n\/a|no line|no dialogue|no caption|no words|silent|silence|wordless|nobody speaks)\.?$/i;
+
+/** IS NOTHING SAID IN THIS SHOT? A caption with no words in it once the speaker's label and any stage
+ *  direction are taken off: "", "DANA:" (a line the maker emptied in the storyboard — its label stays),
+ *  "…", "(silence)", "DANA: (gasps)" — or, with no speaker at all, a bare "none" / "no line" / "silence".
+ *  ("DANA: None." is a line: somebody says it.) */
+export function wordless(caption: unknown): boolean {
+  const c = oneLine(caption);
+  if (!c) return true;
+  const labelled = LABEL_LEAD.test(c);
+  const said = oneLine(c.replace(LABEL_LEAD, "").replace(LABEL_ANY, " ").replace(ASIDE, " "));
+  if (!/[\p{L}\p{N}]/u.test(said)) return true;
+  return !labelled && NO_LINE.test(said);
+}
+
+const nameKeyOf = (n: unknown): string => { const w = oneLine(n).toLowerCase().split(/[\s,]+/).filter(Boolean); return w.find((x) => x !== "the") || w[0] || ""; };
+const entryNameOf = (e: unknown): string => (oneLine(e).split(/[,:—–(]/)[0] || "").trim();
+
+/** WHO THE FILM'S SPEAKERS ARE — the people its captions name, in the order they first speak (exactly two
+ *  makes it a two-hander: one picture of the two per place, each line found its mouth by its side).
+ *  `leads[i]` is the speaker shot i's caption names — "" for a line with no name on it, and NULL FOR A SHOT
+ *  NOBODY SPEAKS IN, which names nobody and so changes nothing: a film whose last shot is wordless has the
+ *  same two as it would without that shot.
+ *  One case needs more than the captions: a film in which only ONE of the two ever speaks, because the
+ *  other's only shot is the silent one (a two-shot horror film: a line, then the scare) — or in which nobody
+ *  speaks at all. The second person is then the other name on the cast list, when the list (the script's
+ *  own, else the cast the maker picked — `casts`, tried in turn) is exactly two people and the one who
+ *  speaks is one of them. Never guessed otherwise; and never for a film with no wordless shot, which is
+ *  read exactly as it always was. */
+export function twoOnScreen(leads: ReadonlyArray<string | null | undefined>, ...casts: Array<ReadonlyArray<string | null | undefined> | null | undefined>): string[] {
+  const spoken = Array.from(new Set(leads.filter((l): l is string => typeof l === "string" && !!l)));
+  const silent = leads.filter((l) => l === null).length;
+  if (!silent || spoken.length > 1 || (!spoken.length && silent < leads.length)) return spoken;
+  for (const cast of casts) {
+    const names = (cast || []).map(entryNameOf).filter(Boolean);
+    const keys = names.map(nameKeyOf);
+    if (names.length !== 2 || !keys[0] || !keys[1] || keys[0] === keys[1]) continue;
+    if (!spoken.length) return names;
+    const at = keys.indexOf(nameKeyOf(spoken[0]));
+    if (at >= 0) return [spoken[0], names[1 - at]];
+  }
+  return spoken;
+}
+
+/** THE FIRST THING THE ENGINE IS TOLD in a shot nobody speaks in — in place of the talking directions. The
+ *  words are the ones that held on this engine (take.ts → takePrompt), and there is NO quotation mark in
+ *  them or anywhere else in such a shot's prompt: any quoted text is spoken. */
+const SILENT_MARK = "NOBODY SPEAKS in this shot";
+export const NOBODY_SPEAKS = `${SILENT_MARK}: no voice, no words, no whisper, no murmur — only the sounds of the place and of what happens in it. Everyone in the picture keeps their mouth closed from the first frame to the last: nobody opens it to speak, and nobody mouths a word.`;
+/** …and the last thing it is told about sound, in place of "The ONLY audio is the spoken voice…". */
+const SILENT_SOUND = "The only sound is the place itself and what happens in it. No voice at all. No music.";
+/** How what happens is introduced in such a shot (there is no line for it to happen "as"). */
+const SILENT_EVENT_LEAD = "This happens once, and it is the shot:";
+
+/** Was this prompt a wordless shot's? (Read off the prompt, like clipMoves: a shot rolled again later is
+ *  treated the way it was the first time.) Such a take is kept WHOLE: every trim a take goes through looks
+ *  for where the speech starts and stops, and with no speech it would take the first sound for the first
+ *  word — and cut the quiet before the thing moves, which is the shot. */
+export const clipSilent = (prompt: string | null | undefined): boolean => String(prompt || "").includes(SILENT_MARK);
+
+/** A scene's words with nothing in them that could be read as a quotation: no quotation mark of any kind,
+ *  and no apostrophe except inside a word ("Dana's", "don't"). */
+const unquoted = (s: string): string => s.replace(/["“”«»„‟‹›‘‚‛`´]/g, "").replace(/(?<![\p{L}\p{N}])['’]|['’](?![\p{L}\p{N}])/gu, "");
+
+/** THE CLIP'S RULES FOR A SHOT NOBODY SPEAKS IN. The same look-notes in the same three sizes — who everybody
+ *  is and that nobody changes, kept word for word — and then: how the two stand (the staging's own words when
+ *  the picture has one; else that everybody holds their place), THE ONE THING THAT HAPPENS in the scene's own
+ *  words (with it, a horror ending is its shot; without it the shot is a held, quiet beat), and nothing about
+ *  talking anywhere: the style tag loses its "spoken-dialogue audio", the sound rule becomes the place's own
+ *  sound and no voice, and the no-text rule no longer mentions spoken words. `sides` = who is on which side
+ *  of the frame — no talking directions place anybody in such a shot, so each is said when the event names
+ *  them. The prompt is `NOBODY_SPEAKS`, then these (clip-prompt.ts → fitClipPrompt, with no voice timbre).
+ *  And, after what happens: `unseen` = it is a sound from out of sight, made by nothing in the picture
+ *  (HEARD_UNSEEN); `reveal` = a horror film's last shot, whose thing moves SLOWLY (REVEAL_MOVES); `face` =
+ *  who must not smile (faceNote) — every one of them in words with no quotation mark in them either. */
+export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; sides?: ReadonlyArray<{ name: string; side: string }>; unseen?: boolean; reveal?: boolean; face?: string | null } = {}): T {
+  const spec = isActedStaging(o.staging) ? ACTED_STAGINGS[o.staging] : null;
+  const event = unquoted(clipEvent(o.event, o.eventMax && o.eventMax > 0 ? o.eventMax : EVENT_MAX));
+  const who = event
+    ? (o.sides || []).map((p) => {
+        const name = unquoted(oneLine(p?.name));
+        const side = oneLine(p?.side);
+        if (!name || !side) return "";
+        let said: RegExpExecArray | null = null;
+        try { said = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(name)}(?![\\p{L}\\p{N}])`, "iu").exec(event); } catch { /* a name no pattern can be made of is simply not placed */ }
+        return said ? `${said[0]} is on the ${side}.` : "";
+      }).filter(Boolean).join(" ")
+    : "";
+  const move = spec ? spec.clip : "Everybody stays where they are in the picture, faces in view.";
+  const after = `${event && o.unseen ? ` ${HEARD_UNSEEN}` : ""}${event && o.reveal ? ` ${REVEAL_MOVES}` : ""}${o.face ? ` ${unquoted(oneLine(o.face))}` : ""}`;
+  const does = event ? `${who ? `${who} ` : ""}${SILENT_EVENT_LEAD} ${event}${after}` : `Only small natural movement: breathing, a look, a shift of weight.${after}`;
+  const rest = event ? "Nothing else" : "Nothing";
+  const alive = /background stays/.test(base.look) ? " The background stays gently alive." : "";
+  const lock = (note: string): string => (spec?.camera ? lockOf(note).replace(/\bbackground\b/g, "place") : lockOf(note));
+  const camera = (spec?.camera ? base.steady.replace(CAMERA_LOCKED, spec.camera) : base.steady).replace(/\s*(?:The ONLY audio is|Keep ONLY the sung vocal)[\s\S]*$/, "").trim();
+  return {
+    ...base,
+    look: `${lock(base.look)} ${move} ${does}${alive} ${rest} new enters and no new object appears; anything held keeps its exact size and shape.`,
+    lookTight: `${lock(base.lookTight)} ${move} ${does} ${rest} new enters; held things keep their size and shape.`,
+    lookShort: `${lock(base.lookShort)} ${move} ${does}`,
+    style: base.style.replace(/[,;]\s*clean\b[\s\S]*$/, ".").trim(),
+    steady: `${camera} ${SILENT_SOUND}`.trim(),
+    noText: base.noText.replace(/\s*never show the spoken words as text;?/, ""),
+  };
+}
+
+/* ---- A SOUND THEY HEAR ----
+ *
+ * The owner, 2026-11-24, of a four-shot Horror Film made on the live site (two sisters clearing out their late
+ * mother's house hear slow knocking inside the bedroom wall): "Better but flaky, 'tell me you heard that' then
+ * the sound plays after - floating hand knocking fast actor says 'it's knocking really slow'". Measured on the
+ * film: the knocks are heard at 12 s and 14 s — DURING the line after "Tell me you heard that too", not before
+ * it — and in that shot one sister's own hand knocks quickly on the dresser while the other calls it slow and
+ * patient. Three rules, said to the writer (HEARD_BEFORE_SAID, below) and to each clip:
+ *
+ *   (a) A SOUND THEY REACT TO COMES FIRST. A shot whose scene is a sound OPENS on it — heard alone, before
+ *       anybody speaks — and its line answers it (heardTalk). Its take is longer by the sound (heardSeconds)
+ *       and keeps its head: the trims that cut the quiet before the first word, or play it fast, would cut
+ *       the knock away or make it quick (clipHearsFirst — read off the prompt, so a re-rolled shot is trimmed
+ *       the same). And its sound rule lets the sound be made: every clip was told "no music or sound
+ *       effects", which left the engine leave for nothing but the voice.
+ *   (b) WHAT IS HEARD IS NOT SEEN. A sound from out of sight — in a wall, upstairs, behind a door — is made by
+ *       nothing in the picture (HEARD_UNSEEN).
+ *   (c) WHAT IS SAID ABOUT IT IS WHAT IS HEARD. How it sounds (slow or fast, how many, how loud) is in the
+ *       scene's words, which the clip opens on, and the sound is to be made exactly as described.
+ *
+ * Which scenes are a sound is read off the scene's OWN words (the writer is asked to begin such a scene with
+ * the sound), so what the maker reads in the storyboard is what the clip is told. */
+
+/** A word for something HEARD. */
+const SOUND_WORD = /^(?:knock(?:s|ed|ing)?|rap(?:s|ping)?|tap(?:s|ping)?|thump(?:s|ing)?|thud(?:s|ding)?|bang(?:s|ing)?|footsteps?|footfalls?|scratch(?:es|ing)?|scrap(?:e|es|ing)|creak(?:s|ing)?|whisper(?:s|ing)?|voices?|cry|cries|scream(?:s|ing)?|shriek(?:s|ing)?|wail(?:s|ing)?|moan(?:s|ing)?|groan(?:s|ing)?|crash(?:es|ing)?|slam(?:s|ming)?|rattl(?:e|es|ing)|rings|ringing|chim(?:e|es|ing)|buzz(?:es|ing)?|hum(?:s|ming)?|laughter|giggl(?:e|es|ing)|music|singing|lullaby|whistl(?:e|es|ing)|bells?|click(?:s|ing)?|howl(?:s|ing)?|growl(?:s|ing)?|sob(?:s|bing)?|breathing|hiss(?:es|ing)?|drip(?:s|ping)?|sounds?|nois(?:e|es)|thunder|echo(?:es)?)$/i;
+/** …someone HEARS it. */
+const HEARS = /^(?:hear|hears|heard|hearing)$/i;
+/** …made by something nobody can see. */
+const SOMEONE = /^(?:something|someone|somebody)$/i;
+/** …and a word that says who DOES it, before the sound word: then it is something one of them does
+ *  ("she knocks", "Dagny knocks", "Ylva's knock"), not something they hear. */
+const DOER = /^(?:she|he|they|i|we|you|her|his|their|my|our|your)$/i;
+/** …a sound only a living thing makes: when nobody in the scene is said to make it, it comes from out of sight
+ *  ("The knocking starts again"). */
+const BEING_SOUND = /^(?:knock(?:s|ed|ing)?|rap(?:s|ping)?|tap(?:s|ping)?|thump(?:s|ing)?|thud(?:s|ding)?|bang(?:s|ing)?|footsteps?|footfalls?|scratch(?:es|ing)?|scrap(?:e|es|ing)|whisper(?:s|ing)?|voices?|cry|cries|scream(?:s|ing)?|shriek(?:s|ing)?|wail(?:s|ing)?|moan(?:s|ing)?|groan(?:s|ing)?|laughter|giggl(?:e|es|ing)|singing|lullaby|whistl(?:e|es|ing)|hum(?:s|ming)?|howl(?:s|ing)?|growl(?:s|ing)?|sob(?:s|bing)?|breathing)$/i;
+/** …and the thing in the picture that is SEEN making it ("a grey hand knocks on the inside of the door"). */
+const SEEN_MAKER = /^(?:hands?|fingers?|knuckles?|fists?|arms?|claws?|nails?|figure|figures|face|faces|mouth|head|woman|man|girl|boy|child|creature)$/i;
+/** Where a scene's words break into the things that happen in it. */
+const CLAUSE_BREAK = /\s*(?:;|:\s|\.\s|\s[—–]\s|,\s+and\s|,?\s(?:as|while|when|until|before|then)\s|\sand\s(?=(?:a|an|the|one|two|three|four|five|six|several|some|another|more|something|someone|somebody|it)\b))\s*/i;
+/** A sound from out of sight: inside, behind or under something, upstairs, overhead, at a closed door — or
+ *  where somebody puts an ear to listen. */
+const UNSEEN = /\b(?:from|inside|within|behind|beneath|under|underneath|below|above|beyond|through|in)\s+(?:(?:the|a|an|her|his|their|its|our|my|that|this)\s+)?(?:[\p{L}'’-]+\s+){0,2}?(?:walls?|ceiling|floors?|floorboards|attic|basement|cellar|loft|crawl\s?space|closet|cupboard|wardrobe|chimney|vents?|pipes|plaster|wallpaper|panell?ing|boards|box|trunk|chest|coffin|crate|darkness|dark|hallway|hall|stairwell|stairs|door|room|house)\b|\b(?:at|on|against)\s+(?:(?:the|a|an)\s+)?(?:[\p{L}'’-]+\s+){0,2}?(?:door|window)\b|\b(?:above|below|beneath|under|underneath)\s+(?:them|her|him|us|their heads|her head|his head)\b|\bear\s+(?:to|against)\s+(?:(?:the|a)\s+)?(?:[\p{L}'’-]+\s+){0,2}?(?:walls?|plaster|wallpaper|door|floor|floorboards)\b|\b(?:upstairs|downstairs|overhead|ceiling|next door|out of sight|unseen|somewhere)\b/iu;
+
+/** IS THIS SCENE A SOUND THEY HEAR? The scene's own words → the part of them that is the sound, and whether
+ *  it comes from out of sight; null when nothing is heard in it. A sound is heard when the words begin with
+ *  it ("Three slow knocks from inside the wall; …", "Footsteps cross the ceiling as …"), when somebody
+ *  HEARS something, or when something unseen makes it ("as something scratches behind the panel") — never
+ *  when it is one of the two doing it ("Dagny knocks on the wall", "Ylva slams the drawer"). It is UNSEEN
+ *  when the words put it out of sight (inside, behind or under something, upstairs, at a closed door), say
+ *  only that "something" makes it, or it is a sound only a living thing makes and nobody is said to make it
+ *  ("The knocking starts again") — never when a thing in the picture is said to make it ("a grey hand knocks
+ *  on the inside of the door": that is SEEN), and never when one of the two is also making a sound in that
+ *  scene (the clip would be told two things at once: that nobody's hand knocks, and that hers does). `names`
+ *  = the people of the film, so that a name at the start of a sentence is known for one. */
+export function heardIn(event: string | null | undefined, names: ReadonlyArray<string | null | undefined> = []): { sound: string; unseen: boolean } | null {
+  const text = oneLine(String(event || "").replace(/["“”«»]/g, ""));
+  if (!text) return null;
+  const known = new Set(names.map((n) => oneLine(n).toLowerCase()).filter(Boolean).flatMap((n) => [n, ...n.split(/\s+/)]));
+  const bare = (w: string): string => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}'’]+$/gu, "");
+  const nameLike = (w: string, k: number): boolean => {
+    const b = bare(w).replace(/['’]s$/i, "");
+    return known.has(b.toLowerCase()) || (k > 0 && /^\p{Lu}/u.test(b));
+  };
+  let heard: { sound: string; unseen: boolean } | null = null;
+  let doing = false;
+  let seen = false;
+  for (const clause of text.split(CLAUSE_BREAK).map((c) => c.trim()).filter(Boolean)) {
+    const words = clause.split(/\s+/).map(bare).filter(Boolean);
+    // (somebody HEARS it: whatever the clause names after that is heard, not done — "Dagny hears three knocks")
+    let found = words.some((w) => HEARS.test(w));
+    let unseen = false;
+    for (let k = 0; !found && k < words.length; k++) {
+      if (!SOUND_WORD.test(words[k])) continue;
+      if ((k > 0 && SOMEONE.test(words[k - 1])) || (k > 1 && SOMEONE.test(words[k - 2]) && /^is$/i.test(words[k - 1]))) { found = true; unseen = true; break; }
+      const before = words.slice(0, k);
+      // ("in a hushed voice", "with a shaking voice" is how somebody speaks, not something heard)
+      if (/^voices?$/i.test(words[k]) && before.slice(-3).some((w) => /^(?:in|with)$/i.test(w))) break;
+      // …at the head of the words, with nobody before it who could be the one making it
+      if (!before.some((w, j) => DOER.test(w) || nameLike(w, j))) {
+        if (k < 8) {
+          found = true;
+          if (before.some((w) => SEEN_MAKER.test(w))) seen = true;
+          // (a living thing's sound that nobody in the scene is said to make — "A cry escapes Dagny" is hers)
+          else unseen = BEING_SOUND.test(words[k]) && !words.some((w) => known.has(w.replace(/['’]s$/i, "").toLowerCase()));
+        }
+      } else doing = true;
+      break;
+    }
+    if (found && !heard) heard = { sound: clause.replace(/[\s.,;:!?—–-]+$/, ""), unseen };
+  }
+  return heard ? { sound: heard.sound, unseen: !doing && !seen && (heard.unseen || UNSEEN.test(text)) } : null;
+}
+
+/** How a shot that opens on a sound begins — the first words of its prompt (and how such a prompt is known
+ *  again: clipHearsFirst). The scene's own words follow it. */
+const HEARD_MARK = "THE SHOT OPENS ON A SOUND";
+export const HEARD_OPEN = `${HEARD_MARK}, heard ALONE before anybody says a word:`;
+/** (b) — a sound from out of sight is made by nothing in the picture. */
+export const HEARD_UNSEEN = "It comes from out of sight, and nothing in the picture makes it — no hand knocks or taps on anything, no mouth moves to it, nobody else appears: the two only HEAR it.";
+/** …and what a PICTURE is told of such a moment (a place's master — stagedTwoShot — and a re-anchor drawn at
+ *  it): told to put everything the moment names in the picture, the picture model draws whoever makes it. */
+export const HEARD_NOT_DRAWN = "What is HEARD in this moment is not drawn: nothing in the picture makes that sound — no hand knocks or taps on anything, and nobody else is there; the two only hear it.";
+/** …and only then the line. */
+export const HEARD_THEN = "ONLY AFTER IT does anybody speak, in answer to it.";
+/** What the look-note says happens once the sound has been heard (the scene's words lead the prompt). */
+const HEARD_AFTER = "After the sound, only natural talking, small gestures and shifts of weight.";
+/** The sound rule every spoken clip has (clip-prompt.ts → clipRules)… */
+const SPOKEN_AUDIO = "The ONLY audio is the spoken voice and faint room tone — no music or sound effects.";
+/** …and, in a shot that opens on a sound, the one it has instead — (c): exactly the sound described. */
+export const HEARD_AUDIO = "The ONLY audio is that sound — exactly as described: no faster, no louder and no more of it — and then the spoken voice, over faint room tone; no music and no other sound effects.";
+/** How much longer a take that opens on a sound is than its line alone needs (three slow knocks, a second
+ *  apart, and the breath after them). */
+export const HEARD_FIRST_SECONDS = 2.5;
+/** The length of such a take: its line's (speech-meter.ts → clipSecondsFor), and the sound before it — never
+ *  more than the longest take a line is given. */
+export const heardSeconds = (line: string): number => Math.min(CLIP_MAX_SECONDS, Math.ceil(clipSecondsFor(line) + HEARD_FIRST_SECONDS));
+/** Did this prompt open on a sound? (Read off the prompt, like clipMoves.) Such a take keeps its head — the
+ *  sound is in it. */
+export const clipHearsFirst = (prompt: string | null | undefined): boolean => String(prompt || "").includes(HEARD_MARK);
+
+/** THE TALKING DIRECTIONS OF A SHOT THAT OPENS ON A SOUND. The scene's own words lead — the sound, heard
+ *  alone — then that nobody speaks before it, then the line, in fewer words than a talking shot's own
+ *  directions but every one of their rules: who speaks (by their side of the frame), the line once, word for
+ *  word, nothing repeated or added, how it is delivered, the other one silent, one voice, the same voice as in
+ *  every other shot — and "after that sound" where a talking shot says "right away". (Shorter so that the
+ *  sound, the line and everybody's look all fit the 2,500 characters the engine reads.) `event` = the scene's
+ *  words as the clip is told them (clipEvent); `deliver` = the tone sentence, as built for every shot; `face`
+ *  = faceNote; `reply` = a second speaker in the same shot. */
+export function heardTalk(t: {
+  event: string;
+  unseen?: boolean;
+  speaker?: string | null;
+  side?: string | null;
+  line: string;
+  other?: string | null;
+  otherSide?: string | null;
+  deliver: string;
+  face?: string | null;
+  reply?: { speaker: string; side?: string | null; line: string } | null;
+}): string {
+  const event = clipEvent(t.event, Math.max(EVENT_MAX_LAST, oneLine(t.event).length));
+  const open = `${HEARD_OPEN} ${event}${t.unseen ? ` ${HEARD_UNSEEN}` : ""} ${HEARD_THEN}`;
+  const deliver = `${oneLine(t.deliver)}${oneLine(t.face) ? ` ${oneLine(t.face)}` : ""}`;
+  const speaker = oneLine(t.speaker);
+  const side = oneLine(t.side).toLowerCase();
+  const other = oneLine(t.other);
+  const oSide = oneLine(t.otherSide).toLowerCase();
+  const line = oneLine(t.line);
+  if (t.reply && oneLine(t.reply.speaker) && oneLine(t.reply.line) && speaker) {
+    const b = oneLine(t.reply.speaker);
+    const bSide = oneLine(t.reply.side).toLowerCase();
+    return `${open} Then a short back-and-forth, ONE person at a time, in accurate lip-sync: FIRST ${speaker}${side ? ` (on the ${side} side of the frame)` : ""} says: "${line}". THEN ${b}${bSide ? ` (on the ${bSide} side)` : ""} replies: "${oneLine(t.reply.line)}". Each says their line exactly ONCE, word for word — no word repeated, echoed or added — and only the one speaking moves their mouth while the other stays silent, listening. Apart from that sound there are exactly TWO voices, ${speaker}'s and then ${b}'s, never overlapping — no third voice, murmur or gibberish. ${deliver}`;
+  }
+  if (speaker) {
+    const listener = other ? `${other}${oSide ? ` (on the ${oSide})` : ""}` : `the other one${oSide ? ` (on the ${oSide})` : ""}`;
+    return `${open} ${speaker}${side ? `, the person on the ${side.toUpperCase()} side of the frame,` : ""} says exactly this one line, ONCE, word for word, in accurate lip-sync, and nothing else: "${line}". ${deliver} Every word clear and crisp — no mumbling, and no word repeated, echoed or added; the moment the line is finished, ${speaker} stops and holds a quiet expression. ONLY ${speaker}'s mouth moves: ${listener} is COMPLETELY SILENT the whole time, mouth closed, only listening and reacting. Apart from that sound, ${speaker}'s is the ONLY voice in the clip — no second voice, murmur or gibberish anywhere. Keep ${speaker}'s voice the SAME as in every other shot.`;
+  }
+  return `${open} Then ONE voice says this line, ONCE, word for word, clearly and in accurate lip-sync: "${line}". ${deliver} The other character is completely silent — mouth closed, only listening. No other voice or murmur anywhere.`;
+}
+
+/* ---- NOBODY SMILES AT WHAT FRIGHTENS THEM ----
+ * The same film: the older sister SMILED while she said its most frightening line ("it isn't trying to get
+ * out. It's holding the wall closed."). Nothing told her face otherwise — the delivery said how the line
+ * SOUNDS, and the picture's "nobody smiles" (the format's own face mood) was not said to the clip. */
+
+const FEAR = /\b(?:afraid|scared|fear(?:ful|fully)?|frighten(?:ed|ing)?|terrif(?:ied|ying)|horror|horrif(?:ied|ying)|dread|panic(?:ked|king|ky)?|trembl(?:e|es|ing)|shak(?:y|ing|en)|petrified|alarm(?:ed)?|aghast)\b/i;
+const SMILE = /\b(?:smil(?:e|es|ed|ing)|grin(?:s|ned|ning)?|laugh(?:s|ed|ing)?|chuckl(?:e|es|ed|ing)|giggl(?:e|es|ed|ing)|beam(?:s|ed|ing))\b/i;
+/** A line said warmly — in a horror film, the calm before it (the owner's film opened on a fond line about old
+ *  letters): its face is left to the line. */
+const WARM = /\b(?:warm(?:ly|th)?|fond(?:ly|ness)?|cheerful(?:ly)?|happ(?:y|ily)|amused|playful(?:ly)?|teasing(?:ly)?|light-?hearted(?:ly)?|nostalgic(?:ally)?|wistful(?:ly)?|tender(?:ly)?|affectionate(?:ly)?|joking(?:ly)?|relieved|excited(?:ly)?|proud(?:ly)?|reassuring(?:ly)?)\b/i;
+
+/** WHO MUST NOT SMILE IN THIS SHOT, said plainly: in a horror film both of the two, in every shot but one whose
+ *  line is said warmly (and its tone says no fear); in any other film the one who says a frightened line (its
+ *  TONE says fear). Never when the script makes the smile the horror — a scene whose words have that one smiling
+ *  ("Ylva smiles at the wall"), or a tone that says the line is said smiling. "" = nothing to say. It has no
+ *  quotation mark in it (it goes into silent shots too). */
+export function faceNote(o: { horror?: boolean; tone?: string | null; visual?: string | null; speaker?: string | null; other?: string | null }): string {
+  const tone = oneLine(o.tone);
+  const visual = oneLine(o.visual);
+  const afraid = FEAR.test(tone);
+  if (o.horror ? WARM.test(tone) && !afraid : !afraid) return "";
+  const smiles = (name: string): boolean => {
+    try { return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(name)}(?![\\p{L}\\p{N}])[^.;!?,]{0,32}?${SMILE.source}`, "iu").test(visual); } catch { return false; }
+  };
+  const speaker = oneLine(o.speaker);
+  const other = o.horror ? oneLine(o.other) : "";
+  const who = [
+    speaker && !smiles(speaker) && !SMILE.test(tone) ? speaker : "",
+    other && other.toLowerCase() !== speaker.toLowerCase() && !smiles(other) ? other : "",
+  ].filter(Boolean);
+  if (who.length === 2) return `Neither ${who[0]} nor ${who[1]} smiles at any moment: both faces show fear.`;
+  if (who.length === 1) return `${who[0]} does not smile at any moment: the face shows fear.`;
+  // (nobody named, in a horror film, and nobody the script makes smile)
+  return o.horror && !speaker && !other && !SMILE.test(tone) ? "Nobody smiles at any moment: every face shows fear." : "";
+}
+
+/* ---- THE LAST SHOT OF A HORROR FILM: SEEN, IN THE SAME ROOM ----
+ * The same film again: its last shot was told "a WHERE of its own", so the film drew a whole new room for it
+ * — a different bedroom, reached through a half-second double exposure — and in it a smooth, evenly lit,
+ * mannequin-like arm stuck straight out of a hole in the plaster. The owner: "the hands coming out of wall
+ * are more odd than actual realism". Now the last shot is in the SAME place as the shot before it (the writer:
+ * SEEN_AT_THE_END), and its picture is THAT place's own picture, edited: the same room, camera, light and two
+ * people, with the thing added — made by the creature recipe the horror stories are made with, reused here
+ * rather than written a third time: photographed, a practical effect (story-picture.ts → CREATURE_REAL), and
+ * mostly lost in the dark (take.ts → TAKE_HIDDEN); and as slightly wrong as the scene's own words say (the
+ * writer was told WHAT FRIGHTENS: one or two exact wrongnesses). In the clip it moves SLOWLY — "slow is what
+ * frightens" (take.ts) — and the cut to it is a straight cut (film-dialogue → assembleTestMovie). */
+
+/** How the thing in a horror film's last shot moves. */
+export const REVEAL_MOVES = "What is seen moves SLOWLY — slow, smooth and unhurried, never a jump, a lunge or a sudden move — and it stays solid and real, half in shadow.";
+/** How much of the scene's words the picture is told. */
+export const REVEAL_MOMENT_MAX = 320;
+
+/** THE PICTURE OF A HORROR FILM'S LAST SHOT, asked of the picture model with that place's own picture (its
+ *  master) as the one reference image. `moment` = the scene's own words; `mood` = the format's face mood (a
+ *  horror cast does not grin — film-engine → faceMood). "" when there is no moment to draw. */
+export function revealPicture(o: { moment: string | null | undefined; mood?: string | null }): string {
+  const moment = clipEvent(o.moment, REVEAL_MOMENT_MAX);
+  if (!moment) return "";
+  const mood = oneLine(o.mood);
+  return `Edit this picture, a frame from a live-action horror film. Keep it EXACTLY as it is — the same place, the same camera and framing, the same light and colour, and the same two people on the same sides of the frame, with the same faces, hair and clothes. Change ONLY what this moment changes: ${moment} The one new thing in the picture is what this moment says is there, and it is real. ${CREATURE_REAL} It is nearly human and slightly WRONG — in exactly the one or two ways the moment says, and in no other. ${TAKE_HIDDEN} It is lit only by the light already in this place, falling away into shadow around it: no new light is added, and nothing about it is clean, smooth or evenly lit.${mood ? ` ${mood}` : ""} Nothing written anywhere in the picture.`;
 }
 
 /* ---- THE WRITER ---- */
@@ -366,6 +740,28 @@ export const CAMERA_IS_DEALT = "THE CAMERA IS NOT YOURS — how the two are plac
  *  second has to come out of the idea. */
 export const TWO_ALWAYS = "ALWAYS THE SAME TWO — both are in every shot. If the idea has somebody ALONE, the second one must BELONG there, and the first lines make it plain why they are there: somebody who came because of what is happening (a neighbour who came to check, a friend who was called, a relative with a key) — or, when it can speak, the very thing the idea is about (the voice turns out to be somebody). Never a stranger who is simply in the room. It stays the story of the one who was alone: the other came INTO it.";
 
+/** WHETHER A SHOT MAY HAVE NO LINE — said to the writer in so many words, at the end of what a CAPTION is.
+ *  ("THE LAST SHOT IS SEEN, NOT SAID" alone left it to chance: of the first two horror scripts written on the
+ *  live site with it, one ended on a shot with no line and one on a screamed one.) Every shot of an acted
+ *  film has a line; the one exception is the last shot of a horror film, which has none — see below. */
+export const LINE_IN_EVERY_SHOT = "EVERY shot has a line: a CAPTION is never left empty.";
+export const LINE_IN_EVERY_SHOT_BUT_THE_LAST = "EVERY shot has a line, with ONE exception: the LAST shot of this film has none (THE LAST SHOT, below). No other CAPTION is ever left empty.";
+
+/** A SOUND IN A SHOT, for the writer — (a), (b) and (c) of "A SOUND THEY HEAR" above. The film he watched had
+ *  "Tell me you heard that too" one shot BEFORE the knocking was heard, a sister's own hand knocking, and a
+ *  line calling quick knocks slow. Said to every acted film (a knock at the door is not only a horror film's). */
+export const HEARD_BEFORE_SAID = "A SOUND COMES BEFORE ANY WORD ABOUT IT — when what happens in a shot is a SOUND (a knock, footsteps, a voice, a bang, a scrape), that shot's VISUAL BEGINS with it: what is heard, exactly how it sounds — how many, how fast or slow, how loud — and where it comes from (\"Three slow, heavy knocks from inside the bedroom wall, a full second apart; …\"). The shot opens on that sound, heard ALONE, and its line is the REACTION to it — so a line that reacts to a sound (\"did you hear that?\", \"there it is again\", \"listen\") is only ever in the shot where that sound is first heard, or a later one; never before it. WHAT IS SAID ABOUT IT IS WHAT IS HEARD: a line that describes the sound says what its VISUAL says — never \"slow\" about a fast knock, never \"once\" about three. WHAT IS HEARD IS NOT SEEN: a sound from out of sight — inside a wall, upstairs, behind a closed door, under the floor — is made by NOTHING on screen: neither of the two knocks, taps or scratches while it is heard, and no hand or figure is shown making it; they only HEAR it — they freeze, turn toward it, look at each other.";
+
 /** A horror film only: what its last shot is. (What the thing IS, and how little of it is shown, is said once
- *  — story-picture.ts → WHAT_FRIGHTENS, which the writer is given after this.) */
-export const SEEN_AT_THE_END = "THE LAST SHOT IS SEEN, NOT SAID — a horror film ends on something the viewer SEES, not on a line about it. In the LAST shot's VISUAL the thing this story has been circling is IN the picture with the two of them, seen the way WHAT FRIGHTENS (below) says such a thing is seen — a part of it, at the edge of the light, behind one of them — and what HAPPENS in that shot is IT: it moves, it is nearer than it was, the one who has not seen it turns round. When it is not one of the two, it has no \"cast\" entry: say what it is, and the one or two things that are wrong with it, in that VISUAL (which may run to 40 words). And give that shot a WHERE of its own — the exact spot it is seen from, in its own words, even if that is only a few steps on from the place before — so that its picture is drawn WITH the thing in it.";
+ *  — story-picture.ts → WHAT_FRIGHTENS, which the writer is given after this.)
+ *  THE LAST SHOT HAS NO LINE, and that is decided, not left to the writer: it is the scare after the exchange
+ *  (the owner: "voice saying \"babe whats wrong\" then boom the scare shot"); the engine gives its whole take
+ *  to what happens when it has no line to speak; and the last shot is the one place a spoken line could land
+ *  in the wrong mouth — there is a third face in that picture, and this engine moves whatever mouth it can
+ *  see (take.ts). A line the writer puts there anyway is spoken, as any line is.
+ *  IT IS IN THE SAME PLACE. It used to be given "a WHERE of its own … so that its picture is drawn WITH the
+ *  thing in it" — and the film drew a whole new room for it, reached through a dissolve, with a mannequin's arm
+ *  in its wall (the owner: "more odd than actual realism"). Now its WHERE is the place before it, letter for
+ *  letter, and the film draws the thing INTO that place's own picture (film-dialogue → revealPicture). It
+ *  moves SLOWLY, and the two are afraid of it — nobody grins at what frightens them, unless the smile IS it. */
+export const SEEN_AT_THE_END = "THE LAST SHOT IS SEEN, NOT SAID — a horror film ends on something the viewer SEES, not on a line about it. So the LAST shot has NO LINE: its CAPTION is \"\" (empty — no NAME, no words) and it has no TONE. Nobody speaks in it, not a word and not a whisper; the last words of the film are the line of the shot BEFORE it. It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter: the thing is found where the two already are (in the wall they have been listening to, in the doorway they came through, right behind one of them), never in another room; the film draws it into that place's own picture, the one thing in the film that was not in that place's first VISUAL. In that last shot's VISUAL the thing this story has been circling is IN the picture with the two of them, seen the way WHAT FRIGHTENS (below) says such a thing is seen — a part of it, at the edge of the light, behind one of them, mostly in shadow — and what HAPPENS in that shot is IT, SLOWLY: it moves a little, it is nearer than it was, the one who has not seen it turns round. Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so. When it is not one of the two, it has no \"cast\" entry: say what it is, and the one or two things that are wrong with it, in that VISUAL (which may run to 40 words).";

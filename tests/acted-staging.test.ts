@@ -13,17 +13,24 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  ACTED_STAGINGS, CAMERA_IS_DEALT, EVENT_IDEAS, EVENT_IDEAS_SMALL, EVENT_MAX, EVENT_MAX_LAST, ONE_TAKE, SEEN_AT_THE_END, TWO_ALWAYS,
-  clipEvent, clipMoves, dealStagings, eventIdeas, happensBrief, isActedStaging, noRoomIn, sceneEvent, stagedRules, stagedTwoShot,
-  stagingClip, stagingPicture, stagingsFor, type ActedStaging,
+  ACTED_STAGINGS, CAMERA_IS_DEALT, EVENT_IDEAS, EVENT_IDEAS_SMALL, EVENT_MAX, EVENT_MAX_LAST, HEARD_AUDIO, HEARD_BEFORE_SAID, HEARD_FIRST_SECONDS,
+  HEARD_NOT_DRAWN, HEARD_OPEN, HEARD_THEN, HEARD_UNSEEN, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, NOBODY_SPEAKS, ONE_TAKE, REVEAL_MOVES, SEEN_AT_THE_END,
+  SILENT_SHOT_SECONDS, TWO_ALWAYS,
+  clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, eventIdeas, faceNote, happensBrief, heardIn, heardSeconds, heardTalk, isActedStaging,
+  noRoomIn, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot, stagingClip, stagingPicture, stagingsFor, twoOnScreen, wordless,
+  type ActedStaging,
 } from "../app/lib/acted-staging.ts";
 import { KLING_PROMPT_MAX, clipRules, fitClipPrompt } from "../app/lib/clip-prompt.ts";
-import { WHAT_FRIGHTENS } from "../app/lib/story-picture.ts";
+import { CLIP_MAX_SECONDS, clipSecondsFor } from "../app/lib/speech-meter.ts";
+import { CREATURE_REAL, WHAT_FRIGHTENS } from "../app/lib/story-picture.ts";
+import { TAKE_HIDDEN, TAKE_WRONG } from "../app/lib/take.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
@@ -379,10 +386,11 @@ test("the writer: every shot is something that HAPPENS, the camera is dealt, and
   // the pipeline shows exactly two: somebody who is ALONE in the idea gets a second who belongs there
   assert.ok(TWO_ALWAYS.includes("If the idea has somebody ALONE, the second one must BELONG there, and the first lines make it plain why they are there"));
   assert.ok(TWO_ALWAYS.includes("the voice turns out to be somebody") && TWO_ALWAYS.includes("Never a stranger who is simply in the room."));
-  // a horror film's last shot: the thing is IN the picture, in a place of its own — and what frightens is said ONCE
+  // a horror film's last shot: the thing is IN the picture, in the SAME place as the shot before — and what
+  // frightens is said ONCE (its own tests are below: "the last shot of a horror film")
   assert.ok(SEEN_AT_THE_END.startsWith("THE LAST SHOT IS SEEN, NOT SAID — a horror film ends on something the viewer SEES, not on a line about it."));
   assert.ok(SEEN_AT_THE_END.includes("seen the way WHAT FRIGHTENS (below) says such a thing is seen") && SEEN_AT_THE_END.includes("what HAPPENS in that shot is IT"));
-  assert.ok(SEEN_AT_THE_END.includes("give that shot a WHERE of its own") && SEEN_AT_THE_END.endsWith("so that its picture is drawn WITH the thing in it."));
+  assert.ok(!SEEN_AT_THE_END.includes("a WHERE of its own"), "it is no longer given a place of its own");
   assert.ok(WHAT_FRIGHTENS.includes("NEARLY human and slightly wrong") && !SEEN_AT_THE_END.includes("NEARLY human") && !SEEN_AT_THE_END.includes("Never horns"), "not a second copy of it");
 
   const engine = read("app", "lib", "film-engine.server.ts");
@@ -428,14 +436,15 @@ test("the wiring: dealt per location, drawn into its master, said to its clips, 
   // SAID to a clip only when the picture it grows out of was drawn in a staging: not a frame the maker approved,
   // not an angle they added by hand, not a film with no master
   assert.ok(eng.includes("if (!chained) chainStaging = approvedFrames[i] || !master?.url || tr === \"angle\" ? null : stagingOf(master);"));
-  assert.ok(eng.includes("let playRules = rules;\n    if (chainStaging) {\n      try {\n        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [] });\n      } catch (e) {"), "the film's last scene may say more (a horror film's says what is seen, and what it does); and no shot is lost to its staging");
+  assert.ok(eng.includes("    } else if (chainStaging) {\n      try {\n        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror });\n      } catch (e) {"), "the film's last scene may say more (a horror film's says what is seen, and what it does); and no shot is lost to its staging");
+  assert.ok(eng.includes("let playRules = rules;\n    if (silent) {"), "…after the one kind of shot that is told something else: nobody speaks in it");
   // a film is never lost to its staging either: with none dealt, every place is drawn as it always was
   assert.ok(eng.includes("    } catch (e) {\n      // (a film is never lost to its staging: with none dealt, every place is drawn as it always was)\n      stagingAt.clear();"));
   // …and the event only for a script whose shots are WRITTEN as things that happen (a script from before this,
   // or one typed by hand, describes a still two-shot — and words about how somebody looks, said to the video
   // engine, redraw their face), and only where the scene's words are one
   assert.ok(eng.includes("const eventAt = (i: number): string => (treatment.events ? sceneEvent(scenesArr.map((s) => s.visual), scenesArr.map((_, j) => locKeyAt(j)), scenesArr.map((s) => s.where || \"\"), i) : \"\");"));
-  assert.ok(eng.includes("const fitted = fitClipPrompt({ voice: voiceLine, voiceDesc, ...playRules });"), "…and still built to fit the engine's prompt");
+  assert.ok(eng.includes("const fitted = fitClipPrompt({ voice: silent ? NOBODY_SPEAKS : voiceLine, voiceDesc: silent ? \"\" : voiceDesc, ...playRules });"), "…and still built to fit the engine's prompt");
   // a shot in which something is done keeps its mid-line pause (cutting it out would make whoever moves jump)
   assert.ok(eng.includes("if (opts.moves) return t.path;"));
   assert.equal(eng.split("moves: clipMoves(prompt)").length - 1, 2, "the first render and a shot rolled again");
@@ -443,4 +452,406 @@ test("the wiring: dealt per location, drawn into its master, said to its clips, 
   assert.ok(eng.includes("...(locOrder.some((k) => stagingOf(masters[k])) ? { staging: locOrder.map((k) => ({ where: (whereAt[locFirst.get(k) ?? 0] || \"\").slice(0, 120), as: stagingOf(masters[k]) })) } : {}),"));
   assert.ok(eng.includes("staging: shotStaged[i] || undefined,"));
   assert.ok(eng.includes("shotSeeds.push(seedAbs); shotPrompts.push(prompt); shotDurs.push(clipSecs); shotChained.push(chained); shotStaged.push(chainStaging);"));
+});
+
+/* ---- A SHOT NOBODY SPEAKS IN ----
+ * The first horror script written with "THE LAST SHOT IS SEEN, NOT SAID" ended on a shot with no line, and the
+ * engine was told to say `""`. This engine speaks ANY quoted text it is handed and moves whatever mouth it can
+ * see to it (take.ts); told "NOBODY SPEAKS … no voice at all" with no quotation anywhere, three takes of three
+ * came back silent. */
+
+/** No quotation mark of any kind — and no apostrophe except inside a word ("Dagny's"). */
+const quoteFree = (s: string): boolean => !/["“”«»„‟‹›‘‚‛`´]/.test(s) && !/(?<![\p{L}\p{N}])['’]|['’](?![\p{L}\p{N}])/u.test(s);
+
+test("what counts as a shot with no line: nothing said once the name and the stage directions are off", () => {
+  for (const c of ["", "   ", null, undefined, "DANA:", "Dana: ", "…", "—", "(silence)", "[silence]", "DANA: (gasps)", "DAGNY: *a long breath*", "none", "No line.", "silence", "Nobody speaks"]) assert.equal(wordless(c), true, JSON.stringify(c));
+  for (const c of ["DANA: None.", "DANA: Run.", "Run.", "YLVA: (whispers) Don't move.", "达娜：快跑！", "MOM: 3:00 already?"]) assert.equal(wordless(c), false, c);
+});
+
+test("who the two are: a shot nobody speaks in names nobody, and changes nothing", () => {
+  // a film with no wordless shot is read exactly as it always was — whatever the cast lists say
+  assert.deepEqual(twoOnScreen(["Dagny", "Ylva", "Dagny"], ["Dagny, a", "Ylva, b", "Odd, c"]), ["Dagny", "Ylva"]);
+  assert.deepEqual(twoOnScreen(["Dagny", "Dagny"], ["Dagny, a", "Ylva, b"]), ["Dagny"], "one speaker and no wordless shot: no guess, as before");
+  // a horror film whose LAST shot is wordless has the same two it would have without that shot
+  assert.deepEqual(twoOnScreen(["Dagny", "Ylva", "Dagny", null]), ["Dagny", "Ylva"]);
+  assert.deepEqual(twoOnScreen(["Dagny", "Ylva", "Dagny", null], ["Dagny, a", "Ylva, b", "Odd, c"]), ["Dagny", "Ylva"]);
+  assert.deepEqual(twoOnScreen(["Ylva", "Dagny", null], ["Dagny, a", "Ylva, b"]), ["Ylva", "Dagny"], "in the order they first speak");
+  // the other one's only shot IS the silent one (a line, then the scare): the other name on a cast list of two
+  assert.deepEqual(twoOnScreen(["Dagny", null], ["Dagny, a woman in her forties", "Ylva, her older sister"]), ["Dagny", "Ylva"]);
+  assert.deepEqual(twoOnScreen(["DAGNY", null], ["Ylva — the elder", "Dagny (the younger)"]), ["DAGNY", "Ylva"]);
+  assert.deepEqual(twoOnScreen(["Dagny", null], ["Dagny, a", "Ylva, b", "Odd, c"], ["Dagny", "Ylva"]), ["Dagny", "Ylva"], "the script's list is not two: the cast the maker picked is tried next");
+  assert.deepEqual(twoOnScreen(["Dagny", null], ["Dagny, a", "Ylva, b", "Odd, c"]), ["Dagny"], "never guessed from a list of three");
+  assert.deepEqual(twoOnScreen(["Ruth", null], ["Dagny, a", "Ylva, b"]), ["Ruth"], "never guessed when the one who speaks is not on it");
+  assert.deepEqual(twoOnScreen([null, null], ["Dagny, a", "Ylva, b"]), ["Dagny", "Ylva"], "nobody speaks at all: the list of two");
+  assert.deepEqual(twoOnScreen(["", null], ["Dagny, a", "Ylva, b"]), [], "a line with no name on it names nobody either");
+  assert.deepEqual(twoOnScreen([], null, undefined), []);
+  // …and the engine reads its speakers this way
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  assert.ok(eng.includes("const leads = treatment.scenes.map((s) => (wordless(s.caption) ? null : splitExchange(s.caption || \"\").find((t) => t.speaker)?.speaker || \"\"));"));
+  assert.ok(eng.includes("const allSpeakers = twoOnScreen(leads, treatment.cast, castActors.map((c) => c.name));"));
+});
+
+test("the clip of a shot nobody speaks in: NOBODY SPEAKS first, no quotation mark anywhere, what happens in it", () => {
+  // a scene's words with every kind of quotation in them
+  const scene = "Behind Ylva, a grey hand with fingers far too long pushes out of the split plaster — 'slowly' — toward her shoulder; Dagny's torch \"finds\" it.";
+  const said = "Behind Ylva, a grey hand with fingers far too long pushes out of the split plaster — slowly — toward her shoulder; Dagny's torch finds it.";
+  const face = faceNote({ horror: true, visual: scene, speaker: "Dagny", other: "Ylva" });
+  for (const kind of KINDS) {
+    const base = clipRules(kind);
+    for (const staging of [...KEYS, null] as Array<ActedStaging | null>) {
+      for (const extra of [{}, { unseen: true, reveal: true, face }]) {
+        const r = silentRules(base, { staging, event: scene, eventMax: EVENT_MAX_LAST, sides: [{ name: "Dagny", side: "left" }, { name: "Ylva", side: "right" }], ...extra });
+        const fit = fitClipPrompt({ voice: NOBODY_SPEAKS, voiceDesc: "", ...r });
+        const p = fit.prompt;
+        const at = `${JSON.stringify(kind)} ${staging} ${Object.keys(extra).join(",")}`;
+        assert.ok(p.startsWith("NOBODY SPEAKS in this shot: no voice, no words, no whisper, no murmur — only the sounds of the place and of what happens in it."), at);
+        assert.ok(quoteFree(p), `${at}: ${p}`);
+        assert.ok(p.length <= KLING_PROMPT_MAX && fit.gaveUp === "", `${at}: ${p.length} ${fit.gaveUp}`);
+        assert.ok(p.includes(`This happens once, and it is the shot: ${said}`), at);
+        // nothing about talking anywhere in it: no spoken-dialogue audio, no "the ONLY audio is the spoken voice", no sung vocal
+        assert.ok(p.includes("No voice at all.") && !/spoken-dialogue|spoken voice|spoken words|vocal/.test(p), at);
+        assert.ok(clipSilent(p), at);
+        if ("reveal" in extra) assert.ok(p.includes(HEARD_UNSEEN) && p.includes(REVEAL_MOVES) && p.includes("Neither Dagny nor Ylva smiles at any moment: both faces show fear."), at);
+      }
+    }
+  }
+  // the rules a talking shot is told are not this
+  const live = clipRules({ cartoon: false, sing: false });
+  assert.equal(clipSilent(fitClipPrompt({ voice: "Only Dagny speaks.", voiceDesc: "", ...stagedRules(live, { staging: "depth", event: scene }) }).prompt), false);
+  assert.equal(clipSilent(null), false);
+  // with nothing written to happen, it is a held, quiet beat — still told that nobody speaks
+  const held = silentRules(live);
+  assert.ok(held.lookShort.endsWith("Everybody stays where they are in the picture, faces in view. Only small natural movement: breathing, a look, a shift of weight."));
+  assert.ok(NOBODY_SPEAKS.includes("Everyone in the picture keeps their mouth closed from the first frame to the last") && quoteFree(NOBODY_SPEAKS));
+});
+
+test("a shot nobody speaks in has a fixed length, is kept whole, has no voice and no caption card — and is re-rolled the same way", () => {
+  assert.equal(SILENT_SHOT_SECONDS, 5);
+  assert.equal(clipSecondsFor(""), SILENT_SHOT_SECONDS, "what the storyboard's own meter makes of an empty line");
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  assert.ok(eng.includes("const silent = wordless(scene.caption);"));
+  assert.ok(eng.includes("const clipSecs = silent ? SILENT_SHOT_SECONDS : heard ? heardSeconds(line) : clipSecondsFor(line);"), "its length is a number of seconds, not a count of no words");
+  assert.ok(eng.includes("  if (opts.silent) return rawPath;"), "kept whole: no trim looks for a line that is not there");
+  assert.ok(eng.includes("if (wordless(treatment.scenes[i]?.caption)) return null;"), "no cast voice is put on it");
+  assert.ok(eng.includes("const soloVoice = turnB || silent ? null :"), "no creature chain laid over it");
+  assert.ok(eng.includes("lines: treatment.scenes.slice(0, clips.length).map((sc) => (wordless(sc.caption) ? \"\" : splitExchange(sc.caption || \"\").map((t) => t.line).join(\" \"))),"), "no caption card — an emptied line leaves no name on screen");
+  assert.ok(eng.includes("caption: wordless(treatment.scenes[i]?.caption) ? \"\" : (treatment.scenes[i]?.caption || \"\").slice(0, 200),") && eng.includes("...(wordless(treatment.scenes[i]?.caption) ? { wordless: true } : {}),"), "recorded as wordless");
+  // THE RE-ROLL: the shot editor renders one shot again from its stored prompt and length (film-edit.server.ts →
+  // regenerateFilmShot → renderDialogueClipTo), and what kind of shot it was is read off that prompt
+  const fn = eng.slice(eng.indexOf("export async function renderDialogueClipTo"), eng.indexOf("/** What a rendered take SAYS"));
+  assert.ok(fn.includes("return trimClip(rawPath, { chained, last: !!opts.last, moves: clipMoves(prompt), silent: clipSilent(prompt), keepHead: clipHearsFirst(prompt) });"));
+  assert.ok(eng.includes("shotDurs.push(clipSecs);"), "the length it was made at is what a re-roll asks for");
+  const edit = read("app", "lib", "film-edit.server.ts");
+  assert.ok(edit.includes("const dur = typeof shot.dur === \"number\" && shot.dur > 0 ? shot.dur : 8;"));
+  assert.ok(edit.includes("newClip = await renderDialogueClipTo(engine, shot.seed, shot.prompt, dur, film.aspect, `regen-${i}`, !!shot.chained, undefined, { last: i === film.shots.length - 1 });"));
+  // a re-cut captions each shot from what it records: a wordless shot records no caption
+  assert.ok(edit.includes("let cap = s.caption || \"\";"));
+});
+
+test("the writer is told which shot may have no line: only a horror film's last", () => {
+  assert.equal(LINE_IN_EVERY_SHOT, "EVERY shot has a line: a CAPTION is never left empty.");
+  assert.equal(LINE_IN_EVERY_SHOT_BUT_THE_LAST, "EVERY shot has a line, with ONE exception: the LAST shot of this film has none (THE LAST SHOT, below). No other CAPTION is ever left empty.");
+  assert.ok(SEEN_AT_THE_END.includes("So the LAST shot has NO LINE: its CAPTION is \"\" (empty — no NAME, no words) and it has no TONE. Nobody speaks in it, not a word and not a whisper; the last words of the film are the line of the shot BEFORE it."));
+  const engine = read("app", "lib", "film-engine.server.ts");
+  // said at the end of what a CAPTION is — every acted film; the exception for a horror film only
+  assert.ok(engine.includes("one of the two reports it (\\\"He says he can't thank us enough!\\\"). ${tmpl.key === \"horror\" ? LINE_IN_EVERY_SHOT_BUT_THE_LAST : LINE_IN_EVERY_SHOT}\\n` +"));
+  // a line the writer marks "(silence)" or "—" is not kept as a line to be spoken or drawn
+  assert.ok(engine.includes("caption: s.caption && !(acted && wordless(s.caption)) ? dropOrgEndorsementPossessive(s.caption) : undefined,"));
+});
+
+/* ---- A SOUND THEY HEAR ----
+ * The owner, of a four-shot Horror Film made on the live site: "Better but flaky, 'tell me you heard that' then
+ * the sound plays after - floating hand knocking fast actor says 'it's knocking really slow'". */
+
+const SISTERS = ["Dagny", "Ylva"];
+
+test("a scene that is a sound is read off its own words: heard — never one of the two doing it", () => {
+  const heard: Array<[string, boolean]> = [
+    ["Three slow, heavy knocks come from inside the bedroom wall, a full second apart, as Dagny freezes and Ylva turns toward it.", true],
+    ["A slow knock sounds inside the wall behind the dresser; Dagny drops the letters and Ylva steps back from the box.", true],
+    ["Footsteps cross the ceiling above them as Dagny grips the banister and Ylva looks up.", true],
+    ["A voice calls Dagny's name from the basement as Dagny and Ylva freeze at the top of the stairs.", true],
+    ["Somewhere upstairs a door slams, and Dagny and Ylva both look up.", true],
+    ["The knocking starts again, faster now, while Ylva presses her ear to the plaster and Dagny backs away.", true],
+    ["Dagny hears a scratching behind the wallpaper and Ylva turns, the torch shaking.", true],
+    ["Something taps three times on the window as Dagny and Ylva sit frozen at the table.", true],
+    ["Dagny freezes and three knocks answer from inside the wall while Ylva drops the quilt.", true],
+    ["A woman's voice hums a lullaby from the nursery as Dagny and Ylva stop on the landing.", true],
+    // a sound, but not from out of sight: something in the picture makes it…
+    ["The phone on the hall table rings as Dagny and Ylva stare at each other.", false],
+    ["A grey hand knocks slowly on the inside of the wardrobe door as Dagny backs away and Ylva lifts the lamp.", false],
+    ["A cry escapes Dagny as Ylva drops the lamp.", false],
+    ["Dagny lifts the lid of the old trunk and it creaks.", false],
+    // …or one of the two is knocking too (told "no hand knocks", the clip would be told two things at once)
+    ["Ylva knocks twice on the wall and something knocks back, slower.", false],
+  ];
+  for (const [scene, unseen] of heard) {
+    const h = heardIn(scene, SISTERS);
+    assert.ok(h, scene);
+    assert.equal(h!.unseen, unseen, scene);
+    assert.ok(h!.sound.length > 5 && scene.includes(h!.sound), scene);
+  }
+  assert.equal(heardIn(heard[0][0], SISTERS)!.sound, "Three slow, heavy knocks come from inside the bedroom wall, a full second apart");
+  // something one of them DOES, or no sound at all
+  for (const scene of [
+    "Ylva pulls the basement door open a hand's width while Dagny grips the torch.",
+    "Dagny knocks on the wall twice while Ylva holds the lamp.",
+    "Ylva slams the drawer shut as Dagny flinches.",
+    "Ylva's knock echoes through the empty hall while Dagny holds the lamp.",
+    "Ylva lowers her voice and pulls the sheet off the mirror while Dagny watches.",
+    "Her voice breaks as Dagny hands Ylva the photograph.",
+    "Dagny and Ylva laugh as the kite lifts into the wind.",
+    "Ylva rings the bell on the counter as Dagny waits.",
+    "Dagny lifts a bundle of letters from the drawer while Ylva folds a quilt into the box.",
+    "Dagny and Ylva come down the wooden stairs side by side, the torch beam shaking ahead of them.",
+    "In a hushed voice, Ylva tells Dagny to stop moving.",
+    "Ylva lifts the music box and opens it, humming.",
+    "", null,
+  ]) assert.equal(heardIn(scene, SISTERS), null, String(scene));
+  // a name at the start of a sentence is known by the film's own names — and any capital later on is somebody
+  assert.equal(heardIn("Then Marta knocks on the door.", []), null);
+  assert.ok(heardIn("Slow knocks come from the cellar door.", SISTERS));
+  // the example the writer is shown is read as one
+  const example = (HEARD_BEFORE_SAID.match(/\("(Three slow[^"]+)"\)/) || [])[1] || "";
+  assert.ok(example && heardIn(example, SISTERS)?.unseen, example);
+});
+
+test("a shot that opens on a sound: the sound first, heard alone — then the line, in answer to it", () => {
+  const event = clipEvent("Three slow, heavy knocks come from inside the bedroom wall, a full second apart, as Dagny freezes and Ylva turns toward it.");
+  const deliver = "Deliver it in a tight, frightened whisper — put that exact emotion and energy into the voice, expressively, NEVER flat or monotone.";
+  const face = "Neither Dagny nor Ylva smiles at any moment: both faces show fear.";
+  const line = "Dagny, stop moving for a second. Tell me you heard that too.";
+  const one = heardTalk({ event, unseen: true, speaker: "Dagny", side: "left", line, other: "Ylva", otherSide: "right", deliver, face });
+  assert.ok(one.startsWith(`${HEARD_OPEN} ${event} ${HEARD_UNSEEN} ${HEARD_THEN} Dagny, the person on the LEFT side of the frame, says exactly this one line, ONCE, word for word, in accurate lip-sync, and nothing else: "${line}".`), one);
+  assert.ok(HEARD_OPEN.startsWith("THE SHOT OPENS ON A SOUND, heard ALONE before anybody says a word") && HEARD_THEN === "ONLY AFTER IT does anybody speak, in answer to it.");
+  assert.ok(one.indexOf("knocks") < one.indexOf("Tell me you heard that"), "the sound is said before what is said about it");
+  // the line once, in quotes — the only quotation in it
+  assert.equal((one.match(/"/g) || []).length, 2);
+  // every rule of a talking shot, in fewer words — and "after that sound" where a talking shot says "right away"
+  for (const rule of ["no word repeated, echoed or added", "the moment the line is finished, Dagny stops and holds a quiet expression", "ONLY Dagny's mouth moves: Ylva (on the right) is COMPLETELY SILENT the whole time, mouth closed, only listening and reacting", "Apart from that sound, Dagny's is the ONLY voice in the clip — no second voice, murmur or gibberish anywhere.", "Keep Dagny's voice the SAME as in every other shot.", `${deliver} ${face}`]) assert.ok(one.includes(rule), rule);
+  assert.ok(!/right away/i.test(one));
+  // (b) said only when it comes from out of sight
+  assert.ok(HEARD_UNSEEN.includes("nothing in the picture makes it — no hand knocks or taps on anything, no mouth moves to it, nobody else appears: the two only HEAR it"));
+  assert.ok(!heardTalk({ event, speaker: "Dagny", line, deliver }).includes(HEARD_UNSEEN));
+  // …and a PICTURE drawn at such a moment (a place's master, a re-anchor) is told the sound is not drawn: told to
+  // put everything the moment names in the picture, it would draw whoever makes it — a hand knocking
+  const parts = { setting: "a bedroom in an old house at dusk", personA: "Dagny — EXACTLY the person in reference image 1", personB: "Ylva, a tall woman in her fifties", consistency: "Keep the two people clearly distinct.", comp: "wide cinematic landscape composition" };
+  const knocks = stagedTwoShot({ staging: "depth", ...parts, act: "Three slow, heavy knocks come from inside the bedroom wall, a full second apart, as Dagny freezes and Ylva turns toward it." });
+  assert.ok(knocks.includes(`is IN the picture, seen the way the moment says it is seen, and well above the picture's bottom edge. ${HEARD_NOT_DRAWN} Draw the instant it BEGINS`));
+  assert.ok(HEARD_NOT_DRAWN.startsWith("What is HEARD in this moment is not drawn: nothing in the picture makes that sound"));
+  for (const act of ["Dagny knocks on the wall twice while Ylva holds the lamp.", "Ylva pulls the drawer open while Dagny grips the torch.", "The phone on the hall table rings as Dagny and Ylva stare at each other."]) {
+    assert.ok(!stagedTwoShot({ staging: "depth", ...parts, act }).includes(HEARD_NOT_DRAWN), act);
+  }
+  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("At this moment: ${now}${unheard} ${NO_TEXT}`"), "a re-anchor drawn at that moment is told so too");
+  // a reply in the same shot; a line with no name on it
+  const two = heardTalk({ event, speaker: "Dagny", side: "left", line: "Did you hear that?", deliver, reply: { speaker: "Ylva", side: "right", line: "It came from the wall." } });
+  assert.ok(two.includes("FIRST Dagny (on the left side of the frame) says: \"Did you hear that?\". THEN Ylva (on the right side) replies: \"It came from the wall.\"") && two.includes("Apart from that sound there are exactly TWO voices, Dagny's and then Ylva's"));
+  const anon = heardTalk({ event, line: "Did you hear that?", deliver });
+  assert.ok(anon.startsWith(`${HEARD_OPEN} ${event} ${HEARD_THEN} Then ONE voice says this line, ONCE, word for word`));
+  // known again from the prompt alone (a re-rolled shot is trimmed the way its first take was), and it keeps its pauses
+  for (const p of [one, two, anon]) { assert.ok(clipHearsFirst(p)); assert.ok(clipMoves(p)); }
+  assert.equal(clipHearsFirst("Only one person speaks and says the line exactly once."), false);
+  assert.equal(clipHearsFirst(null), false);
+});
+
+test("…its rules: the scene's words lead, so the note says what follows them — and the sound rule lets the sound be made, exactly as described", () => {
+  const scene = "Three slow, heavy knocks come from inside the bedroom wall, a full second apart, as Dagny freezes and Ylva turns toward it.";
+  for (const kind of [{ cartoon: false, sing: false }, { cartoon: true, sing: false }]) {
+    const base = clipRules(kind);
+    assert.ok(base.steady.includes("The ONLY audio is the spoken voice and faint room tone — no music or sound effects."), "what every spoken clip is told: no leave for a knock");
+    for (const k of KEYS) {
+      const r = stagedRules(base, { staging: k, event: scene, heard: true });
+      assert.ok(r.steady.endsWith(HEARD_AUDIO) && !r.steady.includes("no music or sound effects."), `${JSON.stringify(kind)} ${k}`);
+      for (const note of [r.look, r.lookTight, r.lookShort]) {
+        assert.ok(note.includes(stagingClip(k)) && note.includes("After the sound, only natural talking, small gestures and shifts of weight."), k);
+        assert.ok(!note.includes("knocks") && !note.includes("As the line is spoken"), "the scene's words are said once, at the top");
+      }
+      assert.deepEqual(stagedRules(base, { staging: k, event: scene, heard: false }), stagedRules(base, { staging: k, event: scene }), "not a sound: as before");
+      assert.deepEqual(stagedRules(base, { staging: k, heard: true }), stagedRules(base, { staging: k }), "no scene words: nothing to open on");
+    }
+  }
+  // (c) WHAT IS SAID ABOUT IT IS WHAT IS HEARD
+  assert.ok(HEARD_AUDIO.startsWith("The ONLY audio is that sound — exactly as described: no faster, no louder and no more of it — and then the spoken voice"));
+});
+
+test("a sound shot's whole prompt fits what the engine reads — the voice timbre, everybody's look and the sound all kept", () => {
+  const TIMBRE = " Dagny's voice is warm, upbeat and easy to trust (a friendly female voice); keep this exact voice in every shot.";
+  const scene = "Three slow, heavy knocks come from inside the bedroom wall behind the dresser, a full second apart, as Dagny freezes with the letters and Ylva turns toward it.";
+  const deliver = "Deliver it quietly, barely holding it together, a tremor in the voice — put that exact emotion and energy into the voice, expressively, NEVER flat or monotone.";
+  const line = "Dagny, stop moving for a second, please. Tell me you heard that too, because I swear it moved.";
+  for (const kind of [{ cartoon: false, sing: false }, { cartoon: true, sing: false }]) {
+    for (const k of KEYS) {
+      for (const eventMax of [EVENT_MAX, EVENT_MAX_LAST]) {
+        const event = clipEvent(scene, eventMax);
+        const voice = heardTalk({ event, unseen: true, speaker: "Dagny", side: "left", line, other: "Ylva", otherSide: "right", deliver, face: faceNote({ horror: true, speaker: "Dagny", other: "Ylva" }) });
+        const fit = fitClipPrompt({ voice, voiceDesc: TIMBRE, ...stagedRules(clipRules(kind), { staging: k, event: scene, eventMax, heard: true }) });
+        const at = `${JSON.stringify(kind)} ${k} ${eventMax}: ${fit.prompt.length} ${fit.gaveUp}`;
+        assert.ok(fit.prompt.length <= KLING_PROMPT_MAX, at);
+        assert.ok(fit.gaveUp === "" || fit.gaveUp === "the look-note's extra wording", at);
+        assert.ok(fit.prompt.includes(TIMBRE.trim()) && fit.prompt.includes(event) && fit.prompt.includes(`"${line}"`) && fit.prompt.includes(HEARD_AUDIO), at);
+        assert.ok(fit.prompt.includes("Keep EVERYONE and the setting EXACTLY as in the starting image"), at);
+      }
+    }
+  }
+});
+
+test("a sound shot is longer by the sound, keeps its head, and is only made where the scene is told to the clip", () => {
+  for (const line of ["Run.", "Dagny, stop moving for a second. Tell me you heard that too.", "It's slow, like someone's knuckles counting something out. Real patient, like it has all night."]) {
+    const s = heardSeconds(line);
+    assert.equal(s, Math.min(CLIP_MAX_SECONDS, Math.ceil(clipSecondsFor(line) + HEARD_FIRST_SECONDS)), line);
+    assert.ok(s > clipSecondsFor(line) || s === CLIP_MAX_SECONDS, line);
+  }
+  assert.equal(heardSeconds("Dagny, stop moving for a second. Tell me you heard that too."), 9);
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  assert.ok(eng.includes("const heard = !silent && chainStaging ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;"), "a staged picture in a film whose shots happen: where the scene is told at all");
+  assert.ok(eng.includes("const voiceLine = heard\n      ? heardTalk({"));
+  // the trims: nothing before the line is cut or played fast — the first take and a re-rolled one alike
+  assert.equal(eng.split("keepHead: clipHearsFirst(prompt)").length - 1, 2);
+  assert.ok(eng.includes("const plan = opts.keepHead ? { ...planned, cutHead: 0, retime: null } : planned;"));
+});
+
+test("the writer: a sound comes before any word about it, what is heard is not seen, and what is said about it is what is heard", () => {
+  assert.ok(HEARD_BEFORE_SAID.startsWith("A SOUND COMES BEFORE ANY WORD ABOUT IT — when what happens in a shot is a SOUND"));
+  for (const rule of [
+    "that shot's VISUAL BEGINS with it: what is heard, exactly how it sounds — how many, how fast or slow, how loud — and where it comes from",
+    "The shot opens on that sound, heard ALONE, and its line is the REACTION to it",
+    "is only ever in the shot where that sound is first heard, or a later one; never before it.",
+    "WHAT IS SAID ABOUT IT IS WHAT IS HEARD: a line that describes the sound says what its VISUAL says — never \"slow\" about a fast knock, never \"once\" about three.",
+    "WHAT IS HEARD IS NOT SEEN: a sound from out of sight — inside a wall, upstairs, behind a closed door, under the floor — is made by NOTHING on screen: neither of the two knocks, taps or scratches while it is heard, and no hand or figure is shown making it",
+  ]) assert.ok(HEARD_BEFORE_SAID.includes(rule), rule);
+  for (const reaction of ["did you hear that?", "there it is again"]) assert.ok(HEARD_BEFORE_SAID.includes(reaction));
+  // said to EVERY acted film (a knock at the door is not only a horror film's), after the two always being there
+  const engine = read("app", "lib", "film-engine.server.ts");
+  const two = engine.indexOf("`${TWO_ALWAYS}\\n` +");
+  const heard = engine.indexOf("`${HEARD_BEFORE_SAID}\\n` +");
+  const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_AT_THE_END}\\n` : \"\")");
+  assert.ok(two > 0 && heard > two && seen > heard);
+});
+
+/* ---- NOBODY SMILES AT WHAT FRIGHTENS THEM ---- */
+
+test("nobody smiles at what frightens them — said plainly, unless the script makes the smile the horror", () => {
+  assert.equal(faceNote({ horror: true, tone: "quietly", speaker: "Ylva", other: "Dagny" }), "Neither Ylva nor Dagny smiles at any moment: both faces show fear.");
+  // the owner's film: the most frightening line, said smiling
+  assert.equal(faceNote({ horror: true, tone: "with dawning horror", visual: "Ylva presses her palm to the wall while Dagny backs away.", speaker: "Ylva", other: "Dagny" }), "Neither Ylva nor Dagny smiles at any moment: both faces show fear.");
+  // the smile IS the horror: the script says so — in the scene's words, or in how the line is said
+  assert.equal(faceNote({ horror: true, tone: "calmly", visual: "Ylva smiles at the wall, far too calm, as Dagny backs away.", speaker: "Ylva", other: "Dagny" }), "Dagny does not smile at any moment: the face shows fear.");
+  assert.equal(faceNote({ horror: true, tone: "with a slow, wrong smile", speaker: "Ylva", other: "Dagny" }), "Dagny does not smile at any moment: the face shows fear.");
+  assert.equal(faceNote({ horror: true, tone: "with a slow, wrong smile", visual: "Dagny grins at the wall.", speaker: "Ylva", other: "Dagny" }), "");
+  // the calm before it: a horror film's warm line is left to its words (the owner's film opened on a fond one)
+  assert.equal(faceNote({ horror: true, tone: "softly, fond and a little nostalgic", speaker: "Dagny", other: "Ylva" }), "");
+  assert.equal(faceNote({ horror: true, tone: "trying to sound reassuring, voice shaking", speaker: "Dagny", other: "Ylva" }), "Neither Dagny nor Ylva smiles at any moment: both faces show fear.", "…unless the warmth is put on over fear");
+  assert.equal(faceNote({ horror: true, tone: "", speaker: "Dagny", other: "Ylva" }), "Neither Dagny nor Ylva smiles at any moment: both faces show fear.", "no tone: frightened, in a horror film");
+  // any other film: a frightened line only, and only its speaker
+  assert.equal(faceNote({ tone: "scared, voice shaking", speaker: "Pip", other: "Rosa" }), "Pip does not smile at any moment: the face shows fear.");
+  assert.equal(faceNote({ tone: "warmly, with a laugh", speaker: "Pip", other: "Rosa" }), "");
+  assert.equal(faceNote({ speaker: "Pip", other: "Rosa" }), "");
+  assert.equal(faceNote({ horror: true }), "Nobody smiles at any moment: every face shows fear.");
+  for (const f of [faceNote({ horror: true, speaker: "Dagny's", other: "Ylva" }), faceNote({ horror: true })]) assert.ok(quoteFree(f), f);
+  // the clip is told it: a talking shot in its delivery, a shot nobody speaks in in its rules — behind the one switch
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  assert.ok(eng.includes("const face = staged && !silent ? faceNote({ horror, tone, visual: scene.visual, speaker, other: turnB ? turnB.speaker : otherName }) : \"\";"));
+  assert.ok(eng.includes("NEVER flat or monotone.`}${face ? ` ${face}` : \"\"}`;"));
+  assert.ok(eng.includes("const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : \"\";"));
+  assert.ok(eng.includes("const staged = process.env.ACTED_STAGING !== \"off\";") && eng.includes("const horror = tmpl.key === \"horror\";"));
+});
+
+/* ---- THE LAST SHOT OF A HORROR FILM: SEEN, IN THE SAME ROOM ----
+ * Its last shot was given "a WHERE of its own": a different bedroom, reached through a half-second double
+ * exposure, a smooth, evenly lit, mannequin-like arm in its wall. The owner: "the hands coming out of wall are
+ * more odd than actual realism". */
+
+test("the last shot of a horror film: the SAME place, drawn into that place's own picture by the creature recipe, moving slowly", () => {
+  // the writer: the same WHERE, letter for letter — never another room; slow; afraid
+  for (const rule of [
+    "It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter",
+    "never in another room; the film draws it into that place's own picture",
+    "mostly in shadow — and what HAPPENS in that shot is IT, SLOWLY",
+    "Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so.",
+  ]) assert.ok(SEEN_AT_THE_END.includes(rule), rule);
+  // the picture: the place's own picture, edited — the thing added by the recipe the horror stories use, REUSED
+  const moment = "Behind Ylva, a grey hand with fingers far too long pushes out through the split plaster toward her shoulder; Dagny sees it, Ylva has not turned round.";
+  const mood = "Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs.";
+  const p = revealPicture({ moment, mood });
+  assert.ok(p.startsWith("Edit this picture, a frame from a live-action horror film. Keep it EXACTLY as it is — the same place, the same camera and framing, the same light and colour, and the same two people on the same sides of the frame, with the same faces, hair and clothes."));
+  assert.ok(p.includes(`Change ONLY what this moment changes: ${moment} The one new thing in the picture is what this moment says is there, and it is real.`));
+  assert.ok(p.includes(CREATURE_REAL), "CAUGHT on a real camera, a practical effect, never CGI — story-picture.ts's own words");
+  assert.ok(p.includes(TAKE_HIDDEN), "mostly HIDDEN — take.ts's own words");
+  assert.ok(p.includes("It is nearly human and slightly WRONG — in exactly the one or two ways the moment says, and in no other."), "WRONG — as the writer was told to write it (WHAT FRIGHTENS)");
+  assert.ok(p.includes("nothing about it is clean, smooth or evenly lit") && p.includes(` ${mood} `));
+  assert.ok(!p.includes(TAKE_WRONG), "not found footage's face — sunk eyes — on a thing that may be a hand");
+  assert.ok(p.length < 2000, "within what the picture call keeps");
+  assert.equal(revealPicture({ moment: "" }), "");
+  assert.equal(revealPicture({ moment: null }), "");
+  // reused, not a third copy: the recipe's words are imported, never written out again here
+  const src = read("app", "lib", "acted-staging.ts");
+  assert.ok(src.includes("import { CREATURE_REAL } from \"./story-picture.ts\";") && src.includes("import { TAKE_HIDDEN } from \"./take.ts\";"));
+  for (const words of ["a practical-effects creature as a 1970s horror film would build it", "we see less than we want to"]) assert.ok(!src.includes(words), words);
+  // the clip: it moves SLOWLY — whether or not a line was written for it
+  assert.ok(REVEAL_MOVES.startsWith("What is seen moves SLOWLY — slow, smooth and unhurried, never a jump, a lunge or a sudden move"));
+  const live = clipRules({ cartoon: false, sing: false });
+  assert.ok(silentRules(live, { staging: "depth", event: moment, reveal: true }).lookShort.includes(REVEAL_MOVES));
+  assert.ok(!silentRules(live, { staging: "depth", event: moment }).look.includes(REVEAL_MOVES));
+  assert.ok(stagedRules(live, { staging: "depth", event: moment, reveal: true }).lookShort.endsWith(`As the line is spoken, this happens once: ${moment} ${REVEAL_MOVES}`));
+  assert.ok(!stagedRules(live, { staging: "depth", reveal: true }).look.includes(REVEAL_MOVES), "nothing written to happen: nothing to move");
+  // the film: the last shot of a staged horror film whose shots happen, in the same place, on a staged master —
+  // never over a frame the maker approved; a picture that will not come leaves it to be seeded as any other
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  assert.ok(eng.includes("const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);"));
+  const at = eng.indexOf("if (!seedAbs && lastHorror && tr !== \"location\" && master?.url && stagingOf(master)) {");
+  assert.ok(at > eng.indexOf("let seedAbs = abs(approvedFrames[i]);") && eng.indexOf("if (!seedAbs && master?.url) {", at) > at);
+  assert.ok(eng.includes("const ask = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood });"));
+  assert.ok(eng.includes("seedAbs = abs(await removeLetterbox(await renderStyledSeed(ask, abs(master.url)!, aspect, 2000)));"), "the place's master is the ONE reference picture");
+  assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, face: scared });"));
+  // (the picture call keeps 2,000 characters of a prompt — image-generation.server.ts, not changed here)
+  const img = read("app", "lib", "image-generation.server.ts");
+  assert.ok(img.includes("export async function renderStyledSeed(prompt: string, refImageUrl: string, aspect = \"9:16\", maxPrompt = 500): Promise<string | null> {") && img.includes("const full = `${(prompt || \"\").trim().slice(0, Math.max(200, Math.min(2000, maxPrompt)))}. No watermark, no signature.`;"));
+});
+
+/* ---- A CUT TO ANOTHER PLACE IS A STRAIGHT CUT ---- */
+
+test("a cut to another place, and to the reveal, is a straight cut; a shot that continues the last keeps its tiny blend", () => {
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  const hard = Number((eng.match(/export const HARD_CUT_SECONDS = ([\d.]+);/) || [])[1]);
+  assert.ok(hard > 0 && hard <= 1 / 29, "one frame at 30 fps");
+  assert.ok(eng.includes("const fadeFor = (i: number) => (hardSeams?.has(i) ? HARD_CUT_SECONDS : softSeams?.has(i) ? 0.32 : 0.18);"), "a straight cut wins over both dissolves");
+  assert.ok(eng.includes("if (i > 0 && !chained && (tr === \"location\" || revealed)) hardSeams.add(i);"));
+  assert.ok(eng.includes("await assembleTestMovie(clips, outPath, jobId, softSeams, aspect, hardSeams);"));
+  assert.ok(eng.includes("export async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>, aspect: \"9:16\" | \"16:9\" | \"1:1\" = \"9:16\", hardSeams?: Set<number>): Promise<void> {"), "optional: a caller that passes none cuts as before");
+  assert.ok(eng.includes("...(hardSeams.has(i) ? { cut: \"hard\" } : {}),"), "kept on the piece, so a re-cut can keep it");
+});
+
+const ffmpegOk = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" }).status === 0;
+
+test("ffmpeg makes that one-frame xfade a straight cut: not one frame of the two rooms mixed", { skip: !ffmpegOk }, () => {
+  const hard = Number((read("app", "lib", "film-dialogue.server.ts").match(/export const HARD_CUT_SECONDS = ([\d.]+);/) || [])[1]);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hardcut-"));
+  try {
+    const clip = (name: string, color: string, hz: number) => {
+      const out = path.join(dir, name);
+      const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=${color}:s=64x64:r=24:d=1`, "-f", "lavfi", "-i", `sine=frequency=${hz}:sample_rate=44100:duration=1`, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", out], { encoding: "utf8" });
+      assert.equal(r.status, 0, r.stderr);
+      return out;
+    };
+    const a = clip("a.mp4", "red", 900), b = clip("b.mp4", "blue", 500);
+    // the assembler's own steps: each clip to 30 fps from zero, then xfade + acrossfade at the seam — and every
+    // frame read back as one mean colour: pure red, pure blue, or a blend of the two
+    const mixed = (fade: number): number => {
+      const graph = `[0:v]fps=30,setpts=PTS-STARTPTS[v0];[1:v]fps=30,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=fade:duration=${fade}:offset=${(1 - fade).toFixed(3)}[vx];[vx]scale=1:1[v];[0:a]aresample=44100,asetpts=PTS-STARTPTS[a0];[1:a]aresample=44100,asetpts=PTS-STARTPTS[a1];[a0][a1]acrossfade=d=${fade}[a]`;
+      const r = spawnSync("ffmpeg", ["-v", "error", "-i", a, "-i", b, "-filter_complex", graph, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1", "-map", "[a]", "-f", "null", "-"], { encoding: "buffer", maxBuffer: 1 << 26 });
+      assert.equal(r.status, 0, String(r.stderr));
+      const frames = r.stdout;
+      assert.ok(frames.length >= 3 * 50, `${frames.length / 3} frames`);
+      let blends = 0;
+      for (let k = 0; k + 2 < frames.length; k += 3) {
+        const [red, , blue] = [frames[k], frames[k + 1], frames[k + 2]];
+        if (red > 40 && blue > 40) blends++;
+      }
+      return blends;
+    };
+    assert.equal(mixed(hard), 0, "a straight cut");
+    assert.ok(mixed(0.32) >= 4, "…where the old dissolve to another place mixed the two");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

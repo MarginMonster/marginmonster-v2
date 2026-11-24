@@ -52,7 +52,7 @@ import { tellerVisual } from "./character-series";
 import { planShots, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
 // (2026-11-24) an acted film: every shot is something that HAPPENS, and the camera is dealt, not written
-import { CAMERA_IS_DEALT, ONE_TAKE, SEEN_AT_THE_END, TWO_ALWAYS, eventIdeas, happensBrief } from "./acted-staging";
+import { CAMERA_IS_DEALT, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, TWO_ALWAYS, eventIdeas, happensBrief, wordless } from "./acted-staging";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -689,12 +689,15 @@ export async function previewFilmTreatment(opts: {
     // the film itself (film-dialogue → dealStagings) — the writer does not choose it.
     ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FOUR fields:\n` +
       `• VISUAL — ${happensBrief(actIdeas)}\n` +
-      `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot. Each line fills MOST of the ~10-second shot WITHOUT overrunning it: a two-sentence beat of about 15-18 words (~7-9 seconds of speech). This is a HARD window — NEVER a short one-liner (a line that doesn't fill the shot leaves dead air, which makes the AI voice stall or repeat words), and NEVER more than 18 words, because a longer line overruns the 10-second clip and gets cut off at the end. Count the words and stay inside 15-18. The speaker ALTERNATES shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names, and make each line a genuine REPLY to the one before it (never a non-sequitur). ONLY the two people in the shot ever speak: the NAME before the colon is always one of their two names, the same single word every time. Anyone else the story needs — a shopkeeper, a parent, a stranger — is talked ABOUT or stands silent in the background, and is never heard; when what they say or do matters, one of the two reports it (\"He says he can't thank us enough!\").\n` +
+      `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot. Each line fills MOST of the ~10-second shot WITHOUT overrunning it: a two-sentence beat of about 15-18 words (~7-9 seconds of speech). This is a HARD window — NEVER a short one-liner (a line that doesn't fill the shot leaves dead air, which makes the AI voice stall or repeat words), and NEVER more than 18 words, because a longer line overruns the 10-second clip and gets cut off at the end. Count the words and stay inside 15-18. The speaker ALTERNATES shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names, and make each line a genuine REPLY to the one before it (never a non-sequitur). ONLY the two people in the shot ever speak: the NAME before the colon is always one of their two names, the same single word every time. Anyone else the story needs — a shopkeeper, a parent, a stranger — is talked ABOUT or stands silent in the background, and is never heard; when what they say or do matters, one of the two reports it (\"He says he can't thank us enough!\"). ${tmpl.key === "horror" ? LINE_IN_EVERY_SHOT_BUT_THE_LAST : LINE_IN_EVERY_SHOT}\n` +
       `• WHERE — the LOCATION this beat happens in, as a short vivid label (e.g. "a dim old diner at night, rain on the windows"). EVERY shot has one, and while the place stays the same it is the SAME words, letter for letter — other words are read as another place.\n` +
       `• TONE — HOW this exact line is delivered: a short emotional direction for the voice (e.g. "coldly, with quiet menace", "voice rising in anger", "quietly, barely holding it together"). It must MATCH the words so the read is never flat or monotone.\n` +
       `${CAMERA_IS_DEALT}\n` +
       `${ONE_TAKE}\n` +
       `${TWO_ALWAYS}\n` +
+      // (a sound comes FIRST, in the shot whose line answers it; heard from out of sight, it is made by nothing
+      //  on screen; and what is said about it is what is heard — the owner's knocking film, 2026-11-24)
+      `${HEARD_BEFORE_SAID}\n` +
       `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places.\n` +
       // (a horror film ends on something SEEN — said last, so it is read as the exception to the line above)
       (tmpl.key === "horror" ? `${SEEN_AT_THE_END}\n` : "")
@@ -831,7 +834,10 @@ export async function previewFilmTreatment(opts: {
   const saidPlaces = list.map((s) => (typeof (s as { place?: unknown }).place === "string" ? String((s as { place?: unknown }).place) : ""));
   list = list.map((s, i) => ({
     visual: s.visual,
-    caption: s.caption ? dropOrgEndorsementPossessive(s.caption) : undefined,
+    // (AN ACTED SHOT NOBODY SPEAKS IN has no caption at all — acted-staging.ts → wordless. A horror film's
+    //  last shot is written without a line; and a writer that marks one as "(silence)" or "—" instead of
+    //  leaving it empty must not have that spoken, or drawn as a caption.)
+    caption: s.caption && !(acted && wordless(s.caption)) ? dropOrgEndorsementPossessive(s.caption) : undefined,
     where: typeof s.where === "string" && s.where.trim() ? s.where.trim().slice(0, 120) : undefined,
     // (an ACTED film's writer no longer chooses the camera — acted-staging.ts. Whatever it put here is not
     //  kept, so every beat of a place stays ONE continuous take, as when it was told 'EXACTLY "wide two-shot"';
