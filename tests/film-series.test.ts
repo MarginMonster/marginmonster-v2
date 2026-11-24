@@ -132,7 +132,8 @@ test("story films only: a music video, a sing-along or another format's film is 
   assert.equal(seriesBriefOf({ ...row, metaJson: JSON.stringify({ kind: "musicvideo", template: "musicvideo" }) }, { template: "musicvideo", narrated: false }), null);
   // the page and the action ask only for story formats
   const page = read("app", "routes", "web.film.tsx");
-  assert.ok(page.includes("const series = seriesFrom && tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung &&"));
+  assert.ok(page.includes("const seriesHit = seriesFrom && tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung &&"));
+  assert.ok(page.includes("const series = seriesHit?.brief || null;"));
 });
 
 test("the row: newest first, one card per series (its latest episode), three at most, finished films only", () => {
@@ -175,14 +176,17 @@ test("a series in a job payload is checked again; meta.cast keeps only who, whic
 
 test("the previous film is looked up ONLY among the signed-in shop's own films; a deleted one is an ordinary film", () => {
   const page = read("app", "routes", "web.film.tsx");
-  const fn = page.slice(page.indexOf("async function seriesBriefFor("), page.indexOf("async function seriesBriefFor(") + 1500);
+  const fn = page.slice(page.indexOf("async function seriesBriefFor("), page.indexOf("async function seriesBriefFor(") + 2400);
   assert.ok(fn.includes("const prev = await db.asset.findFirst({ where: { id, shopId, type: \"VIDEO_AD\" }, select: pick });"), "scoped by the shop");
   assert.ok(fn.includes("if (!prev) return null;"), "not found → no series");
   // a series never forks: an older episode named → the latest finished one of this shop's is continued
   assert.ok(fn.includes("where: { shopId, type: \"VIDEO_AD\", status: { not: \"FAILED\" }, id: { not: prev.id }, metaJson: { contains: `\"id\":\"${seriesKeyOf(prev).replace(/[^A-Za-z0-9_-]/g, \"\")}\"` } },"));
   assert.ok(fn.includes("from = latestEpisode(prev, [...later, prev]);"));
   assert.ok(fn.includes("} catch { /* continue from the film that was named */ }"));
-  assert.ok(fn.includes("return seriesBriefOf(from, want);"));
+  assert.ok(fn.includes("const brief = seriesBriefOf(from, want);"));
+  // (…and with it the last episode's OWN cast — the portraits its invented characters were drawn from —
+  //  read from that same row, for a told story only: tests/story-cast.test.ts)
+  assert.ok(fn.includes("return brief ? { brief, ownCast: want.narrated ? castToken(castCardsOf(from.metaJson)) : \"\" } : null;"));
   assert.ok(page.includes("await seriesBriefFor(shop.id, seriesFrom, { template: tmpl.key, narrated })"));
   // only the id comes from the page; the series is read from the film itself
   assert.ok(page.includes("...(series && isStoryboard ? { seriesFrom: series.from } : {})"));

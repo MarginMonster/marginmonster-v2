@@ -16,6 +16,7 @@
 import { heroOf } from "./film-heroes.ts";
 import { trimTitle } from "./text-trim.ts";
 import { isNarratedStory, storyLangOf, toldFrom } from "./story-translate.ts";
+import { castCardsOf, castStillIn, castToken, type StoryCastRef } from "./story-picture.ts";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -52,6 +53,10 @@ export type StoryToEdit = {
    *  the story is then drawn again) */
   pictures: (string | null)[];
   picturesKept: boolean;
+  /** THE STORY'S OWN CAST (story-picture.ts): the characters it invented, each with the portrait it was
+   *  drawn from — so a scene added or redrawn here shows the same people — and the token that carries them. */
+  ownCast: StoryCastRef[];
+  castRef: string;
 };
 
 /**
@@ -84,6 +89,8 @@ export function storyToEditFrom(
   const kept = !!pictures && pictures.length === scenes.length && pictures.every((p) => typeof p === "string" && !!p);
   const aspect = str(meta.aspect);
   const captions = str(meta.captions);
+  const castList = (Array.isArray(tr.cast) ? tr.cast : []).map((c) => oneLine(str(c)).slice(0, 300)).filter(Boolean).slice(0, 8);
+  const ownCast = castStillIn(castCardsOf(meta), castList);
   return {
     from: asset.id,
     // (what the storyboard CALLS the story it has open — short enough for one line on a phone)
@@ -103,10 +110,12 @@ export function storyToEditFrom(
       title: oneLine(str(tr.title)).slice(0, 200),
       scenes,
       musicMood: oneLine(str(tr.musicMood)).slice(0, 200),
-      cast: (Array.isArray(tr.cast) ? tr.cast : []).map((c) => oneLine(str(c)).slice(0, 300)).filter(Boolean).slice(0, 8),
+      cast: castList,
     },
     pictures: kept ? pictures!.map((p) => p) : scenes.map(() => null),
     picturesKept: kept,
+    ownCast,
+    castRef: castToken(ownCast),
   };
 }
 

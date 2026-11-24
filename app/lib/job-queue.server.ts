@@ -1024,6 +1024,8 @@ async function runJob(
             // Its translated words arrive as the approved treatment and its pictures as ckImages, below.
             lang: typeof payload.filmLang === "string" ? payload.filmLang : undefined,
             translatedFrom: typeof payload.filmTranslatedFrom === "string" ? payload.filmTranslatedFrom : undefined,
+            // THE STORY'S OWN CAST as the storyboard drew it (story-picture.ts)
+            castRef: typeof payload.filmCastRef === "string" ? payload.filmCastRef : undefined,
             resume: {
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
               ckApproved: payload.ckApproved as string | undefined,
@@ -1034,6 +1036,7 @@ async function runJob(
               ckMusic: payload.ckMusic as string | undefined,
               // (story-motion: the clips a stopped job was still waiting for)
               ckMotion: payload.ckMotion as string | undefined,
+              ckCast: payload.ckCast as string | undefined,
             },
           });
         } else if (isLipSyncMusicVideo) {

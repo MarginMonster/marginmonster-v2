@@ -102,3 +102,89 @@ export function storyFix(c: StoryCheck, names: string[]): string {
   if (gone.length) out.push(`${gone.join(" and ")} ${gone.length === 1 ? "was" : "were"} missing or drawn as someone else in the last try — draw ${gone.length === 1 ? "them" : "each of them"} EXACTLY as in their reference image: the same face, hair colour and hair`);
   return out.length ? ` ${out.join(". ")}.` : "";
 }
+
+/* ---- THE STORY'S OWN CAST ----
+ * A story invents its characters, and until 2026-11-23 they had ONE sheet between them — everybody side by
+ * side in one picture, handed to the picture model with "from it take ONLY Walter". In "The Patience of
+ * Bread" (made as a customer that day) the old watchman was three different men: tall and clean-faced with
+ * a lantern, then balding in a brown jacket, then grey-haired with a moustache. And nobody looked: the
+ * look above checks the cast the MAKER picked, never a character the story made up.
+ *
+ * So a character the story invents is cast like one the maker picked. It gets ONE portrait of its own, drawn
+ * once; that portrait is its reference in every scene it is in; and it is looked for in every picture that
+ * is kept, with the same question (storyCastPrompt) — a scene where it came out as someone else is drawn
+ * again. The portraits are also SHOWN: the storyboard opens on the story's cast, the way a film does.
+ *
+ * Between the storyboard's calls (draw them all → re-draw one → generate) the portraits travel as one
+ * token the page hands back unread (castToken / readCastToken). */
+export type StoryCastRef = { name: string; look: string; img: string };
+/** No more of a story's own characters than this get a portrait (a told story has two or three). */
+export const STORY_CAST_MAX = 4;
+const OWN_RENDER = /^\/renders\/[a-zA-Z0-9_-]+\.(?:jpe?g|png|webp)$/;
+
+/** A cast-list entry as a character: "Walter, an elderly night watchman with…" → his name and his look.
+ *  The name is what the entry STARTS with, up to the first comma, colon, dash or bracket — the same rule
+ *  the scenes are matched by (narrated-core's entryName), so a portrait is always found for its entry. */
+export function castEntry(entry: string): { name: string; look: string } {
+  const e = String(entry || "").replace(/\s+/g, " ").trim();
+  const head = e.split(/[,:—–(]/)[0] || "";
+  const bracketed = e.charAt(head.length) === "(";
+  const rest = e.slice(head.length).replace(/^[\s,:—–(]+/, "");
+  return { name: head.trim().slice(0, 40).trim(), look: (bracketed ? rest.replace(/\)\s*\.?\s*$/, "") : rest).trim() };
+}
+
+/** Are two names the same character's? (As they are written, whatever the capitals.) */
+export const sameCharacter = (a: string, b: string): boolean => !!a && a.trim().toLowerCase() === (b || "").trim().toLowerCase();
+
+/** A portrait is always drawn TALL, whatever shape the story is: a standing figure fills a tall frame. */
+export const PORTRAIT_ASPECT = "9:16";
+
+/** What the picture model is asked for: THIS one character, whole, on a plain ground, in the story's style. */
+export function portraitPrompt(entry: string, sceneHint: string, safe = ""): string {
+  return `${safe}${sceneHint}. A character portrait of ${String(entry || "").replace(/\s+/g, " ").trim().slice(0, 320)} — this ONE character alone, the whole body from head to feet, standing, turned a little toward the viewer, the face clearly seen, on a plain neutral background. In the exact art style of the story. ${NOTHING_WRITTEN}`;
+}
+
+/** The token: the portraits, each by its own address on OUR renders disk and nothing else (it comes back
+ *  from a browser — an address anywhere else is not a portrait of ours and is dropped). "" = none. */
+export function castToken(refs: ReadonlyArray<StoryCastRef>): string {
+  const kept = refs
+    .map((r) => ({ n: String(r?.name || "").trim().slice(0, 40), l: String(r?.look || "").trim().slice(0, 200), i: String(r?.img || "").replace(/^https?:\/\/[^/]+/, "").split("?")[0] }))
+    .filter((r) => r.n && OWN_RENDER.test(r.i))
+    .slice(0, STORY_CAST_MAX);
+  return kept.length ? JSON.stringify({ v: 2, c: kept }) : "";
+}
+
+/** Read it back. A storyboard opened before this carries the address of the one SHEET instead — handed
+ *  back as `sheet`, and used the way it was. Anything else is nothing at all. */
+export function readCastToken(token: string | null | undefined): { refs: StoryCastRef[]; sheet: string | null } {
+  const t = String(token || "").trim();
+  if (!t) return { refs: [], sheet: null };
+  if (!t.startsWith("{")) return { refs: [], sheet: /^(?:https?:\/\/[^\s"']+|\/renders\/[a-zA-Z0-9_.-]+)$/.test(t) ? t : null };
+  try {
+    const j = JSON.parse(t) as { v?: unknown; c?: unknown };
+    if (j?.v !== 2 || !Array.isArray(j.c)) return { refs: [], sheet: null };
+    const refs: StoryCastRef[] = [];
+    for (const r of j.c as Array<{ n?: unknown; l?: unknown; i?: unknown }>) {
+      const name = typeof r?.n === "string" ? r.n.trim().slice(0, 40) : "";
+      const img = typeof r?.i === "string" ? r.i : "";
+      if (name && OWN_RENDER.test(img) && !refs.some((x) => sameCharacter(x.name, name))) refs.push({ name, look: typeof r?.l === "string" ? r.l.slice(0, 200) : "", img });
+    }
+    return { refs: refs.slice(0, STORY_CAST_MAX), sheet: null };
+  } catch { return { refs: [], sheet: null }; }
+}
+
+/** The cast a FINISHED story kept (its meta.castCards), checked the way the token is — so a story opened
+ *  again to be edited, and a story that is continued, start with the same faces. */
+export function castCardsOf(meta: unknown): StoryCastRef[] {
+  let m: unknown = meta;
+  if (typeof m === "string") { try { m = JSON.parse(m); } catch { return []; } }
+  const cards = m && typeof m === "object" && !Array.isArray(m) ? (m as { castCards?: unknown }).castCards : null;
+  return Array.isArray(cards) ? readCastToken(castToken(cards as StoryCastRef[])).refs : [];
+}
+
+/** Of the portraits carried in, the ones THIS story still has a character for (its cast list names them).
+ *  A re-written story, or one that continues another, does not show — or draw from — someone not in it. */
+export function castStillIn(refs: ReadonlyArray<StoryCastRef>, castList: ReadonlyArray<string>): StoryCastRef[] {
+  const names = castList.map((e) => castEntry(e).name).filter(Boolean);
+  return refs.filter((r) => names.some((n) => sameCharacter(n, r.name)));
+}

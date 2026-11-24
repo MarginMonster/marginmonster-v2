@@ -36,7 +36,7 @@ import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
-import { NOTHING_WRITTEN, ONE_PICTURE, noLettering, oneMoment, parseStoryCast, parseStoryPanels, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCheck } from "./story-picture";
+import { NOTHING_WRITTEN, ONE_PICTURE, PORTRAIT_ASPECT, STORY_CAST_MAX, castEntry, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, portraitPrompt, readCastToken, sameCharacter, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
@@ -95,7 +95,7 @@ async function letterboxed(rendersUrl: string | null): Promise<boolean> {
  *  re-draws a single scene. Returns /renders URLs made absolute (null where a still could not be made). */
 export async function narratedSceneSeeds(o: {
   template?: string; treatment: FilmTreatment; cast?: StoryCast; aspect?: string; /** draw only this scene, or only these */ only?: number | number[]; castRef?: string | null;
-}): Promise<{ sceneImgs: (string | null)[]; castRef: string | null }> {
+}): Promise<{ sceneImgs: (string | null)[]; castRef: string | null; /** the story's own characters, each with its portrait — to be shown */ castCards: StoryCastRef[] }> {
   const tmpl = filmTemplate(o.template);
   const { aspect } = storyFrame(o.aspect);
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -108,11 +108,27 @@ export async function narratedSceneSeeds(o: {
   const todo = (Array.isArray(o.only) ? o.only : typeof o.only === "number" ? [o.only] : scenes.map((_, i) => i)).filter((i, k, a) => Number.isInteger(i) && i >= 0 && i < scenes.length && a.indexOf(i) === k);
   const who = todo.map((i) => sceneCast(scenes[i]?.visual || "", picked.map((c) => c.name), others));
 
-  // ONE sheet of the unpictured characters, only if a scene being drawn needs one of them
-  let castRef = o.castRef ? abs(o.castRef) : null;
-  if (!castRef && who.some((w) => w.others.length)) {
-    castRef = abs(await drawScene(`${safe}${tmpl.sceneHint}. A character sheet: ${others.join("; ")} — standing side by side, full body, each clearly separate, clear consistent faces, plain neutral background, IN THE EXACT ART STYLE of the rest of the story. No text.`, [], aspect));
+  // THE STORY'S OWN CAST (story-picture.ts): every character the story invented that a scene being drawn
+  // needs gets ONE portrait of its own — drawn once, carried between the storyboard's calls in `castRef` —
+  // and is then cast like a character the maker picked. (They used to share one sheet, and nobody looked
+  // whether the man in scene 3 was the man in scene 2.) A storyboard opened before this still carries the
+  // address of that one sheet, and is drawn from it the way it was.
+  const carried = readCastToken(o.castRef);
+  const sheetRef = carried.sheet ? abs(carried.sheet) : null;
+  // (only who THIS story still has a character for, and only a portrait that is still on our disk: the
+  //  next episode of a series arrives with last episode's cast, and a missing file is drawn again)
+  const cards: StoryCastRef[] = castStillIn(carried.refs, others).filter((c) => fs.existsSync(path.join(RENDERS(), path.basename(c.img))));
+  if (!sheetRef) {
+    const need = others
+      .filter((e) => who.some((w) => w.others.includes(e)) && !!castEntry(e).name && !cards.some((c) => sameCharacter(c.name, castEntry(e).name)))
+      .slice(0, Math.max(0, STORY_CAST_MAX - cards.length));
+    const drawn = await Promise.all(need.map(async (e) => ({ e, img: await drawScene(portraitPrompt(e, tmpl.sceneHint, safe), [], PORTRAIT_ASPECT) })));
+    // (one more go, on its own, for a portrait that did not come back — the whole story is drawn from it)
+    for (const d of drawn) if (!d.img) d.img = await drawScene(portraitPrompt(d.e, tmpl.sceneHint, safe), [], PORTRAIT_ASPECT);
+    for (const d of drawn) if (d.img) cards.push({ ...castEntry(d.e), img: d.img });
+    if (need.length) console.log(`[narrated] the story's own cast: ${drawn.filter((d) => d.img).length} of ${need.length} portraits drawn (${need.map((e) => entryName(e)).join(", ")})`);
   }
+  const cardFor = (e: string): StoryCastRef | undefined => cards.find((c) => sameCharacter(c.name, castEntry(e).name));
 
   const out: (string | null)[] = new Array(scenes.length).fill(null);
   let next = 0;
@@ -121,13 +137,20 @@ export async function narratedSceneSeeds(o: {
       const k = next++;
       const i = todo[k];
       const scene = scenes[i];
-      const sheet = who[k].others.length && castRef ? castRef : null;
-      const here = who[k].picked.map((p) => picked[p]).slice(0, sheet ? 2 : 3);
+      // WHO IS DRAWN FROM A PICTURE HERE: the maker's own cast first, then the story's own characters, each
+      // from its portrait — three reference pictures at most (an older storyboard's sheet counts as one).
+      const sheet = who[k].others.length && sheetRef ? sheetRef : null;
+      const chosen = who[k].picked.map((p) => picked[p]).slice(0, sheet ? 2 : 3);
+      const own = sheet ? [] : who[k].others.map(cardFor).filter((c): c is StoryCastRef => !!c).slice(0, Math.max(0, 3 - chosen.length));
+      const here: Array<{ name: string; look?: string; faceUrl?: string | null }> = [...chosen, ...own.map((c) => ({ name: c.name, look: c.look, faceUrl: c.img }))];
       const refs = [...here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u), ...(sheet ? [sheet] : [])];
       const notes: string[] = [];
       here.forEach((c, n) => notes.push(`${c.name} is the character in reference image ${n + 1}${c.look ? ` (${c.look.slice(0, 160)})` : ""}.`));
       if (sheet) notes.push(`Reference image ${here.length + 1} is a sheet of other characters: from it take ONLY ${who[k].others.map((e) => e.slice(0, 200)).join("; and ")}.`);
-      else if (who[k].others.length) notes.push(`In this picture: ${who[k].others.map((e) => e.slice(0, 200)).join("; and ")}.`);
+      // (a character with no picture of its own here — its portrait could not be drawn, or it is a fourth
+      //  in one scene — is drawn from its words, as every invented character once was)
+      const unpictured = sheet ? [] : who[k].others.filter((e) => !own.some((c) => c === cardFor(e)));
+      if (unpictured.length) notes.push(`In this picture: ${unpictured.map((e) => e.slice(0, 200)).join("; and ")}.`);
       // THE WORDS THE PICTURE IS DRAWN FROM are tidied first (story-picture.ts): one moment, nothing written.
       const written = (scene.visual || "").replace(/\s+/g, " ").trim();
       const visual = oneMoment(noLettering(written));
@@ -182,7 +205,7 @@ export async function narratedSceneSeeds(o: {
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, todo.length) }, () => worker()));
-  return { sceneImgs: out.map((u) => abs(u)), castRef };
+  return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards) || null, castCards: cards };
 }
 
 /** The narrator reads the whole story. Returns the mp3 on the renders disk and a URL a provider can
@@ -348,7 +371,10 @@ export async function generateNarratedStory(opts: {
   lang?: string | null;
   /** …and the story it is a re-telling of (its asset id), recorded on the new one. */
   translatedFrom?: string | null;
-  resume?: { ckTreatment?: string; ckApproved?: string; ckVoPath?: string; ckVoUrl?: string; ckWords?: string; ckImages?: string; ckMusic?: string; ckMotion?: string };
+  /** THE STORY'S OWN CAST as the storyboard drew it (story-picture.ts → castToken): the portraits a scene
+   *  drawn here is drawn from, and who the piece says is in it. */
+  castRef?: string | null;
+  resume?: { ckTreatment?: string; ckApproved?: string; ckVoPath?: string; ckVoUrl?: string; ckWords?: string; ckImages?: string; ckMusic?: string; ckMotion?: string; ckCast?: string };
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template);
   const { aspect, W, H } = storyFrame(opts.aspect);
@@ -457,6 +483,8 @@ export async function generateNarratedStory(opts: {
     : style === "subtitles" ? subtitleCards(lines, windows, subtitleChars(W, H), words.length ? timed : undefined) : [];
 
   // 4) THE PICTURES — the ones the maker approved, else drawn now
+  // (…and the story's own cast: what the storyboard drew, or what is drawn here — kept across a restart)
+  let storyCastRef = resume.ckCast || opts.castRef || "";
   let imgs: (string | null)[] = [];
   if (resume.ckImages) { try { imgs = JSON.parse(resume.ckImages) as (string | null)[]; } catch { imgs = []; } }
   if (imgs.length !== treatment.scenes.length) {
@@ -465,10 +493,11 @@ export async function generateNarratedStory(opts: {
       // ONLY THE SCENES WITH NO PICTURE ARE DRAWN. (One scene added to an approved storyboard used to
       // have EVERY picture drawn again — and all but that one thrown away for the approved ones.)
       const missing = treatment.scenes.map((_, i) => i).filter((i) => !approved[i]);
-      const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing });
+      const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null });
+      if (drawn.castRef) storyCastRef = drawn.castRef;
       imgs = treatment.scenes.map((_, i) => approved[i] || drawn.sceneImgs[i] || null);
     }
-    await ckpt({ ckImages: JSON.stringify(imgs) });
+    await ckpt({ ckImages: JSON.stringify(imgs), ...(storyCastRef ? { ckCast: storyCastRef } : {}) });
   }
   // every scene needs a picture on the disk: fetch what is not there, and let a missing one borrow its neighbour's
   const stills: string[] = [];
@@ -551,6 +580,8 @@ export async function generateNarratedStory(opts: {
         pictures: stills.map((f) => `/renders/${path.basename(f)}`),
         ...(musicPath ? { music: path.basename(musicPath) } : {}),
         ...(opts.translatedFrom ? { translatedFrom: String(opts.translatedFrom).slice(0, 64) } : {}),
+        // THE STORY'S OWN CAST: the characters it invented, each with its portrait (story-picture.ts)
+        ...(readCastToken(storyCastRef).refs.length ? { castCards: readCastToken(storyCastRef).refs } : {}),
         // what its timing was made from — for the operator alone (web.archive's loader)
         timing,
         // THE PICTURES MOVE: how many scenes do, what was asked for now (seconds = what was paid for), and

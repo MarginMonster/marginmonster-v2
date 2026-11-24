@@ -338,7 +338,8 @@ test("a check that cannot be read is asked for again, said so, and what it saw r
   const ui = read("app", "routes", "web.film.tsx");
   assert.match(ui, /sceneFaults: r\.sceneFaults, sceneChecks: r\.sceneChecks,/);
   // (…with the scene's words too, when the re-roll rewrote them for its cast — tests/mv-recast.test.ts)
-  assert.ok(ui.includes("return json({ ok: true, sceneIndex, img, faults, check, ...(visualNow !== sceneVisual ? { visual: visualNow } : {}) });"));
+  // (…and, for a told story, its own cast after the draw: tests/story-cast.test.ts)
+  assert.ok(ui.includes("return json({ ok: true, sceneIndex, img, faults, check, ...(visualNow !== sceneVisual ? { visual: visualNow } : {}), ...(ownCast ? ownCast : {}) });"));
   // the page keeps it with the storyboard and puts it on the scene's card
   assert.match(ui, /checks: Array\.isArray\(sd\.sceneChecks\) \? sd\.sceneChecks : \[\] \}\);/);
   assert.match(ui, /checks: prev\.imgs\.map\(\(_, j\) => \(j === idx \? nc : \(prev\.checks \|\| \[\]\)\[j\] \?\? null\)\)/);

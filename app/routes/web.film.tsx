@@ -45,6 +45,8 @@ import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
 // (2026-11-23) a story's pictures move — what that takes is said beside Generate
 import { storyTypicalSeconds } from "../lib/story-motion";
 import { storyMotionOn } from "../lib/story-motion.server";
+// (2026-11-23) THE STORY'S OWN CAST: a portrait for every character a story invents — shown, and kept
+import { castCardsOf, castToken, readCastToken, type StoryCastRef } from "../lib/story-picture";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
 
@@ -344,12 +346,14 @@ function parseStoryCast(raw: string | null): StoryCastIn[] {
  *  page sends only that film's id; everything else — the series, the episode number, the recap — is read
  *  here from the film's own row, and ONLY from this shop's own films. A film that has been deleted (or is
  *  another shop's, or another format's) means no series: an ordinary new film. */
-async function seriesBriefFor(shopId: string, fromId: string, want: { template: string; narrated: boolean }): Promise<SeriesBrief | null> {
+async function seriesBriefFor(shopId: string, fromId: string, want: { template: string; narrated: boolean }): Promise<{ brief: SeriesBrief; /** the last episode's own cast, as a token (story-picture.ts) — "" when it kept none */ ownCast: string } | null> {
   const id = (fromId || "").trim().slice(0, 64);
   if (!id) return null;
   const pick = { id: true, title: true, metaJson: true, bodyJson: true } as const;
   const prev = await db.asset.findFirst({ where: { id, shopId, type: "VIDEO_AD" }, select: pick });
   if (!prev) return null;
+  // (THE SERIES' OWN CAST: the characters the last episode invented come back with the portraits they were
+  //  drawn from, so episode 2's watchman is episode 1's — read from that film's own row, never the page)
   // A SERIES NEVER FORKS. The page names the series' latest episode — but if an older one is named (a stale
   // tab, a hand-made request), the episode still continues from the LATEST finished one (film-series.ts →
   // latestEpisode). Only this shop's own films; a failed lookup continues from the film that was named.
@@ -361,7 +365,8 @@ async function seriesBriefFor(shopId: string, fromId: string, want: { template: 
     });
     from = latestEpisode(prev, [...later, prev]);
   } catch { /* continue from the film that was named */ }
-  return seriesBriefOf(from, want);
+  const brief = seriesBriefOf(from, want);
+  return brief ? { brief, ownCast: want.narrated ? castToken(castCardsOf(from.metaJson)) : "" } : null;
 }
 
 /** The lead's gender (drives the sung voice + casting) and each named co-star's known gender. */
@@ -425,9 +430,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const storyCast = tmpl.lipSyncSinger ? [] : parseStoryCast(form.get("filmCast") as string);
   // NEXT EPISODE: the series this story continues (story formats only — never a music video)
   const seriesFrom = ((form.get("seriesFrom") as string) || "").trim();
-  const series = seriesFrom && tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung && (intent === "previewFilmTreatment" || intent === "previewFilmScenes" || intent === "film")
+  const seriesHit = seriesFrom && tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung && (intent === "previewFilmTreatment" || intent === "previewFilmScenes" || intent === "film")
     ? await seriesBriefFor(shop.id, seriesFrom, { template: tmpl.key, narrated })
     : null;
+  const series = seriesHit?.brief || null;
+  // THE STORY'S OWN CAST as it comes in: what the page hands back (the storyboard's own portraits), else the
+  // last episode's. Read through the token's own check — only portraits on our own renders disk survive it.
+  const castRefIn = (name: string): string => castToken(readCastToken(((form.get(name) as string) || "").trim().slice(0, 4000)).refs);
+  const seriesCastRef = seriesHit?.ownCast || "";
 
   // Product (skit): title + photo required for product templates.
   const productTitle = ((form.get("filmProductTitle") as string) || "").trim().slice(0, 120);
@@ -632,9 +642,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         let tr0 = approvedTreatment as unknown as import("../lib/film-engine.server").FilmTreatment | undefined;
         if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: shop.contentLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look })), series });
         const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
-        const r = await narratedSceneSeeds({ template: tmpl.key, treatment: tr0, cast: storyCast, aspect: filmAspect });
+        // (the story's own cast is drawn here — a portrait each — unless it is the next episode of a series,
+        //  which opens with the faces the last one had)
+        const r = await narratedSceneSeeds({ template: tmpl.key, treatment: tr0, cast: storyCast, aspect: filmAspect, castRef: seriesCastRef || null });
         if (!r.sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
-        return json({ ok: true, sceneImgs: r.sceneImgs, treatment: tr0, propForScene: {}, castRef: r.castRef });
+        return json({ ok: true, sceneImgs: r.sceneImgs, treatment: tr0, propForScene: {}, castRef: r.castRef, castCards: r.castCards });
       }
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
@@ -661,7 +673,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // missing / an uninvited character). Fast — just that one still, not the whole batch.
   if (intent === "rerollFilmScene") {
     const artistRef = ((form.get("artistRef") as string) || "").trim().slice(0, 2000);
-    const castRef = ((form.get("castRef") as string) || "").trim().slice(0, 2000);
+    const castRef = ((form.get("castRef") as string) || "").trim().slice(0, 4000);
     const sceneVisual = ((form.get("sceneVisual") as string) || "").trim().slice(0, 1500);
     const sceneIndex = parseInt((form.get("sceneIndex") as string) || "0", 10) || 0;
     const propKey = ((form.get("propKey") as string) || "").trim() || undefined;
@@ -685,6 +697,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       let check: unknown = null;
       // the scene's words as they are drawn (rewritten below when its cast was just changed)
       let visualNow = sceneVisual;
+      // a told story's own cast after this draw (a character first seen in THIS scene gets its portrait now)
+      let ownCast: { castRef: string | null; castCards: StoryCastRef[] } | null = null;
       if (narrated) {
         // the scene as it reads NOW (the maker may have edited the words), drawn again on its own
         let scenesNow: Array<{ visual: string; caption?: string }> = [];
@@ -695,6 +709,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
         const r = await narratedSceneSeeds({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, scenes: scenesNow.map((x) => ({ visual: String(x?.visual || ""), caption: String(x?.caption || "") })) }, cast: storyCast, aspect: rerollAspect, only: sceneIndex, castRef: castRef || null });
         img = r.sceneImgs[sceneIndex] || null;
+        ownCast = { castRef: r.castRef, castCards: r.castCards };
       } else if (tmpl.lipSyncSinger) {
         if (!artistRef) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
         // THE WORDS FOLLOW THE CAST (mv-recast.ts): the scene's Cast editor says who is in the scene now.
@@ -722,7 +737,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         img = await rerollFilmSceneSeed({ template: tmpl.key, sceneVisual, castRef: castRef || undefined, cast: castWords, where: sceneWhere || undefined });
       }
       if (!img) return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex });
-      return json({ ok: true, sceneIndex, img, faults, check, ...(visualNow !== sceneVisual ? { visual: visualNow } : {}) });
+      return json({ ok: true, sceneIndex, img, faults, check, ...(visualNow !== sceneVisual ? { visual: visualNow } : {}), ...(ownCast ? ownCast : {}) });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't re-roll that scene — try again."), sceneIndex, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
     }
@@ -907,6 +922,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(filmProps?.length ? { filmProps } : {}),
         ...(filmCustomProps.length ? { filmCustomProps } : {}),
         ...(approvedSceneImgs?.length ? { approvedSceneImgs } : {}),
+        // THE STORY'S OWN CAST: the portraits the storyboard drew its scenes from (or, for the next episode
+        // of a series made in one go, the last episode's) — a scene drawn by the job uses them, and the
+        // finished story keeps who is in it
+        ...(narrated && (castRefIn("filmCastRef") || seriesCastRef) ? { filmCastRef: castRefIn("filmCastRef") || seriesCastRef } : {}),
         // NEXT EPISODE: the series it continues, read from this shop's own film above — written onto the
         // new film's asset row when the pipeline creates it (meta.series)
         ...(series ? { filmSeries: series } : {}),
@@ -1251,9 +1270,11 @@ export default function FilmStudio() {
   const treatmentFetcher = useFetcher<{ treatment?: Treatment; error?: string }>();
   // Music Video STORYBOARD: pre-seed every scene's still (props placed) BEFORE paying for the video,
   // so the owner checks accuracy + the prop per scene and the render uses those EXACT stills (no surprise).
-  const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; sceneFaults?: (number | null)[]; sceneChecks?: unknown[]; treatment?: Treatment; propForScene?: Record<number, string>; artistRef?: string | null; castRef?: string | null; error?: string }>();
+  // (`castCards`: a told story's own cast — the characters it invented, each with the portrait every scene
+  //  it is in is drawn from; `castRef` is the same thing as a token, handed back unread)
+  const sceneSeedsFetcher = useFetcher<{ ok?: boolean; sceneImgs?: (string | null)[]; sceneFaults?: (number | null)[]; sceneChecks?: unknown[]; treatment?: Treatment; propForScene?: Record<number, string>; artistRef?: string | null; castRef?: string | null; castCards?: StoryCastRef[]; error?: string }>();
   // (`visual`: the scene's words as rewritten for who is in it now — only when the re-roll changed them)
-  const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; faults?: number | null; check?: unknown; visual?: string; error?: string }>();
+  const rerollSceneFetcher = useFetcher<{ ok?: boolean; sceneIndex?: number; img?: string; faults?: number | null; check?: unknown; visual?: string; castRef?: string | null; castCards?: StoryCastRef[]; error?: string }>();
   // Make-your-own prop: describe it → we generate a studio photo of it (free).
   const propMakerFetcher = useFetcher<{ img?: string; error?: string }>();
   // Make-your-own artist: describe a face → we generate a portrait (free), like the presenter forge.
@@ -1263,7 +1284,7 @@ export default function FilmStudio() {
   const lookSyncFetcher = useFetcher<{ ok?: boolean; kept?: number }>(); // hands this browser's older looks to the server, once
   // (`faults`: how each cast picture fared when it was looked at — more than 0 = something was still off
   //  in the best of the tries, and the scene is flagged as worth a re-roll)
-  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null; castRefs: string[]; faults?: (number | null)[]; checks?: unknown[] } | null>(null);
+  const [seeds, setSeeds] = useState<{ imgs: (string | null)[]; treatment: Treatment; propForScene: Record<number, string>; artistRef: string | null; castRef: string | null; castRefs: string[]; faults?: (number | null)[]; checks?: unknown[]; castCards?: StoryCastRef[] } | null>(null);
   // Per-scene CO-STAR edit (owner): scene index → the co-star imgs featured in that scene (the artist
   // always leads a perform scene). Unset scenes fall back to an intelligent default (one rotating
   // co-star per perform scene) so the roster isn't crammed into every card.
@@ -1875,7 +1896,7 @@ export default function FilmStudio() {
       // the cast or the shape changes run on the changes just made, and would take it away again.
       window.setTimeout(() => {
         setTreatment(st.treatment);
-        setSeeds({ imgs: st.pictures, treatment: st.treatment, propForScene: {}, artistRef: null, castRef: null, castRefs: [], faults: [], checks: [] });
+        setSeeds({ imgs: st.pictures, treatment: st.treatment, propForScene: {}, artistRef: null, castRef: st.castRef || null, castRefs: [], faults: [], checks: [], castCards: st.ownCast || [] });
         setEditing({ from: st.from, title: st.title, kept: st.picturesKept });
         setIdeaChanged(false);
         setEntered(true); setAnim(""); setZoomKey(null);
@@ -1964,7 +1985,7 @@ export default function FilmStudio() {
   useEffect(() => {
     const sd = sceneSeedsFetcher.data;
     const crefs = (sd as { castRefs?: string[] } | undefined)?.castRefs;
-    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null, castRef: sd.castRef || null, castRefs: Array.isArray(crefs) ? crefs : [], faults: Array.isArray(sd.sceneFaults) ? sd.sceneFaults : [], checks: Array.isArray(sd.sceneChecks) ? sd.sceneChecks : [] });
+    if (sd?.ok && sd.sceneImgs && sd.treatment) setSeeds({ imgs: sd.sceneImgs, treatment: sd.treatment, propForScene: sd.propForScene || {}, artistRef: sd.artistRef || null, castRef: sd.castRef || null, castRefs: Array.isArray(crefs) ? crefs : [], castCards: Array.isArray(sd.castCards) ? sd.castCards : [], faults: Array.isArray(sd.sceneFaults) ? sd.sceneFaults : [], checks: Array.isArray(sd.sceneChecks) ? sd.sceneChecks : [] });
   }, [sceneSeedsFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
   // Re-roll ONE storyboard scene (reusing the hero / cast ref) when it came back wrong; swap that still.
   // (`who` — the people in the scene BY NAME — rides only with the Cast editor's own re-roll: the scene's
@@ -2054,7 +2075,9 @@ export default function FilmStudio() {
         const idx = rd.sceneIndex, nimg = rd.img, nf = rd.faults ?? null, nc = rd.check ?? null;
         // the scene's words, if the re-roll rewrote them for who is in it now: the card says what the picture shows
         const nv = typeof rd.visual === "string" && rd.visual.trim() ? rd.visual.trim().slice(0, 400) : null;
-        setSeeds((prev) => (prev ? { ...prev,
+        // (a told story: a character first drawn in THIS scene has its portrait now — the cast is kept whole)
+        const cast = typeof rd.castRef === "string" && rd.castRef && Array.isArray(rd.castCards) ? { castRef: rd.castRef, castCards: rd.castCards } : null;
+        setSeeds((prev) => (prev ? { ...prev, ...(cast || {}),
           treatment: nv ? { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === idx ? { ...s, visual: nv } : s)) } : prev.treatment,
           imgs: prev.imgs.map((u, j) => (j === idx ? nimg : u)), faults: prev.imgs.map((_, j) => (j === idx ? nf : (prev.faults || [])[j] ?? null)), checks: prev.imgs.map((_, j) => (j === idx ? nc : (prev.checks || [])[j] ?? null)) } : prev));
       }
@@ -2461,6 +2484,31 @@ export default function FilmStudio() {
             : (hasStills
               ? t("Swipe through your story — this is exactly what renders. Re-roll any scene that's off, then Generate.")
               : t("Here's your story, scene by scene — tap any line to polish it. Add the visuals to see each scene come to life."))}{narrated && seeds ? <> {t("The narrator reads each scene's words over its picture.")}{d.storyMotion ? <> {t("In the finished story every picture moves.")}</> : null}</> : null}</div>
+          {/* THE STORY'S CAST, the way a film opens on its stars: who the maker picked (their own pictures) and
+              every character the story invented — each with the ONE portrait every scene it is in is drawn
+              from (story-picture.ts). Tap a face to see it whole. */}
+          {narrated && seeds && (() => {
+            const own = seeds.castCards || [];
+            const stars = [
+              ...pickedCast.map((r) => ({ name: r.name, look: r.kind && r.kind !== "person" ? (r.look || "") : "", img: r.img })),
+              ...own.filter((c) => !pickedCast.some((r) => nameTok(r.name) === nameTok(c.name))),
+            ].filter((c) => c.name && c.img);
+            if (!stars.length) return null;
+            return (
+              <div className="mm-stars">
+                <div className="mm-stars-h"><b>{t("Starring")}</b>{own.length > 0 && <span>{t("They look like this in every scene.")}</span>}</div>
+                <div className="mm-stars-row">
+                  {stars.map((c) => (
+                    <button type="button" key={`${c.name}|${c.img}`} className="mm-star" onClick={() => setZoomImg(c.img)} title={c.look ? `${c.name} — ${c.look}` : c.name}>
+                      <img src={c.img} alt="" loading="lazy" />
+                      <span className="mm-star-nm">{c.name}</span>
+                      {c.look ? <span className="mm-star-lk">{c.look}</span> : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {/* Pre-editor: a vertical list of scene cards (not a cramped strip) — each with its still, an
               editable "what we see" + "words", and a Performance/Cut-scene type you can flip. */}
           <div className={`mm-sb-list${isMv ? " is-mv" : ""}${narrated ? " is-told" : ""}`}>
@@ -3941,6 +3989,7 @@ export default function FilmStudio() {
           {isStoryboard && <input type="hidden" name="dialogueEngine" value={dialogueEngine} />}
           {isStoryboard && <input type="hidden" name="filmAspect" value={filmAspect} />}
           {narrated && <input type="hidden" name="filmMode" value="narrated" />}
+          {narrated && seeds?.castRef && <input type="hidden" name="filmCastRef" value={seeds.castRef} />}
           {narrated && <input type="hidden" name="filmNarrator" value={narratorId} />}
           {isStoryboard && <input type="hidden" name="filmCaptions" value={captions} />}
           {isStoryboard && pickedCast.length > 0 && <input type="hidden" name="filmCast" value={filmCastJson} />}
@@ -4782,6 +4831,20 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-sb-wait::before{content:"";width:18px;height:18px;border-radius:50%;border:2.5px solid #BFE0CD;border-top-color:var(--green,#0C7A46);animation:mmspin .7s linear infinite;flex:none;}
 .mm-sb-head{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:var(--green,#0C7A46);margin:14px 2px 10px;line-height:1.3;}
 .mm-sb-head svg{stroke:currentColor;stroke-width:2.4;fill:none;flex:none;}
+/* THE STORY'S CAST — a row of portraits over the scenes (a told story's storyboard) */
+.mm-stars{margin:2px 0 14px;}
+.mm-stars-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin:0 2px 9px;}
+.mm-stars-h b{font-family:Poppins,sans-serif;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--ink,#14201A);}
+.mm-stars-h span{font-size:12px;font-weight:600;color:var(--ink2,#4A554E);line-height:1.35;}
+.mm-stars-row{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
+.mm-star{flex:0 0 108px;width:108px;min-width:0;display:flex;flex-direction:column;gap:5px;padding:0;border:0;background:none;text-align:left;cursor:zoom-in;scroll-snap-align:start;font:inherit;color:inherit;}
+.mm-star img{display:block;width:108px;height:144px;object-fit:cover;object-position:center top;border-radius:14px;background:#EDE9DF;border:1px solid var(--line,#E4DFCF);box-shadow:0 8px 18px -10px rgba(20,32,26,.35);transition:transform .16s cubic-bezier(.2,.7,.2,1),box-shadow .16s;}
+.mm-star-nm{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-family:Poppins,sans-serif;font-size:12.5px;font-weight:800;line-height:1.2;color:var(--ink,#14201A);}
+.mm-star-lk{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:11px;font-weight:600;line-height:1.3;color:var(--ink2,#4A554E);}
+.mm-star:focus-visible{outline:none;}
+.mm-star:focus-visible img{outline:3px solid var(--green,#0C7A46);outline-offset:2px;}
+@media(hover:hover){.mm-star:hover img{transform:translateY(-3px);box-shadow:0 14px 24px -12px rgba(20,32,26,.45);}}
+@media(prefers-reduced-motion:reduce){.mm-star img{transition:none;}.mm-star:hover img{transform:none;}}
 /* Horizontal, swipeable FILMSTRIP — each scene's still + what-happens + words, like a video editor.
    Compact vertically so it never turns the page into a doom-scroll. */
 .mm-sb-strip{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 12px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
