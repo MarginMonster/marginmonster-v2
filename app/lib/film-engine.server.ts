@@ -833,7 +833,9 @@ export async function previewFilmTreatment(opts: {
     list = list.map((s, i) => ({ ...s, visual: timed[i] || s.visual }));
   }
   // an episode is called "<Series> — Episode <N>" (the writer's short episode name may follow a colon)
-  if (series) outTitle = episodeTitle(series.title, series.episode, outTitle);
+  // (the WRITER'S OWN title only: with none, an episode is just "<Series> — Episode <N>". It used to borrow
+  //  the idea box or the format's name — an episode made from an empty idea box was "… Episode 2: Short Film")
+  if (series) outTitle = episodeTitle(series.title, series.episode, parsed.title ? outTitle : "");
   return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 

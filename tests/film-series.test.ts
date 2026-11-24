@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  RECAP_MAX, buildRecap, castForMeta, episodeOf, episodeTitle, nextEpisodeCards, nextSeries, seriesBriefOf,
+  RECAP_MAX, buildRecap, castForMeta, episodeOf, episodeTitle, isFormatName, nextEpisodeCards, nextSeries, seriesBriefOf,
   seriesFromPayload, seriesOf, seriesTitleOf, seriesWriterBrief, storyHeroOf, storyWordsOf, stripEpisode,
 } from "../app/lib/film-series.ts";
 
@@ -75,6 +75,15 @@ test("titles: '<Series> — Episode <N>', a first film keeps its own, a series t
   // idempotent — the pipelines apply it again to a title that already is one
   const once = episodeTitle("The Lighthouse Keeper", 2, "Storm");
   assert.equal(episodeTitle("The Lighthouse Keeper", 2, once), once);
+  // A FORMAT'S NAME IS NO EPISODE NAME (live, 2026-11-23: an episode made from an empty idea box, whose
+  // writer gave no title, came out as "The Week the Boat Didn't Come — Episode 2: Short Film") — whether
+  // it arrives bare, or already baked into a storyboard's title
+  assert.equal(episodeTitle("The Week the Boat Didn't Come", 2, "Short Film"), "The Week the Boat Didn't Come — Episode 2");
+  assert.equal(episodeTitle("The Week the Boat Didn't Come", 2, "The Week the Boat Didn't Come — Episode 2: Short Film"), "The Week the Boat Didn't Come — Episode 2");
+  for (const n of ["Short Story", "Horror Story", "horror film", "Moral Film", "Kids Cartoon", "Music Video", "Skit"]) assert.equal(isFormatName(n), true, n);
+  for (const n of ["The Mended Hull", "Short Film Night", "A Horror Story of the Sea", ""]) assert.equal(isFormatName(n), false, n);
+  // …and the writer is asked for an episode name of its own, outright
+  assert.match(seriesWriterBrief({ id: "a1", title: "T", episode: 2, recap: "", characters: [] }), /followed by a colon and a short name for THIS episode — two to four words of its own, for what happens in it \(never the kind of film it is\)\./);
   // never longer than the Archive allows, and "Episode N" is never what gets cut
   const long = episodeTitle("A Very Long Series Name That Goes On And On Forever", 12, "An Equally Long Episode Name That Will Not Fit");
   assert.ok(long.length <= 60, long);
@@ -112,7 +121,8 @@ test("the writer is told: the series, 'Previously' as fenced quoted material, no
   // …and it goes to the WRITER, after the brief — never into a picture prompt
   const engine = read("app", "lib", "film-engine.server.ts");
   assert.ok(engine.includes("(series ? seriesWriterBrief(series) : \"\") +"));
-  assert.ok(engine.includes("if (series) outTitle = episodeTitle(series.title, series.episode, outTitle);"));
+  // (the writer's OWN title only — never the idea box, never the format's name)
+  assert.ok(engine.includes("if (series) outTitle = episodeTitle(series.title, series.episode, parsed.title ? outTitle : \"\");"));
   assert.ok(engine.includes("const series = !tmpl.lipSyncSinger && !tmpl.sung && opts.series ? opts.series : null;"), "never a music video or a sing-along");
   for (const f of ["film-cast-sheet.ts", "story-picture.ts", "narrated-core.ts"]) assert.ok(!read("app", "lib", f).includes("series"), `${f} never sees the series`);
 });

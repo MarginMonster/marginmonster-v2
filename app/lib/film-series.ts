@@ -15,7 +15,7 @@
  *
  * Everything here is plain logic (no database, no network), so it is tested: tests/film-series.test.ts. */
 
-import { heroOf, type FilmHero } from "./film-heroes.ts";
+import { FILM_HEROES, heroOf, type FilmHero } from "./film-heroes.ts";
 import { castCardsOf } from "./story-picture.ts";
 
 /** What a film in a series stores on its asset (metaJson.series). */
@@ -123,6 +123,12 @@ export function nextSeries(prev: { id: string; title?: string | null; metaJson?:
 /** The episode a film IS (1 for a film not in a series yet). */
 export const episodeOf = (meta: unknown): number => seriesOf(meta)?.episode || 1;
 
+/** A "title" that is only a FORMAT's name ("Short Film", "Horror Story") is no title. It is what the writer
+ *  step fell back to when the writer gave none and the idea box was empty — and an episode made that way
+ *  came out as "… — Episode 2: Short Film" (live, 2026-11-23). */
+const FORMAT_NAMES = new Set([...FILM_HEROES.map((h) => h.name), "Skit", "Dialogue · Actors"].map((n) => n.toLowerCase()));
+export const isFormatName = (title: string | null | undefined): boolean => FORMAT_NAMES.has(oneLine(str(title)).toLowerCase());
+
 /** "<Series title> — Episode <N>", with the writer's short episode name after a colon when it has one
  *  and it fits. Idempotent: an episode title given back comes out the same. */
 export function episodeTitle(seriesTitle: string, episode: number, writerTitle?: string | null): string {
@@ -143,6 +149,7 @@ export function episodeTitle(seriesTitle: string, episode: number, writerTitle?:
     }
   }
   name = name.replace(/^["“”']+|["“”']+$/g, "").trim();
+  if (isFormatName(name)) name = "";
   if (!name) return base;
   const room = EPISODE_TITLE_MAX - base.length - 2;
   if (room < 8) return base;
@@ -242,7 +249,8 @@ export function seriesWriterBrief(s: SeriesBrief): string {
     // (asked for an episode 2 with the idea box left empty, a kite story came back as "let us fly our kite again")
     `• This episode has an event OF ITS OWN — a new small problem, place, visitor or discovery. Not the same activity as last time done again.\n` +
     `• This episode still stands on its own: someone who missed the last one can follow it.\n` +
-    `• Its title is "${title} — Episode ${s.episode}", optionally followed by a colon and a short episode name.\n`
+    // (the name was optional, and an episode often came back as a bare "Episode 2")
+    `• Its title is "${title} — Episode ${s.episode}" followed by a colon and a short name for THIS episode — two to four words of its own, for what happens in it (never the kind of film it is).\n`
   );
 }
 
