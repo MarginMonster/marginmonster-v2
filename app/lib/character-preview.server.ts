@@ -79,7 +79,8 @@ export function dropUpload(shopId: string, name: string): void {
   if (ownsUpload(shopId, name)) removeUpload(name);
 }
 
-export type PreviewRecord = { kind: CharKind; desc: string; refFile: string; at: number };
+/** `src`: the story picture it was ADOPTED from (adoptPicture) — absent for a preview that was drawn. */
+export type PreviewRecord = { kind: CharKind; desc: string; refFile: string; at: number; src?: string };
 type Ledger = { at: number[]; made: Record<string, PreviewRecord> };
 
 const ledgerFile = (shopId: string) => path.join(uploadsDir(), `previews-${shopSlug(shopId)}.json`);
@@ -95,7 +96,7 @@ function readLedger(shopId: string): Ledger {
     for (const [file, r] of Object.entries(src.made as Record<string, Partial<PreviewRecord>>)) {
       if (!isServableUploadName(file) || !r || typeof r !== "object") continue;
       const kind: CharKind = r.kind === "cartoon" || r.kind === "monster" ? r.kind : "person";
-      made[file] = { kind, desc: typeof r.desc === "string" ? r.desc : "", refFile: typeof r.refFile === "string" ? r.refFile : "", at: typeof r.at === "number" ? r.at : 0 };
+      made[file] = { kind, desc: typeof r.desc === "string" ? r.desc : "", refFile: typeof r.refFile === "string" ? r.refFile : "", at: typeof r.at === "number" ? r.at : 0, ...(typeof r.src === "string" && r.src ? { src: r.src } : {}) };
     }
   }
   return { at, made };
@@ -163,6 +164,41 @@ export async function makeCharacterPreview(o: { shopId: string; kind: CharKind; 
   fs.writeFileSync(uploadPath(name), buf);
   const l = readLedger(o.shopId);
   l.made[name] = { kind: o.kind, desc: o.desc, refFile: o.refFile || "", at: Date.now() };
+  writeLedger(o.shopId, l);
+  return name;
+}
+
+/* ---- KEEP A STORY'S CHARACTER ----
+ * A story draws a portrait of every character it invents (story-picture.ts). Keeping one in the cast makes
+ * that portrait a PREVIEW without drawing anything: the maker has already seen it — it is the face in every
+ * scene of their story. So it costs nothing, and it is not one of the day's free looks. From there it is
+ * registered exactly like a preview that was drawn (claimed once, charged once, by its kind). */
+
+/** No more adopted portraits than this wait unregistered for one shop; the oldest makes room. */
+export const ADOPTED_MAX = 12;
+
+/** The unregistered preview this shop already has for a story picture, if any. */
+export function adoptedRecord(shopId: string, src: string): { file: string; rec: PreviewRecord } | null {
+  if (!src) return null;
+  const hit = Object.entries(readLedger(shopId).made).find(([file, r]) => r.src === src && ownsUpload(shopId, file));
+  return hit ? { file: hit[0], rec: hit[1] } : null;
+}
+
+/** Make a story's portrait this shop's preview. The same picture adopted again (the dialog reopened, "a
+ *  cartoon, not a person") is the SAME preview, with the kind and the words it was given last — the price
+ *  follows the kind, so it is what the maker last chose that is registered. Returns the preview's name. */
+export function adoptPicture(o: { shopId: string; kind: CharKind; desc: string; src: string; buf: Buffer; ext: UploadExt }): string {
+  const known = adoptedRecord(o.shopId, o.src);
+  const l = readLedger(o.shopId);
+  if (known && l.made[known.file]) {
+    l.made[known.file] = { ...l.made[known.file], kind: o.kind, desc: o.desc, at: Date.now() };
+    writeLedger(o.shopId, l);
+    return known.file;
+  }
+  const waiting = Object.entries(l.made).filter(([, r]) => !!r.src).sort((a, b) => a[1].at - b[1].at);
+  while (waiting.length >= ADOPTED_MAX) { const [file] = waiting.shift()!; removeUpload(file); delete l.made[file]; }
+  const name = saveReference(o.shopId, o.buf, o.ext);
+  l.made[name] = { kind: o.kind, desc: o.desc, refFile: "", at: Date.now(), src: o.src };
   writeLedger(o.shopId, l);
   return name;
 }

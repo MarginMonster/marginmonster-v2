@@ -198,6 +198,35 @@ export function castCardsOf(meta: unknown): StoryCastRef[] {
   return Array.isArray(cards) ? readCastToken(castToken(cards as StoryCastRef[])).refs : [];
 }
 
+/* ---- KEEP IN MY CAST ----
+ * A character a story invented can be kept: the portrait the story drew becomes one of the maker's own
+ * characters (app/routes/api.character.tsx, intent "adopt" → the same "Register" as any other character),
+ * and can then be cast in any film. Nothing is drawn again — it is the face they saw in every scene. */
+
+/** One of OUR render pictures, as a bare path — or null. (The address comes back from a browser.) */
+export function ownRenderPath(u: string | null | undefined): string | null {
+  const p = String(u || "").trim().replace(/^https?:\/\/[^/]+/, "").split(/[?#]/)[0];
+  return OWN_RENDER.test(p) ? p : null;
+}
+
+const MONSTERS = /\b(?:ghosts?|ghouls?|wraiths?|spirits?|phantoms?|spect(?:re|er)s?|apparitions?|demons?|devils?|monsters?|creatures?|beasts?|werewol(?:f|ves)|vampires?|zombies?|skeletons?|undead|banshees?|revenants?|goblins?|ogres?|trolls?|dragons?|kraken|scarecrows?|shadow figure)\b/i;
+const CARTOONS = /\b(?:roosters?|hens?|chickens?|chicks?|ducks?|ducklings?|geese|goose|mice|mouse|rats?|cats?|kittens?|dogs?|pupp(?:y|ies)|terriers?|fox(?:es)?|wol(?:f|ves)|bears?|cubs?|rabbits?|bunn(?:y|ies)|hares?|owls?|birds?|sparrows?|crows?|ravens?|parrots?|pigs?|piglets?|cows?|cal(?:f|ves)|horses?|pon(?:y|ies)|donkeys?|goats?|sheep|lambs?|deer|fawns?|squirrels?|hedgehogs?|badgers?|otters?|beavers?|frogs?|toads?|turtles?|tortoises?|snails?|fish|whales?|dolphins?|seals?|penguins?|lions?|tigers?|elephants?|monkeys?|giraffes?|zebras?|kangaroos?|koalas?|pandas?|bees?|butterfl(?:y|ies)|ants?|spiders?|caterpillars?|ladybugs?|dinosaurs?|dinos?|robots?|tedd(?:y|ies)|dolls?|snowm[ae]n|unicorns?|fair(?:y|ies)|el(?:f|ves)|gnomes?|capybaras?|hamsters?|raccoons?|sloths?)\b/i;
+const WOMEN = /\b(?:woman|girl|lady|she|her|hers|mother|mom|mum|grandmother|grandma|granny|daughter|sister|aunt|wife|queen|princess|witch|bride|widow|nun|postwoman|waitress|actress|duchess|businesswoman|policewoman|fisherwoman|female|hen|mare|ewe|vixen)\b/i;
+
+/** WHAT a story's character most likely is, read off the words the writer described them with — only a
+ *  first guess, which the maker can change before anything is charged (the price follows the kind):
+ *    monster  the thing itself is a ghost, a beast, a creature…
+ *    cartoon  the thing itself is an animal, a toy, a robot…  (kept in the ONE look the story gave it)
+ *    person   anything else — a real-looking human, later given outfits
+ *  "The thing itself" is the start of the description, before what they wear or carry: "a young
+ *  postwoman with a dog at her heels" is a person. `gender` picks which voices are offered first. */
+export function keepGuess(look: string): { kind: "person" | "cartoon" | "monster"; gender: "f" | "m" } {
+  const said = String(look || "").replace(/\s+/g, " ").trim();
+  const head = said.split(/\b(?:with|in|who|whose|wearing|carrying|holding|beside|and)\b|[,;(]/i)[0] || "";
+  const kind = MONSTERS.test(head) ? "monster" : CARTOONS.test(head) ? "cartoon" : "person";
+  return { kind, gender: WOMEN.test(head) || (!/\b(?:man|boy|he|his|father|grandfather|son|brother|uncle|king|prince|rooster|stallion)\b/i.test(head) && WOMEN.test(said)) ? "f" : "m" };
+}
+
 /** WHO A FINISHED FILM SAYS IS IN IT, for showing on the piece itself: the cast the maker picked (each by
  *  their own picture — meta.cast), then the characters the story invented (meta.castCards). Nobody twice,
  *  nobody without a picture, six at most. A picture is one of the site's own paths or an https address —

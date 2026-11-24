@@ -46,7 +46,10 @@ import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
 import { storyTypicalSeconds } from "../lib/story-motion";
 import { storyMotionOn } from "../lib/story-motion.server";
 // (2026-11-23) THE STORY'S OWN CAST: a portrait for every character a story invents — shown, and kept
-import { castCardsOf, castToken, readCastToken, type StoryCastRef } from "../lib/story-picture";
+import { castCardsOf, castToken, keepGuess, readCastToken, type StoryCastRef } from "../lib/story-picture";
+// (2026-11-24) KEEP IN MY CAST: a story's own character joins the maker's cast — the one character dialog
+import { CharacterForge, FORGE_CSS, type ForgeSeed } from "../components/CharacterForge";
+import { VOICE_UI_CSS } from "../components/VoicePicker";
 
 export const meta: MetaFunction = () => [{ title: "Movie Maker · EasyMode" }];
 
@@ -2086,6 +2089,9 @@ export default function FilmStudio() {
   };
   // Tap a scene still to inspect it big (lightbox).
   const [zoomImg, setZoomImg] = useState<string | null>(null);
+  // KEEP IN MY CAST: a character the story invented, opened in the character dialog (CharacterForge) with
+  // the portrait the story drew — from the big view of that portrait.
+  const [keep, setKeep] = useState<ForgeSeed | null>(null);
   // THE CAST ID CARD in every picker where a face is chosen (the story's cast, the music video's star and
   // co-stars, a scene's "add to this scene", the acted film's roster): with a mouse it floats beside the
   // face pointed at, as in the Presenters section; with a finger, HOLD a face and it opens as a sheet
@@ -2523,6 +2529,15 @@ export default function FilmStudio() {
       {zoomImg && typeof document !== "undefined" && createPortal(
         <div className="mm-lightbox" onClick={() => setZoomImg(null)} role="dialog" aria-label={t("Scene preview")}>
           <img src={zoomImg} alt="" onClick={(e) => e.stopPropagation()} />
+          {(() => {
+            // KEEP IN MY CAST: this picture is the portrait of one of the story's own characters
+            const star = narrated ? (seeds?.castCards || []).find((c) => c.img === zoomImg) : undefined;
+            return star ? (
+              <button type="button" className="mm-lightbox-keep" onClick={(e) => { e.stopPropagation(); setKeep({ img: star.img, name: star.name, look: star.look, ...keepGuess(star.look) }); setZoomImg(null); }}>
+                <Ico n="presenter" size={16} /> {t("Keep {name} in my cast", { name: star.name })}
+              </button>
+            ) : null;
+          })()}
           <button type="button" className="mm-lightbox-x" onClick={() => setZoomImg(null)} aria-label={t("Close")}>✕</button>
         </div>,
         document.body,
@@ -2991,6 +3006,8 @@ export default function FilmStudio() {
   return (
     <div className="fs-wrap">
       <style dangerouslySetInnerHTML={{ __html: FS_STYLE }} />
+      {/* KEEP IN MY CAST — the one character dialog, opened on a story's own character (its styles ride in FS_STYLE) */}
+      <CharacterForge open={!!keep} seed={keep} onClose={() => setKeep(null)} />
       {/* the ID card of the face pointed at (a mouse) or held (a finger) — for every picker on the page */}
       <CastPeek peek={peek} targets={peekTargets} />
 
@@ -4153,6 +4170,8 @@ function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; narrated?:
 }
 
 const FS_STYLE = `
+${VOICE_UI_CSS}
+${FORGE_CSS}
 ${SPIN_STAGE_CSS}
 ${CAST_ID_CSS}
 /* ---- the cast ID card in the pickers (CastPeek): a face a finger can hold, and the sheet it opens ---- */
@@ -4984,6 +5003,10 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-lightbox img{max-width:100%;max-height:100%;border-radius:12px;box-shadow:0 20px 60px -10px rgba(0,0,0,.7);}
 .mm-lightbox-x{position:fixed;top:18px;right:18px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:17px;cursor:pointer;display:grid;place-items:center;}
 .mm-lightbox-x:hover{background:rgba(255,255,255,.3);}
+/* (the big view of a story character's portrait: keep them in your cast) */
+.mm-lightbox-keep{position:fixed;left:50%;bottom:max(22px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:inline-flex;align-items:center;gap:8px;min-height:48px;max-width:calc(100vw - 32px);padding:0 22px;border-radius:999px;border:0;background:var(--green,#0C7A46);color:#fff;font-family:Poppins,sans-serif;font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;box-shadow:0 12px 30px rgba(0,0,0,.5);}
+.mm-lightbox-keep:hover{background:var(--green2,#12A85E);}
+.mm-lightbox-keep svg{stroke:currentColor;fill:none;flex:none;}
 .mm-sc .wb-bufwrap::before{width:118px;height:118px;}
 .mm-sc-x{position:absolute;top:6px;right:6px;z-index:3;width:25px;height:25px;border-radius:50%;border:none;background:rgba(10,20,15,.6);color:#fff;font-size:13px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .14s;}
 .mm-sc-x:hover:not(:disabled){background:#B4463A;}

@@ -7,6 +7,9 @@
  *                                 the shop's own voices, whether the plan can create characters at all
  *   POST intent=preview         multipart { charKind, avatarDesc, avatarPhoto? | refFile? }
  *                               → { preview: { file, refFile, kind, left } }        FREE, counted
+ *   POST intent=adopt           { img (one of our /renders pictures), charKind, avatarDesc }
+ *                               → { preview: { file, refFile: "", kind, left } }    FREE, nothing drawn —
+ *                                 "Keep in my cast": a story's own character, from the portrait it drew
  *   POST intent=register        { previewFile, avatarName, avatarGender, avatarVoice, avatarEnergy }
  *                               → { registered: { name, kind } }                    charged here, once
  *
@@ -15,8 +18,11 @@
  * the description, the picture — is read from the record written when that preview was drawn
  * (character-preview.server.ts), never from the form. The browser only says WHICH preview. */
 
+import fs from "node:fs";
+import path from "node:path";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { db } from "../db.server";
+import { ownRenderPath } from "../lib/story-picture";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { capabilitiesFor } from "../lib/capabilities.server";
@@ -109,6 +115,37 @@ export async function action({ request }: ActionFunctionArgs) {
       if (saved) pv.dropUpload(shop.id, saved);
       console.error(`[character] preview failed for shop ${shop.id}: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
       return json({ error: tr(lang, "We couldn't draw them that time — nothing was charged. Try again, or change the description.") });
+    }
+  }
+
+  /* ---- KEEP A STORY'S CHARACTER: the portrait their story drew for one of its own characters becomes
+     the preview. Nothing is drawn (they have seen it — it is the face in every scene), nothing is
+     charged, and it is not one of the day's free looks. Step two, below, is the same as for any other
+     character: registered once, charged once, by its kind. ---- */
+  if (intent === "adopt") {
+    const kind = charKindOf(form.get("charKind"));
+    const desc = String(form.get("avatarDesc") || "").trim().replace(/\s+/g, " ").slice(0, CHAR_DESC_MAX);
+    // only ever one of OUR render pictures, by its bare name (the address comes back from the browser)
+    const src = ownRenderPath(String(form.get("img") || ""));
+    if (!src) return json({ error: tr(lang, "That picture isn't one of your story's — open the story again.") });
+    let buf: Buffer;
+    try { buf = fs.readFileSync(path.join(process.cwd(), "data", "renders", path.basename(src))); }
+    catch { return json({ error: tr(lang, "That picture is no longer here — draw the story's cast again.") }); }
+    const ext = pv.sniffImage(buf); // what the bytes are, not what the name says
+    if ((ext !== "jpg" && ext !== "png" && ext !== "webp") || buf.length > 8 * 1024 * 1024) return json({ error: tr(lang, "That picture is no longer here — draw the story's cast again.") });
+    try {
+      // (the words are screened like a typed description — once: changing only what KIND they are asks nothing new)
+      const known = pv.adoptedRecord(shop.id, src);
+      if (desc && (!known || known.rec.desc !== desc)) {
+        const { screenCreatePrompt } = await import("../lib/prompt-safety.server");
+        const verdict = await screenCreatePrompt(desc);
+        if (!verdict.ok) return json({ error: verdict.message });
+      }
+      const file = pv.adoptPicture({ shopId: shop.id, kind, desc, src, buf, ext });
+      return json({ preview: { file, refFile: "", kind, left: pv.previewsLeft(shop.id) } }, noStore);
+    } catch (e) {
+      console.error(`[character] adopting a story portrait failed for shop ${shop.id}: ${e instanceof Error ? e.message.slice(0, 200) : e}`);
+      return json({ error: tr(lang, "We couldn't bring them over that time — nothing was charged. Try again.") });
     }
   }
 

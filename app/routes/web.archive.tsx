@@ -70,7 +70,10 @@ import { externalOrigin } from "../lib/origin.server";
 import { isValidTimeZone, zonedDateString, zonedInstant } from "../lib/timezone";
 import { storyHeroOf } from "../lib/film-series";
 // (2026-11-23) a finished film says who is in it — its cast, on the piece itself
-import { storyStars } from "../lib/story-picture";
+import { keepGuess, storyStars } from "../lib/story-picture";
+// (2026-11-24) KEEP IN MY CAST: a story's own character, registered from the finished film
+import { CharacterForge, FORGE_CSS, type ForgeSeed } from "../components/CharacterForge";
+import { VOICE_UI_CSS } from "../components/VoicePicker";
 import { adWordsOf } from "../lib/ad-words";
 import { isNarratedStory, tellChoices } from "../lib/story-translate";
 import { tellStoryAgain } from "../lib/story-translate.server";
@@ -1366,6 +1369,8 @@ function clickDownload(href: string, name: string) {
 // on purpose — a lit pill reads as a toggle, not a status chip, so the two are
 // deliberately different weights of the same green.
 const WA_CSS = `
+${VOICE_UI_CSS}
+${FORGE_CSS}
 .wa-wallet{font-size:13px;font-weight:800;color:var(--green,#0C7A46);margin:0 0 12px;}
 .wa-shelfnote{display:flex;align-items:flex-start;gap:6px;font-size:12px;line-height:1.45;color:var(--ink2,#5b6b61);margin:0 0 14px;}
 .wa-shelfnote svg{flex:0 0 auto;margin-top:2px;}
@@ -1485,6 +1490,13 @@ const WA_CSS = `
 .wa-vstar{flex:0 0 58px;width:58px;min-width:0;display:flex;flex-direction:column;gap:4px;}
 .wa-vstar img{display:block;width:58px;height:77px;object-fit:cover;object-position:center top;border-radius:10px;border:1px solid var(--line,#E5E0CF);background:#EDE9DF;}
 .wa-vstar i{font-style:normal;font-size:11px;font-weight:800;line-height:1.2;color:var(--ink,#14201A);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* (a character the story invented: tap to keep them in your cast — the + says so) */
+button.wa-vstar{position:relative;padding:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;}
+button.wa-vstar:hover img{border-color:var(--green2,#12A85E);}
+button.wa-vstar:focus-visible{outline:none;}
+button.wa-vstar:focus-visible img{outline:3px solid var(--green,#0C7A46);outline-offset:2px;}
+.wa-vstar-plus{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--green,#0C7A46);color:#fff;font:800 14px/1 Poppins,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.3);}
+.wa-vstars-hint{margin:6px 0 0;font-size:11.5px;font-weight:600;line-height:1.35;color:var(--ink2,#4A554E);}
 .wa-vok{font-size:12.5px;font-weight:800;color:var(--green,#0C7A46);}
 .wa-verr{font-size:12.5px;font-weight:700;color:#8C2E1B;}
 .wa-vcdnote{display:block;margin-top:6px;font-size:12px;color:#8a6207;font-weight:600;}
@@ -2444,9 +2456,16 @@ export default function WebArchive() {
   // only re-runs when the open piece changes identity.
   const navRef = useRef({ shelf: visibleShelf, vIdx });
   navRef.current = { shelf: visibleShelf, vIdx };
+  // KEEP IN MY CAST: the character a story invented, opened in the one character dialog (CharacterForge).
+  // While it is open it has the keyboard: Esc closes IT, and the arrows move the caret in its name box —
+  // not the piece behind it.
+  const [keep, setKeep] = useState<ForgeSeed | null>(null);
+  const keepOpen = useRef(false);
+  keepOpen.current = !!keep;
   useEffect(() => {
     if (!viewer) return;
     const onKey = (e: KeyboardEvent) => {
+      if (keepOpen.current) return;
       if (e.key === "Escape") { setViewer(null); return; }
       const { shelf: s, vIdx: i } = navRef.current;
       if (s.length < 2 || i < 0) return;
@@ -2503,6 +2522,8 @@ export default function WebArchive() {
   return (
     <div className={isCreator ? "wa-creator" : undefined}>
       <style dangerouslySetInnerHTML={{ __html: WA_CSS }} />
+      {/* KEEP IN MY CAST — the one character dialog, opened on a story's own character (its styles ride in WA_CSS) */}
+      <CharacterForge open={!!keep} seed={keep} onClose={() => setKeep(null)} />
       <div className="ar-cinehead">
         <span className="ar-cinehead-bg" aria-hidden="true">
           <span className="ar-cinehead-rose" />
@@ -2972,10 +2993,16 @@ export default function WebArchive() {
                 <div className="wa-vstars">
                   <b>{t("Starring")}</b>
                   <div>
-                    {viewer.stars.map((c) => (
+                    {viewer.stars.map((c) => c.own ? (
+                      // KEEP IN MY CAST: a character the story invented can join the maker's own cast, from this very portrait
+                      <button type="button" key={`${c.name}|${c.img}`} className="wa-vstar is-own" onClick={() => setKeep({ img: c.img, name: c.name, look: c.look || "", ...keepGuess(c.look || "") })} title={t("Keep {name} in your cast", { name: c.name })}>
+                        <img src={c.img} alt="" loading="lazy" /><i>{c.name}</i><span className="wa-vstar-plus" aria-hidden="true">+</span>
+                      </button>
+                    ) : (
                       <span key={`${c.name}|${c.img}`} className="wa-vstar" title={c.look ? `${c.name} — ${c.look}` : c.name}><img src={c.img} alt="" loading="lazy" /><i>{c.name}</i></span>
                     ))}
                   </div>
+                  {viewer.stars.some((c) => c.own) && <p className="wa-vstars-hint">{t("Tap a character to keep them in your cast.")}</p>}
                 </div>
               )}
               {viewer.notMade && (

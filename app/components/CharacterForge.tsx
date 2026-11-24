@@ -40,7 +40,14 @@ const KINDS: Array<{ k: CharKind; label: string; icon: string; hint: string; eg:
 
 const voiceFor = (kind: CharKind, gender: "f" | "m") => (kind === "person" ? DEFAULT_AVATAR_VOICE[gender] : DEFAULT_CHARACTER_VOICE[kind][gender]);
 
-export function CharacterForge({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** KEEP IN MY CAST (2026-11-24): the dialog opened ON a character a story invented — the portrait the story
+ *  drew, its name, and the words it was described with. Nothing is drawn: the portrait itself becomes the
+ *  preview (api.character → adopt), so the maker lands on step two with the face they saw in every scene.
+ *  `kind` and `gender` are a first guess (story-picture.ts → keepGuess); the kind can be changed here,
+ *  before anything is charged — the price follows it. */
+export type ForgeSeed = { img: string; name: string; look: string; kind: CharKind; gender: "f" | "m" };
+
+export function CharacterForge({ open, onClose, seed }: { open: boolean; onClose: () => void; seed?: ForgeSeed | null }) {
   const t = useT();
   const revalidator = useRevalidator();
   const info = useFetcher<Info>();
@@ -95,6 +102,24 @@ export function CharacterForge({ open, onClose }: { open: boolean; onClose: () =
   // the new character should be in the cast behind the dialog the moment it exists
   useEffect(() => { if (registered) revalidator.revalidate(); }, [registered]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // KEEP IN MY CAST — opened on a story's character: everything is filled in from the story, and its
+  // portrait is made the preview straight away. Nothing is drawn and nothing is charged by this.
+  const adopt = (s: ForgeSeed, k: CharKind) => {
+    const fd = new FormData();
+    fd.set("intent", "adopt");
+    fd.set("img", s.img);
+    fd.set("charKind", k);
+    fd.set("avatarDesc", s.look.trim().slice(0, CHAR_DESC_MAX));
+    drawer.submit(fd, { method: "post", action: "/api/character" });
+  };
+  const seedKey = open && seed ? seed.img : "";
+  useEffect(() => {
+    if (!seedKey || !seed) return;
+    setKind(seed.kind); setFile(null); setDesc(seed.look.trim().slice(0, CHAR_DESC_MAX)); setPreview(null);
+    setName(seed.name.trim().slice(0, 40)); setGender(seed.gender); setVoice(voiceFor(seed.kind, seed.gender)); setEnergy("warm"); setRegistering(false);
+    adopt(seed, seed.kind);
+  }, [seedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!open || !mounted) return null;
 
   const d = info.data && !info.data.error ? info.data : null;
@@ -108,6 +133,13 @@ export function CharacterForge({ open, onClose }: { open: boolean; onClose: () =
     setKind(k); setPreview(null); setVoice(voiceFor(k, gender));
   };
   const pickGender = (g: "f" | "m") => { setGender(g); setVoice(voiceFor(kind, g)); };
+  // (a story's character: "a cartoon, not a person" — the same portrait, kept as another kind. The price
+  //  on the button follows; tapping the kind already chosen tries again when bringing them over failed.)
+  const reKind = (k: CharKind) => {
+    if (!seed || (k === kind && preview)) return;
+    setKind(k); setVoice(voiceFor(k, gender));
+    adopt(seed, k);
+  };
   // ask for a preview: with the picture just added, or (for "Try another") the one already uploaded
   const askPreview = (keptRef?: string) => {
     const fd = new FormData();
@@ -138,7 +170,7 @@ export function CharacterForge({ open, onClose }: { open: boolean; onClose: () =
 
   return createPortal(
     <div className="ws-scrim cf-scrim" onClick={close}>
-      <div ref={dialogRef} className={`cf${preview && !registering ? " wide" : ""}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={t("Create your character")}>
+      <div ref={dialogRef} className={`cf${(preview || seed) && !registering ? " wide" : ""}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={seed ? t("Keep {name} in your cast", { name: seed.name }) : t("Create your character")}>
         <button type="button" className="cf-x" onClick={close} aria-label={t("Close")}><Ico n="x" size={16} /></button>
 
         {registering ? (
@@ -162,10 +194,18 @@ export function CharacterForge({ open, onClose }: { open: boolean; onClose: () =
                   <p>{t("They're in your cast now. Their 3D figure — the one you can turn around — is being built and appears in a few minutes.")}</p>
                 </>
               )}
-              <div className="cf-done-acts">
-                <Link className="wb-btn cf-go" to="/web/presenters?show=mine" onClick={() => { reset(); onClose(); }}>{t("See your cast")}</Link>
-                <button type="button" className="cf-again" onClick={reset}>{t("Create another")}</button>
-              </div>
+              {seed ? (
+                // (kept from a story: the maker is in the middle of that story — stay there; the cast opens beside it)
+                <div className="cf-done-acts">
+                  <button type="button" className="wb-btn cf-go" onClick={close}>{t("Done")}</button>
+                  <Link className="cf-again" to="/web/presenters?show=mine" target="_blank" rel="noopener">{t("See your cast")}</Link>
+                </div>
+              ) : (
+                <div className="cf-done-acts">
+                  <Link className="wb-btn cf-go" to="/web/presenters?show=mine" onClick={() => { reset(); onClose(); }}>{t("See your cast")}</Link>
+                  <button type="button" className="cf-again" onClick={reset}>{t("Create another")}</button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="cf-done">
@@ -180,14 +220,16 @@ export function CharacterForge({ open, onClose }: { open: boolean; onClose: () =
             <div className="cf-h">
               <span className="cf-crest"><Ico n="wand" size={20} /></span>
               <div>
-                <b>{t("Create your character")}</b>
-                <span>{preview
+                <b>{seed ? t("Keep {name} in your cast", { name: seed.name }) : t("Create your character")}</b>
+                <span>{seed
+                  ? t("Straight from your story — the same face. Name them, pick a voice and register; then cast them in any film.")
+                  : preview
                   ? t("Here they are. Like the look? Name them and register — or try another, free.")
                   : t("A person, a mascot, a cartoon, a creature — describe them or add a picture. You see them first; nothing is charged until you say yes.")}</span>
               </div>
             </div>
 
-            {!preview ? (
+            {!preview && !seed ? (
               <>
                 <div className="cf-kinds" role="group" aria-label={t("What are they?")}>
                   {KINDS.map((x) => (
@@ -219,12 +261,28 @@ export function CharacterForge({ open, onClose }: { open: boolean; onClose: () =
             ) : (
               <div className="cf-two">
                 <div className="cf-col">
-                  <div className="cf-prev"><img src={`/uploads/${preview.file}`} alt={t("Your character")} /></div>
-                  <div className="cf-prevacts">
-                    <button type="button" disabled={drawing || left === 0} onClick={() => askPreview(preview.refFile)}>{drawing ? <><span className="cf-spin sm" aria-hidden="true" /> {t("Drawing another…")}</> : <><Ico n="refresh" size={13} /> {t("Try another")}</>}</button>
-                    <button type="button" disabled={drawing} onClick={() => setPreview(null)}><Ico n="pencil" size={13} /> {t("Edit description")}</button>
-                  </div>
-                  {leftNote ? <p className="cf-left">{leftNote}</p> : null}
+                  {/* (a story's character: the portrait the story drew — shown at once, while it is brought over) */}
+                  <div className="cf-prev"><img src={preview ? `/uploads/${preview.file}` : seed ? seed.img : ""} alt={t("Your character")} /></div>
+                  {seed ? (
+                    <>
+                      <div className="cf-lbl">{t("What are they?")}<span>{t("a person gets outfits; a cartoon or a creature keeps this look")}</span></div>
+                      <div className="cf-kinds" role="group" aria-label={t("What are they?")}>
+                        {KINDS.map((x) => (
+                          <button type="button" key={x.k} className={kind === x.k ? "sel" : ""} aria-pressed={kind === x.k} disabled={drawing} onClick={() => reKind(x.k)}>
+                            <Ico n={x.icon} size={17} /> {t(x.label)}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : preview ? (
+                    <>
+                      <div className="cf-prevacts">
+                        <button type="button" disabled={drawing || left === 0} onClick={() => askPreview(preview.refFile)}>{drawing ? <><span className="cf-spin sm" aria-hidden="true" /> {t("Drawing another…")}</> : <><Ico n="refresh" size={13} /> {t("Try another")}</>}</button>
+                        <button type="button" disabled={drawing} onClick={() => setPreview(null)}><Ico n="pencil" size={13} /> {t("Edit description")}</button>
+                      </div>
+                      {leftNote ? <p className="cf-left">{leftNote}</p> : null}
+                    </>
+                  ) : null}
                   {drawError}
                 </div>
                 <div className="cf-col">
@@ -243,7 +301,7 @@ export function CharacterForge({ open, onClose }: { open: boolean; onClose: () =
                       <button type="button" key={e} className={energy === e ? "sel" : ""} aria-pressed={energy === e} onClick={() => setEnergy(e)}>{t(label)}</button>
                     ))}
                   </div>
-                  <button type="button" className="wb-btn cf-go" disabled={drawing || registrar.state !== "idle" || !name.trim() || !canCreate} onClick={register}>
+                  <button type="button" className="wb-btn cf-go" disabled={drawing || registrar.state !== "idle" || !name.trim() || !canCreate || !preview} onClick={register}>
                     <Ico n="wand" size={16} /> {name.trim() ? t("Register {name}", { name: name.trim() }) : t("Register this character")}{cost != null ? ` · ${cost} ${t("tokens")}` : ""}
                   </button>
                   <p className="cf-note">{kind === "person"
