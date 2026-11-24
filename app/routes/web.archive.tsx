@@ -74,6 +74,9 @@ import { cookingReel, cookingTitle, keepGuess, storyStars } from "../lib/story-p
 import { showMeta } from "../lib/character-series";
 // (2026-11-24) a story film's poster is its cover on the shelf
 import { posterOf } from "../lib/story-poster";
+// (2026-11-24) …and every other video and track wears a cover in its family's style, made by the Archive itself
+import { COVER_LABEL, coverAsk, coverKind, coverOf, type CoverFamily } from "../lib/archive-cover";
+import { coverFailedLately } from "../lib/archive-cover.server";
 // (2026-11-24) a series is ONE card on the shelf — its cover, and how many episodes are inside
 import { archiveShelf, episodeOwnLabel, episodesOf, seriesNeedle, seriesOnShelf, seriesRefs, seriesTags, type SeriesItem } from "../lib/archive-series";
 // (2026-11-24) KEEP IN MY CAST: a story's own character, registered from the finished film
@@ -538,6 +541,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // ITS POSTER (story-poster.ts): a story film is shown on the shelf as its poster — title and cast over
         // its most "cast" picture — instead of whatever its first frame happened to be. null = the first frame.
         poster: a.type === "VIDEO_AD" ? posterOf(a.metaJson) : null,
+        // ITS COVER (archive-cover.ts): every video and track wears one in the style of its FAMILY — a told
+        // story is its poster; a music video a record sleeve, a horror a black one-sheet, an acted film a
+        // marquee, an ad the Ad Maker's green, a Creator video a sticker, found footage a viewfinder. The
+        // Archive makes them itself, the first time it shows a piece without one: `coverAsk` says to ask.
+        ...(() => {
+          if (a.type !== "VIDEO_AD" && a.type !== "AUDIO") return { family: null as CoverFamily | null, cover: null as string | null, coverAsk: false };
+          let m: Record<string, unknown> = {};
+          try { m = JSON.parse(a.metaJson || "{}") || {}; } catch { /* no meta: the title is all there is */ }
+          const kind = coverKind({ type: a.type, title: a.title, meta: m, body });
+          const cover = coverOf(m);
+          const ask = coverAsk({ kind, media: rawMedia, expired, poster: a.type === "VIDEO_AD" ? posterOf(m) : null, cover }) && !coverFailedLately(a.id);
+          return { family: kind ? kind.family : null, cover: cover ? cover.src : null, coverAsk: ask };
+        })(),
         // WHO IS IN IT: the presenters the maker cast, then the characters the story invented, each with
         // the picture it was drawn from (story-picture.ts → storyStars). Shown under the title, "Starring".
         // (…a telling in another language too: it is not an episode of anything, but the same people are in it)
@@ -1432,11 +1448,17 @@ ${FORGE_CSS}
 }
 @media(prefers-reduced-motion:reduce){.wa-poster.has-poster::after{animation:none;}.wa-poster.has-poster img,.wa-poster.has-poster:hover::after{transition:none;}}
 .wa-play{position:absolute;inset:0;display:grid;place-items:center;font-size:32px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.65);pointer-events:none;}
+/* A COVER ARRIVES (archive-cover.ts): drawn while the member looks, it develops where the first frame was —
+   out of a bright blur, as a print comes up in the tray — and the poster's band of light crosses it. */
+.wb-asset.wa-fresh .wa-poster img{animation:waDevelop .95s cubic-bezier(.2,.7,.2,1) both;}
+@keyframes waDevelop{from{opacity:.2;filter:brightness(1.7) saturate(0) blur(7px);}to{opacity:1;filter:none;}}
+@media(prefers-reduced-motion:reduce){.wb-asset.wa-fresh .wa-poster img{animation:none;}}
 /* Audio has no still — a soft green-on-cream panel with a music glyph stands
    in on the tile; the real <audio> player lives in the viewer. */
 .wa-audiotile{position:relative;width:100%;aspect-ratio:4/5;display:grid;place-items:center;background:linear-gradient(150deg,#0C7A46,#14201A);}
 .wa-audiotile .wa-audio-ico{color:var(--paper);opacity:.9;}
 .wa-audiotile .wa-play{font-size:26px;opacity:.85;}
+.wa-audiotile .wa-audiocover{position:absolute;inset:0;width:100%;height:100%;aspect-ratio:auto;object-fit:cover;}
 .wa-audiofull{width:100%;background:linear-gradient(150deg,#0C7A46,#14201A);display:flex;flex-direction:column;align-items:center;gap:16px;padding:40px 20px;}
 .wa-audiofull .wa-audio-ico{color:var(--paper);opacity:.92;}
 .wa-audiofull audio{width:min(420px,88%);}
@@ -2579,9 +2601,69 @@ export default function WebArchive() {
   // piece is its own card as before. A series narrowed by a chip or a search is what is left of it: it
   // still shows as its card, counting the episodes that are on the shelf.
   type ShelfCard = { a: (typeof shelf)[number]; series?: undefined } | { series: SeriesItem; a?: undefined };
+  // A PIECE'S FACE ON THE SHELF (archive-cover.ts): the cover made for it — on this visit, or before — else
+  // its own poster, else (the tile's own fallback) its first frame. A series' card is built from the same faces.
+  const [madeCovers, setMadeCovers] = useState<Record<string, string>>({});
+  const faceOf = <P extends { id: string; poster: string | null; cover: string | null }>(p: P): P => {
+    const c = madeCovers[p.id] || p.cover;
+    return c && c !== p.poster ? { ...p, poster: c } : p;
+  };
   const shelfCards: ShelfCard[] = tab === "video" && !openSeries
-    ? archiveShelf(visibleShelf).flatMap((it): ShelfCard[] => { if (it.kind === "series") return [{ series: it }]; const a = pieceById.get(it.id); return a ? [{ a }] : []; })
+    ? archiveShelf(visibleShelf.map(faceOf)).flatMap((it): ShelfCard[] => { if (it.kind === "series") return [{ series: it }]; const a = pieceById.get(it.id); return a ? [{ a }] : []; })
     : visibleShelf.map((a) => ({ a }));
+  // …and which of the cards on it still want a cover: a piece's own, or a series' face (its newest episode
+  // that still has its film — the one its card shows)
+  const seriesFace = (s: SeriesItem) => s.episodes.map((id) => pieceById.get(id)).filter((p): p is NonNullable<typeof p> => !!p)
+    .sort((x, y) => Date.parse(y.when) - Date.parse(x.when)).find((p) => !!p.media) || null;
+  const askFor = (p: { id: string; coverAsk: boolean } | null | undefined) => (p && p.coverAsk && !madeCovers[p.id] ? p.id : undefined);
+  const coverAskSig = shelfCards.map((c) => (c.a ? askFor(c.a) : askFor(seriesFace(c.series))) || "").filter(Boolean).join(",");
+  // COVERS, MADE AS THEY ARE SEEN. A card that wants a cover asks for one as it comes into view — two at a
+  // time, each piece once a visit — and the tile shows what it showed until the cover has LOADED: then it
+  // develops in its place. A cover that cannot be made leaves the tile as it was (the server says why, and
+  // does not try that piece again for hours).
+  const coverEngine = useRef<{ asked: Set<string>; queue: string[]; busy: number; alive: boolean; ctl: AbortController } | null>(null);
+  useEffect(() => {
+    const e = { asked: new Set<string>(), queue: [] as string[], busy: 0, alive: true, ctl: new AbortController() };
+    coverEngine.current = e;
+    return () => { e.alive = false; e.ctl.abort(); if (coverEngine.current === e) coverEngine.current = null; };
+  }, []);
+  useEffect(() => {
+    const e = coverEngine.current;
+    if (!e || !coverAskSig || typeof IntersectionObserver === "undefined") return;
+    const pump = () => {
+      while (e.alive && e.busy < 2 && e.queue.length) {
+        const id = e.queue.shift()!;
+        e.busy++;
+        const body = new FormData();
+        body.set("id", id);
+        fetch("/web/archive-cover", { method: "POST", body, credentials: "same-origin", signal: e.ctl.signal })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j: { cover?: unknown } | null) => {
+            const src = j && typeof j.cover === "string" && /^\/renders\/[a-zA-Z0-9_-]+\.jpg$/.test(j.cover) ? j.cover : null;
+            if (!src || !e.alive) return;
+            // (shown once it has loaded: never half a picture, and never one that will not load)
+            const img = new Image();
+            img.onload = () => { if (e.alive) setMadeCovers((m) => (m[id] ? m : { ...m, [id]: src })); };
+            img.src = src;
+          })
+          .catch(() => { /* the tile keeps what it shows */ })
+          .finally(() => { e.busy--; pump(); });
+      }
+    };
+    const io = new IntersectionObserver((seen) => {
+      for (const s of seen) {
+        if (!s.isIntersecting) continue;
+        io.unobserve(s.target);
+        const id = (s.target as HTMLElement).dataset.coverAsk || "";
+        if (!id || e.asked.has(id)) continue;
+        e.asked.add(id);
+        e.queue.push(id);
+      }
+      pump();
+    }, { rootMargin: "320px 0px" });
+    document.querySelectorAll<HTMLElement>("[data-cover-ask]").forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [coverAskSig]);
   // …and the pieces that stand on it as cards of their own: what Select picks from and what the viewer's
   // arrows walk. An episode inside a closed series is not one of them — nothing on this page keeps,
   // deletes or picks a whole series in one press.
@@ -3155,7 +3237,7 @@ export default function WebArchive() {
               const s = c.series;
               const isPoster = !!s.cover && s.cover !== s.frame;
               return (
-                <Link key={`series|${s.key}`} to={seriesHref(s.key)} preventScrollReset data-series={s.key}
+                <Link key={`series|${s.key}`} to={seriesHref(s.key)} preventScrollReset data-series={s.key} data-cover-ask={askFor(seriesFace(s))}
                   className={`wb-asset wa-series${selecting ? " off" : ""}`} aria-disabled={selecting || undefined} tabIndex={selecting ? -1 : undefined}
                   onClick={(e) => { if (selecting) e.preventDefault(); }} title={`${s.title} · ${episodesLabel(episodesIn(s))}`}>
                   <span className={`wa-poster wa-series-cover${isPoster ? " has-poster" : ""}`} style={isPoster ? { ["--k" as string]: Math.min(k, 11) } : undefined}>
@@ -3173,13 +3255,14 @@ export default function WebArchive() {
                 </Link>
               );
             }
-            const a = c.a;
+            // (its face: the cover made for it, else its poster — the viewer opens the piece itself)
+            const a = faceOf(c.a);
             const [cc, cl] = chipFor(a);
             return (
-              <div className={`wb-asset${selecting && picked.has(a.id) ? " wa-picked" : ""}`} key={a.id}>
+              <div className={`wb-asset${selecting && picked.has(a.id) ? " wa-picked" : ""}${madeCovers[a.id] ? " wa-fresh" : ""}`} key={a.id} data-cover-ask={askFor(c.a)}>
                 {/* a film's own POSTER catches the light: once as the shelf comes up (one after another), and
                     again under a pointer */}
-                <button type="button" className={`wa-poster${a.poster ? " has-poster" : ""}`} style={a.poster ? { ["--k" as string]: Math.min(k, 11) } : undefined} onClick={() => (selecting ? togglePick(a.id) : setViewer(a))}
+                <button type="button" className={`wa-poster${a.poster ? " has-poster" : ""}`} style={a.poster ? { ["--k" as string]: Math.min(k, 11) } : undefined} onClick={() => (selecting ? togglePick(a.id) : setViewer(c.a))}
                   title={selecting ? (picked.has(a.id) ? t("Unselect") : t("Select")) : a.isAudio ? t("Open & play") : t("Open it big")}
                   aria-pressed={selecting ? picked.has(a.id) : undefined}>
                   {selecting && <span className={`wa-sel${picked.has(a.id) ? " on" : ""}`} aria-hidden="true"><Ico n="check" size={14} /></span>}
@@ -3197,6 +3280,9 @@ export default function WebArchive() {
                   {a.isAudio && a.media && (
                     <div className="wa-audiotile">
                       <span className="wa-audio-ico"><Ico n="music" size={34} /></span>
+                      {/* a track's cover: a record sleeve whose art is its own sound (archive-cover.ts) — over the
+                          glyph, which shows again if the picture will not load */}
+                      {a.poster && <img className="wa-audiocover" src={a.poster} alt="" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />}
                       <span className="wa-play" aria-hidden>▶</span>
                     </div>
                   )}
@@ -3232,7 +3318,7 @@ export default function WebArchive() {
                       "switch to client rendering"), which is why the Archive
                       re-rendered itself from scratch on every visit. Keep the
                       local date; let React reconcile this one node. */}
-                  <div className="s"><span className="wa-kind">{a.isVideo ? t("Video") : a.isAudio ? t("Music") : t("Image ad")} · </span><span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>
+                  <div className="s"><span className="wa-kind">{a.isVideo ? t(a.family ? COVER_LABEL[a.family] : "Video") : a.isAudio ? t("Music") : t("Image ad")} · </span><span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>
                   <div className="wa-tileacts">
                     <span className={`wa-chip ${cc}`}>{cl}</span>
                     {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo, a.isAudio)} title={t("Download")}><Ico n="download" /></a>}

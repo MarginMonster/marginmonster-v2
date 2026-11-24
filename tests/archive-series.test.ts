@@ -233,10 +233,11 @@ test("on the Videos tab a series is one card; inside an open series the shelf is
   // the library's own lines are still the library's
   assert.ok(page.includes('const shelf = tab === "stills" ? stills : assets.filter((a) => A_KIND[a.type] === tab);'));
   assert.ok(page.includes("const tabTotal = totals?.[tab] ?? shelf.length;"));
-  // what is drawn: series as cards on Videos, pieces everywhere else and inside a series
+  // what is drawn: series as cards on Videos, pieces everywhere else and inside a series — each piece by its
+  // FACE (archive-cover.ts: the cover made for it, else its poster), so a series' card wears its newest cover
   assert.ok(page.includes([
     '  const shelfCards: ShelfCard[] = tab === "video" && !openSeries',
-    '    ? archiveShelf(visibleShelf).flatMap((it): ShelfCard[] => { if (it.kind === "series") return [{ series: it }]; const a = pieceById.get(it.id); return a ? [{ a }] : []; })',
+    '    ? archiveShelf(visibleShelf.map(faceOf)).flatMap((it): ShelfCard[] => { if (it.kind === "series") return [{ series: it }]; const a = pieceById.get(it.id); return a ? [{ a }] : []; })',
     "    : visibleShelf.map((a) => ({ a }));",
   ].join("\n")));
   assert.ok(page.includes("{shelfCards.map((c, k) => {"));
@@ -247,8 +248,10 @@ test("on the Videos tab a series is one card; inside an open series the shelf is
   assert.ok(head.includes("<b>{openSeries.title}</b>") && head.includes("{episodesLabel(episodesIn(openSeries))}"));
   assert.ok(page.includes('const episodesLabel = (n: number) => (n === 1 ? t("1 episode") : t("{n} episodes", { n }));'));
   assert.ok(page.includes('{openSeries && a.series && <span className="wa-epno">{t("Episode {n}", { n: a.series.episode })}</span>}'));
-  // an episode's own card is the card it always was (the lines other tests hold are still here)
-  assert.ok(page.includes("onClick={() => (selecting ? togglePick(a.id) : setViewer(a))}"));
+  // an episode's own card is the card it always was (the lines other tests hold are still here) — and it opens
+  // the PIECE, not its face: the viewer's "Poster" is the poster its film made, never the shelf's cover
+  assert.ok(page.includes("onClick={() => (selecting ? togglePick(a.id) : setViewer(c.a))}"));
+  assert.ok(page.includes("            const a = faceOf(c.a);"));
 });
 
 test("the address: a series is one more thing in it, and everything else in it is kept", () => {
@@ -280,7 +283,7 @@ test("the address: a series is one more thing in it, and everything else in it i
 });
 
 test("a series' card is a way in and nothing else: nothing on the page keeps, deletes or picks a whole series in one press", () => {
-  const card = page.slice(page.indexOf("            if (c.series) {"), page.indexOf("            const a = c.a;"));
+  const card = page.slice(page.indexOf("            if (c.series) {"), page.indexOf("            // (its face: the cover made for it, else its poster"));
   assert.ok(card.length > 800 && card.length < 3200, "the series' card, and only it");
   assert.ok(card.includes("<Link key={`series|${s.key}`} to={seriesHref(s.key)} preventScrollReset data-series={s.key}"));
   for (const never of ["askDelete", "deleteAsset", "keepAsset", "togglePick", "picked", "submit(", "intent", "wa-icon", "wa-sel\"", "setViewer"]) assert.ok(!card.includes(never), never);
@@ -483,10 +486,11 @@ test("a card on a phone: its cover, its title, when — and ONE badge, on the co
   assert.ok(page.includes('{isKept(a) && a.media && <span className="wa-cd wa-cd-st"><Ico n={a.status === "PUBLISHED" ? "check" : "heart"} /> {cl}</span>}'));
   assert.ok(page.includes('const isKept = (a: { status: string }) => a.status === "APPROVED" || a.status === "PUBLISHED";'));
   assert.ok(phone.includes(".wa-cd.wa-cd-st{display:block;}"));
-  // the words under the cover: the title (three lines at most) and the date — "Video" is what the tab already says
+  // the words under the cover: the title (three lines at most) and the date — on a wide screen the line also
+  // says which family a video is ("Horror", "Music video"…: archive-cover.ts); on a phone its cover says it
   // (inside an opened series an episode is called by its own name — the band above already says the series')
   assert.ok(page.includes('<span className="wa-title">{openSeries && a.series ? episodeOwnLabel(a.title) : a.title}</span>'));
-  assert.ok(page.includes('<div className="s"><span className="wa-kind">{a.isVideo ? t("Video") : a.isAudio ? t("Music") : t("Image ad")} · </span><span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>'));
+  assert.ok(page.includes('<div className="s"><span className="wa-kind">{a.isVideo ? t(a.family ? COVER_LABEL[a.family] : "Video") : a.isAudio ? t("Music") : t("Image ad")} · </span><span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>'));
   assert.ok(phone.includes(".wa-kind{display:none;}"));
   assert.ok(phone.includes(".wa-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;}"));
   // nothing on it is smaller than it was: the title is the wide screen's 13px, the date 11px
