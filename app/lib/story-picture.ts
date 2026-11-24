@@ -182,6 +182,28 @@ export function castCardsOf(meta: unknown): StoryCastRef[] {
   return Array.isArray(cards) ? readCastToken(castToken(cards as StoryCastRef[])).refs : [];
 }
 
+/** WHO A FINISHED FILM SAYS IS IN IT, for showing on the piece itself: the cast the maker picked (each by
+ *  their own picture — meta.cast), then the characters the story invented (meta.castCards). Nobody twice,
+ *  nobody without a picture, six at most. A picture is one of the site's own paths or an https address —
+ *  it is only ever drawn as an image, for the member whose piece it is. */
+export type StoryStar = { name: string; img: string; look?: string; /** a character the story made up (its picture is a full-length portrait) */ own?: boolean };
+const SHOWABLE = /^(?:\/[\w./-]+|https:\/\/[^\s"'<>]+)$/;
+export function storyStars(meta: unknown): StoryStar[] {
+  let m: unknown = meta;
+  if (typeof m === "string") { try { m = JSON.parse(m); } catch { return []; } }
+  if (!m || typeof m !== "object" || Array.isArray(m)) return [];
+  const cast = (m as { cast?: unknown }).cast;
+  const picked: StoryStar[] = [];
+  for (const c of Array.isArray(cast) ? cast : []) {
+    if (!c || typeof c !== "object") continue;
+    const name = typeof (c as { name?: unknown }).name === "string" ? ((c as { name: string }).name).replace(/\s+/g, " ").trim().slice(0, 40) : "";
+    const img = typeof (c as { faceUrl?: unknown }).faceUrl === "string" ? ((c as { faceUrl: string }).faceUrl).trim() : "";
+    if (name && SHOWABLE.test(img) && !img.includes("..") && !picked.some((p) => sameCharacter(p.name, name))) picked.push({ name, img });
+  }
+  const own = castCardsOf(m).filter((c) => !picked.some((p) => sameCharacter(p.name, c.name)));
+  return [...picked, ...own.map((c): StoryStar => ({ name: c.name, img: c.img, ...(c.look ? { look: c.look } : {}), own: true }))].slice(0, 6);
+}
+
 /** Of the portraits carried in, the ones THIS story still has a character for (its cast list names them).
  *  A re-written story, or one that continues another, does not show — or draw from — someone not in it. */
 export function castStillIn(refs: ReadonlyArray<StoryCastRef>, castList: ReadonlyArray<string>): StoryCastRef[] {

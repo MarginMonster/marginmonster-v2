@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { NOTHING_WRITTEN, PORTRAIT_ASPECT, STORY_CAST_MAX, castCardsOf, castEntry, castStillIn, castToken, portraitPrompt, readCastToken, sameCharacter } from "../app/lib/story-picture.ts";
+import { NOTHING_WRITTEN, PORTRAIT_ASPECT, STORY_CAST_MAX, castCardsOf, castEntry, castStillIn, castToken, portraitPrompt, readCastToken, sameCharacter, storyStars } from "../app/lib/story-picture.ts";
 import { entryName } from "../app/lib/narrated-core.ts";
 import { storyToEditFrom } from "../app/lib/story-edit.ts";
 
@@ -169,4 +169,42 @@ test("the storyboard opens on the story's cast — the maker's picks and the sto
   assert.ok(page.includes(".mm-star img{display:block;width:108px;height:144px;object-fit:cover;object-position:center top;"), "a full-length portrait is shown from the head down");
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["Starring", "They look like this in every scene."]) assert.equal(dict.split(`${JSON.stringify(k)}:`).length - 1, 5, k);
+});
+
+test("the finished film says who is in it: the maker's cast, then the story's own — nobody twice", () => {
+  const meta = {
+    kind: "narrated", template: "testmovie",
+    cast: [
+      { name: " Maya ", faceUrl: "/avatars/maya.png", voiceId: null },
+      { name: "Nobody", faceUrl: "" },
+      { name: "Sneaky", faceUrl: "javascript:alert(1)" },
+      { name: "Dots", faceUrl: "/renders/../x.jpg" },
+      { name: "Far", faceUrl: "https://cdn.example.com/far.webp" },
+      { name: "maya", faceUrl: "/avatars/other.png" },
+      7,
+    ],
+    castCards: [
+      { name: "Tobias", look: "a weathered lighthouse keeper", img: "/renders/t1.jpg" },
+      { name: "Maya", look: "a duplicate of a picked name", img: "/renders/m1.jpg" },
+      { name: "Ines", look: "", img: "/renders/i1.jpg" },
+    ],
+  };
+  assert.deepEqual(storyStars(meta), [
+    { name: "Maya", img: "/avatars/maya.png" },
+    { name: "Far", img: "https://cdn.example.com/far.webp" },
+    { name: "Tobias", img: "/renders/t1.jpg", look: "a weathered lighthouse keeper", own: true },
+    { name: "Ines", img: "/renders/i1.jpg", own: true },
+  ]);
+  assert.deepEqual(storyStars(JSON.stringify(meta)).map((s) => s.name), ["Maya", "Far", "Tobias", "Ines"]);
+  // a film made before films kept a cast, and nonsense: no row at all
+  for (const m of [null, undefined, "", "{", 3, [], {}, { cast: "x", castCards: 4 }]) assert.deepEqual(storyStars(m), []);
+  // six at most
+  assert.equal(storyStars({ cast: Array.from({ length: 9 }, (_, k) => ({ name: `P${k}`, faceUrl: `/avatars/p${k}.png` })) }).length, 6);
+  // the Archive: story films only, under the title
+  const a = read("app", "routes", "web.archive.tsx");
+  assert.ok(a.includes("stars: a.type === \"VIDEO_AD\" && !!storyHeroOf(a.metaJson) ? storyStars(a.metaJson) : [],"));
+  assert.ok(a.includes("{viewer.stars && viewer.stars.length > 0 && ("));
+  assert.ok(a.includes("<b>{t(\"Starring\")}</b>"));
+  assert.ok(a.includes("<span key={`${c.name}|${c.img}`} className=\"wa-vstar\" title={c.look ? `${c.name} — ${c.look}` : c.name}><img src={c.img} alt=\"\" loading=\"lazy\" /><i>{c.name}</i></span>"));
+  assert.ok(a.includes(".wa-vstar img{display:block;width:58px;height:77px;object-fit:cover;object-position:center top;"));
 });

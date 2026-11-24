@@ -69,6 +69,8 @@ import { externalOrigin } from "../lib/origin.server";
 // (2026-11-22) the "Today" of the When filter starts at midnight where the shop is
 import { isValidTimeZone, zonedDateString, zonedInstant } from "../lib/timezone";
 import { storyHeroOf } from "../lib/film-series";
+// (2026-11-23) a finished film says who is in it — its cast, on the piece itself
+import { storyStars } from "../lib/story-picture";
 import { adWordsOf } from "../lib/ad-words";
 import { tellChoices } from "../lib/story-translate";
 import { tellStoryAgain } from "../lib/story-translate.server";
@@ -498,6 +500,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // Is it a STORY film (acted or narrated)? Those can be continued: the viewer's "Next episode" opens
         // the Movie Maker on the next episode of its series (film-series.ts → storyHeroOf / episodeCardFor).
         canContinue: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson),
+        // WHO IS IN IT: the presenters the maker cast, then the characters the story invented, each with
+        // the picture it was drawn from (story-picture.ts → storyStars). Shown under the title, "Starring".
+        stars: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson) ? storyStars(a.metaJson) : [],
         // A NARRATED story can be told again in another language — same pictures, same storyteller
         // (story-translate.ts). Every language but its own, by their own names — each one either already
         // told (`have`: that piece, to open) or still to make; null for anything else.
@@ -1471,6 +1476,14 @@ const WA_CSS = `
 .wa-vmeta::-webkit-scrollbar{display:none;}
 .wa-vtitle{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .wa-vtitle b{font-family:Poppins,sans-serif;font-size:14.5px;}
+/* the film's cast, under its title */
+.wa-vstars{margin:10px 0 4px;}
+.wa-vstars>b{display:block;font-family:Poppins,sans-serif;font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2,#4A554E);margin:0 0 6px;}
+.wa-vstars>div{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;}
+.wa-vstars>div::-webkit-scrollbar{display:none;}
+.wa-vstar{flex:0 0 58px;width:58px;min-width:0;display:flex;flex-direction:column;gap:4px;}
+.wa-vstar img{display:block;width:58px;height:77px;object-fit:cover;object-position:center top;border-radius:10px;border:1px solid var(--line,#E5E0CF);background:#EDE9DF;}
+.wa-vstar i{font-style:normal;font-size:11px;font-weight:800;line-height:1.2;color:var(--ink,#14201A);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .wa-vok{font-size:12.5px;font-weight:800;color:var(--green,#0C7A46);}
 .wa-verr{font-size:12.5px;font-weight:700;color:#8C2E1B;}
 .wa-vcdnote{display:block;margin-top:6px;font-size:12px;color:#8a6207;font-weight:600;}
@@ -2952,6 +2965,18 @@ export default function WebArchive() {
                   : err && actedId === viewer.id ? <span className="wa-verr">{err}</span>
                   : <span className={`wa-chip ${chipFor(viewer)[0]}`}>{chipFor(viewer)[1]}</span>}
               </div>
+              {/* THE FILM'S CAST, on the film: who the maker picked and who the story invented — the same
+                  faces its scenes were drawn from. */}
+              {viewer.stars && viewer.stars.length > 0 && (
+                <div className="wa-vstars">
+                  <b>{t("Starring")}</b>
+                  <div>
+                    {viewer.stars.map((c) => (
+                      <span key={`${c.name}|${c.img}`} className="wa-vstar" title={c.look ? `${c.name} — ${c.look}` : c.name}><img src={c.img} alt="" loading="lazy" /><i>{c.name}</i></span>
+                    ))}
+                  </div>
+                </div>
+              )}
               {viewer.notMade && (
                 <span className="wa-vmissed">
                   <Ico n={viewer.returned ? "coin" : "bulb"} /> {viewer.returned ? t("The model didn’t make that change, so this one is on us — your {n} tokens are back. Try saying it another way.", { n: viewer.returned }) : t("The model didn’t make that change. Try saying it another way.")}
