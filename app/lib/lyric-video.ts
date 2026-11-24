@@ -139,10 +139,14 @@ export const LINK_TIMEOUT_MS = 75_000;
 
 /** What the fetching tool (yt-dlp) is asked: the audio of that ONE video — AAC (.m4a) when it has it, which needs
  *  no re-encoding — with its facts in a .info.json beside it. No playlist, nothing live, nothing too long or big;
- *  no config file on the machine can add to it. */
-export function ytDlpArgs(watchUrl: string, outTemplate: string): string[] {
+ *  no config file on the machine can add to it. `potCli`: the PO-token program (bgutil-pot, installed by
+ *  scripts/fetch-yt-dlp.mjs) its plugin calls for each request — YouTube refuses cloud servers without one more
+ *  often than with. `verbose`: the tool says which helpers it loaded and why it was refused (toolDetail). */
+export function ytDlpArgs(watchUrl: string, outTemplate: string, o: { potCli?: string; verbose?: boolean } = {}): string[] {
   return [
     "--ignore-config", "--no-playlist", "--no-progress", "--no-mtime",
+    ...(o.verbose ? ["--verbose"] : []),
+    ...(o.potCli && /^\/[\w./-]+$/.test(o.potCli) ? ["--extractor-args", `youtubepot-bgutilcli:cli_path=${o.potCli}`] : []),
     "--match-filter", `!is_live & duration <= ${LINK_MAX_SECONDS}`,
     "--max-filesize", "60M",
     "--socket-timeout", "20", "--retries", "2",
@@ -151,6 +155,14 @@ export function ytDlpArgs(watchUrl: string, outTemplate: string): string[] {
     "-o", outTemplate,
     "--", watchUrl,
   ];
+}
+
+/** What an operator is shown of a refused fetch: the lines of the tool's output that say why — its errors and
+ *  warnings, the PO-token helper's lines, the JavaScript runtime's — the last few, never the whole log. */
+export function toolDetail(out: string, err: string): string {
+  const keep = /ERROR|WARNING|\[pot\]|PO Token|JS runtime|JavaScript|\bdeno\b|[Pp]lugin|not a bot|HTTP Error|\[debug\] yt-dlp version/;
+  const lines = `${out || ""}\n${err || ""}`.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && keep.test(l));
+  return lines.slice(-12).join("\n").slice(-1800);
 }
 
 /** What a member is told when a link can't be fetched (English source words — the route runs them through tr()). */

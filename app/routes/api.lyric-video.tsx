@@ -42,7 +42,8 @@ export async function action({ request }: ActionFunctionArgs) {
   if (intent === "link") {
     const { songFromLink } = await import("../lib/lyric-video.server");
     const got = await songFromLink(String(form.get("link") || "").trim().slice(0, 2000), { shopId: id.shop.id });
-    if (!got.ok) return json({ error: tr(lang, got.message) });
+    // an operator also sees what the tool said (the route is operators-only today; the check stays for the day it opens)
+    if (!got.ok) return json({ error: tr(lang, got.message), ...(isAdminEmail(id.account.email) && got.detail ? { detail: got.detail } : {}) });
     console.log(`[lyricvideo] shop ${id.shop.id} fetched ${got.source} (owner's permission confirmed)`);
     return json({ songUrl: `/renders/${path.basename(got.songPath)}`, name: got.name, title: got.title, seconds: got.seconds, source: got.source });
   }

@@ -40,7 +40,7 @@ import {
   DIRECTION_SCHEMA, LINK_FETCHES_A_DAY, LINK_MSG, LINK_TIMEOUT_MS, LYRIC_FPS, LYRIC_MAX_SECONDS, NO_GRID, beatGrid, chooseLines,
   chunkGraph, directionBrief, fallbackDirection, linkFailure, linkTitleOf, lyricAccent, lyricAss, lyricFrame, lyricLookOf,
   lyricShapeOf, parseDirection, pastedLines, planOk, renderChunks, scenePlan, scrimAlpha, shotFrames, shotPulses, songFileOf,
-  songRightsOf, songTitleOf, stillPrompt, voicedWords, youTubeId, youTubeWatch, ytDlpArgs,
+  songRightsOf, songTitleOf, stillPrompt, toolDetail, voicedWords, youTubeId, youTubeWatch, ytDlpArgs,
   type ArtDirection, type BeatGrid, type CropBox, type LyricLine, type LyricLook, type LyricShape, type ScenePlan,
 } from "./lyric-video";
 
@@ -58,6 +58,9 @@ const inFilter = (p: string): string => p.replace(/\\/g, "/").replace(/:/g, "\\:
  *  JavaScript runtime YouTube's pages need (Deno — the image's Node is too old for it). A machine without it
  *  answers every link "upload the file instead". */
 export const ytDlpBin = (): string => process.env.YT_DLP_PATH || "/usr/local/bin/yt-dlp";
+/** The PO-token program yt-dlp's plugin calls (scripts/fetch-yt-dlp.mjs installs both): YouTube's answer to a cloud
+ *  server was "Sign in to confirm you're not a bot" on the first live try (2026-11-24). Used when it is there. */
+export const potBin = (): string => process.env.BGUTIL_POT_PATH || "/usr/local/bin/bgutil-pot";
 
 /** Each account's fetches in the last day. Kept in memory: a restart forgets them, which only ever errs kind. */
 const fetchedAt = new Map<string, number[]>();
@@ -81,7 +84,8 @@ function runTool(bin: string, args: string[], ms: number): Promise<Ran> {
 
 export type FromLink =
   | { ok: true; songPath: string; name: string; title: string; seconds: number | null; source: string }
-  | { ok: false; message: string; why: string };
+  /** detail: what the tool said, for an operator (toolDetail) — never shown to a member */
+  | { ok: false; message: string; why: string; detail?: string };
 
 /** A SONG FROM A LINK. The owner, 2026-11-24: "use YouTube link but include regulatory things like 'you must have
  *  permissions from song owner'". So it is fetched only for a member who has confirmed they own the song or have its
@@ -111,13 +115,15 @@ export async function songFromLink(link: string, o: { shopId?: string; log?: (s:
   const mine = (): string[] => { try { return fs.readdirSync(dir).filter((f) => f.startsWith(`ytsrc-${tag}.`)); } catch { return []; } };
   const t0 = Date.now();
   try {
-    const ran = await runTool(bin, ytDlpArgs(source, path.join(dir, `ytsrc-${tag}.%(ext)s`)), LINK_TIMEOUT_MS);
+    const pot = potBin();
+    const ran = await runTool(bin, ytDlpArgs(source, path.join(dir, `ytsrc-${tag}.%(ext)s`), { potCli: fs.existsSync(pot) ? pot : undefined, verbose: true }), LINK_TIMEOUT_MS);
     const files = mine();
     const media = files.find((f) => !/\.(?:json|part|ytdl|tmp|temp)$/i.test(f) && !/\.part-Frag/i.test(f));
     if (!media) {
       const why = linkFailure(ran);
-      log(`link ${id}: not fetched (${why}; exit ${ran.code}${ran.timedOut ? ", timed out" : ""}): ${(ran.err || ran.out).replace(/\s+/g, " ").slice(-300)}`);
-      return { ok: false, message: LINK_MSG[why], why };
+      const detail = toolDetail(ran.out, ran.err);
+      log(`link ${id}: not fetched (${why}; exit ${ran.code}${ran.timedOut ? ", timed out" : ""}): ${detail.replace(/\s+/g, " ").slice(-600)}`);
+      return { ok: false, message: LINK_MSG[why], why, detail };
     }
     let info: Record<string, unknown> | null = null;
     const json = files.find((f) => f.endsWith(".info.json"));

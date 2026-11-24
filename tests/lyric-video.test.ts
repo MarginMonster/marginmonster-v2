@@ -18,7 +18,7 @@ import {
   directionBrief, fallbackDirection, gridFromBeats, isSongLink, lineWindows, linesFromHeard, linesFromTimed, linkFailure, linkTitleOf,
   lowOnsets, lyricAccent, lyricAss, lyricEtaMinutes, lyricFrame, lyricLookOf, lyricShapeOf, motionFilter, pagesOf, parseDirection,
   pastedLines, pictureWords, planOk, renderChunks, scenePlan, scrimAlpha, shotFrames, shotPulses, songFileOf, songRightsOf,
-  songTitleOf, stillPrompt, voicedWords, youTubeId, youTubeWatch, ytDlpArgs,
+  songTitleOf, stillPrompt, toolDetail, voicedWords, youTubeId, youTubeWatch, ytDlpArgs,
   type BeatGrid, type LyricLine, type LyricLook,
 } from "../app/lib/lyric-video.ts";
 import { readFontMetrics, textEms } from "../app/lib/font-metrics.ts";
@@ -475,6 +475,15 @@ test("what the fetching tool is asked: one video's audio, AAC first, nothing liv
   assert.equal(opt("-f"), "bestaudio[ext=m4a]/bestaudio/best");
   assert.equal(opt("-o"), "/data/renders/ytsrc-ab.%(ext)s");
   assert.ok(!a.some((x) => /^--(?:exec|cookies|batch-file|config-location|load-info-json|plugin-dirs)/.test(x)), "nothing that runs or reads anything else");
+  assert.ok(!a.includes("--verbose") && !a.includes("--extractor-args"), "plain unless asked");
+  // the PO-token program, when the machine has it — handed to its plugin by an absolute path, nothing else
+  const p = ytDlpArgs("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "/o.%(ext)s", { potCli: "/usr/local/bin/bgutil-pot", verbose: true });
+  assert.equal(p[p.indexOf("--extractor-args") + 1], "youtubepot-bgutilcli:cli_path=/usr/local/bin/bgutil-pot");
+  assert.ok(p.includes("--verbose") && p.indexOf("--extractor-args") < p.indexOf("--"));
+  for (const bad of ["bgutil-pot", "/usr/bin/x;youtube:player_client=web", "/a b/c", "/x:y"]) {
+    assert.ok(!ytDlpArgs("u", "o", { potCli: bad }).includes("--extractor-args"), bad);
+  }
+  assert.deepEqual(p.slice(-2), ["--", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"]);
   assert.equal(LINK_MAX_SECONDS, 900);
   assert.ok(LINK_TIMEOUT_MS <= 80_000, "a fetch ends well inside the 100 s the site's proxy allows a request");
   assert.equal(LINK_FETCHES_A_DAY, 12);
@@ -495,7 +504,28 @@ test("why a fetch failed, from what the tool printed — and every answer tells 
   assert.equal(f("ERROR: [youtube] abc: Requested format is not available. Use --list-formats for a list of available formats"), "failed");
   assert.equal(f("anything at all", { timedOut: true }), "slow");
   assert.equal(f("ERROR: something new"), "failed");
+  // a verbose run echoes its own options — the filter's words ("is_live", "max-filesize") are not a refusal
+  assert.equal(f("[debug] Command-line config: ['--match-filter', '!is_live & duration <= 900', '--max-filesize', '60M']\nERROR: [youtube] abc: Sign in to confirm you’re not a bot."), "botCheck");
   for (const [k, v] of Object.entries(LINK_MSG)) assert.ok(/upload|try again|link the song/i.test(v) && v.length <= 140, `${k} says what to do, briefly`);
+});
+
+test("an operator sees why a fetch was refused: the tool's errors, warnings and helper lines — not its whole log", () => {
+  const err = [
+    "[debug] Command-line config: ['--verbose', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ']",
+    "[debug] yt-dlp version stable@2026.11.23 from yt-dlp/yt-dlp [abc] (linux_exe)",
+    "[debug] Plugin directories: /etc/yt-dlp/plugins/bgutil-ytdlp-pot-provider-rs/yt_dlp_plugins",
+    "[debug] JS runtimes: deno-2.9.8",
+    "[debug] [youtube] [pot] PO Token Providers: bgutil:cli-0.8.1 (external), bgutil:http-0.8.1 (external, unavailable)",
+    ...Array.from({ length: 40 }, (_, i) => `[debug] some request number ${i}`),
+    "WARNING: [youtube] abc: Some formats may be missing",
+    "ERROR: [youtube] abc: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.",
+  ].join("\n");
+  const d = toolDetail("", err);
+  assert.ok(d.includes("yt-dlp version stable@2026.11.23") && d.includes("Plugin directories") && d.includes("JS runtimes: deno"));
+  assert.ok(d.includes("[pot] PO Token Providers: bgutil:cli") && d.includes("WARNING: [youtube]") && d.includes("not a bot"));
+  assert.ok(!d.includes("some request number"), "not the whole log");
+  assert.ok(d.split("\n").length <= 12 && d.length <= 1800);
+  assert.equal(toolDetail("", ""), "");
 });
 
 test("a fetched song's title: Artist - Track when YouTube knows them, else the video's title without the junk", () => {
@@ -529,7 +559,12 @@ test("the making (lyric-video.server.ts): listened to as the app listens to sing
   assert.ok(link.includes("const source = youTubeWatch(id);") && link.includes("runTool(bin, ytDlpArgs(source, "), "the tool gets our address, never the member's string");
   assert.ok(link.includes("if (!fs.existsSync(bin)) return { ok: false, message: LINK_MSG.noTool"), "no tool on the machine: upload instead");
   assert.ok(link.includes("if (recent.length >= LINK_FETCHES_A_DAY) return { ok: false, message: LINK_MSG.many"), "a day's cap per account");
-  assert.ok(link.includes("LINK_TIMEOUT_MS)") && link.includes("return { ok: false, message: LINK_MSG[why], why };"));
+  assert.ok(link.includes("LINK_TIMEOUT_MS)") && link.includes("return { ok: false, message: LINK_MSG[why], why, detail };"));
+  // the PO-token program goes in when the machine has it, and the run is verbose so a refusal says why
+  assert.ok(link.includes("{ potCli: fs.existsSync(pot) ? pot : undefined, verbose: true }"));
+  assert.ok(s.includes('export const potBin = (): string => process.env.BGUTIL_POT_PATH || "/usr/local/bin/bgutil-pot";'));
+  // …and only an operator is shown what the tool said
+  assert.ok(read("app", "routes", "api.lyric-video.tsx").includes("...(isAdminEmail(id.account.email) && got.detail ? { detail: got.detail } : {})"));
   // it runs inside the member's request — never queued behind a film's encode
   assert.ok(!link.includes("runFfmpeg(") && link.includes("runTool(ffmpegBin(), "), "its own short ffmpeg, not the encoder's turn");
   assert.ok(link.includes("out = path.join(dir, `${name}.m4a`);") && link.includes("const name = `mvsong-${crypto.randomBytes(10).toString(\"hex\")}`;"), "kept where an upload goes, named as an upload is");
@@ -558,8 +593,15 @@ test("the image installs the fetching tool and the JavaScript runtime YouTube ne
   assert.ok(sc.includes("const h = checked(bin, sums, YT.file);") && sc.includes("const h = checked(zip, sum, DENO.file);"), "each checked against its release's own SHA-256");
   assert.ok(sc.indexOf("checked(bin, sums, YT.file)") < sc.indexOf('install("yt-dlp", bin)') && sc.indexOf("checked(zip, sum, DENO.file)") < sc.indexOf('install("deno", unzipOne(zip))'), "checked before installed");
   assert.ok(!/process\.exit\(\s*[1-9]/.test(sc), "it never fails the build");
-  assert.equal(sc.split("\ntry {").length - 1, 2, "each install in its own try");
-  assert.ok(sc.includes("say(`yt-dlp NOT installed") && sc.includes("say(`Deno NOT installed"), "a failure is said, and the build goes on");
+  assert.equal(sc.split("\ntry {").length - 1, 3, "each install in its own try");
+  assert.ok(sc.includes("say(`yt-dlp NOT installed") && sc.includes("say(`Deno NOT installed") && sc.includes("say(`PO-token helper NOT installed"), "a failure is said, and the build goes on");
+  // the PO-token helper: PINNED (a release and GitHub's SHA-256 for each file), checked before anything is written
+  assert.ok(sc.includes('base: "https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/download/v0.8.1/"'));
+  for (const h of ["e7c264a574fa2705b6e5dc62283a8a4e80130f27b9d7e9df44e6b09aa6151a87", "4f4a1f681dba45e695e1c14d314517da180a1fd374afd09d634fd80ef6d0284b", "99fd83b98fa93b193d6a3b69dc74410d76e7a2b889868c54d16121cac9060344"]) assert.ok(sc.includes(`sha256: "${h}"`), h);
+  const potBlock = sc.slice(sc.indexOf("get(POT.base + POT.bin.name)"));
+  assert.ok(potBlock.indexOf("checked(bin, `${POT.bin.sha256}") < potBlock.indexOf("fs.writeFileSync(dest") && potBlock.indexOf("checked(zip, `${POT.plugin.sha256}") < potBlock.indexOf("fs.writeFileSync(dest"), "checked before anything is written");
+  assert.ok(potBlock.includes("if (!dest.startsWith(home + path.sep)) throw new Error("), "a plugin file can't land outside its folder");
+  assert.ok(sc.includes('const PLUGINS = process.argv[3] || "/etc/yt-dlp/plugins";'), "where yt-dlp reads system plugins");
 });
 
 test("the job: a GENERATE_VIDEO_AD of kind lyricvideo, resumed from its own checkpoints, nothing charged", () => {
