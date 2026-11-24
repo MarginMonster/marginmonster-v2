@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { CHILDREN_STAY, HORROR_SAFETY, IDEA_MAX, PREMISE_WINS, STORY_SAFETY, chosenThreat } from "../app/lib/premise-rules.ts";
+import { CHILDREN_STAY, HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, STORY_SAFETY, chosenThreat } from "../app/lib/premise-rules.ts";
 import { STORY_SHOTS } from "../app/lib/story-shots.ts";
 
 const read = (...p: string[]) => fs.readFileSync(path.join(process.cwd(), ...p), "utf8");
@@ -56,15 +56,25 @@ test("a creature the maker chose plays the idea's threat — in an acted film it
 
 test("the writer is given all of it — the idea's rules right after the idea, and the idea whole", () => {
   const eng = read("app", "lib", "film-engine.server.ts");
-  assert.ok(eng.includes("import { HORROR_SAFETY, IDEA_MAX, PREMISE_WINS, STORY_SAFETY, chosenThreat } from \"./premise-rules\";"));
+  assert.ok(eng.includes("import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, STORY_SAFETY, chosenThreat } from \"./premise-rules\";"));
   assert.ok(eng.includes("\"${topic.slice(0, IDEA_MAX)}\". Tell EXACTLY this") && eng.includes("${storyFormat ? `${PREMISE_WINS}\\n` : \"\"}"), "said right after the idea, in every story format");
   assert.ok(eng.includes("    ? HORROR_SAFETY\n    : STORY_SAFETY;") || eng.includes("    ? HORROR_SAFETY\r\n    : STORY_SAFETY;"));
   assert.ok(!eng.includes("CAST ONLY ADULTS") && !eng.includes("recast any such role as an adult"));
   // a chosen creature in a horror idea: by its look; an acted film's two are then the idea's own people
   assert.ok(eng.includes("const threatNames = tmpl.key === \"horror\" ? picked.filter((c) => keepGuess(c.desc).kind === \"monster\").map((c) => c.name) : [];"));
-  assert.ok(eng.includes("${noSlop}${chosenThreat(threatNames, acted)}`"));
-  // …and its cast is the two who talk, never empty (the first live preview came back with "cast": [])
-  assert.ok(eng.includes(" is EXACTLY TWO entries: the two who talk, the idea's own people") && eng.includes(" is never empty.\" :"));
+  // A TOLD story keeps the creature in its cast (seen only the way the idea sees it)…
+  assert.ok(eng.includes("${noSlop}${actedThreat ? \"\" : chosenThreat(threatNames, acted)}`"));
+  // …an ACTED film is given only the chosen PEOPLE as its cast (none: it invents the two, as any acted film does),
+  // and the creature after it as THE THREAT — told both at once, the second live preview kept the werewolf in "cast"
+  assert.ok(eng.includes("const castChosen = actedThreat ? picked.filter((c) => !threatNames.includes(c.name)) : picked;"));
+  assert.ok(eng.includes("const pickedLine = castChosen.length") && eng.includes("    castLine +\n    threatBrief +\n") || eng.includes("    castLine +\r\n    threatBrief +\r\n"));
+  assert.ok(eng.includes("? `\\nTHE THREAT — chosen by the maker: ${picked.filter((c) => threatNames.includes(c.name))"));
+  // …and whatever "cast" comes back is held to it: the threat is taken out, so it never stands in every shot
+  assert.ok(eng.includes("const kept = cast.filter((e) => !threatNames.some((n) => named(e) === n.trim().toLowerCase()));") && eng.includes("cast.splice(0, cast.length, ...kept);"));
+  // THE IDEA IS CHECKED LAST OF ALL (the second live preview still ended on the away-mother "never left")
+  assert.ok(IDEA_CHECK.startsWith("LAST, BEFORE YOU ANSWER: read your story against the idea once more") && IDEA_CHECK.includes("nothing it said made untrue by your ending"));
+  assert.ok(eng.includes("(storyFormat && topic ? `\\n${IDEA_CHECK}` : \"\");"));
+  assert.ok(eng.includes("a twist that leaves every fact of the idea TRUE"));
   // an acted film goes where the idea goes
   assert.ok(eng.includes("but when the IDEA moves them (\"he ran to his parents' room\"), that IS such a move: the shots that come after it are in the new place."));
   // the Movie Maker sends the whole idea

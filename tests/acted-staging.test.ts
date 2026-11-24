@@ -1187,7 +1187,7 @@ test("the writer is told: each one's age said plainly, and related people the ri
   // (…a chosen creature that is an acted film's threat is not one of the cast: the pair the writer invented
   //  around it is checked like any invented pair — premise-rules.ts → chosenThreat)
   assert.ok(engine.includes("if (storyFormat && !castPicked.length && cast && cast.length === 2) {"));
-  assert.ok(engine.includes("const castPicked = actedThreat ? picked.filter((c) => !threatNames.includes(c.name)) : picked;"));
+  assert.ok(engine.includes("const castChosen = actedThreat ? picked.filter((c) => !threatNames.includes(c.name)) : picked;") && engine.includes("const castPicked = castChosen;"));
   assert.ok(engine.includes("const want = castPicked.length ? castPicked[i]?.name : i === 0 ? artistName : castNames[i - 1];"), "names are held to the chosen PEOPLE only — never the boy renamed after the creature");
   assert.ok(engine.includes("fixed = takeAgeFix(cast, (JSON.parse(raw) as { cast?: unknown }).cast, { idea: topic, lines: spoken });"));
   assert.ok(engine.includes("const now = fixed || repairAges(cast, problem);"), "never filmed as written: put right here when asking again did not");
