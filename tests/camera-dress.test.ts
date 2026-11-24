@@ -73,6 +73,21 @@ test("A TIME-LAPSE is a scene setting (\"hours go by on the counter in seconds\"
   assert.deepEqual(timeLapseOf({ fast: 9 }, 15), { fast: 9, speed: 8, hours: 2 });
   // a setting that cannot be played leaves the take at real time (the clock simply counts)
   assert.ok(!dressFilter({ look: "house", w: 1280, h: 720, font: FONT, timelapse: { fast: 9, speed: 4, hours: 2 }, seconds: 10 }).audioInGraph);
+  // THE HOURS CAN GO BY IN THE MIDDLE (the owner: "he needs to walk into the room no time lapse, then time
+  // lapse, it appeared that he just spawned in"): real time, then the fast part, then real time again
+  const mid = { from: 3, fast: 4, speed: 4, hours: 2 };
+  const m = dressFilter({ look: "house", w: 1280, h: 720, font: FONT, clock: { date: "2026-11-16 MON", start: 3600 }, timelapse: mid, seconds: 10 });
+  assert.ok(m.audioInGraph && m.filter.startsWith("[0:v]split=3[tl0][tl1][tl2];[tl0]trim=end=3,setpts=PTS-STARTPTS[tla];[tl1]trim=start=3:end=7,setpts=(PTS-STARTPTS)/4[tlf];[tl2]trim=start=7,setpts=PTS-STARTPTS[tlr];[tla][tlf][tlr]concat=n=3:v=1:a=0,"));
+  // its sound: real, then the silence the fast part lasts, then real — one stream, in step with the picture
+  assert.ok(m.filter.includes(";[sa]atrim=end=3,asetpts=PTS-STARTPTS[a1];anullsrc=r=48000:cl=stereo,atrim=duration=1.0000,") && m.filter.endsWith(";[sb]atrim=start=7,asetpts=PTS-STARTPTS[a3];[a1][a2][a3]concat=n=3:v=0:a=1[a]"));
+  // (read off a rendered test clip — 7.0 s long, as 3 + 4/4 + 3 — scratchpad t45/cam/mclk-stack.png:
+  //  01:00:01 · 01:00:02 · racing · 03:00:03 · 03:00:03 · 03:00:05)
+  const atMid = (t: number) => clockText(clockAt({ date: "", start: 3600 }, mid, t));
+  assert.deepEqual([1, 2.9, 3.5, 3.9999, 4.2, 6.8].map(atMid), ["01:00:01", "01:00:02", "02:00:03", "03:00:02", "03:00:03", "03:00:05"]);
+  assert.equal(clockExpr({ date: "", start: 3600 }, mid), "(3600+if(lt(t,3.0000),t,if(lt(t,4.0000),3.0000+(t-3.0000)*7200.000,7203.000+t-4.0000)))");
+  // a window that does not fit the take is not played
+  assert.equal(timeLapseOf({ from: 8, fast: 4, speed: 4, hours: 2 }, 10), null);
+  assert.deepEqual(timeLapseOf({ from: 6, fast: 5, speed: 4, hours: 3 }, 15), { fast: 5, speed: 4, hours: 3, from: 6 });
   // a clock that runs past midnight starts the day again
   assert.equal(clockText(86400 + 61), "00:01:01");
   assert.equal(clockText(-1), "23:59:59");

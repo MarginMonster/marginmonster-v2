@@ -58,9 +58,13 @@ export type HouseClock = {
   /** the time on the clock when the take starts, in seconds after midnight */
   start: number;
 };
-/** A TIME-LAPSE: the first `fast` seconds of the take are played `speed` times faster, and while they are, the
- *  clock races through `hours` hours; then everything is real time. */
-export type TimeLapse = { fast: number; speed: number; hours: number };
+/** A TIME-LAPSE: `fast` seconds of the take, starting `from` seconds in (0 when unset), are played `speed`
+ *  times faster, and while they are, the clock races through `hours` hours; before and after, real time.
+ *  (The owner, on a take where the thing appeared DURING the fast part: "he needs to walk into the room no
+ *  time lapse, then time lapse, it appeared that he just spawned in instead of it being genuinely cinematic"
+ *  — so the fast part can come after the thing has arrived: it walks in at real time, THEN the hours go by
+ *  while it stands there.) */
+export type TimeLapse = { fast: number; speed: number; hours: number; from?: number };
 
 /** The date a camera prints for a day (the weekday is the day's own). */
 export function camDate(y: number, m: number, d: number): string {
@@ -74,28 +78,36 @@ export function camDate(y: number, m: number, d: number): string {
 export function timeLapseOf(t: Partial<TimeLapse> | null | undefined, takeSeconds: number): TimeLapse | null {
   if (!t) return null;
   const fast = Number(t.fast), speed = Number(t.speed), hours = Number(t.hours);
-  if (!(fast >= 1) || !(takeSeconds - fast >= 2)) return null;
+  const from = Math.max(0, Number(t.from) || 0);
+  // (the fast part must fit inside the take, and at least two seconds of it must stay real time)
+  if (!(fast >= 1) || !(takeSeconds - from - fast >= 0) || !(takeSeconds - fast >= 2)) return null;
   return {
     fast: Math.round(fast * 100) / 100,
     speed: Math.max(2, Math.min(24, Number.isFinite(speed) ? speed : 8)),
     hours: Math.max(1 / 60, Math.min(12, Number.isFinite(hours) ? hours : 2)),
+    ...(from > 0 ? { from: Math.round(from * 100) / 100 } : {}),
   };
 }
 
 /** The clock's seconds after midnight at the dressed take's time `t`, as an ffmpeg expression (and the same
- *  sum as a number, for tests): real time; or, in a time-lapse, racing until the fast part has been played. */
+ *  sum as a number, for tests): real time; or, in a time-lapse, racing while the fast part is being played. */
 export function clockExpr(clock: HouseClock, lapse: TimeLapse | null): string {
   const s0 = Math.max(0, Math.round(clock.start));
   if (!lapse) return `(${s0}+t)`;
   const shown = lapse.fast / lapse.speed;                  // how long the fast part lasts once it is played fast
   const rate = (lapse.hours * 3600) / shown;               // clock seconds for every second shown
-  return `(${s0}+if(lt(t,${shown.toFixed(4)}),t*${rate.toFixed(3)},${(shown * rate).toFixed(3)}+t-${shown.toFixed(4)}))`;
+  const from = lapse.from || 0;
+  if (!from) return `(${s0}+if(lt(t,${shown.toFixed(4)}),t*${rate.toFixed(3)},${(shown * rate).toFixed(3)}+t-${shown.toFixed(4)}))`;
+  const end = from + shown;
+  return `(${s0}+if(lt(t,${from.toFixed(4)}),t,if(lt(t,${end.toFixed(4)}),${from.toFixed(4)}+(t-${from.toFixed(4)})*${rate.toFixed(3)},${(from + shown * rate).toFixed(3)}+t-${end.toFixed(4)})))`;
 }
 export function clockAt(clock: HouseClock, lapse: TimeLapse | null, t: number): number {
   const s0 = Math.max(0, Math.round(clock.start));
   if (!lapse) return s0 + t;
-  const shown = lapse.fast / lapse.speed, rate = (lapse.hours * 3600) / shown;
-  return s0 + (t < shown ? t * rate : shown * rate + t - shown);
+  const shown = lapse.fast / lapse.speed, rate = (lapse.hours * 3600) / shown, from = lapse.from || 0;
+  if (t < from) return s0 + t;
+  if (t < from + shown) return s0 + from + (t - from) * rate;
+  return s0 + from + shown * rate + (t - from - shown);
 }
 /** "HH:MM:SS" for seconds after midnight (a clock that passes midnight starts the day again). */
 export const clockText = (secs: number): string => {
@@ -215,9 +227,31 @@ export function dressFilter(o: DressOptions): Dress {
     if (!lapse) {
       return { filter: `[0:v]${look},${stamp}${name},format=yuv420p[v]`, audio: null };
     }
-    // THE TIME-LAPSE: the first part of the take played fast (its sound dropped — a camera's time-lapse is
-    // silent), the rest at real time with its own sound, joined at the cut.
+    // THE TIME-LAPSE: part of the take played fast (its sound dropped — a camera's time-lapse is silent), the
+    // rest at real time with its own sound, joined at the cuts.
     const shown = lapse.fast / lapse.speed;
+    const from = lapse.from || 0;
+    if (from > 0) {
+      // real time first (the thing walks in), THEN the hours go by, then real time again
+      const to = from + lapse.fast;
+      const fmt = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
+      return {
+        filter: [
+          `[0:v]split=3[tl0][tl1][tl2]`,
+          `[tl0]trim=end=${from},setpts=PTS-STARTPTS[tla]`,
+          `[tl1]trim=start=${from}:end=${to},setpts=(PTS-STARTPTS)/${lapse.speed}[tlf]`,
+          `[tl2]trim=start=${to},setpts=PTS-STARTPTS[tlr]`,
+          `[tla][tlf][tlr]concat=n=3:v=1:a=0,${look},${stamp}${name},format=yuv420p[v]`,
+          `[0:a]${fmt},asplit=2[sa][sb]`,
+          `[sa]atrim=end=${from},asetpts=PTS-STARTPTS[a1]`,
+          `anullsrc=r=48000:cl=stereo,atrim=duration=${shown.toFixed(4)},${fmt},asetpts=PTS-STARTPTS[a2]`,
+          `[sb]atrim=start=${to},asetpts=PTS-STARTPTS[a3]`,
+          `[a1][a2][a3]concat=n=3:v=0:a=1[a]`,
+        ].join(";"),
+        audio: null,
+        audioInGraph: true,
+      };
+    }
     const ms = Math.round(shown * 1000);
     return {
       filter: [
