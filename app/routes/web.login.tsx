@@ -7,9 +7,11 @@ import { isValidTimeZone } from "../lib/timezone";
 import { getWebIdentity, loginWebAccount, webSessionRedirect } from "../lib/web-auth.server";
 import { authCopy, authLang } from "../lib/auth-i18n";
 import { Ico } from "../lib/icons";
+import { AuthLobby } from "../components/AuthLobby";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
-export const meta = () => [{ title: "Log in · EasyMode" }];
+// (theme-color: the lobby is dark, and a phone's own bar goes dark with it instead of framing it in white)
+export const meta = () => [{ title: "Log in · EasyMode" }, { name: "theme-color", content: "#130E0B" }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (await getWebIdentity(request)) throw redirect("/web");
@@ -110,9 +112,10 @@ export default function WebLogin() {
 
   const [showPw, setShowPw] = useState(false);
 
+  // THE LOBBY (components/AuthLobby.tsx) is the room: the marquee, the wall of posters, the ticket this form
+  // is printed on. The form below is the form it always was.
   return (
-    <div className="wb-auth wb-card">
-      <style dangerouslySetInnerHTML={{ __html: AUTH_FX }} />
+    <AuthLobby lang={lang}>
       <h1 className="wb-h1" style={{ marginTop: 0 }}>{c.loginH1}</h1>
       <p className="wb-sub" style={{ marginBottom: 6 }}>{c.loginSub}</p>
       {error && <div className="wb-err" role="alert" tabIndex={-1} ref={errRef}>{error}</div>}
@@ -134,29 +137,16 @@ export default function WebLogin() {
           </button>
         </div>
       </Form>
-      <p className="wb-note" style={{ marginTop: 16 }}>
+      {/* (each link is a row of its own — 44px to the finger; the spacing is the lobby's) */}
+      <p className="wb-note lb-row">
         <Link to="/web/forgot">{c.forgot}</Link>
       </p>
-      <p className="wb-note" style={{ marginTop: 8 }}>
+      <p className="wb-note lb-row">
         {c.newHere}<Link to="/web/signup">{c.createLink}</Link>
       </p>
-    </div>
+    </AuthLobby>
   );
 }
 
-/* Scoped bits the shared /web stylesheet doesn't carry: the password eye and
- * the button busy dot. Kept inline so these auth screens stay self-contained. */
-const AUTH_FX = `
-.wb-pw{position:relative;}
-.wb-pw .wb-in{padding-right:44px;}
-.wb-pw-eye{position:absolute;top:0;right:0;height:100%;width:42px;display:grid;place-items:center;
-  border:0;background:none;cursor:pointer;color:var(--ink2);border-radius:0 11px 11px 0;}
-.wb-pw-eye:hover{color:var(--green);}
-[dir=rtl] .wb-pw .wb-in{padding-right:13px;padding-left:44px;}
-[dir=rtl] .wb-pw-eye{right:auto;left:0;border-radius:11px 0 0 11px;}
-.wb-busy{display:inline-flex;align-items:center;gap:8px;}
-.wb-busy-dot{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
-  border-top-color:#fff;animation:wbBusySpin .7s linear infinite;}
-@keyframes wbBusySpin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.wb-busy-dot{animation:none}}
-`;
+/* (The password eye and the button's busy dot — the bits the shared /web stylesheet doesn't carry — used
+ * to be repeated here and in each of the other three doors. They live once now, in the lobby's stylesheet.) */

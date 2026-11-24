@@ -17,11 +17,14 @@ import { resetEmailHtml, resetUrl, signPasswordReset } from "../lib/password-res
 import { clientIp, rateLimit } from "../lib/rate-limit.server";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { authCopy, authLang } from "../lib/auth-i18n";
+import { AuthLobby } from "../components/AuthLobby";
 
 export const meta = () => [
   { title: "Reset your password · EasyMode" },
   // The token never reaches this page, but the habit belongs on both halves.
   { name: "referrer", content: "no-referrer" },
+  // the lobby is dark, and a phone's own bar goes dark with it
+  { name: "theme-color", content: "#130E0B" },
 ];
 
 const CONTACT = "hello@easymodeapp.com";
@@ -104,9 +107,9 @@ export default function Forgot() {
   const [email, setEmail] = useState("");
   const busy = nav.state !== "idle";
 
+  // The same room as the log-in screen (components/AuthLobby.tsx); the form is the form it always was.
   return (
-    <div className="wb-auth wb-card">
-      <style dangerouslySetInnerHTML={{ __html: AUTH_FX }} />
+    <AuthLobby lang={lang}>
       <h1 className="wb-h1" style={{ marginTop: 0 }}>{sent ? c.forgotSentH1 : c.forgotH1}</h1>
 
       {!emailReady ? (
@@ -139,19 +142,12 @@ export default function Forgot() {
         </>
       )}
 
-      <p className="wb-note" style={{ marginTop: 16 }}>
+      <p className="wb-note lb-row">
         <Link to="/web/login">{c.backToLogin}</Link>
       </p>
-    </div>
+    </AuthLobby>
   );
 }
 
-/* Scoped bits the shared /web stylesheet doesn't carry: the button busy dot. */
-const AUTH_FX = `
-.wb-busy{display:inline-flex;align-items:center;gap:8px;}
-.wb-busy-dot{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
-  border-top-color:#fff;animation:wbBusySpin .7s linear infinite;}
-.wb-busy-dot-dark{border-color:rgba(20,32,26,.25);border-top-color:var(--ink);}
-@keyframes wbBusySpin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.wb-busy-dot{animation:none}}
-`;
+/* (The button's busy dot — the bit the shared /web stylesheet doesn't carry — lives in the lobby's
+ * stylesheet now, once for all four doors.) */

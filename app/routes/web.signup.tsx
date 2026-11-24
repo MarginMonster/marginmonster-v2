@@ -6,9 +6,11 @@ import { createWebAccount, getWebIdentity, webSessionRedirect, SignupError } fro
 import { isValidTimeZone } from "../lib/timezone";
 import { authCopy, authLang } from "../lib/auth-i18n";
 import { Ico } from "../lib/icons";
+import { AuthLobby } from "../components/AuthLobby";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
-export const meta = () => [{ title: "Start free · EasyMode" }];
+// (theme-color: the lobby is dark, and a phone's own bar goes dark with it instead of framing it in white)
+export const meta = () => [{ title: "Start free · EasyMode" }, { name: "theme-color", content: "#130E0B" }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (await getWebIdentity(request)) throw redirect("/web");
@@ -107,9 +109,10 @@ export default function WebSignup() {
   const [emailHint, setEmailHint] = useState<string | null>(null);
   const [pwHint, setPwHint] = useState<string | null>(null);
 
+  // THE LOBBY (components/AuthLobby.tsx) is the room: the marquee, the wall of posters, the ticket this form
+  // is printed on. The form below is the form it always was.
   return (
-    <div className="wb-auth wb-card">
-      <style dangerouslySetInnerHTML={{ __html: AUTH_FX }} />
+    <AuthLobby lang={lang}>
       <h1 className="wb-h1" style={{ marginTop: 0 }}>{c.signupH1}</h1>
       <p className="wb-sub" style={{ marginBottom: 6 }}>{c.signupSub}</p>
       {error && <div className="wb-err" role="alert" tabIndex={-1} ref={errRef}>{error}</div>}
@@ -145,35 +148,20 @@ export default function WebSignup() {
           </button>
         </div>
       </Form>
-      <p className="wb-note" style={{ marginTop: 14 }}>
+      {/* (the small print, then a row of its own for the way back — the spacing is the lobby's) */}
+      <p className="wb-note lb-fine">
         {c.consentPre}
         <a href="/terms" target="_blank" rel="noreferrer">{c.consentTerms}</a>
         {c.consentMid}
         <a href="/privacy" target="_blank" rel="noreferrer">{c.consentPrivacy}</a>.
       </p>
-      <p className="wb-note" style={{ marginTop: 10 }}>
+      <p className="wb-note lb-row">
         {c.haveOne}<Link to="/web/login">{c.logInLink}</Link>
       </p>
-    </div>
+    </AuthLobby>
   );
 }
 
-/* Scoped bits the shared /web stylesheet doesn't carry: the password eye, the
- * "(optional)" dimmer, the onBlur hint line, and the button busy dot. Kept
- * inline so these auth screens stay self-contained. */
-const AUTH_FX = `
-.wb-opt{font-weight:600;font-size:11.5px;color:var(--ink2);}
-.wb-pw{position:relative;}
-.wb-pw .wb-in{padding-right:44px;}
-.wb-pw-eye{position:absolute;top:0;right:0;height:100%;width:42px;display:grid;place-items:center;
-  border:0;background:none;cursor:pointer;color:var(--ink2);border-radius:0 11px 11px 0;}
-.wb-pw-eye:hover{color:var(--green);}
-[dir=rtl] .wb-pw .wb-in{padding-right:13px;padding-left:44px;}
-[dir=rtl] .wb-pw-eye{right:auto;left:0;border-radius:11px 0 0 11px;}
-.wb-hint{margin-top:6px;font-size:12.5px;color:#7A2E1D;}
-.wb-busy{display:inline-flex;align-items:center;gap:8px;}
-.wb-busy-dot{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
-  border-top-color:#fff;animation:wbBusySpin .7s linear infinite;}
-@keyframes wbBusySpin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.wb-busy-dot{animation:none}}
-`;
+/* (The password eye, the "(optional)" dimmer, the onBlur hint line and the button's busy dot — the bits the
+ * shared /web stylesheet doesn't carry — used to be repeated here and in each of the other three doors.
+ * They live once now, in the lobby's stylesheet.) */

@@ -16,12 +16,15 @@ import { clientIp, rateLimit, rateLimitReset } from "../lib/rate-limit.server";
 import { hashPassword, webSessionRedirect } from "../lib/web-auth.server";
 import { authCopy, authLang } from "../lib/auth-i18n";
 import { Ico } from "../lib/icons";
+import { AuthLobby } from "../components/AuthLobby";
 
 export const meta = () => [
   { title: "Choose a new password · EasyMode" },
   // The token is in the path, so keep it out of the Referer header on any
   // outbound click from this page.
   { name: "referrer", content: "no-referrer" },
+  // the lobby is dark, and a phone's own bar goes dark with it
+  { name: "theme-color", content: "#130E0B" },
 ];
 
 const CONTACT = "hello@easymodeapp.com";
@@ -111,33 +114,33 @@ export default function ResetPassword() {
   // character lands. Advisory; the server stays the source of truth.
   const [pwShort, setPwShort] = useState(false);
 
+  // All three faces of this page stand in the same room as the log-in screen (components/AuthLobby.tsx).
   if (orphaned) {
     return (
-      <div className="wb-auth wb-card">
+      <AuthLobby lang={lang}>
         <h1 className="wb-h1" style={{ marginTop: 0 }}>{c.resetChangedH1}</h1>
         <p className="wb-sub">{c.resetOrphan.replace("{contact}", CONTACT)}</p>
-        <p className="wb-note" style={{ marginTop: 16 }}>
+        <p className="wb-note lb-row">
           <Link to="/web/login">{c.backToLogin}</Link>
         </p>
-      </div>
+      </AuthLobby>
     );
   }
 
   if (!valid) {
     return (
-      <div className="wb-auth wb-card">
+      <AuthLobby lang={lang}>
         <h1 className="wb-h1" style={{ marginTop: 0 }}>{c.resetExpiredH1}</h1>
         <p className="wb-sub">{c.resetDead}</p>
-        <p className="wb-note" style={{ marginTop: 16 }}>
+        <p className="wb-note lb-row">
           <Link to="/web/forgot">{c.resetNewLink}</Link>
         </p>
-      </div>
+      </AuthLobby>
     );
   }
 
   return (
-    <div className="wb-auth wb-card">
-      <style dangerouslySetInnerHTML={{ __html: AUTH_FX }} />
+    <AuthLobby lang={lang}>
       <h1 className="wb-h1" style={{ marginTop: 0 }}>{c.resetH1}</h1>
       {error && <div className="wb-err" role="alert">{error}</div>}
       <Form method="post">
@@ -169,24 +172,9 @@ export default function ResetPassword() {
           </button>
         </div>
       </Form>
-    </div>
+    </AuthLobby>
   );
 }
 
-/* Scoped bits the shared /web stylesheet doesn't carry: the password eye and
- * the button busy dot. Kept inline so these auth screens stay self-contained. */
-const AUTH_FX = `
-.wb-pw{position:relative;}
-.wb-pw .wb-in{padding-right:44px;}
-.wb-pw-eye{position:absolute;top:0;right:0;height:100%;width:42px;display:grid;place-items:center;
-  border:0;background:none;cursor:pointer;color:var(--ink2);border-radius:0 11px 11px 0;}
-.wb-pw-eye:hover{color:var(--green);}
-[dir=rtl] .wb-pw .wb-in{padding-right:13px;padding-left:44px;}
-[dir=rtl] .wb-pw-eye{right:auto;left:0;border-radius:11px 0 0 11px;}
-.wb-hint{margin-top:6px;font-size:12.5px;color:#7A2E1D;}
-.wb-busy{display:inline-flex;align-items:center;gap:8px;}
-.wb-busy-dot{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
-  border-top-color:#fff;animation:wbBusySpin .7s linear infinite;}
-@keyframes wbBusySpin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.wb-busy-dot{animation:none}}
-`;
+/* (The password eye, the hint line and the button's busy dot — the bits the shared /web stylesheet doesn't
+ * carry — live in the lobby's stylesheet now, once for all four doors.) */
