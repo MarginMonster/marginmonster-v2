@@ -42,6 +42,7 @@ import { captionStyleOf } from "./narrated-core";
 import { MIXED_CAST_LOCK, nameTok } from "./character-prompts";
 import { normalizeContentLang } from "./content-lang";
 import { heroName } from "./film-heroes";
+import { makeCastPoster } from "./story-poster.server";
 import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
 
@@ -1116,6 +1117,15 @@ export async function generateTestMovie(opts: {
   try { await mirrorRender(outName, outBuf); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;
 
+  // THE POSTER (story-poster.server.ts): an acted film is billed with its cast's OWN portraits — the leads
+  // side by side under the title — as its cover on the shelf. Only a cast the maker PICKED has portraits.
+  // It never fails the film: without one the shelf shows the first frame, as it always did.
+  let poster: string | null = null;
+  if (process.env.STORY_POSTER !== "off") {
+    try { poster = await makeCastPoster({ cast: opts.cast, title: treatment.title || opts.topic || "", videoName: outName }); }
+    catch (e) { console.error(`[testmovie] no poster (the shelf shows the first frame): ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
+  }
+
   const asset = await db.asset.create({
     data: {
       shopId: opts.shopId,
@@ -1132,6 +1142,8 @@ export async function generateTestMovie(opts: {
         // again, and the series this film is an episode of (an ordinary film has no `series`)
         cast: castForMeta(opts.cast),
         ...(opts.series ? { series: seriesMeta(opts.series) } : {}),
+        // THE POSTER: its cover on the shelf — the cast's portraits under the title (story-poster.ts)
+        ...(poster ? { poster } : {}),
         // Per-shot timeline for the section editor: each rendered shot's /renders URL +
         // the line it speaks, so the editor can list, preview and (later) re-edit each one.
         shots: clips.map((c, i) => ({

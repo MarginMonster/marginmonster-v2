@@ -126,11 +126,37 @@ export function posterLayout(o: { title: string; cast?: ReadonlyArray<string> })
   return { size, lines, episode: ep, cast };
 }
 
-/** The ffmpeg filter chain for one poster frame: the picture cropped to 4:5, a dark foot rising under the
- *  words, a gold rule, the billing, the title, the episode. `font` is a font file path. */
+/** The ffmpeg filter chain for one poster frame: the picture cropped to 4:5, then the dress (below). */
 export function posterFilters(layout: PosterLayout, font: string): string {
+  return [`scale=${POSTER_W}:${POSTER_H}:force_original_aspect_ratio=increase`, `crop=${POSTER_W}:${POSTER_H}`, "setsar=1", posterDress(layout, font)].join(",");
+}
+
+/* AN ACTED FILM'S POSTER IS ITS CAST. A told story has a picture for every scene; an acted film's pictures
+ * are wide two-shots — cropped to the shelf's shape, both faces would be cut in half. What it does have is
+ * who the maker cast: their own portraits. So an acted film is billed with them — one fills the poster, two
+ * stand side by side, three share it — under the same foot, rule, names and title. */
+
+/** How many portraits a cast poster holds. */
+export const POSTER_CAST_MAX = 3;
+
+/** The -filter_complex graph for a poster made of `n` portraits (inputs 0…n-1), each cropped from its middle
+ *  to its share of the frame — a portrait's face is in its middle. "" when there is nobody to show. */
+export function castPosterGraph(n: number, layout: PosterLayout, font: string): string {
+  const k = Math.max(0, Math.min(POSTER_CAST_MAX, Math.floor(n || 0)));
+  if (!k) return "";
+  // (the shares add up to the whole width: 800 → 400 + 400, or 267 + 267 + 266)
+  const share = Math.floor(POSTER_W / k);
+  const widths = Array.from({ length: k }, (_, i) => share + (i < POSTER_W - share * k ? 1 : 0));
+  const parts = widths.map((w, i) => `[${i}:v]scale=${w}:${POSTER_H}:force_original_aspect_ratio=increase,crop=${w}:${POSTER_H},setsar=1[p${i}]`);
+  const joined = k === 1 ? "[p0]" : `${widths.map((_, i) => `[p${i}]`).join("")}hstack=inputs=${k},`;
+  return `${parts.join(";")};${joined}${posterDress(layout, font)}`;
+}
+
+/** THE DRESS: what is laid over an 800×1000 picture that is already there — a dark foot rising under the
+ *  words, a gold rule, the billing, the title, the episode. `font` is a font file path. */
+export function posterDress(layout: PosterLayout, font: string): string {
   const f = font.replace(/\\/g, "/").replace(/:/g, "\\:");
-  const W = POSTER_W, H = POSTER_H;
+  const H = POSTER_H;
   const lineH = Math.round(layout.size * 1.1);
   const titleH = layout.lines.length * lineH;
   const episodeH = layout.episode ? 46 : 0;
@@ -138,7 +164,7 @@ export function posterFilters(layout: PosterLayout, font: string): string {
   const titleTop = H - PAD - episodeH - titleH;
   const castY = titleTop - 44;
   const ruleY = (layout.cast ? castY : titleTop) - 26;
-  const out: string[] = [`scale=${W}:${H}:force_original_aspect_ratio=increase`, `crop=${W}:${H}`, "setsar=1"];
+  const out: string[] = [];
   // THE FOOT: one true gradient under the words, computed in RGB — every channel of a pixel is scaled by the
   // same factor, so the picture gets darker and keeps its colours. (Translucent sheets of black, stacked,
   // were tried first: sixty tiny blends each ROUND every channel, the brightness fell while the colour did

@@ -53,6 +53,21 @@ test("what a story's character is, read off the writer's own words — a first g
   assert.equal(keepGuess("an old fisherman who fears the ghost of his brother").kind, "person");
   assert.equal(keepGuess("a night watchman in a wolf-fur coat, carrying a lantern").kind, "person");
   assert.equal(keepGuess("a little wind-up robot with one bent antenna").kind, "cartoon");
+  // A HUMAN WORD MADE A CREATURE by what is said of it. The first one-press Horror Story (2026-11-24) wrote
+  // its ghost with no monster word at all, and she was offered as a person (60 tokens, a presenter's outfits):
+  assert.deepEqual(keepGuess("a pale drowned bride with waterlogged white wedding gown, black hollow eyes, dripping dark hair, and skin tinged blue-grey"), { kind: "monster", gender: "f" });
+  assert.equal(keepGuess("a weathered night ferryman in his fifties with a grey-stubbled jaw, sunken eyes, a dark oilskin coat and a battered lantern").kind, "person", "…and the man she haunts is still a man");
+  assert.equal(keepGuess("a headless rider in a black cloak").kind, "monster");
+  assert.equal(keepGuess("a dead king on a throne of roots").kind, "monster");
+  // …or a body no living person has, wherever the description mentions it
+  assert.equal(keepGuess("a tall thin man with empty eye sockets and very long fingers").kind, "monster");
+  assert.equal(keepGuess("a quiet girl in a nightgown, her skin tinged grey, her feet never touching the floor").kind, "monster");
+  // kept narrow — these are living people, and a robot's lit eyes do not make it a monster
+  assert.equal(keepGuess("a half-drowned sailor with a torn shirt").kind, "person");
+  assert.equal(keepGuess("a dead-eyed clerk in a grey suit").kind, "person");
+  assert.equal(keepGuess("a ghostly pale child in a nightgown").kind, "person");
+  assert.equal(keepGuess("a tired widow with hollow eyes and a black shawl").kind, "person");
+  assert.equal(keepGuess("a small tin robot with glowing blue eyes").kind, "cartoon");
   // nothing to go on: a person, offered the men's voices first (the maker changes either in the dialog)
   assert.deepEqual(keepGuess(""), { kind: "person", gender: "m" });
   assert.deepEqual(keepGuess("an elderly night watchman"), { kind: "person", gender: "m" });

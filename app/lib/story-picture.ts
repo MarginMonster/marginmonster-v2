@@ -212,10 +212,17 @@ export function ownRenderPath(u: string | null | undefined): string | null {
 const MONSTERS = /\b(?:ghosts?|ghouls?|wraiths?|spirits?|phantoms?|spect(?:re|er)s?|apparitions?|demons?|devils?|monsters?|creatures?|beasts?|werewol(?:f|ves)|vampires?|zombies?|skeletons?|undead|banshees?|revenants?|goblins?|ogres?|trolls?|dragons?|kraken|scarecrows?|shadow figure)\b/i;
 const CARTOONS = /\b(?:roosters?|hens?|chickens?|chicks?|ducks?|ducklings?|geese|goose|mice|mouse|rats?|cats?|kittens?|dogs?|pupp(?:y|ies)|terriers?|fox(?:es)?|wol(?:f|ves)|bears?|cubs?|rabbits?|bunn(?:y|ies)|hares?|owls?|birds?|sparrows?|crows?|ravens?|parrots?|pigs?|piglets?|cows?|cal(?:f|ves)|horses?|pon(?:y|ies)|donkeys?|goats?|sheep|lambs?|deer|fawns?|squirrels?|hedgehogs?|badgers?|otters?|beavers?|frogs?|toads?|turtles?|tortoises?|snails?|fish|whales?|dolphins?|seals?|penguins?|lions?|tigers?|elephants?|monkeys?|giraffes?|zebras?|kangaroos?|koalas?|pandas?|bees?|butterfl(?:y|ies)|ants?|spiders?|caterpillars?|ladybugs?|dinosaurs?|dinos?|robots?|tedd(?:y|ies)|dolls?|snowm[ae]n|unicorns?|fair(?:y|ies)|el(?:f|ves)|gnomes?|capybaras?|hamsters?|raccoons?|sloths?)\b/i;
 const WOMEN = /\b(?:woman|girl|lady|she|her|hers|mother|mom|mum|grandmother|grandma|granny|daughter|sister|aunt|wife|queen|princess|witch|bride|widow|nun|postwoman|waitress|actress|duchess|businesswoman|policewoman|fisherwoman|female|hen|mare|ewe|vixen)\b/i;
+// A human word made a creature by what is said OF it — "a pale drowned bride", "a headless rider", "a dead
+// king" — and a body no living person has, wherever the description mentions it. (The first one-press Horror
+// Story's ghost was written as "a pale drowned bride … skin tinged blue-grey": no monster word in it, and she
+// was offered as a PERSON.) Kept narrow: "half-drowned", "dead-eyed" and "ghostly pale" are living people.
+const UNDEAD = /(?<!half-)\b(?:drowned|dead(?![- ]eyed)|undead|ghostly(?! pale| white| quiet)|spectral|skeletal|rotting|decaying|decayed|headless|faceless|eyeless|possessed|demonic|monstrous|mummified|corpses?|cadavers?|mumm(?:y|ies))\b/i;
+const UNNATURAL = /\b(?:empty (?:eye )?sockets|glowing (?:\w+ )?eyes|translucent|see-through|rotting (?:flesh|skin)|skin tinged (?:blue|grey|gray|green)|fangs|tentacles)\b/i;
 
 /** WHAT a story's character most likely is, read off the words the writer described them with — only a
  *  first guess, which the maker can change before anything is charged (the price follows the kind):
- *    monster  the thing itself is a ghost, a beast, a creature…
+ *    monster  the thing itself is a ghost, a beast, a creature… or a human word the description has made one
+ *             ("a drowned bride", "a headless rider"), or a body no living person has ("skin tinged blue-grey")
  *    cartoon  the thing itself is an animal, a toy, a robot…  (kept in the ONE look the story gave it)
  *    person   anything else — a real-looking human, later given outfits
  *  "The thing itself" is the start of the description, before what they wear or carry: "a young
@@ -223,7 +230,8 @@ const WOMEN = /\b(?:woman|girl|lady|she|her|hers|mother|mom|mum|grandmother|gran
 export function keepGuess(look: string): { kind: "person" | "cartoon" | "monster"; gender: "f" | "m" } {
   const said = String(look || "").replace(/\s+/g, " ").trim();
   const head = said.split(/\b(?:with|in|who|whose|wearing|carrying|holding|beside|and)\b|[,;(]/i)[0] || "";
-  const kind = MONSTERS.test(head) ? "monster" : CARTOONS.test(head) ? "cartoon" : "person";
+  // (a robot "with glowing eyes" stays a cartoon: what the thing IS is asked first, its body last)
+  const kind = MONSTERS.test(head) || UNDEAD.test(head) ? "monster" : CARTOONS.test(head) ? "cartoon" : UNNATURAL.test(said) ? "monster" : "person";
   return { kind, gender: WOMEN.test(head) || (!/\b(?:man|boy|he|his|father|grandfather|son|brother|uncle|king|prince|rooster|stallion)\b/i.test(head) && WOMEN.test(said)) ? "f" : "m" };
 }
 

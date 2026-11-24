@@ -15,8 +15,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  POSTER_FOOT_CURVE, POSTER_FOOT_DEPTH, POSTER_FOOT_RISE, POSTER_H, POSTER_SIZES, POSTER_W,
-  posterFilters, posterLayout, posterLines, posterName, posterOf, posterScene, posterTitle,
+  POSTER_CAST_MAX, POSTER_FOOT_CURVE, POSTER_FOOT_DEPTH, POSTER_FOOT_RISE, POSTER_H, POSTER_SIZES, POSTER_W,
+  castPosterGraph, posterDress, posterFilters, posterLayout, posterLines, posterName, posterOf, posterScene, posterTitle,
 } from "../app/lib/story-poster.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -162,6 +162,54 @@ test("a story makes its poster when it is made — and never fails for want of o
   assert.ok(nar.includes("} catch (e) { console.error(`[narrated] no poster (the shelf shows the first frame): ${e instanceof Error ? e.message.slice(0, 160) : e}`); }"));
   assert.ok(nar.includes("const billed = [...(opts.cast || []).map((c) => c?.name || \"\"), ...readCastToken(storyCastRef).refs.map((c) => c.name)].filter(Boolean);"), "the maker's picks first, then the story's own");
   assert.ok(nar.includes("...(poster ? { poster } : {}),"));
+});
+
+test("an ACTED film's poster is its cast: their own portraits side by side, in the same dress", () => {
+  // (an acted film's pictures are wide two-shots — cropped to 4:5 both faces would be cut in half; drawn
+  //  from stock portraits and looked at on 2026-11-24: one fills it, two stand side by side, three share it)
+  const layout = posterLayout({ title: "The Wallet at the Market", cast: ["Abdul", "Amara"] })!;
+  const font = "/app/public/fonts/Poppins-Bold.ttf";
+  const dress = posterDress(layout, font);
+  // a story's poster and a cast poster wear ONE dress — the same foot, rule, billing and title
+  assert.equal(posterFilters(layout, font), `scale=800:1000:force_original_aspect_ratio=increase,crop=800:1000,setsar=1,${dress}`);
+  assert.equal(POSTER_CAST_MAX, 3);
+  const widths = (g: string) => [...g.matchAll(/\[(\d):v\]scale=(\d+):1000:force_original_aspect_ratio=increase,crop=(\d+):1000,setsar=1\[p\1\]/g)].map((m) => { assert.equal(m[2], m[3]); return Number(m[2]); });
+  const one = castPosterGraph(1, layout, font);
+  assert.deepEqual(widths(one), [800]);
+  assert.equal(one, `[0:v]scale=800:1000:force_original_aspect_ratio=increase,crop=800:1000,setsar=1[p0];[p0]${dress}`, "one star fills it — nothing to join");
+  const two = castPosterGraph(2, layout, font);
+  assert.deepEqual(widths(two), [400, 400]);
+  assert.ok(two.endsWith(`;[p0][p1]hstack=inputs=2,${dress}`));
+  const three = castPosterGraph(3, layout, font);
+  assert.deepEqual(widths(three), [267, 267, 266], "the shares add up to the whole width — no black sliver at the edge");
+  assert.ok(three.endsWith(`;[p0][p1][p2]hstack=inputs=3,${dress}`));
+  // more than three were cast: three are shown (and three are billed — posterLayout's own limit)
+  assert.equal(castPosterGraph(7, layout, font), three);
+  for (const none of [0, -1, NaN]) assert.equal(castPosterGraph(none, layout, font), "", "nobody with a picture: no poster");
+});
+
+test("an acted film makes its poster from pictures already on the disk — and never fails for want of one", () => {
+  const srv = read("app", "lib", "story-poster.server.ts");
+  assert.ok(!/repRun|anthropic|fal\.|replicate/i.test(srv), "no model is asked: it costs nothing");
+  // only the cast with a picture, nobody twice, three at most; nobody pictured → no poster (an invented cast)
+  assert.ok(srv.includes(".filter((c): c is { name: string; input: string } => !!c.name && !!c.input)"));
+  assert.ok(srv.includes(".filter((c, k, a) => a.findIndex((x) => x.input === c.input) === k)"));
+  assert.ok(srv.includes(".slice(0, POSTER_CAST_MAX);") && srv.includes("if (!pictured.length) return null;"));
+  assert.ok(srv.includes("const layout = posterLayout({ title: o.title, cast: pictured.map((c) => c.name) });"), "the billing is the people shown, in the order shown");
+  assert.ok(srv.includes("const font = await resolveTextFont([...layout.lines, layout.cast, layout.episode].join(\" \"));"), "the captions' own font rule");
+  assert.ok(srv.includes("\"-filter_complex\", castPosterGraph(pictured.length, layout, font), \"-frames:v\", \"1\", \"-q:v\", \"3\", outPath]);"));
+  // a picture is opened as a FILE of ours when it is one (a stock portrait, a render, an upload), by its
+  // bare name only — a name that could climb out of its folder is never joined to a path
+  assert.ok(srv.includes("const name = path.basename(p);"));
+  assert.ok(srv.includes("const safe = /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}\\.(?:jpe?g|png|webp)$/i.test(name) && !name.includes(\"..\");"));
+  assert.ok(srv.includes("if (/^https:\\/\\/[^\\s\"']+$/.test(raw)) return raw;"), "…else its https address; never plain http, never a local path of the caller's choosing");
+  // made once the film itself is safe on disk, inside a try: a film without a poster is still a film
+  const film = read("app", "lib", "film-dialogue.server.ts");
+  const at = film.indexOf("try { poster = await makeCastPoster({ cast: opts.cast, title: treatment.title || opts.topic || \"\", videoName: outName }); }");
+  assert.ok(at > film.indexOf("try { await mirrorRender(outName, outBuf); } catch { /* non-fatal */ }") && at < film.indexOf("const asset = await db.asset.create({", at), "after the film is stored, before its record is written");
+  assert.ok(film.slice(at - 120, at).includes("if (process.env.STORY_POSTER !== \"off\") {"), "the same one switch turns it off");
+  assert.ok(film.includes("catch (e) { console.error(`[testmovie] no poster (the shelf shows the first frame): ${e instanceof Error ? e.message.slice(0, 160) : e}`); }"));
+  assert.ok(film.includes("...(poster ? { poster } : {}),"));
 });
 
 test("the Archive shows it as the film's cover, falls back to the first frame, and lets the maker keep it", () => {
