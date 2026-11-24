@@ -22,11 +22,11 @@ import { fileURLToPath } from "node:url";
 import {
   ACTED_STAGINGS, AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, EVENT_IDEAS, EVENT_IDEAS_SMALL, EVENT_MAX, EVENT_MAX_LAST, HEARD_AUDIO, HEARD_BEFORE_SAID,
   HEARD_FIRST_SECONDS, HEARD_NOT_DRAWN, HEARD_OPEN, HEARD_THEN, HEARD_UNSEEN, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, NOBODY_SPEAKS, ONE_TAKE,
-  PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEEN_AT_THE_END, SILENT_SHOT_SECONDS, TWO_ALWAYS,
+  FILM_FPS, JOIN_TOLERANCE, PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEAM_FRAMES, SEEN_AT_THE_END, SILENT_SHOT_SECONDS, TWO_ALWAYS,
   ageAsk, ageOf, castAgeProblem, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, eventIdeas, faceNote, happensBrief, heardIn, heardSeconds,
-  heardTalk, isActedStaging, kinLooks, kinNote, noRoomIn, ownTitle, relationOf, repairAges, revealClip, revealPart, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot,
+  heardTalk, isActedStaging, joinCheck, joinGraph, kinLooks, kinNote, noRoomIn, ownTitle, relationOf, repairAges, revealClip, revealPart, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot,
   stagingClip, stagingPicture, stagingsFor, takeAgeFix, titleAsk, twoOnScreen, wordless,
-  type ActedStaging,
+  type ActedStaging, type SeamKind,
 } from "../app/lib/acted-staging.ts";
 import { KLING_PROMPT_MAX, clipRules, fitClipPrompt } from "../app/lib/clip-prompt.ts";
 import { CLIP_MAX_SECONDS, clipSecondsFor } from "../app/lib/speech-meter.ts";
@@ -880,48 +880,149 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
 
 test("a cut to another place, and to the reveal, is a straight cut; a shot that continues the last keeps its tiny blend", () => {
   const eng = read("app", "lib", "film-dialogue.server.ts");
-  const hard = Number((eng.match(/export const HARD_CUT_SECONDS = ([\d.]+);/) || [])[1]);
-  assert.ok(hard > 0 && hard <= 1 / 29, "one frame at 30 fps");
-  assert.ok(eng.includes("const fadeFor = (i: number) => (hardSeams?.has(i) ? HARD_CUT_SECONDS : softSeams?.has(i) ? 0.32 : 0.18);"), "a straight cut wins over both dissolves");
+  assert.ok(eng.includes("const seams: SeamKind[] = clips.map((_, i) => (hardSeams?.has(i) ? \"hard\" : softSeams?.has(i) ? \"reframe\" : \"soft\"));"), "a straight cut wins over both dissolves");
+  assert.deepEqual(SEAM_FRAMES, { soft: 5, reframe: 10, hard: 0 }, "dissolves of whole frames (0.167 s, 0.333 s); a straight cut none");
   assert.ok(eng.includes("if (i > 0 && !chained && (tr === \"location\" || revealed)) hardSeams.add(i);"));
-  assert.ok(eng.includes("await assembleTestMovie(clips, outPath, jobId, softSeams, aspect, hardSeams);"));
-  assert.ok(eng.includes("export async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>, aspect: \"9:16\" | \"16:9\" | \"1:1\" = \"9:16\", hardSeams?: Set<number>): Promise<void> {"), "optional: a caller that passes none cuts as before");
+  assert.ok(eng.includes("const filmFrames = await assembleTestMovie(clips, outPath, jobId, softSeams, aspect, hardSeams);"));
+  assert.ok(eng.includes("export async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>, aspect: \"9:16\" | \"16:9\" | \"1:1\" = \"9:16\", hardSeams?: Set<number>): Promise<number> {"), "optional: a caller that passes none cuts as before");
   assert.ok(eng.includes("...(hardSeams.has(i) ? { cut: \"hard\" } : {}),"), "kept on the piece, so a re-cut can keep it");
+  assert.ok(!/HARD_CUT_SECONDS|fadeFor|buildXfade/.test(eng), "no one-frame dissolve left to miss");
 });
 
-const ffmpegOk = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" }).status === 0;
+/* ---- THE JOIN: EVERY SHOT'S PICTURE, AND ITS SOUND THE SAME LENGTH ----
+ * knock4 (2026-11-24, "The Patient Wall"): picture 19.17 s, sound 24.17 s — the reveal gone from the picture, its
+ * 5 s of sound playing over the last frame of the shot before. Each dissolve was placed by its clip's CONTAINER
+ * length (the longer of picture and sound); a few hundredths of a second of sound past the picture moved the
+ * one-frame cut into the reveal past the last frame of the shot before, and xfade never brought it in. */
 
-test("ffmpeg makes that one-frame xfade a straight cut: not one frame of the two rooms mixed", { skip: !ffmpegOk }, () => {
-  const hard = Number((read("app", "lib", "film-dialogue.server.ts").match(/export const HARD_CUT_SECONDS = ([\d.]+);/) || [])[1]);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hardcut-"));
+const ffmpegOk = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" }).status === 0 && spawnSync("ffprobe", ["-version"], { encoding: "utf8" }).status === 0;
+/** the ffmpegs to join on: the one on PATH, and the app's own ffmpeg-static when it is installed (two versions) */
+const joiners = (() => {
+  const out = ["ffmpeg"];
   try {
-    const clip = (name: string, color: string, hz: number) => {
-      const out = path.join(dir, name);
-      const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=${color}:s=64x64:r=24:d=1`, "-f", "lavfi", "-i", `sine=frequency=${hz}:sample_rate=44100:duration=1`, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", out], { encoding: "utf8" });
-      assert.equal(r.status, 0, r.stderr);
-      return out;
-    };
-    const a = clip("a.mp4", "red", 900), b = clip("b.mp4", "blue", 500);
-    // the assembler's own steps: each clip to 30 fps from zero, then xfade + acrossfade at the seam — and every
-    // frame read back as one mean colour: pure red, pure blue, or a blend of the two
-    const mixed = (fade: number): number => {
-      const graph = `[0:v]fps=30,setpts=PTS-STARTPTS[v0];[1:v]fps=30,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=fade:duration=${fade}:offset=${(1 - fade).toFixed(3)}[vx];[vx]scale=1:1[v];[0:a]aresample=44100,asetpts=PTS-STARTPTS[a0];[1:a]aresample=44100,asetpts=PTS-STARTPTS[a1];[a0][a1]acrossfade=d=${fade}[a]`;
-      const r = spawnSync("ffmpeg", ["-v", "error", "-i", a, "-i", b, "-filter_complex", graph, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1", "-map", "[a]", "-f", "null", "-"], { encoding: "buffer", maxBuffer: 1 << 26 });
-      assert.equal(r.status, 0, String(r.stderr));
-      const frames = r.stdout;
-      assert.ok(frames.length >= 3 * 50, `${frames.length / 3} frames`);
-      let blends = 0;
-      for (let k = 0; k + 2 < frames.length; k += 3) {
-        const [red, , blue] = [frames[k], frames[k + 1], frames[k + 2]];
-        if (red > 40 && blue > 40) blends++;
+    const p = path.join(root, "node_modules", "ffmpeg-static", process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+    if (fs.existsSync(p) && spawnSync(p, ["-version"], { encoding: "utf8" }).status === 0) out.push(p);
+  } catch { /* the one on PATH */ }
+  return out;
+})();
+const SCALE_169 = "crop=iw:ih*0.90:0:0,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1,fps=30";
+/** a stand-in shot: `colour` filling a 1280x720 picture at 24 fps for `picture` s, a tone for `sound` s (0: none) */
+const standIn = (dir: string, name: string, colour: string, picture: number, sound: number): string => {
+  const out = path.join(dir, `${name}.mp4`);
+  const args = ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=${colour}:s=1280x720:r=24:d=${picture}`];
+  if (sound > 0) args.push("-f", "lavfi", "-i", `sine=frequency=440:sample_rate=44100:duration=${sound}`);
+  args.push("-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", ...(sound > 0 ? ["-c:a", "aac"] : []), out);
+  const r = spawnSync("ffmpeg", args, { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  return out;
+};
+const streamsOf = (file: string): { video: number; audio: number | null } => {
+  const r = spawnSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,duration", "-of", "csv=p=0", file], { encoding: "utf8" });
+  const m = Object.fromEntries(r.stdout.trim().split(/\r?\n/).map((l) => { const [t, d] = l.split(","); return [t, parseFloat(d)]; }));
+  return { video: m.video, audio: m.audio ?? null };
+};
+/** join stand-ins the way assembleTestMovie does (pictureFrames: the PICTURE's length, at 30 fps) */
+const joinOn = (ff: string, dir: string, name: string, clips: string[], seams: Array<SeamKind | null>, dissolve = true) => {
+  const frames = clips.map((c) => Math.round(streamsOf(c).video * FILM_FPS));
+  const silent = clips.map((c) => streamsOf(c).audio === null);
+  const plan = joinGraph({ frames, seams, prep: SCALE_169, silent, dissolve });
+  const film = path.join(dir, `${name}.mp4`);
+  const r = spawnSync(ff, ["-v", "error", "-y", ...clips.flatMap((c) => ["-i", c]), "-filter_complex", plan.graph, "-map", "[vc]", "-map", "[ac]", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", film], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  // every frame read back as one colour: which shots' pictures are in the film, and how many frames of each
+  const raw = spawnSync(ff, ["-v", "error", "-i", film, "-vf", "scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { encoding: "buffer", maxBuffer: 1 << 26 }).stdout;
+  const seen = { red: 0, green: 0, blue: 0, white: 0, mixed: 0 };
+  for (let k = 0; k + 2 < raw.length; k += 3) {
+    const [r0, g, b] = [raw[k], raw[k + 1], raw[k + 2]];
+    if (r0 > 200 && g > 200 && b > 200) seen.white++; else if (r0 > 200 && g < 60 && b < 60) seen.red++; else if (g > 100 && r0 < 60 && b < 60) seen.green++; else if (b > 200 && r0 < 60 && g < 60) seen.blue++; else seen.mixed++;
+  }
+  return { plan, streams: streamsOf(film), seen, check: joinCheck({ ...streamsOf(film), frames: plan.frames }) };
+};
+
+test("THE FOURTH FILM'S REVEAL: shots whose sound runs past their picture never take the next shot out of the film", { skip: !ffmpegOk }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "join-"));
+  try {
+    // knock4's shapes: three shots with 30 ms more sound than picture (on the old join, enough to drop what follows a
+    // straight cut — on ffmpeg 6.1.1 and 8.1.2 alike), then the 5 s silent reveal, cut straight
+    const shots = [standIn(dir, "s1", "red", 6.0, 6.03), standIn(dir, "s2", "green", 4.5, 4.53), standIn(dir, "s3", "blue", 4.0, 4.03), standIn(dir, "rv", "white", 5.0, 5.0)];
+    for (const ff of joiners) {
+      for (const dissolve of [true, false]) {
+        const j = joinOn(ff, dir, `knock4-${joiners.indexOf(ff)}-${dissolve}`, shots, [null, "soft", "reframe", "hard"], dissolve);
+        const at = `${ff} dissolve=${dissolve}`;
+        assert.ok(j.check.ok, `${at}: ${j.check.why}`);
+        assert.equal(j.seen.white, 150, `${at}: the reveal, all 5 s of it, is in the picture — ${JSON.stringify(j.seen)}`);
+        assert.ok(j.seen.red > 150 && j.seen.green > 100 && j.seen.blue > 100, `${at}: ${JSON.stringify(j.seen)}`);
+        assert.ok(Math.abs(j.streams.video - (j.streams.audio ?? 0)) <= JOIN_TOLERANCE, `${at}: picture ${j.streams.video}, sound ${j.streams.audio}`);
+        assert.equal(j.plan.frames, dissolve ? 180 + 135 + 120 + 150 - 5 - 10 : 180 + 135 + 120 + 150, at);
       }
-      return blends;
-    };
-    assert.equal(mixed(hard), 0, "a straight cut");
-    assert.ok(mixed(0.32) >= 4, "…where the old dissolve to another place mixed the two");
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("a shot whose sound is 1.5 s longer than its picture, one with no sound, one with too little: every picture in, the sound cut to it", { skip: !ffmpegOk }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "join-"));
+  try {
+    const three = [standIn(dir, "a", "red", 5.0, 5.0), standIn(dir, "b", "green", 4.0, 5.5), standIn(dir, "c", "blue", 5.0, 5.0)];
+    for (const ff of joiners) {
+      for (const seams of [[null, "soft", "soft"], [null, "hard", "hard"], [null, "reframe", "hard"]] as Array<Array<SeamKind | null>>) {
+        const j = joinOn(ff, dir, `three-${joiners.indexOf(ff)}-${seams.join("")}`, three, seams);
+        const at = `${ff} ${seams.join(",")}`;
+        assert.ok(j.check.ok, `${at}: ${j.check.why}`);
+        assert.ok(j.seen.red >= 140 && j.seen.green >= 105 && j.seen.blue >= 140, `${at}: all three pictures — ${JSON.stringify(j.seen)}`);
+        assert.ok(Math.abs(j.streams.video - (j.streams.audio ?? 0)) <= JOIN_TOLERANCE, `${at}: picture ${j.streams.video}, sound ${j.streams.audio}`);
+      }
+      // a shot with NO sound stream gets its length of silence; one whose sound stops early is padded to its picture
+      const odd = [standIn(dir, "d", "red", 5.0, 4.2), standIn(dir, "e", "green", 4.0, 0), standIn(dir, "f", "white", 5.0, 5.0)];
+      const j = joinOn(ff, dir, `odd-${joiners.indexOf(ff)}`, odd, [null, "soft", "hard"]);
+      assert.ok(j.check.ok && j.seen.white === 150 && j.seen.green >= 105, `${ff}: ${j.check.why} ${JSON.stringify(j.seen)}`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a straight cut is a join: not one frame of the two rooms mixed — a dissolve still mixes them", { skip: !ffmpegOk }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "join-"));
+  try {
+    const two = [standIn(dir, "a", "red", 2.0, 2.0), standIn(dir, "b", "blue", 2.0, 2.0)];
+    for (const ff of joiners) {
+      const cut = joinOn(ff, dir, `cut-${joiners.indexOf(ff)}`, two, [null, "hard"]);
+      assert.equal(cut.seen.mixed, 0, `${ff}: a straight cut — ${JSON.stringify(cut.seen)}`);
+      assert.deepEqual([cut.seen.red, cut.seen.blue], [60, 60], ff);
+      const dissolve = joinOn(ff, dir, `dissolve-${joiners.indexOf(ff)}`, two, [null, "reframe"]);
+      assert.ok(dissolve.seen.mixed >= 4, `${ff}: …where a dissolve mixes the two — ${JSON.stringify(dissolve.seen)}`);
+      assert.equal(dissolve.plan.frames, 110, `${ff}: 60 + 60 frames less the 10 they share`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a film whose picture ends before its sound is never shipped: measured after the join and again at the end, and the job fails", () => {
+  // knock4's own numbers, and a picture that stops short of what its shots add up to
+  assert.equal(joinCheck({ video: 19.166667, audio: 24.171995 }).ok, false);
+  assert.match(joinCheck({ video: 19.166667, audio: 24.171995 }).why, /picture runs 19\.167 s and its sound 24\.172 s/);
+  assert.equal(joinCheck({ video: 19.166667, audio: 19.18, frames: 725 }).ok, false, "the picture is 5 s short of its shots");
+  assert.equal(joinCheck({ video: 24.166667, audio: 24.18, frames: 725 }).ok, true);
+  assert.equal(joinCheck({ video: 24.166667, audio: null, frames: 725 }).ok, true, "no sound stream: the picture alone is measured");
+  assert.equal(joinCheck({ video: 24.166667, audio: NaN }).ok, false, "a sound stream whose length cannot be read never passes");
+  assert.equal(joinCheck({ video: 0, audio: 5 }).ok, false);
+  assert.ok(JOIN_TOLERANCE > 2 / FILM_FPS && JOIN_TOLERANCE < 0.1, "two frames and one block of sound");
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  // every shot measured by its PICTURE, never by the file's longer stream
+  assert.ok(eng.includes("const frames = clips.map((c) => { try { return pictureFrames(c); } catch { return 0; } });"));
+  assert.ok(eng.includes("[\"-select_streams\", \"v:0\", \"-show_entries\", \"stream=duration,nb_frames,avg_frame_rate\"]"));
+  // joined with dissolves, then the plain way — each MEASURED — and otherwise the job fails
+  assert.ok(eng.includes("? joinCheck({ ...streamSeconds(outPath), frames: plan.frames })"));
+  assert.ok(eng.includes("throw new Error(`[testmovie] the film could not be joined whole — ${failed.join(\"; \")}`);"));
+  // …and measured once more after its sound is levelled and its captions drawn, before it is stored
+  const end = eng.indexOf("const finished = joinCheck({ ...streamSeconds(outPath), frames: filmFrames });");
+  assert.ok(end > eng.indexOf("captioned = await captionFilm({") && end < eng.indexOf("const outBuf = fs.readFileSync(outPath);"));
+  assert.ok(eng.includes("if (!finished.ok) throw new Error(`[testmovie] the finished film is not whole after its sound and captions — ${finished.why}`);"));
+  // the captions are timed by the same lengths the join used
+  assert.ok(eng.includes("clipDurs: clips.map((c) => { try { return pictureFrames(c) / FILM_FPS; } catch { return 0; } }),"));
 });
 
 /* ---- PEOPLE WHO ARE RELATED ARE THE RIGHT AGES FOR IT ----

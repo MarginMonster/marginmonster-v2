@@ -27,13 +27,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { db } from "../db.server";
 import { persistRemote, renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderSideBySideTwoShot, repRun } from "./image-generation.server";
 import { AVATAR_VOICES, isPersonalVoice } from "./avatar-voice-catalog";
 import { characterVoice, isCharacterVoice } from "./character-voices";
 import { chainClipVoice } from "./character-voice.server";
 import { ensureVoiceModel, revoiceClip } from "./singing-voice.server";
-import { checkpointJob, download, ffprobeDuration, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
+import { checkpointJob, download, ffprobeBin, ffprobeDuration, hasAudioStream, repCreate, repPoll, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { clampKlingPrompt, clipRules, fitClipPrompt } from "./clip-prompt";
 import { interiorCutFromWords, isNoopTrim, parseSilences, planClipTrim, planFromWords, planShift, SILENCE_FILTER, type TimedWord } from "./clip-trim";
@@ -51,7 +52,7 @@ import { makeCastPoster } from "./story-poster.server";
 import { castForWriter } from "./dialogue-cast";
 import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
-import { EVENT_MAX, EVENT_MAX_LAST, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, kinLooks, revealPicture, sceneEvent, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging } from "./acted-staging";
+import { EVENT_MAX, EVENT_MAX_LAST, FILM_FPS, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, joinCheck, joinGraph, kinLooks, revealPicture, sceneEvent, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging, type SeamKind } from "./acted-staging";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -447,25 +448,54 @@ async function collapseInteriorPause(inPath: string, words?: TimedWord[] | null)
   return inPath;
 }
 
-/** A STRAIGHT CUT, in the assembler's own terms: a one-frame xfade at 30 fps. ffmpeg's xfade shows the
- *  first clip up to the cut and the second from the next frame — no frame of the two mixed (measured on the
- *  ffmpeg the server runs, 6.1.1, and on 8.1: 0 blended frames, where the 0.32 s dissolve gave 5) — and the
- *  sound crosses in 34 ms, too short to hear as anything but a cut, long enough never to click. */
-export const HARD_CUT_SECONDS = 0.034;
+/** ffprobe's answer as JSON ({} when it gives none). */
+const probeJson = (file: string, args: string[]): { streams?: Array<Record<string, unknown>> } => {
+  try { return JSON.parse(spawnSync(ffprobeBin(), ["-v", "error", ...args, "-of", "json", file], { encoding: "utf8", timeout: 20_000 }).stdout || "{}"); } catch { return {}; }
+};
+/** A CLIP'S LENGTH, in frames at the film's 30 fps — read off its PICTURE, never off the file's own length, which
+ *  is the longer of its picture and its sound (acted-staging.ts → THE JOIN: a few hundredths of a second of sound
+ *  past the last frame of the shots before it is what took knock4's reveal out of the picture). The picture
+ *  stream's own length; when a file does not say it, its frame count over its frame rate; failing both, the
+ *  file's length. */
+export function pictureFrames(file: string): number {
+  const v = probeJson(file, ["-select_streams", "v:0", "-show_entries", "stream=duration,nb_frames,avg_frame_rate"]).streams?.[0] || {};
+  let secs = parseFloat(String(v.duration ?? ""));
+  if (!(secs > 0)) {
+    const [num, den] = String(v.avg_frame_rate ?? "").split("/").map(Number);
+    const count = parseInt(String(v.nb_frames ?? ""), 10);
+    if (num > 0 && den > 0 && count > 0) secs = count / (num / den);
+  }
+  if (!(secs > 0)) secs = ffprobeDuration(file);
+  return Math.max(1, Math.round(secs * FILM_FPS));
+}
+/** A finished file's picture and sound lengths (s): `audio` null when it has no sound stream, NaN when it has one
+ *  whose length cannot be read (which never passes joinCheck). */
+export function streamSeconds(file: string): { video: number | null; audio: number | null } {
+  const streams = probeJson(file, ["-show_entries", "stream=codec_type,duration"]).streams || [];
+  const len = (kind: string): number | null => {
+    const s = streams.find((x) => x.codec_type === kind);
+    if (!s) return null;
+    const d = parseFloat(String(s.duration ?? ""));
+    return d > 0 ? d : NaN;
+  };
+  return { video: len("video"), audio: len("audio") };
+}
 
-/** Concatenate the Veo clips, KEEPING their dialogue audio (unlike the main
- *  engine, which strips clip audio for a narrator/music bed). Degrade ladder:
- *  with audio → silent, so a clip that came back without an audio stream can't
- *  sink the whole render.
- *  `hardSeams` = the clip indices whose seam-before is a STRAIGHT CUT (HARD_CUT_SECONDS): a cut to ANOTHER
- *  PLACE, and a horror film's last shot drawn into its place's own picture. The owner's knocking film
- *  reached its last shot through a half-second double exposure of two rooms — a dissolve says "time passes"
- *  or "a dream", never "and then, there". A shot that continues the last one keeps its invisible 0.18 s. */
-export async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>, aspect: "9:16" | "16:9" | "1:1" = "9:16", hardSeams?: Set<number>): Promise<void> {
+/** Join the shots into the film, KEEPING their dialogue audio (unlike the main engine, which strips clip audio
+ *  for a narrator/music bed) — acted-staging.ts → THE JOIN, which says how and why. Every clip is made exactly as
+ *  long as its PICTURE (pictureFrames), its sound cut or padded to match, a clip with no sound given silence; the
+ *  shots are joined with dissolves of whole frames, and a STRAIGHT CUT (`hardSeams`: a cut to ANOTHER PLACE, and
+ *  a horror film's last shot drawn into its place's own picture — the owner's knocking film reached it through a
+ *  half-second double exposure of two rooms) is a join; a REFRAME (`softSeams`: a new angle in the same place)
+ *  dissolves longer than a shot that continues the last. THE FINISHED FILE IS MEASURED (joinCheck): its picture
+ *  and its sound the same length, and the length the shots add up to. Not whole → joined again the plain way
+ *  (every seam a straight join); still not → it THROWS: the job fails, and a film whose picture ends before its
+ *  sound — knock4, the reveal gone, 5 s of its sound over the last frame of the shot before — is never shipped.
+ *  Returns the film's length in frames. */
+export async function assembleTestMovie(clips: string[], outPath: string, jobId?: string, softSeams?: Set<number>, aspect: "9:16" | "16:9" | "1:1" = "9:16", hardSeams?: Set<number>): Promise<number> {
   const N = clips.length;
   if (!N) throw new Error("[testmovie] no clips");
   const beat = async () => { if (jobId) await checkpointJob(jobId, { ckBeat: Date.now() }); };
-  const produced = (): boolean => { try { return fs.existsSync(outPath) && ffprobeDuration(outPath) > 1; } catch { return false; } };
   // Trim the bottom ~10% before scaling — a safety net against Veo's stochastic
   // hallucinated subtitles/captions, which sit along the bottom edge (the prompt ban
   // reduces but doesn't fully stop them). Heads stay (crop is anchored at the top);
@@ -474,67 +504,36 @@ export async function assembleTestMovie(clips: string[], outPath: string, jobId?
   const SCALE = `crop=iw:ih*0.90:0:0,scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30`;
   const TAIL = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outPath];
 
-  // PREFERRED: a short CROSSFADE at each cut (video xfade + audio acrossfade) so the
-  // clip change reads as a smooth dissolve, not a clunky hard jump. Because clip N is
-  // seeded from clip N-1's last frame, the two frames are nearly identical, so the
-  // dissolve is almost invisible — it just softens the re-animation hitch. Needs each
-  // clip's duration for the offsets; if anything is off we fall back to concat below.
-  const buildXfade = (): string[] | null => {
-    if (N < 2) return null;
-    // Chained cuts (clip N seeded from clip N-1's real last frame) are near-identical, so a
-    // tiny 0.18s dissolve is effectively invisible. A REFRAME seam (camera angle / re-anchor
-    // in the same place) jumps more, so it gets a longer, softer 0.32s dissolve. softSeams
-    // holds those indices. A cut to ANOTHER PLACE (and a horror film's reveal) is a straight
-    // cut — hardSeams wins over both (2026-11-24: a dissolve between two rooms read as a ghost).
-    const fadeFor = (i: number) => (hardSeams?.has(i) ? HARD_CUT_SECONDS : softSeams?.has(i) ? 0.32 : 0.18);
-    const durs = clips.map((c) => { try { return ffprobeDuration(c); } catch { return 0; } });
-    if (durs.some((d) => !(d > 0.62))) return null; // every clip must outlast the longest fade + margin
-    const a: string[] = ["-y"];
-    clips.forEach((c) => a.push("-i", c));
-    const f: string[] = [];
-    clips.forEach((_, i) => {
-      f.push(`[${i}:v]${SCALE},setpts=PTS-STARTPTS[v${i}]`);
-      f.push(`[${i}:a]aresample=44100,asetpts=PTS-STARTPTS[a${i}]`);
-    });
-    let vPrev = "v0", aPrev = "a0", running = durs[0];
-    for (let i = 1; i < N; i++) {
-      const FADE = fadeFor(i);
-      const vOut = i === N - 1 ? "vc" : `vx${i}`;
-      const aOut = i === N - 1 ? "ac" : `ax${i}`;
-      f.push(`[${vPrev}][v${i}]xfade=transition=fade:duration=${FADE}:offset=${Math.max(0, running - FADE).toFixed(3)}[${vOut}]`);
-      f.push(`[${aPrev}][a${i}]acrossfade=d=${FADE}[${aOut}]`);
-      vPrev = vOut; aPrev = aOut; running = running + durs[i] - FADE;
-    }
-    return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", "-map", "[ac]", ...TAIL];
-  };
-
-  // FALLBACK: plain hard-cut concat. Degrade ladder: with audio → silent.
-  const buildConcat = (useAudio: boolean): string[] => {
-    const a: string[] = ["-y"];
-    clips.forEach((c) => a.push("-i", c));
-    const f: string[] = [];
-    clips.forEach((_, i) => {
-      f.push(`[${i}:v]${SCALE},setpts=PTS-STARTPTS[v${i}]`);
-      if (useAudio) f.push(`[${i}:a]aresample=44100,asetpts=PTS-STARTPTS[a${i}]`);
-    });
-    if (useAudio) {
-      f.push(`${clips.map((_, i) => `[v${i}][a${i}]`).join("")}concat=n=${N}:v=1:a=1[vc][ac]`);
-      return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", "-map", "[ac]", ...TAIL];
-    }
-    f.push(`${clips.map((_, i) => `[v${i}]`).join("")}concat=n=${N}:v=1:a=0[vc]`);
-    return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", ...TAIL];
-  };
-
+  // each shot's length off its PICTURE; which shots have no sound at all; how each is joined to the one before:
+  // a shot that continues the last (seeded from its real last frame) dissolves in 5 frames — near-identical
+  // frames, so it is all but invisible; a new angle in the same place in 10; another place, or the reveal, is
+  // a straight cut (2026-11-24: a dissolve between two rooms read as a ghost)
+  const frames = clips.map((c) => { try { return pictureFrames(c); } catch { return 0; } });
+  const unmeasured = frames.findIndex((n) => !(n > 0));
+  if (unmeasured >= 0) throw new Error(`[testmovie] shot ${unmeasured + 1}'s picture could not be measured (${path.basename(clips[unmeasured])})`);
+  const silent = clips.map((c) => { try { return !hasAudioStream(c); } catch { return false; } });
+  const seams: SeamKind[] = clips.map((_, i) => (hardSeams?.has(i) ? "hard" : softSeams?.has(i) ? "reframe" : "soft"));
+  const inputs = clips.flatMap((c) => ["-i", c]);
   await beat();
-  let lastErr = "";
-  for (const args of [buildXfade(), buildConcat(true), buildConcat(false)]) {
-    if (!args) continue;
-    const run = await runFfmpeg(args);
-    if (run.status === 0 && produced()) return;
-    lastErr = (run.stderr || "").slice(-240);
+  const failed: string[] = [];
+  for (const [how, plan] of [
+    ["with its dissolves", joinGraph({ frames, seams, prep: SCALE, silent })],
+    ["the plain way, every seam a straight join", joinGraph({ frames, seams, prep: SCALE, silent, dissolve: false })],
+  ] as Array<[string, { graph: string; frames: number }]>) {
+    const run = await runFfmpeg(["-y", ...inputs, "-filter_complex", plan.graph, "-map", "[vc]", "-map", "[ac]", ...TAIL]);
+    const whole = run.status === 0 && fs.existsSync(outPath)
+      ? joinCheck({ ...streamSeconds(outPath), frames: plan.frames })
+      : { ok: false, why: `ffmpeg stopped: ${(run.stderr || "").slice(-200)}` };
+    if (whole.ok) {
+      if (failed.length) console.error(`[testmovie] the film was joined ${how} after: ${failed.join("; ")}`);
+      return plan.frames;
+    }
+    failed.push(`${how} — ${whole.why}`);
+    console.error(`[testmovie] the film did not come out whole ${how}: ${whole.why}`);
     await beat();
   }
-  throw new Error(`[testmovie] ffmpeg failed: ${lastErr}`);
+  // NEVER SHIPPED: the job fails here, and a film missing a shot's picture (or its sound) never reaches anybody
+  throw new Error(`[testmovie] the film could not be joined whole — ${failed.join("; ")}`);
 }
 
 // Shared prompt fragments for the dialogue seed frames + Veo clips. Module-scope
@@ -1337,7 +1336,7 @@ export async function generateTestMovie(opts: {
   // 4) ASSEMBLE — concat the clips keeping the dialogue audio.
   const outName = `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleTestMovie(clips, outPath, jobId, softSeams, aspect, hardSeams);
+  const filmFrames = await assembleTestMovie(clips, outPath, jobId, softSeams, aspect, hardSeams);
   // 4a) LOUDNESS — an acted film's sound is whatever the video model performed, and it came out much
   // quieter than a narrated story (-24 dB against -18 on the first two made side by side). Levelled to
   // the same loudness; never fatal.
@@ -1353,9 +1352,14 @@ export async function generateTestMovie(opts: {
       filmPath: outPath, style: wantCaptions, jobId, lang: normalizeContentLang(lang),
       // (a shot nobody speaks in has no card: an emptied line must not leave its speaker's name on screen)
       lines: treatment.scenes.slice(0, clips.length).map((sc) => (wordless(sc.caption) ? "" : splitExchange(sc.caption || "").map((t) => t.line).join(" "))),
-      clipDurs: clips.map((c) => { try { return ffprobeDuration(c); } catch { return 0; } }),
+      // (each shot as long as the join made it: its picture's length)
+      clipDurs: clips.map((c) => { try { return pictureFrames(c) / FILM_FPS; } catch { return 0; } }),
     });
   }
+  // THE FINISHED FILE, MEASURED ONCE MORE — its sound levelled and its captions drawn since the join measured it:
+  // picture and sound the same length, and the length its shots add up to. Not whole: the job fails, never ships.
+  const finished = joinCheck({ ...streamSeconds(outPath), frames: filmFrames });
+  if (!finished.ok) throw new Error(`[testmovie] the finished film is not whole after its sound and captions — ${finished.why}`);
   const outBuf = fs.readFileSync(outPath);
   try { await mirrorRender(outName, outBuf); } catch { /* non-fatal */ }
   const storedUrl = `/renders/${outName}`;

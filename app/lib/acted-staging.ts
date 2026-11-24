@@ -1271,3 +1271,103 @@ export function titleAsk(o: { idea?: string | null; scenes: ReadonlyArray<{ visu
   const sheet = o.scenes.map((s, k) => `${k + 1}. ${oneLine(s.visual).slice(0, 200)}${oneLine(s.caption) ? ` — ${oneLine(s.caption).slice(0, 200)}` : ""}`).join("\n");
   return `This is a short film, scene by scene:\n${sheet}\nIt was made from this idea: "${oneLine(o.idea).replace(/"/g, "'").slice(0, 300)}".\nGive the film a TITLE of its own, the way a film is titled: two to six words, short and specific to THIS story — never the idea's own words, no quotation marks, no full stop${o.language && !/^english$/i.test(o.language) ? `, in ${o.language}` : ""}. Return "title".`;
 }
+
+/* ---- THE JOIN: EVERY SHOT'S PICTURE, AND ITS SOUND THE SAME LENGTH ----
+ * The fourth live film of the sisters' idea (knock4, 2026-11-24, "The Patient Wall"): its picture ended at 19.17 s
+ * and its sound at 24.17 s — the last shot, the reveal, was gone from the picture while its 5 s of sound played on
+ * over the last frame of the shot before. The join (film-dialogue → assembleTestMovie) placed every dissolve by
+ * each clip's CONTAINER length — the longer of its picture and its sound — and a clip's sound often runs a few
+ * hundredths of a second past its last frame (sound is cut in 1024-sample blocks, pictures in frames; a trim
+ * cuts the two on different grids). Every such overhang put the next seam later than the picture it joins. A
+ * dissolve of 0.18 s or 0.32 s swallowed that; the straight cut into the reveal (a 0.034 s dissolve: one frame)
+ * could not: its offset fell after the last frame of the shot before, ffmpeg's xfade never brought the reveal in,
+ * and acrossfade — which has no offset — kept all of its sound. The two films before it (knock2, knock3) happened
+ * to have sound a hair SHORTER than picture. Reproduced on ffmpeg 6.1.1 and 8.1.2 with 30 ms of overhang a clip
+ * (scratchpad acted-fix/join-repro.mjs). So now:
+ *  · every clip is made exactly as long as its PICTURE, on the film's 30 fps grid: its picture cut (or its last
+ *    frame held) to that many frames, its sound cut or padded with silence to the very same length;
+ *  · a dissolve is a whole number of frames, so every offset falls on a frame, and the sound crosses in exactly
+ *    as long as the picture does;
+ *  · a straight cut is a JOIN (concat) — no offset to miss — its sound meeting in two 12 ms fades, so it never
+ *    clicks;
+ *  · and the finished file is MEASURED: picture and sound the same length, and the length the shots add up to
+ *    (joinCheck). A film that fails it is joined again the plain way, and one that fails that is not shipped. */
+
+/** The film's frame rate (every clip is brought to it before the join). */
+export const FILM_FPS = 30;
+const FILM_RATE = 44100;
+/** Sound samples in one frame (44100 / 30 — a whole number, so a clip's sound can be cut to its frames exactly). */
+const SAMPLES_PER_FRAME = FILM_RATE / FILM_FPS;
+/** How a shot is joined to the one before it, in frames of dissolve: a shot that CONTINUES the last (seeded from
+ *  its last frame) 5 frames (0.167 s — it was 0.18 s, never a whole frame); a new angle in the same place 10
+ *  (0.333 s — it was 0.32 s); a cut to another place, or to the reveal, none: a straight cut. */
+export const SEAM_FRAMES = { soft: 5, reframe: 10, hard: 0 } as const;
+export type SeamKind = keyof typeof SEAM_FRAMES;
+/** How far the finished file's picture and sound may differ — from each other, and from the length the shots add
+ *  up to: two frames, and one block of sound (the encoder rounds the sound up to whole 1024-sample blocks). */
+export const JOIN_TOLERANCE = 2 / FILM_FPS + 1024 / FILM_RATE;
+
+const frameSecs = (frames: number): string => (frames / FILM_FPS).toFixed(6);
+
+/** THE JOIN, as ffmpeg's filter graph (outputs [vc] and [ac]). `frames[i]` = clip i's length in frames at 30 fps,
+ *  read off its PICTURE; `seams[i]` = how clip i is joined to the one before it (seams[0] is not read); `prep` =
+ *  the picture filters each clip gets first (crop, scale, …, fps=30); `silent[i]` = clip i has no sound stream
+ *  (silence of its length is made for it); `dissolve: false` = every seam a straight join (the plain way, tried
+ *  when the first way does not come out whole). Returns the graph and the film's length in frames. */
+export function joinGraph(o: { frames: ReadonlyArray<number>; seams?: ReadonlyArray<SeamKind | null | undefined>; prep: string; silent?: ReadonlyArray<boolean>; dissolve?: boolean }): { graph: string; frames: number } {
+  const n = o.frames.map((f) => Math.max(1, Math.round(Number(f) || 0)));
+  if (!n.length) return { graph: "", frames: 0 };
+  const g: string[] = [];
+  n.forEach((frames, i) => {
+    // the picture, exactly `frames` long: brought to 30 fps, its last frame held a little, then cut to length
+    g.push(`[${i}:v]${o.prep},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=3,trim=end_frame=${frames},setpts=PTS-STARTPTS[v${i}]`);
+    // …and its sound exactly as long: cut, or padded with silence (a clip with no sound gets silence)
+    const samples = frames * SAMPLES_PER_FRAME;
+    g.push(o.silent?.[i]
+      ? `anullsrc=r=${FILM_RATE}:cl=stereo,atrim=end_sample=${samples},asetpts=PTS-STARTPTS[a${i}]`
+      : `[${i}:a]aresample=${FILM_RATE},aformat=sample_rates=${FILM_RATE}:channel_layouts=stereo,asetpts=PTS-STARTPTS,apad,atrim=end_sample=${samples},asetpts=PTS-STARTPTS[a${i}]`);
+  });
+  // runs of shots joined by dissolves; a straight cut starts a new run
+  const runs: number[][] = [];
+  n.forEach((_, i) => {
+    const kind = o.seams?.[i] || "soft";
+    if (i === 0 || o.dissolve === false || kind === "hard") runs.push([i]);
+    else runs[runs.length - 1].push(i);
+  });
+  const joined = runs.map((run, r) => {
+    let v = `v${run[0]}`, a = `a${run[0]}`, len = n[run[0]];
+    run.slice(1).forEach((i, k) => {
+      // (never longer than either shot it joins)
+      const fade = Math.max(1, Math.min(SEAM_FRAMES[(o.seams?.[i] || "soft") as SeamKind] || SEAM_FRAMES.soft, len - 1, n[i] - 1));
+      const vo = `r${r}v${k}`, ao = `r${r}a${k}`;
+      g.push(`[${v}][v${i}]xfade=transition=fade:duration=${frameSecs(fade)}:offset=${frameSecs(len - fade)}[${vo}]`);
+      g.push(`[${a}][a${i}]acrossfade=d=${frameSecs(fade)}[${ao}]`);
+      v = vo; a = ao; len += n[i] - fade;
+    });
+    return { v, a, frames: len };
+  });
+  if (joined.length === 1) {
+    g.push(`[${joined[0].v}]null[vc]`, `[${joined[0].a}]anull[ac]`);
+  } else {
+    // a straight cut is a join; its sound meets in two 12 ms fades, out then in, so that it never clicks
+    const parts = joined.map((p, r) => {
+      const fades = [...(r > 0 ? ["afade=t=in:d=0.012"] : []), ...(r < joined.length - 1 ? [`afade=t=out:st=${(p.frames / FILM_FPS - 0.012).toFixed(6)}:d=0.012`] : [])];
+      g.push(`[${p.a}]${fades.join(",")}[j${r}]`);
+      return `[${p.v}][j${r}]`;
+    });
+    g.push(`${parts.join("")}concat=n=${joined.length}:v=1:a=1[vc][ac]`);
+  }
+  return { graph: g.join(";"), frames: joined.reduce((s, p) => s + p.frames, 0) };
+}
+
+/** IS THE FINISHED FILM WHOLE? Its picture and its sound the same length, and the length its shots add up to
+ *  (`frames`, from joinGraph), each within JOIN_TOLERANCE. `video`/`audio` = the file's two streams' lengths in
+ *  seconds (audio null: the file has no sound — only its picture is measured). The reason, when it is not. */
+export function joinCheck(o: { video: number | null | undefined; audio: number | null | undefined; frames?: number }): { ok: boolean; why: string } {
+  const v = Number(o.video), a = o.audio == null ? null : Number(o.audio);
+  if (!(v > 0)) return { ok: false, why: "the finished file has no picture" };
+  if (a !== null && !(Math.abs(v - a) <= JOIN_TOLERANCE)) return { ok: false, why: `its picture runs ${v.toFixed(3)} s and its sound ${a.toFixed(3)} s` };
+  const want = o.frames && o.frames > 0 ? o.frames / FILM_FPS : 0;
+  if (want && !(Math.abs(v - want) <= JOIN_TOLERANCE)) return { ok: false, why: `its picture runs ${v.toFixed(3)} s where its shots add up to ${want.toFixed(3)} s` };
+  return { ok: true, why: "" };
+}
