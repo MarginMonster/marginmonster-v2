@@ -134,3 +134,28 @@ test("named as somebody who is NOT there is not being there", () => {
   assert.equal(presentIn("Finn", "Edda waits for Finn at the door."), false, "waited for is not there");
   assert.equal(presentIn("Finn", "Edda waits for Finn, who walks toward her."), true, "…unless the words go straight on to what he is doing");
 });
+
+test("what frightens: a creature a horror story invents is photographed, slightly wrong, and mostly hidden", async () => {
+  // The owner's three references, 2026-11-24 ("actual realistic scary as fuck ass creatures like this"), drawn
+  // on the app's own picture model two ways: worded as the app worded them → Halloween illustrations; worded by
+  // how it was caught, what is wrong with it and what stays hidden → his references.
+  const { CREATURE_REAL, WHAT_FRIGHTENS, creatureHidden, portraitPrompt } = await import("../app/lib/story-picture.ts");
+  assert.ok(CREATURE_REAL.startsWith("It is PHOTOGRAPHED: a practical-effects creature") && CREATURE_REAL.endsWith("Never CGI, never a 3D render, never an illustration, never a clean studio look."));
+  assert.ok(WHAT_FRIGHTENS.includes("it is NEARLY human and slightly wrong: give it ONE or TWO exact wrongnesses and nothing more"));
+  assert.ok(WHAT_FRIGHTENS.includes("Never horns, wings, tentacles, armour, glowing magic, flames or a bare skull — those are costumes."));
+  assert.ok(WHAT_FRIGHTENS.includes("it is never fully seen"));
+  assert.ok(creatureHidden("The Smiler").startsWith("The Smiler is never shown whole or well lit:"));
+  assert.equal(creatureHidden(""), "");
+  // an invented CREATURE's portrait is a photograph of a built thing; a person's is what it always was;
+  // and a children's format never gets it
+  const thing = portraitPrompt("The Smiler, a tall pale ghoul with a grin far too wide and eyes sunk in black sockets", "a dark horror scene");
+  assert.ok(thing.includes(CREATURE_REAL) && thing.includes("A wardrobe-test photograph of The Smiler") && thing.includes("the whole figure from head to feet"));
+  const person = portraitPrompt("Marla, a lean camper in a mud-streaked olive jacket", "a dark horror scene");
+  assert.ok(!person.includes("PHOTOGRAPHED") && person.includes("A character portrait of Marla") && person.includes("In the exact art style of the story."));
+  assert.ok(!portraitPrompt("Grum, a friendly green monster with one big eye", "a bright cartoon", "Wholesome, child-safe. ").includes("PHOTOGRAPHED"), "a children's monster stays a cartoon");
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.ok(engine.includes("(tmpl.key === \"horror\" ? `${WHAT_FRIGHTENS}\\n` : \"\") +"), "a horror story only");
+  assert.ok(engine.includes("deep shadows that hide more than they show, shot on 35mm at night, underexposed, film grain"));
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("if (!tmpl.childSafe) own.forEach((c) => { if (keepGuess(c.look || \"\").kind === \"monster\") notes.push(creatureHidden(c.name)); });"), "only a creature the STORY invented — a cast member the maker chose is seen");
+});

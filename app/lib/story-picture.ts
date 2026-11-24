@@ -207,8 +207,30 @@ export const sameCharacter = (a: string, b: string): boolean => !!a && a.trim().
 /** A portrait is always drawn TALL, whatever shape the story is: a standing figure fills a tall frame. */
 export const PORTRAIT_ASPECT = "9:16";
 
+/* WHAT FRIGHTENS. Three references from the owner, 2026-11-24 ("actual realistic scary as fuck ass creatures
+ * like this"), and the same four ideas drawn two ways on this very picture model: worded as the app worded
+ * them, they came out as Halloween illustrations; worded by how the thing was CAUGHT, what is slightly WRONG
+ * with it and what stays HIDDEN, they came out as his references. The three parts live here. */
+
+/** How a creature is made real: photographed, built, under-lit — never rendered. */
+export const CREATURE_REAL = "It is PHOTOGRAPHED: a practical-effects creature as a 1970s horror film would build it — real skin, real hair, real teeth — caught on 35mm film, underexposed, grainy, a little soft. Never CGI, never a 3D render, never an illustration, never a clean studio look.";
+
+/** What a scene's picture is told about a creature the story invented: most of it is not seen. */
+export function creatureHidden(name: string): string {
+  const n = String(name || "").replace(/\s+/g, " ").trim();
+  return n ? `${n} is never shown whole or well lit: darkness, distance, or something in the way hides most of ${n} — we see less than we want to, and what we do see is exactly as in the reference image.` : "";
+}
+
+/** What the story's writer is told a creature of its own must be (a horror story only). */
+export const WHAT_FRIGHTENS = "WHAT FRIGHTENS — if this story has a creature, a ghost or a thing that YOU invent, it is NEARLY human and slightly wrong: give it ONE or TWO exact wrongnesses and nothing more — a smile far too wide, crowded with thin teeth; eyes sunk in dark sockets with one wet glint; fingers or a neck too long; skin like candle wax; a way of standing perfectly still. Never horns, wings, tentacles, armour, glowing magic, flames or a bare skull — those are costumes. Its \"cast\" entry says exactly what is wrong with it, plainly. And it is never fully seen: in most VISUALS it is half in darkness, behind something, far off, or only a part of it is in the frame — a hand on a door frame, a face at the edge of the light.";
+
 /** What the picture model is asked for: THIS one character, whole, on a plain ground, in the story's style. */
 export function portraitPrompt(entry: string, sceneHint: string, safe = ""): string {
+  // A CREATURE A GROWN-UP STORY INVENTS is photographed, not illustrated (below): its portrait is what
+  // every scene is drawn from, and a clean, evenly lit, rendered monster stays one in all of them.
+  if (!safe && keepGuess(castEntry(entry).look || entry).kind === "monster") {
+    return `${sceneHint}. ${CREATURE_REAL} A wardrobe-test photograph of ${String(entry || "").replace(/\s+/g, " ").trim().slice(0, 320)} — this ONE creature alone, the whole figure from head to feet, standing, turned a little toward the camera, against a plain dark wall under one hard light from above, so that everything about it can be seen. ${NOTHING_WRITTEN}`;
+  }
   return `${safe}${sceneHint}. A character portrait of ${String(entry || "").replace(/\s+/g, " ").trim().slice(0, 320)} — this ONE character alone, the whole body from head to feet, standing, turned a little toward the viewer, the face clearly seen, on a plain neutral background. In the exact art style of the story. ${NOTHING_WRITTEN}`;
 }
 

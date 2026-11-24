@@ -47,7 +47,7 @@ import { episodeTitle, seriesWriterBrief, type SeriesBrief } from "./film-series
 import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from "./dialogue-fit";
 import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 // (2026-11-24) a told story's places: a scene set at one says so in its own words
-import { inheritPlaces, placeNamed, placesAsk, takePlaces } from "./story-picture";
+import { WHAT_FRIGHTENS, inheritPlaces, placeNamed, placesAsk, takePlaces } from "./story-picture";
 import { tellerVisual } from "./character-series";
 import { planShots, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
@@ -233,7 +233,7 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     key: "horror",
     name: "Horror Story",
     brief: "a short SUSPENSEFUL HORROR STORY: a creepy, atmospheric scene where a small cast speak their own tense dialogue, building dread to a chilling twist; unsettling and spooky, NOT gory or graphically violent",
-    sceneHint: "a dark, moody, cinematic horror scene, photorealistic like a frame from a live-action horror film — deep shadows, eerie atmosphere, cold desaturated color grade, suspenseful; unsettling but not graphically gory",
+    sceneHint: "a dark, moody, cinematic horror scene, photorealistic like a frame from a live-action horror film — deep shadows that hide more than they show, shot on 35mm at night, underexposed, film grain, eerie atmosphere, cold desaturated color grade, practical effects (never CGI, never an illustration), suspenseful; unsettling but not graphically gory",
     musicHint: "tense, eerie, suspenseful horror score — low drones, uneasy strings",
     faceMood: "Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs.",
     defaultScenes: 4,
@@ -704,6 +704,8 @@ export async function previewFilmTreatment(opts: {
     // HOW EACH SCENE IS SEEN (story-shots.ts), and what keeps this story unlike the last (story-variety.ts)
     shotListBrief(camPlan) +
     freshLine +
+    // WHAT FRIGHTENS (story-picture.ts): a horror story's own creature is nearly human, slightly wrong, half seen
+    (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
     safetyLine;
   const write = async (p: string): Promise<FilmTreatment> => {

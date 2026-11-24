@@ -39,7 +39,7 @@ import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { cameraLine, shotOf } from "./story-shots";
-import { FRAMED_FIX, FRAMED_SIZE, framedIn, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_CROWD_MODEL, STORY_MODEL, castEntry, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
+import { FRAMED_FIX, FRAMED_SIZE, framedIn, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_CROWD_MODEL, STORY_MODEL, castEntry, creatureHidden, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -222,6 +222,9 @@ export async function narratedSceneSeeds(o: {
       // A CREATURE STAYS THAT CREATURE (story-picture.ts → creatureNote): a werewolf asked to "crouch" came back
       // an ordinary wolf, and one gripped by the sleeve came back a man with a wolf's head in a clean shirt.
       here.forEach((c) => { const note = creatureNote(c.name, c.kind); if (note) notes.push(note); });
+      // WHAT FRIGHTENS (story-picture.ts): a creature the STORY invented is mostly hidden — never a cast
+      // member the maker chose (a show's own star is seen), never in a children's format
+      if (!tmpl.childSafe) own.forEach((c) => { if (keepGuess(c.look || "").kind === "monster") notes.push(creatureHidden(c.name)); });
       if (sheet) notes.push(`Reference image ${here.length + 1} is a sheet of other characters: from it take ONLY ${who[k].others.map((e) => e.slice(0, 200)).join("; and ")}.`);
       // (the place's own lines are kept apart: a scene that keeps coming back as a framed panel is drawn once
       //  more WITHOUT its place's sheet — from its words, as every scene was before there were sheets)
