@@ -17,6 +17,7 @@
 
 import { FILM_HEROES, heroOf, type FilmHero } from "./film-heroes.ts";
 import { castCardsOf } from "./story-picture.ts";
+import { posterOf } from "./story-poster.ts";
 
 /** What a film in a series stores on its asset (metaJson.series). */
 export type FilmSeries = { id: string; title: string; episode: number };
@@ -263,8 +264,11 @@ export type NextEpisodeCard = {
   /** the series' title, and the number of the episode a tap makes */
   title: string;
   episode: number;
-  /** the finished film's video (the page shows its poster frame) */
+  /** the finished film's video (the page shows its first frame when the film has no poster) */
   video: string;
+  /** the film's own POSTER (story-poster.ts) — its title and cast over its best picture — when it made one:
+   *  the card's picture, so the row is a shelf of the member's own films */
+  poster: string | null;
   /** what a tap sets, as that film was made */
   setup: {
     aspect: "9:16" | "16:9" | "1:1" | null;
@@ -304,6 +308,7 @@ export function nextEpisodeCards(rows: ReadonlyArray<{ id: string; title?: strin
       title: next.title,
       episode: next.episode,
       video,
+      poster: posterOf(meta),
       setup: {
         // (a narrated story's meta says "9:16"; an older acted one may say "vertical")
         aspect: a === "9:16" || a === "16:9" || a === "1:1" ? a : null,

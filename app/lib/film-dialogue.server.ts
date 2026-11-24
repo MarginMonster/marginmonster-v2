@@ -43,6 +43,7 @@ import { MIXED_CAST_LOCK, nameTok } from "./character-prompts";
 import { normalizeContentLang } from "./content-lang";
 import { heroName } from "./film-heroes";
 import { makeCastPoster } from "./story-poster.server";
+import { castForWriter } from "./dialogue-cast";
 import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
 
@@ -630,7 +631,9 @@ export async function generateTestMovie(opts: {
   let treatment: FilmTreatment;
   if (resume.ckTreatment) treatment = JSON.parse(resume.ckTreatment);
   else if (opts.treatment && opts.treatment.scenes?.length) treatment = opts.treatment;
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, series: opts.series });
+  // (written here = made in one press: the writer is told who the maker CAST, so the script is for them —
+  //  untold, it invented two people of its own and the picked cast matched nobody: dialogue-cast.ts)
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, ...(castForWriter(opts.cast).length ? { cast: castForWriter(opts.cast) } : {}), series: opts.series });
   // an episode is called "<Series> — Episode <N>", however its script was written (film-series.ts)
   if (opts.series) treatment.title = episodeTitle(opts.series.title, opts.series.episode, treatment.title);
   const want = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, opts.sceneCount ?? treatment.scenes.length));

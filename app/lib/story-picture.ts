@@ -240,7 +240,9 @@ export function keepGuess(look: string): { kind: "person" | "cartoon" | "monster
  *  nobody without a picture, six at most. A picture is one of the site's own paths or an https address —
  *  it is only ever drawn as an image, for the member whose piece it is. */
 export type StoryStar = { name: string; img: string; look?: string; /** a character the story made up (its picture is a full-length portrait) */ own?: boolean };
-const SHOWABLE = /^(?:\/[\w./-]+|https:\/\/[^\s"'<>]+)$/;
+// (a stock presenter's picture is "/avatars/omar_0.jpg?v=3": the version on the end is part of its address —
+//  without it here, a film cast with stock presenters showed nobody under "Starring")
+const SHOWABLE = /^(?:\/[\w./-]+(?:\?[\w.=&-]*)?|https:\/\/[^\s"'<>]+)$/;
 export function storyStars(meta: unknown): StoryStar[] {
   let m: unknown = meta;
   if (typeof m === "string") { try { m = JSON.parse(m); } catch { return []; } }

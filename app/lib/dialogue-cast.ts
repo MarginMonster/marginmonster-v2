@@ -107,3 +107,42 @@ export function takeSeen(
     return `${who}: ${now.said}`;
   });
 }
+
+/* ---- THE CAST PICKED BEFORE A WORD WAS WRITTEN ---------------------------------------------------
+ *
+ * The Cast card ("THE STARS") is filled in on the setup screen. With a storyboard the picks become the
+ * storyboard's cast, and the film is made from that. Made in ONE PRESS there is no storyboard — and the
+ * picks were sent and then dropped. A Short Film made on the live site on 2026-11-24 with OMAR + ROSA
+ * picked was acted by two strangers the writer invented, and its record said nobody was cast. (Found
+ * because that film was made to look at its poster, and it had none: there was no cast to bill.)
+ */
+
+/** One of the maker's picks, as the page sends it. */
+export type PickedCast = { name: string; faceUrl: string | null; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null };
+/** A cast member as an acted film is made from: who, their picture, the voice they speak in, what they are
+ *  when that is not a person — and the words the writer is told about them. */
+export type ActedCast = { name: string; faceUrl: string; voiceId: string | null; kind?: "cartoon" | "monster"; look?: string };
+
+/** The picks as an acted film's cast. Only somebody with a PICTURE is cast (the film is drawn from it);
+ *  nobody twice; each keeps their own voice when `voiceOk` says this shop may use it — any other id is
+ *  dropped and the engine chooses (never an id the page made up, which could be another shop's voice). */
+export function pickedAsCast(picked: ReadonlyArray<PickedCast | null | undefined>, voiceOk: (voiceId: string) => boolean): ActedCast[] {
+  const out: ActedCast[] = [];
+  for (const p of picked || []) {
+    const name = String(p?.name || "").replace(/\s+/g, " ").trim().slice(0, 80);
+    const faceUrl = String(p?.faceUrl || "").trim().slice(0, 2000);
+    if (!name || !faceUrl || out.some((c) => speakerKey(c.name) === speakerKey(name))) continue;
+    const look = String(p?.look || "").replace(/\s+/g, " ").trim().slice(0, 220);
+    const voiceId = p?.voiceId && voiceOk(p.voiceId) ? p.voiceId : null;
+    out.push({ name, faceUrl, voiceId, ...(p?.kind === "cartoon" || p?.kind === "monster" ? { kind: p.kind } : {}), ...(look ? { look } : {}) });
+  }
+  return out;
+}
+
+/** Who the WRITER is told the cast is, when the script is written by the film itself: each one's name and
+ *  the words they were described with (film-engine → "THE CAST IS ALREADY CHOSEN"). */
+export function castForWriter(cast: ReadonlyArray<{ name?: string | null; faceUrl?: string | null; look?: string | null } | null | undefined> | null | undefined): Array<{ name: string; desc: string }> {
+  return (cast || [])
+    .filter((c): c is { name: string; faceUrl: string; look?: string | null } => !!c && !!String(c.name || "").trim() && !!c.faceUrl)
+    .map((c) => ({ name: c.name.trim(), desc: String(c.look || "").replace(/\s+/g, " ").trim().slice(0, 220) }));
+}

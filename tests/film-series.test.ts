@@ -171,6 +171,13 @@ test("the row: newest first, one card per series (its latest episode), three at 
   assert.equal(cards[1].setup.lockVoices, true);
   assert.deepEqual(cards[1].setup.cast.map((m) => [m.name, m.voiceId]), [["Maya", "English_CalmWoman"], ["Leo", "English_ManWithDeepVoice"]]);
   assert.equal(nextEpisodeCards([], 3).length, 0, "no story films → no row");
+  // THE CARD'S PICTURE is the film's own poster when it made one (story-poster.ts) — and only ever one of
+  // OUR render pictures; a film made before posters shows its first frame
+  assert.deepEqual(cards.map((c) => c.poster), [null, null, null]);
+  const posterFor = (poster: unknown) => nextEpisodeCards([{ id: "p1", title: "Horror Story — x", metaJson: JSON.stringify({ ...JSON.parse(narratedMeta), poster }), bodyJson: narratedBody }], 3)[0].poster;
+  assert.equal(posterFor("/renders/nar-1-abc-poster.jpg"), "/renders/nar-1-abc-poster.jpg");
+  assert.equal(posterFor("https://evil.example/x-poster.jpg"), null);
+  assert.equal(posterFor("/renders/film.mp4"), null);
 });
 
 test("a series in a job payload is checked again; meta.cast keeps only who, which picture, which voice", () => {
@@ -246,4 +253,10 @@ test("the way in: a 'Next episode' row on the poster grid; the setup screen says
   assert.ok(page.includes("setSeries(null); setSeriesCast([]); setSeriesOwn([]);\n  };"), "switchHero drops the series");
   // tap targets: the card is at least 44 px tall
   assert.ok(page.includes(".fs-ep-card{flex:0 0 auto;width:min(240px,74vw);min-height:64px;"));
+  // the row is a shelf of the member's own films: each card shows the film's POSTER (first frame when it
+  // has none, or when the poster cannot be had), in the shelf's own 4:5
+  assert.ok(page.includes("<img className=\"fs-ep-pic\" src={c.poster || `/vthumb/${c.video.split(\"?\")[0].split(\"/\").pop()}`} alt=\"\" loading=\"lazy\" decoding=\"async\""));
+  assert.ok(page.includes("if (c.poster && el.dataset.fell !== \"1\") { el.dataset.fell = \"1\"; el.src = `/vthumb/${c.video.split(\"?\")[0].split(\"/\").pop()}`; } else el.style.visibility = \"hidden\";"), "a missing poster → the first frame, once");
+  assert.ok(page.includes(".fs-ep-pic{flex:none;width:56px;height:70px;"), "56 × 70 is 4:5");
+  assert.equal(56 / 70, 4 / 5);
 });

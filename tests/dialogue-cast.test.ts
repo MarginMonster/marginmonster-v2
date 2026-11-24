@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { castOnScreen, speakerKey, takeSeen, unseenAsk, unseenLines } from "../app/lib/dialogue-cast.ts";
+import { castForWriter, castOnScreen, pickedAsCast, speakerKey, takeSeen, unseenAsk, unseenLines } from "../app/lib/dialogue-cast.ts";
 import { saidWords } from "../app/lib/dialogue-fit.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -117,4 +117,54 @@ test("the writer is told — and then it is checked, before the lengths are", ()
   assert.ok(engine.includes("const next = takeSeen(written, (JSON.parse(raw) as { lines?: unknown }).lines, wheres);"));
   assert.ok(engine.includes("the lines by somebody off screen could not be rewritten, kept as written"));
   assert.ok(engine.includes("...(castNote ? { castFit: castNote } : {}),"), "what happened rides back with the script");
+});
+
+/* THE CAST PICKED BEFORE A WORD WAS WRITTEN. Made as a customer on 2026-11-24, to look at an acted film's
+ * poster: Short Film, OMAR + ROSA picked on the Cast card ("THE STARS · OMAR + ROSA"), Generate pressed
+ * without opening the storyboard. The film that came back — "Found Between Us" — was acted by a woman with
+ * a dark bun and a man in a flat cap; its record said nobody was cast; it had no poster and no "Starring".
+ * The picks were sent with the form and used only for a told story. */
+test("an acted film made in one press is cast with the people the maker picked", () => {
+  const stock = new Set(["English_ManWithDeepVoice", "English_CalmWoman"]);
+  const ok = (v: string) => stock.has(v);
+  const picks = [
+    { name: " OMAR ", faceUrl: "/avatars/omar_0.jpg?v=3", kind: "person" as const, look: "a warm man in his thirties with a short black beard", voiceId: "English_ManWithDeepVoice" },
+    { name: "ROSA", faceUrl: "/avatars/rosa_0.jpg?v=3", kind: "person" as const, look: "a woman in her seventies with short silver hair", voiceId: "someone-elses-cloned-voice" },
+    { name: "Howl", faceUrl: "/uploads/howl.png", kind: "monster" as const, look: "a huge upright werewolf with shaggy dark-grey fur", voiceId: null },
+    { name: "omar", faceUrl: "/avatars/omar_1.jpg", kind: "person" as const, look: "", voiceId: null },
+    { name: "Ghost", faceUrl: null, kind: "person" as const, look: "nobody has drawn them", voiceId: null },
+    null,
+  ];
+  assert.deepEqual(pickedAsCast(picks, ok), [
+    { name: "OMAR", faceUrl: "/avatars/omar_0.jpg?v=3", voiceId: "English_ManWithDeepVoice", look: "a warm man in his thirties with a short black beard" },
+    // a voice this shop may not use is dropped (the engine chooses) — never an id the page made up
+    { name: "ROSA", faceUrl: "/avatars/rosa_0.jpg?v=3", voiceId: null, look: "a woman in her seventies with short silver hair" },
+    // a creature stays a creature: what it IS rides along
+    { name: "Howl", faceUrl: "/uploads/howl.png", voiceId: null, kind: "monster", look: "a huge upright werewolf with shaggy dark-grey fur" },
+  ], "nobody twice, nobody without a picture");
+  assert.deepEqual(pickedAsCast([], ok), []);
+  // …and the WRITER is told who they are, so the script is written for them
+  assert.deepEqual(castForWriter(pickedAsCast(picks, ok)), [
+    { name: "OMAR", desc: "a warm man in his thirties with a short black beard" },
+    { name: "ROSA", desc: "a woman in her seventies with short silver hair" },
+    { name: "Howl", desc: "a huge upright werewolf with shaggy dark-grey fur" },
+  ]);
+  assert.deepEqual(castForWriter([{ name: "Maya", faceUrl: "/avatars/maya.png" }, { name: "Uncast", faceUrl: null }, { name: " ", faceUrl: "/x.png" }, null]), [{ name: "Maya", desc: "" }], "only who has a picture: an uncast role is the writer's to invent");
+  assert.deepEqual(castForWriter(undefined), []);
+
+  // THE ACTION: with no storyboard, the picks ARE the cast — for an acted film only, voices checked
+  const page = read("app", "routes", "web.film.tsx");
+  const at = page.indexOf("else if (narrated) cast = storyCast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: null, kind: c.kind, look: c.look }));");
+  const branch = page.slice(at, at + 1400);
+  assert.ok(at > 0 && branch.includes("else if (tmpl.dialogue && !approvedTreatment) {"), "one press only: with a storyboard the page sends the cast it shows");
+  assert.ok(branch.includes("const acted = pickedAsCast(storyCast, (v) => AVATAR_VOICE_IDS.has(v) || isCharacterVoice(v) || mine.has(v));"));
+  assert.ok(branch.includes("if (acted.length) cast = acted;"));
+  assert.ok(page.includes("const storyCast = tmpl.lipSyncSinger ? [] : parseStoryCast(form.get(\"filmCast\") as string);"), "a music video's cast is its own affair");
+  assert.ok(page.includes("{isStoryboard && pickedCast.length > 0 && <input type=\"hidden\" name=\"filmCast\" value={filmCastJson} />}"), "the picks ride with the form");
+  assert.ok(page.includes("...(cast ? { cast } : {}),"), "…and on to the job");
+  // THE FILM: when it writes its own script, the writer hears who was cast
+  const film = read("app", "lib", "film-dialogue.server.ts");
+  assert.ok(film.includes("else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, ...(castForWriter(opts.cast).length ? { cast: castForWriter(opts.cast) } : {}), series: opts.series });"));
+  const engine = read("app", "lib", "film-engine.server.ts");
+  assert.ok(engine.includes("THE CAST IS ALREADY CHOSEN — write the story for exactly these characters:"));
 });

@@ -204,6 +204,12 @@ test("the finished film says who is in it: the maker's cast, then the story's ow
   for (const m of [null, undefined, "", "{", 3, [], {}, { cast: "x", castCards: 4 }]) assert.deepEqual(storyStars(m), []);
   // six at most
   assert.equal(storyStars({ cast: Array.from({ length: 9 }, (_, k) => ({ name: `P${k}`, faceUrl: `/avatars/p${k}.png` })) }).length, 6);
+  // a stock presenter's picture carries its version — "/avatars/omar_0.jpg?v=3" — and that is part of its
+  // address: a film cast with stock presenters showed NOBODY under "Starring" (found 2026-11-24)
+  assert.deepEqual(storyStars({ cast: [{ name: "OMAR", faceUrl: "/avatars/omar_0.jpg?v=3" }, { name: "ROSA", faceUrl: "/avatars/rosa_0.jpg?v=3&w=2" }, { name: "Bad", faceUrl: "/avatars/x.jpg?v=3\"><script>" }, { name: "Odd", faceUrl: "/avatars/x.jpg?next=//evil.example" }] }), [
+    { name: "OMAR", img: "/avatars/omar_0.jpg?v=3" },
+    { name: "ROSA", img: "/avatars/rosa_0.jpg?v=3&w=2" },
+  ]);
   // the Archive: story films only, under the title
   const a = read("app", "routes", "web.archive.tsx");
   assert.ok(a.includes("stars: a.type === \"VIDEO_AD\" && (!!storyHeroOf(a.metaJson) || isNarratedStory(a.metaJson)) ? storyStars(a.metaJson) : [],"), "story films — and a story told again in another language");

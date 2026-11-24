@@ -39,6 +39,8 @@ import { SPIN_STAGE_CSS } from "../components/SpinStage";
 import { useModalA11y } from "../lib/use-modal-a11y";
 import { favouritesFirst } from "../lib/favourites";
 import { nameTok } from "../lib/character-prompts";
+// (2026-11-24) an acted film made in one press is cast with the people picked on the Cast card
+import { pickedAsCast } from "../lib/dialogue-cast";
 import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 import type { StoryToEdit } from "../lib/story-edit";
 import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
@@ -846,6 +848,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const byName = new Map(storyCast.map((c) => [nameTok(c.name), c]));
       if (cast) cast = cast.map((c) => { const p = c.kind ? undefined : byName.get(nameTok(c.name)); return p && p.kind !== "person" && c.faceUrl === p.faceUrl ? { ...c, kind: p.kind, look: p.look } : c; });
       else if (narrated) cast = storyCast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: null, kind: c.kind, look: c.look }));
+      // AN ACTED FILM MADE IN ONE PRESS has no storyboard to cast it in: the people picked on the Cast card
+      // ARE its cast — their pictures and their own voices (dialogue-cast.ts → pickedAsCast). They were sent
+      // and dropped: a Short Film made on 2026-11-24 with OMAR + ROSA picked was acted by two strangers.
+      // (With a storyboard the page sends the cast it shows, above — an emptied one stays empty.)
+      else if (tmpl.dialogue && !approvedTreatment) {
+        const { shopVoiceClones } = await import("../lib/voice-clone.server");
+        const mine = new Set((await shopVoiceClones(shop.id)).map((v) => v.voiceId));
+        const acted = pickedAsCast(storyCast, (v) => AVATAR_VOICE_IDS.has(v) || isCharacterVoice(v) || mine.has(v));
+        if (acted.length) cast = acted;
+      }
     }
     // "Lock these voices" (dialogue films): every character speaks in exactly the voice picked for them.
     const filmLockVoices = ((form.get("filmLockVoices") as string) || "") === "1";
@@ -3062,7 +3074,9 @@ export default function FilmStudio() {
             <div className="fs-eps-row">
               {eps.map((c) => (
                 <button type="button" key={c.from} className="fs-ep-card" onClick={() => startEpisode(c)} aria-label={t("Make episode {n} of “{title}”", { n: c.episode, title: c.title })}>
-                  <img className="fs-ep-pic" src={`/vthumb/${c.video.split("?")[0].split("/").pop()}`} alt="" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+                  {/* the film's own POSTER when it made one (story-poster.ts) — else its first frame, in the same shape */}
+                  <img className="fs-ep-pic" src={c.poster || `/vthumb/${c.video.split("?")[0].split("/").pop()}`} alt="" loading="lazy" decoding="async"
+                    onError={(e) => { const el = e.currentTarget; if (c.poster && el.dataset.fell !== "1") { el.dataset.fell = "1"; el.src = `/vthumb/${c.video.split("?")[0].split("/").pop()}`; } else el.style.visibility = "hidden"; }} />
                   <span className="fs-ep-txt">
                     <b>{c.title}</b>
                     <span><Ico n="film" size={12} /> {t("Episode {n}", { n: c.episode })}</span>
@@ -4648,7 +4662,7 @@ ${CAST_ID_CSS}
 .fs-ep-card{flex:0 0 auto;width:min(240px,74vw);min-height:64px;display:flex;align-items:center;gap:10px;padding:8px 12px 8px 8px;border:1.5px solid #B9E0C8;background:#F0F8F3;border-radius:14px;cursor:pointer;text-align:left;font:inherit;color:inherit;scroll-snap-align:start;}
 .fs-ep-card:hover{border-color:var(--green,#0C7A46);}
 .fs-ep-card:focus-visible{outline:3px solid rgba(12,122,70,.35);outline-offset:2px;}
-.fs-ep-pic{flex:none;width:48px;height:48px;border-radius:10px;object-fit:cover;background:#20302A;}
+.fs-ep-pic{flex:none;width:56px;height:70px;border-radius:9px;object-fit:cover;background:#20302A;box-shadow:0 2px 6px rgba(20,32,26,.22);}
 .fs-ep-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
 .fs-ep-txt b{font-family:Poppins,sans-serif;font-size:13px;font-weight:800;color:var(--ink,#14201A);line-height:1.25;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;}
 .fs-ep-txt span{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:800;color:#0A5E37;}
