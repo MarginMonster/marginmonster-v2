@@ -1,10 +1,10 @@
 /* The theme, for a component: which one this visitor has (the shell's loader read it from their cookie),
- * and how to change it. See theme.ts for why it is light unless chosen otherwise. */
+ * and how to change it. See theme.ts for why it is dark unless chosen otherwise. */
 
 import { useRevalidator, useRouteLoaderData } from "@remix-run/react";
 import { themeCookie, themeOf, type Theme } from "./theme";
 
-/** "light" unless this browser chose the dark. The same on the server and in the browser (it comes from the
+/** "dark" unless this browser chose the light. The same on the server and in the browser (it comes from the
  *  shell's loader — routes/web — so nothing flashes on arrival). */
 export function useTheme(): Theme {
   const shell = useRouteLoaderData("routes/web") as { theme?: unknown } | undefined;

@@ -30,9 +30,12 @@
  *
  * Then, looking at it on his laptop: "Looks pretty clean, but maybe we do a dark green background instead of
  * the brown" — "We would also benefit here to showcase some features" — "or maybe same concept but with the
- * lite theme show both" — "dark mode toggle in setting but keeep it light". So:
+ * lite theme show both" — "dark mode toggle in setting but keeep it light". Both were built and shown to him
+ * side by side, and he chose: "Make dark default, that looks slick as tits" (lib/theme.ts → DEFAULT_THEME).
+ * So:
  *
- *   TWO LIGHTS, ONE LOBBY. By day (the default) it stands on the app's own cream: the sign and the wall on a
+ *   TWO LIGHTS, ONE LOBBY. By night (the default) it is the deep-green room described below. By day (a
+ *   visitor who chose the light, with the switch in the account menu) it stands on the app's own cream: the sign and the wall on a
  *   deep-green BOARD with its gold bulbs lit, the line in ink and green, the ticket with a gold edge and a
  *   deeper shadow, the shell's rosettes the green cut they are everywhere. By night (the visitor's own
  *   choice — lib/use-theme) the whole page is a near-black GREEN, no brown anywhere, with the gold rosettes.

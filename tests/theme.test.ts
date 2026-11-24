@@ -1,39 +1,43 @@
-/* LIGHT BY DEFAULT, DARK BY CHOICE.
+/* DARK BY DEFAULT, LIGHT BY CHOICE.
  *
  * The owner, 2026-11-24, looking at the dark sign-in lobby on his laptop: "Looks pretty clean, but maybe we
  * do a dark green background instead of the brown" — "or maybe same concept but with the lite theme show
- * both" — "dark mode toggle in setting but keeep it light".
+ * both" — "dark mode toggle in setting but keeep it light". Both were built and shown to him side by side,
+ * and he chose: "Make dark default, that looks slick as tits".
  *
- * So: the app is light unless its member turns the lights down, in the account menu. The choice lives in a
- * cookie the server reads, so the right room is drawn from the first paint — and the switch says which rooms
- * it turns, because not every page has a dark side yet.
+ * So: the rooms that have a dark side are dark unless their member turns the lights up, in the account menu.
+ * The choice lives in a cookie the server reads, so the right room is drawn from the first paint — and the
+ * switch says which rooms it turns, because not every page has a dark side yet.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DARK_ROOMS, THEME_COOKIE, readThemeCookie, themeCookie, themeOf } from "../app/lib/theme.ts";
+import { DARK_ROOMS, DEFAULT_THEME, THEME_COOKIE, readThemeCookie, themeCookie, themeOf } from "../app/lib/theme.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
 
-test("it is light unless it is exactly dark", () => {
-  assert.equal(themeOf("dark"), "dark");
-  assert.equal(themeOf(" DARK "), "dark");
-  for (const v of [undefined, null, "", "light", "auto", "darker", "night", 1, true]) assert.equal(themeOf(v), "light", String(v));
+test("it is dark unless it is exactly light", () => {
+  assert.equal(DEFAULT_THEME, "dark", "\"Make dark default\"");
+  assert.equal(themeOf("light"), "light");
+  assert.equal(themeOf(" LIGHT "), "light");
+  for (const v of [undefined, null, "", "dark", "auto", "lighter", "day", 0, false]) assert.equal(themeOf(v), "dark", String(v));
 });
 
 test("the cookie: read from a request, written for a year, for the whole site", () => {
   assert.equal(THEME_COOKIE, "emTheme");
-  assert.equal(readThemeCookie(null), "light");
-  assert.equal(readThemeCookie(""), "light");
-  assert.equal(readThemeCookie("emMode=casual; emTheme=dark"), "dark");
-  assert.equal(readThemeCookie("emTheme=dark; emMode=marketing"), "dark");
-  assert.equal(readThemeCookie("emTheme=light"), "light");
-  assert.equal(readThemeCookie("emTheme=purple"), "light", "anything else is the light");
+  // a visitor who never chose — every first visit to the sign-in screen — gets the dark
+  assert.equal(readThemeCookie(null), "dark");
+  assert.equal(readThemeCookie(""), "dark");
+  assert.equal(readThemeCookie("emMode=casual"), "dark");
+  assert.equal(readThemeCookie("emMode=casual; emTheme=light"), "light");
+  assert.equal(readThemeCookie("emTheme=light; emMode=marketing"), "light");
+  assert.equal(readThemeCookie("emTheme=dark"), "dark");
+  assert.equal(readThemeCookie("emTheme=purple"), "dark", "anything else is the default");
   // another cookie whose name merely ENDS in emTheme is not it
-  assert.equal(readThemeCookie("notemTheme=dark"), "light");
+  assert.equal(readThemeCookie("notemTheme=light"), "dark");
   assert.equal(themeCookie("dark", true), "emTheme=dark; Path=/; Max-Age=31536000; SameSite=Lax; Secure");
   assert.equal(themeCookie("light", false), "emTheme=light; Path=/; Max-Age=31536000; SameSite=Lax");
   // what is written is what is read back
@@ -59,6 +63,9 @@ test("the switch is in the account menu, says which way it is, and says what it 
   assert.ok(shell.includes('{t("Dark mode")}<small>{t("The sign-in screen and the Movie Maker, lights down.")}</small>'));
   // the rooms it names are the rooms that have a dark side
   assert.deepEqual([...DARK_ROOMS], ["the sign-in screen", "the Movie Maker"]);
+  // …and both of them ask the same hook, so both follow the one switch
+  assert.ok(read("app", "components", "AuthLobby.tsx").includes('const dark = useTheme() === "dark";'));
+  assert.ok(read("app", "routes", "web.film.tsx").includes("const theme = useTheme();"));
   // which way it is, is shown by the knob's place — not by colour alone
   assert.ok(shell.includes(".wb-menu-theme.on .wb-menu-sw::after{transform:translateX(14px);}"));
   assert.ok(shell.includes('[dir="rtl"] .wb-menu-theme.on .wb-menu-sw::after{transform:translateX(-14px);}'));

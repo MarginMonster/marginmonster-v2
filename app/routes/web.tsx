@@ -47,7 +47,7 @@ const writeModeCookie = (m: ShellMode) => {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const id = await getWebIdentity(request);
   const savedMode = readModeCookie(request.headers.get("Cookie"));
-  // LIGHT BY DEFAULT, DARK BY CHOICE (lib/theme.ts): which one this browser chose. Every page under the
+  // DARK BY DEFAULT, LIGHT BY CHOICE (lib/theme.ts): which one this browser chose. Every page under the
   // shell reads it from here (lib/use-theme.ts), signed in or not — the sign-in screen has a dark side too.
   const theme = readThemeCookie(request.headers.get("Cookie"));
   if (!id) return json({ authed: false, hud: EMPTY_HUD, isAdmin: false, savedMode, theme, cooking: 0, cookingAt: 0 });
@@ -1206,7 +1206,7 @@ function Crest({ size }: { size: number }) {
  * server-backed avatar can replace the localStorage one later. */
 function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
   const t = useT();
-  // THE LIGHTS (lib/theme.ts): the app is light unless its member turns them down here.
+  // THE LIGHTS (lib/theme.ts): the rooms with a dark side are dark unless their member turns the lights up here.
   const theme = useTheme();
   const setTheme = useSetTheme();
   const [open, setOpen] = useState(false);
@@ -1355,8 +1355,9 @@ function AccountMenu({ hud }: { hud: typeof EMPTY_HUD }) {
 
           {/* Actions */}
           <div className="wb-menu-links">
-            {/* DARK MODE — the owner, 2026-11-24: "dark mode toggle in setting but keeep it light". A switch
-                (it says which way it is), light until it is turned; and it says what it turns — the rooms
+            {/* DARK MODE — the owner, 2026-11-24: "dark mode toggle in setting", and once he had seen both
+                lights side by side: "Make dark default". A switch (it says which way it is), ON until it
+                is turned off; and it says what it turns — the rooms
                 that have a dark side today — so it promises no more than it does. */}
             <button type="button" className={`wb-menu-link wb-menu-theme${theme === "dark" ? " on" : ""}`} role="switch" aria-checked={theme === "dark"} onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
               <Ico n="moon" /> <span className="wb-menu-theme-l">{t("Dark mode")}<small>{t("The sign-in screen and the Movie Maker, lights down.")}</small></span>

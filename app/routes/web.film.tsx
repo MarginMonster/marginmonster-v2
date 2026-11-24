@@ -5458,8 +5458,9 @@ a.mm-pace-auto{text-decoration:none;}
  *   "i typed money theater but really meant to say movie theater - but we can extend it to the film section
  *    and if we like it we move futher. I think we still need some gold spinners in there for asthetic"
  * So the lobby's dark comes inside — to THIS section and no other (not the cast page, not the Archive).
- * Then, the same day: "dark mode toggle in setting but keeep it light". So the app is LIGHT BY DEFAULT and
- * dark by choice (lib/theme.ts), and this is the Movie Maker's DARK theme: FilmStudio mounts this stylesheet
+ * Then, the same day: "dark mode toggle in setting but keeep it light" — and, once he had seen the two
+ * lights side by side: "Make dark default". So the rooms with a dark side are DARK BY DEFAULT and light by
+ * choice (lib/theme.ts), and this is the Movie Maker's DARK theme: FilmStudio mounts this stylesheet
  * — and puts .fs-theater on its root — only when useTheme() says "dark". In the light theme the page is the
  * cream page it was; what both themes share (the posters in rows, the page's own gold rosettes) is in the
  * page's stylesheet, FS_STYLE.

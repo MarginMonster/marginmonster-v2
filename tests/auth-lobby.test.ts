@@ -712,14 +712,15 @@ test("the dark arrives with the screen and leaves with it; Helpurr never stands 
   assert.ok(shell.includes(".mm-fab{position:fixed;z-index:10600;bottom:30px;right:20px;width:66px;height:66px;"));
 });
 
-test("TWO LIGHTS, ONE LOBBY (\"same concept but with the lite theme show both … keeep it light\"): by day unless this browser chose the night", () => {
+test("TWO LIGHTS, ONE LOBBY (\"same concept but with the lite theme show both\" — then, on seeing both: \"Make dark default\"): by night unless this browser chose the day", () => {
   // which one: the hook that reads the shell's loader (the visitor's emTheme cookie) — the same on the server
-  // and in the browser, so nothing flashes; light for anyone who never chose
+  // and in the browser, so nothing flashes; DARK for anyone who never chose (theme.ts → DEFAULT_THEME)
   assert.ok(component.includes('import { useTheme } from "../lib/use-theme";'));
   assert.ok(component.includes('const dark = useTheme() === "dark";'));
   const hook = read("app", "lib", "use-theme.ts");
   assert.ok(hook.includes('const shell = useRouteLoaderData("routes/web") as { theme?: unknown } | undefined;') && hook.includes("return themeOf(shell?.theme);"));
-  assert.ok(read("app", "lib", "theme.ts").includes('export const themeOf = (v: unknown): Theme => (String(v ?? "").trim().toLowerCase() === "dark" ? "dark" : "light");'));
+  const themeSrc = read("app", "lib", "theme.ts");
+  assert.ok(themeSrc.includes('export const DEFAULT_THEME: Theme = "dark";') && themeSrc.includes('export const themeOf = (v: unknown): Theme => (String(v ?? "").trim().toLowerCase() === "light" ? "light" : DEFAULT_THEME);'));
   // the night is ONE class on the lobby, and ONE more sheet for the shell — drawn only at night
   assert.ok(component.includes('<div className={dark ? "lb is-dark" : "lb"}>'));
   assert.ok(component.includes("<style dangerouslySetInnerHTML={{ __html: AUTH_LOBBY_CSS }} />"));
