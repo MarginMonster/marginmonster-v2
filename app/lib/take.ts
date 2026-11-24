@@ -36,9 +36,18 @@
  *           backwards" ended with a pair of legs walking into the frame).
  *
  * The camera it was "shot on" (a phone, a camcorder, or nothing) is camera-dress.ts: the direction here only
- * says who is holding what, so the picture and the overlay tell the same story. */
+ * says who is holding what, so the picture and the overlay tell the same story.
+ *
+ * A BODY CAM (the owner, 2026-11-24: "What about body cam footage police shot channel") is a take like these,
+ * worn instead of held: its scare is written for it (a welfare check at a dark house — fiction: a creature in a
+ * house, never a real incident, a weapon or a real agency), and the dispatcher's call over the radio is one
+ * more separate voice (RADIO), band-limited like a radio — never a word given to the engine.
+ *
+ * The builder that puts a scare, a camera and its settings together (routes/web.found-footage.tsx) keeps its
+ * rules at the foot of this file; the house's own cameras are house-cam.ts. */
 
-import type { CameraLook } from "./camera-dress.ts";
+import { cameraLookOf, type CameraLook } from "./camera-dress.ts";
+import { HOUSE_SCARES, houseRoom, houseScare } from "./house-cam.ts";
 
 /** How long the camera is off its subject at the start, in seconds. */
 export const TAKE_OPENS_SECONDS = 2;
@@ -74,9 +83,27 @@ export type Take = {
   asks: "looking" | "found";
   /** the sound of the place and of the thing, in a few words */
   sound: string;
+  /** BODY CAM: what the dispatcher says over the radio as the take opens — a separate voice, band-limited like
+   *  a radio, NEVER given to the picture engine */
+  radio?: string;
+  /** "drama": NOT A SCARE (the owner, of the body cam: "normal police interactions and traffic stops … that one
+   *  doesn't nessesarily need to be horror"). Its scene, way in and direction are the drama's own (dramaPrompt),
+   *  and the person ON camera speaks — see `speaks`. Unset: a scare. */
+  genre?: "drama";
+  /** DRAMA ONLY: what the person on camera says, at about which second — the one place words ARE given to the
+   *  engine, as quoted dialogue, because here the mouth it moves is the right one. (The one wearing the camera
+   *  is still never given a word: theirs are `script`, laid on afterwards.) */
+  speaks?: Array<{ at: number; text: string }>;
+  /** the lines of the one wearing the camera, each at its own time — when a take has more to say than a
+   *  question and a plea (`says` / `asks` are then not used). A separate voice, never given to the engine. */
+  script?: Array<{ at: number; text: string }>;
+  /** how long the take is, in seconds (unset: TAKE_SECONDS) */
+  seconds?: number;
 };
 
-export type TakeIdea = Take & { key: string; name: string; line: string };
+/** `cams`: the cameras a scare is written for (unset: the three held in a hand — a phone, a camcorder, none).
+ *  `cast`: the people a drama's `{driver}` can be, one picked for each take — so nobody is ever its default. */
+export type TakeIdea = Take & { key: string; name: string; line: string; cams?: readonly CameraLook[]; cast?: readonly string[] };
 
 /** READY-MADE SCARES — a take without writing one. Each was rolled and looked at frame by frame (the mouth
  *  too) before it was offered; the first and the third are the two the owner called cinema. Tests hold the
@@ -130,7 +157,75 @@ export const TAKE_IDEAS: ReadonlyArray<TakeIdea> = [
     asks: "looking",
     sound: "fingernails on floorboards, something dragging",
   },
+  {
+    // BODY CAM (worn, wide) — the welfare check of the body-cam test take of 2026-11-24 (scratchpad t45/cam/b-*):
+    // the porch is its way in, the flashlight finds her at the end of the hall, and she comes.
+    key: "welfare", name: "Welfare check", line: "No lights in three days. The front door is open.",
+    cams: ["bodycam"],
+    who: "she",
+    still: "Looking down a long narrow hallway of an old wooden house at night from just inside its front door, a flashlight's hard white beam thrown down the hall — faded wallpaper, a runner rug, an old picture frame hanging crooked, a door half open on the left. At the far end, where the beam weakens, stands a very tall, very thin woman in a long pale nightgown, facing the camera, perfectly still, her long dark hair hanging over her face, her arms hanging far too low at her sides, her head tilted much too far to one side.",
+    opens: "the camera looks up three sagging porch steps at an old wooden house at night: a peeling porch rail, a screen door hanging open and the front door behind it standing ajar, black inside; the flashlight's hard white beam from beside the camera lies on the steps.",
+    first: "the camera looks at the porch steps and the door standing ajar while the one wearing it climbs the steps slowly; the flashlight beam moves over the boards.",
+    finds: "goes in through the door and the flashlight beam travels down the black hallway",
+    beats: [
+      "she stands at the far end of the hallway facing the camera, perfectly still — the very tall, very thin woman in the long pale nightgown, her long dark hair over her face, her arms hanging far too low, her head tilted much too far to one side.",
+      "her head straightens, one small jerk at a time.",
+      "she walks toward the camera down the hallway — slow, smooth, silent, her arms hanging far too low — while the camera backs away toward the door, the flashlight beam trembling on her. She keeps coming until she fills the whole frame.",
+    ],
+    says: ["Hello? ... Ma'am? Are you okay?", "ma'am... stop... please..."],
+    asks: "found",
+    sound: "creaking porch boards, the hinge of the door, footsteps on old wood",
+    radio: "Four-twelve, welfare check at fourteen Alder Lane. No lights in three days.",
+  },
+  {
+    // BODY CAM — A POLICE DRAMA, NOT A SCARE (the owner, 2026-11-24: "Body cam can be normal police interactions
+    // and traffic stops (people resisting arrest)"). FICTION, within these bounds: a generic "Unit twelve" of a
+    // generic county — no real department, badge, insignia, place or person; resisting is refusing, pulling away
+    // and a short chase, and it ends in handcuffs — no weapon drawn or fired, no blow struck, nobody hurt; and the
+    // driver is a different somebody every take (`cast`), never one kind of person by default.
+    key: "traffic", name: "Traffic stop", line: "The driver won't get out of the car. Then runs.",
+    cams: ["bodycam"], genre: "drama", seconds: 15,
+    who: "the driver",
+    still: "Through the open driver's window of a car stopped on the shoulder of a dark country road, lit by the patrol car's headlights behind it and washed red and blue by its flashing lights: {driver}, looking up at the camera, annoyed, one hand on the wheel. The officer's hand holding a flashlight is just visible at the lower edge of the picture.",
+    opens: "the camera looks down at the asphalt and the white edge line of a dark country road in the patrol car's headlights, red and blue light washing over it, the back of a stopped car ahead at the top of the picture.",
+    first: "the camera looks down at the road as the officer wearing it walks from the patrol car toward the stopped car; the picture bobs with each step.",
+    finds: "lifts to the driver's open window",
+    beats: [
+      "the driver looks up at the camera from behind the wheel, annoyed, and does not get out.",
+      "the driver throws the door open, gets out, pulls free of the officer's reaching hand and runs along the side of the car; the camera follows at a run for a few steps, bouncing hard.",
+      "the driver is caught at the back of the car and turned to face it, hands behind the back, and the officer's hands click handcuffs onto the driver's wrists. The driver stops struggling.",
+    ],
+    speaks: [
+      { at: 4, text: "I'm not getting out of the car. I didn't do anything." },
+      { at: 12.5, text: "Okay! Okay." },
+    ],
+    script: [
+      { at: 2.4, text: "Step out of the car for me." },
+      { at: 7.4, text: "Hey! Stop! Stop!" },
+      { at: 10.6, text: "Hands behind your back." },
+    ],
+    says: ["Step out of the car for me.", "Hands behind your back."],
+    asks: "found",
+    sound: "an idling engine, footsteps on gravel, a car door, heavy breathing",
+    radio: "Unit twelve, copy your stop on County Road nine. Plate comes back expired.",
+    cast: [
+      "a man in his fifties with a grey beard, a faded work jacket and a trucker cap, at the wheel of an old pickup truck",
+      "a young woman in her twenties in an oversized hoodie, her hair tied up, at the wheel of a small hatchback",
+      "a middle-aged man in a rumpled suit with his tie loosened, at the wheel of a silver sedan",
+      "a woman in her forties in a denim jacket, with short curly hair, at the wheel of a dusty minivan",
+      "a lanky young man in a varsity jacket and a beanie, at the wheel of a dented coupe",
+      "a man in his sixties in a cardigan and glasses, at the wheel of a long old station wagon",
+    ],
+  },
 ];
+
+/** A drama's somebody for this take: `{driver}` in its scene becomes one of its `cast`, picked by `seed` (any
+ *  whole number) — a different one from take to take. A take with no cast is as it was. */
+export function castTake<T extends Take & { cast?: readonly string[] }>(t: T, seed: number): T {
+  if (!t.cast?.length || !t.still.includes("{driver}")) return t;
+  const who = t.cast[Math.abs(Math.floor(Number(seed) || 0)) % t.cast.length];
+  return { ...t, still: t.still.replace(/\{driver\}/g, who) };
+}
 
 export const takeIdea = (key: unknown): TakeIdea | undefined => TAKE_IDEAS.find((i) => i.key === String(key ?? "").trim().toLowerCase());
 
@@ -139,14 +234,20 @@ const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const stop = (s: string) => (s && !/[.!?]$/.test(s) ? `${s}.` : s);
 const shapeOf = (aspect: "9:16" | "16:9") => (aspect === "16:9" ? "Wide 16:9 picture." : "Vertical 9:16 picture.");
 
+/** A DRAMA's picture (not a creature's): a body camera's own frame — and the bounds every one of them keeps. */
+export const DRAMA_CAUGHT = "A single frame from a body camera's own recording at night: worn on an officer's chest, seen through its wide-angle lens so the edges bow slightly outward; a small, hard camera sensor — a little over-sharpened, noisy in the dark, slightly washed colours. Real footage of real people — never CGI, never a render, never an illustration.";
+export const DRAMA_BOUNDS = "A fictional scene: no real police department, no badge, patch, insignia, emblem or lettering on anything; no weapon drawn; nobody hurt, no blood.";
+
 /** The picture model's prompt for the scene a take arrives at. */
-export function takeStillPrompt(t: Pick<Take, "still">, aspect: "9:16" | "16:9" = "9:16"): string {
+export function takeStillPrompt(t: Pick<Take, "still" | "genre">, aspect: "9:16" | "16:9" = "9:16"): string {
+  if (t.genre === "drama") return `${shapeOf(aspect)} ${DRAMA_CAUGHT} ${one(t.still, 700)} ${DRAMA_BOUNDS} Nothing written anywhere in the picture. No watermark, no signature.`;
   return `${shapeOf(aspect)} ${TAKE_CAUGHT} ${one(t.still, 700)} ${TAKE_WRONG} ${TAKE_HIDDEN} Nothing written anywhere in the picture. No watermark, no signature.`;
 }
 
 /** The picture model's prompt for the take's FIRST frame — off its subject — drawn FROM the scene's own
  *  still (which is handed over as the reference image): the same place, a moment earlier, nobody in it. */
-export function takeOpensPrompt(t: Pick<Take, "opens">, aspect: "9:16" | "16:9" = "9:16"): string {
+export function takeOpensPrompt(t: Pick<Take, "opens" | "genre">, aspect: "9:16" | "16:9" = "9:16"): string {
+  if (t.genre === "drama") return `${shapeOf(aspect)} The SAME place and the SAME body camera as the reference image, a few seconds earlier: ${stop(one(t.opens, 420))} NOBODY is in the picture. The same small, hard, noisy camera look as the reference image — real footage, never a render. ${DRAMA_BOUNDS} Nothing written anywhere.`;
   return `${shapeOf(aspect)} The SAME place and the SAME camera as the reference image, a moment earlier: ${stop(one(t.opens, 420))} NOBODY is in the picture: no person, no face, no hand, no figure, no shape under a cover. Lit only by the camera's own small weak light; the same underexposed, grainy, soft look as the reference image — real footage, never a render. Nothing written anywhere.`;
 }
 
@@ -168,6 +269,7 @@ export const TAKE_REF = { replicate: "<<<image_1>>>", fal: "@Image1" } as const;
  *  the approach — and what never happens. NO SPOKEN WORD is in it (see the header): `ref` is how this host
  *  names the reference picture. */
 export function takePrompt(t: Take, camera: CameraLook = "phone", ref: string = TAKE_REF.replicate): string {
+  if (t.genre === "drama") return dramaPrompt(t, camera, ref);
   const who = one(t.who, 40) || "it";
   const obj = /^(she|he)$/i.test(who) ? (who.toLowerCase() === "she" ? "her" : "him") : who;
   const poss = /^she$/i.test(who) ? "her" : /^he$/i.test(who) ? "his" : "its";
@@ -184,6 +286,30 @@ export function takePrompt(t: Take, camera: CameraLook = "phone", ref: string = 
   return text.length <= TAKE_PROMPT_MAX ? text : text.slice(0, TAKE_PROMPT_MAX);
 }
 
+/** A DRAMA's direction: one continuous body-cam take, its beats at their times — and the one place a found-footage
+ *  take gives the engine words: the person ON camera's own lines, quoted, at about their second (the engine moves
+ *  the mouth it can see, which here is the right one). The one wearing the camera says nothing in the shot (their
+ *  lines and the radio are laid on afterwards); nobody is hurt. */
+export function dramaPrompt(t: Take, camera: CameraLook = "bodycam", ref: string = TAKE_REF.replicate): string {
+  const who = one(t.who, 40) || "the driver";
+  const [b1, b2, b3] = t.beats.map((b) => one(b, 420));
+  const said = (t.speaks || []).map((s) => ({ at: Math.round(Number(s.at) || 0), text: one(s.text, 120).replace(/["“”]/g, "'") })).filter((s) => s.text);
+  const quote = (s: { at: number; text: string }) => `At about ${s.at} seconds ${who} says: "${s.text}"`;
+  const early = said.filter((s) => s.at < 7), late = said.filter((s) => s.at >= 7);
+  const text = [
+    `${HELD[camera]}. One continuous take, no cuts, nothing written on screen. A FICTIONAL police drama, and nobody is hurt: no weapon is drawn or fired, nobody is struck, no blood.`,
+    `FIRST TWO SECONDS: ${stop(one(t.first, 260))}`,
+    `THEN the camera ${one(t.finds, 160)} and stops: there, exactly as in ${ref}, ${stop(b1)}`,
+    ...early.map(quote),
+    `FROM THE SEVENTH SECOND: ${stop(b2)}`,
+    `LAST FIVE SECONDS: ${stop(b3)}`,
+    ...late.map(quote),
+    `Only ${who} speaks in this shot; the officer wearing the camera says nothing and is never seen except the hands. Nothing flashes but the patrol car's red and blue lights; the picture never glitches.`,
+    `Sound: ${one(t.sound, 90) || "footsteps on gravel"}; a police radio crackles faintly. No music.`,
+  ].join(" ");
+  return text.length <= TAKE_PROMPT_MAX ? text : text.slice(0, TAKE_PROMPT_MAX);
+}
+
 /* ---- THE VOICE BEHIND THE CAMERA ----
  * A separate voice, said by the app's own speaking model and laid over the finished take. */
 
@@ -196,14 +322,29 @@ const ASK_AFTER_FOUND = 0.8;
 const PLEA_AT = TAKE_SECONDS - 3.4;
 /** The least silence between the end of one line and the start of the next. */
 export const TAKE_LINE_GAP = 0.6;
+/** THE DISPATCHER (a body cam's radio): a level, unhurried voice — a radio call is read flat. */
+export const TAKE_RADIO_VOICE = { id: "English_ConfidentWoman", emotion: "neutral", speed: 1.05 } as const;
+/** THE OFFICER wearing the camera in a drama (not frightened: firm). */
+export const TAKE_OFFICER_VOICE = { id: "English_Trustworth_Man", emotion: "angry", speed: 1.0 } as const;
+/** The radio call comes the moment the take opens. */
+const RADIO_AT = 0.2;
 
-export type TakeLine = { at: number; text: string };
+/** `radio`: the line is the dispatcher's, over the radio (said in TAKE_RADIO_VOICE, band-limited by takeSound). */
+export type TakeLine = { at: number; text: string; radio?: true };
 
-/** What is said, and when: the question (while looking, or on finding it) and the plea as it comes. */
-export function takeLines(t: Pick<Take, "says" | "asks">): TakeLine[] {
+/** What is said, and when: the radio call (a body cam's), the question (while looking, or on finding it) and
+ *  the plea as it comes. */
+export function takeLines(t: Pick<Take, "says" | "asks" | "radio" | "script">): TakeLine[] {
   const say = (s: unknown) => one(s, 90).replace(/["“”]/g, "'");
   const [ask, plea] = [say(t.says[0]), say(t.says[1])];
+  const radio = one(t.radio, 140).replace(/["“”]/g, "'");
   const out: TakeLine[] = [];
+  if (radio) out.push({ at: RADIO_AT, text: radio, radio: true });
+  // (a take with more to say than a question and a plea says it at its own times)
+  if (t.script?.length) {
+    for (const s of t.script) { const text = say(s.text); if (text) out.push({ at: Math.max(0, Number(s.at) || 0), text }); }
+    return out.sort((a, b) => a.at - b.at);
+  }
   if (ask) out.push({ at: t.asks === "looking" ? 0.3 : TAKE_OPENS_SECONDS + ASK_AFTER_FOUND, text: ask });
   if (plea) out.push({ at: PLEA_AT, text: plea });
   return out;
@@ -236,30 +377,49 @@ export const TAKE_LIFT_MAX_DB = 30;
 /** THE SOUND OF A FINISHED TAKE, as an ffmpeg filter graph. The inputs are, in order: the take (0), each
  *  spoken line (1 … n), and one input of brown noise for the hiss (n + 1). The take's own room is lifted to a
  *  real level, a faint low hiss is laid under everything so the voice sits IN the room, and each line is a
- *  little band-limited with a touch of room — someone standing right behind the lens. The mix is `[a]`. */
-export function takeSound(o: { lines: Array<{ at: number }>; roomDb: number | null; hasSound: boolean }): string {
+ *  little band-limited with a touch of room — someone standing right behind the lens. A RADIO line is a radio
+ *  (the dispatcher's call that worked, scratchpad t45/cam/b-dispatch-radio.wav): 450–2700 Hz, squeezed hard,
+ *  with the squelch — a short burst of white noise — either side of it (`seconds`: how long the line is, for the
+ *  burst after it). The mix is `[a]`. (No lines at all: the room lifted, and its hiss — a house camera's own
+ *  microphone.) */
+export function takeSound(o: { lines: Array<{ at: number; radio?: boolean; seconds?: number }>; roomDb: number | null; hasSound: boolean }): string {
   const n = o.lines.length;
   const lift = o.hasSound && o.roomDb !== null && Number.isFinite(o.roomDb) ? Math.max(0, Math.min(TAKE_LIFT_MAX_DB, TAKE_ROOM_DB - o.roomDb)) : 0;
   const parts: string[] = [];
+  const squelch: string[] = [];
   parts.push(o.hasSound
     ? `[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=${lift.toFixed(1)}dB[amb]`
     : `[${n + 1}:a]aformat=channel_layouts=stereo,volume=-90dB[amb]`);
   parts.push(`[${n + 1}:a]aformat=channel_layouts=stereo,highpass=f=60,lowpass=f=1400,volume=-17dB[hiss]`);
+  const burst = (label: string, atMs: number) => {
+    parts.push(`anoisesrc=d=0.12:c=white:a=0.22:r=48000,highpass=f=450,lowpass=f=2700,aformat=channel_layouts=stereo,adelay=${atMs}|${atMs}[${label}]`);
+    squelch.push(`[${label}]`);
+  };
   o.lines.forEach((l, i) => {
     const ms = Math.max(0, Math.round(l.at * 1000));
-    parts.push(`[${i + 1}:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=150,lowpass=f=6500,aecho=0.8:0.5:14:0.18,volume=-1dB,adelay=${ms}|${ms}[v${i}]`);
+    if (l.radio) {
+      parts.push(`[${i + 1}:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=450,lowpass=f=2700,acompressor=threshold=-26dB:ratio=8:attack=2:release=60,volume=-3dB,adelay=${ms}|${ms}[v${i}]`);
+      burst(`q${i}a`, Math.max(0, ms - 140));
+      if (l.seconds && l.seconds > 0) burst(`q${i}b`, ms + Math.round(l.seconds * 1000) + 20);
+    } else {
+      parts.push(`[${i + 1}:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=150,lowpass=f=6500,aecho=0.8:0.5:14:0.18,volume=-1dB,adelay=${ms}|${ms}[v${i}]`);
+    }
   });
-  parts.push(`[amb][hiss]${o.lines.map((_, i) => `[v${i}]`).join("")}amix=inputs=${n + 2}:normalize=0:duration=first,alimiter=limit=0.9[a]`);
+  parts.push(`[amb][hiss]${o.lines.map((_, i) => `[v${i}]`).join("")}${squelch.join("")}amix=inputs=${n + 2 + squelch.length}:normalize=0:duration=first,alimiter=limit=0.9[a]`);
   return parts.join(";");
 }
 /** The hiss input `takeSound` expects, as an ffmpeg lavfi source. */
 export const TAKE_HISS = "anoisesrc=color=brown:amplitude=0.05:sample_rate=48000";
 
 /** WRITE ME ONE — the brief for the writer when a member describes a take of their own. The answer is JSON:
- *  { title, who, still, opens, first, finds, beats: [3], says: [2], asks, sound }. */
-export function takeWriterBrief(idea: string): string {
+ *  { title, who, still, opens, first, finds, beats: [3], says: [2], asks, sound } — and, for a body cam, the
+ *  dispatcher's call: radio. */
+export function takeWriterBrief(idea: string, camera?: CameraLook): string {
+  const worn = camera === "bodycam";
   return [
-    "You are directing ONE continuous twelve-second shot of found footage — something caught on a camera somebody was holding. Not a story: a moment.",
+    worn
+      ? "You are directing ONE continuous twelve-second shot of found footage — something caught on a body camera worn on the chest of somebody walking in at night, a flashlight beside it. Not a story: a moment. It is FICTION: a creature in a house — never a real police incident, never a weapon drawn or fired, never anybody hurt, never a real agency, a real town or a real address."
+      : "You are directing ONE continuous twelve-second shot of found footage — something caught on a camera somebody was holding. Not a story: a moment.",
     `THE IDEA: ${one(idea, 400) || "something that should not be in the house"}`,
     "It is built the way a scare is built. FIRST, for two seconds, the camera is NOT on the thing: it is looking somewhere ordinary in the same place — the floor as its holder walks, the side of a bed, the foot of a staircase — and nobody is in the picture. THEN the camera moves and FINDS it, and three beats follow: (1) STILLNESS — the thing is there, perfectly still, looking at the camera. (2) ONE WRONG MOVEMENT — small, slow, impossible for a person: a head tilting too far, fingers walking. (3) IT COMES — slowly, smoothly, toward the camera, never taking its eyes off the lens, while the camera backs away; it ends with it filling the frame.",
     "What frightens is slowness and stillness. It NEVER runs, flinches, turns away or screams, and nothing flashes or glitches — a startled thing is not frightening.",
@@ -267,6 +427,7 @@ export function takeWriterBrief(idea: string): string {
     "THE THING is nearly human and slightly wrong: ONE or TWO exact wrongnesses and no more (a smile far too wide, crowded with thin teeth; eyes sunk in dark sockets; a neck or fingers too long; skin like candle wax). Never horns, wings, tentacles, glowing eyes, flames or a bare skull. No blood, no gore, no wounds.",
     "The one filming is never seen: write what THE CAMERA does (\"the camera backs away\"), never what their body does.",
     'Answer with JSON only: {"title": a short name for this take (2–5 words), "who": what to call the thing in a sentence ("she", "the figure", "the face" — lower case, 1–3 words), "still": THE SCENE THE CAMERA ARRIVES AT, as one picture, in 2–4 sentences — where the camera is, what is in the dark, exactly what is wrong with it, what little light there is, "opens": WHERE THE CAMERA LOOKS FIRST, as one picture of the same place with NOBODY in it, in one or two sentences, "first": what the camera sees and what its holder is doing for those two seconds, one sentence starting "the camera", "finds": how the camera gets from there to the thing, a few words starting with a verb ("swings up to the hallway ahead", "sinks slowly down to the floor and looks under the bed"), "beats": [the stillness — say again here exactly what the thing looks like and where it is, since this is where the camera finds it —, the wrong movement, the approach — one or two sentences each, in the present tense, starting with the thing], "says": [what the one filming asks (a few worried words, ending in a question mark), what they whisper as it comes (two or three words)], "asks": "looking" if the question is asked BEFORE the camera finds the thing ("Who is up there?"), "found" if it is asked on seeing it ("What is wrong?"), "sound": the sound of the thing moving, in a few words}',
+    ...(worn ? ['…and with it, "radio": what a dispatcher says over the radio as the take opens — ONE short call: a unit number, why they were sent and a MADE-UP house number and street ("Four-twelve, welfare check at fourteen Alder Lane. No lights in three days."); no real agency, no crime, no weapon.'] : []),
   ].join("\n");
 }
 
@@ -286,6 +447,7 @@ export function parseTake(raw: unknown): (Take & { title: string }) | null {
   if (beats.length !== 3 || says.length < 1 || still.length < 40 || !who) return null;
   // (the way in is part of the direction: a take with no off-subject opening is not this take)
   if (opens.length < 20 || first.length < 12 || finds.length < 4) return null;
+  const radio = one(o.radio, 140).replace(/["“”]/g, "'");
   return {
     title: one(o.title, 60) || "Found footage",
     who, still, opens, first, finds,
@@ -293,5 +455,111 @@ export function parseTake(raw: unknown): (Take & { title: string }) | null {
     says: [says[0], says[1] || ""],
     asks: String(o.asks || "").trim().toLowerCase() === "looking" ? "looking" : "found",
     sound: one(o.sound, 90),
+    ...(radio ? { radio } : {}),
   };
 }
+
+/* ---- THE BUILDER: WHAT HAPPENS, AND WHAT IT WAS SHOT ON ----
+ * The owner: "You know what I want make it easymode and selectable good UI interface". One screen
+ * (routes/web.found-footage.tsx): what happens, the camera, the settings that apply to that camera, one button.
+ * These are its rules — the page and the server both ask them. */
+
+/** Who carries the camera: a HAND (a phone, a camcorder, no overlay), a CHEST (the body cam), or nobody (the house
+ *  camera on the wall). A ready-made scare is written for one of them; "Describe your own" fits every camera. */
+export type FootageFamily = "hand" | "worn" | "fixed";
+export const familyOf = (c: CameraLook): FootageFamily => (c === "house" ? "fixed" : c === "bodycam" ? "worn" : "hand");
+export const HAND_CAMS: readonly CameraLook[] = ["phone", "camcorder", "bare"];
+/** The key of "Describe your own". */
+export const OWN_SCARE = "own";
+
+/** THE SHAPE FOLLOWS THE CAMERA. A phone is held upright (9:16); a house camera and a body cam are wide (16:9); a
+ *  camcorder and the bare hand are the maker's pick, wide unless asked (the owner: "for the wider that could be
+ *  cam corder style … with no actual overlay"). */
+export const shapeChoosable = (c: CameraLook): boolean => c === "camcorder" || c === "bare";
+export function shapeFor(c: CameraLook, asked?: unknown): "9:16" | "16:9" {
+  if (c === "phone") return "9:16";
+  if (c === "house" || c === "bodycam") return "16:9";
+  return asked === "9:16" ? "9:16" : "16:9";
+}
+
+/** A ready-made scare as the builder shows it: its card, and the cameras that can film it (`genre`: a drama, not
+ *  a scare). */
+export type FootageScare = { key: string; name: string; line: string; cams: readonly CameraLook[]; img: string; lapseOn?: boolean; genre?: "drama" };
+/** The cards' pictures are public/landing/ff-scare-<key>.jpg — bump this when one is replaced. */
+export const FF_PIC_V = 1;
+export const FOOTAGE_SCARES: ReadonlyArray<FootageScare> = [
+  ...TAKE_IDEAS.map((i) => ({ key: i.key, name: i.name, line: i.line, cams: i.cams || HAND_CAMS, img: `/landing/ff-scare-${i.key}.jpg?v=${FF_PIC_V}`, ...(i.genre ? { genre: i.genre } : {}) })),
+  ...HOUSE_SCARES.map((s) => ({ key: s.key, name: s.name, line: s.line, cams: ["house"] as readonly CameraLook[], img: `/landing/ff-scare-${s.key}.jpg?v=${FF_PIC_V}`, lapseOn: s.lapseOn })),
+];
+/** WHAT HAPPENS, ON ITS SHELVES — one for each way a camera is carried. The body cam has its own (the owner: it
+ *  "doesn't nessesarily need to be horror"): a scare, and a police drama. */
+export const FOOTAGE_SHELVES: ReadonlyArray<{ family: FootageFamily; name: string; line: string }> = [
+  { family: "hand", name: "Someone filming", line: "A phone, a camcorder, or no overlay." },
+  { family: "worn", name: "Body cam", line: "A scare, or a police drama." },
+  { family: "fixed", name: "House cameras", line: "The house remembers its rooms." },
+];
+export const shelfScares = (family: FootageFamily): FootageScare[] => FOOTAGE_SCARES.filter((s) => familyOf(s.cams[0]) === family);
+export const footageScare = (key: unknown): FootageScare | undefined => FOOTAGE_SCARES.find((s) => s.key === String(key ?? "").trim().toLowerCase());
+/** Can this camera film this scare? (Your own idea: any camera.) */
+export const fits = (scare: string, camera: CameraLook): boolean => scare === OWN_SCARE || !!footageScare(scare)?.cams.includes(camera);
+
+/** What is picked: the scare, and the camera. */
+export type FootagePick = { scare: string; camera: CameraLook };
+/** THE LAST TAP WINS, THE OTHER CHOICE FOLLOWS — never a card that cannot be pressed. A scare is tapped: if the
+ *  camera picked cannot film it, the camera becomes one that can (the hand-held camera last used, when it is one
+ *  of them; else its first). */
+export function pickScare(p: FootagePick, scare: string, lastHand: CameraLook = "phone"): FootagePick {
+  if (scare !== OWN_SCARE && !footageScare(scare)) return p;
+  if (fits(scare, p.camera)) return { scare, camera: p.camera };
+  const cams = (footageScare(scare) as FootageScare).cams;
+  return { scare, camera: cams.includes(lastHand) ? lastHand : cams[0] };
+}
+/** …a camera is tapped: if it cannot film the scare picked, the scare becomes the first one it can. */
+export function pickCamera(p: FootagePick, camera: CameraLook): FootagePick {
+  if (fits(p.scare, camera)) return { scare: p.scare, camera };
+  return { scare: FOOTAGE_SCARES.find((s) => s.cams.includes(camera))?.key || OWN_SCARE, camera };
+}
+
+/** The builder's form, as it arrives. */
+export type FootageForm = { scare?: unknown; own?: unknown; camera?: unknown; aspect?: unknown; lapse?: unknown; ir?: unknown; room?: unknown };
+const yes = (v: unknown) => v === true || v === "1" || v === "on" || v === "true";
+const no = (v: unknown) => v === false || v === "0" || v === "off" || v === "false";
+
+/** THE JOB A BUILDER ASKS FOR — or why not (in words the page can show). Everything is decided here: the shape
+ *  from the camera, the room from the scare, the house's settings only for the house camera (the time-lapse
+ *  starts as the scare has it; night vision starts on). */
+export function footageJob(f: FootageForm): { ok: true; name: string; payload: Record<string, unknown> } | { ok: false; error: string } {
+  const camera = cameraLookOf(f.camera);
+  if (!camera) return { ok: false, error: "Pick a camera." };
+  const key = String(f.scare ?? "").trim().toLowerCase();
+  const own = key === OWN_SCARE;
+  const scare = own ? undefined : footageScare(key);
+  if (!own && !scare) return { ok: false, error: "Pick what happens." };
+  if (!fits(key, camera)) return { ok: false, error: "That camera can't film that one — pick another." };
+  const idea = own ? one(f.own, 400).replace(/["“”]/g, "'") : "";
+  if (own && idea.length < 8) return { ok: false, error: "Say what happens, in a few words." };
+  const house = camera === "house";
+  const hs = house && scare ? houseScare(scare.key) : undefined;
+  const name = own ? (idea.length > 44 ? `${idea.slice(0, 43).trim()}…` : idea) : (scare as FootageScare).name;
+  return {
+    ok: true, name,
+    payload: {
+      section: "creator", contentType: "take",
+      takeCamera: camera, takeAspect: shapeFor(camera, f.aspect),
+      ...(own ? { takeOwn: idea } : { takeIdea: (scare as FootageScare).key }),
+      ...(house ? {
+        takeRoom: hs ? hs.room : houseRoom(f.room)?.key || "living",
+        takeLapse: yes(f.lapse) ? true : no(f.lapse) ? false : !!hs?.lapseOn,
+        takeIr: !no(f.ir),
+      } : {}),
+      // (what the Archive's tile shows while it is made: its name, and its card's picture)
+      productTitle: `Found Footage — ${name}`.slice(0, 60),
+      ...(scare ? { productImageUrl: scare.img } : {}),
+      initiator: "web",
+    },
+  };
+}
+
+/** HOW LONG, start to Archive, in minutes: the roll is most of it (a twelve-second take; a house take is fifteen
+ *  and draws its room first). A take the engine spoke in is rolled once more, which the top end allows for. */
+export const footageEta = (camera: CameraLook): [number, number] => (camera === "house" ? [6, 12] : [5, 10]);

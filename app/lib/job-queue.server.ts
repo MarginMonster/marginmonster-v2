@@ -983,6 +983,54 @@ async function runJob(
         }
         break;
       }
+      // FOUND FOOTAGE (2026-11-24) — ONE TAKE, from the found-footage builder (routes/web.found-footage.tsx):
+      // a scare caught on a phone, a camcorder, no overlay or a body cam (take.server.ts), or on a house's own
+      // camera (house-take.server.ts — the shop's house is kept on its takes). A render-lane job like a film's:
+      // one Kling 3 Omni roll and its encodes. Resume-safe: every step a take has made comes back as ck…
+      // and is not made again. Gated like the films, at "creatorvideo".
+      if (payload.contentType === "take") {
+        if (!shop?.activePlan) throw new Error("Shop missing active plan");
+        {
+          const { assertCapability } = await import("./capabilities.server");
+          assertCapability(shop.activePlan, "creatorvideo");
+        }
+        const takeJob = payload.__jobId as string | undefined;
+        const ck = (k: string) => (typeof payload[k] === "string" ? (payload[k] as string) : undefined);
+        const takeAssetId = payload.takeCamera === "house"
+          ? await (await import("./house-take.server")).generateHouseTake({
+            shopId,
+            scareKey: ck("takeIdea"),
+            idea: ck("takeOwn"),
+            room: ck("takeRoom"),
+            lapse: typeof payload.takeLapse === "boolean" ? payload.takeLapse : undefined,
+            ir: typeof payload.takeIr === "boolean" ? payload.takeIr : undefined,
+            section: (payload.section as string) || "creator",
+            jobId: takeJob,
+            resume: { ckScare: ck("ckScare"), ckHouse: ck("ckHouse"), ckSet: ck("ckSet"), ckScene: ck("ckScene"), ckRaw: ck("ckRaw"), ckSpoke: ck("ckSpoke"), ckCut: ck("ckCut") },
+          })
+          : await (await import("./take.server")).generateTake({
+            shopId,
+            ideaKey: ck("takeIdea"),
+            idea: ck("takeOwn"),
+            camera: ck("takeCamera"),
+            aspect: ck("takeAspect"),
+            section: (payload.section as string) || "creator",
+            jobId: takeJob,
+            resume: { ckTake: ck("ckTake"), ckStill: ck("ckStill"), ckOpens: ck("ckOpens"), ckRaw: ck("ckRaw"), ckSpoke: ck("ckSpoke") },
+          });
+        // (the piece is created carrying its section and this job — take.server.ts / house-take.server.ts)
+        try {
+          const takes = await db.asset.count({ where: { shopId, type: "VIDEO_AD" } });
+          if (takes >= 1) await unlockAchievement(shopId, "FIRST_TAKE");
+          if (takes >= 10) await unlockAchievement(shopId, "SHOW_RUNNER");
+          await checkCreationAchievements(shopId);
+        } catch { /* non-fatal */ }
+        if (payload.prePaid) {
+          try { await maybeTickQuestline(payload, shopId, true, takeAssetId); }
+          catch (e) { console.error("[job] take accounting failed (non-fatal):", e); }
+        }
+        break;
+      }
       // FILM (Creator) — premium long-form: music video / kids cartoon / short
       // film. Handled before the marketing plumbing, gated at the cheap
       // "creatorvideo" cap (available on all plans, metered by scene count in the
