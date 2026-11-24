@@ -29,9 +29,14 @@
 
 export type FalVideoOpts = {
   startImage: string; prompt: string; negativePrompt?: string; durationSec?: number; generateAudio?: boolean;
-  /** The frame the caller wants — "16:9" for a wide clip, anything else is vertical. Only Veo reads it:
-   *  the Kling and Seedance engines take no shape of their own and follow the seed image. */
+  /** The frame the caller wants — "16:9" for a wide clip, anything else is vertical. Veo reads it, and so
+   *  does the Omni reference endpoint; the other Kling and Seedance engines take no shape of their own and
+   *  follow the seed image. */
   aspect?: string;
+  /** Pictures the clip must ARRIVE at or keep to, named in the prompt as @Image1, @Image2… — read only by
+   *  the Omni "reference-to-video" endpoint (a found-footage take starts off its subject and is told to
+   *  find the scene "exactly as in @Image1": take.server.ts). */
+  referenceImages?: string[];
 };
 
 /** What every motion clip is told NOT to do when its caller names nothing more specific. */
@@ -62,6 +67,20 @@ export function falVideoBody(model: string, opts: FalVideoOpts): Record<string, 
     // Kling 3.0 / O3. V3's seed frame is `start_image_url`; O3 uses `image_url`. Both take a string
     // `duration` (3–15) and `generate_audio`. No aspect flag — the output follows the seed image's shape.
     const omni = /\/o3\//.test(model);
+    if (omni && /\/reference-to-video$/.test(model)) {
+      // THE OMNI REFERENCE ENDPOINT (fal's schema, read 2026-11-24): the first frame is `start_image_url`
+      // (not `image_url`), the reference pictures are `image_urls` (at most four), and — having no single
+      // seed to take its shape from — it is told the frame.
+      const refs = (opts.referenceImages || []).filter(Boolean).slice(0, 4);
+      return {
+        prompt: opts.prompt,
+        start_image_url: opts.startImage,
+        ...(refs.length ? { image_urls: refs } : {}),
+        duration: String(klingThreeSeconds(opts.durationSec)),
+        generate_audio: opts.generateAudio === true,
+        aspect_ratio: opts.aspect === "16:9" ? "16:9" : "9:16",
+      };
+    }
     return {
       prompt: opts.prompt,
       ...(omni ? { image_url: opts.startImage } : { start_image_url: opts.startImage }),
