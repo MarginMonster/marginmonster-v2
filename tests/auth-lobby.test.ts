@@ -216,7 +216,7 @@ test("only the app's own showcase art, and every piece is a file that is there",
     "/landing/creator-hero.mp4?v=5",
     "/landing/lobby-ad.jpg?v=1",
     "/landing/lobby-ad.mp4?v=1",
-    "/landing/marketing-hero.mp4?v=5",
+    "/landing/marketing-hero.mp4?v=6",
     "/landing/presenter-hero.mp4?v=5",
   ]);
   for (const u of written) assert.ok(exists("public", ...u.split("?")[0].split("/").filter(Boolean)), u);
@@ -239,7 +239,11 @@ test("only the app's own showcase art, and every piece is a file that is there",
   // its still is 2 and its clip 6, here and on the door)
   assert.ok(dash.includes("function PathImg({ img, v, cv = 5, eyebrow,") && dash.includes("<source src={`/landing/${img}-hero.mp4?v=${cv}`} type=\"video/mp4\" />"));
   assert.ok(dash.includes('img="autopost" v={2} cv={6}') && dash.includes("backgroundImage: `url(/landing/${img}-hero.jpg?v=${v})`"));
-  assert.deepEqual([...dash.matchAll(/<PathImg [^>]*? cv=\{(\d+)\}/g)].map((m) => m[1]), ["6"], "only the replaced one carries its own clip number");
+  assert.deepEqual([...dash.matchAll(/<PathImg [^>]*? img="([a-z]+)" v=\{\d+\} cv=\{(\d+)\}/g)].map((m) => `${m[1]}:${m[2]}`), ["marketing:6", "autopost:6"], "only the two replaced clips carry their own number");
+  assert.ok(dash.includes('img="marketing" v={2} cv={6}'), "the Ad Maker's clip was made again, sharp (its still is the same picture)");
+  assert.ok(read("app", "routes", "web.studio.tsx").includes('<HeroVideo name={casual ? "creator" : "marketing"} still={5} clip={casual ? 5 : 6} className="ws-cinehead-img" />'), "…and the Ad Maker's own header asks for the same address");
+  // the clip the lobby's big screen plays is no longer a thumbnail's worth of video
+  assert.ok(sizeOf("public", "landing", "marketing-hero.mp4") > 250_000, "a sharp loop, not the 64 KB one");
   assert.ok(read("app", "routes", "web.autopost.tsx").includes('<HeroVideo name="autopost" still={2} clip={6} className="ap-head-img" />'), "…and the section's own header asks for the same two addresses");
   for (const img of ["creator", "marketing", "presenter", "autopost"]) assert.ok(dash.includes(`img="${img}"`), img);
 
@@ -553,7 +557,7 @@ test("the screen is for wide screens: a phone is sent none of it, and its clips 
   // still light enough, and stand on their house's icon)
   assert.ok(count(component, 'loading="lazy"') === 1);
   assert.ok(component.includes(': <span className="lb-ico"><Ico n={c.icon || "film"} size={64} /></span>}'));
-  assert.ok(component.includes('ad: { key: "ad", house: "ad", name: "Ad Maker", icon: "megaphone", clip: "/landing/marketing-hero.mp4?v=5" },'));
+  assert.ok(component.includes('ad: { key: "ad", house: "ad", name: "Ad Maker", icon: "megaphone", clip: "/landing/marketing-hero.mp4?v=6" },'));
   // four clips, five seconds each
   assert.equal(list("REEL_ORDER").length, 4);
   assert.ok(css.includes(".lb-clip{position:absolute;inset:0;opacity:0;animation:lbReel 20s linear infinite;animation-delay:calc(var(--k,0) * 5s);}"));

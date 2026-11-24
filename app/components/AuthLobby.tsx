@@ -137,7 +137,7 @@ const WALL: Card[] = WALL_ORDER.map((k) => (isHouse(k) ? HOUSE_CARDS[k] : film(k
 type Reel = { key: string; name: string; house?: House; still?: string; icon?: string; clip: string };
 const screenFilm = (key: string): Reel => ({ key, name: nameOf(key), still: `/landing/film-loop-${key}.jpg?v=${LOOP_V}`, clip: `/landing/film-loop-${key}.mp4?v=${LOOP_V}` });
 const SCREEN_HOUSES: Partial<Record<House, Reel>> = {
-  ad: { key: "ad", house: "ad", name: "Ad Maker", icon: "megaphone", clip: "/landing/marketing-hero.mp4?v=5" },
+  ad: { key: "ad", house: "ad", name: "Ad Maker", icon: "megaphone", clip: "/landing/marketing-hero.mp4?v=6" },
   creator: { key: "creator", house: "creator", name: "Creator", icon: "palette", clip: "/landing/creator-hero.mp4?v=5" },
 };
 const REEL_ORDER = ["testmovie", "ad", "musicvideo", "creator"];

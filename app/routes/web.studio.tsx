@@ -4022,7 +4022,7 @@ export default function WebStudio() {
         <span className="ws-cinehead-bg" aria-hidden="true">
           <span className="ws-cinehead-rose b" />
           <span className="ws-cinehead-media">
-            <HeroVideo name={casual ? "creator" : "marketing"} still={5} clip={5} className="ws-cinehead-img" />
+            <HeroVideo name={casual ? "creator" : "marketing"} still={5} clip={casual ? 5 : 6} className="ws-cinehead-img" />
           </span>
         </span>
         <div className="ws-cinehead-copy">
