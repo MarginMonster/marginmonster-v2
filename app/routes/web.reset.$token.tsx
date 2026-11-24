@@ -6,7 +6,7 @@
  * the merchant's link is spent before they ever click it.
  */
 
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
@@ -16,15 +16,15 @@ import { clientIp, rateLimit, rateLimitReset } from "../lib/rate-limit.server";
 import { hashPassword, webSessionRedirect } from "../lib/web-auth.server";
 import { authCopy, authLang } from "../lib/auth-i18n";
 import { Ico } from "../lib/icons";
-import { AuthLobby } from "../components/AuthLobby";
+import { AuthLobby, lobbyThemeColor } from "../components/AuthLobby";
 
-export const meta = () => [
+export const meta: MetaFunction = ({ matches }) => [
   { title: "Choose a new password · EasyMode" },
   // The token is in the path, so keep it out of the Referer header on any
   // outbound click from this page.
   { name: "referrer", content: "no-referrer" },
-  // the lobby is dark, and a phone's own bar goes dark with it
-  { name: "theme-color", content: "#130E0B" },
+  // a phone's own bar takes the lobby's page colour in this visitor's light (AuthLobby.tsx)
+  lobbyThemeColor(matches),
 ];
 
 const CONTACT = "hello@easymodeapp.com";

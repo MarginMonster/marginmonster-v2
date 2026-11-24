@@ -48,7 +48,14 @@ const count = (hay: string, needle: string) => hay.split(needle).length - 1;
 
 const lobby = read("app", "components", "AuthLobby.tsx");
 const CSS_OPEN = "export const AUTH_LOBBY_CSS = `";
-const css = lobby.slice(lobby.indexOf(CSS_OPEN) + CSS_OPEN.length, lobby.indexOf("`;", lobby.indexOf(CSS_OPEN)));
+const DARK_OPEN = "export const AUTH_LOBBY_DARK_CSS = `";
+const sheetText = (open: string) => { const at = lobby.indexOf(open); assert.ok(at > 0, open); return lobby.slice(at + open.length, lobby.indexOf("`;", at)); };
+/** The lobby's own sheet — drawn by day and by night… */
+const baseCss = sheetText(CSS_OPEN);
+/** …and the night's, put on the shell only when the visitor's theme is dark. */
+const darkCss = sheetText(DARK_OPEN);
+/** Both, as a visitor has them at night (by day there is only the first). */
+const css = baseCss + darkCss;
 const component = lobby.slice(0, lobby.indexOf(CSS_OPEN));
 const DOORS = ["web.login.tsx", "web.signup.tsx", "web.forgot.tsx", "web.reset.$token.tsx"];
 const door = (f: string) => read("app", "routes", f);
@@ -87,7 +94,7 @@ const sheet = rules(css);
 test("all four doors stand in the lobby — and each form is the form it was", () => {
   for (const f of DOORS) {
     const src = door(f);
-    assert.ok(src.includes('import { AuthLobby } from "../components/AuthLobby";'), f);
+    assert.ok(src.includes('import { AuthLobby, lobbyThemeColor } from "../components/AuthLobby";'), f);
     assert.ok(src.includes("<AuthLobby lang={lang}>"), `${f}: read in the page's own language`);
     // the room is the lobby's: no door keeps a card or a stylesheet of its own
     assert.ok(!src.includes('className="wb-auth wb-card"') && !src.includes("AUTH_FX") && !src.includes("<style"), f);
@@ -97,14 +104,16 @@ test("all four doors stand in the lobby — and each form is the form it was", (
     const forms = count(src, "<Form ");
     assert.ok(forms >= 1 && forms === count(src, '<Form method="post">'), `${f}: every form posts to its own door`);
     assert.ok(src.includes('<input type="hidden" name="lang" value={lang} />'), `${f}: the language is still posted`);
-    // a dark page gets a dark bar on a phone
-    assert.ok(src.includes('{ name: "theme-color", content: "#130E0B" }'), f);
+    // a phone's own bar takes a colour from the door (WHICH colour is the door's to say: it must follow the
+    // visitor's theme — the lobby names both, LOBBY_PAGE — and that is wired in the routes, not here)
+    assert.ok(src.includes("lobbyThemeColor(matches)") && !/theme-color|#130E0B/i.test(src.replace(/\/\/[^\n]*/g, "")), `${f}: the bar's colour is the lobby's, in the visitor's light`);
   }
+  assert.ok(component.includes('export const LOBBY_PAGE = { light: "#F4F1E6", dark: "#08150E" } as const;'));
   assert.equal(count(lobby, '<div className="lb-ticket wb-auth wb-card">'), 1, "one ticket, and it is still the shell's card");
   assert.ok(lobby.includes("{children}"));
 
   const login = door("web.login.tsx");
-  assert.ok(login.includes('export const meta = () => [{ title: "Log in · EasyMode" }, { name: "theme-color", content: "#130E0B" }];'));
+  assert.ok(login.includes('{ title: "Log in · EasyMode" }'));
   assert.ok(login.includes('if (await getWebIdentity(request)) throw redirect("/web");'));
   assert.ok(login.includes("{error && <div className=\"wb-err\" role=\"alert\" tabIndex={-1} ref={errRef}>{error}</div>}"));
   assert.ok(login.includes('<input type="hidden" name="tz" value={tz} />'));
@@ -308,7 +317,7 @@ test("the sign's lights are lamps (\"more realistic lights like a movie theater\
   // faint one. Pure CSS — no picture of a lamp anywhere.
   assert.ok(css.includes(".lb-rail i{position:relative;flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:radial-gradient(circle at 42% 36%,#FFFDF2 0,#FFF1BD 22%,#FFC95A 50%,#E08A1E 78%,#9A5410 100%);box-shadow:0 0 5px 1px rgba(255,190,90,.8),0 0 12px 3px rgba(255,160,50,.34);animation:lbLamp 2.4s linear infinite;}"));
   // THE CHANNEL it sits in: a dark trough, shadowed under its top lip, a thin gold line along the lower one
-  assert.ok(css.includes(".lb-rail::before{content:\"\";position:absolute;left:0;right:0;top:50%;height:14px;margin-top:-7px;border-radius:7px;background:linear-gradient(180deg,#050302,#1C150E);box-shadow:inset 0 1px 2px #000,inset 0 -1px 0 rgba(231,200,121,.16);}"));
+  assert.ok(css.includes(".lb-rail::before{content:\"\";position:absolute;left:0;right:0;top:50%;height:14px;margin-top:-7px;border-radius:7px;background:linear-gradient(180deg,#020604,#0D1F16);box-shadow:inset 0 1px 2px #000,inset 0 -1px 0 rgba(231,200,121,.16);}"));
   assert.ok(!/lbChase|repeat-x/.test(css), "the painted dots are gone");
 
   // THE CHASE. A sign, not a casino: no lamp ever goes out, and a lamp comes up fast and dies back slowly.
@@ -353,8 +362,10 @@ test("gold spinners (\"we still need some gold spinners in there\"): the app's o
   // the page — the ticket with it — is above them: they are never over a word of the form
   assert.ok(shell.includes(".wb-hud,.wb-main{position:relative;z-index:1;}"));
   assert.ok(css.includes("color:var(--ink,#14201A);background:linear-gradient(176deg,#FFFDF7,#F7F0DE);"), "and the ticket's paper is solid");
-  // in the lobby they are the GOLD cut (the file the green button already has), low but seen
-  assert.ok(css.includes("html .wb::before,html .wb::after{background-image:url(/gstyle-rosette.svg);}"));
+  // at NIGHT they are the GOLD cut (the file the green button already has), low but seen — by day they stay
+  // the shell's own green cut, as everywhere in the app: the day's sheet does not touch them
+  assert.ok(darkCss.includes("html .wb::before,html .wb::after{background-image:url(/gstyle-rosette.svg);}"));
+  assert.ok(!/html \.wb::(before|after)\{[^}]*(background|opacity)/.test(baseCss));
   assert.ok(read("public", "gstyle-rosette.svg").includes("stroke='#FFD24A'"));
   const seen = [...css.matchAll(/html \.wb::(before|after)\{opacity:(\.\d+);\}/g)].map((m) => [m[1], Number(m[2])]);
   assert.deepEqual(seen, [["before", 0.2], ["after", 0.15]]);
@@ -392,10 +403,14 @@ test("the wall never ends, and nothing jumps where it can be seen: each card is 
   const xOf = (k: number, t: number, step: number) => (n - 1) * step - ((((t / 6.6 + n - 1 - k) % n) + n) % n) * step;
   // [card width, widest strip it runs in]: a phone (116–150 by its height, 136 where that cannot be asked),
   // a tablet, a phone on its side, a wide screen
-  const layouts: [number, number][] = [[116, 599], [136, 599], [150, 599], [150, 959], [104, 959], [112, 680]];
+  // (by day a phone's posters are 8px narrower — the board takes room of its own: 110–142)
+  const layouts: [number, number][] = [[110, 599], [116, 599], [136, 599], [142, 599], [150, 599], [150, 959], [104, 959], [112, 680]];
   assert.ok(css.includes(".lb{--pw:136px;") && css.includes(".lb{--pw:150px;") && css.includes(".lb{--pw:112px;") && css.includes(".lb{--pw:104px;}"));
   assert.ok(css.includes("@supports (height:1svh){@media(max-width:599px){.lb{--pw:clamp(116px,calc(20svh - 16px),150px);}}}"), "by the height the phone really has, bars showing");
-  assert.ok(css.includes("max-width:clamp(380px,calc((100vh - 334px) * 1.7778),680px);"), "the wide strip is never wider than 680");
+  assert.ok(css.includes("@supports (height:1svh){@media(max-width:599px){.lb:not(.is-dark){--pw:clamp(110px,calc(20svh - 24px),142px);}}}"));
+  // the wide strip is never wider than 680 — by day too: the board is 16px wider each side, the strip inside it the same
+  assert.ok(css.includes("max-width:clamp(380px,calc((100vh - 480px) * 1.7778),680px);"));
+  assert.ok(css.includes("padding:16px 16px 2px;border-radius:24px;max-width:clamp(412px,calc((100vh - 480px) * 1.7778 + 32px),712px);") && 712 - 2 * 16 === 680 && 412 - 2 * 16 === 380);
   for (const [pw, strip] of layouts) {
     const step = pw + 12;
     assert.ok((n - 1) * step >= strip, `${pw}px cards: the last place is out of sight of a ${strip}px strip`);
@@ -575,15 +590,20 @@ const contrast = (a: string, b: string) => { const [hi, lo] = [lum(a), lum(b)].s
 /** `top` laid over `under` at `alpha`. */
 const over = (top: string, under: string, alpha: number) => "#" + [1, 3, 5].map((i) => Math.round(parseInt(top.slice(i, i + 2), 16) * alpha + parseInt(under.slice(i, i + 2), 16) * (1 - alpha)).toString(16).padStart(2, "0")).join("");
 
-test("the words read: 4.5:1 or better on the dark, on the lit part of it, and on the ticket", () => {
-  const DARK = "#130E0B";
-  assert.ok(css.includes("html,body{background:#130E0B;}") && css.includes(",#130E0B;}"));
-  // the lobby is lightest where the marquee's light falls: the gold at its fullest over the dark
-  assert.ok(css.includes("radial-gradient(120% 56% at 50% -12%,rgba(231,200,121,.22),rgba(231,200,121,0) 60%)"));
-  const LIT = over("#E7C879", DARK, 0.22);
+test("BY NIGHT the words read: 4.5:1 or better on the dark green, on the lit part of it, under a spinner's line, and on the ticket", () => {
+  // the night is GREEN ("maybe we do a dark green background instead of the brown"): a near-black green —
+  // and not one of the old browns is left in either sheet
+  const DARK = "#08150E";
+  assert.ok(darkCss.includes("html,body{background:#08150E;}") && darkCss.includes(",#08150E;}"));
+  for (const brown of ["#130E0B", "#241B15", "#1C150E", "#050302", "#0A0705", "#3D3024", "rgba(10,7,5"]) assert.ok(!css.includes(brown), brown);
+  // it is lightest where the marquee's light falls from the top: a lighter green, at its fullest, over the dark
+  assert.ok(darkCss.includes("radial-gradient(120% 56% at 50% -12%,rgba(30,140,88,.38),rgba(30,140,88,0) 60%)"));
+  const LIT = over("#1E8C58", DARK, 0.38);
   const onDark: [string, string][] = [
-    ["the logo, the line", "#FFFDF7"], ["the sign, the line's second half, the logo's second half", "#E7C879"], ["a signed-in visitor's tabs", "#D8CFBA"],
+    ["the logo, the line, a house's name", "#FFFDF7"], ["the sign, the line's second half, the logo's second half, the playbill's label", "#E7C879"], ["a signed-in visitor's tabs, the playbill's print", "#D8CFBA"],
   ];
+  // (the lobby's own words take these from the night's names)
+  assert.ok(baseCss.includes(".lb.is-dark{--lb-top:4px;--lb-page:#08150E;--lb-ink:#FFFDF7;--lb-accent:#E7C879;--lb-soft:#D8CFBA;--lb-label:#E7C879;"));
   for (const [what, colour] of onDark) {
     assert.ok(css.includes(colour), what);
     assert.ok(contrast(colour, DARK) >= 4.5 && contrast(colour, LIT) >= 4.5, `${what}: ${contrast(colour, LIT).toFixed(2)}`);
@@ -607,24 +627,30 @@ test("the words read: 4.5:1 or better on the dark, on the lit part of it, and on
   // one line over the other, on the plain dark)
   const CROSSED = over(line[1], over(line[1], DARK, lower), upper);
   for (const [what, colour] of onDark) assert.ok(contrast(colour, CROSSED) >= 4.5, `${what}, where the two spinners cross: ${contrast(colour, CROSSED).toFixed(2)}`);
+  // …and the foot of the page, where the playbill stands on a phone: a faint green light from the lower
+  // corner — at its fullest — with BOTH spinners' lines over it
+  assert.ok(darkCss.includes("radial-gradient(64% 42% at -6% 104%,rgba(12,122,70,.16),rgba(12,122,70,0) 70%)"));
+  const FOOT = over(line[1], over(line[1], over("#0C7A46", DARK, 0.16), lower), upper);
+  for (const [what, colour] of onDark) assert.ok(contrast(colour, FOOT) >= 4.5, `${what}, at the lit foot under both spinners: ${contrast(colour, FOOT).toFixed(2)}`);
   // a card's name: white over the picture's own shade — even over a WHITE picture (or a clip's brightest
   // frame), and even three lines of it in a language that needs the room (the name stands 9px up; three
   // lines reach 46% of the card)
-  assert.ok(css.includes(".lb-poster::after{content:\"\";position:absolute;inset:0;z-index:1;background:linear-gradient(0deg,rgba(10,7,5,.95) 0%,rgba(10,7,5,.86) 22%,rgba(10,7,5,.62) 46%,rgba(10,7,5,.28) 62%,rgba(10,7,5,0) 78%);}"));
-  assert.ok(contrast("#FFFFFF", over("#0A0705", "#FFFFFF", 0.62)) >= 4.5, "the shade at 46% up");
+  assert.ok(css.includes(".lb-poster::after{content:\"\";position:absolute;inset:0;z-index:1;background:linear-gradient(0deg,rgba(4,12,8,.95) 0%,rgba(4,12,8,.86) 22%,rgba(4,12,8,.62) 46%,rgba(4,12,8,.28) 62%,rgba(4,12,8,0) 78%);}"));
+  assert.ok(contrast("#FFFFFF", over("#040C08", "#FFFFFF", 0.62)) >= 4.5, "the shade at 46% up");
   assert.ok(css.includes(".lb-poster b{position:absolute;z-index:3;left:10px;right:10px;bottom:9px;"), "the name is above the shade, and above the clip");
   // (three lines in the tallest script — Urdu, line-height 1.5: 14px type on a phone's 136px card, 12.5px on the wide screen's 112px one)
   assert.ok(css.includes("[dir=rtl] .lb-poster b{direction:rtl;text-align:right;letter-spacing:0;line-height:1.5;}") && css.includes(".lb-poster b{left:9px;right:9px;bottom:8px;font-size:12.5px;}"));
   assert.ok((9 + 3 * 14 * 1.5) / (136 * 1.25) <= 0.46 && (8 + 3 * 12.5 * 1.5) / (112 * 1.25) <= 0.46);
-  // a house's icon, where a card has no still: gold on the card's own dark (a picture, not words: 3:1 is asked; it has far more)
-  assert.ok(css.includes(".lb-ico{position:absolute;inset:0;display:grid;place-items:start center;padding-top:20%;color:#E7C879;"));
-  assert.ok(css.includes("background:#241B15;") && contrast("#E7C879", over("#E7C879", "#241B15", 0.22)) >= 4.5);
+  // a house's icon, where a card has no still: gold on the card's own green, lit a little from above (a
+  // picture, not words: 3:1 is asked; it has far more)
+  assert.ok(css.includes(".lb-ico{position:absolute;inset:0;display:grid;place-items:start center;padding-top:20%;color:#E7C879;background:radial-gradient(circle at 50% 34%,rgba(52,180,116,.3),rgba(52,180,116,0) 66%);}"));
+  assert.ok(css.includes("overflow:hidden;background:#12281C;") && contrast("#E7C879", over("#34B474", "#12281C", 0.3)) >= 4.5);
   // the button: full width, so its words sit mid-button — on the brand's deep green, never the shell's palest
   assert.ok(css.includes(".lb .lb-ticket .wb-btn:not(.ghost){background:linear-gradient(100deg,#0C7A46 30%,#0A6A3D 72%,#075530);}"));
   for (const green of ["#0C7A46", "#0A6A3D", "#075530"]) assert.ok(contrast("#FFFFFF", green) >= 4.5, green);
   // what is playing: white on its own dark pill, over any frame
-  assert.ok(css.includes("background:rgba(10,7,5,.74);color:#fff;"));
-  assert.ok(contrast("#FFFFFF", over("#0A0705", "#FFFFFF", 0.74)) >= 4.5);
+  assert.ok(css.includes("background:rgba(4,12,8,.74);color:#fff;"));
+  assert.ok(contrast("#FFFFFF", over("#040C08", "#FFFFFF", 0.74)) >= 4.5);
   // the ticket is the shell's cream card: its own ink on its own paper, and the stub's print on the stub's gold
   assert.ok(css.includes("color:var(--ink,#14201A);background:linear-gradient(176deg,#FFFDF7,#F7F0DE);"));
   for (const paper of ["#FFFDF7", "#F7F0DE"]) for (const ink of ["#14201A", "#4A554E", "#0C7A46", "#7A2E1D"]) assert.ok(contrast(ink, paper) >= 4.5, `${ink} on ${paper}`);
@@ -682,21 +708,166 @@ test("the dark arrives with the screen and leaves with it; Helpurr never stands 
   assert.ok(css.includes("@media(max-width:620px){.lb{padding-bottom:calc(86px + env(safe-area-inset-bottom,0px));}}"));
   assert.ok(shell.includes("@media(max-width:620px){.mm-fab{bottom:calc(97px + env(safe-area-inset-bottom,0px));right:16px;width:56px;height:56px}"), "56 tall, 16 from the edge: 86 keeps it clear");
   // …and on a wide screen the ticket keeps 100px from the right edge, where Helpurr floats (66 wide, 20 in)
-  assert.ok(css.includes("padding:8px 100px 40px clamp(24px,3vw,56px);"));
+  assert.ok(css.includes("padding:8px 100px 24px clamp(24px,3vw,56px);"));
   assert.ok(shell.includes(".mm-fab{position:fixed;z-index:10600;bottom:30px;right:20px;width:66px;height:66px;"));
+});
+
+test("TWO LIGHTS, ONE LOBBY (\"same concept but with the lite theme show both … keeep it light\"): by day unless this browser chose the night", () => {
+  // which one: the hook that reads the shell's loader (the visitor's emTheme cookie) — the same on the server
+  // and in the browser, so nothing flashes; light for anyone who never chose
+  assert.ok(component.includes('import { useTheme } from "../lib/use-theme";'));
+  assert.ok(component.includes('const dark = useTheme() === "dark";'));
+  const hook = read("app", "lib", "use-theme.ts");
+  assert.ok(hook.includes('const shell = useRouteLoaderData("routes/web") as { theme?: unknown } | undefined;') && hook.includes("return themeOf(shell?.theme);"));
+  assert.ok(read("app", "lib", "theme.ts").includes('export const themeOf = (v: unknown): Theme => (String(v ?? "").trim().toLowerCase() === "dark" ? "dark" : "light");'));
+  // the night is ONE class on the lobby, and ONE more sheet for the shell — drawn only at night
+  assert.ok(component.includes('<div className={dark ? "lb is-dark" : "lb"}>'));
+  assert.ok(component.includes("<style dangerouslySetInnerHTML={{ __html: AUTH_LOBBY_CSS }} />"));
+  assert.ok(component.includes("{dark && <style dangerouslySetInnerHTML={{ __html: AUTH_LOBBY_DARK_CSS }} />}"));
+  assert.equal(count(component, "AUTH_LOBBY_DARK_CSS"), 1, "nowhere else");
+  // the lobby has no switch of its own (the switch is in the account menu)
+  assert.ok(!/useSetTheme|themeCookie|emTheme/.test(lobby));
+
+  // BY DAY THE SHELL IS THE SHELL: the day's sheet repaints nothing outside the lobby — not the page, not the
+  // header's words, not the rosettes. What it does to the shell is room and reach only.
+  const dayRules = rules(baseCss).filter((r) => !r.media.includes("prefers-reduced-motion"));
+  const reaching = dayRules.filter((r) => /^(html|body)\b|^\.wb |^\.lt-menu /.test(r.sel));
+  assert.deepEqual(reaching.map((r) => r.sel), [
+    ".wb .wb-main",
+    ".wb .wb-brand,.wb .lt-btn,.wb .wb-login",
+    ".wb .wb-brand::after,.wb .lt-btn::after,.wb .wb-login::after",
+    ".lt-menu .lt-opt",
+    ".wb .mm-fab",
+    ".wb .wb-bottom ~ .mm-fab",
+  ]);
+  for (const r of reaching) assert.ok(!/(^|;)(background|background-image|background-color|color|border-color|opacity|filter|scrollbar-color|outline-color|box-shadow):/.test(r.body), `the day's sheet repaints the shell: ${r.sel}{${r.body}}`);
+  // …and every rule of the night's sheet is the shell's (the lobby's own night is in the first sheet, under .is-dark)
+  for (const r of rules(darkCss)) for (const s of r.sel.split(",")) assert.ok(/^(html\b|body\b|\.wb )/.test(s.trim()), `the night's sheet reaches into the lobby: ${s}`);
+  assert.ok(!darkCss.includes(".lb"));
+
+  // THE NAMES. Every colour that differs between the two lights is a name on the lobby: the day's values
+  // first, the night's under .is-dark — and nothing else in the first sheet says .is-dark but the board
+  // (which is the day's: .lb:not(.is-dark)) and a tablet's top margin
+  const names = ["top", "page", "ink", "accent", "soft", "label", "rule", "chip", "edge", "drop"];
+  const day = sheet.find((r) => r.sel === ".lb" && r.media === "" && r.body.includes("--lb-page"));
+  const night = sheet.find((r) => r.sel === ".lb.is-dark" && r.media === "");
+  assert.ok(day && night);
+  for (const n of names) { assert.ok(new RegExp(`(^|;)--lb-${n}:`).test(day.body), `the day's ${n}`); assert.ok(new RegExp(`(^|;)--lb-${n}:`).test(night.body), `the night's ${n}`); }
+  assert.deepEqual([...night.body.matchAll(/--lb-([a-z]+):/g)].map((m) => m[1]), names, "the night turns every name, and only names");
+  assert.ok(day.body.includes("--lb-page:#F4F1E6;--lb-ink:#14201A;--lb-accent:#0A6A3D;--lb-soft:#4A554E;--lb-label:#6B4F0E;"));
+  const darkSels = [...new Set(sheet.filter((r) => r.sel.includes("is-dark")).map((r) => `${r.media}|${r.sel}`))].sort();
+  assert.deepEqual(darkSels, [
+    "@media(max-width:599px)|.lb:not(.is-dark)",
+    "@media(min-width:600px) and (max-width:959px)|.lb.is-dark",
+    "@media(min-width:960px)|.lb:not(.is-dark) .lb-stage",
+    "|.lb.is-dark",
+    "|.lb:not(.is-dark) .lb-stage",
+  ]);
+  // the day's page is the shell's own paper, and its ink and soft print the shell's own tokens
+  const shell = read("app", "routes", "web.tsx");
+  for (const token of ["--paper:#F4F1E6;", "--ink:#14201A;", "--ink2:#4A554E;", "--green:#0C7A46;", "--gold:#B08526;"]) assert.ok(shell.includes(token), token);
+
+  // BY DAY: THE BOARD. The sign and the wall stand on deep green across the cream page — a gold line along its
+  // top and its foot on a phone, a panel with a gold edge on a wide screen. By night there is no board.
+  const board = sheet.find((r) => r.sel === ".lb:not(.is-dark) .lb-stage" && r.media === "");
+  assert.ok(board && board.body.includes("background:radial-gradient(80% 110% at 50% -10%,rgba(52,180,116,.22),rgba(52,180,116,0) 72%),linear-gradient(180deg,#123F2B,#0B2A1D);"));
+  assert.ok(board.body.includes("box-shadow:inset 0 1px 0 rgba(231,200,121,.6),inset 0 -1px 0 rgba(231,200,121,.6),"));
+  assert.ok(!sheet.some((r) => /^\.lb(\.is-dark)? \.lb-stage$|^\.lb-stage$/.test(r.sel) && /background/.test(r.body)), "by night the stage has no ground of its own");
+  // (the sign's lamps and words, the cards and the screen are the same in both lights: nothing about them is named)
+  for (const r of sheet.filter((x) => /\.lb-(rail|sign|poster|screen|clip|ico|track|wall)\b/.test(x.sel))) assert.ok(!r.body.includes("var(--lb-"), r.sel);
+});
+
+test("BY DAY the words read: ink, green and deep gold on the app's cream — under its tints and its rosettes too — and gold on the board", () => {
+  const shell = read("app", "routes", "web.tsx");
+  const PAPER = "#F4F1E6";
+  // the shell's page is its paper under three faint tints, with two green rosettes turning behind it
+  assert.ok(shell.includes("radial-gradient(72% 52% at 50% -8%,rgba(15,145,82,.14),transparent 62%)") && shell.includes("radial-gradient(54% 40% at 98% 64%,rgba(176,133,38,.075),transparent 68%)"));
+  const green = /stroke='(#[0-9A-Fa-f]{6})' stroke-opacity='([\d.]+)'/.exec(read("public", "gstyle-rosette-green.svg"));
+  assert.ok(green && shell.includes("width:660px;height:660px;opacity:.075;"));
+  const rosette = 0.075 * Number(green[2]);
+  // the two grounds a word of the lobby can stand on by day, each at its worst: the head of the page (its
+  // green tint at its fullest) and the lower page (its gold tint at its fullest), under a rosette's line
+  const HEAD = over(green[1], over("#0F9152", PAPER, 0.14), rosette);
+  const LOWER = over(green[1], over("#B08526", PAPER, 0.075), rosette);
+  const words: [string, string][] = [["the line, a house's name", "#14201A"], ["the line's second half", "#0A6A3D"], ["the playbill's print", "#4A554E"], ["the playbill's label", "#6B4F0E"]];
+  for (const [what, colour] of words) for (const [where, ground] of [["the paper", PAPER], ["the head of the page", HEAD], ["the lower page", LOWER]]) {
+    assert.ok(contrast(colour, ground) >= 4.5, `${what} on ${where}: ${contrast(colour, ground).toFixed(2)}`);
+  }
+  // (the brand's own green, #0C7A46, would be 3.7 on the tinted head of the page — so the line's second half
+  // is the deeper green of the ticket's button)
+  assert.ok(contrast("#0C7A46", HEAD) < 4.5 && css.includes("#0C7A46 30%,#0A6A3D 72%"));
+  assert.ok(css.includes(".lb-line em{display:block;font-style:normal;color:var(--lb-accent);}") && css.includes("letter-spacing:-.02em;color:var(--lb-ink);overflow-wrap:anywhere;}"));
+  // the sign's gold words, on the board where it is most lit
+  const BOARD = over("#34B474", "#123F2B", 0.22);
+  assert.ok(contrast("#E7C879", BOARD) >= 4.5, `the sign on the board: ${contrast("#E7C879", BOARD).toFixed(2)}`);
+  assert.ok(css.includes("white-space:nowrap;color:#E7C879;text-shadow:0 0 14px rgba(231,200,121,.6);}"));
+  // a house's icon: gold on a chip of the board's green (a picture: 3:1 is asked)
+  assert.ok(baseCss.includes("--lb-chip:#103C2A;") && contrast("#E7C879", "#103C2A") >= 4.5);
+  // THE TICKET still reads as a ticket on a cream page: the app's own gold round its edge (deeper than the
+  // night's pale gold, which would vanish on cream), a doubled shadow under it, and its notches the page's colour
+  assert.ok(baseCss.includes("--lb-edge:rgba(176,133,38,.8);--lb-drop:0 34px 60px -30px rgba(20,32,26,.62),0 12px 24px -16px rgba(20,32,26,.3);"));
+  assert.ok(contrast(over("#B08526", PAPER, 0.8), PAPER) > contrast(over("#E7C879", PAPER, 0.6), PAPER) * 1.5, "the day's edge is far easier to see on cream than the night's would be");
+  assert.ok(baseCss.includes("--lb-page:#F4F1E6;"));
+});
+
+test("THE PLAYBILL (\"we would also benefit here to showcase some features\"): the five houses, the nav's names and icons, a line each — and not a link among them", () => {
+  // the houses he named — Film, Ads, Creation, Cast, Auto-post — under the names and icons the nav gives them
+  const shell = read("app", "routes", "web.tsx");
+  const houses: [string, string][] = [["Movie Maker", "filmreel"], ["Ad Maker", "megaphone"], ["Creator", "palette"], ["Presenters", "presenter"], ["Auto-post", "rocket"]];
+  const rows = [...component.matchAll(/\{ key: "([a-z]+)", icon: "([a-z]+)", name: t\("([^"]+)"\), line: t\("([^"]+)"\) \},/g)].map((m) => ({ key: m[1], icon: m[2], name: m[3], line: m[4] }));
+  assert.deepEqual(rows.map((r) => [r.name, r.icon]), houses);
+  const icons = read("app", "lib", "icons.tsx");
+  for (const [name, icon] of houses) {
+    assert.ok(shell.includes(`<Ico n="${icon}" size={22} /></span><span>{t("${name}")}</span></Link>`), `${name} wears ${icon} in the nav`);
+    assert.ok(new RegExp(`\\n  ${icon}: <`).test(icons), icon);
+  }
+  // one line each of what the house does: a sentence, no number, no price, nothing "free"
+  for (const r of rows) {
+    assert.ok(r.line.length >= 30 && r.line.length <= 76 && r.line.endsWith("."), r.line);
+    assert.ok(!/\d|\$|free|best|#1|unlimited/i.test(r.line), r.line);
+  }
+  // a list under a small heading of its own; the icon says nothing to a screen reader (the name does)
+  assert.ok(component.includes('<section className="lb-bill" aria-labelledby="lb-bill-h">'));
+  assert.ok(component.includes('<h2 className="lb-bill-h" id="lb-bill-h">{t("Feature presentations")}</h2>'));
+  assert.ok(component.includes('<span className="lb-bill-ico" aria-hidden="true"><Ico n={b.icon} size={18} /></span>'));
+  assert.ok(component.includes("<b>{b.name}</b>") && component.includes('<span className="lb-bill-what">{b.line}</span>'));
+  // NOT links: a visitor has nowhere to go yet (and nothing here can be tapped or tabbed to)
+  const bill = component.slice(component.indexOf('<section className="lb-bill"'), component.indexOf("</section>"));
+  assert.ok(bill.length > 200 && !/<a |<Link|<button|onClick|href=|role="button"|tabIndex/.test(bill));
+  // AFTER the ticket: on a phone it stands below it (the ticket keeps the first screen)…
+  assert.ok(component.indexOf('<div className="lb-booth">') < component.indexOf('<section className="lb-bill"'));
+  assert.ok(baseCss.includes(".lb-bill{min-width:0;margin:26px 0 0;padding:0 16px;}"));
+  assert.ok(sheet.some((r) => r.sel === ".lb-bill ul" && r.media === "" && r.body.includes("display:grid;gap:14px;max-width:440px;")), "one house a row, as wide as the ticket");
+  // …and across the foot of a wide screen it is one row of five, under both columns
+  const wide = (sel: string) => sheet.find((r) => r.sel === sel && r.media === "@media(min-width:960px)");
+  assert.equal(wide(".lb-bill")?.body, "grid-column:1 / -1;margin:0;padding:0;");
+  assert.ok(wide(".lb-bill ul")?.body.startsWith("grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr);"), "five columns");
+  assert.ok(wide(".lb")?.body.includes("row-gap:18px;align-items:center;align-content:center;"), "the two rows stay together in a tall window");
+  // its print: 13px and up on a phone, 12.5 on a wide screen; names in the day's ink / the night's cream
+  assert.ok(baseCss.includes(".lb-bill-what{font-size:13px;line-height:1.45;color:var(--lb-soft);}") && baseCss.includes("line-height:1.3;color:var(--lb-ink);}"));
+  assert.ok(baseCss.includes("text-transform:uppercase;color:var(--lb-label);}") && baseCss.includes(".lb-bill-h::before,.lb-bill-h::after{content:\"\";flex:1 1 0;height:1px;background:var(--lb-rule);}"));
+  // WITHOUT SCROLLING on a 1280 x 800 laptop: the header 68, the lobby's own 8 above and 24 below, the stage
+  // (by day: the board's 16 + the sign 36 + the screen + the wall 174 + 2), 18, then the playbill — its label
+  // 27 and a house of three lines 88 at most
+  const screenH = 800 - 480;
+  const stage = 16 + 36 + screenH + 174 + 2;
+  assert.ok(68 + 8 + stage + 18 + (27 + 88) + 24 <= 800, `${68 + 8 + stage + 18 + 27 + 88 + 24}px of an 800px window`);
 });
 
 test("the ticket is exactly as it was (\"the Admit one light cream card over the dark is extremely attractive\")", () => {
   assert.ok(component.includes('<span className="lb-wm" aria-hidden="true" />'));
   assert.ok(component.includes('<div className="lb-stub" aria-hidden="true"><span>{t("Admit one")}</span><span className="lb-bars" /></div>'));
   // its paper, its gold edge, the way it comes up — once
-  assert.ok(css.includes(".lb .lb-ticket{position:relative;isolation:isolate;max-width:440px;margin:0 auto;padding:0 22px 12px;border:0;border-radius:18px;color:var(--ink,#14201A);background:linear-gradient(176deg,#FFFDF7,#F7F0DE);box-shadow:0 0 0 1px rgba(231,200,121,.6),0 34px 60px -30px #000;animation:lbTicketIn .55s cubic-bezier(.2,.7,.2,1) .05s backwards;}"));
+  // (its edge and its shadow are named, so the day can have its own: at NIGHT they are what they always were)
+  assert.ok(css.includes(".lb .lb-ticket{position:relative;isolation:isolate;max-width:440px;margin:0 auto;padding:0 22px 12px;border:0;border-radius:18px;color:var(--ink,#14201A);background:linear-gradient(176deg,#FFFDF7,#F7F0DE);box-shadow:0 0 0 1px var(--lb-edge),var(--lb-drop);animation:lbTicketIn .55s cubic-bezier(.2,.7,.2,1) .05s backwards;}"));
+  assert.ok(baseCss.includes("--lb-edge:rgba(231,200,121,.6);--lb-drop:0 34px 60px -30px #000;}"), "the night's edge and shadow: 0 0 0 1px rgba(231,200,121,.6), 0 34px 60px -30px #000 — as before");
   assert.ok(!/lbTicketIn[^;}]*infinite/.test(css));
   // the stub, its perforation, its bars
   assert.ok(css.includes(".lb-stub{display:flex;align-items:center;justify-content:space-between;gap:12px;height:40px;margin:0 -22px 12px;padding:0 22px;border-bottom:2px dashed rgba(107,79,14,.5);border-radius:18px 18px 0 0;background:linear-gradient(180deg,rgba(231,200,121,.34),rgba(231,200,121,.14));font-family:Poppins,sans-serif;font-weight:800;font-size:10.5px;letter-spacing:.26em;text-transform:uppercase;color:#6B4F0E;}"));
   assert.ok(css.includes(".lb-bars{flex:0 0 auto;width:66px;height:16px;opacity:.7;background:repeating-linear-gradient(90deg,#14201A 0,"));
   // the notches sit on the perforation (the stub is 40 tall, its dashed line the last 2: centre 39, an 18px notch from 30)
-  assert.ok(css.includes(".lb .lb-ticket::before,.lb .lb-ticket::after{content:\"\";position:absolute;z-index:2;top:30px;width:18px;height:18px;border-radius:50%;background:#130E0B;}"), "cut out in the lobby's own colour");
+  assert.ok(css.includes(".lb .lb-ticket::before,.lb .lb-ticket::after{content:\"\";position:absolute;z-index:2;top:30px;width:18px;height:18px;border-radius:50%;background:var(--lb-page);}"), "cut out in the page's own colour — the night's green, the day's cream");
+  assert.ok(css.includes(".lb .lb-ticket::before{left:-9px;box-shadow:inset -1px 0 0 var(--lb-edge);}") && css.includes(".lb .lb-ticket::after{right:-9px;box-shadow:inset 1px 0 0 var(--lb-edge);}"));
   // the watermark is under the print, and takes no tap
   assert.ok(css.includes(".lb-wm{position:absolute;inset:0;z-index:-1;border-radius:18px;overflow:hidden;pointer-events:none;}"));
   assert.ok(css.includes("background:#0C7A46;opacity:.16;-webkit-mask-image:url(/gstyle-rosette.svg);"));
@@ -705,10 +876,23 @@ test("the ticket is exactly as it was (\"the Admit one light cream card over the
 test("every word the lobby shows is in all five languages — and the line says films, ads, anything", () => {
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   const said = [...new Set([...component.matchAll(/\bt\("([^"]+)"\)/g)].map((m) => m[1]))].sort();
-  assert.deepEqual(said, ["Ad Maker", "Admit one", "Auto-post", "Creator", "Films. Ads. Anything.|Just describe it.", "Now showing", "Presenters"]);
+  assert.deepEqual(said, [
+    "A cast of people, cartoons and monsters. Or make your own.",
+    "A presenter holds your product and sells it.",
+    "Ad Maker", "Admit one", "Auto-post", "Creator",
+    "Feature presentations",
+    "Films. Ads. Anything.|Just describe it.",
+    "Movie Maker", "Now showing",
+    "Pictures, video and music from a prompt.",
+    "Posted to your socials on a schedule, hands off.",
+    "Presenters",
+    "Short films, told stories, cartoons and music videos, from one sentence.",
+  ]);
   for (const k of [...said, ...FILM_HEROES.map((h) => h.name)]) assert.equal(count(dict, `\n  ${JSON.stringify(k)}: `), 5, k);
   // no word is written into the markup untranslated
-  const markup = component.slice(component.indexOf("return (\n    <div className=\"lb\">"));
+  const markupAt = component.indexOf("return (\n    <div className={dark ? \"lb is-dark\" : \"lb\"}>");
+  assert.ok(markupAt > 0);
+  const markup = component.slice(markupAt);
   assert.ok(!/>[^<>{}]*[A-Za-z]{3,}[^<>{}]*</.test(markup.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")), "bare words in the lobby's markup");
   // the lobby speaks the language the door is being read in (its own `lang`), through the app's one dictionary
   assert.ok(component.includes("const L = authLang(lang);") && component.includes("const t = (source: string) => tr(L, source);"));

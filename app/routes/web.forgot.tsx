@@ -7,7 +7,7 @@
  * time.
  */
 
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
@@ -17,14 +17,14 @@ import { resetEmailHtml, resetUrl, signPasswordReset } from "../lib/password-res
 import { clientIp, rateLimit } from "../lib/rate-limit.server";
 import { getWebIdentity } from "../lib/web-auth.server";
 import { authCopy, authLang } from "../lib/auth-i18n";
-import { AuthLobby } from "../components/AuthLobby";
+import { AuthLobby, lobbyThemeColor } from "../components/AuthLobby";
 
-export const meta = () => [
+export const meta: MetaFunction = ({ matches }) => [
   { title: "Reset your password · EasyMode" },
   // The token never reaches this page, but the habit belongs on both halves.
   { name: "referrer", content: "no-referrer" },
-  // the lobby is dark, and a phone's own bar goes dark with it
-  { name: "theme-color", content: "#130E0B" },
+  // a phone's own bar takes the lobby's page colour in this visitor's light (AuthLobby.tsx)
+  lobbyThemeColor(matches),
 ];
 
 const CONTACT = "hello@easymodeapp.com";

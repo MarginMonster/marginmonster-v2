@@ -28,6 +28,19 @@
  *   "I think we still need some gold spinners in there for asthetic"
  *                                       → the shell's two ambient rosettes turn here too, in gold
  *
+ * Then, looking at it on his laptop: "Looks pretty clean, but maybe we do a dark green background instead of
+ * the brown" — "We would also benefit here to showcase some features" — "or maybe same concept but with the
+ * lite theme show both" — "dark mode toggle in setting but keeep it light". So:
+ *
+ *   TWO LIGHTS, ONE LOBBY. By day (the default) it stands on the app's own cream: the sign and the wall on a
+ *   deep-green BOARD with its gold bulbs lit, the line in ink and green, the ticket with a gold edge and a
+ *   deeper shadow, the shell's rosettes the green cut they are everywhere. By night (the visitor's own
+ *   choice — lib/use-theme) the whole page is a near-black GREEN, no brown anywhere, with the gold rosettes.
+ *   The night is one class on the lobby (.is-dark) and one extra <style> for the shell, drawn only then.
+ *
+ *   THE PLAYBILL. Under it all, the five houses by the nav's own names and icons, one line each of what the
+ *   house does — not links (a visitor has nowhere to go yet), no numbers, no prices.
+ *
  * It claims only what the pictures show: formats and houses by their own names. No numbers, no praise.
  *
  * Shared by all four doors (log in, sign up, forgot, reset): each keeps its own form, loader and action —
@@ -54,6 +67,8 @@ import { authLang } from "../lib/auth-i18n";
 import { FILM_HEROES } from "../lib/film-heroes";
 import { Ico } from "../lib/icons";
 import { tr } from "../lib/ui-i18n";
+import { themeOf } from "../lib/theme";
+import { useTheme } from "../lib/use-theme";
 
 /** The landing files' cache versions — the same numbers web.film.tsx serves them under (a test holds the
  *  two together, so a replaced file is bumped in both). */
@@ -126,6 +141,15 @@ const REEL_ORDER = ["testmovie", "ad", "musicvideo", "creator"];
 const REEL: Reel[] = REEL_ORDER.map((k) => (isHouse(k) ? SCREEN_HOUSES[k] : screenFilm(k))).filter((c): c is Reel => !!c && !!c.name);
 /** (The bill, for the TEST page and its checks: what is on the wall and on the screen, and from which files.) */
 export const LOBBY_BILL = { wall: WALL, reel: REEL };
+
+/** The page's own colour in each light — what a phone's browser bar should take (the doors' theme-color). */
+export const LOBBY_PAGE = { light: "#F4F1E6", dark: "#08150E" } as const;
+/** …as a door's meta() asks for it: `matches` is what Remix hands a route's meta, and the shell's loader
+ *  (routes/web) is where the visitor's theme was read. Cream over the cream page, deep green over the dark. */
+export const lobbyThemeColor = (matches: ReadonlyArray<{ id: string; data?: unknown }>): { name: string; content: string } => {
+  const shell = matches.find((m) => m.id === "routes/web")?.data as { theme?: unknown } | undefined;
+  return { name: "theme-color", content: LOBBY_PAGE[themeOf(shell?.theme)] };
+};
 
 /** The lamps of one rail of the sign — as many as the longest rail holds (a tablet's, in a language whose
  *  two words are short: about 420px, a lamp every 16). A rail shows the ones that fit, counted from the
@@ -235,9 +259,21 @@ export function AuthLobby({ lang, children }: {
   const billed = (c: { name: string; house?: House }) => (c.house ? houses[c.house] : t(c.name));
   // the line, and what it comes down to: one string, so each language can make its two halves agree
   const [lead, tail] = t("Films. Ads. Anything.|Just describe it.").split("|");
+  // by day unless this browser chose the night (the shell's loader read the cookie: server and browser agree)
+  const dark = useTheme() === "dark";
+  // THE PLAYBILL: the five houses, by the nav's own names and icons (web.tsx), and what each one does
+  const playbill = [
+    { key: "film", icon: "filmreel", name: t("Movie Maker"), line: t("Short films, told stories, cartoons and music videos, from one sentence.") },
+    { key: "ad", icon: "megaphone", name: t("Ad Maker"), line: t("A presenter holds your product and sells it.") },
+    { key: "creator", icon: "palette", name: t("Creator"), line: t("Pictures, video and music from a prompt.") },
+    { key: "cast", icon: "presenter", name: t("Presenters"), line: t("A cast of people, cartoons and monsters. Or make your own.") },
+    { key: "autopost", icon: "rocket", name: t("Auto-post"), line: t("Posted to your socials on a schedule, hands off.") },
+  ];
   return (
-    <div className="lb">
+    <div className={dark ? "lb is-dark" : "lb"}>
       <style dangerouslySetInnerHTML={{ __html: AUTH_LOBBY_CSS }} />
+      {/* the night is put on the shell too — only when it is night */}
+      {dark && <style dangerouslySetInnerHTML={{ __html: AUTH_LOBBY_DARK_CSS }} />}
       {/* one picture to a screen reader, said once: what is showing */}
       <div className="lb-stage" role="img" aria-label={`${t("Now showing")}: ${WALL.map(billed).join(", ")}`}>
         <div className="lb-sign">
@@ -282,48 +318,41 @@ export function AuthLobby({ lang, children }: {
           {children}
         </div>
       </div>
+      {/* not links: a visitor has nowhere to go yet — this is what is inside */}
+      <section className="lb-bill" aria-labelledby="lb-bill-h">
+        <h2 className="lb-bill-h" id="lb-bill-h">{t("Feature presentations")}</h2>
+        <ul>
+          {playbill.map((b) => (
+            <li key={b.key}>
+              <span className="lb-bill-ico" aria-hidden="true"><Ico n={b.icon} size={18} /></span>
+              <b>{b.name}</b>
+              <span className="lb-bill-what">{b.line}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }
 
-/* One stylesheet for the four doors. It also carries the small things each of them used to repeat (the
- * password eye, the "(optional)" dimmer, the hint line, the button's busy dot).
+/* One stylesheet for the four doors, by day and by night. It also carries the small things each of them used
+ * to repeat (the password eye, the "(optional)" dimmer, the hint line, the button's busy dot).
  *
- * Worked out (not measured — see the TEST page, scratchpad mvfix/make-login-mock.cjs) for a 390 x 760 phone,
- * top to bottom: the shell's header 56 · the sign 36 · the wall 188 · the line 67 · then the ticket — its stub
- * 52, heading 32, welcome line 26 (46 if it wraps) — so the email field ends near 536 (556), the button near
- * 681, and both links are on the first screen. */
+ * A 390 x 760 phone, top to bottom, by night: the shell's header 56 · the sign 36 · the wall 188 · the line
+ * 67 · then the ticket — its stub 52, heading 32, welcome line 26 (46 if it wraps) — so the email field ends
+ * near 536 (556), the button near 681, and both links are on the first screen. By day the board takes 16px of
+ * its own and the posters give 10 back: the ticket stands 6px lower. The playbill comes after the ticket.
+ * (Photographed in both lights at 390 x 844 and 1280 x 800 — the TEST page, scratchpad mvfix/make-login-mock.cjs.) */
 export const AUTH_LOBBY_CSS = `
-/* ---- the shell goes dark while a door is up (these rules leave with the screen) ---- */
-html,body{background:#130E0B;}
-html{scrollbar-color:#3D3024 #130E0B;}
-html .wb{background:radial-gradient(120% 56% at 50% -12%,rgba(231,200,121,.22),rgba(231,200,121,0) 60%),radial-gradient(64% 42% at -6% 104%,rgba(12,122,70,.22),rgba(12,122,70,0) 70%),#130E0B;}
-/* THE GOLD SPINNERS. The shell already keeps two great rosettes — the app's own spinner — turning slowly
-   behind every page (fixed, under everything, taking no tap; green on the cream). In the lobby they are the
-   gold cut, glowing faintly out of the dark: one behind the wall, one low in the far corner. They are
-   BEHIND the page, so never over a word of the ticket; the shell stops them for "reduce motion", and so
-   does the last rule of this sheet. */
-html .wb::before,html .wb::after{background-image:url(/gstyle-rosette.svg);}
-html .wb::before{opacity:.2;}
-html .wb::after{opacity:.15;}
+/* ---- what the shell needs while a door is up, by day or by night (these rules leave with the screen).
+   BY DAY the shell is the shell: its cream, its green rosettes, its own header. The night is put on it by
+   AUTH_LOBBY_DARK_CSS, further down — a second sheet, drawn only at night. ---- */
 .wb .wb-main{padding:0;}
-.wb .wb-brand{position:relative;color:#FFFDF7;}
-.wb .wb-brand b{color:#E7C879;}
-.wb .wb-crest img{filter:drop-shadow(0 2px 3px rgba(0,0,0,.6));}
-.wb .lt-btn,.wb .wb-login{position:relative;background:rgba(255,253,247,.07);border-color:rgba(231,200,121,.5);color:#FFFDF7;box-shadow:none;}
-.wb .lt-btn:hover,.wb .lt-btn[aria-expanded="true"],.wb .wb-login:hover{border-color:#E7C879;color:#FFFDF7;box-shadow:0 0 0 3px rgba(231,200,121,.16);}
-.wb .lt-btn .lt-glyph{color:#E7C879;}
-.wb .lt-btn .lt-caret{color:#D8CFBA;}
 /* the logo and the language pill are 30 and 32 tall: 44 to the finger, nothing moved (and the pill's list of
    languages, which opens over the page, gets 44px rows on a phone) */
+.wb .wb-brand,.wb .lt-btn,.wb .wb-login{position:relative;}
 .wb .wb-brand::after,.wb .lt-btn::after,.wb .wb-login::after{content:"";position:absolute;inset:-7px -3px;}
 @media(max-width:640px){.lt-menu .lt-opt{min-height:44px;}}
-.wb .wb-nav a:focus-visible,.wb .wb-nav button:focus-visible{outline-color:#E7C879;}
-/* (a reset link can be opened by someone who is still signed in: their tabs must read on the dark too) */
-.wb .wb-tab:not(.on){color:#D8CFBA;}
-.wb .wb-tab:hover:not(.on){color:#FFFDF7;background:rgba(255,253,247,.08);}
-.wb .wb-admin{color:#D8CFBA;opacity:.8;}
-.wb .wb-admin:hover{background:rgba(255,253,247,.1);}
 /* Helpurr floats 97px up on a phone to clear a tab bar that a visitor does not have — over a full-width
    ticket that put it on the password's eye. Here it stands at the foot of the page, under the ticket.
    (Signed in, the tab bar is there, and Helpurr stays where the shell puts it.) */
@@ -332,13 +361,28 @@ html .wb::after{opacity:.15;}
   .wb .wb-bottom ~ .mm-fab{position:fixed;bottom:calc(97px + env(safe-area-inset-bottom,0px));}
 }
 
-/* ---- the lobby ---- */
-.lb{--pw:136px;position:relative;padding:4px 0 40px;color:#FFFDF7;}
+/* ---- the lobby ----
+   ITS TWO LIGHTS. Every colour that differs between them has a name here: the day's first, and .is-dark —
+   the one class the lobby takes from the visitor's theme — turns them for the night.
+     page   what shows round the ticket (and through its two notches)
+     ink / accent / soft / label / rule   the line, its second half, the playbill's print, label and hairlines
+     chip   what a house's icon stands on · edge, drop   the ticket's gold edge and its shadow
+   The sign, the wall and the screen are the same in both: they always stand on deep green — by day a
+   BOARD across the cream page, by night the page itself. */
+.lb{--pw:136px;--lb-top:0px;--lb-page:#F4F1E6;--lb-ink:#14201A;--lb-accent:#0A6A3D;--lb-soft:#4A554E;--lb-label:#6B4F0E;--lb-rule:rgba(107,79,14,.36);--lb-chip:#103C2A;--lb-edge:rgba(176,133,38,.8);--lb-drop:0 34px 60px -30px rgba(20,32,26,.62),0 12px 24px -16px rgba(20,32,26,.3);position:relative;padding:var(--lb-top) 0 40px;color:var(--lb-ink);}
+.lb.is-dark{--lb-top:4px;--lb-page:#08150E;--lb-ink:#FFFDF7;--lb-accent:#E7C879;--lb-soft:#D8CFBA;--lb-label:#E7C879;--lb-rule:rgba(231,200,121,.36);--lb-chip:rgba(231,200,121,.1);--lb-edge:rgba(231,200,121,.6);--lb-drop:0 34px 60px -30px #000;}
 /* a phone's posters are sized by the HEIGHT it has (the small viewport: its bars showing): 136 wide on a
    760-tall screen, down to 116 on a short one so the form's button is not pushed off it, up to 150 on a tall one */
 @supports (height:1svh){@media(max-width:599px){.lb{--pw:clamp(116px,calc(20svh - 16px),150px);}}}
+/* (by day the board takes 16px of its own, above and below the wall: the posters give most of it back, so
+   the ticket stands where it stands at night) */
+@supports (height:1svh){@media(max-width:599px){.lb:not(.is-dark){--pw:clamp(110px,calc(20svh - 24px),142px);}}}
 @media(max-width:620px){.lb{padding-bottom:calc(86px + env(safe-area-inset-bottom,0px));}}
 .lb-stage{min-width:0;}
+/* BY DAY: THE BOARD. The cinema's own front, across the cream page under the header — deep green, lighter
+   where the sign's lamps fall on it, a gold line along its top and its foot. (By night there is no board:
+   the whole page is that dark.) */
+.lb:not(.is-dark) .lb-stage{margin-bottom:12px;padding:8px 0 0;overflow:hidden;background:radial-gradient(80% 110% at 50% -10%,rgba(52,180,116,.22),rgba(52,180,116,0) 72%),linear-gradient(180deg,#123F2B,#0B2A1D);box-shadow:inset 0 1px 0 rgba(231,200,121,.6),inset 0 -1px 0 rgba(231,200,121,.6),0 20px 30px -22px rgba(20,32,26,.8);}
 
 /* THE SIGN: two lamp rails, like the ones that run round a cinema's sign.
    A LAMP is tungsten behind glass: a hot centre a little off the middle, amber toward the rim, and a soft
@@ -353,7 +397,7 @@ html .wb::after{opacity:.15;}
 .lb-sign{direction:ltr;display:flex;align-items:center;gap:10px;height:24px;margin:0 16px 8px;}
 .lb-rail{position:relative;flex:1 1 0;min-width:0;height:24px;display:flex;flex-direction:row-reverse;align-items:center;gap:8px;padding:0 7px;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,rgba(0,0,0,0),#000 30px);mask-image:linear-gradient(90deg,rgba(0,0,0,0),#000 30px);}
 .lb-rail.is-after{flex-direction:row;-webkit-mask-image:linear-gradient(270deg,rgba(0,0,0,0),#000 30px);mask-image:linear-gradient(270deg,rgba(0,0,0,0),#000 30px);}
-.lb-rail::before{content:"";position:absolute;left:0;right:0;top:50%;height:14px;margin-top:-7px;border-radius:7px;background:linear-gradient(180deg,#050302,#1C150E);box-shadow:inset 0 1px 2px #000,inset 0 -1px 0 rgba(231,200,121,.16);}
+.lb-rail::before{content:"";position:absolute;left:0;right:0;top:50%;height:14px;margin-top:-7px;border-radius:7px;background:linear-gradient(180deg,#020604,#0D1F16);box-shadow:inset 0 1px 2px #000,inset 0 -1px 0 rgba(231,200,121,.16);}
 .lb-rail i{position:relative;flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:radial-gradient(circle at 42% 36%,#FFFDF2 0,#FFF1BD 22%,#FFC95A 50%,#E08A1E 78%,#9A5410 100%);box-shadow:0 0 5px 1px rgba(255,190,90,.8),0 0 12px 3px rgba(255,160,50,.34);animation:lbLamp 2.4s linear infinite;}
 @keyframes lbLamp{0%{opacity:.56}6%{opacity:1}26%{opacity:1}54%{opacity:.56}100%{opacity:.56}}
 /* (a lamp begun x seconds into the turn swells again 2.4 − x seconds on. Before the words the lamps are
@@ -378,16 +422,16 @@ html .wb::after{opacity:.15;}
    and a card's clip is one player, not two. */
 .lb-wall{direction:ltr;overflow:hidden;padding:4px 0 14px;-webkit-mask-image:linear-gradient(90deg,rgba(0,0,0,0),#000 7%,#000 93%,rgba(0,0,0,0));mask-image:linear-gradient(90deg,rgba(0,0,0,0),#000 7%,#000 93%,rgba(0,0,0,0));}
 .lb-track{position:relative;height:calc(var(--pw) * 1.25);--step:calc(var(--pw) + 12px);}
-.lb-poster{position:absolute;top:0;left:0;isolation:isolate;width:var(--pw);height:calc(var(--pw) * 1.25);border-radius:12px;overflow:hidden;background:#241B15;box-shadow:0 0 0 1px rgba(231,200,121,.5),0 14px 22px -14px #000;transform:translate3d(calc(var(--k,0) * var(--step)),0,0);animation:lbPass calc(var(--n,13) * 6.6s) linear infinite;animation-delay:calc((var(--n,13) - 1 - var(--k,0)) * -6.6s);}
+.lb-poster{position:absolute;top:0;left:0;isolation:isolate;width:var(--pw);height:calc(var(--pw) * 1.25);border-radius:12px;overflow:hidden;background:#12281C;box-shadow:0 0 0 1px rgba(231,200,121,.5),0 14px 22px -14px #000;transform:translate3d(calc(var(--k,0) * var(--step)),0,0);animation:lbPass calc(var(--n,13) * 6.6s) linear infinite;animation-delay:calc((var(--n,13) - 1 - var(--k,0)) * -6.6s);}
 @keyframes lbPass{from{transform:translate3d(calc((var(--n,13) - 1) * var(--step)),0,0)}to{transform:translate3d(calc(var(--step) * -1),0,0)}}
 .lb-poster img,.lb-poster video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
 /* a card's clip lies over its still, unseen until it is really playing (a clip that never starts is never seen) */
 .lb-poster video{opacity:0;transition:opacity .45s ease;}
 .lb-poster video.is-on{opacity:1;}
-/* a card with no still light enough to send: its house's own icon, gold on the dark, until its clip plays */
-.lb-ico{position:absolute;inset:0;display:grid;place-items:start center;padding-top:20%;color:#E7C879;background:radial-gradient(circle at 50% 34%,rgba(231,200,121,.22),rgba(231,200,121,0) 66%);}
+/* a card with no still light enough to send: its house's own icon, gold on the card's green, until its clip plays */
+.lb-ico{position:absolute;inset:0;display:grid;place-items:start center;padding-top:20%;color:#E7C879;background:radial-gradient(circle at 50% 34%,rgba(52,180,116,.3),rgba(52,180,116,0) 66%);}
 /* (the shade a name stands on: dark enough under three lines of it — 46% up — even where the picture is white) */
-.lb-poster::after{content:"";position:absolute;inset:0;z-index:1;background:linear-gradient(0deg,rgba(10,7,5,.95) 0%,rgba(10,7,5,.86) 22%,rgba(10,7,5,.62) 46%,rgba(10,7,5,.28) 62%,rgba(10,7,5,0) 78%);}
+.lb-poster::after{content:"";position:absolute;inset:0;z-index:1;background:linear-gradient(0deg,rgba(4,12,8,.95) 0%,rgba(4,12,8,.86) 22%,rgba(4,12,8,.62) 46%,rgba(4,12,8,.28) 62%,rgba(4,12,8,0) 78%);}
 .lb-poster b{position:absolute;z-index:3;left:10px;right:10px;bottom:9px;font-family:Poppins,sans-serif;font-weight:800;font-size:14px;line-height:1.12;letter-spacing:-.015em;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.8),0 1px 2px rgba(0,0,0,.7);overflow-wrap:anywhere;-webkit-hyphens:auto;hyphens:auto;}
 [dir=rtl] .lb-poster b{direction:rtl;text-align:right;letter-spacing:0;line-height:1.5;}
 
@@ -396,17 +440,19 @@ html .wb::after{opacity:.15;}
 
 /* ---- the box office ---- */
 .lb-booth{min-width:0;padding:0 16px;}
-.lb-line{max-width:440px;margin:0 auto 12px;text-align:center;font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(21px,6.2vw,26px);line-height:1.14;letter-spacing:-.02em;color:#FFFDF7;overflow-wrap:anywhere;}
-.lb-line em{display:block;font-style:normal;color:#E7C879;}
+.lb-line{max-width:440px;margin:0 auto 12px;text-align:center;font-family:Poppins,sans-serif;font-weight:800;font-size:clamp(21px,6.2vw,26px);line-height:1.14;letter-spacing:-.02em;color:var(--lb-ink);overflow-wrap:anywhere;}
+.lb-line em{display:block;font-style:normal;color:var(--lb-accent);}
 [dir=rtl] .lb-line{letter-spacing:0;line-height:1.5;}
 
-/* THE TICKET: cream paper under the marquee's light; the form on it is the form it always was */
-.lb .lb-ticket{position:relative;isolation:isolate;max-width:440px;margin:0 auto;padding:0 22px 12px;border:0;border-radius:18px;color:var(--ink,#14201A);background:linear-gradient(176deg,#FFFDF7,#F7F0DE);box-shadow:0 0 0 1px rgba(231,200,121,.6),0 34px 60px -30px #000;animation:lbTicketIn .55s cubic-bezier(.2,.7,.2,1) .05s backwards;}
+/* THE TICKET: cream paper under the marquee's light; the form on it is the form it always was.
+   (Its paper is the same by day and by night. Its gold edge and its shadow have the light's own names: on
+   the cream page the edge is the app's deeper gold and the shadow is doubled, so it still lifts off.) */
+.lb .lb-ticket{position:relative;isolation:isolate;max-width:440px;margin:0 auto;padding:0 22px 12px;border:0;border-radius:18px;color:var(--ink,#14201A);background:linear-gradient(176deg,#FFFDF7,#F7F0DE);box-shadow:0 0 0 1px var(--lb-edge),var(--lb-drop);animation:lbTicketIn .55s cubic-bezier(.2,.7,.2,1) .05s backwards;}
 @keyframes lbTicketIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-/* the two notches where the stub tears off (the lobby's own colour, with the ticket's gold edge carried round) */
-.lb .lb-ticket::before,.lb .lb-ticket::after{content:"";position:absolute;z-index:2;top:30px;width:18px;height:18px;border-radius:50%;background:#130E0B;}
-.lb .lb-ticket::before{left:-9px;box-shadow:inset -1px 0 0 rgba(231,200,121,.6);}
-.lb .lb-ticket::after{right:-9px;box-shadow:inset 1px 0 0 rgba(231,200,121,.6);}
+/* the two notches where the stub tears off (the page's own colour, with the ticket's gold edge carried round) */
+.lb .lb-ticket::before,.lb .lb-ticket::after{content:"";position:absolute;z-index:2;top:30px;width:18px;height:18px;border-radius:50%;background:var(--lb-page);}
+.lb .lb-ticket::before{left:-9px;box-shadow:inset -1px 0 0 var(--lb-edge);}
+.lb .lb-ticket::after{right:-9px;box-shadow:inset 1px 0 0 var(--lb-edge);}
 .lb-stub{display:flex;align-items:center;justify-content:space-between;gap:12px;height:40px;margin:0 -22px 12px;padding:0 22px;border-bottom:2px dashed rgba(107,79,14,.5);border-radius:18px 18px 0 0;background:linear-gradient(180deg,rgba(231,200,121,.34),rgba(231,200,121,.14));font-family:Poppins,sans-serif;font-weight:800;font-size:10.5px;letter-spacing:.26em;text-transform:uppercase;color:#6B4F0E;}
 .lb-stub span:first-child{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.7;}
 [dir=rtl] .lb-stub{letter-spacing:0;font-size:12px;}
@@ -445,9 +491,23 @@ html .wb::after{opacity:.15;}
 .wb-busy-dot-dark{border-color:rgba(20,32,26,.25);border-top-color:var(--ink);}
 @keyframes wbBusySpin{to{transform:rotate(360deg)}}
 
+/* ---- THE PLAYBILL: the five houses, and what each one does. Not links. Under the ticket on a phone (the
+   ticket keeps the first screen); across the foot of a wide screen. ---- */
+.lb-bill{min-width:0;margin:26px 0 0;padding:0 16px;}
+.lb-bill-h{display:flex;align-items:center;gap:12px;max-width:440px;margin:0 auto 14px;font-family:Poppins,sans-serif;font-weight:800;font-size:11px;line-height:1.5;letter-spacing:.26em;text-transform:uppercase;color:var(--lb-label);}
+.lb-bill-h::before,.lb-bill-h::after{content:"";flex:1 1 0;height:1px;background:var(--lb-rule);}
+[dir=rtl] .lb-bill-h{letter-spacing:0;font-size:13px;}
+.lb-bill ul{list-style:none;display:grid;gap:14px;max-width:440px;margin:0 auto;padding:0;}
+.lb-bill li{display:grid;grid-template-columns:38px minmax(0,1fr);column-gap:12px;row-gap:1px;align-items:start;}
+/* (a house's icon: gold, on a chip of the board's own green — by night, on a breath of gold) */
+.lb-bill-ico{grid-row:1 / span 2;display:grid;place-items:center;width:38px;height:38px;border-radius:11px;color:#E7C879;background:var(--lb-chip);box-shadow:inset 0 0 0 1px rgba(231,200,121,.4);}
+.lb-bill b{font-family:Poppins,sans-serif;font-weight:700;font-size:14.5px;line-height:1.3;color:var(--lb-ink);}
+.lb-bill-what{font-size:13px;line-height:1.45;color:var(--lb-soft);}
+
 /* ---- a tablet: the same column, with more room ---- */
 @media(min-width:600px) and (max-width:959px){
-  .lb{--pw:150px;padding-top:10px;}
+  .lb{--pw:150px;}
+  .lb.is-dark{--lb-top:10px;}
   .lb-sign{margin-bottom:14px;}
   .lb-wall{padding-bottom:22px;}
   .lb-line{margin-bottom:18px;font-size:28px;}
@@ -458,21 +518,23 @@ html .wb::after{opacity:.15;}
 /* ---- a wide screen: the art on one side, the box office on the other ---- */
 @media(min-width:960px){
   /* (100px on the right keeps the ticket clear of Helpurr, who floats in that corner) */
-  .lb{--pw:112px;display:grid;grid-template-columns:minmax(0,1fr) 420px;column-gap:clamp(36px,5vw,72px);align-items:center;max-width:1300px;min-height:calc(100vh - 68px);margin:0 auto;padding:8px 100px 40px clamp(24px,3vw,56px);}
-  /* never taller than the window: the screen gives way first */
-  .lb-stage{justify-self:center;width:100%;max-width:clamp(380px,calc((100vh - 334px) * 1.7778),680px);}
+  .lb{--pw:112px;display:grid;grid-template-columns:minmax(0,1fr) 420px;column-gap:clamp(36px,5vw,72px);row-gap:18px;align-items:center;align-content:center;max-width:1300px;min-height:calc(100vh - 68px);margin:0 auto;padding:8px 100px 24px clamp(24px,3vw,56px);}
+  /* never taller than the window — the playbill under it included: the screen gives way first */
+  .lb-stage{justify-self:center;width:100%;max-width:clamp(380px,calc((100vh - 480px) * 1.7778),680px);}
+  /* (by day the board is a panel of its own, with the same screen inside it: 16px wider each side) */
+  .lb:not(.is-dark) .lb-stage{margin:0;padding:16px 16px 2px;border-radius:24px;max-width:clamp(412px,calc((100vh - 480px) * 1.7778 + 32px),712px);box-shadow:0 0 0 1px rgba(176,133,38,.65),0 40px 70px -40px rgba(20,32,26,.85);}
   .lb-sign{gap:12px;margin:0 0 12px;}
   .lb-sign-txt{font-size:13px;}
   .lb-rail{gap:10px;}
   .lb-rail::before{height:16px;margin-top:-8px;border-radius:8px;}
   .lb-rail i{width:9px;height:9px;}
-  .lb-screen{display:block;position:relative;aspect-ratio:16/9;border-radius:16px;overflow:hidden;isolation:isolate;background:#0A0705;box-shadow:0 0 0 1px rgba(231,200,121,.45),0 0 0 6px rgba(231,200,121,.07),0 44px 90px -44px #000,0 0 130px -34px rgba(231,200,121,.36);}
+  .lb-screen{display:block;position:relative;aspect-ratio:16/9;border-radius:16px;overflow:hidden;isolation:isolate;background:#050D09;box-shadow:0 0 0 1px rgba(231,200,121,.45),0 0 0 6px rgba(231,200,121,.07),0 44px 90px -44px #000,0 0 130px -34px rgba(52,180,116,.55);}
   .lb-screen::after{content:"";position:absolute;inset:0;z-index:3;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 70px rgba(0,0,0,.5);}
   /* four clips, five seconds each: one fades up as the last one fades away */
   .lb-clip{position:absolute;inset:0;opacity:0;animation:lbReel 20s linear infinite;animation-delay:calc(var(--k,0) * 5s);}
   .lb-clip img,.lb-clip video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
-  .lb-clip .lb-ico{place-items:center;padding-top:0;background:radial-gradient(circle at 50% 50%,rgba(231,200,121,.2),rgba(231,200,121,0) 58%);}
-  .lb-clip-tag{position:absolute;z-index:2;left:14px;bottom:13px;display:inline-flex;align-items:center;gap:7px;padding:6px 12px 6px 10px;border:1px solid rgba(255,255,255,.24);border-radius:999px;background:rgba(10,7,5,.74);color:#fff;font-size:12px;font-weight:600;line-height:1.2;}
+  .lb-clip .lb-ico{place-items:center;padding-top:0;background:radial-gradient(circle at 50% 50%,rgba(52,180,116,.3),rgba(52,180,116,0) 58%);}
+  .lb-clip-tag{position:absolute;z-index:2;left:14px;bottom:13px;display:inline-flex;align-items:center;gap:7px;padding:6px 12px 6px 10px;border:1px solid rgba(255,255,255,.24);border-radius:999px;background:rgba(4,12,8,.74);color:#fff;font-size:12px;font-weight:600;line-height:1.2;}
   .lb-clip-tag i{flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:#FF6B5E;box-shadow:0 0 0 3px rgba(255,107,94,.28);}
   .lb-wall{margin-top:16px;}
   .lb-poster b{left:9px;right:9px;bottom:8px;font-size:12.5px;}
@@ -480,6 +542,16 @@ html .wb::after{opacity:.15;}
   .lb-line{max-width:none;margin:0 0 16px;text-align:start;font-size:28px;line-height:1.12;}
   .lb .lb-ticket{max-width:none;margin:0;}
   .lb .lb-row,.lb .lb-row a{min-height:36px;}
+  /* the playbill: one row of five, under both columns */
+  .lb-bill{grid-column:1 / -1;margin:0;padding:0;}
+  .lb-bill-h{max-width:none;margin:0 0 10px;}
+  /* (five across — the two houses with the most to say get a little more of the row, so each line of print
+     is two lines in English) */
+  .lb-bill ul{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr);gap:18px;max-width:none;}
+  .lb-bill li{grid-template-columns:30px minmax(0,1fr);column-gap:10px;row-gap:5px;align-items:center;align-content:start;}
+  .lb-bill-ico{grid-row:auto;width:30px;height:30px;border-radius:9px;}
+  .lb-bill b{font-size:14px;}
+  .lb-bill-what{grid-column:1 / -1;font-size:12.5px;line-height:1.4;}
 }
 @keyframes lbReel{0%{opacity:0}3.5%{opacity:1}25%{opacity:1}29%{opacity:0}100%{opacity:0}}
 
@@ -490,4 +562,35 @@ html .wb::after{opacity:.15;}
   .lb-poster video{transition:none;}
   .lb-clip:first-child{opacity:1;}
 }
+`;
+
+/* THE NIGHT, put on the shell. A second sheet, drawn only when the visitor's theme is dark (the lobby's own
+ * night is the .is-dark class, in the sheet above): the page a near-black GREEN — no brown anywhere —
+ * lighter where the marquee's light falls from the top, the header's words turned to cream and gold, and
+ * the shell's two rosettes in the gold cut. It leaves with the screen, as the first sheet does. */
+export const AUTH_LOBBY_DARK_CSS = `
+html,body{background:#08150E;}
+html{scrollbar-color:#2A4A3A #08150E;}
+html .wb{background:radial-gradient(120% 56% at 50% -12%,rgba(30,140,88,.38),rgba(30,140,88,0) 60%),radial-gradient(64% 42% at -6% 104%,rgba(12,122,70,.16),rgba(12,122,70,0) 70%),#08150E;}
+/* THE GOLD SPINNERS. The shell already keeps two great rosettes — the app's own spinner — turning slowly
+   behind every page (fixed, under everything, taking no tap; green on the cream). At night they are the
+   gold cut, glowing faintly out of the dark: one behind the wall, one low in the far corner. They are
+   BEHIND the page, so never over a word of the ticket; the shell stops them for "reduce motion", and so
+   does the last rule of the first sheet. */
+html .wb::before,html .wb::after{background-image:url(/gstyle-rosette.svg);}
+html .wb::before{opacity:.2;}
+html .wb::after{opacity:.15;}
+.wb .wb-brand{position:relative;color:#FFFDF7;}
+.wb .wb-brand b{color:#E7C879;}
+.wb .wb-crest img{filter:drop-shadow(0 2px 3px rgba(0,0,0,.6));}
+.wb .lt-btn,.wb .wb-login{position:relative;background:rgba(255,253,247,.07);border-color:rgba(231,200,121,.5);color:#FFFDF7;box-shadow:none;}
+.wb .lt-btn:hover,.wb .lt-btn[aria-expanded="true"],.wb .wb-login:hover{border-color:#E7C879;color:#FFFDF7;box-shadow:0 0 0 3px rgba(231,200,121,.16);}
+.wb .lt-btn .lt-glyph{color:#E7C879;}
+.wb .lt-btn .lt-caret{color:#D8CFBA;}
+.wb .wb-nav a:focus-visible,.wb .wb-nav button:focus-visible{outline-color:#E7C879;}
+/* (a reset link can be opened by someone who is still signed in: their tabs must read on the dark too) */
+.wb .wb-tab:not(.on){color:#D8CFBA;}
+.wb .wb-tab:hover:not(.on){color:#FFFDF7;background:rgba(255,253,247,.08);}
+.wb .wb-admin{color:#D8CFBA;opacity:.8;}
+.wb .wb-admin:hover{background:rgba(255,253,247,.1);}
 `;

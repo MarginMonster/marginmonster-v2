@@ -1,4 +1,4 @@
-import { json, type ActionFunctionArgs, type LoaderFunctionArgs, redirect } from "@remix-run/node";
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction, redirect } from "@remix-run/node";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { db } from "../db.server";
@@ -7,11 +7,12 @@ import { isValidTimeZone } from "../lib/timezone";
 import { getWebIdentity, loginWebAccount, webSessionRedirect } from "../lib/web-auth.server";
 import { authCopy, authLang } from "../lib/auth-i18n";
 import { Ico } from "../lib/icons";
-import { AuthLobby } from "../components/AuthLobby";
+import { AuthLobby, lobbyThemeColor } from "../components/AuthLobby";
 
 // Merchants keep several of these open at once; an untitled tab is just a URL.
-// (theme-color: the lobby is dark, and a phone's own bar goes dark with it instead of framing it in white)
-export const meta = () => [{ title: "Log in · EasyMode" }, { name: "theme-color", content: "#130E0B" }];
+// (theme-color: a phone's own bar takes the lobby's page colour in this visitor's light — cream by day, deep
+//  green by night — instead of framing the room in another colour)
+export const meta: MetaFunction = ({ matches }) => [{ title: "Log in · EasyMode" }, lobbyThemeColor(matches)];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (await getWebIdentity(request)) throw redirect("/web");
