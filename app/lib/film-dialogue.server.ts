@@ -17,6 +17,11 @@
 //   3. NO ON-SCREEN TEXT — Veo hallucinates garbled "captions"/documents, so both
 //      the seed and Veo prompts hard-ban text and we keep the set clean; trailing
 //      silence is trimmed so clips end on the last word (no dead-air pause).
+//   4. STAGED, AND SOMETHING HAPPENS (2026-11-24 — acted-staging.ts). Each location's
+//      master is drawn in a STAGING dealt for it (a natural distance, a medium shot with
+//      the room around them — both faces still readable, still ONE picture per place),
+//      and each clip is told how the two move in that staging and the one thing its
+//      scene says is DONE while the line is spoken. ACTED_STAGING=off: as before.
 //
 // Sequential by necessity (each clip seeds from the last) — the price of flow.
 import fs from "node:fs";
@@ -46,6 +51,7 @@ import { makeCastPoster } from "./story-poster.server";
 import { castForWriter } from "./dialogue-cast";
 import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
+import { EVENT_MAX_LAST, clipEvent, clipMoves, dealStagings, isActedStaging, sceneEvent, stagedRules, type ActedStaging } from "./acted-staging";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -212,7 +218,7 @@ export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: st
   const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
   await download(clipUrl, rawPath);
   if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error("[regen] clip did not download");
-  return trimClip(rawPath, { chained, last: !!opts.last });
+  return trimClip(rawPath, { chained, last: !!opts.last, moves: clipMoves(prompt) });
 }
 
 /** What a rendered take SAYS, word by word with times — heard by whisperx (it hears the language too), so
@@ -232,9 +238,13 @@ async function heardWords(clipPath: string): Promise<TimedWord[] | null> {
 
 /** A raw take → the clip that goes in the film: dead air off both ends, then the one long mid-line pause
  *  taken down to a beat — both decided on the heard words where they come back. */
-async function trimClip(rawPath: string, opts: { chained: boolean; last: boolean }): Promise<string> {
+async function trimClip(rawPath: string, opts: { chained: boolean; last: boolean; /** something is DONE in this shot (acted-staging.ts → clipMoves) */ moves?: boolean }): Promise<string> {
   const words = await heardWords(rawPath);
   const t = await trimTrailingSilence(rawPath, { ...opts, words });
+  // A shot in which something HAPPENS keeps its mid-line pause. Taking a pause out of the middle of a take
+  // cannot be seen while two people stand still — which is what every shot was when that cut was written;
+  // with a door being pulled open, or the two of them walking, it would make them jump.
+  if (opts.moves) return t.path;
   const moved = words ? words.map((w) => ({ start: w.start - t.shift, end: w.end - t.shift })).filter((w) => w.end > 0) : null;
   return collapseInteriorPause(t.path, moved);
 }
@@ -707,6 +717,9 @@ export async function generateTestMovie(opts: {
   //     faces are born from one generation the two people + the room are identical by
   //     construction and never drift. Gated on exactly two recurring speakers; anything
   //     else falls back to the existing chain untouched.
+  //     (2026-11-24: HOW the two are placed in a master — how far apart, where the camera
+  //     is — is its location's STAGING, dealt below: acted-staging.ts. One master per
+  //     location is still the seed of every clip there, and both faces are still in it.)
   const firstName = nameTok;
   const allSpeakers = Array.from(new Set(treatment.scenes.map((s) => splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "").filter(Boolean)));
   const isTwoHander = allSpeakers.length === 2;
@@ -768,9 +781,13 @@ export async function generateTestMovie(opts: {
       return true;
     }
   };
-  type Master = { url: string; aOnLeft: boolean; a: string; b: string };
+  type Master = { url: string; aOnLeft: boolean; a: string; b: string; /** how the two are staged in this picture (acted-staging.ts) — absent where nothing fitted, and on every master drawn before 2026-11-24 */ staging?: string };
   const masters: Record<string, Master> = {};
   try { const r = resume.ckMasters ? JSON.parse(resume.ckMasters) : null; if (r && typeof r === "object") Object.assign(masters, r); } catch { /* ignore */ }
+  /** THE STAGING each location is dealt (acted-staging.ts) — filled in below, once the film's locations are
+   *  known; read here when a location's master is drawn. A location with none is drawn as it always was. */
+  const stagingAt = new Map<string, ActedStaging | null>();
+  const stagingOf = (m: Master | undefined): ActedStaging | null => (m && isActedStaging(m.staging) ? m.staging : null);
   const masterFor = async (locKey: string, where: string, roomRef?: string, action?: string): Promise<Master | undefined> => {
     if (!isTwoHander) return undefined;
     if (masters[locKey]?.url) return masters[locKey];
@@ -782,12 +799,19 @@ export async function generateTestMovie(opts: {
     // check can never stop a film.
     const faceA = faceFor(spkA), faceB = faceFor(spkB);
     const nameOf = (sp: string) => (castActors.find((c) => firstName(c.name) === firstName(sp))?.name || sp || "").trim() || sp;
+    // THE STAGING this location was dealt (acted-staging.ts): how far apart the two are, where the camera is.
+    // A new way of asking must never cost a film its seed — so when the staged tries drew NOTHING, the last
+    // try asks for the picture the way it always was asked for; and the master remembers what it was drawn as.
+    const dealt = stagingAt.get(locKey) || undefined;
     let url: string | null = null;
+    let drawnAs: ActedStaging | undefined;
     let castOk = true;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), action, mood: tmpl.faceMood, setting: cleanSetting(where), style: twoStyle, aspect }));
+      const staging = attempt === 2 && !url ? undefined : dealt;
+      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: cleanSetting(where), style: twoStyle, aspect }));
       if (!tryUrl) continue;
       url = tryUrl;
+      drawnAs = staging;
       castOk = true;
       for (const sp of [spkA, spkB]) {
         if (!faceFor(sp)) continue;
@@ -828,7 +852,9 @@ export async function generateTestMovie(opts: {
       // keep default A-on-left — but say so: a wrong side puts every line in the wrong mouth
       console.error(`[testmovie] couldn't tell who is on which side (assuming ${spkA} is on the left): ${e instanceof Error ? e.message.slice(0, 140) : e}`);
     }
-    masters[locKey] = { url, aOnLeft, a: firstName(spkA), b: firstName(spkB) };
+    // (the staging is kept WITH the picture — in the checkpoint too: a film picked up after a restart plays
+    //  each place in the staging its picture was drawn in, not in one dealt afresh)
+    masters[locKey] = { url, aOnLeft, a: firstName(spkA), b: firstName(spkB), ...(drawnAs ? { staging: drawnAs } : {}) };
     await ckpt({ ckMasters: JSON.stringify(masters) });
     return masters[locKey];
   };
@@ -856,6 +882,40 @@ export async function generateTestMovie(opts: {
     if (shotAt[i] !== shotAt[i - 1]) return "angle";
     return "continue";
   };
+
+  // THE STAGING (acted-staging.ts). The owner, 2026-11-24, of a Horror Film made on the live site: "Unrealistic
+  // for them to stand this close bro, and aside from them on screen there is no actual things occurring, it's
+  // just them speaking". Every master was the same picture — chest up, close together, both faces to the lens.
+  // So each LOCATION is dealt one staging, no two neighbours alike, by what fits its frame, its place and the
+  // first scene set there (somebody walking, something to handle, a table to sit at): its master is drawn in
+  // it, its clips are told how the two move in it, and the piece keeps which one it got. A location whose
+  // master already exists (a film picked up after a restart) keeps what that picture was drawn as; one that
+  // fits no staging — the inside of a car — is drawn as it always was, and so is one whose first scene the
+  // maker drew and approved in the storyboard (that frame IS how the place looks; a master staged another way
+  // would be a second look for it). ACTED_STAGING=off: every film as before.
+  const locOrder: string[] = [];
+  const locFirst = new Map<string, number>();
+  for (let i = 0; i < scenesArr.length; i++) { const k = locKeyAt(i); if (!locFirst.has(k)) { locFirst.set(k, i); locOrder.push(k); } }
+  if (isTwoHander && process.env.ACTED_STAGING !== "off") {
+    try {
+      const dealt = dealStagings(locOrder.map((k) => {
+        const first = locFirst.get(k) ?? 0;
+        return { where: whereAt[first], scene: scenesArr[first]?.visual || "", ...(masters[k]?.url ? { has: stagingOf(masters[k]) } : approvedFrames[first] ? { has: null } : {}) };
+      }), { aspect });
+      locOrder.forEach((k, n) => stagingAt.set(k, dealt[n] ?? null));
+      console.log(`[testmovie] staging — ${locOrder.map((k) => `${k.slice(0, 40)}: ${stagingAt.get(k) || "as it always was"}`).join(" | ").slice(0, 400)}`);
+    } catch (e) {
+      // (a film is never lost to its staging: with none dealt, every place is drawn as it always was)
+      stagingAt.clear();
+      console.error(`[testmovie] staging not dealt — every place as before: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+    }
+  }
+  /** WHAT HAPPENS in shot i, in its scene's own words — only in a film whose script was written as things
+   *  that happen (treatment.events), and only where the words ARE one: not the place's name, not a copy of an
+   *  earlier scene's in the same place (acted-staging.ts → sceneEvent). "" = nothing is said to happen.
+   *  (Against each scene's OWN `where`, not whereAt: with no place named at all, whereAt borrows the first
+   *  scene's words — and they would then look like "only the place's name".) */
+  const eventAt = (i: number): string => (treatment.events ? sceneEvent(scenesArr.map((s) => s.visual), scenesArr.map((_, j) => locKeyAt(j)), scenesArr.map((s) => s.where || ""), i) : "");
 
   // 3) Veo DIALOGUE clips (sequential) — see the design notes atop this file: one
   //    speaker per clip, seamless cuts from the prior clip's real last frame, no
@@ -926,6 +986,12 @@ export async function generateTestMovie(opts: {
   const shotPrompts: (string | null)[] = clips.map(() => null);
   const shotDurs: number[] = clips.map(() => 0);
   const shotChained: boolean[] = clips.map(() => false);
+  // …and the staging each shot was played in (acted-staging.ts), for the piece's own record.
+  const shotStaged: (ActedStaging | null)[] = clips.map(() => null);
+  // WHICH STAGING THE PICTURE A SHOT GROWS OUT OF WAS DRAWN IN — null when it is not a staged picture. (After
+  // a restart the next shot may continue the last finished one: it is in that location's staging, unless a
+  // frame the maker approved was among the finished shots.)
+  let chainStaging: ActedStaging | null = clips.length && !approvedFrames.slice(0, clips.length).some(Boolean) ? stagingOf(masters[locKeyAt(clips.length - 1)]) : null;
   let prevFrameUrl: string | undefined = resume.ckLastStill; // prior clip's last frame (relative /renders URL)
   // Chaining from each clip's last frame gives seamless cuts but lets faces (esp. facial
   // hair) DRIFT over a long film. Re-anchor to the pristine master after this many chained
@@ -990,8 +1056,15 @@ export async function generateTestMovie(opts: {
         // fit ANY setting, and the master image keeps the identical room, lighting,
         // wardrobe and faces, so the angle change is grounded in the real scene.
         const ang = ANCHOR_ANGLES[anchorCount++ % ANCHOR_ANGLES.length];
+        // (In a staged film whose shots HAPPEN, the master is the place as it was BEFORE anything was done in
+        //  it. So the fresh seed is asked for at THIS shot's moment — the two doing what the scene now has
+        //  them doing — not "in the same positions"; each still on the SIDE of the frame the master has them
+        //  on, which is how a line finds its mouth. Any other film: the words it always had.)
+        const now = stagingOf(master) ? clipEvent(eventAt(i), 110) : "";
         const reangled = await removeLetterbox(await renderSceneSeedChained(
-          `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people in the same positions, ONLY the camera angle changes. ${NO_TEXT}`,
+          now
+            ? `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people on the same sides of the frame, ONLY the camera angle changes. At this moment: ${now} ${NO_TEXT}`
+            : `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people in the same positions, ONLY the camera angle changes. ${NO_TEXT}`,
           abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
         ));
         seedAbs = abs(reangled) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
@@ -1014,6 +1087,11 @@ export async function generateTestMovie(opts: {
     // gets the softer dissolve, and the shot may simply start on its line.
     const chained = i > 0 && !!prevFrameUrl && seedAbs === abs(prevFrameUrl);
     if (i > 0 && !chained) softSeams.add(i);
+    // THE STAGING THIS SHOT IS PLAYED IN (acted-staging.ts) is that of the PICTURE it grows out of: the
+    // location's own master, or a re-anchor on it. A frame the maker approved, an angle they added by hand,
+    // a seed composed without a master — none of those is a staged picture, and its shot is told what a shot
+    // was always told. A shot that continues the last one keeps the staging of the picture before it.
+    if (!chained) chainStaging = approvedFrames[i] || !master?.url || tr === "angle" ? null : stagingOf(master);
 
     // Veo prompt: ONE speaker talks a full beat (clean single voice), the other
     // present and reacting; two-shot; voice pinned consistent; NO on-screen text.
@@ -1056,9 +1134,25 @@ export async function generateTestMovie(opts: {
     // The standing rules (look / style / camera+audio / no-text) come from clipRules — written short so
     // the whole prompt fits what Kling reads. (The long NO_TEXT above stays for the image prompts.)
     const rules = clipRules({ cartoon, sing });
+    // IN A STAGING (acted-staging.ts) the look-note no longer ends "The speakers hold their places": it says
+    // how the two move in that staging and — in a film written as things that HAPPEN (treatment.events) — the
+    // ONE thing this scene's own words say is done while the line is spoken. (The owner, 2026-11-24: "there
+    // is no actual things occurring, it's just them speaking".) Nothing is named that the scene does not name:
+    // a clip prompt that names a thing can ADD it (story-motion.ts), so the thing itself is in the picture the
+    // shot grows out of, put there by the writer's scene. Not a staged picture → the rules as they always were.
+    const otherName = [spkA, spkB].find((n) => !!n && fnm(n) !== fnm(speaker)) || "";
+    let playRules = rules;
+    if (chainStaging) {
+      try {
+        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [] });
+      } catch (e) {
+        // (never a shot lost to its staging: it is told what a shot was always told)
+        console.error(`[testmovie] shot ${i + 1}: staging words not built — the shot is told to hold, as before: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+      }
+    }
     // Voice timbre ("X's voice is warm…") rides separately so the fitter can drop it last of all.
     const voiceDesc = (turnB && turnB.speaker && turnB.line) ? `${voiceDescFor(turnA.speaker)}${voiceDescFor(turnB.speaker)}` : speaker ? speakerVoiceDesc : "";
-    const fitted = fitClipPrompt({ voice: voiceLine, voiceDesc, ...rules });
+    const fitted = fitClipPrompt({ voice: voiceLine, voiceDesc, ...playRules });
     const prompt = fitted.prompt;
     if (fitted.gaveUp) console.log(`[testmovie] shot ${i + 1}: prompt fitted to ${prompt.length} chars by giving up: ${fitted.gaveUp}`);
 
@@ -1072,7 +1166,7 @@ export async function generateTestMovie(opts: {
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
     // dead air off both ends (a continuing shot keeps its opening frames; the film's last shot holds a beat
     // longer), and a long mid-line pause taken down to a beat — on the heard words where they come back
-    const dry = await trimClip(rawPath, { chained, last: i === treatment.scenes.length - 1 });
+    const dry = await trimClip(rawPath, { chained, last: i === treatment.scenes.length - 1, moves: clipMoves(prompt) });
     // A CREATURE'S LINES get its creature chain — the same one its voice-over goes through — laid over
     // this clip's own audio, in sync with the picture. Only on a shot where the creature is the ONE who
     // speaks: the chain is over the whole track, and a second speaker would be dragged through it too.
@@ -1080,7 +1174,7 @@ export async function generateTestMovie(opts: {
     const outPath = soloVoice?.acting.chain ? await chainClipVoice(dry, soloVoice.acting.chain) : dry;
     if (outPath !== dry && soloVoice) { shotVoice[clips.length] = soloVoice.id; voicesLocked++; }
     clips.push(outPath);
-    shotSeeds.push(seedAbs); shotPrompts.push(prompt); shotDurs.push(clipSecs); shotChained.push(chained);
+    shotSeeds.push(seedAbs); shotPrompts.push(prompt); shotDurs.push(clipSecs); shotChained.push(chained); shotStaged.push(chainStaging);
     // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.
     prevFrameUrl = (await extractLastFrame(outPath)) || undefined;
     await ckpt({ ckClips: clips, ckLastStill: prevFrameUrl });
@@ -1147,6 +1241,10 @@ export async function generateTestMovie(opts: {
         ...(opts.series ? { series: seriesMeta(opts.series) } : {}),
         // THE POSTER: its cover on the shelf — the cast's portraits under the title (story-poster.ts)
         ...(poster ? { poster } : {}),
+        // THE STAGING (acted-staging.ts): how the two were placed in each location, in the order the film
+        // first visits them — what each place's picture was ASKED for (null: the close two-shot, as before).
+        // A film with no staged place at all carries no such list.
+        ...(locOrder.some((k) => stagingOf(masters[k])) ? { staging: locOrder.map((k) => ({ where: (whereAt[locFirst.get(k) ?? 0] || "").slice(0, 120), as: stagingOf(masters[k]) })) } : {}),
         // Per-shot timeline for the section editor: each rendered shot's /renders URL +
         // the line it speaks, so the editor can list, preview and (later) re-edit each one.
         shots: clips.map((c, i) => ({
@@ -1160,6 +1258,8 @@ export async function generateTestMovie(opts: {
           chained: shotChained[i] || undefined,
           // the cast voice on this shot ("Lock these voices") → a re-roll of it gets the same voice
           voice: shotVoice[i] || undefined,
+          // the staging this shot was played in (acted-staging.ts) — its prompt, above, has the words
+          staging: shotStaged[i] || undefined,
         })),
       }),
     },

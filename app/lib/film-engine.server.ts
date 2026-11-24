@@ -51,6 +51,8 @@ import { WHAT_FRIGHTENS, inheritPlaces, placeNamed, placesAsk, takePlaces } from
 import { tellerVisual } from "./character-series";
 import { planShots, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
+// (2026-11-24) an acted film: every shot is something that HAPPENS, and the camera is dealt, not written
+import { CAMERA_IS_DEALT, ONE_TAKE, SEEN_AT_THE_END, TWO_ALWAYS, eventIdeas, happensBrief } from "./acted-staging";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -323,7 +325,9 @@ export interface FilmScene {
    *  = the camera angle within that location (a change re-frames the master = a cinematic
    *  cut that holds the room + faces). Absent on both → one continuous location (the
    *  validated seamless behaviour). `tone` = HOW the line is delivered (the emotion), fed
-   *  to the render so the voice isn't flat/monotone (e.g. "coldly, with quiet menace"). */
+   *  to the render so the voice isn't flat/monotone (e.g. "coldly, with quiet menace").
+   *  (2026-11-24: an acted film's WRITER no longer sets `shot` — how each location is framed is dealt by
+   *  acted-staging.ts; a `shot` here is an angle the maker added by hand in the storyboard.) */
   where?: string;
   shot?: string;
   tone?: string;
@@ -358,6 +362,11 @@ export interface FilmTreatment {
   /** An ACTED film's lines by somebody who is not on screen (dialogue-cast.ts): how many there were, how
    *  many were rewritten for one of the two who are, and what went wrong if anything did. */
   castFit?: { unseen: number; fixed: number; note?: string };
+  /** AN ACTED FILM WHOSE SHOTS HAPPEN (acted-staging.ts): every scene's VISUAL is the ONE thing that is done
+   *  in that shot while its line is spoken — names and an action, no looks, no camera — so each clip is told
+   *  it. Absent on every script written before 2026-11-24 (their VISUALs describe a still two-shot, and are
+   *  not said to the video engine). */
+  events?: boolean;
 }
 
 const TREATMENT_SCHEMA = {
@@ -520,6 +529,10 @@ export async function previewFilmTreatment(opts: {
     ? freshBrief({ template: tmpl.key, fresh, used: { ...usedByMaker, names: usedByMaker.names.filter((n) => !keptNames.some((k) => k.toLowerCase() === n.toLowerCase())) }, narrated, open: !series, english: langCode === "en", small: !!tmpl.childSafe, language: langName })
     : "";
   const camPlan = narrated ? planShots(scenes) : [];
+  // …and AN ACTED FILM'S SHOTS HAPPEN (acted-staging.ts). The KIND of thing that happens in a shot is shown
+  // to its writer by a few examples DEALT for this film — a fixed example comes back as the story.
+  const acted = !!tmpl.dialogue && !narrated;
+  const actIdeas = acted ? eventIdeas(Math.random, 4, !!tmpl.childSafe) : [];
   // (the example a cast is described by carries a DEALT name: the one it used to carry, "Pip", came back
   //  as a character's name in story after story)
   const exName = fresh ? (tmpl.childSafe ? fresh.names.small[0] : fresh.names.f[0]) || "Pip" : "Pip";
@@ -554,7 +567,7 @@ export async function previewFilmTreatment(opts: {
       // writer invents for one is exactly two, each with ONE word for a name — "Grandpa Joe" was read as
       // "Joe" by the shot builder and matched nobody's portrait, and a third character had no mouth at all.
       : tmpl.dialogue && !narrated
-      ? `\nFirst invent the TWO characters who carry this scene and return them as "cast": exactly two entries, each ONE vivid, FIXED visual description to reuse in every shot, starting with the character's name — a simple ONE-WORD first name (e.g. "${exName}, ${exLook}"; never a title or two words such as "Grandpa Joe" or "Mr. Alvarez"). Every shot's VISUAL features these same two, described the same way.${noSlop}`
+      ? `\nFirst invent the TWO characters who carry this scene and return them as "cast": exactly two entries, each ONE vivid, FIXED visual description to reuse in every shot, starting with the character's name — a simple ONE-WORD first name (e.g. "${exName}, ${exLook}"; never a title or two words such as "Grandpa Joe" or "Mr. Alvarez"). Every shot's VISUAL has these same two in it, called by these exact names — their looks are said HERE, once, and never repeated in a VISUAL.${noSlop}`
       : `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "${exName}, ${exLook}"). Every scene's VISUAL must feature these same named characters, described the same way.${noSlop}`)
     : "";
   const prodLine = tmpl.needsProduct && opts.productTitle
@@ -668,13 +681,23 @@ export async function previewFilmTreatment(opts: {
       // story comes back to is described ONCE, here, and drawn from one design sheet of it.
       `Also return "places": the ONE or TWO places or things this story keeps coming back to — a house, a boat, a shop, a street, a car — each written as "name: look": a short plain name ("the ferry", "the lighthouse", "the bakery"), a colon, then ONE fixed description of 15-30 words — its shape, colours and materials, and two or three details that make it THIS one and no other (e.g. "the ferry: an old low black wooden river ferry with a small square wheelhouse at its stern, one iron lantern hook at its bow and a worn plank deck with a low rail"). Only what at least TWO pictures are set at, in or on; never a person or an animal; no weather or time of day in it; an empty list when the story has no such place. Every VISUAL set there calls it by that exact name ("on the ferry", "at the door of the lighthouse"). And every scene also has a third field, PLACE: the name of the one of them that picture is set at, in or on — exactly as it is written in "places" — or "" when it is set somewhere else.\n`
     : tmpl.dialogue
-    ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FIVE fields:\n` +
-      `• VISUAL — what we SEE: a TWO-SHOT framing BOTH characters together in the place; they STAY put (NO standing up, sitting down, walking, turning away or crossing — big moves make the AI morph faces/clothing); a still, tense TALKING beat with only small gestures and changing expressions; keep hands EMPTY by default — do NOT add cigarettes, drinks, phones or handheld props for flavour (they warp badly in AI video), only include one if the user's theme specifically involves it; NO readable text, documents, papers, boards, signage or screens in view.\n` +
+    // AN ACTED FILM'S SHOTS HAPPEN (acted-staging.ts). The owner, 2026-11-24, of a Horror Film made on the live
+    // site: "aside from them on screen there is no actual things occurring, it's just them speaking". That is
+    // what this brief asked for: VISUAL was "a TWO-SHOT framing BOTH characters … they STAY put … a still,
+    // tense TALKING beat", and SHOT was 'EXACTLY "wide two-shot" for EVERY beat'. Now a shot's VISUAL is the
+    // one thing that is DONE in it, and how the two are placed and filmed is dealt, location by location, by
+    // the film itself (film-dialogue → dealStagings) — the writer does not choose it.
+    ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FOUR fields:\n` +
+      `• VISUAL — ${happensBrief(actIdeas)}\n` +
       `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot. Each line fills MOST of the ~10-second shot WITHOUT overrunning it: a two-sentence beat of about 15-18 words (~7-9 seconds of speech). This is a HARD window — NEVER a short one-liner (a line that doesn't fill the shot leaves dead air, which makes the AI voice stall or repeat words), and NEVER more than 18 words, because a longer line overruns the 10-second clip and gets cut off at the end. Count the words and stay inside 15-18. The speaker ALTERNATES shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names, and make each line a genuine REPLY to the one before it (never a non-sequitur). ONLY the two people in the shot ever speak: the NAME before the colon is always one of their two names, the same single word every time. Anyone else the story needs — a shopkeeper, a parent, a stranger — is talked ABOUT or stands silent in the background, and is never heard; when what they say or do matters, one of the two reports it (\"He says he can't thank us enough!\").\n` +
-      `• WHERE — the LOCATION this beat happens in, as a short vivid label (e.g. "a dim old diner at night, rain on the windows").\n` +
-      `• SHOT — set this to EXACTLY "wide two-shot" for EVERY beat. Do NOT use close-ups, reverse angles or any other framing — the director adds those by hand later. Every beat in a scene MUST share the same "wide two-shot" so the whole scene plays as ONE seamless, continuous take.\n` +
+      `• WHERE — the LOCATION this beat happens in, as a short vivid label (e.g. "a dim old diner at night, rain on the windows"). EVERY shot has one, and while the place stays the same it is the SAME words, letter for letter — other words are read as another place.\n` +
       `• TONE — HOW this exact line is delivered: a short emotional direction for the voice (e.g. "coldly, with quiet menace", "voice rising in anger", "quietly, barely holding it together"). It must MATCH the words so the read is never flat or monotone.\n` +
-      `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places.\n`
+      `${CAMERA_IS_DEALT}\n` +
+      `${ONE_TAKE}\n` +
+      `${TWO_ALWAYS}\n` +
+      `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places.\n` +
+      // (a horror film ends on something SEEN — said last, so it is read as the exception to the line above)
+      (tmpl.key === "horror" ? `${SEEN_AT_THE_END}\n` : "")
     : tmpl.sung
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}, featuring the artist/cast performing) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes and flows with the others. Read in order the captions ARE the song's lyrics: give the whole thing a clear, repeating, sing-along HOOK${tmpl.childSafe ? " a toddler can sing along to" : ""}, like a real ${tmpl.childSafe ? "preschool nursery sing-along" : "pop song"}.\n${VISUAL_STANDS_ALONE}\n`
     : tmpl.narrated
@@ -810,7 +833,10 @@ export async function previewFilmTreatment(opts: {
     visual: s.visual,
     caption: s.caption ? dropOrgEndorsementPossessive(s.caption) : undefined,
     where: typeof s.where === "string" && s.where.trim() ? s.where.trim().slice(0, 120) : undefined,
-    shot: typeof s.shot === "string" && s.shot.trim() ? s.shot.trim().slice(0, 60) : undefined,
+    // (an ACTED film's writer no longer chooses the camera — acted-staging.ts. Whatever it put here is not
+    //  kept, so every beat of a place stays ONE continuous take, as when it was told 'EXACTLY "wide two-shot"';
+    //  an angle the maker adds by hand in the storyboard is theirs, and is kept as it always was.)
+    shot: !acted && typeof s.shot === "string" && s.shot.trim() ? s.shot.trim().slice(0, 60) : undefined,
     tone: typeof s.tone === "string" && s.tone.trim() ? s.tone.trim().slice(0, 100) : undefined,
     // A music-video scene carries what it was WRITTEN as (performance or cut scene): the role then
     // travels with the scene when the maker reorders or removes scenes, instead of being re-dealt by
@@ -945,7 +971,8 @@ export async function previewFilmTreatment(opts: {
   if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed(s.visual, placeMarks[i], places) }));
   // (what it was dealt, so the maker's next story is dealt something else)
   const dealt = fresh ? { hook: fresh.hook, ...Object.fromEntries(freshKeys(series ? null : fresh).map((k) => k.split(":"))) } : null;
-  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, ...(dealt ? { fresh: dealt } : {}), ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
+  // (an acted film written here says so: its scenes' VISUALs are things that HAPPEN, and each clip is told its own)
+  return { title: outTitle, scenes: list, musicMood: parsed.musicMood || tmpl.musicHint, ...(acted ? { events: true } : {}), ...(dealt ? { fresh: dealt } : {}), ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 
 // ---- Assembly ---------------------------------------------------------------

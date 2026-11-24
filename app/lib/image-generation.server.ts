@@ -14,6 +14,7 @@ import { paletteLine } from "./brand-kit";
 import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { characterInRef } from "./character-prompts";
+import { stagedTwoShot } from "./acted-staging";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
 import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
@@ -4909,7 +4910,9 @@ export async function renderTwoPanelShotReverse(opts: { roomRefUrl?: string | nu
 // cut" continuity bug). With both people always fully framed there is nothing to
 // mismatch, and because both faces are born from one generation the two people + the
 // room are identical by construction and never drift. Seeded 9:16 to match the clips.
-export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; nameA?: string; nameB?: string; lookA?: string; lookB?: string; /** a cast member who is not a person (a cartoon character, a monster) is bound to its picture as a CHARACTER, not as a face-hair-and-age */ creatureA?: boolean; creatureB?: boolean; /** how the people look, where the format has a say (a horror cast does not grin) */ mood?: string; /** what the scene shows (who holds what, what is happening) — drawn inside the same two-shot framing */ action?: string; setting: string; style?: "photoreal" | "cartoon"; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
+// (2026-11-24: with a `staging` — acted-staging.ts — the two are placed at a natural distance in a medium
+// shot instead of chest-up and close; both faces are still in it, and it is still the one seed of its place.)
+export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; nameA?: string; nameB?: string; lookA?: string; lookB?: string; /** a cast member who is not a person (a cartoon character, a monster) is bound to its picture as a CHARACTER, not as a face-hair-and-age */ creatureA?: boolean; creatureB?: boolean; /** how the people look, where the format has a say (a horror cast does not grin) */ mood?: string; /** what the scene shows (who holds what, what is happening) — drawn inside the same two-shot framing */ action?: string; /** HOW THE TWO ARE STAGED (acted-staging.ts): where each one is and where the camera is — a natural distance, the room around them, what the scene calls for IN the picture. None (or not a staging) → the close two-shot this always drew, word for word */ staging?: string | null; setting: string; style?: "photoreal" | "cartoon"; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN) return null;
     const refs = [opts.roomRefUrl, opts.faceA, opts.faceB].filter((u): u is string => !!u).slice(0, 3);
@@ -4965,11 +4968,20 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
       ? `Clean cheerful cartoon lighting, soft candy colors, rounded friendly shapes, ${comp}, no on-screen text, no watermark.`
       : `Cinematic filmic lighting, shallow depth of field, ${comp}, no on-screen text, no watermark.`;
     const prompt = `${styleLead} of BOTH people together in ${setting}, in conversation in an OPEN two-shot — their bodies angled toward each other, but BOTH FACES turned three-quarters toward the camera so the camera sees both faces well (the way a TV drama frames two people talking); never two flat side profiles — and positioned NATURALLY for this exact place — seated across a table ONLY if the location is a diner, booth, bar, café, kitchen or similar sit-down spot; otherwise standing (or seated) exactly as the real setting calls for, and NEVER add a table, booth or chairs that do not belong here (e.g. on a street, in a hallway or outdoors they stand). Frame them from roughly the CHEST UP and fairly CLOSE so that BOTH of their FACES are LARGE, sharp and clearly visible and you can read their expressions — this is an intimate dialogue two-shot, NOT a distant full-body wide shot. ${personA} on one side and ${personB} on the other, both faces prominent and in focus. This is NOT an over-the-shoulder shot: neither person is turned fully away, cropped out, or blurred in the foreground; both are equally sharp. Both people share the SAME space on the SAME side of the room, standing CLOSE together, angled toward each other and open to the camera — they are NOT separated by any window, glass pane, partition, railing, counter, doorway or divider BETWEEN them; if the setting has a window it stays in the BACKGROUND behind or beside them, never between them and never splitting the frame down the middle.${moment}${mood ? ` ${mood}` : ""} ${consistencyNote} By DEFAULT both people's hands are empty, relaxed and still — do NOT add a cigarette, glass, phone or other small handheld prop unless the scene above specifically calls for one; if it DOES, render that single prop clearly and held naturally in one hand (never multiplied, floating or morphing).${roomNote}${faceNote} ${styleTail}`;
-    const input: Record<string, unknown> = { prompt, aspect_ratio: ar, output_format: "jpg" };
+    // THE STAGING (acted-staging.ts). The owner, 2026-11-24, of a Horror Film whose two shots were the two
+    // of them side by side facing the lens: "Unrealistic for them to stand this close bro". That closeness
+    // is asked for above, word for word (chest up, fairly close, standing CLOSE together, faces toward the
+    // camera). With a staging, its words take the place of those sentences — a natural distance, a medium
+    // shot with the room around them, both faces still readable — and the scene's own moment is IN the
+    // picture instead of being told "the framing wins". Everything that binds a cast member to their
+    // reference picture is the same text as above. No staging → the prompt above, unchanged.
+    // (The moment has more room here than the 240 characters above: a film's last scene may be written longer.)
+    const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: (opts.action || "").replace(/\s+/g, " ").trim().slice(0, 320), mood, consistency: consistencyNote, roomNote, faceNote, comp }) : "";
+    const input: Record<string, unknown> = { prompt: staged || prompt, aspect_ratio: ar, output_format: "jpg" };
     if (refs.length) input.image_input = refs;
     const url = await repRun("google/nano-banana", input);
     const durable = await persistRemote(url, "jpg");
-    artLog("image-ad", `side-by-side two-shot rendered (refs x${refs.length})`);
+    artLog("image-ad", `side-by-side two-shot rendered (refs x${refs.length}${staged ? `, staged ${opts.staging}` : ""})`);
     return durable;
   } catch (e) {
     artLog("image-ad", `side-by-side two-shot failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
