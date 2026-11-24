@@ -48,7 +48,7 @@ import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
 import { storyTypicalSeconds } from "../lib/story-motion";
 import { storyMotionOn } from "../lib/story-motion.server";
 // (2026-11-23) THE STORY'S OWN CAST: a portrait for every character a story invents — shown, and kept
-import { castCardsOf, castToken, keepGuess, readCastToken, type StoryCastRef } from "../lib/story-picture";
+import { castCardsOf, castToken, keepGuess, placesOf, readCastToken, type StoryCastRef } from "../lib/story-picture";
 // (2026-11-24) KEEP IN MY CAST: a story's own character joins the maker's cast — the one character dialog
 import { CharacterForge, FORGE_CSS, type ForgeSeed } from "../components/CharacterForge";
 import { VOICE_UI_CSS } from "../components/VoicePicker";
@@ -371,7 +371,7 @@ async function seriesBriefFor(shopId: string, fromId: string, want: { template: 
     from = latestEpisode(prev, [...later, prev]);
   } catch { /* continue from the film that was named */ }
   const brief = seriesBriefOf(from, want);
-  return brief ? { brief, ownCast: want.narrated ? castToken(castCardsOf(from.metaJson)) : "" } : null;
+  return brief ? { brief, ownCast: want.narrated ? castToken(castCardsOf(from.metaJson), placesOf(from.metaJson)) : "" } : null;
 }
 
 /** The lead's gender (drives the sung voice + casting) and each named co-star's known gender. */

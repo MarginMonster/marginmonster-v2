@@ -205,7 +205,7 @@ test("the previous film is looked up ONLY among the signed-in shop's own films; 
   assert.ok(fn.includes("const brief = seriesBriefOf(from, want);"));
   // (…and with it the last episode's OWN cast — the portraits its invented characters were drawn from —
   //  read from that same row, for a told story only: tests/story-cast.test.ts)
-  assert.ok(fn.includes("return brief ? { brief, ownCast: want.narrated ? castToken(castCardsOf(from.metaJson)) : \"\" } : null;"));
+  assert.ok(fn.includes("return brief ? { brief, ownCast: want.narrated ? castToken(castCardsOf(from.metaJson), placesOf(from.metaJson)) : \"\" } : null;"), "…and its places' sheets (tests/story-places.test.ts)");
   assert.ok(page.includes("await seriesBriefFor(shop.id, seriesFrom, { template: tmpl.key, narrated })"));
   // only the id comes from the page; the series is read from the film itself
   assert.ok(page.includes("...(series && isStoryboard ? { seriesFrom: series.from } : {})"));

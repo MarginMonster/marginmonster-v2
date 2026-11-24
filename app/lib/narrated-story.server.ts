@@ -149,8 +149,9 @@ export async function narratedSceneSeeds(o: {
   // drawn once, beside the portraits, carried in the same token — and every scene set there is drawn with
   // it, so the ferry of scene 1 is the ferry of scene 6. (STORY_PLACES=off: places are drawn from words.)
   const placeList = (o.treatment.places || []).filter((e): e is string => typeof e === "string" && !!e.trim());
-  const wanted = process.env.STORY_PLACES !== "off" && !sheetRef ? recurringPlaces(scenes.map((s) => s?.visual || ""), placeList) : [];
   const placeCards: StoryPlaceRef[] = placesStillIn(carried.places, placeList).filter((c) => fs.existsSync(path.join(RENDERS(), path.basename(c.img))));
+  // (a place that came in WITH its sheet — the last episode's — is used from its first scene)
+  const wanted = process.env.STORY_PLACES !== "off" && !sheetRef ? recurringPlaces(scenes.map((s) => s?.visual || ""), placeList, placeCards.map((c) => c.name)) : [];
   const sheetFor = (name: string): StoryPlaceRef | undefined => placeCards.find((c) => placeKey(c.name) === placeKey(name));
   const needPlaces = wanted.filter((p) => p.scenes.some((i) => todo.includes(i)) && !sheetFor(p.name));
   // (started now, awaited after the portraits: the two are drawn side by side, so a story's pictures take no longer)

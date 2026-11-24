@@ -270,12 +270,14 @@ export const scenePlace = (visual: string, places: ReadonlyArray<{ name: string 
 /** The places worth a sheet: the ones at least TWO of the story's scenes are set at (a place seen once
  *  cannot drift) — the most used first, STORY_PLACE_MAX at most — each with the scenes that are set there
  *  (a scene is set at one place: the first of the list it names). */
-export function recurringPlaces(visuals: ReadonlyArray<string | null | undefined>, entries: ReadonlyArray<string | null | undefined>): Array<{ name: string; look: string; scenes: number[] }> {
+export function recurringPlaces(visuals: ReadonlyArray<string | null | undefined>, entries: ReadonlyArray<string | null | undefined>, have: ReadonlyArray<string> = []): Array<{ name: string; look: string; scenes: number[] }> {
   const places = (entries || []).map((e) => placeEntry(String(e || ""))).filter((p, k, a) => p.name && p.look.length > 12 && a.findIndex((x) => placeKey(x.name) === placeKey(p.name)) === k);
   const at = (visuals || []).map((v) => scenePlace(String(v || ""), places));
   return places
     .map((p, k) => ({ ...p, scenes: at.map((x, i) => (x === k ? i : -1)).filter((i) => i >= 0), k }))
-    .filter((p) => p.scenes.length >= 2)
+    // (`have`: places that ALREADY have a sheet — the last episode's. One scene there is enough: seen once in
+    //  this episode, it can still drift from how it looked in the last)
+    .filter((p) => p.scenes.length >= (have.some((n) => placeKey(n) === placeKey(p.name)) ? 1 : 2))
     .sort((a, b) => b.scenes.length - a.scenes.length || a.k - b.k)
     .slice(0, STORY_PLACE_MAX)
     .map(({ name, look, scenes }) => ({ name, look, scenes }));
