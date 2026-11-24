@@ -446,9 +446,12 @@ export async function previewFilmTreatment(opts: {
   /** NEXT EPISODE (film-series.ts): this story continues a series — the writer is told the series, the
    *  episode number and a quoted recap of the last episode. Story formats only; ignored for sung ones. */
   series?: SeriesBrief | null;
+  /** A CHARACTER'S SHOW (character-series.ts): the line the storyteller ends every episode on. */
+  signoff?: string;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const narrated = opts.mode === "narrated" && !tmpl.lipSyncSinger && !tmpl.sung;
+  const signoff = narrated ? String(opts.signoff || "").replace(/["“”]/g, "'").replace(/\s+/g, " ").trim().slice(0, 120) : "";
   // (a music video or a sing-along is never an episode)
   const series = !tmpl.lipSyncSinger && !tmpl.sung && opts.series ? opts.series : null;
   // a music video is never longer than two minutes, however short its scenes
@@ -610,6 +613,8 @@ export async function previewFilmTreatment(opts: {
       `• VISUAL — the ONE picture we see while that part is told, in at most 45 words: a single vivid, specific moment (${tmpl.sceneHint}) — who is in it, where, doing what, the light and the mood. Call every character who is IN the picture by their NAME exactly as in "cast" (never just "he", "she", "the creature" or "the clerk"); a picture nobody is in names nobody. Whoever a VISUAL names is DRAWN in it — so a place or thing that belongs to somebody who is NOT in the picture is called by what it is ("the cottage with the round green door"), never by their name ("Edda's cottage"). Anything that is seen in more than one picture (a kite, a car, a house, a toy) is described with the SAME few words every time, so it is drawn the same. A different moment every scene. It is ONE moment only — a picture cannot show two times: never "then", "until", "later" or a before-and-after in a VISUAL (three stories made on 2026-11-22: a scene written as two moments was drawn as two panels). A picture has the story's cast and at most ONE other person — never an extra "unnamed" figure beside two of the cast (the picture model then leaves one of the cast out). And nothing in it is WRITTEN: no sign with words, label, notice, number or name on a door — say what a thing looks like, never what it says.\n` +
       `• CAPTION — the NARRATOR'S words for that scene, written to be READ ALOUD: 2-3 sentences, about 25-35 words. Plain, vivid, concrete storytelling — no "NAME:" labels, no stage directions, no headings. The FIRST scene opens with a hook that makes a viewer stay. Each scene picks up exactly where the last one left off. The LAST scene lands the ending${tmpl.key === "moral" ? " and says the lesson in one clear closing line" : tmpl.key === "horror" ? " on the chilling twist — the last line should make the skin crawl" : ""}.\n` +
       `Read in order, the captions are the whole story, start to finish, in one voice.\n` +
+      // (a character's show ends every episode on the same line — the storyteller's very last words)
+      (signoff ? `THE SIGN-OFF: the last scene's CAPTION ends with exactly these words, after its own last sentence, changed in no way: "${signoff}"\n` : "") +
       // THE STORY'S PLACES (story-picture.ts): the first Horror Story made in one press had a ferry that was
       // a rowing boat, then a ship, then a ferry — each picture drew "the ferry" from the word. A place the
       // story comes back to is described ONCE, here, and drawn from one design sheet of it.

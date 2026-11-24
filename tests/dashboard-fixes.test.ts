@@ -73,7 +73,7 @@ test("2 · starting a channel closes the form, so the new card is what shows", (
     assert.match(src, /seriesCount\.current = series\.length;\n {2}\}, \[series\.length\]\);/, `${file}: runs when the list changes size`);
   }
   // what the closed form leaves on show
-  assert.ok(route("web.channels.tsx").includes('{t("First video rendering…")}'));
+  assert.ok(route("web.channels.tsx").includes('t("First video rendering…")'), "(a character's show says its first EPISODE is on its way: tests/character-series.test.ts)");
   assert.ok(route("web.product-channels.tsx").includes('{t("Making your first video…")}'));
 });
 

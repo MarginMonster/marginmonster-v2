@@ -41,6 +41,7 @@ import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.
 import { FRAMED_FIX, FRAMED_SIZE, framedIn, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_MODEL, castEntry, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
+import type { ShowMeta } from "./character-series";
 import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, presentIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -464,6 +465,10 @@ export async function generateNarratedStory(opts: {
   /** NEXT EPISODE (film-series.ts): the series this story continues — told to the writer when the story
    *  is written here, and stored on the asset as meta.series. */
   series?: SeriesBrief | null;
+  /** A CHARACTER'S SHOW (character-series.ts): the line every episode ends on, and which episode of which
+   *  show this is (kept on the piece as meta.show). */
+  signoff?: string;
+  show?: ShowMeta | null;
   /** TOLD AGAIN IN ANOTHER LANGUAGE (story-translate.ts): the language to tell it in — the narrator's
    *  voice, the timing and the words on screen all follow it. Unset = the shop's own content language. */
   lang?: string | null;
@@ -487,7 +492,7 @@ export async function generateNarratedStory(opts: {
   let treatment: FilmTreatment;
   if (resume.ckTreatment) treatment = JSON.parse(resume.ckTreatment);
   else if (opts.treatment && opts.treatment.scenes?.length) treatment = opts.treatment;
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, contentLang: lang, mode: "narrated", cast: (opts.cast || []).map((c) => ({ name: c.name, desc: c.look })), series: opts.series });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, contentLang: lang, mode: "narrated", cast: (opts.cast || []).map((c) => ({ name: c.name, desc: c.look })), ...(opts.signoff ? { signoff: opts.signoff } : {}), series: opts.series });
   // an episode is called "<Series> — Episode <N>", however its story was written
   if (opts.series) treatment.title = episodeTitle(opts.series.title, opts.series.episode, treatment.title);
   // The scenes it is told in, each with the picture the maker approved for it. On a RESTART both were
@@ -694,6 +699,8 @@ export async function generateNarratedStory(opts: {
         ...(readCastToken(storyCastRef).refs.length ? { castCards: readCastToken(storyCastRef).refs } : {}),
         // …and its PLACES: the design sheet each recurring place was drawn from (story-picture.ts)
         ...(readCastToken(storyCastRef).places.length ? { places: readCastToken(storyCastRef).places } : {}),
+        // A CHARACTER'S SHOW: which episode of whose show this is (character-series.ts)
+        ...(opts.show ? { show: opts.show } : {}),
         // what its timing was made from — for the operator alone (web.archive's loader)
         timing,
         // THE PICTURES MOVE: how many scenes do, what was asked for now (seconds = what was paid for), and

@@ -1026,6 +1026,9 @@ async function runJob(
             translatedFrom: typeof payload.filmTranslatedFrom === "string" ? payload.filmTranslatedFrom : undefined,
             // THE STORY'S OWN CAST as the storyboard drew it (story-picture.ts)
             castRef: typeof payload.filmCastRef === "string" ? payload.filmCastRef : undefined,
+            // A CHARACTER'S SHOW (character-series.ts): the line it ends on, and which episode this is
+            signoff: typeof payload.filmSignoff === "string" ? payload.filmSignoff : undefined,
+            show: (await import("./character-series")).showMeta(payload.filmShow),
             resume: {
               ckTreatment: (payload.ckTreatment as string | undefined) ?? (payload.approvedTreatment as string | undefined),
               ckApproved: payload.ckApproved as string | undefined,
@@ -1163,6 +1166,16 @@ async function runJob(
           });
         }
         await tagAssetSection(filmAssetId, payload.section as string | undefined, payload.__jobId as string | undefined);
+        // A CHARACTER'S SHOW: an episode a channel made is posted the way any channel's drop is (when the
+        // show is on auto-post). Non-fatal — the episode is in the Archive whether or not the post lands.
+        if (payload.seriesId && payload.seriesAutoPost) {
+          try {
+            const { postCreatorDrop } = await import("./creator-series.server");
+            await postCreatorDrop({ shopId, assetId: filmAssetId, seriesId: payload.seriesId as string, topic: (payload.seriesName as string | undefined) || undefined, platforms: payload.seriesPlatforms as string[] | undefined });
+          } catch (e) {
+            console.error("[series] an episode's auto-post failed (non-fatal):", e);
+          }
+        }
         try {
           await unlockAchievement(shopId, "FACELESS_FIRST");
           const takes = await db.asset.count({ where: { shopId, type: "VIDEO_AD" } });

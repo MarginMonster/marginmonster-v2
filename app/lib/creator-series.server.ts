@@ -10,7 +10,8 @@
 // thin scheduler + topic brain + a lean creator-flavoured poster on top.
 
 import { db } from "../db.server";
-import { TOKEN_COST } from "./plan-config";
+import { TOKEN_COST, estimateFilmTokens } from "./plan-config";
+import { SHOW_SCENES, episodeIdeaPrompt, episodeTopic, parseStar, showOf, signoffOf, tidyIdea, type Show, type ShowStar } from "./character-series";
 import { spendTokens, refundTokens, tokensRemainingLive } from "./tokens.server";
 import { enqueueJob } from "./job-queue.server";
 import { anthropicText } from "./anthropic.server";
@@ -74,6 +75,15 @@ export async function nextTopic(niche: string, format: string, recent: string[],
   }
 }
 
+/** One fresh premise for the next EPISODE of a character's show (character-series.ts) — never the same
+ *  as a recent one. On any failure it falls back to what the show is about, so an episode is never blocked
+ *  on the idea. */
+export async function nextEpisodeIdea(o: { seriesName: string; about: string; show: Show; star: ShowStar; recent: string[]; episode: number }, lang?: string | null): Promise<string> {
+  const fallback = o.about || o.show.line;
+  try { return tidyIdea(await anthropicText(`${episodeIdeaPrompt(o)}${langDirective(lang)}`, { maxTokens: 90 }), fallback); }
+  catch { return tidyIdea("", fallback); }
+}
+
 async function pause(id: string, reason: string): Promise<void> {
   try {
     await db.creatorSeries.update({ where: { id }, data: { status: "PAUSED", pauseReason: reason } });
@@ -120,7 +130,10 @@ export async function tickDueSeries(): Promise<void> {
 
         // Never burn tokens we don't have: a short wallet pauses the channel with
         // a clear reason instead of failing renders one by one.
-        if (tokensRemainingLive(shop.activePlan) < TOKEN_COST.faceless) { await pause(s.id, "out-of-tokens"); continue; }
+        // (a character's show makes a FILM an episode: it costs what a told story of that length costs —
+        //  nothing while films are free, and their price the day they have one)
+        const cost = s.sourceType === "character" ? estimateFilmTokens(SHOW_SCENES) : TOKEN_COST.faceless;
+        if (tokensRemainingLive(shop.activePlan) < cost) { await pause(s.id, "out-of-tokens"); continue; }
 
         // Auto-post needs somewhere to post. If the accounts went away, pause
         // rather than render videos that can't go out.
@@ -137,6 +150,8 @@ export async function tickDueSeries(): Promise<void> {
         let product: { title: string; imageUrl?: string; description?: string } | undefined;
         let productUrl: string | undefined;
         let nextCursor = s.productCursor;
+        let star: ShowStar | null = null;
+        let show: Show | null = null;
         // Product Channels are a MARKETING surface — their drops land in the
         // marketing Archive, not the creator Gallery.
         const section = s.sourceType === "product" ? "marketing" : "creator";
@@ -154,6 +169,12 @@ export async function tickDueSeries(): Promise<void> {
           topic = pick.title;
           product = { title: pick.title, imageUrl: pick.imageUrl || undefined, description: pick.description || undefined };
           productUrl = pick.url || undefined;
+        } else if (s.sourceType === "character") {
+          // A CHARACTER'S SHOW: the next episode's premise, for this star, unlike the recent ones
+          star = parseStar(s.characterJson);
+          show = showOf(s.format);
+          if (!star || !show) { await pause(s.id, "no-character"); continue; }
+          topic = await nextEpisodeIdea({ seriesName: s.name, about: s.niche, show, star, recent, episode: s.dropsMade + 1 }, shop.contentLang);
         } else {
           topic = await nextTopic(s.niche, s.format, recent, shop.contentLang);
         }
@@ -187,15 +208,33 @@ export async function tickDueSeries(): Promise<void> {
         // Spend at enqueue, like the Studio. A terminal render failure refunds
         // via refundPrepaidOnce (chargedTokens), same as a manual faceless.
         let fromExtra = 0;
-        try {
-          const r = await spendTokens(s.shopId, TOKEN_COST.faceless);
-          fromExtra = r.fromExtra;
-        } catch { await pause(s.id, "out-of-tokens"); continue; }
+        if (cost > 0) {
+          try {
+            const r = await spendTokens(s.shopId, cost);
+            fromExtra = r.fromExtra;
+          } catch { await pause(s.id, "out-of-tokens"); continue; }
+        }
 
         // Refund on enqueue failure — we've already spent and already claimed the
         // slot, so a throw here would strand the 30 tokens. Credit them back into
         // the SAME buckets (fromExtra split) and move on.
         try {
+          if (star && show) {
+            // AN EPISODE: a told story starring the character — drawn from their own picture, told in their
+            // own voice when they have one, ending on the show's sign-off; it keeps which episode it is
+            const signoff = signoffOf(s.signoff);
+            await enqueueJob(s.shopId, "GENERATE_VIDEO_AD", {
+              contentType: "film", filmTemplate: show.template, filmMode: "narrated", section,
+              filmTopic: episodeTopic({ idea: topic, seriesName: s.name, star }), filmScenes: SHOW_SCENES, filmCaptions: "bold", filmAspect: "9:16",
+              cast: [{ name: star.name, faceUrl: star.faceUrl, voiceId: null, kind: star.kind, look: star.look }],
+              ...(star.voiceId ? { filmNarrator: star.voiceId } : {}),
+              ...(signoff ? { filmSignoff: signoff } : {}),
+              filmShow: { id: s.id, name: s.name, episode: s.dropsMade + 1, star: star.name },
+              ...(cost > 0 ? { prePaid: true, chargedTokens: cost, chargedFromExtra: fromExtra } : {}),
+              seriesId: s.id, seriesName: s.name, seriesAutoPost: s.autoPost, seriesPlatforms: wantPlatforms,
+              initiator: "character-series",
+            });
+          } else {
           await enqueueJob(s.shopId, "GENERATE_VIDEO_AD", {
             contentType: "faceless", topic, facelessFormat: s.format, voiceKey: s.voiceKey,
             section, prePaid: true, chargedTokens: TOKEN_COST.faceless, chargedFromExtra: fromExtra,
@@ -203,8 +242,9 @@ export async function tickDueSeries(): Promise<void> {
             ...(product ? { product, seriesProductUrl: productUrl } : {}),
             initiator: s.sourceType === "product" ? "product-channel" : "series",
           });
+          }
         } catch (e) {
-          await refundTokens(s.shopId, TOKEN_COST.faceless, fromExtra);
+          if (cost > 0) await refundTokens(s.shopId, cost, fromExtra);
           // The claim already bumped dropsMade (+1) assuming this drop would land
           // in the Gallery. The enqueue just failed and we've refunded, so no
           // video will ever exist — roll the count back so the Channels card

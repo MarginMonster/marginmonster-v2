@@ -525,6 +525,10 @@ model CreatorSeries {
   dropsPosted      Int       @default(0)
   lastRunAt        DateTime?
   nextRunAt        DateTime? // when the next drop should generate + post
+  // A CHARACTER'S SHOW (sourceType "character" — lib/character-series.ts): its star (who, their picture,
+  // what they are, their voice) and the line every episode ends on. format = the show's key.
+  characterJson    String?
+  signoff          String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

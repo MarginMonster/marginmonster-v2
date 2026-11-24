@@ -19,6 +19,22 @@ import { shopVoiceClones } from "../lib/voice-clone.server";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
+// (2026-11-24) A CHARACTER'S SHOW: a channel whose every drop is an episode starring one of the cast
+import { CHARACTER_SERIES_MAX, SHOWS, SHOW_CADENCES, parseStar, showOf, signoffOf } from "../lib/character-series";
+import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
+import { isAdminEmail } from "../lib/admin.server";
+
+/** Who can star in a show: the shop's own characters and presenters first, then the stock characters, then
+ *  the stock presenters — each as the cast has them (their picture, what they are, their voice). */
+async function showRoster(shopId: string): Promise<Array<{ id: string; name: string; img: string; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null }>> {
+  const { customCastFor, stockVoicesFor } = await import("../lib/custom-avatars.server");
+  const [custom, stockVoice] = await Promise.all([customCastFor(shopId), stockVoicesFor(shopId)]);
+  return [
+    ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img as string, kind: (c.kind || "person") as "person" | "cartoon" | "monster", look: (c.desc || "").slice(0, 220), voiceId: c.voiceId || null })),
+    ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), kind: (a.kind || "person") as "person" | "cartoon" | "monster", look: (a.desc || "").slice(0, 220), voiceId: stockVoice[a.id] || a.voiceId || null })),
+    ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), kind: "person" as const, look: (a.desc || "").slice(0, 220), voiceId: stockVoice[a.id] || null })),
+  ].slice(0, 80);
+}
 
 export const meta = ({ matches }: { matches: Array<{ id: string; data: unknown }> }) => {
   const uiLang = (matches.find((m) => m.id === "root")?.data as { uiLang?: string } | null)?.uiLang;
@@ -31,6 +47,11 @@ const PLAT_LABEL: Record<string, string> = Object.fromEntries(VIDEO_PLATFORMS.ma
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { account, shop } = await requireWebIdentity(request);
+  // CHARACTER SHOWS — a third kind of channel. Open to the owner's own account until it has a price (an
+  // episode is a film, and films are free today): everyone else sees the page as it was.
+  const url = new URL(request.url);
+  const showsOpen = isAdminEmail(account.email);
+  const kind: "show" | "vibe" = showsOpen && url.searchParams.get("kind") === "show" ? "show" : "vibe";
 
   let canUse = false;
   if (shop.activePlan) {
@@ -49,12 +70,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     orderBy: { createdAt: "desc" },
     take: 24,
   });
-  const series = rows.map((s) => {
+  const series = rows.filter((s) => (s.sourceType === "character") === (kind === "show")).map((s) => {
     const cad = cadenceOf(s.cadence);
+    const star = s.sourceType === "character" ? parseStar(s.characterJson) : null;
     return {
       id: s.id,
       name: s.name,
       niche: s.niche,
+      // a character's show: who stars, and what kind of show it is
+      star: star ? { name: star.name, img: star.faceUrl } : null,
+      showName: s.sourceType === "character" ? (showOf(s.format)?.name || "") : "",
+      signoff: s.sourceType === "character" ? (s.signoff || "") : "",
       format: s.format,
       voiceKey: s.voiceKey,
       cadence: s.cadence,
@@ -77,14 +103,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     providerOn,
     linked,
     series,
-    cadences: Object.entries(CADENCE).map(([key, v]) => ({ key, label: v.label, perWeek: v.perWeek })),
+    cadences: Object.entries(CADENCE).filter(([key]) => kind !== "show" || SHOW_CADENCES.includes(key)).map(([key, v]) => ({ key, label: v.label, perWeek: v.perWeek })),
+    kind, showsOpen,
+    shows: SHOWS.map((s) => ({ key: s.key, name: s.name, line: s.line })),
+    roster: kind === "show" ? (await showRoster(shop.id)).map((r) => ({ id: r.id, name: r.name, img: r.img, kind: r.kind })) : [],
+    starId: (url.searchParams.get("star") || "").slice(0, 80),
+    showsMax: CHARACTER_SERIES_MAX,
     // the shop's own recorded voices — offered as narrators next to the stock four
     myVoices: (await shopVoiceClones(shop.id)).map((v) => ({ id: v.id, voiceId: v.voiceId, label: v.label, preview: v.preview })),
   });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { shop } = await requireWebIdentity(request);
+  const { account, shop } = await requireWebIdentity(request);
   const lang = readUiLang(request);
   const form = await request.formData();
   const intent = (form.get("intent") as string) || "";
@@ -116,6 +147,48 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     // "Legend", not "Anthem": Anthem is only the tier's internal key — the plans page sells Starter, Studio and Legend.
     if (!canUse) return json({ error: tr(lang, "Channels need a plan with video — upgrade to Studio or Legend.") }, { status: 400 });
+
+    // A CHARACTER'S SHOW (lib/character-series.ts): who stars is looked up in THIS shop's own cast — the
+    // page sends only an id — and a show starts on the next tick like any channel.
+    if (((form.get("kind") as string) || "") === "show") {
+      if (!isAdminEmail(account.email)) return json({ error: tr(lang, "Character shows are not open yet.") }, { status: 403 });
+      const show = showOf(((form.get("show") as string) || "").trim());
+      const pick = (await showRoster(shop.id)).find((r) => r.id === ((form.get("star") as string) || "").trim());
+      const star = pick ? parseStar({ id: pick.id, name: pick.name, faceUrl: pick.img, kind: pick.kind, look: pick.look, voiceId: pick.voiceId }) : null;
+      if (!star) return json({ error: tr(lang, "Pick who stars in the show.") }, { status: 400 });
+      if (!show) return json({ error: tr(lang, "Pick what kind of show it is.") }, { status: 400 });
+      const showCadence = ((form.get("cadence") as string) || "3x_week").trim();
+      if (!SHOW_CADENCES.includes(showCadence)) return json({ error: tr(lang, "Pick a posting cadence.") }, { status: 400 });
+      const running = await db.creatorSeries.count({ where: { shopId: shop.id, sourceType: "character", status: "ACTIVE" } });
+      if (running >= CHARACTER_SERIES_MAX) return json({ error: tr(lang, "That is as many shows as can run at once — pause or end one first.") }, { status: 400 });
+      const showAuto = (form.get("autoPost") as string) === "1";
+      const showPlats = ((form.get("platforms") as string) || "").split(",").map((s) => s.trim()).filter((p) => (SOCIAL as readonly string[]).includes(p));
+      if (showAuto) {
+        const linkedNow = socialProviderEnabled() ? linkedFromCache(shop.socialsJson).filter((p) => (SOCIAL as readonly string[]).includes(p)) : [];
+        const targets = showPlats.length ? showPlats.filter((p) => linkedNow.includes(p)) : linkedNow;
+        if (targets.length === 0) return json({ error: tr(lang, "Connect a social account first (or switch to “Let me approve each one”).") }, { status: 400 });
+      }
+      const about = ((form.get("niche") as string) || "").replace(/\s+/g, " ").trim().slice(0, 160);
+      const showTitle = ((form.get("name") as string) || "").replace(/\s+/g, " ").trim().slice(0, 60);
+      await db.creatorSeries.create({
+        data: {
+          shopId: shop.id,
+          name: showTitle || `${star.name}: ${show.name}`.slice(0, 60),
+          niche: about || show.line,
+          sourceType: "character",
+          format: show.key,
+          characterJson: JSON.stringify(star),
+          signoff: signoffOf(form.get("signoff")) || null,
+          cadence: showCadence,
+          platformsJson: JSON.stringify(showPlats),
+          autoPost: showAuto,
+          status: "ACTIVE",
+          // (the first episode starts on the next worker tick, like any channel's first drop)
+          nextRunAt: new Date(Date.now() + 60_000),
+        },
+      });
+      return redirect("/web/channels?kind=show");
+    }
 
     const name = ((form.get("name") as string) || "").trim().slice(0, 60);
     const niche = ((form.get("niche") as string) || "").trim().slice(0, 160);
@@ -187,7 +260,8 @@ type Series = ReturnType<typeof useLoaderData<typeof loader>>["series"][number];
 
 export default function Channels() {
   const t = useT();
-  const { name, tokens, facelessCost, canUse, linked, series, cadences, myVoices } = useLoaderData<typeof loader>();
+  const { name, tokens, facelessCost, canUse, linked, series, cadences, myVoices, kind, showsOpen, shows, roster, starId, showsMax } = useLoaderData<typeof loader>();
+  const isShow = kind === "show";
   const actionData = useActionData<typeof action>() as { error?: string } | undefined;
   const nav = useNavigation();
   const creating = nav.state !== "idle" && nav.formData?.get("intent") === "create";
@@ -209,16 +283,20 @@ export default function Channels() {
 
       <div className="ch-srcswitch" role="group" aria-label={t("Channel source")}>
         <Link to="/web/product-channels" className="ch-src">{t("My products")}</Link>
-        <Link to="/web/channels" className="ch-src sel" aria-current="page">{t("Trending topics")}</Link>
+        <Link to="/web/channels" className={`ch-src${isShow ? "" : " sel"}`} aria-current={isShow ? undefined : "page"}>{t("Trending topics")}</Link>
+        {/* A CHARACTER'S SHOW — a channel whose every drop is an episode starring one of the cast */}
+        {showsOpen && <Link to="/web/channels?kind=show" className={`ch-src${isShow ? " sel" : ""}`} aria-current={isShow ? "page" : undefined}>{t("Character shows")}</Link>}
       </div>
 
       <header className="ch-head">
         <div>
-          <h1 className="ch-title">{t("Channels")}</h1>
-          <p className="ch-sub">{t("Put your content on autopilot — we write, voice & post a fresh video on repeat.")}{" "}<span className="ch-accent">{t("Hands off.")}</span></p>
+          <h1 className="ch-title">{isShow ? t("Character shows") : t("Channels")}</h1>
+          {isShow
+            ? <p className="ch-sub">{t("Give a character a show of their own — a new episode on repeat, starring them, told in their voice.")}{" "}<span className="ch-accent">{t("Hands off.")}</span></p>
+            : <p className="ch-sub">{t("Put your content on autopilot — we write, voice & post a fresh video on repeat.")}{" "}<span className="ch-accent">{t("Hands off.")}</span></p>}
         </div>
         {series.length > 0 && canUse && (
-          <button className="ch-newbtn" onClick={() => setShowForm((v) => !v)}>{showForm ? t("Close") : <><span className="ch-plus" aria-hidden="true">+</span> {t("New channel")}</>}</button>
+          <button className="ch-newbtn" onClick={() => setShowForm((v) => !v)}>{showForm ? t("Close") : <><span className="ch-plus" aria-hidden="true">+</span> {isShow ? t("New show") : t("New channel")}</>}</button>
         )}
       </header>
 
@@ -234,18 +312,22 @@ export default function Channels() {
         </div>
       )}
 
-      {canUse && showForm && (
+      {canUse && showForm && isShow && (
+        <ShowForm roster={roster} shows={shows} starId={starId} linked={linked} cadences={cadences} running={series.filter((s) => s.status === "ACTIVE").length} max={showsMax} error={actionData?.error} creating={creating} onCancel={series.length ? () => setShowForm(false) : undefined} />
+      )}
+      {canUse && showForm && !isShow && (
         <SetupForm linked={linked} tokens={tokens} facelessCost={facelessCost} cadences={cadences} myVoices={myVoices} error={actionData?.error} creating={creating} onCancel={series.length ? () => setShowForm(false) : undefined} />
       )}
 
       {series.length > 0 && (
         <div className="ch-grid">
-          {series.map((s) => <ChannelCard key={s.id} s={s} tokens={tokens} facelessCost={facelessCost} />)}
+          {/* (an episode of a show costs what a told story costs — nothing while films are free) */}
+          {series.map((s) => <ChannelCard key={s.id} s={s} tokens={tokens} facelessCost={s.star ? 0 : facelessCost} />)}
         </div>
       )}
 
       {canUse && series.length === 0 && !showForm && (
-        <div className="ch-empty">{t("No channels yet —")} <button className="ch-link" onClick={() => setShowForm(true)}>{t("start one")}</button>.</div>
+        <div className="ch-empty">{isShow ? t("No shows yet —") : t("No channels yet —")} <button className="ch-link" onClick={() => setShowForm(true)}>{t("start one")}</button>.</div>
       )}
     </div>
   );
@@ -374,6 +456,126 @@ function SetupForm({ linked, tokens, facelessCost, cadences, myVoices, error, cr
   );
 }
 
+/* A CHARACTER'S SHOW — its setup. Five small decisions, in the order a person would say them: who stars,
+ * what kind of show, what it is about, the line it always ends on, how often. It starts in "approve"
+ * mode: the first episodes are looked at before anything is posted. */
+function ShowForm({ roster, shows, starId, linked, cadences, running, max, error, creating, onCancel }: {
+  roster: Array<{ id: string; name: string; img: string; kind: string }>;
+  shows: Array<{ key: string; name: string; line: string }>;
+  starId: string; linked: string[];
+  cadences: { key: string; label: string; perWeek: number }[];
+  running: number; max: number;
+  error?: string; creating: boolean; onCancel?: () => void;
+}) {
+  const t = useT();
+  const [star, setStar] = useState(roster.some((r) => r.id === starId) ? starId : "");
+  const [show, setShow] = useState(shows[0]?.key || "");
+  const [about, setAbout] = useState("");
+  const [name, setName] = useState("");
+  const [signoff, setSignoff] = useState("");
+  const [cadence, setCadence] = useState("3x_week");
+  const [plats, setPlats] = useState<string[]>(linked);
+  const [autoPost, setAutoPost] = useState(false);
+  const who = roster.find((r) => r.id === star);
+  const kindOf = shows.find((s) => s.key === show);
+  const autoName = who && kindOf ? `${who.name}: ${t(kindOf.name)}` : "";
+  const perWeek = cadences.find((c) => c.key === cadence)?.perWeek || 3;
+  const full = running >= max;
+  const togglePlat = (p: string) => setPlats((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]));
+  const disabled = creating || !who || !kindOf || full || (autoPost && plats.length === 0);
+  return (
+    <Form method="post" className="ch-setup">
+      <input type="hidden" name="intent" value="create" />
+      <input type="hidden" name="kind" value="show" />
+      <input type="hidden" name="star" value={star} />
+      <input type="hidden" name="show" value={show} />
+      <input type="hidden" name="cadence" value={cadence} />
+      <input type="hidden" name="platforms" value={plats.join(",")} />
+      <input type="hidden" name="autoPost" value={autoPost ? "1" : "0"} />
+      <input type="hidden" name="name" value={name || autoName} />
+
+      <div className="ch-setup-head">
+        <span className="ch-spark"><Ico n="sparkle" size={18} /></span> {t("Start a show")}
+        {onCancel && <button type="button" className="ch-x" onClick={onCancel} aria-label={t("Close")}><Ico n="x" size={16} /></button>}
+      </div>
+
+      <label className="ch-lbl">{t("Who stars?")}</label>
+      <div className="ch-stars" role="listbox" aria-label={t("Who stars?")}>
+        {roster.map((r) => (
+          <button type="button" key={r.id} role="option" aria-selected={star === r.id} className={`ch-star${star === r.id ? " sel" : ""}`} onClick={() => setStar(r.id)} title={r.name}>
+            <img src={r.img} alt="" loading="lazy" />
+            <span>{r.name}</span>
+          </button>
+        ))}
+      </div>
+
+      <label className="ch-lbl">{t("What kind of show?")}</label>
+      <div className="ch-cads">
+        {shows.map((s) => (
+          <button type="button" key={s.key} className={`ch-cad${show === s.key ? " sel" : ""}`} onClick={() => setShow(s.key)}>
+            <b>{t(s.name)}</b>
+            <span>{t(s.line)}</span>
+          </button>
+        ))}
+      </div>
+
+      <label className="ch-lbl">{t("What's it about?")} <span className="ch-opt">{t("(optional)")}</span></label>
+      <input className="ch-field" name="niche" placeholder={t("e.g. things nobody teaches you about money")} value={about} maxLength={160} onChange={(e) => setAbout(e.target.value)} />
+
+      <div className="ch-row2">
+        <div>
+          <label className="ch-lbl">{t("Show name")} <span className="ch-opt">{t("(optional)")}</span></label>
+          <input className="ch-field" placeholder={autoName || t("Howl: Night tales")} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div>
+          <label className="ch-lbl">{t("The line every episode ends on")} <span className="ch-opt">{t("(optional)")}</span></label>
+          <input className="ch-field" name="signoff" placeholder={t("e.g. Stay quiet. Stay sharp.")} value={signoff} maxLength={120} onChange={(e) => setSignoff(e.target.value)} />
+        </div>
+      </div>
+
+      <label className="ch-lbl">{t("How often?")}</label>
+      <div className="ch-cads">
+        {cadences.map((c) => (
+          <button type="button" key={c.key} className={`ch-cad${cadence === c.key ? " sel" : ""}`} onClick={() => setCadence(c.key)}>
+            <b>{t(c.label)}</b>
+            <span>{t("{n} episodes/week", { n: c.perWeek })}</span>
+          </button>
+        ))}
+      </div>
+
+      <label className="ch-lbl">{t("Posting")}</label>
+      <div className="ch-modes">
+        <button type="button" className={`ch-mode${!autoPost ? " sel" : ""}`} onClick={() => setAutoPost(false)}>
+          <b><Ico n="eye" /> {t("Let me approve each one")}</b><span>{t("Episodes wait in your Archive — you post with one tap.")}</span>
+        </button>
+        <button type="button" className={`ch-mode${autoPost ? " sel" : ""}`} disabled={linked.length === 0} onClick={() => setAutoPost(true)}>
+          <b><Ico n="sparkle" /> {t("Post automatically")}</b><span>{t("Each episode goes straight to your socials.")}</span>
+        </button>
+      </div>
+      {autoPost && linked.length > 0 && (
+        <div className="ch-chips">
+          {linked.map((p) => <button type="button" key={p} className={`ch-chip plat${plats.includes(p) ? " on" : ""}`} onClick={() => togglePlat(p)}>{plats.includes(p) && <Ico n="check" size={13} className="ch-chip-chk" />}{PLAT_LABEL[p]}</button>)}
+        </div>
+      )}
+
+      <div className="ch-summary">
+        <span><b>{perWeek}</b> {t("episodes/week")} · {t("about a minute each")}</span>
+        <span className="ch-bal">{t("Free while films are free")}</span>
+      </div>
+
+      {error && <div className="ch-err">{error}</div>}
+      {full && <div className="ch-err">{t("That is as many shows as can run at once — pause or end one first.")}</div>}
+      {!who && <div className="ch-hint">{t("Pick who stars in the show.")}</div>}
+      {autoPost && plats.length === 0 && <div className="ch-hint">{t("Connect a social account first (or switch to “Let me approve each one”).")}</div>}
+
+      <button className="ch-go" type="submit" disabled={disabled}>
+        <span className="ch-go-flower" aria-hidden="true" />
+        {creating ? t("Starting…") : <>{t("Start the show")} <Ico n="rocket" /></>}
+      </button>
+    </Form>
+  );
+}
+
 /* Voice picker with a ▶ that plays the real pre-rendered sample (free, instant)
  * so a merchant HEARS the voice before committing to weeks of it — this is a
  * channel that'll speak in this voice on repeat. Same /voice-samples/*.mp3 the
@@ -485,9 +687,11 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
   return (
     <div className={`ch-card${paused ? " paused" : ""}`}>
       <div className="ch-card-top">
-        <div>
+        {s.star && <img className="ch-card-star" src={s.star.img} alt={s.star.name} loading="lazy" />}
+        <div className="ch-card-who">
           <div className="ch-card-name">{s.name}</div>
-          <div className="ch-card-niche">{t(fmtLabel)} · {s.niche}</div>
+          <div className="ch-card-niche">{s.star ? <>{t(s.showName)} · {s.niche}</> : <>{t(fmtLabel)} · {s.niche}</>}</div>
+          {s.star && s.signoff ? <div className="ch-card-sign">“{s.signoff}”</div> : null}
         </div>
         <span className={`ch-badge ${s.status === "ACTIVE" ? "live" : "off"}`}>{s.status === "ACTIVE" ? <><span className="ch-run-dot" aria-hidden="true" /> {t("Running")}</> : <><span className="ch-pause-bars" aria-hidden="true" /> {t("Paused")}</>}</span>
       </div>
@@ -499,7 +703,7 @@ function ChannelCard({ s, tokens, facelessCost }: { s: Series; tokens: number; f
       </div>
 
       {freshDrop ? (
-        <div className="ch-next rendering"><span className="ch-next-dot" /> {t("First video rendering…")}</div>
+        <div className="ch-next rendering"><span className="ch-next-dot" /> {s.star ? t("First episode on its way…") : t("First video rendering…")}</div>
       ) : s.status === "ACTIVE" ? (
         <div className="ch-next"><span className="ch-next-dot" /> {t("Next drop")} {relTime(s.nextRunAt, t) || t("any minute now")}</div>
       ) : null}
@@ -542,7 +746,18 @@ const CH_CSS = `
 .ch{--l:#E7E2D2;--ink:#14201A;--ink2:#5B6B61;--ink3:#8A968E;--g:#0C7A46;--g2:#12A85E;--paper:#FFFDF7;
   --sh-sm:0 1px 2px rgba(20,32,26,.05);--sh-md:0 2px 6px rgba(20,32,26,.05),0 14px 34px -14px rgba(20,32,26,.16);
   max-width:none;margin:0 auto;padding:14px 16px 64px;font-family:Poppins,sans-serif;color:var(--ink);}
-.ch-srcswitch{display:inline-flex;gap:4px;background:#fff;border:1px solid #E2DCC8;border-radius:999px;padding:4px;margin:0 0 16px;}
+.ch-srcswitch{display:inline-flex;flex-wrap:wrap;gap:4px;background:#fff;border:1px solid #E2DCC8;border-radius:22px;padding:4px;margin:0 0 16px;max-width:100%;}
+/* A CHARACTER'S SHOW: the row its star is picked from, and the star's face on the show's card */
+.ch-stars{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
+.ch-star{flex:0 0 76px;width:76px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:5px 3px 6px;border:2px solid transparent;border-radius:16px;background:none;font:inherit;color:inherit;cursor:pointer;scroll-snap-align:start;}
+.ch-star img{width:60px;height:60px;border-radius:50%;object-fit:cover;object-position:center top;background:#EDE9DF;box-shadow:0 0 0 1px var(--l);}
+.ch-star span{max-width:100%;font-size:11.5px;font-weight:700;line-height:1.2;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ch-star.sel{border-color:var(--g);background:#F0F8F3;}
+.ch-star.sel img{box-shadow:0 0 0 2px var(--g);}
+.ch-star:focus-visible{outline:3px solid rgba(12,122,70,.35);outline-offset:2px;}
+.ch-card-star{flex:0 0 auto;width:48px;height:48px;border-radius:50%;object-fit:cover;object-position:center top;background:#EDE9DF;box-shadow:0 0 0 2px #fff,0 0 0 3px var(--l);margin-right:2px;}
+.ch-card-who{flex:1 1 auto;min-width:0;}
+.ch-card-sign{margin-top:3px;font-size:12px;font-weight:600;font-style:italic;color:var(--ink2);overflow-wrap:anywhere;}
 .ch-src{min-height:44px;display:inline-flex;align-items:center;padding:0 16px;border-radius:999px;font:inherit;font-weight:700;font-size:13px;color:#5B6B61;text-decoration:none;cursor:pointer;border:0;background:none;}
 .ch-src.sel{background:linear-gradient(165deg,#12A85E,#0B6B3E);color:#fff;}
 .ch-src:not(.sel):hover{color:#0C7A46;}
