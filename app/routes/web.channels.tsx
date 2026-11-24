@@ -21,17 +21,26 @@ import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 // (2026-11-24) A CHARACTER'S SHOW: a channel whose every drop is an episode starring one of the cast
 import { CHARACTER_SERIES_MAX, SHOWS, SHOW_CADENCES, episodesByShow, parseStar, showMetaNeedle, showOf, signoffOf, type ShowEpisode } from "../lib/character-series";
-import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg } from "../lib/avatars";
+import { LIVE_AVATARS, STOCK_CHARACTERS, avatarImg, styleId } from "../lib/avatars";
 import { isAdminEmail } from "../lib/admin.server";
 
 /** Who can star in a show: the shop's own characters and presenters first, then the stock characters, then
  *  the stock presenters — each as the cast has them (their picture, what they are, their voice). */
-async function showRoster(shopId: string): Promise<Array<{ id: string; name: string; img: string; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null }>> {
+async function showRoster(shopId: string): Promise<Array<{ id: string; name: string; /** which STYLE of the character this is ("Film") */ tag?: string; img: string; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null }>> {
   const { customCastFor, stockVoicesFor } = await import("../lib/custom-avatars.server");
   const [custom, stockVoice] = await Promise.all([customCastFor(shopId), stockVoicesFor(shopId)]);
   return [
     ...custom.filter((c) => !!c.img && c.status !== "failed").map((c) => ({ id: c.id, name: c.name, img: c.img as string, kind: (c.kind || "person") as "person" | "cartoon" | "monster", look: (c.desc || "").slice(0, 220), voiceId: c.voiceId || null })),
-    ...STOCK_CHARACTERS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), kind: (a.kind || "person") as "person" | "cartoon" | "monster", look: (a.desc || "").slice(0, 220), voiceId: stockVoice[a.id] || a.voiceId || null })),
+    // (…and each of a stock character's other STYLES right after it — the same somebody, the same voice,
+    //  its own picture and words: avatars.ts → AvatarStyle)
+    ...STOCK_CHARACTERS.flatMap((a) => {
+      const kind = (a.kind || "person") as "person" | "cartoon" | "monster";
+      const voiceId = stockVoice[a.id] || a.voiceId || null;
+      return [
+        { id: a.id, name: a.name, img: avatarImg(a.id, 0), kind, look: (a.desc || "").slice(0, 220), voiceId },
+        ...(a.styles || []).map((st) => ({ id: styleId(a.id, st.key), name: a.name, tag: st.label, img: st.img, kind, look: (st.desc || "").slice(0, 220), voiceId })),
+      ];
+    }),
     ...LIVE_AVATARS.map((a) => ({ id: a.id, name: a.name, img: avatarImg(a.id, 0), kind: "person" as const, look: (a.desc || "").slice(0, 220), voiceId: stockVoice[a.id] || null })),
   ].slice(0, 80);
 }
@@ -123,7 +132,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     cadences: Object.entries(CADENCE).filter(([key]) => kind !== "show" || SHOW_CADENCES.includes(key)).map(([key, v]) => ({ key, label: v.label, perWeek: v.perWeek })),
     kind, showsOpen,
     shows: SHOWS.map((s) => ({ key: s.key, name: s.name, line: s.line })),
-    roster: kind === "show" ? (await showRoster(shop.id)).map((r) => ({ id: r.id, name: r.name, img: r.img, kind: r.kind })) : [],
+    roster: kind === "show" ? (await showRoster(shop.id)).map((r) => ({ id: r.id, name: r.name, tag: r.tag || "", img: r.img, kind: r.kind })) : [],
     starId: (url.searchParams.get("star") || "").slice(0, 80),
     showsMax: CHARACTER_SERIES_MAX,
     // the shop's own recorded voices — offered as narrators next to the stock four
@@ -479,7 +488,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, myVoices, error, cr
  * what kind of show, what it is about, the line it always ends on, how often. It starts in "approve"
  * mode: the first episodes are looked at before anything is posted. */
 function ShowForm({ roster, shows, starId, linked, cadences, running, max, error, creating, onCancel }: {
-  roster: Array<{ id: string; name: string; img: string; kind: string }>;
+  roster: Array<{ id: string; name: string; tag?: string; img: string; kind: string }>;
   shows: Array<{ key: string; name: string; line: string }>;
   starId: string; linked: string[];
   cadences: { key: string; label: string; perWeek: number }[];
@@ -531,7 +540,7 @@ function ShowForm({ roster, shows, starId, linked, cadences, running, max, error
         {roster.map((r) => (
           <button type="button" key={r.id} role="option" aria-selected={star === r.id} className={`ch-star${star === r.id ? " sel" : ""}`} onClick={() => setStar(r.id)} title={r.name}>
             <img src={r.img} alt="" loading="lazy" />
-            <span>{r.name}</span>
+            <span>{r.name}{r.tag ? <> · {t(r.tag)}</> : null}</span>
           </button>
         ))}
       </div>

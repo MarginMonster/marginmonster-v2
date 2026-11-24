@@ -292,7 +292,8 @@ test("a character's own page lists their shows and offers another — for whoeve
   assert.ok(page.includes("const showsOpen = isAdminEmail(account.email);"), "the same gate as the Channels tab");
   assert.ok(page.includes("where: { shopId: shop.id, sourceType: \"character\", status: { not: \"ENDED\" } },"), "this shop's own, and none that ended");
   assert.ok(page.includes("if (showsOpen) {\n    try {\n      const rows = await db.creatorSeries.findMany({"), "nothing is read for anyone else");
-  assert.ok(page.includes("(showsBy[star.id] ||= []).push({ id: r.id, name: r.name, kind: showOf(r.format)?.name || \"\", running: r.status === \"ACTIVE\", made: r.dropsMade });"));
+  // (a show that stars a STYLE of a character — "howl~film" — is listed on that character's page: tests/stock-styles.test.ts)
+  assert.ok(page.includes("(showsBy[baseAvatarId(star.id)] ||= []).push({ id: r.id, name: r.name, kind: showOf(r.format)?.name || \"\", running: r.status === \"ACTIVE\", made: r.dropsMade });"));
   assert.ok(page.includes("shows={(d.showsBy as Record<string, ShowRow[]>)[open.id] || []}"));
   const view = page.slice(page.indexOf("function CharacterView("), page.indexOf("const PH_STYLE = `"));
   assert.ok(view.includes("{showsOpen && (\n            <section className=\"pc-sec\">\n              <h3 className=\"pc-h\"><Ico n=\"filmreel\" size={13} /> {t(\"Shows\")}</h3>"));

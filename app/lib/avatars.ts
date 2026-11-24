@@ -16,7 +16,15 @@ export type Energy = "hype" | "warm" | "calm";
  *  monsters for the horror ones — so nothing may assume a member of the cast is a human being. */
 export type CharacterKind = "person" | "cartoon" | "monster";
 
+/** ANOTHER STYLE of the same stock character — the same somebody, made another way (a cartoon's film look,
+ *  a creature photographed instead of rendered). It has its own picture and its own words, is shown as one
+ *  more look on the character's page, and can be cast in place of the first. Never a replacement: the
+ *  owner asked that the original "should still be a selectable style". */
+export type AvatarStyle = { key: string; label: string; img: string; desc: string; continuity?: string };
+
 export type Avatar = {
+  /** other styles of this same character (stock characters only) */
+  styles?: AvatarStyle[];
   id: string;
   name: string;
   vibe: string; // short label under the name
@@ -151,6 +159,7 @@ export function privateCastFor(...identities: (string | null | undefined)[]): Av
 
 // The stock characters (cartoon characters, monsters) live in their own file — see there.
 export { STOCK_CHARACTERS };
+export { FIRST_STYLE_LABEL, STYLE_SEP, baseAvatarId, styleId } from "./stock-characters";
 
 /* Lookups include the private cast and the stock characters — generation pipelines
  * resolve by id after the picker has already enforced visibility. */

@@ -7,7 +7,7 @@ import { useT } from "../lib/ui-lang";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { db } from "../db.server";
 import { requireWebIdentity } from "../lib/web-auth.server";
-import { LIVE_AVATARS, STOCK_CHARACTERS, OUTFITS, avatarImg, DESIGNED_VOICES, privateCastFor, type Avatar, type CharacterKind } from "../lib/avatars";
+import { LIVE_AVATARS, STOCK_CHARACTERS, OUTFITS, FIRST_STYLE_LABEL, avatarImg, baseAvatarId, DESIGNED_VOICES, privateCastFor, type Avatar, type CharacterKind } from "../lib/avatars";
 import { AVATAR_VOICES, DEFAULT_AVATAR_VOICE } from "../lib/avatar-voice-catalog";
 import { TOKEN_COST } from "../lib/plan-config";
 import { stockSpin, stockCut, stockLooks, customSpin, customCut, spinFrame, type Spin } from "../lib/presenter-kits";
@@ -118,8 +118,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const cut = stockCut(a.id, 0);
     // one portrait for most of the live cast today; a presenter with all four outfits shows all four
     const looks: Look[] = Array.from({ length: Math.min(OUTFITS.length, stockLooks(a.id)) }, (_, v) => ({
-      label: OUTFITS[v].label, img: avatarImg(a.id, v), cut: stockCut(a.id, v), spin: stockSpin(a.id, v), spinState: "none",
+      // (a character with STYLES calls its first look "Classic" — "Casual" is an outfit, and a werewolf has none)
+      label: a.styles?.length && v === 0 ? FIRST_STYLE_LABEL : OUTFITS[v].label, img: avatarImg(a.id, v), cut: stockCut(a.id, v), spin: stockSpin(a.id, v), spinState: "none",
     }));
+    // ANOTHER STYLE of the same character (avatars.ts → AvatarStyle) stands after its looks: its own picture,
+    // shown as it was made (no cut-out, no 3D view)
+    for (const st of a.styles || []) looks.push({ label: st.label, img: st.img, cut: null, spin: null, spinState: "none" });
     return {
       id: a.id, rowId: "", name: a.name, custom: false, kind: a.kind || "person",
       vibe: a.vibe, about: sentence(a.desc), gender: a.gender, age: ageText(a), energy: a.energy,
@@ -168,7 +172,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       for (const r of rows) {
         const star = parseStar(r.characterJson);
         if (!star?.id) continue;
-        (showsBy[star.id] ||= []).push({ id: r.id, name: r.name, kind: showOf(r.format)?.name || "", running: r.status === "ACTIVE", made: r.dropsMade });
+        (showsBy[baseAvatarId(star.id)] ||= []).push({ id: r.id, name: r.name, kind: showOf(r.format)?.name || "", running: r.status === "ACTIVE", made: r.dropsMade });
       }
     } catch (e) { console.error(`[presenters] the cast's shows could not be read (the page shows without them): ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   }

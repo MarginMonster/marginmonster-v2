@@ -1,5 +1,15 @@
 import type { Avatar } from "./avatars";
 
+/* A CHARACTER'S STYLES (avatars.ts → AvatarStyle): the same somebody, made another way. */
+/** What separates a character's id from one of its styles: "howl~film". */
+export const STYLE_SEP = "~";
+/** The id a style of a character is cast by. */
+export const styleId = (id: string, key: string): string => `${id}${STYLE_SEP}${key}`;
+/** The character an id belongs to, whatever style it names ("howl~film" → "howl"). */
+export const baseAvatarId = (id: string | null | undefined): string => String(id || "").split(STYLE_SEP)[0];
+/** What the first look of a character with styles is called (its styles have names of their own). */
+export const FIRST_STYLE_LABEL = "Classic";
+
 /* ---- Stock characters ----
  * Not people: cartoon characters for the kids formats and monsters for the horror ones, in EVERY
  * account's cast. They are there to show what a cast can be — the owner, 2026-11-17: "to hint towards
@@ -49,6 +59,14 @@ export const STOCK_CHARACTERS: Avatar[] = [
     voiceId: "char:howl",
     voiceStyle: "a low, gravelly growl of a voice, every word pushed out through bared teeth",
     continuity: "He is a werewolf: dark-grey fur over his whole body, clawed hands and clawed wolf feet — no shoes, no trousers beyond the fur, only the torn red plaid shirt. Glowing yellow eyes.",
+    // THE FILM LOOK (2026-11-24): the owner called the first "slightly ai slop looking" and picked this one of
+    // four photographed candidates ("a is a banger"). Used as a reference in a kitchen, a subway and a mirror
+    // it stayed this creature and left its forest behind.
+    styles: [{
+      key: "film", label: "Film", img: "/avatars/howl_film.jpg?v=1",
+      desc: "a huge, lean werewolf that stands upright like a man, long-armed, covered in matted dark-grey fur, with a long muzzle, yellowed teeth and small deep-set yellow eyes, wearing the torn remains of a red plaid shirt hanging open from his shoulders — a real creature caught on film, never a render",
+      continuity: "He is a werewolf built like a real film creature: matted dark-grey fur over a lean body, long arms, clawed hands and clawed wolf feet — no shoes, no trousers beyond the fur, only the torn red plaid shirt hanging open. Small yellow eyes.",
+    }],
   },
   {
     id: "mary", name: "Mourning Mary", vibe: "Ghost bride", kind: "monster",
