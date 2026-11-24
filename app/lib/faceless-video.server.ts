@@ -53,6 +53,9 @@ export const FACELESS_FORMATS: Record<string, string> = {
   facts: "fascinating facts / 'did you know' — surprising, curiosity-driven",
   storytime: "storytime — a short gripping narrative with a hook and a turn",
   listicle: "a quick list — 'N things about …', each beat one item",
+  // A COOKING CHANNEL (the owner, 2026-11-24: "Need cooking channel also"): one dish a video, told the way a
+  // cooking short is — what it is, what you need, every step in the order you do it, the plate at the end.
+  recipe: "a RECIPE, one dish — beat 1 names the dish in one mouth-watering line and how long it takes; then ONE beat of what you need; then each step as its own beat, in the order you do it, with the exact amounts, the heat and the minutes; the last beat is the finished dish on the plate and one serving tip. Every beat's visual is an appetising, close, real food photograph of exactly that moment — the ingredients laid out, hands at work, the pan, the steam, the finished plate — lit like a cookbook; never a cartoon, never a person's face, never any writing in the picture",
 };
 
 type Beat = { line: string; visual: string };

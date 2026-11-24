@@ -259,7 +259,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 /* ---------------- UI ---------------- */
 
-const FORMATS: [string, string][] = [["motivational", "Motivational"], ["facts", "Facts"], ["storytime", "Storytime"], ["listicle", "Listicle"]];
+const FORMATS: [string, string][] = [["motivational", "Motivational"], ["facts", "Facts"], ["storytime", "Storytime"], ["listicle", "Listicle"], ["recipe", "Recipe"]];
+/** A COOKING CHANNEL in one tap (the owner, 2026-11-24: "Need cooking channel also"): picking one of these
+ *  topics also picks the Recipe format — one dish a video, step by step (faceless-video.server.ts). */
+const COOKING_NICHES = ["Easy weeknight dinners", "Late-night snacks"];
 // [key, label, sampleId] — the sampleId mirrors faceless-video.server VOICE_MAP so
 // the ▶ plays the SAME pre-rendered /voice-samples/*.mp3 the pipeline actually uses
 // (free, instant). Keep in sync if the server map changes.
@@ -269,7 +272,7 @@ const VOICES: [string, string, string][] = [
   ["m-warm", "Male · calm", "English_Trustworth_Man"],
   ["m-hype", "Male · hype", "English_magnetic_voiced_man"],
 ];
-const NICHES = ["Deep ocean facts", "Stoic motivation", "Weird history", "Money & side hustles", "Mind-blowing science", "Space facts", "Fitness tips", "Life hacks", "Mythology stories", "True crime shorts"];
+const NICHES = ["Deep ocean facts", "Easy weeknight dinners", "Stoic motivation", "Weird history", "Money & side hustles", "Mind-blowing science", "Late-night snacks", "Space facts", "Fitness tips", "Life hacks", "Mythology stories", "True crime shorts"];
 
 function relTime(iso: string | null, t: (s: string, p?: Record<string, string | number>) => string): string {
   if (!iso) return "";
@@ -408,7 +411,7 @@ function SetupForm({ linked, tokens, facelessCost, cadences, myVoices, error, cr
       <input className="ch-field" placeholder={t("e.g. mind-blowing deep ocean facts")} value={niche} maxLength={160}
         onChange={(e) => setNiche(e.target.value)} />
       <div className="ch-chips">
-        {NICHES.map((n) => <button type="button" key={n} className={`ch-chip${niche === n ? " on" : ""}`} onClick={() => setNiche(n)}>{t(n)}</button>)}
+        {NICHES.map((n) => <button type="button" key={n} className={`ch-chip${niche === n ? " on" : ""}`} onClick={() => { setNiche(n); if (COOKING_NICHES.includes(n)) setFormat("recipe"); }}>{t(n)}</button>)}
       </div>
 
       <label className="ch-lbl">{t("Channel name")} <span className="ch-opt">{t("(optional)")}</span></label>
