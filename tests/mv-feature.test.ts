@@ -496,7 +496,8 @@ test("the page: a co-star is given a verse with one tap, and their voice must be
   assert.match(sv, /const key = voiceKey\(pitch \? `\$\{vid\}@p\$\{pitch\}` : vid\);/);
   assert.match(sv, /export async function ensureVoiceModel\(voiceId: string, base: string, opts: \{ pitch\?: number \} = \{\}\)/);
   // a scene that is still off after the check is flagged on the still itself
-  assert.match(ui, /const flagged = isMv && !!seeds && \(\(seeds\.faults \|\| \[\]\)\[i\] \|\| 0\) > 0 && rerollingScene !== i;/);
+  // (a told story's pictures are flagged the same way since 2026-11-23: tests/story-cast.test.ts)
+  assert.match(ui, /const flagged = \(isMv \|\| narrated\) && !!seeds && \(\(seeds\.faults \|\| \[\]\)\[i\] \|\| 0\) > 0 && rerollingScene !== i;/);
   // a writer error no longer leaves the button stuck on "Building the scenes"
   assert.match(ui, /else if \(treatmentFetcher\.data\?\.error\) setChainToScenes\(false\);/);
   // the slots the page frames a scene with are the pipeline's

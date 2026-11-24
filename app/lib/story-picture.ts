@@ -51,6 +51,10 @@ export const NOTHING_WRITTEN = "Nothing in the picture is written: no signs with
 /** What the look reads off a story picture: for each cast member, in the order of their reference
  *  pictures, whether that same character is in it; and whether the picture is split into panels. */
 export type StoryCheck = { seen: boolean[]; panels: boolean };
+/** …and what is handed to the storyboard about a picture that was KEPT with something still wrong (the
+ *  best of its goes): the reading, and who was looked for — in the order of `seen` — so the scene's flag
+ *  can say who is missing. */
+export type StoryKept = StoryCheck & { who: string[] };
 
 /* TWO QUESTIONS, ASKED SEPARATELY. One long question that did both let a wrong cast member through: the
  * reader wrote "silver-grey bob" for her own picture and "brown hair up" for the woman in the scene — and
@@ -143,6 +147,18 @@ export const PORTRAIT_ASPECT = "9:16";
 export function portraitPrompt(entry: string, sceneHint: string, safe = ""): string {
   return `${safe}${sceneHint}. A character portrait of ${String(entry || "").replace(/\s+/g, " ").trim().slice(0, 320)} — this ONE character alone, the whole body from head to feet, standing, turned a little toward the viewer, the face clearly seen, on a plain neutral background. In the exact art style of the story. ${NOTHING_WRITTEN}`;
 }
+
+/* THREE PEOPLE FROM THREE PICTURES is more than the everyday picture model holds. Asked for "Tobias stands
+ * at the workshop doorway watching Marta and Ines sand the hull" with their three portraits, it drew TWO
+ * people — six times out of six in a direct test (2026-11-23), whether or not the prompt said how many
+ * there were, and once it merged the two women into one. The stronger model, given the very same prompt
+ * and portraits, drew all three, both times. It costs about four times as much a picture and takes twice
+ * as long, so it draws ONLY a picture made from three reference pictures; everything else stays where it was. */
+export const STORY_MODEL = "google/nano-banana";
+export const STORY_CROWD_MODEL = "google/nano-banana-pro";
+/** How many reference pictures make a "crowd". */
+export const STORY_CROWD_REFS = 3;
+export const sceneModel = (refs: number): string => (refs >= STORY_CROWD_REFS ? STORY_CROWD_MODEL : STORY_MODEL);
 
 /** The token: the portraits, each by its own address on OUR renders disk and nothing else (it comes back
  *  from a browser — an address anywhere else is not a portrait of ours and is dropped). "" = none. */

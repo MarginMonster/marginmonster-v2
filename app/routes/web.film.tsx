@@ -646,7 +646,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         //  which opens with the faces the last one had)
         const r = await narratedSceneSeeds({ template: tmpl.key, treatment: tr0, cast: storyCast, aspect: filmAspect, castRef: seriesCastRef || null });
         if (!r.sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
-        return json({ ok: true, sceneImgs: r.sceneImgs, treatment: tr0, propForScene: {}, castRef: r.castRef, castCards: r.castCards });
+        // (sceneFaults / sceneChecks: a picture kept with someone still missing is flagged on its card)
+        return json({ ok: true, sceneImgs: r.sceneImgs, sceneFaults: r.sceneFaults, sceneChecks: r.sceneChecks, treatment: tr0, propForScene: {}, castRef: r.castRef, castCards: r.castCards });
       }
       if (tmpl.lipSyncSinger) {
         // Music Video engine: artist hero (merchant-picked avatar or auto-cast) + extra cast + props.
@@ -710,6 +711,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const r = await narratedSceneSeeds({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, scenes: scenesNow.map((x) => ({ visual: String(x?.visual || ""), caption: String(x?.caption || "") })) }, cast: storyCast, aspect: rerollAspect, only: sceneIndex, castRef: castRef || null });
         img = r.sceneImgs[sceneIndex] || null;
         ownCast = { castRef: r.castRef, castCards: r.castCards };
+        faults = r.sceneFaults[sceneIndex] ?? null; check = r.sceneChecks[sceneIndex] ?? null;
       } else if (tmpl.lipSyncSinger) {
         if (!artistRef) return json({ error: tr(lang, "Preview the scenes first."), sceneIndex });
         // THE WORDS FOLLOW THE CAST (mv-recast.ts): the scene's Cast editor says who is in the scene now.
@@ -1636,6 +1638,8 @@ export default function FilmStudio() {
   // …and the cast as that film had it (face + voice, by name): when the script comes back, each character
   // who is still in it by name gets the same face and the same voice again
   const [seriesCast, setSeriesCast] = useState<NextEpisodeCard["setup"]["cast"]>([]);
+  // …and the characters the last episode INVENTED, who come back with the faces they had (a told story)
+  const [seriesOwn, setSeriesOwn] = useState<NextEpisodeCard["setup"]["returning"]>([]);
   const castFromSeries = (list: CastMember[]): CastMember[] => {
     if (!series || !seriesCast.length) return list;
     return rebalanceVoices(list.map((c) => {
@@ -1809,7 +1813,7 @@ export default function FilmStudio() {
     setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({});
     if (nt?.dialogue) setFilmAspect(openNarrated ? "9:16" : "16:9");
     // another format is an ordinary new film (a next episode sets its series again right after this)
-    setSeries(null); setSeriesCast([]);
+    setSeries(null); setSeriesCast([]); setSeriesOwn([]);
   };
   // NEXT EPISODE — one tap on a card of the "Next episode" row (film-series.ts): open that film's format
   // with everything set as it was for that film — the same cast (same people, same order), length, shape,
@@ -1833,6 +1837,7 @@ export default function FilmStudio() {
       const pick = ids.filter((x, k) => ids.indexOf(x) === k).slice(0, isNarr ? 3 : 2);
       if (pick.length) { setStoryPick(pick); done.cast = true; }
       setSeriesCast(s.cast);
+      setSeriesOwn(isNarr ? (s.returning || []) : []);
       if (s.scenes) {
         setScenes(isNarr ? Math.max(d.narratedScenes.min, Math.min(d.narratedScenes.max, s.scenes)) : Math.max(nt?.minScenes || 1, Math.min(nt?.maxScenes || s.scenes, s.scenes)));
         done.length = true;
@@ -1852,7 +1857,7 @@ export default function FilmStudio() {
   /** ✕ on the episode line: drop the link — an ordinary new film. (What was already written for the episode
    *  was written AS the episode, so it starts over — asked first, the page's own "tap again" way.) */
   const dropSeries = () => orArm("series:", storyHasWork, () => {
-    setSeries(null); setSeriesCast([]);
+    setSeries(null); setSeriesCast([]); setSeriesOwn([]);
     if (storyHasWork) { setTreatment(null); setSeeds(null); setFrames([]); setCast([]); }
   });
   // "NEXT EPISODE", ASKED FROM THE FILM ITSELF: the Archive viewer's button opens this page with
@@ -2013,8 +2018,12 @@ export default function FilmStudio() {
   /** WHY a still is flagged, in two words — from what the check read off it (mv-cast.ts CastCheck). The
    *  flag used to say only "Worth a re-roll", with the reason in a tooltip a phone does not have. */
   const flagWhy = (i: number): string => {
-    const c = ((seeds?.checks || [])[i] || null) as { seen?: boolean[]; twin?: boolean; dressed?: boolean[]; odd?: boolean; mic?: string; bars?: boolean } | null;
+    const c = ((seeds?.checks || [])[i] || null) as { seen?: boolean[]; twin?: boolean; dressed?: boolean[]; odd?: boolean; mic?: string; bars?: boolean; panels?: boolean; who?: string[] } | null;
     if (!c) return t("Worth a re-roll");
+    if (c.panels === true) return t("Split picture");
+    // (a told story knows WHO it looked for: "Marta is missing")
+    const gone = (c.seen || []).map((x, k) => (x === false ? (c.who || [])[k] || "" : "")).filter(Boolean);
+    if (gone.length === 1 && (c.seen || []).filter((x) => x === false).length === 1) return t("{name} is missing", { name: gone[0] });
     if ((c.seen || []).some((x) => x === false)) return t("Missing someone");
     if (c.twin === true) return t("Someone doubled");
     if ((c.dressed || []).some((x) => x === false)) return t("Wrong clothes");
@@ -2407,8 +2416,10 @@ export default function FilmStudio() {
   // MEASURED on the live site, 2026-11-21/22: six scenes with two co-stars ≈ 90 s; twenty-four upright
   // scenes of one artist ≈ 230 s (the upright picture is the slower, sharper kind: ~25 s a wave of three).
   const mvCast = !!tmpl?.lipSyncSinger && castExtra.length > 0;
-  const seedWaveSec = !tmpl?.lipSyncSinger ? 9 : mvCast ? 27 : mvAspect === "9:16" ? 25 : 12;
-  const seedEstSec = Math.max(14, (tmpl?.lipSyncSinger ? (mvCast ? 30 : artistPick ? 25 : 12) : 0) + Math.ceil(scenes / 3) * seedWaveSec);
+  // (a told story: its cast's portraits first, then four pictures at a time, each drawn AND looked at —
+  //  measured on the live site 2026-11-23: six scenes with two characters ≈ 45 s, with three ≈ 70 s)
+  const seedWaveSec = narrated ? 24 : !tmpl?.lipSyncSinger ? 9 : mvCast ? 27 : mvAspect === "9:16" ? 25 : 12;
+  const seedEstSec = Math.max(14, (tmpl?.lipSyncSinger ? (mvCast ? 30 : artistPick ? 25 : 12) : narrated ? 15 : 0) + Math.ceil(scenes / (narrated ? 4 : 3)) * seedWaveSec);
   useEffect(() => {
     if (!seedBusy) { setSeedPct(0); return; }
     const estMs = seedEstSec * 1000;
@@ -2524,7 +2535,8 @@ export default function FilmStudio() {
               const draftLead = isMv && sceneCastPick === i ? sceneLeadImg(draftScene(strip.scenes, i), i, strip.scenes.length) : leadImg;
               // (there is a choice of singer only in a performance, and only with a co-star who has a voice)
               const canPickSinger = isMv && perform && singable.length > 0;
-              const flagged = isMv && !!seeds && ((seeds.faults || [])[i] || 0) > 0 && rerollingScene !== i;
+              // (a told story's pictures are looked at too: one kept with someone still missing is flagged)
+              const flagged = (isMv || narrated) && !!seeds && ((seeds.faults || [])[i] || 0) > 0 && rerollingScene !== i;
               // one editor at a time, opened as a drawer that spans the whole row under this card
               const editing = isMv && !!seeds && (sceneCastPick === i || scenePropPick === i);
               return (
@@ -2535,7 +2547,7 @@ export default function FilmStudio() {
                     {rerollingScene === i && <span className="mm-sb-busy mm-sb-busy-rose"><span className="wb-bufwrap"><span className="wb-spin" /></span></span>}
                     <span className="mm-sb-num">{i + 1}</span>
                     {/* the picture was looked at and something was still off (someone missing, doubled, or a stray microphone) */}
-                    {flagged && <button type="button" className="mm-sb-flag" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("We checked this picture and something looks off — someone missing or doubled, the wrong clothes, or a stray microphone. Tap to draw it again.")}><Ico n="refresh" size={11} /> {flagWhy(i)}</button>}
+                    {flagged && <button type="button" className="mm-sb-flag" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={narrated ? t("We checked this picture and something looks off. Tap to draw it again.") : t("We checked this picture and something looks off — someone missing or doubled, the wrong clothes, or a stray microphone. Tap to draw it again.")}><Ico n="refresh" size={11} /> {flagWhy(i)}</button>}
                     <button type="button" className="mm-sc-x" onClick={() => sbRemoveScene(i)} disabled={strip.scenes.length <= 1} title={t("Remove this scene")} aria-label={t("Remove scene {n}", { n: i + 1 })}>✕</button>
                     {seeds && (narrated || seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={12} /></button>}
                   </div>
@@ -3533,15 +3545,26 @@ export default function FilmStudio() {
             <button type="button" style={{ order: 1 }} className={`mm-card${storyCard === "cast" ? " on" : ""}${storyDone.cast ? " done" : ""}`} onClick={() => tapStory("cast")}>
               <span className="mm-step" aria-hidden="true">{storyDone.cast ? <Ico n="check" size={13} /> : 1}</span>
               <span className="mm-card-top">
+                {/* (the next episode of a told story: the characters it invented come BACK, with the faces they
+                    had — the card says who, before a word is written. A full-length portrait is shown from the top.) */}
                 {pickedCast[0]
                   ? <span className="mm-card-face" style={{ backgroundImage: `url(${pickedCast[0].img})` }} aria-hidden="true" />
+                  : seriesOwn[0]
+                  ? <span className="mm-card-face" style={{ backgroundImage: `url(${seriesOwn[0].img})`, backgroundPosition: "center top" }} aria-hidden="true" />
                   : <span className="mm-card-ico c5"><Ico n="presenter" size={20} /></span>}
                 <span className="mm-card-ttl"><span className="mm-card-kick">{t("The stars")}</span><b>{t("Cast")}</b></span>
               </span>
-              <span className="mm-val">{pickedCast.length ? <><Ico n="check" size={12} /> {pickedCast.map((r) => r.name).join(" + ")}</> : t("We invent them · or pick your own")}</span>
+              <span className="mm-val">{pickedCast.length ? <><Ico n="check" size={12} /> {pickedCast.map((r) => r.name).join(" + ")}</>
+                : seriesOwn.length ? <><Ico n="check" size={12} /> {t("Back: {names}", { names: seriesOwn.map((r) => r.name).join(" + ") })}</>
+                : t("We invent them · or pick your own")}</span>
               {pickedCast.length > 1 && (
                 <span className="mm-card-cast" aria-hidden="true">
                   {pickedCast.map((r, k) => <span key={r.id} className={`mm-card-castface${k === 0 ? " lead" : ""}`} style={{ backgroundImage: `url(${r.img})` }} title={r.name} />)}
+                </span>
+              )}
+              {!pickedCast.length && seriesOwn.length > 1 && (
+                <span className="mm-card-cast" aria-hidden="true">
+                  {seriesOwn.map((r, k) => <span key={`${r.name}|${r.img}`} className={`mm-card-castface${k === 0 ? " lead" : ""}`} style={{ backgroundImage: `url(${r.img})`, backgroundPosition: "center top" }} title={r.name} />)}
                 </span>
               )}
             </button>
@@ -4624,6 +4647,8 @@ a.mm-pace-auto{text-decoration:none;}
   .mm-sb-list.is-told .mm-sc{flex-direction:row;}
   .mm-sb-list.is-told .mm-sc-frame{flex:0 0 36%;width:36%;aspect-ratio:auto !important;min-height:176px;}
   .mm-sb-list.is-told .mm-sc-bd{flex:1;min-width:0;}
+  /* (the picture is a third of the card here: a flag that names someone — "Marta is missing" — wraps inside it) */
+  .mm-sb-list.is-told .mm-sb-flag{max-width:calc(100% - 14px);white-space:normal;text-align:left;line-height:1.15;padding:5px 9px;border-radius:12px;}
 }
 .mm-card:hover{border-color:var(--green2,#1EA85C);box-shadow:0 10px 26px -18px rgba(20,32,26,.26);}
 .mm-card.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 14px 30px -20px rgba(12,122,70,.4);}

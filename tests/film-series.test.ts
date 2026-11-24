@@ -154,7 +154,9 @@ test("the row: newest first, one card per series (its latest episode), three at 
     ["e5", "moral", "Kind Words", 2],
   ]);
   // what a tap sets, as that film was made
-  assert.deepEqual(cards[0].setup, { aspect: "9:16", captions: "bold", narrator: "char:keeper", scenes: 6, engine: null, lockVoices: false, cast: [{ name: "Tom", faceUrl: "/avatars/tom.png", voiceId: null }] });
+  // (`returning`: a told story's OWN characters, with the portraits they were drawn from — none here; a
+  //  story that kept its cast hands them on: tests/story-cast.test.ts)
+  assert.deepEqual(cards[0].setup, { aspect: "9:16", captions: "bold", narrator: "char:keeper", scenes: 6, engine: null, lockVoices: false, cast: [{ name: "Tom", faceUrl: "/avatars/tom.png", voiceId: null }], returning: [] });
   assert.equal(cards[1].setup.engine, "kling3");
   assert.equal(cards[1].setup.lockVoices, true);
   assert.deepEqual(cards[1].setup.cast.map((m) => [m.name, m.voiceId]), [["Maya", "English_CalmWoman"], ["Leo", "English_ManWithDeepVoice"]]);
@@ -231,7 +233,7 @@ test("the way in: a 'Next episode' row on the poster grid; the setup screen says
   const start = page.slice(page.indexOf("const startEpisode = (c: NextEpisodeCard) => {"), page.indexOf("const dropSeries = () =>"));
   assert.ok(start.includes("switchHero(h.id);") && start.indexOf("switchHero(h.id);") < start.indexOf("setSeries({ from: c.from, title: c.title, episode: c.episode });"));
   assert.ok(start.includes("setTopic(\"\");"));
-  assert.ok(page.includes("setSeries(null); setSeriesCast([]);\n  };"), "switchHero drops the series");
+  assert.ok(page.includes("setSeries(null); setSeriesCast([]); setSeriesOwn([]);\n  };"), "switchHero drops the series");
   // tap targets: the card is at least 44 px tall
   assert.ok(page.includes(".fs-ep-card{flex:0 0 auto;width:min(240px,74vw);min-height:64px;"));
 });

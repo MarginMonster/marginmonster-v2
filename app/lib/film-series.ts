@@ -16,6 +16,7 @@
  * Everything here is plain logic (no database, no network), so it is tested: tests/film-series.test.ts. */
 
 import { heroOf, type FilmHero } from "./film-heroes.ts";
+import { castCardsOf } from "./story-picture.ts";
 
 /** What a film in a series stores on its asset (metaJson.series). */
 export type FilmSeries = { id: string; title: string; episode: number };
@@ -265,6 +266,9 @@ export type NextEpisodeCard = {
     engine: "veo" | "kling3" | null;
     lockVoices: boolean;
     cast: SeriesCastMember[];
+    /** A TOLD story's OWN characters that come back: the ones it invented, each with the portrait it was
+     *  drawn from (story-picture.ts) — the next episode opens with the same faces, and its setup says who. */
+    returning: Array<{ name: string; img: string }>;
   };
 };
 
@@ -302,6 +306,7 @@ export function nextEpisodeCards(rows: ReadonlyArray<{ id: string; title?: strin
         // (an acted film stores how many of its lines were re-voiced in the picked voice)
         lockVoices: meta.voicesLocked === true || (typeof meta.voicesLocked === "number" && meta.voicesLocked > 0),
         cast: castForMeta(Array.isArray(meta.cast) ? (meta.cast as Array<{ name?: string }>) : []),
+        returning: str(meta.kind) === "narrated" ? castCardsOf(meta).map((c) => ({ name: c.name, img: c.img })) : [],
       },
     });
   }

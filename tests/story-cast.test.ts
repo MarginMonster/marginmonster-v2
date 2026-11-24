@@ -15,9 +15,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { NOTHING_WRITTEN, PORTRAIT_ASPECT, STORY_CAST_MAX, castCardsOf, castEntry, castStillIn, castToken, portraitPrompt, readCastToken, sameCharacter, storyStars } from "../app/lib/story-picture.ts";
+import { NOTHING_WRITTEN, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_CROWD_MODEL, STORY_CROWD_REFS, STORY_MODEL, castCardsOf, castEntry, castStillIn, castToken, portraitPrompt, readCastToken, sameCharacter, sceneModel, storyStars } from "../app/lib/story-picture.ts";
 import { entryName } from "../app/lib/narrated-core.ts";
 import { storyToEditFrom } from "../app/lib/story-edit.ts";
+import { nextEpisodeCards } from "../app/lib/film-series.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8");
@@ -125,7 +126,7 @@ test("where the pictures are drawn: a portrait each, the reference in every scen
   assert.ok(fn.includes("castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: \"claude-sonnet-4-6\" }) : Promise.resolve(\"\"),"));
   assert.ok(fn.includes("fix = storyFix(seenAs!, here.map((c) => c.name));"));
   // what goes back: the pictures, the token, and the cards to show (an older storyboard keeps its sheet)
-  assert.ok(fn.includes("return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards) || null, castCards: cards };"));
+  assert.ok(fn.includes("return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards) || null, castCards: cards, sceneFaults: faultsOut, sceneChecks: checksOut };"));
   assert.ok(fn.includes("const sheet = who[k].others.length && sheetRef ? sheetRef : null;"));
 });
 
@@ -145,7 +146,7 @@ test("the cast rides with the story: storyboard → job → the finished piece",
   assert.ok(page.includes("{narrated && seeds?.castRef && <input type=\"hidden\" name=\"filmCastRef\" value={seeds.castRef} />}"));
   // drawing them all: the cards come back with the pictures; the next episode opens with the last one's faces
   assert.ok(page.includes("const r = await narratedSceneSeeds({ template: tmpl.key, treatment: tr0, cast: storyCast, aspect: filmAspect, castRef: seriesCastRef || null });"));
-  assert.ok(page.includes("return json({ ok: true, sceneImgs: r.sceneImgs, treatment: tr0, propForScene: {}, castRef: r.castRef, castCards: r.castCards });"));
+  assert.ok(page.includes("return json({ ok: true, sceneImgs: r.sceneImgs, sceneFaults: r.sceneFaults, sceneChecks: r.sceneChecks, treatment: tr0, propForScene: {}, castRef: r.castRef, castCards: r.castCards });"));
   assert.ok(page.includes("const seriesCastRef = seriesHit?.ownCast || \"\";"));
   // re-drawing one: the same portraits go in, and a character first seen there comes back with its own
   assert.ok(page.includes("ownCast = { castRef: r.castRef, castCards: r.castCards };"));
@@ -207,4 +208,66 @@ test("the finished film says who is in it: the maker's cast, then the story's ow
   assert.ok(a.includes("<b>{t(\"Starring\")}</b>"));
   assert.ok(a.includes("<span key={`${c.name}|${c.img}`} className=\"wa-vstar\" title={c.look ? `${c.name} — ${c.look}` : c.name}><img src={c.img} alt=\"\" loading=\"lazy\" /><i>{c.name}</i></span>"));
   assert.ok(a.includes(".wa-vstar img{display:block;width:58px;height:77px;object-fit:cover;object-position:center top;"));
+});
+
+test("three people from three pictures are drawn by the stronger model — and only those pictures", () => {
+  // A DIRECT TEST, 2026-11-23, with the lighthouse story's three portraits and the server's own prompt for
+  // "Tobias stands at the workshop doorway watching Marta and Ines sand the repaired hull":
+  //   the everyday model — plain ×2, told how many at the end ×2, told how many first ×2 → TWO people, 6 of 6
+  //   the stronger model — plain ×2 → all three, 2 of 2
+  // So the count sentence was never shipped, and the model is chosen by how many pictures a scene is drawn from.
+  assert.deepEqual([0, 1, 2].map(sceneModel), [STORY_MODEL, STORY_MODEL, STORY_MODEL]);
+  assert.deepEqual([3, 4].map(sceneModel), [STORY_CROWD_MODEL, STORY_CROWD_MODEL]);
+  assert.deepEqual([STORY_MODEL, STORY_CROWD_MODEL, STORY_CROWD_REFS], ["google/nano-banana", "google/nano-banana-pro", 3]);
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  const fn = nar.slice(nar.indexOf("async function drawScene("), nar.indexOf("/** A picture that came back with black bars baked in"));
+  assert.ok(fn.includes("const model = sceneModel(refs.length);"));
+  assert.ok(fn.includes("...(m === STORY_MODEL ? {} : { resolution: \"1K\" })"), "the stronger model at its plainest size");
+  assert.ok(fn.includes("if (model === STORY_MODEL) return null;") && fn.includes("try { return await run(STORY_MODEL); } catch { return null; }"), "if the stronger one cannot be reached the scene is still drawn");
+  // a portrait is drawn from words alone — never the stronger model
+  assert.ok(nar.includes("drawScene(portraitPrompt(e, tmpl.sceneHint, safe), [], PORTRAIT_ASPECT)"));
+  assert.ok(!nar.includes("castCountNote") && !read("app", "lib", "story-picture.ts").includes("castCountNote"), "the sentence that did nothing is not in the prompt");
+});
+
+test("a picture kept with someone still missing says so: the scene is flagged, by name", () => {
+  // Episode 2 of the lighthouse story (live, 2026-11-23): "Tobias … watching Marta and Ines sand the hull"
+  // came back with Tobias and Ines — the best of three goes — and nothing told the maker Marta was not in it.
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  const fn = nar.slice(nar.indexOf("export async function narratedSceneSeeds("), nar.indexOf("/** The narrator reads the whole story."));
+  assert.ok(fn.includes("const faultsOut: (number | null)[] = new Array(scenes.length).fill(null);"));
+  assert.ok(fn.includes("const checksOut: (StoryKept | null)[] = new Array(scenes.length).fill(null);"));
+  assert.ok(fn.includes("if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }"), "who was looked for rides with the reading");
+  assert.ok(fn.includes("if (img && faultsOut[i] == null) faultsOut[i] = 0;"), "a clean picture is a 0, a scene not drawn here stays null");
+  const page = read("app", "routes", "web.film.tsx");
+  // re-drawing one scene answers for THAT scene
+  assert.ok(page.includes("faults = r.sceneFaults[sceneIndex] ?? null; check = r.sceneChecks[sceneIndex] ?? null;"));
+  // the flag is the music video's own — one thing to learn — and a told story's says WHO
+  assert.ok(page.includes("const flagged = (isMv || narrated) && !!seeds && ((seeds.faults || [])[i] || 0) > 0 && rerollingScene !== i;"));
+  assert.ok(page.includes("if (c.panels === true) return t(\"Split picture\");"));
+  assert.ok(page.includes("if (gone.length === 1 && (c.seen || []).filter((x) => x === false).length === 1) return t(\"{name} is missing\", { name: gone[0] });"));
+  assert.ok(page.indexOf("return t(\"{name} is missing\"") < page.indexOf("return t(\"Missing someone\");"), "the name first; two missing is 'Missing someone'");
+  assert.ok(page.includes("title={narrated ? t(\"We checked this picture and something looks off. Tap to draw it again.\") : t("));
+  // on a phone the picture is a third of the card: the flag wraps inside it
+  assert.ok(page.includes(".mm-sb-list.is-told .mm-sb-flag{max-width:calc(100% - 14px);white-space:normal;"));
+  // the wait is said honestly: portraits first, then four pictures at a time, each drawn and looked at
+  assert.ok(page.includes("const seedWaveSec = narrated ? 24 : !tmpl?.lipSyncSinger ? 9 : mvCast ? 27 : mvAspect === \"9:16\" ? 25 : 12;"));
+  assert.ok(page.includes(": narrated ? 15 : 0) + Math.ceil(scenes / (narrated ? 4 : 3)) * seedWaveSec);"));
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  for (const k of ["Split picture", "{name} is missing", "We checked this picture and something looks off. Tap to draw it again."]) assert.equal(dict.split(`${JSON.stringify(k)}:`).length - 1, 5, k);
+});
+
+test("the next episode says who comes back, before a word is written", () => {
+  const meta = JSON.stringify({ kind: "narrated", template: "testmovie", aspect: "9:16", captions: "bold", scenes: 6, castCards: [{ name: "Tobias", look: "a weathered lighthouse keeper", img: "/renders/t1.jpg" }, { name: "Ines", look: "a young postwoman", img: "/renders/i1.jpg" }] });
+  const body = JSON.stringify({ videoUrl: "/renders/boat.mp4", treatment: { title: "The Week the Boat Didn't Come", scenes: [] } });
+  const [card] = nextEpisodeCards([{ id: "a1", title: "Short Story — The Week the Boat Didn't Come", metaJson: meta, bodyJson: body }], 3);
+  assert.deepEqual(card.setup.returning, [{ name: "Tobias", img: "/renders/t1.jpg" }, { name: "Ines", img: "/renders/i1.jpg" }]);
+  // an ACTED film's invented people have no portraits (its cast is the presenters picked): nobody "returns"
+  const acted = JSON.stringify({ kind: "testmovie", template: "testmovie", castCards: [{ name: "X", look: "", img: "/renders/x.jpg" }] });
+  assert.deepEqual(nextEpisodeCards([{ id: "b1", title: "Short Film — x", metaJson: acted, bodyJson: body }], 3)[0].setup.returning, []);
+  const page = read("app", "routes", "web.film.tsx");
+  assert.ok(page.includes("setSeriesOwn(isNarr ? (s.returning || []) : []);"));
+  assert.ok(page.includes(": seriesOwn.length ? <><Ico n=\"check\" size={12} /> {t(\"Back: {names}\", { names: seriesOwn.map((r) => r.name).join(\" + \") })}</>"));
+  assert.ok(page.includes("? <span className=\"mm-card-face\" style={{ backgroundImage: `url(${seriesOwn[0].img})`, backgroundPosition: \"center top\" }} aria-hidden=\"true\" />"), "a full-length portrait is shown from the head down");
+  assert.ok(page.includes("{!pickedCast.length && seriesOwn.length > 1 && ("), "the maker's own picks take the card over");
+  assert.equal(read("app", "lib", "ui-i18n-dict.ts").split(`${JSON.stringify("Back: {names}")}:`).length - 1, 5);
 });

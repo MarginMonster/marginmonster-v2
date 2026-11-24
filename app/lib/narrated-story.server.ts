@@ -36,7 +36,7 @@ import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
-import { NOTHING_WRITTEN, ONE_PICTURE, PORTRAIT_ASPECT, STORY_CAST_MAX, castEntry, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, portraitPrompt, readCastToken, sameCharacter, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck } from "./story-picture";
+import { NOTHING_WRITTEN, ONE_PICTURE, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_MODEL, castEntry, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, portraitPrompt, readCastToken, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
@@ -71,12 +71,16 @@ const CAST_LOCK = "CRITICAL: every character taken from a reference image is the
 /** One picture, on the everyday picture model, from a prompt of any length (the shared helpers cut a
  *  prompt at ~460 characters, which is where a scene's cast notes live). Null when it cannot be drawn. */
 async function drawScene(prompt: string, refs: string[], aspect: string): Promise<string | null> {
+  // (three people from three pictures go to the stronger model — story-picture.ts → sceneModel; if it
+  //  cannot be reached, the everyday one still draws the scene)
+  const model = sceneModel(refs.length);
+  const run = async (m: string): Promise<string> => persistRemote(await repRun(m, { prompt: `${frameWords(aspect)} ${prompt} No watermark, no signature.`, ...(refs.length ? { image_input: refs } : {}), aspect_ratio: aspect, output_format: "jpg", ...(m === STORY_MODEL ? {} : { resolution: "1K" }) }, 150_000), "jpg");
   try {
-    const url = await repRun("google/nano-banana", { prompt: `${frameWords(aspect)} ${prompt} No watermark, no signature.`, ...(refs.length ? { image_input: refs } : {}), aspect_ratio: aspect, output_format: "jpg" }, 150_000);
-    return await persistRemote(url, "jpg");
+    return await run(model);
   } catch (e) {
-    console.error(`[narrated] a scene picture failed (${refs.length} refs): ${e instanceof Error ? e.message.slice(0, 140) : e}`);
-    return null;
+    console.error(`[narrated] a scene picture failed (${refs.length} refs, ${model.split("/")[1]}): ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+    if (model === STORY_MODEL) return null;
+    try { return await run(STORY_MODEL); } catch { return null; }
   }
 }
 
@@ -95,7 +99,7 @@ async function letterboxed(rendersUrl: string | null): Promise<boolean> {
  *  re-draws a single scene. Returns /renders URLs made absolute (null where a still could not be made). */
 export async function narratedSceneSeeds(o: {
   template?: string; treatment: FilmTreatment; cast?: StoryCast; aspect?: string; /** draw only this scene, or only these */ only?: number | number[]; castRef?: string | null;
-}): Promise<{ sceneImgs: (string | null)[]; castRef: string | null; /** the story's own characters, each with its portrait — to be shown */ castCards: StoryCastRef[] }> {
+}): Promise<{ sceneImgs: (string | null)[]; castRef: string | null; /** the story's own characters, each with its portrait — to be shown */ castCards: StoryCastRef[]; /** for each scene drawn: how wrong the picture that was KEPT still is (0 = nothing; null = not drawn here), and what the look read off it */ sceneFaults: (number | null)[]; sceneChecks: (StoryKept | null)[] }> {
   const tmpl = filmTemplate(o.template);
   const { aspect } = storyFrame(o.aspect);
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -131,6 +135,10 @@ export async function narratedSceneSeeds(o: {
   const cardFor = (e: string): StoryCastRef | undefined => cards.find((c) => sameCharacter(c.name, castEntry(e).name));
 
   const out: (string | null)[] = new Array(scenes.length).fill(null);
+  // A PICTURE KEPT WITH SOMETHING STILL WRONG SAYS SO (the best of three goes can still be missing someone):
+  // the storyboard flags that scene and says why, so the maker re-rolls the one that needs it.
+  const faultsOut: (number | null)[] = new Array(scenes.length).fill(null);
+  const checksOut: (StoryKept | null)[] = new Array(scenes.length).fill(null);
   let next = 0;
   const worker = async () => {
     while (next < todo.length) {
@@ -184,7 +192,7 @@ export async function narratedSceneSeeds(o: {
       // what was wrong. The best of the goes is kept, so a picky look can never leave a scene bare.
       let img: string | null = null;
       let barred: string | null = null;
-      let best: { img: string; faults: number } | null = null;
+      let best: { img: string; faults: number; check: StoryCheck } | null = null;
       let fix = "";
       for (let a = 0; a < 3 && !img; a++) {
         const got = await drawScene(`${prompt}${fix}`, refs, aspect);
@@ -193,19 +201,20 @@ export async function narratedSceneSeeds(o: {
         const seenAs = await lookAt(got);
         const faults = seenAs ? storyFaults(seenAs) : 0;
         if (!faults) { img = got; break; }
-        if (!best || faults < best.faults) best = { img: got, faults };
+        if (!best || faults < best.faults) best = { img: got, faults, check: seenAs! };
         fix = storyFix(seenAs!, here.map((c) => c.name));
         console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${seenAs!.panels ? "split into panels" : ""}${seenAs!.panels && seenAs!.seen.includes(false) ? ", " : ""}${seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : ""} — drawing it again`);
       }
-      if (!img && best) img = best.img;
+      if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }
       if (!img) img = barred;
       // the lenient path last: its safety and outage fallbacks still get a picture (without the cast's own looks)
       if (!img) { try { img = await renderCreativeSeed(`${safe}${(scene.visual || "").slice(0, 300)}. ${tmpl.sceneHint}`, aspect); } catch { img = null; } }
       out[i] = img;
+      if (img && faultsOut[i] == null) faultsOut[i] = 0;
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, todo.length) }, () => worker()));
-  return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards) || null, castCards: cards };
+  return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards) || null, castCards: cards, sceneFaults: faultsOut, sceneChecks: checksOut };
 }
 
 /** The narrator reads the whole story. Returns the mp3 on the renders disk and a URL a provider can

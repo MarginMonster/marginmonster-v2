@@ -128,8 +128,9 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   assert.ok(s.includes("if (seen == null && panels == null) return null;") && s.includes("const faults = seenAs ? storyFaults(seenAs) : 0;"));
   // wrong → drawn again with the fault named; the best of three goes is kept
   assert.ok(s.includes("fix = storyFix(seenAs!, here.map((c) => c.name));") && s.includes("const got = await drawScene(`${prompt}${fix}`, refs, aspect);"));
-  assert.ok(s.includes("if (!best || faults < best.faults) best = { img: got, faults };") && s.includes("if (!img && best) img = best.img;"));
-  assert.ok(s.indexOf("if (!img && best) img = best.img;") < s.indexOf("if (!img) img = barred;"), "a looked-at picture is preferred to a letterboxed one");
+  // (…and a best-of that is still wrong SAYS so: the storyboard flags that scene — tests/story-cast.test.ts)
+  assert.ok(s.includes("if (!best || faults < best.faults) best = { img: got, faults, check: seenAs! };") && s.includes("if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }"));
+  assert.ok(s.indexOf("if (!img && best) { img = best.img;") < s.indexOf("if (!img) img = barred;"), "a looked-at picture is preferred to a letterboxed one");
   // …and the writer is told the same three things
   const w = read("app", "lib", "film-engine.server.ts");
   assert.ok(w.includes("It is ONE moment only — a picture cannot show two times") && w.includes("at most ONE other person") && w.includes("nothing in it is WRITTEN"));
