@@ -23,10 +23,10 @@ import {
   ACTED_STAGINGS, AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, EVENT_IDEAS, EVENT_IDEAS_SMALL, EVENT_MAX, EVENT_MAX_LAST, HEARD_AUDIO, HEARD_BEFORE_SAID,
   HEARD_FIRST_SECONDS, HEARD_NOT_DRAWN, HEARD_OPEN, HEARD_THEN, HEARD_UNSEEN, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, NOBODY_SPEAKS, ONE_TAKE,
   FILM_FPS, JOIN_TOLERANCE, PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEAM_FRAMES, SEEN_AT_THE_END, SILENT_SHOT_SECONDS, TWO_ALWAYS,
-  ageAsk, ageOf, castAgeProblem, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, eventIdeas, faceNote, happensBrief, heardIn, heardSeconds,
+  ageAsk, ageOf, castAgeProblem, clipEvent, clipFrames, clipHearsFirst, clipMoves, clipSilent, dealStagings, eventIdeas, faceNote, happensBrief, heardIn, heardSeconds,
   heardTalk, isActedStaging, joinCheck, joinGraph, kinLooks, kinNote, noRoomIn, ownTitle, relationOf, repairAges, revealClip, revealPart, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot,
   stagingClip, stagingPicture, stagingsFor, takeAgeFix, titleAsk, twoOnScreen, wordless,
-  type ActedStaging, type SeamKind,
+  type ActedStaging, type Seam, type SeamKind,
 } from "../app/lib/acted-staging.ts";
 import { KLING_PROMPT_MAX, clipRules, fitClipPrompt } from "../app/lib/clip-prompt.ts";
 import { CLIP_MAX_SECONDS, clipSecondsFor } from "../app/lib/speech-meter.ts";
@@ -922,10 +922,15 @@ const streamsOf = (file: string): { video: number; audio: number | null } => {
   return { video: m.video, audio: m.audio ?? null };
 };
 /** join stand-ins the way assembleTestMovie does (pictureFrames: the PICTURE's length, at 30 fps) */
-const joinOn = (ff: string, dir: string, name: string, clips: string[], seams: Array<SeamKind | null>, dissolve = true) => {
-  const frames = clips.map((c) => Math.round(streamsOf(c).video * FILM_FPS));
+const SCALE_916 = "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30";
+/** join stand-ins the way film-join.server.ts → joinWhole does: each clip's length by clipFrames (its picture, or
+ *  the longer of its picture and its sound), its last frame held as long as that needs */
+const joinOn = (ff: string, dir: string, name: string, clips: string[], seams: Seam[], dissolve = true, o: { length?: "picture" | "longer"; prep?: string } = {}) => {
+  const sizes = clips.map((c) => { const s = streamsOf(c); return { picture: s.video, frames: clipFrames({ picture: s.video, sound: s.audio, length: o.length }) }; });
+  const frames = sizes.map((s) => s.frames);
+  const hold = Math.max(...sizes.map((s) => s.frames / FILM_FPS - s.picture)) + 1;
   const silent = clips.map((c) => streamsOf(c).audio === null);
-  const plan = joinGraph({ frames, seams, prep: SCALE_169, silent, dissolve });
+  const plan = joinGraph({ frames, seams, prep: o.prep || SCALE_169, silent, dissolve, hold });
   const film = path.join(dir, `${name}.mp4`);
   const r = spawnSync(ff, ["-v", "error", "-y", ...clips.flatMap((c) => ["-i", c]), "-filter_complex", plan.graph, "-map", "[vc]", "-map", "[ac]", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", film], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
@@ -1011,18 +1016,71 @@ test("a film whose picture ends before its sound is never shipped: measured afte
   assert.equal(joinCheck({ video: 0, audio: 5 }).ok, false);
   assert.ok(JOIN_TOLERANCE > 2 / FILM_FPS && JOIN_TOLERANCE < 0.1, "two frames and one block of sound");
   const eng = read("app", "lib", "film-dialogue.server.ts");
+  // the acted film's join is film-join.server.ts's, every shot as long as its PICTURE
+  assert.ok(eng.includes("return joinWhole({ clips, outPath, prep: SCALE, seams, length: \"picture\", encode: ENCODE, label: \"[testmovie]\", beat });"));
+  const join = read("app", "lib", "film-join.server.ts");
   // every shot measured by its PICTURE, never by the file's longer stream
-  assert.ok(eng.includes("const frames = clips.map((c) => { try { return pictureFrames(c); } catch { return 0; } });"));
-  assert.ok(eng.includes("[\"-select_streams\", \"v:0\", \"-show_entries\", \"stream=duration,nb_frames,avg_frame_rate\"]"));
+  assert.ok(join.includes("[\"-select_streams\", \"v:0\", \"-show_entries\", \"stream=duration,nb_frames,avg_frame_rate\"]"));
+  assert.ok(join.includes("return { picture, frames: clipFrames({ picture, sound: o.length === \"longer\" ? streamSeconds(c).audio : null, length: o.length }) };"));
   // joined with dissolves, then the plain way — each MEASURED — and otherwise the job fails
-  assert.ok(eng.includes("? joinCheck({ ...streamSeconds(outPath), frames: plan.frames })"));
-  assert.ok(eng.includes("throw new Error(`[testmovie] the film could not be joined whole — ${failed.join(\"; \")}`);"));
+  assert.ok(join.includes("? joinCheck({ ...streamSeconds(outPath), frames: plan.frames })"));
+  assert.ok(join.includes("throw new Error(`${label} the film could not be joined whole — ${failed.join(\"; \")}`);"));
+  assert.ok(!/xfade|acrossfade|ffprobeDuration\(c\)/.test(join), "no dissolve placed by a measured length: the graph is joinGraph's");
   // …and measured once more after its sound is levelled and its captions drawn, before it is stored
   const end = eng.indexOf("const finished = joinCheck({ ...streamSeconds(outPath), frames: filmFrames });");
   assert.ok(end > eng.indexOf("captioned = await captionFilm({") && end < eng.indexOf("const outBuf = fs.readFileSync(outPath);"));
   assert.ok(eng.includes("if (!finished.ok) throw new Error(`[testmovie] the finished film is not whole after its sound and captions — ${finished.why}`);"));
   // the captions are timed by the same lengths the join used
   assert.ok(eng.includes("clipDurs: clips.map((c) => { try { return pictureFrames(c) / FILM_FPS; } catch { return 0; } }),"));
+});
+
+/* ---- THE AVATAR DIALOGUE'S JOIN: THE SAME, EACH CLIP AS LONG AS ITS LINE ----
+ * film-dialogue-avatar.server.ts placed its 0.25 s dissolves by each clip's CONTAINER length, as the acted film did;
+ * its clips come from lip-sync engines, which can hand back a picture that stops before its line does — past
+ * 0.25 s of that, every later clip's picture was gone. Its clips are now as long as the LONGER of picture and line
+ * (the line never cut, the last frame held), joined by film-join.server.ts, measured, or the job fails. */
+
+test("how long a clip is in the film: its picture — or, for the avatar dialogue, the longer of its picture and its line", () => {
+  assert.equal(clipFrames({ picture: 4.0, sound: 5.5 }), 120);
+  assert.equal(clipFrames({ picture: 4.0, sound: 5.5, length: "picture" }), 120);
+  assert.equal(clipFrames({ picture: 4.0, sound: 5.5, length: "longer" }), 165);
+  assert.equal(clipFrames({ picture: 4.0, sound: 3.0, length: "longer" }), 120);
+  assert.equal(clipFrames({ picture: 4.0, sound: null, length: "longer" }), 120);
+  assert.equal(clipFrames({ picture: 0 }), 0);
+  // a seam may be a dissolve of so many frames (the avatar's 0.25 s: 8 of them), 0 a straight join
+  const plan = joinGraph({ frames: [150, 120], seams: [null, 8], prep: "fps=30" });
+  assert.equal(plan.frames, 262);
+  assert.ok(plan.graph.includes("xfade=transition=fade:duration=0.266667:offset=4.733333") && plan.graph.includes("acrossfade=d=0.266667"));
+  assert.equal(joinGraph({ frames: [150, 120], seams: [null, 0], prep: "fps=30" }).frames, 270);
+  // …and a clip's last frame may be held as long as its length needs
+  assert.ok(joinGraph({ frames: [165], prep: "fps=30", hold: 2.5 }).graph.includes("tpad=stop_mode=clone:stop_duration=3,trim=end_frame=165,"));
+  assert.ok(joinGraph({ frames: [300], prep: "fps=30", hold: 6.2 }).graph.includes("tpad=stop_mode=clone:stop_duration=7,"));
+  // the avatar dialogue's join is film-join.server.ts's: 0.25 s dissolves as 8 frames, each clip as long as its line
+  const av = read("app", "lib", "film-dialogue-avatar.server.ts");
+  assert.ok(av.includes("export const AVATAR_DISSOLVE_FRAMES = Math.round(0.25 * FILM_FPS);"));
+  assert.ok(av.includes("return joinWhole({ clips, outPath, prep: SCALE, seams: clips.map(() => AVATAR_DISSOLVE_FRAMES), length: \"longer\", encode: ENCODE, label: \"[avatardialogue]\", beat });"));
+  assert.ok(!/xfade=|acrossfade=|buildConcat|running \+ durs/.test(av), "no join of its own left");
+});
+
+test("the avatar dialogue: a clip whose line runs 1.5 s past its picture — every picture in, the whole line kept, its last frame held", { skip: !ffmpegOk }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "join-"));
+  try {
+    // three of its clips; the middle one's lip-sync stopped 1.5 s before its line did
+    const three = [standIn(dir, "a", "red", 5.0, 5.0), standIn(dir, "b", "green", 4.0, 5.5), standIn(dir, "c", "blue", 5.0, 5.0)];
+    for (const ff of joiners) {
+      for (const dissolve of [true, false]) {
+        const j = joinOn(ff, dir, `avatar-${joiners.indexOf(ff)}-${dissolve}`, three, [null, 8, 8], dissolve, { length: "longer", prep: SCALE_916 });
+        const at = `${ff} dissolve=${dissolve}`;
+        assert.ok(j.check.ok, `${at}: ${j.check.why}`);
+        // every picture — the middle one its own 4 s and 1.5 s of its last frame, held while the line finishes
+        assert.ok(j.seen.red >= 140 && j.seen.green >= 150 && j.seen.blue >= 140, `${at}: ${JSON.stringify(j.seen)}`);
+        assert.ok(Math.abs(j.streams.video - (j.streams.audio ?? 0)) <= JOIN_TOLERANCE, `${at}: picture ${j.streams.video}, sound ${j.streams.audio}`);
+        assert.equal(j.plan.frames, dissolve ? 150 + 165 + 150 - 8 - 8 : 150 + 165 + 150, at);
+      }
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 /* ---- PEOPLE WHO ARE RELATED ARE THE RIGHT AGES FOR IT ----

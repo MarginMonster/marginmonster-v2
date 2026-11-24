@@ -1303,24 +1303,41 @@ const SAMPLES_PER_FRAME = FILM_RATE / FILM_FPS;
  *  (0.333 s — it was 0.32 s); a cut to another place, or to the reveal, none: a straight cut. */
 export const SEAM_FRAMES = { soft: 5, reframe: 10, hard: 0 } as const;
 export type SeamKind = keyof typeof SEAM_FRAMES;
+/** A seam as a join is told it: one of the kinds above, or a dissolve of that many frames (0: a straight join). */
+export type Seam = SeamKind | number | null | undefined;
+const seamFrames = (s: Seam): number => (typeof s === "number" ? Math.max(0, Math.round(s)) : SEAM_FRAMES[s || "soft"] ?? SEAM_FRAMES.soft);
+
+/** HOW LONG A CLIP IS IN THE FILM, in frames: its PICTURE's length (`picture` — the acted film: a clip's sound
+ *  runs past its picture only by the encoder's rounding, and is cut to it), or the LONGER of its picture and its
+ *  sound (`longer` — the avatar dialogue: a lip-sync engine can hand back a picture that stops before its line is
+ *  done, and the line is never cut — the clip's last frame is held until it is). */
+export function clipFrames(o: { picture: number | null | undefined; sound?: number | null | undefined; length?: "picture" | "longer" }): number {
+  const picture = Number(o.picture) > 0 ? Number(o.picture) : 0;
+  const sound = Number(o.sound) > 0 ? Number(o.sound) : 0;
+  const secs = o.length === "longer" ? Math.max(picture, sound) : picture;
+  return secs > 0 ? Math.max(1, Math.round(secs * FILM_FPS)) : 0;
+}
 /** How far the finished file's picture and sound may differ — from each other, and from the length the shots add
  *  up to: two frames, and one block of sound (the encoder rounds the sound up to whole 1024-sample blocks). */
 export const JOIN_TOLERANCE = 2 / FILM_FPS + 1024 / FILM_RATE;
 
 const frameSecs = (frames: number): string => (frames / FILM_FPS).toFixed(6);
 
-/** THE JOIN, as ffmpeg's filter graph (outputs [vc] and [ac]). `frames[i]` = clip i's length in frames at 30 fps,
- *  read off its PICTURE; `seams[i]` = how clip i is joined to the one before it (seams[0] is not read); `prep` =
- *  the picture filters each clip gets first (crop, scale, …, fps=30); `silent[i]` = clip i has no sound stream
- *  (silence of its length is made for it); `dissolve: false` = every seam a straight join (the plain way, tried
- *  when the first way does not come out whole). Returns the graph and the film's length in frames. */
-export function joinGraph(o: { frames: ReadonlyArray<number>; seams?: ReadonlyArray<SeamKind | null | undefined>; prep: string; silent?: ReadonlyArray<boolean>; dissolve?: boolean }): { graph: string; frames: number } {
+/** THE JOIN, as ffmpeg's filter graph (outputs [vc] and [ac]). `frames[i]` = clip i's length in frames at 30 fps
+ *  (clipFrames); `seams[i]` = how clip i is joined to the one before it (seams[0] is not read); `prep` = the picture
+ *  filters each clip gets first (crop, scale, …, fps=30); `silent[i]` = clip i has no sound stream (silence of its
+ *  length is made for it); `hold` = how many seconds a clip's last frame may be held to reach its length (3: the
+ *  few frames a picture-length clip can be short of itself; more where a clip is as long as its sound);
+ *  `dissolve: false` = every seam a straight join (the plain way, tried when the first way does not come out
+ *  whole). Returns the graph and the film's length in frames. */
+export function joinGraph(o: { frames: ReadonlyArray<number>; seams?: ReadonlyArray<Seam>; prep: string; silent?: ReadonlyArray<boolean>; dissolve?: boolean; hold?: number }): { graph: string; frames: number } {
   const n = o.frames.map((f) => Math.max(1, Math.round(Number(f) || 0)));
   if (!n.length) return { graph: "", frames: 0 };
+  const hold = Math.max(3, Math.ceil(Number(o.hold) || 0));
   const g: string[] = [];
   n.forEach((frames, i) => {
-    // the picture, exactly `frames` long: brought to 30 fps, its last frame held a little, then cut to length
-    g.push(`[${i}:v]${o.prep},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=3,trim=end_frame=${frames},setpts=PTS-STARTPTS[v${i}]`);
+    // the picture, exactly `frames` long: brought to 30 fps, its last frame held as long as it must be, then cut
+    g.push(`[${i}:v]${o.prep},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${hold},trim=end_frame=${frames},setpts=PTS-STARTPTS[v${i}]`);
     // …and its sound exactly as long: cut, or padded with silence (a clip with no sound gets silence)
     const samples = frames * SAMPLES_PER_FRAME;
     g.push(o.silent?.[i]
@@ -1330,15 +1347,14 @@ export function joinGraph(o: { frames: ReadonlyArray<number>; seams?: ReadonlyAr
   // runs of shots joined by dissolves; a straight cut starts a new run
   const runs: number[][] = [];
   n.forEach((_, i) => {
-    const kind = o.seams?.[i] || "soft";
-    if (i === 0 || o.dissolve === false || kind === "hard") runs.push([i]);
+    if (i === 0 || o.dissolve === false || seamFrames(o.seams?.[i]) === 0) runs.push([i]);
     else runs[runs.length - 1].push(i);
   });
   const joined = runs.map((run, r) => {
     let v = `v${run[0]}`, a = `a${run[0]}`, len = n[run[0]];
     run.slice(1).forEach((i, k) => {
       // (never longer than either shot it joins)
-      const fade = Math.max(1, Math.min(SEAM_FRAMES[(o.seams?.[i] || "soft") as SeamKind] || SEAM_FRAMES.soft, len - 1, n[i] - 1));
+      const fade = Math.max(1, Math.min(seamFrames(o.seams?.[i]), len - 1, n[i] - 1));
       const vo = `r${r}v${k}`, ao = `r${r}a${k}`;
       g.push(`[${v}][v${i}]xfade=transition=fade:duration=${frameSecs(fade)}:offset=${frameSecs(len - fade)}[${vo}]`);
       g.push(`[${a}][a${i}]acrossfade=d=${frameSecs(fade)}[${ao}]`);

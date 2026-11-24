@@ -27,6 +27,8 @@ import crypto from "node:crypto";
 import { db } from "../db.server";
 import { renderCreativeSeed } from "./image-generation.server";
 import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pipeline.server";
+import { joinWhole } from "./film-join.server";
+import { FILM_FPS } from "./acted-staging";
 import { animateAvatar, animateOmniHuman, falEnabled, falTts } from "./fal-video.server";
 import { AVATAR_VOICES } from "./avatar-voice-catalog";
 import { mirrorRender } from "./object-storage.server";
@@ -116,59 +118,25 @@ async function cropHalf(localImage: string, side: "left" | "right"): Promise<str
   return null;
 }
 
-/** Concat the clips with a short crossfade. Every clip is the SAME two-shot, so the
- *  joins are invisible. Degrade ladder: xfade+audio → concat+audio → concat+silent. */
-async function assembleAvatarDialogue(clips: string[], outPath: string, jobId?: string): Promise<void> {
-  const N = clips.length;
-  if (!N) throw new Error("[avatardialogue] no clips");
+/** The dissolve between two of its clips: 0.25 s, as near as whole frames at 30 fps come (8 frames, 0.267 s). */
+export const AVATAR_DISSOLVE_FRAMES = Math.round(0.25 * FILM_FPS);
+
+/** Join the clips with a short dissolve. Every clip is the SAME two-shot, so the joins are invisible. The join
+ *  is film-join.server.ts's (acted-staging.ts → THE JOIN): it used to place each dissolve by the clip's CONTAINER
+ *  length — the longer of its picture and its sound — and a lip-sync engine can hand back a picture that stops
+ *  before its line does (ugc-ad-pipeline.server.ts freeze-extends such a clip for the same reason); past the 0.25 s
+ *  dissolve, the next dissolve fell after the last frame, xfade never brought the next clip in, and every later
+ *  clip's PICTURE was gone while all of its sound played on (the acted film lost its reveal that way, knock4,
+ *  2026-11-24). Now each clip is as long as the LONGER of its picture and its line — the line is never cut, the
+ *  clip's last frame is held until it is done — and the finished file is measured: picture and sound the same
+ *  length, or joined again with straight joins, or the job fails. Nothing ships unless it is whole. */
+async function assembleAvatarDialogue(clips: string[], outPath: string, jobId?: string): Promise<number> {
+  if (!clips.length) throw new Error("[avatardialogue] no clips");
   const beat = async () => { if (jobId) await checkpointJob(jobId, { ckBeat: Date.now() }); };
-  const produced = (): boolean => { try { return fs.existsSync(outPath) && ffprobeDuration(outPath) > 1; } catch { return false; } };
   const SCALE = "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30";
-  const TAIL = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outPath];
-
-  const buildXfade = (): string[] | null => {
-    if (N < 2) return null;
-    const FADE = 0.25;
-    const durs = clips.map((c) => { try { return ffprobeDuration(c); } catch { return 0; } });
-    if (durs.some((d) => !(d > FADE + 0.3))) return null;
-    const a: string[] = ["-y"];
-    clips.forEach((c) => a.push("-i", c));
-    const f: string[] = [];
-    clips.forEach((_, i) => { f.push(`[${i}:v]${SCALE},setpts=PTS-STARTPTS[v${i}]`); f.push(`[${i}:a]aresample=44100,asetpts=PTS-STARTPTS[a${i}]`); });
-    let vPrev = "v0", aPrev = "a0", running = durs[0];
-    for (let i = 1; i < N; i++) {
-      const vOut = i === N - 1 ? "vc" : `vx${i}`;
-      const aOut = i === N - 1 ? "ac" : `ax${i}`;
-      f.push(`[${vPrev}][v${i}]xfade=transition=fade:duration=${FADE}:offset=${Math.max(0, running - FADE).toFixed(3)}[${vOut}]`);
-      f.push(`[${aPrev}][a${i}]acrossfade=d=${FADE}[${aOut}]`);
-      vPrev = vOut; aPrev = aOut; running = running + durs[i] - FADE;
-    }
-    return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", "-map", "[ac]", ...TAIL];
-  };
-
-  const buildConcat = (useAudio: boolean): string[] => {
-    const a: string[] = ["-y"];
-    clips.forEach((c) => a.push("-i", c));
-    const f: string[] = [];
-    clips.forEach((_, i) => { f.push(`[${i}:v]${SCALE},setpts=PTS-STARTPTS[v${i}]`); if (useAudio) f.push(`[${i}:a]aresample=44100,asetpts=PTS-STARTPTS[a${i}]`); });
-    if (useAudio) {
-      f.push(`${clips.map((_, i) => `[v${i}][a${i}]`).join("")}concat=n=${N}:v=1:a=1[vc][ac]`);
-      return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", "-map", "[ac]", ...TAIL];
-    }
-    f.push(`${clips.map((_, i) => `[v${i}]`).join("")}concat=n=${N}:v=1:a=0[vc]`);
-    return [...a, "-filter_complex", f.join(";"), "-map", "[vc]", ...TAIL];
-  };
-
+  const ENCODE = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"];
   await beat();
-  let lastErr = "";
-  for (const args of [buildXfade(), buildConcat(true), buildConcat(false)]) {
-    if (!args) continue;
-    const run = await runFfmpeg(args);
-    if (run.status === 0 && produced()) return;
-    lastErr = (run.stderr || "").slice(-240);
-    await beat();
-  }
-  throw new Error(`[avatardialogue] ffmpeg failed: ${lastErr}`);
+  return joinWhole({ clips, outPath, prep: SCALE, seams: clips.map(() => AVATAR_DISSOLVE_FRAMES), length: "longer", encode: ENCODE, label: "[avatardialogue]", beat });
 }
 
 export async function generateAvatarDialogue(opts: {
