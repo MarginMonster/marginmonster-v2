@@ -75,7 +75,7 @@ export const STORY_SHOTS: Record<StoryShot, ShotSpec> = {
   detail: {
     write: "A DETAIL — no face at all: a hand, an object, a footprint, a door handle — the one thing this moment turns on, filling the frame (name nobody in this VISUAL unless it is their hand or their paw)",
     camera: "CAMERA: an extreme close-up of that one thing — it fills the frame; no faces in the picture.",
-    motion: "Almost still: the smallest movement of light and air. The camera holds still.",
+    motion: "Almost still: the smallest movement. The camera holds still.",
   },
 };
 

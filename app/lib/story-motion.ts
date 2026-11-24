@@ -81,10 +81,13 @@ export function motionPrompt(_visual: string, shot?: string | null): string {
   const what = "";
   const seen = isStoryShot(shot) ? shot : null;
   const move = shotMotion(seen) || "Everybody holds their place; only small movement. The camera drifts slowly forward, steady and smooth.";
+  // (NOTHING IS NAMED THAT MAY NOT BE IN THE PICTURE — no "fire", no "creature", no "rain", not even after a
+  //  "no": the engine draws what it is told about. The first story checked after the rules named them had
+  //  flames in an office corridor.)
   const hold = seen === "walk"
-    ? "Apart from that walk, HOLD THE PICTURE: every person and creature keeps the body, the build and the clothes it has in the picture — nobody crouches, jumps, lunges, falls or changes shape."
-    : "HOLD THE PICTURE: every person and creature keeps the body, the pose, the size and the place it has in the picture — nobody crouches, stands up, jumps, lunges, falls, changes shape or walks out.";
-  return `One continuous shot of this exact picture coming to life. ${move} ${hold} Nothing new appears — no extra person, creature, face, eye or hand; a fire or a flame stays exactly the size it is. What moves is small and natural: breathing, a slow blink, a head or a hand turning a little, fur, hair and cloth in the air, leaves, mist, rain, water and light. Nobody speaks — mouths stay closed, or only gasp or react. The same faces, the same designs, the same place; no cuts, no writing.${what ? ` (What the picture shows: ${what})` : ""}`;
+    ? "Apart from that walk, HOLD THE PICTURE: everybody keeps the body, the build and the clothes they have in the picture for the whole shot."
+    : "HOLD THE PICTURE: everybody keeps the body, the pose, the size and the place they have in the picture for the whole shot.";
+  return `One continuous shot of this exact picture coming to life. ${move} ${hold} Everything stays exactly as it is in the picture — the same shapes, the same colours, the same light, the same place; nothing is added, nothing is taken away, nothing changes. What moves is small and natural: breathing, a slow blink, a slight turn of the head, a small shift of weight. Nobody speaks; mouths stay closed. The same faces, the same designs, the same place; no cuts, no writing.${what ? ` (What the picture shows: ${what})` : ""}`;
 }
 
 /** How a clip `have` seconds long fills a scene told in `need` seconds: as it is when it is long enough

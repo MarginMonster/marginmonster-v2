@@ -92,14 +92,22 @@ test("what it is told — the scene as written, nobody talking, nothing changed"
   // …and the scene's WORDS are not sent at all: even last, "inside the stone ring" grew a glowing ring
   assert.ok(!p.includes("Pip") && !p.includes("Tansy") && !p.includes("What the picture shows"), "the picture is the scene — the engine is told only how to let it breathe");
   assert.ok(p.endsWith("The same faces, the same designs, the same place; no cuts, no writing."));
-  assert.ok(p.includes("HOLD THE PICTURE: every person and creature keeps the body, the pose, the size and the place it has in the picture — nobody crouches, stands up, jumps, lunges, falls, changes shape or walks out."));
-  assert.ok(p.includes("Nothing new appears — no extra person, creature, face, eye or hand; a fire or a flame stays exactly the size it is."));
+  assert.ok(p.includes("HOLD THE PICTURE: everybody keeps the body, the pose, the size and the place they have in the picture for the whole shot."));
+  assert.ok(p.includes("nothing is added, nothing is taken away, nothing changes."), "(not \"nothing leaves\": to an engine, leaves are leaves)");
+  // NOTHING IS NAMED THAT MAY NOT BE IN THE PICTURE — not even after a "no": the rules once said "a fire or a
+  // flame stays exactly the size it is", and a story set in an office corridor had flames in three clips
+  for (const shot of [undefined, "wide", "walk", "depth", "over", "close", "low", "two", "detail"]) {
+    const m = motionPrompt("anything", shot);
+    assert.ok(!/\b(?:fire|flames?|creatures?|monsters?|hands?|rain|mist|leaves|water|smoke|blood|jump|lunge|crouch|fall)\b/i.test(m), `${shot}: ${m}`);
+    // (a close shot IS a face, so its eyes may move; nowhere else are eyes spoken of)
+    assert.equal(/\beyes?\b/i.test(m), shot === "close", `${shot}: eyes`);
+  }
   // …and it follows how the scene is SEEN: somebody caught mid-stride walks; a face barely moves
   const walk = motionPrompt("Howl walks toward the camera through the pines.", "walk");
-  assert.ok(walk.includes("Whoever is mid-stride walks slowly and steadily toward the camera") && walk.includes("Apart from that walk, HOLD THE PICTURE") && !walk.includes("or walks out"));
+  assert.ok(walk.includes("Whoever is mid-stride walks slowly and steadily toward the camera") && walk.includes("Apart from that walk, HOLD THE PICTURE: everybody keeps the body, the build and the clothes"));
   assert.ok(motionPrompt("A face.", "close").includes("Almost still: a breath, the eyes moving, one slow blink."));
   assert.equal(motionPrompt("x", "nonsense"), motionPrompt("x"), "an unknown shot is no shot");
-  assert.ok(p.includes("Nobody speaks — mouths stay closed, or only gasp or react."), "a told story: a mouth moving under the narrator reads as a fault");
+  assert.ok(p.includes("Nobody speaks; mouths stay closed."), "a told story: a mouth moving under the narrator reads as a fault");
   assert.ok(p.includes("The same faces, the same designs, the same place; no cuts, no writing."));
   assert.ok(p.includes("The camera drifts slowly forward, steady and smooth."));
   // a scene with nothing written still moves; a very long description is cut, the rules never are
