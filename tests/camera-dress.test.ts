@@ -12,7 +12,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CAMERA_LOOKS, CAM_DAYS, camDate, cameraLookOf, clockAt, clockExpr, clockText, dressFilter, filterPath, handheld, timeLapseOf } from "../app/lib/camera-dress.ts";
+import { BODYCAM_MARK, CAMERA_LOOKS, CAM_DAYS, camDate, cameraLookOf, clockAt, clockExpr, clockText, dressFilter, filterPath, handheld, timeLapseOf } from "../app/lib/camera-dress.ts";
 
 const FONT = "C:/fonts/Poppins-Bold.ttf";
 const MONO = "C:/fonts/JetBrainsMono-Regular.ttf";
@@ -42,6 +42,11 @@ test("THE BODY CAM (\"What about body cam footage\"): worn on a chest — it bob
   assert.ok(dressFilter({ look: "bodycam", w: 1280, h: 720, font: FONT, camName: "UNIT 12: x" }).filter.includes("text='UNIT 12 x'"));
   // a generic camera: no real maker's name is ever drawn
   assert.ok(!/axon|motorola|watchguard|getac/i.test(d.filter));
+  // …and EVERY body-cam piece says what it is, small, bottom-left (realistic police footage that is not real
+  // must never pass for real — the owner asked for traffic stops and arrests too)
+  assert.equal(BODYCAM_MARK, "AI DRAMATIZATION");
+  assert.ok(d.filter.includes(":fontcolor=white@0.72:x=42:y=h-th-42:expansion=none:text='AI DRAMATIZATION'"));
+  assert.ok(dressFilter({ look: "bodycam", w: 1280, h: 720, font: FONT, camName: "UNIT 7" }).filter.includes("text='AI DRAMATIZATION'"), "with any camera name");
   // its microphone: close, thin, a little crunchy
   assert.equal(d.audio, "highpass=f=220,lowpass=f=6000,acompressor=threshold=-22dB:ratio=4:attack=5:release=120");
   assert.ok(!d.audioInGraph && !d.chrome && d.filter.endsWith("format=yuv420p[v]"));

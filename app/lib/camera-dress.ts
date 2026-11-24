@@ -41,6 +41,9 @@ export const cameraLookOf = (v: unknown): CameraLook | null => {
   return k === "phone" || k === "camcorder" || k === "bare" || k === "house" || k === "bodycam" ? k : null;
 };
 
+/** What every body-cam piece says it is, in its corner (see the body cam in dressFilter). */
+export const BODYCAM_MARK = "AI DRAMATIZATION";
+
 /** THE CHEST. A body camera is worn, not held: the picture rises and drops with every step (twice a stride,
  *  at a walking cadence) and rolls a little from side to side once a stride. Like the hand (handheld), the
  *  picture is enlarged by a margin and a window of the original size moves inside it, so the frame's edge
@@ -234,6 +237,11 @@ export function dressFilter(o: DressOptions): Dress {
     const time = [part(`mod(floor(${C}/3600),24)`), part(`mod(floor(${C}/60),60)`), part(`mod(floor(${C}),60)`)].join("\\:");
     const face = `fontfile='${mono}':fontcolor=white:borderw=${edge}:bordercolor=0x0A0A0A`;
     const unit = (o.camName || "BODYCAM 412").replace(/['\\%:]/g, "").slice(0, 28);
+    // THE MARK. Realistic police footage that is not real gets taken for real — and the platforms strike
+    // realistic AI video posted without a label. So every body-cam piece carries, small in its bottom-left
+    // corner, what it is. (The owner asked for traffic stops and arrests, not only horror: this is the line
+    // that keeps those honest.)
+    const mark = `drawtext=${face}:fontsize=${r(fsz * 0.62)}:fontcolor=white@0.72:x=${m}:y=h-th-${m}:expansion=none:text='${BODYCAM_MARK}'`;
     const look = [
       chestBob(w, h),
       "unsharp=5:5:0.9:5:5:0",
@@ -242,6 +250,7 @@ export function dressFilter(o: DressOptions): Dress {
       "fps=30",
       `drawtext=${face}:fontsize=${fsz}:x=w-tw-${m}:y=${m}:text='${day} T${time} -0500'`,
       `drawtext=${face}:fontsize=${fsz}:x=w-tw-${m}:y=${m + r(fsz * 1.3)}:expansion=none:text='${unit}'`,
+      mark,
     ].join(",");
     // a body camera's microphone: close, thin and a little crunchy
     return { filter: `[0:v]${look},format=yuv420p[v]`, audio: "highpass=f=220,lowpass=f=6000,acompressor=threshold=-22dB:ratio=4:attack=5:release=120" };
