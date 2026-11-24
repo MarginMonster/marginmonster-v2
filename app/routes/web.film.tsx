@@ -406,7 +406,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, account } = await requireWebIdentity(request);
   const form = await request.formData();
   const intent = ((form.get("intent") as string) || "").trim();
-  const { filmTemplate, previewFilmTreatment, canNarrate, clampNarrated } = await import("../lib/film-engine.server");
+  const { FILM_TEMPLATES, filmTemplate, previewFilmTreatment, canNarrate, clampNarrated } = await import("../lib/film-engine.server");
 
   // THE CAST CHECK, ASKED BY HAND — admin only, and it reads only pictures on our own render disk or among
   // the built-in avatars. The question the storyboard asks about a cast still, put to the same reader with
@@ -437,7 +437,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: tr(lang, "Your plan doesn't include video yet — upgrade to make films.") });
   }
 
-  const tmpl = filmTemplate((form.get("template") as string) || undefined);
+  // A FORMAT THAT IS NAMED MUST EXIST. filmTemplate() answers a key it does not know with the Music Video —
+  // right for a page that sends none, wrong for one that sends a WRONG one: a one-press request for
+  // "shortstory" (the hero's id on the page, not the engine's key) was taken on 2026-11-24 and a twenty-minute
+  // music video nobody asked for was rendered from a story idea. A key that is not a format is refused.
+  const templateKey = ((form.get("template") as string) || "").trim();
+  if (templateKey && !Object.prototype.hasOwnProperty.call(FILM_TEMPLATES, templateKey)) {
+    return json({ error: tr(lang, "That film format doesn't exist — pick one in the Movie Maker."), detail: `unknown template "${templateKey.slice(0, 40)}"` }, { status: 400 });
+  }
+  const tmpl = filmTemplate(templateKey || undefined);
   const topic = ((form.get("filmTopic") as string) || "").trim().slice(0, 300);
   // NARRATED: a storyteller's voice over pictures instead of the cast acting it (story formats only).
   const narrated = ((form.get("filmMode") as string) || "").trim() === "narrated" && canNarrate(tmpl.key);
@@ -3100,7 +3108,7 @@ export default function FilmStudio() {
         <HeroReel clips={HERO_REEL.filter((c) => !c.key || heroes.some((h) => h.media === c.key))} onShow={setReelKey} />
         <span className="fs-head-scrim" aria-hidden="true" />
         <div className="fs-head-copy">
-          <span className="fs-head-eyebrow"><span className="fs-head-dot" aria-hidden="true" /> {t("Easymode Studio")}</span>
+          <span className="fs-head-eyebrow"><Ico n="film" size={13} /> {t("Easymode Studio")}</span>
           <b>{t("Make a movie.")} <em>{t("Just describe it.")}</em></b>
           <span>{t("Pick a format, tell us the idea — we write it and film it. You just press go.")}</span>
         </div>
@@ -4330,12 +4338,12 @@ ${CAST_ID_CSS}
 /* Cinematic hero — a dark "movie theatre" band with a gold spotlight + underline. */
 /* Green hero band — SOFTENED so it sits in the page (light shadow + a crisp inner
    edge + slimmer) instead of a floating slab. Gold rosette, the still bleeds in. */
-.fs-head{position:relative;overflow:hidden;border-radius:20px;margin-bottom:16px;min-height:200px;display:flex;align-items:center;box-shadow:0 20px 48px -24px rgba(8,62,39,.55);background:radial-gradient(130% 150% at 80% 0%,#2C6549,#1A4A33 52%,#0F3323);}
+.fs-head{position:relative;overflow:hidden;border-radius:20px;margin-bottom:16px;min-height:200px;display:flex;align-items:center;box-shadow:0 20px 48px -24px rgba(8,62,39,.55);background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);}
 /* A blurred, zoomed copy of the hero still FILLS the band behind everything — the ground the reel's own
    blurred posters lie over once they have loaded (ambient-mode look). */
 .fs-head::before{content:"";position:absolute;inset:0;z-index:0;background:url(/landing/film-hero.jpg?v=5) center/cover;filter:blur(30px) brightness(.5) saturate(1.15);transform:scale(1.18);}
 /* Desktop: a proper tall hero (a thin 200px strip looked tiny against the full-bleed width). */
-@media(min-width:960px){.fs-head{min-height:320px;}.fs-head-copy{padding:44px 54px;max-width:680px;}.fs-head-copy b{font-size:50px;}.fs-head-copy>span{font-size:16.5px;max-width:540px;margin-top:14px;}.fs-head-eyebrow{font-size:12.5px;}}
+@media(min-width:960px){.fs-head{min-height:320px;}.fs-head-copy{padding:44px 54px;max-width:680px;}.fs-head-copy b{font-size:50px;}.fs-head-copy>span{font-size:16.5px;max-width:540px;margin-top:14px;}}
 /* THE CLIP IS FLUSH. On a wide screen it stood in this band as a screen of its own — a margin round it, its
    own corners, a ring and a shadow — and the owner, 2026-11-24, with the other sections' headers beside it:
    "the video hero's here are not flush like the others they appear boxed". So it is as the Auto-post's and
@@ -4368,18 +4376,21 @@ ${CAST_ID_CSS}
 @media(min-width:960px){[dir=rtl] .fs-head-tag{left:22px;}}
 @media(max-width:640px){[dir=rtl] .fs-head-tag{left:12px;}}
 @media(prefers-reduced-motion:reduce){.fs-reel{transition:none;}.fs-head-tag{animation:none;}}
-/* THE SHADE THE WORDS STAND ON: the band's own deep green, whole where the words are (they keep to the
-   band's first 58%, 60% on a phone) and gone before the clip is whole — so no word stands on a busy picture,
-   and nothing dulls the clip itself. */
-.fs-head-scrim{position:absolute;inset:0;z-index:2;background:linear-gradient(90deg,rgba(7,42,27,.92),rgba(7,42,27,.9) 54%,rgba(7,42,27,0) 74%);}
-[dir=rtl] .fs-head-scrim{background:linear-gradient(270deg,rgba(7,42,27,.92),rgba(7,42,27,.9) 54%,rgba(7,42,27,0) 74%);}
+/* THE SHADE THE WORDS STAND ON IS THE AD MAKER'S GREEN — the very gradient its hero is painted with
+   (web.studio.tsx → .ws-cinehead-bg; a test holds the two together). The owner, 2026-11-24, with the two
+   heroes side by side: "Lighten movie maker hero to ad maker green so it matches". It was a near-black green
+   laid over the picture at 92%; it is now that lighter green itself, whole where the words are (they keep to
+   the band's first 58%, 60% on a phone) and masked away before the clip is whole — so no word stands on a
+   busy picture, and nothing dulls the clip itself. */
+.fs-head-scrim{position:absolute;inset:0;z-index:2;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);-webkit-mask-image:linear-gradient(90deg,#000 54%,transparent 74%);mask-image:linear-gradient(90deg,#000 54%,transparent 74%);}
+[dir=rtl] .fs-head-scrim{background:radial-gradient(135% 130% at 92% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);-webkit-mask-image:linear-gradient(270deg,#000 54%,transparent 74%);mask-image:linear-gradient(270deg,#000 54%,transparent 74%);}
 /* (a phone: the words run to 60% of the band and the hero's rosette lies under all of them, so the shade is
    whole a little further — no letter stands on a line of the rosette AND on the clip's near edge at once) */
 @media(max-width:640px){
-  .fs-head-scrim{background:linear-gradient(90deg,rgba(7,42,27,.92),rgba(7,42,27,.9) 60%,rgba(7,42,27,0) 78%);}
-  [dir=rtl] .fs-head-scrim{background:linear-gradient(270deg,rgba(7,42,27,.92),rgba(7,42,27,.9) 60%,rgba(7,42,27,0) 78%);}
+  .fs-head-scrim{-webkit-mask-image:linear-gradient(90deg,#000 60%,transparent 78%);mask-image:linear-gradient(90deg,#000 60%,transparent 78%);}
+  [dir=rtl] .fs-head-scrim{-webkit-mask-image:linear-gradient(270deg,#000 60%,transparent 78%);mask-image:linear-gradient(270deg,#000 60%,transparent 78%);}
 }
-.fs-head-dot{width:6px;height:6px;border-radius:50%;background:var(--fs-gold-lt,#E7C879);box-shadow:0 0 10px var(--fs-gold-lt,#E7C879);}
+
 .fs-head-bg{position:absolute;inset:0;z-index:0;border-radius:18px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 8px 22px rgba(11,20,15,.16),inset 0 0 0 1px rgba(255,255,255,.1);}
 .fs-head-rose{position:absolute;background:center/contain no-repeat;mix-blend-mode:screen;pointer-events:none;will-change:transform;}
 .fs-head-rose.b{left:-130px;bottom:-170px;width:350px;height:350px;background-image:url(/gstyle-rosette.svg);opacity:.3;animation:fsspinB 115s linear infinite;}
@@ -4388,7 +4399,12 @@ ${CAST_ID_CSS}
 .fs-head-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;animation:fsstill .55s cubic-bezier(.2,.7,.2,1);}
 @keyframes fsstill{from{opacity:0;transform:scale(1.06);}to{opacity:1;transform:scale(1);}}
 .fs-head-copy{position:relative;z-index:3;flex:1 1 auto;min-width:0;padding:26px 30px;max-width:min(560px,58%);}
-.fs-head-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:var(--fs-gold-lt,#E7C879);text-transform:uppercase;letter-spacing:.08em;}
+/* THE EYEBROW IS THE AD MAKER'S (.ws-cinehead-eyebrow): an icon and the words, small, in its gold. Written as
+   .fs-head-copy>.fs-head-eyebrow because the sub-line's rule below (.fs-head-copy>span) also catches this
+   span and, being more specific than a bare class, used to win — the eyebrow came out white, 13.5px and a
+   block, where the Ad Maker's is gold and 11px. */
+.fs-head-copy>.fs-head-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:#E7C879;text-transform:uppercase;letter-spacing:.08em;margin:0;max-width:none;line-height:1.3;text-shadow:none;}
+@media(min-width:960px){.fs-head-copy>.fs-head-eyebrow{font-size:12.5px;}}
 .fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:33px;letter-spacing:-.02em;color:#fff;margin-top:11px;line-height:1.04;text-shadow:0 2px 18px rgba(0,0,0,.4);text-wrap:balance;}
 .fs-head-copy b em{font-style:normal;color:#8FE9BC;}
 @keyframes fsFadeUp{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:translateY(0);}}
