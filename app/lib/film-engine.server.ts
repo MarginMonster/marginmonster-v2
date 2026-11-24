@@ -372,6 +372,11 @@ const TREATMENT_SCHEMA = {
   // from the same button, was "Pip and the Last Apples of Autumn").
   required: ["scenes", "musicMood", "title"],
 } as const;
+/* A TOLD STORY MUST SAY ITS PLACES (an empty list when it has none). Left optional, the writer skipped it
+ * for a story that goes back to "the well" in five of its six pictures (a Moral Story made on the live site,
+ * 2026-11-24) — and the well was a ring of rubble, then a well with a pulley, then a square one under
+ * trees. The two stories before it had listed theirs. Asked for outright, it is always answered. */
+const NARRATED_SCHEMA = { ...TREATMENT_SCHEMA, required: [...TREATMENT_SCHEMA.required, "places"] } as const;
 
 /* NARRATED stories — one storyteller, illustrated scenes. Each scene is 2-3 spoken sentences (about ten
  * seconds), so the length is the scene count: 4 ≈ 45 s, 6 ≈ a minute, 9 ≈ 1:30, 12 ≈ 2 minutes. */
@@ -655,7 +660,7 @@ export async function previewFilmTreatment(opts: {
       // a full ~2-min song's lyrics — and a narrated story's every word — run long; a music video of
       // five-second scenes has up to 24 scenes to describe
       maxTokens: tmpl.lipSyncSinger ? (scenes > 12 ? 4400 : 2600) : narrated ? 2400 : 1500,
-      jsonSchema: { name: "film_treatment", schema: TREATMENT_SCHEMA as unknown as Record<string, unknown> },
+      jsonSchema: { name: "film_treatment", schema: (narrated ? NARRATED_SCHEMA : TREATMENT_SCHEMA) as unknown as Record<string, unknown> },
     });
     return JSON.parse(raw) as FilmTreatment;
   };

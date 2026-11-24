@@ -208,6 +208,11 @@ test("the writer is asked for the story's places — a told story only — and t
   assert.ok(narr > 0 && ask > narr && ask < acted, "asked in the told story's brief and nowhere else");
   assert.ok(engine.includes("Only what at least TWO pictures are set at, in or on; never a person or an animal; no weather or time of day in it; an empty list when the story has no such place."));
   assert.ok(engine.includes("Every VISUAL set there calls it by that exact name"), "that is how a scene is known to be set there");
+  // …and it MUST answer (an empty list when the story has none). Left optional, the writer skipped it for a
+  // Moral Story that goes back to "the well" in five of six pictures (live, 2026-11-24): the well was a ring
+  // of rubble, then a well with a pulley, then a square one under trees.
+  assert.ok(engine.includes("const NARRATED_SCHEMA = { ...TREATMENT_SCHEMA, required: [...TREATMENT_SCHEMA.required, \"places\"] } as const;"));
+  assert.ok(engine.includes("schema: (narrated ? NARRATED_SCHEMA : TREATMENT_SCHEMA) as unknown as Record<string, unknown> },"), "a film that is acted or sung is not asked");
   // kept only for a told story; two at most; nothing too short to be a description
   assert.ok(engine.includes("const places = narrated && Array.isArray(parsed.places)"));
   assert.ok(engine.includes(".filter((p) => p.length > 12).slice(0, 2)"));
