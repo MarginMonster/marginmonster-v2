@@ -43,6 +43,8 @@ import { nameTok } from "../lib/character-prompts";
 import { slateTitle } from "../lib/film-slate";
 // (2026-11-24) an acted film made in one press is cast with the people picked on the Cast card
 import { pickedAsCast } from "../lib/dialogue-cast";
+// (2026-11-24) the posters stand on three shelves: told · acted · sung
+import { heroShelves } from "../lib/film-heroes";
 import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 import type { StoryToEdit } from "../lib/story-edit";
 import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
@@ -3133,10 +3135,24 @@ export default function FilmStudio() {
       })()}
       <div className="fs-switch">
         {!entered && (
-          <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t("Movie formats")}>
+          <div className={`fs-shelves${anim === "in" ? " throw" : ""}`}>
+            {/* THE SHELVES (film-heroes.ts → heroShelves): what is TOLD by a narrator, what is ACTED on camera
+                and what is SUNG each stand under their own heading, which says in a line what every poster
+                on that shelf has in common — nobody has to open one to find out. */}
+            {heroShelves(heroes).map((sh) => (
+            <section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>
+              <header className="fs-shelf-h">
+                <span className="fs-shelf-ico" aria-hidden="true"><Ico n={sh.key === "told" ? "book" : sh.key === "acted" ? "film" : "music"} size={18} /></span>
+                <span className="fs-shelf-txt">
+                  <h2 className="fs-shelf-name" id={`fs-shelf-${sh.key}`}>{t(sh.name)}</h2>
+                  <span>{t(sh.line)}</span>
+                </span>
+                <em className="fs-shelf-tag">{t(sh.tag)}</em>
+              </header>
+          <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t(sh.name)}>
             {/* one poster per HERO (film-heroes.ts): a format as it is told. A narrated hero's poster is a
                 strip of three upright pictures with their captions — it looks like what it makes. */}
-            {heroes.map((h) => (
+            {sh.heroes.map((h) => (
               <button type="button" role="tab" key={h.id} className={`fs-fmt${zoomKey === h.id ? " zoom" : ""}${h.told === "narrated" ? " is-told" : ""}`}
                 aria-selected={heroId === h.id} onClick={() => enterFormat(h.id)}>
                 <span className="fs-fmt-cover">
@@ -3146,6 +3162,9 @@ export default function FilmStudio() {
                 </span>
                 {h.kick ? <span className="fs-fmt-sub">{t(h.kick)}{h.meta ? <em> · {t(h.meta)}</em> : null}</span> : null}
               </button>
+            ))}
+          </div>
+            </section>
             ))}
           </div>
         )}
@@ -4328,6 +4347,28 @@ ${CAST_ID_CSS}
    shrinks the stage away and the grid fades back. (No black letterbox blink.) */
 .fs-switch{position:relative;}
 .fs-fmtgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0 6px;animation:fsgridin .4s ease both;}
+/* THE SHELVES — told · acted · sung. Each shelf is a soft tray with its own accent (storybook gold, the
+   stage's green, the music video's violet): an icon, a name, one line that says what its posters share,
+   and a one-word tag. Entering a format lets the trays fall away so the chosen poster can fly. */
+.fs-shelves{display:grid;gap:18px;margin:18px 0 6px;}
+.fs-shelf{position:relative;border-radius:22px;padding:14px 14px 14px;border:1px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#FFFEFA,#FBF8F0);transition:background .3s ease,border-color .3s ease;}
+.fs-shelf.is-told{--shelf:#A8741B;--shelf-soft:rgba(168,116,27,.1);}
+.fs-shelf.is-acted{--shelf:#0C7A46;--shelf-soft:rgba(12,122,70,.09);}
+.fs-shelf.is-sung{--shelf:#6B4BC8;--shelf-soft:rgba(107,75,200,.09);}
+.fs-shelf::before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:4px;border-radius:0 4px 4px 0;background:var(--shelf);opacity:.85;}
+.fs-shelf-h{display:flex;align-items:center;gap:11px;margin:0 2px 12px 6px;transition:opacity .25s ease;}
+.fs-shelf-ico{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:#fff;background:var(--shelf);box-shadow:0 10px 18px -10px var(--shelf);}
+.fs-shelf-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;}
+.fs-shelf-name{margin:0;font-family:Poppins,sans-serif;font-size:19px;font-weight:800;letter-spacing:-.015em;line-height:1.15;color:var(--ink,#14201A);}
+.fs-shelf-txt span{font-size:12.5px;font-weight:600;line-height:1.35;color:var(--ink2,#55605A);}
+.fs-shelf-tag{flex:none;font-style:normal;font-family:Poppins,sans-serif;font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;color:var(--shelf);background:var(--shelf-soft);border-radius:999px;padding:5px 10px;}
+.fs-shelf .fs-fmtgrid{margin:0;}
+/* (a wide screen: four to a row, so the four Films stand in one line — three left one alone on a second) */
+@media(min-width:980px){.fs-shelf .fs-fmtgrid{grid-template-columns:repeat(4,minmax(0,1fr));}}
+.fs-shelves.throw .fs-shelf{background:transparent;border-color:transparent;}
+.fs-shelves.throw .fs-shelf::before,.fs-shelves.throw .fs-shelf-h{opacity:0;}
+@media(max-width:420px){.fs-shelf{padding:12px 10px 12px;border-radius:18px;}.fs-shelf-name{font-size:17px;}}
+@media(prefers-reduced-motion:reduce){.fs-shelf,.fs-shelf-h{transition:none;}}
 /* Tablet / desktop: cap the stage width and show 3 columns so posters stay poster-sized
    instead of ballooning to half the screen on a wide monitor. Phones keep the 2-up grid. */
 @media (min-width:640px){

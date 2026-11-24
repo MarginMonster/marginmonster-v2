@@ -69,3 +69,22 @@ export const heroName = (tmplKey: string, narrated: boolean, fallback: string): 
 export function heroesFor(templateKeys: string[], narratableKeys: string[]): FilmHero[] {
   return FILM_HEROES.filter((h) => templateKeys.includes(h.tmpl) && (h.told !== "narrated" || narratableKeys.includes(h.tmpl)));
 }
+
+/* THE SHELVES — told, acted, sung: each under its own heading.
+ *
+ * The nine posters stood in one grid, a Story beside its Film beside the next Story. The owner, 2026-11-24,
+ * with a photo of that grid: "Narrated and acted need segregated in an attractive way my friend, currently
+ * it's a bit confusing without clicking through". So the grid is three shelves, and each says in a line what
+ * every poster on it has in common — before anything is clicked. The stories first: they are ready in
+ * minutes. (Which shelf leads is his to change — the order of `SHELVES` is the order on the page.) */
+export type HeroShelf = { key: "told" | "acted" | "sung"; name: string; tag: string; line: string; heroes: FilmHero[] };
+const SHELVES: ReadonlyArray<Omit<HeroShelf, "heroes"> & { has: (h: FilmHero) => boolean }> = [
+  { key: "told", name: "Stories", tag: "Narrated", line: "A narrator tells it over moving pictures · ready in minutes", has: (h) => h.told === "narrated" },
+  { key: "acted", name: "Films", tag: "Acted", line: "Actors speak the lines on camera", has: (h) => h.told === "acted" },
+  { key: "sung", name: "Music videos", tag: "Sung", line: "Your artist sings on camera", has: (h) => h.told === null },
+];
+/** The heroes a page offers, as its shelves — every hero on exactly one, in the heroes' own order; a shelf
+ *  with nothing on it is not shown. */
+export function heroShelves(heroes: ReadonlyArray<FilmHero>): HeroShelf[] {
+  return SHELVES.map(({ has, ...s }) => ({ ...s, heroes: heroes.filter(has) })).filter((s) => s.heroes.length > 0);
+}

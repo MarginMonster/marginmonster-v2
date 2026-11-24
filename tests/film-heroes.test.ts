@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FILM_HEROES, heroById, heroName, heroOf, heroesFor } from "../app/lib/film-heroes.ts";
+import { FILM_HEROES, heroById, heroName, heroOf, heroShelves, heroesFor } from "../app/lib/film-heroes.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8");
@@ -83,7 +83,8 @@ test("a page is offered only the heroes it can make", () => {
 
 test("the grid shows a poster per hero, and opening one sets the format AND how it is told", () => {
   assert.ok(ui.includes("const heroes = heroesFor(d.templates.map((x) => x.key), d.narratable || []);"));
-  const grid = ui.slice(ui.indexOf("{heroes.map((h) => ("), ui.indexOf("{heroes.map((h) => (") + 900);
+  // (the posters stand on shelves now — told, acted, sung: each shelf lists its own heroes)
+  const grid = ui.slice(ui.indexOf("{sh.heroes.map((h) => ("), ui.indexOf("{sh.heroes.map((h) => (") + 900);
   assert.ok(grid.includes("onClick={() => enterFormat(h.id)}") && grid.includes("<LoopCover k={h.media} />") && grid.includes("<b>{t(h.name)}</b>"));
   assert.ok(grid.includes("{t(h.kick)}{h.meta ? <em> · {t(h.meta)}</em> : null}"));
   assert.ok(!ui.includes("{d.templates.map((x) => {\n              const m = FMT["), "the grid is no longer one poster per template");
@@ -158,4 +159,44 @@ test("an acted film's badge in the Archive is its poster's name too", () => {
   assert.equal(heroName("testmovie", false, "Short Film"), "Short Film");
   assert.equal(heroName("kidstv", false, "Kids Cartoon"), "Kids Cartoon");
   assert.equal(heroName("kidsmusic", false, "Kids Music Video"), "Kids Music Video", "a template with no hero keeps its own name");
+});
+
+/* The owner, 2026-11-24, with a photo of the grid (a Story beside its Film beside the next Story): "Narrated
+ * and acted need segregated in an attractive way my friend, currently it's a bit confusing without clicking
+ * through". */
+test("the posters stand on three shelves — told, acted, sung — and each says what its posters share", () => {
+  const shelves = heroShelves(FILM_HEROES);
+  assert.deepEqual(shelves.map((s) => [s.key, s.name, s.tag]), [["told", "Stories", "Narrated"], ["acted", "Films", "Acted"], ["sung", "Music videos", "Sung"]]);
+  assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.name)), [
+    ["Moral Story", "Horror Story", "Short Story"],
+    ["Kids Cartoon", "Moral Film", "Horror Film", "Short Film"],
+    ["Music Video", "Kids Music Video"],
+  ]);
+  // every poster on exactly one shelf; a shelf holds one way of telling and nothing else
+  assert.equal(shelves.flatMap((s) => s.heroes).length, FILM_HEROES.length);
+  assert.equal(new Set(shelves.flatMap((s) => s.heroes.map((h) => h.id))).size, FILM_HEROES.length);
+  assert.ok(shelves[0].heroes.every((h) => h.told === "narrated") && shelves[1].heroes.every((h) => h.told === "acted") && shelves[2].heroes.every((h) => h.told === null));
+  // the line under each name is what nobody should have to click to learn
+  assert.ok(/narrator/i.test(shelves[0].line) && /minutes/.test(shelves[0].line));
+  assert.ok(/actors/i.test(shelves[1].line) && /camera/.test(shelves[1].line));
+  assert.ok(/sings/.test(shelves[2].line));
+  // a page that offers fewer formats shows fewer shelves — never an empty one
+  assert.deepEqual(heroShelves(FILM_HEROES.filter((h) => h.told !== "acted")).map((s) => s.key), ["told", "sung"]);
+  assert.deepEqual(heroShelves([]), []);
+
+  // THE PAGE: a heading per shelf (an icon, the name, the line, a one-word tag), then that shelf's posters
+  const ui = fs.readFileSync(new URL("../app/routes/web.film.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(ui.includes("{heroShelves(heroes).map((sh) => ("));
+  assert.ok(ui.includes("<section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>"));
+  assert.ok(ui.includes("<h2 className=\"fs-shelf-name\" id={`fs-shelf-${sh.key}`}>{t(sh.name)}</h2>"));
+  assert.ok(ui.includes("<span>{t(sh.line)}</span>") && ui.includes("<em className=\"fs-shelf-tag\">{t(sh.tag)}</em>"));
+  assert.ok(ui.includes("<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`} role=\"tablist\" aria-label={t(sh.name)}>"), "each shelf is its own list of formats");
+  assert.ok(ui.includes("{sh.heroes.map((h) => ("));
+  // each shelf has its own accent, and the trays fall away when a format is entered (the chosen poster flies)
+  for (const k of [".fs-shelf.is-told{--shelf:", ".fs-shelf.is-acted{--shelf:", ".fs-shelf.is-sung{--shelf:", ".fs-shelves.throw .fs-shelf{background:transparent;border-color:transparent;}"]) assert.ok(ui.includes(k), k);
+  // four to a row on a wide screen: the four Films stand in one line
+  assert.ok(ui.includes("@media(min-width:980px){.fs-shelf .fs-fmtgrid{grid-template-columns:repeat(4,minmax(0,1fr));}}"));
+  // every word on the headings is in all five languages
+  const dict = fs.readFileSync(new URL("../app/lib/ui-i18n-dict.ts", import.meta.url), "utf8");
+  for (const sh of shelves) for (const k of [sh.name, sh.tag, sh.line]) assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
 });
