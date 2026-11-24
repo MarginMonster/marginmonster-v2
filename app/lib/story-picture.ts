@@ -290,10 +290,59 @@ export function placeSheetPrompt(place: { name: string; look: string }, sceneHin
 
 /** What a scene's picture is told about the place it is set at, given as reference image `n`. */
 export function placeNote(n: number, place: { name: string; look: string }): string {
-  return `Reference image ${n} is a design sheet of ${place.name} (${place.look.slice(0, 220)}) — the PLACE this picture is set in. It is the SAME one here: the same shapes, colours, materials and details. Show it from wherever this moment is seen (on it, inside it, beside it, far off): a NEW view of the same place. The sheet's plain background and its three views are NOT part of this picture.`;
+  return `Reference image ${n} is a design sheet of ${place.name} (${place.look.slice(0, 220)}) — the PLACE this picture is set in. It is the SAME one here: the same shapes, colours, materials and details. Show it from wherever this moment is seen (on it, inside it, beside it, far off): a NEW view of the same place. The sheet's plain background and its three views are NOT part of this picture: this is a scene that fills the whole frame — never a sheet, a panel or a framed picture on a background.`;
 }
 /** …and, when the scene has people in it, how near the camera is. (Without it a figure comes out small.) */
 export const PLACE_FRAMING = "FRAMING: this is a picture of the CHARACTERS in that place, not a picture of the place. The camera is near them — each one fills at least a third of the picture's height, and their faces are clear — and only the part of the place around them is in view.";
+
+/* A SCENE THAT CAME BACK AS A PANEL ON THE SHEET'S GROUND. In the well story (a Moral Story made on the live
+ * site, 2026-11-24) five scenes drew their place right; the sixth — "Inside the burrow, Rusk lies curled…" —
+ * came back as a small framed picture floating in a pale-grey frame: the LOOK of the design sheet, copied.
+ * The black-bar check does not see it (the surround is not black), so it is measured: a picture whose four
+ * edges are one flat colour, the same colour all the way round, with a picture inside whose sides are
+ * straight. Measured on every picture saved that night before it was trusted. */
+/** The side of the small square the picture is read at (RGB, 3 bytes a pixel). */
+export const FRAMED_SIZE = 96;
+/** What is measured: how far the flattest…least flat edge strays from one colour (`flat`), how far the four
+ *  edges' colours are from each other (`same`), and which sides of the inside picture are straight. */
+export function framedMeasure(rgb: Uint8Array, size = FRAMED_SIZE): { flat: number; same: number; left: boolean; right: boolean; top: boolean; bottom: boolean } | null {
+  const S = size;
+  if (!rgb || rgb.length < S * S * 3) return null;
+  const at = (x: number, y: number): [number, number, number] => { const k = (y * S + x) * 3; return [rgb[k], rgb[k + 1], rgb[k + 2]]; };
+  const t = Math.max(2, Math.round(S * 0.04));
+  const strip = (x0: number, y0: number, x1: number, y1: number) => {
+    const sum = [0, 0, 0]; let n = 0;
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const p = at(x, y); sum[0] += p[0]; sum[1] += p[1]; sum[2] += p[2]; n++; }
+    const mean = sum.map((v) => v / Math.max(1, n));
+    let dev = 0;
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const p = at(x, y); dev = Math.max(dev, Math.abs(p[0] - mean[0]), Math.abs(p[1] - mean[1]), Math.abs(p[2] - mean[2])); }
+    return { mean, dev };
+  };
+  const strips = [strip(0, 0, S, t), strip(0, S - t, S, S), strip(0, 0, t, S), strip(S - t, 0, S, S)];
+  const flat = Math.max(...strips.map((s) => s.dev));
+  const ground = [0, 1, 2].map((c) => strips.reduce((a, s) => a + s.mean[c], 0) / 4);
+  const same = Math.max(...strips.map((s) => Math.max(...[0, 1, 2].map((c) => Math.abs(s.mean[c] - ground[c])))));
+  // where the colour first leaves the surround, along three lines each way: the same place on all three
+  // (and not at the very edge) is a straight side
+  const off = (p: [number, number, number]): boolean => Math.max(Math.abs(p[0] - ground[0]), Math.abs(p[1] - ground[1]), Math.abs(p[2] - ground[2])) > 40;
+  const lines = [0.3, 0.5, 0.7].map((f) => Math.round(S * f));
+  const first = (line: number, across: boolean, back: boolean): number => {
+    for (let k = 0; k < S; k++) { const v = back ? S - 1 - k : k; if (off(across ? at(v, line) : at(line, v))) return k; }
+    return -1;
+  };
+  const straight = (across: boolean, back: boolean): boolean => {
+    const d = lines.map((l) => first(l, across, back));
+    return d.every((v) => v > t) && Math.max(...d) - Math.min(...d) <= 2;
+  };
+  return { flat, same, left: straight(true, false), right: straight(true, true), top: straight(false, false), bottom: straight(false, true) };
+}
+/** Is this picture a smaller picture sitting on a plain ground — the design sheet's look, copied? */
+export function framedIn(rgb: Uint8Array, size = FRAMED_SIZE): boolean {
+  const m = framedMeasure(rgb, size);
+  return !!m && m.flat <= 34 && m.same <= 18 && ((m.left && m.right) || (m.top && m.bottom));
+}
+/** What the picture model is told on the next go after one. */
+export const FRAMED_FIX = " The last try came out as a small framed picture sitting on a plain background — that is the design sheet's look, not a scene. Draw ONE picture of this moment that fills the whole frame from edge to edge, with the place around the characters.";
 
 /** The places a FINISHED story kept (its meta.places), checked the way the token is. */
 export function placesOf(meta: unknown): StoryPlaceRef[] {

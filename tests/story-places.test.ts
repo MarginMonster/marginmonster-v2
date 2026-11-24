@@ -22,8 +22,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  NOTHING_WRITTEN, PLACE_FRAMING, PLACE_SHEET_ASPECT, STORY_MODEL, STORY_PLACE_MAX,
-  castToken, placeEntry, placeIn, placeKey, placeNamed, placeNote, placeSheetPrompt, placesOf, placesStillIn, readCastToken, recurringPlaces, scenePlace, sceneModel,
+  FRAMED_FIX, FRAMED_SIZE, NOTHING_WRITTEN, PLACE_FRAMING, PLACE_SHEET_ASPECT, STORY_MODEL, STORY_PLACE_MAX,
+  framedIn, framedMeasure, castToken, placeEntry, placeIn, placeKey, placeNamed, placeNote, placeSheetPrompt, placesOf, placesStillIn, readCastToken, recurringPlaces, scenePlace, sceneModel,
 } from "../app/lib/story-picture.ts";
 import { storyToEditFrom } from "../app/lib/story-edit.ts";
 import { seriesBriefOf, seriesFromPayload, seriesPlaces, seriesWriterBrief } from "../app/lib/film-series.ts";
@@ -132,7 +132,7 @@ test("the design sheet: the place and nothing else, on a plain ground — so it 
   const n = placeNote(3, placeEntry(FERRY));
   assert.ok(n.startsWith("Reference image 3 is a design sheet of the ferry (an old low black wooden river ferry"));
   assert.ok(n.includes("the PLACE this picture is set in") && n.includes("the same shapes, colours, materials and details"));
-  assert.ok(n.includes("a NEW view of the same place") && n.includes("The sheet's plain background and its three views are NOT part of this picture."));
+  assert.ok(n.includes("a NEW view of the same place") && n.includes("The sheet's plain background and its three views are NOT part of this picture: this is a scene that fills the whole frame"));
   // …and how near the camera is, when there are people in it (without it a figure came out small)
   assert.ok(PLACE_FRAMING.includes("each one fills at least a third of the picture's height"));
   // a design sheet is not a person: two people and their place stay on the everyday model
@@ -192,8 +192,8 @@ test("where the pictures are drawn: one sheet per place, beside the portraits, t
   // a scene: the people first, the place's sheet LAST — and not counted as a person when the model is chosen
   assert.ok(fn.includes("const setAt = wanted.find((p) => p.scenes.includes(i));"));
   assert.ok(fn.includes("const refs = [...people, ...(placeUrl ? [placeUrl] : [])];"));
-  assert.ok(fn.includes("if (place && placeUrl) { notes.push(placeNote(refs.length, place)); if (here.length) notes.push(PLACE_FRAMING); }"), "the framing line only where there are people to frame");
-  assert.ok(fn.includes("const got = await drawScene(`${prompt}${fix}`, refs, aspect, people.length);"));
+  assert.ok(fn.includes("const placeNotes = place && placeUrl ? [placeNote(refs.length, place), ...(here.length ? [PLACE_FRAMING] : [])] : [];"), "the framing line only where there are people to frame");
+  assert.ok(fn.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect, people.length);"));
   // a sheet that could not be drawn changes nothing: the scene is drawn from its words, as before
   assert.ok(fn.includes("const place = setAt ? sheetFor(setAt.name) : undefined;"));
   // what comes back: the token with the places in it, and the sheets themselves
@@ -298,4 +298,54 @@ test("the next episode opens in the same place: the writer is told, the sheet is
   assert.ok(cards > 0 && wanted > cards, "the carried sheets first, then which places are drawn from one");
   // a sheet is only ever THIS story's: carried under a name the new episode does not list, it is left behind
   assert.deepEqual(placesStillIn(placesOf(prev.metaJson), ["the lighthouse: a tall white tower with one red band"]), []);
+});
+
+/* A SCENE THAT CAME BACK AS A PANEL ON THE SHEET'S GROUND. The well story (a Moral Story, wide, made on the live
+ * site, 2026-11-24): five scenes drew their place right. The sixth — "Inside the burrow, Rusk lies curled…" —
+ * came back as a small framed picture floating in a pale-grey frame: the look of the burrow's design sheet,
+ * copied. Measured on the 81 pictures saved that night: that one read flat 4 / same 0 with all four sides
+ * straight; the nearest real scene (a ferry in fog) read flat 19 with no straight side at all. */
+test("a scene that comes back as a framed panel on a plain ground is drawn again — and never kept", () => {
+  const S = FRAMED_SIZE;
+  const picture = (paint: (x: number, y: number) => [number, number, number]): Uint8Array => {
+    const px = new Uint8Array(S * S * 3);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { const [r, g, b] = paint(x, y); const k = (y * S + x) * 3; px[k] = r; px[k + 1] = g; px[k + 2] = b; }
+    return px;
+  };
+  const noise = (x: number, y: number): number => ((x * 37 + y * 91) % 23) - 11;
+  // the failure: a pale-grey ground, a darker picture with straight sides in the middle of it
+  const panel = picture((x, y) => (x >= 14 && x < 82 && y >= 20 && y < 76 ? [70 + noise(x, y), 48 + noise(y, x), 30] : [205, 206, 210]));
+  assert.equal(framedIn(panel), true);
+  assert.deepEqual(framedMeasure(panel), { flat: 0, same: 0, left: true, right: true, top: true, bottom: true });
+  // …also when the ground is not perfectly flat (a soft studio gradient, a little grain)
+  assert.equal(framedIn(picture((x, y) => (x >= 14 && x < 82 && y >= 20 && y < 76 ? [70 + noise(x, y), 48, 30] : [200 + Math.round(y / 12), 201 + Math.round(y / 12), 206 + (noise(x, y) > 8 ? 2 : 0)]))), true);
+  // a real scene: sky above, ground below — its edges are not one colour
+  assert.equal(framedIn(picture((x, y) => (y < 40 ? [150 + y, 170 + y, 220] : [120 + noise(x, y), 90, 60]))), false);
+  // a figure in fog: every edge is the same soft grey, but nothing inside has straight sides
+  const fog = picture((x, y) => { const d = Math.hypot(x - 48, y - 52); return d < 18 + (y % 7) ? [40, 42, 50] : [150, 152, 158]; });
+  assert.equal(framedMeasure(fog)!.flat <= 34, true);
+  assert.equal(framedIn(fog), false, "a round shape in a plain field is a picture, not a panel");
+  // a plain field with nothing in it, and nonsense
+  assert.equal(framedIn(picture(() => [205, 206, 210])), false);
+  assert.equal(framedIn(new Uint8Array(10)), false);
+  assert.equal(framedMeasure(new Uint8Array(10)), null);
+  // black bars are the other check's (cropdetect): bars left and right alone are not "all four edges"
+  assert.equal(framedIn(picture((x, y) => (x < 16 || x >= 80 ? [0, 0, 0] : [120 + noise(x, y), 140 + (y % 9) * 8, 90]))), false);
+
+  // THE PIPELINE: measured only where a place's sheet was used; told once; the third go leaves the sheet out
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  const fn = nar.slice(nar.indexOf("export async function narratedSceneSeeds("), nar.indexOf("/** DRAW ONE CHARACTER AGAIN."));
+  assert.ok(fn.includes("const withPlace = placeNotes.length > 0 && framedGoes < 2;"));
+  assert.ok(fn.includes("if (got && withPlace && (await framedPanel(got))) { framedGoes++; fix = FRAMED_FIX;"));
+  assert.ok(fn.includes("const promptOf = (withPlace: boolean): string =>") && fn.includes("${[...notes, ...(withPlace ? placeNotes : [])].join(\" \")}"), "without its sheet a scene is drawn from its words, as before");
+  assert.ok(FRAMED_FIX.includes("fills the whole frame from edge to edge"));
+  // a framed panel is never the picture that is kept: only a clean picture, the best of the looked-at ones,
+  // or a letterboxed one are
+  assert.ok(fn.includes("if (!img && best) { img = best.img;") && fn.includes("if (!img) img = barred;"));
+  assert.ok(!/img = (?:boxed|framed)/.test(fn));
+  // read from the picture itself, at a small size; a picture that cannot be read is not called one
+  const m = nar.slice(nar.indexOf("async function framedPanel("), nar.indexOf("/** THE POSTER (story-poster.ts)"));
+  assert.ok(m.includes("\"-vf\", `scale=${FRAMED_SIZE}:${FRAMED_SIZE}`, \"-frames:v\", \"1\", \"-f\", \"rawvideo\", \"-pix_fmt\", \"rgb24\", raw]);"));
+  assert.ok(m.includes("return framedIn(new Uint8Array(fs.readFileSync(raw)));") && m.includes("} catch { return false; }"));
+  assert.ok(m.includes("finally { try { fs.unlinkSync(raw); } catch { /* nothing to clear */ } }"), "the scratch file is cleared either way");
 });

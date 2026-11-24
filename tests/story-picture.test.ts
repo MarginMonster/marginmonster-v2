@@ -127,7 +127,7 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   // a look that fails or says nothing keeps the picture
   assert.ok(s.includes("if (seen == null && panels == null) return null;") && s.includes("const faults = seenAs ? storyFaults(seenAs) : 0;"));
   // wrong → drawn again with the fault named; the best of three goes is kept
-  assert.ok(s.includes("fix = storyFix(seenAs!, here.map((c) => c.name));") && s.includes("const got = await drawScene(`${prompt}${fix}`, refs, aspect, people.length);"));
+  assert.ok(s.includes("fix = storyFix(seenAs!, here.map((c) => c.name));") && s.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect, people.length);"));
   // (…and a best-of that is still wrong SAYS so: the storyboard flags that scene — tests/story-cast.test.ts)
   assert.ok(s.includes("if (!best || faults < best.faults) best = { img: got, faults, check: seenAs! };") && s.includes("if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }"));
   assert.ok(s.indexOf("if (!img && best) { img = best.img;") < s.indexOf("if (!img) img = barred;"), "a looked-at picture is preferred to a letterboxed one");
@@ -141,7 +141,7 @@ test("a horror cast does not grin: the format's own line reaches the narrated pi
   assert.ok(engine.includes("faceMood: \"Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs.\","));
   // only horror has a say (a kids' cartoon, a moral story and a short film keep whatever the scene calls for)
   assert.equal(engine.split("\n    faceMood: ").length - 1, 1);
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : \"\"} ${notes.join(\" \")}"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : \"\"} ${[...notes, ...(withPlace ? placeNotes : [])].join(\" \")}"));
   assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("action, mood: tmpl.faceMood, setting: cleanSetting(where), style: twoStyle, aspect }));"));
   const img = read("app", "lib", "image-generation.server.ts");
   assert.ok(img.includes("const mood = (opts.mood || \"\").replace(/\\s+/g, \" \").trim().slice(0, 160);"));

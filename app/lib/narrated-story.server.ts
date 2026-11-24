@@ -20,6 +20,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import os from "node:os";
 import { db } from "../db.server";
 import { checkpointJob, downloadBuffer, ffprobeDuration, repCreate, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { captionGraph } from "./caption-burn.server";
@@ -37,7 +38,7 @@ import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
-import { NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_MODEL, castEntry, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
+import { FRAMED_FIX, FRAMED_SIZE, framedIn, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_MODEL, castEntry, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, sceneModel, storyCastPrompt, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
@@ -94,6 +95,22 @@ async function letterboxed(rendersUrl: string | null): Promise<boolean> {
   if (!fs.existsSync(file)) return false;
   try { return barsIn((await runFfmpeg(["-loop", "1", "-i", file, "-vf", "cropdetect=limit=10:round=2:reset=0", "-frames:v", "5", "-f", "null", "-"])).stderr); }
   catch { return false; }
+}
+
+/** A picture that came back as a small framed panel sitting on a plain ground — the look of a place's design
+ *  sheet, copied (story-picture.ts → framedIn)? Read from the picture itself at a small size; a picture that
+ *  cannot be read is not called one. */
+async function framedPanel(rendersUrl: string | null): Promise<boolean> {
+  if (!rendersUrl) return false;
+  const file = path.join(RENDERS(), path.basename(rendersUrl.split("?")[0]));
+  if (!fs.existsSync(file)) return false;
+  const raw = path.join(os.tmpdir(), `framed-${crypto.randomBytes(6).toString("hex")}.rgb`);
+  try {
+    const r = await runFfmpeg(["-y", "-i", file, "-vf", `scale=${FRAMED_SIZE}:${FRAMED_SIZE}`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", raw]);
+    if (r.status !== 0 || !fs.existsSync(raw)) return false;
+    return framedIn(new Uint8Array(fs.readFileSync(raw)));
+  } catch { return false; }
+  finally { try { fs.unlinkSync(raw); } catch { /* nothing to clear */ } }
 }
 
 /** THE POSTER (story-poster.ts): the film's cover on the shelf. One ffmpeg frame — the picture with the most
@@ -198,7 +215,9 @@ export async function narratedSceneSeeds(o: {
       const notes: string[] = [];
       here.forEach((c, n) => notes.push(`${c.name} is the character in reference image ${n + 1}${c.look ? ` (${c.look.slice(0, 160)})` : ""}.`));
       if (sheet) notes.push(`Reference image ${here.length + 1} is a sheet of other characters: from it take ONLY ${who[k].others.map((e) => e.slice(0, 200)).join("; and ")}.`);
-      if (place && placeUrl) { notes.push(placeNote(refs.length, place)); if (here.length) notes.push(PLACE_FRAMING); }
+      // (the place's own lines are kept apart: a scene that keeps coming back as a framed panel is drawn once
+      //  more WITHOUT its place's sheet — from its words, as every scene was before there were sheets)
+      const placeNotes = place && placeUrl ? [placeNote(refs.length, place), ...(here.length ? [PLACE_FRAMING] : [])] : [];
       // (a character with no picture of its own here — its portrait could not be drawn, or it is a fourth
       //  in one scene — is drawn from its words, as every invented character once was)
       const unpictured = sheet ? [] : who[k].others.filter((e) => !own.some((c) => c === cardFor(e)));
@@ -207,7 +226,7 @@ export async function narratedSceneSeeds(o: {
       const written = (scene.visual || "").replace(/\s+/g, " ").trim();
       const visual = oneMoment(noLettering(written));
       const twoMoments = oneMoment(written) !== written;
-      const prompt = `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""} ${notes.join(" ")}${refs.length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NOTHING_WRITTEN}`;
+      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NOTHING_WRITTEN}`;
       // …and THE PICTURE IS LOOKED AT before it is kept: is each of the maker's cast in it (never asked
       // about clothes — a story dresses people for the part), and is it one picture. The cast is looked for
       // whenever the scene has any; panels only where the words described two moments (that is when a
@@ -238,9 +257,14 @@ export async function narratedSceneSeeds(o: {
       let barred: string | null = null;
       let best: { img: string; faults: number; check: StoryCheck } | null = null;
       let fix = "";
+      // A FRAMED PANEL (the design sheet's look, copied) is never kept: it is drawn again, told so — and
+      // after two of them the scene is drawn without its place's sheet
+      let framedGoes = 0;
       for (let a = 0; a < 3 && !img; a++) {
-        const got = await drawScene(`${prompt}${fix}`, refs, aspect, people.length);
+        const withPlace = placeNotes.length > 0 && framedGoes < 2;
+        const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect, people.length);
         if (got && (await letterboxed(got))) { barred = got; console.error(`[narrated] scene ${i + 1} came back letterboxed — drawing it again`); continue; }
+        if (got && withPlace && (await framedPanel(got))) { framedGoes++; fix = FRAMED_FIX; console.error(`[narrated] scene ${i + 1} came back as a framed panel on a plain ground (${place?.name}) — drawing it again${framedGoes >= 2 ? " without the place's sheet" : ""}`); continue; }
         if (!got) { if (a >= 1) break; continue; } // two plain failures: stop asking this way
         const seenAs = await lookAt(got);
         const faults = seenAs ? storyFaults(seenAs) : 0;
