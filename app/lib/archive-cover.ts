@@ -42,6 +42,9 @@ export const COVER_H = POSTER_H;
 /** The DESIGN's version. It is in every cover's file name (the renders route caches a file for a year, so a
  *  new design must be a new name) — raise it and every cover is asked for again, the old one shown meanwhile. */
 export const COVER_V = 1;
+/** …and each family's own: raise ONE family's and only its covers are drawn again (the others are not
+ *  touched — their files, their names, their records). */
+export const COVER_VERSION: Readonly<Record<CoverFamily, number>> = { story: COVER_V, film: COVER_V, horror: COVER_V, music: COVER_V, ad: COVER_V, creator: COVER_V, footage: COVER_V };
 
 export type CoverFamily = "story" | "film" | "horror" | "music" | "ad" | "creator" | "footage";
 export const COVER_FAMILIES: ReadonlyArray<CoverFamily> = ["story", "film", "horror", "music", "ad", "creator", "footage"];
@@ -152,8 +155,8 @@ export const canDraw = (s: string): boolean => [...String(s || "")].every((ch) =
  *  dot (the renders route serves nothing else), the design's version, and a tag of the PIECE (two pieces made
  *  from one file — drawn by the harness on 2026-11-24 — wrote over each other's covers; the tag is a hash, so
  *  the piece's id cannot be read back out of the name). */
-export const coverName = (media: string, piece: string): string =>
-  `${String(media || "").split(/[?#]/)[0].split("/").pop()!.replace(/\.[a-z0-9]+$/i, "").replace(/[^a-zA-Z0-9_-]/g, "")}-${seedOf(`cover:${piece}`).toString(36)}-cover${COVER_V}.jpg`;
+export const coverName = (media: string, piece: string, family: CoverFamily): string =>
+  `${String(media || "").split(/[?#]/)[0].split("/").pop()!.replace(/\.[a-z0-9]+$/i, "").replace(/[^a-zA-Z0-9_-]/g, "")}-${seedOf(`cover:${piece}`).toString(36)}-cover${COVER_VERSION[family] ?? COVER_V}.jpg`;
 
 /** A piece's cover as its meta keeps it (`meta.cover`) — one of OUR renders, and which design drew it. */
 export function coverOf(meta: unknown): { src: string; v: number } | null {
@@ -182,7 +185,7 @@ export function coverAsk(o: { kind: CoverKind | null; media: string | null | und
   if (!o.kind || o.expired || !localMedia(o.media)) return false;
   if (COVER_HELD.has(o.kind.family)) return false;
   if (o.poster && posterIsCover(o.kind.family)) return false;
-  return !o.cover || o.cover.v < COVER_V;
+  return !o.cover || o.cover.v < (COVER_VERSION[o.kind.family] ?? COVER_V);
 }
 
 /* ---- THE PICTURE ---- */
@@ -210,6 +213,10 @@ export type FrameStats = {
   top: number; bottom: number;
   /** its mean brightness, its spread (contrast), and how much of it is near black — inside the bars */
   mean: number; spread: number; dark: number;
+  /** how much of it is blown out, near white (a sun flare, a window) */
+  bright?: number;
+  /** the brightness along its top edge — a product photo's backdrop */
+  edge?: number;
 };
 
 /** One candidate's numbers, from the analysis frame: `gray` is `stride` pixels wide, `h` tall, and the
@@ -221,14 +228,16 @@ export function frameStats(gray: Uint8Array, stride: number, h: number, x0: numb
   while (t < h && bar(t)) t++;
   while (b > t && bar(b)) b--;
   if (t >= h) return { top: 0, bottom: 1, mean: 0, spread: 0, dark: 1 };
-  let s = 0, s2 = 0, dark = 0, n = 0;
-  for (let y = t; y <= b; y++) for (let x = x0; x < x0 + w; x++) { const v = gray[y * stride + x] || 0; s += v; s2 += v * v; if (v < 24) dark++; n++; }
+  let s = 0, s2 = 0, dark = 0, bright = 0, n = 0;
+  for (let y = t; y <= b; y++) for (let x = x0; x < x0 + w; x++) { const v = gray[y * stride + x] || 0; s += v; s2 += v * v; if (v < 24) dark++; if (v > 242) bright++; n++; }
   const mean = s / Math.max(1, n);
   const spread = Math.sqrt(Math.max(0, s2 / Math.max(1, n) - mean * mean));
   // (a bar that is not the whole edge is not trusted below one row in twenty)
   const top = t / h >= 0.05 ? t / h : 0;
   const bottom = (h - 1 - b) / h >= 0.05 ? (b + 1) / h : 1;
-  return { top, bottom, mean, spread, dark: dark / Math.max(1, n) };
+  let es = 0, en = 0;
+  for (let y = t; y < Math.min(b + 1, t + Math.max(1, Math.round(h * 0.06))); y++) for (let x = x0; x < x0 + w; x++) { es += gray[y * stride + x] || 0; en++; }
+  return { top, bottom, mean, spread, dark: dark / Math.max(1, n), bright: bright / Math.max(1, n), edge: es / Math.max(1, en) };
 }
 
 /** How good a cover a candidate makes: bright enough to see, not blown out, with something in it (contrast),
@@ -239,7 +248,9 @@ export function frameScore(s: FrameStats, at = 0.5): number {
   const light = s.mean < 55 ? (s.mean - 16) / 39 : s.mean > 200 ? Math.max(0, (245 - s.mean) / 45) : 1;
   const detail = Math.min(1, s.spread / 58);
   const middle = 1 - 0.25 * Math.min(1, Math.abs(at - 0.5) * 2);
-  return Math.max(0, light) * (0.3 + 0.7 * detail) * (1 - 0.75 * s.dark) * Math.sqrt(tall) * middle;
+  // (a frame half blown out by the sun had the most "contrast" of a commercial's six and was picked — 2026-11-24)
+  const glare = 1 - Math.min(0.85, Math.max(0, (s.bright ?? 0) - 0.06) * 2.4);
+  return Math.max(0, light) * (0.3 + 0.7 * detail) * (1 - 0.75 * s.dark) * Math.sqrt(tall) * middle * glare;
 }
 
 /** The best of the candidates (the earliest of equals); -1 when none is worth a cover. */
@@ -388,7 +399,7 @@ export function billingLine(names: ReadonlyArray<string>, box: number, size: num
 
 /** What a cover is drawn FROM: the picture (input 0 — a still, a frame of a video, or a track's sound),
  *  its size and where it may be cropped, and the extra portraits an acted film is billed with (inputs 1…). */
-export type CoverPicture = { w: number; h: number; safe: { top: number; bottom: number }; /** its mean brightness (0–255), when it was measured */ mean?: number };
+export type CoverPicture = { w: number; h: number; safe: { top: number; bottom: number }; /** its mean brightness (0–255), when it was measured */ mean?: number; /** …and along its top edge */ edge?: number };
 export type CoverSpec = {
   kind: CoverKind;
   title: string;
@@ -406,6 +417,12 @@ export type CoverSpec = {
   seconds?: number;
   /** a number that makes this cover's grain and wear its own (and the same every time it is drawn) */
   seed?: number;
+  /** an ad's or a Creator video's design, A / B / C (else the one in use: COVER_STYLE) */
+  style?: CoverStyle;
+  /** an ad: the product's own photo (the next input after the picture) */
+  packshot?: CoverPicture;
+  /** a Creator video: which channel colour it wears (creatorChannel) */
+  channel?: string;
 };
 
 /** A stable number from a text (cyrb-style) — for a cover's grain. */
@@ -430,8 +447,12 @@ const CAP = 0.705; // Poppins' capital height, in ems
 /** A crop and a scale to w×h, from a picture's crop window. (Its clock starts at nought first: a frame taken
  *  from inside a video arrives a moment after the shapes drawn beside it, and a cover is ONE frame — the first
  *  out. Without this the ad's and the sticker's cards came out empty.) */
-const cropTo = (p: CoverPicture, w: number, h: number, focusY = FOCUS_Y) => {
-  const c = cropWindow(p, p.safe, w / h, focusY);
+const cropTo = (p: CoverPicture, w: number, h: number, focusY = FOCUS_Y, zoom = 1) => {
+  const c0 = cropWindow(p, p.safe, w / h, focusY);
+  // (punched in: the same window, `zoom` of its size, held a little above its middle — where a face is)
+  const z = Math.max(0.5, Math.min(1, zoom));
+  const cw = Math.max(2, Math.floor((c0.w * z) / 2) * 2), ch = Math.max(2, Math.floor((c0.h * z) / 2) * 2);
+  const c = z < 1 ? { w: cw, h: ch, x: Math.max(0, Math.min(Math.round(p.w) - cw, Math.round(c0.x + (c0.w - cw) / 2))), y: Math.max(0, Math.min(Math.round(p.h) - ch, Math.round(c0.y + (c0.h - ch) * 0.4))) } : c0;
   return `setpts=PTS-STARTPTS,crop=${c.w}:${c.h}:${c.x}:${c.y},scale=${w}:${h}:flags=lanczos,setsar=1`;
 };
 /** A rounded rectangle's coverage at (X,Y) in a w×h layer, corners of radius r, anti-aliased — 0…255. */
@@ -674,74 +695,346 @@ export function musicGraph(spec: CoverSpec): string {
   return parts.join(";");
 }
 
-/* AD — THE AD MAKER'S GREEN. The picture in a white card on the market green, rounded, lifted on a soft
- * shadow; a cream hang tag on its corner; the product's name in white under it, the presenter billed in cream. */
-export const AD_LADDER: Ladder = [[62, 1], [56, 2], [48, 2], [42, 3], [36, 3]];
-export function adGraph(spec: CoverSpec): string {
-  const W = COVER_W, H = COVER_H, CX = 38, CY = 40, CW = 724, CH = 620, B = 12, PW = CW - 2 * B, PH = CH - 2 * B;
-  const p = spec.picture || { w: PW, h: PH, safe: { top: 0, bottom: 1 } };
+/* ---- ADS AND CREATOR VIDEOS, DRAWN AGAIN ----
+ * The owner, seeing every family on a TEST page (2026-11-24): "The ads and creator ones need rethought". The
+ * five he kept each look like a real object of their own world — a one-sheet, a marquee, a record sleeve, a
+ * viewfinder. The first ad and Creator covers were an app's own template (a coloured ground, a framed card).
+ * So each is drawn again as an object of ITS world — three ways each, side by side on a TEST page for him to
+ * choose (the families stay HELD until he has; COVER_STYLE is then his choice):
+ *   AD       A · a print ad: the picture, a clean band with the product's name set big, its packshot lifted
+ *                over the fold, the length as a player shows it
+ *            B · a sponsored post: a feed card — the account, the picture, the button bar, the row of hearts
+ *            C · a product spot: the product's own photo alone in a studio made of its colours, lit from above
+ *   CREATOR  A · a thumbnail: the picture punched in, a huge hook in heavy outline, one word in yellow, tilted
+ *            B · a short-video frame: the feed's rail of buttons, the caption, the progress line
+ *            C · a channel template: one colour per kind of channel on every video of it, a slanted band with
+ *                the hook, the channel's round badge */
+export type CoverStyle = "A" | "B" | "C";
+export const COVER_OPTIONS = {
+  ad: [{ key: "A", name: "Print ad" }, { key: "B", name: "Sponsored post" }, { key: "C", name: "Product spot" }],
+  creator: [{ key: "A", name: "Thumbnail" }, { key: "B", name: "Short-video frame" }, { key: "C", name: "Channel template" }],
+} as const;
+/** The option drawn for each — only once its family is no longer HELD. */
+export const COVER_STYLE: Readonly<{ ad: CoverStyle; creator: CoverStyle }> = { ad: "A", creator: "A" };
+
+const INK = "0x14201A";
+const GREEN = "0x0C7A46";
+const even = (v: number) => Math.max(2, Math.floor(v / 2) * 2);
+
+/** A length as a player shows it — "0:15", "1:02" ("" when it is not known). Digits only: no language. */
+export function clockOf(seconds: number | undefined): string {
+  const s = Math.round(Number(seconds) || 0);
+  return s > 0 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : "";
+}
+
+/** A play triangle, pointing right, filling a w×h layer (anti-aliased). */
+const playAlpha = (w: number, h: number) => `255*clip((${w}-X)*${(h / 2 / w).toFixed(4)}-abs(Y-${(h - 1) / 2})+0.5\\,0\\,1)*clip(X+0.5\\,0\\,1)`;
+/** How far (X,Y) is from the segment a→b — a stroke is drawn where this is under its half-width. */
+const segDist = (ax: number, ay: number, bx: number, by: number) => {
+  const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
+  const t = `clip(((X-${ax})*${dx}+(Y-${ay})*${dy})/${l2}\\,0\\,1)`;
+  return `hypot(X-(${ax}+${dx}*${t})\\,Y-(${ay}+${dy}*${t}))`;
+};
+const strokeOf = (d: string, half: number) => `clip(${half}+0.5-${d}\\,0\\,1)`;
+const union = (xs: string[]) => xs.reduce((a, b) => `max(${a}\\,${b})`);
+/** A heart (the implicit curve), filled, centred at (cx,cy), r across. */
+const heartIn = (cx: number, cy: number, r: number) => {
+  const x = `((X-${cx})/${r})`, y = `((${cy}-Y)/${r}+0.2)`;
+  return `lt(pow(${x}*${x}+${y}*${y}-1\\,3)-${x}*${x}*${y}*${y}*${y}\\,0)`;
+};
+/** A triangle, filled (inside when (X,Y) is on the same side of all three edges). */
+const triIn = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number) => {
+  const e = (x1: number, y1: number, x2: number, y2: number) => `((X-${x1})*${y2 - y1}-(Y-${y1})*${x2 - x1})`;
+  const [d1, d2, d3] = [e(ax, ay, bx, by), e(bx, by, cx, cy), e(cx, cy, ax, ay)];
+  return `max(gte(${d1}\\,0)*gte(${d2}\\,0)*gte(${d3}\\,0)\\,lte(${d1}\\,0)*lte(${d2}\\,0)*lte(${d3}\\,0))`;
+};
+/** A circle's coverage: filled, or (with `ring`) only its edge. */
+const discIn = (cx: number, cy: number, r: number) => `clip(${r}+0.5-hypot(X-${cx}\\,Y-${cy})\\,0\\,1)`;
+const ringIn = (cx: number, cy: number, r: number, half: number) => `clip(${half}+0.5-abs(hypot(X-${cx}\\,Y-${cy})-${r})\\,0\\,1)`;
+/** A picture's crop scaled to w×h and cut to a circle (an avatar). */
+const avatarOf = (src: string, p: CoverPicture, d: number, focusY: number) =>
+  `${src}${cropTo(p, d, d, focusY)},format=rgba,geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='255*clip(${d / 2}+0.5-hypot(X-${(d - 1) / 2}\\,Y-${(d - 1) / 2})\\,0\\,1)'`;
+/** Icons drawn twice their size from one mask and halved — their edges come out smooth. `mask` is a 0…1
+ *  expression on a (2w)×(2h) layer; the result is a w×h layer of `color`. */
+const iconLayer = (w: number, h: number, color: string, mask: string, label: string) => [
+  `color=c=black:s=${w * 2}x${h * 2},format=gray,geq=lum='255*${mask}'[${label}m]`,
+  `color=c=${color}:s=${w * 2}x${h * 2},format=rgb24[${label}c];[${label}c][${label}m]alphamerge,scale=${w}:${h}:flags=area[${label}]`,
+];
+
+/** A player's length chip — a dark pill, a play triangle, "0:15" — its right edge at `xr`, its top at `y`. */
+function lengthChip(font: string, clock: string, xr: number, y: number, from: string, to: string): string[] {
+  if (!clock) return [`[${from}]null[${to}]`];
+  const size = 24, h = 42, w = Math.round(emWidth(clock) * size) + 62, x = xr - w;
+  return [
+    `${shape(w, h, "black", `0.58*${roundedAlpha(w, h, h / 2)}`)}[${to}p]`,
+    `${shape(14, 16, "white", playAlpha(14, 16))}[${to}t]`,
+    `[${from}][${to}p]overlay=${x}:${y}:format=rgb[${to}a];[${to}a][${to}t]overlay=${x + 18}:${y + 13}:format=rgb,${words(font, clock, size, "white", x + 42, y + 30)}[${to}]`,
+  ];
+}
+
+/* AD · A — A PRINT AD. The picture as the ad's photograph; under it a clean paper band with a rule of the Ad
+ * Maker's green, the product's name set big and sure in ink, the presenter above it; the product's own photo
+ * lifted over the fold as a packshot; the length in the corner as a player shows it. */
+export const PRINT_LADDER: Ladder = [[60, 1], [54, 2], [46, 2], [40, 3], [34, 3]];
+function adPrintGraph(spec: CoverSpec): string {
+  const W = COVER_W, H = COVER_H, HERO = 790, RULE = 6, PK = 196, B = 8, OW = PK + 2 * B;
+  const p = spec.picture || { w: W, h: HERO, safe: { top: 0, bottom: 1 } };
+  const pk = spec.packshot;
   const parts: string[] = [];
-  parts.push(`color=c=black:s=${W}x${H},format=gbrp,geq=r='9+30*pow(1-Y/${H}\\,1.5)+8*(1-X/${W})':g='104+42*pow(1-Y/${H}\\,1.5)+10*(1-X/${W})':b='58+24*pow(1-Y/${H}\\,1.5)+6*(1-X/${W})'[bg]`);
-  parts.push(`${shape(CW + 60, CH + 60, "black", `150*clip(1-hypot(max(abs(X-${(CW + 59) / 2})-${CW / 2 - 24}\\,0)\\,max(abs(Y-${(CH + 59) / 2})-${CH / 2 - 24}\\,0))/30\\,0\\,1)`)}[sh]`);
-  parts.push(`${shape(CW, CH, "white", roundedAlpha(CW, CH, 30))}[card]`);
-  parts.push(`[0:v]${cropTo(p, PW, PH)},format=rgba,geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='${roundedAlpha(PW, PH, 21)}'[pic]`);
-  // THE HANG TAG: a cream tag with its hole, hung from the card's corner on a slant
-  const T = 150;
-  const tu = `((X-${T / 2})*0.8192+(Y-${T / 2})*0.5736)`, tv = `(-(X-${T / 2})*0.5736+(Y-${T / 2})*0.8192)`;
-  const body = `clip(min(min(${tu}+40\\,58-${tu})\\,26-abs(${tv}))+0.5\\,0\\,1)`;
-  const point = `clip(min(${tu}+60-abs(${tv})*0.77\\,-${tu}-38)+0.5\\,0\\,1)`;
-  const hole = `clip(hypot(${tu}+30\\,${tv})-6.5\\,0\\,1)`;
-  parts.push(`${shape(T, T, "0xF4F1E6", `255*max(${body}\\,${point})*${hole}`)}[tag]`);
-  parts.push(`[bg][sh]overlay=${CX - 30}:${CY - 30 + 14}:format=rgb[a1];[a1][card]overlay=${CX}:${CY}:format=rgb[a2];[a2][pic]overlay=${CX + B}:${CY + B}:format=rgb[a3];[a3][tag]overlay=${CX + CW - 112}:${CY - 34}:format=rgb[a4]`);
-  const fit = fitTitle(spec.title, W - 2 * 48, AD_LADDER);
-  const bill = billingLine(spec.names, W - 2 * 48, 24);
-  const out = wordBlock(spec.font, { bill, billColor: "0xF4F1E6", billSize: 24, fit, color: "white", extra: ":shadowcolor=0x06301B@0.6:shadowx=0:shadowy=2", x: 48, top: CY + CH + 8, bottom: H - 26 });
-  parts.push(`[a4]${out.length ? `${out.join(",")},` : ""}format=yuvj444p[out]`);
+  parts.push(`[0:v]${cropTo(p, W, HERO)},eq=contrast=1.06:saturation=1.1,pad=${W}:${H}:0:0:color=0xFBFAF6,drawbox=x=0:y=${HERO}:w=${W}:h=${RULE}:color=${GREEN}@1:t=fill[p0]`);
+  let last = "p0";
+  if (pk) {
+    const X0 = W - 40 - OW, Y0 = HERO - Math.round(OW / 2);
+    parts.push(`${shape(OW + 60, OW + 60, "black", `105*clip(1-hypot(max(abs(X-${(OW + 59) / 2})-${OW / 2 - 16}\\,0)\\,max(abs(Y-${(OW + 59) / 2})-${OW / 2 - 16}\\,0))/26\\,0\\,1)`)}[pks]`);
+    parts.push(`${shape(OW, OW, "white", roundedAlpha(OW, OW, 22))}[pkw]`);
+    parts.push(`[1:v]${cropTo(pk, PK, PK, 0.5)},format=rgba,geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='${roundedAlpha(PK, PK, 15)}'[pk]`);
+    parts.push(`[p0][pks]overlay=${X0 - 30}:${Y0 - 30 + 12}:format=rgb[p1];[p1][pkw]overlay=${X0}:${Y0}:format=rgb[p2];[p2][pk]overlay=${X0 + B}:${Y0 + B}:format=rgb[p3]`);
+    last = "p3";
+  }
+  parts.push(...lengthChip(spec.font, clockOf(spec.seconds), W - 26, 26, last, "p4"));
+  const box = pk ? W - 40 - OW - 40 - 40 : W - 80;
+  const fit = fitTitle(spec.title, box, PRINT_LADDER);
+  const bill = billingLine(spec.names, box, 22);
+  const out = wordBlock(spec.font, { bill, billColor: GREEN, billSize: 22, fit, color: INK, x: 40, top: HERO + RULE, bottom: H - 4 });
+  parts.push(`[p4]${out.length ? `${out.join(",")},` : ""}format=yuvj444p[out]`);
   return parts.join(";");
 }
 
-/* CREATOR — A STICKER. A bright gradient (violet, rose, amber); the picture as a white-edged card, tilted
- * as if just stuck on; its name on a white label across the card's foot; a sparkle in the corner. */
-export const CREATOR_LADDER: Ladder = [[54, 1], [48, 2], [42, 2], [36, 3], [32, 3]];
-export function creatorGraph(spec: CoverSpec): string {
-  const W = COVER_W, H = COVER_H, PW = 600, PH = 700, B = 16, CW = PW + 2 * B, CH = PH + 2 * B, A = -0.055;
-  const p = spec.picture || { w: PW, h: PH, safe: { top: 0, bottom: 1 } };
-  const parts: string[] = [];
-  // violet → rose → amber, along the diagonal
-  const t = `clip((X*0.55+Y)/${(W * 0.55 + H).toFixed(0)}\\,0\\,1)`;
-  const two = (a: number, b: number, c: number) => `if(lt(${t}\\,0.5)\\,${a}+(${b - a})*${t}*2\\,${b}+(${c - b})*(${t}*2-1))`;
-  parts.push(`color=c=black:s=${W}x${H},format=gbrp,geq=r='${two(92, 236, 255)}':g='${two(46, 64, 168)}':b='${two(232, 128, 64)}'[bg]`);
-  // the card: the picture inside a white edge, a shadow under it, all turned a little
-  const GW = CW + 80, GH = CH + 80;
-  parts.push(`${shape(GW, GH, "black", `120*clip(1-hypot(max(abs(X-${(GW - 1) / 2})-${CW / 2 - 20}\\,0)\\,max(abs(Y-${(GH - 1) / 2 - 12})-${CH / 2 - 20}\\,0))/34\\,0\\,1)`)}[sh]`);
-  parts.push(`${shape(CW, CH, "white", roundedAlpha(CW, CH, 40))}[edge]`);
-  parts.push(`[0:v]${cropTo(p, PW, PH)},format=rgba,geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='${roundedAlpha(PW, PH, 26)}'[pic]`);
-  parts.push(`[sh][edge]overlay=40:40:format=rgb[k1];[k1][pic]overlay=${40 + B}:${40 + B}:format=rgb,format=rgba[k2]`);
-  // (the shadow layer's own alpha is kept through the overlays, so the turned card has soft edges)
-  parts.push(`[k2]rotate=${A}:c=none:ow=rotw(${A}):oh=roth(${A})[card]`);
-  parts.push(`[bg][card]overlay=${W / 2}-w/2:448-h/2:format=rgb[c1]`);
-  // the sparkle: a four-pointed star, and a small one beside it
-  const star = (n: number) => `255*clip(1.4-(pow(abs(X-${n / 2})/${n / 2}\\,0.5)+pow(abs(Y-${n / 2})/${n / 2}\\,0.5))*1.25\\,0\\,1)`;
-  parts.push(`${shape(96, 96, "white", star(96))}[s1];${shape(44, 44, "white", star(44))}[s2]`);
-  parts.push(`[c1][s1]overlay=${W - 132}:30:format=rgb[c2];[c2][s2]overlay=${W - 168}:112:format=rgb[c3]`);
-  // the label: white, rounded, sized to the name
-  const fit = fitTitle(spec.title, 600, CREATOR_LADDER);
-  const out: string[] = [];
-  let last = "c3";
-  if (fit) {
-    const lead = Math.round(fit.size * 1.12);
-    const textW = Math.max(...fit.lines.map((l) => emWidth(l) * fit.size));
-    const LW = Math.min(W - 40, Math.round(textW + 64)), LH = Math.round(fit.size * CAP + lead * (fit.lines.length - 1) + 52);
-    // (across the card's foot, as if stuck on over it)
-    const LX = Math.round((W - LW) / 2), LY = Math.min(H - LH - 30, 772);
-    parts.push(`${shape(LW, LH, "white", roundedAlpha(LW, LH, Math.min(26, LH / 2)))}[lab]`);
-    parts.push(`[c3][lab]overlay=${LX}:${LY}:format=rgb[c4]`);
-    last = "c4";
-    out.push(...titleLines(spec.font, fit.lines, fit.size, "0x14201A", "(w-text_w)/2", LY + 26 + Math.round(fit.size * CAP), lead));
+/* AD · B — A SPONSORED POST. A feed card: the account (the product's photo in a gold ring, the product's name,
+ * the presenter or the length under it, the "…"), the picture, the button bar in the Ad Maker's green with its
+ * arrow, and the row every feed has — a heart (red: liked), a bubble, a paper plane, the save mark. */
+function adPostGraph(spec: CoverSpec): string {
+  const W = COVER_W, H = COVER_H, HEAD = 92, IMG = 760, BAR = 60, AV = 58, ROW = H - HEAD - IMG - BAR;
+  const p = spec.picture || { w: W, h: IMG, safe: { top: 0, bottom: 1 } };
+  const pk = spec.packshot;
+  const parts: string[] = [`color=c=white:s=${W}x${H},format=rgb24[bg]`];
+  if (pk) {
+    parts.push(`[0:v]${cropTo(p, W, IMG)}[img]`);
+    parts.push(`${avatarOf("[1:v]", pk, AV, 0.45)}[av]`);
+  } else {
+    // (no photo of the product: the picture's own middle is the account's picture)
+    parts.push(`[0:v]setpts=PTS-STARTPTS,split[s0][s1]`);
+    parts.push(`[s0]${cropTo(p, W, IMG)}[img]`);
+    parts.push(`${avatarOf("[s1]", p, AV, 0.4)}[av]`);
   }
-  parts.push(`[${last}]${out.length ? `${out.join(",")},` : ""}format=yuvj444p[out]`);
+  const R = AV + 10;
+  parts.push(`${shape(R, R, "0xD8B048", `255*${ringIn((R - 1) / 2, (R - 1) / 2, R / 2 - 2.5, 1.6)}`)}[ring]`);
+  parts.push(`[bg][img]overlay=0:${HEAD}:format=rgb[b1];[b1][ring]overlay=22:${(HEAD - R) / 2}:format=rgb[b2];[b2][av]overlay=27:${(HEAD - AV) / 2}:format=rgb[b3]`);
+  // the row of a feed: drawn twice their size and halved
+  const C = ROW, cy = C; // (centre line of the row, at twice the size)
+  const heart = heartIn(92, cy, 25);
+  const bubble = union([ringIn(212, cy, 23, 3.4), strokeOf(segDist(196, cy + 17, 186, cy + 30), 3.4)]);
+  const plane = union([strokeOf(segDist(306, cy - 4, 360, cy - 26), 3.4), strokeOf(segDist(360, cy - 26, 336, cy + 26), 3.4), strokeOf(segDist(336, cy + 26, 306, cy - 4), 3.4), strokeOf(segDist(360, cy - 26, 326, cy + 6), 3.4)]);
+  const bx = 2 * (W - 46);
+  const save = union([strokeOf(segDist(bx - 17, cy - 25, bx + 17, cy - 25), 3.4), strokeOf(segDist(bx - 17, cy - 25, bx - 17, cy + 25), 3.4), strokeOf(segDist(bx + 17, cy - 25, bx + 17, cy + 25), 3.4), strokeOf(segDist(bx - 17, cy + 25, bx, cy + 11), 3.4), strokeOf(segDist(bx + 17, cy + 25, bx, cy + 11), 3.4)]);
+  parts.push(...iconLayer(W, ROW, "0xFF3040", heart, "ih"));
+  parts.push(...iconLayer(W, ROW, INK, union([bubble, plane, save]), "ii"));
+  parts.push(`[b3][ih]overlay=0:${HEAD + IMG + BAR}:format=rgb[b4];[b4][ii]overlay=0:${HEAD + IMG + BAR}:format=rgb[b5]`);
+  // the account's name, the line under it, the "…"; the button bar and its arrow (and the length, when known)
+  // (under the name, the presenter when there is one — the length is on the button bar, never said twice)
+  const name = fitTitle(spec.title, 560, [[28, 1]]);
+  const sub = spec.names[0] ? billingLine(spec.names.slice(0, 1), 560, 20) : "";
+  const out: string[] = [];
+  if (name) out.push(words(spec.font, name.lines[0], 28, INK, 104, sub ? 46 : 57));
+  if (sub) out.push(words(spec.font, sub, 20, "0x8E918F", 104, 74));
+  out.push(words(spec.font, "•••", 26, "0x8E918F", W - 78, 52));
+  out.push(`drawbox=x=0:y=${HEAD + IMG}:w=${W}:h=${BAR}:color=${GREEN}@1:t=fill`);
+  out.push(words(spec.font, ">", 34, "white", W - 50, HEAD + IMG + 42));
+  parts.push(`[b5]${out.join(",")}[b6]`);
+  const clock = clockOf(spec.seconds);
+  if (clock) {
+    parts.push(`${shape(14, 16, "white", playAlpha(14, 16))}[bt]`);
+    parts.push(`[b6][bt]overlay=26:${HEAD + IMG + 22}:format=rgb,${words(spec.font, clock, 24, "white", 50, HEAD + IMG + 39)},format=yuvj444p[out]`);
+  } else parts.push(`[b6]format=yuvj444p[out]`);
   return parts.join(";");
 }
+
+/* AD · C — A PRODUCT SPOT. The product alone: its own photo (else the piece's best picture), its edges melted
+ * into a studio of the photo's own backdrop colour — a light from above, the floor falling darker; under it a
+ * gold rule, the presenter, the product's name, in ink or in white as the studio is light or dark.
+ * (The studio was first spread from the WHOLE photo: a bottle's dark base smudged the floor grey and the
+ *  photo's rectangle showed — 2026-11-24. Its backdrop is the colour along its top edge.) */
+export const SPOT_LADDER: Ladder = [[54, 1], [48, 2], [42, 2], [36, 3]];
+function adSpotGraph(spec: CoverSpec): string {
+  const W = COVER_W, H = COVER_H;
+  const own = !!spec.packshot;
+  const p = spec.packshot || spec.picture || { w: 600, h: 600, safe: { top: 0, bottom: 1 } };
+  const s = Math.min(600 / Math.max(1, p.w), 600 / Math.max(1, p.h));
+  const pw = even(p.w * s), ph = even(p.h * s), cx = W / 2, cy = 450;
+  const parts: string[] = [];
+  parts.push(`[${own ? 1 : 0}:v]setpts=PTS-STARTPTS,split[k0][k1]`);
+  // the studio: the photo's own backdrop (the colour along its top edge), lit from above, the floor darker
+  const light = `(1+0.14*exp(-(pow(X-${cx}\\,2)+pow(Y-260\\,2))/180000))*(1-0.24*clip((Y-700)/300\\,0\\,1))`;
+  parts.push(`[k0]crop=iw:max(2\\,ih*0.06):0:0,scale=1:1:flags=area,scale=${W}:${H}:flags=neighbor,format=gbrp,geq=r='clip(r(X\\,Y)*${light}\\,0\\,255)':g='clip(g(X\\,Y)*${light}\\,0\\,255)':b='clip(b(X\\,Y)*${light}\\,0\\,255)'[st]`);
+  parts.push(`[k1]scale=${pw}:${ph}:flags=lanczos,setsar=1,format=rgba,geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='255*clip(min(min(X\\,W-1-X)\\,min(Y\\,H-1-Y))/36\\,0\\,1)'[pr]`);
+  parts.push(`[st][pr]overlay=${cx - pw / 2}:${cy - ph / 2}:format=rgb[q2]`);
+  parts.push(...lengthChip(spec.font, clockOf(spec.seconds), W - 26, 26, "q2", "q3"));
+  // (ink or white by the studio's own brightness — its backdrop's, where the words stand)
+  const dark = (p.edge ?? p.mean ?? 140) < 125;
+  const fg = dark ? "white" : INK;
+  const fit = fitTitle(spec.title, W - 120, SPOT_LADDER);
+  const bill = billingLine(spec.names, W - 120, 22);
+  // (the presenter in the studio's own text colour, a shade softer — green on an olive studio did not read)
+  const out = [`drawbox=x=${cx - 40}:y=${cy + 300 + 26}:w=80:h=4:color=${GOLD}@1:t=fill`, ...wordBlock(spec.font, { bill, billColor: dark ? GOLD : `${INK}@0.72`, billSize: 22, fit, color: fg, x: "(w-text_w)/2", top: cy + 300 + 40, bottom: H - 18 })];
+  parts.push(`[q3]${out.join(",")},format=yuvj444p[out]`);
+  return parts.join(";");
+}
+
+/** THE WORD A THUMBNAIL LIGHTS UP: a number when the hook has one ("5", "3-INGREDIENT"), else its longest word
+ *  (four letters or more) — the word the eye should land on. Its line and place in the line; null for none
+ *  (a hook written without spaces is lit whole, never one glyph of it). */
+export function hookWord(lines: ReadonlyArray<string>): { line: number; word: number } | null {
+  const all = lines.flatMap((ln, line) => (hasWide(ln) && !/\s/.test(ln) ? [] : ln.split(" ").map((w, word) => ({ line, word, w }))));
+  const digit = all.find((x) => /\p{N}/u.test(x.w));
+  if (digit) return { line: digit.line, word: digit.word };
+  let best: { line: number; word: number; n: number } | null = null;
+  for (const x of all) {
+    const n = (x.w.match(/\p{L}/gu) || []).length;
+    if (n >= 4 && (!best || n > best.n)) best = { line: x.line, word: x.word, n };
+  }
+  return best ? { line: best.line, word: best.word } : null;
+}
+
+/** Lines of a hook, word by word (so one can be lit), each line centred on `cx`. */
+function hookLines(font: string, lines: ReadonlyArray<string>, size: number, firstBase: number, lead: number, cx: number, lit: { line: number; word: number } | null, color: string, litColor: string, extra: string): string[] {
+  const out: string[] = [];
+  lines.forEach((ln, i) => {
+    const ws = hasWide(ln) && !/\s/.test(ln) ? [ln] : ln.split(" ");
+    const space = emWidth(" ") * size;
+    const widths = ws.map((w) => emWidth(w) * size);
+    let x = cx - (widths.reduce((a, b) => a + b, 0) + space * (ws.length - 1)) / 2;
+    ws.forEach((w, k) => {
+      out.push(words(font, w, size, lit && lit.line === i && lit.word === k ? litColor : color, Math.round(x), firstBase + i * lead, extra));
+      x += widths[k] + space;
+    });
+  });
+  return out;
+}
+
+/* CREATOR · A — A THUMBNAIL, the way creators make them to stop a thumb: the picture punched in and pushed —
+ * colour up, crisp, the edges falling dark — and across its lower half the hook, huge, in capitals with a heavy
+ * black outline and a drop shadow, one word in yellow, the whole of it tilted as if slapped on. */
+export const THUMB_LADDER: Ladder = [[104, 2], [92, 2], [80, 3], [70, 3], [60, 3], [52, 3]];
+function creatorThumbGraph(spec: CoverSpec): string {
+  const W = COVER_W, H = COVER_H, A = -0.045;
+  const p = spec.picture || { w: W, h: H, safe: { top: 0, bottom: 1 } };
+  const parts: string[] = [`[0:v]${cropTo(p, W, H, FOCUS_Y, 0.86)},eq=saturation=1.42:contrast=1.14:brightness=0.02,unsharp=5:5:0.6,vignette=angle=PI/4.6[bg]`];
+  const fit = fitTitle(spec.title, 720, THUMB_LADDER, true);
+  if (!fit) return `${parts[0]};[bg]format=yuvj444p[out]`;
+  const lead = Math.round(fit.size * 1.02), ow = Math.max(6, Math.round(fit.size * 0.1)), pad = Math.round(fit.size * 0.3);
+  const LH = Math.round(fit.size * CAP + lead * (fit.lines.length - 1) + 2 * pad + fit.size * 0.3);
+  const draw = hookLines(spec.font, fit.lines, fit.size, pad + Math.round(fit.size * CAP), lead, W / 2, hookWord(fit.lines), "white", "0xFFE135",
+    `:borderw=${ow}:bordercolor=black:shadowcolor=black@0.55:shadowx=0:shadowy=${Math.round(fit.size * 0.08)}`);
+  parts.push(`color=c=black@0:s=${W}x${LH},format=rgba,${draw.join(",")},rotate=${A}:c=none:ow=rotw(${A}):oh=roth(${A})[hook]`);
+  parts.push(`[bg][hook]overlay=(W-w)/2:${Math.max(380, Math.min(H - LH - 20, Math.round(690 - LH / 2)))}:format=rgb,format=yuvj444p[out]`);
+  return parts.join(";");
+}
+
+/* CREATOR · B — A SHORT-VIDEO FRAME: the picture as the feed shows it, darkening at the foot; on the right the
+ * rail — the maker in a white ring with a red plus, a heart, a bubble, the share arrow, the turning record —
+ * at the foot the caption (the maker's name, the title) and the thin progress line. */
+export const SHORT_LADDER: Ladder = [[40, 2], [36, 2], [32, 3], [28, 3]];
+function creatorShortGraph(spec: CoverSpec): string {
+  const W = COVER_W, H = COVER_H, RX = 726, AV = 72;
+  const p = spec.picture || { w: W, h: H, safe: { top: 0, bottom: 1 } };
+  const parts: string[] = [`[0:v]setpts=PTS-STARTPTS,split=3[s0][s1][s2]`];
+  parts.push(`[s0]${cropTo(p, W, H)},eq=saturation=1.12:contrast=1.05,${foot(600, 400, 0.78, 1.1)}[bg]`);
+  parts.push(`${avatarOf("[s1]", p, AV, 0.35)}[av]`);
+  const R = AV + 8;
+  parts.push(`${shape(R, R, "white", `255*${discIn((R - 1) / 2, (R - 1) / 2, R / 2)}`)}[avr]`);
+  parts.push(`${shape(30, 30, "0xFE2C55", `255*${discIn(14.5, 14.5, 15)}`)},drawbox=x=8:y=13:w=14:h=4:color=white@1:t=fill,drawbox=x=13:y=8:w=4:h=14:color=white@1:t=fill[plus]`);
+  // the rail's three buttons, white on a soft shadow — drawn at twice their size (layer 240 × 560, centre x 120)
+  const RW = 120, RH = 280, c = RW;
+  const heart = heartIn(c, 80, 40);
+  // (a speech bubble: an oval and its tail — a round with a stick read as a magnifier, 2026-11-24)
+  const bubble = union([`lt(pow((X-${c})/42\\,2)+pow((Y-280)/36\\,2)\\,1)`, triIn(c - 28, 296, c - 4, 312, c - 46, 336)]);
+  // (the share arrow: a shaft widening to the right, and its head)
+  const share = union([`lt(abs(Y-470)\\,(X-${c - 36})*0.62)*gt(X\\,${c - 36})*lt(X\\,${c + 6})*lt(abs(Y-470)\\,26)`, `lt(abs(Y-470)\\,48-(X-${c + 6})*1.15)*gte(X\\,${c + 6})*lt(X\\,${c + 48})`]);
+  const rail = union([heart, bubble, share]);
+  parts.push(`color=c=black:s=${RW * 2}x${RH * 2},format=gray,geq=lum='255*${rail}'[rm]`);
+  parts.push(`[rm]split[rm1][rm2]`);
+  parts.push(`color=c=white:s=${RW * 2}x${RH * 2},format=rgb24[rc];[rc][rm1]alphamerge,scale=${RW}:${RH}:flags=area[rail]`);
+  parts.push(`color=c=black:s=${RW * 2}x${RH * 2},format=rgb24[rs];[rs][rm2]alphamerge,scale=${RW}:${RH}:flags=area,colorchannelmixer=aa=0.45,gblur=sigma=4[rsh]`);
+  // the turning record: a dark disc with a groove, the maker's picture at its middle
+  parts.push(`${shape(60, 60, "0x161616", `255*${discIn(29.5, 29.5, 30)}`)}[rec]`);
+  parts.push(`${shape(60, 60, "0x5A5A5A", `255*${ringIn(29.5, 29.5, 22, 0.9)}`)}[recg]`);
+  parts.push(`${avatarOf("[s2]", p, 28, 0.35)}[recl]`);
+  const top = 300, REC = top + 70 + 350;
+  parts.push(`[bg][avr]overlay=${RX - R / 2}:${top - R / 2}:format=rgb[c1];[c1][av]overlay=${RX - AV / 2}:${top - AV / 2}:format=rgb[c2];[c2][plus]overlay=${RX - 15}:${top + AV / 2 - 10}:format=rgb[c3]`);
+  parts.push(`[c3][rsh]overlay=${RX - RW / 2 + 2}:${top + 70 + 3}:format=rgb[c4];[c4][rail]overlay=${RX - RW / 2}:${top + 70}:format=rgb[c5]`);
+  parts.push(`[c5][rec]overlay=${RX - 30}:${REC - 30}:format=rgb[c6a];[c6a][recg]overlay=${RX - 30}:${REC - 30}:format=rgb[c6b];[c6b][recl]overlay=${RX - 14}:${REC - 14}:format=rgb[c6]`);
+  // the caption: the maker's name, then the title; the progress line under everything
+  const fit = fitTitle(spec.title, 600, SHORT_LADDER);
+  const who = spec.names[0] ? `@${drawable(spec.names[0]).replace(/\s+/g, "")}` : "";
+  const out: string[] = [];
+  const lead = fit ? Math.round(fit.size * 1.16) : 0;
+  const lastBase = H - 52;
+  const firstBase = fit ? lastBase - lead * (fit.lines.length - 1) : lastBase;
+  if (who && canDraw(who)) out.push(words(spec.font, who, 30, "white", 32, firstBase - (fit ? Math.round(fit.size * CAP) : 0) - 22, ":shadowcolor=black@0.5:shadowx=0:shadowy=2"));
+  if (fit) out.push(...titleLines(spec.font, fit.lines, fit.size, "white", 32, firstBase, lead, ":shadowcolor=black@0.5:shadowx=0:shadowy=2"));
+  out.push(`drawbox=x=0:y=${H - 8}:w=${W}:h=4:color=white@0.32:t=fill`, `drawbox=x=0:y=${H - 8}:w=${Math.round(W * 0.34)}:h=4:color=white@1:t=fill`);
+  parts.push(`[c6]${out.join(",")},format=yuvj444p[out]`);
+  return parts.join(";");
+}
+
+/* CREATOR · C — A CHANNEL TEMPLATE: every video of one kind of channel wears ITS colour — facts yellow,
+ * lists cyan, storytime violet, motivation orange, cooking red, a described video green, a talking head blue,
+ * an edit pink — as a bar along the top, a slanted band across the lower third carrying the hook in black
+ * capitals (its key word in white), and the channel's round badge with the title's first letter. */
+export const CHANNEL_ACCENT: Readonly<Record<string, string>> = {
+  facts: "0xFFD400", listicle: "0x22D3EE", storytime: "0xB57BFF", motivational: "0xFF7A2E", recipe: "0xFF4D6D",
+  create: "0x4ADE80", talk: "0x60A5FA", edit: "0xF472B6",
+};
+/** Which channel colour a Creator piece wears: a faceless video's format, else what kind of Creator piece it is. */
+export function creatorChannel(meta: unknown, body?: unknown): string {
+  const m = objOf(meta), b = objOf(body);
+  const style = (str(m.style) || str(b.style)).toUpperCase();
+  if (str(m.kind) === "faceless" || style === "FACELESS") { const f = str(m.format).toLowerCase(); return CHANNEL_ACCENT[f] ? f : "facts"; }
+  if (style === "VIDEO_EDIT") return "edit";
+  if (style === "AI_AVATAR") return "talk";
+  return "create";
+}
+export const CHANNEL_LADDER: Ladder = [[76, 2], [66, 2], [58, 3], [50, 3], [44, 3]];
+function creatorChannelGraph(spec: CoverSpec): string {
+  const W = COVER_W, H = COVER_H, S = 0.07;
+  const accent = CHANNEL_ACCENT[spec.channel || ""] || CHANNEL_ACCENT.facts;
+  const p = spec.picture || { w: W, h: H, safe: { top: 0, bottom: 1 } };
+  const parts: string[] = [`[0:v]${cropTo(p, W, H)},eq=saturation=1.25:contrast=1.08,drawbox=x=0:y=0:w=${W}:h=12:color=${accent}@1:t=fill[bg]`];
+  const fit = fitTitle(spec.title, 640, CHANNEL_LADDER, true);
+  let last = "bg";
+  const out: string[] = [];
+  if (fit) {
+    const lead = Math.round(fit.size * 1.04);
+    const textH = Math.round(fit.size * CAP) + lead * (fit.lines.length - 1);
+    const BH = textH + 2 * Math.round(fit.size * 0.5);
+    const mid = 760; // the band's middle, where it crosses the cover's centre
+    const top = Math.round(mid - BH / 2);
+    // the band: a parallelogram rising to the right (its edges slope by S); its shadow under it
+    const LH = BH + Math.round(W * S) + 4, y0 = Math.round(W * S); // (layer: the band at x=0 sits y0 lower than at x=W)
+    const inside = `clip(Y-(${y0}-${S}*X)+0.5\\,0\\,1)*clip((${y0 + BH}-${S}*X)-Y+0.5\\,0\\,1)`;
+    parts.push(`${shape(W, LH, "black", `120*${inside}`)},gblur=sigma=7[bsh]`);
+    parts.push(`${shape(W, LH, accent, `255*${inside}`)}[band]`);
+    const LY = top - Math.round(y0 / 2);
+    parts.push(`[bg][bsh]overlay=8:${LY + 12}:format=rgb[d1];[d1][band]overlay=0:${LY}:format=rgb[d2]`);
+    last = "d2";
+    const firstBase = top + Math.round((BH - textH) / 2) + Math.round(fit.size * CAP);
+    out.push(...hookLines(spec.font, fit.lines, fit.size, firstBase, lead, W / 2, hookWord(fit.lines), "0x111111", "white", ":borderw=3:bordercolor=0x111111"));
+  }
+  // the channel's badge: a black disc in a ring of its colour, the title's first letter
+  const first = Array.from(billable(spec.title).replace(/^[^\p{L}\p{N}]+/u, ""))[0] || "";
+  const D = 96;
+  parts.push(`${shape(D, D, "0x111111", `255*${discIn((D - 1) / 2, (D - 1) / 2, D / 2)}`)}[bd]`);
+  parts.push(`${shape(D, D, accent, `255*${ringIn((D - 1) / 2, (D - 1) / 2, D / 2 - 5, 3.2)}`)}[br]`);
+  parts.push(`[${last}][bd]overlay=${W - D - 28}:${40}:format=rgb[e1];[e1][br]overlay=${W - D - 28}:${40}:format=rgb[e2]`);
+  if (first && canDraw(first)) out.push(words(spec.font, first.toUpperCase(), 52, accent, `${W - D - 28 + D / 2}-text_w/2`, 40 + D / 2 + 19));
+  parts.push(`[e2]${out.length ? `${out.join(",")},` : ""}format=yuvj444p[out]`);
+  return parts.join(";");
+}
+
+const AD_DRAW: Record<CoverStyle, (s: CoverSpec) => string> = { A: adPrintGraph, B: adPostGraph, C: adSpotGraph };
+const CREATOR_DRAW: Record<CoverStyle, (s: CoverSpec) => string> = { A: creatorThumbGraph, B: creatorShortGraph, C: creatorChannelGraph };
+export function adGraph(spec: CoverSpec): string { return AD_DRAW[spec.style || COVER_STYLE.ad](spec); }
+export function creatorGraph(spec: CoverSpec): string { return CREATOR_DRAW[spec.style || COVER_STYLE.creator](spec); }
 
 /* FOUND FOOTAGE — A CAMCORDER'S VIEWFINDER. The picture washed, grained and scan-lined; the four corner marks,
  * a red REC with the clock, the battery; the title in capitals over a dark foot, and in the corner the date

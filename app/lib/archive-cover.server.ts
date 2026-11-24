@@ -27,8 +27,8 @@ import { ffmpegBin, ffprobeBin, resolveTextFont } from "./ugc-ad-pipeline.server
 import { mirrorRender } from "./object-storage.server";
 import { posterOf, posterScene } from "./story-poster";
 import {
-  COVER_V, bestFrame, coverGraph, coverKind, coverName, coverOf, coverText, coverWords, frameStats, frameTimes, framesGraph,
-  localMedia, posterIsCover, safeBox, seedOf, type CoverKind, type CoverPicture, type CoverSpec,
+  COVER_HELD, COVER_VERSION, bestFrame, coverGraph, coverKind, coverName, coverOf, coverText, coverWords, creatorChannel, frameStats, frameTimes,
+  framesGraph, localMedia, posterIsCover, safeBox, seedOf, type CoverKind, type CoverPicture, type CoverSpec,
 } from "./archive-cover";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
@@ -83,7 +83,7 @@ export function makeArchiveCover(o: { shopId: string; assetId: string }): Promis
       // (only a real failure is remembered — the piece's own for hours, anything else for minutes; a piece that
       //  simply wants no cover is answered at once anyway)
       if (!r.ok && /^(error|draw|no-picture|missing|font)/.test(r.why)) failed.set(key, Date.now() + (r.why.startsWith("error") ? COVER_RETRY_ERROR_MS : COVER_RETRY_MS));
-      if (!r.ok && !/^(busy|failed-lately|has-poster|not-|gone|expired)/.test(r.why)) console.error(`[cover] ${key}: ${r.why}`);
+      if (!r.ok && !/^(busy|failed-lately|has-poster|held|not-|gone|expired)/.test(r.why)) console.error(`[cover] ${key}: ${r.why}`);
       return r;
     })
     .finally(() => drawing.delete(key));
@@ -154,7 +154,7 @@ async function bestOf(cands: Candidate[], captioned: boolean, at?: number[], kno
   args.push("-filter_complex", framesGraph(list.length, W, H), "-map", "[o]", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "-");
   const r = await run(ffmpegBin(), args);
   let i = Math.floor(list.length / 2);
-  let frame: { top: number; bottom: number; mean?: number } = { top: 0, bottom: 1 };
+  let frame: { top: number; bottom: number; mean?: number; edge?: number } = { top: 0, bottom: 1 };
   if (r.status === 0 && r.out.length >= W * H * list.length) {
     const gray = new Uint8Array(r.out.buffer, r.out.byteOffset, r.out.length);
     const stats = list.map((_, k) => frameStats(gray, W * list.length, H, k * W, W));
@@ -166,7 +166,7 @@ async function bestOf(cands: Candidate[], captioned: boolean, at?: number[], kno
   const own = list[i].file === list[0].file ? dims : await probe(list[i].file);
   const size = own.w > 0 ? own : dims;
   const c = list[i];
-  return { inputs: [...(c.t != null ? ["-ss", c.t.toFixed(2)] : []), "-i", c.file], picture: { w: size.w, h: size.h, safe: safeBox(size, frame, captioned), ...(frame.mean != null ? { mean: Math.round(frame.mean) } : {}) } };
+  return { inputs: [...(c.t != null ? ["-ss", c.t.toFixed(2)] : []), "-i", c.file], picture: { w: size.w, h: size.h, safe: safeBox(size, frame, captioned), ...(frame.mean != null ? { mean: Math.round(frame.mean) } : {}), ...(frame.edge != null ? { edge: Math.round(frame.edge) } : {}) } };
 }
 
 /** Frames from inside a video: a few moments across its middle, the best of them. */
@@ -267,13 +267,15 @@ async function planCover(o: { shopId: string; assetId: string }): Promise<CoverR
   const piece = { type: a.type, title: a.title, meta, body };
   const kind = coverKind(piece);
   if (!kind) return { ok: false, why: "not-a-video" };
+  // (a family whose design is being drawn again is not drawn at all meanwhile — whoever asks)
+  if (COVER_HELD.has(kind.family)) return { ok: false, why: "held" };
   const audio = a.type === "AUDIO";
   const name = localMedia(str(audio ? body.audioUrl : body.videoUrl));
   if (!name) return { ok: false, why: "not-local" };
   if (body.needsRegen === true) return { ok: false, why: "expired" };
   if (posterOf(meta) && posterIsCover(kind.family)) return { ok: false, why: "has-poster" };
   const had = coverOf(meta);
-  if (had && had.v >= COVER_V && fs.existsSync(path.join(RENDERS(), path.basename(had.src)))) return { ok: true, cover: had.src };
+  if (had && had.v >= COVER_VERSION[kind.family] && fs.existsSync(path.join(RENDERS(), path.basename(had.src)))) return { ok: true, cover: had.src };
   const media = path.join(RENDERS(), name);
   if (!fs.existsSync(media)) return { ok: false, why: "missing" };
   return { draw: () => drawCover(o, a, { meta, body, piece, kind, audio, name, media }) };
@@ -285,10 +287,18 @@ async function drawCover(o: { shopId: string; assetId: string }, a: { id: string
   const words = coverWords(piece, kind);
   const source = await sourceFor(kind, meta, body, media, words.names, audio);
   if (!source) return { ok: false, why: "no-picture" };
-  const seconds = Number(meta.seconds) || 0;
+  // its length, as a player shows it (an ad's chip, a Creator video's line, a take's clock)
+  const seconds = Number(meta.seconds) || Number(meta.lengthSec) || (kind.family === "ad" || kind.family === "creator" ? Math.round((await probe(media)).d) : 0);
+  // AN AD's product, as its own photo shows it — the photo it was made from, or a service's end card — when
+  // that is a picture of ours on this disk (the next input after the cover's picture)
+  const shot = kind.family === "ad" ? [meta.productImageUrl, meta.endcardUrl].map((u) => localFile(u)).find((f) => !!f && /\.(jpe?g|png|webp)$/i.test(f)) || null : null;
+  const packshot = shot ? await bestOf([{ file: shot }], false) : null;
   const spec: Omit<CoverSpec, "font"> = {
     kind, title: words.title, names: words.names, picture: source.picture, portraits: source.portraits, still: source.still,
     ...(kind.family === "footage" ? { stamp: stampOf(a.createdAt, a.shop?.timezone), seconds } : {}),
+    ...(kind.family === "ad" || kind.family === "creator" ? { seconds } : {}),
+    ...(packshot?.picture ? { packshot: packshot.picture } : {}),
+    ...(kind.family === "creator" ? { channel: creatorChannel(meta, body) } : {}),
     seed: seedOf(`${a.id}:${a.title || ""}`),
   };
   // (the captions' own rule: words no font here can draw → no cover, never boxes; it is tried again later)
@@ -296,10 +306,11 @@ async function drawCover(o: { shopId: string; assetId: string }, a: { id: string
   try { font = await resolveTextFont(coverText(spec)); } catch (e) { return { ok: false, why: `font: ${e instanceof Error ? e.message.slice(0, 120) : e}` }; }
   const graph = coverGraph({ ...spec, font });
 
-  const file = coverName(name, a.id);
+  const file = coverName(name, a.id, kind.family);
   const out = path.join(RENDERS(), file);
   const part = `${out}.${process.pid}-${Date.now()}.part`;
-  const r = await run(ffmpegBin(), ["-y", "-v", "error", ...source.inputs, "-filter_complex", graph, "-map", "[out]", "-frames:v", "1", "-q:v", "3", "-f", "mjpeg", part]);
+  const inputs = [...source.inputs, ...(packshot?.picture && shot ? ["-i", shot] : [])];
+  const r = await run(ffmpegBin(), ["-y", "-v", "error", ...inputs, "-filter_complex", graph, "-map", "[out]", "-frames:v", "1", "-q:v", "3", "-f", "mjpeg", part]);
   let made = false;
   try {
     if (r.status === 0 && fs.statSync(part).size > 5000) { fs.renameSync(part, out); made = true; }

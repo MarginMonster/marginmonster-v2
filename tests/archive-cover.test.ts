@@ -17,7 +17,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  AD_LADDER, CAPTION_LINE, COVER_FAMILIES, COVER_H, COVER_LABEL, COVER_V, COVER_W, CREATOR_LADDER, FILM_LADDER, FOCUS_Y, FOOTAGE_LADDER,
+  CAPTION_LINE, CHANNEL_ACCENT, CHANNEL_LADDER, COVER_FAMILIES, COVER_H, COVER_HELD, COVER_LABEL, COVER_OPTIONS, COVER_STYLE, COVER_V, COVER_VERSION, COVER_W, FILM_LADDER, FOCUS_Y, FOOTAGE_LADDER,
+  PRINT_LADDER, SHORT_LADDER, SPOT_LADDER, THUMB_LADDER, clockOf, creatorChannel, hookWord,
   HORROR_LADDER, MUSIC_LADDER, bestFrame, billingLine, canDraw, coverAsk, coverGraph, coverKind, coverName, coverOf, coverText, coverWords, horrorGamma,
   cropWindow, cutToFit, emWidth, episodeLine, episodeOf, fitLines, fitTitle, frameScore, frameStats, frameTimes, framesGraph, localMedia,
   posterIsCover, safeBox, seedOf, storyLayout, type CoverFamily, type CoverSpec,
@@ -115,15 +116,19 @@ test("a told story's poster IS its cover; every other family wears the Archive's
 
 test("its record: a file of ours beside the media, the design's version in its name, one dot", () => {
   const tag = (id: string) => seedOf(`cover:${id}`).toString(36);
-  assert.equal(coverName("/renders/mv-1794304903337-f19c58693526.mp4", "cmpiece1"), `mv-1794304903337-f19c58693526-${tag("cmpiece1")}-cover${COVER_V}.jpg`);
-  assert.equal(coverName("/renders/song.one-x.mp3?x=1", "p"), `songone-x-${tag("p")}-cover${COVER_V}.jpg`, "one dot — the renders route serves nothing else");
-  assert.equal(coverName("../../etc/passwd.mp4", "p"), `passwd-${tag("p")}-cover${COVER_V}.jpg`, "its bare name only");
-  for (const n of [coverName("/renders/x y$z.mp4", "p"), coverName("", "")]) assert.ok(/^[a-zA-Z0-9_-]*-[a-z0-9]+-cover\d+\.jpg$/.test(n), n);
+  assert.equal(coverName("/renders/mv-1794304903337-f19c58693526.mp4", "cmpiece1", "music"), `mv-1794304903337-f19c58693526-${tag("cmpiece1")}-cover${COVER_VERSION.music}.jpg`);
+  assert.equal(coverName("/renders/song.one-x.mp3?x=1", "p", "music"), `songone-x-${tag("p")}-cover${COVER_V}.jpg`, "one dot — the renders route serves nothing else");
+  assert.equal(coverName("../../etc/passwd.mp4", "p", "film"), `passwd-${tag("p")}-cover${COVER_V}.jpg`, "its bare name only");
+  for (const n of [coverName("/renders/x y$z.mp4", "p", "ad"), coverName("", "", "creator")]) assert.ok(/^[a-zA-Z0-9_-]*-[a-z0-9]+-cover\d+\.jpg$/.test(n), n);
   // two pieces made from one file have covers of their own (the harness drew them over each other's)
-  assert.notEqual(coverName("/renders/a.mp4", "cmpiece1"), coverName("/renders/a.mp4", "cmpiece2"));
-  assert.ok(!coverName("/renders/a.mp4", "cmpiece1").includes("cmpiece1"), "the piece's id is not in the name");
+  assert.notEqual(coverName("/renders/a.mp4", "cmpiece1", "horror"), coverName("/renders/a.mp4", "cmpiece2", "horror"));
+  assert.ok(!coverName("/renders/a.mp4", "cmpiece1", "horror").includes("cmpiece1"), "the piece's id is not in the name");
   // …and what the record accepts is exactly what is written
-  assert.deepEqual(coverOf({ cover: `/renders/${coverName("/renders/a.mp4", "cmpiece1")}` }), { src: `/renders/${coverName("/renders/a.mp4", "cmpiece1")}`, v: COVER_V });
+  assert.deepEqual(coverOf({ cover: `/renders/${coverName("/renders/a.mp4", "cmpiece1", "horror")}` }), { src: `/renders/${coverName("/renders/a.mp4", "cmpiece1", "horror")}`, v: COVER_VERSION.horror });
+  // A DESIGN VERSION PER FAMILY: raising one family's draws ITS covers again and touches no other's
+  assert.deepEqual(Object.keys(COVER_VERSION).sort(), [...COVER_FAMILIES].sort());
+  for (const fam of ["story", "film", "horror", "music", "footage"] as const) assert.equal(COVER_VERSION[fam], COVER_V, `${fam} keeps the design the owner saw`);
+  assert.ok(new RegExp(`-cover${COVER_VERSION.ad}\\.jpg$`).test(coverName("/renders/a.mp4", "p", "ad")));
   assert.deepEqual(coverOf({ cover: "/renders/mv-1-abc-cover1.jpg" }), { src: "/renders/mv-1-abc-cover1.jpg", v: 1 });
   assert.deepEqual(coverOf(JSON.stringify({ cover: "/renders/a-cover12.jpg" })), { src: "/renders/a-cover12.jpg", v: 12 });
   for (const bad of [{ cover: "https://evil.example/a-cover1.jpg" }, { cover: "/renders/../a-cover1.jpg" }, { cover: "/renders/a.b-cover1.jpg" }, { cover: "/renders/a-poster.jpg" }, { cover: "/renders/a-cover.jpg" }, { cover: 3 }, {}, null, "{"]) {
@@ -159,6 +164,11 @@ test("the picture: frames from inside the video, the best of them, its bars and 
   const dim = frameStats(frame((x, y) => 18 + ((x + y) % 8)), W, H, 0, W);
   assert.ok(frameScore(dim) < frameScore(lit) * 0.2, "a frame nobody can see into is not a cover");
   assert.equal(bestFrame([black, boxed, lit, flat]), 2);
+  // (a commercial's sun flare had the most "contrast" of its six frames and was picked — 2026-11-24)
+  const flare = frameStats(frame((x, y) => (y < 9 ? 255 : 60 + ((x * 37 + y * 53) % 140))), W, H, 0, W);
+  assert.ok((flare.bright ?? 0) > 0.4 && frameScore(flare) < frameScore(lit) * 0.5, `blown ${flare.bright}`);
+  // …and a picture's backdrop is read along its top (a product photo's studio is that colour)
+  assert.equal(Math.round(frameStats(frame((x, y) => (y < 2 ? 250 : 20)), W, H, 0, W).edge ?? 0), 250);
   assert.equal(bestFrame([black, black]), -1, "none worth a cover");
   // two candidates side by side in one strip: each read from its own columns
   const two = new Uint8Array(W * 2 * H);
@@ -200,7 +210,7 @@ test("the words, set: real Poppins widths, as big as they fit, a colon kept and 
   // the biggest size it fits at — and every line inside its box
   const ladders: Array<[string, number, readonly (readonly [number, number])[], boolean]> = [
     ["film", 640, FILM_LADDER, false], ["horror", 680, HORROR_LADDER, true], ["music", 720, MUSIC_LADDER, false],
-    ["ad", 704, AD_LADDER, false], ["creator", 600, CREATOR_LADDER, false], ["footage", 680, FOOTAGE_LADDER, true],
+    ["ad print", 720, PRINT_LADDER, false], ["ad spot", 680, SPOT_LADDER, false], ["creator thumbnail", 720, THUMB_LADDER, true], ["creator short", 600, SHORT_LADDER, false], ["creator channel", 640, CHANNEL_LADDER, true], ["footage", 680, FOOTAGE_LADDER, true],
   ];
   for (const [name, box, ladder, caps] of ladders) {
     assert.ok(ladder.every(([s], k) => k === 0 || s < ladder[k - 1][0]), `${name}: sizes fall`);
@@ -213,14 +223,14 @@ test("the words, set: real Poppins widths, as big as they fit, a colon kept and 
     assert.equal(fitTitle("Tide", box, ladder, caps)!.size, ladder[0][0], `${name}: a short title is set big`);
   }
   const huge = "The Lighthouse Keeper Who Waited Every Tuesday for a Boat That Was Always on Time Until It Was Not, and Then Waited Some More";
-  const long = fitTitle(huge, 600, CREATOR_LADDER)!;
-  assert.ok(long.lines[long.lines.length - 1].endsWith("…") && long.size === CREATOR_LADDER[CREATOR_LADDER.length - 1][0] && long.lines.length === CREATOR_LADDER[CREATOR_LADDER.length - 1][1], JSON.stringify(long));
+  const long = fitTitle(huge, 600, SHORT_LADDER)!;
+  assert.ok(long.lines[long.lines.length - 1].endsWith("…") && long.size === SHORT_LADDER[SHORT_LADDER.length - 1][0] && long.lines.length === SHORT_LADDER[SHORT_LADDER.length - 1][1], JSON.stringify(long));
   assert.ok(cutToFit("Wandering wandering wandering", 6).endsWith("…") && emWidth(cutToFit("Wandering wandering wandering", 6)) <= 6);
   // only what can be drawn: no boxes, no letters left unjoined
   assert.equal(canDraw("Café — Ñandú"), true);
   assert.equal(canDraw("灯塔"), true);
-  for (const s of ["Сказка", "قصة", "کہانی", "कहानी", "Ιστορία"]) { assert.equal(canDraw(s), false, s); assert.equal(fitTitle(s, 600, CREATOR_LADDER), null, s); }
-  assert.equal(fitTitle("", 600, CREATOR_LADDER), null);
+  for (const s of ["Сказка", "قصة", "کہانی", "कहानी", "Ιστορία"]) { assert.equal(canDraw(s), false, s); assert.equal(fitTitle(s, 600, SHORT_LADDER), null, s); }
+  assert.equal(fitTitle("", 600, SHORT_LADDER), null);
   // the billing: as many names as fit, in capitals, a dot between; a name that cannot be drawn is left off
   assert.equal(billingLine(["Omar", "Rosa"], 640, 24), "OMAR  ·  ROSA");
   assert.equal(billingLine(["Омар", "Rosa"], 640, 24), "ROSA");
@@ -258,10 +268,10 @@ test("each family's graph: one frame out, every picture's clock set to nought, e
   assert.ok(graphs.film.includes("[base][bulbs]overlay=0:636") && graphs.film.includes("lutrgb=r='255'"), "the marquee's bulbs");
   assert.ok(graphs.horror.includes("colorbalance=rs=0.17") && graphs.horror.includes("[cc][cm]alphamerge[claw]") && graphs.horror.includes("blend=all_mode=multiply"), "drained, bloodied, clawed, worn");
   assert.ok(graphs.music.includes("[bg][disc]overlay=") && graphs.music.includes("[d3][sleeve]overlay=40:60"), "the record and its sleeve");
-  assert.ok(graphs.ad.includes("geq=r='9+30*pow(1-Y/1000") && graphs.ad.includes("[a3][tag]overlay="), "the Ad Maker's green, the hang tag");
-  assert.ok(graphs.creator.includes("rotate=-0.055:c=none") && graphs.creator.includes("[c3][lab]overlay="), "the tilted card, the label");
+  assert.ok(graphs.ad.includes("drawbox=x=0:y=790:w=800:h=6:color=0x0C7A46@1:t=fill"), "the print ad's paper band under its fold");
+  assert.ok(graphs.creator.includes("rotate=-0.045:c=none") && graphs.creator.includes("fontcolor=0xFFE135"), "the thumbnail's tilted hook, its yellow word");
   assert.ok(graphs.footage.includes("text='REC'") && graphs.footage.includes("text='00\\:00\\:12'") && graphs.footage.includes("text='2026.11.24  03\\:12'"), "the viewfinder: REC, its length, its date");
-  const marks = ["[bulbs]", "[claw]", "[disc]", "[tag]", "rotate=", "text='REC'"];
+  const marks = ["[bulbs]", "[claw]", "[disc]", "h=6:color=0x0C7A46", "rotate=", "text='REC'"];
   for (const m of marks) assert.equal(COVER_FAMILIES.filter((f) => graphs[f].includes(m)).length, 1, `${m} belongs to one family`);
   // a kids' film: candy bulbs; a kids' song: a pink label
   assert.ok(coverGraph(spec("film", { kind: { family: "film", kids: true } })).includes("[m1]format=rgb24,geq=r='if("));
@@ -396,4 +406,87 @@ test("the ad and creator covers are HELD while they are redrawn (\"The ads and c
   assert.equal(coverAsk({ ...base, kind: { family: "creator", kids: false } }), false);
   // every other family is still asked for
   for (const family of ["horror", "music", "film", "footage"] as const) assert.equal(coverAsk({ ...base, kind: { family, kids: false } }), true, family);
+});
+
+test("ads and Creator videos, drawn again as objects of their own world — three options each, side by side for the owner", () => {
+  // three options a family, each named; the one in use is one of them; both stay HELD until he chooses
+  assert.deepEqual(COVER_OPTIONS.ad.map((o) => `${o.key} ${o.name}`), ["A Print ad", "B Sponsored post", "C Product spot"]);
+  assert.deepEqual(COVER_OPTIONS.creator.map((o) => `${o.key} ${o.name}`), ["A Thumbnail", "B Short-video frame", "C Channel template"]);
+  assert.ok(["A", "B", "C"].includes(COVER_STYLE.ad) && ["A", "B", "C"].includes(COVER_STYLE.creator));
+  assert.deepEqual([...COVER_HELD].sort(), ["ad", "creator"]);
+  const pk = pic(896, 1200);
+  const draw = (family: "ad" | "creator", style: "A" | "B" | "C", o: Partial<CoverSpec> = {}) => coverGraph(spec(family, { style, seconds: 15, channel: "facts", ...o }));
+  const all: Record<string, string> = {};
+  for (const family of ["ad", "creator"] as const) for (const style of ["A", "B", "C"] as const) {
+    for (const o of family === "ad" ? [{}, { packshot: pk }] : [{}, { names: [] }]) {
+      const g = draw(family, style, o);
+      all[`${family}${style}`] = g;
+      // one frame out; every picture's clock at nought; the product photo is input 1, and only when there is one
+      assert.ok(g.endsWith("format=yuvj444p[out]") && g.split("[out]").length === 2, `${family} ${style}`);
+      for (const m of g.matchAll(/\[(\d+):v\]([^;[]*)/g)) assert.ok(m[2].startsWith("setpts=PTS-STARTPTS"), `${family} ${style}: input ${m[1]}`);
+      assert.equal(g.includes("[1:v]"), "packshot" in o, `${family} ${style}: input 1 is the product photo`);
+      // every word: the font, no expansion, no bare colon inside it
+      for (const t of g.matchAll(/drawtext=([^,]*?)text='([^']*)'/g)) {
+        assert.ok(t[1].startsWith("expansion=none:fontfile='C\\:/fonts/Poppins-Bold.ttf':"), `${family} ${style}: ${t[1]}`);
+        assert.ok(!/(?:^|[^\\]):/.test(t[2]), `${family} ${style}: «${t[2]}»`);
+      }
+      assert.ok(!/(drawbox=[^,]*black@0\.[0-9]+:t=fill,){3}/.test(g));
+    }
+  }
+  // …and each is its own object: what only it draws
+  const own: Record<string, string[]> = {
+    adA: ["drawbox=x=0:y=790:w=800:h=6:color=0x0C7A46@1:t=fill", "pad=800:1000:0:0:color=0xFBFAF6"],   // the paper band under the fold
+    adB: ["color=c=white:s=800x1000", "color=c=0xFF3040", "text='•••'"],                                   // the feed card, its liked heart
+    adC: ["crop=iw:max(2\\,ih*0.06):0:0,scale=1:1:flags=area"],                                            // the studio, the photo's own backdrop
+    creatorA: ["rotate=-0.045:c=none", "fontcolor=0xFFE135"],                                              // the slapped-on hook, its yellow word
+    creatorB: ["[rail]", "color=c=0xFE2C55"],                                                             // the feed's rail, the red plus
+    creatorC: ["[band]", `color=c=${CHANNEL_ACCENT.facts}`],                                               // the channel's colour, its band
+  };
+  for (const [k, marks] of Object.entries(own)) for (const m of marks) {
+    assert.ok(all[k].includes(m), `${k}: ${m}`);
+    for (const [other, g] of Object.entries(all)) if (other !== k) assert.ok(!g.includes(m), `${m} is ${k}'s alone (found in ${other})`);
+  }
+  // a print ad with the product's own photo lifts it over the fold; without one the name has the band
+  assert.ok(draw("ad", "A", { packshot: pk }).includes("[pkw]") && !draw("ad", "A").includes("[pkw]"));
+  // the length as a player shows it — digits only
+  assert.deepEqual([clockOf(15), clockOf(62), clockOf(0), clockOf(undefined), clockOf(29.6)], ["0:15", "1:02", "", "", "0:30"]);
+  assert.ok(draw("ad", "A").includes("text='0\\:15'"));
+  assert.ok(!draw("ad", "A", { seconds: 0 }).includes("text='0\\:"), "no length known, no chip");
+  // the sponsored post says the length once — on its button bar — and the presenter under the name
+  assert.equal(draw("ad", "B", { names: [] }).split("text='0\\:15'").length - 1, 1);
+  assert.ok(draw("ad", "B", { names: ["Mara"] }).includes("text='MARA'"));
+});
+
+test("a thumbnail lights its number or its longest word; a channel wears its own colour on every video", () => {
+  assert.deepEqual(hookWord(["MY 5AM", "MORNING ROUTINE"]), { line: 0, word: 1 }, "a number first");
+  assert.deepEqual(hookWord(["TEST ANGLERFISH: THE", "OCEAN’S STRANGEST"]), { line: 0, word: 1 }, "else the longest word");
+  assert.equal(hookWord(["A B C"]), null, "nothing of four letters: nothing lit");
+  assert.equal(hookWord(["灯塔守护人的故事"]), null, "a hook written without spaces is never lit by one glyph");
+  // the lit word is the one drawn in yellow, once
+  const g = coverGraph(spec("creator", { style: "A", title: "My 5am Morning Routine" }));
+  assert.equal([...g.matchAll(/text='([^']*)'[^,]*fontcolor=0xFFE135/g)].map((m) => m[1]).join(), "5AM");
+  // the channel colour: a faceless video's format, else what kind of Creator piece it is
+  assert.equal(creatorChannel({ kind: "faceless", format: "storytime" }), "storytime");
+  assert.equal(creatorChannel({ kind: "faceless", format: "made-up" }), "facts");
+  assert.equal(creatorChannel({ creative: true, style: "PRODUCT_HIGHLIGHT" }), "create");
+  assert.equal(creatorChannel({ style: "AI_AVATAR", serviceMode: true }), "talk");
+  assert.equal(creatorChannel({ style: "VIDEO_EDIT" }), "edit");
+  for (const k of ["facts", "listicle", "storytime", "motivational", "recipe", "create", "talk", "edit"]) assert.ok(/^0x[0-9A-F]{6}$/.test(CHANNEL_ACCENT[k]), k);
+  assert.equal(new Set(Object.values(CHANNEL_ACCENT)).size, Object.keys(CHANNEL_ACCENT).length, "every channel its own colour");
+  assert.ok(coverGraph(spec("creator", { style: "C", channel: "storytime" })).includes(`color=c=${CHANNEL_ACCENT.storytime}`));
+});
+
+test("the server: a held family is never drawn, an ad's packshot is a photo of ours, and only a family's own version redraws it", () => {
+  const srv = read("app", "lib", "archive-cover.server.ts");
+  assert.ok(srv.includes("if (COVER_HELD.has(kind.family)) return { ok: false, why: \"held\" };"), "whoever asks");
+  assert.ok(srv.indexOf("if (COVER_HELD.has(kind.family))") < srv.indexOf("return { draw: () => drawCover("), "before any drawing");
+  assert.ok(srv.includes("const shot = kind.family === \"ad\" ? [meta.productImageUrl, meta.endcardUrl].map((u) => localFile(u)).find((f) => !!f && /\\.(jpe?g|png|webp)$/i.test(f)) || null : null;"), "a picture on this disk — never a fetch");
+  assert.ok(srv.includes("const inputs = [...source.inputs, ...(packshot?.picture && shot ? [\"-i\", shot] : [])];"));
+  assert.ok(srv.includes("...(kind.family === \"creator\" ? { channel: creatorChannel(meta, body) } : {}),"));
+  assert.ok(srv.includes("const file = coverName(name, a.id, kind.family);"));
+  assert.ok(srv.includes("if (had && had.v >= COVER_VERSION[kind.family] &&"));
+  // the loader asks by the family's own version too (coverAsk)
+  const ask = (family: CoverFamily, v: number) => coverAsk({ kind: { family, kids: false }, media: "/renders/x.mp4", expired: false, poster: null, cover: { v } });
+  assert.equal(ask("music", COVER_VERSION.music), false);
+  assert.equal(ask("music", COVER_VERSION.music - 1), true);
 });
