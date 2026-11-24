@@ -144,7 +144,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const stock: Member[] = [];
   people.forEach((p, i) => { stock.push(p); if (i % 3 === 2 && turns.length) stock.push(turns.shift() as Member); });
   stock.push(...turns);
-  const cast = [...mine, ...stock];
+  // THE STOCK CAST LEADS (the owner, 2026-11-24: "cast looks good but personalized characters should
+  // prioritize stock for the sake of user interface") — the cast the page was designed around, cut out on
+  // one backdrop; your own characters follow, and have their own "Yours" tab. (The Brand Face and the
+  // ones you starred still stand first, whoever they are.)
+  const cast = [...stock, ...mine];
   // A forge that failed is retried by the worker (up to three goes) and its row says "failed" between
   // goes. While a forge job for it is still queued or running it is still being made — only once the
   // job has given up is it something to tell the merchant about (and safe to offer to dismiss).

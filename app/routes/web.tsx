@@ -1988,6 +1988,14 @@ body{font-family:Inter,-apple-system,sans-serif;}
    * six content types sit in an even 2-col grid (flagships still lead, by
    * position) — the span-2 "two big" treatment is a desktop-only enhancement. */
   .ws-ctgrid .ws-tile-flag{grid-column:span 1;}
+  /* THE CONTENT TYPES ARE ONE SIDEWAYS ROW ON A PHONE. Three of them in two columns left the third alone
+     at the left of a row of its own — the owner, 2026-11-24: "The third ad style card being left centered
+     looks weird". However many there are, none is orphaned: they scroll sideways and the next one peeks
+     from the right edge. Two classes on purpose: this element is also a .ws-scrollbox, whose rule below
+     (a tall box that scrolls DOWN, with a fade at its foot) would otherwise win and dim the row's captions. */
+  .ws-tiles.ws-ctgrid{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;max-height:none;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;overscroll-behavior:auto;padding:3px 3px 10px;scrollbar-width:none;scrollbar-gutter:auto;-webkit-mask-image:none;mask-image:none;}
+  .ws-tiles.ws-ctgrid::-webkit-scrollbar{display:none;}
+  .ws-tiles.ws-ctgrid>*{flex:0 0 58%;min-width:0;scroll-snap-align:start;}
   .ws-tile b{font-size:12.5px;padding:8px 9px 0;}
   .ws-tile.fmt b{font-size:12.5px;}
   .ws-tile-sub{font-size:10.5px;padding:2px 9px 0;line-height:1.35;}
