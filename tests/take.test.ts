@@ -95,3 +95,26 @@ test("a take of the member's own: the writer is told how a scare is built, and i
   // …and whatever the writer returns, the direction built from it still fits the engine
   assert.ok(takePrompt(t!, "phone").length <= TAKE_PROMPT_MAX);
 });
+
+test("the making: every step after the take itself degrades instead of failing, and nothing is laid over a take unheard", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const srv = fs.readFileSync(path.join(root, "app", "lib", "take.server.ts"), "utf8").replace(/\r\n/g, "\n");
+  // the same model on the same host order the acted films use: fal's standard tier first
+  assert.ok(srv.indexOf('host: "fal kling 3 omni standard"') < srv.indexOf('host: "fal kling 3 omni"') && srv.indexOf('host: "fal kling 3 omni"') < srv.indexOf('host: "replicate kling 3 omni"'));
+  assert.ok(srv.includes("generateAudio: true, durationSec: TAKE_SECONDS") && srv.includes("generate_audio: true, duration: TAKE_SECONDS, mode: \"pro\""));
+  // the ten seconds that cost money are on the disk (and checkpointed) the moment they exist
+  assert.ok(srv.includes("fs.writeFileSync(path.join(dir, rawName), buf);") && srv.includes("await ckpt({ ckRaw: rawName });"));
+  // a writer that fails or half-answers → a ready-made scare, never half a direction
+  assert.ok(srv.includes("take = written || { ...TAKE_IDEAS[0], title: TAKE_IDEAS[0].name };"));
+  // what was said is HEARD and kept; no voice is ever added here
+  assert.ok(srv.includes("heard: said,") && !/tts|speech-02|adelay|amix/i.test(srv), "nothing is laid over a take");
+  // a look that will not render ships the plain take
+  assert.ok(srv.includes("const outPath = dressed || rawPath;"));
+  // grain is incompressible: the dressed take is encoded under a cap
+  assert.ok(srv.includes('"-crf", "22", "-maxrate", "7M", "-bufsize", "14M"'));
+  // the phone's two faces are given a moment, never waited on for long
+  assert.ok(srv.includes("const fonts = await overlayFonts(8_000);"));
+});
