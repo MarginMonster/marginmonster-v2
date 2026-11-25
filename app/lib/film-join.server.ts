@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { ffprobeBin, ffprobeDuration, hasAudioStream, runFfmpeg } from "./ugc-ad-pipeline.server";
-import { FILM_FPS, clipFrames, joinCheck, joinGraph, type Seam } from "./acted-staging";
+import { FILM_FPS, JOIN_PART_CLIPS, clipFrames, joinCheck, joinFilmArgs, joinGraph, joinList, joinPartArgs, joinParts, type Seam } from "./acted-staging";
 
 /** ffprobe's answer as JSON ({} when it gives none). */
 const probeJson = (file: string, args: string[]): { streams?: Array<Record<string, unknown>> } => {
@@ -65,6 +65,9 @@ export async function joinWhole(o: { clips: string[]; outPath: string; prep: str
   // (as long as a last frame may have to be held: the most any clip's length passes its own picture)
   const hold = Math.max(...sizes.map((s) => s.frames / FILM_FPS - s.picture)) + 1;
   const silent = clips.map((c) => { try { return !hasAudioStream(c); } catch { return false; } });
+  // A LONG FILM IS JOINED IN PARTS (acted-staging.ts → joinParts): more clips than one ffmpeg has ever opened here
+  // are never opened by one. A film of six shots or fewer is joined below, exactly as it always was.
+  if (clips.length > JOIN_PART_CLIPS) return joinInParts({ ...o, frames, silent, hold });
   const inputs = clips.flatMap((c) => ["-i", c]);
   const failed: string[] = [];
   for (const [how, plan] of [
@@ -85,4 +88,53 @@ export async function joinWhole(o: { clips: string[]; outPath: string; prep: str
   }
   // NEVER SHIPPED: the job fails here, and a film missing a shot's picture (or its sound) never reaches anybody
   throw new Error(`${label} the film could not be joined whole — ${failed.join("; ")}`);
+}
+
+/** THE SAME JOIN, FOR A FILM TOO LONG FOR ONE ffmpeg (acted-staging.ts → A LONG FILM IS JOINED IN PARTS). Each part
+ *  is a handful of the film's shots, joined by joinGraph and encoded the way the film is — and MEASURED, like the
+ *  film: its picture and its sound the same length, the length its shots add up to. Then the parts are put end to
+ *  end, their picture copied as it is, and the finished file is measured against the sum of them. With its
+ *  dissolves first; not whole → every part again the plain way; still not → it throws, and the job fails.
+ *  The parts are files beside the film, gone when this returns. `beat` is called after every part: a five-minute
+ *  film is nine of them, and the job that is making it says it is alive between them. */
+async function joinInParts(o: { clips: string[]; outPath: string; prep: string; seams: ReadonlyArray<Seam>; encode: string[]; label: string; beat?: () => Promise<void>; frames: number[]; silent: boolean[]; hold: number }): Promise<number> {
+  const { clips, outPath, label } = o;
+  const tried: string[] = [];
+  for (const [how, dissolve] of [["in parts, with its dissolves", true], ["in parts the plain way, every seam a straight join", false]] as Array<[string, boolean]>) {
+    const plan = joinParts({ frames: o.frames, seams: o.seams, prep: o.prep, silent: o.silent, hold: o.hold, dissolve });
+    const files = plan.parts.map((_, p) => `${outPath}.part${p + 1}.mov`);
+    const list = `${outPath}.parts.txt`;
+    let why = "";
+    try {
+      for (let p = 0; p < plan.parts.length && !why; p++) {
+        const part = plan.parts[p];
+        const run = await runFfmpeg(joinPartArgs(part, part.clips.map((i) => clips[i]), o.encode, files[p]));
+        const whole = run.status === 0 && fs.existsSync(files[p])
+          ? joinCheck({ ...streamSeconds(files[p]), frames: part.frames })
+          : { ok: false, why: `ffmpeg stopped: ${(run.stderr || "").slice(-200)}` };
+        if (!whole.ok) why = `part ${p + 1} of ${plan.parts.length} (shots ${part.from + 1} to ${part.to}): ${whole.why}`;
+        if (o.beat) await o.beat();
+      }
+      if (!why) {
+        fs.writeFileSync(list, joinList(files, plan.parts.map((p) => p.frames)), "utf8");
+        const run = await runFfmpeg(joinFilmArgs(list, o.encode, outPath));
+        const whole = run.status === 0 && fs.existsSync(outPath)
+          ? joinCheck({ ...streamSeconds(outPath), frames: plan.frames })
+          : { ok: false, why: `ffmpeg stopped: ${(run.stderr || "").slice(-200)}` };
+        if (whole.ok) {
+          console.log(`${label} ${clips.length} shots joined ${how}: ${plan.parts.length} parts (${plan.parts.map((p) => p.to - p.from).join(", ")} shots), ${(plan.frames / FILM_FPS).toFixed(1)} s`);
+          if (tried.length) console.error(`${label} the film was joined ${how} after: ${tried.join("; ")}`);
+          return plan.frames;
+        }
+        why = `the parts put end to end: ${whole.why}`;
+      }
+    } finally {
+      for (const f of [...files, list]) { try { fs.rmSync(f, { force: true }); } catch { /* best effort */ } }
+    }
+    tried.push(`${how} — ${why}`);
+    console.error(`${label} the film did not come out whole ${how}: ${why}`);
+    if (o.beat) await o.beat();
+  }
+  // NEVER SHIPPED, as above: the job fails here
+  throw new Error(`${label} the film could not be joined whole — ${tried.join("; ")}`);
 }

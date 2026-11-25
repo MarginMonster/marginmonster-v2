@@ -455,7 +455,9 @@ export async function processNextJob(lane: Lane): Promise<boolean> {
   const myToken = ++slot.token;
   slot.until = Date.now() + RENDER_SLOT_MS;
   try {
-    return await claimAndRunOneJob(lane);
+    // (a job that legitimately runs longer than the ceiling holds the slot for as long as it may take — and only
+    //  while this reservation is still the slot's own: claimAndRunOneJob → A LONG FILM HOLDS ITS LANE)
+    return await claimAndRunOneJob(lane, (ms) => { if (slot.token === myToken) slot.until = Math.max(slot.until, Date.now() + ms); });
   } finally {
     // Release only if we still own the slot — a newer tick may have taken it
     // after ours expired, and clearing it then would let a third job overlap.
@@ -463,7 +465,7 @@ export async function processNextJob(lane: Lane): Promise<boolean> {
   }
 }
 
-async function claimAndRunOneJob(lane: Lane): Promise<boolean> {
+async function claimAndRunOneJob(lane: Lane, hold: (ms: number) => void = () => undefined): Promise<boolean> {
   // Candidates only — the read is NOT the claim. Two overlapping worker ticks
   // (or two instances mid-deploy) both selected the same PENDING row here and
   // both ran it: the same paid video rendered TWICE and created two assets.
@@ -496,6 +498,21 @@ async function claimAndRunOneJob(lane: Lane): Promise<boolean> {
     lastServed[lane],
   );
   if (!job) return false; // nothing waiting, or everything visible was taken by someone else
+
+  // A LONG FILM HOLDS ITS LANE (2026-11-25, films up to five minutes — film-length.ts → laneMinutes). The slot is
+  // given back after RENDER_SLOT_MS in case a render never settles, and the next tick then starts the next film
+  // BESIDE it: two renders at once, the memory spike the slot exists to prevent. An acted film of 52 shots is two to
+  // three hours of honest work (each shot also keeps its row written: reclaimOrphanJobs leaves it be), so such a
+  // film holds the slot for as long as it may take. Any other job, and an acted film short enough for the ceiling,
+  // as before. A process that dies takes its slot with it.
+  try {
+    const p = JSON.parse(job.payload) as Record<string, unknown>;
+    if (job.type === "GENERATE_VIDEO_AD" && p.contentType === "film" && p.filmMode !== "narrated" && typeof p.filmScenes === "number") {
+      const [{ filmTemplate }, { laneMinutes }] = await Promise.all([import("./film-engine.server"), import("./film-length")]);
+      const t = filmTemplate(p.filmTemplate as string | undefined);
+      if (t.dialogue && !t.sung && !t.lipSyncSinger) hold(laneMinutes("acted", p.filmScenes) * 60_000);
+    }
+  } catch { /* not a film we can read: the ceiling as before */ }
 
   // WHEN THIS ATTEMPT ACTUALLY STARTED.
   //

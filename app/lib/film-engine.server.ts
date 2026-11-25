@@ -54,7 +54,9 @@ import { tellerVisual } from "./character-series";
 import { planShots, shotInWords, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
 // (2026-11-24) an acted film: every shot is something that HAPPENS, and the camera is dealt, not written
-import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, SEEN_WHEN_SEEN, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, takeAgeFix, titleAsk, wordless } from "./acted-staging";
+import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, SEEN_WHEN_SEEN, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, storyThreat, takeAgeFix, titleAsk, wordless } from "./acted-staging";
+// (2026-11-25) films up to five minutes: one limit for every story format, and a long script written in parts
+import { clampShots, maxShots, minShots, partBrief, planBrief, planSchema, scriptParts, takePlan, type FilmPlan, type FilmWay } from "./film-length";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -91,6 +93,9 @@ export interface FilmTemplate {
   musicHint: string;
   defaultScenes: number;
   minScenes: number;
+  /** The most scenes it has. EVERY ACTED FORMAT's is ACTED_MAX_SHOTS (below) — five minutes — and a format
+   *  derived from one of them inherits it; the engines hold a film to it through filmShots(), whatever a
+   *  template says here. A sung format keeps its own (a music video is two minutes of song). */
   maxScenes: number;
   /** Burn the per-scene caption line over its clip (lyrics / narration / hook). */
   captions: boolean;
@@ -166,6 +171,11 @@ export const PROPS: Record<string, { label: string; phrase: string }> = {
 };
 export const PROP_KEYS = Object.keys(PROPS);
 
+/** HOW LONG AN ACTED FILM MAY BE, in shots: five minutes of them (film-length.ts) — for every acted format alike.
+ *  It was `maxScenes: 6` written into each template (thirty seconds); the owner, 2026-11-25: "a sexy slider
+ *  allowing up to 5 minutes". One constant, so a genre added tomorrow is as long as the rest. */
+export const ACTED_MAX_SHOTS = maxShots("acted");
+
 export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
   musicvideo: {
     key: "musicvideo",
@@ -195,7 +205,7 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     musicHint: "cheerful bouncy nursery-rhyme sing-along, upbeat and sweet",
     defaultScenes: 4,
     minScenes: 2,
-    maxScenes: 6,
+    maxScenes: ACTED_MAX_SHOTS,
     captions: true,
     castBible: true,
     referenceSeed: true,
@@ -229,7 +239,7 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     musicHint: "warm, heartfelt, uplifting cinematic score",
     defaultScenes: 4,
     minScenes: 2,
-    maxScenes: 6,
+    maxScenes: ACTED_MAX_SHOTS,
     captions: true,
     castBible: true,
     referenceSeed: true,
@@ -245,7 +255,7 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     faceMood: "Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs.",
     defaultScenes: 4,
     minScenes: 2,
-    maxScenes: 6,
+    maxScenes: ACTED_MAX_SHOTS,
     captions: true,
     castBible: true,
     referenceSeed: true,
@@ -279,7 +289,7 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     musicHint: "subtle cinematic underscore",
     defaultScenes: 2,
     minScenes: 1,
-    maxScenes: 6,
+    maxScenes: ACTED_MAX_SHOTS,
     captions: true,
     castBible: true,
     dialogue: true,
@@ -389,6 +399,10 @@ export interface FilmTreatment {
    *  it. Absent on every script written before 2026-11-24 (their VISUALs describe a still two-shot, and are
    *  not said to the video engine). */
   events?: boolean;
+  /** A LONG FILM'S PLAN (film-length.ts → A LONG SCRIPT IS WRITTEN IN PARTS): what each part it was written in
+   *  is — and, for an acted film, the one place that scene is set in — with how many of the script's scenes are
+   *  that part's. Absent on a film short enough to be written in one answer. */
+  acts?: Array<{ what: string; where?: string; scenes: number }>;
 }
 
 const TREATMENT_SCHEMA = {
@@ -420,11 +434,13 @@ const TREATMENT_SCHEMA = {
 const NARRATED_SCHEMA = { ...TREATMENT_SCHEMA, required: [...TREATMENT_SCHEMA.required, "places"] } as const;
 
 /* NARRATED stories — one storyteller, illustrated scenes. Each scene is 2-3 spoken sentences (about ten
- * seconds), so the length is the scene count: 4 ≈ 45 s, 6 ≈ a minute, 9 ≈ 1:30, 12 ≈ 2 minutes. */
-export const NARRATED_MIN_SCENES = 3;
-export const NARRATED_MAX_SCENES = 12;
+ * seconds), so the length is the scene count: 4 ≈ 45 s, 6 ≈ a minute, 12 ≈ 2 minutes — and, since 2026-11-25,
+ * up to five minutes: 32 (film-length.ts, where the page's numbers and these limits are the same numbers; it
+ * was twelve). */
+export const NARRATED_MIN_SCENES = minShots("narrated");
+export const NARRATED_MAX_SCENES = maxShots("narrated");
 export const NARRATED_DEFAULT_SCENES = 6;
-export const clampNarrated = (n: number): number => Math.max(NARRATED_MIN_SCENES, Math.min(NARRATED_MAX_SCENES, Math.round(n || NARRATED_DEFAULT_SCENES)));
+export const clampNarrated = (n: number): number => clampShots("narrated", n, { fallback: NARRATED_DEFAULT_SCENES });
 /** What the writer is asked for when a story format is NARRATED rather than acted. */
 const NARRATED_BRIEF: Record<string, string> = {
   horror: "a short NARRATED HORROR STORY — the kind a scary-story channel tells: one creepy, atmospheric tale in a storyteller's voice, dread building line by line to a chilling twist",
@@ -447,7 +463,34 @@ export const NARRATABLE_KEYS: string[] = Object.keys(NARRATED_BRIEF);
 export const canNarrate = (key: string | undefined): boolean => !!key && Object.prototype.hasOwnProperty.call(NARRATED_BRIEF, key);
 
 function clampScenes(t: FilmTemplate, n: number): number {
+  // AN ACTED FORMAT (film-length.ts): the one ceiling every one of them has — five minutes — with the format's own
+  // floor (a horror film is a line and then the scare: two) and its own usual length when none was asked for
+  if (t.dialogue && !t.lipSyncSinger && !t.sung) return clampShots("acted", n, { min: t.minScenes, fallback: t.defaultScenes });
   return Math.max(t.minScenes, Math.min(t.maxScenes, Math.round(n || t.defaultScenes)));
+}
+
+/** A CHECKPOINT AN ENGINE WROTE FOR ITSELF, read back from the job's own row. The worker hands a restarted job
+ *  the checkpoints it knows by name (job-queue.server.ts → the `resume` it builds for each engine); what a long
+ *  film also needs to be picked up whole — how its finished shots were cut together, which of its pictures were
+ *  already drawn — is written with them and read here, so that neither engine waits on that list to be
+ *  lengthened. Undefined when there is no job, no such checkpoint, or the row cannot be read (the film then
+ *  carries on as one did before there was any). */
+export async function ownCheckpoint(jobId: string | undefined, key: string): Promise<string | undefined> {
+  if (!jobId) return undefined;
+  try {
+    const job = await db.job.findUnique({ where: { id: jobId }, select: { payload: true } });
+    const v = (JSON.parse(job?.payload || "{}") as Record<string, unknown>)[key];
+    return typeof v === "string" && v ? v : undefined;
+  } catch { return undefined; }
+}
+
+/** THE ONE LIMIT, FOR WHOEVER ASKS (the page's action, both engines): how many shots — or, told by a narrator,
+ *  scenes — a film of this format has, from whatever number was asked for. A told story: three to five minutes'
+ *  worth (clampNarrated). An acted film: its format's floor to five minutes' worth. A sung format: its template's
+ *  own limits, as before (a music video's length in seconds is the caller's to hold as well). */
+export function filmShots(template: string | undefined, narrated: boolean, n: unknown): number {
+  const t = filmTemplate(template);
+  return narrated && canNarrate(t.key) ? clampNarrated(Number(n)) : clampScenes(t, Number(n));
 }
 
 /** ALL-CAPS, filter-safe caption text (mirrors faceless captionSafe). */
@@ -496,6 +539,11 @@ export async function previewFilmTreatment(opts: {
   /** …and WHO TELLS IT: the name of the one of the chosen cast whose own voice narrates. The story is then
    *  theirs, told as "I" — a told story only, and only for somebody who is in `cast`. */
   teller?: string;
+  /** A JOB THAT IS WRITING SAYS SO (2026-11-25, films up to five minutes): called when a long film's plan, and each
+   *  of its parts, comes back. A five-minute script written inside a job is ten answers or more one after another
+   *  — each up to two minutes, and asked again down the rungs — and the worker takes a job nobody has touched for 25
+   *  minutes to be dead (job-queue.server.ts → reclaimOrphanJobs). Never called for a film written in one answer. */
+  beat?: () => unknown;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const narrated = opts.mode === "narrated" && !tmpl.lipSyncSinger && !tmpl.sung;
@@ -555,6 +603,12 @@ export async function previewFilmTreatment(opts: {
   // 2026-11-24: "some of the stories or character generic names seem to be similar or repetetive".)
   // …and A TOLD STORY IS DEALT ITS SHOT PLAN (story-shots.ts): how each scene is SEEN.
   const storyFormat = !!tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung;
+  // A LONG SCRIPT IS WRITTEN IN PARTS (film-length.ts): one answer up to six acted shots or twelve told scenes —
+  // a whole film until 2026-11-25 — and a longer one PLANNED first, then written a part at a time, each by the
+  // brief below. `partSizes` has one entry for a film short enough to be written as it always was.
+  const way: FilmWay = narrated ? "narrated" : "acted";
+  const partSizes = storyFormat ? scriptParts(way, scenes) : [scenes];
+  const inParts = partSizes.length > 1;
   let usedByMaker: Used = { names: [], openers: [], keys: [] };
   if (storyFormat) {
     try {
@@ -567,7 +621,9 @@ export async function previewFilmTreatment(opts: {
   const freshLine = fresh
     ? freshBrief({ template: tmpl.key, fresh, used: { ...usedByMaker, names: usedByMaker.names.filter((n) => !keptNames.some((k) => k.toLowerCase() === n.toLowerCase())) }, narrated, open: !series, english: langCode === "en", small: !!tmpl.childSafe, language: langName })
     : "";
-  const camPlan = narrated ? planShots(scenes) : [];
+  // (a story told in parts is planned a part at a time: each opens by showing where we are and ends on somebody —
+  //  and a plan is dealt for twenty-four scenes at most)
+  let camPlan = narrated ? (inParts ? partSizes.flatMap((n) => planShots(n)) : planShots(scenes)) : [];
   // …and AN ACTED FILM'S SHOTS HAPPEN (acted-staging.ts). The KIND of thing that happens in a shot is shown
   // to its writer by a few examples DEALT for this film — a fixed example comes back as the story.
   const acted = !!tmpl.dialogue && !narrated;
@@ -701,6 +757,24 @@ export async function previewFilmTreatment(opts: {
   const featLine = featured.length
     ? `A FEATURED VERSE — ${featNames} ${featured.length === 1 ? "sings" : "each sing"} part of this song, like a featured artist on a real record. The scene marked "…'S VERSE" in the shot list IS that verse: set "singer" to their exact name in it and in no other scene. Its lyric lines are THEIR words, in their own voice: their side of the story, answering the artist — a complete thought that starts and ends inside that one scene, because they are heard only while they are on screen. Every other scene is the artist's — leave "singer" out of it. End the title with "(feat. ${featNames})".\n`
     : "";
+  // WHAT A STORY'S PLACES ARE, and how a scene says which one it is set at — the two halves of what a told story's
+  // writer is asked about its places (below), apart so that a long story's PLANNER can be asked the first and each
+  // of its parts told the second (film-length.ts → planBrief).
+  const PLACES_ARE = `the ONE or TWO places or things this story keeps coming back to — a house, a boat, a shop, a street, a car — each written as "name: look": a short plain name ("the ferry", "the lighthouse", "the bakery"), a colon, then ONE fixed description of 15-30 words — its shape, colours and materials, and two or three details that make it THIS one and no other (e.g. "the ferry: an old low black wooden river ferry with a small square wheelhouse at its stern, one iron lantern hook at its bow and a worn plank deck with a low rail"). Only what at least TWO pictures are set at, in or on; never a person or an animal; no weather or time of day in it; an empty list when the story has no such place.`;
+  const PLACE_FIELD = `Every VISUAL set there calls it by that exact name ("on the ferry", "at the door of the lighthouse"). And every scene also has a third field, PLACE: the name of the one of them that picture is set at, in or on — exactly as it is written in "places" — or "" when it is set somewhere else.`;
+  // (the last words of ONE_TAKE, acted-staging.ts — true of a film written in one answer, and not said to one
+  //  scene of a long film: whether the film comes back to a place is its plan's)
+  const NEVER_BACK = " For the same reason the film never comes BACK to a place it has left.";
+  /** THE BRIEF — for a whole film (`part` null: the brief exactly as it was before a film could be long), for the
+   *  PLAN of a long one ("plan"), or for ONE PART of it: `scenes` shots, seen as `camPlan` says, standing where
+   *  `part` says in the plan. (Not indented, on purpose: every line down to `return prompt` is the brief as it has
+   *  been written, failure by failure — it reads the same in a blame, and merges with a change to any one line.) */
+  type PartOf = { plan: FilmPlan; index: number; /** the lines already written, part by part */ said: string[][]; seenAs?: string };
+  const promptFor = (scenes: number, camPlan: ReturnType<typeof planShots>, part: PartOf | "plan" | null): string => {
+  const one = part && part !== "plan" ? part : null;
+  // (a whole film opens and ends in the one answer; of a long film's parts only the first opens it, only the last ends it)
+  const opens = !one || one.index === 0;
+  const ends = !one || one.index === one.plan.parts.length - 1;
   const captionLine = tmpl.lipSyncSinger
     ? `\nWrite a catchy ${genreLabel} SONG for ONE artist${featured.length ? `, with a featured verse by ${featNames}` : ""}, plus ${scenes} VIDEO SCENE${scenes === 1 ? "" : "S"} of ${sceneSec} seconds each. ${songShape} Return EXACTLY ${scenes} scene${scenes === 1 ? "" : "s"}. Each scene has TWO fields${featured.length ? ` (and "singer" where it is not the artist)` : ""}:\n` +
       // (ONE moment: "OMAR steps out of the car … all walking toward the entrance" was drawn as OMAR
@@ -720,8 +794,8 @@ export async function previewFilmTreatment(opts: {
     : narrated
     ? `\nWrite it as a NARRATED STORY: a storyteller's voice tells it over illustrated scenes — nobody speaks on camera. Return EXACTLY ${scenes} scenes. Each scene has TWO fields:\n` +
       `• VISUAL — the ONE picture we see while that part is told, in at most 45 words: a single vivid, specific moment (${tmpl.sceneHint}) — who is in it, where, doing what, the light and the mood. Call every character who is IN the picture by their NAME exactly as in "cast" (never just "he", "she", "the creature" or "the clerk"); a picture nobody is in names nobody. Whoever a VISUAL names is DRAWN in it — so a place or thing that belongs to somebody who is NOT in the picture is called by what it is ("the blue house on the corner"), never by their name ("NAME's house"). Anything that is seen in more than one picture (a kite, a car, a house, a toy) is described with the SAME few words every time, so it is drawn the same. A different moment every scene. It is ONE moment only — a picture cannot show two times: never "then", "until", "later" or a before-and-after in a VISUAL (three stories made on 2026-11-22: a scene written as two moments was drawn as two panels). A picture has the story's cast and at most ONE other person — never an extra "unnamed" figure beside two of the cast (the picture model then leaves one of the cast out). When a door or a window is in the picture, say which SIDE of it each person is on ("inside, at the locked front door"; "outside on the porch") — a picture model left to guess put a little brother on the porch while his sister locked him out. Whoever looks OUT through a window or a door is INSIDE, and the VISUAL says the word ("inside at the window, the girl peers out at …") — "peers out" alone got a girl drawn standing out on the porch beside the ghost she was peering at. Something OUTSIDE at a window or a door — a face at the glass, a hand on the door — is seen from INSIDE the room, through the glass ("from inside the dark living room, the ghost's face at the window glass"): a camera outside looking at a window drew the ghost's face behind the glass, in the room with the children. What the CAPTION over a picture says is SEEN at that moment is IN that VISUAL ("they saw her standing on the porch" → she is on the porch, through the glass): an empty porch under "they saw her" reads as a mistake. And nothing in it is WRITTEN: no sign with words, label, notice, number or name on a door — say what a thing looks like, never what it says.\n` +
-      `• CAPTION — the NARRATOR'S words for that scene, written to be READ ALOUD: 2-3 sentences, about 25-35 words. Plain, vivid, concrete storytelling — no "NAME:" labels, no stage directions, no headings. The FIRST scene opens with a hook that makes a viewer stay. Each scene picks up exactly where the last one left off. The LAST scene lands the ending${tmpl.key === "moral" ? " and says the lesson in one clear closing line" : tmpl.key === "horror" ? " on the chilling twist — the last line should make the skin crawl — a twist that leaves every fact of the idea TRUE: it adds what was not known, it never reveals that something the idea said was false (a mother the idea says is away stays away) — and a viewer who has heard only this story understands it at once: it turns on something the story already showed or said, never on an event it never told (\"who called the house phone first\", when no call was ever made)" : ""}.\n` +
-      `Read in order, the captions are the whole story, start to finish, in one voice.\n` +
+      `• CAPTION — the NARRATOR'S words for that scene, written to be READ ALOUD: 2-3 sentences, about 25-35 words. Plain, vivid, concrete storytelling — no "NAME:" labels, no stage directions, no headings. ${opens ? "The FIRST scene opens with a hook that makes a viewer stay. " : ""}Each scene picks up exactly where the last one left off.${!ends ? "" : ` The LAST scene lands the ending${tmpl.key === "moral" ? " and says the lesson in one clear closing line" : tmpl.key === "horror" ? " on the chilling twist — the last line should make the skin crawl — a twist that leaves every fact of the idea TRUE: it adds what was not known, it never reveals that something the idea said was false (a mother the idea says is away stays away) — and a viewer who has heard only this story understands it at once: it turns on something the story already showed or said, never on an event it never told (\"who called the house phone first\", when no call was ever made)" : ""}.`}\n` +
+      (one ? `Read in order, the captions carry this part of the story on, in the one voice that tells all of it.\n` : `Read in order, the captions are the whole story, start to finish, in one voice.\n`) +
       // THE STAR TELLS IT (character-series.ts): a show told in its star's own voice is told BY them. The
       // first live episode, 2026-11-24, was a werewolf's growl saying "But Howl did not lunge. It pointed…"
       // — its own star, in the third person. A picture is still drawn from its words, so VISUALs keep the name.
@@ -731,11 +805,14 @@ export async function previewFilmTreatment(opts: {
       (teller ? "" : `THE STORYTELLER is outside the story — a narrator, the kind a documentary has: every CAPTION is in the third person (the characters by their names, "she", "he", "they"), never "I", "me", "my" or "we"; what a character says is reported, not spoken as them.\n`) +
       (teller ? `THE TELLER: ${teller} tells this story THEMSELVES — it is ${teller}'s own voice we hear, start to finish. Every CAPTION is ${teller} speaking in the first person ("I", "me", "my"): it happened to ${teller}, and ${teller} is telling us about it. The captions never say "${teller}" and never call ${teller} "he", "she", "it" or "they". The VISUALS do not change: every VISUAL still calls ${teller} by NAME and never says "I", "me" or "my" — a picture is drawn from its words, and "I" is nobody.\n` : "") +
       // (a character's show ends every episode on the same line — the storyteller's very last words)
-      (signoff ? `THE SIGN-OFF: the last scene's CAPTION ends with exactly these words, after its own last sentence, changed in no way: "${signoff}"\n` : "") +
+      (signoff && ends ? `THE SIGN-OFF: the last scene's CAPTION ends with exactly these words, after its own last sentence, changed in no way: "${signoff}"\n` : "") +
       // THE STORY'S PLACES (story-picture.ts): the first Horror Story made in one press had a ferry that was
       // a rowing boat, then a ship, then a ferry — each picture drew "the ferry" from the word. A place the
       // story comes back to is described ONCE, here, and drawn from one design sheet of it.
-      `Also return "places": the ONE or TWO places or things this story keeps coming back to — a house, a boat, a shop, a street, a car — each written as "name: look": a short plain name ("the ferry", "the lighthouse", "the bakery"), a colon, then ONE fixed description of 15-30 words — its shape, colours and materials, and two or three details that make it THIS one and no other (e.g. "the ferry: an old low black wooden river ferry with a small square wheelhouse at its stern, one iron lantern hook at its bow and a worn plank deck with a low rail"). Only what at least TWO pictures are set at, in or on; never a person or an animal; no weather or time of day in it; an empty list when the story has no such place. Every VISUAL set there calls it by that exact name ("on the ferry", "at the door of the lighthouse"). And every scene also has a third field, PLACE: the name of the one of them that picture is set at, in or on — exactly as it is written in "places" — or "" when it is set somewhere else.\n`
+      (one
+        // (a part of a long story: its places were chosen by its plan — film-length.ts)
+        ? `THE STORY'S PLACES are already chosen${one.plan.places.length ? ` — ${one.plan.places.join("; ")}` : ": it has none that it comes back to"}. Return "places" exactly as they are here. ${PLACE_FIELD}\n`
+        : `Also return "places": ${PLACES_ARE} ${PLACE_FIELD}\n`)
     : tmpl.dialogue
     // AN ACTED FILM'S SHOTS HAPPEN (acted-staging.ts). The owner, 2026-11-24, of a Horror Film made on the live
     // site: "aside from them on screen there is no actual things occurring, it's just them speaking". That is
@@ -745,18 +822,21 @@ export async function previewFilmTreatment(opts: {
     // the film itself (film-dialogue → dealStagings) — the writer does not choose it.
     ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FOUR fields:\n` +
       `• VISUAL — ${happensBrief(actIdeas)}\n` +
-      `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot. Each line fills MOST of the ~10-second shot WITHOUT overrunning it: a two-sentence beat of about 15-18 words (~7-9 seconds of speech). This is a HARD window — NEVER a short one-liner (a line that doesn't fill the shot leaves dead air, which makes the AI voice stall or repeat words), and NEVER more than 18 words, because a longer line overruns the 10-second clip and gets cut off at the end. Count the words and stay inside 15-18. The speaker ALTERNATES shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names, and make each line a genuine REPLY to the one before it (never a non-sequitur). ONLY the two people in the shot ever speak: the NAME before the colon is always one of their two names, the same single word every time. Anyone else the story needs — a shopkeeper, a parent, a stranger — is talked ABOUT or stands silent in the background, and is never heard; when what they say or do matters, one of the two reports it (\"He says he can't thank us enough!\"). ${tmpl.key === "horror" ? LINE_IN_EVERY_SHOT_BUT_THE_LAST : LINE_IN_EVERY_SHOT}\n` +
+      `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot. Each line fills MOST of the ~10-second shot WITHOUT overrunning it: a two-sentence beat of about 15-18 words (~7-9 seconds of speech). This is a HARD window — NEVER a short one-liner (a line that doesn't fill the shot leaves dead air, which makes the AI voice stall or repeat words), and NEVER more than 18 words, because a longer line overruns the 10-second clip and gets cut off at the end. Count the words and stay inside 15-18. The speaker ALTERNATES shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names, and make each line a genuine REPLY to the one before it (never a non-sequitur). ONLY the two people in the shot ever speak: the NAME before the colon is always one of their two names, the same single word every time. Anyone else the story needs — a shopkeeper, a parent, a stranger — is talked ABOUT or stands silent in the background, and is never heard; when what they say or do matters, one of the two reports it (\"He says he can't thank us enough!\"). ${tmpl.key === "horror" && ends ? LINE_IN_EVERY_SHOT_BUT_THE_LAST : LINE_IN_EVERY_SHOT}\n` +
       `• WHERE — the LOCATION this beat happens in, as a short vivid label (e.g. "a dim old diner at night, rain on the windows"). EVERY shot has one, and while the place stays the same it is the SAME words, letter for letter — other words are read as another place.\n` +
       `• TONE — HOW this exact line is delivered: a short emotional direction for the voice (e.g. "coldly, with quiet menace", "voice rising in anger", "quietly, barely holding it together"). It must MATCH the words so the read is never flat or monotone.\n` +
       `${CAMERA_IS_DEALT}\n` +
-      `${ONE_TAKE}\n` +
+      // (one scene of a long film: which places the film is set in, and whether it comes back to one, is its PLAN's)
+      `${one ? ONE_TAKE.replace(NEVER_BACK, "") : ONE_TAKE}\n` +
       `${TWO_ALWAYS}\n` +
       // (a sound comes FIRST, in the shot whose line answers it; heard from out of sight, it is made by nothing
       //  on screen; and what is said about it is what is heard — the owner's knocking film, 2026-11-24)
       `${HEARD_BEFORE_SAID}\n` +
-      `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places — but when the IDEA moves them ("he ran to his parents' room"), that IS such a move: the shots that come after it are in the new place — and the move happens BEFORE the last shot, never in it: the last shot is in the same place as the shot before it (THE LAST SHOT, below).\n` +
+      // (…and so is its place: a scene of a long film is told where it is set — film-length.ts → partBrief)
+      (one ? "" : `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places — but when the IDEA moves them ("he ran to his parents' room"), that IS such a move: the shots that come after it are in the new place — and the move happens BEFORE the last shot, never in it: the last shot is in the same place as the shot before it (THE LAST SHOT, below).\n`) +
       // (a horror film ends on something SEEN — said last, so it is read as the exception to the line above)
-      (tmpl.key === "horror" ? `${SEEN_WHEN_SEEN}\n${SEEN_AT_THE_END}\n` : "")
+      // (…the FILM does: only the scene that ends a long one is told how it ends)
+      (tmpl.key === "horror" ? `${SEEN_WHEN_SEEN}\n${ends ? `${SEEN_AT_THE_END}\n` : ""}` : "")
     : tmpl.sung
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}, featuring the artist/cast performing) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes and flows with the others. Read in order the captions ARE the song's lyrics: give the whole thing a clear, repeating, sing-along HOOK${tmpl.childSafe ? " a toddler can sing along to" : ""}, like a real ${tmpl.childSafe ? "preschool nursery sing-along" : "pop song"}.\n${VISUAL_STANDS_ALONE}\n`
     : tmpl.narrated
@@ -775,13 +855,15 @@ export async function previewFilmTreatment(opts: {
     ? `a SHORT ${videoSecs}-second MUSIC VIDEO cut — ONE artist actually sings a real genre hook on camera (lip-synced) ${scenes === 1 ? "in one vivid setting" : `across ${scenes} vivid settings`}`
     : narrated ? (NARRATED_BRIEF[tmpl.key] || NARRATED_BRIEF.testmovie)
     : tmpl.brief;
+  // (the idea, as its writer is handed it — a whole film's below, and a long film's PLAN; a dealt starter with it)
+  const ideaLine = topic
+      ? `${series ? "WHAT HAPPENS IN THIS EPISODE" : "THEME / what it's about"}: "${topic.slice(0, IDEA_MAX)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n${nudged ? startLine(nudged, castChosen.some((c) => !threatNames.includes(c.name)), threatNames.length > 0) : ""}${storyFormat ? `${PREMISE_WINS}\n` : ""}`
+      : series ? `Decide what happens next in this episode.\n` : `Pick a fun, broadly-appealing theme.\n`;
   const prompt =
     `Write ${brief}.\n` +
     // NEXT EPISODE: the series, the recap (fenced, quoted) and the rules of a next episode (film-series.ts)
     (series ? seriesWriterBrief(series) : "") +
-    (topic
-      ? `${series ? "WHAT HAPPENS IN THIS EPISODE" : "THEME / what it's about"}: "${topic.slice(0, IDEA_MAX)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n${nudged ? startLine(nudged, castChosen.some((c) => !threatNames.includes(c.name)), threatNames.length > 0) : ""}${storyFormat ? `${PREMISE_WINS}\n` : ""}`
-      : series ? `Decide what happens next in this episode.\n` : `Pick a fun, broadly-appealing theme.\n`) +
+    ideaLine +
     // a sung piece: the words are ours, whatever song the theme names
     (tmpl.lipSyncSinger || tmpl.sung ? `${ORIGINAL_LYRICS_RULE}\n` : "") +
     genreLine +
@@ -807,6 +889,68 @@ export async function previewFilmTreatment(opts: {
     safetyLine +
     // (the idea checked last of all — premise-rules.ts → IDEA_CHECK)
     (storyFormat && topic ? `\n${IDEA_CHECK}` : "");
+  if (!part) return prompt;
+  // A LONG FILM (film-length.ts → A LONG SCRIPT IS WRITTEN IN PARTS). Its PLAN is asked for with everything a whole
+  // film's writer is told about the idea, the cast and the world — the idea is kept, and checked, THERE — and what
+  // a plan is in place of what a script is.
+  if (part === "plan") {
+    // (how this format's last part ends, in the words its own brief ends a film with)
+    const ending = narrated
+      ? (tmpl.key === "moral" ? "and says the lesson in one clear closing line" : tmpl.key === "horror" ? "on the chilling twist — one that leaves every fact of the idea TRUE and turns on something the story already told" : "")
+      : (tmpl.key === "horror" ? "on what the two SEE: the thing the film has circled, found where they already are, with no line said over it" : tmpl.key === "moral" ? "on its lesson, landed plainly by what one of the two does or says" : "");
+    return (
+      `Write the PLAN of ${brief}.\n` +
+      (series ? seriesWriterBrief(series) : "") +
+      ideaLine +
+      castLine +
+      threatBrief +
+      `\n${AGES_FIT_RELATION}` +
+      genderLine +
+      planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined }) +
+      freshLine +
+      (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
+      // (a genre whose world is its own is never told today's real world — not in its plan either: film-genres.ts → ownWorld)
+      (!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\n` : "") +
+      `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
+      safetyLine +
+      (topic ? `\n${IDEA_CHECK}` : "")
+    );
+  }
+  // ONE PART OF IT: where it stands in the plan, the cast the plan chose, and then the brief every film is written
+  // by — its shots, its lines, its world. The idea is not handed over to be told again from the top (that is the
+  // plan's), nor checked here: a part tells its own line of the plan.
+  const chosen = one!.plan.cast.join("; ");
+  // (an acted film's plan may cast its own THREAT beside the two — WHAT FRIGHTENS asks a threat the idea names for a
+  //  "cast" entry, and the film draws its one picture from it: acted-staging.ts → storyThreat. Handed on as one of
+  //  "THE TWO", every part would be told to put it in every shot: the werewolf beside the boy from the first shot,
+  //  2026-11-24. So it is said apart.)
+  const thing = !narrated && one!.plan.cast.length > 2 ? storyThreat({ cast: one!.plan.cast }) : null;
+  const two = thing ? one!.plan.cast.filter((e) => e !== thing.entry).join("; ") : chosen;
+  const partCast = narrated
+    ? `\nTHE CAST of the whole story is already chosen — ${chosen}. Return them as "cast" exactly as they are here. Call each of them by that exact name in every VISUAL they are in, never rename them, and give nobody else a name.${noSlop}${chosenThreat(threatNames, false)}`
+    : `\nTHE TWO who carry the whole film are already chosen — ${two}. Return them as "cast" exactly as they are here.${thing ? ` After them "cast" has the film's own threat, also exactly as it is here: ${thing.entry} — it is NOT one of the two, it never speaks, and it is in a VISUAL only where the rules below put it.` : ""} Every shot's VISUAL has these same two in it, called by these exact names — their looks are said HERE, once, and never repeated in a VISUAL.${noSlop}`;
+  // (a creature the maker chose as an acted film's threat is SEEN in the film's last shot — premise-rules.ts →
+  //  chosenThreat — so only the scene that ends the film is told so; before it, it is heard and glimpsed)
+  const partThreat = !actedThreat ? "" : ends ? threatBrief
+    : `\nTHE THREAT — chosen by the maker: ${picked.filter((c) => threatNames.includes(c.name)).map((c) => `${c.name}${c.desc ? ` — ${c.desc}` : ""}`).join("; ")}. It is NOT one of the two, it has no "cast" entry, and it is NOT SEEN in this scene: it is only heard, or glimpsed far off, the way the idea says.`;
+  return (
+    `Write ONE ${narrated ? "PART" : "SCENE"} of ${brief}.\n` +
+    partBrief(way, { plan: one!.plan, index: one!.index, shots: scenes, idea: topic.slice(0, IDEA_MAX), said: one!.said, seenAs: one!.seenAs }) +
+    partCast +
+    partThreat +
+    genderLine +
+    captionLine +
+    shotListBrief(camPlan) +
+    // (a told story's first part is dealt its opening, as a whole story is — story-variety.ts)
+    (narrated && opens ? freshLine : "") +
+    (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
+    // (…nor in any of its parts: a Fantasy told "no castle" in scene 4 of 9 is the genre forbidden halfway through)
+    (!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\n` : "") +
+    `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
+    safetyLine
+  );
+  };
+  const prompt = promptFor(scenes, camPlan, null);
   const write = async (p: string): Promise<FilmTreatment> => {
     const raw = await anthropicText(p, {
       model: "claude-sonnet-5",
@@ -829,7 +973,73 @@ export async function previewFilmTreatment(opts: {
        "\nREMEMBER: this is fiction — keep it tasteful and non-graphic. Return ONLY the JSON treatment."];
   let parsed: FilmTreatment | null = null;
   let lastErr: unknown;
-  for (const extra of rungs) {
+  // (where each part's scenes are in the finished script — one span, the whole of it, for a film written in one answer)
+  let spans: Array<[number, number]> = [];
+  let acts: FilmTreatment["acts"];
+  // (a long film's job says it is at work as each of its answers comes back — `beat`, above; a beat that fails is
+  //  skipped, and a film written in one answer never beats)
+  const alive = async (): Promise<void> => { if (inParts) try { await opts.beat?.(); } catch { /* skipped */ } };
+  if (inParts) {
+    // A LONG FILM IS WRITTEN IN PARTS (film-length.ts): its PLAN first — one small answer — and then each part in
+    // order, by the brief above, told the plan, where it stands in it and the lines the part before it ended on.
+    // Every answer is the size a whole film's was (six shots, eight scenes), so each arrives well inside the two
+    // minutes a request is given, and the writer is never asked to count past eight.
+    /** one answer, down the same rungs as a whole film's */
+    const down = async <T,>(ask: (extra: string) => Promise<T>): Promise<T> => {
+      let err: unknown;
+      for (const extra of rungs) { try { return await ask(extra); } catch (e) { err = e; } }
+      throw err instanceof Error ? err : new Error("[film] treatment writer refused");
+    };
+    // 1) THE PLAN — asked for twice at most: an answer with too few parts, or with no cast, is not a plan
+    let plan: FilmPlan | null = null;
+    for (let go = 0; go < 2 && !plan; go++) {
+      const raw = await down((extra) => anthropicText(`${promptFor(scenes, camPlan, "plan")}${extra}${go ? `\nIMPORTANT: "parts" has EXACTLY ${partSizes.length} entries — count them before you answer.` : ""}`, {
+        model: "claude-sonnet-5", maxTokens: 800 + partSizes.length * 140,
+        jsonSchema: { name: "film_plan", schema: planSchema(way) },
+      }));
+      try { plan = takePlan(JSON.parse(raw), { way, parts: partSizes.length }); } catch { plan = null; }
+      await alive();
+    }
+    // (never a shorter film than was asked for, written the old way: the maker is told, and tries again)
+    if (!plan) throw new Error(`[film] a ${scenes}-${narrated ? "scene story" : "shot film"} could not be planned in ${partSizes.length} parts`);
+    const planned: FilmPlan = plan;
+    console.log(`[film] a ${scenes}-${narrated ? "scene story" : "shot film"} is written in ${partSizes.length} parts (${partSizes.join(", ")})${narrated ? "" : ` — its places: ${planned.parts.map((p) => p.where.slice(0, 30)).join(" | ").slice(0, 300)}`}`);
+    // 2) THE PARTS, in order
+    const all: FilmScene[] = [];
+    const seenAs: ReturnType<typeof planShots> = [];
+    for (let j = 0; j < partSizes.length; j++) {
+      const n = partSizes[j];
+      const from = partSizes.slice(0, j).reduce((a, b) => a + b, 0);
+      const cams = camPlan.slice(from, from + n);
+      // (the film has been in this place before: its picture was drawn from the first shot written there —
+      //  acted-staging.ts → ONE_TAKE — and this scene is told so)
+      const first = narrated ? undefined : all.find((s) => s.where === planned.parts[j].where);
+      // (…and it is handed EVERY line the parts before it wrote, not a summary of them: film-length.ts → partBrief)
+      const ask = promptFor(n, cams, { plan: planned, index: j, said: spans.map(([a, b]) => all.slice(a, b).map((s) => s.caption || "").filter(Boolean)), ...(first ? { seenAs: first.visual } : {}) });
+      let got: FilmScene[] = [];
+      for (let go = 0; go < 2 && got.length < n; go++) {
+        try {
+          const t = await down((extra) => write(`${ask}${extra}${go ? `\nIMPORTANT: your last answer had ${got.length} ${narrated ? "scenes" : "shots"}. Return EXACTLY ${n} — count them before you answer.` : ""}`));
+          const came = (t.scenes || []).filter((s) => s && s.visual).slice(0, n);
+          if (came.length > got.length) got = came;
+          await alive();
+        } catch (e) {
+          // (asked again only because the first answer was short: what it had is kept)
+          if (!got.length) throw e;
+        }
+      }
+      if (!got.length) throw new Error(`[film] part ${j + 1} of ${partSizes.length} came back empty`);
+      spans.push([all.length, all.length + got.length]);
+      seenAs.push(...cams.slice(0, got.length));
+      // (an acted scene is in the ONE place its plan gave it — the same words every time the film is there, so
+      //  that it is the same picture: other words are read as another place)
+      all.push(...got.map((s) => (narrated ? s : { ...s, where: planned.parts[j].where })));
+    }
+    // (each scene keeps the way of seeing it was WRITTEN to, should a part have come back a scene short)
+    camPlan = seenAs;
+    parsed = { title: planned.title, musicMood: planned.musicMood, cast: planned.cast, ...(narrated ? { places: planned.places } : {}), scenes: all };
+    acts = planned.parts.map((p, j) => ({ what: p.what, ...(p.where ? { where: p.where } : {}), scenes: spans[j][1] - spans[j][0] }));
+  } else for (const extra of rungs) {
     try { parsed = await write(prompt + extra); break; } catch (e) { lastErr = e; }
   }
   if (!parsed) throw lastErr instanceof Error ? lastErr : new Error("[film] treatment writer refused");
@@ -931,6 +1141,15 @@ export async function previewFilmTreatment(opts: {
   // on the live site, 2026-11-23). A line by anyone who is not one of the two in its place goes back ONCE
   // to be rewritten for one of them; any trouble and the lines stay as they were written. What happened
   // rides back on the treatment ("castFit").
+  // A LONG FILM'S LINES ARE CHECKED A PART AT A TIME — each of the two asks below is then the size a whole film's
+  // was (both hand every line back, and fifty would not fit the answer), and "the two in its place" are one
+  // scene's two. A film written in one answer is one part: the two asks exactly as they were. (The checks are
+  // not indented under the function, on purpose: they are as they were written, and read the same in a blame.)
+  const script = list;
+  if (!spans.length) spans = [[0, script.length]];
+  /** one part's lines, checked — and what happened to them */
+  const checkPart = async ([from, to]: [number, number]): Promise<{ list: typeof script; castNote: FilmTreatment["castFit"]; lineNote: FilmTreatment["lineFit"] }> => {
+  let list = script.slice(from, to);
   let castNote: FilmTreatment["castFit"];
   if (tmpl.dialogue && !narrated) {
     const written = list.map((s) => s.caption || "");
@@ -976,6 +1195,26 @@ export async function previewFilmTreatment(opts: {
       }
     }
   }
+  return { list, castNote, lineNote };
+  };
+  // (the parts of a long film are checked THREE AT A TIME: each check is one answer of its own, and nine of them
+  //  one after another kept the maker waiting minutes longer for a script — while each part's two asks stay in
+  //  their order. A film written in one answer is one part, checked exactly as before.)
+  const done: Array<Awaited<ReturnType<typeof checkPart>>> = new Array(spans.length);
+  let nextPart = 0;
+  await Promise.all(Array.from({ length: Math.min(3, spans.length) }, async () => {
+    while (nextPart < spans.length) { const k = nextPart++; done[k] = await checkPart(spans[k]); await alive(); }
+  }));
+  list = done.flatMap((d) => d.list);
+  const castNotes = done.map((d) => d.castNote).filter((n): n is NonNullable<FilmTreatment["castFit"]> => !!n);
+  const lineNotes = done.map((d) => d.lineNote).filter((n): n is NonNullable<FilmTreatment["lineFit"]> => !!n);
+  // (what happened to the whole script: every part's count, and the last thing that went wrong)
+  const castNote: FilmTreatment["castFit"] = castNotes.length
+    ? { unseen: castNotes.reduce((n, c) => n + c.unseen, 0), fixed: castNotes.reduce((n, c) => n + c.fixed, 0), ...(castNotes.some((c) => c.note) ? { note: castNotes.filter((c) => c.note).map((c) => c.note).pop() } : {}) }
+    : undefined;
+  const lineNote: FilmTreatment["lineFit"] = lineNotes.length
+    ? { was: lineNotes.flatMap((l) => l.was), now: lineNotes.flatMap((l) => l.now), ...(lineNotes.some((l) => l.note) ? { note: lineNotes.filter((l) => l.note).map((l) => l.note).pop() } : {}) }
+    : undefined;
   const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 5) : undefined;
   // AN ACTED FILM'S CHOSEN THREAT IS NEVER ONE OF ITS CAST, whatever the writer returned (premise-rules.ts →
   // chosenThreat): the film puts its cast in every shot, so a werewolf left in "cast" stands beside the boy
@@ -1126,7 +1365,8 @@ export async function previewFilmTreatment(opts: {
   const dealt = fresh ? { hook: fresh.hook, ...Object.fromEntries(freshKeys(series ? null : fresh).map((k) => k.split(":"))) } : null;
   // (an acted film written here says so: its scenes' VISUALs are things that HAPPEN, and each clip is told its own)
   // (…and the starter it was written from, when the maker gave no idea of their own — film-genres.ts → nudgeFor)
-  return { title: outTitle, scenes: list, ...(nudged ? { nudge: nudged.nudge } : {}), ...(ageNote ? { ageFit: ageNote } : {}), musicMood: parsed.musicMood || tmpl.musicHint, ...(acted ? { events: true } : {}), ...(dealt ? { fresh: dealt } : {}), ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
+  // (…and a long film says how it was planned: `acts` — film-length.ts)
+  return { title: outTitle, scenes: list, ...(nudged ? { nudge: nudged.nudge } : {}), ...(acts ? { acts } : {}), ...(ageNote ? { ageFit: ageNote } : {}), musicMood: parsed.musicMood || tmpl.musicHint, ...(acted ? { events: true } : {}), ...(dealt ? { fresh: dealt } : {}), ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 
 // ---- Assembly ---------------------------------------------------------------

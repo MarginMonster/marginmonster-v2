@@ -71,5 +71,6 @@ test("the Movie Maker asks only for older films, only this shop's finished rende
   assert.ok(src.includes("...(cast ? { cast } : {}),"));
   assert.ok(src.includes("...(narrated ? { filmMode: \"narrated\", ...(filmNarrator ? { filmNarrator } : {}) } : {}),"));
   assert.ok(src.includes("filmTemplate: tmpl.key, filmTopic: topic, filmScenes: scenes,"));
-  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("await ckpt({ ckClips: clips });"));
+  // (…and the clips it made: since 2026-11-25 written with what each shot was, in one write — film-length.test.ts)
+  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("await ckpt({ ckClips: clips, ckShots: shotsKept() });"));
 });
