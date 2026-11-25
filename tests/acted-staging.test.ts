@@ -845,7 +845,7 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.equal(revealPicture({ moment: null }), "");
   // reused, not a third copy: the recipe's words are imported, never written out again here
   const src = read("app", "lib", "acted-staging.ts");
-  assert.ok(src.includes("import { CREATURE_REAL, SHADOW_SHAPE, TODAY_LOOK, shadowNote } from \"./story-picture.ts\";") && src.includes("import { TAKE_HIDDEN } from \"./take.ts\";"));
+  assert.ok(src.includes("import { CREATURE_REAL, DRESSED, SHADOW_SHAPE, TODAY_LOOK, shadowNote } from \"./story-picture.ts\";") && src.includes("import { TAKE_HIDDEN } from \"./take.ts\";"));
   for (const words of ["a practical-effects creature as a 1970s horror film would build it", "we see less than we want to"]) assert.ok(!src.includes(words), words);
   // the clip: it moves only a little, in place, and the two FREEZE and one turns to it — whether or not a line was
   // written for it. Not drawn here (a frame the maker approved, a place of its own): the scene's words, held in place

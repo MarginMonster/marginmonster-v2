@@ -119,7 +119,7 @@ test("a split picture is the worst fault, then each cast member who is not in it
 test("the pipeline: words tidied, picture drawn, picture looked at, drawn again when wrong — and never left bare", () => {
   const s = read("app", "lib", "narrated-story.server.ts");
   assert.ok(s.includes("const visual = oneMoment(noLettering(written));"));
-  assert.ok(s.includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;") && !s.includes("No readable text, captions or lettering anywhere."));
+  assert.ok(s.includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : \"\"}${tmpl.childSafe ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;") && !s.includes("No readable text, captions or lettering anywhere."));
   assert.ok(ONE_PICTURE.includes("never a split screen, a collage, comic panels, a before-and-after or a grid") && NOTHING_WRITTEN.includes("no signs with words, labels, notices, numbers, letters or captions"));
   // WHO is looked for: the maker's own cast in this scene — by their own pictures, never the sheet of invented characters
   assert.ok(s.includes("const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);"));

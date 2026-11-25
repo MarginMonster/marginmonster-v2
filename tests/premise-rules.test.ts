@@ -102,7 +102,7 @@ test("a told story's detail shot shows ONE person's hands — two people's hands
 test("a story picture has nobody the words do not put there, and everybody in it ONCE", async () => {
   const sp = await import("../app/lib/story-picture.ts");
   assert.ok(sp.NO_EXTRAS.includes("no passer-by, no figure in the distance, no one at a window or a door") && sp.NO_EXTRAS.includes("appears exactly ONCE"));
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : \"\"}${tmpl.childSafe ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
   // (…and nobody in a story picture looks into the camera: the parents "turning toward him in alarm" faced the lens)
   const spx = await import("../app/lib/story-picture.ts");
   assert.ok(spx.NO_LENS.startsWith("Nobody looks into the camera: each one looks at whoever or whatever this moment has them looking at"));
@@ -317,7 +317,7 @@ test("a lived-in home; a shadow drawn as a shadow; nobody stares into the lens; 
   // the home
   // (…and a place in use is kept: room 14 of a working hospital was drawn peeling and cracked, like a ruined asylum)
   assert.ok(sp.LIVED_IN.endsWith("A place people work in or use every day — a hospital, a school, an office, a hotel, a shop — is clean and kept the same way, even a room in it nobody has used for a while: never peeling, cracked, stained or abandoned unless these words say so."));
-  assert.ok(sp.TODAY_LOOK.endsWith(sp.LIVED_IN) &&sp.LIVED_IN.includes("never stained, peeling, damp, dusty, bare or abandoned unless these words say so: it is dark because it is night, not because the house is falling apart."));
+  assert.ok(sp.TODAY_LOOK.endsWith(`${sp.LIVED_IN} ${sp.DRESSED}`) &&sp.LIVED_IN.includes("never stained, peeling, damp, dusty, bare or abandoned unless these words say so: it is dark because it is night, not because the house is falling apart."));
   // the shadow: the writer gives the idea's threat a cast entry and a shadow its look; the picture is told what a shadow is
   assert.ok(sp.WHAT_FRIGHTENS.includes("a threat the IDEA names (\"a dark shadow\", \"a ghost lady\", \"a figure\") always has a \"cast\" entry of its own") && sp.WHAT_FRIGHTENS.includes("never a person in a coat or a hood"));
   assert.equal(sp.shadowNote("Beyond the glass, under the old tree, a tall dark shadow stands motionless in the night"), sp.SHADOW_SHAPE);
@@ -397,4 +397,19 @@ test("a nearly-human thing is a creature; its close-up stays still; a voice's ma
   const mo = read("app", "lib", "story-motion.server.ts");
   assert.ok(mo.includes("if (o.still?.[i]) { console.log(`[story-motion] scene ${i + 1} stays still: a creature's face, seen close`); continue; }"));
   assert.ok(mo.includes("\"-c:v\", \"libx264\", \"-preset\", \"fast\", \"-tune\", \"film\", \"-crf\", \"18\"") && !mo.includes("\"-crf\", \"24\""), "a clip is kept at the story's own quality, not squeezed before its last encode");
+});
+
+test("EVERYONE IS DRESSED (\"She Walked From Still Water\", 2026-11-25: told only 'a pale woman waist-deep in the lake', the picture model drew her bare, and the video engine kept it)", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  const st = await import("../app/lib/acted-staging.ts");
+  assert.equal(sp.DRESSED, "Everyone in the picture is fully clothed in ordinary clothes — a figure standing in water too, its own clothes soaked and clinging (a nightgown, a dress, a coat).");
+  // every grown-up picture (told stories, their place sheets, an acted film's masters) has it through TODAY_LOOK
+  assert.ok(sp.TODAY_LOOK.endsWith(sp.DRESSED));
+  assert.ok(st.actedRealism(false, "a woman stands waist-deep in the lake", "the lake shore at night").includes(sp.DRESSED));
+  // …a children's story picture is told it on its own
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${tmpl.childSafe ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}"));
+  // …the reveal that draws the thing into a place says it
+  assert.ok(st.revealPicture({ moment: "She stands close behind Wren, smiling.", sides: [{ name: "Wren", side: "left" }] }).includes(sp.DRESSED));
+  // …and the writer gives a thing it invents clothes
+  assert.ok(sp.WHAT_FRIGHTENS.includes("Its \"cast\" entry also says what it WEARS — a soaked nightgown, an old coat, a hospital gown: it is always dressed."));
 });

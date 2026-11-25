@@ -36,7 +36,7 @@
  * Pure. tests/acted-staging.test.ts holds it. */
 
 import { CLIP_MAX_SECONDS, clipSecondsFor } from "./speech-meter.ts";
-import { CREATURE_REAL, SHADOW_SHAPE, TODAY_LOOK, shadowNote } from "./story-picture.ts";
+import { CREATURE_REAL, DRESSED, SHADOW_SHAPE, TODAY_LOOK, shadowNote } from "./story-picture.ts";
 import { TAKE_HIDDEN } from "./take.ts";
 
 export type ActedStaging = "apart" | "depth" | "levels" | "across" | "walk" | "doing";
@@ -965,7 +965,7 @@ export function revealPicture(o: { moment: string | null | undefined; mood?: str
   const shows = seen && part === "figure" ? SEEN_FIGURE : REVEAL_PARTS[part].seen;
   // (out of doors nothing is built into the place: no wall, no plaster, no door, no window)
   const open = o.outdoors ? " This is out of doors: nothing is built into the place — no wall, no plaster, no door and no window is added." : "";
-  return `Edit this photo, a frame from a live-action horror film. Keep the camera and the framing, every window, door and lamp, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes.${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${shows}${only}.${wrong}${seen}${open} ${REVEAL_REAL} ${CREATURE_REAL} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.`;
+  return `Edit this photo, a frame from a live-action horror film. Keep the camera and the framing, every window, door and lamp, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes.${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${shows}${only}.${wrong}${seen}${open} ${DRESSED} ${REVEAL_REAL} ${CREATURE_REAL} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.`;
 }
 
 /* ---- THE WRITER ---- */
