@@ -25,7 +25,10 @@ import {
 import { SHOT_ROLES, shotSlot } from "../app/lib/mv-pace.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8");
+// (line endings made the same: a fresh checkout on Windows has CRLF, and two tests here failed on it alone)
+const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/
+/g, "
+");
 const LONG = "A rain-slicked rooftop high above the city at blue hour, neon signs bleeding pink and teal across the puddles, water towers and satellite dishes silhouetted against a wall of glass skyscrapers, steam rising from the vents, a helicopter light sweeping slowly across the low clouds far behind them while traffic hums forty floors below";
 
 test("a microphone belongs on a stage or in a booth — and nowhere else unless the scene asks for one", () => {

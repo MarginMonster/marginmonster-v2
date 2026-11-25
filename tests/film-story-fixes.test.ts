@@ -16,7 +16,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8");
+// (line endings made the same: a fresh checkout on Windows has CRLF, and two tests here failed on it alone)
+const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/
+/g, "
+");
 const ui = read("app", "routes", "web.film.tsx");
 const count = (hay: string, needle: string) => hay.split(needle).length - 1;
 
