@@ -31,13 +31,23 @@ export type ClipRules = { look: string; lookTight: string; lookShort: string; st
  *  tester on Short Film and Horror Film: "scenes looks more real, backend moves, live real day life, not
  *  stuck." It is the SPEAKERS who hold their places; what is already behind them keeps moving, and
  *  nothing new comes in. A cartoon and a sung shot keep the note they were approved with. */
-export function clipRules(o: { cartoon: boolean; sing: boolean }): ClipRules {
+/** A HORROR FILM'S CLIPS: whoever is in the shot — the thing in the dark as well — is clothed and lit only by the lights
+ *  that are there (2026-11-25, "She Rises Without a Ripple": the woman the tent flap opened on was drawn by the engine
+ *  as a bare, glowing white body under a blue beam from nowhere — the pictures were told NOTHING_GLOWS, the clips were
+ *  told nothing). */
+export const HORROR_CLIP_REAL = "Anyone in the shot — the living and the dead alike — is clothed, and lit only by the lights already there: nothing glows from within.";
+export function clipRules(o: { cartoon: boolean; sing: boolean; horror?: boolean }): ClipRules {
   const { cartoon, sing } = o;
   if (!cartoon && !sing) {
+    // (said BEFORE "The speakers hold their places" / "nobody moves except": a staged or wordless shot keeps only what comes
+    //  before those words — acted-staging.ts → lockOf — and that is most of a horror film's shots)
+    const real = o.horror ? ` ${HORROR_CLIP_REAL}` : "";
     return {
-      look: "Keep EVERYONE and the setting EXACTLY as in the starting image — identical faces, hair, skin tone, clothing, lighting and place throughout; every beard, mustache and bit of stubble stays exactly as it is, never fading, growing, appearing or vanishing. Do NOT morph, age or redraw anyone. The speakers hold their places — only natural talking and small head and expression shifts. The background stays alive with gentle natural motion; nothing new enters. Add NO new object; anything already held keeps its exact size and shape in the same hand.",
-      lookTight: "Keep EVERYONE and the setting EXACTLY as in the starting image — same faces, hair, facial hair, skin tone, clothing, lighting and place, never morphing, aging or changing. The speakers hold their places — only talking and small head and expression shifts; the background stays gently alive, nothing new enters. Add NO new object; anything already held stays the same size and shape in the same hand.",
-      lookShort: "Keep everyone and the setting EXACTLY as in the starting image — same faces, hair, facial hair, clothing and background; no morphing, no new objects; nobody moves except to talk.",
+      look: `Keep EVERYONE and the setting EXACTLY as in the starting image — identical faces, hair, skin tone, clothing, lighting and place throughout; every beard, mustache and bit of stubble stays exactly as it is, never fading, growing, appearing or vanishing. Do NOT morph, age or redraw anyone.${real} The speakers hold their places — only natural talking and small head and expression shifts. The background stays alive with gentle natural motion; nothing new enters. Add NO new object; anything already held keeps its exact size and shape in the same hand.`,
+      lookTight: `Keep EVERYONE and the setting EXACTLY as in the starting image — same faces, hair, facial hair, skin tone, clothing, lighting and place, never morphing, aging or changing.${real} The speakers hold their places — only talking and small head and expression shifts; the background stays gently alive, nothing new enters. Add NO new object; anything already held stays the same size and shape in the same hand.`,
+      lookShort: real
+        ? `Keep everyone and the setting EXACTLY as in the starting image — same faces, hair, facial hair, clothing and background; no morphing, no new objects.${real} Nobody moves except to talk.`
+        : "Keep everyone and the setting EXACTLY as in the starting image — same faces, hair, facial hair, clothing and background; no morphing, no new objects; nobody moves except to talk.",
       style: "Photorealistic live-action, clean natural spoken-dialogue audio.",
       steady: "The camera stays LOCKED and level — no rotation, tilt, flip or zoom. The ONLY audio is the spoken voice and faint room tone — no music or sound effects.",
       noText: "NO on-screen text — no subtitles, captions, titles or readable writing; never show the spoken words as text; keep the bottom edge clean.",

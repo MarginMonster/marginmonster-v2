@@ -1266,7 +1266,7 @@ export async function generateTestMovie(opts: {
     void STAGING; void HOLD_STILL; // (kept defined for the seed/scene-frame paths; not in the clip prompt)
     // The standing rules (look / style / camera+audio / no-text) come from clipRules — written short so
     // the whole prompt fits what Kling reads. (The long NO_TEXT above stays for the image prompts.)
-    const rules = clipRules({ cartoon, sing });
+    const rules = clipRules({ cartoon, sing, horror });
     // IN A STAGING (acted-staging.ts) the look-note no longer ends "The speakers hold their places": it says
     // how the two move in that staging and — in a film written as things that HAPPEN (treatment.events) — the
     // ONE thing this scene's own words say is done while the line is spoken. (The owner, 2026-11-24: "there

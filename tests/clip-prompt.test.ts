@@ -127,3 +127,24 @@ test("an acted, spoken, live-action shot has a living background — the speaker
   // would lose the full note
   assert.equal(r.look.length + r.style.length + r.steady.length + r.noText.length + 4, 900);
 });
+
+test("A HORROR FILM'S CLIPS: whoever is in the shot, the thing in the dark too, is clothed and lit only by the lights there — and it survives a staged or wordless shot's trim", async () => {
+  const { HORROR_CLIP_REAL } = await import("../app/lib/clip-prompt.ts");
+  const st = await import("../app/lib/acted-staging.ts");
+  // ("She Rises Without a Ripple", 2026-11-25: the woman the tent flap opened on came out of the engine as a bare,
+  //  glowing white body under a blue beam from nowhere — the pictures were told, the clips were not)
+  assert.equal(HORROR_CLIP_REAL, "Anyone in the shot — the living and the dead alike — is clothed, and lit only by the lights already there: nothing glows from within.");
+  const h = clipRules({ cartoon: false, sing: false, horror: true });
+  for (const k of ["look", "lookTight", "lookShort"] as const) assert.ok(h[k].includes(HORROR_CLIP_REAL), k);
+  // every other film's clips are exactly as they were
+  assert.deepEqual(clipRules({ cartoon: false, sing: false, horror: false }), clipRules({ cartoon: false, sing: false }));
+  assert.ok(!JSON.stringify(clipRules({ cartoon: false, sing: false })).includes("living and the dead"));
+  assert.ok(!JSON.stringify(clipRules({ cartoon: true, sing: false, horror: true })).includes("living and the dead"), "a cartoon is left as it was");
+  // a staged shot and a wordless one keep only what comes BEFORE "the speakers hold their places" — the line is there
+  const staged = st.stagedRules(h, { staging: "apart", event: "She stands waist-deep in the lake, smiling." });
+  const silent = st.silentRules(h, { staging: "apart", event: "She stands waist-deep in the lake, smiling.", reveal: true });
+  for (const r of [staged, silent]) for (const k of ["look", "lookTight", "lookShort"] as const) assert.ok(r[k].includes(HORROR_CLIP_REAL), `${k}: ${r[k].slice(0, 80)}`);
+  // and the film asks for it in a horror film
+  const fs = await import("node:fs");
+  assert.ok(fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8").includes("const rules = clipRules({ cartoon, sing, horror });"));
+});
