@@ -38,7 +38,7 @@ import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
-import { cameraLine, shotOf } from "./story-shots";
+import { cameraLine, sceneShot } from "./story-shots";
 import { FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NOTHING_WRITTEN, ONE_PICTURE, STORY_SOUND, TODAY_LOOK, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, creatureHidden, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryOutside, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
@@ -209,7 +209,9 @@ export async function narratedSceneSeeds(o: {
       const own = sheet ? [] : who[k].others.map(cardFor).filter((c): c is StoryCastRef => !!c).slice(0, Math.max(0, 3 - chosen.length));
       const here: Array<{ name: string; look?: string; faceUrl?: string | null; kind?: "person" | "cartoon" | "monster" }> = [...chosen, ...own.map((c) => ({ name: c.name, look: c.look, faceUrl: c.img, kind: keepGuess(c.look || "").kind }))];
       // HOW THIS SCENE IS SEEN (story-shots.ts): the camera line its picture is given — none for a scene with no plan
-      const cam = shotOf(scene);
+      // (…what its own words say first — a storyboard written before the words won, or words the maker changed:
+      //  story-shots.ts → sceneShot)
+      const cam = sceneShot(scene);
       const people = [...here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u), ...(sheet ? [sheet] : [])];
       // WHERE IT IS SET: the design sheet of the place this scene's words name, as one more reference —
       // after the people, and not counted as one of them when the picture model is chosen
@@ -686,7 +688,7 @@ export async function generateNarratedStory(opts: {
       for (const s of stills) seeds.push(await withoutBars(s));
       const end = windows[windows.length - 1].t1 + TAIL_S;
       motion = await animateScenes({
-        seeds, visuals: treatment.scenes.map((s) => s.visual || s.caption || ""), cams: treatment.scenes.map((s) => s.cam),
+        seeds, visuals: treatment.scenes.map((s) => s.visual || s.caption || ""), cams: treatment.scenes.map((s) => sceneShot(s)),
         told: windows.map((w, i) => (i === windows.length - 1 ? end : w.t1) - w.t0),
         base, W, H, jobId, ckMotion: resume.ckMotion,
       });

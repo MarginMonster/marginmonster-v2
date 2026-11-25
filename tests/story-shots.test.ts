@@ -71,12 +71,47 @@ test("the plan is used three times: the writer's list, the picture's camera line
   const engine = read("app", "lib", "film-engine.server.ts");
   assert.ok(engine.includes("const camPlan = narrated ? planShots(scenes) : [];"), "a told story only");
   assert.ok(engine.includes("    shotListBrief(camPlan) +\n    freshLine +\n"));
-  assert.ok(engine.includes("if (camPlan.length) list = list.map((s, i) => (camPlan[i] ? { ...s, cam: camPlan[i] } : s));"), "each scene keeps how it is seen");
+  assert.ok(engine.includes("if (camPlan.length) list = list.map((s, i) => { const cam = shotInWords(s.visual) ?? camPlan[i]; return cam ? { ...s, cam } : s; });"), "each scene keeps how it is seen — as its own words say it, else as planned");
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const cam = shotOf(scene);"));
+  assert.ok(nar.includes("const cam = sceneShot(scene);"));
   assert.ok(nar.includes("${cam ? ` ${cameraLine(cam)}` : \"\"}"));
-  assert.ok(nar.includes("cams: treatment.scenes.map((s) => s.cam),"), "the motion follows it");
+  assert.ok(nar.includes("cams: treatment.scenes.map((s) => sceneShot(s)),"), "the motion follows it");
   assert.ok(read("app", "lib", "story-motion.server.ts").includes("prompt: motionPrompt(o.visuals[i] || \"\", o.cams?.[i]), durationSec: ask });"));
+});
+
+/* THE WORDS SAY HOW IT IS SEEN (2026-11-24): the kids' horror story's plan had "wide" on its window scene and
+ * "over" on its sofa scene; the writer wrote them the other way round — and the sofa picture, told "over the
+ * shoulder" by its camera line and "Wide shot … both on the sofa" by its words, came back with a big dark figure
+ * looming in front and one child on the sofa. */
+test("a scene's own words name how it is seen — and win over the plan's tag", async () => {
+  const sh = await import("../app/lib/story-shots.ts");
+  const cases: Array<[string, string | null]> = [
+    ["Over Walt’s shoulder, inside at the living room window, he and Pearl look out", "over"],
+    ["Wide shot of the living room in the house: Pearl and Walt sit small together on the sofa", "wide"],
+    ["At the house: Over the shoulder from behind Priya, inside at the window", "over"],
+    ["At the front door: OVER THE SHOULDER: from behind Mira’s dark shoulder", "over"],
+    ["A detail: the brass doorknob of the front door", "detail"],
+    ["From below, looking up at the rectangular window", "low"],
+    ["NEAR AND FAR: Nessa’s face is close at the lace curtain", "depth"],
+    ["WIDE: the house sits alone in deep blue darkness", "wide"],
+    ["CLOSE: Tomi’s face, eyes wide", "close"],
+    ["TOGETHER: Nessa and Dovey sit frozen on the sofa", "two"],
+    ["WALKING: Finn comes up the lane", "walk"],
+    // words that do not OPEN by naming a shot leave the plan as it is
+    ["Inside, near the front door, Pearl and Walt freeze mid-step in the hallway", null],
+    ["Close on the doorbell button glowing faintly", null],
+    ["Together, Leni and Oskar sit pressed close on the brown sofa", null],
+    ["Widely spaced trees line the road", null],
+    ["Overhead lights flicker in the hall", null],
+    ["Walking home, Finn hums", null],
+    ["", null],
+  ];
+  for (const [v, want] of cases) assert.equal(sh.shotInWords(v), want, v);
+  assert.equal(sh.sceneShot({ cam: "over", visual: "Wide shot of the living room: Pearl and Walt on the sofa" }), "wide", "the words win");
+  assert.equal(sh.sceneShot({ cam: "over", visual: "Pearl and Walt on the sofa" }), "over", "words that say nothing keep the plan");
+  assert.equal(sh.sceneShot({ visual: "A detail: the key" }), "detail", "a scene with no plan, seen as its words say");
+  assert.equal(sh.sceneShot({ cam: "sideways", visual: "Pearl waits" }), null);
+  assert.equal(sh.sceneShot(null), null);
 });
 
 test("a creature stays that creature: said in the picture's words, said again when it came out wrong", () => {

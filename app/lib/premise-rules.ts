@@ -35,7 +35,7 @@ export const PREMISE_WINS =
 /** Said LAST, after everything else (the writer weighs the last words most): the second live preview still
  *  ended on "their mother … never left the house that evening" — the mother the idea sends away from home. */
 export const IDEA_CHECK =
-  "LAST, BEFORE YOU ANSWER: read your story against the idea once more — the same people at the same ages, the same place, every event it names in its order and for real, the threat as it named it, and nothing it said made untrue by your ending. Change whatever is not.";
+  "LAST, BEFORE YOU ANSWER: read your story against the idea once more — the same people at the same ages, the same place, every event it names in its order and for real, the threat as it named it, and nothing it said made untrue by your ending. Then read it as somebody who has only heard it: the ending makes sense from what the story told, and turns on nothing it never told. Change whatever is not.";
 
 /** IT IS TODAY'S REAL WORLD. The owner, of a Horror Story made from the tester's "two children in house alone"
  *  (2026-11-24): "there isn't much realism … looks like the kids live in a cobblestone house from a fairytale" —

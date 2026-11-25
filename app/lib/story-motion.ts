@@ -102,7 +102,10 @@ export function motionPrompt(_visual: string, shot?: string | null): string {
   const hold = seen === "walk"
     ? "Apart from that walk, HOLD THE PICTURE: everybody keeps the body, the build and the clothes they have in the picture for the whole shot."
     : "HOLD THE PICTURE: everybody keeps the body, the pose, the size and the place they have in the picture for the whole shot.";
-  return `One continuous shot of this exact picture coming to life. ${move} ${hold} Everything stays exactly as it is in the picture — the same shapes, the same colours, the same light, the same place; nothing is added, nothing is taken away, nothing changes. What moves is small and natural: breathing, a slow blink, a slight turn of the head, a small shift of weight. Nobody speaks; mouths stay closed. The same faces, the same designs, the same place; no cuts, no writing.${what ? ` (What the picture shows: ${what})` : ""}`;
+  // (EVERY FACE STAYS THAT FACE: the ghost lady's face at a window — wax-pale, a smile far too wide — turned
+  //  into an ordinary pleasant woman's as the clip went on, and read as the children's mother, 2026-11-24.
+  //  Said without naming what a face is like: the engine draws what it is told about.)
+  return `One continuous shot of this exact picture coming to life. ${move} ${hold} Everything stays exactly as it is in the picture — the same shapes, the same colours, the same light, the same place; nothing is added, nothing is taken away, nothing changes. What moves is small and natural: breathing, a slow blink, a slight turn of the head, a small shift of weight. Every face stays exactly the face it is — its features, its skin, its smile — never turning into another face or a more ordinary one. Nobody speaks; mouths stay closed. The same faces, the same designs, the same place; no cuts, no writing.${what ? ` (What the picture shows: ${what})` : ""}`;
 }
 
 /** How a clip `have` seconds long fills a scene told in `need` seconds: as it is when it is long enough

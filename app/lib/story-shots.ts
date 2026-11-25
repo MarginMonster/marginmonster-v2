@@ -88,6 +88,34 @@ export const isStoryShot = (v: unknown): v is StoryShot => typeof v === "string"
  *  before 2026-11-24, a scene the maker added by hand): it is drawn as scenes always were. */
 export const shotOf = (scene: { cam?: unknown } | null | undefined): StoryShot | null => (scene && isStoryShot(scene.cam) ? scene.cam : null);
 
+/* THE WORDS SAY HOW IT IS SEEN. The writer is handed the plan in order, and may write a scene as another line of
+ * it: the kids' horror story of 2026-11-24 had its plan "wide" on the window scene and "over" on the sofa scene —
+ * and the writer wrote "Over Walt's shoulder, inside at the living room window…" and "Wide shot of the living
+ * room: Pearl and Walt sit small together on the sofa". The sofa picture was then told "over the shoulder" by its
+ * camera line and "wide, both on the sofa" by its words — and came back with a big dark figure looming in the
+ * foreground and one child on the sofa. A scene's words that OPEN by naming how it is seen are what it is drawn
+ * from, what moves, and what the maker reads and can change — so they win over the plan's tag. */
+const SHOT_WORDS: Array<[StoryShot, RegExp]> = [
+  ["over", /^over (?:the |[\p{L}'’.-]+(?:['’]s)? )?shoulder\b/iu],
+  ["depth", /^near and far\b/i],
+  ["wide", /^(?:a\s+)?wide(?:\s+shot)?\b|^from far (?:back|away)\b/i],
+  ["low", /^from below\b|^(?:a\s+)?low[- ]angle\b|^from the ground\b/i],
+  ["detail", /^(?:a\s+)?detail\b/i],
+  ["close", /^(?:a\s+)?close-?up\b|^close\s*[:—–-]/i],
+  ["two", /^together\s*[:—–-]/i],
+  ["walk", /^walking\s*[:—–-]|^mid-stride\b/i],
+];
+/** How a scene's own words say it is seen — when they OPEN by naming it ("Wide shot of…", "Over Walt's shoulder,",
+ *  "A detail:", "From below,"); null when they do not (the plan's tag then stands). A place the words are set at
+ *  ("At the house: …") is read past first. */
+export function shotInWords(visual: string | null | undefined): StoryShot | null {
+  const v = String(visual || "").replace(/\s+/g, " ").trim().replace(/^at [^:]{1,60}:\s*/i, "");
+  for (const [k, re] of SHOT_WORDS) if (re.test(v)) return k;
+  return null;
+}
+/** The way a scene is seen: what its words say, else what was planned. */
+export const sceneShot = (scene: { cam?: unknown; visual?: string | null } | null | undefined): StoryShot | null => (scene ? shotInWords(scene.visual) ?? shotOf(scene) : null);
+
 /** How a story OPENS, how it ENDS, and what it must have somewhere. */
 const OPENERS: StoryShot[] = ["wide", "walk", "depth", "low"];
 const CLOSERS: StoryShot[] = ["close", "depth", "over", "low", "detail"];

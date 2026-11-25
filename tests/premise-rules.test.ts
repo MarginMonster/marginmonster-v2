@@ -237,3 +237,23 @@ test("whoever looks out is looked for OUTSIDE — and drawn again inside; today'
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const s of ["Standing outside", "A stranger in it"]) assert.equal(dict.split(`"${s}":`).length - 1, 5, `${s}: es, fr, de, zh and ur`);
 });
+
+/* THE SAME STORY, MADE AGAIN ON THAT BUILD ("Her Voice at the Door", 2026-11-24): a modern house at last, both
+ * children inside at the window — but its hallway had the house's outside SIDING on its walls (drawn from the
+ * sheet of the house's outside), the ghost's face at the window was drawn from outside BEHIND the glass (in the
+ * room with them), her face turned into an ordinary woman's as the clip moved, and the last line asked "who
+ * exactly they thought had just called the house phone first" — a call the story never made. */
+test("inside a house its outside walls are not drawn; outside stays outside; the ending turns on what was told; a face stays its face", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  const note = sp.placeNote(3, { name: "the house", look: "a small single-story modern home with pale painted siding" });
+  assert.ok(note.includes(sp.PLACE_INSIDE) && sp.PLACE_INSIDE.includes("its outside walls (siding, brick, stone, planks) are never drawn indoors"));
+  assert.ok(sp.TODAY_LOOK.includes("(outside, painted siding or plaster; inside, plain painted walls)"));
+  assert.ok(sp.INSIDE_STAYS.includes("And whoever these words put OUTSIDE — on the porch, at the glass from outside, at the door — stays OUTSIDE, on the far side of the glass from the room: never drawn behind the window among the room's curtains, never in the room."));
+  const w = read("app", "lib", "film-engine.server.ts");
+  assert.ok(w.includes("Something OUTSIDE at a window or a door — a face at the glass, a hand on the door — is seen from INSIDE the room, through the glass"));
+  assert.ok(w.includes("a viewer who has heard only this story understands it at once: it turns on something the story already showed or said, never on an event it never told"));
+  const pr = await import("../app/lib/premise-rules.ts");
+  assert.ok(pr.IDEA_CHECK.includes("Then read it as somebody who has only heard it: the ending makes sense from what the story told, and turns on nothing it never told.") && pr.IDEA_CHECK.endsWith("Change whatever is not."));
+  const mo = await import("../app/lib/story-motion.ts");
+  assert.ok(mo.motionPrompt("x").includes("Every face stays exactly the face it is — its features, its skin, its smile — never turning into another face or a more ordinary one."));
+});

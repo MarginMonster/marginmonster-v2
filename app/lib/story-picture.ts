@@ -58,7 +58,7 @@ export const NO_EXTRAS = "Nobody is in the picture whom these words do not put t
 /** (…and whoever LOOKS OUT is inside too: the re-made story's words were "At the front door: Leni, near the camera at
  *  the window's edge, peers out while far down the dark porch the ghost lady stands" — no "inside" — and Leni was
  *  drawn standing out on the porch with her, 2026-11-24) */
-export const INSIDE_STAYS = "Whoever these words put INSIDE — and whoever looks OUT or peers out through a window or a door — stays inside: what is outside is seen THROUGH the glass of the window or the gap of the door — its frame and its glass between them — never standing beside them.";
+export const INSIDE_STAYS = "Whoever these words put INSIDE — and whoever looks OUT or peers out through a window or a door — stays inside: what is outside is seen THROUGH the glass of the window or the gap of the door — its frame and its glass between them — never standing beside them. And whoever these words put OUTSIDE — on the porch, at the glass from outside, at the door — stays OUTSIDE, on the far side of the glass from the room: never drawn behind the window among the room's curtains, never in the room.";
 const INSIDE_OUT = /\b(?:window|windows|door|doors|doorway|glass|porch|outside|through the|peers?|peering|peeks?|peeking)\b/i;
 export const insideNote = (visual: string): string => (INSIDE_OUT.test(String(visual || "")) ? INSIDE_STAYS : "");
 /** A SOUND IS NEVER DRAWN in a picture either (the same night's film drew its knocks as a glowing ring on a window). */
@@ -68,7 +68,7 @@ export const STORY_SOUND = "A sound is never drawn: nothing glows, rings or ligh
  *  porch wall"), and the horror picture model, left to guess, built the children's house of rough grey stone twice
  *  (the owner, 2026-11-24: "looks like the kids live in a cobblestone house from a fairytale"). Said to every
  *  picture, and every place's design sheet, of a story that is not a children's cartoon. */
-export const TODAY_LOOK = "Where these words do not say how old a place is, it looks the way such a place looks TODAY — a home is an ordinary modern house with painted walls or siding, ordinary rectangular windows and an ordinary front door — never older, rougher or more storybook than the words say: no rough stone walls, no cottage and no castle unless they name one.";
+export const TODAY_LOOK = "Where these words do not say how old a place is, it looks the way such a place looks TODAY — a home is an ordinary modern house (outside, painted siding or plaster; inside, plain painted walls), with ordinary rectangular windows and an ordinary front door — never older, rougher or more storybook than the words say: no rough stone walls, no cottage and no castle unless they name one.";
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference
  *  pictures, whether that same character is in it; and whether the picture is split into panels. */
@@ -485,8 +485,12 @@ export function placeSheetPrompt(place: { name: string; look: string }, sceneHin
 
 /** What a scene's picture is told about the place it is set at, given as reference image `n`. */
 export function placeNote(n: number, place: { name: string; look: string }): string {
-  return `Reference image ${n} is a design sheet of ${place.name} (${place.look.slice(0, 220)}) — the PLACE this picture is set in. It is the SAME one here: the same shapes, colours, materials and details. Show it from wherever this moment is seen (on it, inside it, beside it, far off): a NEW view of the same place. The sheet's plain background and its three views are NOT part of this picture: this is a scene that fills the whole frame — never a sheet, a panel or a framed picture on a background.`;
+  return `Reference image ${n} is a design sheet of ${place.name} (${place.look.slice(0, 220)}) — the PLACE this picture is set in. It is the SAME one here: the same shapes, colours, materials and details. Show it from wherever this moment is seen (on it, inside it, beside it, far off): a NEW view of the same place. ${PLACE_INSIDE} The sheet's plain background and its three views are NOT part of this picture: this is a scene that fills the whole frame — never a sheet, a panel or a framed picture on a background.`;
 }
+/** INSIDE A PLACE, ITS OUTSIDE IS NOT DRAWN (2026-11-24): the kids' horror story's house had a sheet of its outside
+ *  ("pale painted siding, a plain white front door"), and its hallway scene, drawn with it, came back with siding
+ *  on the walls INSIDE — a hallway that read as a porch. */
+export const PLACE_INSIDE = "When this moment is INSIDE it, its rooms have ordinary indoor walls, floors and ceilings — its outside walls (siding, brick, stone, planks) are never drawn indoors; from the sheet take what is seen from inside: its doors, its windows, its colours.";
 /** …and, when the scene has people in it, how near the camera is. (Without it a figure comes out small.) */
 export const PLACE_FRAMING = "FRAMING: this is a picture of the CHARACTERS in that place, not a picture of the place. The camera is near them — each one fills at least a third of the picture's height, and their faces are clear — and only the part of the place around them is in view.";
 
