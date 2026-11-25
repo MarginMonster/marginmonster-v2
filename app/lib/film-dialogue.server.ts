@@ -41,7 +41,7 @@ import { interiorCutFromWords, isNoopTrim, parseSilences, planClipTrim, planFrom
 import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { letterboxCrop, parseCropdetect } from "./letterbox";
 import { mirrorRender } from "./object-storage.server";
-import { filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
+import { filmShots, filmTemplate, ownCheckpoint, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { clipSecondsFor } from "./speech-meter";
 import { captionStyleOf } from "./narrated-core";
@@ -86,9 +86,21 @@ export function splitExchange(caption: string): Array<{ speaker: string; line: s
   return turns.length ? turns : [{ speaker: "", line: c }];
 }
 
+/* A JOB THAT IS WORKING SAYS SO — AT EVERY REAL STEP, NEVER ON A TIMER (2026-11-25, films up to five minutes).
+ * The worker's reaper takes a job nobody has touched for 25 minutes to be dead, hands it back to the line, and
+ * another run then starts it again beside the first (job-queue.server.ts → reclaimOrphanJobs; what "touches" a job
+ * is any checkpoint it writes). A six-shot film checkpoints after every shot, three minutes apart. But one shot can
+ * honestly take longer than that ceiling: each host a take is tried on is waited for up to ten minutes, and there
+ * are four hosts and three tries. In a film of six shots that was rare; in one of fifty-two it is an ordinary
+ * Tuesday. So the film says it is alive whenever something REAL has just happened inside a shot — a host gave up,
+ * a try failed, the take came back — and the longest it is ever silent is one wait on one host. A film that is
+ * truly dead says nothing (its process is gone), and so does one stuck on an answer that never comes: both are
+ * still taken back after 25 minutes, as they must be. `alive` is that word; it never costs a shot. */
+const say = async (alive?: () => unknown): Promise<void> => { try { await alive?.(); } catch { /* a beat that fails is skipped */ } };
+
 /** A Veo clip where the characters SPEAK an exchange (audio on). FULL Veo-3:
  *  fal veo3.1 → Replicate google/veo-3 fallback. Returns the clip URL. */
-async function veoDialogueClip(seedAbs: string, prompt: string, stage: string, aspect: "9:16" | "16:9" | "1:1" = "9:16"): Promise<string> {
+async function veoDialogueClip(seedAbs: string, prompt: string, stage: string, aspect: "9:16" | "16:9" | "1:1" = "9:16", alive?: () => unknown): Promise<string> {
   if (falEnabled()) {
     try {
       // fal Veo inherits the start image's aspect, so the seed shape carries the frame.
@@ -96,6 +108,7 @@ async function veoDialogueClip(seedAbs: string, prompt: string, stage: string, a
       return await falVideoPoll(FAL_VEO, rid, VEO_POLL_MS);
     } catch (e) {
       console.error(`[testmovie] fal veo failed, trying Replicate: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+      await say(alive);
     }
   }
   const id = await repCreate(REP_VEO, { prompt, image: seedAbs, aspect_ratio: aspect, generate_audio: true });
@@ -145,7 +158,7 @@ export function filmKlingHost(): KlingHost {
  *  character cap), so every approved film really came from Replicate's Kling 3 Omni; the same Omni model
  *  on fal ("O3") was then A/B'd by ear before it was allowed to lead. On Replicate `mode` stays pinned to
  *  the default the approved films used, so a provider-side default change can't alter the look. */
-async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: string, durationSec = KLING_DUR, host: KlingHost = filmKlingHost()): Promise<string> {
+async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: string, durationSec = KLING_DUR, host: KlingHost = filmKlingHost(), alive?: () => unknown): Promise<string> {
   const dur = Math.max(5, Math.min(KLING_DUR, Math.round(durationSec) || KLING_DUR));
   const prompt = clampKlingPrompt(rawPrompt);
   const viaReplicate = async () => {
@@ -187,6 +200,8 @@ async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: stri
     catch (e) {
       lastErr = e;
       console.error(`[testmovie] ${step.name} failed (${stage}): ${e instanceof Error ? e.message.slice(0, 360) : e}`);
+      // (a host gave up — after as long as ten minutes: the film is still at work, and says so)
+      await say(alive);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -194,7 +209,7 @@ async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: stri
 
 /** Route a dialogue clip to the chosen engine — the ONE line that differs between the
  *  identical Veo and Kling pipelines. */
-async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string, durationSec?: number, aspect?: "9:16" | "16:9" | "1:1", host?: KlingHost): Promise<string> {
+async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string, durationSec?: number, aspect?: "9:16" | "16:9" | "1:1", host?: KlingHost, alive?: () => unknown): Promise<string> {
   // Only Kling takes a per-clip length; Veo keeps its native clip. Kling inherits the seed's
   // aspect (the seed is rendered at the chosen ratio); Veo-Replicate takes it explicitly.
   // RETRY the whole render a few times: each clip already falls back fal→Replicate, but when
@@ -205,11 +220,12 @@ async function dialogueClip(engine: string, seedAbs: string, prompt: string, sta
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return engine === "kling3"
-        ? await klingDialogueClip(seedAbs, prompt, stage, durationSec, host)
-        : await veoDialogueClip(seedAbs, prompt, stage, aspect);
+        ? await klingDialogueClip(seedAbs, prompt, stage, durationSec, host, alive)
+        : await veoDialogueClip(seedAbs, prompt, stage, aspect, alive);
     } catch (e) {
       lastErr = e;
       console.error(`[testmovie] clip ${stage} attempt ${attempt + 1}/3 failed: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
+      await say(alive);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(`[testmovie] clip ${stage} failed after retries`);
@@ -565,7 +581,7 @@ export async function generateTestMovie(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string; ckMasters?: string; ckCastLooks?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string; ckMasters?: string; ckCastLooks?: string; /** what each finished shot was (below → ShotKept) — read from the job's own row when the worker does not hand it over */ ckShots?: string };
   /** Per-scene APPROVED storyboard frames (relative /renders URLs), index-aligned
    *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
    *  that scene so it lands exactly as the merchant staged it. */
@@ -612,6 +628,8 @@ export async function generateTestMovie(opts: {
   const resume = opts.resume || {};
   const approvedFrames = opts.approvedFrames || [];
   const ckpt = async (patch: Record<string, unknown>) => { if (jobId) await checkpointJob(jobId, patch); };
+  // (the film says it is at work — at a real step, never on a timer: see `say`, above)
+  const alive = () => ckpt({ ckBeat: Date.now() });
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   const abs = (u: string | null | undefined): string | undefined => (u ? (u.startsWith("http") ? u : `${base}${u}`) : undefined);
 
@@ -624,7 +642,9 @@ export async function generateTestMovie(opts: {
   else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, ...(castForWriter(opts.cast).length ? { cast: castForWriter(opts.cast) } : {}), series: opts.series });
   // an episode is called "<Series> — Episode <N>", however its script was written (film-series.ts)
   if (opts.series) treatment.title = episodeTitle(opts.series.title, opts.series.episode, treatment.title);
-  const want = Math.max(tmpl.minScenes, Math.min(tmpl.maxScenes, opts.sceneCount ?? treatment.scenes.length));
+  // (THE ONE LIMIT — film-length.ts, through film-engine's filmShots: as many shots as the page could ask for and
+  //  the writer could write, up to five minutes of them. It was each template's own `maxScenes`: six.)
+  const want = filmShots(tmpl.key, false, opts.sceneCount ?? treatment.scenes.length);
   treatment.scenes = treatment.scenes.slice(0, want);
   await ckpt({ ckTreatment: JSON.stringify(treatment) });
 
@@ -841,6 +861,8 @@ export async function generateTestMovie(opts: {
     for (let attempt = 0; attempt < 3; attempt++) {
       const staging = attempt === 2 && !url ? undefined : dealt;
       const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect }));
+      // (a picture came back, or did not — either way the film is at work, and says so: see `say`)
+      await say(alive);
       if (!tryUrl) continue;
       url = tryUrl;
       drawnAs = staging;
@@ -958,7 +980,25 @@ export async function generateTestMovie(opts: {
   // 3) Veo DIALOGUE clips (sequential) — see the design notes atop this file: one
   //    speaker per clip, seamless cuts from the prior clip's real last frame, no
   //    on-screen text, trailing silence trimmed.
-  const clips: string[] = (resume.ckClips || []).filter((p) => p && fs.existsSync(p));
+  // A FILM PICKED UP AFTER A RESTART DOES NOT PAY FOR A FINISHED SHOT TWICE: every shot's clip is checkpointed the
+  // moment it is finished (`ckClips`, below), and the loop that renders starts at the first shot that has none. A
+  // film of six shots met a restart now and then; one of fifty-two, two hours in the making, will meet one often.
+  // (A finished shot whose file is gone ends what can be picked up — the shots after it were grown out of it, and
+  //  what each one WAS, below, is kept by its place in the film. They used to slide down into its place.)
+  const had = resume.ckClips || [];
+  const firstGone = had.findIndex((p) => !p || !fs.existsSync(p));
+  const clips: string[] = firstGone < 0 ? [...had] : had.slice(0, firstGone);
+  // …AND IT IS THE FILM IT WOULD HAVE BEEN. What each finished shot was — the picture it grew out of, what its
+  // clip was told, how long it was asked for, whether it carries on from the shot before it, how the cut INTO it
+  // is made, whose voice was put on it — was kept only in this run's memory: after a restart every cut into a
+  // finished shot became the small dissolve of a shot that continues (a cut to ANOTHER PLACE too: the "ghost"
+  // between two rooms the straight cut was made to end), and no finished shot could be rolled again in the
+  // editor. It is checkpointed with the clips now (`ckShots`), and read back here.
+  type ShotKept = { seed?: string; prompt?: string; dur?: number; chained?: boolean; staging?: string; cut?: "hard" | "reframe"; voice?: string };
+  let kept: ShotKept[] = [];
+  if (clips.length) {
+    try { const j = JSON.parse(resume.ckShots ?? (await ownCheckpoint(jobId, "ckShots")) ?? "null"); if (Array.isArray(j)) kept = j as ShotKept[]; } catch { /* none kept: read off the script, below */ }
+  }
 
   // CAST VOICES — give each character the voice the merchant picked for them (see `lockVoices`).
   // Kling/Veo act every line in a voice of their own; a one-speaker clip is then RE-VOICED with the
@@ -1012,6 +1052,7 @@ export async function generateTestMovie(opts: {
       shotVoice[idx] = voiceId;
       voicesLocked++;
       await ckpt({ ckClips: clips });
+      await ckpt({ ckShots: shotsKept() });
     } catch (e) {
       console.error(`[testmovie] shot ${idx + 1}: cast voice not applied, keeping the generated voice: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     }
@@ -1021,13 +1062,14 @@ export async function generateTestMovie(opts: {
   for (let i = 0; i < treatment.scenes.length; i++) { const v = clipVoiceAt(i); if (v) void voiceModelFor(v); }
 
   // Per-shot render inputs recorded for the section editor's Phase-3 regenerate (each shot's
-  // seed + clip prompt + duration). Pre-filled null for any clips restored from a resume.
-  const shotSeeds: (string | null)[] = clips.map(() => null);
-  const shotPrompts: (string | null)[] = clips.map(() => null);
-  const shotDurs: number[] = clips.map(() => 0);
-  const shotChained: boolean[] = clips.map(() => false);
+  // seed + clip prompt + duration). For clips restored from a resume: what was kept of them (`ckShots`, above).
+  const shotSeeds: (string | null)[] = clips.map((_, i) => kept[i]?.seed || null);
+  const shotPrompts: (string | null)[] = clips.map((_, i) => kept[i]?.prompt || null);
+  const shotDurs: number[] = clips.map((_, i) => Number(kept[i]?.dur) || 0);
+  const shotChained: boolean[] = clips.map((_, i) => !!kept[i]?.chained);
   // …and the staging each shot was played in (acted-staging.ts), for the piece's own record.
-  const shotStaged: (ActedStaging | null)[] = clips.map(() => null);
+  const shotStaged: (ActedStaging | null)[] = clips.map((_, i) => (isActedStaging(kept[i]?.staging) ? (kept[i].staging as ActedStaging) : null));
+  for (let i = 0; i < clips.length; i++) if (kept[i]?.voice) shotVoice[i] = String(kept[i].voice);
   // WHICH STAGING THE PICTURE A SHOT GROWS OUT OF WAS DRAWN IN — null when it is not a staged picture. (After
   // a restart the next shot may continue the last finished one: it is in that location's staging, unless a
   // frame the maker approved was among the finished shots.)
@@ -1053,6 +1095,26 @@ export async function generateTestMovie(opts: {
   // …and the seams that are a STRAIGHT CUT: a cut to another place, and a horror film's reveal
   // (assembleTestMovie → hardSeams). Kept on the piece as `cut: "hard"`, so a re-cut can keep them.
   const hardSeams = new Set<number>();
+  // THE CUTS INTO THE SHOTS A RESTART FOUND FINISHED — as they were made (`ckShots`). With none kept (a film that
+  // was checkpointed before this was), what the script itself says is still honoured: a shot set in another place
+  // than the one before it is cut straight.
+  for (let i = 1; i < clips.length; i++) {
+    const cut = kept[i] ? kept[i].cut : transitionAt(i) === "location" ? "hard" : undefined;
+    if (cut) softSeams.add(i);
+    if (cut === "hard") hardSeams.add(i);
+  }
+  /** What each finished shot was, as it is checkpointed (and read back above). */
+  const shotsKept = (): string => JSON.stringify(clips.map((_, i): ShotKept => ({
+    ...(shotSeeds[i] ? { seed: shotSeeds[i] as string } : {}), ...(shotPrompts[i] ? { prompt: shotPrompts[i] as string } : {}), ...(shotDurs[i] ? { dur: shotDurs[i] } : {}),
+    ...(shotChained[i] ? { chained: true } : {}), ...(shotStaged[i] ? { staging: shotStaged[i] as string } : {}),
+    ...(hardSeams.has(i) ? { cut: "hard" as const } : softSeams.has(i) ? { cut: "reframe" as const } : {}), ...(shotVoice[i] ? { voice: shotVoice[i] } : {}),
+  })));
+  // THE FACES THE FILM FIRST SHOWED, AFTER A RESTART: they are cut from the film's FIRST master, and were held only
+  // in memory — a film picked up again drew every later place from words alone until a new master happened to be
+  // drawn, and then took ITS two for the faces. The first place's master is checkpointed; they are cut from it again.
+  if (clips.length && masters[locKeyAt(0)]?.url) {
+    try { await cutFirstFaces(masters[locKeyAt(0)]); } catch (e) { console.error(`[testmovie] the first faces could not be cut again after a restart — each new place draws the two from words: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+  }
   let sinceAnchor = clips.length; // resume-safe-ish: force an early re-anchor after a restart
   // What changes a picture or a clip today rides the one switch the staging does (ACTED_STAGING=off: every
   // film as before) — the reveal drawn into its place, the shot that opens on a sound, the face that does not
@@ -1149,7 +1211,19 @@ export async function generateTestMovie(opts: {
     // written before the reveal moved into the room) has its thing in that place's own picture, and keeps it.
     const implied = lastHorror && !revealed && !approvedFrames[i];
     if (!seedAbs && master?.url) {
-      if (tr === "location") {
+      // THE FILM COMES BACK TO A PLACE (a long film does — film-length.ts → filmPlaces; a film written in one
+      // answer never did). That place's master is the place as it was FIRST seen, the two in the middle of what
+      // they were doing there then: started from it again, the scene that returns would open on the first scene's
+      // first moment. So, like a re-anchor (below), the shot that returns grows out of a fresh picture of the same
+      // room, the same light and the same two at THIS shot's moment. No such picture: the master, as it always was.
+      const backNow = tr === "location" && i > 0 && (locFirst.get(locKeyAt(i)) ?? i) < i && stagingOf(master) ? clipEvent(eventAt(i), 110) : "";
+      if (backNow) {
+        const again = await removeLetterbox(await renderSceneSeedChained(
+          `${whereAt[i]}. The same place again, later — the identical room, lighting, wardrobe and the same two people on the same sides of the frame. At this moment: ${backNow}${heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)])?.unseen ? ` ${HEARD_NOT_DRAWN}` : ""} ${NO_TEXT}`,
+          abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
+        ));
+        seedAbs = abs(again) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
+      } else if (tr === "location") {
         seedAbs = abs(master.url); sinceAnchor = 0; if (i > 0) softSeams.add(i);
       } else if (tr === "angle") {
         const reangled = await removeLetterbox(await renderSceneSeedChained(
@@ -1319,7 +1393,11 @@ export async function generateTestMovie(opts: {
     // (A shot nobody speaks in has no words to be sized by: it is SILENT_SHOT_SECONDS long. One that opens on
     //  a sound is its line's length and the sound's — acted-staging.ts → heardSeconds.)
     const clipSecs = silent ? SILENT_SHOT_SECONDS : heard ? heardSeconds(line) : clipSecondsFor(line);
-    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs, aspect);
+    // (the shot's picture is ready, and its take is about to be waited for — as long as ten minutes on one host:
+    //  the film says it is at work now, at every host that gives up, and when the take is back. See `say`.)
+    await say(alive);
+    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs, aspect, undefined, alive);
+    await say(alive);
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, rawPath);
     if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error(`[testmovie] scene ${i + 1}: clip did not download`);
@@ -1339,7 +1417,9 @@ export async function generateTestMovie(opts: {
     shotSeeds.push(seedAbs); shotPrompts.push(prompt); shotDurs.push(clipSecs); shotChained.push(chained); shotStaged.push(chainStaging);
     // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.
     prevFrameUrl = (await extractLastFrame(outPath)) || undefined;
-    await ckpt({ ckClips: clips, ckLastStill: prevFrameUrl });
+    // (the shot is FINISHED, and is never paid for again: its clip, the frame the next one grows out of, and what
+    //  it was — in one write, so that a restart never finds a clip without its record)
+    await ckpt({ ckClips: clips, ckLastStill: prevFrameUrl, ckShots: shotsKept() });
     // put the character's own voice on this shot in the background while the next one renders
     // (the next shot chains off this one's last FRAME, which re-voicing doesn't touch)
     revoiceJobs.push(revoiceAt(clips.length - 1));
@@ -1438,5 +1518,8 @@ export async function generateTestMovie(opts: {
       }),
     },
   });
+  // (the film is made and its shots are on the piece: the record a restart would have needed — every shot's
+  //  prompt, a hundred kilobytes for a long film — is dropped from the job's row, which pages still read)
+  await ckpt({ ckShots: undefined });
   return asset.id;
 }

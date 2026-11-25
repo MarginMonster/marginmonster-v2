@@ -69,7 +69,9 @@ test("the plan is used three times: the writer's list, the picture's camera line
   assert.equal(shotOf(null), null);
 
   const engine = read("app", "lib", "film-engine.server.ts");
-  assert.ok(engine.includes("const camPlan = narrated ? planShots(scenes) : [];"), "a told story only");
+  // (a story long enough to be written in parts is planned a part at a time — film-length.ts; a plan is dealt for
+  //  twenty-four scenes at most, and a five-minute story has thirty-two)
+  assert.ok(engine.includes("let camPlan = narrated ? (inParts ? partSizes.flatMap((n) => planShots(n)) : planShots(scenes)) : [];"), "a told story only");
   assert.ok(engine.includes("    shotListBrief(camPlan) +\n    freshLine +\n"));
   assert.ok(engine.includes("if (camPlan.length) list = list.map((s, i) => { const cam = shotInWords(s.visual) ?? camPlan[i]; return cam ? { ...s, cam } : s; });"), "each scene keeps how it is seen — as its own words say it, else as planned");
   const nar = read("app", "lib", "narrated-story.server.ts");
