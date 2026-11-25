@@ -323,3 +323,128 @@ test("where a part stands: the whole plan, its own line of it, what came before 
   assert.ok(second.includes("IT ENDS THE STORY"));
   assert.ok(second.includes("WHAT HAS BEEN TOLD — the storyteller's words for the parts before this one, as written. They ARE the story so far: carry on from them, contradict none of them, and say none of them again.\n  part 1: Wren had never taken the ferry alone. And the wheelhouse door stood open.\nThis part begins AFTER the last of that.\n"));
 });
+
+/* ---- THE WIRING: what makes the numbers true ---- */
+
+const engine = () => read("app", "lib", "film-engine.server.ts");
+const acted = () => read("app", "lib", "film-dialogue.server.ts");
+
+test("ONE LIMIT: every acted format is five minutes long through one constant, and both engines hold a film to it", () => {
+  const eng = engine();
+  // the per-template `maxScenes: 6` is gone from every acted format — one constant, five minutes of shots
+  assert.ok(eng.includes("export const ACTED_MAX_SHOTS = maxShots(\"acted\");"));
+  assert.equal(eng.split("maxScenes: ACTED_MAX_SHOTS,").length - 1, 4, "the Kids Cartoon, the Moral Story, the Horror Story and the Short Film");
+  assert.ok(!/dialogue: true[^}]*maxScenes: 6,|maxScenes: 6,[^}]*dialogue: true/.test(eng), "no acted format keeps the old ceiling");
+  // …and a genre added from the Short Film inherits it (film-genres.ts → genreTemplate)
+  assert.ok(eng.includes("for (const g of GENRE_FILMS) FILM_TEMPLATES[g.key] = genreTemplate(FILM_TEMPLATES.testmovie, g);"));
+  // the sung formats keep their own (a music video is a song's length)
+  assert.ok(eng.includes("    defaultScenes: 3,\n    minScenes: 1,\n    maxScenes: 24,"), "Music Video");
+  assert.ok(eng.includes("    defaultScenes: 4,\n    minScenes: 2,\n    maxScenes: 8,"), "Kids Music Video");
+  // the writer's clamp — and, whatever a template says, an acted format's ceiling is the shared one
+  assert.ok(eng.includes("if (t.dialogue && !t.lipSyncSinger && !t.sung) return clampShots(\"acted\", n, { min: t.minScenes, fallback: t.defaultScenes });"));
+  // a told story: three scenes to five minutes' worth
+  assert.ok(eng.includes("export const NARRATED_MIN_SCENES = minShots(\"narrated\");"));
+  assert.ok(eng.includes("export const NARRATED_MAX_SCENES = maxShots(\"narrated\");"));
+  assert.ok(eng.includes("export const clampNarrated = (n: number): number => clampShots(\"narrated\", n, { fallback: NARRATED_DEFAULT_SCENES });"));
+  // THE ONE CALL for whoever asks — the page's action, both engines
+  assert.ok(eng.includes("export function filmShots(template: string | undefined, narrated: boolean, n: unknown): number {"));
+  assert.ok(eng.includes("return narrated && canNarrate(t.key) ? clampNarrated(Number(n)) : clampScenes(t, Number(n));"));
+  // the acted engine holds a film to it (it was the template's own maxScenes: six)
+  assert.ok(acted().includes("const want = filmShots(tmpl.key, false, opts.sceneCount ?? treatment.scenes.length);"));
+  assert.ok(!acted().includes("Math.min(tmpl.maxScenes,"));
+  // …and the told engine to clampNarrated
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("keepToldScenes(treatment.scenes, opts.approvedSceneImgs || [], clampNarrated(opts.sceneCount ?? treatment.scenes.length));"));
+});
+
+test("THE RESUME: a film picked up after a restart never pays for a finished shot again — and is the film it would have been", () => {
+  const src = acted();
+  // the finished shots are the checkpointed clips whose files are still there — up to the first that is gone
+  assert.ok(src.includes("const had = resume.ckClips || [];\n  const firstGone = had.findIndex((p) => !p || !fs.existsSync(p));\n  const clips: string[] = firstGone < 0 ? [...had] : had.slice(0, firstGone);"));
+  // the only loop that renders a take starts after them (the take is the paid call; the other call of it is the
+  // editor's re-roll of one shot, renderDialogueClipTo)
+  const film = src.slice(src.indexOf("export async function generateTestMovie("));
+  assert.equal(film.split("await dialogueClip(").length - 1, 1);
+  const loop = film.indexOf("for (let i = clips.length; i < treatment.scenes.length; i++) {");
+  assert.ok(loop > 0 && film.indexOf("await dialogueClip(") > loop);
+  // every finished shot is written down the moment it is finished: its clip, the frame the next grows out of, and
+  // what it was — in ONE write, so that a restart never finds a clip without its record
+  assert.ok(src.includes("await ckpt({ ckClips: clips, ckLastStill: prevFrameUrl, ckShots: shotsKept() });"));
+  assert.ok(src.includes("await ckpt({ ckClips: clips, ckShots: shotsKept() });"), "…and a clip re-voiced in the background");
+  // what each was is read back — from the job's own row, which the worker does not hand over
+  assert.ok(src.includes("try { const j = JSON.parse(resume.ckShots ?? (await ownCheckpoint(jobId, \"ckShots\")) ?? \"null\"); if (Array.isArray(j)) kept = j as ShotKept[]; }"));
+  assert.ok(engine().includes("export async function ownCheckpoint(jobId: string | undefined, key: string): Promise<string | undefined> {"));
+  assert.ok(engine().includes("const job = await db.job.findUnique({ where: { id: jobId }, select: { payload: true } });"));
+  for (const s of [
+    "const shotSeeds: (string | null)[] = clips.map((_, i) => kept[i]?.seed || null);",
+    "const shotPrompts: (string | null)[] = clips.map((_, i) => kept[i]?.prompt || null);",
+    "const shotDurs: number[] = clips.map((_, i) => Number(kept[i]?.dur) || 0);",
+    "const shotChained: boolean[] = clips.map((_, i) => !!kept[i]?.chained);",
+    "for (let i = 0; i < clips.length; i++) if (kept[i]?.voice) shotVoice[i] = String(kept[i].voice);",
+    // the cut INTO a finished shot as it was made — and, for a film checkpointed before this, a change of place cut straight
+    "const cut = kept[i] ? kept[i].cut : transitionAt(i) === \"location\" ? \"hard\" : undefined;",
+    // the faces the film first showed, cut again from its first master
+    "if (clips.length && masters[locKeyAt(0)]?.url) {",
+  ]) assert.ok(src.includes(s), s);
+  // a re-voiced clip is never re-voiced (and paid for) again
+  assert.ok(src.includes("if (!voiceId || revoiceTried.has(idx) || path.basename(clips[idx] || \"\").startsWith(\"tmv-\")) return;"));
+  // the masters and the cast's looks come back from their own checkpoints, so no place is drawn twice
+  assert.ok(src.includes("try { const r = resume.ckMasters ? JSON.parse(resume.ckMasters) : null; if (r && typeof r === \"object\") Object.assign(masters, r); } catch { /* ignore */ }"));
+  // the record is dropped from the job's row when the film is made (its shots are on the piece)
+  assert.ok(src.includes("await ckpt({ ckShots: undefined });"));
+  assert.ok(src.indexOf("await ckpt({ ckShots: undefined });") > src.indexOf("const asset = await db.asset.create({"));
+  // the worker hands a restarted acted film its checkpoints (the record itself is read from the row, above)
+  const q = read("app", "lib", "job-queue.server.ts");
+  assert.ok(q.includes("ckClips: payload.ckClips as string[] | undefined,") && q.includes("ckLastStill: payload.ckLastStill as string | undefined,") && q.includes("ckMasters: payload.ckMasters as string | undefined,"));
+});
+
+test("THE HEARTBEAT: a film that works for two hours is never taken for dead — and one that is dead still is", () => {
+  // what the reaper reads: a job IN_PROGRESS whose row nobody has written for 25 minutes
+  assert.ok(read("app", "worker.server.ts").includes("const STUCK_MS = 25 * 60_000;"));
+  assert.ok(read("app", "worker.server.ts").includes("await reclaimOrphanJobs(STUCK_MS);"));
+  assert.ok(read("app", "lib", "job-queue.server.ts").includes("where: { status: \"IN_PROGRESS\", updatedAt: { lt: cutoff } },"));
+  // …and every checkpoint is a write of the row (the row's updatedAt is set by every write)
+  assert.ok(/model Job \{[^}]*updatedAt\s+DateTime\s+@updatedAt/.test(read("prisma", "schema.prisma")));
+  assert.ok(read("app", "lib", "ugc-ad-pipeline.server.ts").includes("data: { payload: JSON.stringify(merged) },"));
+  const src = acted();
+  // the acted film beats at REAL steps — never on a timer (a timer would keep a wedged job alive for ever)
+  assert.ok(src.includes("const say = async (alive?: () => unknown): Promise<void> => { try { await alive?.(); } catch { /* a beat that fails is skipped */ } };"));
+  assert.ok(src.includes("const alive = () => ckpt({ ckBeat: Date.now() });"));
+  assert.ok(!/setInterval/.test(src));
+  // before the take is waited for, at every host that gives up (each is waited for up to ten minutes), at every
+  // failed try, and when the take is back
+  assert.ok(src.includes("const VEO_POLL_MS = 10 * 60_000;"));
+  assert.ok(src.includes("await say(alive);\n    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs, aspect, undefined, alive);\n    await say(alive);"));
+  const kling = src.slice(src.indexOf("async function klingDialogueClip("), src.indexOf("async function dialogueClip("));
+  assert.ok(kling.includes("console.error(`[testmovie] ${step.name} failed (${stage}): ${e instanceof Error ? e.message.slice(0, 360) : e}`);\n      // (a host gave up — after as long as ten minutes: the film is still at work, and says so)\n      await say(alive);"));
+  const retry = src.slice(src.indexOf("async function dialogueClip("), src.indexOf("/** Render ONE dialogue clip end-to-end"));
+  assert.ok(retry.includes("await say(alive);") && retry.includes("? await klingDialogueClip(seedAbs, prompt, stage, durationSec, host, alive)"));
+  // …each try at a place's picture
+  assert.ok(src.includes("// (a picture came back, or did not — either way the film is at work, and says so: see `say`)\n      await say(alive);"));
+  // …and the join between its parts (film-join.server.ts → joinInParts), the loudness and the captions as before
+  assert.ok(src.includes("return joinWhole({ clips, outPath, prep: SCALE, seams, length: \"picture\", encode: ENCODE, label: \"[testmovie]\", beat });"));
+});
+
+test("THE WRITER IN PARTS: a long film is planned, then written a part at a time — each told every line before it", () => {
+  const eng = engine();
+  assert.ok(eng.includes("const partSizes = storyFormat ? scriptParts(way, scenes) : [scenes];"));
+  assert.ok(eng.includes("const inParts = partSizes.length > 1;"));
+  // the plan, asked for twice at most; no plan → the film is not quietly made shorter: the maker is told
+  assert.ok(eng.includes("jsonSchema: { name: \"film_plan\", schema: planSchema(way) },"));
+  assert.ok(eng.includes("try { plan = takePlan(JSON.parse(raw), { way, parts: partSizes.length }); } catch { plan = null; }"));
+  assert.ok(eng.includes("if (!plan) throw new Error(`[film] a ${scenes}-${narrated ? \"scene story\" : \"shot film\"} could not be planned in ${partSizes.length} parts`);"));
+  // each part told the plan, where it stands, and EVERY line the parts before it wrote
+  assert.ok(eng.includes("const ask = promptFor(n, cams, { plan: planned, index: j, said: spans.map(([a, b]) => all.slice(a, b).map((s) => s.caption || \"\").filter(Boolean)), ...(first ? { seenAs: first.visual } : {}) });"));
+  assert.ok(eng.includes("type PartOf = { plan: FilmPlan; index: number; /** the lines already written, part by part */ said: string[][]; seenAs?: string };"));
+  // an acted scene is in the ONE place its plan gave it — the same words every time the film is there
+  assert.ok(eng.includes("all.push(...got.map((s) => (narrated ? s : { ...s, where: planned.parts[j].where })));"));
+  // a film short enough for one answer is written by the brief exactly as it was
+  assert.ok(eng.includes("const prompt = promptFor(scenes, camPlan, null);"));
+  assert.ok(eng.includes("if (!part) return prompt;"));
+  // every part's answer is the size a whole film's was: six acted shots (1,500 tokens), eight told scenes (2,400)
+  assert.ok(eng.includes("maxTokens: tmpl.lipSyncSinger ? (scenes > 12 ? 4400 : 2600) : narrated ? 2400 : 1500,"));
+  assert.ok(Math.max(...scriptParts("acted", maxShots("acted"))) <= 6 && Math.max(...scriptParts("narrated", maxShots("narrated"))) <= 8);
+  // the lines of a long film are checked a part at a time, three parts at once
+  assert.ok(eng.includes("await Promise.all(Array.from({ length: Math.min(3, spans.length) }, async () => {"));
+  // and the answer says how it was planned
+  assert.ok(eng.includes("acts?: Array<{ what: string; where?: string; scenes: number }>;"));
+});

@@ -106,7 +106,8 @@ export function lengthStops(way: FilmWay, o: { min?: number; per?: number } = {}
  *  NARRATED — every scene's picture moves: Seedance 1 Pro Fast at 1080p, $0.0486 a second, asked for in whole
  *   seconds (story-motion.ts): $0.051 a film second. A 2K picture a scene ($0.15, and one in three drawn twice)
  *   with the four looks at it: $0.026. The voice, the listen, the cast's portraits, the music bed: under half a
- *   cent. ≈ $0.08 a second.
+ *   cent. ≈ $0.08 a second. (While films are free that is ours to pay: a five-minute told story is about $24 —
+ *   $15.50 of it the motion of its 32 scenes — and a five-minute acted one about $54.)
  * A Studio-plan token is worth $0.0433, and his rule is at least 20% profit on every generation: acted needs
  * $0.18 × 1.2 ÷ $0.0433 = 4.9 tokens a second or more, told $0.08 × 1.2 ÷ $0.0433 = 2.2. */
 export const FILM_TOKENS_PER_SECOND: Record<FilmWay, number> = { acted: 5, narrated: 2.5 };
@@ -130,7 +131,9 @@ export function tokensFor(way: FilmWay, seconds: number): number {
  * top of the range is wider: 2 + 2.5 a shot, to 4 + 3.2 a shot.
  *
  * NARRATED (narrated-story.server.ts): the voice and the listen once; the pictures FOUR at a time; the clips that
- * move them THREE at a time, each then brought to the story's size one at a time; one cut. MEASURED 2026-11-23
+ * move them THREE at a time, each then brought to the story's size one at a time; one cut (past twelve scenes, six
+ * scenes at a time and then put together — story-join.ts: the same encoding, and a few seconds more for the sound
+ * and the last pass, which copies the picture). MEASURED 2026-11-23
  * (story-motion.ts → storyTypicalSeconds, the sum the page and the Archive already count down from): 60 s + 12 s
  * a scene, and when the pictures move 20 s + 30 s a wave of three + 4 s a scene. That was at 720p. Since
  * 2026-11-25 the story is cut in Full HD at a finer setting, which is not yet timed: the cut is taken as 0.4 to
