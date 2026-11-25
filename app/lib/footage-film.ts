@@ -125,7 +125,17 @@ export function momentSeconds(camera: CameraLook, v: unknown): number {
 /** A card's words as they are kept: capitals (a card is drawn in capitals), one line, 28 characters — and only what
  *  the camera's mono face can draw: Latin letters with their accents, figures, plain punctuation, the middle dot and
  *  the dashes (anything else would be an empty box on the card). */
-export const cardWords = (v: unknown): string => words(v, 80).replace(/['‘`´]/g, "’").replace(/[^\x20-\x7E¡-ſ–—’]/g, "").replace(/[\\%{}[\]<>|;^~]/g, "").replace(/\s+/g, " ").trim().toUpperCase().slice(0, FOOTAGE_LIMITS.when).trim();
+export const cardWords = (v: unknown): string => fitCard(words(v, 80).replace(/['‘`´]/g, "’").replace(/[^\x20-\x7E¡-ſ–—’]/g, "").replace(/[\\%{}[\]<>|;^~]/g, "").replace(/\s+/g, " ").trim().toUpperCase());
+/** A card too long is cut at a WORD, never inside one: "TUESDAY 14 OCTOBER · 11:52 PM" cut at 28 characters was drawn
+ *  as "… 11:52 P" — and read back by the clock as 11:52 in the MORNING (review, 2026-11-25, of the stand-in cards). */
+function fitCard(s: string): string {
+  const max = FOOTAGE_LIMITS.when;
+  if (s.length <= max) return s;
+  const head = s.slice(0, max + 1);
+  // (no space to cut at — one word longer than a card — is cut where it must be)
+  const cut = /\s/.test(head) ? head.replace(/\s+\S*$/, "").replace(/[\s·•|,:;–—-]+$/, "").trim() : "";
+  return (cut || s.slice(0, max)).trim();
+}
 
 /** One moment, cleaned — or null when it has no line. `before`: the moment before it (a house camera's room carries
  *  on when a moment names none). */

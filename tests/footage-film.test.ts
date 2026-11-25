@@ -187,6 +187,13 @@ test("THE OUTLINE, CHECKED: the writer's is held to its shape, and what the page
   assert.equal(cardWords("it's \"50%\" [done]; \\ {x} <y>"), "IT’S ’50’ DONE X Y");
   assert.equal(cardWords("夜 1 · 午前2時"), "1 · 2", "a script the face cannot draw is left off, never drawn as empty boxes");
   assert.equal(cardWords("día 2 — 16:40"), "DÍA 2 — 16:40");
+  // TOO LONG: cut at a word, never inside one ("… 11:52 P" was drawn, and read by the clock as the morning — review,
+  // 2026-11-25), and never left ending on a separator; one word longer than a card is cut where it must be
+  assert.equal(cardWords("Tuesday 14 October · 11:52 PM"), "TUESDAY 14 OCTOBER · 11:52");
+  assert.equal(cardWords("NIGHT 12 · 3:07 AM · SECOND FLOOR"), "NIGHT 12 · 3:07 AM · SECOND");
+  assert.equal(cardWords("NIGHT 2 · 3:07 AM · BASEMENT STAIRS"), "NIGHT 2 · 3:07 AM · BASEMENT");
+  assert.equal(cardWords("ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG"), "ABCDEFGHIJKLMNOPQRSTUVWXYZAB");
+  for (const s of ["Tuesday 14 October · 11:52 PM", "x ".repeat(40), "NIGHT 1 · 2:14 AM"]) assert.ok(cardWords(s).length <= FOOTAGE_LIMITS.when, s);
   // how many moments, and how long each may be
   assert.deepEqual([0, 1, 2.4, 8, 9, "5", "x", null].map(momentCount), [1, 1, 2, 8, 8, 5, 1, 1]);
   assert.deepEqual([3, 6, 9.4, 12, 40, 0, "x"].map((v) => momentSeconds("phone", v)), [6, 6, 9, 12, 12, 10, 10]);
