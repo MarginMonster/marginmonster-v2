@@ -1122,7 +1122,8 @@ test("NEVER PAID FOR TWICE: the outline and the direction are kept as ckFo, ever
   assert.ok(srv.includes("return save(i, { left: why.slice(0, 160) });") && srv.includes("const live = (): number[] => direction.map((d, i) => (d && !records[i].left ? i : -1)).filter((i) => i >= 0);"));
   assert.ok(srv.includes('const kept = text(resume("ckFj")), joined = kept ? readJson(kept) : null;') && srv.includes("await ckpt({ ckFj: JSON.stringify(j) });"));
   assert.ok(srv.includes('const written = resume("ckFa");') && srv.includes("await ckpt({ ckFa: asset.id });"));
-  // the job says it is alive while its rolls are in the air (the queue's reaper: 25 minutes untouched = abandoned)
+  // the job says it is alive while its rolls are in the air (the queue's reaper: 5 minutes untouched = abandoned — 25
+  // until 2026-11-25; the worker beats every running job as well, tests/job-beat.test.ts)
   assert.ok(srv.includes("const alive = setInterval(() => { void ckpt({ ckFbeat: Date.now() }); }, 4 * 60_000);") && srv.includes("} finally { clearInterval(alive); }"));
   // every key starts "ck": a retry from the Archive clears them all (web.archive.tsx drops every key that does)
   for (const key of srv.match(/\bck[A-Z][A-Za-z]*/g) || []) assert.ok(/^ck(F[oamjht]|Fbeat|Take|Still|Opens|Roll|Raw|Host|Spoke|Cuts|Trim|Scare|House|Set|Scene|Cut)$/.test(key), key);

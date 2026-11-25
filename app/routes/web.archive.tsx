@@ -414,7 +414,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return Math.round(((lo + hi) / 2) * 60);
   };
   const KIND: Record<string, "video" | "image" | "music" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_SONG: "music", GENERATE_BLOG_POST: "blog" };
-  const cookingCards: { jobId: string; kind: "video" | "image" | "music" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number; waiting: boolean; ahead: number | null; /** a rendering STORY's own pictures, passing behind the spinner (story-picture.ts → cookingReel) */ reel: string[] }[] = [];
+  const cookingCards: { jobId: string; kind: "video" | "image" | "music" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number; waiting: boolean; ahead: number | null; /** a rendering STORY's own pictures, passing behind the spinner (story-picture.ts → cookingReel) */ reel: string[]; /** running again after a restart (the queue counts each in `__reclaims`) */ restarted: boolean }[] = [];
   // A PIECE THAT HAS NOT STARTED SAYS SO. One job of a kind is made at a time (lib/job-lanes.ts), so a
   // piece can be waiting its turn — and it used to be shown as "Rendering · ~3 min left", counting down
   // an estimate for a render nobody had begun, then "still rendering" for as long as somebody else's
@@ -422,7 +422,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const inLine = jobs.filter((j) => j.status === "PENDING" && (!j.runAt || j.runAt.getTime() <= nowMs));
   const places = inLine.length ? await placesInLine(inLine.map((j) => ({ id: j.id, type: j.type, payload: j.payload }))).catch(() => new Map<string, number | null>()) : new Map<string, number | null>();
   for (const j of jobs) {
-    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; section?: string; contentType?: string; filmScenes?: number; filmMode?: string; filmPictures?: string; lyricSeconds?: number } = {};
+    let p: { productImageUrl?: string; productTitle?: string; refunded?: boolean; __startedAt?: string; __reclaims?: number; section?: string; contentType?: string; filmScenes?: number; filmMode?: string; filmPictures?: string; lyricSeconds?: number } = {};
     try { p = JSON.parse(j.payload); } catch { /* ignore */ }
     // Unified archive: every cooking tile shows, whichever section started it.
     const due = !j.runAt || j.runAt.getTime() <= nowMs;
@@ -476,7 +476,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // the writer has given it one
     const isFilm = j.type === "GENERATE_VIDEO_AD" && p.contentType === "film";
     const reel = isFilm && !failed ? cookingReel(p) : [];
-    cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || (isFilm ? cookingTitle(p) : ""), reel, etaSec, elapsedSec, refunded: !!p.refunded, retryCost, waiting: !failed && j.status === "PENDING", ahead: places.get(j.id) ?? null });
+    // A PIECE PICKED UP AGAIN AFTER A RESTART SAYS SO (2026-11-25). A crash or a deploy under a render hands the job
+    // back and it resumes from its checkpoints — with its clock started again (__startedAt is stamped at each claim),
+    // so the card's minutes went back to the beginning with no word why. The queue counts each hand-back on the
+    // payload already read here (`__reclaims`; a retry from the Archive starts it at none — job-stall.ts → freshRun).
+    const restarted = j.status === "IN_PROGRESS" && typeof p.__reclaims === "number" && p.__reclaims > 0;
+    cookingCards.push({ jobId: j.id, kind: KIND[j.type] || "image", status: failed ? "failed" : "generating", productImage: p.productImageUrl || null, productTitle: p.productTitle || (isFilm ? cookingTitle(p) : ""), reel, etaSec, elapsedSec, refunded: !!p.refunded, retryCost, waiting: !failed && j.status === "PENDING", ahead: places.get(j.id) ?? null, restarted });
   }
   const linked = linkedFromCache(shop.socialsJson).filter(isPostable);
   // WHICH PIECES CAN BE REMIXED.
@@ -3368,7 +3373,7 @@ export default function WebArchive() {
                 {j.kind === "blog"
                   ? (j.productTitle ? t("Writing about {title}…", { title: j.productTitle }) : t("Writing your article…"))
                   : (j.productTitle ? t("Creating your {kind} — {title}…", { kind: j.kind, title: j.productTitle }) : t("Creating your {kind}…", { kind: j.kind }))}
-                <div className="s">{j.waiting ? inLineText(j.ahead, t) : <>{t("Rendering")} · {j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec, t)}</>}</div>
+                <div className="s">{j.waiting ? inLineText(j.ahead, t) : <>{j.restarted ? t("Picked up again after a restart") : t("Rendering")} · {j.etaSec > 10 ? "~" : ""}{fmtEta(j.etaSec, j.elapsedSec, t)}</>}</div>
               </div>
             </div>
           ))}

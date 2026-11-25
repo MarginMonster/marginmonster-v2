@@ -195,8 +195,9 @@ test("a waiting piece knows how many are made before it — and its card says th
   const archive = read("app", "routes", "web.archive.tsx");
   assert.ok(archive.includes('const inLine = jobs.filter((j) => j.status === "PENDING" && (!j.runAt || j.runAt.getTime() <= nowMs));'));
   assert.ok(archive.includes("await placesInLine(inLine.map((j) => ({ id: j.id, type: j.type, payload: j.payload })))"), "its own lane: a story is not behind the films");
-  assert.ok(archive.includes('waiting: !failed && j.status === "PENDING", ahead: places.get(j.id) ?? null });'));
-  assert.ok(archive.includes('{j.waiting ? inLineText(j.ahead, t) : <>{t("Rendering")} · '));
+  // (…and, 2026-11-25, a piece running again after a restart says so in place of "Rendering": tests/job-beat.test.ts)
+  assert.ok(archive.includes('waiting: !failed && j.status === "PENDING", ahead: places.get(j.id) ?? null, restarted });'));
+  assert.ok(archive.includes('{j.waiting ? inLineText(j.ahead, t) : <>{j.restarted ? t("Picked up again after a restart") : t("Rendering")} · '));
   assert.ok(archive.includes('{j.waiting ? t("In line") : <>'));
   const words = archive.slice(archive.indexOf("function inLineText("), archive.indexOf("function fmtEta("));
   assert.ok(words.includes('if (ahead == null) return t("In line — it starts when its turn comes");'));
@@ -366,7 +367,8 @@ test("a job that is waiting its turn says it is alive", async () => {
   // the worker hands the job's own row to it
   const queueSrc = read("app", "lib", "job-queue.server.ts");
   assert.ok(queueSrc.includes('await asJob(\n      () => runJob(jobType, jobShop, payload),\n      () => db.job.updateMany({ where: { id: jobId, status: "IN_PROGRESS" }, data: { updatedAt: new Date() } }),\n    );'));
-  assert.ok(TURN_BEAT_MS * 10 < 25 * 60_000, "many beats inside the reaper's 25 minutes");
+  // (the reaper's ceiling is five minutes since 2026-11-25 — every running job also beats on its own: job-beat.ts)
+  assert.ok(TURN_BEAT_MS * 4 < 5 * 60_000, "several beats inside the reaper's five minutes");
 });
 
 test("an encode that fails gives its turn up like any other", async () => {
@@ -393,7 +395,9 @@ test("a turn that never ends does not stop every other encode for good", async (
   assert.deepEqual(ffmpegTurns(), { running: 0, waiting: 0 });
   // the real bound sits above the longest hard ceiling any runner has (10 minutes)
   assert.ok(FFMPEG_TURN_WAIT_MS > 10 * 60_000);
-  assert.ok(FFMPEG_TURN_WAIT_MS < 25 * 60_000, "and under the reaper's 25 minutes");
+  // a wait may outlast the reaper's five minutes (2026-11-25; 25 before) — which is why a job waits BEATING: once a
+  // minute while it waits or encodes (the test above), and the worker's own beat besides (tests/job-beat.test.ts)
+  assert.ok(FFMPEG_TURN_WAIT_MS > 5 * 60_000 && TURN_BEAT_MS * 4 < 5 * 60_000, "a long wait is a beating wait");
 });
 
 test("a try that failed rests before the next — a restart does not", async () => {
@@ -477,7 +481,8 @@ test("the queue claims within a lane, in turn-taking order, with a slot per lane
 test("each lane drains in its own loop, and the chores never wait for a job", () => {
   assert.ok(worker.includes("const drains = LANES.map((lane) =>\n  guarded(`${lane} lane`, async () => {"));
   assert.ok(worker.includes("processed = await processNextJob(lane);"));
-  assert.ok(worker.includes("function tick() {\n  void chores();\n  for (const drain of drains) void drain();\n}"));
+  // (a process told to stop — SIGTERM, 2026-11-25 — starts neither: tests/job-beat.test.ts)
+  assert.ok(worker.includes("  if (stopSwitch.stopped()) return;\n  void chores();\n  for (const drain of drains) void drain();\n}"));
   const chores = worker.slice(worker.indexOf('const chores = guarded("chores"'), worker.indexOf("const drains = "));
   assert.ok(chores.includes("await postDueSlots();"), "a scheduled post goes out while a film renders");
   assert.ok(chores.includes("await tickDueSeries()"));

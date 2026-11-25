@@ -551,7 +551,7 @@ export async function generateVideoAd(params: GenerateVideoParams): Promise<stri
       // A checkpoint outlives the thing it points at. Provider delivery links
       // die after about an hour, and a retry can easily start later than that:
       // a paused campaign defers its job indefinitely, and three attempts with
-      // a 25-minute stuck window already reach past it. The prediction still
+      // a 25-minute stuck window (as it was until 2026-11-25) already reached past it. The prediction still
       // reports "succeeded" and hands back its stored output URL, so without a
       // probe we would sail on and build an asset around a dead link.
       if (videoUrl && !(await checkpointUrlAlive(videoUrl))) {

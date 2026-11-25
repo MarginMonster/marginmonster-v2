@@ -160,8 +160,9 @@ async function makeStoryPoster(o: { stills: string[]; visuals: string[]; names: 
 export async function narratedSceneSeeds(o: {
   template?: string; treatment: FilmTreatment; cast?: StoryCast; aspect?: string; /** draw only this scene, or only these */ only?: number | number[]; castRef?: string | null;
   /** A JOB THAT IS DRAWING SAYS SO (2026-11-25, stories up to five minutes): called whenever a picture comes back.
-   *  The worker takes a job nobody has touched for 25 minutes to be dead and starts it again beside itself
-   *  (job-queue.server.ts → reclaimOrphanJobs); twelve pictures four at a time were a few minutes, thirty-two —
+   *  The worker took a job nobody had touched for 25 minutes to be dead and started it again beside itself
+   *  (job-queue.server.ts → reclaimOrphanJobs; five minutes since 2026-11-25, when the worker began to beat every
+   *  job it runs itself — job-beat.ts — so this is a second voice); twelve pictures four at a time were a few minutes, thirty-two —
    *  each up to three goes, each go up to two and a half minutes on each model of the ladder — can be longer
    *  than that. Called at a real step, never on a timer, so a job that is truly stuck still says nothing. */
   beat?: () => unknown;

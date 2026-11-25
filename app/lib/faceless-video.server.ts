@@ -288,7 +288,7 @@ async function assembleFaceless(opts: {
       const run = await runFfmpeg(buildArgs(withCaps, kb, mus));
       if (run.status === 0 && produced()) return;
       lastErr = (run.stderr || "").slice(-240);
-      await beat(); // heartbeat between rungs so a multi-encode assembly can't near the 25-min reaper
+      await beat(); // heartbeat between rungs so a multi-encode assembly can't near the reaper's 5 min (the worker beats too: job-beat.ts)
     }
   } finally { cap.cleanup(); }
   throw new Error(`[faceless] ffmpeg failed after ${rungs.length} rungs: ${lastErr}`);

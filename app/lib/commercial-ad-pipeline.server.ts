@@ -935,7 +935,8 @@ export async function generateCommercialAd(params: CommercialAdParams): Promise<
     //
     // Keyframes and clips are both run through livePrefix on resume, for the
     // reason stated above them: a provider URL expires in about an hour, and
-    // the orphan window alone is 25 minutes. The voice-over checkpoint was
+    // a resumed job can start long after its checkpoint (the orphan window
+    // alone was 25 minutes until 2026-11-25). The voice-over checkpoint was
     // taken on trust. Once it aged out, every remaining attempt re-rendered
     // all five clips for real money, reached assembly, and died downloading a
     // dead audio URL — a poison pill that burns the most expensive artifact in
