@@ -28,8 +28,11 @@ EXPOSE 3000
 # remix-serve binds to Render's provided PORT automatically.
 # mkdir first: the persistent disk mounts EMPTY at /app/data/renders — make
 # sure the dir exists and is writable before anything touches it.
-# `exec` (2026-11-25): the server REPLACES the shell, so Render's SIGTERM on a deploy reaches node (npx forwards it to
-# remix-serve), and the worker can mark its running jobs "stopped by a deploy" and take no new one (worker.server.ts →
-# stopTakingJobs; job-stall.ts: a deploy is not a stall). As PID 1 a shell that does not exec ignores SIGTERM, and the
-# app only ever saw the SIGKILL 30 s later.
-CMD ["sh", "-c", "mkdir -p /app/data/renders && npx prisma db push --accept-data-loss && exec npx remix-serve ./build/server/index.js"]
+# NODE ITSELF IS THE SERVER PROCESS (2026-11-25), so Render's SIGTERM on a deploy reaches the app: the worker marks its
+# running jobs "stopped by a deploy" and takes no new one (worker.server.ts → stopTakingJobs; job-stall.ts: a deploy is
+# not a stall), remix-serve closes its listener, and a render in flight has Render's 30 s grace. `exec npx remix-serve`
+# was tried first and LOOKED at on the live log: npx runs the bin through ANOTHER shell, that shell took the signal and
+# died ("npm error signal SIGTERM" at 18:17:24 ET), and the worker never heard it. remix-serve's own bin is
+# dist/cli.js (its package.json "bin"); it reads the build path from argv[2] and PORT from the environment, exactly as
+# the bin does.
+CMD ["sh", "-c", "mkdir -p /app/data/renders && npx prisma db push --accept-data-loss && exec node ./node_modules/@remix-run/serve/dist/cli.js ./build/server/index.js"]
