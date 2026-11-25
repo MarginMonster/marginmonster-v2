@@ -927,7 +927,7 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   // stronger editor; the permissive one (one picture) is never told of it. Since 2026-11-25 ("Monster should be castable
   // also") it no longer depends on the last shot's words naming it, and a threat the STORY invented is drawn from its
   // picture the same way (its portrait, else the picture that first showed it) — tests/acted-sighting.test.ts
-  assert.ok(eng.includes("const ref = thingRef();") && eng.includes("const thingFace = ref?.url;") && eng.includes("const creatureRef = ref?.kind === \"creature\";"));
+  assert.ok(eng.includes("const ref = thingRef();") && eng.includes("const thingFace = cloth ? undefined : ref?.url;") && eng.includes("const creatureRef = ref?.kind === \"creature\";"));
   assert.ok(!eng.includes("(scene.visual || \"\").toLowerCase().includes(c.name.trim().toLowerCase())"), "never only when the last scene names it");
   assert.ok(eng.includes("const ask = ref ? revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, ref: ref.kind, name: threat?.name, away, cloth, tent, state: placeNow }) : askOne;"));
   // (…and LOOKED at before it is used, as every film picture is: clothed, or dropped for the next editor — 2026-11-25, S8)
@@ -1372,7 +1372,7 @@ test("the reveal is the thing the film already showed, in that shot's words; not
   // the engine hands it the earlier shots' words, unless the thing is a creature the maker chose
   const eng = fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   // (…and, when no other words name it, those of the picture that first showed it — 2026-11-25, its own picture rides too)
-  assert.ok(eng.includes("const seen = creatureRef ? \"\" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || \"\")) || (ref?.kind === \"scene\" ? firstShown?.words || \"\" : \"\"));"), "(the story's own cast line for it first, when the moment names it)");
+  assert.ok(eng.includes("const seen = creatureRef ? \"\" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || \"\")) || (ref?.kind === \"scene\" ? firstShown?.words || \"\" : \"\") || (cloth ? threat?.look || \"\" : \"\"));"), "(the story's own cast line for it first, when the moment names it)");
   // (…and whether the place's own picture already has it far off — REVEAL_MOVED, review 2026-11-25)
   // (…and, since S12, at the cloth and in the place as it now is: tests/place-state-reveal.test.ts)
   assert.ok(eng.includes("creature: creatureRef, seen, outdoors, away, cloth, tent, state: placeNow });"));
@@ -1398,7 +1398,7 @@ test("an invented character keeps the face the film first showed; anybody else n
   // anybody else the words name: their own cast line rides with the words, into the master and the reveal
   assert.ok(eng.includes("return visual && others.length ? `${visual} (Who else is in it, as the story describes them: ${others.join(\"; \")}.)` : visual;"));
   assert.ok(eng.includes("lastHorror && tr === \"location\" ? undefined : withLooks(scene.visual), thingHere);"));
-  assert.ok(eng.includes("const seen = creatureRef ? \"\" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || \"\")) || (ref?.kind === \"scene\" ? firstShown?.words || \"\" : \"\"));"));
+  assert.ok(eng.includes("const seen = creatureRef ? \"\" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || \"\")) || (ref?.kind === \"scene\" ? firstShown?.words || \"\" : \"\") || (cloth ? threat?.look || \"\" : \"\"));"));
   assert.ok(eng.includes("if (!nm || [spkA, spkB].some((s) => !!s && firstName(s) === firstName(nm))) return false;"), "the two who talk are not 'anybody else'");
 });
 

@@ -1503,11 +1503,15 @@ export async function generateTestMovie(opts: {
       // naming it. (The stronger editors take the picture as a second image; the permissive one, never told of it,
       // has the words.)
       const ref = thingRef();
-      const thingFace = ref?.url;
+      // (AT THE CLOTH no picture of it rides along: only its SHADOW is seen there, and handed her portrait the editor
+      //  painted her face on the canvas — the owner, of the live Episode 2: "looks like wizard of oz trash / not
+      //  realistic", 2026-11-25. Its shape is told in words instead — its look, below — acted-staging.ts → CLOTH_SHADOW_OF.)
+      const thingFace = cloth ? undefined : ref?.url;
       const creatureRef = ref?.kind === "creature";
       // (…and the words of the shot that showed it still go with it — "Who Calls From the Shallows" showed a woman
-      //  waist-deep in the lake, and its last shot drew a bald ghoul's face in a window in the tent: seenBefore)
-      const seen = creatureRef ? "" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || "")) || (ref?.kind === "scene" ? firstShown?.words || "" : ""));
+      //  waist-deep in the lake, and its last shot drew a bald ghoul's face in a window in the tent: seenBefore; at the
+      //  cloth, failing those, the film's thing's own look gives its shadow its shape — long wet hair, the nightgown)
+      const seen = creatureRef ? "" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || "")) || (ref?.kind === "scene" ? firstShown?.words || "" : "") || (cloth ? threat?.look || "" : ""));
       revealSeen = !!seen || (!!ref && !creatureRef);
       const revealSides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) }));
       // (the place's own picture was drawn with it far off — its first scene showed it: one of it, come close, never two)
@@ -1541,7 +1545,7 @@ export async function generateTestMovie(opts: {
         try { const drawn = await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), "jpg")); seedAbs = drawn ? abs(await clothedOrDropped(drawn, aspect)) : undefined; }
         catch (e) { console.error(`[testmovie] shot ${i + 1}: the reveal on ${model} did not come: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
       }
-      if (seedAbs) { revealed = true; revealedCreature = creatureRef; sinceAnchor = 0; console.log(`[testmovie] shot ${i + 1}: the reveal — drawn into the place's own picture (${locKeyAt(i).slice(0, 40)})${ref ? `, from the thing's own picture (${ref.kind})` : ""}`); }
+      if (seedAbs) { revealed = true; revealedCreature = creatureRef; sinceAnchor = 0; console.log(`[testmovie] shot ${i + 1}: the reveal — drawn into the place's own picture (${locKeyAt(i).slice(0, 40)})${cloth ? ", its SHADOW on the cloth (no picture of it handed over)" : ref ? `, from the thing's own picture (${ref.kind})` : ""}`); }
       else console.error(`[testmovie] shot ${i + 1}: the reveal's picture did not come — the shot is seeded as any other, and the clip is not told what the thing is (the two react to something never seen)`);
     }
     // THE SIGHTING (acted-staging.ts → sightingOf, sightingPicture). WHEN THEY SEE IT, WE SEE IT: kept all five shots in

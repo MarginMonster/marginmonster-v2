@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CHANGE_KEEP, CLOTH_OUTSIDE, CLOTH_OUTSIDE_GAP, DONE_STAYS_DONE, NOTHING_GLOWS, REVEAL_MOVED, REVEAL_MOVED_CLOTH, REVEAL_PARTS, REVEAL_STAY, SEEN_AT_THE_END, SIGHT_SHADOW, SIGHT_SHADOW_MOVES, SIGHT_TURN_SHADOW,
+  CHANGE_KEEP, CLOTH_LOOK, CLOTH_LOOK_UP, CLOTH_OUTSIDE, CLOTH_OUTSIDE_GAP, CLOTH_PALMS, CLOTH_SHADOW_OF, DONE_STAYS_DONE, NOTHING_GLOWS, REVEAL_MOVED, REVEAL_MOVED_CLOTH, REVEAL_DIM as REVEAL_DIM_WORDS, REVEAL_PARTS, REVEAL_STAY, SEEN_AT_THE_END, SIGHT_SHADOW, SIGHT_SHADOW_MOVES, SIGHT_TURN_SHADOW,
   changePicture, revealClip, revealPart, revealPicture, sightingClip, sightingPicture, silentRules, stagedRules, thingRefNote,
 } from "../app/lib/acted-staging.ts";
 import { placeChangeIn, placeStateAt, stateNow } from "../app/lib/place-state.ts";
@@ -32,7 +32,16 @@ test("at a tent the reveal is OUTSIDE: its face in the wall, in the roof where t
   }
   assert.ok(REVEAL_PARTS.fabric.moves.includes("Nothing comes through the cloth, nothing tears, nothing is inside with them"));
   assert.ok(REVEAL_PARTS.roof.moves.includes("the roof sags a little lower, slowly"));
-  assert.ok(REVEAL_PARTS.zipper.moves.includes("the gap grows no wider; the face stays OUTSIDE"));
+  assert.ok(REVEAL_PARTS.zipper.moves.includes("the gap grows no wider; nothing comes through, nothing reaches in"));
+  // ITS SHADOW, NEVER A FACE (the owner, of the live Episode 2's face moulded in the canvas, 2026-11-25: "looks like wizard
+  // of oz trash / not realistic") — drawn on that film's own frame and LOOKED at: the moonlit silhouette reads as real
+  for (const k of ["fabric", "roof", "zipper"] as const) {
+    const p = REVEAL_PARTS[k];
+    assert.ok(/SHADOW/.test(p.seen) && /no face, no eyes, no teeth, no features, nothing lit inside it/.test(p.seen), `${k}: a flat shadow, nothing lit inside it`);
+    assert.ok(/lit from OUTSIDE|moonlit/.test(p.seen) && /turned down low|has dimmed/.test(p.seen), `${k}: the lantern down, the light outside — what makes a shadow on a tent wall`);
+    assert.ok(!/moulded|relief|pale through|bulges IN where a FACE/.test(p.seen + p.clip), `${k}: never a face in the cloth`);
+    assert.ok(/silhouette with no face/.test(p.clip), `${k}: the clip says so too`);
+  }
 });
 
 test("the reveal's picture at a tent: the place as it now is, the face pressed in from outside — never standing in the doorway, never glowing", () => {
@@ -40,39 +49,43 @@ test("the reveal's picture at a tent: the place as it now is, the face pressed i
     { visual: "Moments later, Mireille claws the zipper pull down hard, sealing the gap as Costin presses both palms flat against the tent wall.", where: TENT },
     { visual: "Costin drags their heavy duffel bag across the tent floor and wedges it hard against the sealed zipper seam.", where: TENT },
   ], 2));
-  // EPISODE 2's last shot, its thing's portrait as the second picture
+  // EPISODE 2's last shot — handed a portrait (`ref`), the cloth reveal still takes NONE: only its shadow shows there, and
+  // handed her face the editor painted it on the canvas (the owner: "wizard of oz trash", 2026-11-25)
   const roof = revealPicture({ moment: EP2_LAST, sides, outdoors: true, ref: "figure", cloth: true, tent: true, state, mood: "Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs." });
-  assert.ok(roof.includes(`Show it like this, and no more of it: High in the picture, in the tent's sloping roof above Costin, the one on the right, ${REVEAL_PARTS.roof.seen}.`));
-  // (drawn from Episode 2's own frames and LOOKED at: "pale through the cloth" drew a face seen through gauze, and a face
-  //  as tall as the two of them was printed on the door — the cloth hides it, it is life-size, a bulge in the cloth)
-  for (const k of ["fabric", "roof"] as const) {
-    assert.ok(REVEAL_PARTS[k].seen.includes("life-size, no bigger than their own heads") && REVEAL_PARTS[k].seen.includes("never a picture printed on the cloth, never skin or colour showing through it"), k);
-    assert.ok(!/pale through/.test(REVEAL_PARTS[k].seen + REVEAL_PARTS[k].clip), k);
-  }
-  assert.ok(roof.includes(thingRefNote("figure", { near: true, cloth: true })) && roof.includes("ONLY the FACE of the figure in the SECOND picture") && !roof.includes("now close behind them"), "its FACE, from the portrait — never the whole of it standing in the tent");
+  assert.ok(roof.includes(`Show it like this, and no more of it: High in the picture, on the tent's sloping roof above them, ${REVEAL_PARTS.roof.seen}.`));
+  assert.ok(!roof.includes("SECOND picture") && !roof.includes(thingRefNote("figure", { near: true, cloth: true })), "no picture of it rides along at the cloth");
+  assert.ok(roof.includes(CLOTH_LOOK_UP) && !roof.includes(CLOTH_LOOK), "on the roof they look UP at it, in profile");
   assert.ok(roof.includes("The place as it now is, and it stays exactly so: The tent door is zipped completely shut"), "drawn into the shut tent, and it stays shut");
-  assert.ok(roof.includes(CLOTH_OUTSIDE) && roof.includes(NOTHING_GLOWS));
+  // (its OUTSIDE is in the shadow's own words now — "lit from OUTSIDE", "nothing of it seen through the cloth"; the separate
+  //  sentence is kept for the zipper's open hand's width only, and its room went to her look. Nothing glows, always.)
+  assert.ok(roof.includes(NOTHING_GLOWS) && !roof.includes(CLOTH_OUTSIDE) && /nothing of it seen through the cloth/.test(roof));
+  assert.ok(!roof.includes(REVEAL_DIM_WORDS), "the shadow's own words dim the lantern — never said twice");
   assert.ok(!roof.includes("In the dark close behind") && !roof.includes("This is out of doors"), "not the figure standing close behind them — the doorway");
   assert.ok(roof.length <= 2400, `${roof.length}: inside what both editors read`);
   // (with room, the place's whole state — the bag too)
   const roomy = revealPicture({ moment: "Her face presses down into the roof.", sides, outdoors: true, cloth: true, tent: true, state, ref: "figure" });
   assert.ok(roomy.includes(`The place as it now is, and it stays exactly so: ${state}`) && roomy.length <= 2400, `${roomy.length}`);
-  // PART 1's last shot: "presses the fabric" — in the tent's wall, close behind the one on the right; told by words alone
+  // PART 1's last shot: "presses the fabric" — its SHADOW on the tent's wall between and behind them, its shape her look
   const wall = revealPicture({ moment: P1_LAST, sides, outdoors: true, seen: LOOK, cloth: true, tent: true });
-  assert.ok(wall.includes(`In the tent's wall close behind Costin, the one on the right, at the height of a head, well inside the picture, ${REVEAL_PARTS.fabric.seen}.`));
-  assert.ok(wall.includes("but only the SHAPE of its face shows, moulded in the stretched cloth from OUTSIDE: never the whole of it, never inside."));
+  assert.ok(wall.includes(`On the tent's wall between and behind them, well inside the picture, ${REVEAL_PARTS.fabric.seen}.`));
+  assert.ok(wall.includes(`${CLOTH_SHADOW_OF} "${LOOK}".`), "the shape of the one the film already showed — long wet hair, the nightgown");
+  assert.ok(wall.includes(CLOTH_LOOK) && !wall.includes("faces drained"), "they stare at the shadow, in profile — never into the lens");
   assert.ok(!wall.includes("What is wrong with it"), "its look is the film's own");
-  // a thing nobody had seen: its wrongness, in the cloth
+  assert.ok(!wall.includes(CLOTH_PALMS), "no hands unless the words name them");
+  // …its palms on the canvas only when the scene's words name a hand (drawn and looked at: scarier, still real)
+  assert.ok(revealPicture({ moment: "Her hands press flat against the tent wall from outside.", sides, outdoors: true, seen: LOOK, cloth: true, tent: true }).includes(`; ${CLOTH_PALMS}.`));
+  // a thing nobody had seen: its wrongness, in its shadow
   const fresh = revealPicture({ moment: "Something presses against the canvas behind Mireille.", sides, outdoors: true, cloth: true, tent: true });
-  assert.ok(fresh.includes(`What is wrong with it: ${REVEAL_PARTS.fabric.wrong}.`) && fresh.includes("In the tent's wall close behind Mireille, the one on the left"));
+  assert.ok(fresh.includes(`What is wrong with it: ${REVEAL_PARTS.fabric.wrong}.`) && fresh.includes("On the tent's wall between and behind them"));
   // the zipper's gap: open a hand's width, no more
   const gap = revealPicture({ moment: "The zipper of the shut door slides up a hand's width from outside; in the gap, a pale face.", sides, outdoors: true, cloth: true, tent: true });
   assert.ok(gap.includes(`At the shut tent door the two are near — well inside the picture — ${REVEAL_PARTS.zipper.seen}.`) && gap.includes(CLOTH_OUTSIDE_GAP) && !gap.includes(CLOTH_OUTSIDE));
   // already far off in the picture it is drawn into: one of it, now at the cloth
   assert.ok(revealPicture({ moment: P1_LAST, sides, outdoors: true, cloth: true, tent: true, away: true }).includes(REVEAL_MOVED_CLOTH));
   assert.ok(revealPicture({ moment: "In the dark behind them she stands.", sides, outdoors: true, away: true }).includes(REVEAL_MOVED), "elsewhere, as before");
-  // a creature the maker chose: its FACE in the cloth
-  assert.ok(revealPicture({ moment: P1_LAST, sides, outdoors: true, ref: "creature", name: "Grisel", creature: true, cloth: true, tent: true }).includes("ONLY its face, that exact face, pressing into the cloth from OUTSIDE"));
+  // a creature the maker chose, at the cloth: its SHADOW too — no picture of it handed over to be painted on the canvas
+  const grisel = revealPicture({ moment: P1_LAST, sides, outdoors: true, ref: "creature", name: "Grisel", creature: true, cloth: true, tent: true });
+  assert.ok(grisel.includes(REVEAL_PARTS.fabric.seen) && !grisel.includes("SECOND picture"));
   // and NOTHING GLOWS in a reveal now (Part 1's face glowed in the doorway like a mask) — at the cloth always; elsewhere
   // it gives way before the face mood when a long moment runs the picture past what the editors read
   assert.ok(revealPicture({ moment: "In the dark corner something tall stands perfectly still.", sides }).includes(NOTHING_GLOWS));
