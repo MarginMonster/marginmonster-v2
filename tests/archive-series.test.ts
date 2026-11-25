@@ -247,7 +247,9 @@ test("on the Videos tab a series is one card; inside an open series the shelf is
   assert.ok(head.includes('<Link to={shelfHref} preventScrollReset className="wa-series-back"><Ico n="arrow" size={13} /> {t("Back")}</Link>'));
   assert.ok(head.includes("<b>{openSeries.title}</b>") && head.includes("{episodesLabel(episodesIn(openSeries))}"));
   assert.ok(page.includes('const episodesLabel = (n: number) => (n === 1 ? t("1 episode") : t("{n} episodes", { n }));'));
-  assert.ok(page.includes('{openSeries && a.series && <span className="wa-epno">{t("Episode {n}", { n: a.series.episode })}</span>}'));
+  // (2026-11-25: …and how many the series has so far, "Episode 2 of 3", when it can be continued — the next one's
+  //  tile ends the shelf: tests/make-it-a-series.test.ts)
+  assert.ok(page.includes('{openSeries && a.series && <span className="wa-epno">{a.next ? t("Episode {n} of {total}", { n: a.series.episode, total: a.next.of }) : t("Episode {n}", { n: a.series.episode })}</span>}'));
   // an episode's own card is the card it always was (the lines other tests hold are still here) — and it opens
   // the PIECE, not its face: the viewer's "Poster" is the poster its film made, never the shelf's cover
   assert.ok(page.includes("onClick={() => (selecting ? togglePick(a.id) : setViewer(c.a))}"));
@@ -490,7 +492,9 @@ test("a card on a phone: its cover, its title, when — and ONE badge, on the co
   // says which family a video is ("Horror", "Music video"…: archive-cover.ts); on a phone its cover says it
   // (inside an opened series an episode is called by its own name — the band above already says the series')
   assert.ok(page.includes('<span className="wa-title">{openSeries && a.series ? episodeOwnLabel(a.title) : a.title}</span>'));
-  assert.ok(page.includes('<div className="s"><span className="wa-kind">{a.isVideo ? t(a.family ? COVER_LABEL[a.family] : "Video") : a.isAudio ? t("Music") : t("Image ad")} · </span><span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>'));
+  // (2026-11-25: a film that can be continued ends this line with its mark — "Make it a series" / "Episode N" —
+  //  and on a phone its date is the short one beside it: tests/make-it-a-series.test.ts)
+  assert.ok(page.includes('<div className={`s${markHere(a.next) ? " has-next" : ""}`}><span className="wa-kind">{a.isVideo ? t(a.family ? COVER_LABEL[a.family] : "Video") : a.isAudio ? t("Music") : t("Image ad")} · </span><span className="wa-date" suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span>{markHere(a.next) && <>{shortDate(a.when)}{nextMarkOf(a.next!)}</>}</div>'));
   assert.ok(phone.includes(".wa-kind{display:none;}"));
   assert.ok(phone.includes(".wa-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;}"));
   // nothing on it is smaller than it was: the title is the wide screen's 13px, the date 11px
