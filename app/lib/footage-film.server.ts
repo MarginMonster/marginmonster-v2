@@ -59,7 +59,8 @@ import { generateHouseTake, keptHouseFor, makeHouseTake } from "./house-take.ser
 import { mirrorRender } from "./object-storage.server";
 import { overlayFonts } from "./overlay-fonts.server";
 import { TAKE_REF, sameWords, shapeFor, type TakeLine } from "./take";
-import { camToday, drawPicture, generateTake, imageRef, makeTake, renders, rerolls, run, stamp, type TakeDress } from "./take.server";
+import { camToday, drawClothed, drawPicture, generateTake, imageRef, makeTake, renders, rerolls, run, stamp, type TakeDress } from "./take.server";
+import { dressedInWater } from "./story-picture";
 import { checkpointJob, ffprobeBin, runFfmpeg } from "./ugc-ad-pipeline.server";
 
 /** The writer of a film's outline and direction — the model the films' scripts are written on. */
@@ -392,10 +393,13 @@ export async function generateFootageFilm(opts: FootageFilmOptions): Promise<str
     } else {
       // 3) THE PICTURES — on the strongest picture model at 2K. The place first (from words), then the thing's payoff
       //    (from the place), then the rest three at a time (from both); a scene that will not draw leaves its moment out
+      // (…EVERYBODY IN IT CLOTHED, 2026-11-25: each moment's words dressed where they put somebody in water, its picture
+      //  looked at, drawn again clothes first, dressed by one edit — take.server.ts → drawClothed — and the picture that
+      //  is used is the one its record keeps; the ways in, drawn from these with nobody in them, need nothing)
       const drawScene = async (i: number, refs: string[]): Promise<void> => {
         const d = direction[i] as Extract<DirectedMoment, { cam: "hand" }>;
-        const prompt = footageScenePrompt(film, { still: d.take.still, seen: d.seen, who: d.take.who }, refs.length as 0 | 1 | 2);
-        try { await save(i, { ckStill: await drawPicture({ prompt, ...(refs.length ? { image_input: refs.map((r) => imageRef(base, r)) } : {}), aspect_ratio: aspect, output_format: "jpg" }, true) }); }
+        const prompt = footageScenePrompt(film, { still: dressedInWater(d.take.still), seen: d.seen, who: d.take.who }, refs.length as 0 | 1 | 2);
+        try { await save(i, { ckStill: await drawClothed({ prompt, ...(refs.length ? { image_input: refs.map((r) => imageRef(base, r)) } : {}), aspect_ratio: aspect, output_format: "jpg" }, true, `[footage-film] moment ${i + 1}'s scene:`) }); }
         catch (e) { await leave(i, `its picture would not draw (${short(e, 100)})`); }
       };
       // (the thing is drawn up close once and then handed on — only when there IS one thing that recurs: a scare whose

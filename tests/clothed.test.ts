@@ -225,3 +225,30 @@ test("FANTASY KEEPS ITS OWN WORLD: everybody clothed, but never told its places 
   assert.deepEqual(g.GENRE_FILMS.filter((x: { ownWorld?: boolean }) => x.ownWorld).map((x: { key: string }) => x.key), ["fantasy"]);
 });
 
+test("FOUND FOOTAGE: a take's scene, each moment's, and a house camera's — dressed words, looked at, drawn again clothes first, edited", () => {
+  const take = read("app", "lib", "take.server.ts");
+  // the one way a found-footage picture somebody may be in is drawn: drawPicture → keepClothed (redraw on the same rung, edit at its shape)
+  const fn = take.slice(take.indexOf("export async function drawClothed("), take.indexOf("/** The take itself, started on `first`"));
+  assert.ok(fn.includes("const drawn = await drawPicture(input, best);"));
+  assert.ok(fn.includes("redraw: () => drawPicture({ ...input, prompt: `${CLOTHED_FIRST} ${input.prompt}` }, best),"));
+  assert.ok(fn.includes("edit: (u, who) => clothedEditOn(u, who, input.aspect_ratio),") && fn.includes("})) || drawn;"), "never a take lost to a look");
+  // ONE TAKE: its scene's words dressed; the picture used is the one checkpointed; the way in (nobody in it) as it was
+  assert.ok(take.includes("still = await drawClothed({ prompt: takeStillPrompt({ ...take, still: dressedInWater(take.still) }, aspect), aspect_ratio: aspect, output_format: \"jpg\" }, false, \"[take] the scene:\");\n    await ckpt({ ckStill: still });"));
+  assert.ok(take.includes("prompt: takeOpensPrompt(take, aspect), image_input: [imageRef(base, still)]"));
+  // A FILM: each moment's scene; its way in drawn from it as it was
+  const film = read("app", "lib", "footage-film.server.ts");
+  assert.ok(film.includes("still: dressedInWater(d.take.still)") && film.includes("try { await save(i, { ckStill: await drawClothed({ prompt,"));
+  // A HOUSE: the room as the take finds it (somebody asleep) and the scene; the empty room is drawn as it was
+  const house = read("app", "lib", "house-take.server.ts");
+  assert.ok(house.includes("drawClothed({ prompt: dressedInWater(prompt), ...(refs.length ? { image_input: refs.map((r) => imageRef(base, r)) } : {}), aspect_ratio: \"16:9\", output_format: \"jpg\" }, !!o.best, `[house-take] ${what}:`);"));
+  assert.ok(house.includes("house = withRoom(house, room.key, await draw(roomPrompt(room, plan.first), plan.from ? [plan.from] : []));"), "NOBODY is in the room");
+  assert.ok(house.indexOf("scene = await drawDressed(") > 0 && house.indexOf("scene = await drawDressed(") < house.indexOf("await ckpt({ ckScene: scene });"));
+});
+
+test("the take's own words: a person in the water is dressed where they are said, inside the scene's prompt", async () => {
+  const { takeStillPrompt } = await import("../app/lib/take.ts");
+  const still = "A TEST phone light sweeps the black pond: a pale woman stands waist-deep in the water among the reeds, perfectly still, facing the camera.";
+  const p = takeStillPrompt({ still: dressedInWater(still) }, "9:16");
+  assert.ok(p.includes(`${still} She is fully clothed: a long pale nightgown, soaked and clinging, covering her from neck to knee.`));
+});
+

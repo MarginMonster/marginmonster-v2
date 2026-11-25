@@ -167,8 +167,9 @@ test("A HOUSE TAKE KEEPS THE HOUSE: the room is drawn once and kept on the take'
   // a room it has is used as drawn; one it has not is drawn — the house's first from words, any other FROM the first
   assert.ok(srv.includes("const plan = roomToDraw(house, scare.room);") && srv.includes("house = withRoom(house, room.key, await draw(roomPrompt(room, plan.first), plan.from ? [plan.from] : []));"));
   // the room as the take finds it is drawn FROM the room; the scene FROM that (with the thing the house has seen)
-  assert.ok(srv.includes("set = p ? await draw(p, [roomPic]) : roomPic;"));
-  assert.ok(srv.includes("scene = await draw(houseScenePrompt(scare, { kept: !!known, ir }), known ? [set, known] : [set]);"));
+  // (…each drawn CLOTHED where somebody is in it — take.server.ts → drawClothed, 2026-11-25: tests/clothed.test.ts)
+  assert.ok(srv.includes("set = p ? (scare.set.trim() ? await drawDressed(p, [roomPic], \"the room as the take finds it\") : await draw(p, [roomPic])) : roomPic;"));
+  assert.ok(srv.includes("scene = await drawDressed(houseScenePrompt(scare, { kept: !!known, ir }), known ? [set, known] : [set], \"the scene\");"));
   // the roll starts on the room as the take finds it and is told to arrive at the scene, fifteen seconds, wide
   // (fifteen unless a found-footage FILM's moment asks for fewer — never under ten, never over the walk-in's fifteen)
   assert.ok(srv.includes("const seconds = Math.max(10, Math.min(HOUSE_TAKE_SECONDS, Math.round(o.seconds ?? HOUSE_TAKE_SECONDS)));"));
