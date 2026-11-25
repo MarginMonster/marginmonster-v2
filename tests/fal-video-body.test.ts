@@ -133,7 +133,8 @@ test("a pipeline asks for sound exactly when it ships the clip's own sound", () 
   assert.ok(vid.includes("\"-map\", \"[v]\", \"-map\", \"0:a?\","), "…because this is the pipeline whose frame step carries the audio through");
   // ships it: a film's dialogue shot
   const dia = read("app", "lib", "film-dialogue.server.ts");
-  assert.ok(dia.includes("falVideoSubmit(model, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur })"));
+  // (…and, since S12, the frame it ends on when its scene changes its place — sent to the O3 bodies only, below)
+  assert.ok(dia.includes("falVideoSubmit(model, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur, ...(endImage ? { endImage } : {}) })"));
   // lay their own track over the clip: never ask
   for (const f of ["cartoon-ad-pipeline.server.ts", "jingle-ad-pipeline.server.ts", "commercial-ad-pipeline.server.ts", "film-engine.server.ts"]) {
     assert.equal(count(read("app", "lib", f), "generateAudio"), 0, `${f} pays for no sound it will discard`);
