@@ -59,7 +59,9 @@ import { EVENT_MAX, EVENT_MAX_LAST, FILM_FPS, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SI
 // THE SIGHTING, AND THE FILM'S THING (2026-11-25 — acted-staging.ts → sightingOf, storyThreat; dialogue-cast.ts → castThreat)
 import { couldBeThing, figureIn, sightingOf, sightingPicture, storyThreat, threatFromWords, threatPortrait, type Sighting, type ThingRef } from "./acted-staging";
 import { castThreat } from "./dialogue-cast";
-import { PORTRAIT_ASPECT, STORY_LADDER, STORY_MODEL, castEntry, clothedEdit, parseUnclothed, storyPictureInput, unclothedPrompt } from "./story-picture";
+import { PORTRAIT_ASPECT, STORY_LADDER, castEntry, storyPictureInput } from "./story-picture";
+// EVERYBODY IN EVERY PICTURE IS CLOTHED — the one look (2026-11-25, stream S8: clothed.server.ts → keepClothed)
+import { clothedEditOn, keepClothed } from "./clothed.server";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -580,7 +582,14 @@ export async function renderActorPortrait(description: string, style?: "cartoon"
   const prompt = style === "cartoon"
     ? `A bright, glossy 3D-animated CARTOON character portrait of ${desc}. Rounded friendly character design, big expressive eyes, soft candy colors, wholesome child-safe (G-rated) preschool-cartoon look; ONE character only, centered, simple plain background, no readable text.`
     : `A clean, photorealistic 3/4 casting-portrait headshot of ${desc}. One person only, natural soft studio lighting, plain neutral background, sharp focus on the face, looking just off camera, cinematic, photoreal. No readable text.`;
-  return renderCreativeSeed(prompt, "9:16");
+  const url = await renderCreativeSeed(prompt, "9:16");
+  if (!url) return null;
+  // EVERYBODY IN IT IS CLOTHED (2026-11-25, stream S8 — clothed.server.ts → keepClothed): the face a member casts is the
+  // reference of every shot they are in, "wearing what they wear in that photo" (renderSideBySideTwoShot). A headshot
+  // with nothing said about clothes is looked at, and dressed by one edit if it must be; still bare, the edited one is
+  // shown — it is a free preview the member sees and can cast again. A look that cannot be made keeps the picture.
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  return keepClothed({ url, ref: (u) => (u.startsWith("http") ? u : `${base}${u}`), edit: (u, bare) => clothedEditOn(u, bare, "9:16"), log: (l) => console.log(`[cast] the actor's portrait: ${l}`) });
 }
 
 /** The cast members whose name appears in a scene (speaker always counts). Used to
@@ -899,7 +908,7 @@ export async function generateTestMovie(opts: {
     let castOk = true;
     for (let attempt = 0; attempt < 3; attempt++) {
       const staging = attempt === 2 && !url ? undefined : dealt;
-      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null }));
+      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null, ownWorld: tmpl.ownWorld }));
       // (a picture came back, or did not — either way the film is at work, and says so: see `say`)
       await say(alive);
       if (!tryUrl) continue;
@@ -1187,24 +1196,17 @@ export async function generateTestMovie(opts: {
     try { const row = await db.job.findUnique({ where: { id: jobId }, select: { payload: true } }); const v = (JSON.parse(row?.payload || "{}") as Record<string, unknown>)[key]; return typeof v === "string" && v ? v : undefined; } catch { return undefined; }
   };
   const onDisk = (u: string | null | undefined): boolean => { const s = String(u || ""); return /^https?:\/\//.test(s) || (s.startsWith("/renders/") && fs.existsSync(path.join(RENDERS(), path.basename(s)))); };
-  /** EVERYBODY IN IT IS CLOTHED — LOOKED AT (story-picture.ts → unclothedPrompt; the master's own look,
-   *  image-generation → renderSideBySideTwoShot): a picture with an unclothed figure is edited ONCE (clothedEdit, on the
-   *  story's best model) and looked at again; still unclothed, it is dropped (null) and the caller goes on as if it had
-   *  not come. A look that cannot be made keeps the picture — never a film lost to its check. */
+  /** EVERYBODY IN IT IS CLOTHED — LOOKED AT, the ONE way every film picture is (clothed.server.ts → keepClothed; the
+   *  master's own look, image-generation → renderSideBySideTwoShot): a picture with an unclothed figure is edited ONCE
+   *  (clothedEdit, on the story's best model) and looked at again; still unclothed, it is dropped (null) and the caller
+   *  goes on as if it had not come — the next model of its ladder, or the shot made as it is when no picture comes. A
+   *  look that cannot be made keeps the picture — never a film lost to its check. The thing's portrait, a sighting and
+   *  (since 2026-11-25, stream S8) the reveal. (…and the job says it is at work once it is done: an edit is minutes on a
+   *  long film's clock — the reaper's 25 — review of S7, 2026-11-25.) */
   const clothedOrDropped = async (rel: string, ar: string): Promise<string | null> => {
-    const look = async (u: string) => {
-      try { const { anthropicVision } = await import("./anthropic.server"); return parseUnclothed(String((await anthropicVision(unclothedPrompt(), [abs(u) || u], { maxTokens: 120, model: "claude-sonnet-4-6" })) || "")); }
-      catch { return { unclothed: false, who: "" }; }
-    };
-    const seen = await look(rel);
-    if (!seen.unclothed) return rel;
-    console.log(`[testmovie] an unclothed figure (${seen.who || "somewhere in it"}) — the picture is dressed by one edit`);
-    try {
-      const edited = await persistRemote(await repRun(STORY_MODEL, storyPictureInput(STORY_MODEL, { prompt: clothedEdit(seen.who), refs: [abs(rel) || rel], aspect: ar }), 150_000), "jpg");
-      if (!(await look(edited)).unclothed) return edited;
-    } catch (e) { console.error(`[testmovie] the clothing edit did not come: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
-    console.error("[testmovie] still an unclothed figure after the edit — the picture is dropped");
-    return null;
+    const kept = await keepClothed({ url: rel, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, ar), still: "drop", log: (l) => console.log(`[testmovie] ${l}`) });
+    await say(alive);
+    return kept;
   };
   const sightOn = staged && horror && !cartoon && isTwoHander;
   /** The thing's own cast line (or its name, for a cast thing) — kept even when its portrait would not draw. */
@@ -1447,7 +1449,10 @@ export async function generateTestMovie(opts: {
         ["bytedance/seedream-4.5", { prompt: ask, image_input: [abs(master.url), ...(thingFace ? [thingFace] : [])], aspect_ratio: aspect, size: "2K", max_images: 1 }],
       ] as Array<[string, Record<string, unknown>]>) {
         if (!ask || seedAbs) break;
-        try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), "jpg"))); }
+        // (…and LOOKED at before it is used, as every film picture is — 2026-11-25: the thing it adds is "the woman in the
+        //  lake" the lake films drew bare. Unclothed, it is dressed by one edit; still bare, it is dropped and the next
+        //  editor draws it, else the reveal falls back as it does when its picture will not come: clothedOrDropped)
+        try { const drawn = await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), "jpg")); seedAbs = drawn ? abs(await clothedOrDropped(drawn, aspect)) : undefined; }
         catch (e) { console.error(`[testmovie] shot ${i + 1}: the reveal on ${model} did not come: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
       }
       if (seedAbs) { revealed = true; revealedCreature = creatureRef; sinceAnchor = 0; console.log(`[testmovie] shot ${i + 1}: the reveal — drawn into the place's own picture (${locKeyAt(i).slice(0, 40)})${ref ? `, from the thing's own picture (${ref.kind})` : ""}`); }

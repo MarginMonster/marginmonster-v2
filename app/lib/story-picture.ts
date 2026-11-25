@@ -11,7 +11,8 @@
  *   · the scene's words are tidied to ONE moment and to nothing written (oneMoment, noLettering);
  *   · the picture is then read — is each cast member in it, is it one picture — and drawn again when it
  *     is not (storyCheckPrompt / parseStoryCheck / storyFaults / storyFix).
- * Clothes are NOT judged here: a story dresses its people for the part (the baker wears an apron).
+ * Clothes are NOT judged here: a story dresses its people for the part (the baker wears an apron). Whether anybody
+ * is UNCLOTHED is (2026-11-25 — UNCLOTHED_ASKED, storyFirst; the sequence is clothed.server.ts → keepClothed).
  */
 import { firstJson } from "./first-json.ts";
 
@@ -129,8 +130,14 @@ export function dressedInWater(text: string): string {
  *  shot from: it is drawn again with the clothes said FIRST, and if the model still will not, the figure is dressed by
  *  an edit of that picture.) */
 export function unclothedPrompt(): string {
-  return 'Look at every person and every human-like figure in this picture, however small, far away or pale. Is ANY of them unclothed — a bare chest or bare torso, or a body with no clothing visible on it? Bare arms, bare legs, bare feet and a swimsuit all count as CLOTHED; a figure whose body is hidden by water, dark or distance and shows no bare torso counts as clothed. Reply with ONLY this JSON: {"unclothed": true or false, "who": "where that figure is, in a few words — an empty string when nobody is"}';
+  return `Look at every person and every human-like figure in this picture, however small, far away or pale. Is ANY of them unclothed — a bare chest or bare torso, or a body with no clothing visible on it? Bare arms, bare legs, bare feet and a swimsuit all count as CLOTHED; a figure whose body is hidden by water, dark or distance and shows no bare torso counts as clothed. ${COATED} Reply with ONLY this JSON: {"unclothed": true or false, "who": "where that figure is, in a few words — an empty string when nobody is"}`;
 }
+/** …AN ANIMAL WEARS ITS OWN COAT (2026-11-25, when the look went from an acted film's master to every picture of the
+ *  app's films — a children's story's portraits and scenes among them): a cartoon rabbit or a fox standing upright
+ *  has "a body with no clothing visible on it", and told "unclothed", the redraw and the edit would put a nightgown
+ *  on it — and the cast look would then find it was not the rabbit of its own portrait. Foreseen, not yet seen: said
+ *  so that a reader never has to guess. A nearly-human thing with bare skin is still a figure, and is dressed. */
+export const COATED = "An animal, or a creature covered in its own fur, feathers or scales — real or a cartoon — counts as CLOTHED.";
 export function parseUnclothed(raw: string): { unclothed: boolean; who: string } {
   try {
     const m = /\{[\s\S]*\}/.exec(String(raw || ""));
@@ -140,8 +147,24 @@ export function parseUnclothed(raw: string): { unclothed: boolean; who: string }
 }
 /** Said FIRST when a picture is drawn again because somebody in it was not dressed. */
 export const CLOTHED_FIRST = "EVERY person and every figure in this picture is fully clothed, the far and the pale ones too: anyone standing in water wears a long, soaked, pale nightgown or their own soaked everyday clothes, covering the body from neck to knee.";
-/** …and the edit that dresses the one figure when the model will not draw it dressed. */
-export const clothedEdit = (who: string): string => `Edit this photo and change ONE thing: the figure ${who ? `(${who}) ` : ""}who has no clothes on now wears a long, soaked, pale nightgown that covers the body from neck to knee. Everything else stays exactly as it is — the same place, light, framing, people, faces, hair and what the others wear. No text anywhere.`;
+/** …and the edit that dresses the one figure when the model will not draw it dressed.
+ *  (…in what suits where that figure IS — review of stream S8, 2026-11-25: the edit was written for the woman in the lake,
+ *  and the look now runs on every film picture: a casting headshot cropped at bare shoulders, somebody asleep in a house
+ *  camera's bedroom, a story's portrait. Told "a long, soaked, pale nightgown" for every one of them, a dry man in a
+ *  headshot would be cast in a wet nightgown — and every shot is drawn "wearing what they wear in that photo". So: the
+ *  figure the look places in water keeps the lake's nightgown — a man in water a shirt and trousers, as dressedInWater
+ *  says — and anybody dry wears ordinary clothes that suit the place. Where the look did not say where the figure is,
+ *  the lake's edit, as it always was.) */
+const WET_WHO = /\b(?:water|lake|river|sea|ocean|pond|pool|creek|stream|swamp|marsh|surf|waves|shallows|wading|wades|swimming|floating|submerged|soaked|wet)\b|\b(?:waist|chest|knee|neck|ankle|shoulder)[- ]deep\b/i;
+const A_MAN = /\b(?:man|men|boy|boys|he|him|his|guy|father|dad|husband)\b/i;
+export const clothedEdit = (who: string): string => {
+  const w = String(who || "").trim();
+  // (…a dry thing of a horror film — the pale crawler in the hallway — in a ragged old garment, never a sweater)
+  const wear = w && !WET_WHO.test(w) ? "clothes that suit who they are and where they are — an ordinary person ordinary everyday clothes (in bed, pajamas); a ghost, a corpse or a creature a ragged, dark, shapeless old garment — covering the body from the neck down"
+    : w && A_MAN.test(w) ? "a shirt and trousers, soaked and clinging"
+    : "a long, soaked, pale nightgown that covers the body from neck to knee";
+  return `Edit this photo and change ONE thing: the figure ${w ? `(${w}) ` : ""}who has no clothes on now wears ${wear}. Everything else stays exactly as it is — the same place, light, framing, people, faces, hair and what the others wear. No text anywhere.`;
+};
 /** NIGHT IS NIGHT — LOOKED AT (2026-11-25, "Who Smiles In Still Water": the idea said 3am, the master was told "the sky
  *  outside is black … never dusk, twilight or a blue evening glow", and the lake outside the tent was drawn under a pale
  *  blue evening sky again — the fourth film that day). Asked of a film's master when its place or moment says night:
@@ -163,7 +186,7 @@ export const TODAY_LOOK = "Where these words do not say how old a place is, it l
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference
  *  pictures, whether that same character is in it; and whether the picture is split into panels. */
-export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean; /** who stares into the lens (absent: nobody, or not asked) */ lens?: string[]; /** the place drawn run-down when its words do not say so */ grimy?: boolean; /** a smaller picture pasted into it */ inset?: boolean };
+export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean; /** who stares into the lens (absent: nobody, or not asked) */ lens?: string[]; /** the place drawn run-down when its words do not say so */ grimy?: boolean; /** a smaller picture pasted into it */ inset?: boolean; /** somebody in it UNCLOTHED (absent: nobody, or not asked) — and where that one is, in a few words */ unclothed?: boolean; unclothedWho?: string };
 /** …and what is handed to the storyboard about a picture that was KEPT with something still wrong (the
  *  best of its goes): the reading, and who was looked for — in the order of `seen` — so the scene's flag
  *  can say who is missing. */
@@ -203,7 +226,21 @@ export function storyCastPrompt(refs: number): string {
 export function storyExtrasPrompt(visual: string, who: ReadonlyArray<string> = []): string {
   const words = String(visual || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().replace(/[.\s]+$/, "").slice(0, 600);
   const names = (who || []).map((w) => String(w || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().slice(0, 160)).filter(Boolean).slice(0, 4);
-  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}".${names.length ? ` Who is who: ${names.join("; ")}.` : ""} First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Next, only if those words have somebody INSIDE looking OUT — peering out, looking or watching through a window, a glass pane or a door — at somebody or something out there (on a porch, in a yard, in the street, in the dark): that person is the LOOKER (otherwise there is none). Find the looker in the picture by how they look, and say where THEY are — the looker, not what they look at — judged only by what you SEE, not by what the words wanted. "outdoors": you can see the looker STANDING out on the porch boards, its steps, a yard or a street — the same open floor or ground as what they look at, nothing but open air between. "indoors": anything else — in a room or a hallway, behind a window's glass, or seen in a window's frame behind its sill (glass or no glass). Last: does any PERSON in it — not a creature, a ghost or a shadow — look straight into the camera, eyes on the lens as if posing for a photograph? Somebody looking at something to one side of the camera, or seen from the side or from behind, does not. Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false, "looker": "the looker's name, or an empty string", "lookerIs": "what the looker stands on and what is around the looker, in a few words", "lookerStands": "indoors" or "outdoors" or "", "intoLens": ["the name of each person looking straight into the camera — an empty list when nobody does"]}.`;
+  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}".${names.length ? ` Who is who: ${names.join("; ")}.` : ""} First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Next, only if those words have somebody INSIDE looking OUT — peering out, looking or watching through a window, a glass pane or a door — at somebody or something out there (on a porch, in a yard, in the street, in the dark): that person is the LOOKER (otherwise there is none). Find the looker in the picture by how they look, and say where THEY are — the looker, not what they look at — judged only by what you SEE, not by what the words wanted. "outdoors": you can see the looker STANDING out on the porch boards, its steps, a yard or a street — the same open floor or ground as what they look at, nothing but open air between. "indoors": anything else — in a room or a hallway, behind a window's glass, or seen in a window's frame behind its sill (glass or no glass). Last: does any PERSON in it — not a creature, a ghost or a shadow — look straight into the camera, eyes on the lens as if posing for a photograph? Somebody looking at something to one side of the camera, or seen from the side or from behind, does not. ${UNCLOTHED_ASKED} Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false, "looker": "the looker's name, or an empty string", "lookerIs": "what the looker stands on and what is around the looker, in a few words", "lookerStands": "indoors" or "outdoors" or "", "intoLens": ["the name of each person looking straight into the camera — an empty list when nobody does"], "unclothed": true or false, "unclothedWho": "where that one is, in a few words — an empty string when nobody is"}.`;
+}
+/** …AND, IN THE SAME ANSWER, ANYBODY UNCLOTHED (2026-11-25: three acted lake films in a row drew the woman "standing
+ *  waist-deep in the lake" bare; a told story is drawn by the same picture models from the same kind of words, and was
+ *  never looked at for it). Asked in the question that already lists every person in the picture — one question
+ *  more, never a fifth call — in the master's own words (unclothedPrompt), after the people are written down. */
+export const UNCLOTHED_ASKED = `And: is ANY person or human-like figure in it — however small, far away or pale — unclothed: a bare chest or bare torso, or a body with no clothing visible on it? Bare arms, bare legs, bare feet and a swimsuit all count as CLOTHED; a figure whose body is hidden by water, dark or distance and shows no bare torso counts as clothed. ${COATED}`;
+/** …its answer: whether anybody is unclothed, and where — null when the answer does not say (an older reading, or one
+ *  that cannot be read: then nobody is taken to be). */
+export function parseStoryUnclothed(raw: string): { unclothed: boolean; who: string } | null {
+  const j = jsonIn(raw);
+  const bare = j ? j.unclothed : undefined;
+  if (!j || typeof bare !== "boolean") return null;
+  const where = j.unclothedWho;
+  return { unclothed: bare, who: typeof where === "string" ? where.replace(/\s+/g, " ").trim().slice(0, 80) : "" };
 }
 /** A RUN-DOWN PLACE THE WORDS DO NOT CALL ONE — asked on its own (2026-11-25: LIVED_IN in every grown-up story
  *  picture, and the kids' hallway still came back with peeling, stained wallpaper — the owner: "why are the walls
@@ -289,7 +326,16 @@ export function parseStoryPanels(raw: string): boolean | null {
 
 /** How wrong a picture is: a split picture is the worst (it cannot be used at all), then each cast member
  *  who is not in it. 0 = keep it. */
-export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0) + (c.lens?.length ? 2 : 0) + (c.grimy ? 2 : 0) + (c.inset ? 4 : 0);
+/** …and SOMEBODY UNCLOTHED is worse than all of them together (2026-11-25: a lake film nobody could send — whatever
+ *  else is right in it). Every other fault at once comes to 27 (three looked for, none there; split; inset; a stranger;
+ *  stood outside; a stare; run-down), so a picture with it is never the one kept while one without it exists. */
+export const UNCLOTHED_FAULT = 30;
+export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0) + (c.lens?.length ? 2 : 0) + (c.grimy ? 2 : 0) + (c.inset ? 4 : 0) + (c.unclothed ? UNCLOTHED_FAULT : 0);
+
+/** What the next go is told FIRST about the last one (the master's own lesson, image-generation.server.ts: DRESSED said
+ *  at the end of a long prompt did not dress the woman in the lake; said first, it did). A picture that came back with
+ *  somebody unclothed → CLOTHED_FIRST, ahead of everything; anything else → "" (its fault is named at the end, storyFix). */
+export const storyFirst = (c: StoryCheck | null | undefined): string => (c?.unclothed ? `${CLOTHED_FIRST} ` : "");
 
 /** What to tell the picture model on the next go: the fault, named. `names` in the order of the references. */
 export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<string | undefined> = []): string {
@@ -367,11 +413,12 @@ export function creatureNote(name: string, kind: string | null | undefined): str
 
 /** What a piece records about the pictures it KEPT with somebody still not right (the best of three goes):
  *  which scene, who, and whether it was split into panels. [] when every picture passed its look. */
-export function keptFaults(checks: ReadonlyArray<StoryKept | null | undefined>): Array<{ scene: number; missing: string[]; panels?: true }> {
-  const out: Array<{ scene: number; missing: string[]; panels?: true }> = [];
+// (…and whether somebody in it is STILL unclothed — after its goes and its one edit: the operator's record says so)
+export function keptFaults(checks: ReadonlyArray<StoryKept | null | undefined>): Array<{ scene: number; missing: string[]; panels?: true; unclothed?: true }> {
+  const out: Array<{ scene: number; missing: string[]; panels?: true; unclothed?: true }> = [];
   (checks || []).forEach((c, i) => {
     if (!c || !storyFaults(c)) return;
-    out.push({ scene: i + 1, missing: (c.who || []).filter((_, k) => c.seen[k] === false).map((n) => String(n).slice(0, 40)).slice(0, 3), ...(c.panels ? { panels: true as const } : {}) });
+    out.push({ scene: i + 1, missing: (c.who || []).filter((_, k) => c.seen[k] === false).map((n) => String(n).slice(0, 40)).slice(0, 3), ...(c.panels ? { panels: true as const } : {}), ...(c.unclothed ? { unclothed: true as const } : {}) });
   });
   return out.slice(0, 24);
 }

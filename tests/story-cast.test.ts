@@ -111,7 +111,8 @@ test("where the pictures are drawn: a portrait each, the reference in every scen
   // who needs one: an invented character a scene being drawn names, that has none yet
   assert.ok(fn.includes(".filter((e) => who.some((w) => w.others.includes(e)) && !!castEntry(e).name && !cards.some((c) => sameCharacter(c.name, castEntry(e).name)))"));
   assert.ok(fn.includes(".slice(0, Math.max(0, STORY_CAST_MAX - cards.length));"));
-  assert.ok(fn.includes("const drawn = await Promise.all(need.map(async (e) => ({ e, img: await drawScene(portraitPrompt(e, tmpl.sceneHint, safe), [], PORTRAIT_ASPECT) })));"), "drawn together, tall, from the words alone");
+  // (…each one LOOKED at for anybody unclothed since 2026-11-25 — every scene of theirs is drawn from it: tests/clothed.test.ts)
+  assert.ok(fn.includes("const drawn = await Promise.all(need.map(async (e) => ({ e, img: await portrait(e) })));") && fn.includes("const ask = portraitPrompt(dressedInWater(e), tmpl.sceneHint, safe);\n      const img = await drawScene(ask, [], PORTRAIT_ASPECT);"), "drawn together, tall, from the words alone");
   assert.ok(fn.includes("for (const d of drawn) if (d.img) cards.push({ ...castEntry(d.e), img: d.img });"), "a portrait that could not be drawn is simply not a card");
   // what comes in: only who this story still has, and only a file that is still there
   assert.ok(fn.includes("const cards: StoryCastRef[] = castStillIn(carried.refs, others).filter((c) => fs.existsSync(path.join(RENDERS(), path.basename(c.img))));"));
@@ -238,7 +239,7 @@ test("a told story is drawn on the good model — every picture of it — and on
   assert.ok(fn.includes("for (const m of STORY_LADDER) {") && fn.includes("return await persistRemote(await repRun(m, storyPictureInput(m, { prompt: full, refs, aspect }), 150_000), \"jpg\");"), "down the ladder until one draws it");
   assert.ok(!/flux-dev|STORY_CROWD|sceneModel|strong/.test(fn), "no other way in, and no more 'stronger last go'");
   // the portraits and the places' sheets go the same way
-  assert.ok(nar.includes("drawScene(portraitPrompt(e, tmpl.sceneHint, safe), [], PORTRAIT_ASPECT)"));
+  assert.ok(nar.includes("const ask = portraitPrompt(dressedInWater(e), tmpl.sceneHint, safe);") && nar.includes("drawScene(ask, [], PORTRAIT_ASPECT)"));
   assert.ok(!nar.includes("castCountNote") && !read("app", "lib", "story-picture.ts").includes("castCountNote"), "the sentence that did nothing is not in the prompt");
 });
 

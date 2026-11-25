@@ -107,7 +107,7 @@ test("a told story's detail shot shows ONE person's hands — two people's hands
 test("a story picture has nobody the words do not put there, and everybody in it ONCE", async () => {
   const sp = await import("../app/lib/story-picture.ts");
   assert.ok(sp.NO_EXTRAS.includes("no passer-by, no figure in the distance, no one at a window or a door") && sp.NO_EXTRAS.includes("appears exactly ONCE"));
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : \"\"}${tmpl.childSafe ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : \"\"}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
   // (…and nobody in a story picture looks into the camera: the parents "turning toward him in alarm" faced the lens)
   const spx = await import("../app/lib/story-picture.ts");
   assert.ok(spx.NO_LENS.startsWith("Nobody looks into the camera: each one looks at whoever or whatever this moment has them looking at"));
@@ -122,7 +122,7 @@ test("a story picture has nobody the words do not put there, and everybody in it
   assert.equal(sp.storyFaults({ seen: [true, true], panels: false }), 0, "an older reading: nothing more");
   assert.ok(sp.storyFix({ seen: [true, true], panels: false, twice: [false, true] }, ["Nessa", "Dovey"]).includes("Dovey was drawn TWICE in the last try — they appear exactly ONCE in this picture, nowhere else in it"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}) };"));
+  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };"));
 });
 
 test("a told story's picture says which side of a door or a window everybody is on", () => {
@@ -195,7 +195,7 @@ test("every story picture is looked at for anybody its words do not put there �
   assert.equal(sp.storyFaults({ seen: [true], panels: false, extra: true }), 3);
   assert.ok(sp.storyFix({ seen: [true], panels: false, extra: true }, ["Priya"]).includes("draw NOBODY but who they name"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null) return null;"));
+  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null && bare == null) return null;"));
 });
 
 /* WHOEVER LOOKS OUT, DRAWN OUT THERE (2026-11-24): the kids' horror story made again with INSIDE_STAYS in every
@@ -416,8 +416,8 @@ test("EVERYONE IS DRESSED (\"She Walked From Still Water\", 2026-11-25: told onl
   // every grown-up picture (told stories, their place sheets, an acted film's masters) has it through TODAY_LOOK
   assert.ok(sp.TODAY_LOOK.endsWith(sp.DRESSED));
   assert.ok(st.actedRealism(false, "a woman stands waist-deep in the lake", "the lake shore at night").includes(sp.DRESSED));
-  // …a children's story picture is told it on its own
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${tmpl.childSafe ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}"));
+  // …a children's story picture is told it on its own — and so is a story whose world is its own (Fantasy: never "today")
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}"));
   // …the reveal that draws the thing into a place says it
   assert.ok(st.revealPicture({ moment: "She stands close behind Wren, smiling.", sides: [{ name: "Wren", side: "left" }] }).includes(sp.DRESSED));
   // …and the writer gives a thing it invents clothes
