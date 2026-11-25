@@ -342,6 +342,14 @@ test("the cost line is the ESTIMATE, with 'free while we finish films' beside it
   assert.ok(ui.includes("const cost = estimateFilmTokens(tmpl?.lipSyncSinger ? mvBillScenes(mvSceneCount, mvSceneSec) : scenes);"));
   assert.ok(lengthPanel().includes("free={cost === 0}"));
   assert.equal(count(dict, "\n  \"free while we finish films\":"), 5);
+  // (review, 2026-11-25: the tag is one unbroken line beside the tokens — film-kit-style.ts, .fk-len-free nowrap — and
+  //  the longer translations ran it off a 390px phone: German to 401px, French 418, Spanish 422. Each is now about
+  //  as long as the English, whose tag fits at every length; measured 390px in all six languages at 0:17, 1:27, 5:00.)
+  //  (Chinese and Urdu are not set in capitals and were already narrower: 117 and 141px.)
+  for (const said of ["gratis mientras probamos", "gratuit pendant les essais", "gratis, solange wir testen"]) {
+    assert.ok(dict.includes(`\n  "free while we finish films": ${JSON.stringify(said)},`), said);
+    assert.ok(said.length <= "free while we finish films".length, said);
+  }
   // what five minutes is estimated at
   assert.equal(tokensFor("acted", secondsFor("acted", maxShots("acted"))), 1500);
   assert.equal(tokensFor("narrated", secondsFor("narrated", maxShots("narrated"))), 750);
