@@ -154,7 +154,10 @@ test("the wait is said honestly: a story whose pictures move takes minutes longe
   assert.ok(arch.includes("? storyTypicalSeconds(typeof p.filmScenes === \"number\" ? p.filmScenes : 6, storyMotionOn(p.filmPictures))"), "a story asked for over still pictures is timed as one (tests/video-ladder.test.ts)");
   const film = read("app", "routes", "web.film.tsx");
   assert.ok(film.includes("storyMotion: storyMotionOn(),"));
-  assert.ok(film.includes("if (opts.moves) { const s = storyTypicalSeconds(n, true); lo = Math.max(3, Math.round((s * 0.8) / 60)); hi = Math.round((s * 1.35) / 60); }"));
+  // (2026-11-25: beside Generate the builder says what its Length slider says — film-length.ts → renderMinutes,
+  //  built on this very sum with the Full HD cut on top, and never under it: tests/film-length.test.ts)
+  assert.ok(film.includes("[lo, hi] = storyMinutes(\"narrated\", n, { moves: opts.moves, per: opts.per });"));
+  assert.ok(film.includes("const [lo, hi] = renderMinutes(way, n, { moves: o.moves, per: o.per });"));
   // (…unless its maker chose STILL pictures on the storyboard's Motion card — tests/video-ladder.test.ts)
   assert.ok(film.includes("narrated, moves: d.storyMotion && pictures !== \"still\", scenes, engine: dialogueEngine })}"));
   // …and the storyboard says the pictures will move, in every language
