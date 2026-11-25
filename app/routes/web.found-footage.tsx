@@ -657,6 +657,9 @@ export default function FoundFootage() {
           <span role="status">
             {edited ? <><Ico n="pencil" size={13} /> {t("Your version of “{name}”", { name: t(scare?.name || "") })}</>
               : scare ? <><Ico n="check" size={13} /> {t("Ready-made. Change any words to make it yours.")}</>
+              // (a film of their own words is anything at all — "not limited", the owner, 2026-11-25: the dog raiding the
+              //  fridge read "Slow and still is what frightens" under it. One take keeps the line it always had.)
+              : film ? t("Say where it happens, who is there, and how it ends — the writer builds the moments.")
               : t("Slow and still is what frightens. It never speaks — nobody's words are put in its mouth.")}
           </span>
           {edited && <button type="button" className="ff-undo" onClick={undo}><Ico n="refresh" size={12} /> {t("Undo")}</button>}

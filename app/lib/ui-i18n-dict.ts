@@ -9,6 +9,7 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "Say where it happens, who is there, and how it ends — the writer builds the moments.": "Di dónde pasa, quién está y cómo termina — el guionista construye los momentos.",
   // ── added 2026-11-25: the found-footage builder as a film — the cut, the reel, the writer's refusals ──
   "One take · {s} s": "Una toma · {s} s",
   "{n} moments": "{n} momentos",
@@ -3545,6 +3546,7 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "Say where it happens, who is there, and how it ends — the writer builds the moments.": "Dis où ça se passe, qui est là et comment ça finit — le scénariste construit les moments.",
   // ── added 2026-11-25: the found-footage builder as a film — the cut, the reel, the writer's refusals ──
   "One take · {s} s": "Une prise · {s} s",
   "{n} moments": "{n} moments",
@@ -7062,6 +7064,7 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "Say where it happens, who is there, and how it ends — the writer builds the moments.": "Sag, wo es passiert, wer da ist und wie es endet — der Autor baut die Momente.",
   // ── added 2026-11-25: the found-footage builder as a film — the cut, the reel, the writer's refusals ──
   "One take · {s} s": "Eine Aufnahme · {s} s",
   "{n} moments": "{n} Momente",
@@ -10589,6 +10592,7 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "Say where it happens, who is there, and how it ends — the writer builds the moments.": "说说在哪里发生、有谁在场、怎么结束——编剧会把它写成一个个瞬间。",
   // ── added 2026-11-25: the found-footage builder as a film — the cut, the reel, the writer's refusals ──
   "One take · {s} s": "单镜头 · {s} 秒",
   "{n} moments": "{n} 个片段",
@@ -14168,6 +14172,7 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  "Say where it happens, who is there, and how it ends — the writer builds the moments.": "بتائیں یہ کہاں ہوتا ہے، کون وہاں ہے اور یہ کیسے ختم ہوتا ہے — لکھاری لمحے بنا دے گا۔",
   // ── added 2026-11-25: the found-footage builder as a film — the cut, the reel, the writer's refusals ──
   "One take · {s} s": "ایک ٹیک · {s} سیکنڈ",
   "{n} moments": "{n} لمحات",

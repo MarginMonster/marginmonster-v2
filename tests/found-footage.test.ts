@@ -61,6 +61,8 @@ test("ONE SCREEN: what was caught — one box first, the cards its starters — 
   // the line under the box says which: the card's as it is, the member's version of it (with a way back), or their own
   for (const s of ['t("Ready-made. Change any words to make it yours.")', 't("Your version of “{name}”", { name: t(scare?.name || "") })', '{t("Undo")}', `t("Slow and still is what frightens. It never speaks — nobody's words are put in its mouth.")`]) assert.ok(ui.includes(s), s);
   assert.ok(ui.includes("const undo = () => { if (scare) setOwn(t(scare.premise)); };") && ui.includes('<span role="status">'));
+  // …and a FILM of their own words is not told it must frighten ("not limited"): one take keeps the line it had
+  assert.ok(ui.includes(': film ? t("Say where it happens, who is there, and how it ends — the writer builds the moments.")\n              : t("Slow and still is what frightens.'));
   // THEIR WORDS ARE NEVER THROWN AWAY: the card being changed, tapped again, keeps them; a camera that cannot film that
   // card makes them their own idea; an emptied box picks no card
   assert.ok(ui.includes("if (!(pick.scare === key && edited)) {"));
