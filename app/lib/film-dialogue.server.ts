@@ -644,7 +644,7 @@ export async function generateTestMovie(opts: {
   // (written here = made in one press: the writer is told who the maker CAST, so the script is for them —
   //  untold, it invented two people of its own and the picked cast matched nobody: dialogue-cast.ts)
   // (a five-minute script is written here in ten answers or more, the job saying it is at work as each comes back)
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, ...(castForWriter(opts.cast).length ? { cast: castForWriter(opts.cast) } : {}), series: opts.series, beat: alive });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, beat: alive, ...(castForWriter(opts.cast).length ? { cast: castForWriter(opts.cast) } : {}), series: opts.series });
   // an episode is called "<Series> — Episode <N>", however its script was written (film-series.ts)
   if (opts.series) treatment.title = episodeTitle(opts.series.title, opts.series.episode, treatment.title);
   // (THE ONE LIMIT — film-length.ts, through film-engine's filmShots: as many shots as the page could ask for and

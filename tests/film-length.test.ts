@@ -430,8 +430,9 @@ test("THE HEARTBEAT: a film that works for two hours is never taken for dead —
   assert.ok(eng.includes("try { plan = takePlan(JSON.parse(raw), { way, parts: partSizes.length }); } catch { plan = null; }\n      await alive();"));
   assert.ok(eng.includes("if (came.length > got.length) got = came;\n          await alive();"));
   assert.ok(eng.includes("done[k] = await checkPart(spans[k]); await alive();"));
-  assert.ok(src.indexOf("const alive = () => ckpt({ ckBeat: Date.now() });") < src.indexOf("series: opts.series, beat: alive });"));
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("series: opts.series, beat: () => ckpt({ ckBeat: Date.now() }) });"));
+  const beatAt = src.indexOf("sceneCount: opts.sceneCount, beat: alive, ...(castForWriter(opts.cast).length");
+  assert.ok(beatAt > 0 && src.indexOf("const alive = () => ckpt({ ckBeat: Date.now() });") < beatAt);
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("sceneCount: opts.sceneCount, beat: () => ckpt({ ckBeat: Date.now() }), contentLang: lang, mode: \"narrated\","));
 });
 
 test("THE RESUME, when a finished shot's file is gone: the next shot grows out of the last shot still there, never out of one that is made again", () => {
