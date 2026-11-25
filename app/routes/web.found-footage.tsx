@@ -581,6 +581,9 @@ export default function FoundFootage() {
   const plan = film ? (shown && !otherCam ? shown.moments : standIn(pick.camera, count)) : [];
   const [lo, hi] = film ? footageFilmEta({ camera: pick.camera, moments: plan }) : footageEta(pick.camera);
   const secs = film ? footageSeconds({ moments: plan }) : oneTake(pick.camera);
+  // (while the writer writes: the film the cut asked for — not the reel it is replacing)
+  const asked = standIn(pick.camera, count);
+  const askedEta = footageFilmEta({ camera: pick.camera, moments: asked });
   const roomName = (key?: string) => t(HOUSE_ROOMS.find((r) => r.key === key)?.name || "Living room");
   // the settings card: the one that shows most (the house's night vision, else the shape), and under it the rest
   const setName = house ? (ir ? t("Night vision") : t("Lamp lit")) : aspect === "9:16" ? t("Tall") : t("Wide");
@@ -773,7 +776,9 @@ export default function FoundFootage() {
           <div className="ff-tape">
             <span className="ff-tape-stamp">{t("Recovered footage")}</span>
             <b className="ff-tape-name">{t("Writing the footage…")}</b>
-            <span className="ff-tape-sum">{t("{n} moments · about half a minute", { n: count })}</span>
+            {/* (what the cut asked for — its own length: a fixed "half a minute" was printed over eight moments, 2:10
+                of film — review, 2026-11-25) */}
+            <span className="ff-tape-sum">{t("{n} moments", { n: count })} · ≈ {clockOf(footageSeconds({ moments: asked }))} · {t("ready in ~{lo}–{hi} min", { lo: askedEta[0], hi: askedEta[1] })}</span>
           </div>
           <ol className="ff-strip">
             {Array.from({ length: count }, (_, i) => (
