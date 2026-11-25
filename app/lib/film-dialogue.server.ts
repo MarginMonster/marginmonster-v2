@@ -1194,7 +1194,7 @@ export async function generateTestMovie(opts: {
       // (…and when the script gave its thing no cast line of its own — the ninth lake film's writer listed only the two
       //  who talk, and that film had no thing at all — the first figure its words put in view, else the maker's idea)
       const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual })
-        || threatFromWords({ visuals: scenesArr.map((s) => s.visual), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: castActors.map((c) => c.name) });
+        || threatFromWords({ visuals: scenesArr.map((s) => s.visual), said: scenesArr.map((s) => s.caption), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: castActors.map((c) => c.name) });
       if (own) threatEntry = own.entry;
       if (own) {
         let kept: Threat | null = null;

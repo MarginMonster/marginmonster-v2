@@ -1162,36 +1162,63 @@ export function couldBeThing(who: string | null | undefined, thing: string | nul
  *  cast line of its own (that line is storyThreat's to judge: "Mom" is not the thing). */
 const PLACE_PREP = /\b(in|at|on|by|under|behind|beside|near|outside|inside|across|beyond)\s+the\s+([a-z-]+)(?:\s+([a-z-]+))?/gi;
 const PLACE_ADJ = /^(?:black|dark|still|cold|open|far|deep|old|empty|shallow|misty|foggy|quiet|pale|grey|gray|dim|wet|frozen|narrow)$/i;
+/** Where it STANDS when that is in water — the woman in the lake is "in the lake", wherever the light comes from. */
+const IN_WATER = /\b(?:in|into)\s+the\s+(?:(?:black|dark|still|cold|deep|shallow|misty|foggy|quiet|grey|gray|frozen)\s+)?(lake|water|sea|river|pond|pool|shallows|marsh|swamp|reeds|tide|surf|waves)\b/i;
+/** The plain figure words, that say nothing of WHO it is — any later word for the same one ("the woman") says more. */
+const VAGUE = /^(?:figure|shape|thing|stranger|face|shadow)$/;
 export function threatFromWords(o: {
   visuals: ReadonlyArray<string | null | undefined>;
+  /** the lines said — a figure the words call "a figure" the two call "a woman" ("there's a woman standing out there") */
+  said?: ReadonlyArray<string | null | undefined>;
   idea?: string | null;
   speakers: ReadonlyArray<string | null | undefined>;
   cast?: ReadonlyArray<string | null | undefined> | null;
   names?: ReadonlyArray<string | null | undefined>;
 }): { entry: string; name: string; creature: boolean } | null {
-  const tries = [...(o.visuals || []).map((v) => oneLine(v)), oneLine(o.idea)].filter(Boolean);
-  for (const text of tries) {
-    const f = figureIn(text, { speakers: o.speakers, cast: o.cast, names: o.names });
-    if (!f || f.entry || !couldBeThing(f.who, "")) continue;
-    const noun = nounOf((oneLine(f.who).match(THING_WORDS) || [""])[0] || "");
-    if (!noun) continue;
-    // the sentence that shows it, and the place phrase nearest it in that sentence — the first one AFTER it ("a woman
-    // standing waist-deep in the lake"), else the last one BEFORE it ("far out in the lake a woman is standing") — never
-    // "in a soaked nightgown", which is what it wears: a place takes "the"
-    // (…and only the CLAUSE that shows it is its look: "Fakeby shines the flashlight out through the flap: far out in the
-    //  lake a woman is standing" — the first half put Fakeby into her portrait's prompt)
-    const who = oneLine(f.who).toLowerCase();
-    const sentence = text.split(/(?<=[.!?])\s+/).find((s) => s.toLowerCase().includes(who)) || text;
-    const clause = sentence.split(CLAUSE_BREAK).map((c) => c.trim()).find((c) => c.toLowerCase().includes(who)) || sentence;
-    const at = Math.max(0, clause.toLowerCase().indexOf(who));
-    const phrase = (m: RegExpMatchArray): string => `${m[1].toLowerCase()} the ${(m[3] && PLACE_ADJ.test(m[2]) ? `${m[2]} ${m[3]}` : m[2]).toLowerCase()}`;
-    const afterIt = [...clause.slice(at + who.length).matchAll(PLACE_PREP)][0];
-    const beforeIt = [...clause.slice(0, at).matchAll(PLACE_PREP)].pop();
-    const place = afterIt ? phrase(afterIt) : beforeIt ? phrase(beforeIt) : "";
-    const name = `the ${noun}${place ? ` ${place}` : ""}`;
-    return { entry: `${name}, ${clipEvent(clause, 220)}`, name, creature: /^(?:ghost|creature|monster|thing)$/.test(noun) };
-  }
-  return null;
+  const speakers = o.speakers || [];
+  const cast = o.cast || [];
+  const names = [...speakers, ...(o.names || [])];
+  const figs = (text: string): Figure[] => figuresIn(seenWords(text, names), { speakers, cast }).filter((f) => !f.entry && couldBeThing(f.who, ""));
+  // THE FIRST ONE SEEN, in the scenes' own words (else the idea's): its look is drawn from where it is first shown
+  const shown = [...(o.visuals || []).map((v) => oneLine(v)), oneLine(o.idea)].filter(Boolean);
+  let first: { f: Figure; text: string } | null = null;
+  for (const text of shown) { const f = figs(text)[0]; if (f) { first = { f, text }; break; } }
+  if (!first) return null;
+  // …and what it IS, from every word for the same one — the scenes, the lines, the idea: the most telling word wins
+  // ("a pale, motionless figure" in the shot whose light finds her; "the woman" in the next; "a woman standing out
+  //  there" in what is said — the ninth lake film: named a "figure", her portrait was drawn as a creature). The words
+  //  vote, the maker's own idea twice; a figure first called only "a figure" is never made a man by one line about a
+  //  man walking past when everything else says a woman.
+  const votes = new Map<string, number>();
+  const vote = (t: string, w: number) => { for (const g of figs(t)) if (!VAGUE.test(g.noun) && alreadyIn(g, [first!.f])) votes.set(g.noun, (votes.get(g.noun) || 0) + w); };
+  for (const t of (o.visuals || []).map((v) => oneLine(v)).filter(Boolean)) vote(t, 1);
+  for (const t of (o.said || []).map((s) => oneLine(s)).filter(Boolean)) vote(t, 1);
+  if (oneLine(o.idea)) vote(oneLine(o.idea), 2);
+  const best = [...votes.entries()].sort((a, b) => b[1] - a[1])[0];
+  const noun = !VAGUE.test(first.f.noun) ? first.f.noun : best ? best[0] : first.f.noun;
+  if (!noun) return null;
+  // ITS LOOK: only its own words — from the figure on, in the clause that shows it ("a pale, motionless figure,
+  // waist-deep, smiling"; never "Yuri switches on the flashlight…": he would be drawn into her portrait). (The figure's
+  // words come back without their commas — "a pale motionless figure" — so they are found with any marks between.)
+  const findWho = (text: string): { index: number; length: number } | null => {
+    const ws = oneLine(first!.f.who).split(/\s+/).filter(Boolean).map(escapeRe);
+    if (!ws.length) return null;
+    try { const m = new RegExp(`(?<![\\p{L}\\p{N}])${ws.join("[\\s,;:'’\"“”-]+")}(?![\\p{L}\\p{N}])`, "iu").exec(text); return m ? { index: m.index, length: m[0].length } : null; } catch { return null; }
+  };
+  const sentence = first.text.split(/(?<=[.!?])\s+/).find((s) => !!findWho(s)) || first.text;
+  const clause = sentence.split(CLAUSE_BREAK).map((c) => c.trim()).find((c) => !!findWho(c)) || sentence;
+  const hit = findWho(clause) || { index: 0, length: 0 };
+  const rest = clause.slice(hit.index);
+  const look = rest.slice(0, hit.length).replace(/\b(?:figure|shape|thing|stranger)\b/i, noun) + rest.slice(hit.length);
+  // WHERE IT STANDS: in the water when any word for it says so; else the place nearest it in the clause that shows
+  // it (after it, else before it) — a place takes "the" ("in a soaked nightgown" is what it wears)
+  const phrase = (m: RegExpMatchArray): string => `${m[1].toLowerCase()} the ${(m[3] && PLACE_ADJ.test(m[2]) ? `${m[2]} ${m[3]}` : m[2]).toLowerCase()}`;
+  const wet = [first.text, oneLine(o.idea)].map((t) => IN_WATER.exec(t)).find(Boolean);
+  const afterIt = [...clause.slice(hit.index + hit.length).matchAll(PLACE_PREP)][0];
+  const beforeIt = [...clause.slice(0, hit.index).matchAll(PLACE_PREP)].pop();
+  const place = wet ? `in the ${wet[1].toLowerCase()}` : afterIt ? phrase(afterIt) : beforeIt ? phrase(beforeIt) : "";
+  const name = `the ${noun}${place ? ` ${place}` : ""}`;
+  return { entry: `${name}, ${clipEvent(look, 220)}`, name, creature: /^(?:ghost|creature|monster)$/.test(noun) };
 }
 
 /** What a sighting is: who is newly seen (as the words call them), their cast line when the story has one, and the

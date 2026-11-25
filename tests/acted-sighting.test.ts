@@ -218,7 +218,7 @@ test("the film's thing when the script gave it NO cast line: the first figure it
   const t = threatFromWords({ visuals: TENT, speakers: TWO, cast: TWO_ONLY, names: TWO });
   // shot 1's voice is HEARD (nobody is seen); shot 3's light finds her — named by where she stands, never a bare "the woman",
   // and her look is only the clause that shows HER (never "Fakeby shines the flashlight…": he would be in her portrait)
-  assert.deepEqual(t, { entry: "the woman in the lake, far out in the lake a woman is standing waist-deep, perfectly still, smiling.", name: "the woman in the lake", creature: false });
+  assert.deepEqual(t, { entry: "the woman in the lake, a woman is standing waist-deep, perfectly still, smiling.", name: "the woman in the lake", creature: false });
   // …and her portrait is the told stories' recipe in the film's own (photographed) style, dressed, nothing glowing — never
   // a creature's, and nobody but her in it
   const p = threatPortrait(t!.entry, "a dark horror scene, photorealistic");
@@ -226,7 +226,26 @@ test("the film's thing when the script gave it NO cast line: the first figure it
   assert.ok(!p.includes("Fakeby") && !p.includes("Testa"), p);
   // what she WEARS is never where she is: "in a soaked nightgown" is not a place ("the" takes a place, "a" a garment)
   const worn = threatFromWords({ visuals: ["Far out in the black water, a pale woman in a soaked white nightgown stands waist-deep in the still lake, smiling."], speakers: TWO, cast: TWO_ONLY });
-  assert.equal(worn?.name, "the woman in the still lake");
+  assert.equal(worn?.name, "the woman in the water");
+  assert.ok(worn!.entry.includes("a pale woman in a soaked white nightgown"), worn!.entry);
+  // THE NINTH LAKE FILM'S OWN SCRIPT (live, 2026-11-25, its words as the engine stored them): only the two in "cast"; the
+  // light finds "a pale, motionless figure"; the next scene and the lines call her a woman. She is the woman in the lake —
+  // never "the figure across the black water", never drawn by the creature recipe, and Yuri is never in her portrait
+  const V9_CAST = ["Yuri, a lanky 28-year-old with a scruffy beard, round wire glasses, a faded flannel shirt and a battered green headlamp", "Wilfred, a stocky 30-year-old with a buzz cut, a thick canvas jacket, a scar through one eyebrow and a wristwatch with a cracked face"];
+  const V9_SEEN = [
+    "A soft, breathy voice calls 'Yuri...Wilfred...' twice from the lake; Yuri bolts upright, Wilfred grips the sleeping bag.",
+    "Wilfred unzips the tent flap an inch, cold air rushing in, while Yuri clutches the flashlight tight.",
+    "Yuri switches on the flashlight, its beam cutting across the black water toward a pale, motionless figure, waist-deep, smiling.",
+    "The woman glides forward through the shallows without a ripple as Wilfred yanks the zipper down, sealing the flap.",
+    "Beside Yuri, the tent flap hangs open a hand's width, and the woman's face fills the gap, skin pale as candle wax, smiling far too wide, eyes unblinking.",
+  ];
+  const V9_SAID = ["Yuri: Did you hear that? Someone said our names, right out there on the water.", "Wilfred: It's probably just the wind on the water, Yuri. Don't open that light yet.", "Yuri: Wilfred, look— there's a woman standing out there, and she isn't moving at all.", "Wilfred: She's coming toward us, Yuri— zip it, zip it now, don't look at her.", ""];
+  const v9 = threatFromWords({ visuals: V9_SEEN, said: V9_SAID, idea: "Two friends camping by a quiet lake wake at 3am to someone softly calling their names from the water. When they shine a flashlight, a woman is standing waist-deep in the lake, perfectly still, smiling — and she starts walking toward their tent.", speakers: ["Yuri", "Wilfred"], cast: V9_CAST, names: ["Yuri", "Wilfred"] });
+  assert.deepEqual(v9, { entry: "the woman in the lake, a pale, motionless woman, waist-deep, smiling.", name: "the woman in the lake", creature: false });
+  const v9p = threatPortrait(v9!.entry, "a dark, moody, cinematic horror scene, photorealistic");
+  assert.ok(!v9p.includes(CREATURE_REAL) && !/\bcreature\b/i.test(v9p) && !v9p.includes("Yuri"), v9p);
+  // …and one line about a man walking past never makes her a man (the words vote; the maker's idea twice)
+  assert.equal(threatFromWords({ visuals: [...V9_SEEN.slice(0, 3), "A man walks past the tent with a lantern.", ...V9_SEEN.slice(3)], said: V9_SAID, idea: "a woman is standing waist-deep in the lake", speakers: ["Yuri", "Wilfred"], cast: V9_CAST })?.name, "the woman in the lake");
   // a voice from out of sight is nobody seen; a shadow is drawn as a shadow, never as the thing's face
   assert.equal(threatFromWords({ visuals: [TENT[0], TENT[1]], speakers: TWO, cast: TWO_ONLY }), null);
   assert.equal(threatFromWords({ visuals: ["A shadow stands under the old tree, watching."], speakers: TWO, cast: TWO_ONLY }), null);
@@ -270,7 +289,7 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   assert.ok(eng.includes("const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual })"));
   // (…and when the script gave its thing no cast line — the ninth lake film, live 2026-11-25 — the first figure its words
   //  put in view, else the maker's own idea: the film never goes without its thing because the writer forgot a line)
-  assert.ok(eng.includes("|| threatFromWords({ visuals: scenesArr.map((s) => s.visual), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: castActors.map((c) => c.name) });"));
+  assert.ok(eng.includes("|| threatFromWords({ visuals: scenesArr.map((s) => s.visual), said: scenesArr.map((s) => s.caption), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: castActors.map((c) => c.name) });"));
   assert.ok(eng.includes("for (const model of kept ? [] : STORY_LADDER) {") && eng.includes("storyPictureInput(model, { prompt: threatPortrait(own.entry, tmpl.sceneHint), refs: [], aspect: PORTRAIT_ASPECT })"), "the told stories' portrait recipe and ladder");
   assert.ok(eng.includes("img = (await clothedOrDropped(drawn, PORTRAIT_ASPECT)) || \"\";"), "looked at for an unclothed figure");
   assert.ok(eng.includes("if (!kept) await ckpt({ ckThreat: JSON.stringify(threat) });"), "kept: a restarted film does not draw it twice");
