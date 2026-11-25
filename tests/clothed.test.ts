@@ -56,17 +56,21 @@ test("a film's master is looked at before it is kept: drawn again clothes-first,
   assert.ok(src.includes('const action = dressedInWater(opts.action || "");'));
   assert.ok(src.includes('const act = action.replace(/\\s+/g, " ").trim().slice(0, 240);') && src.includes('act: action.replace(/\\s+/g, " ").trim().slice(0, 560), mood,'));
   // the look comes after the draw and BEFORE the picture is kept
-  const look = src.indexOf("let seen = await bare(url);");
+  // (since 2026-11-25 the steps are the ONE look every film picture has — clothed.server.ts → keepClothed — moved there
+  //  as they were: a pure refactor, its behaviour run with stand-ins below)
+  const look = src.indexOf("url = (await keepClothed({");
   const kept = src.indexOf('const durable = await persistRemote(url, "jpg");', look);
   assert.ok(look > 0 && kept > look, "looked at before it is persisted");
-  assert.ok(src.includes('parseUnclothed(String((await anthropicVision(unclothedPrompt(), [u], { maxTokens: 120, model: "claude-sonnet-4-6" })) || ""))'));
-  assert.ok(src.includes("catch { return { unclothed: false, who: \"\" }; } };"), "a look that cannot be made keeps the picture");
+  const cl = read("app", "lib", "clothed.server.ts");
+  assert.ok(cl.includes('return parseUnclothed(String((await anthropicVision(unclothedPrompt(), [ref], { maxTokens: 120, model: "claude-sonnet-4-6" })) || ""));'));
+  assert.ok(cl.includes("} catch { return NOBODY; }"), "a look that cannot be made keeps the picture");
   // once more with the clothes said first, on the model that drew it; then the edit, on the good model, of THAT picture
-  assert.ok(src.includes("storyPictureInput(used, { prompt: `${CLOTHED_FIRST} ${staged || prompt}`, refs, aspect: ar })"));
-  assert.ok(src.includes("storyPictureInput(STORY_MODEL, { prompt: clothedEdit(seen.who), refs: [url], aspect: ar })"));
+  assert.ok(src.includes("redraw: () => repRun(used, storyPictureInput(used, { prompt: `${CLOTHED_FIRST} ${staged || prompt}`, refs, aspect: ar }), 150_000),"));
+  assert.ok(src.includes("edit: (u, who) => repRun(STORY_MODEL, storyPictureInput(STORY_MODEL, { prompt: clothedEdit(who), refs: [u], aspect: ar }), 150_000),"));
+  assert.ok(cl.includes("const edited = await o.edit(ref(o.url), seen.who);"), "the edit is of the picture as first drawn, told where that figure is");
   // a redraw or an edit replaces the picture only when ITS look is clean — except the last resort, which is kept and said
-  assert.ok(src.includes("if (again && !look.unclothed) { url = again; seen = look; }") && src.includes("if (edited && !look.unclothed) { url = edited; seen = look; }"));
-  assert.ok(src.includes("STILL an unclothed figure after the edit — the edited picture is kept; look at this film"));
+  assert.ok(cl.includes("if (again && !(await look(again)).unclothed) return again;") && cl.includes("if (!(await look(edited)).unclothed) { say(\"dressed by one edit\"); return edited; }"));
+  assert.ok(src.includes('still: "keep",') && cl.includes("STILL an unclothed figure after the edit — the edited picture is kept; look at this film"));
 });
 
 test("NIGHT IS NIGHT, LOOKED AT: a night film's master whose sky reads as dusk or day is drawn once more with the night said first", async () => {
@@ -84,7 +88,7 @@ test("NIGHT IS NIGHT, LOOKED AT: a night film's master whose sky reads as dusk o
   const src = read("app", "lib", "image-generation.server.ts");
   // asked only of a photographed film whose place or moment says night — and BEFORE the clothed look
   const night = src.indexOf("if (!cartoon && NIGHT_SAID.test(`${setting} ${action}`)) {");
-  assert.ok(night > 0 && night < src.indexOf("let seen = await bare(url);"));
+  assert.ok(night > 0 && night < src.indexOf("url = (await keepClothed({"));
   assert.ok(src.includes("storyPictureInput(used, { prompt: `${NIGHT_FIRST} ${staged || prompt}`, refs, aspect: ar })"));
   assert.ok(src.includes("if (again && (await night(again))) url = again;"), "the redraw is kept only if ITS sky is night");
 });

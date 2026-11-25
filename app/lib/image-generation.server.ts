@@ -15,7 +15,8 @@ import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { characterInRef } from "./character-prompts";
 import { stagedTwoShot, thingBound } from "./acted-staging";
-import { CLOTHED_FIRST, NIGHT_FIRST, NIGHT_SAID, STORY_LAST_MODEL, STORY_MODEL, clothedEdit, dressedInWater, nightLookPrompt, parseNightLook, parseUnclothed, storyPictureInput, unclothedPrompt } from "./story-picture";
+import { CLOTHED_FIRST, NIGHT_FIRST, NIGHT_SAID, STORY_LAST_MODEL, STORY_MODEL, clothedEdit, dressedInWater, nightLookPrompt, parseNightLook, storyPictureInput } from "./story-picture";
+import { keepClothed } from "./clothed.server";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
 import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
@@ -5011,24 +5012,17 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
         } catch (e) { artLog("image-ad", `two-shot: the night redraw failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
       }
     }
-    const bare = async (u: string) => { try { return parseUnclothed(String((await anthropicVision(unclothedPrompt(), [u], { maxTokens: 120, model: "claude-sonnet-4-6" })) || "")); } catch { return { unclothed: false, who: "" }; } };
-    let seen = await bare(url);
-    if (seen.unclothed) {
-      artLog("image-ad", `two-shot: an unclothed figure (${seen.who || "somewhere in it"}) — drawn again, clothes first`);
-      try {
-        const again = await repRun(used, storyPictureInput(used, { prompt: `${CLOTHED_FIRST} ${staged || prompt}`, refs, aspect: ar }), 150_000);
-        const look = again ? await bare(again) : seen;
-        if (again && !look.unclothed) { url = again; seen = look; }
-      } catch (e) { artLog("image-ad", `two-shot: the clothed redraw failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
-    }
-    if (seen.unclothed) {
-      try {
-        const edited = await repRun(STORY_MODEL, storyPictureInput(STORY_MODEL, { prompt: clothedEdit(seen.who), refs: [url], aspect: ar }), 150_000);
-        const look = edited ? await bare(edited) : seen;
-        if (edited && !look.unclothed) { url = edited; seen = look; }
-        else if (edited) { url = edited; artLog("image-ad", "two-shot: STILL an unclothed figure after the edit — the edited picture is kept; look at this film"); }
-      } catch (e) { artLog("image-ad", `two-shot: the clothing edit failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
-    }
+    // (the ONE look every film picture has since 2026-11-25 — clothed.server.ts → keepClothed, its sequence exactly what
+    //  stood here: the look; once more on the model that drew it, clothes first, kept only if ITS look is clean; then
+    //  ONE edit of the picture as first drawn, on the good model; still bare, the edited picture is kept and said)
+    const shot = url;
+    url = (await keepClothed({
+      url: shot,
+      redraw: () => repRun(used, storyPictureInput(used, { prompt: `${CLOTHED_FIRST} ${staged || prompt}`, refs, aspect: ar }), 150_000),
+      edit: (u, who) => repRun(STORY_MODEL, storyPictureInput(STORY_MODEL, { prompt: clothedEdit(who), refs: [u], aspect: ar }), 150_000),
+      still: "keep",
+      log: (l) => artLog("image-ad", `two-shot: ${l}`),
+    })) || shot;
     const durable = await persistRemote(url, "jpg");
     artLog("image-ad", `side-by-side two-shot rendered on ${used} (refs x${refs.length}${staged ? `, staged ${opts.staging}` : ""})`);
     return durable;

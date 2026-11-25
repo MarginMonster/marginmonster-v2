@@ -339,5 +339,6 @@ test("a place whose first scene has the thing in view is drawn with its picture,
   // (…and the genre's own world after it, stream S8 2026-11-25: tests/clothed.test.ts)
   assert.ok(ig.includes("roomNote, faceNote, thingNote, comp, ownWorld: opts.ownWorld })") && !ig.includes("${faceNote}${thingNote}"));
   assert.ok(ig.includes("action?: string; /** THE FILM'S THING") && ig.includes("thing?: { url: string; name: string; look?: string } | null;"));
-  assert.ok(ig.includes("let seen = await bare(url);") && ig.includes("if (!cartoon && NIGHT_SAID.test(`${setting} ${action}`)) {"), "the clothed and the night looks, as they were");
+  // (the clothed look is the one every film picture has since 2026-11-25 — clothed.server.ts → keepClothed, the same steps)
+  assert.ok(ig.includes("url = (await keepClothed({") && ig.includes("if (!cartoon && NIGHT_SAID.test(`${setting} ${action}`)) {"), "the clothed and the night looks, as they were");
 });
