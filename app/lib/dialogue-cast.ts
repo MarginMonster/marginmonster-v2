@@ -117,15 +117,31 @@ export function takeSeen(
  * because that film was made to look at its poster, and it had none: there was no cast to bill.)
  */
 
+/* ---- THE MONSTER IS CASTABLE ----
+ *
+ * The owner, 2026-11-25, of the eighth render of the lake idea — right until its last shot, where the reveal drew
+ * a stranger: "It looked really good till that last scene bro", and then "Monster should be castable also". A
+ * creature picked on the Cast card was used only if the writer happened to name it in the LAST scene; with a
+ * storyboard written, it was not in the posted cast at all (the script takes it out of "cast", and the page casts
+ * the script's characters). So ONE cast entry may say what it is in the film: `role: "threat"` — the member's
+ * chosen monster, or the portrait they had drawn of the story's own threat. The film draws everything that shows
+ * the thing from that one picture (film-dialogue → the film's thing). An old payload has no role, and reads as
+ * it always did. */
+export type CastRole = "threat";
+/** `{ role: "threat" }` for an entry the page sent as the film's thing, else `{}` — for whoever reads a posted cast
+ *  (web.film.tsx's action: `...castRoleOf(x)` beside `kind` and `look`). Nothing else is ever a role. */
+export const castRoleOf = (x: unknown): { role?: CastRole } => (!!x && typeof x === "object" && (x as { role?: unknown }).role === "threat" ? { role: "threat" } : {});
+
 /** One of the maker's picks, as the page sends it. */
-export type PickedCast = { name: string; faceUrl: string | null; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null };
+export type PickedCast = { name: string; faceUrl: string | null; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null; role?: CastRole };
 /** A cast member as an acted film is made from: who, their picture, the voice they speak in, what they are
  *  when that is not a person — and the words the writer is told about them. */
-export type ActedCast = { name: string; faceUrl: string; voiceId: string | null; kind?: "cartoon" | "monster"; look?: string };
+export type ActedCast = { name: string; faceUrl: string; voiceId: string | null; kind?: "cartoon" | "monster"; look?: string; role?: CastRole };
 
 /** The picks as an acted film's cast. Only somebody with a PICTURE is cast (the film is drawn from it);
  *  nobody twice; each keeps their own voice when `voiceOk` says this shop may use it — any other id is
- *  dropped and the engine chooses (never an id the page made up, which could be another shop's voice). */
+ *  dropped and the engine chooses (never an id the page made up, which could be another shop's voice).
+ *  The film's THING (`role: "threat"`) keeps its role — one of them at most, the first. */
 export function pickedAsCast(picked: ReadonlyArray<PickedCast | null | undefined>, voiceOk: (voiceId: string) => boolean): ActedCast[] {
   const out: ActedCast[] = [];
   for (const p of picked || []) {
@@ -134,17 +150,26 @@ export function pickedAsCast(picked: ReadonlyArray<PickedCast | null | undefined
     if (!name || !faceUrl || out.some((c) => speakerKey(c.name) === speakerKey(name))) continue;
     const look = String(p?.look || "").replace(/\s+/g, " ").trim().slice(0, 220);
     const voiceId = p?.voiceId && voiceOk(p.voiceId) ? p.voiceId : null;
-    out.push({ name, faceUrl, voiceId, ...(p?.kind === "cartoon" || p?.kind === "monster" ? { kind: p.kind } : {}), ...(look ? { look } : {}) });
+    const role = castRoleOf(p).role && !out.some((c) => c.role === "threat") ? { role: "threat" as const } : {};
+    out.push({ name, faceUrl, voiceId, ...(p?.kind === "cartoon" || p?.kind === "monster" ? { kind: p.kind } : {}), ...(look ? { look } : {}), ...role });
   }
   return out;
 }
 
+/** THE FILM'S THING among a posted cast: the first entry the page sent as `role: "threat"` that has a picture — or
+ *  none (an old payload, or a film with no cast threat: the film then finds the script's own, film-dialogue). */
+export function castThreat<T extends { name?: string | null; faceUrl?: string | null; role?: string | null }>(cast: ReadonlyArray<T | null | undefined> | null | undefined): T | null {
+  return (cast || []).find((c): c is T => !!c && c.role === "threat" && !!String(c.name || "").trim() && !!String(c.faceUrl || "").trim()) || null;
+}
+
 /** Who the WRITER is told the cast is, when the script is written by the film itself: each one's name and
- *  the words they were described with (film-engine → "THE CAST IS ALREADY CHOSEN"). */
-export function castForWriter(cast: ReadonlyArray<{ name?: string | null; faceUrl?: string | null; look?: string | null; kind?: string | null } | null | undefined> | null | undefined): Array<{ name: string; desc: string; kind?: "cartoon" | "monster" }> {
+ *  the words they were described with (film-engine → "THE CAST IS ALREADY CHOSEN"). The film's THING is told as
+ *  what it is — a creature (`kind: "monster"`), whatever its picture is of — so that a horror film's writer gives it
+ *  no line and no "cast" entry and writes the story ABOUT it (film-engine → THE THREAT, premise-rules → chosenThreat). */
+export function castForWriter(cast: ReadonlyArray<{ name?: string | null; faceUrl?: string | null; look?: string | null; kind?: string | null; role?: string | null } | null | undefined> | null | undefined): Array<{ name: string; desc: string; kind?: "cartoon" | "monster" }> {
   return (cast || [])
-    .filter((c): c is { name: string; faceUrl: string; look?: string | null; kind?: string | null } => !!c && !!String(c.name || "").trim() && !!c.faceUrl)
+    .filter((c): c is { name: string; faceUrl: string; look?: string | null; kind?: string | null; role?: string | null } => !!c && !!String(c.name || "").trim() && !!c.faceUrl)
     // (…and WHAT it is, when it is not a person: the writer's "is it a creature?" was a guess from the look's
     //  first words, and "a huge, lean werewolf that…" was cut at its comma and read as a person — premise-rules.ts)
-    .map((c) => ({ name: c.name.trim(), desc: String(c.look || "").replace(/\s+/g, " ").trim().slice(0, 220), ...(c.kind === "monster" || c.kind === "cartoon" ? { kind: c.kind } : {}) }));
+    .map((c) => ({ name: c.name.trim(), desc: String(c.look || "").replace(/\s+/g, " ").trim().slice(0, 220), ...(c.role === "threat" ? { kind: "monster" as const } : c.kind === "monster" || c.kind === "cartoon" ? { kind: c.kind } : {}) }));
 }

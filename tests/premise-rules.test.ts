@@ -46,7 +46,12 @@ test("a creature the maker chose plays the idea's threat — in an acted film it
   assert.equal(chosenThreat([], true), "");
   const acted = chosenThreat(["Howl"], true);
   assert.ok(acted.includes("Howl IS that threat, and NOT one of the two who talk"));
-  assert.ok(acted.includes("Howl has no \"cast\" entry") && acted.includes("SEEN only in the last shot"));
+  // (seen close only in the last shot — and, since 2026-11-25, far off where the idea has the two SEE it: the film draws
+  //  it there from its own picture, acted-staging.ts → sightingOf; it is called by its NAME wherever it is shown)
+  assert.ok(acted.includes("Howl has no \"cast\" entry") && acted.includes("when the idea has the two SEE it before the end, the VISUAL of that shot shows Howl there, far off and half in the dark — close only in the last shot."));
+  assert.ok(acted.includes("Every VISUAL that shows Howl calls it by name, \"Howl\" — never just \"a figure\" or \"something\": the film draws Howl from its own picture wherever that name is."));
+  assert.ok(acted.includes("Howl is heard and glimpsed the way the idea says") && !acted.includes("Howl it is heard"));
+  assert.ok(chosenThreat(["Howl", "Mara"], true).includes("calls them by their names (\"Howl\", \"Mara\")"));
   assert.ok(acted.includes("Only when the idea itself has Howl talking with somebody face to face it is one of the two."));
   const told = chosenThreat(["Howl"], false);
   assert.ok(told.includes("Howl IS that threat and it is seen only the way the idea sees it"));
