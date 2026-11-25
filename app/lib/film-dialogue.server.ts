@@ -539,7 +539,7 @@ const STAGING = "Frame it as a TWO-SHOT that keeps BOTH characters visible in th
 export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: string; castText?: string; styleRefUrl?: string | null; castRefUrls?: (string | null | undefined)[]; roomRefUrl?: string | null; aspect?: "9:16" | "16:9" | "1:1"; /** the cast pictures include a cartoon character or a monster: lock them as what they are, not as people */ creatureCast?: boolean }): Promise<string | null> {
   const ar = opts.aspect || "9:16";
   const framed = `${opts.sceneVisual}. ${opts.sceneHint}. ${STAGING} ${opts.castText || ""} ${NO_TEXT}`.replace(/\s+/g, " ").trim();
-  try {
+  const draw = async (): Promise<string | null> => {
     const castRefs = (opts.castRefUrls || []).filter((u): u is string => !!u);
     // CONTINUITY path first: when we have the PREVIOUS shot's frame AND the locked
     // cast faces, chain them — the prior frame anchors the room/lighting/angle while
@@ -558,7 +558,15 @@ export async function renderSceneFrame(opts: { sceneVisual: string; sceneHint: s
     return opts.styleRefUrl
       ? ((await renderStyledSeed(framed, opts.styleRefUrl, ar)) || (await renderCreativeSeed(framed, ar)))
       : await renderCreativeSeed(framed, ar);
-  } catch { return null; }
+  };
+  let url: string | null = null;
+  try { url = await draw(); } catch { return null; }
+  if (!url) return null;
+  // EVERYBODY IN IT IS CLOTHED — THE STORYBOARD'S PREVIEW FRAME TOO (the clothed stream's review, 2026-11-25): a frame
+  // the maker approves is that shot's seed AS IT IS (approvedFrames → seedAbs), past the master and its look, so it is
+  // looked at here, and dressed by one edit if it must be. A look that cannot be made keeps the picture.
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  return keepClothed({ url, ref: (u) => (u.startsWith("http") ? u : `${base}${u}`), edit: (u, bare) => clothedEditOn(u, bare, ar), log: (l) => console.log(`[storyboard] a preview frame: ${l}`) });
 }
 
 /** Template-resolving wrapper for the web action (which has the template key, not

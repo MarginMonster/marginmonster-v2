@@ -290,6 +290,11 @@ test("ACTED FILMS: the thing's portrait, a sighting and the REVEAL all go throug
   // the casting portrait a member draws on the page: looked at, dressed by one edit if it must be — kept either way
   const actor = eng.slice(eng.indexOf("export async function renderActorPortrait("), eng.indexOf("function actorsInScene("));
   assert.ok(actor.includes("return keepClothed({ url, ref: (u) => (u.startsWith(\"http\") ? u : `${base}${u}`), edit: (u, bare) => clothedEditOn(u, bare, \"9:16\"),") && !actor.includes("still: \"drop\""));
+  // …and the storyboard's PREVIEW FRAME (the clothed stream's review): a frame the maker approves is that shot's seed as it
+  // is, past the master and its look — so it is looked at where it is drawn, every path of it, and kept either way
+  const frame = eng.slice(eng.indexOf("export async function renderSceneFrame("), eng.indexOf("export async function previewFilmSceneFrame("));
+  assert.ok(frame.includes("try { url = await draw(); } catch { return null; }"));
+  assert.ok(frame.includes("return keepClothed({ url, ref: (u) => (u.startsWith(\"http\") ? u : `${base}${u}`), edit: (u, bare) => clothedEditOn(u, bare, ar), log: (l) => console.log(`[storyboard] a preview frame: ${l}`) });") && !frame.includes("still: \"drop\""));
 });
 
 test("the storyboard says it: a scene still unclothed after its goes and its edit is flagged first, in every language", () => {
