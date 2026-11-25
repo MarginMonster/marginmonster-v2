@@ -1200,8 +1200,9 @@ async function runJob(
             },
             // Per-scene storyboard frames the merchant generated + approved in the UI.
             approvedFrames: payload.approvedFrames as (string | null)[] | undefined,
-            // Locked cast (face + voice per character) the merchant cast in the UI.
-            cast: payload.cast as Array<{ name: string; faceUrl?: string | null; voiceId?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string }> | undefined,
+            // Locked cast (face + voice per character) the merchant cast in the UI — and, in a Horror film, its THING
+            // (`role: "threat"`, one at most: the monster picked, or its drawn portrait — dialogue-cast.ts → castThreat)
+            cast: payload.cast as Array<{ name: string; faceUrl?: string | null; voiceId?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string; role?: "threat" }> | undefined,
             // "Lock these voices": re-voice each line with the voice picked for that character.
             lockVoices: payload.filmLockVoices === true,
             // Captions on the finished film: "bold" / "subtitles" (unset = none).

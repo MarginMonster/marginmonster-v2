@@ -44,6 +44,10 @@ import { nameTok } from "../lib/character-prompts";
 import { slateTitle } from "../lib/film-slate";
 // (2026-11-24) an acted film made in one press is cast with the people picked on the Cast card
 import { pickedAsCast } from "../lib/dialogue-cast";
+// (2026-11-25) THE MONSTER IS CAST: a Horror film's thing has its own row in the Cast step, rides with the cast as
+// `role: "threat"`, and a script's own threat is found the way the film finds it (acted-staging.ts → storyThreat)
+import { castRoleOf, type CastRole } from "../lib/dialogue-cast";
+import { castEntry } from "../lib/story-picture";
 // (2026-11-24) the posters stand on three shelves: told · acted · sung
 import { heroShelves } from "../lib/film-heroes";
 // (2026-11-24) THE LYRIC VIDEO: a member's own song, its words on screen — a poster on the sung shelf, its own builder
@@ -355,8 +359,10 @@ function parseOutfitImgs(raw: string | null): Record<string, string> | undefined
 }
 
 /** The cast the maker PICKED for a story (before a word was written): who they are, their picture, what
- *  kind of character they are and what they look like. At most 4; a face must be a site path or http(s). */
-type StoryCastIn = { name: string; faceUrl: string | null; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null };
+ *  kind of character they are and what they look like. At most 4; a face must be a site path or http(s).
+ *  (2026-11-25) …and the film's THING, when a Horror film's monster was picked in its own row: `role: "threat"`
+ *  (dialogue-cast.ts → castRoleOf; one at most — pickedAsCast and castThreat take the first). */
+type StoryCastIn = { name: string; faceUrl: string | null; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null; role?: CastRole };
 function parseStoryCast(raw: string | null): StoryCastIn[] {
   if (!raw) return [];
   try {
@@ -367,7 +373,7 @@ function parseStoryCast(raw: string | null): StoryCastIn[] {
       .map((x) => {
         const face = typeof x.faceUrl === "string" && /^(https?:\/\/|\/)/i.test(x.faceUrl.trim()) ? x.faceUrl.trim().slice(0, 2000) : null;
         const kind: StoryCastIn["kind"] = x.kind === "cartoon" || x.kind === "monster" ? x.kind : "person";
-        return { name: String(x.name).trim().slice(0, 40), faceUrl: face, kind, look: typeof x.look === "string" ? x.look.replace(/\s+/g, " ").trim().slice(0, 220) : "", voiceId: typeof x.voiceId === "string" && x.voiceId ? x.voiceId.slice(0, 80) : null };
+        return { name: String(x.name).trim().slice(0, 40), faceUrl: face, kind, look: typeof x.look === "string" ? x.look.replace(/\s+/g, " ").trim().slice(0, 220) : "", voiceId: typeof x.voiceId === "string" && x.voiceId ? x.voiceId.slice(0, 80) : null, ...castRoleOf(x) };
       })
       .slice(0, 4);
   } catch { return []; }
@@ -564,6 +570,51 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return json({ portraitUrl, castIndex });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't cast that actor — try again."), castIndex, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+    }
+  }
+
+  // FREE — SEE THE FILM'S THING (2026-11-25). The owner, of the eighth lake film — right until its last shot,
+  // where the reveal drew a stranger: "It looked really good till that last scene bro", then "Monster should be
+  // castable also". A Horror script that invents its own threat ("the woman in the lake") had it drawn only once
+  // the film was being made, so the maker met it for the first time in the reveal. The Cast step's monster row
+  // ("See it · free") draws it NOW, with the ENGINE'S OWN recipe for it (acted-staging.ts → threatPortrait, the
+  // told stories' portrait: photographed, clothed, nothing glowing), on the same ladder, and LOOKED at for an
+  // unclothed figure the way the engine looks (film-dialogue → clothedOrDropped: edited once, else not used —
+  // three lake films in a row had the woman drawn bare). From then on it IS the film's thing: the page sends it
+  // with the film as the cast entry with `role: "threat"`, and the engine uses that picture as given. Free, like
+  // the page's other stills (the plan's guard above); Horror only. A picture that will not come says so in one
+  // calm line on the page, and the film draws it itself when it is made.
+  if (intent === "previewFilmThreat") {
+    const threatEntry = ((form.get("threatEntry") as string) || "").replace(/\s+/g, " ").trim().slice(0, 600);
+    if (tmpl.key !== "horror" || !castEntry(threatEntry).name) return json({ error: tr(lang, "It wouldn't draw just now — the film draws it when it's made.") });
+    const absOf = (u: string) => (/^https?:\/\//i.test(u) ? u : `${externalOrigin(request)}${u.startsWith("/") ? "" : "/"}${u}`);
+    try {
+      const { threatPortrait } = await import("../lib/acted-staging");
+      const pic = await import("../lib/story-picture");
+      const { repRun, persistRemote } = await import("../lib/image-generation.server");
+      const { anthropicVision } = await import("../lib/anthropic.server");
+      const prompt = threatPortrait(threatEntry, tmpl.sceneHint);
+      const bare = async (u: string) => {
+        try { return pic.parseUnclothed(String((await anthropicVision(pic.unclothedPrompt(), [absOf(u)], { maxTokens: 120, model: "claude-sonnet-4-6" })) || "")); }
+        catch { return { unclothed: false, who: "" }; } // (a look that cannot be made keeps the picture — as the engine's)
+      };
+      let threatUrl = "";
+      for (const model of pic.STORY_LADDER) {
+        try {
+          let drawn = await persistRemote(await repRun(model, pic.storyPictureInput(model, { prompt, refs: [], aspect: pic.PORTRAIT_ASPECT }), 150_000), "jpg");
+          const seen = await bare(drawn);
+          if (seen.unclothed) {
+            drawn = await persistRemote(await repRun(pic.STORY_MODEL, pic.storyPictureInput(pic.STORY_MODEL, { prompt: pic.clothedEdit(seen.who), refs: [absOf(drawn)], aspect: pic.PORTRAIT_ASPECT }), 150_000), "jpg");
+            if ((await bare(drawn)).unclothed) drawn = "";
+          }
+          threatUrl = drawn;
+        } catch (e) { console.error(`[film] the thing's portrait on ${model} did not come: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
+        if (threatUrl) break;
+      }
+      if (!threatUrl) return json({ error: tr(lang, "It wouldn't draw just now — the film draws it when it's made.") });
+      return json({ threatUrl });
+    } catch (e) {
+      return json({ error: tr(lang, "It wouldn't draw just now — the film draws it when it's made."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
     }
   }
 
@@ -850,20 +901,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     // Locked cast (name + face + voice per character) the merchant cast in the UI —
     // drives per-shot identity conditioning and the voice pin in the render.
-    let cast: Array<{ name: string; faceUrl: string | null; voiceId: string | null; kind?: "person" | "cartoon" | "monster"; look?: string }> | undefined;
+    let cast: Array<{ name: string; faceUrl: string | null; voiceId: string | null; kind?: "person" | "cartoon" | "monster"; look?: string; role?: CastRole }> | undefined;
     const castRaw = ((form.get("cast") as string) || "").trim();
     if (castRaw) {
       try {
         const c = JSON.parse(castRaw);
         if (Array.isArray(c)) {
-          const mapped = c
-            .filter((x) => x && typeof x.name === "string" && x.name.trim())
-            .map((x) => ({
+          const named = c.filter((x) => x && typeof x.name === "string" && x.name.trim());
+          // THE FILM'S THING (2026-11-25): a Horror film's monster, or the portrait drawn of its script's own threat,
+          // comes as the one entry with `role: "threat"` — the first; the cast's own eight come before it
+          const thingAt = named.findIndex((x) => !!castRoleOf(x).role);
+          const mapped = named
+            .map((x, k) => ({
               name: String(x.name).slice(0, 80), faceUrl: x.faceUrl ? String(x.faceUrl).slice(0, 2000) : null, voiceId: x.voiceId ? String(x.voiceId).slice(0, 80) : null,
               // what a cast member IS, when it is not a person — with what it looks like, in the maker's own words
-              ...(x.kind === "cartoon" || x.kind === "monster" ? { kind: x.kind as "cartoon" | "monster", look: typeof x.look === "string" ? x.look.replace(/\s+/g, " ").trim().slice(0, 220) : "" } : {}),
+              // (…and the thing's look is kept whatever it is: the threat a script invented is a figure, not a creature)
+              ...(x.kind === "cartoon" || x.kind === "monster" ? { kind: x.kind as "cartoon" | "monster", look: typeof x.look === "string" ? x.look.replace(/\s+/g, " ").trim().slice(0, 220) : "" } : k === thingAt && typeof x.look === "string" ? { look: x.look.replace(/\s+/g, " ").trim().slice(0, 220) } : {}),
+              ...(k === thingAt ? castRoleOf(x) : {}),
             }))
-            .slice(0, 8);
+            .filter((x, k) => k < 8 || k === thingAt);
           if (mapped.length) cast = mapped;
         }
       } catch { /* ignore malformed */ }
@@ -902,6 +958,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const acted = pickedAsCast(storyCast, (v) => AVATAR_VOICE_IDS.has(v) || isCharacterVoice(v) || mine.has(v));
         if (acted.length) cast = acted;
       }
+    }
+    // THE MONSTER PICKED ON THE CAST STEP, WITH A SCRIPT WRITTEN (2026-11-25): it is not one of the script's
+    // characters, so a storyboard's cast has no row for it — the page sends it after them (`role: "threat"`); a cast
+    // sent without it still gets it here, from the picks, so the film's thing is never dropped on the way.
+    const pickedThing = storyCast.find((c) => c.role === "threat" && !!c.faceUrl);
+    if (pickedThing && tmpl.dialogue && !narrated && approvedTreatment && !(cast || []).some((c) => c.role === "threat")) {
+      cast = [...(cast || []), { name: pickedThing.name, faceUrl: pickedThing.faceUrl, voiceId: null, ...(pickedThing.kind !== "person" ? { kind: pickedThing.kind } : {}), look: pickedThing.look, role: "threat" as const }];
     }
     // "Lock these voices" (dialogue films): every character speaks in exactly the voice picked for them.
     const filmLockVoices = ((form.get("filmLockVoices") as string) || "") === "1";
