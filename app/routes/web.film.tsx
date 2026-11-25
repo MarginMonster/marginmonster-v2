@@ -5509,6 +5509,15 @@ a.mm-pace-auto{text-decoration:none;}
 @keyframes mmCastOn{from{opacity:0;transform:translateY(7px) scale(.7);}to{opacity:1;transform:none;}}
 @media(prefers-reduced-motion:reduce){.mm-card.is-new,.mm-card.is-new .mm-card-castface{animation:none;}}
 @media(min-width:960px){.mm-cast-nudge{font-size:12.5px;}}
+/* (A button centres what it holds: beside a Cast card made taller by a script's characters, the next card's
+   title floated in the middle of its height. The story builder's cards start from the top, so the titles
+   of a row stand on one line.) */
+.mm-story .mm-grid > .mm-card{display:flex;flex-direction:column;justify-content:flex-start;}
+/* (…and the picked face of its Cast panel keeps a whole glow: the strip scrolls sideways, so it clips, and
+   the wide green halo was cut off square at the strip's edge. A little room inside the strip, taken back
+   outside it, and a halo that fits in that room.) */
+.mm-story .mm-artistpick{padding:8px 8px 14px;margin:-6px -6px -4px;}
+.mm-story .mm-artistpick .fs-rface.on:not(.is-arm){box-shadow:0 0 0 2.5px var(--green,#0C7A46),0 0 9px -1px rgba(18,168,94,.55),0 5px 9px -5px rgba(12,122,70,.5);}
 .mm-muted{color:var(--ink3,#9AA39B);}
 .mm-vchips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;}
 .mm-chip{font-size:11.5px;font-weight:800;color:var(--green-d,#0A5E37);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:4px 10px;}

@@ -289,6 +289,17 @@ test("on a phone the rows are comfortable inside the panel: nothing sideways, pi
   assert.ok(ui.includes(".fs-cast{display:flex;flex-direction:column;gap:12px;margin-top:10px;}"));
 });
 
+test("small things seen in the photographs: a row's titles on one line, and a picked face's glow left whole", () => {
+  // a taller Cast card left its neighbour's title floating mid-card (a button centres what it holds)
+  assert.ok(ui.includes(".mm-story .mm-grid > .mm-card{display:flex;flex-direction:column;justify-content:flex-start;}"));
+  // the story builder's strip of faces clipped the picked face's halo square
+  assert.ok(ui.includes(".mm-story .mm-artistpick{padding:8px 8px 14px;margin:-6px -6px -4px;}"));
+  assert.ok(ui.includes(".mm-story .mm-artistpick .fs-rface.on:not(.is-arm){box-shadow:0 0 0 2.5px var(--green,#0C7A46),0 0 9px -1px rgba(18,168,94,.55),0 5px 9px -5px rgba(12,122,70,.5);}"), "an armed face keeps its amber ring");
+  // (both are the STORY builder's only: the Music Video's cards and strips are as they were)
+  assert.equal(count(ui, ".mm-story .mm-grid > .mm-card{"), 1);
+  assert.ok(ui.includes(".mm-artistpick{display:flex;gap:9px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 10px;"));
+});
+
 test("every new line is translated", () => {
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["Start over with different stars", "tap to give them faces (optional)"]) {
