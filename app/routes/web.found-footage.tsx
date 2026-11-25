@@ -52,7 +52,7 @@ import { HOUSE_ROOMS, HOUSE_TAKE_SECONDS, houseScare } from "../lib/house-cam";
 import { FOOTAGE_SHELVES, OWN_SCARE, TAKE_SECONDS, cardUnchanged, familyOf, fits, footageEta, footageJob, footageScare, pickCamera, pickScare, shapeChoosable, shapeFor, shelfScares, type FootagePick } from "../lib/take";
 import {
   FOOTAGE_LIMITS, FOOTAGE_MAX_MOMENTS, FOOTAGE_OUTLINE_UNREADABLE, camStamp, cardWords, cleanFootageOutline, footageClocks, footageFilmEta, footageFilmJob, footageOutlineAsk,
-  footageSeconds, momentSeconds, type FootageMoment, type FootageOutline,
+  footageSeconds, momentCount, momentSeconds, type FootageMoment, type FootageOutline,
 } from "../lib/footage-film";
 import { themeOf } from "../lib/theme";
 import { useTheme } from "../lib/use-theme";
@@ -215,6 +215,8 @@ const outlineOf = (r: Reel, camera: CameraLook, aspect: "9:16" | "16:9"): Footag
   v: 1, title: r.title, camera, aspect, kind: r.kind, place: r.place, thing: r.thing,
   moments: r.moments.filter((m) => filmable(m.line)).map(({ key: _key, ...m }) => m),
 });
+/** Where this tab keeps the reel it is working on (sessionStorage). */
+const REEL_KEPT = "ff-reel-v1";
 /** A moment the writer is asked to fill in ("+ Add a moment"): its line says only where it sits. */
 const NEW_MOMENT = "A new moment, between the one before it and the one after it.";
 
@@ -522,6 +524,32 @@ export default function FoundFootage() {
     askAgain(next, m.key);
   };
   const keepReel = () => { setReelFrom(ideaSig); if (reel) setCount(reel.moments.length); };
+
+  // THE REEL IS KEPT FOR THIS TAB (sessionStorage): a phone that reloads a page it put to sleep, or a slip of the back
+  // button, never loses a reel the member wrote and changed. Put back once, on arrival — unless a link asked for a card
+  // or a camera — and cleaned like anything else that comes back (cleanFootageOutline). Keeping it sends nothing
+  // anywhere: Roll still posts it, and the server cleans it again.
+  useEffect(() => {
+    if (params.get("scare") || params.get("camera")) return;
+    try {
+      const k = JSON.parse(window.sessionStorage.getItem(REEL_KEPT) || "null") as { reel?: unknown; from?: unknown; count?: unknown; pick?: Partial<FootagePick>; own?: unknown } | null;
+      const o = k ? cleanFootageOutline(k.reel) : null;
+      if (!k || !o || o.moments.length < 2) return;
+      const cam = cameraLookOf(k.pick?.camera) || o.camera;
+      const key = String(k.pick?.scare || OWN_SCARE);
+      setPick({ scare: (key === OWN_SCARE || footageScare(key)) && fits(key, cam) ? key : OWN_SCARE, camera: cam });
+      setOwn(String(k.own ?? "").replace(/[\r\n]+/g, " ").slice(0, 400));
+      setWide(o.aspect);
+      setReel(reelOf(o));
+      setReelFrom(String(k.from ?? ""));
+      setCount(momentCount(k.count));
+    } catch { /* a nicety: a browser that keeps nothing simply starts empty */ }
+  }, []);
+  useEffect(() => {
+    if (!reel) return;
+    try { window.sessionStorage.setItem(REEL_KEPT, JSON.stringify({ reel: { ...reel, moments: reel.moments.map(({ key: _key, ...m }) => m) }, from: reelFrom, count, pick, own })); }
+    catch { /* a nicety */ }
+  }, [reel, reelFrom, count, pick, own]);
 
   // what Roll posts: the reel, every word as they left it
   const posted = film && shown && !otherCam ? JSON.stringify(outlineOf(shown, pick.camera, aspect)) : "";

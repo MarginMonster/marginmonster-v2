@@ -401,6 +401,22 @@ test("THE WRITER, ASKED BY THE PAGE: the moments from what one press would film;
   assert.ok(ui.includes("setReel((x) => (x ? { ...x, moments: x.moments.map((y) => (y.key === key ? { ...m, key } : y)) } : x));"));
 });
 
+test("THE REEL IS KEPT FOR THE TAB: a phone that reloads the page never loses a written and changed reel — and what comes back is cleaned", () => {
+  const ui = page();
+  assert.ok(ui.includes('const REEL_KEPT = "ff-reel-v1";'));
+  // saved whenever it changes, with the words in the box and the card it was written from (so it is not "changed")
+  assert.ok(ui.includes("try { window.sessionStorage.setItem(REEL_KEPT, JSON.stringify({ reel: { ...reel, moments: reel.moments.map(({ key: _key, ...m }) => m) }, from: reelFrom, count, pick, own })); }"));
+  // put back once, on arrival — never over a link that asked for a card or a camera — through the engine's own cleaning
+  const at = ui.indexOf("window.sessionStorage.getItem(REEL_KEPT)");
+  const restore = ui.slice(ui.lastIndexOf("useEffect(() => {", at), ui.indexOf("}, []);", at));
+  assert.ok(restore.includes('if (params.get("scare") || params.get("camera")) return;'));
+  assert.ok(restore.includes("const o = k ? cleanFootageOutline(k.reel) : null;") && restore.includes("setReel(reelOf(o));"));
+  // a card that cannot be filmed on that camera is not brought back with it (the rules a tap obeys)
+  assert.ok(restore.includes("setPick({ scare: (key === OWN_SCARE || footageScare(key)) && fits(key, cam) ? key : OWN_SCARE, camera: cam });"));
+  // a browser that keeps nothing (a private window) simply starts empty
+  assert.ok(restore.includes("catch { /* a nicety: a browser that keeps nothing simply starts empty */ }"));
+});
+
 test("THE REEL'S LIMITS: the engine's own — words, seconds, moments; removing asks twice; a moment being written again is left alone", async () => {
   const ui = page();
   const { momentSeconds, FOOTAGE_MAX_MOMENTS } = await import("../app/lib/footage-film.ts");
