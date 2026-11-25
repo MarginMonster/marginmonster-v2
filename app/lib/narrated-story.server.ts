@@ -36,11 +36,15 @@ import { heroName } from "./film-heroes";
 import { posterFilters, posterLayout, posterName, posterScene } from "./story-poster";
 import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
-import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
+import { MOTION_MAX_SCENES, STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { cameraLine, sceneShot } from "./story-shots";
 import { DOORS_SHUT, DRESSED, FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NO_LENS, NOTHING_WRITTEN, ONE_PICTURE, SHADOW_SHAPE, shadowNote, STORY_SOUND, TODAY_LOOK, TRUE_SIZE, parseStoryGrime, parseStoryInset, storyGrimePrompt, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, characterKind, creatureHidden, creatureNote, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryLens, parseStoryOutside, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
+// (2026-11-25, stories up to five minutes: a long story is cut in parts, and read in parts when it is that long)
+import { STORY_ONE_CUT, cardsDuring, readingParts, sceneIn, storyJoinArgs, storyPartArgs, storyParts, storySoundArgs } from "./story-join";
+import { joinList } from "./acted-staging";
+import { streamSeconds } from "./film-join.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
 import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, presentIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
@@ -149,6 +153,12 @@ async function makeStoryPoster(o: { stills: string[]; visuals: string[]; names: 
  *  re-draws a single scene. Returns /renders URLs made absolute (null where a still could not be made). */
 export async function narratedSceneSeeds(o: {
   template?: string; treatment: FilmTreatment; cast?: StoryCast; aspect?: string; /** draw only this scene, or only these */ only?: number | number[]; castRef?: string | null;
+  /** A JOB THAT IS DRAWING SAYS SO (2026-11-25, stories up to five minutes): called whenever a picture comes back.
+   *  The worker takes a job nobody has touched for 25 minutes to be dead and starts it again beside itself
+   *  (job-queue.server.ts → reclaimOrphanJobs); twelve pictures four at a time were a few minutes, thirty-two —
+   *  each up to three goes, each go up to two and a half minutes on each model of the ladder — can be longer
+   *  than that. Called at a real step, never on a timer, so a job that is truly stuck still says nothing. */
+  beat?: () => unknown;
 }): Promise<{ sceneImgs: (string | null)[]; castRef: string | null; /** the story's own characters, each with its portrait — to be shown */ castCards: StoryCastRef[]; /** the places the story comes back to, each with its design sheet — to be shown */ placeCards: StoryPlaceRef[]; /** for each scene drawn: how wrong the picture that was KEPT still is (0 = nothing; null = not drawn here), and what the look read off it */ sceneFaults: (number | null)[]; sceneChecks: (StoryKept | null)[] }> {
   const tmpl = filmTemplate(o.template);
   const { aspect } = storyFrame(o.aspect);
@@ -206,6 +216,9 @@ export async function narratedSceneSeeds(o: {
   // the storyboard flags that scene and says why, so the maker re-rolls the one that needs it.
   const faultsOut: (number | null)[] = new Array(scenes.length).fill(null);
   const checksOut: (StoryKept | null)[] = new Array(scenes.length).fill(null);
+  // (the job is at work — said whenever a picture comes back: see `beat`, above. A beat that fails is skipped.)
+  const alive = async (): Promise<void> => { try { await o.beat?.(); } catch { /* skipped */ } };
+  await alive();
   let next = 0;
   const worker = async () => {
     while (next < todo.length) {
@@ -309,6 +322,7 @@ export async function narratedSceneSeeds(o: {
         // (every go is on the good model now — story-picture.ts → STORY_LADDER; the last go of a scene whose cast
         //  came out wrong twice used to be the one moved up to it)
         const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);
+        await alive();
         if (got && (await letterboxed(got))) { barred = got; console.error(`[narrated] scene ${i + 1} came back letterboxed — drawing it again`); continue; }
         if (got && withPlace && (await framedPanel(got))) { framedGoes++; fix = FRAMED_FIX; console.error(`[narrated] scene ${i + 1} came back as a framed panel on a plain ground (${place?.name}) — drawing it again${framedGoes >= 2 ? " without the place's sheet" : ""}`); continue; }
         if (!got) { if (a >= 1) break; continue; } // two plain failures: stop asking this way
@@ -325,6 +339,7 @@ export async function narratedSceneSeeds(o: {
       if (!img) { try { img = await renderCreativeSeed(`${safe}${(scene.visual || "").slice(0, 300)}. ${tmpl.sceneHint}`, aspect); } catch { img = null; } }
       out[i] = img;
       if (img && faultsOut[i] == null) faultsOut[i] = 0;
+      await alive();
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, todo.length) }, () => worker()));
@@ -352,6 +367,53 @@ export async function recastStoryCharacter(o: {
   return { ...r, scenes };
 }
 
+/** THE PICTURES MOVE, A RUN AT A TIME (2026-11-25, stories up to five minutes). story-motion.server.ts brings at most
+ *  MOTION_MAX_SCENES scenes of a story to life — the most a story had: twelve — "so a story never moves for ten scenes
+ *  and stands still for its last two". A story of thirty-two would have moved for twelve and stood still for twenty.
+ *  So a long one is handed over in runs of that many, one after another, and what comes back is put together in the
+ *  story's own order (a scene's number in a fault or a look is its number in the story). A story of twelve scenes or
+ *  fewer is one run, exactly as before; and the runs share the checkpoint of the clips still being waited for, which
+ *  is kept by picture, so a story picked up again neither waits for nor pays for a clip twice. */
+async function animateInRuns(o: Parameters<typeof animateScenes>[0]): Promise<MotionResult> {
+  const N = o.seeds.length;
+  if (N <= MOTION_MAX_SCENES) return animateScenes(o);
+  const out: MotionResult = { clips: new Array(N).fill(null), made: 0, reused: 0, seconds: 0, faults: [], looks: [] };
+  for (let from = 0; from < N; from += MOTION_MAX_SCENES) {
+    const to = Math.min(N, from + MOTION_MAX_SCENES);
+    const run = await animateScenes({ ...o, seeds: o.seeds.slice(from, to), visuals: o.visuals.slice(from, to), cams: o.cams?.slice(from, to), told: o.told.slice(from, to), still: o.still?.slice(from, to) });
+    run.clips.forEach((c, k) => { out.clips[from + k] = c; });
+    out.made += run.made; out.reused += run.reused; out.seconds += run.seconds;
+    out.faults.push(...run.faults.map((f) => ({ ...f, scene: f.scene + from })));
+    out.looks.push(...run.looks.map((l) => ({ ...l, scene: l.scene + from })));
+  }
+  console.log(`[narrated] ${N} scenes brought to life in runs of ${MOTION_MAX_SCENES}: ${out.clips.filter(Boolean).length} move`);
+  return out;
+}
+
+/** The readings of a long story, read ONE AFTER ANOTHER (each by `read`), in order. */
+async function readingsInTurn(readings: string[], read: (text: string, stage: string) => Promise<{ buf: Buffer }>): Promise<Buffer[]> {
+  const out: Buffer[] = [];
+  for (let k = 0; k < readings.length; k++) out.push((await read(readings[k], `narration-${k + 1}-of-${readings.length}`)).buf);
+  console.log(`[narrated] the story was read in ${readings.length} parts (${readings.map((r) => r.length).join(", ")} characters)`);
+  return out;
+}
+
+/** The readings joined into one narration: each in its turn, a quarter-second breath between them (the pause the
+ *  speech model leaves at a sentence's end is kept as it is). */
+async function joinReadings(takes: Buffer[]): Promise<Buffer> {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nvo-"));
+  try {
+    const files = takes.map((b, k) => { const f = path.join(tmp, `take-${k}.mp3`); fs.writeFileSync(f, b); return f; });
+    const out = path.join(tmp, "joined.mp3");
+    const graph = `${files.map((_, k) => `[${k}:a]aresample=44100,aformat=channel_layouts=mono${k < files.length - 1 ? ",apad=pad_dur=0.25" : ""}[p${k}]`).join(";")};${files.map((_, k) => `[p${k}]`).join("")}concat=n=${files.length}:v=0:a=1[j]`;
+    const r = await runFfmpeg(["-y", ...files.flatMap((f) => ["-i", f]), "-filter_complex", graph, "-map", "[j]", "-ar", "44100", "-b:a", "160k", out]);
+    if (r.status !== 0 || !fs.existsSync(out) || fs.statSync(out).size < 8_000) throw new Error(`[narrated] the readings could not be joined: ${r.stderr.slice(-200)}`);
+    return fs.readFileSync(out);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 /** The narrator reads the whole story. Returns the mp3 on the renders disk and a URL a provider can
  *  fetch it from (the aligner needs one). A character voice is PERFORMED (character-voice.server.ts); a
  *  stock or cloned voice is read by the speech model. */
@@ -374,11 +436,21 @@ export async function narrate(text: string, voice: string, lang: string | null |
     } catch (e) { console.error(`[narrated] ${reader.voice} could not read the story — ${reader.backup} reads it: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   }
   const reads = reader.engine === "eleven" ? reader.backup || voice : reader.voice;
-  let url = "";
-  try { url = await repPoll(await repCreate("minimax/speech-02-hd", { text, voice_id: reads, ...voiceLangOpts(lang) }), 4 * 60_000, "narration"); }
-  catch { url = await repPoll(await repCreate("minimax/speech-02-turbo", { text, voice_id: reads, ...voiceLangOpts(lang) }), 4 * 60_000, "narration"); }
-  const buf = await downloadBuffer(url);
-  if (buf.length < 8_000) throw new Error("[narrated] the narration came back empty");
+  /** one reading by the speech model, as it came back */
+  const readOnce = async (text: string, stage: string): Promise<{ buf: Buffer; url: string }> => {
+    let url = "";
+    try { url = await repPoll(await repCreate("minimax/speech-02-hd", { text, voice_id: reads, ...voiceLangOpts(lang) }), 4 * 60_000, stage); }
+    catch { url = await repPoll(await repCreate("minimax/speech-02-turbo", { text, voice_id: reads, ...voiceLangOpts(lang) }), 4 * 60_000, stage); }
+    const buf = await downloadBuffer(url);
+    if (buf.length < 8_000) throw new Error("[narrated] the narration came back empty");
+    return { buf, url };
+  };
+  // A STORY LONGER THAN THE SPEECH MODEL READS AT ONCE (story-join.ts → readingParts: 10,000 characters, and five
+  // minutes of story can come near it) is read in parts, each ending where a sentence does, one after another in
+  // the same voice, and joined with a breath between — the way a character's passages are (character-voice.server.ts).
+  // A story that fits is read in one go, exactly as it always was.
+  const readings = readingParts(text);
+  const { buf, url } = readings.length > 1 ? { buf: await joinReadings(await readingsInTurn(readings, readOnce)), url: "" } : await readOnce(text, "narration");
   fs.mkdirSync(RENDERS(), { recursive: true });
   const name = `nvo-${Date.now()}-${rid()}.mp3`;
   const file = path.join(RENDERS(), name);
@@ -427,6 +499,9 @@ export async function assembleNarrated(o: {
   });
   const anyMoves = moves.some(Boolean);
   const hasMusic = !!o.musicPath && fs.existsSync(o.musicPath);
+  // A LONG STORY IS CUT IN PARTS (story-join.ts): more scenes than one cut has ever had here are never opened by one
+  // ffmpeg. A story of twelve scenes or fewer is cut below, exactly as it always was.
+  if (N > STORY_ONE_CUT) return cutInParts({ ...o, norm, frames, moves, total, hasMusic, beat });
   // the look that was asked for (Highlight is a file for the subtitle renderer), and the same cards as
   // plain drawn text behind it: a renderer that fails must not cost the story its words (caption-burn)
   const cap = captionGraph(o.cards, o.style, o.fontFile, o.W, o.H);
@@ -505,6 +580,94 @@ export async function assembleNarrated(o: {
     }
   } finally { cap.cleanup(); }
   throw new Error(`[narrated] ffmpeg failed after ${rungs.length} rungs: ${lastErr}`);
+}
+
+/** THE SAME CUT, FOR A STORY TOO LONG FOR ONE ffmpeg (story-join.ts → A LONG TOLD STORY IS CUT IN PARTS).
+ *  1) THE SOUND, once, for the whole story: the voice levelled and given its tail, the music ducked under it — the
+ *     single cut's own mix (and without the music, should that fail).
+ *  2) THE PICTURE, a few scenes at a time, each scene by the chain the single cut gives it and each part's words
+ *     drawn on the story's own clock — down the single cut's own ladder: the styled words over the moving scenes,
+ *     the plain words over them, the plain words over the still pictures and their slow push-in, no words, the
+ *     plain still pictures. Every part is MEASURED: its picture exactly the frames its scenes add up to.
+ *  3) The parts end to end, their picture copied as it is, with the sound — and the story MEASURED once more.
+ *  A rung any part of which cannot be made is climbed down whole: a story never changes its look halfway. The
+ *  parts' files are gone when it returns; it throws when no rung makes the story, as the single cut does. */
+async function cutInParts(o: {
+  voPath: string; musicPath: string | null; cards: Card[]; style: CaptionStyle; fontFile: string; W: number; H: number; outPath: string;
+  norm: string[]; frames: number[]; moves: Array<{ file: string; fit: { speed: number; hold: number } } | null>; total: number; hasMusic: boolean; beat: () => Promise<void>;
+}): Promise<void> {
+  const FPS = 30;
+  const parts = storyParts(o.frames);
+  const files = parts.map((_, p) => `${o.outPath}.part${p + 1}.mp4`);
+  const sound = `${o.outPath}.sound.wav`;
+  const list = `${o.outPath}.parts.txt`;
+  // what words the story has, and whether it has the styled look — asked of all its cards, as the single cut asks
+  const whole = captionGraph(o.cards, o.style, o.fontFile, o.W, o.H);
+  const hasStyled = !!whole.styled;
+  const hasWords = whole.plain.length > 0;
+  whole.cleanup();
+  type Rung = { words: "styled" | "plain" | "none"; clips: boolean; moving: boolean; how: string };
+  const rungs: Rung[] = [
+    ...(hasStyled ? [{ words: "styled", clips: true, moving: true, how: "with its styled words" } as Rung] : []),
+    ...(o.moves.some(Boolean) ? [{ words: "plain", clips: true, moving: true, how: "with its moving scenes" } as Rung] : []),
+    { words: hasWords ? "plain" : "none", clips: false, moving: true, how: "over its still pictures" },
+    ...(hasWords ? [{ words: "none", clips: false, moving: true, how: "without its words" } as Rung] : []),
+    { words: "none", clips: false, moving: false, how: "as plain still pictures" },
+  ];
+  const tried: string[] = [];
+  try {
+    // 1) THE SOUND
+    let mixed = "";
+    for (const music of o.hasMusic ? [true, false] : [false]) {
+      const run = await runFfmpeg(storySoundArgs({ voice: o.voPath, music: music ? o.musicPath : null, total: o.total, tail: TAIL_S, out: sound }));
+      if (run.status === 0 && fs.existsSync(sound)) { mixed = music ? "with its music" : "with no music"; break; }
+      console.error(`[narrated] the long story's sound could not be mixed ${music ? "with its music — mixed without it" : ""}: ${(run.stderr || "").slice(-200)}`);
+    }
+    if (!mixed) throw new Error("[narrated] the story's sound could not be mixed");
+    await o.beat();
+    for (const rung of rungs) {
+      // 2) THE PICTURE, part by part
+      let why = "";
+      for (let p = 0; p < parts.length && !why; p++) {
+        const part = parts[p];
+        const from = part.start / FPS;
+        const cap = rung.words === "none" ? null : captionGraph(cardsDuring(o.cards, from, from + part.frames / FPS), o.style, o.fontFile, o.W, o.H);
+        try {
+          const words = !cap ? [] : rung.words === "styled" ? cap.styled || cap.plain : cap.plain;
+          const scenes = Array.from({ length: part.to - part.from }, (_, k) => {
+            const i = part.from + k;
+            return sceneIn(i, { still: o.norm[i], clip: o.moves[i] }, o.frames[i], o.W, o.H, rung);
+          });
+          const run = await runFfmpeg(storyPartArgs(scenes, o.frames.slice(part.from, part.to), words, part.clock, files[p]));
+          const got = run.status === 0 && fs.existsSync(files[p]) ? streamSeconds(files[p]).video : null;
+          if (!(got && Math.abs(got - part.frames / FPS) <= 1.5 / FPS)) {
+            why = `part ${p + 1} of ${parts.length} (scenes ${part.from + 1} to ${part.to}): ${run.status === 0 ? `its picture is ${got} s, its scenes ${(part.frames / FPS).toFixed(3)} s` : `ffmpeg stopped: ${(run.stderr || "").slice(-200)}`}`;
+          }
+        } finally { cap?.cleanup(); }
+        await o.beat();
+      }
+      if (!why) {
+        // 3) TOGETHER — each part starting on the frame the one before it ended, and the sound under all of them
+        fs.writeFileSync(list, joinList(files, parts.map((x) => x.frames)), "utf8");
+        const run = await runFfmpeg(storyJoinArgs({ list, sound, total: o.total, out: o.outPath }));
+        const made = run.status === 0 && fs.existsSync(o.outPath) ? streamSeconds(o.outPath) : null;
+        const sum = parts.reduce((s, x) => s + x.frames, 0) / FPS;
+        if (made && made.video && Math.abs(made.video - sum) <= 2 / FPS && made.audio && made.audio > 1) {
+          console.log(`[narrated] ${o.norm.length} scenes cut in ${parts.length} parts (${parts.map((x) => x.to - x.from).join(", ")} scenes) ${rung.how}, ${mixed}: ${sum.toFixed(1)} s`);
+          if (tried.length) console.error(`[narrated] the story was cut ${rung.how} after: ${tried.join("; ")}`);
+          if (rung.words === "none" && hasWords) console.error("[narrated] the captions could not be drawn — the story shipped without them");
+          return;
+        }
+        why = `the parts put together: ${run.status === 0 ? `its picture ${made?.video} s against ${sum.toFixed(3)} s, its sound ${made?.audio} s` : `ffmpeg stopped: ${(run.stderr || "").slice(-200)}`}`;
+      }
+      tried.push(`${rung.how} — ${why}`);
+      console.error(`[narrated] the long story could not be cut ${rung.how}: ${why}`);
+      await o.beat();
+    }
+  } finally {
+    for (const f of [...files, list, sound]) { try { fs.rmSync(f, { force: true }); } catch { /* best effort */ } }
+  }
+  throw new Error(`[narrated] the story could not be cut in parts — ${tried.join("; ")}`);
 }
 
 export async function generateNarratedStory(opts: {
@@ -671,7 +834,8 @@ export async function generateNarratedStory(opts: {
       // ONLY THE SCENES WITH NO PICTURE ARE DRAWN. (One scene added to an approved storyboard used to
       // have EVERY picture drawn again — and all but that one thrown away for the approved ones.)
       const missing = treatment.scenes.map((_, i) => i).filter((i) => !approved[i]);
-      const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null });
+      // (…saying the job is at work whenever a picture comes back: a five-minute story is thirty-two of them)
+      const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null, beat: () => ckpt({ ckBeat: Date.now() }) });
       if (drawn.castRef) storyCastRef = drawn.castRef;
       // (a picture KEPT with somebody still wrong — the best of its goes — is written down: nobody reads
       //  this server's log, and a story made in one press has no storyboard to flag it on)
@@ -715,7 +879,8 @@ export async function generateNarratedStory(opts: {
       //  a show's own star moves.)
       const creatures = (treatment.cast || []).map((e) => castEntry(e)).filter((c) => !!c.name && characterKind(c.name, c.look) === "monster").map((c) => c.name);
       const still = treatment.scenes.map((s) => sceneShot(s) === "close" && creatures.some((n) => presentIn(n, s.visual || "")));
-      motion = await animateScenes({
+      // (…a run of twelve at a time, for a story longer than that: animateInRuns, above)
+      motion = await animateInRuns({
         seeds, visuals: treatment.scenes.map((s) => s.visual || s.caption || ""), cams: treatment.scenes.map((s) => sceneShot(s)),
         told: windows.map((w, i) => (i === windows.length - 1 ? end : w.t1) - w.t0),
         base, W, H, jobId, ckMotion: resume.ckMotion, still,
