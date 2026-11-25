@@ -279,6 +279,35 @@ test("the builder's banner reads where it picks up — the last line said, by wh
   assert.deepEqual(card.setup.cast.map((m) => m.faceUrl), ["/renders/face-1700000000000-ab12cd34-l.jpg", "/renders/face-1700000000000-ab12cd34-r.jpg"]);
 });
 
+/* ---- THE BUILDER (web.film.tsx, the ?episode= path): one calm banner, and the carried people on the Cast card ---- */
+test("the builder: 'Episode N of …' with the carried faces and 'Picks up from: …' — the Cast card says who is back", () => {
+  const page = read("app", "routes", "web.film.tsx");
+  // the card the episode was opened from is held (the loader's cards move on once a film is made)
+  const start = page.slice(page.indexOf("const startEpisode = (c: NextEpisodeCard) => {"), page.indexOf("const dropSeries = () =>"));
+  assert.ok(start.includes("episodeCard.current = c;"));
+  // an ACTED episode's invented faces (no roster pick holds them) come back on the Cast card, as a told one's always did
+  assert.ok(start.includes("setSeriesOwn(isNarr ? (s.returning || []) : s.cast.filter((m) => !!m.faceUrl && !d.roster.some((r) => r.img === m.faceUrl)).map((m) => ({ name: m.name, img: m.faceUrl as string })));"));
+  // the banner: still the one line that says which episode (its pin: tests/film-series.test.ts), its ✕, and now who
+  // comes back (the cast's faces, a told story's own, the thing last — four at most) and the line it picks up from
+  const at = page.indexOf("{isStoryboard && series ? (() => {");
+  const banner = page.slice(at, page.indexOf("})() : (", at));
+  assert.ok(at > 0 && banner.includes("const ep = episodeCard.current && episodeCard.current.from === series.from ? episodeCard.current : null;"));
+  assert.ok(banner.includes("...(ep.thing ? [{ ...ep.thing, thing: true }] : [])].filter((f, k, a) => a.findIndex((x) => x.img === f.img) === k).slice(0, 4)"));
+  assert.ok(banner.includes("{t(\"Episode {n} of “{title}”\", { n: series.episode, title: series.title })}"));
+  assert.ok(banner.includes("<span className=\"fs-epb-faces\" aria-hidden=\"true\">"));
+  assert.ok(banner.includes("{picks && <span className=\"fs-epb-picks\"><b>{t(\"Picks up from\")}</b> <span className=\"fs-epb-said\"><q>{picks.said}</q>{picks.who ? <span className=\"fs-epb-who\"> — {picks.who}</span> : null}</span></span>}"));
+  assert.ok(banner.includes("onClick={dropSeries}"));
+  // phone first: the line takes the whole width under the faces (beside four of them it was five words, cut mid-word,
+  // on the 390 harness) and is three lines at most; the ✕ is 44 to the finger; still for reduced motion
+  assert.ok(page.includes(".fs-epb-back{display:flex;flex-wrap:wrap;"));
+  assert.ok(page.includes(".fs-epb-said{flex:1 1 100%;min-width:0;font-size:13px;line-height:1.42;color:#3E5247;display:-webkit-box;-webkit-line-clamp:3;"));
+  assert.ok(page.includes(".fs-epline-x{flex:none;position:relative;width:32px;height:32px;") && page.includes(".fs-epline-x::after{content:\"\";position:absolute;inset:-6px;}"));
+  assert.ok(page.includes("@media(prefers-reduced-motion:reduce){.fs-epb-face,.fs-epb-face.is-thing{animation:none;}}"));
+  // the new word, in all five languages
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  assert.equal(dict.split(`\n  ${J("Picks up from")}:`).length - 1, 5);
+});
+
 /* ---- THE WIRING (film-dialogue.server.ts) — what cannot run without paid models ---- */
 const eng = read("app", "lib", "film-dialogue.server.ts");
 const loop = eng.indexOf("for (let i = clips.length; i < treatment.scenes.length; i++) {");
