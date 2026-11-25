@@ -42,7 +42,9 @@ const between = (s: string, from: string, to: string) => {
 const card = between(ui, "            {/* 1 · Cast — the ONE place a film is cast.", "            {/* (How it's told is not a step any more");
 const panel = between(ui, '            {storyCard === "cast" && (', '            {storyCard === "length" && (');
 // THE STORY FORM (the only paid step): everything a film is made from is posted from here
-const form = between(ui, '<Form method="post" onSubmit={() => { sigAtSubmit.current = storySig; }}>', "</Form>");
+// (2026-11-25, the writer's nudge: the form's submit asks for an idea first when nothing is written and the box
+//  is empty — tests/film-builder-top.test.ts; the anchor moved with it)
+const form = between(ui, '<Form method="post" onSubmit={(e) => { if (!treatment && !seeds && noIdeaYet()) { e.preventDefault(); return; } sigAtSubmit.current = storySig; }}>', "</Form>");
 
 test("the page has exactly ONE cast UI: the bottom section is gone, and its rows are inside the Cast step's panel", () => {
   // the second place — its card, its heading — is no longer in the route

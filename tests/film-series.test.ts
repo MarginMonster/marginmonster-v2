@@ -253,7 +253,9 @@ test("the way in: a 'Next episode' row on the poster grid; the setup screen says
   assert.ok(page.includes("{t(\"Episode {n}\", { n: c.episode })}"));
   assert.ok(page.includes("{t(\"Episode {n} of “{title}”\", { n: series.episode, title: series.title })}"));
   assert.ok(page.includes("onClick={dropSeries}"));
-  assert.ok(page.includes("t(\"What happens next? Leave it empty and we'll decide.\")"));
+  // (2026-11-25, the writer's nudge: an empty idea box no longer reaches the writer — EXCEPT a next episode's,
+  //  whose idea is the last one's ending; its box says so. tests/film-builder-top.test.ts holds the exception.)
+  assert.ok(page.includes("t(\"What happens next? (or leave it — we pick up where it ended)\")"));
   // a tap opens the format with the idea box empty and the series set; another format is an ordinary film
   const start = page.slice(page.indexOf("const startEpisode = (c: NextEpisodeCard) => {"), page.indexOf("const dropSeries = () =>"));
   assert.ok(start.includes("switchHero(h.id);") && start.indexOf("switchHero(h.id);") < start.indexOf("setSeries({ from: c.from, title: c.title, episode: c.episode });"));
