@@ -102,7 +102,7 @@ test("a told story's detail shot shows ONE person's hands — two people's hands
 test("a story picture has nobody the words do not put there, and everybody in it ONCE", async () => {
   const sp = await import("../app/lib/story-picture.ts");
   assert.ok(sp.NO_EXTRAS.includes("no passer-by, no figure in the distance, no one at a window or a door") && sp.NO_EXTRAS.includes("appears exactly ONCE"));
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
   // (…and nobody in a story picture looks into the camera: the parents "turning toward him in alarm" faced the lens)
   const spx = await import("../app/lib/story-picture.ts");
   assert.ok(spx.NO_LENS.startsWith("Nobody looks into the camera: each one looks at whoever or whatever this moment has them looking at"));
@@ -117,7 +117,7 @@ test("a story picture has nobody the words do not put there, and everybody in it
   assert.equal(sp.storyFaults({ seen: [true, true], panels: false }), 0, "an older reading: nothing more");
   assert.ok(sp.storyFix({ seen: [true, true], panels: false, twice: [false, true] }, ["Nessa", "Dovey"]).includes("Dovey was drawn TWICE in the last try — they appear exactly ONCE in this picture, nowhere else in it"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}) };"));
+  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}) };"));
 });
 
 test("a told story's picture says which side of a door or a window everybody is on", () => {
@@ -185,7 +185,7 @@ test("every story picture is looked at for anybody its words do not put there �
   assert.equal(sp.storyFaults({ seen: [true], panels: false, extra: true }), 3);
   assert.ok(sp.storyFix({ seen: [true], panels: false, extra: true }, ["Priya"]).includes("draw NOBODY but who they name"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null) return null;"));
+  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null) return null;"));
 });
 
 /* WHOEVER LOOKS OUT, DRAWN OUT THERE (2026-11-24): the kids' horror story made again with INSIDE_STAYS in every
@@ -290,7 +290,7 @@ test("a story's own creature is known by its name as well as its look; a door th
   // a door the words do not open is shut — said whenever a picture has a door, a window or an outside
   assert.equal(sp.DOORS_SHUT, "Every door in the picture is SHUT unless these words open it.");
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT}` : \"\"}"));
+  assert.ok(nar.includes("${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : \"\"}"));
 });
 
 /* "LOOK DEEPER" (the owner, 2026-11-25, of the "three knocks" remake): "why are the walls dingy and not just a regular
@@ -329,4 +329,29 @@ test("a lived-in home; a shadow drawn as a shadow; nobody stares into the lens; 
   const brief = sh.shotListBrief(["wide", "close"]);
   assert.ok(brief.includes("EVERY VISUAL OPENS WITH THE NAME OF THE LINE IT IS SEEN AS, in capitals, and a colon — \"WIDE:\", \"WALKING:\", \"NEAR AND FAR:\", \"OVER THE SHOULDER:\", \"CLOSE:\", \"FROM BELOW:\", \"TOGETHER:\", \"A DETAIL:\""));
   for (const k of Object.keys(sh.SHOT_NAME) as Array<keyof typeof sh.SHOT_NAME>) assert.equal(sh.shotInWords(`${sh.SHOT_NAME[k]}: Edvin at the window`), k, "each name is read back");
+});
+
+/* THE SAME TWO STORIES, MADE ON THAT (2026-11-25, "The Lady at the Glass" and "Three Knocks, Then Three More"): better
+ * everywhere the owner named — and still a hallway with peeling, stained wallpaper in each, a grown man's hand
+ * turning the children's lock ("a hand turning the small brass lock"), and the ghost's face as big as the window. */
+test("a run-down place is looked for and drawn again; a face is a face's size; a hand in a detail is somebody's", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  const q = sp.storyGrimePrompt("NEAR AND FAR: from inside the dark hallway, Nadia stands close to the camera.");
+  assert.ok(q.includes("It was asked to show exactly this: \"NEAR AND FAR: from inside the dark hallway, Nadia stands close to the camera\"") && q.includes("an ordinary clean home that is simply dark at night is NOT grimy") && q.includes("{\"place\": \"…\", \"grimy\": true or false}"));
+  assert.equal(sp.parseStoryGrime('{"place":"peeling stained wallpaper","grimy":true}'), true);
+  assert.equal(sp.parseStoryGrime('{"place":"plain painted walls","grimy":false}'), false);
+  assert.equal(sp.parseStoryGrime("no idea"), null);
+  assert.equal(sp.storyFaults({ seen: [true], panels: false, grimy: true }), 2);
+  assert.ok(sp.storyFix({ seen: [true], panels: false, grimy: true }, ["Nadia"]).includes("it is an ordinary, clean, cared-for place: freshly painted walls"));
+  assert.ok(sp.TRUE_SIZE.includes("a face at a window or a door is the size of a face"));
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  // (a grown-up story's pictures only — a children's cartoon is not asked)
+  assert.ok(nar.includes("tmpl.childSafe ? Promise.resolve(\"\") : anthropicVision(storyGrimePrompt(visual), [pic], { maxTokens: 300, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"));
+  assert.ok(nar.includes("const grimy = tmpl.childSafe ? null : parseStoryGrime(String(grimeRaw || \"\"));"));
+  const film = read("app", "routes", "web.film.tsx");
+  assert.ok(film.includes("if (c.grimy === true) return t(\"Looks run-down\");"));
+  assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("\"Looks run-down\":").length - 1, 5, "es, fr, de, zh and ur");
+  const sh = await import("../app/lib/story-shots.ts");
+  assert.ok(sh.STORY_SHOTS.detail.write.includes("A hand in it is always somebody's, and the VISUAL says whose"));
+  assert.ok(sh.cameraLine("detail").includes("they are the hands of whoever these words name (a child's hand is a child's: small)."));
 });

@@ -92,7 +92,7 @@ export const TODAY_LOOK = "Where these words do not say how old a place is, it l
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference
  *  pictures, whether that same character is in it; and whether the picture is split into panels. */
-export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean; /** who stares into the lens (absent: nobody, or not asked) */ lens?: string[] };
+export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean; /** who stares into the lens (absent: nobody, or not asked) */ lens?: string[]; /** the place drawn run-down when its words do not say so */ grimy?: boolean };
 /** …and what is handed to the storyboard about a picture that was KEPT with something still wrong (the
  *  best of its goes): the reading, and who was looked for — in the order of `seen` — so the scene's flag
  *  can say who is missing. */
@@ -134,6 +134,24 @@ export function storyExtrasPrompt(visual: string, who: ReadonlyArray<string> = [
   const names = (who || []).map((w) => String(w || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().slice(0, 160)).filter(Boolean).slice(0, 4);
   return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}".${names.length ? ` Who is who: ${names.join("; ")}.` : ""} First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Next, only if those words have somebody INSIDE looking OUT — peering out, looking or watching through a window, a glass pane or a door — at somebody or something out there (on a porch, in a yard, in the street, in the dark): that person is the LOOKER (otherwise there is none). Find the looker in the picture by how they look, and say where THEY are — the looker, not what they look at — judged only by what you SEE, not by what the words wanted. "outdoors": you can see the looker STANDING out on the porch boards, its steps, a yard or a street — the same open floor or ground as what they look at, nothing but open air between. "indoors": anything else — in a room or a hallway, behind a window's glass, or seen in a window's frame behind its sill (glass or no glass). Last: does any PERSON in it — not a creature, a ghost or a shadow — look straight into the camera, eyes on the lens as if posing for a photograph? Somebody looking at something to one side of the camera, or seen from the side or from behind, does not. Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false, "looker": "the looker's name, or an empty string", "lookerIs": "what the looker stands on and what is around the looker, in a few words", "lookerStands": "indoors" or "outdoors" or "", "intoLens": ["the name of each person looking straight into the camera — an empty list when nobody does"]}.`;
 }
+/** A RUN-DOWN PLACE THE WORDS DO NOT CALL ONE — asked on its own (2026-11-25: LIVED_IN in every grown-up story
+ *  picture, and the kids' hallway still came back with peeling, stained wallpaper — the owner: "why are the walls
+ *  dingy and not just a regular household?"). Asked on the live reader with nine real stills, twice each: both
+ *  clearly grimy rooms caught every time, all six clean ones passed every time (a bedroom that is only dark
+ *  passed too). A size question asked beside it ("a face as large as a window") caught nothing — not asked. */
+export function storyGrimePrompt(visual: string): string {
+  const words = String(visual || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().replace(/[.\s]+$/, "").slice(0, 600);
+  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}". Look at the PLACE and describe in a few words its walls, floor and windows and the state they are in. "grimy" is true only if the place looks dirty, stained, damp, peeling, cracked, crumbling, dusty or abandoned — and those words do not say it is old, abandoned or ruined; an ordinary clean home that is simply dark at night is NOT grimy. Reply with ONLY this JSON: {"place": "…", "grimy": true or false}.`;
+}
+/** …its answer — null when it cannot be read. */
+export function parseStoryGrime(raw: string): boolean | null {
+  const g = jsonIn(raw)?.grimy;
+  return typeof g === "boolean" ? g : null;
+}
+/** A FACE AT A WINDOW IS A FACE'S SIZE (2026-11-25: the ghost lady's face at the living-room window came back as
+ *  large as the window). Said with INSIDE_STAYS — whenever a picture has a window, a door or an outside. */
+export const TRUE_SIZE = "Everyone is at their true size beside the room: a face at a window or a door is the size of a face — the window and the door are far bigger than it.";
+
 /** …and who stares INTO THE LENS — a list of names (empty: nobody), or null when the answer does not say.
  *  (2026-11-25: a boy "at the window looking out", seen close, came back as a portrait staring at us; the parents
  *  "turning toward him in alarm" faced the lens. Asked on the live reader with four real stills, three times each:
@@ -191,7 +209,7 @@ export function parseStoryPanels(raw: string): boolean | null {
 
 /** How wrong a picture is: a split picture is the worst (it cannot be used at all), then each cast member
  *  who is not in it. 0 = keep it. */
-export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0) + (c.lens?.length ? 2 : 0);
+export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0) + (c.lens?.length ? 2 : 0) + (c.grimy ? 2 : 0);
 
 /** What to tell the picture model on the next go: the fault, named. `names` in the order of the references. */
 export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<string | undefined> = []): string {
@@ -207,6 +225,8 @@ export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<st
   if (c.outside) out.push("The last try stood whoever looks out OUTSIDE, out there with what they look at — they are INSIDE the house: behind the glass of the window or inside the doorway, the glass or the door between them and what is out there, never out on the porch or in the yard with it");
   // (whoever stared into the lens is told where their eyes are)
   if (c.lens?.length) out.push(`${c.lens.join(" and ")} stared straight into the camera in the last try — nobody looks at the camera: their eyes are on what this moment has them looking at (the window, the door, each other, the dark), turned away from the lens`);
+  // (a place drawn run-down that its words do not call one is told it is cared for)
+  if (c.grimy) out.push("The last try made the place look dirty and run-down — it is an ordinary, clean, cared-for place: freshly painted walls, clean floors and windows, nothing stained, peeling or damp; it is dark only because it is night");
   // (a character drawn twice is told it is in the picture ONCE)
   const doubled = (c.twice || []).map((t, k) => (t && c.seen[k] !== false ? names[k] || `the character in reference image ${k + 1}` : "")).filter(Boolean);
   if (doubled.length) out.push(`${doubled.join(" and ")} ${doubled.length === 1 ? "was" : "were"} drawn TWICE in the last try — ${doubled.length === 1 ? "they appear" : "each of them appears"} exactly ONCE in this picture, nowhere else in it`);
