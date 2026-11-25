@@ -1090,13 +1090,11 @@ export async function previewFilmTreatment(opts: {
   // A LONG FILM'S LINES ARE CHECKED A PART AT A TIME — each of the two asks below is then the size a whole film's
   // was (both hand every line back, and fifty would not fit the answer), and "the two in its place" are one
   // scene's two. A film written in one answer is one part: the two asks exactly as they were. (The checks are
-  // not indented under the loop, on purpose: they are as they were written, and read the same in a blame.)
+  // not indented under the function, on purpose: they are as they were written, and read the same in a blame.)
   const script = list;
   if (!spans.length) spans = [[0, script.length]];
-  const checked: typeof list = [];
-  const castNotes: Array<NonNullable<FilmTreatment["castFit"]>> = [];
-  const lineNotes: Array<NonNullable<FilmTreatment["lineFit"]>> = [];
-  for (const [from, to] of spans) {
+  /** one part's lines, checked — and what happened to them */
+  const checkPart = async ([from, to]: [number, number]): Promise<{ list: typeof script; castNote: FilmTreatment["castFit"]; lineNote: FilmTreatment["lineFit"] }> => {
   let list = script.slice(from, to);
   let castNote: FilmTreatment["castFit"];
   if (tmpl.dialogue && !narrated) {
@@ -1143,11 +1141,19 @@ export async function previewFilmTreatment(opts: {
       }
     }
   }
-  checked.push(...list);
-  if (castNote) castNotes.push(castNote);
-  if (lineNote) lineNotes.push(lineNote);
-  }
-  list = checked;
+  return { list, castNote, lineNote };
+  };
+  // (the parts of a long film are checked THREE AT A TIME: each check is one answer of its own, and nine of them
+  //  one after another kept the maker waiting minutes longer for a script — while each part's two asks stay in
+  //  their order. A film written in one answer is one part, checked exactly as before.)
+  const done: Array<Awaited<ReturnType<typeof checkPart>>> = new Array(spans.length);
+  let nextPart = 0;
+  await Promise.all(Array.from({ length: Math.min(3, spans.length) }, async () => {
+    while (nextPart < spans.length) { const k = nextPart++; done[k] = await checkPart(spans[k]); }
+  }));
+  list = done.flatMap((d) => d.list);
+  const castNotes = done.map((d) => d.castNote).filter((n): n is NonNullable<FilmTreatment["castFit"]> => !!n);
+  const lineNotes = done.map((d) => d.lineNote).filter((n): n is NonNullable<FilmTreatment["lineFit"]> => !!n);
   // (what happened to the whole script: every part's count, and the last thing that went wrong)
   const castNote: FilmTreatment["castFit"] = castNotes.length
     ? { unseen: castNotes.reduce((n, c) => n + c.unseen, 0), fixed: castNotes.reduce((n, c) => n + c.fixed, 0), ...(castNotes.some((c) => c.note) ? { note: castNotes.filter((c) => c.note).map((c) => c.note).pop() } : {}) }
