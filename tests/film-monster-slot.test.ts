@@ -169,9 +169,11 @@ test("RUN: one monster at most — a second tap un-picks, another replaces; neve
   assert.ok(ui.includes("const toggleStoryPick = (id: string) => setStoryPick((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= maxPick ? p : [...p, id]));"));
   assert.ok(!/setStoryPick\([^)]*storyMonster/.test(ui));
   // a monster that comes back among the picks (a next episode, a told story opened to edit) moves to its own row
-  assert.ok(state.includes("setStoryPick((p) => p.filter((id) => !isMonster(id)));\n    setStoryMonster((cur) => cur || m);"));
-  // another format starts with none, as it starts with no stars
-  assert.ok(state.includes("useEffect(() => { setStoryMonster(null); }, [heroId]);"));
+  assert.ok(state.includes("setStoryPick((p) => p.filter((id) => !isMonster(id)));\n    setStoryMonster(m);"));
+  // another format — and every next episode or story opened to edit (they open through switchHero, even onto the
+  // same hero) — starts the monster over exactly where it starts the stars over
+  assert.ok(ui.includes('setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setStoryMonster(null);'));
+  assert.equal(count(ui, "setStoryMonster(null)"), 2, "switchHero, and \"We invent it\"");
   // and another monster is another story: the script starts over (asked first, the page's orArm)
   assert.ok(ui.includes('useEffect(() => { setTreatment(null); setSeeds(null); setFrames([]); setCast([]); }, [told, storyPick.join(","), storyMonster]);'));
 });

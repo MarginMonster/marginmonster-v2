@@ -2177,17 +2177,16 @@ export default function FilmStudio() {
   const monsterRoster = monsterOn ? rosterFor(template).filter((r) => r.kind === "monster") : [];
   /** One tap picks a monster, a second tap un-picks it — one at most. */
   const pickMonster = (id: string) => setStoryMonster((cur) => (cur === id ? null : id));
-  // (another format is an ordinary new film: no monster comes along, as no star does — switchHero)
-  useEffect(() => { setStoryMonster(null); }, [heroId]);
-  // (a next episode, or a told story opened to edit, brings its cast back as picks: a monster among them is the
-  //  film's thing again, in its own row — never a star nobody can see in the stars' row)
+  // (another format — and a next episode, or a story opened to edit — starts the monster over with the stars:
+  //  switchHero. Then a next episode, or a told story opened to edit, brings its cast back as picks: a monster
+  //  among them is the film's thing again, in its own row — never a star nobody can see in the stars' row)
   useEffect(() => {
     if (!monsterOn) return;
     const isMonster = (id: string) => d.roster.some((r) => r.id === id && r.kind === "monster");
     const m = storyPick.find(isMonster);
     if (!m) return;
     setStoryPick((p) => p.filter((id) => !isMonster(id)));
-    setStoryMonster((cur) => cur || m);
+    setStoryMonster(m);
   }, [monsterOn, storyPick.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   // THE THREAT THE WRITER WROTE, SEEN BEFORE IT IS PAID FOR. With "We invent it", an acted film's script brings
   // its own threat ("the woman in the lake"); "See it · free" draws it now, on the engine's own recipe for it (the
@@ -2460,7 +2459,7 @@ export default function FilmStudio() {
     const openNarrated = !!nt?.dialogue && h.told === "narrated" && (d.narratable || []).includes(h.tmpl);
     setHeroId(h.id);
     setTemplate(h.tmpl); setScenes(nt?.lipSyncSinger ? mvWant : openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)); setTreatment(null); setFrames([]); setCast([]);
-    setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({}); setPictures("moving");
+    setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setStoryMonster(null); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({}); setPictures("moving");
     if (nt?.dialogue) setFilmAspect(openNarrated ? "9:16" : "16:9");
     // another format is an ordinary new film (a next episode sets its series again right after this)
     setSeries(null); setSeriesCast([]); setSeriesOwn([]);
