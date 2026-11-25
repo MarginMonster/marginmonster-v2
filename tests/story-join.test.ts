@@ -149,6 +149,12 @@ test("a narration the voice cannot read at once is dealt into readings that end 
   const run = `${"word ".repeat(30).trim()}.`;
   const cut = readingParts(run, 60);
   assert.ok(cut.length >= 3 && cut.every((x) => x.length <= 60) && cut.join(" ") === run, JSON.stringify(cut));
+  // a Hindi story (read by the speech model) ends its sentences on "।", an Urdu one on "۔": cut there, never mid-sentence
+  for (const stop of ["।", "۔"]) {
+    const told = `${"शब्द ".repeat(8).trim()}${stop} `.repeat(6).trim();
+    const parts = readingParts(told, 100);
+    assert.ok(parts.length >= 2 && parts.every((x) => x.endsWith(stop) && x.length <= 100) && parts.join(" ") === told, JSON.stringify(parts));
+  }
   // the wiring: one reading as it always was; more, read one after another and joined
   const nar = read("app", "lib", "narrated-story.server.ts");
   const fn = nar.slice(nar.indexOf("export async function narrate("), nar.indexOf("/** Put it together:"));

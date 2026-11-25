@@ -144,7 +144,9 @@ export const NARRATION_MAX_CHARS = 9000;
 export function readingParts(text: string, max = NARRATION_MAX_CHARS): string[] {
   const t = String(text || "").replace(/\s+/g, " ").trim();
   if (t.length <= max) return t ? [t] : [];
-  const sentences = (t.match(/[^.!?…。！？]+(?:[.!?…。！？]+["'”’»)\]]*|$)\s*/g) || [t]).map((s) => s.trim()).filter(Boolean);
+  // (a sentence ends at the full stops of every language a story is told in — the Hindi and the Urdu ones too, "।"
+  //  and "۔": without them a Hindi story read by the speech model would be cut mid-sentence, at a word)
+  const sentences = (t.match(/[^.!?…。！？।۔]+(?:[.!?…。！？।۔]+["'”’»)\]]*|$)\s*/g) || [t]).map((s) => s.trim()).filter(Boolean);
   const pieces: string[] = [];
   for (const s of sentences) {
     if (s.length <= max) { pieces.push(s); continue; }
