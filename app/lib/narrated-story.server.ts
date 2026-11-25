@@ -787,7 +787,7 @@ export async function generateNarratedStory(opts: {
         // (a story its maker asked for over STILL pictures says so — it did not lose its motion, it never
         //  asked for any; one told again from it stays still)
         ...(storyPicturesOf(opts.pictures) === "still" ? { pictures: "still" } : {}),
-        ...(motion ? { motion: { engine: STORY_MOTION_ENGINE, scenes: motion.clips.filter(Boolean).length, of: stills.length, made: motion.made, reused: motion.reused, seconds: motion.seconds, ...(motion.faults.length ? { faults: motion.faults.slice(0, 8) } : {}) } } : {}),
+        ...(motion ? { motion: { engine: STORY_MOTION_ENGINE, scenes: motion.clips.filter(Boolean).length, of: stills.length, made: motion.made, reused: motion.reused, seconds: motion.seconds, ...(motion.faults.length ? { faults: motion.faults.slice(0, 8) } : {}), ...(motion.looks.length ? { looks: motion.looks.slice(0, 12) } : {}) } } : {}),
       }),
     },
   });

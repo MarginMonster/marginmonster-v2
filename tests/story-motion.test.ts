@@ -226,7 +226,7 @@ test("a clip never costs a story", () => {
   assert.ok(nar.includes("const run = await runFfmpeg(build(withCaps, kb, mus, false, false));"), "every older rung is cut without clips");
   assert.ok(nar.includes("if (!c || !fs.existsSync(c)) return null;"), "a clip that is not on the disk is not a clip");
   // the piece says what moved, what was paid for, and why any scene did not
-  assert.ok(nar.includes("...(motion ? { motion: { engine: STORY_MOTION_ENGINE, scenes: motion.clips.filter(Boolean).length, of: stills.length, made: motion.made, reused: motion.reused, seconds: motion.seconds, ...(motion.faults.length ? { faults: motion.faults.slice(0, 8) } : {}) } } : {}),"));
+  assert.ok(nar.includes("...(motion ? { motion: { engine: STORY_MOTION_ENGINE, scenes: motion.clips.filter(Boolean).length, of: stills.length, made: motion.made, reused: motion.reused, seconds: motion.seconds, ...(motion.faults.length ? { faults: motion.faults.slice(0, 8) } : {}), ...(motion.looks.length ? { looks: motion.looks.slice(0, 12) } : {}) } } : {}),"));
   // a job that starts again is handed the clips it was waiting for
   const jq = read("app", "lib", "job-queue.server.ts");
   assert.ok(jq.includes("ckMotion: payload.ckMotion as string | undefined,"));
@@ -251,4 +251,24 @@ test("the status page says how full the renders disk is, and what the kept clips
   assert.ok(st.includes("if (!isMotionClip(n)) continue;"));
   assert.ok(st.includes("return { totalGb: r1(totalGb), freeGb: r1(freeGb), usedPct: totalGb > 0 ? Math.round((1 - freeGb / totalGb) * 100) : 0, storyClips, storyClipsMb: Math.round(bytes / 1e6) };"));
   assert.ok(st.includes("} catch { return null; }"), "a platform without the call answers nothing rather than failing the page");
+});
+
+/* THE CLIP IS LOOKED AT (2026-11-25): the lake woman's too-wide smile softened into an ordinary face as her clip moved, a
+ * faceless shadow grew a hood. Each new clip's LAST frame is now looked at beside its picture — written down on the
+ * piece while the question is new; MOTION_DRIFT=enforce drops a drifted clip once it has been checked by eye. */
+test("each new clip's last frame is looked at beside its picture — written down, and dropped only when enforced", async () => {
+  const sm = await import("../app/lib/story-motion.ts");
+  const q = sm.driftPrompt();
+  assert.ok(q.startsWith("The FIRST image is a still picture from a film. The SECOND image is the LAST frame of the same shot"));
+  assert.ok(q.includes("a smile far too wide that is now an ordinary smile") && q.includes("a hood, a mask or clothes that appeared on a figure that had none"));
+  assert.ok(q.includes("Small, natural movement is expected and is NOT a change"));
+  assert.deepEqual(sm.parseDrift('{"different":"her smile became an ordinary closed smile","drifted":true}'), { drifted: true, what: "her smile became an ordinary closed smile" });
+  assert.deepEqual(sm.parseDrift('```json {"different":"she blinked","drifted":false} ```'), { drifted: false, what: "she blinked" });
+  assert.equal(sm.parseDrift("no idea"), null);
+  assert.equal(sm.driftEnforced({}), false, "written down only, by default");
+  assert.equal(sm.driftEnforced({ MOTION_DRIFT: " Enforce " }), true);
+  const srv = read("app", "lib", "story-motion.server.ts");
+  assert.ok(srv.includes("const r = await runFfmpeg([\"-y\", \"-sseof\", \"-0.25\", \"-i\", clip, \"-frames:v\", \"1\", \"-q:v\", \"3\", end]);"), "the clip's last frame, on our own disk");
+  assert.ok(srv.includes("if (look.drifted && driftEnforced(process.env)) {"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("...(motion.looks.length ? { looks: motion.looks.slice(0, 12) } : {})"), "what it said is kept on the piece");
 });

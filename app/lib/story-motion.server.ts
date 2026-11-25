@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { checkpointJob, download, ffprobeDuration, runFfmpeg } from "./ugc-ad-pipeline.server";
-import { MOTION_MAX_SCENES, STORY_MOTION_MODEL, motionName, motionOn, motionPrompt, motionReusable, motionSeconds, servable } from "./story-motion";
+import { MOTION_MAX_SCENES, STORY_MOTION_MODEL, driftEnforced, driftPrompt, motionName, motionOn, motionPrompt, motionReusable, motionSeconds, parseDrift, servable } from "./story-motion";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 /** How many clips are asked for at once. */
@@ -28,7 +28,23 @@ export type MotionResult = {
   reused: number;
   seconds: number;
   faults: Array<{ scene: number; error: string }>;
+  /** what the look at each NEW clip's last frame said (story-motion.ts → driftPrompt): written down for the operator */
+  looks: Array<{ scene: number; drifted: boolean; what: string }>;
 };
+
+/** THE CLIP IS LOOKED AT: its last frame beside the picture it was made from. Null when it cannot be looked at. */
+async function lookAtClip(base: string, seed: string, clip: string): Promise<{ drifted: boolean; what: string } | null> {
+  const seedName = path.basename(seed);
+  const endName = `${seedName.replace(/\.(?:jpe?g|png|webp)$/i, "")}-end.jpg`;
+  if (!servable(seedName) || !servable(endName)) return null;
+  const end = path.join(RENDERS(), endName);
+  const r = await runFfmpeg(["-y", "-sseof", "-0.25", "-i", clip, "-frames:v", "1", "-q:v", "3", end]);
+  if (r.status !== 0 || !fs.existsSync(end)) return null;
+  try {
+    const { anthropicVision } = await import("./anthropic.server");
+    return parseDrift(String(await anthropicVision(driftPrompt(), [`${base}/renders/${seedName}`, `${base}/renders/${endName}`], { maxTokens: 300, model: "claude-sonnet-4-6" }) || ""));
+  } catch { return null; }
+}
 
 export const storyMotionOn = (pictures?: unknown): boolean => motionOn(process.env, falEnabled(), pictures);
 
@@ -54,7 +70,7 @@ export async function animateScenes(o: {
   still?: ReadonlyArray<boolean>;
 }): Promise<MotionResult> {
   const N = o.seeds.length;
-  const out: MotionResult = { clips: new Array(N).fill(null), made: 0, reused: 0, seconds: 0, faults: [] };
+  const out: MotionResult = { clips: new Array(N).fill(null), made: 0, reused: 0, seconds: 0, faults: [], looks: [] };
   if (!N || !o.base) return out;
   let ids: Record<string, string> = {};
   try { const j = JSON.parse(o.ckMotion || "{}"); if (j && typeof j === "object") ids = j as Record<string, string>; } catch { ids = {}; }
@@ -108,6 +124,15 @@ export async function animateScenes(o: {
       await saveIds().catch(() => undefined);
       out.made++;
       out.seconds += ask; // counted when the clip is MADE: a request the provider refuses is not paid for
+      // THE CLIP IS LOOKED AT (story-motion.ts → driftPrompt): written down on the piece; dropped only when enforced
+      const look = await lookAtClip(o.base, seed, file).catch(() => null);
+      if (look) {
+        out.looks.push({ scene: i + 1, ...look });
+        if (look.drifted && driftEnforced(process.env)) {
+          try { fs.rmSync(file, { force: true }); } catch { /* gone */ }
+          throw new Error(`the clip drifted from its picture: ${look.what}`);
+        }
+      }
       return file;
     })();
     making.set(name, p);

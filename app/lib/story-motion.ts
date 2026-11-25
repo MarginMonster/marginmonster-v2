@@ -138,6 +138,29 @@ export const seedName = (pictureFile: string): string =>
  *  for pictures.) */
 export const servable = (name: string): boolean => /^[a-zA-Z0-9_-]+\.(?:jpe?g|png|webp)$/.test(name);
 
+/* THE CLIP IS LOOKED AT (2026-11-25). Every picture is looked at before it is kept; the clip made FROM it was not —
+ * and the motion engine changed what the picture had settled: the lake woman's too-wide smile softened into an
+ * ordinary woman's face, a faceless shadow grew a hood, a ghost's face became the children's mother. So the clip's
+ * LAST frame is looked at beside the picture it was made from. While the question is new, the answer is only
+ * written down on the piece (MOTION_DRIFT=enforce, once it has been checked by eye, drops a drifted clip and leaves
+ * the scene its still). */
+export function driftPrompt(): string {
+  return `The FIRST image is a still picture from a film. The SECOND image is the LAST frame of the same shot, after the picture was brought to life for a few seconds. Small, natural movement is expected and is NOT a change: a breath, a blink, a slightly turned head or a step, the camera drifting a little closer, light flickering. First write down, in a few words, what is different between the two. Then say whether anything CHANGED that should not have: a face that became a different face, or lost what made it frightening (a smile far too wide that is now an ordinary smile, sunken dark eyes that are now ordinary eyes); a person or a creature that appeared, vanished or became somebody else; a hood, a mask or clothes that appeared on a figure that had none; the place itself turning into another place. Reply with ONLY this JSON: {"different": "…", "drifted": true or false}.`;
+}
+/** …its answer: the change it names, or "" when nothing drifted; null when it cannot be read. */
+export function parseDrift(raw: string): { drifted: boolean; what: string } | null {
+  const s = String(raw || "");
+  const a = s.indexOf("{"), b = s.indexOf("}", a);
+  if (a < 0 || b < 0) return null;
+  try {
+    const j = JSON.parse(s.slice(a, b + 1)) as { different?: unknown; drifted?: unknown };
+    if (typeof j.drifted !== "boolean") return null;
+    return { drifted: j.drifted, what: String(j.different ?? "").replace(/\s+/g, " ").trim().slice(0, 140) };
+  } catch { return null; }
+}
+/** Is a drifted clip DROPPED (its scene keeps its still), or only written down? */
+export const driftEnforced = (env: Record<string, string | undefined> = {}): boolean => String(env.MOTION_DRIFT || "").trim().toLowerCase() === "enforce";
+
 /** Where a picture's clip is kept: beside the picture, under the picture's own name — so the same
  *  picture told again (another language, a changed line) finds it, and a re-drawn picture does not. */
 export const motionName = (pictureFile: string): string =>
