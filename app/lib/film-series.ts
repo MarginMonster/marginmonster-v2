@@ -19,6 +19,8 @@ import { FILM_HEROES, FORMER_HERO_NAMES, heroOf, type FilmHero } from "./film-he
 import { castCardsOf } from "./story-picture.ts";
 import { posterOf } from "./story-poster.ts";
 import { nameTok } from "./character-prompts.ts";
+import { cameraLookOf, type CameraLook } from "./camera-dress.ts";
+import { houseRoom } from "./house-cam.ts";
 
 /** What a film in a series stores on its asset (metaJson.series). */
 export type FilmSeries = { id: string; title: string; episode: number };
@@ -648,15 +650,14 @@ function lastMomentLines(m: LastMoment | null | undefined): string {
  * the card is the number the Movie Maker makes: a series never forks, and an older episode never offers to.
  */
 
-/** FOUND FOOTAGE — THE HOOK (2026-11-25). A found-footage take (meta.kind "take", template "foundfootage" —
- *  take.server.ts, house-take.server.ts) is a story too, and gets the same mark the day its pipeline can make
- *  a next part (writes meta.series, takes a SeriesBrief). Its engine is being finished elsewhere today, so
- *  this says no; when it says yes, every surface that asks `continuable` offers it — and the one thing to change
- *  with it is where the mark leads: the Archive's marks open /web/film?episode=…, a take's next part is made in
- *  its own builder (routes/web.found-footage.tsx). */
+/** FOUND FOOTAGE — THE NEXT NIGHT (S10c, 2026-11-25). A found-footage piece (meta.kind "take", template "foundfootage"
+ *  — a film of moments, footage-film.server.ts, or one take, take.server.ts / house-take.server.ts) goes on as THE
+ *  NEXT NIGHT: the same camera, the same place, the same thing, the night numbers going on. Every one that says which
+ *  camera it was filmed on can be continued — a film records what its next night needs (meta.nextNight), and an older
+ *  piece is read from what it already kept (footageNightOf, below). Its marks lead to its own builder
+ *  (/web/found-footage?next=…), never to the Movie Maker: NextMark.footage. */
 export function footageContinues(meta: unknown): boolean {
-  void meta;
-  return false;
+  return !!footageNightOf(meta);
 }
 
 /** May this film be continued at all? A STORY film — acted or told, every genre (storyHeroOf) — and later
@@ -672,8 +673,10 @@ export function continuable(meta: unknown): boolean {
 
 /** One film's mark. `next` is the episode a tap makes, `from` the film it continues from (the series'
  *  latest finished episode — the server checks that again: latestEpisode), `episode` this film's own number
- *  and `of` the series' latest (for "Episode 3 of 4"). */
-export type NextMark = { state: "start" | "next" | "older"; next: number; from: string; episode: number; of: number };
+ *  and `of` the series' latest (for "Episode 3 of 4"). A FOUND-FOOTAGE piece's mark says so (`footage`: its tap
+ *  opens the found-footage builder) and which NIGHT a tap films — the night after the last one its cards reached
+ *  ("NIGHT 3 · 3:11 AM" → Night 4), else the one after its episode (S10c). */
+export type NextMark = { state: "start" | "next" | "older"; next: number; from: string; episode: number; of: number; footage?: true; night?: number };
 
 /** THE MARKS, for the films a page loaded — NEWEST FIRST, as the Archive reads them. Only a FINISHED film
  *  (not FAILED, its video kept) carries one or is continued from; a film that cannot be continued has none. */
@@ -694,10 +697,13 @@ export function nextMarks(rows: ReadonlyArray<{ id: string; metaJson?: unknown; 
     const at = episodeOf(latest.metaJson);
     const next = nextSeries(latest).episode;
     const own = episodeOf(r.metaJson);
+    // (found footage: its builder, and the night a tap films — S10c)
+    const kept = footageNightOf(latest.metaJson);
+    const foot = kept ? { footage: true as const, night: nightAfter(latest.metaJson, kept) } : {};
     out.set(r.id, latest.id === r.id
       // the latest: a film in no series yet starts one; an episode offers the next
-      ? { state: seriesOf(r.metaJson) ? "next" : "start", next, from: r.id, episode: own, of: at }
-      : { state: "older", next, from: latest.id, episode: own, of: Math.max(at, own) });
+      ? { state: seriesOf(r.metaJson) ? "next" : "start", next, from: r.id, episode: own, of: at, ...foot }
+      : { state: "older", next, from: latest.id, episode: own, of: Math.max(at, own), ...foot });
   }
   return out;
 }
@@ -981,3 +987,202 @@ export function opensWhereItEnded(first: { visual?: string | null; where?: strin
   const p = carriedPlaceFor(first.where, carry.places, { light: false });
   return !!p && p.name.toLowerCase() === carry.endedIn.toLowerCase();
 }
+
+/* ---- FOUND FOOTAGE: THE NEXT NIGHT (S10c, 2026-11-25) -----------------------------------------------------------
+ *
+ * The owner: "We also need for every video in archive "Make it a series" start on next part or episode two / 3 /4
+ * intelligently know. It should carry the cast / the scenes etch into the next part. For example this video made- need
+ * the ability to pick up where left off to continue ! Yanno?" A Movie Maker film does (above). A found-footage piece's
+ * next part is what found footage does anyway — THE NEXT NIGHT: the same camera, the same place, the same people
+ * filming, the same thing, and the cards going on ("NIGHT 4 · …", never back to NIGHT 1).
+ *
+ * So every found-footage FILM records what its next night needs (footageNightRecord → meta.nextNight): its camera and
+ * shape, scare or plain, the place and the thing in the outline's own words, the house's rooms, the last card and the
+ * last moment's line, the footage so far (its cards and lines — the next night's writer reads them as "previously"),
+ * and the two pictures a next night is drawn from: the place's first still and the thing's (the engine's "refs 1: the
+ * same place" and "refs 2: the same one"). Read back through ONE checker (footageNightFrom) — bounded, our own /renders
+ * pictures only — wherever it comes from: the piece's row, or a job's payload. A piece made before the record (the
+ * first live films — "What Circled the Tent" — and every single take) is read from what it already kept (meta.footage,
+ * meta.take): it goes on too, with what it has.
+ */
+
+/** What a next night needs, as a piece records it (meta.nextNight). */
+export type FootageNight = {
+  camera: CameraLook;
+  aspect: "9:16" | "16:9";
+  kind: "scare" | "plain";
+  /** the place and the thing, in the outline's own words ("" when it said none) */
+  place: string;
+  thing: string;
+  /** a house camera's rooms, in the order the footage went to them (HOUSE_ROOMS keys) */
+  rooms: string[];
+  /** the last card ("NIGHT 3 · 3:11 AM") and the last moment's line — where it stopped */
+  card: string;
+  line: string;
+  /** the last night it reached, by its cards (0: they do not count nights) */
+  night: number;
+  /** the footage so far — each card and what the camera caught, the newest last (NIGHTS_KEPT at most) */
+  nights: Array<{ card: string; line: string }>;
+  /** the place's first still and the thing's — our own /renders pictures */
+  placePic?: string;
+  thingPic?: string;
+};
+/** What the builder and the job are given for a next night: the series (its id is the FIRST piece's, `episode` the new
+ *  piece's number), the piece it goes on from (`from`: the series' latest), the night it films, and that piece's record. */
+export type FootageSeries = FilmSeries & { from: string; night: number; last: FootageNight };
+
+/** How much of each is kept: the outline's own limits (footage-film.ts → FOOTAGE_LIMITS). */
+export const NIGHT_LIMITS = { place: 280, thing: 280, card: 28, line: 180 } as const;
+/** How many of the footage's cards and lines a record carries on — the newest. */
+export const NIGHTS_KEPT = 12;
+const NIGHT_MOST = 999;
+
+/** A camera's shape, as the builder holds it (take.ts → shapeFor: a phone is upright, a house camera and a body cam are
+ *  wide, the others are the maker's pick — wide unless asked). Said here so the Archive need not load the takes. */
+const nightAspect = (camera: CameraLook, v: unknown): "9:16" | "16:9" => (camera === "phone" ? "9:16" : camera === "house" || camera === "bodycam" ? "16:9" : v === "9:16" ? "9:16" : "16:9");
+const COUNT_WORDS = ["ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN", "ELEVEN", "TWELVE"];
+/** WHICH NIGHT A CARD SAYS: "NIGHT 3 · 3:11 AM" → 3, "DAY TWO" → 2, "WEEK 2" → 8 — 0 when it counts none. The count
+ *  footage-film.ts → cardWhen reads off a card (the clock is printed from it), said here so the Archive need not load it. */
+export function nightCount(card: unknown): number {
+  const d = /\b(NIGHT|DAY|EVENING|MORNING|WEEK)\s*#?\s*(\d{1,3}|ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN|ELEVEN|TWELVE)\b/.exec(String(card ?? "").toUpperCase());
+  if (!d) return 0;
+  const n = /^\d/.test(d[2]) ? Number(d[2]) : COUNT_WORDS.indexOf(d[2]) + 1;
+  return n >= 1 ? (d[1] === "WEEK" ? (n - 1) * 7 + 1 : n) : 0;
+}
+/** A card as it is carried: one line, capitals, fence-safe, 28 characters. */
+const nightCard = (v: unknown): string => quoted(str(v), NIGHT_LIMITS.card).toUpperCase();
+const ownPic = (v: unknown): string => (OWN_PICTURE.test(str(v)) ? str(v) : "");
+
+/** A RECORD, CHECKED — from a piece's row or a job's payload; null when it names no camera. Every word one line,
+ *  fence-safe and cut to the outline's own limits; rooms only a house's, and only rooms a house has; pictures only ours. */
+export function footageNightFrom(v: unknown): FootageNight | null {
+  const o = safeParse(v);
+  const camera = cameraLookOf(o.camera);
+  if (!camera) return null;
+  const nights = (Array.isArray(o.nights) ? o.nights : []).filter(isObj)
+    .map((n) => ({ card: nightCard(n.card), line: quoted(str(n.line), NIGHT_LIMITS.line) }))
+    .filter((n) => n.card || n.line).slice(-NIGHTS_KEPT);
+  const rooms = camera === "house" ? [...new Set((Array.isArray(o.rooms) ? o.rooms : []).map((r) => houseRoom(r)?.key).filter((k): k is string => !!k))] : [];
+  const n = Math.floor(Number(o.night));
+  const placePic = ownPic(o.placePic), thingPic = ownPic(o.thingPic);
+  return {
+    camera, aspect: nightAspect(camera, o.aspect), kind: o.kind === "plain" ? "plain" : "scare",
+    place: quoted(str(o.place), NIGHT_LIMITS.place), thing: quoted(str(o.thing), NIGHT_LIMITS.thing), rooms,
+    card: nightCard(o.card), line: quoted(str(o.line), NIGHT_LIMITS.line),
+    night: Number.isFinite(n) && n >= 1 && n <= NIGHT_MOST ? n : 0,
+    nights,
+    ...(placePic ? { placePic } : {}), ...(thingPic ? { thingPic } : {}),
+  };
+}
+
+/** THE RECORD A PIECE WRITES (footage-film.server.ts → meta.nextNight): the moments it is MADE of, in order — their
+ *  cards and lines go on after the footage before it (`before`: the record of the piece it went on from), the newest
+ *  kept. `night`: the night it was made as (a next night's), when its cards count none. The place, the thing and the
+ *  rooms are the series' when this piece says none. Null when it names no camera. */
+export function footageNightRecord(o: {
+  camera: unknown; aspect?: unknown; kind?: unknown; place?: string | null; thing?: string | null;
+  moments: ReadonlyArray<{ when?: string | null; line?: string | null; room?: string | null }>;
+  placePic?: string | null; thingPic?: string | null; night?: number | null; before?: FootageNight | null;
+}): FootageNight | null {
+  const b = o.before || null;
+  const ms = (o.moments || []).filter((m) => m && (oneLine(str(m.when)) || oneLine(str(m.line))));
+  const last = ms[ms.length - 1];
+  const counted = Math.max(0, ...ms.map((m) => nightCount(m.when)));
+  return footageNightFrom({
+    camera: o.camera, aspect: o.aspect, kind: o.kind ?? b?.kind,
+    place: oneLine(str(o.place)) || b?.place || "", thing: oneLine(str(o.thing)) || b?.thing || "",
+    rooms: [...(b?.rooms || []), ...(o.moments || []).map((m) => str(m?.room))],
+    card: last ? str(last.when) : b?.card || "", line: last ? str(last.line) : b?.line || "",
+    night: counted || Number(o.night) || 0,
+    nights: [...(b?.nights || []), ...ms.map((m) => ({ card: str(m.when), line: str(m.line) }))],
+    placePic: ownPic(o.placePic) || b?.placePic, thingPic: ownPic(o.thingPic) || b?.thingPic,
+  });
+}
+
+/** WHAT A NEXT NIGHT NEEDS, from a found-footage piece's own meta (and its body, for one take's words) — or null when it
+ *  is not found footage, or names no camera:
+ *    · its record (meta.nextNight), when it wrote one;
+ *    · A FILM MADE BEFORE THE RECORD (2026-11-25, the first live films): its outline and moments are all in meta.footage —
+ *      the moments it was made of (never one left out), its first still the place's, and — when it names a thing — its
+ *      last still the thing's (the payoff, where it was drawn up close);
+ *    · ONE TAKE: its camera, its words (its body's prompt), and the scene it arrived at — the place, and the thing in it. */
+export function footageNightOf(meta: unknown, body?: unknown): FootageNight | null {
+  const m = safeParse(meta);
+  if (str(m.kind) !== "take" || str(m.template) !== "foundfootage") return null;
+  if (isObj(m.nextNight)) { const r = footageNightFrom(m.nextNight); if (r) return r; }
+  const t = isObj(m.take) ? m.take : {};
+  const camera = cameraLookOf(t.camera);
+  if (!camera) return null;
+  const f = isObj(m.footage) ? m.footage : null;
+  if (f) {
+    const made = (Array.isArray(f.moments) ? f.moments : []).filter(isObj).filter((x) => !x.left && !!str(x.out));
+    const thing = str(f.thing);
+    return footageNightRecord({
+      camera, aspect: m.aspect, kind: f.kind, place: str(f.place), thing,
+      moments: made.map((x) => ({ when: str(x.when), line: str(x.line), room: str(x.room) })),
+      placePic: made.length ? str(made[0].still) : "", thingPic: thing && made.length ? str(made[made.length - 1].still) : "",
+    });
+  }
+  const line = quoted(str(safeParse(body).prompt), NIGHT_LIMITS.line);
+  const kind = str(t.genre) ? "plain" : "scare";
+  return footageNightRecord({
+    camera, aspect: m.aspect, kind,
+    moments: line || str(t.room) ? [{ when: "", line, room: str(t.room) }] : [],
+    placePic: camera === "house" ? "" : str(t.still), thingPic: kind === "scare" ? str(t.still) : "",
+  });
+}
+
+/** The night a piece's next night films: the one after the last its cards reached — else the one after its episode. */
+export const nightAfter = (meta: unknown, kept: FootageNight | null | undefined): number =>
+  Math.min(NIGHT_MOST, (kept && kept.night > 0 ? kept.night : episodeOf(meta)) + 1);
+
+/** A footage series' title, from its first piece: the piece's title without "Found Footage — ", a house take's
+ *  " · CAM 2", or a night's " — Night 3". */
+export function footageSeriesTitle(assetTitle: string | null | undefined): string {
+  const t = storyTitleOf(assetTitle, null).replace(/\s*·\s*CAM\s*\d+\s*$/i, "").replace(/\s*[—–-]\s*Night\s+\d+\s*$/i, "").trim();
+  return stripEpisode(t).slice(0, 80) || "Found footage";
+}
+
+/** THE NEXT NIGHT OF A PIECE, from its own row (the caller has scoped it to the signed-in shop, and picked the series'
+ *  latest: latestNight) — or null when it is not found footage that can go on. */
+export function footageSeriesOf(prev: { id: string; title?: string | null; metaJson?: unknown; bodyJson?: unknown }): FootageSeries | null {
+  const last = footageNightOf(prev.metaJson, prev.bodyJson);
+  if (!last || !continuable(prev.metaJson)) return null;
+  const s = seriesOf(prev.metaJson);
+  const series: FilmSeries = s ? { id: s.id, title: s.title, episode: s.episode + 1 } : { id: prev.id, title: footageSeriesTitle(prev.title), episode: 2 };
+  return { ...series, from: prev.id, night: nightAfter(prev.metaJson, last), last };
+}
+
+/** A next night carried in a job's payload (`takeNight`), checked again — the same checker as off the row. */
+export function footageSeriesFromPayload(v: unknown): FootageSeries | null {
+  const o = safeParse(v);
+  const s = seriesOf({ series: o });
+  const last = isObj(o.last) ? footageNightFrom(o.last) : null;
+  const from = oneLine(str(o.from)).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+  const n = Math.floor(Number(o.night));
+  if (!s || s.episode < 2 || !last || !from || !(n >= 1 && n <= NIGHT_MOST)) return null;
+  return { ...s, from, night: n, last };
+}
+
+/** The piece a next night goes on from: the newest FINISHED found-footage piece of the series among `rows` (NEWEST
+ *  FIRST) — or `asked` itself. A series of nights never forks (latestEpisode's rule, for footage). */
+export function latestNight<T extends { id: string; metaJson?: unknown; bodyJson?: unknown; status?: string | null }>(asked: T, rows: ReadonlyArray<T>): T {
+  const key = seriesKeyOf(asked);
+  for (const r of rows) {
+    if (seriesKeyOf(r) !== key || !footageContinues(r.metaJson) || r.status === "FAILED") continue;
+    if (oneLine(str(safeParse(r.bodyJson).videoUrl))) return r;
+  }
+  return asked;
+}
+
+/** What the builder's banner shows of a next night — and nothing it does not (the pictures' paths stay on the server,
+ *  but the one it shows). */
+export type NightBanner = {
+  from: string; title: string; night: number; card: string; line: string;
+  camera: CameraLook; aspect: "9:16" | "16:9"; kind: "scare" | "plain"; rooms: string[]; pic: string | null;
+};
+export const nightBanner = (s: FootageSeries): NightBanner => ({
+  from: s.from, title: s.title, night: s.night, card: s.last.card, line: s.last.line,
+  camera: s.last.camera, aspect: s.last.aspect, kind: s.last.kind, rooms: s.last.rooms,
+  pic: s.last.placePic || s.last.thingPic || null,
+});

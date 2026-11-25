@@ -265,10 +265,13 @@ test("every story genre is continuable — the seven new categories, drama, horr
   assert.equal(continuable("{oops"), false);
 });
 
-test("found footage: the hook is named, says no today, and is asked by the same rule", () => {
+test("found footage: the hook says yes for a piece that names its camera (S10c — tests/footage-next-night.test.ts), and is asked by the same rule", () => {
   const take = { kind: "take", template: "foundfootage", aspect: "9:16" };
-  assert.equal(footageContinues(take), false);
+  assert.equal(footageContinues(take), false, "a take that names no camera");
   assert.equal(continuable(take), false);
+  const filmed = { ...take, take: { camera: "phone" } };
+  assert.equal(footageContinues(filmed), true);
+  assert.equal(continuable(filmed), true);
   const lib = read("app", "lib", "film-series.ts");
   assert.ok(lib.includes("return !!storyHeroOf(m) || footageContinues(m);"), "the day it says yes, every surface offers it");
 });
