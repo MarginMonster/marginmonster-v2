@@ -183,6 +183,16 @@ test("RUN: one monster at most — a second tap un-picks, another replaces; neve
   assert.ok(!/setStoryPick\([^)]*storyMonster/.test(ui));
   // a monster that comes back among the picks (a next episode, a told story opened to edit) moves to its own row
   assert.ok(state.includes("setStoryPick((p) => p.filter((id) => !isMonster(id)));\n    setStoryMonster(m);"));
+  // RUN: a cast that comes BACK (a next episode, a story opened to edit) — the monster to its own row, never sliced off
+  // as the face after the stars' places (the film's thing is sent after the people)
+  const backSrc = between(state, "  const backPicks = ", "\n  };") + "\n  };";
+  const roster = [{ id: "p1", kind: "person" }, { id: "p2", kind: "person" }, { id: "p3", kind: "person" }, { id: "m1", kind: "monster" }, { id: "m2", kind: "monster" }];
+  const backPicks = new Function("d", `${ts.transpileModule(backSrc, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText}\nreturn backPicks;`)({ roster }) as (ids: string[], tmpl: string, max: number) => { stars: string[]; monster: string | null };
+  assert.deepEqual(backPicks(["p1", "p2", "m1"], "horror", 2), { stars: ["p1", "p2"], monster: "m1" });
+  assert.deepEqual(backPicks(["m1", "p1", "p2", "p3", "m2"], "horror", 3), { stars: ["p1", "p2", "p3"], monster: "m1" }, "one monster at most");
+  assert.deepEqual(backPicks(["p1", "m1", "p2"], "testmovie", 2), { stars: ["p1", "m1"], monster: null }, "another format: as it was");
+  for (const call of ["const back = backPicks(ids.filter((x, k) => ids.indexOf(x) === k), h.tmpl, isNarr ? 3 : 2);", "const back = backPicks(ids.filter((x, k) => ids.indexOf(x) === k), h.tmpl, 3);"]) assert.equal(count(ui, call), 1, call);
+  assert.equal(count(ui, "if (back.monster) { setStoryMonster(back.monster); done.cast = true; }"), 2);
   // another format — and every next episode or story opened to edit (they open through switchHero, even onto the
   // same hero) — starts the monster over exactly where it starts the stars over
   assert.ok(ui.includes('setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setStoryMonster(null);'));

@@ -2204,6 +2204,15 @@ export default function FilmStudio() {
   const monsterRoster = monsterOn ? rosterFor(template).filter((r) => r.kind === "monster") : [];
   /** One tap picks a monster, a second tap un-picks it — one at most. */
   const pickMonster = (id: string) => setStoryMonster((cur) => (cur === id ? null : id));
+  /** A film's cast as it comes BACK (a next episode, a story opened to edit), as roster ids in its order: in a Horror
+   *  film the stars are its people, `max` of them, and its first monster is the film's thing again, in its own row.
+   *  (Review, 2026-11-25: the film's thing is sent after the people, so it was the face sliced off at `max` — the
+   *  next episode of a film with Mara, Jonah and a picked monster came back without its monster.) */
+  const backPicks = (ids: string[], tmplKey: string, max: number): { stars: string[]; monster: string | null } => {
+    if (tmplKey !== "horror") return { stars: ids.slice(0, max), monster: null };
+    const isMon = (id: string) => d.roster.some((r) => r.id === id && r.kind === "monster");
+    return { stars: ids.filter((id) => !isMon(id)).slice(0, max), monster: ids.find(isMon) || null };
+  };
   // (another format — and a next episode, or a story opened to edit — starts the monster over with the stars:
   //  switchHero. Then a next episode, or a told story opened to edit, brings its cast back as picks: a monster
   //  among them is the film's thing again, in its own row — never a star nobody can see in the stars' row)
@@ -2553,8 +2562,10 @@ export default function FilmStudio() {
       const done: Record<string, boolean> = {};
       // the same roster members, in the same order (a face no longer in the roster is left out)
       const ids = s.cast.map((m) => (m.faceUrl ? d.roster.find((r) => r.img === m.faceUrl)?.id : undefined)).filter((x): x is string => !!x);
-      const pick = ids.filter((x, k) => ids.indexOf(x) === k).slice(0, isNarr ? 3 : 2);
-      if (pick.length) { setStoryPick(pick); done.cast = true; }
+      // (…and a Horror film's monster in its own row — backPicks)
+      const back = backPicks(ids.filter((x, k) => ids.indexOf(x) === k), h.tmpl, isNarr ? 3 : 2);
+      if (back.stars.length) { setStoryPick(back.stars); done.cast = true; }
+      if (back.monster) { setStoryMonster(back.monster); done.cast = true; }
       setSeriesCast(s.cast);
       setSeriesOwn(isNarr ? (s.returning || []) : []);
       if (s.scenes) {
@@ -2608,8 +2619,9 @@ export default function FilmStudio() {
       switchHero(h.id);
       const done: Record<string, boolean> = { length: true, shape: true, captions: true };
       const ids = st.cast.map((m) => (m.faceUrl ? d.roster.find((r) => r.img === m.faceUrl)?.id : undefined)).filter((x): x is string => !!x);
-      const pick = ids.filter((x, k) => ids.indexOf(x) === k).slice(0, 3);
-      if (pick.length) { setStoryPick(pick); done.cast = true; }
+      const back = backPicks(ids.filter((x, k) => ids.indexOf(x) === k), h.tmpl, 3);
+      if (back.stars.length) { setStoryPick(back.stars); done.cast = true; }
+      if (back.monster) { setStoryMonster(back.monster); done.cast = true; }
       setScenes(Math.max(d.narratedScenes.min, Math.min(d.narratedScenes.max, st.treatment.scenes.length)));
       setFilmAspect(st.aspect);
       setCapPick(st.captions);
