@@ -321,23 +321,25 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   assert.ok(eng.includes("const drawn = await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\"));") && eng.includes("pic = drawn ? (await clothedOrDropped(drawn, aspect)) || \"\" : \"\";"), "letterbox off, clothed or dropped");
   // its picture is checkpointed the moment it is drawn, and a restarted film takes it back
   assert.ok(eng.includes("let pic = sightings[i]?.url && sightings[i].words === s.words ? sightings[i].url : \"\";"));
-  assert.ok(eng.includes("sightings[i] = { url: pic, words: s.words, who: s.who, entry: s.entry };\n            await ckpt({ ckSightings: JSON.stringify(sightings) });"));
+  // (…and since S12 whether it was only its shadow on a shut tent's cloth — never then the thing's picture)
+  assert.ok(eng.includes("sightings[i] = { url: pic, words: s.words, who: s.who, entry: s.entry, ...(sightShadow ? { shadow: true } : {}) };\n            await ckpt({ ckSightings: JSON.stringify(sightings) });"));
   assert.ok(eng.includes("seedAbs = abs(pic); sighted = s; sinceAnchor = 0;"));
   // the cut into it is a straight one; its staging is the place's; it is never also a sound shot; its clip is told so
   assert.ok(eng.includes("if (i > 0 && !chained && (tr === \"location\" || revealed || !!sighted)) hardSeams.add(i);"));
   assert.ok(eng.includes("(tr === \"angle\" && !sighted) ? null : stagingOf(master);"));
   assert.ok(eng.includes("&& !implied && !revealed && !sighted ? heardIn("));
-  assert.equal(eng.split("sighted: !!sighted, sight: sighted?.who });").length - 1, 2, "said to a talking shot and to one nobody speaks in");
+  assert.equal(eng.split("sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth });").length - 1, 2, "said to a talking shot and to one nobody speaks in");
   // what was seen stays seen: a new angle or a re-anchor in that place grows out of the place AS IT NOW IS
   assert.equal(eng.split("abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)]").length - 1, 2);
   // a place whose first scene has the thing in view is drawn with its picture; the first picture that showed it is kept
   assert.ok(eng.includes("const thingHere = !masters[locKeyAt(i)]?.url && thingInMaster(i, lastHorror);"));
   assert.ok(eng.includes("if (thingHere && master?.url && !firstShown) firstShown = { url: master.url, words: scene.visual || \"\" };"));
-  assert.ok(eng.includes("if (!firstShown && isTheThing(s.entry, s.who)) firstShown = { url: pic, words: s.words };"));
+  // (never a shadow on the cloth — S12)
+  assert.ok(eng.includes("if (!firstShown && !sightings[i]?.shadow && isTheThing(s.entry, s.who)) firstShown = { url: pic, words: s.words };"));
   // (…and which figure IS the thing: its cast line by its NAME, or one with no line that its words do not make somebody
   //  else or a shadow — couldBeThing; review, 2026-11-25)
   assert.ok(eng.includes("const isTheThing = (entry: string, who = \"\"): boolean => (!entry ? couldBeThing(who, thingWords) : !!threatEntry && lineName(entry) === lineName(threatEntry));"));
-  assert.ok(eng.includes("const theThing = isTheThing(s.entry, s.who);") && eng.includes("return !!f && isTheThing(f.entry, f.who);") && eng.includes("if (sightings[j] && isTheThing(sightings[j].entry, sightings[j].who))"));
+  assert.ok(eng.includes("const theThing = isTheThing(s.entry, s.who);") && eng.includes("return !!f && isTheThing(f.entry, f.who);") && eng.includes("if (sightings[j] && !sightings[j].shadow && isTheThing(sightings[j].entry, sightings[j].who))"));
   // THE REVEAL from the thing's picture: its portrait, else the picture that first showed it
   assert.ok(eng.includes("const thingRef = (): { url: string; kind: ThingRef } | null => (threat ? { url: abs(threat.img) || threat.img, kind: threat.creature ? \"creature\" : \"figure\" } : firstShown ? { url: abs(firstShown.url) || firstShown.url, kind: \"scene\" } : null);"));
   assert.ok(eng.includes("revealSeen = !!seen || (!!ref && !creatureRef);"));

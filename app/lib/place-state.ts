@@ -314,6 +314,15 @@ export function placeStateAt(scenes: ReadonlyArray<{ visual?: string | null; cap
   return st;
 }
 
+/** WHAT WAS DONE THERE BEFORE, APART FROM WHAT THIS CHANGE DOES — what the picture of a change is told is already so,
+ *  and kept (the door already zipped shut, while this shot wedges the bag against it). Null: nothing else. */
+export function stateApart(st: PlaceState | null | undefined, c: PlaceChange | null | undefined): PlaceState | null {
+  if (!st) return null;
+  const openings = st.openings.filter((o) => !(c?.now && sameOpening(o.what, c.what)));
+  const also = st.also.filter((a) => !(c?.put && a.thing.toLowerCase() === c.put.thing.toLowerCase()) && !(c?.now === "open" && sameOpening(a.what, c.what)));
+  return openings.length || also.length ? { openings, also } : null;
+}
+
 /** Is this opening shut in this state? */
 const shutIn = (st: PlaceState | null | undefined, what: string): boolean => !!st?.openings.some((o) => o.now === "shut" && sameOpening(o.what, what));
 /** The openings shut in a state that is made of cloth — a tent's door, a curtain: what is outside presses it, throws

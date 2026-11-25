@@ -414,11 +414,12 @@ test("THE HEARTBEAT: a film that works for two hours is never taken for dead —
   // before the take is waited for, at every host that gives up (each is waited for up to ten minutes), at every
   // failed try, and when the take is back
   assert.ok(src.includes("const VEO_POLL_MS = 10 * 60_000;"));
-  assert.ok(src.includes("await say(alive);\n    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs, aspect, undefined, alive);\n    await say(alive);"));
+  // (…the take ending, since S12, on the picture of what it does to its place, when it does something — endImage)
+  assert.ok(src.includes("await say(alive);\n    // (…ending on the picture of what it does to its place, when it does something and that picture came — S12)\n    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs, aspect, undefined, alive, endImage);\n    await say(alive);"));
   const kling = src.slice(src.indexOf("async function klingDialogueClip("), src.indexOf("async function dialogueClip("));
   assert.ok(kling.includes("console.error(`[testmovie] ${step.name} failed (${stage}): ${e instanceof Error ? e.message.slice(0, 360) : e}`);\n      // (a host gave up — after as long as ten minutes: the film is still at work, and says so)\n      await say(alive);"));
   const retry = src.slice(src.indexOf("async function dialogueClip("), src.indexOf("/** Render ONE dialogue clip end-to-end"));
-  assert.ok(retry.includes("await say(alive);") && retry.includes("? await klingDialogueClip(seedAbs, prompt, stage, durationSec, host, alive)"));
+  assert.ok(retry.includes("await say(alive);") && retry.includes("? await klingDialogueClip(seedAbs, prompt, stage, durationSec, host, alive, endImage)"));
   // …each try at a place's picture
   assert.ok(src.includes("// (a picture came back, or did not — either way the film is at work, and says so: see `say`)\n      await say(alive);"));
   // …and the join between its parts (film-join.server.ts → joinInParts), the loudness and the captions as before

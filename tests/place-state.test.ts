@@ -3,7 +3,7 @@
  * frame out of nowhere the tent doors are fully open again"). Names in the made-up cases are made up. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyChange, changeEndLine, changesState, clipEndsOnChange, clothPlace, placeChangeIn, placeStateAt, putLine, sameOpening, shutCloth, stateLine, stateNow } from "../app/lib/place-state.ts";
+import { applyChange, changeEndLine, changesState, clipEndsOnChange, clothPlace, placeChangeIn, placeStateAt, putLine, sameOpening, shutCloth, stateApart, stateLine, stateNow } from "../app/lib/place-state.ts";
 import { clampKlingPrompt, clipRules, fitClipPrompt } from "../app/lib/clip-prompt.ts";
 
 const TENT_WHERE = "inside a small tent on a moonlit lakeshore";
@@ -138,6 +138,11 @@ test("the state: shut then opened again is open; what was against it goes; anoth
   assert.equal(changesState(s1, placeChangeIn(bag.visual, "", { where: TENT_WHERE })), true);
   assert.equal(changesState(null, placeChangeIn(shut.visual, "", { where: TENT_WHERE })), true);
   assert.equal(applyChange(null, null), null);
+  // what was done before, apart from what this shot does — what the picture of the change is told is already so
+  const withBag = placeStateAt([shut, bag], 2);
+  assert.equal(stateNow(stateApart(s1, placeChangeIn(bag.visual, "", { where: TENT_WHERE }))), stateNow(s1), "the bag's shot: the door is already shut");
+  assert.equal(stateApart(withBag, placeChangeIn(open.visual, "", { where: TENT_WHERE })), null, "the shot that opens it: nothing of before is kept");
+  assert.equal(stateApart(null, null), null);
   assert.ok(sameOpening("the door", "the front door") && !sameOpening("the front door", "the back door") && !sameOpening("the door", "the window"));
   assert.equal(putLine({ thing: "The chair", how: "jammed", prep: "under", what: "the door", plural: false, shut: true }), "The chair is jammed under the shut door.");
 });

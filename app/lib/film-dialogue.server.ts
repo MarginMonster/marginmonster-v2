@@ -59,6 +59,9 @@ import { EVENT_MAX, EVENT_MAX_LAST, FILM_FPS, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SI
 // THE SIGHTING, AND THE FILM'S THING (2026-11-25 — acted-staging.ts → sightingOf, storyThreat; dialogue-cast.ts → castThreat)
 import { couldBeThing, figureIn, sightingOf, sightingPicture, storyThreat, threatFromWords, threatPortrait, type Sighting, type ThingRef } from "./acted-staging";
 import { castThreat } from "./dialogue-cast";
+// THE PLACE REMEMBERS WHAT WAS DONE TO IT — a zipped tent stays zipped (2026-11-25, stream S12: place-state.ts)
+import { applyChange, changeEndLine, changesState, clipEndsOnChange, clothPlace, placeChangeIn, placeStateAt, shutCloth, stateApart, stateLine, stateNow, type PlaceChange, type PlaceState } from "./place-state";
+import { changePicture } from "./acted-staging";
 import { PORTRAIT_ASPECT, STORY_LADDER, castEntry, storyPictureInput } from "./story-picture";
 // EVERYBODY IN EVERY PICTURE IS CLOTHED — the one look (2026-11-25, stream S8: clothed.server.ts → keepClothed)
 import { clothedEditOn, keepClothed } from "./clothed.server";
@@ -167,15 +170,19 @@ export function filmKlingHost(): KlingHost {
  *  character cap), so every approved film really came from Replicate's Kling 3 Omni; the same Omni model
  *  on fal ("O3") was then A/B'd by ear before it was allowed to lead. On Replicate `mode` stays pinned to
  *  the default the approved films used, so a provider-side default change can't alter the look. */
-async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: string, durationSec = KLING_DUR, host: KlingHost = filmKlingHost(), alive?: () => unknown): Promise<string> {
+/*  THE FRAME A SHOT ENDS ON (`endImage`, 2026-11-25 — stream S12, place-state.ts): a shot whose scene shuts a door ends on
+ *  the picture of it shut. Kling 3 Omni takes one on both hosts — fal's O3 `end_image_url` (fal-video-body.ts) and
+ *  Replicate's `end_image` ("Last frame image. Requires start_image.", read from its input schema the same day); fal's
+ *  Kling 3 Pro, the last resort, is not sent one (a different model: the shot is made as it was). */
+async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: string, durationSec = KLING_DUR, host: KlingHost = filmKlingHost(), alive?: () => unknown, endImage?: string): Promise<string> {
   const dur = Math.max(5, Math.min(KLING_DUR, Math.round(durationSec) || KLING_DUR));
   const prompt = clampKlingPrompt(rawPrompt);
   const viaReplicate = async () => {
-    const id = await repCreate(REP_KLING3, { prompt, start_image: seedAbs, generate_audio: true, duration: dur, mode: "pro" });
+    const id = await repCreate(REP_KLING3, { prompt, start_image: seedAbs, ...(endImage ? { end_image: endImage } : {}), generate_audio: true, duration: dur, mode: "pro" });
     return await repPoll(id, VEO_POLL_MS, stage);
   };
   const viaFal = async (model: string) => {
-    const rid = await falVideoSubmit(model, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur });
+    const rid = await falVideoSubmit(model, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur, ...(endImage ? { endImage } : {}) });
     return await falVideoPoll(model, rid, VEO_POLL_MS);
   };
   // The picked host first; then the SAME model elsewhere, cheapest first; fal's Kling 3 Pro (a different
@@ -205,6 +212,7 @@ async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: stri
   let lastErr: unknown = new Error("[testmovie] no Kling host is configured");
   for (const step of order) {
     if (step.fal && !falEnabled()) continue;
+    if (endImage && step.name === "fal kling 3 pro") console.log(`[testmovie] ${stage}: fal kling 3 pro takes no end frame — this take ends where the engine ends it`);
     try { return await step.run(); }
     catch (e) {
       lastErr = e;
@@ -218,7 +226,9 @@ async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: stri
 
 /** Route a dialogue clip to the chosen engine — the ONE line that differs between the
  *  identical Veo and Kling pipelines. */
-async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string, durationSec?: number, aspect?: "9:16" | "16:9" | "1:1", host?: KlingHost, alive?: () => unknown): Promise<string> {
+async function dialogueClip(engine: string, seedAbs: string, prompt: string, stage: string, durationSec?: number, aspect?: "9:16" | "16:9" | "1:1", host?: KlingHost, alive?: () => unknown, endImage?: string): Promise<string> {
+  // (the frame a shot ends on — Kling only: S12, klingDialogueClip)
+  if (endImage && engine !== "kling3") console.log(`[testmovie] ${stage}: Veo takes no end frame — the take ends where the engine ends it`);
   // Only Kling takes a per-clip length; Veo keeps its native clip. Kling inherits the seed's
   // aspect (the seed is rendered at the chosen ratio); Veo-Replicate takes it explicitly.
   // RETRY the whole render a few times: each clip already falls back fal→Replicate, but when
@@ -229,7 +239,7 @@ async function dialogueClip(engine: string, seedAbs: string, prompt: string, sta
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return engine === "kling3"
-        ? await klingDialogueClip(seedAbs, prompt, stage, durationSec, host, alive)
+        ? await klingDialogueClip(seedAbs, prompt, stage, durationSec, host, alive, endImage)
         : await veoDialogueClip(seedAbs, prompt, stage, aspect, alive);
     } catch (e) {
       lastErr = e;
@@ -248,13 +258,15 @@ async function dialogueClip(engine: string, seedAbs: string, prompt: string, sta
  *  shot is trimmed exactly as its first take was: one nobody speaks in is kept whole (clipSilent), one that
  *  opens on a sound keeps its head (clipHearsFirst), one in which something is done keeps its pause
  *  (clipMoves). Its length is the stored one (`durSec`): a wordless shot's SILENT_SHOT_SECONDS, a sound
- *  shot's heardSeconds — never re-measured from a line it does not have. */
-export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: string, prompt: string, durSec: number, aspect: "9:16" | "16:9" | "1:1", stage: string, chained = false, host?: KlingHost, opts: { last?: boolean } = {}): Promise<string> {
-  const clipUrl = await dialogueClip(engine, seedAbs, prompt, stage, durSec, aspect, host);
+ *  shot's heardSeconds — never re-measured from a line it does not have.
+ *  …and a shot that CHANGED its place (S12, place-state.ts) is rolled again ending on the picture of the change it was
+ *  made with (`opts.endImage` — the piece's shot.end), and keeps its tail as its first take did (clipEndsOnChange). */
+export async function renderDialogueClipTo(engine: "veo" | "kling3", seedAbs: string, prompt: string, durSec: number, aspect: "9:16" | "16:9" | "1:1", stage: string, chained = false, host?: KlingHost, opts: { last?: boolean; endImage?: string } = {}): Promise<string> {
+  const clipUrl = await dialogueClip(engine, seedAbs, prompt, stage, durSec, aspect, host, undefined, opts.endImage);
   const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
   await download(clipUrl, rawPath);
   if (!(fs.existsSync(rawPath) && ffprobeDuration(rawPath) > 1)) throw new Error("[regen] clip did not download");
-  return trimClip(rawPath, { chained, last: !!opts.last, moves: clipMoves(prompt), silent: clipSilent(prompt), keepHead: clipHearsFirst(prompt) });
+  return trimClip(rawPath, { chained, last: !!opts.last, moves: clipMoves(prompt), silent: clipSilent(prompt), keepHead: clipHearsFirst(prompt), keepTail: clipEndsOnChange(prompt) });
 }
 
 /** What a rendered take SAYS, word by word with times — heard by whisperx (it hears the language too), so
@@ -274,7 +286,7 @@ async function heardWords(clipPath: string): Promise<TimedWord[] | null> {
 
 /** A raw take → the clip that goes in the film: dead air off both ends, then the one long mid-line pause
  *  taken down to a beat — both decided on the heard words where they come back. */
-async function trimClip(rawPath: string, opts: { chained: boolean; last: boolean; /** something is DONE in this shot (acted-staging.ts → clipMoves) */ moves?: boolean; /** nobody speaks in this shot (acted-staging.ts → clipSilent) */ silent?: boolean; /** the shot OPENS ON A SOUND (acted-staging.ts → clipHearsFirst) */ keepHead?: boolean }): Promise<string> {
+async function trimClip(rawPath: string, opts: { chained: boolean; last: boolean; /** something is DONE in this shot (acted-staging.ts → clipMoves) */ moves?: boolean; /** nobody speaks in this shot (acted-staging.ts → clipSilent) */ silent?: boolean; /** the shot OPENS ON A SOUND (acted-staging.ts → clipHearsFirst) */ keepHead?: boolean; /** the shot ENDS ON A CHANGE of its place (place-state.ts → clipEndsOnChange) */ keepTail?: boolean }): Promise<string> {
   // A SHOT NOBODY SPEAKS IN IS KEPT WHOLE. Every trim below looks for where the SPEECH starts and stops: the
   // listen (there are no words to hear), the lead-in before "the first word" (cut, or played fast), the tail
   // after "the last word", the hold after a last line, the pause in the middle of a line. With no line, the
@@ -285,6 +297,10 @@ async function trimClip(rawPath: string, opts: { chained: boolean; last: boolean
   // (a shot that OPENS ON A SOUND keeps everything before its first word: that is where the sound is. Cut,
   //  the knock is gone; played fast, three slow knocks become three quick ones — the owner's "knocking fast")
   const t = await trimTrailingSilence(rawPath, { ...opts, words });
+  // (a shot that ENDS ON A CHANGE of its place — the door zipped shut, its last frame the picture of it shut — keeps its
+  //  tail, and its middle too: the change is done in the seconds after the line, and the next shot grows out of its last
+  //  frame. Cut on the line, the door was still open — S12, place-state.ts)
+  if (opts.keepTail) return t.path;
   // A shot in which something HAPPENS keeps its mid-line pause. Taking a pause out of the middle of a take
   // cannot be seen while two people stand still — which is what every shot was when that cut was written;
   // with a door being pulled open, or the two of them walking, it would make them jump.
@@ -370,7 +386,7 @@ async function cropPanelSeed(panelRelUrl: string, side: "left" | "right"): Promi
  *  first. `keepHead` = the shot OPENS ON A SOUND (acted-staging.ts → clipHearsFirst): everything before its
  *  first word is kept, at its own speed — only the dead tail goes. Re-encodes for frame-accurate edits.
  *  Returns a NEW path, or the original if nothing changes. */
-async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; last?: boolean; words?: TimedWord[] | null; keepHead?: boolean } = {}): Promise<{ path: string; shift: number }> {
+async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; last?: boolean; words?: TimedWord[] | null; keepHead?: boolean; keepTail?: boolean } = {}): Promise<{ path: string; shift: number }> {
   const ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"];
   const usable = (p: string) => { try { return fs.existsSync(p) && ffprobeDuration(p) > 0.8; } catch { return false; } };
   let result = inPath;
@@ -387,7 +403,9 @@ async function trimTrailingSilence(inPath: string, opts: { chained?: boolean; la
     // the heard words decide where the line is, when the measured quiet backs them up; else silence alone
     const planned = (opts.words && planFromWords(opts.words, measured, dur, how)) || planClipTrim(measured, dur, how);
     // (a shot that opens on a sound: nothing before the line is cut or sped up — the sound is there)
-    const plan = opts.keepHead ? { ...planned, cutHead: 0, retime: null } : planned;
+    const headed = opts.keepHead ? { ...planned, cutHead: 0, retime: null } : planned;
+    // (…and a shot that ends on a change of its place: nothing after the line is cut — that is where it is done, S12)
+    const plan = opts.keepTail ? { ...headed, endAt: dur } : headed;
     holdEnd = plan.holdEnd;
     if (isNoopTrim(plan, dur)) return { path: inPath, shift: 0 };
     const out = inPath.replace(/\.mp4$/i, "-trim.mp4");
@@ -615,7 +633,7 @@ export async function generateTestMovie(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string; ckMasters?: string; ckCastLooks?: string; /** what each finished shot was (below → ShotKept) — read from the job's own row when the worker does not hand it over */ ckShots?: string; /** the film's thing's portrait, and each sighting's picture (below) — read from the job's own row when the worker does not hand them over */ ckThreat?: string; ckSightings?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string; ckMasters?: string; ckCastLooks?: string; /** what each finished shot was (below → ShotKept) — read from the job's own row when the worker does not hand it over */ ckShots?: string; /** each picture of a change done to a place (below — S12) — read from the job's own row when the worker does not hand it over */ ckChanges?: string; /** the film's thing's portrait, and each sighting's picture (below) — read from the job's own row when the worker does not hand them over */ ckThreat?: string; ckSightings?: string };
   /** Per-scene APPROVED storyboard frames (relative /renders URLs), index-aligned
    *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
    *  that scene so it lands exactly as the merchant staged it. */
@@ -1050,7 +1068,7 @@ export async function generateTestMovie(opts: {
   // finished shot became the small dissolve of a shot that continues (a cut to ANOTHER PLACE too: the "ghost"
   // between two rooms the straight cut was made to end), and no finished shot could be rolled again in the
   // editor. It is checkpointed with the clips now (`ckShots`), and read back here.
-  type ShotKept = { seed?: string; prompt?: string; dur?: number; chained?: boolean; staging?: string; cut?: "hard" | "reframe"; voice?: string };
+  type ShotKept = { seed?: string; prompt?: string; dur?: number; chained?: boolean; staging?: string; cut?: "hard" | "reframe"; voice?: string; /** the frame it ENDS on — the picture of what it did to its place (S12) */ end?: string };
   let kept: ShotKept[] = [];
   if (clips.length) {
     try { const j = JSON.parse(resume.ckShots ?? (await ownCheckpoint(jobId, "ckShots")) ?? "null"); if (Array.isArray(j)) kept = j as ShotKept[]; } catch { /* none kept: read off the script, below */ }
@@ -1126,6 +1144,8 @@ export async function generateTestMovie(opts: {
   // …and the staging each shot was played in (acted-staging.ts), for the piece's own record.
   const shotStaged: (ActedStaging | null)[] = clips.map((_, i) => (isActedStaging(kept[i]?.staging) ? (kept[i].staging as ActedStaging) : null));
   for (let i = 0; i < clips.length; i++) if (kept[i]?.voice) shotVoice[i] = String(kept[i].voice);
+  // …and the frame each shot ENDS on, where it changed its place (S12): a re-roll ends on it again (renderDialogueClipTo)
+  const shotEnds: (string | null)[] = clips.map((_, i) => kept[i]?.end || null);
   // WHICH STAGING THE PICTURE A SHOT GROWS OUT OF WAS DRAWN IN — null when it is not a staged picture. (After
   // a restart the next shot may continue the last finished one: it is in that location's staging, unless a
   // frame the maker approved was among the finished shots.)
@@ -1168,6 +1188,7 @@ export async function generateTestMovie(opts: {
     ...(shotSeeds[i] ? { seed: shotSeeds[i] as string } : {}), ...(shotPrompts[i] ? { prompt: shotPrompts[i] as string } : {}), ...(shotDurs[i] ? { dur: shotDurs[i] } : {}),
     ...(shotChained[i] ? { chained: true } : {}), ...(shotStaged[i] ? { staging: shotStaged[i] as string } : {}),
     ...(hardSeams.has(i) ? { cut: "hard" as const } : softSeams.has(i) ? { cut: "reframe" as const } : {}), ...(shotVoice[i] ? { voice: shotVoice[i] } : {}),
+    ...(shotEnds[i] ? { end: shotEnds[i] as string } : {}),
   })));
   // THE FACES THE FILM FIRST SHOWED, AFTER A RESTART: they are cut from the film's FIRST master, and were held only
   // in memory — a film picked up again drew every later place from words alone until a new master happened to be
@@ -1272,10 +1293,34 @@ export async function generateTestMovie(opts: {
   }
   /** WHAT EACH SIGHTING DREW (by shot), kept the moment it is drawn — a restarted film does not draw it twice, and the
    *  shots after it in its place, and the reveal, still have it. */
-  type Sighted = { url: string; words: string; who: string; entry: string };
+  /** (`shadow`: only its shadow on a shut tent's cloth was drawn — S12: never the picture of the thing itself) */
+  type Sighted = { url: string; words: string; who: string; entry: string; shadow?: boolean };
   const sightings: Record<number, Sighted> = {};
   if (sightOn) {
-    try { const r = JSON.parse(resume.ckSightings ?? (await keptOnJob("ckSightings")) ?? "null"); if (r && typeof r === "object") for (const [k, v] of Object.entries(r as Record<string, Sighted>)) if (v && typeof v.url === "string" && onDisk(v.url)) sightings[Number(k)] = { url: v.url, words: String(v.words || ""), who: String(v.who || ""), entry: String(v.entry || "") }; } catch { /* none kept */ }
+    try { const r = JSON.parse(resume.ckSightings ?? (await keptOnJob("ckSightings")) ?? "null"); if (r && typeof r === "object") for (const [k, v] of Object.entries(r as Record<string, Sighted>)) if (v && typeof v.url === "string" && onDisk(v.url)) sightings[Number(k)] = { url: v.url, words: String(v.words || ""), who: String(v.who || ""), entry: String(v.entry || ""), ...(v.shadow === true ? { shadow: true } : {}) }; } catch { /* none kept */ }
+  }
+  /* THE PLACE REMEMBERS WHAT WAS DONE TO IT (2026-11-25, stream S12 — place-state.ts). The owner, of the lake films: "they
+   * say "close the tent up" then "put the bag in front of the door" but they never actually zipped the tent doors up …
+   * then in a frame out of nowhere the tent doors are fully open again and the monster lady is standing in front of
+   * door". A place's picture is its master — the moment BEFORE anything is done — and nothing recorded that its door was
+   * shut. So what each scene DOES to its place is read off its own words (placeChangeIn; a copy of an earlier scene there
+   * does nothing — sceneEvent), and what is true when each shot begins (placeStateAt, since the film came to the place).
+   * A shot that changes it has the change DRAWN — an edit of its own start picture — ends on it, and is checkpointed the
+   * moment it is drawn (`ckChanges`: a restart never draws it twice); every later picture there grows out of it (shownAt)
+   * and every later clip is told it stays so (stateLine). A staged two-hander only — never a cartoon, never a frame the
+   * maker approved — as the sighting is. */
+  const placeOn = staged && !cartoon && isTwoHander;
+  const changeWords = scenesArr.map((_, j) => sceneEvent(scenesArr.map((s) => s.visual), scenesArr.map((__, k) => locKeyAt(k)), scenesArr.map((s) => s.where || ""), j));
+  const placeScenes = scenesArr.map((s, j) => ({ visual: changeWords[j], caption: s.caption, where: whereAt[j] }));
+  /** What shot i's own scene does to its place (null: nothing). */
+  const changeAt = (i: number): PlaceChange | null => (placeOn ? placeChangeIn(placeScenes[i]?.visual, placeScenes[i]?.caption, { where: placeScenes[i]?.where }) : null);
+  /** What is true of shot i's place when it begins — every change there since the film came to it. */
+  const stateAt = (i: number): PlaceState | null => (placeOn ? placeStateAt(placeScenes, i, (j) => j >= arrivedAt(i) && locKeyAt(j) === locKeyAt(i)) : null);
+  /** (`hides`: it shut a door of cloth — what was outside is no longer in the picture) */
+  type Changed = { url: string; words: string; hides?: boolean };
+  const changes: Record<number, Changed> = {};
+  if (placeOn) {
+    try { const r = JSON.parse(resume.ckChanges ?? (await keptOnJob("ckChanges")) ?? "null"); if (r && typeof r === "object") for (const [k, v] of Object.entries(r as Record<string, Changed>)) if (v && typeof v.url === "string" && onDisk(v.url)) changes[Number(k)] = { url: v.url, words: String(v.words || ""), ...(v.hides === true ? { hides: true } : {}) }; } catch { /* none kept */ }
   }
   /** THE PICTURE THAT FIRST SHOWED THE THING — the fallback when it has no portrait (a sighting, or the master of the
    *  place it first stood in): whole, with the words that showed it. */
@@ -1297,8 +1342,21 @@ export async function generateTestMovie(opts: {
   /** Where the film last came to the place shot i is in — the shot whose cut brought it there. */
   const arrivedAt = (i: number): number => { let a = i; while (a > 0 && transitionAt(a) !== "location") a--; return a; };
   /** What the place looks like NOW at shot i: the latest sighting drawn there since the film came to it — what was
-   *  seen stays seen (a re-anchor or a new angle there grows out of it) — else "" (its master). */
-  const shownAt = (i: number): string => { for (let j = i - 1; j >= arrivedAt(i); j--) if (sightings[j]?.url) return sightings[j].url; return ""; };
+   *  seen stays seen (a re-anchor or a new angle there grows out of it) — else "" (its master).
+   *  (…and since S12, the latest picture of a CHANGE done there too — the door zipped shut stays shut: every re-anchor,
+   *   new angle, sighting and the reveal there grows out of it. A change drawn in the same shot as a sighting is an edit
+   *   of that sighting's picture: it is the later of the two.) */
+  const shownAt = (i: number): string => { for (let j = i - 1; j >= arrivedAt(i); j--) { if (changes[j]?.url) return changes[j].url; if (sightings[j]?.url) return sightings[j].url; } return ""; };
+  /** Does the picture the place now is (shownAt, else its master) have the film's thing far off in it? (A change that shut
+   *  a door of cloth has hidden what was outside; a shadow on the cloth is not the thing.) */
+  const thingFarAt = (i: number): boolean => {
+    for (let j = i - 1; j >= arrivedAt(i); j--) {
+      if (changes[j]?.url && changes[j].hides) return false;
+      if (sightings[j]?.url) return !sightings[j].shadow && isTheThing(sightings[j].entry, sightings[j].who);
+    }
+    const first = locFirst.get(locKeyAt(i)) ?? i;
+    return first !== i && thingInMaster(first, false);
+  };
   /** The words the picture shot i would start from was drawn from: its place's first scene — and, when it carries on
    *  in that place, every sighting drawn there since the film came to it. */
   const startedFrom = (i: number, tr: string): string[] => {
@@ -1313,9 +1371,10 @@ export async function generateTestMovie(opts: {
     const f = figureIn(scenesArr[i]?.visual, { speakers: [spkA, spkB], cast: thingCast, names: peopleNames });
     return !!f && isTheThing(f.entry, f.who);
   };
-  // (a film picked up after a restart: the picture that first showed the thing, among its finished shots)
+  // (a film picked up after a restart: the picture that first showed the thing, among its finished shots — never a shadow
+  //  on the cloth: S12)
   for (let j = 0; j < clips.length && !firstShown; j++) {
-    if (sightings[j] && isTheThing(sightings[j].entry, sightings[j].who)) firstShown = { url: sightings[j].url, words: sightings[j].words };
+    if (sightings[j] && !sightings[j].shadow && isTheThing(sightings[j].entry, sightings[j].who)) firstShown = { url: sightings[j].url, words: sightings[j].words };
     else if (thingInMaster(j, false) && masters[locKeyAt(j)]?.url) firstShown = { url: masters[locKeyAt(j)].url, words: scenesArr[j]?.visual || "" };
   }
 
@@ -1422,6 +1481,14 @@ export async function generateTestMovie(opts: {
     //  no window; and the one the film already showed is drawn as itself — acted-staging.ts → openAirPlace, SEEN_FIGURE)
     const outdoors = openAirPlace(whereAt[i]);
     let revealSeen = false;
+    // THE PLACE AS IT NOW IS (S12, above): what was done to it before this shot, in words — and whether what is outside
+    // must stay OUTSIDE, at the cloth: a tent, a moment that presses on cloth, a door of cloth shut.
+    const placeBefore = stateAt(i);
+    const placeNow = stateNow(placeBefore);
+    const cloth = placeOn && (clothPlace(whereAt[i], eventAt(i)) || shutCloth(placeBefore));
+    const tent = /\btents?\b/i.test(`${whereAt[i]} ${eventAt(i)}`);
+    // (a SIGHTING while the tent is shut is its shadow on the cloth: nothing is seen through a shut door)
+    const sightShadow = placeOn && shutCloth(placeBefore);
     if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {
       // THE FILM'S THING, FROM ITS PICTURE (above: castThreat / storyThreat / firstShown). A creature the maker chose is
       // drawn FROM ITS OWN PICTURE — that creature, not one made up from the words; and since 2026-11-25 so is a threat
@@ -1439,10 +1506,16 @@ export async function generateTestMovie(opts: {
       revealSeen = !!seen || (!!ref && !creatureRef);
       const revealSides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) }));
       // (the place's own picture was drawn with it far off — its first scene showed it: one of it, come close, never two)
+      // (…and since S12 the reveal is drawn into the place AS IT NOW IS — shownAt: the tent zipped shut, the bag against
+      //  its door. It was the PRISTINE master on all three editors, and both lake films' reveals stood the woman in the
+      //  open doorway of a tent their stories had zipped shut. Whether THAT picture has the thing far off: thingFarAt.)
+      const revealBase = abs(shownAt(i) || master.url);
       const placeFirst = locFirst.get(locKeyAt(i)) ?? i;
-      const away = placeFirst !== i && thingInMaster(placeFirst, false);
-      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, away });
-      const ask = ref ? revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, ref: ref.kind, name: threat?.name, away }) : askOne;
+      const away = shownAt(i) ? thingFarAt(i) : placeFirst !== i && thingInMaster(placeFirst, false);
+      // (at a tent, or when its door of cloth was shut, it is OUTSIDE — its face pressed into the cloth: acted-staging.ts →
+      //  revealPart "fabric"; and the place as it now is, said, so that it stays so)
+      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, away, cloth, tent, state: placeNow });
+      const ask = ref ? revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, ref: ref.kind, name: threat?.name, away, cloth, tent, state: placeNow }) : askOne;
       // ON THE STRONGER EDITOR. Drawn from a frame of the owner's second film, nine rounds of it and looked at:
       // the everyday picture model (the one this used, and the one that drew the mannequin's arm) made every
       // thing it added look stuck on — a white bony claw, a cartoon eyeball, a face in a black cut-out over the
@@ -1450,11 +1523,11 @@ export async function generateTestMovie(opts: {
       // in real plaster with the face or the fingers in it, photographed. flux-kontext-pro is the more
       // permissive editor when that one refuses (horror is refused now and then). About 15 cents a film.
       for (const [model, input] of [
-        ["google/nano-banana-pro", { prompt: ask, image_input: [abs(master.url), ...(thingFace ? [thingFace] : [])], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
-        ["black-forest-labs/flux-kontext-pro", { prompt: askOne, input_image: abs(master.url), aspect_ratio: aspect, output_format: "jpg", output_quality: 92 }],
+        ["google/nano-banana-pro", { prompt: ask, image_input: [revealBase, ...(thingFace ? [thingFace] : [])], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
+        ["black-forest-labs/flux-kontext-pro", { prompt: askOne, input_image: revealBase, aspect_ratio: aspect, output_format: "jpg", output_quality: 92 }],
         // (…and Seedream 4.5, a third maker's editor, when both refuse: the lake film's reveal did not come, and the
         //  woman it had circled for five shots was never seen — 2026-11-25)
-        ["bytedance/seedream-4.5", { prompt: ask, image_input: [abs(master.url), ...(thingFace ? [thingFace] : [])], aspect_ratio: aspect, size: "2K", max_images: 1 }],
+        ["bytedance/seedream-4.5", { prompt: ask, image_input: [revealBase, ...(thingFace ? [thingFace] : [])], aspect_ratio: aspect, size: "2K", max_images: 1 }],
       ] as Array<[string, Record<string, unknown>]>) {
         if (!ask || seedAbs) break;
         // (…and LOOKED at before it is used, as every film picture is — 2026-11-25: the thing it adds is "the woman in the
@@ -1484,12 +1557,13 @@ export async function generateTestMovie(opts: {
         if (!pic) {
           const base = abs(shownAt(i) || master.url);
           const theThing = isTheThing(s.entry, s.who);
-          const ref = theThing ? thingRef() : null;
+          // (while the tent is shut what they see is its SHADOW on the cloth — a shadow has no face: no picture rides along, S12)
+          const ref = theThing && !sightShadow ? thingRef() : null;
           const look = s.entry || (theThing ? threatEntry || threat?.look || "" : "");
           const sightSides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) }));
           const creature = !!ref && ref.kind === "creature";
-          const askOne = sightingPicture({ moment: s.words, sides: sightSides, seen: look, outdoors, mood: tmpl.faceMood, creature });
-          const ask = ref ? sightingPicture({ moment: s.words, sides: sightSides, seen: look, outdoors, mood: tmpl.faceMood, creature, ref: ref.kind, name: threat?.name }) : askOne;
+          const askOne = sightingPicture({ moment: s.words, sides: sightSides, seen: look, outdoors, mood: tmpl.faceMood, creature, shadow: sightShadow, state: placeNow });
+          const ask = ref ? sightingPicture({ moment: s.words, sides: sightSides, seen: look, outdoors, mood: tmpl.faceMood, creature, ref: ref.kind, name: threat?.name, state: placeNow }) : askOne;
           for (const [model, input] of [
             ["google/nano-banana-pro", { prompt: ask, image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
             ["black-forest-labs/flux-kontext-pro", { prompt: askOne, input_image: base, aspect_ratio: aspect, output_format: "jpg", output_quality: 92 }],
@@ -1502,29 +1576,34 @@ export async function generateTestMovie(opts: {
             } catch (e) { console.error(`[testmovie] shot ${i + 1}: the sighting on ${model} did not come: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
           }
           if (pic) {
-            sightings[i] = { url: pic, words: s.words, who: s.who, entry: s.entry };
+            sightings[i] = { url: pic, words: s.words, who: s.who, entry: s.entry, ...(sightShadow ? { shadow: true } : {}) };
             await ckpt({ ckSightings: JSON.stringify(sightings) });
           }
         }
         if (pic) {
           seedAbs = abs(pic); sighted = s; sinceAnchor = 0;
-          if (!firstShown && isTheThing(s.entry, s.who)) firstShown = { url: pic, words: s.words };
-          console.log(`[testmovie] shot ${i + 1}: a sighting — ${s.who} drawn into the place's picture, far off (${locKeyAt(i).slice(0, 40)})`);
+          // (a shadow on the cloth is never the thing's picture — S12)
+          if (!firstShown && !sightings[i]?.shadow && isTheThing(s.entry, s.who)) firstShown = { url: pic, words: s.words };
+          console.log(`[testmovie] shot ${i + 1}: a sighting — ${s.who} drawn into the place's picture, ${sightings[i]?.shadow ? "its shadow on the shut tent's cloth" : "far off"} (${locKeyAt(i).slice(0, 40)})`);
         } else console.error(`[testmovie] shot ${i + 1}: the sighting's picture did not come — the shot is made as it always was`);
       }
     }
+    // (what a sighting drew while the tent was shut is its shadow on the cloth: its clip is told so — S12)
+    const sightedShadow = !!sighted && !!sightings[i]?.shadow;
     // THE REVEAL THAT COULD NOT BE DRAWN — in its place, with no picture of it: its clip is not told what the thing
     // is (a clip told to show a thing that is not in its picture draws one of its own), and the two react to
     // something never seen (acted-staging.ts → REVEAL_UNSEEN_REACT). A last shot in a place of its own (a script
     // written before the reveal moved into the room) has its thing in that place's own picture, and keeps it.
     const implied = lastHorror && !revealed && !approvedFrames[i];
+    // (…and a new angle or a re-anchor is told what was done to the place, as well as shown it — S12: the door stays shut)
+    const keptSo = placeNow ? ` The place as it is when this moment begins: ${placeNow}` : "";
     if (!seedAbs && master?.url) {
       if (tr === "location") {
         seedAbs = abs(master.url); sinceAnchor = 0; if (i > 0) softSeams.add(i);
       } else if (tr === "angle") {
         // (…of the place AS IT NOW IS: what a sighting there drew stays seen — shownAt)
         const reangled = await removeLetterbox(await renderSceneSeedChained(
-          `${whereAt[i]}. A ${shotAt[i]} of the same scene — the identical room, lighting, wardrobe and people, only the camera angle changes. ${NO_TEXT}`,
+          `${whereAt[i]}. A ${shotAt[i]} of the same scene — the identical room, lighting, wardrobe and people, only the camera angle changes.${keptSo} ${NO_TEXT}`,
           abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
         ));
         seedAbs = abs(reangled) || abs(prevFrameUrl) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
@@ -1545,8 +1624,8 @@ export async function generateTestMovie(opts: {
         const unheard = now && heardIn(eventAt(i), [spkA, spkB, ...peopleNames])?.unseen ? ` ${HEARD_NOT_DRAWN}` : "";
         const reangled = await removeLetterbox(await renderSceneSeedChained(
           now
-            ? `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people on the same sides of the frame, ONLY the camera angle changes. At this moment: ${now}${unheard} ${NO_TEXT}`
-            : `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people in the same positions, ONLY the camera angle changes. ${NO_TEXT}`,
+            ? `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people on the same sides of the frame, ONLY the camera angle changes. At this moment: ${now}${unheard}${keptSo} ${NO_TEXT}`
+            : `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people in the same positions, ONLY the camera angle changes.${keptSo} ${NO_TEXT}`,
           // (from the place AS IT NOW IS: a re-anchor after a sighting keeps what was seen — shownAt)
           abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
         ));
@@ -1565,6 +1644,43 @@ export async function generateTestMovie(opts: {
       }
     }
     if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);
+    // THE PICTURE OF A CHANGE, AND THE SHOT THAT MAKES IT (S12 — above, and acted-staging.ts → changePicture). This shot's
+    // scene does something to its place that is not already so — zips the tent door shut, wedges the bag against it: the
+    // change is DRAWN as an edit of this shot's OWN start picture (whatever seeds it — the chained last frame, a
+    // re-anchor, the master, a sighting), ONE thing changed and a hand still on it, LOOKED at like every film picture,
+    // and checkpointed the moment it is drawn. The shot then starts on its picture and ENDS on that one (the engine's end
+    // frame), and every later picture there grows out of it (shownAt). On nano-banana-pro, then Seedream 4.5 — drawn from
+    // Episode 2's own first frame and looked at: both zipped the door shut with her hand on the pull; flux-kontext-pro
+    // blacked the lake out and left the door OPEN, and a wrong end frame is worse than none, so it is not asked. About 15
+    // cents a change. Never the reveal (its picture is the moment), never a frame the maker approved; a picture that will
+    // not come leaves the shot as it is made today.
+    const placeChange = placeOn && !revealed && !approvedFrames[i] ? changeAt(i) : null;
+    const changing = !!placeChange && changesState(placeBefore, placeChange);
+    let endImage: string | undefined;
+    if (changing && placeChange && master?.url) {
+      const words = changeEndLine(placeChange);
+      let pic = changes[i]?.url && changes[i].words === words ? changes[i].url : "";
+      if (!pic) {
+        const ask = changePicture({ change: placeChange, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), kept: stateNow(stateApart(placeBefore, placeChange)), outdoors });
+        for (const [model, input] of [
+          ["google/nano-banana-pro", { prompt: ask, image_input: [seedAbs], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
+          ["bytedance/seedream-4.5", { prompt: ask, image_input: [seedAbs], aspect_ratio: aspect, size: "2K", max_images: 1 }],
+        ] as Array<[string, Record<string, unknown>]>) {
+          if (!ask || pic) break;
+          try {
+            const drawn = await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), "jpg"));
+            pic = drawn ? (await clothedOrDropped(drawn, aspect)) || "" : "";
+          } catch (e) { console.error(`[testmovie] shot ${i + 1}: the picture of what it does to its place on ${model} did not come: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
+        }
+        if (pic) {
+          // (it shut a door of cloth: what was outside is out of the picture now — thingFarAt)
+          changes[i] = { url: pic, words, ...(shutCloth(applyChange(null, placeChange)) ? { hides: true } : {}) };
+          await ckpt({ ckChanges: JSON.stringify(changes) });
+        }
+      }
+      if (pic) { endImage = abs(pic); console.log(`[testmovie] shot ${i + 1}: it ends on what it does to its place — ${words.slice(0, 140)}`); }
+      else console.error(`[testmovie] shot ${i + 1}: the picture of what it does to its place did not come — the shot is made as it always was`);
+    }
     // Does this shot CONTINUE the last one (seeded from its final frame)? Then its opening frames are
     // what makes the cut invisible and must survive the trim. Any other seed is a new picture: that seam
     // gets the softer dissolve, and the shot may simply start on its line.
@@ -1666,7 +1782,7 @@ export async function generateTestMovie(opts: {
       const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...peopleNames])?.unseen;
       const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : "";
       try {
-        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, sighted: !!sighted, sight: sighted?.who });
+        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth });
       } catch (e) {
         // (never a shot lost to its words: it is a held, quiet beat — and still told that nobody speaks)
         console.error(`[testmovie] shot ${i + 1}: the wordless shot's rules were not built — it is told to hold: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
@@ -1674,12 +1790,21 @@ export async function generateTestMovie(opts: {
       }
     } else if (chainStaging) {
       try {
-        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, sighted: !!sighted, sight: sighted?.who });
+        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth });
       } catch (e) {
         // (never a shot lost to its staging: it is told what a shot was always told)
         console.error(`[testmovie] shot ${i + 1}: staging words not built — the shot is told to hold, as before: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
       }
     }
+    // THE PLACE AS IT NOW IS, TOLD TO THE CLIP (S12 — place-state.ts). A shot that changes its place is told where it ENDS
+    // ("By the end of the shot the tent door is zipped completely shut — …"): the engine rarely finished "zips the door
+    // shut" from a still with the door open. Every LATER clip there is told, in one short line, that what is shut stays
+    // shut ("The tent door stays zipped shut the whole shot — nothing opens it.") until a scene opens it: Episode 2's
+    // door was open again in every shot. Both ride in the camera-and-sound rules, which the prompt builder keeps whole
+    // however long the line is (clip-prompt.ts → fitClipPrompt) — so Kling's 2,500-character cut never reaches them.
+    // (a reveal whose moment opens it — the zipper drawn up a hand's width from outside — is never told it stays shut)
+    const placeLines = placeOn ? [changing ? changeEndLine(placeChange) : "", stateLine(placeBefore, changeAt(i))].filter(Boolean).join(" ") : "";
+    if (placeLines) playRules = { ...playRules, steady: `${playRules.steady} ${placeLines}` };
     // Voice timbre ("X's voice is warm…") rides separately so the fitter can drop it last of all.
     const voiceDesc = (turnB && turnB.speaker && turnB.line) ? `${voiceDescFor(turnA.speaker)}${voiceDescFor(turnB.speaker)}` : speaker ? speakerVoiceDesc : "";
     // (A SHOT NOBODY SPEAKS IN opens on NOBODY SPEAKS instead of the talking directions — which would have
@@ -1700,7 +1825,8 @@ export async function generateTestMovie(opts: {
     // (the shot's picture is ready, and its take is about to be waited for — as long as ten minutes on one host:
     //  the film says it is at work now, at every host that gives up, and when the take is back. See `say`.)
     await say(alive);
-    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs, aspect, undefined, alive);
+    // (…ending on the picture of what it does to its place, when it does something and that picture came — S12)
+    const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs, aspect, undefined, alive, endImage);
     await say(alive);
     const rawPath = path.join(RENDERS(), `tm-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.mp4`);
     await download(clipUrl, rawPath);
@@ -1709,7 +1835,8 @@ export async function generateTestMovie(opts: {
     // longer), and a long mid-line pause taken down to a beat — on the heard words where they come back
     // (a shot nobody speaks in is kept whole: there is no line to find the ends of; one that opens on a sound
     //  keeps everything before its line — read off the prompt, as a re-roll reads it)
-    const dry = await trimClip(rawPath, { chained, last: i === treatment.scenes.length - 1, moves: clipMoves(prompt), silent, keepHead: clipHearsFirst(prompt) });
+    // (…and one that ends on a change of its place keeps its tail: that is where the change is done — S12)
+    const dry = await trimClip(rawPath, { chained, last: i === treatment.scenes.length - 1, moves: clipMoves(prompt), silent, keepHead: clipHearsFirst(prompt), keepTail: clipEndsOnChange(prompt) });
     // A CREATURE'S LINES get its creature chain — the same one its voice-over goes through — laid over
     // this clip's own audio, in sync with the picture. Only on a shot where the creature is the ONE who
     // speaks: the chain is over the whole track, and a second speaker would be dragged through it too.
@@ -1718,7 +1845,7 @@ export async function generateTestMovie(opts: {
     const outPath = soloVoice?.acting.chain ? await chainClipVoice(dry, soloVoice.acting.chain) : dry;
     if (outPath !== dry && soloVoice) { shotVoice[clips.length] = soloVoice.id; voicesLocked++; }
     clips.push(outPath);
-    shotSeeds.push(seedAbs); shotPrompts.push(prompt); shotDurs.push(clipSecs); shotChained.push(chained); shotStaged.push(chainStaging);
+    shotSeeds.push(seedAbs); shotPrompts.push(prompt); shotDurs.push(clipSecs); shotChained.push(chained); shotStaged.push(chainStaging); shotEnds.push(endImage || null);
     // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.
     prevFrameUrl = (await extractLastFrame(outPath)) || undefined;
     // (the shot is FINISHED, and is never paid for again: its clip, the frame the next one grows out of, and what
@@ -1828,6 +1955,8 @@ export async function generateTestMovie(opts: {
         ...(threat ? { threat: { name: threat.name, img: threat.img, from: threat.from, ...(threat.look ? { look: threat.look.slice(0, 200) } : {}), ...(threat.creature ? { creature: true } : {}) } } : {}),
         // …and the shots a SIGHTING drew (the picture each was seeded from is its `seed`, below)
         ...(Object.keys(sightings).length ? { sightings: Object.keys(sightings).map(Number).sort((a, b) => a - b) } : {}),
+        // …and the shots that CHANGED their place, each ending on the picture of it (S12 — each shot's `end`, below)
+        ...(Object.keys(changes).length ? { changes: Object.keys(changes).map(Number).sort((a, b) => a - b) } : {}),
         // THE STAGING (acted-staging.ts): how the two were placed in each location, in the order the film
         // first visits them — what each place's picture was ASKED for (null: the close two-shot, as before).
         // A film with no staged place at all carries no such list.
@@ -1850,6 +1979,9 @@ export async function generateTestMovie(opts: {
           voice: shotVoice[i] || undefined,
           // the staging this shot was played in (acted-staging.ts) — its prompt, above, has the words
           staging: shotStaged[i] || undefined,
+          // the frame it ENDED on — the picture of what it did to its place (S12): a re-roll ends on it again
+          // (film-edit.server.ts → renderDialogueClipTo(…, { endImage: shot.end }))
+          end: shotEnds[i] || undefined,
           // the cut INTO this shot is a straight one (another place, or a horror film's reveal) — so that a
           // re-cut of the film (film-edit.server.ts → finishCut) can keep it one instead of dissolving
           ...(hardSeams.has(i) ? { cut: "hard" } : {}),
