@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { FFMPEG_FLAGS, capThreads, ffmpegArgsFor, isFfmpegBin, takesValue, threadCapOn, withThreadCap } from "../app/lib/ffmpeg-threads.ts";
+import { FFMPEG_FLAGS, FFMPEG_VERSIONED_FLAGS, capThreads, ffmpegArgsFor, isFfmpegBin, takesValue, threadCapOn, withThreadCap } from "../app/lib/ffmpeg-threads.ts";
 import { sceneIn, storyJoinArgs, storyPartArgs, storySoundArgs, STORY_PICTURE } from "../app/lib/story-join.ts";
 import { fitMotion } from "../app/lib/story-motion.ts";
 import { footageCardArgs, footageFilmArgs, footagePartArgs } from "../app/lib/footage-film.ts";
@@ -76,6 +76,26 @@ test("\"-i\" inside a value is a value: a filter string, a label, a metadata val
   assert.deepEqual(out, [...GLOBALS, "-y", "-threads", "1", "-i", "clip -i one.mp4", "-filter_complex", graph, "-map", "[v]", "-metadata", "title=-i", "-c:v", "libx264", "-threads", "2", "out -i.mp4"]);
   // …and a value that IS "-i" exactly — something before it must be a flag this file does not know — leaves the run as written
   assert.deepEqual(capThreads(["-y", "-some_new_flag", "-i", "a.mp4", "o.mp4"]), ["-y", "-some_new_flag", "-i", "a.mp4", "o.mp4"]);
+});
+
+test("REVIEW: a flag this file does not know, in front of another option, leaves the run as written — never a cap between an option and its value", () => {
+  // read as valued, "-some_new_flag" would swallow "-c:v", and "libx264" would look like an output path: the cap
+  // would land between "-c:v" and its codec, and ffmpeg would be told to encode with a codec named "-threads"
+  for (const a of [
+    ["-y", "-i", "a.mp4", "-some_new_flag", "-c:v", "libx264", "o.mp4"],
+    ["-y", "-i", "a.mp4", "-some_new_flag", "-threads", "4", "o.mp4"],
+    ["-some_new_flag", "-stream_loop", "-1", "-i", "a.mp4", "o.mp4"],
+  ]) assert.deepEqual(capThreads(a), a, a.join(" "));
+  // a value that starts with a dash and a digit is a value, as everywhere in the app
+  assert.deepEqual(capThreads(["-stream_loop", "-1", "-i", "a.mp3", "-map_metadata", "-1", "o.mp3"]),
+    [...GLOBALS, "-stream_loop", "-1", "-threads", "1", "-i", "a.mp3", "-map_metadata", "-1", "-threads", "2", "o.mp3"]);
+});
+
+test("REVIEW: -autorotate / -autoscale take a value in ffmpeg 5.1 and 6.1 and none in 7+, so a run that says them is left alone; -noautorotate is a flag in all", () => {
+  for (const a of [["-autorotate", "0", "-i", "a.jpg", "o.jpg"], ["-i", "a.mp4", "-autoscale", "0", "-c:v", "libx264", "o.mp4"], ["-autorotate", "-i", "a.jpg", "o.jpg"]]) assert.deepEqual(capThreads(a), a, a.join(" "));
+  assert.equal(takesValue("noautorotate"), false);
+  assert.equal(takesValue("noautoscale"), false);
+  assert.ok(!FFMPEG_FLAGS.has("autorotate") && !FFMPEG_FLAGS.has("autoscale"));
 });
 
 test("two outputs: each is capped by its own options — the encoder gets two threads, the stream copy none", () => {
@@ -209,12 +229,23 @@ test("only ffmpeg is capped — never ffprobe, yt-dlp or anything else a runner 
  * encoded: ffmpeg stops at the first one. */
 
 const ffmpegOk = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" }).status === 0;
+/** Every ffmpeg there is to ask: the one on PATH (8.1 here) and the app's own npm build (6.1), the nearest to
+ *  production's Debian 5.1. REVIEW 2026-11-25: asked only 8.1, the flag list held "-autorotate" and "-autoscale",
+ *  which 5.1 and 6.1 read WITH a value — two versions catch what one cannot. */
+const readers = (() => {
+  const out = ffmpegOk ? ["ffmpeg"] : [];
+  try {
+    const p = path.join(root, "node_modules", "ffmpeg-static", process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+    if (fs.existsSync(p) && spawnSync(p, ["-version"], { encoding: "utf8" }).status === 0) out.push(p);
+  } catch { /* the one on PATH */ }
+  return out;
+})();
 type Reading = { inputs: string[][]; outputs: string[][]; globals: string[]; argOf: Map<number, string> };
-const ffmpegReads = (args: string[]): Reading => {
+const ffmpegReads = (args: string[], bin = "ffmpeg"): Reading => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "r1c-read-"));
   try {
     // (-loglevel, not -v: ffmpeg looks for the first "-loglevel" before any "-v", and a run may say "-loglevel error")
-    const r = spawnSync("ffmpeg", ["-loglevel", "debug", ...args], { encoding: "utf8", cwd: dir, timeout: 20_000 });
+    const r = spawnSync(bin, ["-loglevel", "debug", ...args], { encoding: "utf8", cwd: dir, timeout: 20_000 });
     const lines = String(r.stderr || "").split(/\r?\n/);
     const start = lines.findIndex((l) => l.startsWith("Splitting the commandline"));
     const end = lines.findIndex((l) => l.startsWith("Finished splitting the commandline"));
@@ -224,7 +255,9 @@ const ffmpegReads = (args: string[]): Reading => {
     for (const l of lines.slice(start + 1, end)) {
       const m = /^Reading option '(.*)' \.\.\. matched as (input url|output url|option '([^']+)'|AVOption '([^']+)')/.exec(l);
       assert.ok(m, `a line ffmpeg printed that this test cannot read: ${l}`);
-      if (m[2] === "input url") { out.inputs.push(opts); opts = []; continue; }
+      // (ffmpeg 6.x logs an input as "Reading option '-i' ... matched as output url with argument 'a.mp4'" — its
+      // own misprint; an output url is logged without an argument. Read either way, the test runs on 6.1 as on 8.1.)
+      if (m[2] === "input url" || (m[1] === "-i" && m[2] === "output url")) { out.inputs.push(opts); opts = []; continue; }
       if (m[2] === "output url") { out.outputs.push(opts); opts = []; continue; }
       // kept as the token was written ("c:v=copy", "threads=1"): ffmpeg's own name for "-c:v" is just 'c'
       const name = m[3] || m[4];
@@ -236,11 +269,11 @@ const ffmpegReads = (args: string[]): Reading => {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 };
 
-test("ffmpeg reads every capped run as meant: each input with its decoding thread, each picture it encodes with two, the filter threads", { skip: !ffmpegOk && "no ffmpeg on PATH" }, () => {
-  for (const a of corpus()) {
-    const before = ffmpegReads(a);
+test("ffmpeg reads every capped run as meant: each input with its decoding thread, each picture it encodes with two, the filter threads", { skip: !readers.length && "no ffmpeg" }, () => {
+  for (const bin of readers) for (const a of corpus()) {
+    const before = ffmpegReads(a, bin);
     const capped = capThreads(a);
-    const after = ffmpegReads(capped);
+    const after = ffmpegReads(capped, bin);
     assert.equal(after.inputs.length, before.inputs.length, `the same inputs: ${a.join(" ")}`);
     assert.equal(after.outputs.length, before.outputs.length, `the same outputs: ${a.join(" ")}`);
     after.inputs.forEach((o, k) => {
@@ -260,16 +293,16 @@ test("ffmpeg reads every capped run as meant: each input with its decoding threa
   }
 });
 
-test("every name in FFMPEG_FLAGS is a flag to ffmpeg itself (a valued option listed there would have its value read as a path)", { skip: !ffmpegOk && "no ffmpeg on PATH" }, () => {
+test("every name in FFMPEG_FLAGS is a flag to ffmpeg itself (a valued option listed there would have its value read as a path)", { skip: !readers.length && "no ffmpeg" }, () => {
   const info = new Set(["L", "license", "version", "buildconf", "formats", "muxers", "demuxers", "devices", "codecs", "decoders", "encoders", "bsfs", "protocols", "filters", "pix_fmts", "layouts", "sample_fmts", "dispositions", "colors", "hwaccels"]);
-  for (const f of FFMPEG_FLAGS) {
+  for (const bin of readers) for (const f of FFMPEG_FLAGS) {
     if (info.has(f)) continue; // they print and stop; no run names an output with them
-    const r = ffmpegReads([`-${f}`, "zzvalue.mp4", "-i", "nope.mp4"]);
-    assert.equal(r.outputs.length, 1, `-${f} took no value: "zzvalue.mp4" was read as an output`);
+    const r = ffmpegReads([`-${f}`, "zzvalue.mp4", "-i", "nope.mp4"], bin);
+    assert.equal(r.outputs.length, 1, `-${f} took no value: "zzvalue.mp4" was read as an output (${bin})`);
   }
 });
 
-test("every option the app's source writes for ffmpeg is read the same way by capThreads and by ffmpeg", { skip: !ffmpegOk && "no ffmpeg on PATH" }, () => {
+test("every option the app's source writes for ffmpeg is read the same way by capThreads and by ffmpeg", { skip: !readers.length && "no ffmpeg" }, () => {
   // each "-name" string literal in every app file that runs ffmpeg
   const names = new Set<string>();
   const walk = (d: string) => {
@@ -285,20 +318,24 @@ test("every option the app's source writes for ffmpeg is read the same way by ca
   };
   walk(path.join(root, "app"));
   assert.ok(names.size > 30, `found the app's options (${names.size})`);
+  for (const bin of readers) {
   const seen: string[] = [];
   for (const n of [...names].sort()) {
+    // a boolean whose arity changed between versions has no one right reading: capThreads leaves such a run alone
+    if (FFMPEG_VERSIONED_FLAGS.has(n)) { assert.deepEqual(capThreads([`-${n}`, "1", "-i", "a.mp4", "o.mp4"]), [`-${n}`, "1", "-i", "a.mp4", "o.mp4"]); continue; }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "r1c-opt-"));
     try {
-      const r = spawnSync("ffmpeg", ["-loglevel", "debug", `-${n}`, "zzvalue", "-i", "nope.mp4", "out.mp4"], { encoding: "utf8", cwd: dir, timeout: 20_000 });
+      const r = spawnSync(bin, ["-loglevel", "debug", `-${n}`, "zzvalue", "-i", "nope.mp4", "out.mp4"], { encoding: "utf8", cwd: dir, timeout: 20_000 });
       // its reading here — not this test's own "-loglevel debug" (nor, for -i, the "-i nope.mp4" after it)
       const line = String(r.stderr || "").split(/\r?\n/).find((l) => l.startsWith(`Reading option '-${n}'`) && !/with argument 'debug'\.$/.test(l));
       if (!line || !/matched as/.test(line)) continue; // not an ffmpeg option (an ffprobe or yt-dlp one, or a name's suffix)
       const flag = !/with argument 'zzvalue'\.$/.test(line); // a flag is logged with '1' (or '0' for -noX)
       seen.push(`${n}:${flag ? "flag" : "value"}`);
-      assert.equal(takesValue(n), !flag, `ffmpeg reads -${n} as ${flag ? "a flag" : "taking a value"}; capThreads must too (ffmpeg-threads.ts → FFMPEG_FLAGS)`);
+      assert.equal(takesValue(n), !flag, `${bin} reads -${n} as ${flag ? "a flag" : "taking a value"}; capThreads must too (ffmpeg-threads.ts → FFMPEG_FLAGS)`);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
-  for (const must of ["y:flag", "an:flag", "vn:flag", "i:value", "map:value", "threads:value", "filter_complex:value"]) assert.ok(seen.includes(must), must);
+  for (const must of ["y:flag", "an:flag", "vn:flag", "i:value", "map:value", "threads:value", "filter_complex:value", "noautorotate:flag"]) assert.ok(seen.includes(must), `${must} (${bin})`);
+  }
 });
 
 /* ---- PIXELS: THREADS DO NOT CHANGE A FRAME OF WHAT IS DECODED AND FILTERED ---- */

@@ -19,8 +19,9 @@
  * string or a path with "-i" in it is a value, and is only ever stepped over whole.
  *
  * Only ffmpeg's own options (ffmpeg 5.1 — production is Debian bookworm's — has every one used here) are added.
- * When the arguments cannot be read with certainty (an option left without its value, an input named "-i"),
- * they are handed back exactly as given: a run without a cap is the old behaviour, a run with a cap in the
+ * When the arguments cannot be read with certainty (an option left without its value, a value that looks like
+ * an option name such as "-i" or "-c:v", an option whose arity changed between ffmpeg versions), they are handed
+ * back exactly as given: a run without a cap is the old behaviour, a run with a cap in the
  * wrong place would be a broken encode.
  *
  * FFMPEG_THREAD_CAP=off turns it off everywhere (the switch is read on every run). */
@@ -28,19 +29,28 @@
 /** ffmpeg's options that take NO value (ffmpeg 5.1, fftools/ffmpeg_opt.c + cmdutils). Every other option takes
  *  exactly one. A boolean may also be written with "no" in front (-nostats, -nostdin, -noautorotate). Only TRUE
  *  booleans may be listed here: a valued option listed by mistake would have its value read as an output path,
- *  and a cap put between the two. (An unlisted boolean is safe: its neighbour is read as its value and stepped
- *  over — at worst one output goes uncapped; one in front of "-i" makes the whole run go uncapped.) */
+ *  and a cap put between the two. An unlisted boolean is NOT safe either: the option after it would be read as
+ *  its value and the next token as a path ("-flag -c:v libx264 o.mp4" → a cap between "-c:v" and "libx264"), so a
+ *  value that looks like an option name makes readArgs give up (the run goes as written).
+ *  Checked against ffmpeg 6.1 (the npm build, nearest to production's 5.1) and 8.1 by tests/ffmpeg-threads.test.ts. */
 export const FFMPEG_FLAGS: ReadonlySet<string> = new Set([
   // global
   "y", "n", "hide_banner", "report", "stats", "stdin", "benchmark", "benchmark_all", "dump", "hex", "xerror",
   "debug_ts", "ignore_unknown", "copy_unknown", "recast_media", "copyts", "start_at_zero", "vstats", "qphist",
   // per input / per output
   "re", "accurate_seek", "find_stream_info", "bitexact", "shortest", "an", "vn", "sn", "dn",
-  "autorotate", "autoscale", "copyinkf", "fix_sub_duration", "force_fps",
+  "copyinkf", "fix_sub_duration", "force_fps",
   // the ones that print something and stop (no output is ever named with them)
   "L", "license", "version", "buildconf", "formats", "muxers", "demuxers", "devices", "codecs", "decoders",
   "encoders", "bsfs", "protocols", "filters", "pix_fmts", "layouts", "sample_fmts", "dispositions", "colors", "hwaccels",
 ]);
+
+/** Booleans that TAKE A VALUE in some ffmpeg versions and none in others. In 5.1 and 6.1 (HAS_ARG | OPT_BOOL)
+ *  "-autorotate" and "-autoscale" swallow the next token ("-autorotate 0"); in 7.0 and later they take none.
+ *  (Seen 2026-11-25 on the npm 6.1 build: "-autorotate zzvalue.mp4" read "zzvalue.mp4" as its argument.) No
+ *  reading is right for both, so a run that says either is handed back as written. Their "no" forms
+ *  (-noautorotate, which upright-photo uses) take no value in every version. */
+export const FFMPEG_VERSIONED_FLAGS: ReadonlySet<string> = new Set(["autorotate", "autoscale"]);
 
 /** The threads the cap gives: an input's decoder, an output's encoder, a filter graph. */
 export const DECODE_THREADS = "1";
@@ -56,7 +66,7 @@ function optName(tok: string): string | null {
 /** Does ffmpeg's option `name` (no dash, no stream specifier) take a value, as this file reads it? */
 export function takesValue(name: string): boolean {
   if (FFMPEG_FLAGS.has(name)) return false;
-  if (name.startsWith("no") && FFMPEG_FLAGS.has(name.slice(2))) return false;
+  if (name.startsWith("no") && (FFMPEG_FLAGS.has(name.slice(2)) || FFMPEG_VERSIONED_FLAGS.has(name.slice(2)))) return false;
   return true;
 }
 
@@ -86,10 +96,14 @@ function readArgs(args: readonly string[]): Read | null {
       continue;
     }
     const full = tok.slice(1); // the name with its stream specifier ("c:v")
+    if (FFMPEG_VERSIONED_FLAGS.has(name)) return null; // a value in 5.1, none in 7+: no reading is right for both
     if (!takesValue(name)) { opts.push([full, null]); continue; }
     if (i + 1 >= args.length) return null; // an option left without its value
     const value = String(args[i + 1]);
-    if (value === "-i") return null; // "-i" read as a value: something before it is a flag this list does not know
+    // A value that looks like an option name ("-i", "-c:v", "-threads") means something before it is a flag this
+    // file does not know, and every token after it would be misread. Values that start with a dash are numbers
+    // ("-1", "-0.5", "-2") everywhere in the app; none starts with a dash and a letter.
+    if (/^-[A-Za-z_]/.test(value)) return null;
     opts.push([full, value]);
     if (name === "filter_threads" || name === "filter_complex_threads") globals.add(name);
     i++;
