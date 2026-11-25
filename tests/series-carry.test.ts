@@ -1,0 +1,280 @@
+/* PART 2 IS THE SAME FILM, CONTINUED (S10b — app/lib/film-series.ts, app/lib/film-dialogue.server.ts).
+ *
+ * The owner, 2026-11-25: "We also need for every video in archive "Make it a series" start on next part or episode
+ * two / 3 /4 intelligently know. It should carry the cast / the scenes etch into the next part. For example this video
+ * made- need the ability to pick up where left off to continue ! Yanno?"
+ *
+ * What broke: an acted film recorded only the cast the maker PICKED. The faces it invented (cut from its first master)
+ * were thrown away, so an episode 2 drew new people under the same names; its places were drawn again from words; its
+ * monster was drawn again; and nothing of how it ENDED reached the next film's pictures.
+ *
+ * Every name below is made up; the films are TEST films.
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  CARRY_PLACES_MAX, OPENS_THERE, carriedPlaceFor, carriedThreat, carryRecord, castWithCarry, lightOf, nextEpisodeCards, opensWhereItEnded,
+  picksUpOf, placeHead, samePlace, sameThing, seriesBriefOf, seriesCarryOf, seriesFromPayload, seriesWriterBrief, type SeriesCarry,
+} from "../app/lib/film-series.ts";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
+const J = JSON.stringify;
+
+/* ---- THE LAKE FILM, made up: two invented campers, a tent, a shore, a woman in the lake ---- */
+const TENT = "inside a small dome tent pitched beside a still lake, at 3am";
+const SHORE = "the lake shore outside the tent, at night";
+const TENT_KEY = TENT.toLowerCase().slice(0, 60);
+const SHORE_KEY = SHORE.toLowerCase().slice(0, 60);
+const CAST_LINES = ["Testa, a wiry climber with a short dark bob", "Fakeby, a tall photographer in a grey beanie"];
+const SCENES = [
+  { where: TENT, visual: "Testa sits bolt upright in the dark tent, listening.", caption: "TESTA: Fakeby. Somebody is saying our names." },
+  { where: SHORE, visual: "Fakeby's flashlight finds a woman standing waist-deep in the lake, perfectly still.", caption: "FAKEBY: There's a woman in the lake." },
+  { where: TENT, visual: "Inside the zipped tent the door flap stirs and a pale wet hand slides through the opening.", caption: "" },
+];
+const BODY = J({ style: "TESTMOVIE", videoUrl: "/renders/tm-lake-1.mp4", treatment: { title: "TEST Who Calls From the Still Lake", cast: CAST_LINES, events: true, scenes: SCENES, musicMood: "low drone" } });
+
+/** What film-dialogue.server.ts writes for it — through carryRecord, exactly as the engine calls it. */
+const RECORD = carryRecord({
+  // the maker picked nobody: the cast is empty, and the film invented both faces (cut from its first master)
+  cast: [],
+  faces: [{ name: "TESTA", faceUrl: "/renders/face-1700000000000-ab12cd34-l.jpg" }, { name: "FAKEBY", faceUrl: "/renders/face-1700000000000-ab12cd34-r.jpg" }],
+  castLines: CAST_LINES,
+  thing: "the woman in the lake",
+  places: [
+    { name: TENT_KEY, where: TENT, img: "/renders/img-1700000000001-aaaa.jpg" },
+    { name: SHORE_KEY, where: SHORE, img: "/renders/img-1700000000002-bbbb.jpg" },
+  ],
+  lastFrame: "/renders/tmf-1700000000003-cccc.jpg",
+  lastPlace: TENT_KEY,
+});
+const META = J({
+  kind: "testmovie", template: "horror", aspect: "16:9", engine: "kling3", scenes: 3,
+  ...RECORD,
+  threat: { name: "the woman in the lake", img: "/renders/img-1700000000004-dddd.jpg", from: "story", look: "standing waist-deep in the lake, perfectly still" },
+});
+const ROW = { id: "lake1", title: "Horror Film — TEST Who Calls From the Still Lake", metaJson: META, bodyJson: BODY };
+
+test("the record: an invented cast keeps the faces it was first shown with, spelled as its cast list spells them", () => {
+  assert.deepEqual(RECORD.cast, [
+    { name: "Testa", faceUrl: "/renders/face-1700000000000-ab12cd34-l.jpg", voiceId: null },
+    { name: "Fakeby", faceUrl: "/renders/face-1700000000000-ab12cd34-r.jpg", voiceId: null },
+  ]);
+  assert.deepEqual(RECORD.places?.map((p) => p.name), [TENT_KEY, SHORE_KEY], "each place drawn, in the order the film went there");
+  assert.equal(RECORD.places?.[0].where, TENT);
+  assert.equal(RECORD.lastFrame, "/renders/tmf-1700000000003-cccc.jpg");
+  assert.equal(RECORD.lastPlace, TENT_KEY, "the last frame was taken in the tent");
+  // a picked cast as before — and a character the maker cast with only a VOICE gets the invented face, keeping the voice
+  const mixed = carryRecord({
+    cast: [{ name: "Testa", faceUrl: "/avatars/testa_0.jpg", voiceId: "English_CalmWoman" }, { name: "Fakeby", faceUrl: null, voiceId: "English_ManWithDeepVoice" }],
+    faces: [{ name: "FAKEBY", faceUrl: "/renders/face-1-r.jpg" }],
+  });
+  assert.deepEqual(mixed.cast, [
+    { name: "Testa", faceUrl: "/avatars/testa_0.jpg", voiceId: "English_CalmWoman" },
+    { name: "Fakeby", faceUrl: "/renders/face-1-r.jpg", voiceId: "English_ManWithDeepVoice" },
+  ]);
+  // a cast photo wins over a cut face (the engine never cuts one for them — and if it did, the photo stays)
+  assert.equal(carryRecord({ cast: [{ name: "Testa", faceUrl: "/avatars/t.jpg" }], faces: [{ name: "Testa", faceUrl: "/renders/face-2-l.jpg" }] }).cast[0].faceUrl, "/avatars/t.jpg");
+  // a label with no cast line is spelled as a name, not shouted
+  assert.equal(carryRecord({ cast: [], faces: [{ name: "MORWEN", faceUrl: "/renders/face-3-l.jpg" }] }).cast[0].name, "Morwen");
+  // the film's THING is never a cast member here (it has meta.threat): a cast monster that was the thing stays out
+  const thingCast = carryRecord({ cast: [{ name: "TEST Drowned Bride", faceUrl: "/avatars/bride.jpg", role: "threat" }, { name: "Testa", faceUrl: "/avatars/t.jpg" }], thing: "TEST Drowned Bride" });
+  assert.deepEqual(thingCast.cast.map((c) => c.name), ["Testa"]);
+  // …but a role nobody used as the thing (not a horror film) is kept, as castForMeta always kept it
+  assert.deepEqual(carryRecord({ cast: [{ name: "TEST Drowned Bride", faceUrl: "/avatars/bride.jpg", role: "threat" }] }).cast.map((c) => c.name), ["TEST Drowned Bride"]);
+});
+
+test("the record is bounded as seriesCarryOf reads it — our own pictures only, no stray place, no last place without a frame", () => {
+  const r = carryRecord({
+    cast: [],
+    faces: [{ name: "Testa", faceUrl: "https://elsewhere.example/face.jpg" }, { name: "Fakeby", faceUrl: "/renders/../x.jpg" }, { name: "", faceUrl: "/renders/face-4.jpg" }],
+    places: [
+      { name: "far", where: "x", img: "https://elsewhere.example/a.jpg" },
+      { name: "dots", where: "x", img: "/renders/a.b.jpg" },
+      ...Array.from({ length: 10 }, (_, i) => ({ name: `place ${i}`, where: `the room number ${i}`, img: `/renders/p${i}.jpg` })),
+    ],
+    lastFrame: "javascript:alert(1)",
+    lastPlace: "place 0",
+  });
+  assert.deepEqual(r.cast, [], "a face that is not one of our pictures is no face");
+  assert.equal(r.places!.length, CARRY_PLACES_MAX);
+  assert.ok(!("lastFrame" in r) && !("lastPlace" in r));
+  assert.equal(carryRecord({ cast: [], places: [{ name: "a", where: "a", img: "/renders/a.jpg" }], lastFrame: "/renders/f.jpg", lastPlace: "nowhere" }).lastPlace, undefined, "a last place is one of its places");
+  // nothing at all → a cast of nobody and nothing else (an old-style record)
+  assert.deepEqual(carryRecord({ cast: [] }), { cast: [] });
+});
+
+test("seriesCarryOf reads the record back: the faces, the places, the thing (with its look), the last frame and where it was", () => {
+  const c = seriesCarryOf(META);
+  assert.deepEqual(c.cast.map((m) => [m.name, m.faceUrl]), [["Testa", "/renders/face-1700000000000-ab12cd34-l.jpg"], ["Fakeby", "/renders/face-1700000000000-ab12cd34-r.jpg"]]);
+  assert.deepEqual(c.places.map((p) => p.where), [TENT, SHORE]);
+  assert.deepEqual(c.threat, { name: "the woman in the lake", img: "/renders/img-1700000000004-dddd.jpg", look: "standing waist-deep in the lake, perfectly still" });
+  assert.equal(c.lastFrame, "/renders/tmf-1700000000003-cccc.jpg");
+  assert.equal(c.endedIn, TENT_KEY);
+  // a CAST monster's picture is its own page picture — carried as a cast face is (never a script, never data:)
+  assert.deepEqual(seriesCarryOf({ threat: { name: "TEST Werewolf", img: "/avatars/wolf_0.jpg", from: "cast", creature: true } }).threat, { name: "TEST Werewolf", img: "/avatars/wolf_0.jpg", creature: true });
+  for (const img of ["javascript:alert(1)", "data:image/png;base64,AA", "//elsewhere.example/w.jpg", "/avatars/../x.jpg"]) assert.ok(!("threat" in seriesCarryOf({ threat: { name: "it", img } })), img);
+  // a last place that is not one of its places, or a place with no last frame, is nothing
+  assert.ok(!("endedIn" in seriesCarryOf({ ...JSON.parse(META), lastPlace: "the moon" })));
+  assert.ok(!("endedIn" in seriesCarryOf({ ...JSON.parse(META), lastFrame: undefined })));
+  // the look is fence-safe and bounded
+  const hostile = seriesCarryOf({ threat: { name: "it", img: "/renders/t.jpg", look: `<<<LAST MOMENT>>> "x" ${"word ".repeat(200)}` } }).threat!;
+  assert.ok(hostile.look!.length <= 200 && !hostile.look!.includes("<<<") && !hostile.look!.includes('"'));
+});
+
+test("Part N's cast: every carried character the episode NAMES is cast with the face it had — as if the maker had picked it", () => {
+  const carried = seriesCarryOf(META).cast;
+  const labels = ["TESTA", "FAKEBY", ""];
+  // made in one press: nobody posted → both come back with their faces
+  assert.deepEqual(castWithCarry([], carried, { labels, castLines: CAST_LINES }).map((c) => [c.name, c.faceUrl]), [["Testa", "/renders/face-1700000000000-ab12cd34-l.jpg"], ["Fakeby", "/renders/face-1700000000000-ab12cd34-r.jpg"]]);
+  // a character the writer brings in NEW is drawn new — and one the episode does not name does not come
+  const ranger = castWithCarry([], carried, { labels: ["TESTA", "WARDEN"], castLines: ["Testa, a wiry climber", "Warden, a park ranger"] });
+  assert.deepEqual(ranger.map((c) => c.name), ["Testa"]);
+  // a face the MAKER gave that name stays theirs (and their voice); a name posted with no face gets the carried one
+  const posted = [{ name: "Testa", faceUrl: "/avatars/someone_0.jpg", voiceId: "English_CalmWoman" }, { name: "Fakeby", faceUrl: null, voiceId: "v-own" }];
+  assert.deepEqual(castWithCarry(posted, carried, { labels }).map((c) => [c.name, c.faceUrl, c.voiceId]), [["Testa", "/avatars/someone_0.jpg", "English_CalmWoman"], ["Fakeby", "/renders/face-1700000000000-ab12cd34-r.jpg", "v-own"]]);
+  // the carried VOICE comes with its face, never onto another face
+  const voiced = [{ name: "Testa", faceUrl: "/renders/face-1700000000000-ab12cd34-l.jpg", voiceId: "English_CalmWoman" }];
+  assert.equal(castWithCarry([{ name: "Testa", faceUrl: null, voiceId: null }], voiced, { labels })[0].voiceId, "English_CalmWoman");
+  assert.equal(castWithCarry([{ name: "Testa", faceUrl: "/avatars/other.jpg", voiceId: null }], voiced, { labels })[0].voiceId, null);
+  // the maker's cast thing is never refilled; a carried creature keeps what it is
+  assert.equal(castWithCarry([{ name: "Testa", faceUrl: null, role: "threat" as const }], carried, { labels })[0].faceUrl, null);
+  const wolf = castWithCarry([], [{ name: "Grimtest", faceUrl: "/avatars/wolf.jpg", voiceId: null, kind: "monster", look: "a huge grey werewolf" }], { labels: ["GRIMTEST"] });
+  assert.deepEqual(wolf, [{ name: "Grimtest", faceUrl: "/avatars/wolf.jpg", voiceId: null, kind: "monster", look: "a huge grey werewolf" }]);
+  // nothing carried → the posted cast exactly as it came
+  assert.deepEqual(castWithCarry(posted, undefined, { labels }), posted);
+  assert.deepEqual(castWithCarry(posted, [], { labels }), posted);
+});
+
+test("an OLD film carries its cast and nothing else — its next part is made as it always was", () => {
+  const oldMeta = J({ kind: "testmovie", template: "horror", aspect: "16:9", cast: [{ name: "Testa", faceUrl: "/avatars/testa_0.jpg", voiceId: "English_CalmWoman" }] });
+  const brief = seriesBriefOf({ ...ROW, metaJson: oldMeta }, { template: "horror", narrated: false })!;
+  const c = brief.carry!;
+  assert.deepEqual(c, { cast: [{ name: "Testa", faceUrl: "/avatars/testa_0.jpg", voiceId: "English_CalmWoman" }], places: [] });
+  // its picked face is what the page re-picks today — the same face, by the same name
+  assert.equal(castWithCarry([], c.cast, { labels: ["TESTA"] })[0].faceUrl, "/avatars/testa_0.jpg");
+  // no place is matched, no thing comes back, it never opens on a frame it did not keep
+  assert.equal(carriedPlaceFor(TENT, c.places), null);
+  assert.equal(carriedThreat(c.threat, null), null);
+  assert.equal(opensWhereItEnded({ visual: "Moments later, Testa holds her breath.", where: TENT }, c), false);
+  assert.ok(!("thing" in brief));
+  // a film with no record at all carries nothing: no `carry` rides the payload
+  assert.ok(!("carry" in seriesBriefOf({ ...ROW, metaJson: J({ kind: "testmovie", template: "horror" }) }, { template: "horror", narrated: false })!));
+});
+
+test("Part N's places: the same place by its words or its head noun — never the shore for the tent, never 3am for the next morning", () => {
+  assert.equal(placeHead(TENT), "tent");
+  assert.equal(placeHead(SHORE), "shore");
+  assert.equal(placeHead("Inside the dome tent by the lake"), "tent");
+  assert.equal(placeHead("the tent, moments later"), "tent");
+  assert.equal(placeHead("outside the tent"), "out:tent", "outside a thing is not inside it");
+  assert.equal(placeHead("The kitchen of the old farmhouse"), "kitchen");
+  assert.equal(placeHead("a farmhouse kitchen at dawn"), "kitchen");
+  assert.equal(placeHead("Testa's car, parked on the verge"), "car");
+  assert.equal(placeHead(""), "");
+  assert.ok(samePlace(TENT, "Inside the dome tent by the lake"));
+  assert.ok(!samePlace(TENT, SHORE));
+  assert.ok(!samePlace("inside the tent", "outside the tent"));
+  assert.equal(lightOf(TENT), "night");
+  assert.equal(lightOf("the tent, the next morning"), "day");
+  assert.equal(lightOf("the tent"), "");
+  const places = seriesCarryOf(META).places;
+  assert.equal(carriedPlaceFor(TENT, places)?.name, TENT_KEY, "word for word");
+  assert.equal(carriedPlaceFor("Inside the dome tent by the lake", places)?.name, TENT_KEY, "said another way");
+  assert.equal(carriedPlaceFor("the pebbly lake shore", places)?.name, SHORE_KEY);
+  assert.equal(carriedPlaceFor("the ranger station on the hill", places), null, "a new place is drawn new");
+  // a room reference copies the light: the tent in the morning is not drawn from the tent at 3am…
+  assert.equal(carriedPlaceFor("inside the dome tent, the next morning", places), null);
+  // …unless the light is not asked about (moments later is the same light)
+  assert.equal(carriedPlaceFor("inside the dome tent, the next morning", places, { light: false })?.name, TENT_KEY);
+  // of two of the same kind, the one that shares the most words
+  const two = [{ name: "a", where: "the red tent at the festival", img: "/renders/a.jpg" }, { name: "b", where: "the small dome tent beside a still lake", img: "/renders/b.jpg" }];
+  assert.equal(carriedPlaceFor("inside the dome tent by the still lake", two)?.name, "b");
+  assert.equal(carriedPlaceFor("", places), null);
+});
+
+test("Part N's thing: the carried one, named as this episode names it — unless this episode's thing is another", () => {
+  const t = seriesCarryOf(META).threat!;
+  assert.deepEqual(carriedThreat(t, null), t, "the episode names no thing: the series' thing is it");
+  assert.equal(carriedThreat(t, { name: "the woman in the lake" })?.name, "the woman in the lake");
+  assert.equal(carriedThreat(t, { name: "the pale woman" })?.name, "the pale woman", "named as this episode's words name it");
+  assert.equal(carriedThreat(t, { name: "the figure in the water" })?.img, t.img, "a vaguer word for the same thing");
+  assert.equal(carriedThreat(t, { name: "a werewolf" }), null, "another thing is drawn new");
+  assert.equal(carriedThreat(t, { name: "the man with the lantern" }), null, "a man is not the woman");
+  assert.equal(carriedThreat(undefined, { name: "the woman" }), null);
+  assert.ok(sameThing("the woman in the lake", "The woman in the lake"));
+  assert.ok(sameThing("the drowned bride", "the woman by the shore"));
+  assert.ok(!sameThing("the drowned bride", "the old priest"));
+  assert.ok(!sameThing("the woman", ""));
+});
+
+test("it opens where it ended: 'Moments later' in the place the last frame was taken — and only then", () => {
+  const c = seriesCarryOf(META);
+  assert.equal(opensWhereItEnded({ visual: "Moments later, Testa and Fakeby back away from the flap as the knocking starts again.", where: TENT }, c), true);
+  assert.equal(opensWhereItEnded({ visual: "A moment later the flap stirs again.", where: "Inside the dome tent by the lake" }, c), true);
+  assert.equal(opensWhereItEnded({ visual: "The next morning, Testa unzips the tent to grey light.", where: TENT }, c), false, "it starts later");
+  assert.equal(opensWhereItEnded({ visual: "Moments later, Fakeby runs along the shore.", where: SHORE }, c), false, "another place than the last frame's");
+  assert.equal(opensWhereItEnded({ visual: "Moments later…", where: TENT }, { ...c, lastFrame: undefined }), false);
+  assert.equal(opensWhereItEnded({ visual: "Moments later…", where: TENT }, { ...c, endedIn: undefined }), false);
+  assert.equal(opensWhereItEnded(null, c), false);
+  for (const s of ["Moments later, x", "Seconds later x", "A moment later x", "Only moments later x", "An instant later x", "\"Moments later\" x"]) assert.ok(OPENS_THERE.test(s), s);
+  for (const s of ["Later that night x", "The next morning x", "Three days later x", "x moments later"]) assert.ok(!OPENS_THERE.test(s), s);
+});
+
+test("the brief: the writer is asked for the sign, and the series' thing keeps its cast entry — from meta.threat when it had no line", () => {
+  const brief = seriesBriefOf(ROW, { template: "horror", narrated: false })!;
+  // the carry rides the brief (and so the job's payload), the thing's line is made from meta.threat
+  assert.ok(brief.carry && brief.carry.lastFrame && brief.carry.places.length === 2);
+  assert.equal(brief.thing, "the woman in the lake, standing waist-deep in the lake, perfectly still");
+  const w = seriesWriterBrief(brief);
+  assert.ok(w.includes("• When it opens right there, its FIRST scene's \"where\" is the last moment's Where, word for word, and its \"visual\" begins with the words \"Moments later,\".\n"));
+  assert.ok(w.indexOf("• HOW IT OPENS") < w.indexOf("• When it opens right there"), "said with the rule it serves");
+  assert.ok(w.includes(`Where: ${TENT}`), "the Where it is to repeat is in the last moment's fence");
+  assert.ok(w.includes("• \"the woman in the lake\" — what this series is about, who never talks — keeps a \"cast\" entry of its own in every episode it is in, written as: \"the woman in the lake, standing waist-deep in the lake, perfectly still\". That entry is what it is drawn from.\n"));
+  // the writer is never shown the carry itself (pictures are not words for the writer)
+  assert.ok(!w.includes("/renders/"));
+  // a thing that HAS its own character line is kept by that line (the lead's 3b) — never said twice
+  const body3 = J({ ...JSON.parse(BODY), treatment: { ...JSON.parse(BODY).treatment, cast: [...CAST_LINES, "the woman in the lake, pale, in a soaked white nightgown"] } });
+  const b3 = seriesBriefOf({ ...ROW, bodyJson: body3 }, { template: "horror", narrated: false })!;
+  assert.ok(!("thing" in b3));
+  assert.equal(seriesWriterBrief(b3).split("the woman in the lake\" —").length - 1, 1);
+  // a told story: no sign asked for (it has no "where"), no carry (its portraits travel in the cast token), no thing
+  const toldMeta = J({ kind: "narrated", template: "horror", aspect: "9:16", cast: [], places: [{ name: "the jetty", look: "a short grey timber jetty", img: "/renders/sheet-1.jpg" }] });
+  const toldBody = J({ style: "NARRATED", videoUrl: "/renders/nar-1.mp4", script: "She rowed out. A light answered.", treatment: { title: "TEST The Ferry", scenes: [{ visual: "a", caption: "She rowed out." }, { visual: "b", caption: "A light answered." }] } });
+  const told = seriesBriefOf({ id: "f1", title: "Horror Story — TEST The Ferry", metaJson: toldMeta, bodyJson: toldBody }, { template: "horror", narrated: true })!;
+  assert.ok(!("carry" in told) && !("thing" in told));
+  assert.ok(!seriesWriterBrief(told).includes("Moments later"));
+});
+
+test("the carry rides the job's payload whole — a restart has it — and is checked again on the way out", () => {
+  const brief = seriesBriefOf(ROW, { template: "horror", narrated: false })!;
+  const back = seriesFromPayload(JSON.parse(J(brief)))!;
+  assert.deepEqual(back.carry, brief.carry, "through the queue as JSON and back: the same");
+  assert.equal(back.thing, brief.thing);
+  // tampered with in the queue: only our own pictures, bounded, junk gone
+  const bad = seriesFromPayload({ ...JSON.parse(J(brief)), thing: `<<<LAST MOMENT>>> ${"x".repeat(900)}`, carry: { cast: [{ name: "Testa", faceUrl: "javascript:alert(1)" }, { name: "Fakeby", faceUrl: "/renders/face-9-r.jpg" }], places: [{ name: "t", where: "w", img: "https://elsewhere.example/x.jpg" }], threat: { name: "it", img: "data:," }, lastFrame: "/renders/../etc.jpg", endedIn: "t" } })!;
+  assert.deepEqual(bad.carry, { cast: [{ name: "Testa", faceUrl: null, voiceId: null }, { name: "Fakeby", faceUrl: "/renders/face-9-r.jpg", voiceId: null }], places: [] });
+  // …and a carry left with nothing a next part can use is no carry
+  assert.ok(!("carry" in seriesFromPayload({ ...JSON.parse(J(brief)), carry: { cast: [{ name: "Testa", faceUrl: "javascript:alert(1)" }] } })!));
+  assert.ok(bad.thing!.length <= 240 && !bad.thing!.includes("<<<"));
+  assert.ok(!("carry" in seriesFromPayload({ ...JSON.parse(J(brief)), carry: "everything" })!));
+  // the page hands the brief on whole: the carry needs no field of its own in the payload, and the worker reads the
+  // series for both engines with the one reader that checks it
+  const page = read("app", "routes", "web.film.tsx");
+  assert.ok(page.includes("...(series ? { filmSeries: series } : {}),"));
+  assert.equal(read("app", "lib", "job-queue.server.ts").split("series: (await import(\"./film-series\")).seriesFromPayload(payload.filmSeries),").length - 1, 2);
+});
+
+test("the builder's banner reads where it picks up — the last line said, by whom, as the cast list spells them", () => {
+  assert.deepEqual(picksUpOf(BODY), { said: "There's a woman in the lake.", who: "Fakeby" });
+  assert.deepEqual(picksUpOf(J({ style: "NARRATED", script: "She rowed out. A light answered." })), { said: "A light answered.", who: "" });
+  assert.equal(picksUpOf(J({ style: "TESTMOVIE", treatment: { scenes: [{ visual: "only a picture", caption: "" }] } })), null, "a stage direction is no line");
+  const [card] = nextEpisodeCards([ROW], 3);
+  assert.deepEqual(card.picksUp, { said: "There's a woman in the lake.", who: "Fakeby" });
+  assert.deepEqual(card.thing, { name: "the woman in the lake", img: "/renders/img-1700000000004-dddd.jpg" });
+  // the invented faces are the card's cast now: a tap on it opens with them
+  assert.deepEqual(card.setup.cast.map((m) => m.faceUrl), ["/renders/face-1700000000000-ab12cd34-l.jpg", "/renders/face-1700000000000-ab12cd34-r.jpg"]);
+});
