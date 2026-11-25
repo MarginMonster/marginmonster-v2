@@ -330,10 +330,12 @@ export function takePrompt(t: Take, camera: CameraLook = "phone", ref: string = 
   const text = [
     `${HELD[camera]}. One continuous take, no cuts, nothing written on screen. NOBODY SPEAKS in this shot: no voice, no words, no whisper — only breathing and the quiet of the place.`,
     `FIRST TWO SECONDS: ${stop(one(t.first, 260))}`,
-    `THEN the camera ${one(t.finds, 160)} — in the same shot, one smooth unbroken move, never a cut — and stops: there, exactly as in ${ref}, ${stop(b1)} ${cap(poss)} mouth does not open or close.`,
+    // (HER MOUTH STAYS AS THE PICTURE HAS IT — 2026-11-25: told it "does not open or close", the engine shut the far-too-wide
+    //  grin of the scene still into closed lips; the engine is given no words now, so nothing asks it to lip-sync)
+    `THEN the camera ${one(t.finds, 160)} — in the same shot, one smooth unbroken move, never a cut — and stops: there, exactly as in ${ref}, ${stop(b1)} ${cap(poss)} mouth stays exactly as it is in ${ref}, and never moves.`,
     `THEN, slowly: ${stop(b2)}`,
     `LAST FOUR SECONDS: ${stop(b3)}`,
-    `${cap(who)} never runs, never flinches, never turns around and never looks away; never screams, never speaks, never opens ${poss} mouth, never mouths a word. ${held} The one filming is never in the picture: no legs, no feet, no body. ${light}`,
+    `${cap(who)} never runs, never flinches, never turns around and never looks away; never screams, never speaks, never moves ${poss} mouth, never mouths a word. ${held} The one filming is never in the picture: no legs, no feet, no body. ${light}`,
     `Sound: a quiet house at night, breathing getting faster, ${one(t.sound, 90) || "slow footsteps"}. No voice at all. No music.`,
   ].join(" ");
   return text.length <= TAKE_PROMPT_MAX ? text : text.slice(0, TAKE_PROMPT_MAX);

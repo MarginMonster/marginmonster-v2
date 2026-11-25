@@ -123,8 +123,8 @@ test("the direction: off the subject, the camera finds it, one wrong movement, t
   assert.ok(takePrompt(TAKE_IDEAS[1], "camcorder").startsWith("Shot on a small home camcorder at night, held in one hand, its little lamp on. One continuous take"));
   assert.ok(takePrompt(TAKE_IDEAS[2], "bare").startsWith("Handheld, at night, one small light on. One continuous take"));
   // "she" is "her" where the sentence needs it; a thing is "its"
-  assert.ok(takePrompt(TAKE_IDEAS[0]).includes("Her mouth does not open or close.") && takePrompt(TAKE_IDEAS[0]).includes("never opens her mouth") && takePrompt(TAKE_IDEAS[0]).includes("Once the camera has found her it never leaves her"));
-  assert.ok(takePrompt(TAKE_IDEAS[1]).includes("Its mouth does not open or close.") && takePrompt(TAKE_IDEAS[1]).includes("Once the camera has found the figure it never leaves the figure"));
+  assert.ok(takePrompt(TAKE_IDEAS[0]).includes("Her mouth stays exactly as it is in <<<image_1>>>, and never moves.") && takePrompt(TAKE_IDEAS[0]).includes("never moves her mouth") && takePrompt(TAKE_IDEAS[0]).includes("Once the camera has found her it never leaves her"));
+  assert.ok(takePrompt(TAKE_IDEAS[1]).includes("Its mouth stays exactly as it is in <<<image_1>>>, and never moves.") && takePrompt(TAKE_IDEAS[1]).includes("Once the camera has found the figure it never leaves the figure"));
   // each host names the reference picture its own way
   assert.deepEqual(TAKE_REF, { replicate: "<<<image_1>>>", fal: "@Image1" });
   assert.ok(takePrompt(TAKE_IDEAS[0], "phone", TAKE_REF.fal).includes("exactly as in @Image1, ") && !takePrompt(TAKE_IDEAS[0], "phone", TAKE_REF.fal).includes("<<<"));
@@ -227,7 +227,7 @@ test("a take of the member's own: the writer is told how a scare is built, and i
   // …and whatever the writer returns, the direction built from it fits the engine and carries no word to say
   const p = takePrompt(t!, "phone");
   assert.ok(p.length <= TAKE_PROMPT_MAX && !/["“”]/.test(p) && !p.includes("Who's there"));
-  assert.ok(p.includes("THEN the camera turns slowly to the far corner — in the same shot, one smooth unbroken move, never a cut — and stops: there, exactly as in <<<image_1>>>, the man stands facing the corner, perfectly still. Its mouth does not open or close."));
+  assert.ok(p.includes("THEN the camera turns slowly to the far corner — in the same shot, one smooth unbroken move, never a cut — and stops: there, exactly as in <<<image_1>>>, the man stands facing the corner, perfectly still. Its mouth stays exactly as it is in <<<image_1>>>, and never moves."));
 });
 
 test("the making: started off its subject, listened to, voiced afterwards — and every step after the take degrades instead of failing", () => {
@@ -622,7 +622,7 @@ test("THE END IS THEIRS: the last beat follows the member's words — only words
   assert.ok(away.includes("Once the camera has found the mime it stays on the mime until the last four seconds: it never drops, never falls.") && !away.includes("never swings away") && away.includes("the light does not change"));
   // whatever the ending: nobody speaks, its mouth never moves, the one filming is never seen, nothing quoted, it fits
   for (const p of [comes, dark, away]) {
-    assert.ok(p.includes("NOBODY SPEAKS in this shot") && p.includes("never opens its mouth, never mouths a word") && p.includes("The one filming is never in the picture: no legs, no feet, no body."));
+    assert.ok(p.includes("NOBODY SPEAKS in this shot") && p.includes("never moves its mouth, never mouths a word") && p.includes("The one filming is never in the picture: no legs, no feet, no body."));
     assert.ok(p.includes("LAST FOUR SECONDS: the light goes out; when it comes back, the hallway is empty.") && !/["“”]/.test(p) && p.length <= TAKE_PROMPT_MAX);
   }
   // the writer's ending is read: "comes" is never written down (it is the default); an unknown one is dropped
