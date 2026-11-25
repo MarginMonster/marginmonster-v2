@@ -410,10 +410,19 @@ test("the writer: every shot is something that HAPPENS, the camera is dealt, and
   for (const old of ["they STAY put", "a still, tense TALKING beat", "• SHOT —", "FIVE fields", "Every shot's VISUAL features these same two, described the same way."]) assert.ok(!engine.split("\n").some((l) => !l.trim().startsWith("//") && l.includes(old)), old);
   // (the two's looks are said once, in "cast": a VISUAL is said to the video engine, and looks said there redraw a face)
   assert.ok(engine.includes("Every shot's VISUAL has these same two in it, called by these exact names — their looks are said HERE, once, and never repeated in a VISUAL.${noSlop}`"));
-  assert.ok(engine.includes("`${CAMERA_IS_DEALT}\\n` +\n      `${ONE_TAKE}\\n` +\n      `${TWO_ALWAYS}\\n` +"));
+  // (2026-11-25, films up to five minutes: ONE SCENE of a long film is told ONE PLACE, ONE TAKE without its last
+  //  sentence — whether the film comes back to a place is its plan's, film-length.ts. A film written in one answer
+  //  is told all of it, as before.)
+  assert.ok(engine.includes("`${CAMERA_IS_DEALT}\\n` +\n      // (one scene of a long film: which places the film is set in, and whether it comes back to one, is its PLAN's)\n      `${one ? ONE_TAKE.replace(NEVER_BACK, \"\") : ONE_TAKE}\\n` +\n      `${TWO_ALWAYS}\\n` +"));
+  // …and what is taken off is really ONE_TAKE's last sentence (a replace that matched nothing would say it whole)
+  const neverBack = (engine.match(/const NEVER_BACK = "([^"]+)";/) || [])[1] || "";
+  assert.ok(neverBack.startsWith(" ") && ONE_TAKE.endsWith(neverBack) && ONE_TAKE.replace(neverBack, "").endsWith("whoever crossed the room is still where they went."), neverBack);
   // a horror film only — and before WHAT FRIGHTENS, which it points down to (with WHEN THEY SEE IT, WE SEE IT before
   // it: the lake film kept the woman its idea had them SEE off screen until a last shot that did not come)
-  const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_WHEN_SEEN}\\n${SEEN_AT_THE_END}\\n` : \"\")");
+  // (2026-11-25: THE LAST SHOT is told only to whatever writes the film's END — the whole film, or the last scene of
+  //  a long one: a scene in the middle of five minutes does not end on the thing)
+  assert.ok(engine.includes("const ends = !one || one.index === one.plan.parts.length - 1;"));
+  const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_WHEN_SEEN}\\n${ends ? `${SEEN_AT_THE_END}\\n` : \"\"}` : \"\")");
   const frightens = engine.indexOf("(tmpl.key === \"horror\" ? `${WHAT_FRIGHTENS}\\n` : \"\") +");
   assert.ok(seen > 0 && frightens > seen);
   assert.ok(SEEN_WHEN_SEEN.startsWith("WHEN THEY SEE IT, WE SEE IT — when the IDEA has its people see the thing before the end") && SEEN_WHEN_SEEN.endsWith("It is never only talked about."));
@@ -572,8 +581,10 @@ test("the writer is told which shot may have no line: only a horror film's last"
   assert.equal(LINE_IN_EVERY_SHOT_BUT_THE_LAST, "EVERY shot has a line, with ONE exception: the LAST shot of this film has none (THE LAST SHOT, below). No other CAPTION is ever left empty.");
   assert.ok(SEEN_AT_THE_END.includes("So the LAST shot has NO LINE: its CAPTION is \"\" (empty — no NAME, no words) and it has no TONE. Nobody speaks in it, not a word and not a whisper; the last words of the film are the line of the shot BEFORE it."));
   const engine = read("app", "lib", "film-engine.server.ts");
-  // said at the end of what a CAPTION is — every acted film; the exception for a horror film only
-  assert.ok(engine.includes("one of the two reports it (\\\"He says he can't thank us enough!\\\"). ${tmpl.key === \"horror\" ? LINE_IN_EVERY_SHOT_BUT_THE_LAST : LINE_IN_EVERY_SHOT}\\n` +"));
+  // said at the end of what a CAPTION is — every acted film; the exception for a horror film only (and, since a film
+  // can be written in parts, 2026-11-25, only to what writes its END: a scene in the middle of a long one has a line
+  // in every shot)
+  assert.ok(engine.includes("one of the two reports it (\\\"He says he can't thank us enough!\\\"). ${tmpl.key === \"horror\" && ends ? LINE_IN_EVERY_SHOT_BUT_THE_LAST : LINE_IN_EVERY_SHOT}\\n` +"));
   // a line the writer marks "(silence)" or "—" is not kept as a line to be spoken or drawn
   assert.ok(engine.includes("caption: s.caption && !(acted && wordless(s.caption)) ? dropOrgEndorsementPossessive(s.caption) : undefined,"));
 });
@@ -743,7 +754,8 @@ test("the writer: a sound comes before any word about it, what is heard is not s
   const engine = read("app", "lib", "film-engine.server.ts");
   const two = engine.indexOf("`${TWO_ALWAYS}\\n` +");
   const heard = engine.indexOf("`${HEARD_BEFORE_SAID}\\n` +");
-  const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_WHEN_SEEN}\\n${SEEN_AT_THE_END}\\n` : \"\")");
+  // (THE LAST SHOT said only to what writes the film's end — 2026-11-25, a film can be written in parts)
+  const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_WHEN_SEEN}\\n${ends ? `${SEEN_AT_THE_END}\\n` : \"\"}` : \"\")");
   assert.ok(two > 0 && heard > two && seen > heard);
 });
 
