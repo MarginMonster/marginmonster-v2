@@ -62,7 +62,13 @@
  * cardUnchanged — on the page and on the server alike.
  *
  * The builder that puts a scare, a camera and its settings together (routes/web.found-footage.tsx) keeps its
- * rules at the foot of this file; the house's own cameras are house-cam.ts. */
+ * rules at the foot of this file; the house's own cameras are house-cam.ts.
+ *
+ * A FILM (the owner, 2026-11-25: "It currently appears to pipeline singular events But needs to be more like \"Found
+ * Footage\" … with describe events flow like the others - make it look banging and not limited") is several of these
+ * takes from one camera, a card on black before each — footage-film.ts. Each of its moments is a take made of the
+ * parts above; what a film adds to this file is small: a take that is not a scare ("plain"), and a mood for each
+ * line of the one filming. ONE take is exactly what it was. */
 
 import { cameraLookOf, type CameraLook } from "./camera-dress.ts";
 import { HOUSE_SCARES, houseRoom, houseScare } from "./house-cam.ts";
@@ -115,15 +121,19 @@ export type Take = {
   radio?: string;
   /** "drama": NOT A SCARE (the owner, of the body cam: "normal police interactions and traffic stops … that one
    *  doesn't nessesarily need to be horror"). Its scene, way in and direction are the drama's own (dramaPrompt),
-   *  and the person ON camera speaks — see `speaks`. Unset: a scare. */
-  genre?: "drama";
+   *  and the person ON camera speaks — see `speaks`. Unset: a scare.
+   *  "plain": NOT A SCARE EITHER, and nobody's drama — something a camera simply caught (a found-footage FILM's
+   *  moments, footage-film.ts: a dog opening the fridge; in a horror, a door that was shut, open). Its picture and its
+   *  direction carry no creature (plainPrompt), and nobody on camera speaks. */
+  genre?: "drama" | "plain";
   /** DRAMA ONLY: what the person on camera says, at about which second — the one place words ARE given to the
    *  engine, as quoted dialogue, because here the mouth it moves is the right one. (The one wearing the camera
    *  is still never given a word: theirs are `script`, laid on afterwards.) */
   speaks?: Array<{ at: number; text: string }>;
   /** the lines of the one wearing the camera, each at its own time — when a take has more to say than a
-   *  question and a plea (`says` / `asks` are then not used). A separate voice, never given to the engine. */
-  script?: Array<{ at: number; text: string }>;
+   *  question and a plea (`says` / `asks` are then not used). A separate voice, never given to the engine.
+   *  `mood`: how the line is said, when its writer picked one (a film's moments — see TAKE_MOODS). */
+  script?: Array<{ at: number; text: string; mood?: TakeMood }>;
   /** how long the take is, in seconds (unset: TAKE_SECONDS) */
   seconds?: number;
   /** A WRITTEN take's ending (unset: "comes", as every ready-made scare does) — see TAKE_ENDS */
@@ -283,9 +293,21 @@ const shapeOf = (aspect: "9:16" | "16:9") => (aspect === "16:9" ? "Wide 16:9 pic
 export const DRAMA_CAUGHT = "A single frame from a body camera's own recording at night: worn on an officer's chest, seen through its wide-angle lens so the edges bow slightly outward; a small, hard camera sensor — a little over-sharpened, noisy in the dark, slightly washed colours. Real footage of real people — never CGI, never a render, never an illustration.";
 export const DRAMA_BOUNDS = "A fictional scene: no real police department, no badge, patch, insignia, emblem or lettering on anything; no weapon drawn; nobody hurt, no blood.";
 
+/* ---- NOT A SCARE: SOMETHING A CAMERA SIMPLY CAUGHT ----
+ * The owner, 2026-11-25, of found footage: "make it look banging and not limited". A found-footage FILM
+ * (footage-film.ts) is not only horror — a dog caught opening the fridge, a meteor on a dashboard phone — and inside
+ * a horror the early moments show no creature at all, only what it did (a door that was shut, open). A take like
+ * that is "plain": no creature recipe in its picture, no list of what a creature never does in its direction. What
+ * every take keeps, it keeps: one continuous take, no cuts, two seconds off its subject, NO WORD FOR THE ENGINE (the
+ * header says why), the one filming never in the picture, nothing written, everyone clothed. NOT YET ROLLED: written
+ * 2026-11-25 beside the scare's own wording, which was. */
+export const PLAIN_CAUGHT = "A single frame of real footage, caught as it happened on an ordinary camera somebody had with them: a little noisy, a little soft, not composed, lit only by whatever light was there. It is PHOTOGRAPHED — real people, real animals and real things in a real place — never CGI, never a 3D render, never an illustration, never a clean studio picture.";
+export const PLAIN_BOUNDS = "Everyone in it is fully clothed. No blood, no gore, nobody hurt.";
+
 /** The picture model's prompt for the scene a take arrives at. */
 export function takeStillPrompt(t: Pick<Take, "still" | "genre">, aspect: "9:16" | "16:9" = "9:16"): string {
   if (t.genre === "drama") return `${shapeOf(aspect)} ${DRAMA_CAUGHT} ${one(t.still, 700)} ${DRAMA_BOUNDS} Nothing written anywhere in the picture. No watermark, no signature.`;
+  if (t.genre === "plain") return `${shapeOf(aspect)} ${PLAIN_CAUGHT} ${one(t.still, 700)} ${PLAIN_BOUNDS} Nothing written anywhere in the picture. No watermark, no signature.`;
   return `${shapeOf(aspect)} ${TAKE_CAUGHT} ${one(t.still, 700)} ${TAKE_WRONG} ${TAKE_HIDDEN} Nothing written anywhere in the picture. No watermark, no signature.`;
 }
 
@@ -293,6 +315,9 @@ export function takeStillPrompt(t: Pick<Take, "still" | "genre">, aspect: "9:16"
  *  still (which is handed over as the reference image): the same place, a moment earlier, nobody in it. */
 export function takeOpensPrompt(t: Pick<Take, "opens" | "genre">, aspect: "9:16" | "16:9" = "9:16"): string {
   if (t.genre === "drama") return `${shapeOf(aspect)} The SAME place and the SAME body camera as the reference image, a few seconds earlier: ${stop(one(t.opens, 420))} NOBODY is in the picture. The same small, hard, noisy camera look as the reference image — real footage, never a render. ${DRAMA_BOUNDS} Nothing written anywhere.`;
+  // (a plain take's light is whatever its scene has — a kitchen light, daylight, the dark — so the way in is told to
+  //  keep the reference's, not to be "the camera's own small weak light")
+  if (t.genre === "plain") return `${shapeOf(aspect)} The SAME place and the SAME camera as the reference image, a moment earlier: ${stop(one(t.opens, 420))} What the camera is about to find is NOT in the picture yet. The same light and the same look as the reference image — real footage, never a render. ${PLAIN_BOUNDS} Nothing written anywhere.`;
   return `${shapeOf(aspect)} The SAME place and the SAME camera as the reference image, a moment earlier: ${stop(one(t.opens, 420))} NOBODY is in the picture: no person, no face, no hand, no figure, no shape under a cover. Lit only by the camera's own small weak light; the same underexposed, grainy, soft look as the reference image — real footage, never a render. Nothing written anywhere.`;
 }
 
@@ -317,15 +342,17 @@ export const TAKE_REF = { replicate: "<<<image_1>>>", fal: "@Image1" } as const;
  *  scare (and any take that comes at the lens, or stays on it) is directed word for word as it always was. */
 export function takePrompt(t: Take, camera: CameraLook = "phone", ref: string = TAKE_REF.replicate): string {
   if (t.genre === "drama") return dramaPrompt(t, camera, ref);
+  if (t.genre === "plain") return plainPrompt(t, camera, ref);
   const who = one(t.who, 40) || "it";
   const obj = /^(she|he)$/i.test(who) ? (who.toLowerCase() === "she" ? "her" : "him") : who;
   const poss = /^she$/i.test(who) ? "her" : /^he$/i.test(who) ? "his" : "its";
   const [b1, b2, b3] = t.beats.map((b) => one(b, 520));
+  const tail = endWord(t);
   const held = t.ends === "away"
-    ? `Once the camera has found ${obj} it stays on ${obj} until the last four seconds: it never drops, never falls.`
+    ? `Once the camera has found ${obj} it stays on ${obj} until the last ${tail} seconds: it never drops, never falls.`
     : `Once the camera has found ${obj} it never leaves ${obj}: it never swings away, never drops, never falls.`;
   const light = t.ends === "dark"
-    ? "Nothing flashes; the light changes only as the last four seconds say; the picture never glitches or tears."
+    ? `Nothing flashes; the light changes only as the last ${tail} seconds say; the picture never glitches or tears.`
     : "Nothing flashes; the light does not change; the picture never glitches or tears.";
   const text = [
     `${HELD[camera]}. One continuous take, no cuts, nothing written on screen. NOBODY SPEAKS in this shot: no voice, no words, no whisper — only breathing and the quiet of the place.`,
@@ -334,9 +361,42 @@ export function takePrompt(t: Take, camera: CameraLook = "phone", ref: string = 
     //  grin of the scene still into closed lips; the engine is given no words now, so nothing asks it to lip-sync)
     `THEN the camera ${one(t.finds, 160)} — in the same shot, one smooth unbroken move, never a cut — and stops: there, exactly as in ${ref}, ${stop(b1)} ${cap(poss)} mouth stays exactly as it is in ${ref}, and never moves.`,
     `THEN, slowly: ${stop(b2)}`,
-    `LAST FOUR SECONDS: ${stop(b3)}`,
+    `LAST ${tail.toUpperCase()} SECONDS: ${stop(b3)}`,
     `${cap(who)} never runs, never flinches, never turns around and never looks away; never screams, never speaks, never moves ${poss} mouth, never mouths a word. ${held} The one filming is never in the picture: no legs, no feet, no body. ${light}`,
     `Sound: a quiet house at night, breathing getting faster, ${one(t.sound, 90) || "slow footsteps"}. No voice at all. No music.`,
+  ].join(" ");
+  return text.length <= TAKE_PROMPT_MAX ? text : text.slice(0, TAKE_PROMPT_MAX);
+}
+
+/** How long a take's END is, as its direction says it: the last FOUR seconds — of a take as short as a film's
+ *  briefest moments (under eight seconds: two of them are its way in), the last THREE. */
+const endWord = (t: Pick<Take, "seconds">): "four" | "three" => ((t.seconds ?? TAKE_SECONDS) < 8 ? "three" : "four");
+
+/** What the one filming is holding in a PLAIN take: no night and no little light are claimed — its pictures say what
+ *  the light is. */
+const HELD_PLAIN: Record<CameraLook, string> = {
+  phone: "Shot on a phone held in one hand",
+  camcorder: "Shot on a small home camcorder held in one hand",
+  bare: "Handheld",
+  house: "Recorded by a fixed security camera mounted high in the corner of the room; the camera never moves, pans, tilts or zooms",
+  bodycam: "Recorded by a body camera worn on the chest of the one walking, through its wide-angle lens; the picture bobs gently with every step",
+};
+
+/** A PLAIN take's direction (see PLAIN_CAUGHT): the scare's own shape — two seconds off its subject, the camera
+ *  finds it by a MOVE, what happens, the end — with nothing of the creature's in it: no stillness to hold, no mouth
+ *  to keep shut, nothing it "never" does. NOBODY SPEAKS here either: the one filming is a separate voice, laid on
+ *  afterwards, and nobody on camera is given a word (the engine moves the only mouth it can see). A body camera's
+ *  keeps the drama's bounds: fiction, and nobody hurt. */
+export function plainPrompt(t: Take, camera: CameraLook = "phone", ref: string = TAKE_REF.replicate): string {
+  const [b1, b2, b3] = t.beats.map((b) => one(b, 520));
+  const text = [
+    `${HELD_PLAIN[camera]}. One continuous take, no cuts, nothing written on screen. NOBODY SPEAKS in this shot: no voice, no words, no whisper — only the sound of the place.${camera === "bodycam" ? " A FICTIONAL scene, and nobody is hurt: no weapon is drawn or fired, nobody is struck, no blood." : ""}`,
+    `FIRST TWO SECONDS: ${stop(one(t.first, 260))}`,
+    `THEN the camera ${one(t.finds, 160)} — in the same shot, one smooth unbroken move, never a cut — and stops: there, exactly as in ${ref}, ${stop(b1)}`,
+    `THEN: ${stop(b2)}`,
+    `LAST ${endWord(t).toUpperCase()} SECONDS: ${stop(b3)}`,
+    "Everything in it moves the way it really would, at its real speed: nothing is staged, nothing is slowed down. Nobody in the picture speaks or mouths a word. The one filming is never in the picture: no legs, no feet, no body. Nothing flashes; the picture never glitches or tears.",
+    `Sound: ${one(t.sound, 90) || "the quiet of the place"}. No voice at all. No music.`,
   ].join(" ");
   return text.length <= TAKE_PROMPT_MAX ? text : text.slice(0, TAKE_PROMPT_MAX);
 }
@@ -404,10 +464,37 @@ export const TAKE_VOICE = { id: "English_magnetic_voiced_man", emotion: "fearful
  *  bigger performance: the first a scared, shaky whisper as they see it, the last terrified and out of breath.
  *  TAKE_VOICE stays behind it, for when it will not speak. */
 export const TAKE_ACTED = { voice: "Mark", stability: 0.2, style: 0.85, speed: 1.0 } as const;
-/** How the `index`-th of `total` lines is said. */
-export function takeActing(index: number, total: number): string {
+/** HOW A LINE CAN BE SAID — a closed list its writer picks from. One scare is whispered in terror from its first word
+ *  (takeActing, below); a found-footage FILM (footage-film.ts) is several moments, and they are not all terror: its
+ *  first is somebody annoyed at a noise, and a film that is not a horror at all — a dog caught opening the fridge —
+ *  is never whispered in terror. (2026-11-25, with the films; the first two are the single take's own two manners.) */
+export const TAKE_MOODS = ["scared", "terrified", "whispering", "calm", "excited", "laughing", "annoyed", "shouting"] as const;
+export type TakeMood = (typeof TAKE_MOODS)[number];
+export const takeMood = (v: unknown): TakeMood | undefined => {
+  const k = String(v ?? "").trim().toLowerCase();
+  return (TAKE_MOODS as readonly string[]).includes(k) ? (k as TakeMood) : undefined;
+};
+/** The acting tags each mood is performed with (the acted voice reads them and does not say them)… */
+const MOOD_ACTING: Record<TakeMood, string> = {
+  scared: "[scared] [shaky breath] [whispering]",
+  terrified: "[terrified] [breathing heavily] [whispering]",
+  whispering: "[whispering] [quietly]",
+  calm: "[calm] [casual]",
+  excited: "[excited]",
+  laughing: "[laughing] [amused]",
+  annoyed: "[annoyed] [sighs]",
+  shouting: "[shouting] [alarmed]",
+};
+/** …and the manner the plain voice behind it is asked for (the speech model's own short list). */
+const MOOD_EMOTION: Record<TakeMood, string> = { scared: "fearful", terrified: "fearful", whispering: "neutral", calm: "neutral", excited: "happy", laughing: "happy", annoyed: "angry", shouting: "surprised" };
+/** How the `index`-th of `total` lines is said — as its `mood` says, when its writer picked one (a film's moment);
+ *  a single take's lines have none: scared, then terrified on the last. */
+export function takeActing(index: number, total: number, mood?: TakeMood): string {
+  if (mood && MOOD_ACTING[mood]) return MOOD_ACTING[mood];
   return total > 1 && index === total - 1 ? "[terrified] [breathing heavily] [whispering]" : "[scared] [shaky breath] [whispering]";
 }
+/** The plain voice for a line with a mood (no mood: the voice as it is). */
+export const moodVoice = <V extends { emotion: string }>(voice: V, mood?: TakeMood): V => (mood && MOOD_EMOTION[mood] ? { ...voice, emotion: MOOD_EMOTION[mood] } : voice);
 /** How long after the camera finds the thing the question comes, when it is asked on seeing it. */
 const ASK_AFTER_FOUND = 0.8;
 /** The plea comes as it starts toward the lens (the last four seconds begin at TAKE_SECONDS − 4). */
@@ -421,8 +508,9 @@ export const TAKE_OFFICER_VOICE = { id: "English_Trustworth_Man", emotion: "angr
 /** The radio call comes the moment the take opens. */
 const RADIO_AT = 0.2;
 
-/** `radio`: the line is the dispatcher's, over the radio (said in TAKE_RADIO_VOICE, band-limited by takeSound). */
-export type TakeLine = { at: number; text: string; radio?: true };
+/** `radio`: the line is the dispatcher's, over the radio (said in TAKE_RADIO_VOICE, band-limited by takeSound).
+ *  `mood`: how the one filming says it, when its writer picked one (TAKE_MOODS). */
+export type TakeLine = { at: number; text: string; radio?: true; mood?: TakeMood };
 
 /** What is said, and when: the radio call (a body cam's), the question (while looking, or on finding it) and
  *  the plea as it comes. */
@@ -434,7 +522,7 @@ export function takeLines(t: Pick<Take, "says" | "asks" | "radio" | "script">): 
   if (radio) out.push({ at: RADIO_AT, text: radio, radio: true });
   // (a take with more to say than a question and a plea says it at its own times)
   if (t.script?.length) {
-    for (const s of t.script) { const text = say(s.text); if (text) out.push({ at: Math.max(0, Number(s.at) || 0), text }); }
+    for (const s of t.script) { const text = say(s.text), mood = takeMood(s.mood); if (text) out.push({ at: Math.max(0, Number(s.at) || 0), text, ...(mood ? { mood } : {}) }); }
     return out.sort((a, b) => a.at - b.at);
   }
   if (ask) out.push({ at: t.asks === "looking" ? 0.3 : TAKE_OPENS_SECONDS + ASK_AFTER_FOUND, text: ask });
@@ -679,6 +767,9 @@ export const DRAMA_LINE_ROOM = 2.4;
  *  "no weapon is drawn", "nobody is hurt" — are taken out before it is looked for. */
 const DRAMA_HURT = /\b(?:guns?|handguns?|pistols?|rifles?|shotguns?|revolvers?|firearms?|tasers?|tased|shoots?|shooting|shots? fired|weapons? (?:is |are )?(?:drawn|pointed|fired|raised)|draws? (?:a|his|her|their) (?:gun|weapon|pistol)|punch(?:es|ed|ing)?|kick(?:s|ed|ing)?|stab(?:s|bed|bing)?|knife|knives|blood(?:y)?|bleed(?:s|ing)?|wounded|injured)\b/i;
 const NOT_HURT = /\b(?:no|never|without)(?: an?)? (?:guns?|weapons?|blood|knife|knives)(?: (?:is|are))?(?: (?:drawn|pointed|fired|raised))?(?: or (?:drawn|pointed|fired|raised))?\b|\b(?:nobody|no one) is (?:hurt|injured|struck)\b/gi;
+/** Is a weapon, a blow or a wound in these words (the bounds said back are not one)? — asked of anything a body camera
+ *  films that is not the creature's: a film's plain moments (footage-film.ts) keep the drama's bounds. */
+export const hurtIn = (text: unknown): boolean => DRAMA_HURT.test(String(text ?? "").replace(NOT_HURT, " "));
 
 /** The writer's answer, checked: every part there and of a sane length — else null (the caller falls back
  *  to a ready-made idea rather than film half a direction). `kind` "drama": a drama writer's answer
@@ -780,7 +871,7 @@ export type FootageScare = { key: string; name: string; line: string; premise: s
 /** The cards' pictures are public/landing/ff-scare-<key>.jpg — bump this when one is replaced. */
 export const FF_PIC_V = 1;
 export const FOOTAGE_SCARES: ReadonlyArray<FootageScare> = [
-  ...TAKE_IDEAS.map((i) => ({ key: i.key, name: i.name, line: i.line, premise: i.premise, cams: i.cams || HAND_CAMS, img: `/landing/ff-scare-${i.key}.jpg?v=${FF_PIC_V}`, ...(i.genre ? { genre: i.genre } : {}) })),
+  ...TAKE_IDEAS.map((i) => ({ key: i.key, name: i.name, line: i.line, premise: i.premise, cams: i.cams || HAND_CAMS, img: `/landing/ff-scare-${i.key}.jpg?v=${FF_PIC_V}`, ...(i.genre === "drama" ? { genre: i.genre } : {}) })),
   ...HOUSE_SCARES.map((s) => ({ key: s.key, name: s.name, line: s.line, premise: s.premise, cams: ["house"] as readonly CameraLook[], img: `/landing/ff-scare-${s.key}.jpg?v=${FF_PIC_V}`, lapseOn: s.lapseOn })),
 ];
 /** WHAT HAPPENS, ON ITS SHELVES — one for each way a camera is carried. The body cam has its own (the owner: it
