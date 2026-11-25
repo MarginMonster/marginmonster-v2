@@ -150,7 +150,11 @@ async function bestOf(cands: Candidate[], captioned: boolean, at?: number[], kno
   if (!(dims.w > 0 && dims.h > 0)) return null;
   const W = 48, H = Math.max(2, Math.round((W * dims.h) / dims.w / 2) * 2);
   const args = ["-v", "error"];
-  for (const c of list) { if (c.t != null) args.push("-ss", c.t.toFixed(2)); args.push("-i", c.file); }
+  // ONE DECODING THREAD A CANDIDATE (2026-11-25, measured on Full-HD TEST stand-ins at a 16-core host's thread counts):
+  // eight shots opened at once, each H.264 decoder sized to the machine's cores, peaked at 1,073 MB for a 48-pixel
+  // strip — and two covers are drawn at once (COVER_AT_ONCE), from the web, beside whatever a job is encoding, on a
+  // server with 2 GB. One thread each: 276 MB, in the same three seconds.
+  for (const c of list) { if (c.t != null) args.push("-ss", c.t.toFixed(2)); args.push("-threads", "1", "-i", c.file); }
   args.push("-filter_complex", framesGraph(list.length, W, H), "-map", "[o]", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "-");
   const r = await run(ffmpegBin(), args);
   let i = Math.floor(list.length / 2);
