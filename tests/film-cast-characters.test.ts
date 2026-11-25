@@ -39,7 +39,11 @@ test("the dialogue engine treats a cartoon or monster cast member as what it is"
   // (…the in-frame check: a PERSON by their look in words, as every approved film was; a CHARACTER by its
   //  own picture since 2026-11-22 — a cartoon puppy's description also fitted the fox-eared dog one scene
   //  of a Kids Cartoon drew in his place. The question is story-picture.ts's, tested in tests/story-picture.test.ts.)
-  assert.ok(eng.includes(`const there = creatureNamed(sp) ? await characterIsIn(abs(tryUrl), faceFor(sp)) : await castIsIn(abs(tryUrl), castLooks[firstName(sp)] || "", false);`));
+  // (…and a person the STORY invented, with no look in words, by the face the film first showed — the lake film's
+  //  redhead came back at the lake with a long auburn ponytail, 2026-11-25; the first master itself is not checked:
+  //  it is where those faces are cut from)
+  assert.ok(eng.includes("const firstSeen = !castLooks[firstName(sp)] && !!firstFaces[firstName(sp)];"));
+  assert.ok(eng.includes(`const there = creatureNamed(sp) || firstSeen ? await characterIsIn(abs(tryUrl), faceFor(sp)) : await castIsIn(abs(tryUrl), castLooks[firstName(sp)] || "", false);`));
   assert.ok(eng.includes(`parseStoryCast(String((await anthropicVision(storyCastPrompt(1), [twoShotAbs, picture], { maxTokens: 400, model: "claude-sonnet-4-6" })) || ""), 1)`));
   assert.ok(eng.includes("return said ? said[0] : true;"), "a look that cannot be read never blocks a film");
   assert.ok(eng.includes("Two characters are together in this image. Character A is:"));

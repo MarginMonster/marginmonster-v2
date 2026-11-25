@@ -847,8 +847,12 @@ export async function generateTestMovie(opts: {
       castOk = true;
       for (const sp of [spkA, spkB]) {
         if (!faceFor(sp)) continue;
-        // a person by their look in words (the check every approved film was made with); a character by its picture
-        const there = creatureNamed(sp) ? await characterIsIn(abs(tryUrl), faceFor(sp)) : await castIsIn(abs(tryUrl), castLooks[firstName(sp)] || "", false);
+        // a person by their look in words (the check every approved film was made with); a character by its picture —
+        // and a person the STORY invented (no look in words) by the face the film first showed (cutFirstFaces): in "She
+        // Smiles From the Shallows" the short-haired redhead came back at the lake with a long auburn ponytail, and the
+        // black bob as long brown hair under a beanie, while the words-only check had nothing to compare them with
+        const firstSeen = !castLooks[firstName(sp)] && !!firstFaces[firstName(sp)];
+        const there = creatureNamed(sp) || firstSeen ? await characterIsIn(abs(tryUrl), faceFor(sp)) : await castIsIn(abs(tryUrl), castLooks[firstName(sp)] || "", false);
         if (!there) castOk = false;
       }
       if (castOk) break;
