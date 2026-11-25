@@ -1235,7 +1235,8 @@ export async function generateTestMovie(opts: {
    *  goes on as if it had not come — the next model of its ladder, or the shot made as it is when no picture comes. A
    *  look that cannot be made keeps the picture — never a film lost to its check. The thing's portrait, a sighting and
    *  (since 2026-11-25, stream S8) the reveal. (…and the job says it is at work once it is done: an edit is minutes on a
-   *  long film's clock — the reaper's 25 — review of S7, 2026-11-25.) */
+   *  long film's clock — the reaper's 25, five since the worker began to beat every job it runs (job-beat.ts) — review of
+   *  S7, 2026-11-25.) */
   const clothedOrDropped = async (rel: string, ar: string): Promise<string | null> => {
     const kept = await keepClothed({ url: rel, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, ar), still: "drop", log: (l) => console.log(`[testmovie] ${l}`) });
     await say(alive);
