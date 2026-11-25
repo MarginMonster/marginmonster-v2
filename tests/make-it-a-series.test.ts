@@ -418,8 +418,16 @@ test("every new word is in all five languages", () => {
   for (const k of ["Make it a series", "Episode {n} of {total}", "Make episode {n}", "Episode {n} — what happens next?", "Picks up where it left off"]) {
     assert.equal(dict.split(`\n  ${J(k)}:`).length - 1, 5, k);
   }
+  // …the card's own pill fits beside a phone's short date: a 390 card leaves it 116px (measured on the TEST harness,
+  // review 2026-11-25), and "En faire une série" (117px) and "Zur Serie machen" (120px) wrapped under the date —
+  // that card a line taller in French and German. Latin-script words of 15 letters or fewer measured 106px at most.
+  const blocks = dict.split(/\nconst (?:es|fr|de|zh|ur): Record<string, string> = \{\n/).slice(1);
+  for (const block of blocks.slice(0, 3)) {
+    const v = JSON.parse(block.split("\n").find((l) => l.startsWith(`  ${J("Make it a series")}:`))!.split(": ").slice(1).join(": ").replace(/,$/, ""));
+    assert.ok(v.length <= 15, v);
+  }
   // …each keeps its placeholders
-  for (const block of dict.split(/\nconst (?:es|fr|de|zh|ur): Record<string, string> = \{\n/).slice(1)) {
+  for (const block of blocks) {
     const line = (k: string) => block.split("\n").find((l) => l.startsWith(`  ${J(k)}:`)) || "";
     assert.ok(line("Episode {n} of {total}").split(":").slice(1).join(":").includes("{n}") && line("Episode {n} of {total}").includes("{total}", 30));
     assert.ok(line("Make episode {n}").slice(20).includes("{n}"));
