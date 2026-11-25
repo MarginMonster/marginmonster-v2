@@ -203,10 +203,16 @@ test("where the pictures are drawn: one sheet per place, beside the portraits, t
 test("the writer is asked for the story's places — a told story only — and they ride with its treatment", () => {
   const engine = read("app", "lib", "film-engine.server.ts");
   assert.ok(engine.includes("places: { type: \"array\", items: { type: \"string\" } },"), "in what the writer may return");
-  const ask = engine.indexOf("Also return \"places\": the ONE or TWO places or things this story keeps coming back to");
+  // (2026-11-25, stories up to five minutes: what a story's places ARE is said once, in PLACES_ARE, so that a long
+  //  story's PLAN can be asked for them — film-length.ts — and each of its parts told the ones the plan chose)
+  assert.ok(engine.includes("const PLACES_ARE = `the ONE or TWO places or things this story keeps coming back to"));
+  const ask = engine.indexOf("Also return \"places\": ${PLACES_ARE} ${PLACE_FIELD}\\n`");
   const narr = engine.indexOf("Write it as a NARRATED STORY: a storyteller's voice tells it over illustrated scenes");
   const acted = engine.indexOf("Write it as a SHORT FILM SCENE with CHARACTER DIALOGUE.");
   assert.ok(narr > 0 && ask > narr && ask < acted, "asked in the told story's brief and nowhere else");
+  // …and outside that brief, only a told story's plan is asked about places that way
+  assert.equal(engine.split("${PLACES_ARE}").length - 1, 1);
+  assert.ok(engine.includes("planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined })"));
   assert.ok(engine.includes("Only what at least TWO pictures are set at, in or on; never a person or an animal; no weather or time of day in it; an empty list when the story has no such place."));
   assert.ok(engine.includes("Every VISUAL set there calls it by that exact name"), "that is how a scene is known to be set there");
   // …and it MUST answer (an empty list when the story has none). Left optional, the writer skipped it for a
