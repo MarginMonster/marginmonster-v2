@@ -832,6 +832,11 @@ test("A ROLL THAT CUTS IS ROLLED AGAIN, the better roll kept — and a cut still
   assert.ok(srv.includes("...(cuts.length ? { cuts } : {}), ...(trimmed ? { trimmed } : {}),"), "the piece says where it cut");
   // a 1080p roll (the pro tier) is dressed at 1080p, not shrunk to 720
   assert.ok(srv.includes("const hd = Math.max(rolledAt.w, rolledAt.h) >= 1800;") && srv.includes('(hd ? { w: 1080, h: 1920 } : { w: 720, h: 1280 })'));
+  // THE LEVEL every film plays at: the finished take (never the roll) is levelled before its copy is kept — the
+  // hallway take came out at −28 LUFS, its voice at −30, where the catalogue is −16
+  assert.ok(srv.includes('import { levelFilm } from "./film-loudness.server";'));
+  const lvl = srv.indexOf("if (outName !== rawName) { try { await levelFilm(outPath); } catch { /* left as it was */ } }");
+  assert.ok(lvl > 0 && lvl < srv.indexOf("if (outName !== rawName) { try { await mirrorRender(outName, fs.readFileSync(outPath)); }"), "levelled before it is mirrored");
 });
 
 test("THE ONE FILMING IS PERFORMED (\"he is in monotone - no fear\") and says what a real person in THAT situation would (\"the wording choice is fucking sad\")", async () => {

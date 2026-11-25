@@ -44,6 +44,7 @@ import { anthropicText } from "./anthropic.server";
 import { cameraLookOf, dressFilter, type CameraLook, type DressOptions } from "./camera-dress";
 import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
+import { levelFilm } from "./film-loudness.server";
 import { persistRemote, repRun } from "./image-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { overlayFonts } from "./overlay-fonts.server";
@@ -468,6 +469,10 @@ export async function generateTake(opts: TakeOptions): Promise<string> {
   const dressed = await dressTake(path.join(dir, soundName), { look: camera, w: size.w, h: size.h, ...worn });
   const outPath = dressed || path.join(dir, soundName);
   const outName = path.basename(outPath);
+  // 7½) THE LEVEL every film and story plays at (film-loudness.server.ts: one gain for the whole take, a limiter for its
+  //     peaks — the picture is copied). A take came out at −28 LUFS with its voice at −30, where the rest of the
+  //     catalogue is −16: on a phone the one filming was barely there (2026-11-25). Never the roll itself.
+  if (outName !== rawName) { try { await levelFilm(outPath); } catch { /* left as it was */ } }
   if (outName !== rawName) { try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ } }
   if (dressed && voiced) fs.rmSync(path.join(dir, voiced.name), { force: true });
 
