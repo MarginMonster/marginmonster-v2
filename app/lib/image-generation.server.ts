@@ -15,7 +15,7 @@ import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { characterInRef } from "./character-prompts";
 import { stagedTwoShot } from "./acted-staging";
-import { CLOTHED_FIRST, STORY_LAST_MODEL, STORY_MODEL, clothedEdit, dressedInWater, parseUnclothed, storyPictureInput, unclothedPrompt } from "./story-picture";
+import { CLOTHED_FIRST, NIGHT_FIRST, NIGHT_SAID, STORY_LAST_MODEL, STORY_MODEL, clothedEdit, dressedInWater, nightLookPrompt, parseNightLook, parseUnclothed, storyPictureInput, unclothedPrompt } from "./story-picture";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
 import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
@@ -4996,6 +4996,19 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
     // whatever the words said, and none could be sent). A film is never shot from a picture with an unclothed figure:
     // it is drawn once more with the clothes said first; if the model still will not, that one figure is dressed by an
     // edit of the picture. A look that cannot be made keeps the picture (never a film lost to its check).
+    // NIGHT IS NIGHT — LOOKED AT FIRST (story-picture.ts → nightLookPrompt): a photographed film whose place or moment
+    // says night, and whose picture reads as dusk or day, is drawn once more with the night said first; that redraw
+    // is kept only if ITS sky is night. (Before the clothed look, so that look sees the picture that will be used.)
+    if (!cartoon && NIGHT_SAID.test(`${setting} ${action}`)) {
+      const night = async (u: string) => { try { return parseNightLook(String((await anthropicVision(nightLookPrompt(), [u], { maxTokens: 60, model: "claude-sonnet-4-6" })) || "")); } catch { return true; } };
+      if (!(await night(url))) {
+        artLog("image-ad", "two-shot: a night scene drawn as dusk or day — drawn again, night first");
+        try {
+          const again = await repRun(used, storyPictureInput(used, { prompt: `${NIGHT_FIRST} ${staged || prompt}`, refs, aspect: ar }), 150_000);
+          if (again && (await night(again))) url = again;
+        } catch (e) { artLog("image-ad", `two-shot: the night redraw failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+      }
+    }
     const bare = async (u: string) => { try { return parseUnclothed(String((await anthropicVision(unclothedPrompt(), [u], { maxTokens: 120, model: "claude-sonnet-4-6" })) || "")); } catch { return { unclothed: false, who: "" }; } };
     let seen = await bare(url);
     if (seen.unclothed) {

@@ -67,3 +67,23 @@ test("a film's master is looked at before it is kept: drawn again clothes-first,
   assert.ok(src.includes("if (again && !look.unclothed) { url = again; seen = look; }") && src.includes("if (edited && !look.unclothed) { url = edited; seen = look; }"));
   assert.ok(src.includes("STILL an unclothed figure after the edit — the edited picture is kept; look at this film"));
 });
+
+test("NIGHT IS NIGHT, LOOKED AT: a night film's master whose sky reads as dusk or day is drawn once more with the night said first", async () => {
+  const { NIGHT_FIRST, NIGHT_SAID, nightLookPrompt, parseNightLook } = await import("../app/lib/story-picture.ts");
+  // ("Who Smiles In Still Water", 2026-11-25: told the sky was black, the lake outside the tent was a pale blue evening again)
+  for (const said of ["inside the tent, in the middle of the night", "they wake at 3am", "a moonlit road", "the lake after dark"]) assert.ok(NIGHT_SAID.test(said), said);
+  for (const day of ["a sunny kitchen", "the lake at dawn", "an office"]) assert.ok(!NIGHT_SAID.test(day), day);
+  const q = nightLookPrompt();
+  for (const part of ["MIDDLE OF THE NIGHT", "seen through a window, a door or a tent opening", "dusk, twilight, blue hour, an overcast evening or day", '{"sky": "night" or "dusk" or "day"}']) assert.ok(q.includes(part), part);
+  // only a clear "dusk" or "day" is a fault: an answer that cannot be read never costs a film
+  assert.equal(parseNightLook('{"sky": "dusk"}'), false);
+  assert.equal(parseNightLook('{"sky":"day"}'), false);
+  for (const fine of ['{"sky": "night"}', "", "junk", '{"sky": 3}']) assert.equal(parseNightLook(fine), true, fine);
+  assert.ok(NIGHT_FIRST.startsWith("NIGHT, about three in the morning: the sky is BLACK, with no blue in it"));
+  const src = read("app", "lib", "image-generation.server.ts");
+  // asked only of a photographed film whose place or moment says night — and BEFORE the clothed look
+  const night = src.indexOf("if (!cartoon && NIGHT_SAID.test(`${setting} ${action}`)) {");
+  assert.ok(night > 0 && night < src.indexOf("let seen = await bare(url);"));
+  assert.ok(src.includes("storyPictureInput(used, { prompt: `${NIGHT_FIRST} ${staged || prompt}`, refs, aspect: ar })"));
+  assert.ok(src.includes("if (again && (await night(again))) url = again;"), "the redraw is kept only if ITS sky is night");
+});

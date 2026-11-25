@@ -142,6 +142,23 @@ export function parseUnclothed(raw: string): { unclothed: boolean; who: string }
 export const CLOTHED_FIRST = "EVERY person and every figure in this picture is fully clothed, the far and the pale ones too: anyone standing in water wears a long, soaked, pale nightgown or their own soaked everyday clothes, covering the body from neck to knee.";
 /** …and the edit that dresses the one figure when the model will not draw it dressed. */
 export const clothedEdit = (who: string): string => `Edit this photo and change ONE thing: the figure ${who ? `(${who}) ` : ""}who has no clothes on now wears a long, soaked, pale nightgown that covers the body from neck to knee. Everything else stays exactly as it is — the same place, light, framing, people, faces, hair and what the others wear. No text anywhere.`;
+/** NIGHT IS NIGHT — LOOKED AT (2026-11-25, "Who Smiles In Still Water": the idea said 3am, the master was told "the sky
+ *  outside is black … never dusk, twilight or a blue evening glow", and the lake outside the tent was drawn under a pale
+ *  blue evening sky again — the fourth film that day). Asked of a film's master when its place or moment says night:
+ *  a sky that reads as dusk or day means one redraw with the night said FIRST. */
+export const NIGHT_SAID = /\b(?:night|nighttime|midnight|[1-4]\s?am|three in the morning|after dark|pitch[- ]dark|pitch black|moonlight|moonlit)\b/i;
+export function nightLookPrompt(): string {
+  return 'This picture is meant to be set in the MIDDLE OF THE NIGHT. Look at the sky and at whatever is outdoors or seen through a window, a door or a tent opening. Is it night there — a black or near-black sky, the outdoors dark except for lamps, torches or the moon? Or does it read as dusk, twilight, blue hour, an overcast evening or day — a sky that is blue, grey or lit? If no sky and nothing outdoors can be seen at all, answer "night". Reply with ONLY this JSON: {"sky": "night" or "dusk" or "day"}';
+}
+export function parseNightLook(raw: string): boolean {
+  try {
+    const m = /\{[\s\S]*\}/.exec(String(raw || ""));
+    const sky = m ? String(JSON.parse(m[0])?.sky || "").toLowerCase() : "";
+    return sky !== "dusk" && sky !== "day";   // only a clear "dusk" or "day" is a fault (an unreadable answer never costs a film)
+  } catch { return true; }
+}
+/** Said FIRST when a night picture came back as dusk or day. */
+export const NIGHT_FIRST = "NIGHT, about three in the morning: the sky is BLACK, with no blue in it and no glow on the horizon; water and land outdoors are black shapes; the only light is what is really there — a lantern, a torch, a phone — and it falls off fast into darkness.";
 export const TODAY_LOOK = "Where these words do not say how old a place is, it looks the way such a place looks TODAY — a home is an ordinary modern house (outside, painted siding or plaster; inside, plain painted walls), with ordinary rectangular windows and an ordinary front door — never older, rougher or more storybook than the words say: no rough stone walls, no cottage and no castle unless they name one. " + LIVED_IN + " " + DRESSED;
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference
