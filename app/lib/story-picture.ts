@@ -89,7 +89,9 @@ export const STORY_SOUND = "A sound is never drawn: nothing glows, rings or ligh
  *  regular household?"). The horror look every picture is given — 35mm, underexposed, a cold desaturated grade —
  *  pulled the rooms toward an abandoned house: stained grey walls, a bare peeling bedroom, a dusty window. The
  *  dark is the night's, not the house's. (Said inside TODAY_LOOK, so every picture and sheet that gets one gets both.) */
-export const LIVED_IN = "A family's home is clean, cared for and lived in — fresh paint, a rug, framed photos, a lamp, everyday things left about (in a child's room: toys, posters, a nightlight) — never stained, peeling, damp, dusty, bare or abandoned unless these words say so: it is dark because it is night, not because the house is falling apart.";
+// (…and a place in use is KEPT: "The Dent in the Pillow", 2026-11-25 — room 14 of a working small-town hospital, unused for
+//  a year, was drawn with peeling, cracked plaster, like a ruined asylum)
+export const LIVED_IN = "A family's home is clean, cared for and lived in — fresh paint, a rug, framed photos, a lamp, everyday things left about (in a child's room: toys, posters, a nightlight) — never stained, peeling, damp, dusty, bare or abandoned unless these words say so: it is dark because it is night, not because the house is falling apart. A place people work in or use every day — a hospital, a school, an office, a hotel, a shop — is clean and kept the same way, even a room in it nobody has used for a while: never peeling, cracked, stained or abandoned unless these words say so.";
 export const TODAY_LOOK = "Where these words do not say how old a place is, it looks the way such a place looks TODAY — a home is an ordinary modern house (outside, painted siding or plaster; inside, plain painted walls), with ordinary rectangular windows and an ordinary front door — never older, rougher or more storybook than the words say: no rough stone walls, no cottage and no castle unless they name one. " + LIVED_IN;
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference

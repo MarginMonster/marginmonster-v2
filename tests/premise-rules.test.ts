@@ -315,7 +315,9 @@ test("a story's own creature is known by its name as well as its look; a door th
 test("a lived-in home; a shadow drawn as a shadow; nobody stares into the lens; every VISUAL names its shot", async () => {
   const sp = await import("../app/lib/story-picture.ts");
   // the home
-  assert.ok(sp.TODAY_LOOK.endsWith(sp.LIVED_IN) && sp.LIVED_IN.includes("never stained, peeling, damp, dusty, bare or abandoned unless these words say so: it is dark because it is night, not because the house is falling apart."));
+  // (…and a place in use is kept: room 14 of a working hospital was drawn peeling and cracked, like a ruined asylum)
+  assert.ok(sp.LIVED_IN.endsWith("A place people work in or use every day — a hospital, a school, an office, a hotel, a shop — is clean and kept the same way, even a room in it nobody has used for a while: never peeling, cracked, stained or abandoned unless these words say so."));
+  assert.ok(sp.TODAY_LOOK.endsWith(sp.LIVED_IN) &&sp.LIVED_IN.includes("never stained, peeling, damp, dusty, bare or abandoned unless these words say so: it is dark because it is night, not because the house is falling apart."));
   // the shadow: the writer gives the idea's threat a cast entry and a shadow its look; the picture is told what a shadow is
   assert.ok(sp.WHAT_FRIGHTENS.includes("a threat the IDEA names (\"a dark shadow\", \"a ghost lady\", \"a figure\") always has a \"cast\" entry of its own") && sp.WHAT_FRIGHTENS.includes("never a person in a coat or a hood"));
   assert.equal(sp.shadowNote("Beyond the glass, under the old tree, a tall dark shadow stands motionless in the night"), sp.SHADOW_SHAPE);
