@@ -9,6 +9,7 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "Should be night": "Debería ser de noche",
   "Continue this footage — the next night, on the same camera": "Continúa este metraje: la noche siguiente, con la misma cámara",
   "Night {n}": "Noche {n}",
   "Night {n} — what happens next?": "Noche {n}: ¿qué pasa después?",
@@ -3575,6 +3576,7 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "Should be night": "Devrait être la nuit",
   "Continue this footage — the next night, on the same camera": "Continue ces images : la nuit suivante, avec la même caméra",
   "Night {n}": "Nuit {n}",
   "Night {n} — what happens next?": "Nuit {n} : et ensuite ?",
@@ -7122,6 +7124,7 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "Should be night": "Sollte Nacht sein",
   "Continue this footage — the next night, on the same camera": "Dieses Material fortsetzen: die nächste Nacht, mit derselben Kamera",
   "Night {n}": "Nacht {n}",
   "Night {n} — what happens next?": "Nacht {n}: Wie geht es weiter?",
@@ -10679,6 +10682,7 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "Should be night": "应该是夜晚",
   "Continue this footage — the next night, on the same camera": "接着拍这段录像：下一夜，同一台摄像机",
   "Night {n}": "第 {n} 夜",
   "Night {n} — what happens next?": "第 {n} 夜：接下来会发生什么？",
@@ -14288,6 +14292,7 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  "Should be night": "رات ہونی چاہیے",
   "Continue this footage — the next night, on the same camera": "اس فوٹیج کو آگے بڑھائیں: اگلی رات، اسی کیمرے سے",
   "Night {n}": "رات {n}",
   "Night {n} — what happens next?": "رات {n}: آگے کیا ہوگا؟",

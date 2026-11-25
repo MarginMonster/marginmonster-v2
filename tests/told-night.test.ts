@@ -192,3 +192,17 @@ test("WIRING: decided once a scene, from its words, its narration, its place and
   const img = read("app", "lib", "image-generation.server.ts");
   assert.ok(img.includes("if (!cartoon && NIGHT_SAID.test(`${setting} ${action}`)) {") && img.includes("storyPictureInput(used, { prompt: `${NIGHT_FIRST} ${staged || prompt}`, refs, aspect: ar })"));
 });
+
+test("the page hands the IDEA to every told picture it draws — the storyboard, a re-roll, a recast — and the flag says why (lead, 2026-11-25)", () => {
+  const page = read("app", "routes", "web.film.tsx");
+  assert.ok(page.includes("castRef: seriesCastRef || null, idea: topic });"), "the storyboard's draw");
+  assert.ok(page.includes("only: sceneIndex, castRef: castRef || null, idea: topic });"), "a re-rolled scene");
+  assert.ok(page.includes("name, idea: topic });"), "the scenes of a character drawn again");
+  // the client posts the idea with both (they were sent without it)
+  assert.ok(page.includes("{ intent: \"rerollFilmScene\", template, filmGenre, filmTopic: topic, "));
+  assert.ok(page.includes("{ intent: \"recastStoryCharacter\", template, filmMode: \"narrated\", filmAspect, filmTopic: topic, "));
+  // …and a night scene still drawn as day says so on its card, in every language
+  assert.ok(page.includes("if ((c as { notNight?: boolean }).notNight === true) return t(\"Should be night\");"));
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  assert.equal(dict.split("\"Should be night\":").length - 1, 5);
+});

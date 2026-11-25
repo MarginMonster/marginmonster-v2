@@ -233,7 +233,9 @@ test("the page: the token keeps its places, a scene drawn again knows them, and 
   // a re-rolled scene, and the scenes drawn again with ONE character, are set where they were
   assert.ok(page.includes("if (Array.isArray(tObj.places)) placeBible = tObj.places.filter((x: unknown) => typeof x === \"string\").slice(0, 2);"));
   assert.ok(page.includes("treatment: { title: \"\", musicMood: \"\", cast: castBible, places: placeBible, scenes: scenesNow.map("));
-  assert.ok(page.includes("const r = await recastStoryCharacter({ template: tmpl.key, treatment: { title: \"\", musicMood: \"\", cast: castBible, places: placeBible, scenes: scenesNow }, cast: storyCast,"));
+  // (…with the starter it was written from, and the idea — a night idea's scenes are drawn again at night, 2026-11-25)
+  assert.ok(page.includes("const r = await recastStoryCharacter({ template: tmpl.key, treatment: { title: \"\", musicMood: \"\", cast: castBible, places: placeBible, scenes: scenesNow, ...(recastNudge ? { nudge: recastNudge } : {}) }, cast: storyCast,"));
+  assert.ok(page.includes("castRef: ((form.get(\"castRef\") as string) || \"\").trim().slice(0, 4000) || null, name, idea: topic });"));
   // the row: the places stand beside the cast, read from the same token the portraits travel in
   assert.ok(page.includes("const places = readCastToken(seeds.castRef).places;"));
   assert.ok(page.includes("<div key={`place|${p.img}`} className=\"mm-star is-place\" style={{ [\"--i\" as string]: stars.length + k }}>"), "…and walks on after the last of the cast (tests/alive-details.test.ts)");

@@ -812,7 +812,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
         // (the story's own cast is drawn here — a portrait each — unless it is the next episode of a series,
         //  which opens with the faces the last one had)
-        const r = await narratedSceneSeeds({ template: tmpl.key, treatment: tr0, cast: storyCast, aspect: filmAspect, castRef: seriesCastRef || null });
+        // (the IDEA rides along: a scene whose words name no time of day is drawn at the idea's — a "night ferry"
+        //  told over pale misty daylight, the first long told story, 2026-11-25 — story-picture.ts → storyNight)
+        const r = await narratedSceneSeeds({ template: tmpl.key, treatment: tr0, cast: storyCast, aspect: filmAspect, castRef: seriesCastRef || null, idea: topic });
         if (!r.sceneImgs.some(Boolean)) return json({ error: tr(lang, "Couldn't preview the scenes — try again in a moment.") });
         // (sceneFaults / sceneChecks: a picture kept with someone still missing is flagged on its card)
         return json({ ok: true, sceneImgs: r.sceneImgs, sceneFaults: r.sceneFaults, sceneChecks: r.sceneChecks, treatment: tr0, propForScene: {}, castRef: r.castRef, castCards: r.castCards });
@@ -874,11 +876,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         let castBible: string[] = [];
         // (the story's PLACES ride with its treatment: a scene drawn again is set where it was — story-picture.ts)
         let placeBible: string[] = [];
-        try { const tObj = JSON.parse(((form.get("approvedTreatment") as string) || "").trim() || "{}"); if (Array.isArray(tObj.scenes)) scenesNow = tObj.scenes; if (Array.isArray(tObj.cast)) castBible = tObj.cast.filter((x: unknown) => typeof x === "string"); if (Array.isArray(tObj.places)) placeBible = tObj.places.filter((x: unknown) => typeof x === "string").slice(0, 2); } catch { /* fall back to the one scene */ }
+        // (…and the starter it was written from, when the maker typed no idea of their own — its night counts too)
+        let nudgeNow: string | undefined;
+        try { const tObj = JSON.parse(((form.get("approvedTreatment") as string) || "").trim() || "{}"); if (Array.isArray(tObj.scenes)) scenesNow = tObj.scenes; if (Array.isArray(tObj.cast)) castBible = tObj.cast.filter((x: unknown) => typeof x === "string"); if (Array.isArray(tObj.places)) placeBible = tObj.places.filter((x: unknown) => typeof x === "string").slice(0, 2); if (typeof tObj.nudge === "string") nudgeNow = tObj.nudge.slice(0, 400); } catch { /* fall back to the one scene */ }
         if (!scenesNow[sceneIndex]) { scenesNow = []; scenesNow[sceneIndex] = { visual: sceneVisual }; for (let k = 0; k < sceneIndex; k++) scenesNow[k] = { visual: "" }; }
         else scenesNow[sceneIndex] = { ...scenesNow[sceneIndex], visual: sceneVisual };
         const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
-        const r = await narratedSceneSeeds({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, places: placeBible, scenes: scenesNow.map((x) => ({ visual: String(x?.visual || ""), caption: String(x?.caption || "") })) }, cast: storyCast, aspect: rerollAspect, only: sceneIndex, castRef: castRef || null });
+        const r = await narratedSceneSeeds({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, places: placeBible, scenes: scenesNow.map((x) => ({ visual: String(x?.visual || ""), caption: String(x?.caption || "") })), ...(nudgeNow ? { nudge: nudgeNow } : {}) }, cast: storyCast, aspect: rerollAspect, only: sceneIndex, castRef: castRef || null, idea: topic });
         img = r.sceneImgs[sceneIndex] || null;
         ownCast = { castRef: r.castRef, castCards: r.castCards };
         faults = r.sceneFaults[sceneIndex] ?? null; check = r.sceneChecks[sceneIndex] ?? null;
@@ -921,7 +925,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "recastStoryCharacter") {
     const name = ((form.get("castName") as string) || "").replace(/\s+/g, " ").trim().slice(0, 40);
     if (!narrated || !name) return json({ error: tr(lang, "Preview the scenes first.") });
-    let tObj: { scenes?: unknown; cast?: unknown; places?: unknown } = {};
+    let tObj: { scenes?: unknown; cast?: unknown; places?: unknown; nudge?: unknown } = {};
     try { tObj = JSON.parse(((form.get("approvedTreatment") as string) || "").trim() || "{}"); } catch { /* nothing to draw from */ }
     const scenesNow = Array.isArray(tObj.scenes) ? (tObj.scenes as Array<{ visual?: unknown; caption?: unknown }>).slice(0, 12).map((x) => ({ visual: String(x?.visual || "").slice(0, 1500), caption: String(x?.caption || "") })) : [];
     const castBible = Array.isArray(tObj.cast) ? (tObj.cast as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 8) : [];
@@ -929,7 +933,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!scenesNow.length) return json({ error: tr(lang, "Preview the scenes first.") });
     try {
       const { recastStoryCharacter } = await import("../lib/narrated-story.server");
-      const r = await recastStoryCharacter({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, places: placeBible, scenes: scenesNow }, cast: storyCast, aspect: ((form.get("filmAspect") as string) || "").trim(), castRef: ((form.get("castRef") as string) || "").trim().slice(0, 4000) || null, name });
+      // (the idea — and the starter, when there was no idea — ride along: a scene drawn again is at the idea's time of day)
+      const recastNudge = typeof tObj.nudge === "string" ? tObj.nudge.slice(0, 400) : "";
+      const r = await recastStoryCharacter({ template: tmpl.key, treatment: { title: "", musicMood: "", cast: castBible, places: placeBible, scenes: scenesNow, ...(recastNudge ? { nudge: recastNudge } : {}) }, cast: storyCast, aspect: ((form.get("filmAspect") as string) || "").trim(), castRef: ((form.get("castRef") as string) || "").trim().slice(0, 4000) || null, name, idea: topic });
       if (!r || !r.scenes.some((i) => r.sceneImgs[i])) return json({ error: tr(lang, "Couldn't draw {name} again — try again.", { name }), recastName: name });
       return json({ ok: true, recastName: name, scenes: r.scenes, sceneImgs: r.sceneImgs, sceneFaults: r.sceneFaults, sceneChecks: r.sceneChecks, castRef: r.castRef, castCards: r.castCards });
     } catch (e) {
@@ -2874,7 +2880,7 @@ export default function FilmStudio() {
     const leadRef = leadImg ? sceneRefOf(i, leadImg, costarImgToRef(leadImg), wearOverride) : null;
     setRerollingScene(i);
     rerollSceneFetcher.submit(
-      { intent: "rerollFilmScene", template, filmGenre, ...(leadRef ? { sceneLeadRef: leadRef } : {}), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated", approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}) } : {}), artistRef: sceneArtistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneWhere: seeds.treatment.scenes[i]?.where || "", ...(seeds.treatment.cast?.length ? { sceneCastWords: JSON.stringify(seeds.treatment.cast) } : {}), sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(who ? { sceneWho: JSON.stringify(who) } : {}) },
+      { intent: "rerollFilmScene", template, filmGenre, filmTopic: topic, ...(leadRef ? { sceneLeadRef: leadRef } : {}), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), filmAspect: tmpl?.lipSyncSinger ? mvAspect : filmAspect, ...(narrated ? { filmMode: "narrated", approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}) } : {}), artistRef: sceneArtistRef || "", castRef: seeds.castRef || "", sceneVisual: seeds.treatment.scenes[i]?.visual || "", sceneWhere: seeds.treatment.scenes[i]?.where || "", ...(seeds.treatment.cast?.length ? { sceneCastWords: JSON.stringify(seeds.treatment.cast) } : {}), sceneIndex: String(i), sceneKind: sceneKind(seeds.treatment.scenes[i], i, seeds.treatment.scenes.length), sceneCount: String(seeds.treatment.scenes.length), ...(pk ? { propKey: pk } : {}), ...(sceneCastRefs.length ? { sceneCastRefs: JSON.stringify(sceneCastRefs) } : {}), ...(customProps.length ? { filmCustomProps: JSON.stringify(customProps) } : {}), ...(who ? { sceneWho: JSON.stringify(who) } : {}) },
       { method: "post" }
     );
   };
@@ -2887,7 +2893,7 @@ export default function FilmStudio() {
     const theirs = entry ? seeds.treatment.scenes.map((s, i) => (namedIn(entryName(entry), s?.visual || "") ? i : -1)).filter((i) => i >= 0) : [];
     setRecasting({ name, scenes: theirs });
     recastFetcher.submit(
-      { intent: "recastStoryCharacter", template, filmMode: "narrated", filmAspect, approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}), castRef: seeds.castRef || "", castName: name },
+      { intent: "recastStoryCharacter", template, filmMode: "narrated", filmAspect, filmTopic: topic, approvedTreatment: JSON.stringify(seeds.treatment), ...(pickedCast.length ? { filmCast: filmCastJson } : {}), castRef: seeds.castRef || "", castName: name },
       { method: "post" }
     );
   };
@@ -2927,6 +2933,8 @@ export default function FilmStudio() {
     if (c.twin === true || (c.twice || []).some((x) => x === true)) return t("Someone doubled");
     if (Array.isArray(c.lens) && c.lens.length) return t("Staring at camera");
     if (c.grimy === true) return t("Looks run-down");
+    // (a night scene that still reads as day after its goes — story-picture.ts → NOT_NIGHT_FAULT)
+    if ((c as { notNight?: boolean }).notNight === true) return t("Should be night");
     if ((c.dressed || []).some((x) => x === false)) return t("Wrong clothes");
     if (c.odd === true) return t("Looks impossible");
     if (c.bars === true) return t("Bars round the picture");

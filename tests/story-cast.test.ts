@@ -147,7 +147,8 @@ test("the cast rides with the story: storyboard → job → the finished piece",
   assert.ok(page.includes("...(narrated && (castRefIn(\"filmCastRef\") || seriesCastRef) ? { filmCastRef: castRefIn(\"filmCastRef\") || seriesCastRef } : {}),"));
   assert.ok(page.includes("{narrated && seeds?.castRef && <input type=\"hidden\" name=\"filmCastRef\" value={seeds.castRef} />}"));
   // drawing them all: the cards come back with the pictures; the next episode opens with the last one's faces
-  assert.ok(page.includes("const r = await narratedSceneSeeds({ template: tmpl.key, treatment: tr0, cast: storyCast, aspect: filmAspect, castRef: seriesCastRef || null });"));
+  // (…and the IDEA rides along, for a night idea's scenes — story-picture.ts → storyNight, 2026-11-25)
+  assert.ok(page.includes("const r = await narratedSceneSeeds({ template: tmpl.key, treatment: tr0, cast: storyCast, aspect: filmAspect, castRef: seriesCastRef || null, idea: topic });"));
   assert.ok(page.includes("return json({ ok: true, sceneImgs: r.sceneImgs, sceneFaults: r.sceneFaults, sceneChecks: r.sceneChecks, treatment: tr0, propForScene: {}, castRef: r.castRef, castCards: r.castCards });"));
   assert.ok(page.includes("const seriesCastRef = seriesHit?.ownCast || \"\";"));
   // re-drawing one: the same portraits go in, and a character first seen there comes back with its own
