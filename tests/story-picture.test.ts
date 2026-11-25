@@ -147,7 +147,7 @@ test("a horror cast does not grin: the format's own line reaches the narrated pi
   // only horror has a say (a kids' cartoon, a moral story and a short film keep whatever the scene calls for)
   assert.equal(engine.split("\n    faceMood: ").length - 1, 1);
   assert.ok(read("app", "lib", "narrated-story.server.ts").includes("Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : \"\"}${cam ? ` ${cameraLine(cam)}` : \"\"} ${[...notes, ...(withPlace ? placeNotes : [])].join(\" \")}"));
-  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("action, mood: tmpl.faceMood, setting: cleanSetting(where), style: twoStyle, aspect }));"));
+  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect }));"));
   const img = read("app", "lib", "image-generation.server.ts");
   assert.ok(img.includes("const mood = (opts.mood || \"\").replace(/\\s+/g, \" \").trim().slice(0, 160);"));
   assert.ok(img.includes("${moment}${mood ? ` ${mood}` : \"\"} ${consistencyNote}"));

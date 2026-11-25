@@ -192,6 +192,15 @@ export function actedRealism(cartoon: boolean | undefined, moment: string | null
  *  behind the tent. Said when the place or the moment says it is night. */
 const NIGHT_WORDS = /\b(?:night|nighttime|midnight|3\s?am|2\s?am|4\s?am|three in the morning|after dark|pitch[- ]dark|pitch black|moonlight|moonlit)\b/i;
 export const NIGHT_LINE = "It is the middle of the night: the sky outside is black, and the only light is what is really there — a lamp, a torch, a phone, the moon — never dusk, twilight or a blue evening glow.";
+/** A NIGHT FILM'S PLACES ARE AT NIGHT (2026-11-25, "She Smiles From the Shallows": its idea said "3am", its first shot's
+ *  words did not — "inside the tent" — and the tent was drawn at dusk, the lake blue in the evening light). A place whose
+ *  own words, and whose shot's, name no time of day is told the idea's night. */
+const DAY_WORDS = /\b(?:morning|dawn|sunrise|noon|midday|afternoon|daylight|daytime|sunset|dusk|evening|golden hour|sunlit|sunny)\b/i;
+export function nightSetting(setting: string, idea: string | null | undefined, shot?: string | null): string {
+  const s = String(setting || "");
+  if (!NIGHT_WORDS.test(String(idea || "")) || NIGHT_WORDS.test(`${s} ${shot || ""}`) || DAY_WORDS.test(`${s} ${shot || ""}`)) return s;
+  return `${s}, in the middle of the night`;
+}
 /** NOTHING GLOWS THAT IS NOT A LIGHT (2026-11-25, "Who Calls From the Shallows": the woman standing in the lake was
  *  drawn lit from inside like a lamp — a ghost's glow, in a film that is meant to look photographed). */
 export const NOTHING_GLOWS = "Nothing in the picture glows unless it is a light — a lamp, a torch, a screen, the moon: a pale figure is lit only by the lights that are there, never from within.";

@@ -436,7 +436,7 @@ test("the wiring: dealt per location, drawn into its master, said to its clips, 
   // DRAWN: the location's master is asked for in it — and a staged try that draws nothing never costs a film its seed
   assert.ok(eng.includes("const dealt = stagingAt.get(locKey) || undefined;"));
   assert.ok(eng.includes("const staging = attempt === 2 && !url ? undefined : dealt;"));
-  assert.ok(eng.includes("creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: cleanSetting(where), style: twoStyle, aspect }));"));
+  assert.ok(eng.includes("creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect }));"));
   // KEPT with the picture (and so in the checkpoint a restarted film is picked up from)
   assert.ok(eng.includes("masters[locKey] = { url, aOnLeft, a: firstName(spkA), b: firstName(spkB), ...(drawnAs ? { staging: drawnAs } : {}) };"));
   // one master per location is still the seed of every clip there, drawn from the first scene set there…
@@ -1405,4 +1405,20 @@ test("OUT OF DOORS NOTHING IS BUILT INTO THE PLACE (\"She Smiles From the Shallo
   const eng = fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.ok(eng.includes("const outdoors = openAirPlace(whereAt[i]);") && eng.includes("revealSeen = !!seen;"));
   assert.ok(eng.includes("creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared });") && eng.includes("creature: revealedCreature, outdoors, seen: revealSeen, implied });"));
+});
+
+test("A NIGHT FILM'S PLACES ARE AT NIGHT (the lake film: its idea said 3am, its first shot said only 'inside the tent', and the tent was drawn at dusk)", async () => {
+  const st = await import("../app/lib/acted-staging.ts");
+  const idea = "Two friends camping by a quiet lake wake at 3am to someone softly calling their names from the water.";
+  assert.equal(st.nightSetting("inside the tent", idea), "inside the tent, in the middle of the night");
+  assert.ok(st.actedRealism(false, "Philippa shakes Hana awake", st.nightSetting("inside the tent", idea)).includes(st.NIGHT_LINE), "…and so it is told the night");
+  // a place or a shot that names its own time keeps it; an idea that is not at night changes nothing
+  assert.equal(st.nightSetting("the lake at dawn", idea), "the lake at dawn");
+  assert.equal(st.nightSetting("the campsite", idea, "They arrive in the late afternoon sun"), "the campsite");
+  assert.equal(st.nightSetting("the campsite at night", idea), "the campsite at night");
+  assert.equal(st.nightSetting("inside the tent", "Two friends go camping by a quiet lake."), "inside the tent");
+  assert.equal(st.nightSetting("inside the tent", null), "inside the tent");
+  // every place's master is told it, from the film's own idea
+  const eng = fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8");
+  assert.ok(eng.includes("setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect"));
 });
