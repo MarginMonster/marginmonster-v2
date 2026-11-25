@@ -44,8 +44,8 @@ import {
   type FlowAngle, type FlowBeat, type FlowLoc, type FlowScene,
 } from "../app/lib/film-flow.ts";
 import {
-  SKETCH_AT_ONCE, SKETCH_MAX_PLACES, SKETCH_MODEL, keepSketches, parseSketchPlaces, placesForSketch, sketchAll, sketchAspect, sketchInput,
-  sketchKey, sketchPrompt, sketchesFor, unsketched,
+  SKETCH_AT_ONCE, SKETCH_BUDGET, SKETCH_MAX_PLACES, SKETCH_MODEL, SKETCH_WINDOW_MS, keepSketches, parseSketchPlaces, placesForSketch, sketchAll,
+  sketchAllowance, sketchAspect, sketchInput, sketchKey, sketchPrompt, sketchesFor, unsketched,
 } from "../app/lib/film-sketch.ts";
 import {
   GENERIC_NOTES, NEW_TAKE, REWRITE_FAILED, applyRewrite, noteByKey, parseRewrite, parseRewriteLines, rewriteBrief, rewriteSchema, speakersInPlace,
@@ -459,8 +459,39 @@ test("the drawing itself: the project's own helpers, its failures swallowed, and
   assert.ok(src.includes("const SKETCH_WAIT_MS = 45_000;"));
   // no token, no sketches — and no error
   assert.ok(src.includes("if (!process.env.REPLICATE_API_TOKEN) return places.map(() => null);"));
-  assert.ok(src.includes("export async function sketchPlaces(places: ReadonlyArray<SketchPlace>, aspect: SketchAspect, look?: string): Promise<(string | null)[]> {"));
+  assert.ok(src.includes("export async function sketchPlaces(places: ReadonlyArray<SketchPlace>, aspect: SketchAspect, look?: string, by?: string): Promise<(string | null)[]> {"));
   assert.ok(!/\bthrow\b/.test(codeOf(src)), "the code never throws");
+  // free to ask for, so held to a budget per member — and one answer per place sent, whatever was allowed
+  assert.ok(src.includes("const { allowed, stamps } = sketchAllowance(drawnAt.get(by) || [], now, places.length);"));
+  assert.ok(src.includes("return places.map((_, i) => drawn[i] ?? null);"));
+});
+
+test("a member's sketches are held to a budget an hour — past it a place gets no sketch, never an error (review 2026-11-25)", () => {
+  assert.equal(SKETCH_BUDGET, 240);
+  assert.equal(SKETCH_WINDOW_MS, 3_600_000);
+  const t0 = 1_000_000_000;
+  let r = sketchAllowance([], t0, 16);
+  assert.equal(r.allowed, 16);
+  assert.equal(r.stamps.length, 16);
+  r = sketchAllowance(Array.from({ length: 230 }, () => t0), t0 + 1000, 16);
+  assert.equal(r.allowed, 10, "only what is left of the budget");
+  assert.equal(r.stamps.length, 240);
+  assert.equal(sketchAllowance(r.stamps, t0 + 2000, 4).allowed, 0, "a spent budget draws nothing");
+  // an hour later the old ones are forgotten
+  r = sketchAllowance(r.stamps, t0 + SKETCH_WINDOW_MS + 1000, 4);
+  assert.equal(r.allowed, 4);
+  assert.equal(r.stamps.length, 4);
+  assert.equal(sketchAllowance([], t0, 0).allowed, 0);
+  assert.equal(sketchAllowance([], t0, -3).allowed, 0);
+});
+
+test("a place whose sketch failed is not asked for again and again (review 2026-11-25)", () => {
+  const places = placesForSketch(LIGHTHOUSE);
+  const tried = new Set([sketchKey(KITCHEN), sketchKey(STAIRS)]);
+  assert.deepEqual(unsketched(places, {}, tried).map((p) => p.where), [LAMP, ROCKS]);
+  assert.deepEqual(unsketched(places, { [sketchKey(LAMP)]: "/renders/l.jpg" }, tried).map((p) => p.where), [ROCKS]);
+  // without `tried`, as before: every place with no sketch
+  assert.equal(unsketched(places, {}).length, 4);
 });
 
 /* ---- film-rewrite -------------------------------------------------------------------------------------- */

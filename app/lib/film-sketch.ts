@@ -205,7 +205,28 @@ export function sketchesFor(flow: ReadonlyArray<{ where: string }>, kept: Readon
   return flow.map((loc) => kept[sketchKey(loc.where)] || null);
 }
 
-/** The places that have no sketch yet (after a place was renamed, or a scene was added). */
-export function unsketched(places: ReadonlyArray<SketchPlace>, kept: Readonly<Record<string, string>>): SketchPlace[] {
-  return places.filter((p) => !kept[sketchKey(p.where)]);
+/** The places that have no sketch yet (after a place was renamed, or a scene was added) — and, when `tried`
+ *  is given, that were not already sent. A sketch that failed comes back null and its place stays without
+ *  one: a page that asked again for every place still without a sketch, each time a request came back, would
+ *  ask for that place for ever (review of 2026-11-25). The page keeps the keys it sent (sketchKey) in `tried`. */
+export function unsketched(places: ReadonlyArray<SketchPlace>, kept: Readonly<Record<string, string>>, tried?: ReadonlySet<string>): SketchPlace[] {
+  return places.filter((p) => { const k = sketchKey(p.where); return !kept[k] && !(tried && tried.has(k)); });
+}
+
+/* ---- what one member can have drawn --------------------------------------------------------------------
+ * A sketch is free to the member and costs us $0.003; the request that asks for them is an ordinary form
+ * post. A board asks for each place once (unsketched + tried), so an honest member draws a few dozen in an
+ * evening — but nothing in the request itself stops a page (or a script) asking for sixteen, over and over.
+ * So the server keeps, per member, when their last sketches were drawn, and draws at most SKETCH_BUDGET in
+ * any SKETCH_WINDOW_MS; past it, a place simply gets no sketch (null — the drawn blank sheet), never an error.
+ * 240 an hour is fifteen full sixteen-place boards: far past anyone writing films, and $0.72 at most. */
+export const SKETCH_BUDGET = 240;
+export const SKETCH_WINDOW_MS = 60 * 60 * 1000;
+
+/** How many of `want` sketches may be drawn now, given when this member's earlier ones were (`stamps`, in
+ *  ms). Hands back the stamps still inside the window, with the allowed ones added — the caller stores them. */
+export function sketchAllowance(stamps: ReadonlyArray<number>, now: number, want: number, budget = SKETCH_BUDGET, windowMs = SKETCH_WINDOW_MS): { allowed: number; stamps: number[] } {
+  const live = stamps.filter((s) => now - s < windowMs);
+  const allowed = Math.max(0, Math.min(Math.max(0, Math.floor(want)), budget - live.length));
+  return { allowed, stamps: [...live, ...Array.from({ length: allowed }, () => now)] };
 }
