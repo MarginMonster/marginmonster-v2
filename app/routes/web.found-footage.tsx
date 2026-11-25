@@ -228,17 +228,21 @@ function Dice() {
   );
 }
 
-/** A box that grows with its words — never one to scroll inside. */
+/** A box that grows with its words — never one to scroll inside. Measured again whenever its WIDTH changes too (a
+ *  frame that turns from wide to tall when the camera is changed: seen at 390 px, a line cut off at its fifth row). */
 function GrowArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const fit = () => { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; };
+    let w = -1;
+    const fit = () => { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; w = el.clientWidth; };
     fit();
     document.fonts?.ready.then(fit).catch(() => undefined);
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
+    if (typeof ResizeObserver === "undefined") { window.addEventListener("resize", fit); return () => window.removeEventListener("resize", fit); }
+    const ro = new ResizeObserver(() => { if (el.clientWidth !== w) fit(); });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [props.value]);
   return <textarea ref={ref} rows={1} {...props} />;
 }
@@ -559,8 +563,9 @@ export default function FoundFootage() {
   const clocks = useMemo(() => footageClocks(whens.split("\n"), today, 7), [whens, today]);
   // a house camera's CAM numbers: the shop's own rooms first, then each new room in the order the film comes to it
   const houseCams = shown ? [...new Set([...d.kept, ...shown.moments.map((m) => m.room || "living")])] : d.kept;
-  const tall = aspect === "9:16";
-  const [loS, hiS] = secondsSpan(pick.camera);
+  // (a reel written for a camera carried another way keeps its own frames until it is written again)
+  const tall = (shown ? shown.aspect : aspect) === "9:16";
+  const [loS, hiS] = secondsSpan(shown ? shown.camera : pick.camera);
 
   // THE WRITER'S FORM: what one press would film — the card, the words, the camera, how many moments
   const writeFields = (
@@ -743,7 +748,7 @@ export default function FoundFootage() {
             {Array.from({ length: count }, (_, i) => (
               <li className="ff-mo" key={i} style={{ ["--i" as string]: i } as CSSProperties}>
                 <div className="ff-mo-card is-blank" aria-hidden="true"><span>— · —</span></div>
-                <Viewfinder camera={pick.camera} tall={tall} clock={clocks[i] || clocks[0]} seconds={1} osd="◀◀ TRACKING" />
+                <Viewfinder camera={pick.camera} tall={aspect === "9:16"} clock={clocks[i] || clocks[0]} seconds={1} osd="◀◀ TRACKING" />
               </li>
             ))}
           </ol>
@@ -882,7 +887,10 @@ export default function FoundFootage() {
         {film && shown && !otherCam && !rolling && (
           <div className={`ff-again${ideaMoved || countMoved ? " is-moved" : ""}`}>
             {(ideaMoved || countMoved) && (
-              <p role="status">{ideaMoved ? t("Your idea has changed since this reel was written.") : t("The reel has {n} moments — the cut says {m}.", { n: shown.moments.length, m: count })}</p>
+              <p role="status">
+                {ideaMoved ? t("Your idea has changed since this reel was written.") : null}{ideaMoved && countMoved ? " " : null}
+                {countMoved ? t("The reel has {n} moments — the cut says {m}.", { n: shown.moments.length, m: count }) : null}
+              </p>
             )}
             <writer.Form method="post" onSubmit={() => { sentIdea.current = ideaSig; setArmAgain(false); }}>
               {writeFields}
@@ -992,7 +1000,7 @@ const FF_STYLE = `
 .ff-step-ttl{display:flex;flex-direction:column;min-width:0;}
 .ff-step-kick{display:block;font:800 10.5px/1.2 Poppins,sans-serif;color:var(--ink3,#7E8882);text-transform:uppercase;letter-spacing:.06em;}
 .ff-step-ttl b{display:block;font:800 15.5px/1.15 Poppins,sans-serif;letter-spacing:-.01em;color:var(--ink,#14201A);overflow-wrap:break-word;}
-.ff-step-val{display:block;margin:9px 0 0;font-size:12.5px;line-height:1.38;color:var(--ink2,#4A554E);}
+.ff-step-val{display:block;margin:9px 0 0;font-size:12.5px;line-height:1.38;color:var(--ink2,#4A554E);text-wrap:balance;}
 .ff-step-cam .ff-step-val{margin:3px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .ff-panel{grid-column:1 / -1;min-width:0;background:var(--panel,#FDFBF4);border:1.5px solid var(--green,#0C7A46);border-radius:18px;padding:14px;box-shadow:0 0 0 1px rgba(12,122,70,.12),0 16px 36px -24px rgba(12,122,70,.4);}
 .ff-panel .ff-row{margin-bottom:-6px;}
@@ -1122,6 +1130,10 @@ const FF_STYLE = `
 .ff-vf-batt::after{content:"";position:absolute;right:-4px;top:30%;width:2px;height:40%;background:#fff;}
 .ff-vf-batt i{display:block;width:.42em;height:.7em;background:#fff;}
 .ff-vf-date{color:#FFC15A;}
+.is-camcorder .ff-vf-hud .tl,.is-camcorder .ff-vf-hud .bl{left:7%;}
+.is-camcorder .ff-vf-hud .tr,.is-camcorder .ff-vf-hud .br{right:7%;}
+.is-camcorder .ff-vf-hud .tl,.is-camcorder .ff-vf-hud .tr{top:7.5%;}
+.is-camcorder .ff-vf-hud .bl,.is-camcorder .ff-vf-hud .br{bottom:7.5%;}
 .ff-vf-corners{position:absolute;inset:3.5%;border:0;}
 .ff-vf-corners::before,.ff-vf-corners::after{content:"";position:absolute;inset:0;border:2px solid rgba(255,255,255,.9);clip-path:polygon(0 0,9% 0,9% 2px,2px 2px,2px 12%,0 12%,0 0,100% 0,100% 12%,calc(100% - 2px) 12%,calc(100% - 2px) 2px,91% 2px,91% 0);}
 .ff-vf-corners::after{transform:scaleY(-1);}
