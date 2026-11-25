@@ -73,6 +73,7 @@ test("what is SEEN and what is not: a voice from the water is heard; the woman t
   assert.equal(sightingOf({ ...at, moment: "Fakeby grabs the first thing he can find." }), null);
   assert.equal(sightingOf({ ...at, moment: "Testa's face goes white as Fakeby holds her." }), null);
   assert.equal(sightingOf({ ...at, moment: "Fakeby sweeps the light back across the lake — the woman is gone." }), null);
+  assert.equal(sightingOf({ ...at, moment: "Testa holds up the old photo of a smiling man by the lake." }), null, "a picture OF somebody is nobody in the place");
   // a weak word counts only standing, moving, watching
   assert.ok(sightingOf({ ...at, moment: "At the edge of the trees something stands perfectly still." }));
   assert.equal(sightingOf({ ...at, moment: "Shadows fill the tent as the lamp gutters." }), null);

@@ -1050,6 +1050,7 @@ const FIGURE_STRONG = /^(?:woman|women|lady|girl|man|men|boy|child|figure|figure
 const FIGURE_WEAK = /^(?:thing|shape|shadow|shadows|face|someone|somebody|something)$/i;
 const PRESENCE = /^(?:stands?|standing|stood|waits?|waiting|watch(?:es|ing)?|crouch(?:es|ing)?|rises?|rising|appears?|looms?|lurks?|moves?|moving|walks?|walking|steps?|stepping|drifts?|drifting|hangs?|hanging|sits?|sitting|leans?|leaning|peers?|peering|floats?|floating|wades?|wading|stares?|staring|smiles?|smiling|emerges?|emerging|waves?|waving)$/i;
 const POSSESSOR = /^(?:her|his|their|its|my|our|your)$/i;
+const IMAGE_OF = /^(?:photo|photos|photograph|photographs|picture|pictures|painting|paintings|drawing|drawings|portrait|portraits|statue|statues|doll|dolls|mannequin|poster|sketch|figurine|carving|reflection)$/i;
 const ARTICLE = /^(?:a|an|the|that|this|some|one)$/i;
 /** …and a clause that says it is NOT there ("the woman is gone", "the water is empty"). */
 const NOT_THERE = /\b(?:gone|vanished|disappear(?:s|ed)?|no longer|nowhere|not there|empty|nobody|no one)\b/i;
@@ -1093,6 +1094,8 @@ function figuresIn(text: string, o: { speakers: ReadonlyArray<string | null | un
       if (!strong && !FIGURE_WEAK.test(w)) continue;
       const prev = words[k - 1] || "";
       if (POSSESSOR.test(prev) || /['’]s$/i.test(prev)) continue;
+      // (a picture OF somebody is nobody in the place: "a photo of a smiling man", "a doll of a little girl")
+      if (words.slice(Math.max(0, k - 4), k).some((x) => IMAGE_OF.test(x))) continue;
       // (back to its article: "a pale woman", "the tall figure")
       let a = -1;
       for (let j = k - 1; j >= Math.max(0, k - 3); j--) if (ARTICLE.test(words[j])) { a = j; break; }
