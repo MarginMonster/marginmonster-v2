@@ -128,9 +128,20 @@ test("THE QUEUE'S BRANCH: one take, handheld or house, resumed from its own chec
   assert.ok(branch.includes('payload.takeCamera === "house"') && branch.includes('(await import("./house-take.server")).generateHouseTake({') && branch.includes('(await import("./take.server")).generateTake({'));
   // everything each pipeline checkpoints comes back on a resume (a retry from the Archive clears ck… first)
   for (const k of ["ckScare", "ckHouse", "ckSet", "ckScene", "ckRaw", "ckSpoke", "ckCut", "ckTake", "ckStill", "ckOpens"]) assert.ok(branch.includes(`${k}: ck("${k}")`), k);
+  // …and, to both makers of one take, the roll that was in the air when the job stopped and the host the kept roll came from
+  assert.equal(count(branch, 'ckRoll: ck("ckRoll"), ckRaw: ck("ckRaw"), ckHost: ck("ckHost"),'), 2);
   // a take of the member's own words reaches either maker with the card those words started from (take.ts → footageJob)
-  assert.equal(count(branch, 'idea: ck("takeOwn"),'), 2);
+  // — and a FILM's maker, the third (2026-11-25: footage-film.server.ts; it was 2 when there were two makers)
+  assert.equal(count(branch, 'idea: ck("takeOwn"),'), 3);
   assert.equal(count(branch, 'from: ck("takeFrom"),'), 2, "the card a take's own words started from reaches both makers");
+  // A FILM — the outline the member approved, or more than one moment asked for — goes to the film's maker, with the
+  // payload itself as what it resumes from (its own checkpoints, and the one take's it can fall back to); a film from a
+  // card left as it was starts from that card. ANYTHING ELSE is one take, by the same two calls as ever.
+  assert.ok(branch.includes('const takeFilm = !!ck("takeOutline") || (typeof payload.takeMoments === "number" && payload.takeMoments > 1);'));
+  assert.ok(branch.includes('const takeAssetId = takeFilm\n          ? await (await import("./footage-film.server")).generateFootageFilm({'));
+  assert.ok(branch.includes('outline: (await import("./footage-film")).cleanFootageOutline(ck("takeOutline")) || undefined,'), "what the page sent is cleaned again before it is filmed");
+  assert.ok(branch.includes('from: ck("takeFrom") || ck("takeIdea"),') && branch.includes('moments: typeof payload.takeMoments === "number" ? payload.takeMoments : undefined,') && branch.includes("resume: ck,"));
+  assert.ok(branch.includes('          : payload.takeCamera === "house"\n          ? await (await import("./house-take.server")).generateHouseTake({'));
   // the piece is created carrying its section and its job (as the lyric video's is) — nothing is tagged after
   assert.ok(!branch.includes("tagAssetSection("));
   for (const f of ["take.server.ts", "house-take.server.ts"]) {
@@ -153,10 +164,16 @@ test("A HOUSE TAKE KEEPS THE HOUSE: the room is drawn once and kept on the take'
   assert.ok(srv.includes("set = p ? await draw(p, [roomPic]) : roomPic;"));
   assert.ok(srv.includes("scene = await draw(houseScenePrompt(scare, { kept: !!known, ir }), known ? [set, known] : [set]);"));
   // the roll starts on the room as the take finds it and is told to arrive at the scene, fifteen seconds, wide
-  assert.ok(srv.includes('rollTake({ first: imageRef(base, set), scene: imageRef(base, scene), direction, aspect: "16:9", seconds: HOUSE_TAKE_SECONDS })'));
+  // (fifteen unless a found-footage FILM's moment asks for fewer — never under ten, never over the walk-in's fifteen)
+  assert.ok(srv.includes("const seconds = Math.max(10, Math.min(HOUSE_TAKE_SECONDS, Math.round(o.seconds ?? HOUSE_TAKE_SECONDS)));"));
+  // (…flying(): a roll this job asked for before it was stopped is waited for, never asked — and paid — for again)
+  assert.ok(srv.includes('rollTake({ ...flying(), first: imageRef(base, set), scene: imageRef(base, scene), direction, aspect: "16:9", seconds })'));
+  assert.ok(srv.includes("const flying = inTheAir(rawName ? undefined : resume.ckRoll, ckpt);"));
   // no words, no cut: listened to and looked at, and rolled once more if the engine spoke or CUT — the handheld take's
   // own rule (a camera screwed to the wall never cuts) — but never trimmed: the house's clock runs from its first frame
-  assert.ok(srv.includes("for (let again = 0; again < rerolls() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, true); again++) {"));
+  // (`more` is TAKE_REROLLS for one take; a film's moment hands in its own, from the few the film has for all of them)
+  assert.ok(srv.includes("const more = o.rerolls ?? rerolls;"));
+  assert.ok(srv.includes("for (let again = 0; again < more() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, true); again++) {"));
   assert.ok(srv.includes("cuts = await cutsIn(path.join(dir, rawName));") && srv.includes("if (betterRoll({ cuts: nextCuts.length, words: said(nextSpoke) }, { cuts: cuts.length, words: said(spoke) }, true)) {"));
   assert.ok(!srv.includes("takecut-") && !srv.includes("TRIM_WITHIN"));
   // nobody speaks over it: the room lifted with its hiss — and the house look with the house's night
@@ -175,6 +192,33 @@ test("A HOUSE TAKE KEEPS THE HOUSE: the room is drawn once and kept on the take'
   // the making runs without the database (a local run uses it); only generateHouseTake reads and writes rows
   const make = srv.slice(srv.indexOf("export async function makeHouseTake"), srv.indexOf("export async function generateHouseTake"));
   assert.ok(!make.includes("db."), "makeHouseTake touches no row");
+});
+
+/* 2026-11-25, the owner: "Found footage needs redone … It currently appears to pipeline singular events". A FILM
+ * (app/lib/footage-film.server.ts) makes each house moment with makeHouseTake; what it hands in is held here — and one
+ * take hands in none of it. */
+test("A FILM'S HOUSE MOMENT is made by makeHouseTake: it arrives written, with the clock its card says, the film's own thing and the best pictures", () => {
+  const srv = read("app", "lib", "house-take.server.ts");
+  // it arrives written — after a resumed job's own checkpoint, before any ready-made scare
+  const at = ["if (resume.ckScare) scare = JSON.parse(resume.ckScare);", "else if (o.scare) scare = o.scare;", "else if (ready) scare = { ...ready, title: ready.name };"].map((m) => srv.indexOf(m));
+  assert.ok(at[0] > 0 && at[0] < at[1] && at[1] < at[2], "in that order");
+  // the same one walks into every moment: the picture the film's thing was first drawn in is the second reference —
+  // handed in, never kept in the shop's house
+  assert.ok(srv.includes("const known = o.thingPic || thingImg(house, scare.thing.key);"));
+  assert.ok(srv.includes("if (!known && scare.thing.key) {"), "only a thing with a key of its own is kept in the house");
+  // THE CLOCK ITS CARD SAYS, and the house's own night stays where it was
+  assert.ok(srv.includes("else if (o.clock) cut = { clock: o.clock, night: house.night };"));
+  assert.ok(srv.indexOf("if (resume.ckCut) cut = JSON.parse(resume.ckCut);") < srv.indexOf("else if (o.clock) cut = { clock: o.clock, night: house.night };"));
+  // the best pictures ("upgrade the best image possible"): the strongest model at 2K, the everyday one behind it —
+  // and one take draws on the everyday one, as it always has
+  assert.ok(srv.includes('drawPicture({ prompt, ...(refs.length ? { image_input: refs.map((r) => imageRef(base, r)) } : {}), aspect_ratio: "16:9", output_format: "jpg" }, !!o.best);'));
+  const take = read("app", "lib", "take.server.ts");
+  const draw = take.slice(take.indexOf("export async function drawPicture("), take.indexOf("/** The take itself, started on `first`"));
+  assert.ok(draw.includes("export async function drawPicture(input: Record<string, unknown>, best = false): Promise<string> {"));
+  assert.ok(draw.includes('if (best) {\n    try { return await persistRemote(await repRun("google/nano-banana-pro", { ...input, resolution: "2K" }, 180_000), "jpg"); }'));
+  assert.ok(draw.includes('return persistRemote(await repRun("google/nano-banana", input), "jpg");'));
+  // a roll spent again says so (the film counts them: one a moment, three a film)
+  assert.ok(srv.includes("— rolled again`);\n      o.onReroll?.();"));
 });
 
 test("the Archive's in-progress card expects a take to take about eight and a half minutes (not a single clip's three)", async () => {
