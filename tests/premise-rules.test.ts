@@ -102,7 +102,10 @@ test("a told story's detail shot shows ONE person's hands — two people's hands
 test("a story picture has nobody the words do not put there, and everybody in it ONCE", async () => {
   const sp = await import("../app/lib/story-picture.ts");
   assert.ok(sp.NO_EXTRAS.includes("no passer-by, no figure in the distance, no one at a window or a door") && sp.NO_EXTRAS.includes("appears exactly ONCE"));
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${insideNote(visual) ? ` ${INSIDE_STAYS}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
+  // (…and nobody in a story picture looks into the camera: the parents "turning toward him in alarm" faced the lens)
+  const spx = await import("../app/lib/story-picture.ts");
+  assert.ok(spx.NO_LENS.startsWith("Nobody looks into the camera: each one looks at whoever or whatever this moment has them looking at"));
   // the look asks who is drawn twice — and an answer that does not say means nobody
   assert.ok(sp.storyCastPrompt(2).includes("look across the WHOLE first image for a second copy of them"));
   assert.deepEqual(sp.parseStoryTwice('{"seen":[true,true],"twice":[false,true]}', 2), [false, true]);

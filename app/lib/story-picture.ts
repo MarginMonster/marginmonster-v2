@@ -61,6 +61,10 @@ export const NO_EXTRAS = "Nobody is in the picture whom these words do not put t
 export const INSIDE_STAYS = "Whoever these words put INSIDE — and whoever looks OUT or peers out through a window or a door — stays inside: what is outside is seen THROUGH the glass of the window or the gap of the door — its frame and its glass between them — never standing beside them. And whoever these words put OUTSIDE — on the porch, at the glass from outside, at the door — stays OUTSIDE, on the far side of the glass from the room: never drawn behind the window among the room's curtains, never in the room.";
 const INSIDE_OUT = /\b(?:window|windows|door|doors|doorway|glass|porch|outside|through the|peers?|peering|peeks?|peeking)\b/i;
 export const insideNote = (visual: string): string => (INSIDE_OUT.test(String(visual || "")) ? INSIDE_STAYS : "");
+/** NOBODY LOOKS INTO THE CAMERA (2026-11-25, the tester's "three knocks" made as a told story: the boy grips his
+ *  parents' doorframe and both parents, "turning toward him in alarm", sat up in bed looking straight at the lens
+ *  — the owner, of a film the day before: "talking about something outside yet looking towards the camera"). */
+export const NO_LENS = "Nobody looks into the camera: each one looks at whoever or whatever this moment has them looking at — each other, the door, the window — the way people in a film never notice the camera.";
 /** A SOUND IS NEVER DRAWN in a picture either (the same night's film drew its knocks as a glowing ring on a window). */
 export const STORY_SOUND = "A sound is never drawn: nothing glows, rings or lights up where a knock, a bell or a voice comes from.";
 /** TODAY'S REAL WORLD, IN THE PICTURE TOO. The writer is told a home is an ordinary modern home (premise-rules.ts →
