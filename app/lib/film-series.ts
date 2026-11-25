@@ -22,7 +22,7 @@ import { posterOf } from "./story-poster.ts";
 /** What a film in a series stores on its asset (metaJson.series). */
 export type FilmSeries = { id: string; title: string; episode: number };
 /** What the WRITER of the next episode is given: the series, the recap, and who was in it before. */
-export type SeriesBrief = FilmSeries & { recap: string; characters: string[]; /** a TOLD series' places, each "name: look" as its last episode listed them (story-picture.ts) */ places?: string[]; /** where the last episode STOPPED — its last scene's own words (lastMomentOf) */ last?: LastMoment };
+export type SeriesBrief = FilmSeries & { recap: string; characters: string[]; /** a TOLD series' places, each "name: look" as its last episode listed them (story-picture.ts) */ places?: string[]; /** where the last episode STOPPED — its last scene's own words (lastMomentOf) */ last?: LastMoment; /** an ACTED series: the two who talked last time, by name (seriesSpeakers) */ speakers?: string[] };
 /** One cast member as a finished story film stores it (metaJson.cast) — enough to cast them again. */
 export type SeriesCastMember = { name: string; faceUrl: string | null; voiceId: string | null; kind?: "person" | "cartoon" | "monster"; look?: string };
 
@@ -223,8 +223,36 @@ export function seriesBriefOf(
   const places = want.narrated ? seriesPlaces(prev.bodyJson) : [];
   // (…and where it STOPPED: the last scene's own words, so the next one can pick up right there — 2026-11-25)
   const last = lastMomentOf(prev.bodyJson);
-  return { ...nextSeries(prev), recap: buildRecap(prev.bodyJson), characters: seriesCharacters(prev.bodyJson), ...(places.length ? { places } : {}), ...(last ? { last } : {}) };
+  // (…and, for an acted one, WHO talked: the next episode's two are the same two — seriesSpeakers)
+  const speakers = want.narrated ? [] : seriesSpeakers(prev.bodyJson);
+  return { ...nextSeries(prev), recap: buildRecap(prev.bodyJson), characters: seriesCharacters(prev.bodyJson), ...(places.length ? { places } : {}), ...(last ? { last } : {}), ...(speakers.length === 2 ? { speakers } : {}) };
 }
+
+/** THE TWO WHO TALK in an acted film — by the names its lines are said under, in the order they first speak,
+ *  spelled as its cast list spells them — or [] for a told story, or a film that kept no lines. (2026-11-25, live:
+ *  episode 2 of "Who Calls From Still Water", asked with the idea box empty, came back with Noriko and a new park
+ *  ranger "Dieter" — Selam was gone, though the brief said "bring them back rather than inventing new leads". A
+ *  rule about "the same characters" lost; two NAMES did not, so the brief now gives the names.) */
+export function seriesSpeakers(bodyJson: unknown): string[] {
+  const body = safeParse(bodyJson);
+  if (str(body.style).toUpperCase() === "NARRATED") return [];
+  const tr = isObj(body.treatment) ? body.treatment : {};
+  const scenes = (Array.isArray(tr.scenes) ? tr.scenes : []).filter(isObj);
+  const castNames = (Array.isArray(tr.cast) ? tr.cast : []).map((c) => leadName(oneLine(str(c)))).filter(Boolean);
+  const out: string[] = [];
+  for (const s of scenes) {
+    const who = quoted(captionSays(s.caption).who, LAST_WHO_MAX);
+    if (!who) continue;
+    const name = castNames.find((c) => bareName(c) === bareName(who)) || who;
+    if (!out.some((n) => bareName(n) === bareName(name))) out.push(name);
+    if (out.length === 2) break;
+  }
+  return out;
+}
+/** A cast line's NAME: the words before its first comma or dash ("the woman in the lake, pale…" → "the woman in
+ *  the lake"; "Dana, a wiry climber" → "Dana") — and the same name to COMPARE by, without its article or case. */
+const leadName = (line: string): string => oneLine(line.split(/[,—–:(]/)[0] || "").replace(/["“”<>]/g, "").trim().slice(0, 60);
+const bareName = (name: string): string => name.replace(/^(?:the|a|an)\s+/i, "").trim().toLowerCase();
 
 /** A series carried in a job payload, checked (null when there is none, or it is malformed). */
 export function seriesFromPayload(v: unknown): SeriesBrief | null {
@@ -235,7 +263,9 @@ export function seriesFromPayload(v: unknown): SeriesBrief | null {
   const places = Array.isArray(v.places) ? v.places.map((p) => oneLine(str(p)).replace(/<{3,}|>{3,}/g, " ").slice(0, 400)).filter((p) => p.length > 12).slice(0, 2) : [];
   // the last moment rides the queue too — and is checked again on the way out, like everything else here
   const last = lastMomentFrom(v.last);
-  return { ...s, recap, characters, ...(places.length ? { places } : {}), ...(last ? { last } : {}) };
+  // (the two who talk ride the queue too, checked again: two names, each one line and short, or none)
+  const speakers = Array.isArray(v.speakers) ? v.speakers.map((n) => quoted(str(n), LAST_WHO_MAX)).filter(Boolean) : [];
+  return { ...s, recap, characters, ...(places.length ? { places } : {}), ...(last ? { last } : {}), ...(speakers.length === 2 ? { speakers } : {}) };
 }
 
 /** What a film stores as meta.series — the three facts, nothing of the recap. */
@@ -265,6 +295,9 @@ export function seriesWriterBrief(s: SeriesBrief): string {
   const chars = s.characters.map((c) => c.replace(/<{3,}|>{3,}/g, " ")).filter(Boolean);
   const places = (s.places || []).map((p) => p.replace(/<{3,}|>{3,}/g, " ")).filter(Boolean);
   const last = lastMomentLines(s.last);
+  // (an acted series' two, by name; and whoever else its characters list, who does not talk — named, not quoted whole)
+  const two = (s.speakers || []).map((n) => n.replace(/<{3,}|>{3,}/g, " ").replace(/["“”]/g, "'").trim()).filter(Boolean);
+  const others = two.length === 2 ? chars.map((c) => leadName(c)).filter((n) => n && !two.some((t) => bareName(t) === bareName(n))) : [];
   return (
     `\nTHIS IS EPISODE ${s.episode} OF A SERIES called "${title}".\n` +
     (recap
@@ -289,6 +322,14 @@ export function seriesWriterBrief(s: SeriesBrief): string {
     //  comes AFTER this one, where the writer weighs it most. It may shape the first sentence, never move where or
     //  when the episode opens. Seen in review, 2026-11-25: nothing else in the prompt says which of the two wins.)
     (last ? `• HOW IT OPENS — decide it from the last moment: if the last episode ended UNRESOLVED (a threat present or coming, a question just raised, somebody in danger, a door just opened), this episode OPENS RIGHT THERE — the same place, the same people, moments later — and its FIRST scene says so in its own words. If it ended resolved, this episode starts later, on an event of its own. WHAT HAPPENS IN THIS EPISODE, when it is given below, comes first. Any later line about how the story opens may shape its first sentence — never where or when this episode opens.\n` : "") +
+    // THE TWO WHO TALK, BY NAME (live, 2026-11-25 — see seriesSpeakers): the general rule below lost to a new park
+    // ranger in Selam's place. And whoever else the series' characters list does not talk — the woman from the lake —
+    // keeps a "cast" entry of their own, word for word: the acted engine draws its thing FROM that entry (one face for
+    // the whole film: acted-staging.ts → storyThreat), and an episode that dropped it drew her from words alone.
+    (two.length === 2
+      ? `• THE TWO WHO TALK are ${two[0]} and ${two[1]}, as last time: they are this episode's two — by exactly those names, the first two entries of "cast" (${two[0]} first), with the same looks and the same voices — unless the last episode's own words took one of them out of the story. Nobody new takes either one's place.\n` +
+        (others.length ? `• ${others.map((o) => `"${o}"`).join(" and ")} — in THE SERIES' CHARACTERS above, and not one of the two who talk — ${others.length > 1 ? "keep a \"cast\" entry each" : "keeps a \"cast\" entry"}, word for word as above, in every episode they are in: that entry is what they are drawn from.\n` : "")
+      : "") +
     `• The SAME named characters continue, with the same looks and the same voices — keep every name exactly as before, and bring them back rather than inventing new leads.\n` +
     `• The story moves FORWARD from where the last episode stopped: do NOT retell or re-explain what already happened, and never repeat its scenes.\n` +
     // (asked for an episode 2 with the idea box left empty, a kite story came back as "let us fly our kite again")
