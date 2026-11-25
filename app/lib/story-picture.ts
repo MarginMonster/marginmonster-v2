@@ -147,8 +147,23 @@ export function parseUnclothed(raw: string): { unclothed: boolean; who: string }
 }
 /** Said FIRST when a picture is drawn again because somebody in it was not dressed. */
 export const CLOTHED_FIRST = "EVERY person and every figure in this picture is fully clothed, the far and the pale ones too: anyone standing in water wears a long, soaked, pale nightgown or their own soaked everyday clothes, covering the body from neck to knee.";
-/** …and the edit that dresses the one figure when the model will not draw it dressed. */
-export const clothedEdit = (who: string): string => `Edit this photo and change ONE thing: the figure ${who ? `(${who}) ` : ""}who has no clothes on now wears a long, soaked, pale nightgown that covers the body from neck to knee. Everything else stays exactly as it is — the same place, light, framing, people, faces, hair and what the others wear. No text anywhere.`;
+/** …and the edit that dresses the one figure when the model will not draw it dressed.
+ *  (…in what suits where that figure IS — review of stream S8, 2026-11-25: the edit was written for the woman in the lake,
+ *  and the look now runs on every film picture: a casting headshot cropped at bare shoulders, somebody asleep in a house
+ *  camera's bedroom, a story's portrait. Told "a long, soaked, pale nightgown" for every one of them, a dry man in a
+ *  headshot would be cast in a wet nightgown — and every shot is drawn "wearing what they wear in that photo". So: the
+ *  figure the look places in water keeps the lake's nightgown — a man in water a shirt and trousers, as dressedInWater
+ *  says — and anybody dry wears ordinary clothes that suit the place. Where the look did not say where the figure is,
+ *  the lake's edit, as it always was.) */
+const WET_WHO = /\b(?:water|lake|river|sea|ocean|pond|pool|creek|stream|swamp|marsh|surf|waves|shallows|wading|wades|swimming|floating|submerged|soaked|wet)\b|\b(?:waist|chest|knee|neck|ankle|shoulder)[- ]deep\b/i;
+const A_MAN = /\b(?:man|men|boy|boys|he|him|his|guy|father|dad|husband)\b/i;
+export const clothedEdit = (who: string): string => {
+  const w = String(who || "").trim();
+  const wear = w && !WET_WHO.test(w) ? "ordinary everyday clothes that suit the place and the moment (in bed, pajamas), covering the body from the neck down"
+    : w && A_MAN.test(w) ? "a shirt and trousers, soaked and clinging"
+    : "a long, soaked, pale nightgown that covers the body from neck to knee";
+  return `Edit this photo and change ONE thing: the figure ${w ? `(${w}) ` : ""}who has no clothes on now wears ${wear}. Everything else stays exactly as it is — the same place, light, framing, people, faces, hair and what the others wear. No text anywhere.`;
+};
 /** NIGHT IS NIGHT — LOOKED AT (2026-11-25, "Who Smiles In Still Water": the idea said 3am, the master was told "the sky
  *  outside is black … never dusk, twilight or a blue evening glow", and the lake outside the tent was drawn under a pale
  *  blue evening sky again — the fourth film that day). Asked of a film's master when its place or moment says night:

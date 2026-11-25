@@ -48,6 +48,16 @@ test("the look: one question, an answer that can only say yes when it says so, a
   for (const junk of ["", "yes", "{broken", '{"unclothed": "true"}']) assert.equal(parseUnclothed(junk).unclothed, false, junk);
   assert.ok(CLOTHED_FIRST.startsWith("EVERY person and every figure in this picture is fully clothed, the far and the pale ones too"));
   assert.ok(clothedEdit("far left, in the water").includes("the figure (far left, in the water) who has no clothes on now wears a long, soaked, pale nightgown") && clothedEdit("").includes("Everything else stays exactly as it is"));
+  // …in what suits where that figure IS (review of S8, 2026-11-25): the look runs on every film picture now — a dry
+  // headshot or somebody asleep is never put in a soaked nightgown; a man in water wears what dressedInWater gives him
+  assert.ok(clothedEdit("").includes("now wears a long, soaked, pale nightgown"), "nothing said of where: the lake's edit, as it was");
+  assert.ok(clothedEdit("far left, waist-deep in the lake").includes("now wears a long, soaked, pale nightgown"));
+  assert.equal(clothedEdit("the man waist-deep in the river").includes("now wears a shirt and trousers, soaked and clinging."), true);
+  for (const dry of ["the headshot, centre, bare shoulders", "in the bed on the left", "the woman by the window"]) {
+    const e = clothedEdit(dry);
+    assert.ok(e.includes("now wears ordinary everyday clothes that suit the place and the moment (in bed, pajamas)") && !e.includes("nightgown") && !e.includes("soaked"), dry);
+  }
+  assert.ok(clothedEdit("a woman standing in the shallows").includes("nightgown") && clothedEdit("women in the lake").includes("nightgown"), "a woman is never read as a man");
 });
 
 test("a film's master is looked at before it is kept: drawn again clothes-first, then dressed by an edit — and never lost to the look", () => {
