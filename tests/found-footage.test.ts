@@ -231,7 +231,14 @@ test("the Archive's in-progress card expects a take to take about eight and a ha
   const fs = await import("node:fs");
   const src = fs.readFileSync(new URL("../app/routes/web.archive.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.ok(src.includes("const TAKE_TYPICAL_SEC = 510;"));
-  assert.ok(src.includes(': (j.type === "GENERATE_VIDEO_AD" && p.contentType === "take") ? TAKE_TYPICAL_SEC'));
+  // (…one moment still is; a FILM of two or more moments counts its own way — footage-film.ts → footageFilmEta, the middle
+  //  of its range: under the take's eight and a half minutes, a healthy forty-minute film said "taking longer" from minute 9)
+  assert.ok(src.includes(': (j.type === "GENERATE_VIDEO_AD" && p.contentType === "take") ? takeTypicalSec(p)'));
+  assert.ok(src.includes("if (n < 2) return TAKE_TYPICAL_SEC;"));
+  assert.ok(src.includes("const [lo, hi] = footageFilmEta(o || { camera: cam, moments: Array.from({ length: n }, () => ({ when: \"\", line: \"\", seconds: momentSeconds(cam, undefined) })) });"));
+  // …and an ACTED film's, since films run to five minutes, is film-length's own (fifty-two shots is hours, not 52 minutes)
+  assert.ok(src.includes("? Math.max(600, actedTypicalSec(typeof p.filmScenes === \"number\" ? p.filmScenes : 8))"));
+  assert.ok(src.includes("const actedTypicalSec = (shots: number): number => { const [lo, hi] = renderMinutes(\"acted\", shots); return Math.round(((lo + hi) / 2) * 60); };"));
 });
 
 /* THEIR WORDS ARE KEPT (2026-11-25): in the first build of the box, a card tapped while the box held the member's own words

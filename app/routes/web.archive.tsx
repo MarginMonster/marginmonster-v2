@@ -77,6 +77,10 @@ import { showMeta } from "../lib/character-series";
 // (2026-11-24) a story film's poster is its cover on the shelf
 import { posterOf } from "../lib/story-poster";
 import { lyricEtaMinutes } from "../lib/lyric-video";
+// (how long a long acted film and a found-footage film take, by their own estimates — both pure files)
+import { renderMinutes } from "../lib/film-length";
+import { cleanFootageOutline, footageFilmEta, momentSeconds } from "../lib/footage-film";
+import type { CameraLook } from "../lib/camera-dress";
 // (2026-11-24) …and every other video and track wears a cover in its family's style, made by the Archive itself
 import { COVER_LABEL, coverAsk, coverKind, coverOf, type CoverFamily } from "../lib/archive-cover";
 import { coverFailedLately } from "../lib/archive-cover.server";
@@ -397,6 +401,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const TYPICAL: Record<string, number> = { GENERATE_VIDEO_AD: 180, GENERATE_IMAGE_AD: 45, GENERATE_SONG: 60, GENERATE_BLOG_POST: 40 };
   const COMMERCIAL_TYPICAL_SEC = 660;
   const TAKE_TYPICAL_SEC = 510;
+  /** An acted film's typical making time: the middle of its own range (film-length.ts → renderMinutes). Since films run
+   *  to five minutes, fifty-two shots is two to three hours — a minute a shot said "taking longer" two hours early. */
+  const actedTypicalSec = (shots: number): number => { const [lo, hi] = renderMinutes("acted", shots); return Math.round(((lo + hi) / 2) * 60); };
+  /** A found-footage piece's: one moment is a take; a film of two or more, the middle of its own range. */
+  const takeTypicalSec = (p: Record<string, unknown>): number => {
+    const o = typeof p.takeOutline === "string" ? cleanFootageOutline(p.takeOutline) : null;
+    const n = o ? o.moments.length : Number(p.takeMoments) || 1;
+    if (n < 2) return TAKE_TYPICAL_SEC;
+    const cam = (o?.camera || p.takeCamera || "phone") as CameraLook;
+    const [lo, hi] = footageFilmEta(o || { camera: cam, moments: Array.from({ length: n }, () => ({ when: "", line: "", seconds: momentSeconds(cam, undefined) })) });
+    return Math.round(((lo + hi) / 2) * 60);
+  };
   const KIND: Record<string, "video" | "image" | "music" | "blog"> = { GENERATE_VIDEO_AD: "video", GENERATE_IMAGE_AD: "image", GENERATE_SONG: "music", GENERATE_BLOG_POST: "blog" };
   const cookingCards: { jobId: string; kind: "video" | "image" | "music" | "blog"; status: "generating" | "failed"; productImage: string | null; productTitle: string; etaSec: number; elapsedSec: number; refunded: boolean; retryCost: number; waiting: boolean; ahead: number | null; /** a rendering STORY's own pictures, passing behind the spinner (story-picture.ts → cookingReel) */ reel: string[] }[] = [];
   // A PIECE THAT HAS NOT STARTED SAYS SO. One job of a kind is made at a time (lib/job-lanes.ts), so a
@@ -440,12 +456,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       //  asked for it over STILL pictures, the ladder's simple rung, which is the quick one)
       ? storyTypicalSeconds(typeof p.filmScenes === "number" ? p.filmScenes : 6, storyMotionOn(p.filmPictures))
       : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "film")
-      ? Math.max(600, (typeof p.filmScenes === "number" ? p.filmScenes : 8) * 60)
+      ? Math.max(600, actedTypicalSec(typeof p.filmScenes === "number" ? p.filmScenes : 8))
       : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "commercial") ? COMMERCIAL_TYPICAL_SEC
       // A FOUND-FOOTAGE TAKE: its pictures, one long engine roll and its encodes — about eight and a half
       // minutes end to end (a house take rolled through the real server path: 506 s, 2026-11-24). At the
       // 180 s of a single clip its card said "taking longer" from the third minute of a healthy take.
-      : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "take") ? TAKE_TYPICAL_SEC
+      // (…and a FOUND-FOOTAGE FILM of two or more moments is its own estimate — footage-film.ts → footageFilmEta —
+      //  or its card said "taking longer" from the ninth minute of a healthy forty-minute film)
+      : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "take") ? takeTypicalSec(p)
       // A LYRIC VIDEO: listening, a dozen pictures, the encode — longer for a longer song (lyric-video.ts)
       : (j.type === "GENERATE_VIDEO_AD" && p.contentType === "lyricvideo") ? lyricEtaMinutes(typeof p.lyricSeconds === "number" ? p.lyricSeconds : 180) * 60
       : TYPICAL[j.type];
