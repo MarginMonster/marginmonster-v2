@@ -22,7 +22,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  FOOTAGE_BUILD, FOOTAGE_CARD_DB, FOOTAGE_CARD_SECONDS, FOOTAGE_FPS, FOOTAGE_LIMITS, FOOTAGE_MAX_MOMENTS, FOOTAGE_OUTLINE_OTHER_CAMERA, FOOTAGE_OUTLINE_UNREADABLE, FOOTAGE_RATE,
+  FOOTAGE_BUILD, FOOTAGE_CARD_DB, FOOTAGE_CARD_SECONDS, FOOTAGE_DIRECTED_AT_ONCE, FOOTAGE_FPS, FOOTAGE_LIMITS, FOOTAGE_MAX_MOMENTS, FOOTAGE_OUTLINE_OTHER_CAMERA, FOOTAGE_OUTLINE_UNREADABLE, FOOTAGE_RATE,
   FOOTAGE_REROLLS, FOOTAGE_ROLLS_AT_ONCE, camStamp, cardText, cardWhen, cardWords, cleanFootageOutline, footageCardArgs, footageClocks, footageDirectionBrief,
   footageDirectionSchema, footageFilmEta, footageFilmJob, footageFps, footageFrom, footageIdea, footageJoinCheck, footageJoinGraph, footageMomentBrief, footageMomentSchema,
   footageOpensPrompt, footageOutlineAsk, footageOutlineBrief, footageOutlineSchema, footageScenePlan, footageScenePrompt, footageSeconds, footageTolerance, momentCount, momentScript, momentSeconds,
@@ -866,9 +866,25 @@ test("A JOB IS NEVER LOST: no outline, or fewer than two moments directed → ON
   assert.ok(srv.includes("const outline = cleanFootageOutline(o.outline);\n  const i = Math.floor(Number(o.index));"), "an outline the page sends for a rewrite is cleaned like any other");
   // the writers are the films' own model, held to the shapes
   assert.ok(srv.includes('const WRITER = "claude-sonnet-5";') && srv.includes("jsonSchema: footageOutlineSchema(n, o.camera === \"house\")") && srv.includes("jsonSchema: footageDirectionSchema(outline.camera)") && srv.includes('jsonSchema: footageMomentSchema(outline.camera === "house")'));
-  // THE DIRECTION: one call; the moments that failed are asked for ONCE more
-  assert.ok(srv.includes("const again = undirected(direction);") && srv.includes("try { direction = withDirected(direction, await ask(again)); }"));
-  assert.equal(count(srv, "await ask("), 2, "asked, and asked once more — never a third time");
+  // THE DIRECTION: the whole film asked for at once; the moments that failed are asked for ONCE more — never a third time
+  assert.ok(srv.includes("const again = undirected(direction);") && srv.includes('direction = withDirected(direction, await asked(again, "the second time"));'));
+  assert.equal(count(srv, "await asked("), 1);
+  assert.equal(count(srv, "asked(only, \"the first time\")"), 1);
+  // (a film of more than five moments is asked for in two halves, side by side — each call shown the WHOLE outline —
+  //  so no one answer is long enough to run into the request's own 120-second limit; a writer that does not answer
+  //  is no answer, never an error that loses the job)
+  assert.equal(FOOTAGE_DIRECTED_AT_ONCE, 5);
+  assert.ok(srv.includes("const parts: Array<number[] | undefined> = all.length > FOOTAGE_DIRECTED_AT_ONCE ? [all.slice(0, half), all.slice(half)] : [undefined];"));
+  assert.ok(srv.includes('let direction = (await Promise.all(parts.map((only) => asked(only, "the first time")))).reduce(withDirected, all.map(() => null) as FootageDirection);'));
+  assert.ok(srv.includes("catch (e) { console.error(`[footage-film] the direction's writer did not answer ${what}: ${short(e)}`); return all.map(() => null); }"));
+  // …and two halves put together are the whole film's direction, each moment in its own place
+  const o8 = parseFootageOutline({ ...ANSWER, moments: Array.from({ length: 8 }, (_, k) => ({ when: `NIGHT ${k + 1}`, line: `TEST moment number ${k + 1} of eight.`, seconds: 8 })) }, "phone", "9:16", 8)!;
+  const first = parseFootageDirection({ moments: [1, 2, 3, 4].map((n) => hand(n, { who: `one${n}` })) }, o8, [0, 1, 2, 3]);
+  const second = parseFootageDirection({ moments: [5, 6, 7, 8].map((n) => hand(n, { who: `two${n}` })) }, o8, [4, 5, 6, 7]);
+  const both = [first, second].reduce(withDirected, o8.moments.map(() => null));
+  assert.deepEqual(undirected(both), []);
+  assert.deepEqual(both.map((m) => m && m.cam === "hand" && m.take.who), ["one1", "one2", "one3", "one4", "two5", "two6", "two7", "two8"]);
+  assert.ok(footageDirectionBrief(o8, [4, 5, 6, 7]).includes("Write ONLY moments 5, 6, 7, 8 — the others are written.") && footageDirectionBrief(o8, [4, 5, 6, 7]).includes("1. NIGHT 1 — 8 seconds — TEST moment number 1 of eight."));
   // ONE TAKE INSTEAD — by the single take's own two makers, with the payload's own checkpoints; remembered, so a
   // resumed job goes straight back to its take
   assert.ok(srv.includes("catch (e) { return oneTake(`the outline could not be written (${short(e, 80)})`); }"));

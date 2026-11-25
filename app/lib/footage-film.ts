@@ -71,6 +71,9 @@ export const FOOTAGE_CARD_SECONDS = 1.2;
 /** How many handheld moments roll at once (a house camera's go one after another: its house is kept from one to
  *  the next). */
 export const FOOTAGE_ROLLS_AT_ONCE = 3;
+/** How many moments' parts one writer's answer is asked to hold: a longer film's direction is asked for in two
+ *  halves (each shown the whole outline), so no answer runs into the request's own time limit. */
+export const FOOTAGE_DIRECTED_AT_ONCE = 5;
 /** How many times a film may roll a moment again because the engine spoke or cut — one for any moment, and this many
  *  for the whole film (each is a whole take paid for a second time). */
 export const FOOTAGE_REROLLS = 3;

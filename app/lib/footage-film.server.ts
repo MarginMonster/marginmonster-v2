@@ -48,7 +48,7 @@ import { ffmpegTurn } from "./ffmpeg-turn";
 import { streamSeconds } from "./film-join.server";
 import { levelFilm } from "./film-loudness.server";
 import {
-  FOOTAGE_OUTLINE_UNREADABLE, FOOTAGE_REROLLS, FOOTAGE_ROLLS_AT_ONCE,
+  FOOTAGE_DIRECTED_AT_ONCE, FOOTAGE_OUTLINE_UNREADABLE, FOOTAGE_REROLLS, FOOTAGE_ROLLS_AT_ONCE,
   camStamp, cleanFootageOutline, footageCardArgs, footageClocks, footageDirectionBrief, footageDirectionSchema, footageFps, footageFrom, footageIdea,
   footageJoinCheck, footageJoinGraph, footageMomentBrief, footageMomentSchema, footageOpensPrompt, footageOutlineBrief, footageOutlineSchema, footageScenePlan,
   footageScenePrompt, momentCount, parseFootageDirection, parseFootageMoment, parseFootageOutline, undirected, withDirected,
@@ -108,16 +108,26 @@ export async function rewriteFootageMoment(o: { outline: FootageOutline; index: 
   throw new Error(FOOTAGE_WRITER_BUSY);
 }
 
-/** THE DIRECTION: one call for the whole film; the moments it did not answer well are asked for ONCE more. */
+/** THE DIRECTION: the whole film asked for at once; the moments not answered well are asked for ONCE more.
+ *  A film of more than FOOTAGE_DIRECTED_AT_ONCE moments is asked for in two halves, side by side — each call is shown
+ *  the WHOLE outline and writes its own half — so that no one answer is long enough to run into the request's own
+ *  time limit (http-retry.server.ts gives one attempt 120 seconds; eight moments' parts are some four thousand
+ *  tokens). */
 async function directFootage(outline: FootageOutline): Promise<FootageDirection> {
+  const all = outline.moments.map((_, i) => i);
   const ask = async (only?: number[]): Promise<FootageDirection> =>
-    parseFootageDirection(await anthropicText(footageDirectionBrief(outline, only), { model: WRITER, maxTokens: 600 + 700 * (only?.length || outline.moments.length), jsonSchema: footageDirectionSchema(outline.camera) }), outline, only);
-  let direction: FootageDirection = outline.moments.map(() => null);
-  try { direction = await ask(); } catch (e) { console.error(`[footage-film] the direction's writer did not answer: ${short(e)}`); }
+    parseFootageDirection(await anthropicText(footageDirectionBrief(outline, only), { model: WRITER, maxTokens: 600 + 700 * (only?.length || all.length), jsonSchema: footageDirectionSchema(outline.camera) }), outline, only);
+  const asked = async (only: number[] | undefined, what: string): Promise<FootageDirection> => {
+    try { return await ask(only); }
+    catch (e) { console.error(`[footage-film] the direction's writer did not answer ${what}: ${short(e)}`); return all.map(() => null); }
+  };
+  const half = Math.ceil(all.length / 2);
+  const parts: Array<number[] | undefined> = all.length > FOOTAGE_DIRECTED_AT_ONCE ? [all.slice(0, half), all.slice(half)] : [undefined];
+  let direction = (await Promise.all(parts.map((only) => asked(only, "the first time")))).reduce(withDirected, all.map(() => null) as FootageDirection);
   const again = undirected(direction);
   if (again.length) {
     console.log(`[footage-film] moment${again.length > 1 ? "s" : ""} ${again.map((i) => i + 1).join(", ")} asked for once more`);
-    try { direction = withDirected(direction, await ask(again)); } catch (e) { console.error(`[footage-film] the direction's writer did not answer the second time: ${short(e)}`); }
+    direction = withDirected(direction, await asked(again, "the second time"));
   }
   return direction;
 }
