@@ -528,7 +528,8 @@ test("a job that finished after being bounced back to waiting is finished — it
   // A reclaim hands the attempt BACK (attempts - 1), so the bounced row never carries the finishing run's
   // attempt number: pinned to it, the force-complete could not match, and the piece was rendered again.
   // (the FAILED reason became `why` on 2026-11-25: a job that stops twice at the same step is told so — job-stall.ts)
-  assert.ok(queue.includes('data: dead\n        ? { status: "FAILED", lastError: why }\n        : { status: "PENDING", attempts: Math.max(0, j.attempts - 1), payload: bumpedPayload },'), "the reclaim still hands the attempt back");
+  // (and a row it ends leaves without the stall rule's marks, so an Archive retry counts afresh — job-stall.ts)
+  assert.ok(queue.includes('data: dead\n        ? { status: "FAILED", lastError: why, payload: withoutStallMarks(j.payload) }\n        : { status: "PENDING", attempts: Math.max(0, j.attempts - 1), payload: bumpedPayload },'), "the reclaim still hands the attempt back");
   assert.ok(queue.includes('const why = looped ? STALLED_REASON : "Interrupted by a server restart — hit ROLL CAMERA to try again.";'));
   assert.ok(queue.includes('await db.job.updateMany({ where: { id: job.id, status: "PENDING" }, data: { status: "COMPLETED", processedAt: new Date() } });'));
   assert.ok(!queue.includes('status: "PENDING", attempts: myAttempt }'), "no attempt pin on the waiting row");

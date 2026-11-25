@@ -6,7 +6,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { db } from "../db.server";
 import { LANES, LANE_LOOKAHEAD, aheadInLine, claimNext, laneOf, laneWhere, storyKindOf, type Lane } from "./job-lanes";
 import { asJob } from "./ffmpeg-turn";
-import { STALLED_REASON, onReclaim, stalledLog } from "./job-stall";
+import { STALLED_REASON, onReclaim, stalledLog, withoutStallMarks } from "./job-stall";
 import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
 import { generateImageAd, editImage, isEditOp, createImage, tagAssetSection } from "./image-generation.server";
@@ -367,11 +367,12 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
     // re-rendered on our dime. A moved updatedAt means it's alive — hands off.
     // On a reclaim-to-PENDING we also hand back the attempt the dead process's
     // claim burned, so the resume doesn't count against the budget, and persist
-    // the bumped reclaim counter.
+    // the bumped reclaim counter. A row ended here leaves WITHOUT the stall rule's marks (job-stall.ts →
+    // withoutStallMarks): a retry from the Archive keeps the payload, and must start its count afresh.
     const claimed = await db.job.updateMany({
       where: { id: j.id, status: "IN_PROGRESS", updatedAt: j.updatedAt },
       data: dead
-        ? { status: "FAILED", lastError: why }
+        ? { status: "FAILED", lastError: why, payload: withoutStallMarks(j.payload) }
         : { status: "PENDING", attempts: Math.max(0, j.attempts - 1), payload: bumpedPayload },
     });
     if (claimed.count !== 1) continue; // completed, checkpointed, or taken by another instance — hands off

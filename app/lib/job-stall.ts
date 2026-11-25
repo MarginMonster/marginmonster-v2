@@ -98,6 +98,25 @@ export function onReclaim(raw: string): { payload: string; reclaims: number; sta
   }
 }
 
+/** WHAT THE REAPER WRITES WHEN IT ENDS A JOB (FAILED, any reason): the payload as it was, this rule's two marks taken
+ *  off. A failed job can be tried again from the Archive (web.archive.tsx → retry), and that keeps the payload — all
+ *  of it when nothing was refunded, everything but the checkpoints when it was. Left on, the marks of the run that
+ *  ended were compared with the NEW run's at its first hand-back: one deploy before the new run's first checkpoint
+ *  (the same empty set of checkpoints the old run looped on) or before its first new one (the same checkpoints, kept)
+ *  read as the second stall in a row, and a member's paid retry was failed by a single restart — found in review,
+ *  2026-11-25. A new run starts its count afresh. (Not JSON, or not an object: left exactly as it is.) */
+export function withoutStallMarks(raw: string): string {
+  try {
+    const p = JSON.parse(raw);
+    if (!p || typeof p !== "object" || Array.isArray(p) || !("__ckSig" in p || "__stalls" in p)) return raw;
+    delete p.__ckSig;
+    delete p.__stalls;
+    return JSON.stringify(p);
+  } catch {
+    return raw;
+  }
+}
+
 /** The operator's line for a job the rule ended: its type, its id, and where it was stuck. */
 export function stalledLog(o: { id: string; type: string; after: string | null; reclaims: number }): string {
   return `[worker] job ${o.id} (${o.type}) stopped twice in a row with no progress — stuck after ${o.after ? `checkpoint ${o.after}` : "its start (no checkpoint yet)"}, restart ${o.reclaims} — FAILED and refunded, not tried a third time`;

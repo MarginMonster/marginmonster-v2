@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  STALLED_REASON, STALLS_TO_FAIL, checkpointKeys, checkpointSig, isHeartbeat, lastCheckpoint, onReclaim, reclaimStall, stalledLog,
+  STALLED_REASON, STALLS_TO_FAIL, checkpointKeys, checkpointSig, isHeartbeat, lastCheckpoint, onReclaim, reclaimStall, stalledLog, withoutStallMarks,
 } from "../app/lib/job-stall.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -143,6 +143,47 @@ test("the marks the reaper writes: the restart counted as always, the fingerprin
   for (const bad of ["not json", "null", "42", "[1,2]"]) assert.deepEqual(onReclaim(bad), { payload: bad, reclaims: 0, stall: null }, bad);
 });
 
+test("A RETRY STARTS ITS COUNT AFRESH: a job the rule ended, tried again from the Archive, is never failed by its first restart (review, 2026-11-25)", () => {
+  // web.archive.tsx → retry: refunded → the payload kept without its ck* keys; not refunded → kept as it is
+  const retried = (ended: string, refunded: boolean): string => {
+    const p = JSON.parse(ended) as Record<string, unknown>;
+    return JSON.stringify(refunded ? Object.fromEntries(Object.entries(p).filter(([k]) => !k.startsWith("ck"))) : p);
+  };
+  // the reaper's three hand-backs of a job that loops; the third ends it, and what it WRITES is the payload it read,
+  // its marks taken off (job-queue.server.ts → reclaimOrphanJobs, the dead branch)
+  const loop = (start: string): string => {
+    let payload = reap(start).payload;
+    payload = reap(payload).payload;
+    const third = reap(payload);
+    assert.equal(third.failed, true);
+    return withoutStallMarks(payload);
+  };
+  for (const [what, start, refunded] of [
+    ["a job with no checkpoint at all, refunded", JSON.stringify({ contentType: "film", prePaid: true }), true],
+    ["a told story with its checkpoints, refunded", JSON.stringify(told()), true],
+    ["a told story with its checkpoints, nothing refunded (a free one)", JSON.stringify({ ...told(), freeGen: true }), false],
+  ] as const) {
+    const ended = loop(start);
+    assert.ok(!("__ckSig" in JSON.parse(ended)) && !("__stalls" in JSON.parse(ended)), `${what}: no marks left on the ended row`);
+    // the retry is handed back once, before it has made anything new (a deploy): one restart, never a loop
+    const first = reap(retried(ended, refunded));
+    assert.deepEqual([first.stall?.stalls, first.failed], [0, false], what);
+    // …and its own loop is still caught: two more hand-backs at the same step end it
+    const second = reap(first.payload);
+    assert.equal(second.failed, false, what);
+    assert.equal(reap(second.payload).failed, true, what);
+  }
+  // without the marks taken off, the same retry WAS failed by its first restart — the defect this guards
+  const kept = (() => { let p = reap(JSON.stringify({ contentType: "film", prePaid: true })).payload; p = reap(p).payload; return p; })();
+  assert.equal(reap(retried(kept, true)).failed, true);
+  // only the two marks go; everything else, the restart count included, is as it was; anything unreadable untouched
+  const marked = JSON.stringify({ ...told(), __reclaims: 2, __ckSig: "abc", __stalls: 1 });
+  assert.deepEqual(JSON.parse(withoutStallMarks(marked)), { ...told(), __reclaims: 2 });
+  const plain = JSON.stringify(told());
+  assert.equal(withoutStallMarks(plain), plain, "no marks: the very same string");
+  for (const bad of ["not json", "null", "42", "[1,2]"]) assert.equal(withoutStallMarks(bad), bad);
+});
+
 test("what the member reads and what the operator's log says", () => {
   assert.equal(STALLED_REASON, "It stopped twice at the same step and was not tried a third time — hit ROLL CAMERA to try again.");
   assert.equal(
@@ -155,12 +196,13 @@ test("what the member reads and what the operator's log says", () => {
 test("THE REAPER IS WIRED TO IT: the rule's answer fails the row, with its reason, refunded the way a job out of restarts is — and the write is still conditional", () => {
   const q = read("app", "lib", "job-queue.server.ts");
   const reaper = q.slice(q.indexOf("export async function reclaimOrphanJobs("), q.indexOf("export async function enqueueJob("));
-  assert.ok(q.includes('import { STALLED_REASON, onReclaim, stalledLog } from "./job-stall";'));
+  assert.ok(q.includes('import { STALLED_REASON, onReclaim, stalledLog, withoutStallMarks } from "./job-stall";'));
   assert.ok(reaper.includes("const { payload: bumpedPayload, reclaims, stall } = onReclaim(j.payload);"));
   assert.ok(reaper.includes("const looped = !!stall?.stuck;\n    const dead = j.attempts >= MAX_ATTEMPTS || reclaims >= MAX_RECLAIMS || looped;"));
   assert.ok(reaper.includes('const why = looped ? STALLED_REASON : "Interrupted by a server restart — hit ROLL CAMERA to try again.";'));
   // still pinned to the snapshot: a job that checkpointed a second after the scan is alive — hands off
-  assert.ok(reaper.includes('where: { id: j.id, status: "IN_PROGRESS", updatedAt: j.updatedAt },\n      data: dead\n        ? { status: "FAILED", lastError: why }\n        : { status: "PENDING", attempts: Math.max(0, j.attempts - 1), payload: bumpedPayload },'));
+  // (a row it ends leaves without the rule's marks — review, 2026-11-25: a retry keeps the payload)
+  assert.ok(reaper.includes('where: { id: j.id, status: "IN_PROGRESS", updatedAt: j.updatedAt },\n      data: dead\n        ? { status: "FAILED", lastError: why, payload: withoutStallMarks(j.payload) }\n        : { status: "PENDING", attempts: Math.max(0, j.attempts - 1), payload: bumpedPayload },'));
   // the operator's line, only for a row this reaper actually ended
   const claimedAt = reaper.indexOf("if (claimed.count !== 1) continue;");
   const logAt = reaper.indexOf("if (looped && stall) console.error(stalledLog({ id: j.id, type: j.type, after: stall.after, reclaims: reclaims + 1 }));");
