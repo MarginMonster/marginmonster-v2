@@ -94,7 +94,10 @@ test("a part's picture: each scene by the single cut's own chain, made exactly a
     "? `[${i}:v]${motionChain(m.fit, frames[i], o.W, o.H)}[c${i}]`",
     "? `[${i}:v]${kenBurns(i, frames[i], o.W, o.H)},format=yuv420p[c${i}]`",
     ": `[${i}:v]scale=${o.W}:${o.H}:force_original_aspect_ratio=increase,crop=${o.W}:${o.H},setsar=1,fps=${FPS},format=yuv420p[c${i}]`);",
-    "else a.push(\"-loop\", \"1\", \"-t\", (frames[i] / FPS).toFixed(3), \"-i\", s);",
+    // (one decoding thread a scene since 2026-11-25, as storyPartArgs puts it before each scene's own input)
+    "if (m) a.push(\"-threads\", \"1\", \"-i\", m.file);",
+    "else if (moving) a.push(\"-threads\", \"1\", \"-i\", s);",
+    "else a.push(\"-threads\", \"1\", \"-loop\", \"1\", \"-t\", (frames[i] / FPS).toFixed(3), \"-i\", s);",
     "const clipOf = (i: number) => (useClips && moving ? moves[i] : null);",
     "f.push(`[${N}:a]aresample=44100,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100,apad=pad_dur=${TAIL_S}[vo]`);",
     "f.push(`[${N + 1}:a]aresample=44100,volume=0.18,afade=t=out:st=${Math.max(0, total - 1.6).toFixed(2)}:d=1.6[bg]`);",
@@ -107,7 +110,8 @@ test("a part's picture: each scene by the single cut's own chain, made exactly a
   assert.deepEqual(mix, ["-y", "-i", "v.mp3", "-stream_loop", "-1", "-i", "m.mp3", "-filter_complex", "[0:a]aresample=44100,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100,apad=pad_dur=0.8[vo];[1:a]aresample=44100,volume=0.18,afade=t=out:st=59.65:d=1.6[bg];[vo][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]", "-map", "[aout]", "-t", "61.25", "-c:a", "pcm_s16le", "-f", "wav", "s.wav"]);
   assert.deepEqual(storySoundArgs({ voice: "v.mp3", music: null, total: 61.25, tail: 0.8, out: "s.wav" }).slice(0, 8), ["-y", "-i", "v.mp3", "-filter_complex", "[0:a]aresample=44100,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100,apad=pad_dur=0.8[vo]", "-map", "[vo]", "-t"]);
   assert.deepEqual(storyJoinArgs({ list: "l.txt", sound: "s.wav", total: 61.25, out: "o.mp4" }), ["-y", "-f", "concat", "-safe", "0", "-i", "l.txt", "-i", "s.wav", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-t", "61.25", "-movflags", "+faststart", "o.mp4"]);
-  assert.deepEqual(storyPartArgs([{ input: ["-i", "a.jpg"], chain: "A" }], [30], ["drawtext=x"], 3000000, "p.mp4"), ["-y", "-i", "a.jpg", "-filter_complex", partGraph(["A"], [30], ["drawtext=x"], 3000000), "-map", "[v]", "-an", ...STORY_PICTURE, "-f", "mp4", "p.mp4"]);
+  // (one decoding thread a scene since 2026-11-25: a part of six moving Full-HD scenes, 662 MB → 527 MB, measured)
+  assert.deepEqual(storyPartArgs([{ input: ["-i", "a.jpg"], chain: "A" }], [30], ["drawtext=x"], 3000000, "p.mp4"), ["-y", "-threads", "1", "-i", "a.jpg", "-filter_complex", partGraph(["A"], [30], ["drawtext=x"], 3000000), "-map", "[v]", "-an", ...STORY_PICTURE, "-f", "mp4", "p.mp4"]);
 });
 
 test("the cut is wired: a story of more than twelve scenes goes to the parts, down the single cut's own ladder, measured", () => {

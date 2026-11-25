@@ -905,8 +905,10 @@ export const footageTolerance = (fps: number): number => 2 / footageFps(fps) + 1
  *  picture; `silent[i]`: it has no sound (silence of its length is made). Each piece is fitted to w×h (never
  *  cropped: a dressed take's marks sit at its edges), its last frame held if it is a frame short, then cut; its
  *  sound cut or padded to the very same length, meeting the next in two 12 ms fades so a cut never clicks. Returns
- *  the graph and the film's length in frames. */
-export function footageJoinGraph(o: { frames: ReadonlyArray<number>; fps: number; w: number; h: number; silent?: ReadonlyArray<boolean> }): { graph: string; frames: number } {
+ *  the graph and the film's length in frames.
+ *  FOR A PART OF A LONGER FILM (footageJoinParts, below): `fadeIn` / `fadeOut` = this graph's first / last piece is
+ *  cut STRAIGHT to a piece of another part, so its sound meets it in the same 12 ms fade two pieces meet in. */
+export function footageJoinGraph(o: { frames: ReadonlyArray<number>; fps: number; w: number; h: number; silent?: ReadonlyArray<boolean>; fadeIn?: boolean; fadeOut?: boolean }): { graph: string; frames: number } {
   const n = o.frames.map((f) => Math.max(1, Math.round(Number(f) || 0)));
   if (!n.length) return { graph: "", frames: 0 };
   const fps = footageFps(o.fps), per = FOOTAGE_RATE / fps;
@@ -915,7 +917,7 @@ export function footageJoinGraph(o: { frames: ReadonlyArray<number>; fps: number
   n.forEach((frames, i) => {
     g.push(`[${i}:v]scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=bicubic,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=${fps},format=yuv420p,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=3,trim=end_frame=${frames},setpts=PTS-STARTPTS[v${i}]`);
     const samples = frames * per;
-    const fades = [...(i > 0 ? ["afade=t=in:d=0.012"] : []), ...(i < n.length - 1 ? [`afade=t=out:st=${(frames / fps - 0.012).toFixed(6)}:d=0.012`] : [])];
+    const fades = [...(i > 0 || o.fadeIn ? ["afade=t=in:d=0.012"] : []), ...(i < n.length - 1 || o.fadeOut ? [`afade=t=out:st=${(frames / fps - 0.012).toFixed(6)}:d=0.012`] : [])];
     const cut = `atrim=end_sample=${samples},asetpts=PTS-STARTPTS${fades.length ? `,${fades.join(",")}` : ""}[a${i}]`;
     g.push(o.silent?.[i]
       ? `anullsrc=r=${FOOTAGE_RATE}:cl=stereo,${cut}`
@@ -934,6 +936,64 @@ export function footageJoinCheck(o: { video: number | null | undefined; audio: n
   if (!(Math.abs(v - a) <= tol)) return { ok: false, why: `its picture runs ${v.toFixed(3)} s and its sound ${a.toFixed(3)} s` };
   if (!(Math.abs(v - want) <= tol)) return { ok: false, why: `its picture runs ${v.toFixed(3)} s where its cards and moments add up to ${want.toFixed(3)} s` };
   return { ok: true, why: "" };
+}
+
+/* ---- A FILM OF MORE THAN SIX PIECES IS JOINED IN PARTS ----
+ * The join above opens every card and every moment in ONE ffmpeg: sixteen Full-HD inputs for a film of eight
+ * moments — the shape of the cut that ran the 2 GB server out of memory four times on 2026-11-25 (a told story's
+ * twelve scenes in one ffmpeg: story-join.ts → STORY_ONE_CUT). So a film of more than FOOTAGE_PART_PIECES pieces is
+ * joined the way a long acted film is (acted-staging.ts → A LONG FILM IS JOINED IN PARTS): a few pieces at a time,
+ * each part by the very graph above and encoded the way the film is, its sound kept uncompressed; then the parts
+ * end to end, their picture copied as it is and the sound encoded once. Every seam of a found-footage film is a
+ * straight cut, so the edge of a part is a cut the film already has — its sound meets the next part's in the same
+ * two 12 ms fades (fadeIn / fadeOut), and the film is, frame for frame and sample for sample, the one graph's
+ * (tests/footage-film.test.ts joins sixteen stand-in pieces both ways and counts them). */
+
+/** No more pieces (cards and moments) than this are opened by one ffmpeg — an acted film's parts' own size
+ *  (acted-staging.ts → JOIN_PART_CLIPS), and a told story's (story-join.ts → STORY_ONE_CUT). */
+export const FOOTAGE_PART_PIECES = 6;
+
+/** One part of a film's join: its pieces (from `from` up to, not including, `to`), its graph and its length in frames. */
+export type FootagePart = { from: number; to: number; frames: number; graph: string };
+
+/** THE FILM IN PARTS. The same arguments as footageJoinGraph, for the whole film, and `most` = how many pieces one part
+ *  may open. One part — the whole film, its graph exactly footageJoinGraph's — up to `most` pieces; else as few parts
+ *  as hold it, as even as they come (the longer first). Returns the parts and the film's length in frames: the sum of
+ *  theirs, which is what one graph of the same pieces comes to. */
+export function footageJoinParts(o: { frames: ReadonlyArray<number>; fps: number; w: number; h: number; silent?: ReadonlyArray<boolean>; most?: number }): { parts: FootagePart[]; frames: number } {
+  const N = o.frames.length;
+  if (!N) return { parts: [], frames: 0 };
+  const most = Math.max(2, Math.round(Number(o.most) || FOOTAGE_PART_PIECES));
+  const k = Math.ceil(N / most);
+  const parts: FootagePart[] = [];
+  let from = 0;
+  for (let p = 0; p < k; p++) {
+    const to = from + Math.floor(N / k) + (p < N % k ? 1 : 0);
+    const made = footageJoinGraph({ frames: o.frames.slice(from, to), fps: o.fps, w: o.w, h: o.h, silent: o.silent?.slice(from, to), fadeIn: from > 0, fadeOut: to < N });
+    parts.push({ from, to, frames: made.frames, graph: made.graph });
+    from = to;
+  }
+  return { parts, frames: parts.reduce((s, x) => s + x.frames, 0) };
+}
+
+/** ffmpeg's arguments for ONE PART: its pieces' files (one decoding thread each), its graph, the film's picture
+ *  encoder (`picture`), its sound uncompressed — so the parts meet on a sample and the film's sound is encoded once,
+ *  whole — into `out`, a QuickTime file. */
+export function footagePartArgs(files: ReadonlyArray<string>, graph: string, picture: ReadonlyArray<string>, out: string): string[] {
+  return ["-y", ...files.flatMap((f) => ["-threads", "1", "-i", f]), "-filter_complex", graph, "-map", "[vc]", "-map", "[ac]", ...picture, "-c:a", "pcm_s16le", "-f", "mov", out];
+}
+
+/** The list the last pass reads: every part's file and its exact length at the film's rate (so each part starts on
+ *  the frame the one before it ended — a file's own length is only kept to the millisecond). */
+export function footageJoinList(files: ReadonlyArray<string>, frames: ReadonlyArray<number>, fps: number): string {
+  const rate = footageFps(fps);
+  return files.map((f, i) => `file '${String(f).replace(/\\/g, "/").replace(/'/g, "'\\''")}'\nduration ${(frames[i] / rate).toFixed(6)}\n`).join("");
+}
+
+/** ffmpeg's arguments for the film's LAST PASS: the parts end to end (`list`: footageJoinList), their picture copied as
+ *  it is, their sound encoded once (`sound`: the film's own sound encoder), ready to play as it downloads. */
+export function footageFilmArgs(list: string, sound: ReadonlyArray<string>, out: string): string[] {
+  return ["-y", "-f", "concat", "-safe", "0", "-i", list, "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy", ...sound, "-movflags", "+faststart", out];
 }
 
 /* ---- THE JOB A BUILDER ASKS FOR ---- */

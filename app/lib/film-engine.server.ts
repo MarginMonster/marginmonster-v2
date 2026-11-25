@@ -1399,7 +1399,10 @@ async function assembleFilm(opts: {
 
   const buildArgs = (useCaptions: boolean, useVo: boolean, useMusic: boolean): string[] => {
     const a: string[] = ["-y"];
-    opts.clips.forEach((c) => a.push("-i", c));
+    // (ONE DECODING THREAD A CLIP — 2026-11-25: a Kids Music Video is up to eight Full-HD clips in this one ffmpeg; at a
+    //  16-core host's thread counts, measured on TEST stand-ins, 469 MB with every decoder sized to the cores, 319 MB
+    //  with one thread each, in the same time — the clips are played one after another anyway)
+    opts.clips.forEach((c) => a.push("-threads", "1", "-i", c));
     const voOn = useVo && hasVo;
     const musicOn = useMusic && hasMusic;
     let idx = N;

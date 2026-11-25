@@ -581,11 +581,12 @@ export async function assembleNarrated(o: {
   const build = (useCaptions: boolean, moving: boolean, useMusic: boolean, styled = false, useClips = true): string[] => {
     const a: string[] = ["-y"];
     const clipOf = (i: number) => (useClips && moving ? moves[i] : null);
+    // (one decoding thread a scene, as a long story's parts have — story-join.ts → storyPartArgs: measured 2026-11-25)
     norm.forEach((s, i) => {
       const m = clipOf(i);
-      if (m) a.push("-i", m.file);
-      else if (moving) a.push("-i", s);
-      else a.push("-loop", "1", "-t", (frames[i] / FPS).toFixed(3), "-i", s);
+      if (m) a.push("-threads", "1", "-i", m.file);
+      else if (moving) a.push("-threads", "1", "-i", s);
+      else a.push("-threads", "1", "-loop", "1", "-t", (frames[i] / FPS).toFixed(3), "-i", s);
     });
     a.push("-i", o.voPath);
     const musicOn = useMusic && hasMusic;

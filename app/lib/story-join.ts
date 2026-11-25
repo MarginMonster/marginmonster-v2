@@ -117,9 +117,13 @@ export function partGraph(chains: ReadonlyArray<string>, frames: ReadonlyArray<n
 export const STORY_PICTURE = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "fast", "-tune", "film", "-crf", "18", "-pix_fmt", "yuv420p"] as const;
 
 /** ffmpeg's arguments for ONE PART: its scenes (`sceneIn`, in order), their lengths, its words and the story's
- *  clock at its first frame (partGraph), into `out` — the picture alone. */
+ *  clock at its first frame (partGraph), into `out` — the picture alone.
+ *  ONE DECODING THREAD A SCENE (measured 2026-11-25 on Full-HD TEST stand-ins at a 16-core host's thread counts: a
+ *  part of six moving scenes peaked at 662 MB with every H.264 decoder sized to the cores, 527 MB with one thread
+ *  each — and was made in 69 seconds, not 92: the scenes play one after another, so their decoders never needed
+ *  the cores). */
 export function storyPartArgs(scenes: ReadonlyArray<{ input: string[]; chain: string }>, frames: ReadonlyArray<number>, captions: ReadonlyArray<string>, clock: number, out: string): string[] {
-  return ["-y", ...scenes.flatMap((s) => s.input), "-filter_complex", partGraph(scenes.map((s) => s.chain), frames, captions, clock), "-map", "[v]", "-an", ...STORY_PICTURE, "-f", "mp4", out];
+  return ["-y", ...scenes.flatMap((s) => ["-threads", "1", ...s.input]), "-filter_complex", partGraph(scenes.map((s) => s.chain), frames, captions, clock), "-map", "[v]", "-an", ...STORY_PICTURE, "-f", "mp4", out];
 }
 
 /** ffmpeg's arguments for THE STORY'S SOUND, once, for all of it — the single cut's own mix: the voice levelled and

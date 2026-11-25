@@ -359,3 +359,114 @@ export function planFilter(cuts: Cut[], n: number, fps: number): string {
 
 /** How many times the picture changes in a video of these scenes at this pace (for the builder). */
 export const cutCount = (roles: ShotRole[], D: number, pace: Pace): number => Math.max(0, editPlan(roles, D, pace).length - 1);
+
+/* ---- THE FALLBACK JOIN, SIX CLIPS AT A TIME ----
+ * When the music video's own assembly cannot be made, its clips are joined as the engine gave them, each with its
+ * own sound. That was ONE ffmpeg of every clip — twenty-four Full-HD inputs for two minutes of five-second scenes:
+ * measured 2026-11-25 on TEST stand-ins at a 16-core host's thread counts, 1,163 MB (907 MB with one decoding thread
+ * a clip) on a server with 2 GB, in the one path that only runs when something has already gone wrong. Now: parts of
+ * at most MV_PART_CLIPS clips, each joined by the very graph the fallback always used, one decoding thread a clip,
+ * the picture encoded as the video is and the sound kept as PCM; then the parts end to end, the picture copied and
+ * the sound encoded once. */
+
+/** No more clips than this are opened by one ffmpeg of the fallback (the acted film's parts' own size). */
+export const MV_PART_CLIPS = 6;
+
+/** The fallback's graph for `n` clips (outputs [vo] and [ao]): each fitted to W×H at 30 fps, its sound at 44.1 kHz
+ *  stereo, all end to end — what the fallback has always been. */
+export function mvFallbackGraph(n: number, W: number, H: number): string {
+  const f: string[] = [];
+  const labels: string[] = [];
+  for (let i = 0; i < n; i++) {
+    f.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30[v${i}]`);
+    f.push(`[${i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
+    labels.push(`[v${i}][a${i}]`);
+  }
+  f.push(`${labels.join("")}concat=n=${n}:v=1:a=1[vo][ao]`);
+  return f.join(";");
+}
+
+/** The clips dealt into parts of at most `most`: as few as hold them, as even as they come. */
+export function mvFallbackParts(n: number, most = MV_PART_CLIPS): Array<{ from: number; to: number }> {
+  const N = Math.max(0, Math.floor(n));
+  if (!N) return [];
+  const k = Math.ceil(N / Math.max(1, most));
+  const out: Array<{ from: number; to: number }> = [];
+  let from = 0;
+  for (let p = 0; p < k; p++) { const to = from + Math.floor(N / k) + (p < N % k ? 1 : 0); out.push({ from, to }); from = to; }
+  return out;
+}
+
+/** ffmpeg's arguments for one part of the fallback: its clips (one decoding thread each), the fallback's graph, the
+ *  video's own picture encoder, its sound uncompressed — into `out`, a QuickTime file. */
+export function mvFallbackPartArgs(files: ReadonlyArray<string>, W: number, H: number, out: string): string[] {
+  return ["-y", ...files.flatMap((f) => ["-threads", "1", "-i", f]), "-filter_complex", mvFallbackGraph(files.length, W, H), "-map", "[vo]", "-map", "[ao]",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le", "-f", "mov", out];
+}
+
+/** …and the last pass: the parts end to end (`list`: one `file '…'` line a part), the picture copied, the sound
+ *  encoded once. */
+export function mvFallbackJoinArgs(list: string, out: string): string[] {
+  return ["-y", "-f", "concat", "-safe", "0", "-i", list, "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out];
+}
+
+/* ---- THE PACED EDIT, SIX CUTS AT A TIME ----
+ * planFilter (above) opens every clip ONCE and `split`s a clip the edit shows more than once. At "fast", a cut scene
+ * lends a window of its clip to the cut scenes BEFORE it, so that clip is decoded early — and every frame of it the
+ * split hands to its own, later, place waits in the graph until the edit gets there. Found in review, 2026-11-25,
+ * measured on TEST stand-ins (720×1280, 30 fps, one decoding thread a clip): two minutes of ten-second scenes at
+ * "fast" (12 clips, 43 cuts) CLIMBED 637 → 1,610 MB in one ffmpeg, on a server with 2 GB — the shape of the climb
+ * the live told cut showed that afternoon. Five-second scenes (24 clips, 39 cuts) stayed near 680 MB only because
+ * their windows are short. Now: the cut list in parts of at most MV_PART_CLIPS CUTS, each cut its own input (a clip
+ * shown twice is opened twice: nothing is split, nothing waits), cut by the very trim planFilter gives it, the
+ * part encoded as the edit always was; then the parts end to end, their picture copied, each starting on the frame
+ * the one before it ended. Frame for frame the edit planFilter makes (tests/memory-audit.test.ts, lossless). */
+
+/** How each cut of an edit is trimmed from its clip, exactly as planFilter trims it: its clip, its first frame and how
+ *  many frames (the edit's clock rounded once, so the cuts add up to the edit's length to the frame). */
+export function editTrims(cuts: ReadonlyArray<Cut>, fps: number): Array<{ src: number; first: number; frames: number }> {
+  let t = 0;
+  return cuts.map((c) => {
+    const first = Math.round(c.start * fps);
+    const frames = Math.round((t + c.dur) * fps) - Math.round(t * fps);
+    t += c.dur;
+    return { src: c.src, first, frames };
+  });
+}
+
+/** One part of the paced edit: cuts `from` up to (not including) `to`, the clip each one opens (`files[k]` = the
+ *  clip index of input k), its graph (out: [v]) and its length in frames. */
+export type MvEditPart = { from: number; to: number; files: number[]; graph: string; frames: number };
+
+/** THE PACED EDIT IN PARTS: as few parts of at most `most` cuts as hold the edit, as even as they come. Returns the
+ *  parts and the edit's length in frames (what planFilter's edit comes to). */
+export function mvEditParts(cuts: ReadonlyArray<Cut>, fps: number, most = MV_PART_CLIPS): { parts: MvEditPart[]; frames: number } {
+  const trims = editTrims(cuts, fps);
+  const parts = mvFallbackParts(trims.length, most).map(({ from, to }) => {
+    const own = trims.slice(from, to);
+    const g = own.map((x, k) => `[${k}:v]trim=start_frame=${x.first}:end_frame=${x.first + x.frames},setpts=PTS-STARTPTS[q${k}]`);
+    g.push(`${own.map((_, k) => `[q${k}]`).join("")}concat=n=${own.length}:v=1:a=0[v]`);
+    return { from, to, files: own.map((x) => x.src), graph: g.join(";"), frames: own.reduce((s, x) => s + x.frames, 0) };
+  });
+  return { parts, frames: parts.reduce((s, p) => s + p.frames, 0) };
+}
+
+/** How the paced edit's picture is encoded — what it always was (music-video-pipeline.server.ts → assembleMusicVideo). */
+export const MV_EDIT_PICTURE = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p"] as const;
+
+/** ffmpeg's arguments for ONE PART of the paced edit: one input a cut (one decoding thread each), its graph, the
+ *  edit's picture encoder, no sound, into `out`. */
+export function mvEditPartArgs(files: ReadonlyArray<string>, graph: string, out: string, picture: ReadonlyArray<string> = MV_EDIT_PICTURE): string[] {
+  return ["-y", ...files.flatMap((f) => ["-threads", "1", "-i", f]), "-filter_complex", graph, "-map", "[v]", "-an", ...picture, out];
+}
+
+/** The list the edit's last pass reads: every part and its exact length (so each starts on the frame the one before
+ *  it ended). */
+export function mvEditList(files: ReadonlyArray<string>, frames: ReadonlyArray<number>, fps: number): string {
+  return files.map((f, i) => `file '${String(f).replace(/\\/g, "/").replace(/'/g, "'\\''")}'\nduration ${(frames[i] / fps).toFixed(6)}\n`).join("");
+}
+
+/** …and the last pass: the parts end to end, the picture copied as it is, no sound (the song is laid after). */
+export function mvEditJoinArgs(list: string, out: string): string[] {
+  return ["-y", "-f", "concat", "-safe", "0", "-i", list, "-map", "0:v:0", "-c:v", "copy", "-an", out];
+}

@@ -2160,10 +2160,13 @@ export function joinEncode(encode: ReadonlyArray<string>): { picture: string[]; 
   return out;
 }
 
-/** ffmpeg's arguments for ONE part: its clips (`files`, in the part's own order), its graph, the film's picture
- *  encoder, uncompressed sound, into `out` (a .mov). */
+/** ffmpeg's arguments for ONE part: its clips (`files`, in the part's own order, one decoding thread each), its
+ *  graph, the film's picture encoder, uncompressed sound, into `out` (a .mov).
+ *  (ONE DECODING THREAD A CLIP, 2026-11-25: six Full-HD H.264 decoders each sized to a 16-core host's cores are
+ *   135 MB more than six of one thread — measured on a told story's part of the same shape, story-join.ts →
+ *   storyPartArgs — and slower; the shots play one after another, a dissolve two at a time.) */
 export function joinPartArgs(part: { graph: string }, files: ReadonlyArray<string>, encode: ReadonlyArray<string>, out: string): string[] {
-  return ["-y", ...files.flatMap((f) => ["-i", f]), "-filter_complex", part.graph, "-map", "[vc]", "-map", "[ac]", ...joinEncode(encode).picture, ...JOIN_PART_SOUND, "-f", "mov", out];
+  return ["-y", ...files.flatMap((f) => ["-threads", "1", "-i", f]), "-filter_complex", part.graph, "-map", "[vc]", "-map", "[ac]", ...joinEncode(encode).picture, ...JOIN_PART_SOUND, "-f", "mov", out];
 }
 
 /** The list the last pass reads: every part's file and its exact length (so each part starts on the frame the
