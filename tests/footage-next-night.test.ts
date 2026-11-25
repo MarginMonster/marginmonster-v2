@@ -405,3 +405,54 @@ test("wiring: the builder's server read — this shop's own piece, never a faile
   assert.ok(fn.includes("return footageSeriesOf(from);"));
   assert.ok(!fn.includes("request") && !fn.includes("formData"), "nothing from the page but the id");
 });
+
+/* ---- THE ARCHIVE: the same marks, to the footage builder ---- */
+
+test("the Archive: a footage piece's card, series shelf and viewer say \"Make it a series\" / \"Night N\" and lead to /web/found-footage?next=<latest>", () => {
+  const src = read("app", "routes", "web.archive.tsx");
+  const loader = src.slice(src.indexOf("export const loader"), src.indexOf("export const action"));
+  const page = src.slice(src.indexOf("export default function WebArchive()"));
+  // the loader hands the page that it is footage, and the night — nothing else new
+  assert.ok(loader.includes("...(m.footage ? { footage: true as const, night: m.night || m.next } : {})"));
+  // one place says where a mark leads and what it is called: the builder for footage, the Movie Maker for a film
+  assert.ok(page.includes('const nextHref = (n: Pick<PieceNext, "from" | "footage">) => (n.footage ? `/web/found-footage?next=${n.from}` : `/web/film?episode=${n.from}`);'));
+  assert.ok(page.includes('const nextNum = (n: Pick<PieceNext, "footage" | "night" | "next">) => (n.footage ? t("Night {n}", { n: n.night || n.next }) : t("Episode {n}", { n: n.next }));'));
+  // …and every surface asks it: the card's mark (and so a series' card), the open series' tile, the viewer's button
+  const mark = page.slice(page.indexOf("const nextMarkOf = (n: PieceNext) => {"), page.indexOf("const markHere = "));
+  assert.ok(mark.includes("href={nextHref(n)} title={nextTitle(n)}") && mark.includes("{nextNum(n)}"));
+  assert.ok(!mark.includes("/web/film?episode="), "no address of its own");
+  const tile = page.slice(page.indexOf("{openSeries && openNext && ("), page.indexOf("{/* OLDER PIECES, ASKED FOR WHERE THEY ARE WANTED"));
+  assert.ok(tile.includes("href={nextHref(openNext)}") && tile.includes('t("Night {n} — what happens next?", { n: openNext.night || openNext.next })'));
+  assert.ok(page.includes('<a className="wa-vbtn full wa-vnext" href={nextHref(viewer.next)} title={nextTitle(viewer.next)}>') && page.includes('t("Film night {n}", { n: viewer.next.night || viewer.next.next })'));
+  assert.equal(page.split("/web/film?episode=").length - 1, 1, "the Movie Maker's address is written once — in nextHref");
+  // what each leads to, run: a footage mark to its builder on the series' LATEST piece
+  const marks = nextMarks([
+    { id: "n2", status: "PENDING", metaJson: J({ ...FILM_META, series: { id: "n1", title: "TEST", episode: 2 } }), bodyJson: J(FILM_BODY) },
+    { id: "n1", status: "PENDING", metaJson: J(FILM_META), bodyJson: J(FILM_BODY) },
+  ]);
+  const href = (n: { footage?: true; from: string }) => (n.footage ? `/web/found-footage?next=${n.from}` : `/web/film?episode=${n.from}`);
+  assert.equal(href(marks.get("n1")!), "/web/found-footage?next=n2");
+  assert.equal(href(marks.get("n2")!), "/web/found-footage?next=n2");
+});
+
+test("every new word is in all five languages, its placeholders kept — and the card's pill stays short", () => {
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  const KEYS = [
+    "Continue this footage — the next night, on the same camera", "Night {n}", "Night {n} — what happens next?", "Film night {n}",
+    "Night {n} of “{title}”", "What happens on night {n}? (or leave it — it picks up where it stopped)",
+    "Empty is fine — the writer picks up where the last night stopped.", "Make new footage instead", "The same camera, every night",
+  ];
+  const blocks = dict.split(/\nconst (?:es|fr|de|zh|ur): Record<string, string> = \{\n/).slice(1);
+  assert.equal(blocks.length, 5);
+  for (const k of KEYS) {
+    assert.equal(dict.split(`\n  ${J(k)}:`).length - 1, 5, k);
+    for (const block of blocks) {
+      const line = block.split("\n").find((l) => l.startsWith(`  ${J(k)}:`))!;
+      const v = JSON.parse(line.slice(`  ${J(k)}: `.length).replace(/,$/, ""));
+      for (const ph of k.match(/\{\w+\}/g) || []) assert.ok(v.includes(ph), `${k} → ${v}`);
+      // (the card's pill sits beside a phone's short date: "Night 4" in every language is short — make-it-a-series.test.ts
+      //  measured 15 Latin letters to fit)
+      if (k === "Night {n}") assert.ok(v.replace("{n}", "12").length <= 10, v);
+    }
+  }
+});

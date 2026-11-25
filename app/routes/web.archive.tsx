@@ -610,9 +610,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // "next" (a series' latest) or "older"; the episode a tap makes; the film it continues from — and, for an
         // older one, its series' hashed key (archive-series.ts), where its tap goes. null for an ad, a music
         // video, a character's show (it makes its own), a telling in another language, a film that never finished.
+        // (FOUND FOOTAGE says so, and which night a tap films: its tap opens its own builder — S10c)
         next: (() => {
           const m: NextMark | undefined = a.type === "VIDEO_AD" ? nextOf.get(a.id) : undefined;
-          return m ? { state: m.state, next: m.next, from: m.from, episode: m.episode, of: m.of, key: m.state === "older" ? seriesKey("film", seriesKeyOf(a)) : null } : null;
+          return m ? { state: m.state, next: m.next, from: m.from, episode: m.episode, of: m.of, key: m.state === "older" ? seriesKey("film", seriesKeyOf(a)) : null, ...(m.footage ? { footage: true as const, night: m.night || m.next } : {}) } : null;
         })(),
         // ITS POSTER (story-poster.ts): a story film is shown on the shelf as its poster — title and cast over
         // its most "cast" picture — instead of whatever its first frame happened to be. null = the first frame.
@@ -2826,6 +2827,12 @@ export default function WebArchive() {
   // While pieces are being picked it stands aside, as a series' card does.
   type PieceNext = NonNullable<(typeof shelf)[number]["next"]>;
   const seriesWholeHref = (key: string) => { const n = new URLSearchParams(searchParams); for (const k of ["open", "q", "col"]) n.delete(k); n.set("tab", "video"); n.set("series", key); return `?${n.toString()}`; };
+  // FOUND FOOTAGE GOES ON AS ITS NEXT NIGHT (S10c): the same marks, but a tap opens the found-footage builder on the
+  // series' latest piece — the same camera, the same place, the same thing — and "Episode N" is "Night N", the night
+  // after the last one its cards reached. Everything else about a mark is a film's.
+  const nextHref = (n: Pick<PieceNext, "from" | "footage">) => (n.footage ? `/web/found-footage?next=${n.from}` : `/web/film?episode=${n.from}`);
+  const nextTitle = (n: Pick<PieceNext, "footage">) => (n.footage ? t("Continue this footage — the next night, on the same camera") : t("Continue this story — the next episode, with the same cast"));
+  const nextNum = (n: Pick<PieceNext, "footage" | "night" | "next">) => (n.footage ? t("Night {n}", { n: n.night || n.next }) : t("Episode {n}", { n: n.next }));
   // (on a phone the date beside a mark is the short one — CSS chooses: the card stays its own height)
   const shortDate = (when: string) => <span className="wa-date-short" suppressHydrationWarning>{new Date(when).toLocaleDateString(undefined, { month: "numeric", day: "numeric" })}</span>;
   const nextMarkOf = (n: PieceNext) => {
@@ -2835,8 +2842,8 @@ export default function WebArchive() {
       return <Link className={cls} to={seriesWholeHref(n.key || "")} preventScrollReset onClick={(e) => { if (selecting) e.preventDefault(); }} {...stand}>{t("Episode {n} of {total}", { n: n.episode, total: n.of })}</Link>;
     }
     return (
-      <a className={cls} href={`/web/film?episode=${n.from}`} title={t("Continue this story — the next episode, with the same cast")} onClick={(e) => { if (selecting) e.preventDefault(); }} {...stand}>
-        {n.state === "start" ? t("Make it a series") : <>{t("Episode {n}", { n: n.next })}<Ico n="arrow" size={11} /></>}
+      <a className={cls} href={nextHref(n)} title={nextTitle(n)} onClick={(e) => { if (selecting) e.preventDefault(); }} {...stand}>
+        {n.state === "start" ? t("Make it a series") : <>{nextNum(n)}<Ico n="arrow" size={11} /></>}
       </a>
     );
   };
@@ -3514,16 +3521,16 @@ export default function WebArchive() {
               series' own green and gold, the picture it continues from behind it, out of focus, like the next frame
               on the reel. One tap opens the Movie Maker on it, continued from the series' latest film. */}
           {openSeries && openNext && (
-            <a id="wa-nextep" className={`wb-asset wa-nexttile${selecting ? " off" : ""}`} href={`/web/film?episode=${openNext.from}`}
+            <a id="wa-nextep" className={`wb-asset wa-nexttile${selecting ? " off" : ""}`} href={nextHref(openNext)}
               aria-disabled={selecting || undefined} tabIndex={selecting ? -1 : undefined} onClick={(e) => { if (selecting) e.preventDefault(); }}
-              title={t("Continue this story — the next episode, with the same cast")}>
+              title={nextTitle(openNext)}>
               <span className="wa-nexttile-cover">
                 {nextFace && <img src={nextFace} alt="" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />}
                 <span className="wa-nexttile-frame" aria-hidden="true" />
-                <span className="wa-nexttile-num"><Ico n="filmreel" size={16} /> {t("Episode {n}", { n: openNext.next })}</span>
+                <span className="wa-nexttile-num"><Ico n={openNext.footage ? "camera" : "filmreel"} size={16} /> {nextNum(openNext)}</span>
               </span>
               <span className="m">
-                <span className="wa-title">{t("Episode {n} — what happens next?", { n: openNext.next })}</span>
+                <span className="wa-title">{openNext.footage ? t("Night {n} — what happens next?", { n: openNext.night || openNext.next }) : t("Episode {n} — what happens next?", { n: openNext.next })}</span>
                 <span className="s">{t("Picks up where it left off")}</span>
               </span>
             </a>
@@ -3791,7 +3798,7 @@ export default function WebArchive() {
                         worded as its card is — it was a quiet "Next episode" further down, and the owner did not find
                         it). The Movie Maker opens on the next episode of its series, continued from the series'
                         LATEST film whichever episode this one is — same cast, same voices — picking up where it stopped. */}
-                    {viewer.next && viewer.media && !viewer.expired && <a className="wa-vbtn full wa-vnext" href={`/web/film?episode=${viewer.next.from}`} title={t("Continue this story — the next episode, with the same cast")}><Ico n="filmreel" /> {viewer.next.state === "start" ? t("Make it a series") : t("Make episode {n}", { n: viewer.next.next })}<span className="c">{t("Picks up where it left off")}</span></a>}
+                    {viewer.next && viewer.media && !viewer.expired && <a className="wa-vbtn full wa-vnext" href={nextHref(viewer.next)} title={nextTitle(viewer.next)}><Ico n={viewer.next.footage ? "camera" : "filmreel"} /> {viewer.next.state === "start" ? t("Make it a series") : viewer.next.footage ? t("Film night {n}", { n: viewer.next.night || viewer.next.next }) : t("Make episode {n}", { n: viewer.next.next })}<span className="c">{t("Picks up where it left off")}</span></a>}
                     {canPost && linked.length > 0 && !capOpen && viewer.media && !viewer.isAudio && (
                       <button type="button" className="wa-vbtn full" disabled={busy} onClick={() => startPost(viewer.id)}>{isCreator ? t("Share to socials") : t("Post to socials")}</button>
                     )}
