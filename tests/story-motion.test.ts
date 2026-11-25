@@ -39,7 +39,7 @@ test("a scene is ONE clip as long as it is told — within what the engine makes
   // what is asked of the provider: the picture, the words, 720p, the seconds as it wants them — and nothing
   // it would refuse (it takes no negative prompt and no sound)
   const body = falVideoBody(STORY_MOTION_MODEL, { startImage: "https://x.test/renders/img-1.jpg", prompt: "p", durationSec: motionSeconds(9.4) });
-  assert.deepEqual(body, { prompt: "p", image_url: "https://x.test/renders/img-1.jpg", resolution: "720p", duration: "10" });
+  assert.deepEqual(body, { prompt: "p", image_url: "https://x.test/renders/img-1.jpg", resolution: "1080p", duration: "10" });
   assert.equal(STORY_MOTION_MODEL, "fal-ai/bytedance/seedance/v1/pro/fast/image-to-video");
 });
 
@@ -117,10 +117,11 @@ test("what it is told — the scene as written, nobody talking, nothing changed"
 });
 
 test("what it costs is known, and it can be turned off", () => {
-  assert.equal(MOTION_USD_PER_SECOND, 0.0216);
+  // (1080p since 2026-11-25 — the owner: "yes obviously upgrade the best image possible"; it was 720p, $0.0216)
+  assert.equal(MOTION_USD_PER_SECOND, 0.0486);
   // fal's page: $1 per million tokens, tokens = height × width × fps × seconds / 1024
-  assert.ok(Math.abs((720 * 1280 * 24) / 1024 / 1_000_000 - MOTION_USD_PER_SECOND) < 1e-9);
-  assert.equal(motionCost([12, 10, 9, 10, 12, 12]), 1.4, "a six-scene story of about a minute");
+  assert.ok(Math.abs((1080 * 1920 * 24) / 1024 / 1_000_000 - MOTION_USD_PER_SECOND) < 1e-9);
+  assert.equal(motionCost([12, 10, 9, 10, 12, 12]), 3.16, "a six-scene story of about a minute");
   assert.equal(motionCost([]), 0);
   assert.equal(motionOn({}, true), true);
   assert.equal(motionOn({ STORY_MOTION: "off" }, true), false);
@@ -131,7 +132,7 @@ test("what it costs is known, and it can be turned off", () => {
   // every scene of the longest story a maker can ask for moves — never ten that do and two that stand still
   assert.equal(MOTION_MAX_SCENES, 12);
   assert.ok(read("app", "routes", "web.film.tsx").includes("narratedScenes: { min: 3, max: 12, def: 6 },"));
-  assert.equal(motionCost(Array.from({ length: 12 }, () => 12)), 3.11, "the most a story's motion can cost");
+  assert.equal(motionCost(Array.from({ length: 12 }, () => 12)), 7, "the most a story's motion can cost (at 1080p)");
 });
 
 test("the wait is said honestly: a story whose pictures move takes minutes longer", () => {

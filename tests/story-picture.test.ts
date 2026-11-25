@@ -130,7 +130,7 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   //  back with a grown man at a screen in it; storyExtrasPrompt)
   assert.ok(s.includes("if (!pic) return null;") && s.includes("anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 500, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"), "every picture is looked at for strangers");
   // a look that fails or says nothing keeps the picture
-  assert.ok(s.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null) return null;") && s.includes("const faults = seenAs ? storyFaults(seenAs) : 0;"));
+  assert.ok(s.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null) return null;") && s.includes("const faults = seenAs ? storyFaults(seenAs) : 0;"));
   // wrong → drawn again with the fault named; the best of three goes is kept
   assert.ok(s.includes("fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || \"person\"));") && s.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
   // (…and a best-of that is still wrong SAYS so: the storyboard flags that scene — tests/story-cast.test.ts)

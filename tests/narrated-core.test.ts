@@ -315,10 +315,11 @@ test("caption style: only the three known styles, anything else is the fallback"
 });
 
 test("the frame a story is drawn on", () => {
-  assert.deepEqual(storyFrame("16:9"), { aspect: "16:9", W: 1280, H: 720 });
+  // (full HD since 2026-11-25 — the owner: "yes obviously upgrade the best image possible")
+  assert.deepEqual(storyFrame("16:9"), { aspect: "16:9", W: 1920, H: 1080 });
   assert.deepEqual(storyFrame("1:1"), { aspect: "1:1", W: 1080, H: 1080 });
-  assert.deepEqual(storyFrame("4:5"), { aspect: "9:16", W: 720, H: 1280 });
-  assert.deepEqual(storyFrame(null), { aspect: "9:16", W: 720, H: 1280 });
+  assert.deepEqual(storyFrame("4:5"), { aspect: "9:16", W: 1080, H: 1920 });
+  assert.deepEqual(storyFrame(null), { aspect: "9:16", W: 1080, H: 1920 });
 });
 
 // ---- ffmpeg really draws them -------------------------------------------------------------------------

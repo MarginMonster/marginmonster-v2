@@ -128,9 +128,10 @@ export function falVideoBody(model: string, opts: FalVideoOpts): Record<string, 
   }
   if (/seedance/.test(model)) {
     // SEEDANCE 1 PRO FAST (story-motion.ts; fal's schema, read 2026-11-24): image_url, duration "2"…"12",
-    // resolution (its default is 1080p — 720p is asked for by name), no sound, no negative_prompt, and an
-    // "auto" aspect that follows the seed. Its one caller asks a whole second from 2 to 12 (motionSeconds).
-    return { prompt: opts.prompt, image_url: opts.startImage, resolution: "720p", duration: String(opts.durationSec ?? 5) };
+    // resolution (its default is 1080p — asked for by name), no sound, no negative_prompt, and an "auto" aspect
+    // that follows the seed. Its one caller asks a whole second from 2 to 12 (motionSeconds). (720p until the
+    // owner, 2026-11-25, of the stories' "rough" look: "yes obviously upgrade the best image possible".)
+    return { prompt: opts.prompt, image_url: opts.startImage, resolution: "1080p", duration: String(opts.durationSec ?? 5) };
   }
   if (/kling-video\/v2\.6\//.test(model)) {
     // KLING 2.6 PRO (fal's schema, read 2026-11-24): required ["prompt", "start_image_url"] — its seed is

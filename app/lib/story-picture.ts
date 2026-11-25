@@ -58,8 +58,10 @@ export const NO_EXTRAS = "Nobody is in the picture whom these words do not put t
 /** (…and whoever LOOKS OUT is inside too: the re-made story's words were "At the front door: Leni, near the camera at
  *  the window's edge, peers out while far down the dark porch the ghost lady stands" — no "inside" — and Leni was
  *  drawn standing out on the porch with her, 2026-11-24) */
-export const INSIDE_STAYS = "Whoever these words put INSIDE — and whoever looks OUT or peers out through a window or a door — stays inside: what is outside is seen THROUGH the glass of the window or the gap of the door — its frame and its glass between them — never standing beside them. And whoever these words put OUTSIDE — on the porch, at the glass from outside, at the door — stays OUTSIDE, on the far side of the glass from the room: never drawn behind the window among the room's curtains, never in the room.";
-const INSIDE_OUT = /\b(?:window|windows|door|doors|doorway|glass|porch|outside|through the|peers?|peering|peeks?|peeking)\b/i;
+export const INSIDE_STAYS = "Whoever these words put INSIDE — and whoever looks OUT or peers out through a window or a door — stays inside: what is outside is seen THROUGH the glass of the window, the gap of the door or the thin wall of the tent — its frame and its glass between them — never standing beside them. And whoever these words put OUTSIDE — on the porch, at the glass from outside, at the door — stays OUTSIDE, on the far side of the glass from the room: never drawn behind the window among the room's curtains, never in the room.";
+// (…and a TENT, a car: "inside the tent, Oksana's hand grips the zipper pull … far beyond the thin orange nylon wall"
+//  was drawn with her OUTSIDE the tent zipping it from the grass, 2026-11-25 — none of these words was in the list)
+const INSIDE_OUT = /\b(?:window|windows|door|doors|doorway|glass|porch|outside|through the|peers?|peering|peeks?|peeking|tent|nylon|canvas|zipper|flap|windshield|car)\b/i;
 export const insideNote = (visual: string): string => (INSIDE_OUT.test(String(visual || "")) ? INSIDE_STAYS : "");
 /** NOBODY LOOKS INTO THE CAMERA (2026-11-25, the tester's "three knocks" made as a told story: the boy grips his
  *  parents' doorframe and both parents, "turning toward him in alarm", sat up in bed looking straight at the lens
@@ -92,7 +94,7 @@ export const TODAY_LOOK = "Where these words do not say how old a place is, it l
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference
  *  pictures, whether that same character is in it; and whether the picture is split into panels. */
-export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean; /** who stares into the lens (absent: nobody, or not asked) */ lens?: string[]; /** the place drawn run-down when its words do not say so */ grimy?: boolean };
+export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean; /** who stares into the lens (absent: nobody, or not asked) */ lens?: string[]; /** the place drawn run-down when its words do not say so */ grimy?: boolean; /** a smaller picture pasted into it */ inset?: boolean };
 /** …and what is handed to the storyboard about a picture that was KEPT with something still wrong (the
  *  best of its goes): the reading, and who was looked for — in the order of `seen` — so the scene's flag
  *  can say who is missing. */
@@ -139,14 +141,23 @@ export function storyExtrasPrompt(visual: string, who: ReadonlyArray<string> = [
  *  dingy and not just a regular household?"). Asked on the live reader with nine real stills, twice each: both
  *  clearly grimy rooms caught every time, all six clean ones passed every time (a bedroom that is only dark
  *  passed too). A size question asked beside it ("a face as large as a window") caught nothing — not asked. */
+/** …and, in the same answer, A PICTURE PASTED INTO THE PICTURE (2026-11-25: "What the Lake Learned", a DETAIL of a hand
+ *  on a flashlight, came back as the wide shore with the hand in a small framed box in its top-left corner — the
+ *  panel look-out only runs where the words describe two moments). Asked on the live reader with five real stills,
+ *  three times each: the inset caught every time, none seen in the four without one, the grime answers unchanged. */
 export function storyGrimePrompt(visual: string): string {
   const words = String(visual || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().replace(/[.\s]+$/, "").slice(0, 600);
-  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}". Look at the PLACE and describe in a few words its walls, floor and windows and the state they are in. "grimy" is true only if the place looks dirty, stained, damp, peeling, cracked, crumbling, dusty or abandoned — and those words do not say it is old, abandoned or ruined; an ordinary clean home that is simply dark at night is NOT grimy. Reply with ONLY this JSON: {"place": "…", "grimy": true or false}.`;
+  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}". First look at the PLACE and describe in a few words its walls, floor and windows and the state they are in. "grimy" is true only if the place looks dirty, stained, damp, peeling, cracked, crumbling, dusty or abandoned — and those words do not say it is old, abandoned or ruined; an ordinary clean home that is simply dark at night is NOT grimy. Then look at the WHOLE frame, corner to corner: "inset" is true only if a SMALLER separate picture sits inside this one — a framed box, a picture-in-picture, a second view or a close-up pasted into a corner or along an edge. A window, a mirror, a screen or a doorway that belongs to the scene is NOT an inset. Reply with ONLY this JSON: {"place": "…", "grimy": true or false, "corners": "what is in each corner, in a few words", "inset": true or false}.`;
 }
 /** …its answer — null when it cannot be read. */
 export function parseStoryGrime(raw: string): boolean | null {
   const g = jsonIn(raw)?.grimy;
   return typeof g === "boolean" ? g : null;
+}
+/** …and whether a smaller picture was pasted into it — null when the answer does not say. */
+export function parseStoryInset(raw: string): boolean | null {
+  const i = jsonIn(raw)?.inset;
+  return typeof i === "boolean" ? i : null;
 }
 /** A FACE AT A WINDOW IS A FACE'S SIZE (2026-11-25: the ghost lady's face at the living-room window came back as
  *  large as the window). Said with INSIDE_STAYS — whenever a picture has a window, a door or an outside. */
@@ -209,12 +220,13 @@ export function parseStoryPanels(raw: string): boolean | null {
 
 /** How wrong a picture is: a split picture is the worst (it cannot be used at all), then each cast member
  *  who is not in it. 0 = keep it. */
-export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0) + (c.lens?.length ? 2 : 0) + (c.grimy ? 2 : 0);
+export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0) + (c.lens?.length ? 2 : 0) + (c.grimy ? 2 : 0) + (c.inset ? 4 : 0);
 
 /** What to tell the picture model on the next go: the fault, named. `names` in the order of the references. */
 export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<string | undefined> = []): string {
   const out: string[] = [];
   if (c.panels) out.push("The last try was split into panels — draw ONE single picture of one moment that fills the whole frame");
+  if (c.inset) out.push("The last try had a smaller picture pasted into a corner of it — draw ONE picture that fills the whole frame, with no box, inset, close-up or second view inside it");
   const missing = c.seen.map((s, k) => (s ? -1 : k)).filter((k) => k >= 0);
   const gone = missing.map((k) => names[k] || `the character in reference image ${k + 1}`);
   if (gone.length) out.push(`${gone.join(" and ")} ${gone.length === 1 ? "was" : "were"} missing or drawn as someone else in the last try — draw ${gone.length === 1 ? "them" : "each of them"} EXACTLY as in their reference image: the same face, hair colour and hair`);

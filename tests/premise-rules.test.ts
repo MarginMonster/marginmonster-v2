@@ -117,7 +117,7 @@ test("a story picture has nobody the words do not put there, and everybody in it
   assert.equal(sp.storyFaults({ seen: [true, true], panels: false }), 0, "an older reading: nothing more");
   assert.ok(sp.storyFix({ seen: [true, true], panels: false, twice: [false, true] }, ["Nessa", "Dovey"]).includes("Dovey was drawn TWICE in the last try — they appear exactly ONCE in this picture, nowhere else in it"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}) };"));
+  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}) };"));
 });
 
 test("a told story's picture says which side of a door or a window everybody is on", () => {
@@ -185,7 +185,7 @@ test("every story picture is looked at for anybody its words do not put there �
   assert.equal(sp.storyFaults({ seen: [true], panels: false, extra: true }), 3);
   assert.ok(sp.storyFix({ seen: [true], panels: false, extra: true }, ["Priya"]).includes("draw NOBODY but who they name"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null) return null;"));
+  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null) return null;"));
 });
 
 /* WHOEVER LOOKS OUT, DRAWN OUT THERE (2026-11-24): the kids' horror story made again with INSIDE_STAYS in every
@@ -337,7 +337,17 @@ test("a lived-in home; a shadow drawn as a shadow; nobody stares into the lens; 
 test("a run-down place is looked for and drawn again; a face is a face's size; a hand in a detail is somebody's", async () => {
   const sp = await import("../app/lib/story-picture.ts");
   const q = sp.storyGrimePrompt("NEAR AND FAR: from inside the dark hallway, Nadia stands close to the camera.");
-  assert.ok(q.includes("It was asked to show exactly this: \"NEAR AND FAR: from inside the dark hallway, Nadia stands close to the camera\"") && q.includes("an ordinary clean home that is simply dark at night is NOT grimy") && q.includes("{\"place\": \"…\", \"grimy\": true or false}"));
+  assert.ok(q.includes("It was asked to show exactly this: \"NEAR AND FAR: from inside the dark hallway, Nadia stands close to the camera\"") && q.includes("an ordinary clean home that is simply dark at night is NOT grimy") && q.includes("{\"place\": \"…\", \"grimy\": true or false, \"corners\": \"what is in each corner, in a few words\", \"inset\": true or false}"));
+  // (…and, in the same answer, a smaller picture pasted into it — "What the Lake Learned": a hand on a flashlight in
+  //  a framed box in the corner of the shore. Any story's picture, a cartoon's too.)
+  assert.ok(q.includes("\"inset\" is true only if a SMALLER separate picture sits inside this one") && q.includes("A window, a mirror, a screen or a doorway that belongs to the scene is NOT an inset."));
+  assert.equal(sp.parseStoryInset('{"place":"a lake shore","grimy":false,"corners":"top-left: a framed close-up of a hand","inset":true}'), true);
+  assert.equal(sp.parseStoryInset('{"grimy":false}'), null);
+  assert.equal(sp.storyFaults({ seen: [true], panels: false, inset: true }), 4, "as bad as panels: it cannot be used");
+  assert.ok(sp.storyFix({ seen: [true], panels: false, inset: true }, []).includes("draw ONE picture that fills the whole frame, with no box, inset, close-up or second view inside it"));
+  // (…and the inside/outside rule reaches a tent: "inside the tent, Oksana's hand grips the zipper pull" was drawn outside it)
+  assert.equal(sp.insideNote("inside the tent, Oksana's hand grips the zipper pull"), sp.INSIDE_STAYS);
+  assert.ok(sp.INSIDE_STAYS.includes("the gap of the door or the thin wall of the tent"));
   assert.equal(sp.parseStoryGrime('{"place":"peeling stained wallpaper","grimy":true}'), true);
   assert.equal(sp.parseStoryGrime('{"place":"plain painted walls","grimy":false}'), false);
   assert.equal(sp.parseStoryGrime("no idea"), null);
@@ -345,9 +355,9 @@ test("a run-down place is looked for and drawn again; a face is a face's size; a
   assert.ok(sp.storyFix({ seen: [true], panels: false, grimy: true }, ["Nadia"]).includes("it is an ordinary, clean, cared-for place: freshly painted walls"));
   assert.ok(sp.TRUE_SIZE.includes("a face at a window or a door is the size of a face"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  // (a grown-up story's pictures only — a children's cartoon is not asked)
-  assert.ok(nar.includes("tmpl.childSafe ? Promise.resolve(\"\") : anthropicVision(storyGrimePrompt(visual), [pic], { maxTokens: 300, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"));
-  assert.ok(nar.includes("const grimy = tmpl.childSafe ? null : parseStoryGrime(String(grimeRaw || \"\"));"));
+  // (asked of every picture — the inset is anybody's fault; a run-down place counts only in a grown-up story)
+  assert.ok(nar.includes("anthropicVision(storyGrimePrompt(visual), [pic], { maxTokens: 360, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"));
+  assert.ok(nar.includes("const grimy = tmpl.childSafe ? null : parseStoryGrime(String(grimeRaw || \"\"));") && nar.includes("const inset = parseStoryInset(String(grimeRaw || \"\"));"));
   const film = read("app", "routes", "web.film.tsx");
   assert.ok(film.includes("if (c.grimy === true) return t(\"Looks run-down\");"));
   assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("\"Looks run-down\":").length - 1, 5, "es, fr, de, zh and ur");

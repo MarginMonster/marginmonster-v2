@@ -39,7 +39,7 @@ import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { cameraLine, sceneShot } from "./story-shots";
-import { DOORS_SHUT, FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NO_LENS, NOTHING_WRITTEN, ONE_PICTURE, SHADOW_SHAPE, shadowNote, STORY_SOUND, TODAY_LOOK, TRUE_SIZE, parseStoryGrime, storyGrimePrompt, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, characterKind, creatureHidden, creatureNote, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryLens, parseStoryOutside, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
+import { DOORS_SHUT, FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NO_LENS, NOTHING_WRITTEN, ONE_PICTURE, SHADOW_SHAPE, shadowNote, STORY_SOUND, TODAY_LOOK, TRUE_SIZE, parseStoryGrime, parseStoryInset, storyGrimePrompt, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, characterKind, creatureHidden, creatureNote, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryLens, parseStoryOutside, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -262,8 +262,9 @@ export async function narratedSceneSeeds(o: {
             castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
             twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
             anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 500, model: "claude-sonnet-4-6" }).catch(() => ""),
-            // (…and a place drawn run-down that its words do not call one — a grown-up story's: story-picture.ts)
-            tmpl.childSafe ? Promise.resolve("") : anthropicVision(storyGrimePrompt(visual), [pic], { maxTokens: 300, model: "claude-sonnet-4-6" }).catch(() => ""),
+            // (…and a place drawn run-down that its words do not call one — a grown-up story's — or a smaller picture
+            //  pasted into a corner of it — any story's: story-picture.ts)
+            anthropicVision(storyGrimePrompt(visual), [pic], { maxTokens: 360, model: "claude-sonnet-4-6" }).catch(() => ""),
           ]);
           const seen = castPics.length ? parseStoryCast(String(castRaw || ""), castPics.length) : [];
           // (…and whoever is drawn TWICE — the little brother on the sofa and again on the porch: story-picture.ts)
@@ -275,8 +276,9 @@ export async function narratedSceneSeeds(o: {
           // (…and whoever stares into the lens: story-picture.ts → parseStoryLens)
           const lens = parseStoryLens(String(extrasRaw || ""));
           const grimy = tmpl.childSafe ? null : parseStoryGrime(String(grimeRaw || ""));
-          if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null) return null;
-          return { seen: seen || castPics.map(() => true), panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}) };
+          const inset = parseStoryInset(String(grimeRaw || ""));
+          if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null) return null;
+          return { seen: seen || castPics.map(() => true), panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}) };
         } catch (e) {
           console.error(`[narrated] scene ${i + 1}: the picture could not be looked at, keeping it: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
           return null;
@@ -305,7 +307,7 @@ export async function narratedSceneSeeds(o: {
         if (!faults) { img = got; break; }
         if (!best || faults < best.faults) best = { img: got, faults, check: seenAs! };
         fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || "person"));
-        console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : ""].filter(Boolean).join(", ")} — drawing it again`);
+        console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : "", seenAs!.inset ? "a smaller picture pasted into it" : ""].filter(Boolean).join(", ")} — drawing it again`);
       }
       if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }
       if (!img) img = barred;

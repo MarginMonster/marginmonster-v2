@@ -129,9 +129,12 @@ export const KLING_HOST_LABEL: Record<KlingHost, string> = {
  *  and cut a little smoother than Replicate's (SSIM 0.967 / 0.924 against 0.947 / 0.910).
  *  FILM_KLING_HOST=replicate (or fal, for fal's pro tier) moves every film back; whichever host leads, the
  *  others stay behind it as the fallback. */
+/*  …and fal's PRO tier since 2026-11-25: the same Kling 3 Omni at 1080p for $0.14/s (standard is 720p) — the owner,
+ *  of the films' "rough" look: "yes obviously upgrade the best image possible". FILM_KLING_HOST=fal-std moves every
+ *  film back to the standard tier he picked by ear; standard is still the pro tier's first fallback. */
 export function filmKlingHost(): KlingHost {
   const v = (process.env.FILM_KLING_HOST || "").trim().toLowerCase();
-  return v === "replicate" ? "replicate" : v === "fal" ? "fal" : "fal-std";
+  return v === "replicate" ? "replicate" : v === "fal-std" ? "fal-std" : "fal";
 }
 
 /** A Kling 3 Omni dialogue clip (native lip-synced audio) — byte-for-byte the same role
@@ -172,6 +175,8 @@ async function klingDialogueClip(seedAbs: string, rawPrompt: string, stage: stri
       ]
     : [
         { name: "fal kling 3 omni", fal: true, run: () => viaFal(FAL_KLING3_OMNI) },
+        // (the same model's standard tier on fal next — 720p, but the same film, and the cheapest)
+        { name: "fal kling 3 omni standard", fal: true, run: () => viaFal(FAL_KLING3_OMNI_STD) },
         { name: "replicate kling 3 omni", fal: false, run: viaReplicate },
         { name: "fal kling 3 pro", fal: true, run: () => viaFal(FAL_KLING3) },
       ];
@@ -467,9 +472,11 @@ export async function assembleTestMovie(clips: string[], outPath: string, jobId?
   // hallucinated subtitles/captions, which sit along the bottom edge (the prompt ban
   // reduces but doesn't fully stop them). Heads stay (crop is anchored at the top);
   // only lower-chest/background is lost, which also tightens the faces slightly.
-  const [W, H] = aspect === "16:9" ? [1280, 720] : aspect === "1:1" ? [720, 720] : [720, 1280];
+  // (FULL HD, and a finer encode: 720p at veryfast/CRF 21 until the owner, 2026-11-25, of the night-time films'
+  //  "rough" look: "yes obviously upgrade the best image possible" — the clips themselves are 1080p now, fal's pro tier)
+  const [W, H] = aspect === "16:9" ? [1920, 1080] : aspect === "1:1" ? [1080, 1080] : [1080, 1920];
   const SCALE = `crop=iw:ih*0.90:0:0,scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30`;
-  const ENCODE = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"];
+  const ENCODE = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "fast", "-tune", "film", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"];
 
   // each shot as long as its PICTURE (its sound cut or padded to it); how each is joined to the one before: a shot
   // that continues the last (seeded from its real last frame) dissolves in 5 frames — near-identical frames, so it
@@ -599,7 +606,7 @@ export async function generateTestMovie(opts: {
   // room for groups + cinematic blocking), or 1:1. Threaded to EVERY seed render + the
   // clip render + the assembly crop so the whole film is natively that shape (not cropped).
   const aspect: "9:16" | "16:9" | "1:1" = opts.aspect === "16:9" || opts.aspect === "1:1" ? opts.aspect : "9:16";
-  const [AW, AH] = aspect === "16:9" ? [1280, 720] : aspect === "1:1" ? [720, 720] : [720, 1280];
+  const [AW, AH] = aspect === "16:9" ? [1920, 1080] : aspect === "1:1" ? [1080, 1080] : [1080, 1920];
   const dialogueEngine = opts.dialogueEngine === "veo" ? "veo" : "kling3";
   const jobId = opts.jobId;
   const resume = opts.resume || {};

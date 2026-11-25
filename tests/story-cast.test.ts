@@ -256,7 +256,7 @@ test("a picture kept with someone still missing says so: the scene is flagged, b
   assert.ok(page.includes("faults = r.sceneFaults[sceneIndex] ?? null; check = r.sceneChecks[sceneIndex] ?? null;"));
   // the flag is the music video's own — one thing to learn — and a told story's says WHO
   assert.ok(page.includes("const flagged = (isMv || narrated) && !!seeds && ((seeds.faults || [])[i] || 0) > 0 && rerollingScene !== i;"));
-  assert.ok(page.includes("if (c.panels === true) return t(\"Split picture\");"));
+  assert.ok(page.includes("if (c.panels === true || c.inset === true) return t(\"Split picture\");"), "(a smaller picture pasted into it is the same fault to a viewer)");
   assert.ok(page.includes("if (gone.length === 1 && gone[0].length <= 16 && (c.seen || []).filter((x) => x === false).length === 1) return t(\"{name} is missing\", { name: gone[0] });"), "one missing, with a name short enough for the flag");
   assert.ok(page.indexOf("return t(\"{name} is missing\"") < page.indexOf("return t(\"Missing someone\");"), "the name first; two missing is 'Missing someone'");
   assert.ok(page.includes("title={narrated ? t(\"We checked this picture and something looks off. Tap to draw it again.\") : t("));

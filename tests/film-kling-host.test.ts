@@ -9,14 +9,21 @@ import fs from "node:fs";
 
 const read = (p: string) => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
-test("fal's Kling 3 Omni endpoints are the O3 ones, and fal standard is the default host", () => {
+test("fal's Kling 3 Omni endpoints are the O3 ones, and fal's PRO tier (1080p) is the default host", () => {
   const src = read("app/lib/film-dialogue.server.ts");
   assert.ok(src.includes('const FAL_KLING3_OMNI = "fal-ai/kling-video/o3/pro/image-to-video";'));
   assert.ok(src.includes('const FAL_KLING3_OMNI_STD = "fal-ai/kling-video/o3/standard/image-to-video";'));
   const fn = src.slice(src.indexOf("export function filmKlingHost"), src.indexOf("export function filmKlingHost") + 400);
   assert.ok(fn.includes('process.env.FILM_KLING_HOST'), "read from the environment");
-  assert.ok(/: "fal-std";\s*\n\}/.test(fn), "unset (or anything unknown) means fal standard");
+  // (fal standard — the owner's pick by ear, 2026-11-19 — until 2026-11-25: "yes obviously upgrade the best image
+  //  possible". The same Kling 3 Omni; the pro tier is 1080p, standard 720p.)
+  assert.ok(/: "fal";\s*\n\}/.test(fn), "unset (or anything unknown) means fal's pro tier");
+  assert.ok(fn.includes('v === "fal-std" ? "fal-std"'), "FILM_KLING_HOST=fal-std moves films back to the standard tier");
   assert.ok(fn.includes('v === "replicate" ? "replicate"'), "FILM_KLING_HOST=replicate still moves films back");
+  const body = src.slice(src.indexOf("async function klingDialogueClip"), src.indexOf("async function dialogueClip"));
+  const pro = body.slice(body.lastIndexOf(": ["));
+  const a = pro.indexOf('name: "fal kling 3 omni"'), b = pro.indexOf('name: "fal kling 3 omni standard"'), c = pro.indexOf('name: "replicate kling 3 omni"');
+  assert.ok(a > 0 && b > a && c > b, "fal pro: pro → the same model's standard tier → Replicate");
 });
 
 test("each host falls back to the same model on the other host before fal's different Kling 3 Pro", () => {

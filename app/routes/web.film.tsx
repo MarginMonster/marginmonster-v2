@@ -2460,9 +2460,10 @@ export default function FilmStudio() {
   /** WHY a still is flagged, in two words — from what the check read off it (mv-cast.ts CastCheck). The
    *  flag used to say only "Worth a re-roll", with the reason in a tooltip a phone does not have. */
   const flagWhy = (i: number): string => {
-    const c = ((seeds?.checks || [])[i] || null) as { seen?: boolean[]; twin?: boolean; twice?: boolean[]; extra?: boolean; outside?: boolean; lens?: string[]; grimy?: boolean; dressed?: boolean[]; odd?: boolean; mic?: string; bars?: boolean; panels?: boolean; who?: string[] } | null;
+    const c = ((seeds?.checks || [])[i] || null) as { seen?: boolean[]; twin?: boolean; twice?: boolean[]; extra?: boolean; outside?: boolean; lens?: string[]; grimy?: boolean; inset?: boolean; dressed?: boolean[]; odd?: boolean; mic?: string; bars?: boolean; panels?: boolean; who?: string[] } | null;
     if (!c) return t("Worth a re-roll");
-    if (c.panels === true) return t("Split picture");
+    // (…or a smaller picture pasted into a corner of it — the same fault to a viewer: story-picture.ts)
+    if (c.panels === true || c.inset === true) return t("Split picture");
     // (a told story knows WHO it looked for: "Marta is missing")
     const gone = (c.seen || []).map((x, k) => (x === false ? (c.who || [])[k] || "" : "")).filter(Boolean);
     // (…a short name: the flag sits on a third of a phone-wide card, and a long one filled half the picture)

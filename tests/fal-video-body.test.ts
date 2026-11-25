@@ -106,8 +106,9 @@ test("each engine gets its own field names and nothing its schema lacks", () => 
   assert.deepEqual(falVideoBody(K26, { ...seed, durationSec: 10, negativePrompt: "blur" }), { prompt: "a hero shot", start_image_url: "https://x.test/renders/seed.jpg", duration: "10", generate_audio: false, negative_prompt: "blur" });
   // Seedance 2.5: prompt + image_url + resolution + duration + generate_audio; no negative prompt, no aspect
   assert.deepEqual(falVideoBody(SEEDANCE, { ...seed, negativePrompt: "x", generateAudio: true }), { prompt: "a hero shot", image_url: "https://x.test/renders/seed.jpg", resolution: "720p", duration: "5", generate_audio: true });
-  // Seedance 1 Pro Fast (a story's moving pictures): as before — 720p asked by name, no sound flag
-  assert.deepEqual(falVideoBody(SEEDANCE_V1, { ...seed, durationSec: 9, generateAudio: true }), { prompt: "a hero shot", image_url: "https://x.test/renders/seed.jpg", resolution: "720p", duration: "9" });
+  // Seedance 1 Pro Fast (a story's moving pictures): 1080p asked by name since 2026-11-25 (the owner: "upgrade the
+  // best image possible"), no sound flag
+  assert.deepEqual(falVideoBody(SEEDANCE_V1, { ...seed, durationSec: 9, generateAudio: true }), { prompt: "a hero shot", image_url: "https://x.test/renders/seed.jpg", resolution: "1080p", duration: "9" });
   // Veo: its frame is a flag — vertical unless the caller wants wide (it was always 9:16, so a wide
   // Creator video picked on Ultra came back vertical and was refunded after we had paid for it)
   assert.deepEqual(falVideoBody(VEO, seed), { prompt: "a hero shot", image_url: "https://x.test/renders/seed.jpg", aspect_ratio: "9:16", generate_audio: false });

@@ -34,8 +34,9 @@ export const STORY_MOTION_ENGINE = "seedance-1-pro-fast";
 /** The engine's own limits, in whole seconds. */
 export const MOTION_MIN_S = 2;
 export const MOTION_MAX_S = 12;
-/** What a second of it costs at the story's size (see the header). */
-export const MOTION_USD_PER_SECOND = 0.0216;
+/** What a second of it costs at the story's size (see the header) — 1080p since 2026-11-25 (the owner: "yes
+ *  obviously upgrade the best image possible"): 1920 × 1080 × 24 / 1024 tokens a second at $1 a million. */
+export const MOTION_USD_PER_SECOND = 0.0486;
 /** No more scenes than this are brought to life in one story — the most a story can have (web.film's
  *  narratedScenes.max), so a story never moves for ten scenes and stands still for its last two. */
 export const MOTION_MAX_SCENES = 12;

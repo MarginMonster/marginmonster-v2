@@ -1289,9 +1289,10 @@ export function kenBurns(i: number, frames: number, W: number, H: number): strin
   return `scale=${W * 2}:${H * 2}:force_original_aspect_ratio=increase,crop=${W * 2}:${H * 2},zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${n}:s=${W}x${H}:fps=30,setsar=1`;
 }
 
-/** The frame a story is drawn on. */
+/** The frame a story is drawn on — full HD (it was 720p until the owner, 2026-11-25, of the stories' "rough"
+ *  look: "yes obviously upgrade the best image possible"; the pictures are 2K and their clips 1080p). */
 export const storyFrame = (aspect: string | null | undefined): { aspect: "9:16" | "16:9" | "1:1"; W: number; H: number } =>
-  aspect === "16:9" ? { aspect: "16:9", W: 1280, H: 720 } : aspect === "1:1" ? { aspect: "1:1", W: 1080, H: 1080 } : { aspect: "9:16", W: 720, H: 1280 };
+  aspect === "16:9" ? { aspect: "16:9", W: 1920, H: 1080 } : aspect === "1:1" ? { aspect: "1:1", W: 1080, H: 1080 } : { aspect: "9:16", W: 1080, H: 1920 };
 
 /* ---- how loud a finished film is ----
  * An acted film's sound is whatever the video model performed; the first two came out at about -24 dB
