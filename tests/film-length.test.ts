@@ -270,6 +270,7 @@ test("what the planner is asked: its scenes counted, a turn in the middle, place
   assert.ok(nine.includes("about 5:00, in 9 SCENES"));
   assert.ok(nine.includes("5 or 6 spoken lines long"));
   assert.ok(nine.includes("the 5 PLACES this film is set in"));
+  assert.ok(nine.includes("They are the IDEA's own: a film the idea sets in one house has its places IN that house"), "five places never take a story out of where its idea put it");
   assert.ok(nine.includes("\"parts\" — EXACTLY 9 entries"));
   assert.ok(nine.includes("Scene 5 is THE TURN"));
   assert.ok(nine.includes("comes BACK to a place it has been at least once") && nine.includes("two scenes in a row are never in the same place"));
@@ -298,16 +299,19 @@ test("where a part stands: the whole plan, its own line of it, what came before 
   assert.ok(first.includes("  2. [A LOCKSMITH'S VAN in the rain] Bram wants to leave"));
   assert.ok(first.includes("Write ONLY scene 1"));
   assert.ok(first.includes("IT IS SET IN \"a narrow hallway at night, one bulb\" — every one of its shots has exactly these words as its WHERE"));
-  assert.ok(!first.includes("ended on:"), "nothing came before the first scene");
+  assert.ok(!first.includes("WHAT HAS BEEN SAID"), "nothing came before the first scene");
   assert.ok(first.includes("IT DOES NOT END THE FILM") && first.includes("what scene 2 picks up") && !first.includes("IT ENDS THE FILM"));
-  // the middle: told the last lines before it (two at most), and still not the end
-  const mid = partBrief("acted", { plan, index: 1, shots: 6, before: ["ODALYS: a.", "BRAM: b.", "ODALYS: I heard it turn. From this side."] });
-  assert.ok(mid.includes("The scene before it ended on:\n  BRAM: b.\n  ODALYS: I heard it turn. From this side.\nThis one begins AFTER that"));
-  assert.ok(!mid.includes("ODALYS: a."));
+  // the middle: handed EVERY line already written — not a summary — and still not the end
+  const one = ["ODALYS: It will not open. I have tried every key she left.", "BRAM: That lock was changed from the inside. Who was in here?", "ODALYS: I heard it turn. From this side."];
+  const mid = partBrief("acted", { plan, index: 1, shots: 6, said: [one] });
+  assert.ok(mid.includes("WHAT HAS BEEN SAID — every line of the scenes before this one, as written. They ARE the film so far: carry on from them, contradict none of them, and say none of them again.\n  scene 1:\n    ODALYS: It will not open. I have tried every key she left.\n    BRAM: That lock was changed from the inside. Who was in here?\n    ODALYS: I heard it turn. From this side.\nThis scene begins AFTER the last of that.\n"));
   assert.ok(mid.includes("IT DOES NOT END THE FILM") && mid.includes("what scene 3 picks up"));
   // the last: it ends the film — and it is back in the hallway, told what that place's picture was drawn from
-  const last = partBrief("acted", { plan, index: 2, shots: 6, seenAs: "Odalys holds a torch on the lock while Bram kneels at the \"stuck\" door" });
+  const two = ["BRAM: I am not going back in.", "ODALYS: Then give me the key you cut."];
+  const last = partBrief("acted", { plan, index: 2, shots: 6, said: [one, two, ["BRAM: a line of the scene being written is not said to it"]], seenAs: "Odalys holds a torch on the lock while Bram kneels at the \"stuck\" door" });
   assert.ok(last.includes("IT ENDS THE FILM") && !last.includes("IT DOES NOT END"));
+  assert.ok(last.includes("  scene 1:\n    ODALYS: It will not open.") && last.includes("  scene 2:\n    BRAM: I am not going back in.\n    ODALYS: Then give me the key you cut.\nThis scene begins AFTER"));
+  assert.ok(!last.includes("scene 3:\n") && !last.includes("a line of the scene being written"), "only the scenes BEFORE it");
   assert.ok(last.includes("The film has been here before: this place's picture was drawn from \"Odalys holds a torch on the lock while Bram kneels at the 'stuck' door\""));
   // a told story's part: no place of its own, the storyteller carries on
   const toldPlan = takePlan({ title: "t", musicMood: "m", cast: ["Wren, a girl of nine"], places: [], parts: [{ what: "Wren boards the ferry alone at dusk." }, { what: "The ferryman is not who she was told." }] }, { way: "narrated", parts: 2 })!;
@@ -315,5 +319,7 @@ test("where a part stands: the whole plan, its own line of it, what came before 
   assert.ok(part.startsWith("THIS IS PART 1 OF 2 of one longer story. Its plan"));
   assert.ok(part.includes("  1. Wren boards the ferry alone at dusk.") && !part.includes("IT IS SET IN"));
   assert.ok(part.includes("IT DOES NOT END THE STORY") && part.includes("its last sentence leaves open what part 2 picks up"));
-  assert.ok(partBrief("narrated", { plan: toldPlan, index: 1, shots: 6, before: ["And the wheelhouse door stood open."] }).includes("IT ENDS THE STORY"));
+  const second = partBrief("narrated", { plan: toldPlan, index: 1, shots: 6, said: [["Wren had never taken the ferry alone.", "And the wheelhouse door stood open."]] });
+  assert.ok(second.includes("IT ENDS THE STORY"));
+  assert.ok(second.includes("WHAT HAS BEEN TOLD — the storyteller's words for the parts before this one, as written. They ARE the story so far: carry on from them, contradict none of them, and say none of them again.\n  part 1: Wren had never taken the ferry alone. And the wheelhouse door stood open.\nThis part begins AFTER the last of that.\n"));
 });

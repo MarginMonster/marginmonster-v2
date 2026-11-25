@@ -232,7 +232,7 @@ export function planBrief(way: FilmWay, o: { sizes: ReadonlyArray<number>; per?:
     const P = filmPlaces(k);
     return (
       `\nTHIS IS THE PLAN OF A LONGER FILM — about ${clock}, in ${k} SCENES. A scene is ONE conversation between the two in ONE place, ${Math.min(...o.sizes) === Math.max(...o.sizes) ? `${o.sizes[0]}` : `${Math.min(...o.sizes)} or ${Math.max(...o.sizes)}`} spoken lines long. You do not write the lines now: you say what each scene IS, and the lines are written from it. Return:\n` +
-      `• "places" — the ${P} PLACE${P === 1 ? "" : "S"} this film is set in, each a short vivid label a set could be built from (e.g. "a dim old diner at night, rain on the windows").\n` +
+      `• "places" — the ${P} PLACE${P === 1 ? "" : "S"} this film is set in, each a short vivid label a set could be built from (e.g. "a dim old diner at night, rain on the windows"). They are the IDEA's own: a film the idea sets in one house has its places IN that house — its kitchen, its stairs, its porch — never somewhere the idea does not go.\n` +
       `• "parts" — EXACTLY ${k} entries, the scenes in order. Each has "where": ONE of the places, copied letter for letter; and "what": two or three plain sentences — what each of the two wants here, the ONE thing that is said, found or done that changes it, and how the scene ends. A scene's last sentence is what the next scene starts from.\n` +
       `HOW A FILM THIS LONG HOLDS: scene 1 opens with the trouble already under way — nobody is introduced, nobody explains what both already know. Every scene changes something: what one of them knows, wants or has. ` +
       (turn ? `Scene ${turn} is THE TURN — what the two believed is shown to be wrong, or what one of them wants changes — so the second half is not more of the first. ` : "") +
@@ -277,22 +277,29 @@ export function takePlan(raw: unknown, o: { way: FilmWay; parts: number }): Film
 }
 
 /** WHERE A PART STANDS — what its writer is told before the brief every film is written by: the idea is the whole
- *  film's, the plan is quoted, this is part `index` (from 0) of it, and what the part before it ended on.
- *  `before` = the last lines already written (their own words); `seenAs` (acted) = the VISUAL this part's place was
- *  first drawn from, when the film has been there before. */
-export function partBrief(way: FilmWay, o: { plan: FilmPlan; index: number; shots: number; idea?: string; before?: ReadonlyArray<string>; seenAs?: string }): string {
+ *  film's, the plan is quoted, this is part `index` (from 0) of it, and everything the parts before it said.
+ *  `said` = the lines already written, part by part, in their own words — ALL of them, not a summary: a writer
+ *  that has only the plan repeats what a scene already established, and contradicts what it cannot see (the plan
+ *  says what a scene is, never the name somebody gave the dog); `seenAs` (acted) = the VISUAL this part's place
+ *  was first drawn from, when the film has been there before. */
+export function partBrief(way: FilmWay, o: { plan: FilmPlan; index: number; shots: number; idea?: string; said?: ReadonlyArray<ReadonlyArray<string>>; seenAs?: string }): string {
   const k = o.plan.parts.length;
   const j = Math.max(0, Math.min(k - 1, o.index));
   const unit = way === "acted" ? "SCENE" : "PART";
   const idea = oneLine(o.idea).replace(/"/g, "'");
   const sheet = o.plan.parts.map((p, i) => `  ${i + 1}. ${way === "acted" ? `[${p.where}] ` : ""}${p.what}`).join("\n");
-  const before = (o.before || []).map(oneLine).filter(Boolean).slice(-2);
+  const said = (o.said || []).slice(0, j).map((lines) => (lines || []).map((l) => oneLine(l).slice(0, 320)).filter(Boolean));
+  const before = said.some((lines) => lines.length)
+    ? `WHAT HAS BEEN ${way === "acted" ? "SAID" : "TOLD"} — ${way === "acted" ? "every line of the scenes" : "the storyteller's words for the parts"} before this one, as written. They ARE the ${way === "acted" ? "film" : "story"} so far: carry on from them, contradict none of them, and say none of them again.\n` +
+      said.map((lines, i) => (way === "acted" ? `  scene ${i + 1}:\n${lines.map((l) => `    ${l}`).join("\n")}` : `  part ${i + 1}: ${lines.join(" ")}`)).join("\n") +
+      `\nThis ${unit.toLowerCase()} begins AFTER the last of that.\n`
+    : "";
   const here = o.plan.parts[j];
   return (
     `THIS IS ${unit} ${j + 1} OF ${k} of one longer ${way === "acted" ? "film" : "story"}${idea ? `, made from this idea: "${idea}"` : ""}. Its plan — what each ${unit.toLowerCase()} is:\n${sheet}\n` +
     `Write ONLY ${unit.toLowerCase()} ${j + 1}, as its line of the plan says: everything before it has happened, and nothing after it happens yet.\n` +
     (way === "acted" ? `IT IS SET IN "${here.where}" — every one of its shots has exactly these words as its WHERE, and nobody leaves.${o.seenAs ? ` The film has been here before: this place's picture was drawn from "${oneLine(o.seenAs).replace(/"/g, "'").slice(0, 240)}" — it is that same place, and only what that put in view is handled.` : ""}\n` : "") +
-    (before.length ? `The ${unit.toLowerCase()} before it ended on:\n${before.map((l) => `  ${l}`).join("\n")}\nThis one begins AFTER that — it does not say it again.\n` : "") +
+    before +
     (j < k - 1
       ? `IT DOES NOT END THE ${way === "acted" ? "FILM" : "STORY"}: nothing is settled for good, nobody says goodbye, no lesson is drawn — its last ${way === "acted" ? "line" : "sentence"} leaves open what ${unit.toLowerCase()} ${j + 2} picks up.\n`
       : `IT ENDS THE ${way === "acted" ? "FILM" : "STORY"}: what the plan has been heading for happens here, in its last ${way === "acted" ? "shots" : "scenes"}.\n`)
