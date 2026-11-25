@@ -37,6 +37,7 @@ import AVATAR_CAST_RAW from "./avatar-voices.json";
 import type { BrandProfile } from "@prisma/client";
 import { captionChunks, CJK_OPTS, LATIN_OPTS } from "./caption-chunks";
 import { ffmpegTurn } from "./ffmpeg-turn";
+import { withThreadCap } from "./ffmpeg-threads.ts";
 import { CJK_FONT_FILE, CJK_FONT_MIN_BYTES, CJK_FONT_SOURCES, fontMagic, looksLikeCjkFont, shapedFaceFor } from "./caption-font";
 
 /** Merge stage checkpoints into the job payload (kept local to avoid a
@@ -446,7 +447,7 @@ export function hasAudioStream(file: string): boolean {
  *  Returns a crop filter, or null when the frame is already full-bleed. */
 function detectContentCrop(file: string): string | null {
   try {
-    const out = spawnSync(ffmpegBin(), [
+    const out = spawnSync(ffmpegBin(), withThreadCap([ // one decoding thread, as every run (runFfmpeg)
       "-hide_banner", "-t", "2", "-i", file,
       // NEGATE FIRST. cropdetect's `limit` is a BLACK threshold — a row counts
       // as picture only when its luma EXCEEDS it — so it can only ever find
@@ -469,7 +470,7 @@ function detectContentCrop(file: string): string | null {
       // Inverting first turns those white bars black, where cropdetect can see
       // them at its normal threshold.
       "-vf", "negate,cropdetect=limit=24:round=2:reset=0", "-f", "null", "-",
-    ], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 60_000 });
+    ]), { encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 60_000 });
     // Tolerate the negative form so a no-detect is explicit rather than an
     // accident of the pattern not matching.
     const hits = [...String(out.stderr || "").matchAll(/crop=(-?\d+):(-?\d+):(-?\d+):(-?\d+)/g)];
@@ -714,8 +715,12 @@ const FFMPEG_TIMEOUT_MS = 10 * 60_000;
 export function runFfmpeg(args: string[]): Promise<{ status: number; stderr: string }> {
   // ONE ENCODE AT A TIME, across every job (ffmpeg-turn.ts): a picture can be made while a film is, but
   // two encodes never run together. The kill timer below starts when the turn does, not when it is asked for.
+  // EVERY RUN HAS A THREAD CAP (ffmpeg-threads.ts, 2026-11-25): uncapped, ffmpeg sizes its decoder, filter and x264
+  // threads by the HOST's cores, not our share of one, and each thread holds frames — story-motion's one Full-HD
+  // re-encode held the live server at 1.08 GB for three minutes. One decoding thread an input, two for the
+  // encoder and the filters; a caller's own -threads wins. FFMPEG_THREAD_CAP=off runs every encode as written.
   return ffmpegTurn(() => new Promise<{ status: number; stderr: string }>((resolve, reject) => {
-    const p = spawn(ffmpegBin(), args, { stdio: ["ignore", "ignore", "pipe"] });
+    const p = spawn(ffmpegBin(), withThreadCap(args), { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
     let timedOut = false;
     const timer = setTimeout(() => {
