@@ -310,7 +310,7 @@ export const FILM_GENRES: readonly FilmGenre[] = [
     ],
     starters: [
       "Who moved the clock? A hotel night manager and a guest who cannot sleep work out why the lobby clock is ten minutes fast, and who needed it to be.",
-      "A grandmother's ring vanishes during Sunday lunch. The door was locked, six people were at the table, and the dog will not go near the piano.",
+      "A grandmother's ring vanishes during Sunday lunch. The door was locked, nobody left the table, and the dog will not go near the piano.",
       "A librarian finds the same book returned every Friday with one more page missing. Tonight she and the caretaker wait to see who brings it.",
       "A village postman notices that one house has had no post for a month, though he puts a letter through its door every single day.",
       "Two cousins sorting their uncle's study find his chess game against himself, one move from mate, and a third coffee cup.",
@@ -432,8 +432,10 @@ export function dealStarters(tmplKey: string | null | undefined, seed: number, n
 
 /** An idea of fewer than this many words is not an idea yet. */
 export const IDEA_MIN_WORDS = 3;
-/** Scripts written without spaces between words (Chinese, Japanese, Korean, Thai, Lao, Khmer, Burmese). */
-const UNSPACED = /[฀-໿က-႟ក-៿぀-ヿ㐀-䶿一-鿿가-힯]/gu;
+/** Scripts written without spaces between words (Chinese, Japanese, Thai, Lao, Khmer, Burmese). Not Korean:
+ *  Hangul puts a space between its words, so it is counted as any spaced language is — counted two syllables to
+ *  a word, "유령 이야기" ("ghost story", two words) was three and went to the writer as a whole idea. */
+const UNSPACED = /[฀-໿က-႟ក-៿぀-ヿ㐀-䶿一-鿿]/gu;
 /** How many words an idea has. A language written without spaces is counted two characters to a word — or
  *  "两个姐妹在老房子里听到敲门声", a whole premise, would be one "word" and be thrown away for a starter. */
 export function ideaWords(idea: string | null | undefined): number {
@@ -472,7 +474,9 @@ export function nudgeFor(tmplKey: string | null | undefined, idea: string | null
   const dice = diceOf(seed);
   const from = fitting.length ? fitting : all;
   const nudge = from[Math.min(from.length - 1, Math.floor(dice() * from.length))];
-  return { topic: nudge, nudge, typed: fitting.length ? "" : typed.slice(0, 60) };
+  // (only WORDS ride along: "?" or "…" typed into the box is nothing to work in — the writer was told 'The maker
+  //  typed only "?" … work it into the story')
+  return { topic: nudge, nudge, typed: fitting.length || !/[\p{L}\p{N}]/u.test(typed) ? "" : typed.slice(0, 60) };
 }
 /** …and what the writer is told about a theme that was DEALT, right after it (film-engine → the THEME line):
  *   · a word or two the maker typed that the starter does not hold is worked in;

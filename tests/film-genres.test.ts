@@ -95,6 +95,10 @@ test("eight starters a genre: who, where, what goes wrong — in a sentence or t
       assert.ok(!/["“”\n\r]/.test(one), one);
       // nobody's name in it — not a real person's, a brand's or a show's; and not a cast's either (the maker's cast plays it)
       assert.ok(!/\b(Netflix|Disney|Marvel|Pixar|Uber|Lyft|Amazon|Google|Tesla|Alexa|Siri|IKEA|McDonald|Starbucks|Hogwarts|Sherlock|Dracula)\b/i.test(one), one);
+      // NO HEAD-COUNT OF A CROWD (review, 2026-11-25): a dealt starter is the THEME, and the rule said right after it
+      // (premise-rules.ts → PREMISE_WINS) holds a story to "as many as it says" — while an acted film is two people
+      // in every shot. "…six people were at the table…" asked the writer for both.
+      assert.ok(!/\b(three|four|five|six|seven|eight|nine|ten|dozen|\d+) (people|guests|friends|strangers|passengers|children|kids|men|women|of them)\b/i.test(one), one);
     }
   }
   // the two children's genres are for children: nothing frightening, nobody hurt, no grown-up trouble
@@ -176,6 +180,9 @@ test("the starter fallback fires only under three words", () => {
   assert.equal(ideaWords("两个姐妹在老房子里听到敲门声"), 7);
   assert.equal(ideaWords("爱情"), 1);
   assert.equal(ideaWords("老房子"), 2);
+  // (Korean puts spaces between its words: counted as written, not two syllables to a word)
+  assert.equal(ideaWords("유령 이야기"), 2);
+  assert.equal(ideaWords("두 자매가 오래된 집에서"), 4);
 
   // nothing typed: one of the genre's own starters, word for word
   for (const g of FILM_GENRES) {
@@ -201,6 +208,8 @@ test("the starter fallback fires only under three words", () => {
   }
   // (a little word that every starter has does not count as a match)
   assert.equal(nudgeFor("comedy", "the and", 3)!.typed, "the and");
+  // (…and punctuation alone is nothing to work in: the writer is handed the starter and no "the maker typed only")
+  for (const junk of ["?", "…", "!! —"]) assert.equal(nudgeFor("comedy", junk, 3)!.typed, "", junk);
   // three words or more: the idea stands, untouched
   for (const idea of ["a haunted lighthouse", "two sisters find a key", "两个姐妹在老房子里听到敲门声", "老房子的门"]) for (const g of GENRES) assert.equal(nudgeFor(g, idea, 1), null, idea);
   // a format that is not a story genre is never given one (a music video names its own theme)
