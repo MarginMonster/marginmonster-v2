@@ -25,6 +25,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import { ffmpegArgsFor } from "./ffmpeg-threads.ts";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { checkpointJob, download, ffmpegBin, ffprobeDuration, repPoll, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
@@ -72,7 +73,8 @@ function runTool(bin: string, args: string[], ms: number): Promise<Ran> {
     let out = "", err = "", timedOut = false, settled = false;
     const keep = (s: string, c: Buffer) => { const n = s + c.toString(); return n.length > 65536 ? n.slice(-32768) : n; };
     let child: ReturnType<typeof spawn>;
-    try { child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] }); } catch (e) { resolve({ code: null, out: "", err: short(e), timedOut: false }); return; }
+    // capped like every ffmpeg run (ffmpeg-threads.ts: one decoding thread an input, two for the encoder; yt-dlp untouched)
+    try { child = spawn(bin, ffmpegArgsFor(bin, args), { stdio: ["ignore", "pipe", "pipe"] }); } catch (e) { resolve({ code: null, out: "", err: short(e), timedOut: false }); return; }
     const timer = setTimeout(() => { timedOut = true; try { child.kill("SIGKILL"); } catch { /* gone */ } }, ms);
     const finish = (code: number | null) => { if (settled) return; settled = true; clearTimeout(timer); resolve({ code, out, err, timedOut }); };
     child.stdout?.on("data", (c: Buffer) => { out = keep(out, c); });

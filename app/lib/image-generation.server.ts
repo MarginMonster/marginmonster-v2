@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { ffmpegArgsFor, withThreadCap } from "./ffmpeg-threads.ts";
 import ffmpegPath from "ffmpeg-static";
 import { db } from "../db.server";
 import type { BrandProfile, Plan } from "@prisma/client";
@@ -197,7 +198,8 @@ function runFfmpegStill(
       // percent sign instead, and a merchant's real "20% off" was drawn "20 OFF". With expansion=none the
       // text is literal: "%" draws, and so does every currency sign. Nothing here uses %{…}.
       const literal = args.map((a) => (a.includes("drawtext=") ? a.split("drawtext=").join("drawtext=expansion=none:") : a));
-      const p = spawn(bin, literal, {
+      // capped like every ffmpeg run (ffmpeg-threads.ts: one decoding thread an input, two for the encoder; ffprobe untouched)
+      const p = spawn(bin, ffmpegArgsFor(bin, literal), {
         stdio: ["ignore", opts.captureStdout ? "pipe" : "ignore", opts.captureStderr ? "pipe" : "ignore"],
       });
       timer = setTimeout(() => {
@@ -666,7 +668,7 @@ export async function qaPresenterHold(
               const inP = path.join(tmp, "in.img");
               const outP = path.join(tmp, "out.jpg");
               fs.writeFileSync(inP, out);
-              execFileSync(bin, ["-y", "-i", inP, "-vf", "scale='min(1568,iw)':-2", "-q:v", "3", outP], { timeout: 30_000, stdio: "ignore" });
+              execFileSync(bin, withThreadCap(["-y", "-i", inP, "-vf", "scale='min(1568,iw)':-2", "-q:v", "3", outP]), { timeout: 30_000, stdio: "ignore" }); // capped (ffmpeg-threads.ts)
               if (fs.existsSync(outP)) out = fs.readFileSync(outP);
             } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
           }

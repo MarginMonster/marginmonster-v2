@@ -25,6 +25,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { ffmpegArgsFor } from "./ffmpeg-threads.ts";
 
 export const KIT_FRAMES = 60;
 export const KIT_FRAME_HEIGHT = 900;
@@ -176,7 +177,8 @@ const RUN_CEILING_MS = 10 * 60_000;
 /** Run a binary without blocking the event loop (on the server this shares a process with every request). */
 function run(bin: string, args: string[]): Promise<{ code: number; out: string; err: string }> {
   return new Promise((resolve, reject) => {
-    const p = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    // capped like every ffmpeg run (ffmpeg-threads.ts: one decoding thread an input, two for the encoder; ffprobe untouched)
+    const p = spawn(bin, ffmpegArgsFor(bin, args), { stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     let err = "";
     const keep = (s: string, add: string) => (s + add).slice(-2_000_000); // ffmpeg is chatty; the tail is what matters
@@ -191,7 +193,7 @@ function run(bin: string, args: string[]): Promise<{ code: number; out: string; 
 /** The same, for a command whose stdout is raw bytes (frames piped out of ffmpeg). */
 function runBytes(bin: string, args: string[]): Promise<{ code: number; out: Buffer; err: string }> {
   return new Promise((resolve, reject) => {
-    const p = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(bin, ffmpegArgsFor(bin, args), { stdio: ["ignore", "pipe", "pipe"] }); // capped, as run's
     const chunks: Buffer[] = [];
     let err = "";
     const kill = setTimeout(() => { err = (err + `\n[kit] killed after ${RUN_CEILING_MS / 60_000} min (wedged)`).slice(-20_000); try { p.kill("SIGKILL"); } catch { /* already gone */ } }, RUN_CEILING_MS);

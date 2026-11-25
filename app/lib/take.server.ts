@@ -43,6 +43,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import { ffmpegArgsFor, withThreadCap } from "./ffmpeg-threads.ts";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { cameraLookOf, dressFilter, type CameraLook, type DressOptions } from "./camera-dress";
@@ -73,7 +74,8 @@ export const stamp = () => `${Date.now()}-${crypto.randomBytes(6).toString("hex"
 
 export function run(cmd: string, args: string[], maxMs = 180_000): Promise<{ code: number; err: string }> {
   return new Promise((resolve) => {
-    const p = spawn(cmd, args, { stdio: ["ignore", "ignore", "pipe"] });
+    // capped like every ffmpeg run (ffmpeg-threads.ts: one decoding thread an input, two for the encoder; ffprobe untouched)
+    const p = spawn(cmd, ffmpegArgsFor(cmd, args), { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
     p.stderr.on("data", (d) => { err = (err + String(d)).slice(-4000); });
     const timer = setTimeout(() => { try { p.kill("SIGKILL"); } catch { /* gone */ } }, maxMs);
@@ -264,7 +266,7 @@ async function actLine(text: string, acting: string): Promise<string> {
  *  cannot be read — a take that cannot be looked at is kept as it is. */
 export function cutsIn(file: string, maxMs = 120_000): Promise<number[]> {
   return new Promise((resolve) => {
-    const p = spawn("ffmpeg", cutLookArgs(file), { stdio: ["ignore", "ignore", "pipe"] });
+    const p = spawn("ffmpeg", withThreadCap(cutLookArgs(file)), { stdio: ["ignore", "ignore", "pipe"] }); // one decoding thread (ffmpeg-threads.ts)
     let kept = "", rest = "";
     const keep = (text: string) => { for (const l of text.split("\n")) if (/pts_time:|YAVG=|scene_score=/.test(l)) kept += `${l}\n`; };
     p.stderr.on("data", (d) => { rest += String(d); const i = rest.lastIndexOf("\n"); if (i >= 0) { keep(rest.slice(0, i)); rest = rest.slice(i + 1); } });

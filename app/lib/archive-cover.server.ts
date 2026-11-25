@@ -22,6 +22,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { ffmpegArgsFor } from "./ffmpeg-threads.ts";
 import { db } from "../db.server";
 import { ffmpegBin, ffprobeBin, resolveTextFont } from "./ugc-ad-pipeline.server";
 import { mirrorRender } from "./object-storage.server";
@@ -114,7 +115,8 @@ export function localFile(url: unknown): string | null {
 function run(bin: string, args: string[], ms = RUN_MS): Promise<{ status: number; out: Buffer; err: string }> {
   return new Promise((resolve) => {
     let p: ReturnType<typeof spawn>;
-    try { p = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] }); } catch (e) { resolve({ status: -1, out: Buffer.alloc(0), err: String(e) }); return; }
+    // capped like every ffmpeg run (ffmpeg-threads.ts: one decoding thread an input, two for the encoder; ffprobe untouched)
+    try { p = spawn(bin, ffmpegArgsFor(bin, args), { stdio: ["ignore", "pipe", "pipe"] }); } catch (e) { resolve({ status: -1, out: Buffer.alloc(0), err: String(e) }); return; }
     const chunks: Buffer[] = [];
     let size = 0, err = "";
     const timer = setTimeout(() => { try { p.kill("SIGKILL"); } catch { /* gone */ } }, ms);

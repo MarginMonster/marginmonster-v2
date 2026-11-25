@@ -824,8 +824,9 @@ test("A ROLL THAT CUTS IS ROLLED AGAIN, the better roll kept — and a cut still
   assert.deepEqual(shiftLines(takeLines(takeIdea("smile")!), 0), takeLines(takeIdea("smile")!), "no cut: as it was");
 
   const srv = read("app", "lib", "take.server.ts");
-  // looked at as it is made, the way ffmpeg logs it (a whole take's log is far longer than `run` keeps)
-  assert.ok(srv.includes('const p = spawn("ffmpeg", cutLookArgs(file), { stdio: ["ignore", "ignore", "pipe"] });') && srv.includes("resolve(code === 0 ? cutsAt(framesOf(kept)) : []);"));
+  // looked at as it is made, the way ffmpeg logs it (a whole take's log is far longer than `run` keeps) — with one
+  // decoding thread since 2026-11-25, as every ffmpeg the app runs (ffmpeg-threads.ts)
+  assert.ok(srv.includes('const p = spawn("ffmpeg", withThreadCap(cutLookArgs(file)), { stdio: ["ignore", "ignore", "pipe"] });') && srv.includes("resolve(code === 0 ? cutsAt(framesOf(kept)) : []);"));
   assert.ok(srv.includes("cuts = await cutsIn(path.join(dir, rawName));") && srv.includes("const nextCuts = await cutsIn(path.join(dir, next));"));
   // a cut before TRIM_WITHIN is cut off — once — and the take must still be more than four seconds long
   assert.ok(srv.includes("const early = cuts.find((t) => t > 0.3 && t < TRIM_WITHIN);") && srv.includes('if (!trimmed && early != null && !rawName.startsWith("takecut-")) {'));
