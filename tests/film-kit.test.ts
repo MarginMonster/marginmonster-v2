@@ -518,6 +518,8 @@ test("a director's note: the writer gets the whole script, the one scene, the no
   assert.ok(b.includes("• THE SAME NUMBER OF LINES, give or take one — the scene has 2 spoken lines now: return 1 to 3. Every line is one shot of the film."));
   assert.ok(b.includes(`• EVERY LINE CAN BE SAID IN TEN SECONDS — 8 to 18 spoken words, and never more than ${LINE_WORDS_MAX}: a longer line is cut off at the end of its shot. Count them.`));
   assert.ok(b.includes('• ONLY WHAT IS SAID — a line is the spoken words and nothing else: no stage directions, nothing in brackets or asterisks, no "(whispering)", no sound effects'));
+  // (a note that asks for something DONE — "End on a gesture", "Bigger moment" — is answered in words: review 2026-11-25)
+  assert.ok(b.includes(`Whatever is in a line is spoken aloud. If the note asks for something to be DONE — a gesture, an action, a bigger moment — it is carried by what they say as it happens ("Here. Take my coat."), never by describing it.\n`));
   assert.ok(b.includes('• IT STILL JOINS UP — the scene before it ends on "Odo: Then somebody is up there now, because I can hear the gallery door banging in the wind." and the scene after it opens on "Wren: It is warm. Somebody lit it and put it out." — the rewritten scene starts from the one and hands over to the other.'));
   assert.ok(b.includes("• THE SAME LANGUAGE as the lines above."));
   assert.ok(b.endsWith('Return "lines": scene 2\'s new lines in order. Each has "speaker" (one of the names above, exactly), "line" (the spoken words only) and "tone" (a few words on HOW it is delivered, matching the words — "quietly, not looking up").'));

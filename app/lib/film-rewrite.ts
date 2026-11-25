@@ -159,7 +159,12 @@ export function rewriteBrief({ treatment, placeIndex, note, speakers, template }
       ? `• THE SAME NUMBER OF LINES, give or take one — the scene has ${k} spoken line${k === 1 ? "" : "s"} now: return ${lo} to ${k + 1}. Every line is one shot of the film.\n`
       : `• A SHORT SCENE — it has no lines yet: write 2 to 4. Every line is one shot of the film.\n`) +
     `• EVERY LINE CAN BE SAID IN TEN SECONDS — ${LINE_WORDS_MIN} to ${LINE_WORDS_WANT[1]} spoken words, and never more than ${LINE_WORDS_MAX}: a longer line is cut off at the end of its shot. Count them.\n` +
-    `• ONLY WHAT IS SAID — a line is the spoken words and nothing else: no stage directions, nothing in brackets or asterisks, no "(whispering)", no sound effects, no description of what anybody does. Whatever is in a line is spoken aloud.\n` +
+    `• ONLY WHAT IS SAID — a line is the spoken words and nothing else: no stage directions, nothing in brackets or asterisks, no "(whispering)", no sound effects, no description of what anybody does. Whatever is in a line is spoken aloud.` +
+    // (review 2026-11-25: several genres' notes ask for something DONE — "End on a gesture", "Bigger moment",
+    //  "let one small action carry it" — while the shots' pictures are not rewritten and a line is spoken
+    //  aloud. Said nowhere, a writer answers such a note with a described action inside a line, and the
+    //  video engine reads it out. The note is carried out in what they SAY about what is done.)
+    ` If the note asks for something to be DONE — a gesture, an action, a bigger moment — it is carried by what they say as it happens ("Here. Take my coat."), never by describing it.\n` +
     `• IT STILL JOINS UP — ${joins}. Anything the other scenes rely on (a name, a thing, what somebody knows) is still true when this scene ends.\n` +
     `• WHAT WE SEE STAYS — the bracketed "what we see" beside each line of scene ${n} is what is done on screen while that shot's line is spoken, in that order: it is not rewritten, so the new lines must fit it.${hasClose ? ` A shot marked "[close-up on NAME]" is filmed on that person: its line is still theirs.` : ""}\n` +
     (endsUnsaid ? `• THE SHOT WITH NO LINE STAYS — scene ${n} ends on a shot nobody speaks in: it is not yours to write. Your last line is the last thing said before it.\n` : "") +
