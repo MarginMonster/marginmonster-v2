@@ -290,6 +290,9 @@ test("THE JOB A FILM IS QUEUED AS: a take's job with the approved outline — or
   // WHAT THE WRITER IS ASKED FOR THE FREE PREVIEW ("describe events flow like the others") is decided the same way
   // the job is — so the outline a member reads is the film one press would have made
   assert.deepEqual(footageOutlineAsk({ ...form, moments: "4" }), { ok: true, idea: IDEA, camera: "phone", aspect: "9:16", count: 4 });
+  // (a form's empty field is "not said" — three — never read as a nought and floored to two: review, 2026-11-25)
+  assert.equal(footageOutlineAsk({ ...form, moments: "" }).ok && (footageOutlineAsk({ ...form, moments: "" }) as { count: number }).count, 3);
+  assert.equal((footageOutlineAsk({ ...form, moments: " " }) as { count: number }).count, 3);
   assert.deepEqual(footageOutlineAsk({ scare: "smile", own: takeIdea("smile")!.premise, camera: "camcorder", aspect: "9:16" }), { ok: true, idea: takeIdea("smile")!.premise, from: "smile", camera: "camcorder", aspect: "9:16", count: 3 }, "a card left as it was: its own words, and three moments when the page does not say");
   assert.deepEqual(footageOutlineAsk({ scare: "overbed", own: "A TEST mime stands over the bed for hours and then lies down beside her", camera: "house", moments: 1 }), { ok: true, idea: "A TEST mime stands over the bed for hours and then lies down beside her", from: "overbed", camera: "house", aspect: "16:9", count: 2 });
   assert.deepEqual(footageOutlineAsk({ camera: "phone", scare: "own", own: "" }, t), { ok: false, error: "[es] Say what happens, in a few words." });

@@ -844,7 +844,7 @@ export function footageOutlineAsk(f: FootageFilmForm, t: (s: string) => string =
   const p = one.payload as { takeCamera: CameraLook; takeAspect: "9:16" | "16:9"; takeIdea?: string; takeOwn?: string; takeFrom?: string };
   const card = p.takeIdea ? footageScare(p.takeIdea) : undefined;
   const from = card?.key || p.takeFrom;
-  return { ok: true, idea: card ? card.premise : String(p.takeOwn || ""), ...(from ? { from } : {}), camera: p.takeCamera, aspect: p.takeAspect, count: Math.max(2, momentCount(f.moments ?? 3)) };
+  return { ok: true, idea: card ? card.premise : String(p.takeOwn || ""), ...(from ? { from } : {}), camera: p.takeCamera, aspect: p.takeAspect, count: Math.max(2, momentCount(f.moments == null || String(f.moments).trim() === "" ? 3 : f.moments)) };
 }
 
 /** The card a film's idea started from, for this camera — a handheld or body-cam scare, or a house scare (its key is
