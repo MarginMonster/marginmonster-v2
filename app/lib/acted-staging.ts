@@ -36,7 +36,7 @@
  * Pure. tests/acted-staging.test.ts holds it. */
 
 import { CLIP_MAX_SECONDS, clipSecondsFor } from "./speech-meter.ts";
-import { CREATURE_REAL } from "./story-picture.ts";
+import { CREATURE_REAL, SHADOW_SHAPE, TODAY_LOOK, shadowNote } from "./story-picture.ts";
 import { TAKE_HIDDEN } from "./take.ts";
 
 export type ActedStaging = "apart" | "depth" | "levels" | "across" | "walk" | "doing";
@@ -179,6 +179,15 @@ const HANDS = "Hands are empty unless the moment puts something in them — then
  *  scene's own moment IN the picture (it used to be told "the framing wins"). Everything that binds a cast
  *  member to their reference picture is passed in and kept as it is. "" when `staging` is not one — the
  *  caller then draws the picture as it always did. */
+/** TODAY'S WORLD AND A LIVED-IN HOME — AND A SHADOW DRAWN AS ONE — in an acted film's pictures too (a photographed
+ *  film only). The told stories were given these on 2026-11-25 after the owner asked "why are the walls dingy and
+ *  not just a regular household? why the train station guy appearing outside of the window"; an acted film is
+ *  drawn from the same kind of words, with the same horror look, and had neither (story-picture.ts). */
+export function actedRealism(cartoon: boolean | undefined, moment: string | null | undefined): string {
+  if (cartoon) return "";
+  return ` ${TODAY_LOOK}${shadowNote(String(moment || "")) ? ` ${SHADOW_SHAPE}` : ""}`;
+}
+
 export function stagedTwoShot(o: {
   staging: unknown;
   cartoon?: boolean;
@@ -224,7 +233,7 @@ export function stagedTwoShot(o: {
   // (two who are RELATED, drawn from words alone, are told so — and their ages — in the picture of the two of
   //  them: kinNote. Anybody bound to a reference picture is drawn from it, and nothing is said about them here.)
   const kin = o.faceNote ? "" : kinNote(o.personA, o.personB);
-  return `${lead}: BOTH people together in ${o.setting}, in the middle of a scene. ${stage} ${o.personA} on one side and ${o.personB} on the other, both faces prominent and in focus — each in their own half of the frame, never one directly in front of the other.${kin ? ` ${kin}` : ""} This is NOT an over-the-shoulder shot: neither person is turned fully away, cropped out, or blurred in the foreground; both are equally sharp. Both are in the SAME space — NOT separated by any window, glass pane, partition, railing, counter, doorway or divider BETWEEN them; if the setting has a window it stays in the BACKGROUND behind or beside them, never between them and never splitting the frame down the middle. Nothing is added to the place that does not belong in it — no table, booth or chairs on a street, in a hallway or outdoors.${moment}${mood ? ` ${mood}` : ""} ${o.consistency} ${HANDS}${o.roomNote || ""}${o.faceNote || ""} ${tail}`;
+  return `${lead}: BOTH people together in ${o.setting}, in the middle of a scene. ${stage} ${o.personA} on one side and ${o.personB} on the other, both faces prominent and in focus — each in their own half of the frame, never one directly in front of the other.${kin ? ` ${kin}` : ""} This is NOT an over-the-shoulder shot: neither person is turned fully away, cropped out, or blurred in the foreground; both are equally sharp. Both are in the SAME space — NOT separated by any window, glass pane, partition, railing, counter, doorway or divider BETWEEN them; if the setting has a window it stays in the BACKGROUND behind or beside them, never between them and never splitting the frame down the middle. Nothing is added to the place that does not belong in it — no table, booth or chairs on a street, in a hallway or outdoors.${moment}${mood ? ` ${mood}` : ""}${actedRealism(o.cartoon, act)} ${o.consistency} ${HANDS}${o.roomNote || ""}${o.faceNote || ""} ${tail}`;
 }
 
 /* ---- THE CLIP ---- */

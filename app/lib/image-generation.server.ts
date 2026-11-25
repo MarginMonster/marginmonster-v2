@@ -15,6 +15,7 @@ import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { characterInRef } from "./character-prompts";
 import { stagedTwoShot } from "./acted-staging";
+import { STORY_LAST_MODEL, STORY_MODEL, storyPictureInput } from "./story-picture";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
 import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
@@ -4978,11 +4979,18 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
     // reference picture is the same text as above. No staging → the prompt above, unchanged.
     // (The moment has more room here than the 240 characters above: a film's last scene may be written longer.)
     const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: (opts.action || "").replace(/\s+/g, " ").trim().slice(0, 320), mood, consistency: consistencyNote, roomNote, faceNote, comp }) : "";
-    const input: Record<string, unknown> = { prompt: staged || prompt, aspect_ratio: ar, output_format: "jpg" };
-    if (refs.length) input.image_input = refs;
-    const url = await repRun("google/nano-banana", input);
+    // ON THE GOOD MODEL (story-picture.ts → STORY_MODEL), the everyday one only if it will not draw it. An acted
+    // film's master is the picture every clip of it is filmed FROM — and it was still drawn on the everyday model
+    // after the owner called that one "a poop engine for the stills" and every told story moved off it (2026-11-24).
+    let url: string | null = null;
+    let used = "";
+    for (const m of [STORY_MODEL, STORY_LAST_MODEL]) {
+      try { url = await repRun(m, storyPictureInput(m, { prompt: staged || prompt, refs, aspect: ar }), 150_000); used = m; break; }
+      catch (e) { artLog("image-ad", `two-shot on ${m} failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+    }
+    if (!url) return null;
     const durable = await persistRemote(url, "jpg");
-    artLog("image-ad", `side-by-side two-shot rendered (refs x${refs.length}${staged ? `, staged ${opts.staging}` : ""})`);
+    artLog("image-ad", `side-by-side two-shot rendered on ${used} (refs x${refs.length}${staged ? `, staged ${opts.staging}` : ""})`);
     return durable;
   } catch (e) {
     artLog("image-ad", `side-by-side two-shot failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`);

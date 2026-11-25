@@ -154,7 +154,7 @@ test("the picture: the staging's words, both faces still readable, nobody should
   assert.equal(stagingClip(undefined), "");
 });
 
-test("the master's whole prompt in a staging: the scene's moment IN the picture, the cast bound exactly as before", () => {
+test("the master's whole prompt in a staging: the scene's moment IN the picture, the cast bound exactly as before", async () => {
   const who = " WHO IS WHO: reference image 1 is Dana and ONLY Dana. A person with a reference photo must be recognisably that same person.";
   const room = " The FIRST reference image shows ONLY the room: copy its exact setting.";
   const keep = "Keep the two people clearly distinct and do NOT blend or swap their faces, hair or clothing.";
@@ -191,7 +191,14 @@ test("the master's whole prompt in a staging: the scene's moment IN the picture,
   const classic = img.split("\n").find((l) => l.startsWith("    const prompt = `${styleLead} of BOTH people together in ${setting}")) || "";
   assert.equal(crypto.createHash("sha256").update(classic, "utf8").digest("hex"), "e8bb6ae6d7bcac2b9832b103383a6bad3754a8571fa7cc0d306df40bc6dbc062", "the two-shot's own prompt is not to change with this");
   assert.ok(img.includes("const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: (opts.action || \"\").replace(/\\s+/g, \" \").trim().slice(0, 320), mood, consistency: consistencyNote, roomNote, faceNote, comp }) : \"\";"));
-  assert.ok(img.includes("const input: Record<string, unknown> = { prompt: staged || prompt, aspect_ratio: ar, output_format: \"jpg\" };"));
+  // (…drawn on the good model first, the everyday one only if it will not: story-picture.ts → STORY_MODEL)
+  assert.ok(img.includes("for (const m of [STORY_MODEL, STORY_LAST_MODEL]) {") && img.includes("try { url = await repRun(m, storyPictureInput(m, { prompt: staged || prompt, refs, aspect: ar }), 150_000); used = m; break; }"));
+  // (…and a staged picture of a photographed film is told today's world, a lived-in home and what a shadow is)
+  const sp = await import("../app/lib/story-picture.ts");
+  const real = stagedTwoShot({ staging: "levels", ...parts, act: "Beyond the window a tall dark shadow stands under the old tree while Dana grips the torch" });
+  assert.ok(real.includes(` ${sp.TODAY_LOOK}`) && real.includes(sp.SHADOW_SHAPE));
+  assert.ok(!stagedTwoShot({ staging: "levels", ...parts }).includes(sp.SHADOW_SHAPE), "no standing shadow in the moment, no shadow line");
+  assert.ok(!stagedTwoShot({ staging: "levels", cartoon: true, ...parts }).includes(sp.TODAY_LOOK), "a cartoon is left as it was");
   assert.ok(img.includes("staging?: string | null; setting: string; style?: \"photoreal\" | \"cartoon\"; aspect?: \"9:16\" | \"16:9\" | \"1:1\" }): Promise<string | null> {"), "optional: nobody has to pass one");
 });
 
@@ -836,7 +843,7 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.equal(revealPicture({ moment: null }), "");
   // reused, not a third copy: the recipe's words are imported, never written out again here
   const src = read("app", "lib", "acted-staging.ts");
-  assert.ok(src.includes("import { CREATURE_REAL } from \"./story-picture.ts\";") && src.includes("import { TAKE_HIDDEN } from \"./take.ts\";"));
+  assert.ok(src.includes("import { CREATURE_REAL, SHADOW_SHAPE, TODAY_LOOK, shadowNote } from \"./story-picture.ts\";") && src.includes("import { TAKE_HIDDEN } from \"./take.ts\";"));
   for (const words of ["a practical-effects creature as a 1970s horror film would build it", "we see less than we want to"]) assert.ok(!src.includes(words), words);
   // the clip: it moves only a little, in place, and the two FREEZE and one turns to it — whether or not a line was
   // written for it. Not drawn here (a frame the maker approved, a place of its own): the scene's words, held in place
