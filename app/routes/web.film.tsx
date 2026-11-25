@@ -1074,6 +1074,27 @@ function Slate({ title, format, scenes }: { title: string; format: string; scene
 
 type CastMember = { name: string; desc: string; faceUrl: string | null; voiceId: string | null; autoVoice?: boolean; kind?: "person" | "cartoon" | "monster"; look?: string };
 
+/** WHAT THE CAST STEP'S CARD SAYS ONCE A SCRIPT EXISTS (2026-11-25): who is in the film and how many of
+ *  them have a face yet — "Araceli · Tuan", "1/2 cast". The owner, of the page as it was: "It looks like
+ *  there is two cast selection cards per story (Bottom one comes across as extra)". The second one is gone
+ *  and the step's own card carries what it told him, at a glance, on a card half a phone wide:
+ *   - `names`: the characters' names in the script's order, " · " between them — three at most, then "+2"
+ *     (eight people are allowed; eight names are not a glance). A character still without a name is counted
+ *     and not named.
+ *   - `discs`: one per character, five at most (`more` = the rest): their picture when they have one, else
+ *     the first letter of their name (a character added a moment ago, with no name yet: "?").
+ *   - `done` / `total` / `all`: how many have a face — `all` only when there is somebody and every one does.
+ *  Pure — no hook, nothing of the page — so tests/film-one-cast.test.ts RUNS it. */
+const CAST_CARD_NAMES = 3;
+const CAST_CARD_DISCS = 5;
+function castCardSummary(cast: Array<{ name: string; faceUrl: string | null }>) {
+  const named = cast.map((c) => (c.name || "").trim()).filter(Boolean);
+  const names = named.slice(0, CAST_CARD_NAMES).join(" · ") + (named.length > CAST_CARD_NAMES ? ` +${named.length - CAST_CARD_NAMES}` : "");
+  const discs = cast.slice(0, CAST_CARD_DISCS).map((c) => ({ name: (c.name || "").trim(), img: c.faceUrl || null, letter: (Array.from((c.name || "").trim())[0] || "?").toUpperCase() }));
+  const done = cast.filter((c) => !!c.faceUrl).length;
+  return { names, discs, more: Math.max(0, cast.length - CAST_CARD_DISCS), done, total: cast.length, all: cast.length > 0 && done === cast.length };
+}
+
 // Backdrop presets — like the avatar-AI backdrop picker: tap one to set a scene's
 // location (the `where`), or type your own. `key` is matched against the where text
 // to light the active chip.
@@ -2056,7 +2077,7 @@ export default function FilmStudio() {
     // a narrated story is made for a phone, an acted film for a wide screen — until the maker picks a shape
     if (!storyDone.shape) setFilmAspect(told === "narrated" && canTell ? "9:16" : "16:9");
   }, [told]); // eslint-disable-line react-hooks/exhaustive-deps
-  /** The characters the maker picked arrive in the cast stage already wearing their own face and voice. */
+  /** The characters the maker picked arrive in the script's cast (the Cast step's panel) already wearing their own face and voice. */
   const castFromPicked = (list: CastMember[]): CastMember[] => {
     if (!pickedCast.length) return list;
     return rebalanceVoices(list.map((c) => {
@@ -2079,6 +2100,21 @@ export default function FilmStudio() {
   const wipeNote = (prefix: string) => (wipeArm.startsWith(prefix)
     ? <p className="mm-note mm-shape-warn" role="status">{t("That starts your script over — tap it again to go ahead.")}</p>
     : null);
+  // ONE PLACE TO CAST A FILM (2026-11-25). The owner, with photos of the page: "It looks like there is two
+  // cast selection cards per story (Bottom one comes across as extra)", and after trying a Moral Film: "again
+  // moral film also expands the second cast option at the bottom, but we can do this in the top". The Cast
+  // step picked who stars BEFORE a script existed, and once one was written a whole second section — "Cast
+  // your movie" — opened lower down for the script's characters: two places for one decision. The STEP is
+  // now the only one. Before a script its panel is what it was (we cast it, or pick who stars); once an
+  // acted film HAS a script (`scripted`) the same panel holds the script's characters — a face, a look and
+  // a voice each — and the card above it says who they are and how many have a face.
+  const scripted = !!treatment && isStoryboard && !narrated && cast.length > 0;
+  // "Start over with different stars": the picker of before the script, behind one quiet line. A pick there
+  // writes a different story (the effect above wipes the script), so it is not laid beside the characters
+  // it would throw away — it is opened on purpose, its faces still ask twice (`orArm`), and it closes
+  // again with the script it replaced.
+  const [castOver, setCastOver] = useState(false);
+  useEffect(() => { if (!scripted) setCastOver(false); }, [scripted]);
   // THE LANGUAGE A STORY IS TOLD IN (content-lang.ts) — written, spoken and captioned. It is the account's
   // content language (the Studio's "Writing in" is the same setting), picked here for the story formats and
   // sent with every write and with the render (the action → askedLang). A story already written in another
@@ -4085,6 +4121,8 @@ export default function FilmStudio() {
         const lenLabel = (n: number) => (narrated ? `≈ ${secLabel(n * perScene)}` : `≈ ${n * TYPICAL_SHOT_SECONDS}s`);
         const shapeName = filmAspect === "16:9" ? t("Wide") : filmAspect === "9:16" ? t("Vertical") : t("Square");
         const capName = t(CAPTION_STYLES.find((c) => c.key === captions)?.label || "Off");
+        // ONE PLACE TO CAST: what the Cast card and its panel say of a written script's characters
+        const castSum = castCardSummary(cast);
         const voiceTile = (id: string, label: string, blurb: string) => (
           <div className={`mm-vo${narratorId === id ? " on" : ""}`} key={id}>
             <button type="button" className="mm-vo-pick" aria-pressed={narratorId === id} onClick={() => setNarrPick(id)}><b>{label}</b><small>{blurb}</small></button>
@@ -4094,9 +4132,29 @@ export default function FilmStudio() {
         return (
         <div className="mm mm-story">
           <div className="mm-grid">
-            {/* 1 · Cast */}
+            {/* 1 · Cast — the ONE place a film is cast. Before a script: who stars, or "we invent them". Once an
+                acted film has its script the card is about the SCRIPT'S characters: their faces (a lettered
+                disc for anyone not cast yet), their names, and how many have a face. */}
             <button type="button" style={{ order: 1 }} className={`mm-card${storyCard === "cast" ? " on" : ""}${storyDone.cast ? " done" : ""}`} onClick={() => tapStory("cast")}>
               <span className="mm-step" aria-hidden="true">{storyDone.cast ? <Ico n="check" size={13} /> : 1}</span>
+              {scripted ? (<>
+                <span className="mm-card-top">
+                  {cast[0]?.faceUrl
+                    ? <span className="mm-card-face" style={{ backgroundImage: `url(${cast[0].faceUrl})`, backgroundPosition: "center top" }} aria-hidden="true" />
+                    : <span className="mm-card-ico c5"><Ico n="presenter" size={20} /></span>}
+                  <span className="mm-card-ttl"><span className="mm-card-kick">{t("The stars")}</span><b>{t("Cast")}</b></span>
+                </span>
+                <span className="mm-val mm-cast-names">{castSum.names}</span>
+                <span className="mm-cast-line">
+                  <span className="mm-card-cast" aria-hidden="true">
+                    {castSum.discs.map((c, k) => (c.img
+                      ? <span key={k} className={`mm-card-castface${k === 0 ? " lead" : ""}`} style={{ backgroundImage: `url(${c.img})`, backgroundPosition: "center top", ["--i" as string]: k }} title={c.name} />
+                      : <span key={k} className="mm-card-castface is-open" style={{ ["--i" as string]: k }} title={c.name}>{c.letter}</span>))}
+                    {castSum.more > 0 && <span className="mm-card-castface is-more" style={{ ["--i" as string]: castSum.discs.length }}>+{castSum.more}</span>}
+                  </span>
+                  <span className={`mm-cast-count${castSum.all ? " done" : ""}`}>{castSum.all ? <><Ico n="check" size={12} /> {t("Cast")}</> : t("{done}/{total} cast", { done: castSum.done, total: castSum.total })}</span>
+                </span>
+              </>) : (<>
               <span className="mm-card-top">
                 {/* (the next episode of a told story: the characters it invented come BACK, with the faces they
                     had — the card says who, before a word is written. A full-length portrait is shown from the top.) */}
@@ -4120,6 +4178,7 @@ export default function FilmStudio() {
                   {seriesOwn.map((r, k) => <span key={`${r.name}|${r.img}`} className={`mm-card-castface${k === 0 ? " lead" : ""}`} style={{ backgroundImage: `url(${r.img})`, backgroundPosition: "center top" }} title={r.name} />)}
                 </span>
               )}
+              </>)}
             </button>
             {/* (How it's told is not a step any more: it is the HERO that was picked — film-heroes.ts) */}
             {/* 2 · Length */}
@@ -4175,9 +4234,125 @@ export default function FilmStudio() {
               </div>
             )}
 
+            {/* THE CAST STEP'S PANEL — the only cast UI on the page. With no script yet: we cast it, or pick who
+                stars. Once an acted film has its script (`scripted`): the script's characters, one row each —
+                everything the old "Cast your movie" section below the script did, here (the owner: "we can do
+                this in the top"). The picker of before sits behind "Start over with different stars". */}
             {storyCard === "cast" && (
-              <div className="mm-opts mm-opts-grid" style={{ order: 2 }}>
-                <div className="mm-opts-h">{t("Who's in it?")}</div>
+              <div className={`mm-opts mm-opts-grid${scripted ? " mm-castpanel" : ""}`} style={{ order: 2 }}>
+                <div className="fs-cast-head">
+                  <div className="mm-opts-h">{t("Who's in it?")}</div>
+                  {scripted && (
+                    <span className={`fs-cast-prog${castSum.all ? " done" : ""}`}>
+                      {castSum.all ? <><Ico n="check" size={13} /> {t("Cast locked")}</> : t("{done}/{total} cast", { done: castSum.done, total: castSum.total })}
+                    </span>
+                  )}
+                </div>
+                {scripted && (<>
+                  <div className="mm-opts-sub">{castSum.all ? t("Every shot now stars the same faces — nobody morphs. Roll camera. 🎬") : t("Give each character a face and a voice once — every shot reuses them. Tap a frame to cast it.")}</div>
+                  <div className="fs-cast">
+                    {cast.map((c, i) => {
+                      const cbusy = castingIndex === i;
+                      return (
+                        <div className={`fs-actor${c.faceUrl ? " set" : ""}`} key={i}>
+                          {c.faceUrl ? (
+                            <div className="fs-actor-face">
+                              <img src={c.faceUrl} alt={c.name} loading="lazy" />
+                              {cbusy && <span className="fs-shot-spin" aria-hidden="true" />}
+                              {!cbusy && <span className="fs-actor-badge" aria-hidden="true"><Ico n="check" size={13} /></span>}
+                            </div>
+                          ) : (
+                            <button type="button" className="fs-actor-face fs-actor-cast" disabled={castingIndex !== null} onClick={() => makePortrait(i)} aria-label={t("Cast {name}", { name: c.name })}>
+                              <span className="fs-actor-empty"><Ico n="camera" size={22} /><b>{cbusy ? t("Casting…") : t("Cast a face")}</b></span>
+                              {cbusy && <span className="fs-shot-spin" aria-hidden="true" />}
+                            </button>
+                          )}
+                          <div className="fs-actor-main">
+                            <input className="fs-actor-name fs-actor-name-in" value={c.name} onChange={(e) => setCastName(i, e.target.value)} placeholder={t("Character name")} maxLength={40} disabled={castingIndex !== null} aria-label={t("Character name")} />
+                            <textarea className="fs-actor-desc fs-actor-desc-in" value={c.desc} onChange={(e) => setCastDesc(i, e.target.value)} placeholder={tmpl?.cartoon ? t("Describe this cartoon character — look, colors, personality") : t("Describe this character — look, age, vibe")} rows={2} maxLength={400} disabled={castingIndex !== null} aria-label={t("Character description")} />
+                            <div className="fs-actor-voice">
+                              <select aria-label={t("Voice for {name}", { name: c.name })} value={c.voiceId || ""} disabled={castingIndex !== null} onChange={(e) => setCastVoice(i, e.target.value)}>
+                                <option value="">{t("Pick a voice")}</option>
+                                {d.myVoices.length > 0 && (
+                                  <optgroup label={t("My voices")}>
+                                    {d.myVoices.map((v) => <option key={v.voiceId} value={v.voiceId}>{v.label} · {t("your own voice")}</option>)}
+                                  </optgroup>
+                                )}
+                                {/* a cartoon's or a creature's own performed voice — and any character can wear one */}
+                                <optgroup label={t("Character voices")}>
+                                  {CHARACTER_VOICES.map((v) => <option key={v.id} value={v.id}>{t(v.label)} · {t(v.blurb)}</option>)}
+                                </optgroup>
+                                <optgroup label={t("People's voices")}>{d.voices.map((v) => <option key={v.id} value={v.id}>{v.label} · {v.blurb}</option>)}</optgroup>
+                              </select>
+                              <button type="button" className="fs-voice-play" disabled={!c.voiceId} onClick={() => playVoice(c.voiceId)} aria-label={t("Hear this voice")} title={t("Hear this voice")}><Ico n="sound" size={14} /></button>
+                            </div>
+                            <div className="fs-actor-opts">
+                              {c.faceUrl && <button type="button" className="fs-actor-recast" disabled={castingIndex !== null} onClick={() => makePortrait(i)}><Ico n="refresh" size={11} /> {t("Re-cast")}</button>}
+                              {cast.length > 1 && <button type="button" className="fs-actor-del" disabled={castingIndex !== null} onClick={() => removeCastMember(i)} title={t("Remove this character")}>✕ {t("Remove")}</button>}
+                              {d.roster.length > 0 && (
+                                <details className="fs-shot-own fs-actor-roster">
+                                  <summary><Ico n="presenter" size={13} /> {t("Pick a presenter")}</summary>
+                                  <div className="fs-roster" role="list" aria-label={t("Your presenters")}>
+                                    {rosterFor(template).map((r) => (
+                                      <button type="button" role="listitem" key={r.id} className={`fs-rface${c.faceUrl === r.img ? " on" : ""}`}
+                                        disabled={castingIndex !== null} title={r.name} onClick={() => castPresenter(i, r)}
+                                        {...peekOn(`actor${i}:${r.id}`, r, c.faceUrl === r.img, () => castPresenter(i, r), castingIndex !== null)}>
+                                        <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
+                                        {c.faceUrl === r.img && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                                        <span className="fs-rface-name">{r.name}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                  {i === 0 && peekHint}
+                                </details>
+                              )}
+                              <details className="fs-shot-own fs-actor-own">
+                                <summary>{t("Use my own photo")}</summary>
+                                {d.gallery.length > 0 ? (
+                                  <div className="fs-shot-gallery" role="list" aria-label={t("Your images")}>
+                                    {d.gallery.map((g) => (
+                                      <button type="button" role="listitem" key={g.id} className={`fs-gthumb${c.faceUrl === g.url ? " on" : ""}`}
+                                        disabled={castingIndex !== null} title={g.title || t("Use this image")} onClick={() => useCastFace(i, g.url)}>
+                                        <img src={g.url} alt={g.title || t("Your image")} loading="lazy" />
+                                        {c.faceUrl === g.url && <span className="fs-gthumb-chk" aria-hidden="true"><Ico n="check" size={12} /></span>}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="fs-gempty">{t("Images you make in Creator show up here to pick from.")}</p>
+                                )}
+                                <input className="fs-shot-url" type="url" maxLength={2000} defaultValue="" placeholder={t("…or paste an image URL")} onChange={(e) => useCastFace(i, e.target.value)} />
+                              </details>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button type="button" className="fs-cast-add" onClick={addCastMember} disabled={cast.length >= 8 || castingIndex !== null}>
+                    <span aria-hidden="true">＋</span> {tmpl?.cartoon ? t("Add a cartoon character") : t("Add a character")}
+                  </button>
+                  {/* Lock these voices — ONE switch for the whole cast. Without it the video model voices each line
+                      itself (the picked voice is only a hint, and it can drift between shots). */}
+                  {cast.some((c) => c.voiceId) && (
+                    <label className="fs-lockvoice">
+                      <input type="checkbox" checked={lockVoices} onChange={(e) => setLockVoices(e.target.checked)} />
+                      <span className="fs-lockvoice-txt">
+                        <b><Ico n="mic" size={13} /> {t("Lock these voices")} <span className="fs-lockvoice-beta">{t("beta")}</span></b>
+                        <small>{castHasOwnVoice
+                          ? t("Your own voice is in this cast, so every character speaks in exactly the voice picked for them — in every shot.")
+                          : t("Every character speaks in exactly the voice you picked, in every shot — instead of a voice the video model makes up. The first film with a voice takes a few minutes longer while we learn it.")}</small>
+                      </span>
+                    </label>
+                  )}
+                  {portraitFetcher.data?.error && <p className="fs-err">{portraitFetcher.data.error}</p>}
+                  {/* (the stars the story was written for: changing them writes a different story, so the picker
+                      is one line away — never beside the characters a tap in it would throw away) */}
+                  <button type="button" className={`mm-castover${castOver ? " on" : ""}`} aria-expanded={castOver} onClick={() => { setCastOver((v) => !v); setWipeArm(""); }}>
+                    <Ico n="refresh" size={13} /> {t("Start over with different stars")}
+                  </button>
+                </>)}
+                {(!scripted || castOver) && (<>
                 <div className="mm-opts-sub">{narrated
                   ? t("Pick up to 3 from your cast and the story is written for them — each one drawn from their own picture in every scene they are in. Pick nobody and we invent the characters.")
                   : t("Pick up to 2 from your cast and the story is written for them — their own face in every shot, and their own voice if they have one. Pick nobody and we invent the characters.")}</div>
@@ -4202,6 +4377,7 @@ export default function FilmStudio() {
                 {peekHint}
                 {wipeNote("cast:")}
                 <a className="mm-pace-auto" href="/web/presenters?forge=1"><Ico n="wand" size={12} /> {t("Create a new character")}</a>
+                </>)}
               </div>
             )}
             {storyCard === "length" && (
@@ -4463,118 +4639,10 @@ export default function FilmStudio() {
         </div>
       )}
 
-      {/* Step 2.5 — storyboard: approve a photo per scene before paying (dialogue only) */}
-      {treatment && isStoryboard && !narrated && cast.length > 0 && (() => {
-        const castCount = cast.filter((c) => c.faceUrl).length;
-        const allCast = castCount === cast.length;
-        return (
-        <div className="fs-card fs-caststage">
-          <div className="fs-cast-head">
-            <div className="fs-lbl"><span className="fs-n"><Ico n="film" size={13} /></span> {t("Cast your movie")} <span className="fs-free">{t("free")}</span></div>
-            <span className={`fs-cast-prog${allCast ? " done" : ""}`}>
-              {allCast ? <><Ico n="check" size={13} /> {t("Cast locked")}</> : t("{done}/{total} cast", { done: castCount, total: cast.length })}
-            </span>
-          </div>
-          <p className="fs-hint">{allCast ? t("Every shot now stars the same faces — nobody morphs. Roll camera. 🎬") : t("Give each character a face and a voice once — every shot reuses them. Tap a frame to cast it.")}</p>
-          <div className="fs-cast">
-            {cast.map((c, i) => {
-              const cbusy = castingIndex === i;
-              return (
-                <div className={`fs-actor${c.faceUrl ? " set" : ""}`} key={i}>
-                  {c.faceUrl ? (
-                    <div className="fs-actor-face">
-                      <img src={c.faceUrl} alt={c.name} loading="lazy" />
-                      {cbusy && <span className="fs-shot-spin" aria-hidden="true" />}
-                      {!cbusy && <span className="fs-actor-badge" aria-hidden="true"><Ico n="check" size={13} /></span>}
-                    </div>
-                  ) : (
-                    <button type="button" className="fs-actor-face fs-actor-cast" disabled={castingIndex !== null} onClick={() => makePortrait(i)} aria-label={t("Cast {name}", { name: c.name })}>
-                      <span className="fs-actor-empty"><Ico n="camera" size={22} /><b>{cbusy ? t("Casting…") : t("Cast a face")}</b></span>
-                      {cbusy && <span className="fs-shot-spin" aria-hidden="true" />}
-                    </button>
-                  )}
-                  <div className="fs-actor-main">
-                    <input className="fs-actor-name fs-actor-name-in" value={c.name} onChange={(e) => setCastName(i, e.target.value)} placeholder={t("Character name")} maxLength={40} disabled={castingIndex !== null} aria-label={t("Character name")} />
-                    <textarea className="fs-actor-desc fs-actor-desc-in" value={c.desc} onChange={(e) => setCastDesc(i, e.target.value)} placeholder={tmpl?.cartoon ? t("Describe this cartoon character — look, colors, personality") : t("Describe this character — look, age, vibe")} rows={2} maxLength={400} disabled={castingIndex !== null} aria-label={t("Character description")} />
-                    <div className="fs-actor-voice">
-                      <select aria-label={t("Voice for {name}", { name: c.name })} value={c.voiceId || ""} disabled={castingIndex !== null} onChange={(e) => setCastVoice(i, e.target.value)}>
-                        <option value="">{t("Pick a voice")}</option>
-                        {d.myVoices.length > 0 && (
-                          <optgroup label={t("My voices")}>
-                            {d.myVoices.map((v) => <option key={v.voiceId} value={v.voiceId}>{v.label} · {t("your own voice")}</option>)}
-                          </optgroup>
-                        )}
-                        {/* a cartoon's or a creature's own performed voice — and any character can wear one */}
-                        <optgroup label={t("Character voices")}>
-                          {CHARACTER_VOICES.map((v) => <option key={v.id} value={v.id}>{t(v.label)} · {t(v.blurb)}</option>)}
-                        </optgroup>
-                        <optgroup label={t("People's voices")}>{d.voices.map((v) => <option key={v.id} value={v.id}>{v.label} · {v.blurb}</option>)}</optgroup>
-                      </select>
-                      <button type="button" className="fs-voice-play" disabled={!c.voiceId} onClick={() => playVoice(c.voiceId)} aria-label={t("Hear this voice")} title={t("Hear this voice")}><Ico n="sound" size={14} /></button>
-                    </div>
-                    <div className="fs-actor-opts">
-                      {c.faceUrl && <button type="button" className="fs-actor-recast" disabled={castingIndex !== null} onClick={() => makePortrait(i)}><Ico n="refresh" size={11} /> {t("Re-cast")}</button>}
-                      {cast.length > 1 && <button type="button" className="fs-actor-del" disabled={castingIndex !== null} onClick={() => removeCastMember(i)} title={t("Remove this character")}>✕ {t("Remove")}</button>}
-                      {d.roster.length > 0 && (
-                        <details className="fs-shot-own fs-actor-roster">
-                          <summary><Ico n="presenter" size={13} /> {t("Pick a presenter")}</summary>
-                          <div className="fs-roster" role="list" aria-label={t("Your presenters")}>
-                            {rosterFor(template).map((r) => (
-                              <button type="button" role="listitem" key={r.id} className={`fs-rface${c.faceUrl === r.img ? " on" : ""}`}
-                                disabled={castingIndex !== null} title={r.name} onClick={() => castPresenter(i, r)}
-                                {...peekOn(`actor${i}:${r.id}`, r, c.faceUrl === r.img, () => castPresenter(i, r), castingIndex !== null)}>
-                                <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
-                                {c.faceUrl === r.img && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
-                                <span className="fs-rface-name">{r.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                          {i === 0 && peekHint}
-                        </details>
-                      )}
-                      <details className="fs-shot-own fs-actor-own">
-                        <summary>{t("Use my own photo")}</summary>
-                        {d.gallery.length > 0 ? (
-                          <div className="fs-shot-gallery" role="list" aria-label={t("Your images")}>
-                            {d.gallery.map((g) => (
-                              <button type="button" role="listitem" key={g.id} className={`fs-gthumb${c.faceUrl === g.url ? " on" : ""}`}
-                                disabled={castingIndex !== null} title={g.title || t("Use this image")} onClick={() => useCastFace(i, g.url)}>
-                                <img src={g.url} alt={g.title || t("Your image")} loading="lazy" />
-                                {c.faceUrl === g.url && <span className="fs-gthumb-chk" aria-hidden="true"><Ico n="check" size={12} /></span>}
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="fs-gempty">{t("Images you make in Creator show up here to pick from.")}</p>
-                        )}
-                        <input className="fs-shot-url" type="url" maxLength={2000} defaultValue="" placeholder={t("…or paste an image URL")} onChange={(e) => useCastFace(i, e.target.value)} />
-                      </details>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <button type="button" className="fs-cast-add" onClick={addCastMember} disabled={cast.length >= 8 || castingIndex !== null}>
-            <span aria-hidden="true">＋</span> {tmpl?.cartoon ? t("Add a cartoon character") : t("Add a character")}
-          </button>
-          {/* Lock these voices — ONE switch for the whole cast. Without it the video model voices each line
-              itself (the picked voice is only a hint, and it can drift between shots). */}
-          {cast.some((c) => c.voiceId) && (
-            <label className="fs-lockvoice">
-              <input type="checkbox" checked={lockVoices} onChange={(e) => setLockVoices(e.target.checked)} />
-              <span className="fs-lockvoice-txt">
-                <b><Ico n="mic" size={13} /> {t("Lock these voices")} <span className="fs-lockvoice-beta">{t("beta")}</span></b>
-                <small>{castHasOwnVoice
-                  ? t("Your own voice is in this cast, so every character speaks in exactly the voice picked for them — in every shot.")
-                  : t("Every character speaks in exactly the voice you picked, in every shot — instead of a voice the video model makes up. The first film with a voice takes a few minutes longer while we learn it.")}</small>
-              </span>
-            </label>
-          )}
-          {portraitFetcher.data?.error && <p className="fs-err">{portraitFetcher.data.error}</p>}
-        </div>
-        );
-      })()}
+      {/* (THE SECOND CAST PLACE IS GONE, 2026-11-25. "Cast your movie" opened here, under the script, for the
+          script's characters — the owner: "It looks like there is two cast selection cards per story (Bottom
+          one comes across as extra)". Its rows, "Add a character" and "Lock these voices" are in the Cast
+          STEP's panel above; what they set still reaches the form below as `cast` and `filmLockVoices`.) */}
 
       {/* STORYBOARD for the sung / narrated film formats (Kids Music Video, etc.) — the dialogue
           films already have their own per-scene approval, and the product skit doesn't need it. ONE
@@ -5026,7 +5094,9 @@ ${CAST_ID_CSS}
 .fs-gthumb:disabled{opacity:.5;cursor:default;}
 .fs-gthumb-chk{position:absolute;right:3px;top:3px;width:18px;height:18px;border-radius:50%;background:var(--green2,#1FA463);color:#fff;display:grid;place-items:center;box-shadow:0 1px 3px rgba(20,32,26,.3);}
 .fs-gempty{font-size:11.5px;color:var(--ink2,#4A554E);opacity:.85;margin:8px 0 0;}
-/* Cast panel — "cast your movie": one locked actor (face + voice) per character. */
+/* The script's cast: one locked actor (face + voice) per character. These rows were a section of their own
+   under the script ("Cast your movie") until 2026-11-25; they now live in the Cast STEP's panel
+   (.mm-castpanel, further down) — the one place a film is cast. */
 .fs-cast-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
 .fs-cast-prog{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:800;color:var(--ink2,#4A554E);background:var(--cream,#FBF6E6);border:1.5px solid var(--line,#E4DFCF);border-radius:999px;padding:4px 12px;letter-spacing:.01em;transition:background .2s,color .2s,border-color .2s;}
 .fs-cast-prog.done{color:#fff;background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);}
@@ -5088,6 +5158,18 @@ ${CAST_ID_CSS}
 .fs-actor-recast:hover:not(:disabled){color:var(--green,#0C7A46);}
 .fs-actor-recast:disabled{opacity:.5;cursor:default;}
 .fs-actor-own{margin:0;}
+/* ONE PLACE TO CAST (2026-11-25): those rows INSIDE the Cast step's panel. The panel is already a card with
+   its own heading, so the rows sit a little closer in; "Start over with different stars" is one quiet line
+   under them (the picker it opens writes a different story — it is not laid out beside the characters). */
+.mm-castpanel .fs-cast-head{margin-bottom:5px;}
+.mm-castpanel .fs-cast-head .mm-opts-h{margin-bottom:0;}
+.mm-castpanel .fs-cast{margin-top:0;}
+.mm-castover{position:relative;display:flex;align-items:center;gap:7px;width:100%;min-height:44px;margin:14px 0 0;padding:10px 2px 0;border:0;border-top:1px dashed var(--line,#E4DFCF);background:transparent;color:var(--ink2,#4A554E);font-family:Poppins,sans-serif;font-size:12.5px;font-weight:700;text-align:start;cursor:pointer;transition:color .14s;}
+.mm-castover svg{flex:none;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-castover::after{content:"+";margin-inline-start:auto;font-weight:800;font-size:15px;line-height:1;}
+.mm-castover.on::after{content:"–";}
+.mm-castover:hover,.mm-castover.on{color:var(--green,#0C7A46);}
+.mm-castover + .mm-opts-sub{margin-top:8px;}
 @media(prefers-reduced-motion:reduce){.fs-go::after{display:none;}.fs-tmpl,.fs-shot-make,.fs-write,.fs-go,.fs-actor-cast{transition:none;}.fs-head-img,.fs-head-copy b,.fs-head-rose{animation:none;}}
 @media(max-width:640px){.fs-head{padding:18px;min-height:114px;}.fs-head-copy{max-width:60%;padding:0;}.fs-head-vid{width:52%;}.fs-head-copy b{font-size:21px;}.fs-head-media{width:52%;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
 /* ---- Story flow (location + camera-angle storyboard) ---- */
@@ -5353,6 +5435,20 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-card-cast{display:flex;margin-top:10px;padding-left:5px;}
 .mm-card-castface{width:26px;height:26px;border-radius:50%;background:#20302A;background-size:cover;background-position:center;border:2px solid #fff;margin-left:-7px;box-shadow:0 1px 3px rgba(0,0,0,.14);}
 .mm-card-castface.lead{margin-left:0;border-color:var(--green,#0C7A46);}
+/* THE CAST CARD ONCE A SCRIPT EXISTS (2026-11-25, one place to cast): the script's characters — a face each,
+   or a lettered disc with a dashed edge for one not cast yet (an empty frame waiting for a picture, in the
+   Cast step's own violet) — their names, and how many of them have a face. */
+.mm-cast-names{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-weight:700;color:var(--ink,#14201A);}
+.mm-cast-line{display:flex;align-items:center;justify-content:space-between;gap:6px 8px;flex-wrap:wrap;margin-top:9px;}
+.mm-cast-line .mm-card-cast{margin-top:0;padding-left:0;}
+.mm-card-castface.is-open,.mm-card-castface.is-more{display:grid;place-items:center;box-sizing:border-box;font-family:Poppins,sans-serif;font-size:11px;font-weight:800;line-height:1;}
+.mm-card-castface.is-open{background:#F3EFFB;border:1.5px dashed #A792D6;color:#6C4FB0;box-shadow:none;}
+.mm-card-castface.is-open:first-child{margin-left:0;}
+.mm-card-castface.is-more{background:#EFF1EE;color:var(--ink2,#4A554E);font-size:10px;}
+.mm-cast-count{flex:none;display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;line-height:1;color:var(--ink2,#4A554E);background:var(--cream,#FBF6E6);border:1px solid var(--line,#E4DFCF);border-radius:999px;padding:5px 9px;white-space:nowrap;transition:background .2s,color .2s,border-color .2s;}
+.mm-cast-count.done{color:#fff;background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);}
+.mm-cast-count svg{stroke:currentColor;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+@media(min-width:960px){.mm-cast-line{margin-top:11px;}.mm-cast-line .mm-card-castface{width:32px;height:32px;font-size:12.5px;}.mm-cast-count{font-size:12px;padding:6px 11px;}}
 .mm-muted{color:var(--ink3,#9AA39B);}
 .mm-vchips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;}
 .mm-chip{font-size:11.5px;font-weight:800;color:var(--green-d,#0A5E37);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:4px 10px;}
