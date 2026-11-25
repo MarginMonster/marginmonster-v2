@@ -223,6 +223,17 @@ test("FANTASY KEEPS ITS OWN WORLD: everybody clothed, but never told its places 
   // the genre that is its own world is Fantasy, and only Fantasy
   const g = await import("../app/lib/film-genres.ts");
   assert.deepEqual(g.GENRE_FILMS.filter((x: { ownWorld?: boolean }) => x.ownWorld).map((x: { key: string }) => x.key), ["fantasy"]);
+  // THE ACTED MASTER: the one line that chooses it (acted-staging.ts → actedRealism), and the film's template reaching it
+  const st = await import("../app/lib/acted-staging.ts");
+  const today = st.actedRealism(false, "Wren lifts the lantern in the timber hall", "a long timber hall at night");
+  const own = st.actedRealism(false, "Wren lifts the lantern in the timber hall", "a long timber hall at night", true);
+  assert.ok(today.includes(sp.TODAY_LOOK) && !own.includes("TODAY") && own.includes(sp.DRESSED) && own.includes(st.NIGHT_LINE), "clothed, its night still night — never today's world");
+  assert.equal(st.actedRealism(false, "x", "y", false), st.actedRealism(false, "x", "y"), "every other film word for word as it was");
+  assert.equal(st.actedRealism(true, "x", "y", true), "", "a cartoon is left as it was");
+  const staged = st.stagedTwoShot({ staging: "walk", setting: "a long timber hall", personA: "Wren", personB: "Oda", act: "Wren lifts the lantern", consistency: "Keep them distinct.", comp: "wide cinematic landscape composition", ownWorld: true });
+  assert.ok(staged.includes(sp.DRESSED) && !staged.includes("TODAY"), "the staged master of a fantasy");
+  assert.ok(read("app", "lib", "image-generation.server.ts").includes("comp, ownWorld: opts.ownWorld }) : \"\";"));
+  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("look: threat.look } : null, ownWorld: tmpl.ownWorld }));"));
 });
 
 test("FOUND FOOTAGE: a take's scene, each moment's, and a house camera's — dressed words, looked at, drawn again clothes first, edited", () => {
@@ -243,6 +254,25 @@ test("FOUND FOOTAGE: a take's scene, each moment's, and a house camera's — dre
   assert.ok(house.includes("drawClothed({ prompt: dressedInWater(prompt), ...(refs.length ? { image_input: refs.map((r) => imageRef(base, r)) } : {}), aspect_ratio: \"16:9\", output_format: \"jpg\" }, !!o.best, `[house-take] ${what}:`);"));
   assert.ok(house.includes("house = withRoom(house, room.key, await draw(roomPrompt(room, plan.first), plan.from ? [plan.from] : []));"), "NOBODY is in the room");
   assert.ok(house.indexOf("scene = await drawDressed(") > 0 && house.indexOf("scene = await drawDressed(") < house.indexOf("await ckpt({ ckScene: scene });"));
+});
+
+test("ACTED FILMS: the thing's portrait, a sighting and the REVEAL all go through the one look — clothed, or dropped for the next editor", () => {
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  // one way of doing it: the local name is a thin call of keepClothed (no look, no edit of its own), and the job says it is at work
+  const fn = eng.slice(eng.indexOf("const clothedOrDropped = async (rel: string, ar: string): Promise<string | null> => {"), eng.indexOf("const sightOn = staged && horror && !cartoon && isTwoHander;"));
+  assert.ok(fn.includes("const kept = await keepClothed({ url: rel, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, ar), still: \"drop\", log: (l) => console.log(`[testmovie] ${l}`) });\n    await say(alive);\n    return kept;"));
+  assert.ok(!eng.includes("unclothedPrompt()") && !eng.includes("clothedEdit(seen.who)"), "no second copy of the look");
+  // the thing's portrait (a cast line, or the first figure its words put in view — threatFromWords) and the sighting
+  assert.ok(eng.includes("img = (await clothedOrDropped(drawn, PORTRAIT_ASPECT)) || \"\";"));
+  assert.ok(eng.includes("pic = drawn ? (await clothedOrDropped(drawn, aspect)) || \"\" : \"\";"));
+  // THE REVEAL: looked at before it is used; dropped → the next editor of its ladder, else the fallback it always had
+  const reveal = eng.indexOf("if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {");
+  const look = eng.indexOf("seedAbs = drawn ? abs(await clothedOrDropped(drawn, aspect)) : undefined;", reveal);
+  assert.ok(reveal > 0 && look > reveal && look < eng.indexOf("if (seedAbs) { revealed = true;", reveal));
+  assert.ok(eng.includes("if (!ask || seedAbs) break;"), "a dropped reveal is drawn by the next editor");
+  // the casting portrait a member draws on the page: looked at, dressed by one edit if it must be — kept either way
+  const actor = eng.slice(eng.indexOf("export async function renderActorPortrait("), eng.indexOf("function actorsInScene("));
+  assert.ok(actor.includes("return keepClothed({ url, ref: (u) => (u.startsWith(\"http\") ? u : `${base}${u}`), edit: (u, bare) => clothedEditOn(u, bare, \"9:16\"),") && !actor.includes("still: \"drop\""));
 });
 
 test("the take's own words: a person in the water is dressed where they are said, inside the scene's prompt", async () => {

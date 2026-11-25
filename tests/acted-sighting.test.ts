@@ -336,7 +336,8 @@ test("a place whose first scene has the thing in view is drawn with its picture,
   const ig = read("app", "lib", "image-generation.server.ts");
   assert.ok(ig.includes("const thingNote = opts.thing && refNo(opts.thing.url) ? thingBound({ name: opts.thing.name, refNo: refNo(opts.thing.url), look: opts.thing.look }) : \"\";"));
   assert.ok(ig.includes("const refs = [opts.roomRefUrl, opts.faceA, opts.faceB, opts.staging ? opts.thing?.url : null].filter((u): u is string => !!u).slice(0, 4);"));
-  assert.ok(ig.includes("roomNote, faceNote, thingNote, comp })") && !ig.includes("${faceNote}${thingNote}"));
+  // (…and the genre's own world after it, stream S8 2026-11-25: tests/clothed.test.ts)
+  assert.ok(ig.includes("roomNote, faceNote, thingNote, comp, ownWorld: opts.ownWorld })") && !ig.includes("${faceNote}${thingNote}"));
   assert.ok(ig.includes("action?: string; /** THE FILM'S THING") && ig.includes("thing?: { url: string; name: string; look?: string } | null;"));
   assert.ok(ig.includes("let seen = await bare(url);") && ig.includes("if (!cartoon && NIGHT_SAID.test(`${setting} ${action}`)) {"), "the clothed and the night looks, as they were");
 });

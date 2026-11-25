@@ -184,10 +184,13 @@ const HANDS = "Hands are empty unless the moment puts something in them — then
  *  film only). The told stories were given these on 2026-11-25 after the owner asked "why are the walls dingy and
  *  not just a regular household? why the train station guy appearing outside of the window"; an acted film is
  *  drawn from the same kind of words, with the same horror look, and had neither (story-picture.ts). */
-export function actedRealism(cartoon: boolean | undefined, moment: string | null | undefined, setting?: string | null): string {
+/** (…and a genre whose world is its OWN — Fantasy, film-genres.ts → ownWorld — is told everybody is clothed and NOT
+ *  that its places look the way they look today: "no cottage and no castle unless they name one" drew a fantasy as a
+ *  modern flat. Found by the genres stream, 2026-11-25; the told stories choose it the same way.) */
+export function actedRealism(cartoon: boolean | undefined, moment: string | null | undefined, setting?: string | null, ownWorld?: boolean): string {
   if (cartoon) return "";
   const night = NIGHT_WORDS.test(`${setting || ""} ${moment || ""}`) ? ` ${NIGHT_LINE}` : "";
-  return ` ${TODAY_LOOK}${shadowNote(String(moment || "")) ? ` ${SHADOW_SHAPE}` : ""} ${NOTHING_GLOWS}${night}`;
+  return ` ${ownWorld ? DRESSED : TODAY_LOOK}${shadowNote(String(moment || "")) ? ` ${SHADOW_SHAPE}` : ""} ${NOTHING_GLOWS}${night}`;
 }
 /** NIGHT IS NIGHT (2026-11-25): both acted lake films — "wake at 3am" — were lit like a blue dusk, the lake bright
  *  behind the tent. Said when the place or the moment says it is night. */
@@ -228,6 +231,8 @@ export function stagedTwoShot(o: {
   thingNote?: string;
   /** "vertical composition" … */
   comp: string;
+  /** a genre whose world is its own (Fantasy): clothed, never "today" — actedRealism */
+  ownWorld?: boolean;
 }): string {
   const stage = stagingPicture(o.staging);
   if (!stage) return "";
@@ -253,7 +258,7 @@ export function stagedTwoShot(o: {
   // (two who are RELATED, drawn from words alone, are told so — and their ages — in the picture of the two of
   //  them: kinNote. Anybody bound to a reference picture is drawn from it, and nothing is said about them here.)
   const kin = o.faceNote ? "" : kinNote(o.personA, o.personB);
-  return `${lead}: BOTH people together in ${o.setting}, in the middle of a scene. ${stage} ${o.personA} on one side and ${o.personB} on the other, both faces prominent and in focus — each in their own half of the frame, never one directly in front of the other.${kin ? ` ${kin}` : ""} This is NOT an over-the-shoulder shot: neither person is turned fully away, cropped out, or blurred in the foreground; both are equally sharp. Both are in the SAME space — NOT separated by any window, glass pane, partition, railing, counter, doorway or divider BETWEEN them; if the setting has a window it stays in the BACKGROUND behind or beside them, never between them and never splitting the frame down the middle. Nothing is added to the place that does not belong in it — no table, booth or chairs on a street, in a hallway or outdoors.${moment}${mood ? ` ${mood}` : ""}${actedRealism(o.cartoon, act, o.setting)} ${o.consistency} ${HANDS}${o.roomNote || ""}${o.faceNote || ""}${o.thingNote || ""} ${tail}`;
+  return `${lead}: BOTH people together in ${o.setting}, in the middle of a scene. ${stage} ${o.personA} on one side and ${o.personB} on the other, both faces prominent and in focus — each in their own half of the frame, never one directly in front of the other.${kin ? ` ${kin}` : ""} This is NOT an over-the-shoulder shot: neither person is turned fully away, cropped out, or blurred in the foreground; both are equally sharp. Both are in the SAME space — NOT separated by any window, glass pane, partition, railing, counter, doorway or divider BETWEEN them; if the setting has a window it stays in the BACKGROUND behind or beside them, never between them and never splitting the frame down the middle. Nothing is added to the place that does not belong in it — no table, booth or chairs on a street, in a hallway or outdoors.${moment}${mood ? ` ${mood}` : ""}${actedRealism(o.cartoon, act, o.setting, o.ownWorld)} ${o.consistency} ${HANDS}${o.roomNote || ""}${o.faceNote || ""}${o.thingNote || ""} ${tail}`;
 }
 
 /* ---- THE CLIP ---- */

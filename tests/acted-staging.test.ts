@@ -192,7 +192,7 @@ test("the master's whole prompt in a staging: the scene's moment IN the picture,
   assert.equal(crypto.createHash("sha256").update(classic, "utf8").digest("hex"), "e8bb6ae6d7bcac2b9832b103383a6bad3754a8571fa7cc0d306df40bc6dbc062", "the two-shot's own prompt is not to change with this");
   // (since 2026-11-25 the film's THING rides along too, by its own picture, where the place's first scene has it in view —
   //  acted-staging.ts → thingBound; tests/acted-sighting.test.ts)
-  assert.ok(img.includes("const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: action.replace(/\\s+/g, \" \").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, thingNote, comp }) : \"\";"));
+  assert.ok(img.includes("const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: action.replace(/\\s+/g, \" \").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, thingNote, comp, ownWorld: opts.ownWorld }) : \"\";"));
   // (…drawn on the good model first, the everyday one only if it will not: story-picture.ts → STORY_MODEL)
   assert.ok(img.includes("for (const m of [STORY_MODEL, STORY_LAST_MODEL]) {") && img.includes("try { url = await repRun(m, storyPictureInput(m, { prompt: staged || prompt, refs, aspect: ar }), 150_000); used = m; break; }"));
   // (…and a staged picture of a photographed film is told today's world, a lived-in home and what a shadow is)
@@ -448,7 +448,7 @@ test("the wiring: dealt per location, drawn into its master, said to its clips, 
   assert.ok(eng.includes("const dealt = stagingAt.get(locKey) || undefined;"));
   assert.ok(eng.includes("const staging = attempt === 2 && !url ? undefined : dealt;"));
   // (…and, since 2026-11-25, the film's THING by its own picture where the place's first scene has it in view — tests/acted-sighting.test.ts)
-  assert.ok(eng.includes("creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null }));"));
+  assert.ok(eng.includes("creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null, ownWorld: tmpl.ownWorld }));"));
   // KEPT with the picture (and so in the checkpoint a restarted film is picked up from)
   assert.ok(eng.includes("masters[locKey] = { url, aOnLeft, a: firstName(spkA), b: firstName(spkB), ...(drawnAs ? { staging: drawnAs } : {}) };"));
   // one master per location is still the seed of every clip there, drawn from the first scene set there…
@@ -1399,7 +1399,8 @@ test("a photographed film's night scene is the middle of the night", async () =>
   assert.equal(st.actedRealism(true, "at night", "a bedroom"), "", "a cartoon is left as it was");
   assert.ok(st.NIGHT_LINE.includes("never dusk, twilight or a blue evening glow"));
   const src = fs.readFileSync(new URL("../app/lib/acted-staging.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-  assert.ok(src.includes("${actedRealism(o.cartoon, act, o.setting)}"), "the staged master is told it, from its place and its moment");
+  // (…and whether the genre's world is its own: Fantasy is clothed and never "today" — stream S8, 2026-11-25)
+  assert.ok(src.includes("${actedRealism(o.cartoon, act, o.setting, o.ownWorld)}"), "the staged master is told it, from its place and its moment");
 });
 
 test("OUT OF DOORS NOTHING IS BUILT INTO THE PLACE (\"She Smiles From the Shallows\", 2026-11-25): its last scene said \"through the tent wall\" — the editor built a plastered room on the lake shore with a grey ghoul in a hole — and the one the film already showed is drawn as itself", async () => {
