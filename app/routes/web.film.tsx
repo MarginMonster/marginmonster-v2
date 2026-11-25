@@ -56,7 +56,7 @@ import { LYRIC_HERO } from "../lib/film-heroes";
 // (2026-11-24) FOUND FOOTAGE has its own builder (web.found-footage.tsx): a door to it on the Films shelf, operators only
 import { FOUND_FOOTAGE_DOOR } from "../lib/film-heroes";
 import { LYRIC_LOOKS, RIGHTS_ASK, RIGHTS_LINE, RIGHTS_NOTE, lyricEtaMinutes, songTitleOf, type LyricLook, type LyricShape } from "../lib/lyric-video";
-import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
+import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, sameThing, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 import type { StoryToEdit } from "../lib/story-edit";
 import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
 // (2026-11-23) a story's pictures move — what that takes is said beside Generate
@@ -2293,8 +2293,22 @@ export default function FilmStudio() {
   // …and the cast as that film had it (face + voice, by name): when the script comes back, each character
   // who is still in it by name gets the same face and the same voice again
   const [seriesCast, setSeriesCast] = useState<NextEpisodeCard["setup"]["cast"]>([]);
-  // …and the characters the last episode INVENTED, who come back with the faces they had (a told story)
+  // …and the characters the last episode INVENTED, who come back with the faces they had (a told story — and, since
+  //  S10b, an acted one: the faces it first showed them with, film-series.ts → carryRecord)
   const [seriesOwn, setSeriesOwn] = useState<NextEpisodeCard["setup"]["returning"]>([]);
+  // …and the card the episode was opened from (THE EPISODE BANNER: who comes back, and the line it picks up from).
+  // Held, not looked up again: the loader's cards move on as soon as a film is made, the episode being made does not.
+  const episodeCard = useRef<NextEpisodeCard | null>(null);
+  // …and THE SERIES' THING, already seen (S10b review, 2026-11-25): when an episode's script brings back the thing the
+  // last one drew (sameThing — "the woman in the lake", or "the pale woman"), its row shows THAT picture and the film is
+  // sent with it, as if "See it" had drawn it. Without this the row offered "See it · free" on a bare name, and a tap
+  // drew a NEW woman that was then posted as the film's thing — the episode's monster no longer the series' monster.
+  useEffect(() => {
+    const ep = episodeCard.current;
+    // (a picture already held for THIS line — "See it" pressed, or this — stays; one held for a line since rewritten does not)
+    if (!series || !storyThing || threatFace?.entry === storyThing.entry || !ep || ep.from !== series.from || !ep.thing || !sameThing(ep.thing.name, storyThing.name)) return;
+    setThreatFace({ name: storyThing.name, entry: storyThing.entry, url: ep.thing.img });
+  }, [series?.from, storyThing?.entry, threatFace?.entry]); // eslint-disable-line react-hooks/exhaustive-deps
   const castFromSeries = (list: CastMember[]): CastMember[] => {
     if (!series || !seriesCast.length) return list;
     return rebalanceVoices(list.map((c) => {
@@ -2585,7 +2599,10 @@ export default function FilmStudio() {
       if (back.stars.length) { setStoryPick(back.stars); done.cast = true; }
       if (back.monster) { setStoryMonster(back.monster); done.cast = true; }
       setSeriesCast(s.cast);
-      setSeriesOwn(isNarr ? (s.returning || []) : []);
+      // (an ACTED episode's own people come back too — the faces the last one invented, which no roster pick holds: the
+      //  Cast card says "Back: …" before a word is written, and the script's cast gets them by name — S10b)
+      setSeriesOwn(isNarr ? (s.returning || []) : s.cast.filter((m) => !!m.faceUrl && !d.roster.some((r) => r.img === m.faceUrl)).map((m) => ({ name: m.name, img: m.faceUrl as string })));
+      episodeCard.current = c;
       if (s.scenes) {
         setScenes(isNarr ? Math.max(d.narratedScenes.min, Math.min(d.narratedScenes.max, s.scenes)) : Math.max(nt?.minScenes || 1, Math.min(nt?.maxScenes || s.scenes, s.scenes)));
         done.length = true;
@@ -4521,12 +4538,28 @@ export default function FilmStudio() {
           </p>
         )}
         {/* NEXT EPISODE: the one line that says what this is — ✕ makes it an ordinary new film */}
-        {isStoryboard && series ? (
-          <div className="fs-epline">
-            <label htmlFor="fs-topic-in"><Ico n="film" size={14} /> {t("Episode {n} of “{title}”", { n: series.episode, title: series.title })}</label>
+        {isStoryboard && series ? (() => {
+          // THE EPISODE BANNER (S10b, 2026-11-25): which episode of what, WHO COMES BACK — their faces as the last one left
+          // them, its thing last — and the line it PICKS UP FROM. One calm strip at the top of the builder; nothing in it
+          // asks for a tap but the ✕, which makes it an ordinary new film. (A card with neither: the line it always was.)
+          const ep = episodeCard.current && episodeCard.current.from === series.from ? episodeCard.current : null;
+          const faces = ep ? [...ep.setup.cast.filter((m) => !!m.faceUrl).map((m) => ({ name: m.name, img: m.faceUrl as string, thing: false })), ...ep.setup.returning.map((m) => ({ ...m, thing: false })), ...(ep.thing ? [{ ...ep.thing, thing: true }] : [])].filter((f, k, a) => a.findIndex((x) => x.img === f.img) === k).slice(0, 4) : [];
+          const picks = ep?.picksUp || null;
+          return (
+          <div className={`fs-epline${faces.length || picks ? " fs-epb" : ""}`}>
+            <div className="fs-epb-main">
+              <label htmlFor="fs-topic-in"><Ico n="film" size={14} /> {t("Episode {n} of “{title}”", { n: series.episode, title: series.title })}</label>
+              {(faces.length > 0 || !!picks) && (
+                <div className="fs-epb-back">
+                  {faces.length > 0 && <span className="fs-epb-faces" aria-hidden="true">{faces.map((f, k) => <span key={f.img} className={`fs-epb-face${f.thing ? " is-thing" : ""}`} style={{ backgroundImage: `url(${f.img})`, ["--i" as string]: k }} title={f.name} />)}</span>}
+                  {picks && <span className="fs-epb-picks"><b>{t("Picks up from")}</b> <span className="fs-epb-said"><q>{picks.said}</q>{picks.who ? <span className="fs-epb-who"> — {picks.who}</span> : null}</span></span>}
+                </div>
+              )}
+            </div>
             <button type="button" className={`fs-epline-x${wipeArm === "series:" ? " is-arm" : ""}`} onClick={dropSeries} aria-label={t("Make an ordinary new film instead")} title={t("Make an ordinary new film instead")}><Ico n="x" size={14} /></button>
           </div>
-        ) : (
+          );
+        })() : (
           <label htmlFor="fs-topic-in">{tmpl?.needsProduct ? t("What's the gag?") : narrated ? t("What's your story about?") : tmpl?.sung ? t("What's your song about?") : t("What's your movie about?")}</label>
         )}
         {wipeNote("series:")}
@@ -5805,6 +5838,29 @@ ${CAST_ID_CSS}
 .fs-epline-x{flex:none;position:relative;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;border:1px solid var(--line,#E4DFCF);background:#fff;color:var(--ink2,#55605A);cursor:pointer;}
 .fs-epline-x::after{content:"";position:absolute;inset:-6px;}
 .fs-epline-x.is-arm{border-color:#D9A53A;box-shadow:0 0 0 2px #EBD9A8;background:#FFF7E3;color:#7A5A12;}
+/* THE EPISODE BANNER (S10b): which episode, who comes back, the line it picks up from — one calm strip in the idea card
+   (a cream card in both themes: the dark theater keeps it cream). The faces arrive one by one, once; the series' thing
+   comes last, in a dark-red ring that breathes twice and is still. Nothing moves for reduced motion. */
+.fs-epline.fs-epb{align-items:flex-start;gap:10px;margin-bottom:10px;padding:10px 10px 11px 12px;border-radius:14px;background:linear-gradient(160deg,#F3F9F5,#E8F3EC);border:1px solid #CFE6D8;}
+.fs-epb-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;}
+.mm-topic .fs-epb .fs-epb-main label{flex:none;align-items:flex-start;line-height:1.35;padding-top:6px;}
+.mm-topic .fs-epb .fs-epb-main label svg{flex:none;margin-top:2px;}
+/* (the faces and the small "Picks up from" share a row; the line itself takes the whole width under them — squeezed
+    beside four faces on a phone it was five words, cut mid-word) */
+.fs-epb-back{display:flex;flex-wrap:wrap;align-items:center;column-gap:10px;row-gap:7px;min-width:0;}
+.fs-epb-faces{display:flex;flex:none;padding-inline-start:8px;}
+.fs-epb-face{width:32px;height:32px;border-radius:50%;background:#20302A center top/cover no-repeat;border:2px solid #fff;margin-inline-start:-8px;box-shadow:0 1px 3px rgba(20,32,26,.2);animation:fsEpbIn .5s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 110ms + .15s);}
+.fs-epb-face.is-thing{border-color:#5E1F1F;filter:saturate(.8) brightness(.94);animation:fsEpbIn .5s cubic-bezier(.2,.8,.2,1) both,fsEpbBreath 2.8s ease-in-out 1.1s 2;animation-delay:calc(var(--i,0) * 110ms + .15s),1.1s;}
+.fs-epb-picks{display:contents;}
+.fs-epb-picks b{flex:none;font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#0A5E37;}
+[dir="rtl"] .fs-epb-picks b{letter-spacing:0;font-size:12px;}
+.fs-epb-said{flex:1 1 100%;min-width:0;font-size:13px;line-height:1.42;color:#3E5247;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
+.fs-epb-said q{font-style:italic;color:#14201A;}
+.fs-epb-who{color:#55605A;white-space:nowrap;}
+@keyframes fsEpbIn{from{opacity:0;transform:scale(.82);}to{opacity:1;transform:none;}}
+@keyframes fsEpbBreath{0%,100%{box-shadow:0 1px 3px rgba(20,32,26,.2),0 0 0 0 rgba(150,30,30,0);}50%{box-shadow:0 1px 3px rgba(20,32,26,.2),0 0 0 5px rgba(150,30,30,.16);}}
+@media(min-width:960px){.fs-epb-face{width:36px;height:36px;}.fs-epb-said{font-size:13.5px;}}
+@media(prefers-reduced-motion:reduce){.fs-epb-face,.fs-epb-face.is-thing{animation:none;}}
 /* scene-count row that lives under the describe-first box in the classic (non-MV) builder */
 .fs-len-topic{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#E4DFCF);font-size:13px;font-weight:700;color:var(--ink2,#55605A);flex-wrap:wrap;}
 /* THE LANGUAGE A STORY IS TOLD IN — under the idea box: the same pill as the Studio's "Writing in" (one setting) */

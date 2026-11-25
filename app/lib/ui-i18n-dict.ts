@@ -11,6 +11,7 @@ import type { UiLang } from "./ui-i18n";
 const es: Record<string, string> = {
   "This rewrites your script": "Esto reescribe tu guion",
   "About {time} to render — we'll keep it in your Archive": "Unos {time} de render — lo guardamos en tu Archivo",
+  "Picks up from": "Sigue desde",
   "We'll write the dialogue — then you direct it on a storyboard: tap a line to change it, a note to rewrite a scene. No tokens until you Generate.": "Escribimos el diálogo y tú lo diriges en un guion gráfico: toca una línea para cambiarla, una nota para reescribir una escena. Sin tokens hasta que pulses Generar.",
   "a sentence or two: who, where, what goes wrong": "una o dos frases: quién, dónde, qué sale mal",
   "What happens next? (or leave it — we pick up where it ended)": "¿Qué pasa después? (o déjalo así: seguimos donde terminó)",
@@ -3566,6 +3567,7 @@ const es: Record<string, string> = {
 const fr: Record<string, string> = {
   "This rewrites your script": "Cela réécrit ton script",
   "About {time} to render — we'll keep it in your Archive": "Environ {time} de rendu — on le garde dans tes Archives",
+  "Picks up from": "Reprend à",
   "We'll write the dialogue — then you direct it on a storyboard: tap a line to change it, a note to rewrite a scene. No tokens until you Generate.": "Nous écrivons les dialogues — puis vous les dirigez sur un storyboard : touchez une réplique pour la changer, une note pour réécrire une scène. Aucun jeton avant de lancer Générer.",
   "a sentence or two: who, where, what goes wrong": "une phrase ou deux : qui, où, ce qui tourne mal",
   "What happens next? (or leave it — we pick up where it ended)": "Que se passe-t-il ensuite ? (ou laissez vide : on reprend là où ça s'est arrêté)",
@@ -7102,6 +7104,7 @@ const fr: Record<string, string> = {
 const de: Record<string, string> = {
   "This rewrites your script": "Das schreibt dein Skript neu",
   "About {time} to render — we'll keep it in your Archive": "Etwa {time} zum Rendern — wir bewahren ihn in deinem Archiv auf",
+  "Picks up from": "Weiter ab",
   "We'll write the dialogue — then you direct it on a storyboard: tap a line to change it, a note to rewrite a scene. No tokens until you Generate.": "Wir schreiben den Dialog – dann führst du auf einem Storyboard Regie: Tippe auf eine Zeile, um sie zu ändern, auf eine Notiz, um eine Szene neu zu schreiben. Keine Tokens, bis du auf Generieren tippst.",
   "a sentence or two: who, where, what goes wrong": "ein, zwei Sätze: wer, wo, was schiefgeht",
   "What happens next? (or leave it — we pick up where it ended)": "Wie geht es weiter? (oder leer lassen – wir machen da weiter, wo es aufgehört hat)",
@@ -10648,6 +10651,7 @@ const de: Record<string, string> = {
 const zh: Record<string, string> = {
   "This rewrites your script": "这会重写你的剧本",
   "About {time} to render — we'll keep it in your Archive": "渲染约需 {time}——我们会把它保存在你的存档里",
+  "Picks up from": "从这句话接着讲",
   "We'll write the dialogue — then you direct it on a storyboard: tap a line to change it, a note to rewrite a scene. No tokens until you Generate.": "我们来写对白——然后你在故事板上执导：点一句台词就能修改，点一条导演提示就能重写一场戏。点击生成之前不花任何代币。",
   "a sentence or two: who, where, what goes wrong": "一两句话：谁、在哪里、出了什么问题",
   "What happens next? (or leave it — we pick up where it ended)": "接下来发生什么？（也可以留空——我们从上一集的结尾接着讲）",
@@ -14246,6 +14250,7 @@ const zh: Record<string, string> = {
 const ur: Record<string, string> = {
   "This rewrites your script": "اس سے آپ کا اسکرپٹ دوبارہ لکھا جائے گا",
   "About {time} to render — we'll keep it in your Archive": "رینڈر میں تقریباً {time} لگیں گے — ہم اسے آپ کے آرکائیو میں رکھیں گے",
+  "Picks up from": "یہاں سے آگے",
   "We'll write the dialogue — then you direct it on a storyboard: tap a line to change it, a note to rewrite a scene. No tokens until you Generate.": "ہم مکالمے لکھتے ہیں — پھر آپ اسٹوری بورڈ پر ہدایت دیتے ہیں: کسی سطر کو بدلنے کے لیے اس پر ٹیپ کریں، کسی منظر کو دوبارہ لکھوانے کے لیے کسی نوٹ پر۔ جنریٹ دبانے تک کوئی ٹوکن خرچ نہیں ہوتا۔",
   "a sentence or two: who, where, what goes wrong": "ایک دو جملے: کون، کہاں، کیا غلط ہوتا ہے",
   "What happens next? (or leave it — we pick up where it ended)": "آگے کیا ہوتا ہے؟ (یا خالی چھوڑ دیں — ہم وہیں سے آگے بڑھیں گے جہاں پچھلی قسط ختم ہوئی تھی)",

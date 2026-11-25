@@ -27,6 +27,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { db } from "../db.server";
 import { persistRemote, renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderSideBySideTwoShot, repRun } from "./image-generation.server";
 import { AVATAR_VOICES, isPersonalVoice } from "./avatar-voice-catalog";
@@ -42,7 +43,9 @@ import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { letterboxCrop, parseCropdetect } from "./letterbox";
 import { mirrorRender } from "./object-storage.server";
 import { filmShots, filmTemplate, ownCheckpoint, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
-import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
+import { episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
+// PART 2 IS THE SAME FILM, CONTINUED (S10b, 2026-11-25 — film-series.ts: what an acted film records, and what Part N uses)
+import { carriedPlaceFor, carriedThreat, carryRecord, castWithCarry, opensWhereItEnded } from "./film-series";
 import { clipSecondsFor } from "./speech-meter";
 import { captionStyleOf } from "./narrated-core";
 import { MIXED_CAST_LOCK, nameTok } from "./character-prompts";
@@ -326,6 +329,16 @@ export async function extractLastFrame(videoPath: string): Promise<string | null
     if (r.status === 0 && fs.existsSync(out)) return `/renders/${name}`;
   } catch { /* fall through — chain falls back to the scene's own seed still */ }
   return null;
+}
+
+/** A picture's width ÷ height, or 0 when it cannot be read. (An episode opens on the last one's last frame only when that
+ *  frame is this film's own shape: the video model takes the shape of the picture it starts from — S10b.) */
+function frameShape(localPath: string): number {
+  try {
+    const r = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", localPath], { encoding: "utf8", timeout: 20_000 });
+    const [w, h] = String(r.stdout || "").trim().split("x").map(Number);
+    return w > 0 && h > 0 ? w / h : 0;
+  } catch { return 0; }
 }
 
 /** Crop one half (left or right panel) out of the two-panel shot/reverse image → a
@@ -655,7 +668,15 @@ export async function generateTestMovie(opts: {
 
   // Locked cast (faces + voices) the merchant cast in the UI — drives per-shot
   // identity conditioning and the Veo voice pin.
-  const castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
+  // (…and AN EPISODE'S CARRIED PEOPLE — S10b, film-series.ts → castWithCarry. Every character of the last episode that
+  //  this one names is cast with the face — and voice — it had there, as if the maker had picked it: the faces that film
+  //  INVENTED too, cut from its first master, which used to be thrown away, so an episode 2 drew new people under the
+  //  same names. A face the maker gave that name stays theirs; a character the writer brings in new is drawn new.)
+  const carry = opts.series?.carry || null;
+  // (a carried face of ours no longer on our disk is not handed on: the picture model would fetch nothing and the place
+  //  would not draw — that character is drawn new, as one the writer brought in; its voice still comes)
+  const carriedCast = (carry?.cast || []).map((c) => (c.faceUrl && c.faceUrl.startsWith("/renders/") && !fs.existsSync(path.join(RENDERS(), path.basename(c.faceUrl))) ? { ...c, faceUrl: null } : c));
+  const castActors = castWithCarry((opts.cast || []).filter((c) => c && c.name && c.name.trim()), carriedCast, { labels: treatment.scenes.map((s) => (wordless(s.caption) ? "" : splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "")), castLines: treatment.cast });
   // THE FILM'S PEOPLE, BY NAME — never its thing (the monster row's review, 2026-11-25): a drawn threat posted as a cast
   // entry named "the woman in the lake" made heardIn read "the", "in", "woman" and "lake" as people's names, and "a voice
   // calls their names softly from the water" came out SEEN. Every list of names the staging reads is the people's.
@@ -858,6 +879,9 @@ export async function generateTestMovie(opts: {
   const masterFor = async (locKey: string, where: string, roomRef?: string, action?: string, thingIn?: boolean): Promise<Master | undefined> => {
     if (!isTwoHander) return undefined;
     if (masters[locKey]?.url) return masters[locKey];
+    // (AN EPISODE: a place it shares with the last one is drawn FROM that one's picture, as its room — the same tent —
+    //  and the place it opens in, from the last frame: roomFor, below. A frame the maker approved wins, as it always has.)
+    roomRef = roomRef || roomFor(locKey);
     // The master two-shot is the WHOLE film's seed — nano-banana occasionally returns null,
     // which hard-killed the render with "no seed frame". Retry a few times before giving up.
     // …and a master that doesn't LOOK like the people who were cast is the wrong film from its first
@@ -1185,11 +1209,28 @@ export async function generateTestMovie(opts: {
   const sightOn = staged && horror && !cartoon && isTwoHander;
   /** The thing's own cast line (or its name, for a cast thing) — kept even when its portrait would not draw. */
   let threatEntry = "";
+  /* PART N: THE SAME THING (S10b, 2026-11-25 — film-series.ts → carriedThreat). The last episode's thing — its ONE picture,
+   * meta.threat — is this film's, on the cast threat's own path above: drawn from that picture in every shot it is in, the
+   * reveal included. Not when the maker cast a thing of their own (a cast threat, or a creature that does not talk), and
+   * not when this episode's words make its thing ANOTHER one (a werewolf where there was a woman): that one is drawn new.
+   * It is named as this episode's own words name it, so every line about it finds it. */
+  const carriedThing = sightOn && carry?.threat ? (() => {
+    // (its picture must still be ours to hand an editor — as a kept portrait must: onDisk)
+    if (carry.threat.img.startsWith("/renders/") && !onDisk(carry.threat.img)) return null;
+    const talks = (n: string): boolean => [spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(n));
+    if (castActors.some((c) => !!c.faceUrl && isCreature(c) && !talks(c.name))) return null;
+    const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual })
+      // (read exactly as the film's own thing is read below — its lines too, and only the PEOPLE's names: main's fix)
+      || threatFromWords({ visuals: scenesArr.map((s) => s.visual), said: scenesArr.map((s) => s.caption), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: peopleNames });
+    const t = carriedThreat(carry.threat, own);
+    return t ? { name: t.name, faceUrl: t.img, voiceId: null, role: "threat" as const, look: t.look || "", ...(t.creature ? { kind: "monster" as const } : {}) } : null;
+  })() : null;
+  if (carriedThing) console.log(`[testmovie] the series' thing comes back: ${carriedThing.name} — ${carriedThing.faceUrl}`);
   if (sightOn) {
     // (never one of the two who talk — a cast threat the script gave lines to is one of them, and "close behind them"
     //  would put the speaker behind themself: review, 2026-11-25)
     const speaks = (c: { name: string }): boolean => [spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name));
-    const chosen = castThreat(castActors);
+    const chosen = castThreat(castActors) || carriedThing;
     const named = (chosen && !speaks(chosen) ? chosen : null) || castActors.find((c) => !!c.faceUrl && isCreature(c) && !speaks(c));
     if (named?.faceUrl) {
       threat = { name: named.name.trim(), img: named.faceUrl, from: "cast", look: castLooks[nameKey(named.name)] || (named.look || "").replace(/\s+/g, " ").trim(), entry: named.name.trim(), creature: isCreature(named) };
@@ -1268,6 +1309,52 @@ export async function generateTestMovie(opts: {
     else if (thingInMaster(j, false) && masters[locKeyAt(j)]?.url) firstShown = { url: masters[locKeyAt(j)].url, words: scenesArr[j]?.visual || "" };
   }
 
+  /* PART N: THE SAME PLACES — AND IT OPENS WHERE IT ENDED (S10b, 2026-11-25 — film-series.ts). The owner: "It should carry
+   * the cast / the scenes etch into the next part … need the ability to pick up where left off to continue ! Yanno?" An
+   * episode is handed its last episode's places (each one's master picture) and the LAST FRAME that film ended on:
+   *   · a place of this film that IS a carried place (the same words, else the same head noun — never the tent at 3am
+   *     for the tent "the next morning": a room reference copies the light) has its master drawn with the carried
+   *     picture as its ROOM, the way a cast photo is a face — the same tent, the same kitchen (carriedPlaceFor);
+   *   · when the writer's first scene opens RIGHT THERE — "Moments later," in the very place the last frame was taken
+   *     (opensWhereItEnded; the series brief asks for those words) — that place's master is drawn with the last frame
+   *     (letterbox off) as its room, and the FIRST SHOT grows out of the last frame itself: when it is this film's shape,
+   *     and the two stand on the same sides of it as in the master just drawn (a line has to find its mouth — the shots
+   *     after it chain from it and are pointed by the master's sides). A frame that cannot be read is not used.
+   * A master drawn this way is a master: checkpointed with the rest (ckMasters), never drawn twice after a restart. A
+   * carried picture no longer on our disk, or one that fits nothing, leaves the place to be drawn as it always was. */
+  const carriedRoom = new Map<string, string>();
+  if (carry && isTwoHander) {
+    for (const k of locOrder) {
+      const p = carriedPlaceFor(whereAt[locFirst.get(k) ?? 0], carry.places);
+      if (p && onDisk(p.img)) carriedRoom.set(k, p.img);
+    }
+    if (carriedRoom.size) console.log(`[testmovie] the same places as last time — ${[...carriedRoom.keys()].map((k) => k.slice(0, 40)).join(" | ")}`);
+  }
+  let openFrame = "";
+  let openLeft: boolean | null = null;
+  if (carry?.lastFrame && isTwoHander && !clips.length && !approvedFrames[0] && opensWhereItEnded({ visual: scenesArr[0]?.visual, where: whereAt[0] }, carry)) {
+    try {
+      const local = path.join(RENDERS(), path.basename(carry.lastFrame));
+      const shape = fs.existsSync(local) ? frameShape(local) : 0;
+      if (shape && Math.abs(shape - AW / AH) / (AW / AH) < 0.03) {
+        openFrame = (await removeLetterbox(carry.lastFrame)) || "";
+        // (who stands on the left in it — the question every master is asked, put to the last frame)
+        if (openFrame) {
+          const { anthropicVision } = await import("./anthropic.server");
+          const [kind, one] = creatureNamed(spkA) || creatureNamed(spkB) ? ["characters", "Character"] : ["people", "Person"];
+          const ask = () => anthropicVision(`Two ${kind} are together in this image. ${one} A is: ${bibleFor(spkA)}. ${one} B is: ${bibleFor(spkB)}. Which of them is on the LEFT side of the frame? Answer with a single letter, A or B, and nothing else.`, [abs(openFrame)!], { maxTokens: 4 });
+          let ans = ((await ask()) || "").trim().toUpperCase();
+          if (!/^[AB]\b/.test(ans)) ans = ((await ask()) || "").trim().toUpperCase();
+          openLeft = /^A\b/.test(ans) ? true : /^B\b/.test(ans) ? false : null;
+        }
+      } else console.log(`[testmovie] the last episode's last frame is ${shape ? "another shape" : "not on our disk"} — the first shot is drawn as any first shot`);
+    } catch (e) { openLeft = null; console.error(`[testmovie] the last frame could not be read — the first shot is drawn as any first shot: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+    if (openFrame) console.log(`[testmovie] it opens where the last episode ended — the first place is drawn from its last frame${openLeft === null ? " (its sides could not be read: the first shot is seeded from the master)" : ""}`);
+  }
+  /** The ROOM a place's master is drawn from in an episode (masterFor): the last frame for the place it opens in, else
+   *  the carried picture of the same place — undefined for anything else, as every place was before. */
+  const roomFor = (locKey: string): string | undefined => (openFrame && locKey === locKeyAt(0) ? abs(openFrame) : abs(carriedRoom.get(locKey)));
+
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     // A SHOT NOBODY SPEAKS IN (acted-staging.ts → wordless): a horror film's last shot has no line, and a
@@ -1307,6 +1394,11 @@ export async function generateTestMovie(opts: {
     if (thingHere && master?.url && !firstShown) firstShown = { url: master.url, words: scene.visual || "" };
     const sideFor = sideForMaster(master);
     let seedAbs = abs(approvedFrames[i]);
+    // IT OPENS WHERE IT ENDED (above — S10b): the first shot grows out of the last episode's last frame, when the two stand
+    // on the same sides of it as in the master just drawn from it; else it is seeded from that master, as any first shot.
+    const opened = !seedAbs && i === 0 && !!openFrame && !!master?.url && openLeft !== null && openLeft === master.aOnLeft;
+    if (opened) { seedAbs = abs(openFrame); console.log(`[testmovie] shot 1: grown out of the last episode's last frame`); }
+    else if (i === 0 && openFrame && master?.url) console.log(`[testmovie] shot 1: the last frame has the two on ${openLeft === null ? "unread" : "other"} sides — seeded from the place's master`);
     // THE REVEAL (acted-staging.ts → revealPicture). A horror film's last shot is in the SAME place as the shot
     // before it, and the thing the story has been circling is drawn INTO that place's own picture: its master,
     // edited — the same room, camera, light and two people — with the thing added by the creature recipe the
@@ -1474,6 +1566,9 @@ export async function generateTestMovie(opts: {
     // was always told. A shot that continues the last one keeps the staging of the picture before it.
     // (a SIGHTING is an edit of the place's own staged picture — its staging, whatever angle the script asked for)
     if (!chained) chainStaging = approvedFrames[i] || !master?.url || (tr === "angle" && !sighted) ? null : stagingOf(master);
+    // (the last episode's last frame is no staged picture — the two stand as that film left them, like a frame the maker
+    //  approved: its shot is told what a shot was always told, and the shots that continue it keep that)
+    if (opened) chainStaging = null;
 
     // Veo prompt: ONE speaker talks a full beat (clean single voice), the other
     // present and reacting; two-shot; voice pinned consistent; NO on-screen text.
@@ -1667,6 +1762,31 @@ export async function generateTestMovie(opts: {
     catch (e) { console.error(`[testmovie] no poster (the shelf shows the first frame): ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
   }
 
+  // THE RECORD FOR THE NEXT PART (S10b, 2026-11-25 — film-series.ts → carryRecord; read back by seriesCarryOf). It kept only
+  // the cast the maker PICKED: the two faces the film invented — cut from its first master (firstFaces) — were thrown away,
+  // so an episode 2 drew new people under the same names, its tent was a different tent, and nothing of how it ENDED
+  // reached the next film's pictures. Now it writes every speaking character (the picked ones as before; the invented ones
+  // with the face it first showed them with, and the voice it gave them, if any), each place it drew with its master, and
+  // the LAST FRAME it ended on — the last shot's own, before a caption was drawn over it — with the place it was in. An
+  // episode hands on what it was carried and did not use. Our own /renders pictures only; never the film's thing (meta.threat).
+  const ownRel = (u: string | null | undefined): string => { const s = String(u || ""); const r = base && s.startsWith(`${base}/renders/`) ? s.slice(base.length) : s; return r.startsWith("/renders/") ? r.split(/[?#]/)[0] : ""; };
+  const nextPart = carryRecord({
+    cast: castActors,
+    faces: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, faceUrl: ownRel(firstFaces[firstName(n)]) })),
+    castLines: treatment.cast,
+    thing: threat?.name || null,
+    places: locOrder.filter((k) => !!masters[k]?.url).map((k) => ({ name: k, where: whereAt[locFirst.get(k) ?? 0] || "", img: ownRel(masters[k].url) })),
+    lastFrame: ownRel(prevFrameUrl),
+    lastPlace: clips.length ? locKeyAt(clips.length - 1) : null,
+    carried: carry,
+  });
+  // (the pictures it names that no other step put in the render store — the faces cut from the first master, the last
+  //  frame — go there too: a next part may be made long after this disk has moved on)
+  for (const u of [...nextPart.cast.map((c) => c.faceUrl), nextPart.lastFrame]) {
+    const n = String(u || "").startsWith("/renders/") ? path.basename(String(u)) : "";
+    if (n && /^(?:face|tmf)-/.test(n)) { try { await mirrorRender(n, fs.readFileSync(path.join(RENDERS(), n))); } catch { /* non-fatal */ } }
+  }
+
   const asset = await db.asset.create({
     data: {
       shopId: opts.shopId,
@@ -1681,15 +1801,18 @@ export async function generateTestMovie(opts: {
         ...(dialogueEngine === "kling3" ? { host: filmKlingHost() } : {}),
         // NEXT EPISODE (film-series.ts): who was cast — face and voice — so the next episode casts them
         // again, and the series this film is an episode of (an ordinary film has no `series`)
-        // (an acted film's thing is not one of its cast: meta.threat carries it to the next part — kept here, a next
-        //  episode matched "the woman in the lake" by "woman" and gave her portrait to a new "woman next door")
-        cast: castForMeta((opts.cast || []).filter((c) => c.role !== "threat")),
+        // (…and since S10b everything its next part carries: the invented faces too, its places, its last frame — above.
+        //  An acted film's thing is not one of its cast: meta.threat carries it to the next part — carryRecord keeps it out,
+        //  a next episode matched "the woman in the lake" by "woman" and gave her portrait to a new "woman next door")
+        ...nextPart,
         ...(opts.series ? { series: seriesMeta(opts.series) } : {}),
         // THE POSTER: its cover on the shelf — the cast's portraits under the title (story-poster.ts)
         ...(poster ? { poster } : {}),
         // THE FILM'S THING (2026-11-25, "Monster should be castable also"): who the monster was — the maker's cast threat,
         // or the portrait the film drew of the story's own — so the Archive and a re-cut can show it
-        ...(threat ? { threat: { name: threat.name, img: threat.img, from: threat.from } } : {}),
+        // (…with its look in words and what it is — S10b: Part 2's writer is told to keep its "cast" entry by them, and its
+        //  picture is drawn as a creature or as a figure exactly as it was here)
+        ...(threat ? { threat: { name: threat.name, img: threat.img, from: threat.from, ...(threat.look ? { look: threat.look.slice(0, 200) } : {}), ...(threat.creature ? { creature: true } : {}) } } : {}),
         // …and the shots a SIGHTING drew (the picture each was seeded from is its `seed`, below)
         ...(Object.keys(sightings).length ? { sightings: Object.keys(sightings).map(Number).sort((a, b) => a - b) } : {}),
         // THE STAGING (acted-staging.ts): how the two were placed in each location, in the order the film

@@ -18,11 +18,12 @@
 import { FILM_HEROES, FORMER_HERO_NAMES, heroOf, type FilmHero } from "./film-heroes.ts";
 import { castCardsOf } from "./story-picture.ts";
 import { posterOf } from "./story-poster.ts";
+import { nameTok } from "./character-prompts.ts";
 
 /** What a film in a series stores on its asset (metaJson.series). */
 export type FilmSeries = { id: string; title: string; episode: number };
 /** What the WRITER of the next episode is given: the series, the recap, and who was in it before. */
-export type SeriesBrief = FilmSeries & { recap: string; characters: string[]; /** a TOLD series' places, each "name: look" as its last episode listed them (story-picture.ts) */ places?: string[]; /** where the last episode STOPPED — its last scene's own words (lastMomentOf) */ last?: LastMoment; /** an ACTED series: the two who talked last time, by name (seriesSpeakers) */ speakers?: string[] };
+export type SeriesBrief = FilmSeries & { recap: string; characters: string[]; /** a TOLD series' places, each "name: look" as its last episode listed them (story-picture.ts) */ places?: string[]; /** where the last episode STOPPED — its last scene's own words (lastMomentOf) */ last?: LastMoment; /** an ACTED series: the two who talked last time, by name (seriesSpeakers) */ speakers?: string[]; /** an ACTED series: what Part N carries from the film before it — its people's faces, its places, its thing, its last frame (seriesCarryOf), read on the server from that film's own row and checked again off the queue. The writer is never shown it. */ carry?: SeriesCarry; /** an ACTED series' THING when last time's words gave it no character line of its own (meta.threat): "name, look" */ thing?: string };
 /** One cast member as a finished story film stores it (metaJson.cast) — enough to cast them again. */
 export type SeriesCastMember = { name: string; faceUrl: string | null; voiceId: string | null; kind?: "person" | "cartoon" | "monster"; look?: string };
 
@@ -225,7 +226,13 @@ export function seriesBriefOf(
   const last = lastMomentOf(prev.bodyJson);
   // (…and, for an acted one, WHO talked: the next episode's two are the same two — seriesSpeakers)
   const speakers = want.narrated ? [] : seriesSpeakers(prev.bodyJson);
-  return { ...nextSeries(prev), recap: buildRecap(prev.bodyJson), characters: seriesCharacters(prev.bodyJson), ...(places.length ? { places } : {}), ...(last ? { last } : {}), ...(speakers.length === 2 ? { speakers } : {}) };
+  const characters = seriesCharacters(prev.bodyJson);
+  // (…and, for an acted one, what Part 2 CARRIES — the same faces, places, thing and last frame: seriesCarryOf, S10b.
+  //  A told story carries its portraits and sheets the way it always has: the page's castToken.)
+  const carry = want.narrated ? null : seriesCarryOf(prev.metaJson);
+  // (…and its THING, when it was found from the film's words and has no character line to be kept by — meta.threat)
+  const thing = carry?.threat && !characters.some((c) => bareName(leadName(c)) === bareName(carry.threat!.name)) ? thingLine(carry.threat) : "";
+  return { ...nextSeries(prev), recap: buildRecap(prev.bodyJson), characters, ...(places.length ? { places } : {}), ...(last ? { last } : {}), ...(speakers.length === 2 ? { speakers } : {}), ...(carry && carryHas(carry) ? { carry } : {}), ...(thing ? { thing } : {}) };
 }
 
 /** THE TWO WHO TALK in an acted film — by the names its lines are said under, in the order they first speak,
@@ -265,7 +272,10 @@ export function seriesFromPayload(v: unknown): SeriesBrief | null {
   const last = lastMomentFrom(v.last);
   // (the two who talk ride the queue too, checked again: two names, each one line and short, or none)
   const speakers = Array.isArray(v.speakers) ? v.speakers.map((n) => quoted(str(n), LAST_WHO_MAX)).filter(Boolean) : [];
-  return { ...s, recap, characters, ...(places.length ? { places } : {}), ...(last ? { last } : {}), ...(speakers.length === 2 ? { speakers } : {}) };
+  // (…and what Part N carries, read again through the very reader that read it off the film — a restart has it whole)
+  const carry = isObj(v.carry) ? seriesCarryOf({ ...v.carry, lastPlace: v.carry.endedIn }) : null;
+  const thing = quoted(str(v.thing), THING_LINE_MAX);
+  return { ...s, recap, characters, ...(places.length ? { places } : {}), ...(last ? { last } : {}), ...(speakers.length === 2 ? { speakers } : {}), ...(carry && carryHas(carry) ? { carry } : {}), ...(thing ? { thing } : {}) };
 }
 
 /** What a film stores as meta.series — the three facts, nothing of the recap. */
@@ -298,6 +308,12 @@ export function seriesWriterBrief(s: SeriesBrief): string {
   // (an acted series' two, by name; and whoever else its characters list, who does not talk — named, not quoted whole)
   const two = (s.speakers || []).map((n) => n.replace(/<{3,}|>{3,}/g, " ").replace(/["“”]/g, "'").trim()).filter(Boolean);
   const others = two.length === 2 ? chars.map((c) => leadName(c)).filter((n) => n && !two.some((t) => bareName(t) === bareName(n))) : [];
+  // (the thing, fence-safe and quote-safe; never one of the two, never one already kept by its own character line)
+  const thing = quoted(str(s.thing), THING_LINE_MAX);
+  const thingName = leadName(thing);
+  const thingKept = !!thing && !!thingName && !two.some((t) => bareName(t) === bareName(thingName)) && !others.some((o) => bareName(o) === bareName(thingName));
+  // (an ACTED last moment with a place: the opening's sign can be asked for — a told story has no "where")
+  const lastActed = !!s.last && !s.last.told && !!quoted(str(s.last.where), LAST_WHERE_MAX);
   return (
     `\nTHIS IS EPISODE ${s.episode} OF A SERIES called "${title}".\n` +
     (recap
@@ -322,13 +338,21 @@ export function seriesWriterBrief(s: SeriesBrief): string {
     //  comes AFTER this one, where the writer weighs it most. It may shape the first sentence, never move where or
     //  when the episode opens. Seen in review, 2026-11-25: nothing else in the prompt says which of the two wins.)
     (last ? `• HOW IT OPENS — decide it from the last moment: if the last episode ended UNRESOLVED (a threat present or coming, a question just raised, somebody in danger, a door just opened), this episode OPENS RIGHT THERE — the same place, the same people, moments later — and its FIRST scene says so in its own words. If it ended resolved, this episode starts later, on an event of its own. WHAT HAPPENS IN THIS EPISODE, when it is given below, comes first. Any later line about how the story opens may shape its first sentence — never where or when this episode opens.\n` : "") +
+    // THE SIGN THAT IT OPENS RIGHT THERE (S10b, 2026-11-25). An ACTED episode that opens where the last one stopped
+    // grows its first shot out of the last one's last frame (film-dialogue → opensWhereItEnded) — but only the writer
+    // can tell "moments later" from "the next morning", and "its FIRST scene says so in its own words" is no sign a
+    // program can read. So the words are asked for: the same place in the same words, and "Moments later,".
+    (lastActed ? `• When it opens right there, its FIRST scene's "where" is the last moment's Where, word for word, and its "visual" begins with the words "Moments later,".\n` : "") +
     // THE TWO WHO TALK, BY NAME (live, 2026-11-25 — see seriesSpeakers): the general rule below lost to a new park
     // ranger in Selam's place. And whoever else the series' characters list does not talk — the woman from the lake —
     // keeps a "cast" entry of their own, word for word: the acted engine draws its thing FROM that entry (one face for
     // the whole film: acted-staging.ts → storyThreat), and an episode that dropped it drew her from words alone.
     (two.length === 2
       ? `• THE TWO WHO TALK are ${two[0]} and ${two[1]}, as last time: they are this episode's two — by exactly those names, the first two entries of "cast" (${two[0]} first), with the same looks and the same voices — unless the last episode's own words took one of them out of the story. Nobody new takes either one's place.\n` +
-        (others.length ? `• ${others.map((o) => `"${o}"`).join(" and ")} — in THE SERIES' CHARACTERS above, and not one of the two who talk — ${others.length > 1 ? "keep a \"cast\" entry each" : "keeps a \"cast\" entry"}, word for word as above, in every episode they are in: that entry is what they are drawn from.\n` : "")
+        (others.length ? `• ${others.map((o) => `"${o}"`).join(" and ")} — in THE SERIES' CHARACTERS above, and not one of the two who talk — ${others.length > 1 ? "keep a \"cast\" entry each" : "keeps a \"cast\" entry"}, word for word as above, in every episode they are in: that entry is what they are drawn from.\n` : "") +
+        // (…and THE SERIES' THING when last time's words gave it no line of its own — the ninth lake film found its
+        //  woman from its words alone (acted-staging.ts → threatFromWords): only the piece's meta.threat names her)
+        (thingKept ? `• "${thingName}" — what this series is about, who never talks — keeps a "cast" entry of its own in every episode it is in, written as: "${thing}". That entry is what it is drawn from.\n` : "")
       : "") +
     `• The SAME named characters continue, with the same looks and the same voices — keep every name exactly as before, and bring them back rather than inventing new leads.\n` +
     `• The story moves FORWARD from where the last episode stopped: do NOT retell or re-explain what already happened, and never repeat its scenes.\n` +
@@ -357,6 +381,11 @@ export type NextEpisodeCard = {
   /** the film's own POSTER (story-poster.ts) — its title and cast over its best picture — when it made one:
    *  the card's picture, so the row is a shelf of the member's own films */
   poster: string | null;
+  /** WHERE IT PICKS UP (S10b — the builder's episode banner, "Picks up from: …"): the last line said — an acted
+   *  film's, by whom (spelled as its cast list spells them), or a told story's storyteller's — absent when it kept none */
+  picksUp?: { said: string; who: string };
+  /** THE SERIES' THING, as the last episode drew it (meta.threat — an acted horror's one picture of it): it comes back */
+  thing?: { name: string; img: string };
   /** what a tap sets, as that film was made */
   setup: {
     aspect: "9:16" | "16:9" | "1:1" | null;
@@ -390,6 +419,9 @@ export function nextEpisodeCards(rows: ReadonlyArray<{ id: string; title?: strin
     const meta = safeParse(r.metaJson);
     const next = nextSeries(r);
     const a = str(meta.aspect);
+    // (the builder's banner: where it picks up, and the thing that comes back with the cast — S10b)
+    const picksUp = picksUpOf(r.bodyJson);
+    const thing = str(meta.kind) === "testmovie" ? seriesCarryOf(meta).threat : undefined;
     out.push({
       from: r.id,
       heroId: hero.id,
@@ -397,6 +429,8 @@ export function nextEpisodeCards(rows: ReadonlyArray<{ id: string; title?: strin
       episode: next.episode,
       video,
       poster: posterOf(meta),
+      ...(picksUp ? { picksUp } : {}),
+      ...(thing ? { thing: { name: thing.name, img: thing.img } } : {}),
       setup: {
         // (a narrated story's meta says "9:16"; an older acted one may say "vertical")
         aspect: a === "9:16" || a === "16:9" || a === "1:1" ? a : null,
@@ -683,8 +717,11 @@ export function nextMarks(rows: ReadonlyArray<{ id: string; metaJson?: unknown; 
 export type SeriesCarry = {
   cast: SeriesCastMember[];
   places: Array<{ name: string; where: string; img: string }>;
-  threat?: { name: string; img: string };
+  /** the film's thing: its one picture — and, written since S10b, its look in words and whether it is a creature */
+  threat?: { name: string; img: string; look?: string; creature?: true };
   lastFrame?: string;
+  /** the name of the carried place the last frame was taken in (meta.lastPlace) — only with a last frame */
+  endedIn?: string;
 };
 /** A picture on our own renders disk (one dot: /renders serves one-dot names only). */
 const OWN_PICTURE = /^\/renders\/[a-zA-Z0-9_-]+\.(?:jpe?g|png|webp)$/;
@@ -709,7 +746,238 @@ export function seriesCarryOf(meta: unknown): SeriesCarry {
   }
   const t = isObj(m.threat) ? m.threat : null;
   const threatName = t ? oneLine(str(t.name)).slice(0, 40) : "";
-  const threat = t && threatName && OWN_PICTURE.test(str(t.img)) ? { name: threatName, img: str(t.img) } : undefined;
+  // (a thing the story invented is a picture of ours; one the maker CAST is the picture they cast — a stock monster's
+  //  own page picture — checked as a cast face is: S10b, so a werewolf picked for Part 1 is Part 2's werewolf too)
+  const threatImg = t ? str(t.img) : "";
+  const threatLook = t ? quoted(str(t.look), THING_LOOK_MAX) : "";
+  const threat = t && threatName && (OWN_PICTURE.test(threatImg) || (FACE.test(threatImg) && !threatImg.includes("..")))
+    ? { name: threatName, img: threatImg, ...(threatLook ? { look: threatLook } : {}), ...(t.creature === true ? { creature: true as const } : {}) }
+    : undefined;
   const lastFrame = OWN_PICTURE.test(str(m.lastFrame)) ? str(m.lastFrame) : undefined;
-  return { cast, places, ...(threat ? { threat } : {}), ...(lastFrame ? { lastFrame } : {}) };
+  // (…and WHERE that last frame was: one of the places carried, by its name — or nothing)
+  const ended = lastFrame ? oneLine(str(m.lastPlace)).slice(0, 60).toLowerCase() : "";
+  const endedIn = ended ? places.find((p) => p.name.toLowerCase() === ended)?.name : undefined;
+  return { cast, places, ...(threat ? { threat } : {}), ...(lastFrame ? { lastFrame } : {}), ...(endedIn ? { endedIn } : {}) };
+}
+
+/** Does a carry hold anything a next part can use? (A film whose record is empty carries nothing.) */
+const carryHas = (c: SeriesCarry): boolean => c.cast.some((m) => !!m.faceUrl || !!m.voiceId) || c.places.length > 0 || !!c.threat || !!c.lastFrame;
+/** How much of the thing's look is kept; how long the writer's line for it may be. */
+const THING_LOOK_MAX = 200;
+const THING_LINE_MAX = 240;
+/** The thing as the writer is told to keep its "cast" entry: "the woman in the lake, pale, in a soaked white dress". */
+const thingLine = (t: { name: string; look?: string }): string => quoted(`${t.name}${t.look ? `, ${t.look}` : ""}`, THING_LINE_MAX);
+
+/** WHERE THE NEXT EPISODE PICKS UP, for the builder's banner (S10b): the last line said — and by whom, spelled as the
+ *  film's cast list spells them ("Ravi", not the caption's "RAVI") — or null when it kept none. Only a line is shown:
+ *  an acted film's "seen" is an English stage direction, never the member's words. */
+export function picksUpOf(bodyJson: unknown): { said: string; who: string } | null {
+  const m = lastMomentOf(bodyJson);
+  if (!m || !m.said) return null;
+  const names = seriesCharacters(bodyJson).map((c) => leadName(c)).filter(Boolean);
+  const who = m.who ? names.find((n) => bareName(n) === bareName(m.who)) || spellName(m.who) : "";
+  return { said: headWords(m.said, 160), who };
+}
+/** A caption's ALL-CAPS label as a name: "RAVI" → "Ravi" (a label in mixed case is left as it is). */
+const spellName = (label: string): string => (/\p{Ll}/u.test(label) ? label : label.toLowerCase().replace(/(^|[\s'’-])(\p{L})/gu, (_, a: string, b: string) => a + b.toUpperCase()));
+
+/* ---- THE RECORD (S10b, 2026-11-25): what an acted film writes, so its next part can carry it ----------------------
+ *
+ * What broke: an acted film recorded only the cast the maker PICKED. The faces it invented — cut from its first master
+ * (film-dialogue → firstFaces) — were thrown away, so an episode 2 drew new people under the same names; its places
+ * were drawn again from words (episode 2's tent was a different tent); and nothing of how it ENDED reached the next
+ * film's pictures. The film now writes it all, checked here the way seriesCarryOf reads it back.
+ */
+
+/** One cast member as an acted film is made from (film-dialogue.server.ts → castActors). */
+export type ActedCastIn = { name: string; faceUrl?: string | null; voiceId?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string; role?: "threat" };
+
+/** The meta an acted film writes for its next part: `cast` — EVERY speaking character, the picked ones as before and
+ *  the invented ones with the face the film first showed (`faces`, our own /renders pictures) and the voice it gave
+ *  them, if any — never the film's thing (it has meta.threat); `places` — each place drawn, in the order the film first
+ *  went there (its name, its words, its master picture); `lastFrame` and `lastPlace` — the finished film's last frame
+ *  and the place it was in. An EPISODE hands on what it was carried and did not use (`carried`): a character or a
+ *  place that sat this one out is still the series' for the next. Bounded exactly as seriesCarryOf reads it. */
+export function carryRecord(o: {
+  cast: ReadonlyArray<ActedCastIn | null | undefined>;
+  faces?: ReadonlyArray<{ name: string; faceUrl: string | null | undefined }>;
+  castLines?: ReadonlyArray<string | null | undefined> | null;
+  thing?: string | null;
+  places?: ReadonlyArray<{ name: string; where: string; img: string }>;
+  lastFrame?: string | null;
+  lastPlace?: string | null;
+  carried?: SeriesCarry | null;
+}): { cast: SeriesCastMember[]; places?: SeriesCarry["places"]; lastFrame?: string; lastPlace?: string } {
+  const thingKey = bareName(oneLine(str(o.thing)));
+  const notThing = (n: string): boolean => !thingKey || bareName(oneLine(n)) !== thingKey;
+  // (a cast THREAT is never one of the people, whatever the film drew of it — the monster row's review, 2026-11-25: a
+  //  film that staged no sighting has no `thing`, and its posted "the woman in the lake" was written into meta.cast)
+  const members: ActedCastIn[] = (o.cast || []).filter((c): c is ActedCastIn => !!c && c.role !== "threat" && !!oneLine(str(c.name)) && notThing(str(c.name))).map((c) => ({ ...c }));
+  const lines = (o.castLines || []).map((l) => leadName(oneLine(str(l)))).filter(Boolean);
+  for (const f of o.faces || []) {
+    const face = str(f?.faceUrl);
+    const k = nameTok(str(f?.name));
+    if (!k || !OWN_PICTURE.test(face) || !notThing(str(f.name))) continue;
+    const at = members.findIndex((c) => nameTok(c.name) === k);
+    if (at >= 0) { if (!members[at].faceUrl) members[at] = { ...members[at], faceUrl: face }; }
+    else members.push({ name: lines.find((n) => nameTok(n) === k) || spellName(oneLine(str(f.name))), faceUrl: face, voiceId: null });
+  }
+  for (const c of o.carried?.cast || []) if (notThing(c.name) && !members.some((m) => nameTok(m.name) === nameTok(c.name))) members.push(c);
+  const places: SeriesCarry["places"] = [];
+  const addPlace = (p: { name?: unknown; where?: unknown; img?: unknown }) => {
+    const name = oneLine(str(p.name)).slice(0, 60);
+    const img = str(p.img);
+    if (!name || !OWN_PICTURE.test(img) || places.length >= CARRY_PLACES_MAX || places.some((q) => q.name.toLowerCase() === name.toLowerCase())) return;
+    places.push({ name, where: quoted(str(p.where), 400), img });
+  };
+  for (const p of o.places || []) addPlace(p);
+  // (a carried place drawn again in this film is superseded by its new picture — the same tent, as it is now)
+  for (const p of o.carried?.places || []) if (!places.some((q) => samePlace(q.where || q.name, p.where || p.name))) addPlace(p);
+  const lastFrame = OWN_PICTURE.test(str(o.lastFrame)) ? str(o.lastFrame) : "";
+  const ended = oneLine(str(o.lastPlace)).slice(0, 60).toLowerCase();
+  const lastPlace = lastFrame && ended ? places.find((p) => p.name.toLowerCase() === ended)?.name || "" : "";
+  return { cast: castForMeta(members), ...(places.length ? { places } : {}), ...(lastFrame ? { lastFrame } : {}), ...(lastPlace ? { lastPlace } : {}) };
+}
+
+/* ---- PART N USES IT (S10b) ---------------------------------------------------------------------------------------
+ *
+ * The owner: "It should carry the cast / the scenes etch into the next part." When the film being made is an episode
+ * and its last episode's carry is handed in (the job's payload: SeriesBrief.carry), it is used for what it is:
+ *   · THE SAME PEOPLE — every carried character the episode names is cast with the face (and voice) it had, as if the
+ *     maker had picked it; a character the writer brings in new is drawn new (castWithCarry);
+ *   · THE SAME PLACES — a place whose name or words are a carried place's is drawn FROM its carried picture, as a room
+ *     reference (carriedPlaceFor);
+ *   · THE SAME THING — the carried thing is this film's thing, unless the episode has a different one (carriedThreat);
+ *   · IT OPENS WHERE IT ENDED — when the writer says it does, in the same place (opensWhereItEnded).
+ * Anything that does not match keeps today's path: never a film lost to a carry. */
+
+/** The cast an episode is made from: the posted one, with every carried character the episode NAMES (a line's label,
+ *  or a "cast" line's name) given the face it had — and its voice, where the posted one has none and the face is the
+ *  carried one. A face the maker gave that name stays theirs; the film's thing is never refilled here. */
+export function castWithCarry<T extends ActedCastIn>(
+  posted: ReadonlyArray<T | null | undefined> | null | undefined,
+  carried: ReadonlyArray<SeriesCastMember> | null | undefined,
+  o: { labels?: ReadonlyArray<string | null | undefined>; castLines?: ReadonlyArray<string | null | undefined> | null } = {},
+): Array<T | ActedCastIn> {
+  const out: Array<T | ActedCastIn> = (posted || []).filter((c): c is T => !!c && !!oneLine(str(c.name)));
+  const named = new Set([...(o.labels || []).map((n) => oneLine(str(n))), ...(o.castLines || []).map((l) => leadName(oneLine(str(l))))].map((n) => nameTok(n)).filter(Boolean));
+  for (const c of carried || []) {
+    const k = nameTok(c.name);
+    if (!k || !named.has(k) || (!c.faceUrl && !c.voiceId)) continue;
+    const creature = c.kind ? { kind: c.kind, ...(c.look ? { look: c.look } : {}) } : {};
+    const at = out.findIndex((m) => nameTok(m.name) === k);
+    if (at < 0) { out.push({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId, ...creature }); continue; }
+    const m = out[at];
+    if (m.role === "threat") continue;
+    const face = !m.faceUrl && c.faceUrl ? { faceUrl: c.faceUrl, ...creature } : {};
+    const voice = !m.voiceId && c.voiceId && (m.faceUrl || c.faceUrl) === c.faceUrl ? { voiceId: c.voiceId } : {};
+    out[at] = { ...m, ...face, ...voice };
+  }
+  return out;
+}
+
+/* A PLACE IS KNOWN BY ITS HEAD NOUN. "inside a small dome tent pitched beside a still lake, at 3am" and "Inside the
+ * dome tent by the lake" are the tent; "the lake shore outside the tent, at night" is the shore — never the tent. Time
+ * words are not the place ("the tent, moments later" is the tent), and outside a thing is not inside it. */
+const PLACE_LEAD = /^(?:inside|in|into|at|on|within|by|back|right|just)$/;
+const PLACE_OUT = /^(?:outside|beyond|behind|out)$/;
+const PLACE_SKIP = /^(?:the|a|an|their|his|her|its|our|my|your|this|that|same|of)$/;
+const PLACE_BREAK = /^(?:of|in|at|on|by|near|beside|behind|under|over|across|beyond|outside|inside|within|with|from|where|which|that|while|during|pitched|parked|set|built|standing|lit|overlooking|facing|next|toward|towards|into|onto|after|before|as|and|or|for)$/;
+const TIME_WORD = /^(?:night|nighttime|midnight|morning|dawn|dusk|evening|afternoon|noon|midday|later|moments?|seconds?|minutes?|hours?|today|tonight|now|again|\d{1,2}(?::\d\d)?(?:am|pm)|am|pm)$/;
+const placeWords = (s: string): string[] => oneLine(s).toLowerCase().replace(/[’']s\b/g, "").replace(/[^\p{L}\p{N}\s:-]/gu, " ").split(/\s+/).filter(Boolean);
+/** Words that say how a place LOOKS, not which place it is: "a small motel room" and "a small hospital room" share
+ *  "small" and are two rooms. */
+const PLACE_LOOK = /^(?:small|tiny|little|big|large|huge|vast|dark|darkened|dim|dimly|old|new|empty|cramped|narrow|wide|cold|warm|quiet|silent|abandoned|cozy|cosy|messy|tidy|bright|shadowy|long|tall|low|grey|gray|black|white|cluttered|deserted)$/;
+/** A place's head noun ("tent"; "out:tent" outside it) and the words before it that say what KIND it is ("dome"). */
+function placeParts(where: string): { head: string; kinds: string[] } {
+  const first = oneLine(where).split(/[,;—–(]/)[0] || "";
+  const w = placeWords(first);
+  let k = 0, out = false;
+  while (k < w.length && (PLACE_LEAD.test(w[k]) || PLACE_OUT.test(w[k]) || PLACE_SKIP.test(w[k]))) { if (PLACE_OUT.test(w[k])) out = true; k++; }
+  const before: string[] = [];
+  let head = "";
+  for (; k < w.length; k++) { if (PLACE_BREAK.test(w[k])) break; if (!PLACE_SKIP.test(w[k]) && !TIME_WORD.test(w[k])) { if (head) before.push(head); head = w[k]; } }
+  if (head.length > 3 && /s$/.test(head) && !/ss$/.test(head)) head = head.slice(0, -1);
+  return { head: head ? `${out ? "out:" : ""}${head}` : "", kinds: before.filter((x) => !PLACE_LOOK.test(x)) };
+}
+/** A place's head noun ("tent"; "out:tent" for outside it) — "" when it has none. */
+export function placeHead(where: string | null | undefined): string {
+  return placeParts(str(where)).head;
+}
+/** Its words without time — what two descriptions of one place share. */
+const placeKey = (s: string): string => placeWords(s.split(/[;—–(]/)[0] || "").filter((x) => !PLACE_SKIP.test(x) && !TIME_WORD.test(x)).join(" ");
+/** Are two place descriptions the SAME place? The same words, or the same head noun. */
+export const samePlace = (a: string | null | undefined, b: string | null | undefined): boolean => {
+  const ka = placeKey(str(a)), kb = placeKey(str(b));
+  if (ka && ka === kb) return true;
+  const pa = placeParts(str(a)), pb = placeParts(str(b));
+  if (!pa.head || pa.head !== pb.head) return false;
+  // (one head, two KINDS of it — review, 2026-11-25: "a cramped motel room" was "a hospital room at night", and Part 2's
+  //  hospital would have been drawn in Part 1's motel. When both say what kind of room, they share a word.)
+  return !pa.kinds.length || !pb.kinds.length || pa.kinds.some((x) => pb.kinds.includes(x));
+};
+/** Night or day, when its words say so ("" when they do not, or say both). */
+export function lightOf(s: string | null | undefined): "night" | "day" | "" {
+  const t = oneLine(str(s));
+  const night = /\b(?:night|nighttime|midnight|after dark|moonlit|moonlight|[0-4]\s?a\.?m|(?:9|10|11)\s?p\.?m)\b/i.test(t);
+  const day = /\b(?:morning|dawn|sunrise|noon|midday|afternoon|daylight|daytime|sunlit|sunny|(?:[5-9]|1[01])\s?a\.?m|(?:12|[1-5])\s?p\.?m)\b/i.test(t);
+  return night && !day ? "night" : day && !night ? "day" : "";
+}
+/** THE CARRIED PLACE an episode's place IS — by its words, else its head noun; of several, the one sharing the most
+ *  words. Not one whose light is the other's opposite (`light`, on by default): a room reference copies the light, and
+ *  the tent "the next morning" drawn from the tent at 3am would be lit at 3am. */
+export function carriedPlaceFor(where: string | null | undefined, places: ReadonlyArray<{ name: string; where: string; img: string }> | null | undefined, o: { light?: boolean } = {}): { name: string; where: string; img: string } | null {
+  const w = oneLine(str(where));
+  if (!w) return null;
+  const mine = new Set(placeKey(w).split(" ").filter(Boolean));
+  let best: { name: string; where: string; img: string } | null = null;
+  let bestScore = -1;
+  for (const p of places || []) {
+    const words = p.where || p.name;
+    const exact = (!!placeKey(w) && (placeKey(w) === placeKey(words) || placeKey(w) === placeKey(p.name)));
+    if (!exact && !samePlace(w, words) && !samePlace(w, p.name)) continue;
+    if (o.light !== false) { const a = lightOf(w), b = lightOf(words); if (a && b && a !== b) continue; }
+    const score = (exact ? 100 : 0) + placeKey(words).split(" ").filter((x) => mine.has(x)).length;
+    if (score > bestScore) { best = p; bestScore = score; }
+  }
+  return best;
+}
+
+/* THE SAME THING. The words a series calls its thing by drift — "the woman in the lake", "the pale woman", "the figure"
+ * — and Part 2's thing is Part 1's whatever it is called; but a DIFFERENT thing (a werewolf where there was a woman) is
+ * this episode's own, drawn new. */
+const THING_NOUN = /\b(?:woman|women|lady|girl|bride|widow|mother|nun|witch|man|men|boy|priest|child|kid|baby|figure|stranger|shape|creature|ghost|spirit|entity|thing|monster|beast|wolf|werewolf|demon|doll|clown|zombie)\b/gi;
+const thingNouns = (s: string): string[] => (oneLine(s).toLowerCase().match(THING_NOUN) || []).map((n) => (n === "women" ? "woman" : n === "men" ? "man" : n));
+const sexOf = (ns: string[]): string => (ns.some((n) => /^(?:woman|lady|girl|bride|widow|mother|nun|witch)$/.test(n)) ? "f" : ns.some((n) => /^(?:man|boy|priest)$/.test(n)) ? "m" : "");
+const VAGUE = /^(?:figure|stranger|shape|thing|entity|ghost|spirit|creature)$/;
+export function sameThing(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = oneLine(str(a)), y = oneLine(str(b));
+  if (!x || !y) return false;
+  if (bareName(leadName(x)) === bareName(leadName(y))) return true;
+  const nx = thingNouns(leadName(x)), ny = thingNouns(leadName(y));
+  if (!nx.length || !ny.length) return false;
+  if (nx.some((n) => ny.includes(n))) return true;
+  const sx = sexOf(nx), sy = sexOf(ny);
+  if (sx && sy) return sx === sy;
+  // (one of them only "the figure", "the ghost", "the creature": the series' thing by a vaguer word)
+  return nx.every((n) => VAGUE.test(n)) || ny.every((n) => VAGUE.test(n));
+}
+/** THE CARRIED THING for this episode: the carried one — named as this episode's own words name it when they name it
+ *  (`own`: the episode's story threat), so every line about it finds it — or null when the episode's thing is another. */
+export function carriedThreat(carried: SeriesCarry["threat"] | null | undefined, own: { name: string } | null | undefined): NonNullable<SeriesCarry["threat"]> | null {
+  if (!carried) return null;
+  if (!own || !oneLine(str(own.name))) return carried;
+  return sameThing(carried.name, own.name) ? { ...carried, name: oneLine(own.name).slice(0, 40) } : null;
+}
+
+/** The words that say an episode's first scene OPENS RIGHT THERE (asked for by seriesWriterBrief): "Moments later,". */
+export const OPENS_THERE = /^\W*(?:(?:only\s+)?(?:a\s+few\s+)?(?:moments?|seconds?|heartbeats?|breaths?)\s+later|an?\s+(?:moment|second|heartbeat|breath|instant)\s+later)\b/i;
+/** DOES THIS EPISODE OPEN WHERE THE LAST ONE ENDED — the writer's first scene says "Moments later" and is set in the
+ *  place the carried last frame was taken in? Then its first shot grows out of that frame (film-dialogue). */
+export function opensWhereItEnded(first: { visual?: string | null; where?: string | null } | null | undefined, carry: SeriesCarry | null | undefined): boolean {
+  if (!first || !carry?.lastFrame || !carry.endedIn) return false;
+  if (!OPENS_THERE.test(oneLine(str(first.visual)))) return false;
+  // ("moments later" is the same light: no light check here)
+  const p = carriedPlaceFor(first.where, carry.places, { light: false });
+  return !!p && p.name.toLowerCase() === carry.endedIn.toLowerCase();
 }

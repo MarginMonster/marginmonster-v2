@@ -234,8 +234,12 @@ test("meta.series is written when the asset row is created — never by a later 
     assert.ok(at > 0, f);
     const create = src.slice(at, src.indexOf("return asset.id;", at));
     assert.ok(create.includes("...(opts.series ? { series: seriesMeta(opts.series) } : {}),"), `${f}: series in the create`);
-    // (an acted film's THING is not one of its cast — meta.threat carries it to the next part: the monster row's review)
-    assert.ok(create.includes(f === "film-dialogue.server.ts" ? 'cast: castForMeta((opts.cast || []).filter((c) => c.role !== "threat")),' : "cast: castForMeta(opts.cast),"), `${f}: the cast in the create`);
+    // (an acted film's cast is written with everything else its next part carries — the faces it invented too: S10b,
+    //  film-series.ts → carryRecord, tests/series-carry.test.ts; still in the create, never a later write.
+    //  An acted film's THING is not one of its cast — meta.threat carries it to the next part: the monster row's review;
+    //  carryRecord drops a role:"threat" entry, and series-carry.test.ts runs it)
+    if (f === "film-dialogue.server.ts") assert.ok(create.includes("...nextPart,") && src.includes("const nextPart = carryRecord({\n    cast: castActors,"), `${f}: the cast in the create`);
+    else assert.ok(create.includes("cast: castForMeta(opts.cast),"), `${f}: the cast in the create`);
     assert.equal(src.split("seriesMeta(").length - 1, 1, `${f}: written in one place`);
     assert.ok(!/asset\.update(Many)?\([^)]*series/s.test(src), `${f}: no later write`);
     // the writer hears of the series when the story is written in the pipeline, and the title follows
