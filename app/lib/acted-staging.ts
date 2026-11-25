@@ -328,7 +328,7 @@ const lockOf = (note: string): string => {
  *  two stay where they are and the camera does not move; `implied` = …whose thing could not be drawn into its
  *  picture: the scene's words are not said at all, and the two react to something never seen
  *  (REVEAL_UNSEEN_REACT). */
-export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; others?: ReadonlyArray<{ name: string; side: string }>; heard?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; implied?: boolean }): T {
+export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; others?: ReadonlyArray<{ name: string; side: string }>; heard?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; outdoors?: boolean; seen?: boolean; implied?: boolean }): T {
   if (!isActedStaging(o.staging)) return base;
   const spec = ACTED_STAGINGS[o.staging];
   if (o.implied) {
@@ -342,7 +342,7 @@ export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown
   }
   const said = clipEvent(o.event, o.eventMax && o.eventMax > 0 ? o.eventMax : EVENT_MAX);
   const drawn = !!o.reveal && !!o.drawn && !!said;
-  const event = drawn ? revealClip(said, { creature: o.creature }) : said;
+  const event = drawn ? revealClip(said, { creature: o.creature, outdoors: o.outdoors, seen: o.seen }) : said;
   const heard = !!o.heard && !!event && !drawn;
   const who = event && !heard && !drawn
     ? (o.others || []).map((p) => {
@@ -488,11 +488,11 @@ const unquoted = (s: string): string => s.replace(/["“”«»„‟‹›‘�
  *  where they are, the camera does not move; `implied` = …whose thing could not be drawn into its picture: the
  *  scene's words are not said, and the two react to something never seen (REVEAL_UNSEEN_REACT); `face` = who
  *  must not smile (faceNote) — every one of them in words with no quotation mark in them either. */
-export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; sides?: ReadonlyArray<{ name: string; side: string }>; unseen?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; implied?: boolean; face?: string | null } = {}): T {
+export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; sides?: ReadonlyArray<{ name: string; side: string }>; unseen?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; outdoors?: boolean; seen?: boolean; implied?: boolean; face?: string | null } = {}): T {
   const spec = isActedStaging(o.staging) ? ACTED_STAGINGS[o.staging] : null;
   const said = o.implied ? "" : clipEvent(o.event, o.eventMax && o.eventMax > 0 ? o.eventMax : EVENT_MAX);
   const drawn = !!o.reveal && !!o.drawn && !!said;
-  const event = drawn ? revealClip(said, { creature: o.creature }) : unquoted(said);
+  const event = drawn ? revealClip(said, { creature: o.creature, outdoors: o.outdoors, seen: o.seen }) : unquoted(said);
   const who = event && !drawn
     ? (o.sides || []).map((p) => {
         const name = unquoted(oneLine(p?.name));
@@ -853,8 +853,22 @@ const REVEAL_WINDOW = /\b(?:window|windows|windowpane|pane|glass)\b/i;
  *  only when the scene has it IN the wall; at the door it knocked at; outside the window it knocked on; else
  *  standing in the dark of the room. A CREATURE the maker chose (`creature`) is never in a wall: a werewolf's
  *  head through the plaster was the owner's "what the fuck is that plot". */
-export const revealPart = (moment: string | null | undefined, o: { creature?: boolean } = {}): RevealPart => {
+/** AN OPEN-AIR PLACE — a lake shore, the woods, a campsite, a tent, a road: no plaster to break open, no door to ease
+ *  open, no window glass (2026-11-25, the lake film "She Smiles From the Shallows": its last scene said "through the
+ *  tent wall", the reveal was told the plaster had been broken open, and the editor built a plastered room on the
+ *  shore with a grey ghoul in a hole in it). Judged by whichever kind of place the words name FIRST ("the backyard of
+ *  the house" is out of doors; "the kitchen, looking out at the lake" is not), a tent counting as out of doors. */
+const OPEN_AIR = /\b(?:lake|lakes|lakeside|lakeshore|shore|shoreline|beach|sea|ocean|river|riverbank|creek|stream|pond|swamp|marsh|bog|woods|forest|trees|clearing|field|fields|meadow|campsite|camp|campground|campfire|tent|tents|trail|path|road|highway|street|alley|yard|backyard|garden|park|parking lot|cemetery|graveyard|dock|pier|jetty|cliff|hill|hillside|mountain|desert|bridge|rooftop|outside|outdoors)\b/i;
+const INDOOR = /\b(?:room|bedroom|kitchen|hallway|corridor|basement|cellar|attic|closet|bathroom|living room|lounge|office|apartment|flat|stairs|staircase|stairwell|inside|indoors|interior|cabin|house|home|hospital|ward|church|school|classroom|library|store|shop|bar|diner|restaurant|garage|barn|shed|warehouse|motel|hotel|lobby|elevator)\b/i;
+export function openAirPlace(where: string | null | undefined): boolean {
+  const w = oneLine(where).toLowerCase().replace(/\b(?:inside|in|into)\s+(?:the|a|their|our|her|his|my)\s+tent\b/g, "tent");
+  const out = w.search(OPEN_AIR), inn = w.search(INDOOR);
+  return out >= 0 && (inn < 0 || out < inn);
+}
+export const revealPart = (moment: string | null | undefined, o: { creature?: boolean; outdoors?: boolean } = {}): RevealPart => {
   const m = oneLine(moment);
+  // (out of doors there is no wall, door or window to find it in: it stands in the dark)
+  if (o.outdoors) return "figure";
   if (!o.creature && REVEAL_IN_WALL.test(m)) return "face";
   if (REVEAL_DOOR.test(m)) return "door";
   if (REVEAL_WINDOW.test(m)) return "window";
@@ -869,9 +883,16 @@ const REVEAL_NO_HAND = "only that FACE shows — no hand, no fingers and no arm 
 /** THE CLIP OF A REVEAL THAT WAS DRAWN: what is in its picture, and the one small thing it does there — in place
  *  of the scene's own words, which may say "reaching", "nearer", "pushes out" (no quotation marks: a shot nobody
  *  speaks in has none). */
-export const revealClip = (moment: string | null | undefined, o: { creature?: boolean } = {}): string => {
-  const p = REVEAL_PARTS[revealPart(moment, o)];
-  return `${p.clip} ${p.moves}`;
+/** THE ONE THE FILM ALREADY SHOWED, standing in the dark (revealPicture with `seen`): how much of it shows — its own
+ *  look is the shot's words that showed it; never the generic figure's "too tall, too thin, candle wax", which drew the
+ *  lake film's woman as a grey ghoul. */
+const SEEN_FIGURE = "it stands in the dark, almost all of it in shadow; only the pale shape of its face catches the light";
+const SEEN_FIGURE_CLIP = "In the dark behind them stands the one this film already showed, almost all of it in shadow: only the pale shape of its face in the light.";
+export const revealClip = (moment: string | null | undefined, o: { creature?: boolean; outdoors?: boolean; seen?: boolean } = {}): string => {
+  const part = revealPart(moment, o);
+  const p = REVEAL_PARTS[part];
+  // (the one the film already showed is drawn as itself, not as "a tall, thin figure": its clip says so)
+  return `${o.seen && !o.creature && part === "figure" ? SEEN_FIGURE_CLIP : p.clip} ${p.moves}`;
 };
 /** The light it is seen in: the place's own, dimmed — the frame that worked was the one in which the light had
  *  gone low; in the place's ordinary light the thing read as stuck onto the picture. */
@@ -907,7 +928,7 @@ export function seenBefore(moment: string | null | undefined, earlier: ReadonlyA
   return "";
 }
 
-export function revealPicture(o: { moment: string | null | undefined; mood?: string | null; sides?: ReadonlyArray<{ name: string; side: string }>; /** the thing is a creature the maker chose, drawn from its own picture */ creature?: boolean; /** how the film showed the thing before, in that shot's words (seenBefore) */ seen?: string | null }): string {
+export function revealPicture(o: { moment: string | null | undefined; mood?: string | null; sides?: ReadonlyArray<{ name: string; side: string }>; /** the thing is a creature the maker chose, drawn from its own picture */ creature?: boolean; /** how the film showed the thing before, in that shot's words (seenBefore) */ seen?: string | null; /** the place is out of doors (openAirPlace) */ outdoors?: boolean }): string {
   const moment = clipEvent(o.moment, REVEAL_MOMENT_MAX);
   if (!moment) return "";
   const mood = oneLine(o.mood);
@@ -916,7 +937,7 @@ export function revealPicture(o: { moment: string | null | undefined; mood?: str
   const behind = sides.find((p) => { try { return new RegExp(`\\b(?:behind|over)\\s+${escapeRe(p.name)}\\b`, "iu").test(moment); } catch { return false; } })
     || sides.find((p) => p.side === "right") || null;
   const at = behind ? `close behind ${behind.name}, the one on the ${behind.side}` : "close behind one of them";
-  const part = revealPart(moment, { creature: o.creature });
+  const part = revealPart(moment, { creature: o.creature, outdoors: o.outdoors });
   const where = part === "face"
     ? `In the wall ${at}, at the height of a head — not over a window or a door, well inside the picture — ${REVEAL_HOLE}; `
     : part === "door"
@@ -927,10 +948,15 @@ export function revealPicture(o: { moment: string | null | undefined; mood?: str
   const only = part === "face" && REVEAL_HAND.test(moment) ? `; ${REVEAL_NO_HAND}` : "";
   // (a creature the maker chose is drawn as ITSELF — its own picture says what it looks like; the "what is wrong"
   //  words are a made-up thing's, and would paint candle-wax skin on a werewolf)
-  const wrong = o.creature ? "" : ` What is wrong with it: ${REVEAL_PARTS[part].wrong}.`;
   // (…and a thing the film has ALREADY SHOWN is that same one — its look as that shot's words gave it, never a new one)
   const seen = !o.creature && oneLine(o.seen) ? ` It is the SAME one this film already showed — "${oneLine(o.seen).replace(/"/g, "'").slice(0, 240)}" — the same look, the same hair, the same clothes, only nearer: never a different face or a different creature.` : "";
-  return `Edit this photo, a frame from a live-action horror film. Keep the camera and the framing, every window, door and lamp, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes.${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${REVEAL_PARTS[part].seen}${only}.${wrong}${seen} ${REVEAL_REAL} ${CREATURE_REAL} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.`;
+  // (…whose look is THOSE words: the generic thing's "too tall, too thin, candle-wax skin" would contradict them — told
+  //  both, the editor drew the lake film's woman as a grey ghoul)
+  const wrong = o.creature || seen ? "" : ` What is wrong with it: ${REVEAL_PARTS[part].wrong}.`;
+  const shows = seen && part === "figure" ? SEEN_FIGURE : REVEAL_PARTS[part].seen;
+  // (out of doors nothing is built into the place: no wall, no plaster, no door, no window)
+  const open = o.outdoors ? " This is out of doors: nothing is built into the place — no wall, no plaster, no door and no window is added." : "";
+  return `Edit this photo, a frame from a live-action horror film. Keep the camera and the framing, every window, door and lamp, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes.${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${shows}${only}.${wrong}${seen}${open} ${REVEAL_REAL} ${CREATURE_REAL} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.`;
 }
 
 /* ---- THE WRITER ---- */

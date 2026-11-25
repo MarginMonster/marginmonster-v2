@@ -446,7 +446,7 @@ test("the wiring: dealt per location, drawn into its master, said to its clips, 
   // SAID to a clip only when the picture it grows out of was drawn in a staging: not a frame the maker approved,
   // not an angle they added by hand, not a film with no master
   assert.ok(eng.includes("if (!chained) chainStaging = approvedFrames[i] || !master?.url || tr === \"angle\" ? null : stagingOf(master);"));
-  assert.ok(eng.includes("    } else if (chainStaging) {\n      try {\n        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, implied });\n      } catch (e) {"), "the film's last scene may say more (a horror film's says what is seen, and what it does); and no shot is lost to its staging");
+  assert.ok(eng.includes("    } else if (chainStaging) {\n      try {\n        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied });\n      } catch (e) {"), "the film's last scene may say more (a horror film's says what is seen, and what it does); and no shot is lost to its staging");
   assert.ok(eng.includes("let playRules = rules;\n    if (silent) {"), "…after the one kind of shot that is told something else: nobody speaks in it");
   // a film is never lost to its staging either: with none dealt, every place is drawn as it always was
   assert.ok(eng.includes("    } catch (e) {\n      // (a film is never lost to its staging: with none dealt, every place is drawn as it always was)\n      stagingAt.clear();"));
@@ -889,7 +889,7 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.ok(eng.includes("const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);"));
   const at = eng.indexOf("if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {");
   assert.ok(at > eng.indexOf("let seedAbs = abs(approvedFrames[i]);") && eng.indexOf("if (!seedAbs && master?.url) {", at) > at);
-  assert.ok(eng.includes("const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace), seen });"));
+  assert.ok(eng.includes("const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace), seen, outdoors });"));
   const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [abs(master.url), ...(thing && thingFace ? [thingFace] : [])], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],");
   const kontext = eng.indexOf("[\"black-forest-labs/flux-kontext-pro\", { prompt: askOne, input_image: abs(master.url), aspect_ratio: aspect, output_format: \"jpg\", output_quality: 92 }],");
   assert.ok(pro > at && kontext > pro, "the place's master is the first reference picture, on nano-banana-pro, then flux-kontext-pro");
@@ -899,8 +899,8 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.ok(eng.includes("const ask = askOne && thing && thingFace") && eng.includes(": askOne;"));
   assert.ok(eng.includes("try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\"))); }"));
   assert.ok(eng.includes("const implied = lastHorror && !revealed && !approvedFrames[i];"));
-  assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, implied, face: scared });"));
-  assert.ok(eng.includes("others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, implied });"));
+  assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared });"));
+  assert.ok(eng.includes("others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied });"));
 });
 
 /* ---- A CUT TO ANOTHER PLACE IS A STRAIGHT CUT ---- */
@@ -1337,7 +1337,7 @@ test("the reveal is the thing the film already showed, in that shot's words; not
   // the engine hands it the earlier shots' words, unless the thing is a creature the maker chose
   const eng = fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.ok(eng.includes("const seen = thing && thingFace ? \"\" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || \"\")));"), "(the story's own cast line for it first, when the moment names it)");
-  assert.ok(eng.includes("creature: !!(thing && thingFace), seen });"));
+  assert.ok(eng.includes("creature: !!(thing && thingFace), seen, outdoors });"));
   // nothing glows that is not a light — in every picture of a photographed film
   assert.ok(st.NOTHING_GLOWS.includes("a pale figure is lit only by the lights that are there, never from within"));
   assert.ok(st.actedRealism(false, "x").endsWith(` ${st.NOTHING_GLOWS}`) && st.actedRealism(true, "x") === "");
@@ -1374,4 +1374,35 @@ test("a photographed film's night scene is the middle of the night", async () =>
   assert.ok(st.NIGHT_LINE.includes("never dusk, twilight or a blue evening glow"));
   const src = fs.readFileSync(new URL("../app/lib/acted-staging.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.ok(src.includes("${actedRealism(o.cartoon, act, o.setting)}"), "the staged master is told it, from its place and its moment");
+});
+
+test("OUT OF DOORS NOTHING IS BUILT INTO THE PLACE (\"She Smiles From the Shallows\", 2026-11-25): its last scene said \"through the tent wall\" — the editor built a plastered room on the lake shore with a grey ghoul in a hole — and the one the film already showed is drawn as itself", async () => {
+  const st = await import("../app/lib/acted-staging.ts");
+  // which kind of place the words name FIRST; a tent is out of doors
+  for (const w of ["the lakeshore campsite at night", "inside the tent by the lake", "a tent on the shore", "the backyard of the house", "the woods behind the cabin", "a dark forest trail", "the end of the dock"]) assert.equal(st.openAirPlace(w), true, w);
+  for (const w of ["the kitchen, looking out at the lake", "a cabin by the lake", "the upstairs hallway", "room 14 of the hospital", "the basement", "", null]) assert.equal(st.openAirPlace(w), false, String(w));
+  // the tent wall is no wall: out of doors it is a FIGURE in the dark, whatever the words say
+  const moment = "Her pale face presses through the tent wall behind Wren, still smiling.";
+  assert.equal(st.revealPart(moment), "face", "indoors, a face in the wall — as it was");
+  assert.equal(st.revealPart(moment, { outdoors: true }), "figure");
+  assert.equal(st.revealPart("She is at the door, knocking", { outdoors: true }), "figure");
+  const sides = [{ name: "Wren", side: "left" }, { name: "Ines", side: "right" }];
+  const seen = "a woman stands waist-deep in the black lake, long wet dark hair, a white dress, perfectly still, smiling";
+  const pic = st.revealPicture({ moment, sides, seen, outdoors: true });
+  assert.ok(pic.includes("In the dark close behind Wren, the one on the left, well inside the picture, it stands in the dark, almost all of it in shadow; only the pale shape of its face catches the light."));
+  assert.ok(pic.includes("This is out of doors: nothing is built into the place — no wall, no plaster, no door and no window is added."));
+  assert.ok(pic.includes(`It is the SAME one this film already showed — "${seen}"`));
+  // …and the generic thing's look is not said over hers (told both, the editor drew her as a grey ghoul)
+  assert.ok(!pic.includes("plaster has been broken open") && !pic.includes("What is wrong with it") && !pic.includes("too tall and too thin") && !pic.includes("a little too high up"));
+  // nothing seen before, indoors: exactly as it was
+  const before = st.revealPicture({ moment, sides });
+  assert.ok(before.includes("plaster has been broken open") && before.includes("What is wrong with it:") && !before.includes("out of doors"));
+  // the clip is told what the picture holds: the one already shown, in the dark
+  assert.ok(st.revealClip(moment, { outdoors: true, seen: true }).startsWith("In the dark behind them stands the one this film already showed, almost all of it in shadow: only the pale shape of its face in the light. Only its HEAD moves"));
+  assert.ok(st.revealClip(moment, { outdoors: true }).startsWith("In the dark behind them stands a tall, thin FIGURE"));
+  assert.ok(st.revealClip(moment).startsWith("In the hole broken in the wall"), "indoors: as it was");
+  // the film hands both over, from the place's own words
+  const eng = fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(eng.includes("const outdoors = openAirPlace(whereAt[i]);") && eng.includes("revealSeen = !!seen;"));
+  assert.ok(eng.includes("creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared });") && eng.includes("creature: revealedCreature, outdoors, seen: revealSeen, implied });"));
 });

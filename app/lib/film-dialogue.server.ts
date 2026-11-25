@@ -52,7 +52,7 @@ import { makeCastPoster } from "./story-poster.server";
 import { castForWriter } from "./dialogue-cast";
 import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
-import { EVENT_MAX, EVENT_MAX_LAST, FILM_FPS, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, joinCheck, kinLooks, revealPicture, sceneEvent, seenBefore, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging, type SeamKind } from "./acted-staging";
+import { EVENT_MAX, EVENT_MAX_LAST, FILM_FPS, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, joinCheck, kinLooks, openAirPlace, revealPicture, sceneEvent, seenBefore, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging, type SeamKind } from "./acted-staging";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -1100,6 +1100,10 @@ export async function generateTestMovie(opts: {
     // will not come leaves the shot to be seeded as any other; a frame the maker approved is never drawn over.
     let revealed = false;
     let revealedCreature = false;
+    // (out of doors — a lake shore, a campsite, a tent — nothing is built into the place: no hole in a wall, no door,
+    //  no window; and the one the film already showed is drawn as itself — acted-staging.ts → openAirPlace, SEEN_FIGURE)
+    const outdoors = openAirPlace(whereAt[i]);
+    let revealSeen = false;
     if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {
       // THE CHOSEN CREATURE AS THE THING (premise-rules.ts → chosenThreat): a creature the maker chose that is not
       // one of the two who talk, and that this last shot finds, is drawn FROM ITS OWN PICTURE — that creature, not
@@ -1110,7 +1114,8 @@ export async function generateTestMovie(opts: {
       //  with it — "Who Calls From the Shallows" showed a woman waist-deep in the lake, and its last shot drew a
       //  bald ghoul's face in a window in the tent: acted-staging.ts → seenBefore)
       const seen = thing && thingFace ? "" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || "")));
-      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace), seen });
+      revealSeen = !!seen;
+      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace), seen, outdoors });
       const ask = askOne && thing && thingFace
         ? `${askOne} What is found is ${thing.name.trim()}: the creature in the SECOND picture — that exact creature, its face, its fur or skin and its colours and whatever it wears — drawn INTO the first picture the way this says; everything else in the first picture stays exactly as it is.`
         : askOne;
@@ -1279,7 +1284,7 @@ export async function generateTestMovie(opts: {
       const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)])?.unseen;
       const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : "";
       try {
-        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, implied, face: scared });
+        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared });
       } catch (e) {
         // (never a shot lost to its words: it is a held, quiet beat — and still told that nobody speaks)
         console.error(`[testmovie] shot ${i + 1}: the wordless shot's rules were not built — it is told to hold: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
@@ -1287,7 +1292,7 @@ export async function generateTestMovie(opts: {
       }
     } else if (chainStaging) {
       try {
-        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, implied });
+        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied });
       } catch (e) {
         // (never a shot lost to its staging: it is told what a shot was always told)
         console.error(`[testmovie] shot ${i + 1}: staging words not built — the shot is told to hold, as before: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
