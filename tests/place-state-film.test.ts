@@ -43,6 +43,9 @@ test("the picture of a change: an edit of the shot's OWN start picture, looked a
 
 test("the shot ENDS on it: the end frame threads to both Kling hosts, is kept with the shot, and a re-roll ends on it again", () => {
   assert.ok(eng.includes("if (pic) { endImage = abs(pic);"));
+  // (…but never a shot that OPENS something: "she opens the door to find him there" would end on an empty doorway, the
+  //  edit being told nobody else appears — review of S12)
+  assert.ok(eng.includes("if (pic && placeChange.now === \"open\") console.log(") && eng.includes("else if (pic) { endImage = abs(pic);"));
   assert.ok(eng.includes("const clipUrl = await dialogueClip(dialogueEngine, seedAbs, prompt, `testmovie-${i}`, clipSecs, aspect, undefined, alive, endImage);"));
   const kling = eng.slice(eng.indexOf("async function klingDialogueClip("), eng.indexOf("async function dialogueClip("));
   assert.ok(kling.includes("endImage?: string): Promise<string> {"));

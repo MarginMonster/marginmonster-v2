@@ -1683,7 +1683,13 @@ export async function generateTestMovie(opts: {
           await ckpt({ ckChanges: JSON.stringify(changes) });
         }
       }
-      if (pic) { endImage = abs(pic); console.log(`[testmovie] shot ${i + 1}: it ends on what it does to its place — ${words.slice(0, 140)}`); }
+      // (…but a shot that OPENS something does not END on its picture: it is drawn — every later picture there grows out
+      //  of the door as it now is — and the take is free. The edit is told "nobody else appears", so "she opens the door
+      //  to find him standing there" would be forced to end on an empty doorway; and "the zipper creeps up an inch" is
+      //  drawn as a door hanging open. Shutting and blocking are what the engine never finished: those end on it. Review
+      //  of S12, 2026-11-25.)
+      if (pic && placeChange.now === "open") console.log(`[testmovie] shot ${i + 1}: it opens something — drawn for the shots after it, the take not held to it`);
+      else if (pic) { endImage = abs(pic); console.log(`[testmovie] shot ${i + 1}: it ends on what it does to its place — ${words.slice(0, 140)}`); }
       else console.error(`[testmovie] shot ${i + 1}: the picture of what it does to its place did not come — the shot is made as it always was`);
     }
     // Does this shot CONTINUE the last one (seeded from its final frame)? Then its opening frames are
