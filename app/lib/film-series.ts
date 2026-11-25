@@ -21,6 +21,7 @@ import { posterOf } from "./story-poster.ts";
 import { nameTok } from "./character-prompts.ts";
 import { cameraLookOf, type CameraLook } from "./camera-dress.ts";
 import { houseRoom } from "./house-cam.ts";
+import { placeStateAt, stateNow } from "./place-state.ts";
 
 /** What a film in a series stores on its asset (metaJson.series). */
 export type FilmSeries = { id: string; title: string; episode: number };
@@ -345,6 +346,10 @@ export function seriesWriterBrief(s: SeriesBrief): string {
     // can tell "moments later" from "the next morning", and "its FIRST scene says so in its own words" is no sign a
     // program can read. So the words are asked for: the same place in the same words, and "Moments later,".
     (lastActed ? `• When it opens right there, its FIRST scene's "where" is the last moment's Where, word for word, and its "visual" begins with the words "Moments later,".\n` : "") +
+    // THE PLACE AS IT WAS LEFT (S12, 2026-11-25 — place-state.ts). Part 1 zipped the tent shut; Episode 2, "Moments later",
+    // had the zipper clawed down again and the door open in every frame. What the last episode DID to that place is in
+    // the fence ("The place as it was left"); the episode that opens there opens in that state, and says so.
+    (lastActed && lastMomentFrom(s.last)?.left ? `• When it opens right there, it opens in THE PLACE AS IT WAS LEFT (in the last moment above): its first VISUAL says so in so many words ("Moments later, inside the zipped-shut tent, …") — never doing again what is already done — and it stays so until a shot of this episode shows it being opened (WHAT IS DONE TO A PLACE STAYS DONE, below).\n` : "") +
     // THE TWO WHO TALK, BY NAME (live, 2026-11-25 — see seriesSpeakers): the general rule below lost to a new park
     // ranger in Selam's place. And whoever else the series' characters list does not talk — the woman from the lake —
     // keeps a "cast" entry of their own, word for word: the acted engine draws its thing FROM that entry (one face for
@@ -553,11 +558,12 @@ export function latestEpisode<T extends { id: string; metaJson?: unknown; bodyJs
 /** Where a finished film STOPPED: its last scene's place (an acted film's `where`), what was SEEN in it (the
  *  scene's visual — what happens), and the LAST WORDS — an acted film's last spoken line and who said it, a
  *  told story's storyteller's last line. */
-export type LastMoment = { told: boolean; where: string; seen: string; said: string; who: string; /** the line was said in an EARLIER shot than the one seen (the last one is wordless) */ earlier?: true };
+export type LastMoment = { told: boolean; where: string; seen: string; said: string; who: string; /** the line was said in an EARLIER shot than the one seen (the last one is wordless) */ earlier?: true; /** an ACTED film: what its scenes DID to the place it stopped in, as it was left — "The tent door is zipped completely shut …" (place-state.ts → stateNow; S12, 2026-11-25) */ left?: string };
 /** How much of each the writer is given (each cut to whole words). */
 export const LAST_WHERE_MAX = 120;
 export const LAST_SEEN_MAX = 360;
 export const LAST_SAID_MAX = 240;
+export const LAST_LEFT_MAX = 360;
 const LAST_WHO_MAX = 40;
 
 /** Fence-safe, one line, the quote marks the brief itself uses made plain. */
@@ -596,6 +602,18 @@ export function lastMomentOf(bodyJson: unknown): LastMoment | null {
   } else {
     for (let i = lastAt; i >= 0; i--) { const s = captionSays(scenes[i].caption); if (s.said) { who = s.who; said = s.said; saidAt = i; break; } }
   }
+  // THE PLACE AS IT WAS LEFT (S12, 2026-11-25 — place-state.ts). Part 1 of the lake films zipped the tent shut in its shot
+  // 4; Episode 2 opened "Moments later" with the zipper being clawed down AGAIN, and the door open in every frame. What
+  // an acted film's scenes did to the place it stopped in — since the film came to it (a scene with no "where" is where
+  // the one before it was, as the engine reads it) — goes with its last moment, so the next one opens in that state.
+  let left = "";
+  if (!told && lastAt >= 0) {
+    const wheres: string[] = [];
+    scenes.forEach((s, i) => { wheres[i] = oneLine(str(s.where)).toLowerCase() || (i > 0 ? wheres[i - 1] : ""); });
+    let arrived = lastAt;
+    while (arrived > 0 && wheres[arrived - 1] === wheres[lastAt]) arrived--;
+    left = stateNow(placeStateAt(scenes.map((s, i) => ({ visual: str(s.visual), caption: str(s.caption), where: wheres[i] })), lastAt + 1, (j) => j >= arrived));
+  }
   const moment: LastMoment = {
     told,
     where: told ? "" : quoted(str(last?.where), LAST_WHERE_MAX),
@@ -606,6 +624,7 @@ export function lastMomentOf(bodyJson: unknown): LastMoment | null {
     //  then "The last line said, by RAVI: 'Back in the tent. Now.'" puts Ravi's line AT the hand — a writer that
     //  opens "right there" has him say it again. The line came a shot before the reveal, and the brief says so.)
     ...(said && saidAt < lastAt ? { earlier: true as const } : {}),
+    ...(left ? { left: quoted(left, LAST_LEFT_MAX) } : {}),
   };
   return moment.seen || moment.said ? moment : null;
 }
@@ -621,6 +640,9 @@ function lastMomentFrom(v: unknown): LastMoment | null {
     who: quoted(str(v.who), LAST_WHO_MAX),
   };
   if (v.earlier === true && m.said && !m.told) m.earlier = true;
+  // (what was done to the place, as it was left — an acted film's only, checked again like the rest: S12)
+  const left = quoted(str(v.left), LAST_LEFT_MAX);
+  if (left && !m.told) m.left = left;
   return m.seen || m.said ? m : null;
 }
 
@@ -631,6 +653,7 @@ function lastMomentLines(m: LastMoment | null | undefined): string {
   return [
     v.where ? `Where: ${v.where}` : "",
     v.seen ? `Seen: ${v.seen}` : "",
+    v.left ? `The place as it was left: ${v.left}` : "",
     v.said ? (v.told ? `The storyteller's last words: "${v.said}"` : `The last line said${v.who ? `, by ${v.who}` : ""}${v.earlier ? ` (in the shot BEFORE that moment — nobody speaks in it)` : ""}: "${v.said}"`) : "",
   ].filter(Boolean).join("\n");
 }

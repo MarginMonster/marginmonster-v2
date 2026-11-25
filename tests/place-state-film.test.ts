@@ -4,6 +4,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { DONE_STAYS_DONE } from "../app/lib/acted-staging.ts";
+import { lastMomentOf, seriesFromPayload, seriesWriterBrief } from "../app/lib/film-series.ts";
 
 const read = (p: string) => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const eng = read("app/lib/film-dialogue.server.ts");
@@ -74,4 +76,43 @@ test("the place as it now is: every later picture there grows out of the change,
   assert.ok(eng.includes("const sightShadow = placeOn && shutCloth(placeBefore);") && eng.includes("const ref = theThing && !sightShadow ? thingRef() : null;"));
   // the piece says which shots changed their place
   assert.ok(eng.includes("...(Object.keys(changes).length ? { changes: Object.keys(changes).map(Number).sort((a, b) => a - b) } : {}),"));
+});
+
+/* THE WRITER IS DELIBERATE — the owner: "the writer may need to be more deliberate on what it's telling the ai to do". */
+const TENT = "inside a small tent on a moonlit lakeshore";
+const PART1 = JSON.stringify({ style: "TESTMOVIE", treatment: { title: "TEST She Walks From Still Water", cast: ["Mireille, a woman in her thirties", "Teo, a man in his thirties"], scenes: [
+  { visual: "Mireille and Teo sit up in the tent as a voice calls from the water.", caption: "MIREILLE: Did you hear that? Someone's out there.", where: TENT },
+  { visual: "Teo shines the torch through the open flap at the moonlit lake.", caption: "TEO: There's a woman standing in the water.", where: TENT },
+  { visual: "Mireille grips Teo's arm as the woman walks toward the tent.", caption: "MIREILLE: She's coming. She's coming toward us.", where: "" },
+  { visual: "Mireille lunges for the opening and yanks the tent zipper shut with one hard pull.", caption: "MIREILLE: Zip it, zip it now…", where: TENT },
+  { visual: "Against the thin tent wall, a tall shape leans close until only the woman's face presses the fabric, waxen skin and that impossibly wide smile outlined in moonlight.", caption: "", where: TENT },
+] } });
+const SHUT_TENT = "The tent door is zipped completely shut — the two flaps joined edge to edge, the zipper closed to the floor; nothing of the outside shows through it.";
+
+test("the writer's constant is in the acted brief — and an episode is told the place as the last one left it", () => {
+  const brief = read("app/lib/film-engine.server.ts");
+  assert.ok(brief.includes("import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, DONE_STAYS_DONE, HEARD_BEFORE_SAID,"));
+  const heard = brief.indexOf("`${HEARD_BEFORE_SAID}\\n` +");
+  const done = brief.indexOf("`${DONE_STAYS_DONE}\\n` +");
+  assert.ok(heard > 0 && done > heard && done < brief.indexOf("(tmpl.key === \"horror\" ? `${SEEN_WHEN_SEEN}"), "said to every acted film, whole or one part of a long one");
+  // the last moment of Part 1 carries what it did to the tent: shut
+  const last = lastMomentOf(PART1)!;
+  assert.equal(last.left, SHUT_TENT.replace(/"/g, "'"));
+  assert.equal(last.where, TENT);
+  // …and the episode brief says it, in the fence and as the rule of how it opens
+  const ep = seriesWriterBrief({ id: "test-1", title: "TEST She Walks From Still Water", episode: 2, recap: "TEST recap.", characters: [], last, speakers: ["Mireille", "Teo"] });
+  assert.ok(ep.includes(`<<<LAST MOMENT\nWhere: ${TENT}\nSeen: `) && ep.includes(`\nThe place as it was left: ${SHUT_TENT}\n`));
+  assert.ok(ep.includes("• When it opens right there, it opens in THE PLACE AS IT WAS LEFT (in the last moment above): its first VISUAL says so in so many words (\"Moments later, inside the zipped-shut tent, …\") — never doing again what is already done — and it stays so until a shot of this episode shows it being opened (WHAT IS DONE TO A PLACE STAYS DONE, below)."));
+  assert.ok(DONE_STAYS_DONE.startsWith("WHAT IS DONE TO A PLACE STAYS DONE"), "the name the episode brief points at");
+  // it rides the queue, checked again
+  const back = seriesFromPayload({ id: "test-1", title: "TEST She Walks From Still Water", episode: 2, recap: "r", characters: [], last });
+  assert.equal(back?.last?.left, last.left);
+  // nothing done to the place: nothing said; a told story never has it
+  const plain = JSON.parse(PART1); plain.treatment.scenes[3].visual = "Mireille stares at the zipped door.";
+  assert.equal(lastMomentOf(JSON.stringify(plain))?.left, undefined);
+  assert.ok(!seriesWriterBrief({ id: "t", title: "T", episode: 2, recap: "r", characters: [], last: lastMomentOf(JSON.stringify(plain))! }).includes("THE PLACE AS IT WAS LEFT"));
+  assert.equal(seriesFromPayload({ id: "t", title: "T", episode: 2, recap: "r", characters: [], last: { told: true, where: "", seen: "x", said: "y", who: "", left: "The door is shut." } })?.last?.left, undefined);
+  // only since the film came to the place it stopped in: a door shut somewhere else is not this place's
+  const moved = JSON.parse(PART1); moved.treatment.scenes[4].where = "on the dark lakeshore outside";
+  assert.equal(lastMomentOf(JSON.stringify(moved))?.left, undefined);
 });
