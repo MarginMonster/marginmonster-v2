@@ -1149,6 +1149,51 @@ export function couldBeThing(who: string | null | undefined, thing: string | nul
   return !a.size || !b.size || [...a].some((s) => b.has(s));
 }
 
+/** THE THING, WHEN THE SCRIPT GAVE IT NO CAST LINE OF ITS OWN (live, 2026-11-25 — the ninth lake film, "She Calls Twice
+ *  From the Lake"). WHAT_FRIGHTENS asks the writer for a "cast" entry for a threat the idea names; its writer listed
+ *  only the two who talk, storyThreat found nothing, and the film had no thing at all: the woman in the lake was drawn
+ *  from words in the shot whose light found her, and the reveal drew a grinning white face, a grey woman and a man
+ *  nobody wrote — the eighth film's failure again, on the build made to end it. So the film's thing no longer hangs
+ *  on the writer: the first scene whose SEEN words put a figure in view ("a woman stands waist-deep in the lake" — a
+ *  sound from out of sight is not one, nor a photo of one, nor one somebody owns) gives it its entry, named where it
+ *  stands ("the woman in the lake", never just "the woman": in a film whose two who talk are women, a bare "the
+ *  woman" bound to a picture names three people); failing every scene, the maker's own idea. Never a shadow or a shape
+ *  (drawn as a shadow, never with a face — couldBeThing), never one of the two who talk, never a figure that has a
+ *  cast line of its own (that line is storyThreat's to judge: "Mom" is not the thing). */
+const PLACE_PREP = /\b(in|at|on|by|under|behind|beside|near|outside|inside|across|beyond)\s+the\s+([a-z-]+)(?:\s+([a-z-]+))?/gi;
+const PLACE_ADJ = /^(?:black|dark|still|cold|open|far|deep|old|empty|shallow|misty|foggy|quiet|pale|grey|gray|dim|wet|frozen|narrow)$/i;
+export function threatFromWords(o: {
+  visuals: ReadonlyArray<string | null | undefined>;
+  idea?: string | null;
+  speakers: ReadonlyArray<string | null | undefined>;
+  cast?: ReadonlyArray<string | null | undefined> | null;
+  names?: ReadonlyArray<string | null | undefined>;
+}): { entry: string; name: string; creature: boolean } | null {
+  const tries = [...(o.visuals || []).map((v) => oneLine(v)), oneLine(o.idea)].filter(Boolean);
+  for (const text of tries) {
+    const f = figureIn(text, { speakers: o.speakers, cast: o.cast, names: o.names });
+    if (!f || f.entry || !couldBeThing(f.who, "")) continue;
+    const noun = nounOf((oneLine(f.who).match(THING_WORDS) || [""])[0] || "");
+    if (!noun) continue;
+    // the sentence that shows it, and the place phrase nearest it in that sentence — the first one AFTER it ("a woman
+    // standing waist-deep in the lake"), else the last one BEFORE it ("far out in the lake a woman is standing") — never
+    // "in a soaked nightgown", which is what it wears: a place takes "the"
+    // (…and only the CLAUSE that shows it is its look: "Fakeby shines the flashlight out through the flap: far out in the
+    //  lake a woman is standing" — the first half put Fakeby into her portrait's prompt)
+    const who = oneLine(f.who).toLowerCase();
+    const sentence = text.split(/(?<=[.!?])\s+/).find((s) => s.toLowerCase().includes(who)) || text;
+    const clause = sentence.split(CLAUSE_BREAK).map((c) => c.trim()).find((c) => c.toLowerCase().includes(who)) || sentence;
+    const at = Math.max(0, clause.toLowerCase().indexOf(who));
+    const phrase = (m: RegExpMatchArray): string => `${m[1].toLowerCase()} the ${(m[3] && PLACE_ADJ.test(m[2]) ? `${m[2]} ${m[3]}` : m[2]).toLowerCase()}`;
+    const afterIt = [...clause.slice(at + who.length).matchAll(PLACE_PREP)][0];
+    const beforeIt = [...clause.slice(0, at).matchAll(PLACE_PREP)].pop();
+    const place = afterIt ? phrase(afterIt) : beforeIt ? phrase(beforeIt) : "";
+    const name = `the ${noun}${place ? ` ${place}` : ""}`;
+    return { entry: `${name}, ${clipEvent(clause, 220)}`, name, creature: /^(?:ghost|creature|monster|thing)$/.test(noun) };
+  }
+  return null;
+}
+
 /** What a sighting is: who is newly seen (as the words call them), their cast line when the story has one, and the
  *  words that show them (a sound from out of sight taken out) — what the sighting's picture is drawn from, and what is
  *  kept of it for the reveal. */

@@ -54,7 +54,7 @@ import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
 import { EVENT_MAX, EVENT_MAX_LAST, FILM_FPS, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, joinCheck, kinLooks, nightSetting, openAirPlace, revealPicture, sceneEvent, seenBefore, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging, type SeamKind } from "./acted-staging";
 // THE SIGHTING, AND THE FILM'S THING (2026-11-25 — acted-staging.ts → sightingOf, storyThreat; dialogue-cast.ts → castThreat)
-import { couldBeThing, figureIn, sightingOf, sightingPicture, storyThreat, threatPortrait, type Sighting, type ThingRef } from "./acted-staging";
+import { couldBeThing, figureIn, sightingOf, sightingPicture, storyThreat, threatFromWords, threatPortrait, type Sighting, type ThingRef } from "./acted-staging";
 import { castThreat } from "./dialogue-cast";
 import { PORTRAIT_ASPECT, STORY_LADDER, STORY_MODEL, castEntry, clothedEdit, parseUnclothed, storyPictureInput, unclothedPrompt } from "./story-picture";
 
@@ -1191,7 +1191,10 @@ export async function generateTestMovie(opts: {
       threat = { name: named.name.trim(), img: named.faceUrl, from: "cast", look: castLooks[nameKey(named.name)] || (named.look || "").replace(/\s+/g, " ").trim(), entry: named.name.trim(), creature: isCreature(named) };
       threatEntry = threat.entry;
     } else {
-      const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual });
+      // (…and when the script gave its thing no cast line of its own — the ninth lake film's writer listed only the two
+      //  who talk, and that film had no thing at all — the first figure its words put in view, else the maker's idea)
+      const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual })
+        || threatFromWords({ visuals: scenesArr.map((s) => s.visual), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: castActors.map((c) => c.name) });
       if (own) threatEntry = own.entry;
       if (own) {
         let kept: Threat | null = null;

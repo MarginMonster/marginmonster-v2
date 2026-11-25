@@ -18,7 +18,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   NOTHING_GLOWS, PHOTOGRAPHED, REVEAL_MOVED, REVEAL_STAY, SIGHT_MOVES, SIGHT_PICTURE_MAX,
-  couldBeThing, figureIn, revealClip, revealPicture, sightingClip, sightingOf, sightingPicture, silentRules, stagedRules, stagedTwoShot, storyThreat, thingBound, thingRefNote, threatPortrait,
+  couldBeThing, figureIn, revealClip, revealPicture, sightingClip, sightingOf, sightingPicture, silentRules, stagedRules, stagedTwoShot, storyThreat, thingBound, thingRefNote, threatFromWords, threatPortrait,
 } from "../app/lib/acted-staging.ts";
 import { clipRules } from "../app/lib/clip-prompt.ts";
 import { CREATURE_REAL, DRESSED, SHADOW_SHAPE } from "../app/lib/story-picture.ts";
@@ -213,6 +213,32 @@ test("the film's thing: the script's own threat is found by what it IS — never
   assert.ok(wolf.includes(CREATURE_REAL) && wolf.includes("this ONE creature alone"), wolf);
 });
 
+test("the film's thing when the script gave it NO cast line: the first figure its words put in view, named where it stands — else the maker's idea (live, 2026-11-25: the ninth lake film had no thing at all)", () => {
+  const TWO_ONLY = CAST.slice(0, 2); // the ninth film's writer listed only the two who talk
+  const t = threatFromWords({ visuals: TENT, speakers: TWO, cast: TWO_ONLY, names: TWO });
+  // shot 1's voice is HEARD (nobody is seen); shot 3's light finds her — named by where she stands, never a bare "the woman",
+  // and her look is only the clause that shows HER (never "Fakeby shines the flashlight…": he would be in her portrait)
+  assert.deepEqual(t, { entry: "the woman in the lake, far out in the lake a woman is standing waist-deep, perfectly still, smiling.", name: "the woman in the lake", creature: false });
+  // …and her portrait is the told stories' recipe in the film's own (photographed) style, dressed, nothing glowing — never
+  // a creature's, and nobody but her in it
+  const p = threatPortrait(t!.entry, "a dark horror scene, photorealistic");
+  assert.ok(p.includes("A character portrait of the woman in the lake") && !p.includes(CREATURE_REAL) && p.includes(DRESSED) && p.endsWith(NOTHING_GLOWS), p);
+  assert.ok(!p.includes("Fakeby") && !p.includes("Testa"), p);
+  // what she WEARS is never where she is: "in a soaked nightgown" is not a place ("the" takes a place, "a" a garment)
+  const worn = threatFromWords({ visuals: ["Far out in the black water, a pale woman in a soaked white nightgown stands waist-deep in the still lake, smiling."], speakers: TWO, cast: TWO_ONLY });
+  assert.equal(worn?.name, "the woman in the still lake");
+  // a voice from out of sight is nobody seen; a shadow is drawn as a shadow, never as the thing's face
+  assert.equal(threatFromWords({ visuals: [TENT[0], TENT[1]], speakers: TWO, cast: TWO_ONLY }), null);
+  assert.equal(threatFromWords({ visuals: ["A shadow stands under the old tree, watching."], speakers: TWO, cast: TWO_ONLY }), null);
+  // a figure with a cast line of its own is storyThreat's to judge ("Mom" is no thing) — never taken here
+  assert.equal(threatFromWords({ visuals: ["Mom stands in the doorway with the car keys."], speakers: ["Lia", "Theo"], cast: ["Lia, 9", "Theo, 7", "Mom, who is away at work"] }), null);
+  // nothing seen in any scene: the maker's own idea names it
+  const fromIdea = threatFromWords({ visuals: [TENT[0], TENT[1]], idea: "Two friends camping by a quiet lake wake at 3am to someone softly calling their names from the water. When they shine a flashlight, a woman is standing waist-deep in the lake, perfectly still, smiling.", speakers: TWO, cast: TWO_ONLY });
+  assert.equal(fromIdea?.name, "the woman in the lake");
+  // a creature by what it is keeps the creature recipe
+  assert.equal(threatFromWords({ visuals: ["At the tree line a ghost stands watching the tent."], speakers: TWO, cast: TWO_ONLY })?.creature, true);
+});
+
 test("which figure with no cast line of its own may be drawn as the film's thing — never somebody the words make else, never a shadow", () => {
   // (review, 2026-11-25: a third person the words name in a horror shot was handed the woman's portrait — "that exact
   //  figure, the same face, hair and clothes" — where the words say a man)
@@ -241,7 +267,10 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   // (…never one of the two who talk: a cast threat the script gave lines to is not the thing — review, 2026-11-25)
   assert.ok(eng.includes("const speaks = (c: { name: string }): boolean => [spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name));"));
   assert.ok(eng.includes("const named = (chosen && !speaks(chosen) ? chosen : null) || castActors.find((c) => !!c.faceUrl && isCreature(c) && !speaks(c));"));
-  assert.ok(eng.includes("const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual });"));
+  assert.ok(eng.includes("const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual })"));
+  // (…and when the script gave its thing no cast line — the ninth lake film, live 2026-11-25 — the first figure its words
+  //  put in view, else the maker's own idea: the film never goes without its thing because the writer forgot a line)
+  assert.ok(eng.includes("|| threatFromWords({ visuals: scenesArr.map((s) => s.visual), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: castActors.map((c) => c.name) });"));
   assert.ok(eng.includes("for (const model of kept ? [] : STORY_LADDER) {") && eng.includes("storyPictureInput(model, { prompt: threatPortrait(own.entry, tmpl.sceneHint), refs: [], aspect: PORTRAIT_ASPECT })"), "the told stories' portrait recipe and ladder");
   assert.ok(eng.includes("img = (await clothedOrDropped(drawn, PORTRAIT_ASPECT)) || \"\";"), "looked at for an unclothed figure");
   assert.ok(eng.includes("if (!kept) await ckpt({ ckThreat: JSON.stringify(threat) });"), "kept: a restarted film does not draw it twice");

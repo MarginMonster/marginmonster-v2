@@ -265,7 +265,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // can be worked out again on a desk, word for word. Anyone else asking gets the Archive as ever.
   const timingOf = new URL(request.url).searchParams.get("timing");
   if (timingOf && operator) {
-    const piece = await db.asset.findFirst({ where: { id: timingOf.slice(0, 64), shopId: shop.id }, select: { id: true, title: true, metaJson: true } });
+    const piece = await db.asset.findFirst({ where: { id: timingOf.slice(0, 64), shopId: shop.id }, select: { id: true, title: true, metaJson: true, bodyJson: true } });
     let timing: unknown = null;
     try { timing = JSON.parse(piece?.metaJson || "{}").timing ?? null; } catch { timing = null; }
     // (…and how its pictures moved — each clip's last frame looked at beside its picture — and a take's own record:
@@ -274,8 +274,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     try { const m = JSON.parse(piece?.metaJson || "{}"); motion = m.motion ?? null; take = m.take ? { ...m.take, direction: undefined } : null; threat = m.threat ?? null; sightings = m.sightings ?? null; } catch { /* as nothing */ }
     // (…and an acted horror film's THING — the one picture every shot of it is drawn from — and the shots that
     //  first showed it: acted-staging.ts → sightingOf, film-dialogue → meta.threat / meta.sightings)
+    // (…and the SCRIPT the engine was handed — its cast lines and each scene's place, what is seen and what is said —
+    //  so a film can be read against its own words: the ninth lake film, 2026-11-25, had no thing, and nothing on the
+    //  page said whether its writer had given the woman a cast line)
+    let script: unknown = null;
+    try {
+      const tr = JSON.parse(piece?.bodyJson || "{}").treatment;
+      if (tr && typeof tr === "object") script = { cast: Array.isArray(tr.cast) ? tr.cast.slice(0, 8) : [], scenes: Array.isArray(tr.scenes) ? tr.scenes.slice(0, 60).map((s: Record<string, unknown>) => ({ where: s?.where ?? null, visual: s?.visual ?? null, caption: s?.caption ?? null })) : [] };
+    } catch { /* as nothing */ }
     // (typed as nothing, so the page's own data keeps its one shape)
-    return json({ timingOf: piece?.id || null, title: piece?.title || null, timing, motion, take, threat, sightings }) as never;
+    return json({ timingOf: piece?.id || null, title: piece?.title || null, timing, motion, take, threat, sightings, script }) as never;
   }
 
   // ONE unified archive (owner 11-01): the Creator/Marketing toggle was far too
