@@ -28,4 +28,8 @@ EXPOSE 3000
 # remix-serve binds to Render's provided PORT automatically.
 # mkdir first: the persistent disk mounts EMPTY at /app/data/renders — make
 # sure the dir exists and is writable before anything touches it.
-CMD ["sh", "-c", "mkdir -p /app/data/renders && npx prisma db push --accept-data-loss && npx remix-serve ./build/server/index.js"]
+# `exec` (2026-11-25): the server REPLACES the shell, so Render's SIGTERM on a deploy reaches node (npx forwards it to
+# remix-serve), and the worker can mark its running jobs "stopped by a deploy" and take no new one (worker.server.ts →
+# stopTakingJobs; job-stall.ts: a deploy is not a stall). As PID 1 a shell that does not exec ignores SIGTERM, and the
+# app only ever saw the SIGKILL 30 s later.
+CMD ["sh", "-c", "mkdir -p /app/data/renders && npx prisma db push --accept-data-loss && exec npx remix-serve ./build/server/index.js"]
