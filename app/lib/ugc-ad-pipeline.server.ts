@@ -701,7 +701,8 @@ function buildTimedCaptionFilters(caps: { text: string; t0: number; t1: number }
 /** Hard ceiling for one encode. A wedged ffmpeg (bad input stream, stalled
  *  filter graph) never emits "close", so the promise never settles: the job
  *  sits IN_PROGRESS and the SERIAL drain loop stops draining for every merchant
- *  until orphan-reclaim notices ~25 min later. SIGKILL and resolve down the
+ *  until orphan-reclaim noticed ~25 min later (now: until its lane's slot runs
+ *  out — the worker beats a running job until then, job-beat.ts). SIGKILL and resolve down the
  *  normal failure path instead. 10 min is far beyond any 15s 720x1280 encode. */
 const FFMPEG_TIMEOUT_MS = 10 * 60_000;
 
@@ -764,7 +765,8 @@ export async function assemble(opts: {
   /** The job this assembly belongs to, so it can keep its own heartbeat.
    *
    *  Job.updatedAt only moves on a write, and the orphan reaper treats a row
-   *  untouched for 25 minutes as a corpse: it marks the job FAILED and refunds
+   *  untouched for 5 minutes (25 until 2026-11-25, when the worker began to
+   *  beat every running job itself — job-beat.ts) as a corpse: it marks the job FAILED and refunds
    *  the merchant. Assembly is the longest checkpoint-free stretch in the whole
    *  app — up to five serial ffmpeg rungs, each allowed ten minutes — so a
    *  render that fell down the recovery ladder got refunded WHILE STILL

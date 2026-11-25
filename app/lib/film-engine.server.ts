@@ -541,8 +541,9 @@ export async function previewFilmTreatment(opts: {
   teller?: string;
   /** A JOB THAT IS WRITING SAYS SO (2026-11-25, films up to five minutes): called when a long film's plan, and each
    *  of its parts, comes back. A five-minute script written inside a job is ten answers or more one after another
-   *  — each up to two minutes, and asked again down the rungs — and the worker takes a job nobody has touched for 25
-   *  minutes to be dead (job-queue.server.ts → reclaimOrphanJobs). Never called for a film written in one answer. */
+   *  — each up to two minutes, and asked again down the rungs — and the worker took a job nobody had touched for 25
+   *  minutes to be dead (job-queue.server.ts → reclaimOrphanJobs; five since 2026-11-25, when the worker began to
+   *  beat every job it runs itself — job-beat.ts — this is a second voice). Never called for a film written in one answer. */
   beat?: () => unknown;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);

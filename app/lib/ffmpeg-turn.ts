@@ -17,9 +17,10 @@
  * ended must not stop every other encode for good. A stopped worker is worse than a rare overlap — the
  * same reasoning as the worker's own time-bounded slot. Past the bound the next one starts anyway.
  *
- * A job that is waiting is ALIVE, and says so: the worker's reaper reads "not touched for 25 minutes" as
- * abandoned, and a picture's many small stills can each wait behind one of a film's encodes. While a
- * job waits or encodes, its `beat` is called once a minute.
+ * A job that is waiting is ALIVE, and says so: the worker's reaper reads "not touched for 5 minutes" as
+ * abandoned (25 until 2026-11-25), and a picture's many small stills can each wait behind one of a film's
+ * encodes. While a job waits or encodes, its `beat` is called once a minute. (The worker also beats every
+ * job it runs, whatever it is doing — job-beat.ts; this is a second voice for the same job.)
  *
  * Turns are taken in the order they were asked for. Nothing here knows what ffmpeg is: `run` is whatever
  * the caller wants done alone. */
@@ -27,7 +28,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 /** Above the longest hard ceiling any runner has (10 minutes), with room to spare. */
 export const FFMPEG_TURN_WAIT_MS = 12 * 60_000;
-/** How often a waiting or encoding job says it is alive. Far inside the reaper's 25 minutes. */
+/** How often a waiting or encoding job says it is alive. Well inside the reaper's five minutes. */
 export const TURN_BEAT_MS = 60_000;
 
 type Job = { beat?: () => unknown };

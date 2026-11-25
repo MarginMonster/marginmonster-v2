@@ -99,7 +99,7 @@ export function splitExchange(caption: string): Array<{ speaker: string; line: s
 }
 
 /* A JOB THAT IS WORKING SAYS SO — AT EVERY REAL STEP, NEVER ON A TIMER (2026-11-25, films up to five minutes).
- * The worker's reaper takes a job nobody has touched for 25 minutes to be dead, hands it back to the line, and
+ * The worker's reaper took a job nobody had touched for 25 minutes to be dead, handed it back to the line, and
  * another run then starts it again beside the first (job-queue.server.ts → reclaimOrphanJobs; what "touches" a job
  * is any checkpoint it writes). A six-shot film checkpoints after every shot, three minutes apart. But one shot can
  * honestly take longer than that ceiling: each host a take is tried on is waited for up to ten minutes, and there
@@ -107,7 +107,10 @@ export function splitExchange(caption: string): Array<{ speaker: string; line: s
  * Tuesday. So the film says it is alive whenever something REAL has just happened inside a shot — a host gave up,
  * a try failed, the take came back — and the longest it is ever silent is one wait on one host. A film that is
  * truly dead says nothing (its process is gone), and so does one stuck on an answer that never comes: both are
- * still taken back after 25 minutes, as they must be. `alive` is that word; it never costs a shot. */
+ * still taken back, as they must be. `alive` is that word; it never costs a shot.
+ * (Since 2026-11-25 the worker itself also writes the row of every job it runs once a minute — job-beat.ts — so
+ *  the reaper's ceiling is five minutes; a dead film is taken back five minutes after its process is gone, and one
+ *  stuck on an answer that never comes when its lane's hold runs out, the worker's beat ending with it.) */
 const say = async (alive?: () => unknown): Promise<void> => { try { await alive?.(); } catch { /* a beat that fails is skipped */ } };
 
 /** A Veo clip where the characters SPEAK an exchange (audio on). FULL Veo-3:

@@ -477,7 +477,8 @@ export async function generateFootageFilm(opts: FootageFilmOptions): Promise<str
   const rolled = (i: number, counted: number) => counted || 1 + (Number(records[i].rerolls) || 0);
 
   // THE JOB IS ALIVE while its rolls are in the air: a roll can take twenty minutes, and the queue's reaper reads a
-  // row untouched for twenty-five as abandoned
+  // row untouched for five as abandoned (twenty-five until 2026-11-25; the worker now beats every job it runs as well
+  // — job-beat.ts — and this beat, inside the five, stays as a second voice)
   const alive = setInterval(() => { void ckpt({ ckFbeat: Date.now() }); }, 4 * 60_000);
   if (typeof alive.unref === "function") alive.unref();
   let house: KeptHouse | null = null;
