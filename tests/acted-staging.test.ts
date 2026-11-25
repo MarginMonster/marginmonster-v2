@@ -1517,7 +1517,8 @@ test("the encoder's arguments are told apart: the picture is encoded in every pa
   // the acted film's own encoder is the one told apart here
   const eng = read("app", "lib", "film-dialogue.server.ts");
   assert.ok(eng.includes(`const ENCODE = [${ENCODE.map((a) => `"${a}"`).join(", ")}];`));
-  assert.deepEqual(st.joinPartArgs({ graph: "G" }, ["a.mp4", "b.mp4"], ENCODE, "p.mov"), ["-y", "-i", "a.mp4", "-i", "b.mp4", "-filter_complex", "G", "-map", "[vc]", "-map", "[ac]", ...st.joinEncode(ENCODE).picture, "-c:a", "pcm_s16le", "-f", "mov", "p.mov"]);
+  // (one decoding thread a clip since 2026-11-25 — six Full-HD decoders sized to a 16-core host's cores were 135 MB more)
+  assert.deepEqual(st.joinPartArgs({ graph: "G" }, ["a.mp4", "b.mp4"], ENCODE, "p.mov"), ["-y", "-threads", "1", "-i", "a.mp4", "-threads", "1", "-i", "b.mp4", "-filter_complex", "G", "-map", "[vc]", "-map", "[ac]", ...st.joinEncode(ENCODE).picture, "-c:a", "pcm_s16le", "-f", "mov", "p.mov"]);
   assert.deepEqual(st.joinFilmArgs("l.txt", ENCODE, "f.mp4"), ["-y", "-f", "concat", "-safe", "0", "-i", "l.txt", "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "f.mp4"]);
   // each part starts on the frame the one before it ended: its length is said, to the microsecond
   assert.equal(st.joinList(["C:\\r\\tm-1.mp4.part1.mov", "/r/it's.mov"], [1001, 30]), "file 'C:/r/tm-1.mp4.part1.mov'\nduration 33.366667\nfile '/r/it'\\''s.mov'\nduration 1.000000\n");

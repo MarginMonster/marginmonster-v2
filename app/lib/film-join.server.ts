@@ -68,7 +68,8 @@ export async function joinWhole(o: { clips: string[]; outPath: string; prep: str
   // A LONG FILM IS JOINED IN PARTS (acted-staging.ts → joinParts): more clips than one ffmpeg has ever opened here
   // are never opened by one. A film of six shots or fewer is joined below, exactly as it always was.
   if (clips.length > JOIN_PART_CLIPS) return joinInParts({ ...o, frames, silent, hold });
-  const inputs = clips.flatMap((c) => ["-i", c]);
+  // (one decoding thread a shot, as a long film's parts have: acted-staging.ts → joinPartArgs)
+  const inputs = clips.flatMap((c) => ["-threads", "1", "-i", c]);
   const failed: string[] = [];
   for (const [how, plan] of [
     ["with its dissolves", joinGraph({ frames, seams: o.seams, prep: o.prep, silent, hold })],
