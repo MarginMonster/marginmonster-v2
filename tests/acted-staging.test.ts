@@ -1361,3 +1361,15 @@ test("an invented character keeps the face the film first showed; anybody else n
   assert.ok(eng.includes("const seen = thing && thingFace ? \"\" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || \"\")));"));
   assert.ok(eng.includes("if (!nm || [spkA, spkB].some((s) => !!s && firstName(s) === firstName(nm))) return false;"), "the two who talk are not 'anybody else'");
 });
+
+/* NIGHT IS NIGHT (2026-11-25): both acted lake films — "wake at 3am" — were lit like a blue dusk. */
+test("a photographed film's night scene is the middle of the night", async () => {
+  const st = await import("../app/lib/acted-staging.ts");
+  assert.ok(st.actedRealism(false, "Tunde shakes Isamu awake", "inside a tent by a lake at 3am").endsWith(` ${st.NIGHT_LINE}`));
+  assert.ok(st.actedRealism(false, "they wake at midnight to a voice", "a tent").includes(st.NIGHT_LINE));
+  assert.ok(!st.actedRealism(false, "they pack the car", "a driveway on a sunny morning").includes(st.NIGHT_LINE), "day stays day");
+  assert.equal(st.actedRealism(true, "at night", "a bedroom"), "", "a cartoon is left as it was");
+  assert.ok(st.NIGHT_LINE.includes("never dusk, twilight or a blue evening glow"));
+  const src = fs.readFileSync(new URL("../app/lib/acted-staging.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(src.includes("${actedRealism(o.cartoon, act, o.setting)}"), "the staged master is told it, from its place and its moment");
+});
