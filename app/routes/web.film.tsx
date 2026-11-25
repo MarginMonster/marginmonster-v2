@@ -44,6 +44,11 @@ import { nameTok } from "../lib/character-prompts";
 import { slateTitle } from "../lib/film-slate";
 // (2026-11-24) an acted film made in one press is cast with the people picked on the Cast card
 import { pickedAsCast } from "../lib/dialogue-cast";
+// (2026-11-25) THE MONSTER IS CAST: a Horror film's thing has its own row in the Cast step, rides with the cast as
+// `role: "threat"`, and a script's own threat is found the way the film finds it (acted-staging.ts → storyThreat)
+import { castRoleOf, type CastRole } from "../lib/dialogue-cast";
+import { storyThreat } from "../lib/acted-staging";
+import { castEntry } from "../lib/story-picture";
 // (2026-11-24) the posters stand on three shelves: told · acted · sung
 import { heroShelves } from "../lib/film-heroes";
 // (2026-11-24) THE LYRIC VIDEO: a member's own song, its words on screen — a poster on the sung shelf, its own builder
@@ -377,8 +382,10 @@ function parseOutfitImgs(raw: string | null): Record<string, string> | undefined
 }
 
 /** The cast the maker PICKED for a story (before a word was written): who they are, their picture, what
- *  kind of character they are and what they look like. At most 4; a face must be a site path or http(s). */
-type StoryCastIn = { name: string; faceUrl: string | null; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null };
+ *  kind of character they are and what they look like. At most 4; a face must be a site path or http(s).
+ *  (2026-11-25) …and the film's THING, when a Horror film's monster was picked in its own row: `role: "threat"`
+ *  (dialogue-cast.ts → castRoleOf; one at most — pickedAsCast and castThreat take the first). */
+type StoryCastIn = { name: string; faceUrl: string | null; kind: "person" | "cartoon" | "monster"; look: string; voiceId: string | null; role?: CastRole };
 function parseStoryCast(raw: string | null): StoryCastIn[] {
   if (!raw) return [];
   try {
@@ -389,7 +396,7 @@ function parseStoryCast(raw: string | null): StoryCastIn[] {
       .map((x) => {
         const face = typeof x.faceUrl === "string" && /^(https?:\/\/|\/)/i.test(x.faceUrl.trim()) ? x.faceUrl.trim().slice(0, 2000) : null;
         const kind: StoryCastIn["kind"] = x.kind === "cartoon" || x.kind === "monster" ? x.kind : "person";
-        return { name: String(x.name).trim().slice(0, 40), faceUrl: face, kind, look: typeof x.look === "string" ? x.look.replace(/\s+/g, " ").trim().slice(0, 220) : "", voiceId: typeof x.voiceId === "string" && x.voiceId ? x.voiceId.slice(0, 80) : null };
+        return { name: String(x.name).trim().slice(0, 40), faceUrl: face, kind, look: typeof x.look === "string" ? x.look.replace(/\s+/g, " ").trim().slice(0, 220) : "", voiceId: typeof x.voiceId === "string" && x.voiceId ? x.voiceId.slice(0, 80) : null, ...castRoleOf(x) };
       })
       .slice(0, 4);
   } catch { return []; }
@@ -616,6 +623,51 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return json({ portraitUrl, castIndex });
     } catch (e) {
       return json({ error: tr(lang, "Couldn't cast that actor — try again."), castIndex, detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
+    }
+  }
+
+  // FREE — SEE THE FILM'S THING (2026-11-25). The owner, of the eighth lake film — right until its last shot,
+  // where the reveal drew a stranger: "It looked really good till that last scene bro", then "Monster should be
+  // castable also". A Horror script that invents its own threat ("the woman in the lake") had it drawn only once
+  // the film was being made, so the maker met it for the first time in the reveal. The Cast step's monster row
+  // ("See it · free") draws it NOW, with the ENGINE'S OWN recipe for it (acted-staging.ts → threatPortrait, the
+  // told stories' portrait: photographed, clothed, nothing glowing), on the same ladder, and LOOKED at for an
+  // unclothed figure the way the engine looks (film-dialogue → clothedOrDropped: edited once, else not used —
+  // three lake films in a row had the woman drawn bare). From then on it IS the film's thing: the page sends it
+  // with the film as the cast entry with `role: "threat"`, and the engine uses that picture as given. Free, like
+  // the page's other stills (the plan's guard above); Horror only. A picture that will not come says so in one
+  // calm line on the page, and the film draws it itself when it is made.
+  if (intent === "previewFilmThreat") {
+    const threatEntry = ((form.get("threatEntry") as string) || "").replace(/\s+/g, " ").trim().slice(0, 600);
+    if (tmpl.key !== "horror" || !castEntry(threatEntry).name) return json({ error: tr(lang, "It wouldn't draw just now — the film draws it when it's made.") });
+    const absOf = (u: string) => (/^https?:\/\//i.test(u) ? u : `${externalOrigin(request)}${u.startsWith("/") ? "" : "/"}${u}`);
+    try {
+      const { threatPortrait } = await import("../lib/acted-staging");
+      const pic = await import("../lib/story-picture");
+      const { repRun, persistRemote } = await import("../lib/image-generation.server");
+      const { anthropicVision } = await import("../lib/anthropic.server");
+      const prompt = threatPortrait(threatEntry, tmpl.sceneHint);
+      const bare = async (u: string) => {
+        try { return pic.parseUnclothed(String((await anthropicVision(pic.unclothedPrompt(), [absOf(u)], { maxTokens: 120, model: "claude-sonnet-4-6" })) || "")); }
+        catch { return { unclothed: false, who: "" }; } // (a look that cannot be made keeps the picture — as the engine's)
+      };
+      let threatUrl = "";
+      for (const model of pic.STORY_LADDER) {
+        try {
+          let drawn = await persistRemote(await repRun(model, pic.storyPictureInput(model, { prompt, refs: [], aspect: pic.PORTRAIT_ASPECT }), 150_000), "jpg");
+          const seen = await bare(drawn);
+          if (seen.unclothed) {
+            drawn = await persistRemote(await repRun(pic.STORY_MODEL, pic.storyPictureInput(pic.STORY_MODEL, { prompt: pic.clothedEdit(seen.who), refs: [absOf(drawn)], aspect: pic.PORTRAIT_ASPECT }), 150_000), "jpg");
+            if ((await bare(drawn)).unclothed) drawn = "";
+          }
+          threatUrl = drawn;
+        } catch (e) { console.error(`[film] the thing's portrait on ${model} did not come: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
+        if (threatUrl) break;
+      }
+      if (!threatUrl) return json({ error: tr(lang, "It wouldn't draw just now — the film draws it when it's made.") });
+      return json({ threatUrl });
+    } catch (e) {
+      return json({ error: tr(lang, "It wouldn't draw just now — the film draws it when it's made."), detail: e instanceof Error ? e.message.slice(0, 160) : String(e) });
     }
   }
 
@@ -902,20 +954,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     // Locked cast (name + face + voice per character) the merchant cast in the UI —
     // drives per-shot identity conditioning and the voice pin in the render.
-    let cast: Array<{ name: string; faceUrl: string | null; voiceId: string | null; kind?: "person" | "cartoon" | "monster"; look?: string }> | undefined;
+    let cast: Array<{ name: string; faceUrl: string | null; voiceId: string | null; kind?: "person" | "cartoon" | "monster"; look?: string; role?: CastRole }> | undefined;
     const castRaw = ((form.get("cast") as string) || "").trim();
     if (castRaw) {
       try {
         const c = JSON.parse(castRaw);
         if (Array.isArray(c)) {
-          const mapped = c
-            .filter((x) => x && typeof x.name === "string" && x.name.trim())
-            .map((x) => ({
+          const named = c.filter((x) => x && typeof x.name === "string" && x.name.trim());
+          // THE FILM'S THING (2026-11-25): a Horror film's monster, or the portrait drawn of its script's own threat,
+          // comes as the one entry with `role: "threat"` — the first; the cast's own eight come before it
+          const thingAt = named.findIndex((x) => !!castRoleOf(x).role);
+          const mapped = named
+            .map((x, k) => ({
               name: String(x.name).slice(0, 80), faceUrl: x.faceUrl ? String(x.faceUrl).slice(0, 2000) : null, voiceId: x.voiceId ? String(x.voiceId).slice(0, 80) : null,
               // what a cast member IS, when it is not a person — with what it looks like, in the maker's own words
-              ...(x.kind === "cartoon" || x.kind === "monster" ? { kind: x.kind as "cartoon" | "monster", look: typeof x.look === "string" ? x.look.replace(/\s+/g, " ").trim().slice(0, 220) : "" } : {}),
+              // (…and the thing's look is kept whatever it is: the threat a script invented is a figure, not a creature)
+              ...(x.kind === "cartoon" || x.kind === "monster" ? { kind: x.kind as "cartoon" | "monster", look: typeof x.look === "string" ? x.look.replace(/\s+/g, " ").trim().slice(0, 220) : "" } : k === thingAt && typeof x.look === "string" ? { look: x.look.replace(/\s+/g, " ").trim().slice(0, 220) } : {}),
+              ...(k === thingAt ? castRoleOf(x) : {}),
             }))
-            .slice(0, 8);
+            .filter((x, k) => k < 8 || k === thingAt);
           if (mapped.length) cast = mapped;
         }
       } catch { /* ignore malformed */ }
@@ -954,6 +1011,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const acted = pickedAsCast(storyCast, (v) => AVATAR_VOICE_IDS.has(v) || isCharacterVoice(v) || mine.has(v));
         if (acted.length) cast = acted;
       }
+    }
+    // THE MONSTER PICKED ON THE CAST STEP, WITH A SCRIPT WRITTEN (2026-11-25): it is not one of the script's
+    // characters, so a storyboard's cast has no row for it — the page sends it after them (`role: "threat"`); a cast
+    // sent without it still gets it here, from the picks, so the film's thing is never dropped on the way.
+    const pickedThing = storyCast.find((c) => c.role === "threat" && !!c.faceUrl);
+    if (pickedThing && tmpl.dialogue && !narrated && approvedTreatment && !(cast || []).some((c) => c.role === "threat")) {
+      cast = [...(cast || []), { name: pickedThing.name, faceUrl: pickedThing.faceUrl, voiceId: null, ...(pickedThing.kind !== "person" ? { kind: pickedThing.kind } : {}), look: pickedThing.look, role: "threat" as const }];
     }
     // "Lock these voices" (dialogue films): every character speaks in exactly the voice picked for them.
     const filmLockVoices = ((form.get("filmLockVoices") as string) || "") === "1";
@@ -1160,6 +1224,59 @@ function castCardSummary(cast: Array<{ name: string; faceUrl: string | null }>) 
   const discs = cast.slice(0, CAST_CARD_DISCS).map((c) => ({ name: (c.name || "").trim(), img: c.faceUrl || null, letter: (Array.from((c.name || "").trim())[0] || "?").toUpperCase() }));
   const done = cast.filter((c) => !!c.faceUrl).length;
   return { names, discs, more: Math.max(0, cast.length - CAST_CARD_DISCS), done, total: cast.length, all: cast.length > 0 && done === cast.length };
+}
+
+/* THE MONSTER IS CAST (2026-11-25). The eighth render of the lake idea ("…a woman is standing waist-deep in the
+ * lake, perfectly still, smiling") was right until its last shot, where the reveal drew a different creature. The
+ * owner: "It looked really good till that last scene bro" — then "Monster should be castable also". The engine now
+ * gives a film ONE picture of its thing (film-dialogue → the film's thing); this is the page's half. In a Horror
+ * film the thing has its OWN row in the Cast step, under the stars: "We invent it", or one of the cast's monsters —
+ * never one of the two places for the two who talk (a monster picked as a star ate one, and the member could not
+ * tell it would be the threat). Once a script exists the row shows what the film's thing IS — the monster picked,
+ * or the threat the writer wrote, which the maker can SEE before paying ("See it · free"). A picture of it rides
+ * with the film as the cast entry with `role: "threat"` (dialogue-cast.ts → castThreat), and every shot that
+ * shows it is drawn from that picture. Pure — tests/film-monster-slot.test.ts RUNS these three. */
+
+/** WHICH OF A SCRIPT'S CAST LINES IS THE FILM'S THING — found the way the film itself finds it (acted-staging.ts →
+ *  storyThreat: a cast line that is neither of those who talk, and a creature or a figure by its name: "the woman
+ *  in the lake"); or, when the maker picked a monster, that monster's own line if the writer gave it one. Either
+ *  way it is the monster row's: it is never a talking row with a voice, and never one of "1/2 cast". */
+function scriptThing(tr: { scenes?: ReadonlyArray<{ visual?: string; caption?: string }>; cast?: ReadonlyArray<string> } | null | undefined, picked?: string | null): { entry: string; name: string; look: string } | null {
+  const cast = (tr?.cast || []).filter((e): e is string => typeof e === "string" && !!e.trim());
+  if (!cast.length) return null;
+  const scenes = tr?.scenes || [];
+  // (who talks: the speaker of each line, read the way the page reads a line — "Mara: …")
+  const speakers = Array.from(new Set(scenes.map((s) => (/^\s*([^:]{1,40}):/.exec(s?.caption || "")?.[1] || "").trim()).filter(Boolean)));
+  if (picked) {
+    const k = nameTok(picked);
+    const own = cast.find((e) => !!k && nameTok(castEntry(e).name) === k && !speakers.some((s) => nameTok(s) === k));
+    return own ? { entry: own, ...castEntry(own) } : null;
+  }
+  const found = storyThreat({ cast, speakers, last: scenes[scenes.length - 1]?.visual });
+  return found ? { entry: found.entry, name: found.name, look: castEntry(found.entry).look } : null;
+}
+
+/** WHAT THE FILM'S THING IS — for the Cast card, the monster row and the form: the monster picked (its face and
+ *  name, as picked); else the script's own threat (its name and look, and its portrait once the maker has drawn
+ *  it — kept by NAME, so a rewrite that keeps the same threat keeps its picture); else nothing known yet: "a
+ *  monster we invent" (name ""). null outside Horror. `see`: the row offers to draw it. */
+function filmThing(o: { on: boolean; picked?: { name: string; img: string; look?: string | null } | null; script?: { name: string; look: string } | null; face?: { name: string; url: string } | null }): { name: string; img: string | null; look: string; picked: boolean; see: boolean } | null {
+  if (!o.on) return null;
+  if (o.picked) return { name: o.picked.name, img: o.picked.img || null, look: (o.picked.look || "").trim(), picked: true, see: false };
+  if (o.script) {
+    const face = o.face && o.face.name.trim().toLowerCase() === o.script.name.trim().toLowerCase() ? o.face.url : null;
+    return { name: o.script.name, img: face, look: o.script.look, picked: false, see: true };
+  }
+  return { name: "", img: null, look: "", picked: false, see: false };
+}
+
+/** …AND AS THE FILM IS SENT: the cast entry the engine reads as its thing (`role: "threat"`) — only with a
+ *  picture, which the engine uses as given and never draws again. A picked monster says what it is (`kind:
+ *  "monster"`); the threat a script invented is a figure, its look in the writer's words (the engine reads its
+ *  picture as a person's, PHOTOGRAPHED — never "a practical-effects creature"). It never speaks: no voice. */
+function thingCastEntry(thing: { name: string; img: string | null; look: string; picked: boolean } | null): { name: string; faceUrl: string; voiceId: null; kind?: "monster"; look: string; role: "threat" } | null {
+  if (!thing || !thing.name.trim() || !thing.img) return null;
+  return { name: thing.name.trim().slice(0, 80), faceUrl: thing.img, voiceId: null, ...(thing.picked ? { kind: "monster" as const } : {}), look: thing.look.replace(/\s+/g, " ").trim().slice(0, 220), role: "threat" };
 }
 
 // Backdrop presets — like the avatar-AI backdrop picker: tap one to set a scene's location (the `where`), or
@@ -1804,7 +1921,9 @@ export default function FilmStudio() {
     // one scene speak with a single voice.
     // …and the pick now reads the character's AGE as well as gender (a child gets the young voice, an
     // elder the mature one) — see autoCastVoices.
-    const entries = (Array.isArray(tr2.cast) ? tr2.cast : []).slice(0, 8);
+    // (…and a Horror film's THING is not one of them: it never speaks — it is the Cast step's monster row, 2026-11-25)
+    const thingEntry = monsterOn && !narrated ? scriptThing(tr2, pickedMonster?.name)?.entry : undefined;
+    const entries = (Array.isArray(tr2.cast) ? tr2.cast : []).filter((entry) => entry !== thingEntry).slice(0, 8);
     const picks = autoCastVoices(entries.map((entry) => ({ desc: entry, voiceId: null, auto: true })));
     return entries.map((entry, k) => ({
       name: speakName(entry) || entry.slice(0, 40), desc: entry.trim().slice(0, 300), faceUrl: null,
@@ -2058,9 +2177,72 @@ export default function FilmStudio() {
   // WHO'S IN IT: picked from the cast BEFORE a word is written, so the story is written FOR them.
   const [storyPick, setStoryPick] = useState<string[]>([]);
   const maxPick = narrated ? 3 : 2; // three pictures is the most a scene can be drawn from; a spoken scene is two people
-  const pickedCast = storyPick.map((id) => d.roster.find((r) => r.id === id)).filter((r): r is (typeof d.roster)[number] => !!r);
-  const filmCastJson = JSON.stringify(pickedCast.map((r) => ({ name: r.name, faceUrl: r.img, kind: r.kind, look: r.look, voiceId: r.voiceId })));
+  // THE MONSTER (2026-11-25 — "Monster should be castable also"): in a Horror film the film's thing is cast in its
+  // OWN row of the Cast step, under the stars — never as one of them (`maxPick` keeps the two places for the two who
+  // talk; a monster picked there ate one). `storyMonster`: the roster id of the monster picked, or null — "We invent
+  // it". Horror only, acted and told: no other format has a monster (a Thriller is written as "never the
+  // supernatural", and a Kids Cartoon is never offered one). It rides with the stars (`pickedCast`, `filmCastJson`)
+  // as the cast entry with `role: "threat"` — the writer writes ABOUT it, by its name (dialogue-cast.ts →
+  // castForWriter, premise-rules.ts → chosenThreat), and a film made in one press is cast with it (pickedAsCast).
+  const monsterOn = isStoryboard && template === "horror";
+  const [storyMonster, setStoryMonster] = useState<string | null>(null);
+  const pickedMonster = monsterOn && storyMonster ? d.roster.find((r) => r.id === storyMonster && r.kind === "monster") || null : null;
+  const pickedStars = storyPick.map((id) => d.roster.find((r) => r.id === id)).filter((r): r is (typeof d.roster)[number] => !!r);
+  const pickedCast = pickedMonster ? [...pickedStars, pickedMonster] : pickedStars;
+  const filmCastJson = JSON.stringify(pickedCast.map((r) => (r === pickedMonster
+    ? { name: r.name, faceUrl: r.img, kind: r.kind, look: r.look, voiceId: null, role: "threat" }
+    : { name: r.name, faceUrl: r.img, kind: r.kind, look: r.look, voiceId: r.voiceId })));
   const toggleStoryPick = (id: string) => setStoryPick((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= maxPick ? p : [...p, id]));
+  // (in Horror the stars are PEOPLE, and its monsters are offered in their own row)
+  const starRoster = monsterOn ? rosterFor(template).filter((r) => r.kind !== "monster") : rosterFor(template);
+  const monsterRoster = monsterOn ? rosterFor(template).filter((r) => r.kind === "monster") : [];
+  /** One tap picks a monster, a second tap un-picks it — one at most. */
+  const pickMonster = (id: string) => setStoryMonster((cur) => (cur === id ? null : id));
+  // (another format — and a next episode, or a story opened to edit — starts the monster over with the stars:
+  //  switchHero. Then a next episode, or a told story opened to edit, brings its cast back as picks: a monster
+  //  among them is the film's thing again, in its own row — never a star nobody can see in the stars' row)
+  useEffect(() => {
+    if (!monsterOn) return;
+    const isMonster = (id: string) => d.roster.some((r) => r.id === id && r.kind === "monster");
+    const m = storyPick.find(isMonster);
+    if (!m) return;
+    setStoryPick((p) => p.filter((id) => !isMonster(id)));
+    setStoryMonster(m);
+  }, [monsterOn, storyPick.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  // THE THREAT THE WRITER WROTE, SEEN BEFORE IT IS PAID FOR. With "We invent it", an acted film's script brings
+  // its own threat ("the woman in the lake"); "See it · free" draws it now, on the engine's own recipe for it (the
+  // action's `previewFilmThreat` → acted-staging.ts → threatPortrait), and from then on it IS the film's thing:
+  // posted with the film as its `role: "threat"` entry, so the engine never draws it again. Kept beside the cast,
+  // never in it (it never speaks: no voice, not one of "1/2 cast", not a speaker to the server) and by its NAME:
+  // a rewrite that keeps the same threat keeps its picture; a story started over loses it.
+  const storyThing = monsterOn && !narrated && !pickedMonster && treatment ? scriptThing(treatment) : null;
+  const [threatFace, setThreatFace] = useState<{ name: string; url: string } | null>(null);
+  const [threatErr, setThreatErr] = useState("");
+  useEffect(() => { if (!treatment) { setThreatFace(null); setThreatErr(""); } }, [treatment]);
+  const threatFetcher = useFetcher<{ threatUrl?: string; error?: string }>();
+  const threatDrawing = threatFetcher.state !== "idle";
+  const threatAsked = useRef<{ entry: string; name: string } | null>(null);
+  const threatNow = useRef("");
+  threatNow.current = storyThing?.entry || "";
+  const seeThreat = () => {
+    if (!storyThing || threatDrawing) return;
+    threatAsked.current = { entry: storyThing.entry, name: storyThing.name };
+    setThreatErr("");
+    threatFetcher.submit({ intent: "previewFilmThreat", template, threatEntry: storyThing.entry }, { method: "post" });
+  };
+  useEffect(() => {
+    if (threatFetcher.state !== "idle" || !threatAsked.current) return;
+    const asked = threatAsked.current;
+    threatAsked.current = null;
+    // (only for the very line it was drawn from: a story started over or rewritten while it drew has another one, or none)
+    if (asked.entry !== threatNow.current) return;
+    if (threatFetcher.data?.threatUrl) setThreatFace({ name: asked.name, url: threatFetcher.data.threatUrl });
+    else setThreatErr(asked.name); // (one calm line; the row stays as it was, and the film draws it when it is made)
+  }, [threatFetcher.state, threatFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const thing = filmThing({ on: monsterOn, picked: pickedMonster ? { name: pickedMonster.name, img: pickedMonster.img, look: pickedMonster.look } : null, script: storyThing, face: threatFace });
+  // …and as the acted film is sent, once its script is on the page (with none, the picks are its cast and the
+  // monster keeps its role there — the action → pickedAsCast)
+  const thingPost = treatment && !narrated ? thingCastEntry(thing) : null;
   // THE NARRATOR ("" = the format's own: a hollow voice for horror, a warm one for a moral…)
   const [narrPick, setNarrPick] = useState("");
   const narratorId = narrPick || (d.defaultNarrator as Record<string, string>)[template] || "English_Trustworth_Man";
@@ -2088,7 +2270,8 @@ export default function FilmStudio() {
     }));
   };
   // a different cast, or a different way of telling it, is a different story: script and pictures start over
-  useEffect(() => { setTreatment(null); setSeeds(null); setFrames([]); setCast([]); }, [told, storyPick.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (…and so is another monster: the script is written ABOUT the film's thing, by its name)
+  useEffect(() => { setTreatment(null); setSeeds(null); setFrames([]); setCast([]); }, [told, storyPick.join(","), storyMonster]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!tmpl?.dialogue) return;
     // (a next episode is opened with its own length, cast and shape: those are set with it)
@@ -2337,7 +2520,7 @@ export default function FilmStudio() {
     const openNarrated = !!nt?.dialogue && h.told === "narrated" && (d.narratable || []).includes(h.tmpl);
     setHeroId(h.id);
     setTemplate(h.tmpl); setScenes(nt?.lipSyncSinger ? mvWant : openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)); setTreatment(null); setFrames([]); setCast([]);
-    setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({}); setPictures("moving");
+    setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setStoryMonster(null); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({}); setPictures("moving");
     if (nt?.dialogue) setFilmAspect(openNarrated ? "9:16" : "16:9");
     // another format is an ordinary new film (a next episode sets its series again right after this)
     setSeries(null); setSeriesCast([]); setSeriesOwn([]);
@@ -3533,7 +3716,8 @@ export default function FilmStudio() {
   // comes back the moment anything in it changes — a line, a face, a shape: that is another film.
   // (the IDEA counts only while there is no script: once one is written IT is the film, and a letter typed
   //  in the idea box afterwards changes nothing that renders — it made the button live again, seen 11-22)
-  const storySig = `story:${JSON.stringify([template, treatment ? "" : topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId]), series?.from || ""])}`;
+  // (another monster, or the picture of the film's thing, is another film too)
+  const storySig = `story:${JSON.stringify([template, treatment ? "" : topic, scenes, told, storyPick, storyMonster, thing?.img || "", filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId]), series?.from || ""])}`;
   const storySent = sentSig === storySig;
   // Make the cast editable + buildable — rename, re-describe, add your own character, or remove one.
   // This is how you "create" a cast member (a cartoon character for Kids Cartoon, an actor for a film):
@@ -4297,6 +4481,14 @@ export default function FilmStudio() {
         const castSum = castCardSummary(cast);
         // …and whether the card still asks to be opened: a script has arrived, the step has not been opened since, and somebody has no face
         const castNudge = scripted && !castSeen && !castSum.all;
+        // …and in a Horror film, after the stars, the film's thing — "and Howl", "and the woman in the lake" (with its
+        // little face once there is one), or "and a monster we invent" — so the card tells the truth at a glance
+        const thingLine = thing ? (
+          <span className={`mm-cast-thing${thing.img ? " has-face" : ""}`}>
+            {thing.img && <span className="mm-cast-thingface" style={{ backgroundImage: `url(${thing.img})` }} aria-hidden="true" />}
+            <span className="mm-cast-thingname">{thing.name ? t("and {name}", { name: thing.name }) : t("and a monster we invent")}</span>
+          </span>
+        ) : null;
         const voiceTile = (id: string, label: string, blurb: string) => (
           <div className={`mm-vo${narratorId === id ? " on" : ""}`} key={id}>
             <button type="button" className="mm-vo-pick" aria-pressed={narratorId === id} onClick={() => setNarrPick(id)}><b>{label}</b><small>{blurb}</small></button>
@@ -4321,6 +4513,7 @@ export default function FilmStudio() {
                   <span className="mm-card-ttl"><span className="mm-card-kick">{t("The stars")}</span><b>{t("Cast")}</b></span>
                 </span>
                 <span className="mm-val mm-cast-names">{castSum.names}</span>
+                {thingLine}
                 <span className="mm-cast-line">
                   <span className="mm-card-cast" aria-hidden="true">
                     {castSum.discs.map((c, k) => (c.img
@@ -4335,26 +4528,28 @@ export default function FilmStudio() {
               <span className="mm-card-top">
                 {/* (the next episode of a told story: the characters it invented come BACK, with the faces they
                     had — the card says who, before a word is written. A full-length portrait is shown from the top.) */}
-                {pickedCast[0]
-                  ? <span className="mm-card-face" style={{ backgroundImage: `url(${pickedCast[0].img})` }} aria-hidden="true" />
+                {pickedStars[0]
+                  ? <span className="mm-card-face" style={{ backgroundImage: `url(${pickedStars[0].img})` }} aria-hidden="true" />
                   : seriesOwn[0]
                   ? <span className="mm-card-face" style={{ backgroundImage: `url(${seriesOwn[0].img})`, backgroundPosition: "center top" }} aria-hidden="true" />
                   : <span className="mm-card-ico c5"><Ico n="presenter" size={20} /></span>}
                 <span className="mm-card-ttl"><span className="mm-card-kick">{t("The stars")}</span><b>{t("Cast")}</b></span>
               </span>
-              <span className="mm-val">{pickedCast.length ? <><Ico n="check" size={12} /> {pickedCast.map((r) => r.name).join(" + ")}</>
+              {/* (the STARS — in Horror its monster is not one of them: it is named on its own line, after them) */}
+              <span className="mm-val">{pickedStars.length ? <><Ico n="check" size={12} /> {pickedStars.map((r) => r.name).join(" + ")}</>
                 : seriesOwn.length ? <><Ico n="check" size={12} /> {t("Back: {names}", { names: seriesOwn.map((r) => r.name).join(" + ") })}</>
                 : t("We invent them · or pick your own")}</span>
-              {pickedCast.length > 1 && (
+              {pickedStars.length > 1 && (
                 <span className="mm-card-cast" aria-hidden="true">
-                  {pickedCast.map((r, k) => <span key={r.id} className={`mm-card-castface${k === 0 ? " lead" : ""}`} style={{ backgroundImage: `url(${r.img})` }} title={r.name} />)}
+                  {pickedStars.map((r, k) => <span key={r.id} className={`mm-card-castface${k === 0 ? " lead" : ""}`} style={{ backgroundImage: `url(${r.img})` }} title={r.name} />)}
                 </span>
               )}
-              {!pickedCast.length && seriesOwn.length > 1 && (
+              {!pickedStars.length && seriesOwn.length > 1 && (
                 <span className="mm-card-cast" aria-hidden="true">
                   {seriesOwn.map((r, k) => <span key={`${r.name}|${r.img}`} className={`mm-card-castface${k === 0 ? " lead" : ""}`} style={{ backgroundImage: `url(${r.img})`, backgroundPosition: "center top" }} title={r.name} />)}
                 </span>
               )}
+              {thingLine}
               </>)}
             </button>
             {/* (How it's told is not a step any more: it is the HERO that was picked — film-heroes.ts) */}
@@ -4506,6 +4701,31 @@ export default function FilmStudio() {
                       );
                     })}
                   </div>
+                  {/* THE FILM'S THING, once the script exists (Horror): the monster picked, as picked — or the threat
+                      the writer wrote, by name, with its look, and ONE button that draws it now, free. Its portrait
+                      develops in and from then on IS the film's thing (it is sent as the cast's `role: "threat"`
+                      entry). Changing WHICH monster rewrites the script, so that is under "Start over" below. */}
+                  {thing && (
+                    <div className={`mm-thing${thing.img ? " has-face" : ""}${thing.picked ? " is-picked" : ""}`} role="group" aria-label={t("The monster")}>
+                      <span className="mm-thing-face">
+                        {thing.img
+                          ? <img key={thing.img} className="mm-thing-img" src={thing.img} alt={thing.name} />
+                          : <span className="mm-thing-dark" aria-hidden="true"><Ico n="eye" size={22} /></span>}
+                        {threatDrawing && <span className="fs-shot-spin" aria-hidden="true" />}
+                      </span>
+                      <span className="mm-thing-main">
+                        <span className="mm-thing-kick">{t("The monster")}</span>
+                        <b className="mm-thing-name">{thing.name || t("A monster we invent")}</b>
+                        <span className="mm-thing-look">{thing.picked ? t("It never speaks — the story is about it.") : thing.look || t("It is drawn from the script's own words, when it shows.")}</span>
+                        {thing.see && (
+                          <button type="button" className="mm-thing-see" disabled={threatDrawing} onClick={seeThreat}>
+                            <Ico n={thing.img ? "refresh" : "eye"} size={14} /> {threatDrawing ? t("Drawing it…") : thing.img ? t("Another look") : t("See it · free")}
+                          </button>
+                        )}
+                        {!!threatErr && threatErr.toLowerCase() === thing.name.toLowerCase() && !threatDrawing && <span className="mm-thing-err" role="status">{t("It wouldn't draw just now — the film draws it when it's made.")}</span>}
+                      </span>
+                    </div>
+                  )}
                   <button type="button" className="fs-cast-add" onClick={addCastMember} disabled={cast.length >= 8 || castingIndex !== null}>
                     <span aria-hidden="true">＋</span> {tmpl?.cartoon ? t("Add a cartoon character") : t("Add a character")}
                   </button>
@@ -4541,7 +4761,7 @@ export default function FilmStudio() {
                     {storyPick.length === 0 && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
                     <span className="fs-rface-name">{t("We cast it")}</span>
                   </button>
-                  {rosterFor(template).map((r) => {
+                  {starRoster.map((r) => {
                     const on = storyPick.includes(r.id);
                     return (
                       <button type="button" key={r.id} className={`fs-rface${on ? " on" : ""}${wipeArm === `cast:${r.id}` ? " is-arm" : ""}`} title={r.name} aria-pressed={on} disabled={!on && storyPick.length >= maxPick} onClick={() => orArm(`cast:${r.id}`, true, () => toggleStoryPick(r.id))}
@@ -4553,6 +4773,30 @@ export default function FilmStudio() {
                     );
                   })}
                 </div>
+                {/* THE MONSTER'S OWN ROW (Horror): "We invent it", or one of the cast's monsters — one at most, a
+                    second tap un-picks. Never a star: the two places above are for the two who talk. A pick here
+                    with a script on the page rewrites it (the same asking twice as the stars: `orArm`). */}
+                {monsterOn && (<>
+                  <div className="mm-monster-h"><b>{t("The monster")}</b><small>{t("It never speaks — the story is about it.")}</small></div>
+                  <div className="mm-artistpick mm-monsterpick" role="group" aria-label={t("The monster")}>
+                    <button type="button" className={`fs-rface mm-autoface${!storyMonster ? " on" : ""}${wipeArm === "cast:monster:" ? " is-arm" : ""}`} aria-pressed={!storyMonster} onClick={() => orArm("cast:monster:", !!storyMonster, () => setStoryMonster(null))} title={t("We invent it")}>
+                      <span className="fs-rface-img mm-autoface-img" aria-hidden="true"><Ico n="wand" size={20} /></span>
+                      {!storyMonster && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                      <span className="fs-rface-name">{t("We invent it")}</span>
+                    </button>
+                    {monsterRoster.map((r) => {
+                      const on = storyMonster === r.id;
+                      return (
+                        <button type="button" key={r.id} className={`fs-rface${on ? " on" : ""}${wipeArm === `cast:monster:${r.id}` ? " is-arm" : ""}`} title={r.name} aria-pressed={on} onClick={() => orArm(`cast:monster:${r.id}`, true, () => pickMonster(r.id))}
+                          {...peekOn(`monster:${r.id}`, r, on, () => orArm(`cast:monster:${r.id}`, true, () => pickMonster(r.id)))}>
+                          <span className="fs-rface-img" style={{ backgroundImage: `url(${r.img})` }} />
+                          {on && <span className="fs-rface-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                          <span className="fs-rface-name">{r.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>)}
                 {peekHint}
                 {wipeNote("cast:")}
                 <a className="mm-pace-auto" href="/web/presenters?forge=1"><Ico n="wand" size={12} /> {t("Create a new character")}</a>
@@ -4818,7 +5062,9 @@ export default function FilmStudio() {
           {(seeds?.treatment || treatment) && <input type="hidden" name="approvedTreatment" value={JSON.stringify(seeds?.treatment || treatment)} />}
           {(!isStoryboard || narrated) && seeds && <input type="hidden" name="approvedSceneImgs" value={JSON.stringify(seeds.imgs)} />}
           {isStoryboard && !narrated && frames.some(Boolean) && <input type="hidden" name="approvedFrames" value={JSON.stringify(frames)} />}
-          {isStoryboard && !narrated && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId, ...(c.faceUrl && c.kind && c.kind !== "person" ? { kind: c.kind, look: c.look || "" } : {}) })))} />}
+          {/* (…and after them, in a Horror film, its THING — the monster picked, or the threat's drawn portrait — as the
+              one entry with `role: "threat"`: the engine draws every shot that shows it from that picture) */}
+          {isStoryboard && !narrated && (cast.some((c) => c.faceUrl || c.voiceId) || !!thingPost) && <input type="hidden" name="cast" value={JSON.stringify([...cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId, ...(c.faceUrl && c.kind && c.kind !== "person" ? { kind: c.kind, look: c.look || "" } : {}) })), ...(thingPost ? [thingPost] : [])])} />}
           {isStoryboard && !narrated && lockVoices && cast.some((c) => c.voiceId) && <input type="hidden" name="filmLockVoices" value="1" />}
           {isStoryboard && series && <input type="hidden" name="seriesFrom" value={series.from} />}
           {isStoryboard && narrated && editing && <input type="hidden" name="editFrom" value={editing.from} />}
@@ -5570,6 +5816,47 @@ a.mm-pace-auto{text-decoration:none;}
    outside it, and a halo that fits in that room.) */
 .mm-story .mm-artistpick{padding:8px 8px 14px;margin:-6px -6px -4px;}
 .mm-story .mm-artistpick .fs-rface.on:not(.is-arm){box-shadow:0 0 0 2.5px var(--green,#0C7A46),0 0 9px -1px rgba(18,168,94,.55),0 5px 9px -5px rgba(12,122,70,.5);}
+/* THE MONSTER (2026-11-25 — "Monster should be castable also"): a Horror film's thing, cast in its own row of the
+   Cast step under the stars, named on the step's card after them, and — once the script has one — shown in the
+   panel with its picture. The one place in the builder allowed a little menace: a faint red breath on the picked
+   monster's ring, once; its portrait develops out of the dark, slowly, once. Nothing else of it moves. */
+.mm-cast-thing{display:flex;align-items:center;gap:7px;margin-top:7px;min-width:0;font-size:12px;font-weight:700;line-height:1.3;color:#8A2A20;}
+.mm-cast-thingname{min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
+.mm-cast-thingface{flex:none;width:24px;height:24px;border-radius:50%;background:#1A1110 center top/cover no-repeat;border:2px solid #fff;box-shadow:0 0 0 1.5px #A3271D,0 0 8px -1px rgba(163,39,29,.55);}
+@media(min-width:960px){.mm-cast-thing{font-size:13px;margin-top:9px;}.mm-cast-thingface{width:30px;height:30px;}}
+.mm-monster-h{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 9px;margin:14px 0 9px;padding-top:12px;border-top:1px dashed var(--line,#E4DFCF);}
+.mm-monster-h b{font-family:Poppins,sans-serif;font-size:13px;font-weight:800;color:#7E2219;}
+.mm-monster-h small{font-size:11.5px;line-height:1.35;color:var(--ink2,#4A554E);}
+.mm-monsterpick .mm-autoface-img{background:radial-gradient(circle at 50% 38%,#3A2220,#120B0A 72%)!important;}
+.mm-monsterpick .mm-autoface-img svg{stroke:#E9A79C;}
+.mm-story .mm-monsterpick .fs-rface.on:not(.is-arm){border-color:#A3271D;box-shadow:0 0 0 2.5px #A3271D,0 0 9px -1px rgba(190,40,30,.5),0 5px 9px -5px rgba(110,20,14,.5);}
+.mm-story .mm-monsterpick .fs-rface.on:not(.is-arm):not(.mm-autoface){animation:mmThingBreath 3.2s ease-in-out .15s 1;}
+.mm-monsterpick .fs-rface.on .fs-rface-chk{background:#A3271D;}
+@keyframes mmThingBreath{0%,100%{box-shadow:0 0 0 2.5px #A3271D,0 0 9px -1px rgba(190,40,30,.5),0 5px 9px -5px rgba(110,20,14,.5);}45%{box-shadow:0 0 0 2.5px #A3271D,0 0 20px 3px rgba(200,40,28,.42),0 5px 9px -5px rgba(110,20,14,.5);}}
+/* …once the script has it: the film's thing in the panel, its picture at a size a face can be seen in */
+.mm-thing{display:grid;grid-template-columns:98px minmax(0,1fr);gap:6px 14px;align-items:start;margin:12px 0 0;padding:12px;border:1.5px solid #E5CFC9;border-radius:15px;background:linear-gradient(180deg,#FCF6F3,#F7EEEA);}
+.mm-thing-face{position:relative;display:grid;place-items:center;width:98px;aspect-ratio:3/4;border-radius:11px;overflow:hidden;background:radial-gradient(circle at 50% 35%,#2E1C1A,#0B0706 75%);box-shadow:0 0 0 1.5px rgba(163,39,29,.55),0 10px 22px -12px rgba(40,10,6,.7);}
+.mm-thing.has-face .mm-thing-face{box-shadow:0 0 0 2px #A3271D,0 0 14px -2px rgba(190,40,30,.45),0 10px 22px -12px rgba(40,10,6,.7);}
+.mm-thing-img{display:block;width:100%;height:100%;object-fit:cover;object-position:center top;animation:mmDevelop 2.8s cubic-bezier(.35,.1,.25,1) both;}
+@keyframes mmDevelop{0%{opacity:0;filter:brightness(0) contrast(1.6) blur(5px);}30%{opacity:1;filter:brightness(.18) contrast(1.5) blur(3px);}100%{opacity:1;filter:none;}}
+@keyframes mmDevelopFade{from{opacity:0;}to{opacity:1;}}
+.mm-thing-dark{display:grid;place-items:center;}
+.mm-thing-dark svg{stroke:#C98276;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;opacity:.8;}
+.mm-thing-face .fs-shot-spin{background:rgba(10,6,5,.55);}
+.mm-thing-main{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;}
+.mm-thing-kick{font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#A3271D;}
+[dir=rtl] .mm-thing-kick{letter-spacing:0;}
+.mm-thing-name{font-family:Poppins,sans-serif;font-size:15px;font-weight:800;line-height:1.25;color:var(--ink,#14201A);overflow-wrap:anywhere;}
+.mm-thing-look{font-size:12px;line-height:1.4;color:var(--ink2,#4A554E);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.mm-thing-see{display:inline-flex;align-items:center;gap:7px;min-height:44px;margin-top:7px;padding:0 17px;border:0;border-radius:999px;background:#1C1210;color:#F7E9E4;font-family:Poppins,sans-serif;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 6px 16px -9px rgba(40,10,6,.9);transition:background .15s;}
+.mm-thing-see svg{stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-thing-see:hover:not(:disabled){background:#2C1A17;}
+.mm-thing-see:disabled{opacity:.62;cursor:default;}
+.mm-thing.has-face .mm-thing-see{background:transparent;color:#7E2219;box-shadow:inset 0 0 0 1.5px #D9B7AF;}
+.mm-thing-err{margin-top:6px;font-size:12px;font-weight:600;line-height:1.35;color:#8A2A20;}
+@media(max-width:560px){.mm-thing{padding:10px;gap:6px 12px;}.mm-thing-see{width:100%;justify-content:center;}}
+@media(min-width:960px){.mm-thing{grid-template-columns:120px minmax(0,1fr);}.mm-thing-face{width:120px;}}
+@media(prefers-reduced-motion:reduce){.mm-thing-img{animation:mmDevelopFade .5s ease-out both;}.mm-story .mm-monsterpick .fs-rface.on:not(.is-arm):not(.mm-autoface){animation:none;}}
 .mm-muted{color:var(--ink3,#9AA39B);}
 .mm-vchips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;}
 .mm-chip{font-size:11.5px;font-weight:800;color:var(--green-d,#0A5E37);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:4px 10px;}
