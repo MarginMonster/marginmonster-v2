@@ -69,6 +69,13 @@ export const NO_LENS = "Nobody looks into the camera: each one looks at whoever 
  *  they locked the front door — stood the front door wide open onto the lit porch; its "turning the lock" picture
  *  turned a bolt on a door standing open. */
 export const DOORS_SHUT = "Every door in the picture is SHUT unless these words open it.";
+/** A SHADOW IS A SHADOW (the owner, 2026-11-25: "why the train station guy appearing outside of the window"): the
+ *  idea's "dark shadow standing under the old tree", written "a tall dark shadow stands motionless … its shape barely
+ *  distinct from the branches", was drawn as a man in a hooded raincoat standing in the rain. Said to a picture
+ *  whose words have a shadow STANDING somewhere — never for shadows that fall, fill or are cast. */
+export const SHADOW_SHAPE = "A shadow in these words is drawn as a shadow: a tall human shape of flat, featureless black — no face, no clothes, no hood, no coat, no hat, its edges soft — the dark itself standing there; never a person.";
+const SHADOW_FIGURE = /\b(?:a|the|that)\s+(?:[\p{L}-]+\s+){0,2}(?:shadows?\b(?![-\s]*(?:of|on|across|over|fills?|filling|falls?|falling|cast|pools?|pooling|play|dances?|stretch(?:es)?|from))|shadowy\s+(?:figure|shape|form|man|woman|person|thing)\b)/iu;
+export const shadowNote = (visual: string): string => (SHADOW_FIGURE.test(String(visual || "")) ? SHADOW_SHAPE : "");
 /** A SOUND IS NEVER DRAWN in a picture either (the same night's film drew its knocks as a glowing ring on a window). */
 export const STORY_SOUND = "A sound is never drawn: nothing glows, rings or lights up where a knock, a bell or a voice comes from.";
 /** TODAY'S REAL WORLD, IN THE PICTURE TOO. The writer is told a home is an ordinary modern home (premise-rules.ts →
@@ -76,11 +83,16 @@ export const STORY_SOUND = "A sound is never drawn: nothing glows, rings or ligh
  *  porch wall"), and the horror picture model, left to guess, built the children's house of rough grey stone twice
  *  (the owner, 2026-11-24: "looks like the kids live in a cobblestone house from a fairytale"). Said to every
  *  picture, and every place's design sheet, of a story that is not a children's cartoon. */
-export const TODAY_LOOK = "Where these words do not say how old a place is, it looks the way such a place looks TODAY — a home is an ordinary modern house (outside, painted siding or plaster; inside, plain painted walls), with ordinary rectangular windows and an ordinary front door — never older, rougher or more storybook than the words say: no rough stone walls, no cottage and no castle unless they name one.";
+/** A HOME IS LIVED IN (the owner, 2026-11-25, of the "three knocks" story: "why are the walls dingy and not just a
+ *  regular household?"). The horror look every picture is given — 35mm, underexposed, a cold desaturated grade —
+ *  pulled the rooms toward an abandoned house: stained grey walls, a bare peeling bedroom, a dusty window. The
+ *  dark is the night's, not the house's. (Said inside TODAY_LOOK, so every picture and sheet that gets one gets both.) */
+export const LIVED_IN = "A family's home is clean, cared for and lived in — fresh paint, a rug, framed photos, a lamp, everyday things left about (in a child's room: toys, posters, a nightlight) — never stained, peeling, damp, dusty, bare or abandoned unless these words say so: it is dark because it is night, not because the house is falling apart.";
+export const TODAY_LOOK = "Where these words do not say how old a place is, it looks the way such a place looks TODAY — a home is an ordinary modern house (outside, painted siding or plaster; inside, plain painted walls), with ordinary rectangular windows and an ordinary front door — never older, rougher or more storybook than the words say: no rough stone walls, no cottage and no castle unless they name one. " + LIVED_IN;
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference
  *  pictures, whether that same character is in it; and whether the picture is split into panels. */
-export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean };
+export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean; /** who stares into the lens (absent: nobody, or not asked) */ lens?: string[] };
 /** …and what is handed to the storyboard about a picture that was KEPT with something still wrong (the
  *  best of its goes): the reading, and who was looked for — in the order of `seen` — so the scene's flag
  *  can say who is missing. */
@@ -120,7 +132,16 @@ export function storyCastPrompt(refs: number): string {
 export function storyExtrasPrompt(visual: string, who: ReadonlyArray<string> = []): string {
   const words = String(visual || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().replace(/[.\s]+$/, "").slice(0, 600);
   const names = (who || []).map((w) => String(w || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().slice(0, 160)).filter(Boolean).slice(0, 4);
-  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}".${names.length ? ` Who is who: ${names.join("; ")}.` : ""} First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Last, only if those words have somebody INSIDE looking OUT — peering out, looking or watching through a window, a glass pane or a door — at somebody or something out there (on a porch, in a yard, in the street, in the dark): that person is the LOOKER (otherwise there is none). Find the looker in the picture by how they look, and say where THEY are — the looker, not what they look at — judged only by what you SEE, not by what the words wanted. "outdoors": you can see the looker STANDING out on the porch boards, its steps, a yard or a street — the same open floor or ground as what they look at, nothing but open air between. "indoors": anything else — in a room or a hallway, behind a window's glass, or seen in a window's frame behind its sill (glass or no glass). Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false, "looker": "the looker's name, or an empty string", "lookerIs": "what the looker stands on and what is around the looker, in a few words", "lookerStands": "indoors" or "outdoors" or ""}.`;
+  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}".${names.length ? ` Who is who: ${names.join("; ")}.` : ""} First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Next, only if those words have somebody INSIDE looking OUT — peering out, looking or watching through a window, a glass pane or a door — at somebody or something out there (on a porch, in a yard, in the street, in the dark): that person is the LOOKER (otherwise there is none). Find the looker in the picture by how they look, and say where THEY are — the looker, not what they look at — judged only by what you SEE, not by what the words wanted. "outdoors": you can see the looker STANDING out on the porch boards, its steps, a yard or a street — the same open floor or ground as what they look at, nothing but open air between. "indoors": anything else — in a room or a hallway, behind a window's glass, or seen in a window's frame behind its sill (glass or no glass). Last: does any PERSON in it — not a creature, a ghost or a shadow — look straight into the camera, eyes on the lens as if posing for a photograph? Somebody looking at something to one side of the camera, or seen from the side or from behind, does not. Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false, "looker": "the looker's name, or an empty string", "lookerIs": "what the looker stands on and what is around the looker, in a few words", "lookerStands": "indoors" or "outdoors" or "", "intoLens": ["the name of each person looking straight into the camera — an empty list when nobody does"]}.`;
+}
+/** …and who stares INTO THE LENS — a list of names (empty: nobody), or null when the answer does not say.
+ *  (2026-11-25: a boy "at the window looking out", seen close, came back as a portrait staring at us; the parents
+ *  "turning toward him in alarm" faced the lens. Asked on the live reader with four real stills, three times each:
+ *  both stares caught every time, both pictures without one passed every time.) */
+export function parseStoryLens(raw: string): string[] | null {
+  const l = jsonIn(raw)?.intoLens;
+  if (!Array.isArray(l)) return null;
+  return l.map((n) => String(n ?? "").replace(/\s+/g, " ").trim().slice(0, 40)).filter(Boolean);
 }
 /** …its answer: true / false, or null when it cannot be read (the picture is then kept as it is). */
 export function parseStoryExtras(raw: string): boolean | null {
@@ -170,7 +191,7 @@ export function parseStoryPanels(raw: string): boolean | null {
 
 /** How wrong a picture is: a split picture is the worst (it cannot be used at all), then each cast member
  *  who is not in it. 0 = keep it. */
-export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0);
+export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0) + (c.lens?.length ? 2 : 0);
 
 /** What to tell the picture model on the next go: the fault, named. `names` in the order of the references. */
 export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<string | undefined> = []): string {
@@ -184,6 +205,8 @@ export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<st
   if (c.extra) out.push("The last try had somebody in it whom these words do not put there — draw NOBODY but who they name: no stranger, no passer-by, nobody sitting, standing or watching anywhere in the picture");
   // (whoever looks out, drawn standing out there with what they look at, is told where they are)
   if (c.outside) out.push("The last try stood whoever looks out OUTSIDE, out there with what they look at — they are INSIDE the house: behind the glass of the window or inside the doorway, the glass or the door between them and what is out there, never out on the porch or in the yard with it");
+  // (whoever stared into the lens is told where their eyes are)
+  if (c.lens?.length) out.push(`${c.lens.join(" and ")} stared straight into the camera in the last try — nobody looks at the camera: their eyes are on what this moment has them looking at (the window, the door, each other, the dark), turned away from the lens`);
   // (a character drawn twice is told it is in the picture ONCE)
   const doubled = (c.twice || []).map((t, k) => (t && c.seen[k] !== false ? names[k] || `the character in reference image ${k + 1}` : "")).filter(Boolean);
   if (doubled.length) out.push(`${doubled.join(" and ")} ${doubled.length === 1 ? "was" : "were"} drawn TWICE in the last try — ${doubled.length === 1 ? "they appear" : "each of them appears"} exactly ONCE in this picture, nowhere else in it`);
@@ -303,7 +326,7 @@ export function creatureHidden(name: string): string {
 }
 
 /** What the story's writer is told a creature of its own must be (a horror story only). */
-export const WHAT_FRIGHTENS = "WHAT FRIGHTENS — if this story has a creature, a ghost or a thing that YOU invent, it is NEARLY human and slightly wrong: give it ONE or TWO exact wrongnesses and nothing more — a smile far too wide, crowded with thin teeth; eyes sunk in dark sockets with one wet glint; fingers or a neck too long; skin like candle wax; a way of standing perfectly still. Never horns, wings, tentacles, armour, glowing magic, flames or a bare skull — those are costumes. Its \"cast\" entry says exactly what is wrong with it, plainly. And it is never fully seen: in most VISUALS it is half in darkness, behind something, far off, or only a part of it is in the frame — a hand on a door frame, a face at the edge of the light.";
+export const WHAT_FRIGHTENS = "WHAT FRIGHTENS — if this story has a creature, a ghost or a thing that YOU invent, it is NEARLY human and slightly wrong: give it ONE or TWO exact wrongnesses and nothing more — a smile far too wide, crowded with thin teeth; eyes sunk in dark sockets with one wet glint; fingers or a neck too long; skin like candle wax; a way of standing perfectly still. Never horns, wings, tentacles, armour, glowing magic, flames or a bare skull — those are costumes. Its \"cast\" entry says exactly what is wrong with it, plainly — and a threat the IDEA names (\"a dark shadow\", \"a ghost lady\", \"a figure\") always has a \"cast\" entry of its own, named as the idea names it. A threat the idea calls a SHADOW is one: its look is \"a tall human shape of flat, featureless black, no face, no clothes — the dark itself standing there\", never a person in a coat or a hood (a shadow left without a look was drawn as a man in a hooded raincoat waiting under the tree). And it is never fully seen: in most VISUALS it is half in darkness, behind something, far off, or only a part of it is in the frame — a hand on a door frame, a face at the edge of the light.";
 
 /** WHAT A STORY'S OWN CHARACTER IS — read from its NAME as well as its look. The writer is told a creature it invents
  *  is "NEARLY human" (WHAT_FRIGHTENS), so its look reads like a person's ("a tall woman who stands unnaturally

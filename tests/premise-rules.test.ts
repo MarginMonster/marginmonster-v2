@@ -102,7 +102,7 @@ test("a told story's detail shot shows ONE person's hands — two people's hands
 test("a story picture has nobody the words do not put there, and everybody in it ONCE", async () => {
   const sp = await import("../app/lib/story-picture.ts");
   assert.ok(sp.NO_EXTRAS.includes("no passer-by, no figure in the distance, no one at a window or a door") && sp.NO_EXTRAS.includes("appears exactly ONCE"));
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
   // (…and nobody in a story picture looks into the camera: the parents "turning toward him in alarm" faced the lens)
   const spx = await import("../app/lib/story-picture.ts");
   assert.ok(spx.NO_LENS.startsWith("Nobody looks into the camera: each one looks at whoever or whatever this moment has them looking at"));
@@ -117,7 +117,7 @@ test("a story picture has nobody the words do not put there, and everybody in it
   assert.equal(sp.storyFaults({ seen: [true, true], panels: false }), 0, "an older reading: nothing more");
   assert.ok(sp.storyFix({ seen: [true, true], panels: false, twice: [false, true] }, ["Nessa", "Dovey"]).includes("Dovey was drawn TWICE in the last try — they appear exactly ONCE in this picture, nowhere else in it"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}) };"));
+  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}) };"));
 });
 
 test("a told story's picture says which side of a door or a window everybody is on", () => {
@@ -185,7 +185,7 @@ test("every story picture is looked at for anybody its words do not put there �
   assert.equal(sp.storyFaults({ seen: [true], panels: false, extra: true }), 3);
   assert.ok(sp.storyFix({ seen: [true], panels: false, extra: true }, ["Priya"]).includes("draw NOBODY but who they name"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null && outside == null) return null;"));
+  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null) return null;"));
 });
 
 /* WHOEVER LOOKS OUT, DRAWN OUT THERE (2026-11-24): the kids' horror story made again with INSIDE_STAYS in every
@@ -291,4 +291,42 @@ test("a story's own creature is known by its name as well as its look; a door th
   assert.equal(sp.DOORS_SHUT, "Every door in the picture is SHUT unless these words open it.");
   const nar = read("app", "lib", "narrated-story.server.ts");
   assert.ok(nar.includes("${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT}` : \"\"}"));
+});
+
+/* "LOOK DEEPER" (the owner, 2026-11-25, of the "three knocks" remake): "why are the walls dingy and not just a regular
+ * household? why the train station guy appearing outside of the window, and the kid not even looking out the
+ * window". The film look pulled every room toward an abandoned house; the idea's "dark shadow", given no look, was
+ * drawn as a man in a hooded raincoat; a boy "at the window looking out", tagged CLOSE by a shuffled shot plan,
+ * came back as a portrait staring into the lens. */
+test("a lived-in home; a shadow drawn as a shadow; nobody stares into the lens; every VISUAL names its shot", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  // the home
+  assert.ok(sp.TODAY_LOOK.endsWith(sp.LIVED_IN) && sp.LIVED_IN.includes("never stained, peeling, damp, dusty, bare or abandoned unless these words say so: it is dark because it is night, not because the house is falling apart."));
+  // the shadow: the writer gives the idea's threat a cast entry and a shadow its look; the picture is told what a shadow is
+  assert.ok(sp.WHAT_FRIGHTENS.includes("a threat the IDEA names (\"a dark shadow\", \"a ghost lady\", \"a figure\") always has a \"cast\" entry of its own") && sp.WHAT_FRIGHTENS.includes("never a person in a coat or a hood"));
+  assert.equal(sp.shadowNote("Beyond the glass, under the old tree, a tall dark shadow stands motionless in the night"), sp.SHADOW_SHAPE);
+  assert.equal(sp.shadowNote("a shadowy figure under the streetlight"), sp.SHADOW_SHAPE);
+  for (const not of ["deep shadows fill the hallway", "in the shadow of the barn, Finn waits", "a shadow falls across her face", "the shadows of the branches play on the wall", "Leni sits in the shadowy corner of the room"]) assert.equal(sp.shadowNote(not), "", not);
+  assert.ok(sp.SHADOW_SHAPE.includes("a tall human shape of flat, featureless black — no face, no clothes, no hood, no coat, no hat"));
+  assert.equal(sp.characterKind("the shadow", "a tall human shape of flat, featureless black"), "monster", "…and as a cast member it is a creature: photographed, mostly hidden");
+  // the stare: asked in the same look, a fault, and the next go is told where the eyes are
+  const q = sp.storyExtrasPrompt("Inside the dark bedroom, Edvin stands at the window looking out", ["Edvin: a thin 9-year-old boy"]);
+  assert.ok(q.includes("Last: does any PERSON in it — not a creature, a ghost or a shadow — look straight into the camera, eyes on the lens as if posing for a photograph?") && q.includes("\"intoLens\": [\"the name of each person looking straight into the camera — an empty list when nobody does\"]"));
+  assert.deepEqual(sp.parseStoryLens('{"people":[],"uninvited":false,"looker":"Edvin","lookerStands":"indoors","intoLens":["Edvin"]}'), ["Edvin"]);
+  assert.deepEqual(sp.parseStoryLens('{"intoLens":[]}'), []);
+  assert.equal(sp.parseStoryLens('{"uninvited":false}'), null, "an older answer says nothing about it");
+  assert.equal(sp.storyFaults({ seen: [true], panels: false, lens: ["Edvin"] }), 2);
+  assert.equal(sp.storyFaults({ seen: [true], panels: false, lens: [] }), 0);
+  assert.ok(sp.storyFix({ seen: [true], panels: false, lens: ["Edvin"] }, ["Edvin"]).includes("Edvin stared straight into the camera in the last try — nobody looks at the camera"));
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("const lens = parseStoryLens(String(extrasRaw || \"\"));"));
+  const film = read("app", "routes", "web.film.tsx");
+  assert.ok(film.includes("if (Array.isArray(c.lens) && c.lens.length) return t(\"Staring at camera\");"));
+  assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("\"Staring at camera\":").length - 1, 5, "es, fr, de, zh and ur");
+  // a close-up looks at what the moment is about; every VISUAL opens with the name of its shot
+  const sh = await import("../app/lib/story-shots.ts");
+  assert.ok(sh.cameraLine("close").includes("the eyes are on whatever this moment has them looking at, off to one side of the lens — never into it."));
+  const brief = sh.shotListBrief(["wide", "close"]);
+  assert.ok(brief.includes("EVERY VISUAL OPENS WITH THE NAME OF THE LINE IT IS SEEN AS, in capitals, and a colon — \"WIDE:\", \"WALKING:\", \"NEAR AND FAR:\", \"OVER THE SHOULDER:\", \"CLOSE:\", \"FROM BELOW:\", \"TOGETHER:\", \"A DETAIL:\""));
+  for (const k of Object.keys(sh.SHOT_NAME) as Array<keyof typeof sh.SHOT_NAME>) assert.equal(sh.shotInWords(`${sh.SHOT_NAME[k]}: Edvin at the window`), k, "each name is read back");
 });

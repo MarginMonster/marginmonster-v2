@@ -61,9 +61,12 @@ export const STORY_SHOTS: Record<StoryShot, ShotSpec> = {
     camera: "CAMERA: over the shoulder — the nearer figure is one of the people these words NAME, seen from BEHIND, large in the foreground at one side; beyond them, several steps away, is what they are looking at. When these words name nobody to stand there, the foreground is the dark edge of the place instead (a door frame, a curtain, a chair back) — never a stranger.",
     motion: "Both hold their places; only small movement. The camera holds still.",
   },
+  // (…looking at what the moment is about, never at us: a boy written "at the window looking out", seen CLOSE,
+  //  came back as a portrait staring into the lens with the window beside him — the owner: "the kid not even
+  //  looking out the window", 2026-11-25)
   close: {
-    write: "CLOSE — one face fills the frame (ONE character only, even if the other is nearby), and what they feel is on it",
-    camera: "CAMERA: a close-up — one face fills most of the frame, the background soft behind it.",
+    write: "CLOSE — one face fills the frame (ONE character only, even if the other is nearby), and what they feel is on it; their eyes are on what they are looking at — the window, the door, the dark — never on us",
+    camera: "CAMERA: a close-up — one face fills most of the frame, the background soft behind it; the eyes are on whatever this moment has them looking at, off to one side of the lens — never into it.",
     motion: "Almost still: a breath, the eyes moving, one slow blink. The camera holds still.",
   },
   low: {
@@ -155,13 +158,22 @@ export function planShots(n: number, rand: () => number = Math.random): StorySho
   return out;
 }
 
+/** The names a VISUAL opens with — one per way of seeing, each read back by shotInWords. */
+export const SHOT_NAME: Record<StoryShot, string> = { wide: "WIDE", walk: "WALKING", depth: "NEAR AND FAR", over: "OVER THE SHOULDER", close: "CLOSE", low: "FROM BELOW", two: "TOGETHER", detail: "A DETAIL" };
+const SHOT_LABELS = (Object.keys(SHOT_NAME) as StoryShot[]).map((k) => `"${SHOT_NAME[k]}:"`).join(", ");
+
 /** The plan as it is handed to the story's writer. */
 export function shotListBrief(plan: ReadonlyArray<StoryShot>): string {
   if (!plan.length) return "";
+  // (EVERY VISUAL OPENS WITH ITS LINE'S NAME: the writer, handed the list in order, wrote a story's scenes as
+  //  OTHER lines of it — "Close on Edvin's face…" on the WALKING line, "Walking toward the camera down a dark
+  //  hallway" on A DETAIL — and each picture was then told one camera by its line and another by its words: the
+  //  boy stared into the lens, his run down the hall became a hand on a doorknob (2026-11-25). The one story whose
+  //  writer had opened every VISUAL with its line's name came out right in every scene. shotInWords reads it.)
   return (
     `THE SHOT LIST — a film is not shot from one spot, and people in it do not line up side by side facing the camera. Each scene is SEEN in the way its line says; write its VISUAL so the picture comes out that way, saying where each one is — near us or far off, facing us or seen from behind, walking or still. When a line is written for two and your scene has one (or the other way round), keep its distance and its angle and stage whoever is there:\n` +
     plan.map((k, i) => `  ${i + 1}. ${STORY_SHOTS[k].write}`).join("\n") +
-    "\n"
+    `\nEVERY VISUAL OPENS WITH THE NAME OF THE LINE IT IS SEEN AS, in capitals, and a colon — ${SHOT_LABELS} — and then describes exactly that way of seeing. You may give a scene another line of the list than its number when the story needs it; its VISUAL then opens with THAT line's name.\n`
   );
 }
 
