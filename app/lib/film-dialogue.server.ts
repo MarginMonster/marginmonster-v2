@@ -1085,6 +1085,10 @@ export async function generateTestMovie(opts: {
   // frame the maker approved was among the finished shots.)
   let chainStaging: ActedStaging | null = clips.length && !approvedFrames.slice(0, clips.length).some(Boolean) ? stagingOf(masters[locKeyAt(clips.length - 1)]) : null;
   let prevFrameUrl: string | undefined = resume.ckLastStill; // prior clip's last frame (relative /renders URL)
+  // (…unless a restart found a finished shot's file gone and picked up BEFORE it: `ckLastStill` is the last frame of
+  //  the last shot that was checkpointed, a shot that is now made again — the next one grows out of the last shot
+  //  that is still there, or, with none, out of its place's own picture)
+  if (firstGone >= 0) prevFrameUrl = clips.length ? (await extractLastFrame(clips[clips.length - 1])) || undefined : undefined;
   // Chaining from each clip's last frame gives seamless cuts but lets faces (esp. facial
   // hair) DRIFT over a long film. Re-anchor to the pristine master after this many chained
   // clips so drift can't accumulate (owner: "mustache disappearing and reappearing").
