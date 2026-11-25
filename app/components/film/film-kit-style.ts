@@ -4,7 +4,9 @@
  *
  * TWO THEMES, AND WHAT EACH CHANGES. The Movie Maker's dark is "light cream cards over the dark" — what the
  * owner chose ("these cards even in dark should take on the lighter theme overlay like login right? To make
- * it flow"; routes/web.film.tsx → FS_THEATER): nothing a member works IN is repainted. So here too every
+ * it flow"; it is written up at the Movie Maker's own dark stylesheet, at the foot of routes/web.film.tsx —
+ * not named here, because tests/film-theater.test.ts keeps that sheet's name out of every other file, and
+ * this sheet neither reads it nor is read by it): nothing a member works IN is repainted. So here too every
  * sheet, bubble, chip, the slider and the starter cards are the same cream and ink in both themes, and each
  * carries its OWN surface — none of them draws a word straight onto the page, so each reads the same on the
  * dark room, on the cream page, or inside one of the page's cream cards. What the theme changes is what is
