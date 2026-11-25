@@ -347,9 +347,12 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
   // A PROCESS NEVER REAPS ITS OWN LIVE JOB (job-beat.ts → jobsHere). Its row can only look this old if its beats
   // are not landing — the database is struggling — and bouncing a render this very process is paying for back to
   // the line would render it a second time beside itself. Said in the log: a beat that keeps failing is worth
-  // seeing. (A job past its lane's ceiling — wedged — is no longer on the list: the reaper may have it.)
-  const { orphans: stuck, ours } = splitOwn(scanned);
+  // seeing. (A job past its lane's ceiling no longer beats, and is kept only on the terms every job had before the
+  // beat — twenty-five minutes unwritten (job-beat.ts → OVERRAN_STUCK_MS): the slot running out lets the next job
+  // start beside it, it never said the job was dead. Past that, the reaper may have it.)
+  const { orphans: stuck, ours, overran } = splitOwn(scanned);
   for (const j of ours) console.warn(`[worker] job ${j.id} (${j.type}) has not been written for ${Math.round((Date.now() - j.updatedAt.getTime()) / 60_000)} min, but this process is running it — its beat is not landing; left alone`);
+  for (const j of overran) console.warn(`[worker] job ${j.id} (${j.type}) has run past its lane's slot and has not been written for ${Math.round((Date.now() - j.updatedAt.getTime()) / 60_000)} min — still running here; left alone until 25 min`);
   let reclaimed = 0;
   for (const j of stuck) {
     // Count restart-reclaims in the payload, SEPARATELY from attempts. A deploy
@@ -464,7 +467,8 @@ async function withLane(type: string, payload: Record<string, unknown>): Promise
  *  STALL), written conditionally, its status untouched, given `deadlineMs` at most: it never holds the end up. */
 export async function stopTakingJobs(by = "deploy", deadlineMs = STOP_MARK_DEADLINE_MS): Promise<{ running: string[]; marked: string[] | null }> {
   stopSwitch.stop(by);
-  const running = jobsHere.ids();
+  // (every job still running here — one past its lane's slot is stopped by this deploy all the same)
+  const running = jobsHere.all();
   if (!running.length) return { running, marked: [] };
   const marked = await settleWithin(
     markStopped(
@@ -672,7 +676,7 @@ async function runClaimedJob(lane: Lane, claimed: Job, hold: (ms: number) => voi
     // decided this row was a corpse (it can only do that past its ceiling, and
     // — since every running job beats and a process never reaps its own,
     // job-beat.ts — only from another process, or once this job had overrun its
-    // lane's slot) and already refunded it. Don't silently un-refund a job it
+    // lane's slot and then gone 25 minutes unwritten) and already refunded it. Don't silently un-refund a job it
     // marked FAILED — but DO force a row it bounced back to PENDING to
     // COMPLETED, otherwise the finished, fully-paid render gets bought again.
     // ATTEMPT-SCOPED, not status-only. A claim increments attempts, so this
@@ -716,7 +720,7 @@ async function runClaimedJob(lane: Lane, claimed: Job, hold: (ms: number) => voi
     // update. Once reclaimOrphanJobs has bounced a long render back to
     // PENDING — which it did on a 25-minute ceiling that a slow video could
     // genuinely cross, and can still do from another process, or to a job
-    // that overran its lane's slot — a second run picks the row up while the first is
+    // that overran its lane's slot and then went 25 minutes unwritten — a second run picks the row up while the first is
     // still in flight. The first one then throws, walks in here, and marks
     // FAILED over the live attempt: the questline slot is stamped failed,
     // the merchant is refunded, and the render that is still going finishes

@@ -702,7 +702,8 @@ function buildTimedCaptionFilters(caps: { text: string; t0: number; t1: number }
  *  filter graph) never emits "close", so the promise never settles: the job
  *  sits IN_PROGRESS and the SERIAL drain loop stops draining for every merchant
  *  until orphan-reclaim noticed ~25 min later (now: until its lane's slot runs
- *  out — the worker beats a running job until then, job-beat.ts). SIGKILL and resolve down the
+ *  out — the worker beats a running job until then, job-beat.ts — and 25 min
+ *  unwritten after that). SIGKILL and resolve down the
  *  normal failure path instead. 10 min is far beyond any 15s 720x1280 encode. */
 const FFMPEG_TIMEOUT_MS = 10 * 60_000;
 

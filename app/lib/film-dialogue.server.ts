@@ -110,7 +110,8 @@ export function splitExchange(caption: string): Array<{ speaker: string; line: s
  * still taken back, as they must be. `alive` is that word; it never costs a shot.
  * (Since 2026-11-25 the worker itself also writes the row of every job it runs once a minute — job-beat.ts — so
  *  the reaper's ceiling is five minutes; a dead film is taken back five minutes after its process is gone, and one
- *  stuck on an answer that never comes when its lane's hold runs out, the worker's beat ending with it.) */
+ *  stuck on an answer that never comes once its lane's hold has run out — the worker's beat ending with it — and its
+ *  row has then gone twenty-five minutes unwritten, as before: job-beat.ts → OVERRAN_STUCK_MS.) */
 const say = async (alive?: () => unknown): Promise<void> => { try { await alive?.(); } catch { /* a beat that fails is skipped */ } };
 
 /** A Veo clip where the characters SPEAK an exchange (audio on). FULL Veo-3:

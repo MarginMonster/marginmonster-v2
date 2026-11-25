@@ -36,7 +36,9 @@ const POLL_MS = 8000;
 //    never runs two of ours side by side for long (below);
 //  - a job is still only taken if its row has not moved since the scan (reclaimOrphanJobs: the conditional write).
 // A job that never settles is still bounded: its beat ends when its lane gives its slot back (RENDER_SLOT_MS, or a long
-// film's own hold), and then this ceiling takes it, as before.
+// film's own hold), and from then on it is held to the terms every job had before the beat — taken once its row has
+// gone twenty-five minutes unwritten (lib/job-beat.ts → OVERRAN_STUCK_MS). Not five: the slot running out only lets the
+// next job start beside it; a slow job past it may still be honestly at work, and must not be rendered twice.
 const STUCK_MS = 5 * 60_000;
 // Boot reclaim grace. Renders overlap deploys: the new instance boots while the
 // OLD process is still paying for a live render, so reclaiming with 0 flipped a

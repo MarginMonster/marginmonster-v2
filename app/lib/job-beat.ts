@@ -23,6 +23,12 @@
  * a wedged job looking alive for ever; that is why the acted film beats only at real steps (tests/film-length), and
  * why `alive` is asked before every beat here. The same answer takes a wedged job off `jobsHere`, so this process's
  * reaper may have it.
+ * …BUT ONLY ON THE OLD TERMS (review, 2026-11-25). "The slot ran out" is the lane's word for "start the next job beside
+ * it", never the reaper's word for "dead": a job past its slot may still be honestly at work (a slow provider on a long
+ * film), writing its checkpoints as it always did — and before the beat, such a job was taken only after twenty-five
+ * minutes without one. Left to the five-minute ceiling it would be bounced while live: rendered twice, paid twice, two
+ * renders side by side in 2 GB. So a job past its slot that this process is STILL running is left alone until its row
+ * has gone `OVERRAN_STUCK_MS` (the old twenty-five minutes) unwritten — exactly what it was promised before the beat.
  *
  * …AND A PROCESS TOLD TO STOP STARTS NOTHING NEW. On SIGTERM (worker.server.ts) the process stops taking jobs
  * (`makeStopSwitch`) and writes a stop mark on every job it is running (`markStopped`; what the mark means: job-stall.ts
@@ -49,6 +55,9 @@ export const JOB_BEAT_RETRY_MS = 10_000;
 /** How long the stop marks may take on SIGTERM before the process gives up on them: Render ends a stopped process 30 s
  *  after SIGTERM (a service with a disk cannot change that), and the marks are a courtesy, never a reason to wait. */
 export const STOP_MARK_DEADLINE_MS = 5_000;
+/** How long a job this process is still running, but whose lane has given its slot back (no beat any more), may go
+ *  unwritten before the reaper takes it: the twenty-five minutes every job had before the beat (splitOwn). */
+export const OVERRAN_STUCK_MS = 25 * 60_000;
 
 /** The timers a beat runs on — the real ones in the worker, a hand-cranked clock in the tests. */
 export type BeatTimers = { set: (fn: () => void, ms: number) => unknown; clear: (handle: unknown) => void };
@@ -125,15 +134,20 @@ export function startBeat(o: {
 
 /** THE JOBS THIS PROCESS IS RUNNING, in memory. The reaper and the boot reclaim skip every one of them (a process that
  *  ends takes the list with it — a job of a process that died is on nobody's list). `ours` is asked each time: a job
- *  whose lane has given its slot back (wedged) is no longer kept from the reaper. A job id run again in this process
+ *  whose lane has given its slot back (wedged) is no longer kept from the reaper by its age alone — only on the old
+ *  terms (splitOwn → `overran`) until its work ends and its release takes it off. A job id run again in this process
  *  (a wedged run, and the newer run of the same row) is the NEWER run's: the older run's release does not remove it. */
 export type JobsHere = {
   /** this process is running `id` while `ours()` says so; returns the release (call it in a `finally`) */
   add: (id: string, ours?: () => boolean) => () => void;
   /** is this process running `id` (and is it still its own)? */
   has: (id: string) => boolean;
-  /** every job this process is running */
+  /** is this process still running `id` at all — its slot its own or not (its work has not yet ended)? */
+  running: (id: string) => boolean;
+  /** every job this process is running whose slot is still its own */
   ids: () => string[];
+  /** every job this process is running, its slot its own or not (the stop mark goes on each: all are stopped) */
+  all: () => string[];
 };
 
 export function makeJobsHere(): JobsHere {
@@ -151,7 +165,9 @@ export function makeJobsHere(): JobsHere {
       };
     },
     has,
+    running: (id) => here.has(id),
     ids: () => [...here.keys()].filter(has),
+    all: () => [...here.keys()],
   };
 }
 
@@ -184,13 +200,26 @@ export async function runBeating<T>(
   }
 }
 
-/** THE REAPER'S SCAN, SPLIT: the rows it may take (`orphans`), and the ones this process is running itself (`ours` —
- *  never taken here, whatever their age; job-queue.server.ts → reclaimOrphanJobs logs them). */
-export function splitOwn<T extends { id: string }>(rows: T[], jobs: JobsHere = jobsHere): { orphans: T[]; ours: T[] } {
+/** THE REAPER'S SCAN, SPLIT: the rows it may take (`orphans`); the ones this process is running itself, its slot its
+ *  own (`ours` — never taken here, whatever their age); and the ones it is still running past their slot whose row was
+ *  written less than `overranMs` ago (`overran` — left alone on the old terms: see …BUT ONLY ON THE OLD TERMS, above).
+ *  job-queue.server.ts → reclaimOrphanJobs logs the two kept kinds. */
+export function splitOwn<T extends { id: string; updatedAt: Date | number }>(
+  rows: T[],
+  jobs: JobsHere = jobsHere,
+  now: number = Date.now(),
+  overranMs: number = OVERRAN_STUCK_MS,
+): { orphans: T[]; ours: T[]; overran: T[] } {
   const orphans: T[] = [];
   const ours: T[] = [];
-  for (const r of rows) (jobs.has(r.id) ? ours : orphans).push(r);
-  return { orphans, ours };
+  const overran: T[] = [];
+  for (const r of rows) {
+    const at = typeof r.updatedAt === "number" ? r.updatedAt : r.updatedAt.getTime();
+    if (jobs.has(r.id)) ours.push(r);
+    else if (jobs.running(r.id) && now - at < overranMs) overran.push(r);
+    else orphans.push(r);
+  }
+  return { orphans, ours, overran };
 }
 
 /** THE STOP SWITCH: once thrown, no job is claimed here again (job-queue.server.ts → processNextJob) and the worker

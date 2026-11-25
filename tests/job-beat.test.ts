@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  JOB_BEAT_MS, JOB_BEAT_RETRY_MS, STOP_MARK_DEADLINE_MS, makeJobsHere, makeStopSwitch, markStopped, runBeating, settleWithin, splitOwn, startBeat,
+  JOB_BEAT_MS, JOB_BEAT_RETRY_MS, OVERRAN_STUCK_MS, STOP_MARK_DEADLINE_MS, makeJobsHere, makeStopSwitch, markStopped, runBeating, settleWithin, splitOwn, startBeat,
   type BeatTimers, type StopRows,
 } from "../app/lib/job-beat.ts";
 import { onReclaim } from "../app/lib/job-stall.ts";
@@ -105,7 +105,7 @@ const told = () => JSON.stringify({
  *  (splitOwn — the real one), the rule's answer (onReclaim — the real one), the write pinned to the row as scanned. */
 async function reap(db: ReturnType<typeof fakeDb>, now: number, olderThanMs: number, jobs = makeJobsHere()): Promise<string[]> {
   const scanned = [...db.rows.values()].filter((r) => r.status === "IN_PROGRESS" && r.updatedAt < now - olderThanMs).map((r) => ({ ...r }));
-  const { orphans } = splitOwn(scanned, jobs);
+  const { orphans } = splitOwn(scanned, jobs, now);
   const taken: string[] = [];
   for (const j of orphans) {
     const { payload } = onReclaim(j.payload);
@@ -297,25 +297,40 @@ test("A PROCESS NEVER REAPS ITS OWN LIVE JOB: the list, the newer run's entry, a
   const newer = jobs.add("job_TEST_a", () => !wedged);
   release();
   assert.equal(jobs.has("job_TEST_a"), true, "the newer run is still here");
-  // past its lane's ceiling the job is no longer kept from the reaper
+  // past its lane's ceiling the job is no longer kept from the reaper by its age alone — but it is still running here
   wedged = true;
   assert.equal(jobs.has("job_TEST_a"), false);
+  assert.equal(jobs.running("job_TEST_a"), true);
   assert.deepEqual(jobs.ids(), []);
+  assert.deepEqual(jobs.all(), ["job_TEST_a"]);
   wedged = false;
   assert.deepEqual(jobs.ids(), ["job_TEST_a"]);
   newer();
   assert.equal(jobs.has("job_TEST_a"), false);
+  assert.equal(jobs.running("job_TEST_a"), false);
+  assert.deepEqual(jobs.all(), []);
   // an answer that throws: cannot tell — never reap it
   jobs.add("job_TEST_c", () => { throw new Error("TEST"); });
   assert.equal(jobs.has("job_TEST_c"), true);
-  // the reaper's scan, split
-  const { orphans, ours } = splitOwn([{ id: "job_TEST_c" }, { id: "job_TEST_dead" }], jobs);
+  // the reaper's scan, split (every row as old as the five-minute ceiling allows, and older)
+  const now = 200 * MIN;
+  jobs.add("job_TEST_past", () => false); // still running here, its slot given back
+  const { orphans, ours, overran } = splitOwn(
+    [{ id: "job_TEST_c", updatedAt: now - 60 * MIN }, { id: "job_TEST_dead", updatedAt: now - 6 * MIN }, { id: "job_TEST_past", updatedAt: new Date(now - 24 * MIN) }],
+    jobs,
+    now,
+  );
   assert.deepEqual(orphans.map((r) => r.id), ["job_TEST_dead"]);
   assert.deepEqual(ours.map((r) => r.id), ["job_TEST_c"]);
+  assert.deepEqual(overran.map((r) => r.id), ["job_TEST_past"], "past its slot, still running here, written 24 min ago: the old terms keep it");
+  // …and past the old twenty-five minutes unwritten, it is the reaper's
+  assert.deepEqual(splitOwn([{ id: "job_TEST_past", updatedAt: now - OVERRAN_STUCK_MS }], jobs, now).orphans.map((r) => r.id), ["job_TEST_past"]);
+  assert.equal(OVERRAN_STUCK_MS, 25 * MIN, "the twenty-five minutes every job had before the beat");
   // wired: the boot reclaim and the reaper are one function, and it takes only the orphans
   const q = read("app", "lib", "job-queue.server.ts");
   const reaper = q.slice(q.indexOf("export async function reclaimOrphanJobs("), q.indexOf("export async function enqueueJob("));
-  assert.ok(reaper.includes("const { orphans: stuck, ours } = splitOwn(scanned);\n"));
+  assert.ok(reaper.includes("const { orphans: stuck, ours, overran } = splitOwn(scanned);\n"));
+  assert.ok(reaper.includes("still running here; left alone until 25 min"));
   assert.ok(reaper.indexOf("splitOwn(scanned)") < reaper.indexOf("for (const j of stuck) {"));
   assert.ok(reaper.indexOf("for (const j of stuck) {") < reaper.indexOf("onReclaim(j.payload)"));
   assert.ok(reaper.includes("but this process is running it — its beat is not landing; left alone"));
@@ -385,7 +400,7 @@ test("THE INCIDENT, replayed: a silent live job is never taken; a blip does not 
   assert.ok(clock.now() - lastBeat <= STUCK_MS + MIN, "within a reaper tick of the ceiling");
 });
 
-test("A WEDGED JOB IS STILL TAKEN: once its lane gives its slot back, the beat stops and its own process's reaper may have it", async () => {
+test("A WEDGED JOB IS STILL TAKEN: once its lane gives its slot back, the beat stops and its own process's reaper may have it — on the old twenty-five-minute terms", async () => {
   const clock = handClock();
   const db = fakeDb(clock.now);
   db.rows.set("job_TEST_wedged", { id: "job_TEST_wedged", type: "GENERATE_VIDEO_AD", status: "IN_PROGRESS", payload: told(), attempts: 1, updatedAt: 0 });
@@ -396,13 +411,39 @@ test("A WEDGED JOB IS STILL TAKEN: once its lane gives its slot back, the beat s
     touch: touchOf(db, "job_TEST_wedged"), timers: a.timers, jobs: jobsA, alive: () => clock.now() < slotUntil,
   });
   let takenAt = -1;
-  for (let m = 1; m <= 90 && takenAt < 0; m++) {
+  for (let m = 1; m <= 120 && takenAt < 0; m++) {
     await clock.advance(MIN);
     if ((await reap(db, clock.now(), STUCK_MS, jobsA)).length) takenAt = clock.now();
   }
-  assert.ok(takenAt > slotUntil, "not while its slot was its own");
-  assert.ok(takenAt <= slotUntil + STUCK_MS + MIN, "and soon after: " + takenAt / MIN);
+  const lastBeat = slotUntil - MIN;
+  assert.ok(takenAt > slotUntil + STUCK_MS, "not while its slot was its own, nor five minutes after it: " + takenAt / MIN);
+  assert.ok(takenAt > lastBeat + OVERRAN_STUCK_MS - MIN && takenAt <= lastBeat + OVERRAN_STUCK_MS + MIN, "taken as it always was — twenty-five minutes unwritten: " + takenAt / MIN);
   assert.equal(a.pending(), 0, "its beat had stopped");
+});
+
+test("A SLOW LIVE JOB PAST ITS SLOT IS NEVER RENDERED TWICE (review, 2026-11-25): it writes its checkpoints as it always did, and its own process's reaper leaves it be", async () => {
+  // A job past RENDER_SLOT_MS is the lane's word for "start the next beside it" — not "dead". Before the beat such a job
+  // was taken only after twenty-five minutes without a checkpoint; the five-minute ceiling must not take it sooner.
+  const clock = handClock();
+  const db = fakeDb(clock.now);
+  db.rows.set("job_TEST_slow", { id: "job_TEST_slow", type: "GENERATE_VIDEO_AD", status: "IN_PROGRESS", payload: told(), attempts: 1, updatedAt: 0 });
+  const a = clock.proc();
+  const jobsA = makeJobsHere();
+  const slotUntil = 70 * MIN;
+  let finish: () => void = () => {};
+  const run = runBeating("job_TEST_slow", () => new Promise<void>((r) => { finish = r; }), {
+    touch: touchOf(db, "job_TEST_slow"), timers: a.timers, jobs: jobsA, alive: () => clock.now() < slotUntil,
+  });
+  // two hours of work: past the slot it writes a checkpoint every twelve minutes (a long provider poll each), nothing between
+  for (let m = 1; m <= 120; m++) {
+    await clock.advance(MIN);
+    if (m > 70 && m % 12 === 0) await db.updateMany({ where: { id: "job_TEST_slow", status: "IN_PROGRESS" }, data: { payload: told() } });
+    assert.deepEqual(await reap(db, clock.now(), STUCK_MS, jobsA), [], `minute ${m}`);
+  }
+  finish();
+  await run;
+  assert.equal(jobsA.running("job_TEST_slow"), false, "off the list once it ends");
+  assert.equal(db.rows.get("job_TEST_slow")!.status, "IN_PROGRESS", "never handed back while it worked");
 });
 
 // ---- 4. a process told to stop --------------------------------------------------------------------------------------
@@ -502,7 +543,8 @@ test("ON SIGTERM the worker stops taking jobs and starting chores, marks what it
   assert.ok(claim.indexOf("if (stopSwitch.stopped()) {") < claim.indexOf("runBeating("), "handed back before it ever starts");
   // the mark: conditional on the row as read, status never written, bounded in time
   const stop = q.slice(q.indexOf("export async function stopTakingJobs("), q.indexOf("export async function processNextJob("));
-  assert.ok(stop.includes("stopSwitch.stop(by);\n  const running = jobsHere.ids();"));
+  // (every job still running here, past its slot or not — review, 2026-11-25: `ids()` left an overrun job unmarked)
+  assert.ok(stop.includes("stopSwitch.stop(by);\n  // (every job still running here — one past its lane's slot is stopped by this deploy all the same)\n  const running = jobsHere.all();"));
   assert.ok(stop.includes("write: async (id, before, next) => (await db.job.updateMany({ where: { id, status: \"IN_PROGRESS\", payload: before }, data: { payload: next } })).count,"));
   assert.ok(stop.includes("deadlineMs,\n  ).catch(() => null);"));
   assert.ok(!/status:\s*"(PENDING|FAILED|COMPLETED)"/.test(stop), "the running jobs' status is never touched");
