@@ -647,7 +647,8 @@ export default function FoundFootage() {
         {/* 2 · THE CAMERA — its card plays the camera picked */}
         <button type="button" style={{ order: 1 }} className={`ff-step ff-step-cam${open === "camera" ? " on" : ""}`} aria-expanded={open === "camera"} aria-controls="ff-p-cam" onClick={() => tap("camera")}>
           <span className="ff-step-n" aria-hidden="true">2</span>
-          <span className="ff-step-screen"><CamScreen cam={pick.camera} /></span>
+          {/* (a new camera is a new screen: a loop keeps the clip it first fetched) */}
+          <span className="ff-step-screen"><CamScreen key={pick.camera} cam={pick.camera} /></span>
           <span className="ff-step-ttl"><span className="ff-step-kick">{t("The camera")}</span><b>{t(camName)}</b><span className="ff-step-val">{t(camLook(pick.camera).line)}</span></span>
         </button>
         {open === "camera" && (
@@ -1201,7 +1202,7 @@ const FF_STYLE = `
 .ff-again.is-moved .ff-again-btn:first-child{border-color:var(--green,#0C7A46);color:var(--green,#0C7A46);}
 .ff-scare:focus-visible .ff-cover,.ff-cam:focus-visible .ff-screen,.ff-sw:focus-visible,.ff-chip:focus-visible,.ff-seg button:focus-visible,.ff-undo:focus-visible,.ff-go:focus-visible,.ff-step:focus-visible,.ff-again-btn:focus-visible{outline:3px solid rgba(12,122,70,.4);outline-offset:2px;}
 .ff-ico-btn:focus-visible,.ff-dicebtn:focus-visible,.ff-secs button:focus-visible,.ff-add:focus-visible,.ff-room-pick:focus-visible{outline:3px solid rgba(231,200,121,.75);outline-offset:2px;}
-@media(min-width:640px){.ff-hero{height:210px;}.ff-hero-copy b{font-size:28px;}.ff-card{padding:18px 20px;}.ff-scare{flex-basis:150px;}.ff-cam{flex-basis:150px;}.ff-screen{height:116px;}.ff-step-screen{width:150px;}.ff-reel{padding:20px 0 18px;}.ff-tape,.ff-case{margin-left:22px;margin-right:22px;}.ff-case{grid-template-columns:1fr 1fr;}.ff-strip{padding:6px 44px;}.ff-vf:not(.is-tall){width:min(100%,560px);margin:0 auto;}.ff-mo-card{max-width:560px;margin-left:auto;margin-right:auto;}.ff-mo-bar,.ff-mo-tools{max-width:560px;margin-left:auto;margin-right:auto;}.ff-add{width:calc(100% - 44px);margin-left:22px;margin-right:22px;}.ff-room-pick{flex:0 1 200px;}}
+@media(min-width:640px){.ff-hero{height:210px;}.ff-hero-copy b{font-size:28px;}.ff-card{padding:18px 20px;}.ff-scare{flex-basis:150px;}.ff-cam{flex-basis:150px;}.ff-screen{height:116px;}.ff-step-screen{width:150px;}.ff-reel{padding:20px 0 18px;}.ff-tape,.ff-case{margin-left:22px;margin-right:22px;}.ff-case{grid-template-columns:1fr 1fr;}.ff-strip{padding:6px 44px;}.ff-vf:not(.is-tall){width:min(100%,560px);margin:0 auto;}.ff-vf.is-tall{width:min(100%,290px);}.ff-mo-card{max-width:560px;margin-left:auto;margin-right:auto;}.ff-mo-bar,.ff-mo-tools{max-width:560px;margin-left:auto;margin-right:auto;}.ff-add{width:calc(100% - 44px);margin-left:22px;margin-right:22px;}.ff-room-pick{flex:0 1 200px;}}
 @media(prefers-reduced-motion:reduce){.ff-rec i,.ff-go.is-rolling .ff-go-dot,.ff-cut-film i.at::after,.ff-vf-dot,.ff-vf-osd,.ff-vf-grain,.ff-vf-scan::after,.ff-mo.is-retaking .ff-dice,.ff-reel.is-writing .ff-mo{animation:none;}.ff-go::after{animation:none;display:none;}.ff-cover,.ff-cover img,.ff-sw-knob i,.ff-cut-film i,.ff-dice,.ff-step{transition:none;}}
 `;
 
