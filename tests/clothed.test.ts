@@ -55,7 +55,7 @@ test("the look: one question, an answer that can only say yes when it says so, a
   assert.equal(clothedEdit("the man waist-deep in the river").includes("now wears a shirt and trousers, soaked and clinging."), true);
   for (const dry of ["the headshot, centre, bare shoulders", "in the bed on the left", "the woman by the window"]) {
     const e = clothedEdit(dry);
-    assert.ok(e.includes("now wears ordinary everyday clothes that suit the place and the moment (in bed, pajamas)") && !e.includes("nightgown") && !e.includes("soaked"), dry);
+    assert.ok(e.includes("now wears clothes that suit who they are and where they are — an ordinary person ordinary everyday clothes (in bed, pajamas); a ghost, a corpse or a creature a ragged, dark, shapeless old garment — covering the body from the neck down.") && !e.includes("nightgown") && !e.includes("soaked"), dry);
   }
   assert.ok(clothedEdit("a woman standing in the shallows").includes("nightgown") && clothedEdit("women in the lake").includes("nightgown"), "a woman is never read as a man");
 });

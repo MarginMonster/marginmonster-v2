@@ -159,7 +159,8 @@ const WET_WHO = /\b(?:water|lake|river|sea|ocean|pond|pool|creek|stream|swamp|ma
 const A_MAN = /\b(?:man|men|boy|boys|he|him|his|guy|father|dad|husband)\b/i;
 export const clothedEdit = (who: string): string => {
   const w = String(who || "").trim();
-  const wear = w && !WET_WHO.test(w) ? "ordinary everyday clothes that suit the place and the moment (in bed, pajamas), covering the body from the neck down"
+  // (…a dry thing of a horror film — the pale crawler in the hallway — in a ragged old garment, never a sweater)
+  const wear = w && !WET_WHO.test(w) ? "clothes that suit who they are and where they are — an ordinary person ordinary everyday clothes (in bed, pajamas); a ghost, a corpse or a creature a ragged, dark, shapeless old garment — covering the body from the neck down"
     : w && A_MAN.test(w) ? "a shirt and trousers, soaked and clinging"
     : "a long, soaked, pale nightgown that covers the body from neck to knee";
   return `Edit this photo and change ONE thing: the figure ${w ? `(${w}) ` : ""}who has no clothes on now wears ${wear}. Everything else stays exactly as it is — the same place, light, framing, people, faces, hair and what the others wear. No text anywhere.`;
