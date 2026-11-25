@@ -1262,8 +1262,11 @@ export async function generateTestMovie(opts: {
       const seen = creatureRef ? "" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || "")) || (ref?.kind === "scene" ? firstShown?.words || "" : ""));
       revealSeen = !!seen || (!!ref && !creatureRef);
       const revealSides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) }));
-      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors });
-      const ask = ref ? revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, ref: ref.kind, name: threat?.name }) : askOne;
+      // (the place's own picture was drawn with it far off — its first scene showed it: one of it, come close, never two)
+      const placeFirst = locFirst.get(locKeyAt(i)) ?? i;
+      const away = placeFirst !== i && thingInMaster(placeFirst, false);
+      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, away });
+      const ask = ref ? revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, ref: ref.kind, name: threat?.name, away }) : askOne;
       // ON THE STRONGER EDITOR. Drawn from a frame of the owner's second film, nine rounds of it and looked at:
       // the everyday picture model (the one this used, and the one that drew the mannequin's arm) made every
       // thing it added look stuck on — a white bony claw, a cartoon eyeball, a face in a black cut-out over the

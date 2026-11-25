@@ -17,7 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  NOTHING_GLOWS, PHOTOGRAPHED, REVEAL_STAY, SIGHT_MOVES, SIGHT_PICTURE_MAX,
+  NOTHING_GLOWS, PHOTOGRAPHED, REVEAL_MOVED, REVEAL_STAY, SIGHT_MOVES, SIGHT_PICTURE_MAX,
   couldBeThing, figureIn, revealClip, revealPicture, sightingClip, sightingOf, sightingPicture, silentRules, stagedRules, stagedTwoShot, storyThreat, thingBound, thingRefNote, threatPortrait,
 } from "../app/lib/acted-staging.ts";
 import { clipRules } from "../app/lib/clip-prompt.ts";
@@ -175,6 +175,13 @@ test("THE REVEAL FINDS THE SAME ONE — FROM ITS PICTURE: that exact figure, now
   const words = revealPicture({ moment: TENT[4], sides: SIDES, seen: TENT[2], outdoors: true });
   assert.ok(words.includes(`It is the SAME one this film already showed — "${TENT[2]}" — the same look`) && !words.includes("SECOND picture"));
   for (const x of [p, scene, wolf, words]) assert.ok(x.length < 2400, `${x.length}`);
+  // THE SHORE FILM: the place's own picture was drawn with her already far off in the lake — the reveal is one of her,
+  // come close, never two (review, 2026-11-25); said only then, and to both editors (it is about the first picture)
+  const shore = revealPicture({ moment: TENT[4], sides: SIDES, seen: TENT[2], outdoors: true, ref: "figure", away: true });
+  assert.ok(shore.includes(`now close behind them; never a different face or a different creature, and nothing else of the second picture comes with it. ${REVEAL_MOVED} This is out of doors`), shore);
+  assert.ok(revealPicture({ moment: TENT[4], sides: SIDES, seen: TENT[2], away: true }).includes(REVEAL_MOVED));
+  assert.equal(revealPicture({ moment: TENT[4], sides: SIDES, seen: TENT[2], outdoors: true, ref: "figure", away: false }), p, "not away: exactly as without it");
+  assert.ok(shore.length < 2400);
   // the notes themselves
   assert.equal(thingRefNote(null), "");
   assert.ok(thingRefNote("figure").includes("— far off;"), "a sighting's: far off");

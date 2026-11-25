@@ -973,6 +973,8 @@ export const PHOTOGRAPHED = caughtAt > 0 ? `It is PHOTOGRAPHED: ${CREATURE_REAL.
  *  `near` = the reveal (close behind them); else a sighting (far off). The editor that takes ONE picture is never told
  *  of a second one (the caller asks it without). */
 export type ThingRef = "creature" | "figure" | "scene";
+/** The reveal of a thing its place's picture already has far off: one of it, come close — never two. */
+export const REVEAL_MOVED = "The one already standing far off in this picture is gone from there: it is this one, now close behind them — there is only ONE of it in the picture.";
 export function thingRefNote(ref: ThingRef | null | undefined, o: { name?: string | null; near?: boolean; seen?: string | null } = {}): string {
   const name = oneLine(o.name);
   const seen = oneLine(o.seen).replace(/"/g, "'").slice(0, 240);
@@ -983,7 +985,7 @@ export function thingRefNote(ref: ThingRef | null | undefined, o: { name?: strin
   return "";
 }
 
-export function revealPicture(o: { moment: string | null | undefined; mood?: string | null; sides?: ReadonlyArray<{ name: string; side: string }>; /** the thing is a creature the maker chose, drawn from its own picture */ creature?: boolean; /** how the film showed the thing before, in that shot's words (seenBefore) */ seen?: string | null; /** the place is out of doors (openAirPlace) */ outdoors?: boolean; /** the thing's own picture rides along as the SECOND image (thingRefNote) — never said to an editor that takes one picture */ ref?: ThingRef | null; /** …and its name, for a creature */ name?: string | null }): string {
+export function revealPicture(o: { moment: string | null | undefined; mood?: string | null; sides?: ReadonlyArray<{ name: string; side: string }>; /** the thing is a creature the maker chose, drawn from its own picture */ creature?: boolean; /** how the film showed the thing before, in that shot's words (seenBefore) */ seen?: string | null; /** the place is out of doors (openAirPlace) */ outdoors?: boolean; /** the thing's own picture rides along as the SECOND image (thingRefNote) — never said to an editor that takes one picture */ ref?: ThingRef | null; /** …and its name, for a creature */ name?: string | null; /** the place's own picture already has it, far off (REVEAL_MOVED) */ away?: boolean }): string {
   const moment = clipEvent(o.moment, REVEAL_MOMENT_MAX);
   if (!moment) return "";
   const mood = oneLine(o.mood);
@@ -1024,7 +1026,12 @@ export function revealPicture(o: { moment: string | null | undefined; mood?: str
   const real = known ? PHOTOGRAPHED : CREATURE_REAL;
   // (a creature handed over as its own picture: said last, as it always was — film-dialogue used to append it)
   const creatureRef = ref === "creature" ? ` ${thingRefNote("creature", { name: o.name, near: true })}` : "";
-  return `${KEEP_FRAME}${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${shows}${only}.${wrong}${seen}${open} ${DRESSED} ${REVEAL_REAL} ${real} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.${creatureRef}`;
+  // (…and where the place's own picture was DRAWN with it far off — its first scene showed it, film-dialogue →
+  //  thingInMaster — the one out there is the one that has come close: kept, as "keep everything" says, the place would
+  //  have two of it. Review, 2026-11-25: the shore film's reveal is an edit of the shore's picture, the woman already
+  //  standing in the lake in it.)
+  const moved = o.away ? ` ${REVEAL_MOVED}` : "";
+  return `${KEEP_FRAME}${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${shows}${only}.${wrong}${seen}${moved}${open} ${DRESSED} ${REVEAL_REAL} ${real} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.${creatureRef}`;
 }
 
 /* ---- WHEN THEY SEE IT, WE SEE IT: THE SIGHTING ----

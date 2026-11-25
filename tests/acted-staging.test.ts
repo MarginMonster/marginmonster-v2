@@ -893,7 +893,9 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.ok(eng.includes("const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);"));
   const at = eng.indexOf("if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {");
   assert.ok(at > eng.indexOf("let seedAbs = abs(approvedFrames[i]);") && eng.indexOf("if (!seedAbs && master?.url) {", at) > at);
-  assert.ok(eng.includes("const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors });"));
+  // (…`away`: the place's own picture already has the thing far off — one of it, come close: REVEAL_MOVED, review 2026-11-25)
+  assert.ok(eng.includes("const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, away });"));
+  assert.ok(eng.includes("const away = placeFirst !== i && thingInMaster(placeFirst, false);"));
   assert.ok(eng.includes("const revealSides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) }));"));
   const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [abs(master.url), ...(thingFace ? [thingFace] : [])], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],");
   const kontext = eng.indexOf("[\"black-forest-labs/flux-kontext-pro\", { prompt: askOne, input_image: abs(master.url), aspect_ratio: aspect, output_format: \"jpg\", output_quality: 92 }],");
@@ -904,7 +906,7 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   // picture the same way (its portrait, else the picture that first showed it) — tests/acted-sighting.test.ts
   assert.ok(eng.includes("const ref = thingRef();") && eng.includes("const thingFace = ref?.url;") && eng.includes("const creatureRef = ref?.kind === \"creature\";"));
   assert.ok(!eng.includes("(scene.visual || \"\").toLowerCase().includes(c.name.trim().toLowerCase())"), "never only when the last scene names it");
-  assert.ok(eng.includes("const ask = ref ? revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, ref: ref.kind, name: threat?.name }) : askOne;"));
+  assert.ok(eng.includes("const ask = ref ? revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, ref: ref.kind, name: threat?.name, away }) : askOne;"));
   assert.ok(eng.includes("try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\"))); }"));
   assert.ok(eng.includes("const implied = lastHorror && !revealed && !approvedFrames[i];"));
   assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, sighted: !!sighted, sight: sighted?.who });"));
@@ -1347,7 +1349,8 @@ test("the reveal is the thing the film already showed, in that shot's words; not
   const eng = fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   // (…and, when no other words name it, those of the picture that first showed it — 2026-11-25, its own picture rides too)
   assert.ok(eng.includes("const seen = creatureRef ? \"\" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || \"\")) || (ref?.kind === \"scene\" ? firstShown?.words || \"\" : \"\"));"), "(the story's own cast line for it first, when the moment names it)");
-  assert.ok(eng.includes("creature: creatureRef, seen, outdoors });"));
+  // (…and whether the place's own picture already has it far off — REVEAL_MOVED, review 2026-11-25)
+  assert.ok(eng.includes("creature: creatureRef, seen, outdoors, away });"));
   // nothing glows that is not a light — in every picture of a photographed film
   assert.ok(st.NOTHING_GLOWS.includes("a pale figure is lit only by the lights that are there, never from within"));
   assert.ok(st.actedRealism(false, "x").endsWith(` ${st.NOTHING_GLOWS}`) && st.actedRealism(true, "x") === "");
