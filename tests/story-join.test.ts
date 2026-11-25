@@ -167,7 +167,7 @@ test("a story that is drawing says it is at work whenever a picture comes back â
   const nar = read("app", "lib", "narrated-story.server.ts");
   const fn = nar.slice(nar.indexOf("export async function narratedSceneSeeds("), nar.indexOf("/** DRAW ONE CHARACTER AGAIN."));
   assert.ok(fn.includes("const alive = async (): Promise<void> => { try { await o.beat?.(); } catch { /* skipped */ } };"));
-  assert.ok(fn.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);\n        await alive();"));
+  assert.ok(fn.includes("const got = await drawScene(`${first}${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);\n        await alive();"));
   assert.ok(fn.includes("if (img && faultsOut[i] == null) faultsOut[i] = 0;\n      await alive();"));
   assert.ok(!/setInterval/.test(fn));
   assert.ok(nar.includes("const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null, beat: () => ckpt({ ckBeat: Date.now() }) });"));

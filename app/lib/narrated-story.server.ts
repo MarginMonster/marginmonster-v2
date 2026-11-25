@@ -39,6 +39,9 @@ import { readVoiceSound } from "./voice-sound.server";
 import { MOTION_MAX_SCENES, STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { cameraLine, sceneShot } from "./story-shots";
+// EVERYBODY IN EVERY PICTURE IS CLOTHED (2026-11-25 — clothed.server.ts → keepClothed; story-picture.ts → UNCLOTHED_ASKED)
+import { CLOTHED_FIRST, dressedInWater, parseStoryUnclothed, storyFirst } from "./story-picture";
+import { clothedEditOn, keepClothed } from "./clothed.server";
 import { DOORS_SHUT, DRESSED, FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NO_LENS, NOTHING_WRITTEN, ONE_PICTURE, SHADOW_SHAPE, shadowNote, STORY_SOUND, TODAY_LOOK, TRUE_SIZE, parseStoryGrime, parseStoryInset, storyGrimePrompt, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, characterKind, creatureHidden, creatureNote, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryLens, parseStoryOutside, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 // (2026-11-25, stories up to five minutes: a long story is cut in parts, and read in parts when it is that long)
@@ -195,15 +198,27 @@ export async function narratedSceneSeeds(o: {
   // (started now, awaited after the portraits: the two are drawn side by side, so a story's pictures take no longer)
   // (a story that is not a children's cartoon is set in today's world unless its words say otherwise — the
   //  children's house came back rough grey stone twice: story-picture.ts → TODAY_LOOK)
-  const sheetsDrawing = Promise.all(needPlaces.map(async (p) => ({ p, img: await drawScene(placeSheetPrompt(p, tmpl.sceneHint, safe, !tmpl.childSafe), [], PLACE_SHEET_ASPECT) })));
+  // (…and a genre whose world is its OWN is not — a Fantasy tale's hall drawn as a modern flat, "no cottage and no castle
+  //  unless they name one": film-genres.ts → ownWorld, 2026-11-25. A sheet has nobody in it to dress.)
+  const sheetsDrawing = Promise.all(needPlaces.map(async (p) => ({ p, img: await drawScene(placeSheetPrompt(p, tmpl.sceneHint, safe, !tmpl.childSafe && !tmpl.ownWorld), [], PLACE_SHEET_ASPECT) })));
 
   if (!sheetRef) {
     const need = others
       .filter((e) => who.some((w) => w.others.includes(e)) && !!castEntry(e).name && !cards.some((c) => sameCharacter(c.name, castEntry(e).name)))
       .slice(0, Math.max(0, STORY_CAST_MAX - cards.length));
-    const drawn = await Promise.all(need.map(async (e) => ({ e, img: await drawScene(portraitPrompt(e, tmpl.sceneHint, safe), [], PORTRAIT_ASPECT) })));
+    // A PORTRAIT IS CLOTHED — in its words and LOOKED AT (2026-11-25, clothed.server.ts → keepClothed). Every scene of
+    // that character is drawn FROM it ("the same clothing, and nothing added to what it wears" — CAST_LOCK), so a bare
+    // portrait would be a bare figure in every picture of the story: one in water is dressed where it is said
+    // (dressedInWater); one drawn unclothed is drawn again with the clothes said first, then dressed by one edit — and if
+    // it is still bare it is not a portrait at all (the one more go below, and then the character is drawn from words).
+    const portrait = async (e: string): Promise<string | null> => {
+      const ask = portraitPrompt(dressedInWater(e), tmpl.sceneHint, safe);
+      const img = await drawScene(ask, [], PORTRAIT_ASPECT);
+      return img ? keepClothed({ url: img, ref: (u) => abs(u) || u, redraw: () => drawScene(`${CLOTHED_FIRST} ${ask}`, [], PORTRAIT_ASPECT), edit: (u, bare) => clothedEditOn(u, bare, PORTRAIT_ASPECT), still: "drop", log: (l) => console.log(`[narrated] the portrait of ${entryName(e)}: ${l}`) }) : null;
+    };
+    const drawn = await Promise.all(need.map(async (e) => ({ e, img: await portrait(e) })));
     // (one more go, on its own, for a portrait that did not come back — the whole story is drawn from it)
-    for (const d of drawn) if (!d.img) d.img = await drawScene(portraitPrompt(d.e, tmpl.sceneHint, safe), [], PORTRAIT_ASPECT);
+    for (const d of drawn) if (!d.img) d.img = await portrait(d.e);
     for (const d of drawn) if (d.img) cards.push({ ...castEntry(d.e), img: d.img });
     if (need.length) console.log(`[narrated] the story's own cast: ${drawn.filter((d) => d.img).length} of ${need.length} portraits drawn (${need.map((e) => entryName(e)).join(", ")})`);
   }
@@ -263,10 +278,14 @@ export async function narratedSceneSeeds(o: {
       const unpictured = sheet ? [] : who[k].others.filter((e) => !own.some((c) => c === cardFor(e)));
       if (unpictured.length) notes.push(`In this picture: ${unpictured.map((e) => e.slice(0, 200)).join("; and ")}.`);
       // THE WORDS THE PICTURE IS DRAWN FROM are tidied first (story-picture.ts): one moment, nothing written.
+      // (…and a person the words put IN WATER is dressed in the same words, right behind them — DRESSED at the end of a
+      //  long prompt did not dress the woman in the lake: story-picture.ts → dressedInWater, 2026-11-25)
       const written = (scene.visual || "").replace(/\s+/g, " ").trim();
-      const visual = oneMoment(noLettering(written));
+      const visual = dressedInWater(oneMoment(noLettering(written)));
       const twoMoments = oneMoment(written) !== written;
-      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : ""}${tmpl.childSafe ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : ""} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
+      // (a genre whose world is its OWN — Fantasy, film-genres.ts → ownWorld — is told everybody is clothed, and not that
+      //  its places look the way they look TODAY: "no cottage and no castle unless they name one", 2026-11-25)
+      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : ""}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : ""} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
       // …and THE PICTURE IS LOOKED AT before it is kept: is each of the maker's cast in it (never asked
       // about clothes — a story dresses people for the part), and is it one picture. The cast is looked for
       // whenever the scene has any; panels only where the words described two moments (that is when a
@@ -284,7 +303,8 @@ export async function narratedSceneSeeds(o: {
           const [castRaw, panelsRaw, extrasRaw, grimeRaw] = await Promise.all([
             castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
             twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
-            anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 500, model: "claude-sonnet-4-6" }).catch(() => ""),
+            // (…its answer a line longer since it also says whether anybody is unclothed: story-picture.ts → UNCLOTHED_ASKED)
+            anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 600, model: "claude-sonnet-4-6" }).catch(() => ""),
             // (…and a place drawn run-down that its words do not call one — a grown-up story's — or a smaller picture
             //  pasted into a corner of it — any story's: story-picture.ts)
             anthropicVision(storyGrimePrompt(visual), [pic], { maxTokens: 360, model: "claude-sonnet-4-6" }).catch(() => ""),
@@ -300,8 +320,10 @@ export async function narratedSceneSeeds(o: {
           const lens = parseStoryLens(String(extrasRaw || ""));
           const grimy = tmpl.childSafe ? null : parseStoryGrime(String(grimeRaw || ""));
           const inset = parseStoryInset(String(grimeRaw || ""));
-          if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null) return null;
-          return { seen: seen || castPics.map(() => true), panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}) };
+          // (…and anybody UNCLOTHED — any story's, a children's too: story-picture.ts → parseStoryUnclothed)
+          const bare = parseStoryUnclothed(String(extrasRaw || ""));
+          if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null && bare == null) return null;
+          return { seen: seen || castPics.map(() => true), panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };
         } catch (e) {
           console.error(`[narrated] scene ${i + 1}: the picture could not be looked at, keeping it: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
           return null;
@@ -314,6 +336,9 @@ export async function narratedSceneSeeds(o: {
       let barred: string | null = null;
       let best: { img: string; faults: number; check: StoryCheck } | null = null;
       let fix = "";
+      // (…and what the next go is told FIRST: a go that came back with somebody unclothed — CLOTHED_FIRST, ahead of
+      //  everything, as the acted master's redraw is told: story-picture.ts → storyFirst)
+      let first = "";
       // A FRAMED PANEL (the design sheet's look, copied) is never kept: it is drawn again, told so — and
       // after two of them the scene is drawn without its place's sheet
       let framedGoes = 0;
@@ -321,7 +346,7 @@ export async function narratedSceneSeeds(o: {
         const withPlace = placeNotes.length > 0 && framedGoes < 2;
         // (every go is on the good model now — story-picture.ts → STORY_LADDER; the last go of a scene whose cast
         //  came out wrong twice used to be the one moved up to it)
-        const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);
+        const got = await drawScene(`${first}${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);
         await alive();
         if (got && (await letterboxed(got))) { barred = got; console.error(`[narrated] scene ${i + 1} came back letterboxed — drawing it again`); continue; }
         if (got && withPlace && (await framedPanel(got))) { framedGoes++; fix = FRAMED_FIX; console.error(`[narrated] scene ${i + 1} came back as a framed panel on a plain ground (${place?.name}) — drawing it again${framedGoes >= 2 ? " without the place's sheet" : ""}`); continue; }
@@ -331,12 +356,33 @@ export async function narratedSceneSeeds(o: {
         if (!faults) { img = got; break; }
         if (!best || faults < best.faults) best = { img: got, faults, check: seenAs! };
         fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || "person"));
-        console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : "", seenAs!.inset ? "a smaller picture pasted into it" : ""].filter(Boolean).join(", ")} — drawing it again`);
+        first = storyFirst(seenAs);
+        console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.unclothed ? `somebody unclothed (${seenAs!.unclothedWho || "somewhere in it"})` : "", seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : "", seenAs!.inset ? "a smaller picture pasted into it" : ""].filter(Boolean).join(", ")} — drawing it again`);
+      }
+      // THE BEST OF THE GOES STILL HAS SOMEBODY UNCLOTHED (every go had: one without it would have weighed less —
+      // story-picture.ts → UNCLOTHED_FAULT): that picture is dressed by ONE edit on the story's best model and looked at
+      // again (clothed.server.ts → keepClothed). Dressed, it is kept with whatever else its look found; still bare, the
+      // picture is kept as it was and its scene is flagged — "Someone unclothed" — for the maker to draw again.
+      if (!img && best?.check.unclothed) {
+        const was = best;
+        const dressed = await keepClothed({ url: was.img, ref: (u) => abs(u) || u, seen: { unclothed: true, who: was.check.unclothedWho || "" }, edit: (u, bare) => clothedEditOn(u, bare, aspect), still: "drop", log: (l) => console.log(`[narrated] scene ${i + 1}: ${l}`) });
+        if (dressed) {
+          const { unclothed: _bare, unclothedWho: _where, ...rest } = was.check;
+          best = { img: dressed, faults: storyFaults(rest), check: rest };
+          if (!best.faults) img = dressed;
+        }
+        await alive();
       }
       if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }
       if (!img) img = barred;
       // the lenient path last: its safety and outage fallbacks still get a picture (without the cast's own looks)
-      if (!img) { try { img = await renderCreativeSeed(`${safe}${(scene.visual || "").slice(0, 300)}. ${tmpl.sceneHint}`, aspect); } catch { img = null; } }
+      // (…its words dressed too, and the picture looked at: dressed by one edit, else kept as it is — clothed.server.ts)
+      if (!img) {
+        try {
+          const lenient = await renderCreativeSeed(`${safe}${dressedInWater((scene.visual || "").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);
+          img = lenient ? await keepClothed({ url: lenient, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, aspect), log: (l) => console.log(`[narrated] scene ${i + 1} (the lenient path): ${l}`) }) : null;
+        } catch { img = null; }
+      }
       out[i] = img;
       if (img && faultsOut[i] == null) faultsOut[i] = 0;
       await alive();

@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLOTHED_FIRST, clothedEdit, dressedInWater, parseUnclothed, unclothedPrompt } from "../app/lib/story-picture.ts";
+// (stream S8, 2026-11-25: everybody in every film picture — clothed.server.ts → keepClothed, below)
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
@@ -185,3 +186,42 @@ test("a picture with somebody unclothed is never the one kept while one without 
   // a picture kept with somebody STILL unclothed is written down for the operator
   assert.deepEqual(sp.keptFaults([{ seen: [true], panels: false, unclothed: true, who: ["Farida"] }, { seen: [true], panels: false, who: ["Farida"] }]), [{ scene: 1, missing: [], unclothed: true }]);
 });
+
+test("TOLD STORIES: the lake scene's words dress her before the picture model reads them; the look, the redraw, the edit", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  // the words a told story's picture is drawn from — tidied to one moment and nothing written, then dressed
+  const lake = "WIDE: Farida shines the flashlight across the black water, and a pale woman stands waist-deep in the lake, perfectly still, smiling.";
+  const visual = dressedInWater(sp.oneMoment(sp.noLettering(lake)));
+  assert.equal(visual, `${lake} She is fully clothed: a long pale nightgown, soaked and clinging, covering her from neck to knee.`);
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("const visual = dressedInWater(oneMoment(noLettering(written)));") && nar.includes("${safe}${visual.slice(0, 600)}"), "what the picture model reads");
+  // the look: in the question that lists the people (no fifth call), read back into the story's check
+  assert.ok(nar.includes("const bare = parseStoryUnclothed(String(extrasRaw || \"\"));") && nar.includes("...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };"));
+  assert.equal((nar.match(/anthropicVision\(/g) || []).length, 4, "still four questions to a picture");
+  // the redraw: told CLOTHED_FIRST ahead of everything on the next go
+  assert.ok(nar.includes("first = storyFirst(seenAs);") && nar.includes("const got = await drawScene(`${first}${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
+  // the edit: a best-of still unclothed is dressed by ONE edit and looked at again — before it is kept, still bare → flagged
+  const edit = nar.indexOf("if (!img && best?.check.unclothed) {");
+  assert.ok(edit > 0 && edit < nar.indexOf("if (!img && best) { img = best.img;"));
+  assert.ok(nar.includes("const dressed = await keepClothed({ url: was.img, ref: (u) => abs(u) || u, seen: { unclothed: true, who: was.check.unclothedWho || \"\" }, edit: (u, bare) => clothedEditOn(u, bare, aspect), still: \"drop\", log: (l) => console.log(`[narrated] scene ${i + 1}: ${l}`) });"));
+  assert.ok(nar.includes("best = { img: dressed, faults: storyFaults(rest), check: rest };") && nar.includes("if (!best.faults) img = dressed;"), "dressed, it keeps whatever else its look found");
+  // the portraits every scene is drawn from: dressed in their words, looked at, drawn again clothes first, edited — or none
+  assert.ok(nar.includes("return img ? keepClothed({ url: img, ref: (u) => abs(u) || u, redraw: () => drawScene(`${CLOTHED_FIRST} ${ask}`, [], PORTRAIT_ASPECT), edit: (u, bare) => clothedEditOn(u, bare, PORTRAIT_ASPECT), still: \"drop\","));
+  // …and the lenient last path: dressed words, looked at, kept
+  assert.ok(nar.includes("renderCreativeSeed(`${safe}${dressedInWater((scene.visual || \"\").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);") && nar.includes("img = lenient ? await keepClothed({ url: lenient,"));
+});
+
+test("FANTASY KEEPS ITS OWN WORLD: everybody clothed, but never told its places look the way they look TODAY", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  // a told story's picture: a children's story and a world of its own get DRESSED; everything else TODAY_LOOK (which ends with it)
+  assert.ok(nar.includes("${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}"));
+  assert.ok(sp.TODAY_LOOK.endsWith(sp.DRESSED) && sp.TODAY_LOOK.includes("no cottage and no castle unless they name one"));
+  // …its places' sheets too (nobody in a sheet to dress)
+  assert.ok(nar.includes("placeSheetPrompt(p, tmpl.sceneHint, safe, !tmpl.childSafe && !tmpl.ownWorld)"));
+  assert.ok(!sp.placeSheetPrompt({ name: "the hall", look: "a long timber hall with a stone hearth" }, "fantasy", "", false).includes("TODAY"));
+  // the genre that is its own world is Fantasy, and only Fantasy
+  const g = await import("../app/lib/film-genres.ts");
+  assert.deepEqual(g.GENRE_FILMS.filter((x: { ownWorld?: boolean }) => x.ownWorld).map((x: { key: string }) => x.key), ["fantasy"]);
+});
+
