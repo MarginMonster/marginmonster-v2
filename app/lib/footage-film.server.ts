@@ -398,8 +398,10 @@ export async function generateFootageFilm(opts: FootageFilmOptions): Promise<str
         try { await save(i, { ckStill: await drawPicture({ prompt, ...(refs.length ? { image_input: refs.map((r) => imageRef(base, r)) } : {}), aspect_ratio: aspect, output_format: "jpg" }, true) }); }
         catch (e) { await leave(i, `its picture would not draw (${short(e, 100)})`); }
       };
+      // (the thing is drawn up close once and then handed on — only when there IS one thing that recurs: a scare whose
+      //  writer named none has a different something in each moment it is seen in, each drawn from the place alone)
       for (;;) {
-        const plan = footageScenePlan(direction.map((d, i) => (d && d.cam === "hand" && !records[i].left ? d.seen : null)));
+        const plan = footageScenePlan(direction.map((d, i) => (d && d.cam === "hand" && !records[i].left ? d.seen && !!film.thing : null)));
         if (!plan) break;
         if (!text(records[plan.place].ckStill)) { await drawScene(plan.place, []); continue; }
         const placePic = text(records[plan.place].ckStill) as string;

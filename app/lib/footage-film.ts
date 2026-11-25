@@ -230,6 +230,17 @@ const ROOMS_LIST = HOUSE_ROOMS.map((r) => `"${r.key}" — ${r.name}: ${r.empty}`
 const secondsRule = (camera: CameraLook): string => (camera === "house"
   ? "10 to 15 — 10 for a moment nothing comes into, 15 for one where it stands still a long time"
   : "6 to 12 — short for a glimpse, 10 to 12 for the payoff");
+/** WHAT A CARD MAY SAY, as a writer is told it. Counted in nights or days, never a calendar date or a year: the
+ *  camcorder burns a date into its corner and the house and body cameras print one, all worked out from the card
+ *  (footageClocks) — a card that said "OCT 31 1998" over a corner that says NOV 24 2026 is a film that contradicts
+ *  itself (review, 2026-11-25). A house camera's moments are all at night (its direction says so, in infrared), so
+ *  its examples are nights only. */
+const cardRule = (camera: CameraLook): string => `in ENGLISH CAPITALS, 28 characters at most, counted in nights or days — never a calendar date or a year: the camera prints its own — later moments later (${camera === "house" ? '"NIGHT 1 · 2:14 AM", "NIGHT 3 · 3:07 AM"' : '"NIGHT 1 · 2:14 AM", "NIGHT 3 · 3:07 AM", "DAY 2 · 4:40 PM"'})`;
+/** A house moment nothing comes into, as a writer is shown it: a thing that MOVES on its own, in the shot. Never a
+ *  light that comes on (every house direction says "The light does not change": the engine is told both, and does one
+ *  or flickers), and never a thing that "is somewhere else" (a continuous shot cannot jump: it would have to move).
+ *  (Review, 2026-11-25: both were in the examples, beside the rule they break.) */
+const HOUSE_TRACE_EXAMPLES = "a door swings slowly open; a chair slides back from the table; a ball rolls out across the floor";
 
 /** THE BUILD, as both writers are told it (the outline's, and then the direction's — it must survive both). */
 export const FOOTAGE_BUILD = "HOW IT BUILDS — every moment is worse (or bigger) than the one before, one step at a time. The FIRST moment is ordinary, with ONE small thing wrong: far off, brief, deniable — something a person watching would rewind to check. The MIDDLE moments bring it closer or prove it: it is nearer, it has moved something, it is in the room, it is looking at the camera. The LAST moment is the payoff. THE END IS THEIRS: if THE IDEA says how it ends, the last moment ends exactly that way; only an idea that gives no ending ends on the payoff of your choosing.";
@@ -253,11 +264,11 @@ export function footageOutlineBrief(idea: string, camera: CameraLook, count: num
     FOOTAGE_BUILD,
     "EACH MOMENT is ONE continuous shot that a real camera could film in the seconds it has: no cut, no jump in time, ONE thing happening. Write what THE CAMERA CATCHES, in one sentence a person could rewrite — who or what, where in the place, what it does. NEVER what anybody says: nobody's words are written in an outline, and nothing in the picture ever speaks.",
     house
-      ? `NOBODY IS FILMING: these are a house's own cameras, one in each room, and every moment is at night. Each moment names the room its camera is in — one of:\n${ROOMS_LIST}\nIn a moment the thing comes in through one of THAT room's own doors and is seen the whole way — or, in an early moment, nothing comes in at all and ONE thing in the room changes with nobody there to do it (a door swings open, a light comes on beyond a doorway).`
+      ? `NOBODY IS FILMING: these are a house's own cameras, one in each room, and every moment is at night. Each moment names the room its camera is in — one of:\n${ROOMS_LIST}\nIn a moment the thing comes in through one of THAT room's own doors and is seen the whole way — or, in an early moment, nothing comes in at all and ONE thing in the room changes with nobody there to do it (${HOUSE_TRACE_EXAMPLES}) — never a light: the light in a house camera's picture never changes.`
       : "THE ONE FILMING is never in the picture: they hold the camera, and it sees what they look at. A scare is at night, or somewhere dark.",
     "No blood, no gore, no wounds; nobody is hurt; everyone is fully clothed.",
     ...(camera === "bodycam" ? [WORN_BOUNDS] : []),
-    `Answer with JSON only — the title, the place, the thing and every line in the language THE IDEA is written in: {"title": a short name for the film (2–5 words), "kind": "scare" or "plain", "place": THE PLACE, in two or three sentences, "thing": THE THING, in one or two sentences, or "", "moments": [exactly ${n}, in the order they are seen: {"when": the card — when this was recorded, in ENGLISH CAPITALS, 28 characters at most, later moments later ("NIGHT 1 · 2:14 AM", "NIGHT 3 · 3:07 AM", "DAY 2 · 4:40 PM"), "line": what the camera catches — one sentence, 180 characters at most, "seconds": how long the shot is, ${secondsRule(camera)}${house ? ', "room": the room, by its key' : ""}}]}`,
+    `Answer with JSON only — the title, the place, the thing and every line in the language THE IDEA is written in: {"title": a short name for the film (2–5 words), "kind": "scare" or "plain", "place": THE PLACE, in two or three sentences, "thing": THE THING, in one or two sentences, or "", "moments": [exactly ${n}, in the order they are seen: {"when": the card — when this was recorded, ${cardRule(camera)}, "line": what the camera catches — one sentence, 180 characters at most, "seconds": how long the shot is, ${secondsRule(camera)}${house ? ', "room": the room, by its key' : ""}}]}`,
   ].join("\n");
 }
 
@@ -306,7 +317,7 @@ export function footageMomentBrief(o: FootageOutline, index: number, note?: stri
     "It is ONE continuous shot that a real camera could film in the seconds it has: no cut, no jump in time, ONE thing happening. Write what THE CAMERA CATCHES — who or what, where in the place, what it does. NEVER what anybody says. No blood, no gore, nobody hurt, everyone clothed.",
     ...(o.camera === "house" ? [`The rooms a camera can be in:\n${ROOMS_LIST}`] : []),
     ...(o.camera === "bodycam" ? [WORN_BOUNDS] : []),
-    `Answer with JSON only, the line in the language the outline is written in: {"when": its card, in ENGLISH CAPITALS, 28 characters at most — the card it has, unless the new moment happens at another time, "line": one sentence, 180 characters at most, "seconds": ${secondsRule(o.camera)}${o.camera === "house" ? ', "room": the room, by its key' : ""}}`,
+    `Answer with JSON only, the line in the language the outline is written in: {"when": its card — the card it has, unless the new moment happens at another time — ${cardRule(o.camera)}, "line": one sentence, 180 characters at most, "seconds": ${secondsRule(o.camera)}${o.camera === "house" ? ', "room": the room, by its key' : ""}}`,
   ].join("\n");
 }
 export const footageMomentSchema = (house = false): { name: string; schema: Record<string, unknown> } => ({ name: "footage_moment", schema: MOMENT_SCHEMA(house) });
@@ -348,7 +359,7 @@ export function footageDirectionBrief(o: FootageOutline, only?: readonly number[
     return [
       `You are directing a found-footage FILM recorded by the security cameras of ONE house: ${n} moment${n > 1 ? "s" : ""}, each ONE continuous shot from a camera fixed high in the corner of a room, at night. Nobody holds the camera, it NEVER moves, and nothing is ever said. The film is already outlined; you turn each moment's line into the parts its shot is filmed from. Change nothing that a line says happens.`,
       ...head,
-      'TWO KINDS OF MOMENT. "seen": false — NOTHING COMES IN: the room as it is, and ONE thing in it changes with nobody there to do it (a door swings open, a chair is somewhere else, a light comes on beyond a doorway): write "set", "happens" and "after". "seen": true — IT COMES IN through one of THIS room\'s own doors or doorways and goes the WHOLE way to where it stops — it never appears from nowhere; it stops there; then what it does at the end: write "set", "door", "stands", "waits" and "acts".',
+      `TWO KINDS OF MOMENT. "seen": false — NOTHING COMES IN: the room as it is, and ONE thing in it moves with nobody there to do it, in the shot, at its real speed (${HOUSE_TRACE_EXAMPLES}) — never a light coming on or going out: write "set", "happens" and "after". "seen": true — IT COMES IN through one of THIS room\'s own doors or doorways and goes the WHOLE way to where it stops — it never appears from nowhere; it stops there; then what it does at the end: write "set", "door", "stands", "waits" and "acts".`,
       plain
         ? "Everything in it moves the way it really would, at its real speed. Nobody is hurt; everyone is fully clothed."
         : "What frightens is slowness and stillness. It NEVER runs, flinches, screams or speaks; nothing flashes or glitches; ITS MOUTH NEVER MOVES. No blood, no gore, no wounds, nobody hurt; fully clothed.",
@@ -436,8 +447,11 @@ export function momentScript(t: Pick<Take, "says" | "asks">, seconds: number, mo
 
 function handMoment(raw: Record<string, unknown>, o: FootageOutline, i: number, radio: string): DirectedMoment | null {
   const m = o.moments[i], last = i === o.moments.length - 1;
-  // (a film with no thing has nothing to be seen: every moment is about what its own line says)
-  const seen = raw.seen !== false && !!o.thing;
+  // (a film with no thing that recurs: every moment is about what its own line says — and in a SCARE, a moment the
+  //  writer says something is seen in is still the scare's, with all of its rules (stillness, the mouth that never
+  //  moves). Until the review of 2026-11-25 it was made plain: directed to move "at its real speed", its picture told
+  //  "no figure" over a still that had one. Not a horror: nothing is a creature, seen or not.)
+  const seen = raw.seen !== false && (!!o.thing || o.kind === "scare");
   const scare = o.kind === "scare" && seen;
   const said = (Array.isArray(raw.says) ? raw.says : []).map((s): { text?: unknown; mood?: unknown } => (s && typeof s === "object" ? (s as { text?: unknown; mood?: unknown }) : { text: s }))
     .map((s) => ({ text: words(s.text, 90), mood: takeMood(s.mood) })).filter((s) => s.text).slice(0, 2);
@@ -534,9 +548,13 @@ const heldTo = (o: Pick<FootageOutline, "kind" | "camera">, seen: boolean): stri
  *  `seen`: the thing is in this picture (else it is not named in it at all). */
 export function footageScenePrompt(o: Pick<FootageOutline, "kind" | "camera" | "aspect" | "place" | "thing">, m: { still: string; seen: boolean; who?: string }, refs: 0 | 1 | 2 = 0): string {
   const still = stop(words(m.still, 700)), place = words(o.place, FOOTAGE_LIMITS.place), thing = m.seen ? words(o.thing, FOOTAGE_LIMITS.thing) : "";
-  const end = `${heldTo(o, m.seen && !!thing)} Nothing written anywhere in the picture. No watermark, no signature.`;
+  // (held to what is IN the picture: a scare's moment with something in it — a film whose writer named no thing that
+  //  recurs still has one in its moment — is never told "no figure" over a still that has one. Review, 2026-11-25.)
+  const end = `${heldTo(o, m.seen)} Nothing written anywhere in the picture. No watermark, no signature.`;
   if (!refs) return `${shapeOf(o.aspect)} ${caughtBy(o)} ${place ? `THE PLACE: ${stop(place)} ` : ""}WHAT THE CAMERA SEES: ${still}${thing ? ` WHO OR WHAT IT IS: ${stop(thing)}` : ""} ${end}`;
-  const who = words(m.who, 40) || "one";
+  // ("the SAME she as in …" is no sentence: a pronoun is "one"; "the figure" is the SAME figure)
+  const named = words(m.who, 40).replace(/^(the|a|an)\s+/i, "");
+  const who = !named || /^(she|he|it|they|her|him|them)$/i.test(named) ? "one" : named;
   const same = thing ? (refs === 2 ? ` It is the SAME ${who} as in the second reference image — the same face, the same body, the same clothes: ${stop(thing)}` : ` WHO OR WHAT IT IS: ${stop(thing)}`) : "";
   return `${shapeOf(o.aspect)} The SAME place and the SAME camera as the ${refs === 2 ? "first " : ""}reference image — the same walls, floor, furniture, light and grain wherever the picture shows the same part of it — at ANOTHER MOMENT: ${still}${same} ${place ? `THE PLACE, in words: ${stop(place)} ` : ""}Real footage, never a render. ${end}`;
 }

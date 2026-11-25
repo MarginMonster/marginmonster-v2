@@ -91,6 +91,15 @@ test("THE OUTLINE'S BRIEF: several moments from ONE camera — the build, the pl
   assert.ok(house.includes("the security cameras fixed high in the corners of ONE house's rooms: nobody holds them, they never move, and every moment is at night"));
   for (const r of HOUSE_ROOMS) assert.ok(house.includes(`"${r.key}" — ${r.name}: ${r.empty}`), r.key);
   assert.ok(house.includes("nothing comes in at all and ONE thing in the room changes with nobody there to do it") && house.includes('"room": the room, by its key') && house.includes("10 to 15"));
+  // …and what it can be is something that MOVES, in the shot: never a light (every house direction says the light does
+  // not change) and never a thing that "is somewhere else" (a continuous shot cannot jump) — review, 2026-11-25
+  for (const brief of [house, footageDirectionBrief(outlineOf("house"))]) {
+    assert.ok(brief.includes("a door swings slowly open; a chair slides back from the table; a ball rolls out across the floor"));
+    assert.ok(!brief.includes("a light comes on") && !brief.includes("somewhere else"));
+  }
+  // THE CARD: nights or days, never a date or a year (the camera prints its own, from the card); a house's are nights
+  assert.ok(b.includes('counted in nights or days — never a calendar date or a year: the camera prints its own — later moments later ("NIGHT 1 · 2:14 AM", "NIGHT 3 · 3:07 AM", "DAY 2 · 4:40 PM")'));
+  assert.ok(house.includes('later moments later ("NIGHT 1 · 2:14 AM", "NIGHT 3 · 3:07 AM")') && !house.includes("DAY 2"));
   // (the house's rooms are the kept house's own: the place is whose house it is, never a room described again)
   assert.ok(house.includes("THE PLACE, said ONCE: this house — whose it is and what kind of house, in a sentence or two. Its rooms are the ones listed below, exactly as they are: a room is never described differently.") && !house.includes("its walls and floor, its light"));
   assert.ok(!house.includes("THE ONE FILMING is never in the picture"));
@@ -349,7 +358,8 @@ test("THE DIRECTION'S BRIEF: every line becomes a take's parts — the build mus
   const room = (key: string) => HOUSE_ROOMS.find((r) => r.key === key)!;
   assert.ok(hb.includes(`THE HOUSE: ${PLACE}\nTHE ROOMS its cameras are in — each exactly as its camera has it; a door or doorway named in a moment must be one of that room's own:\nBedroom: ${room("bedroom").empty}\nHallway: ${room("hallway").empty}\nTHE THING`));
   assert.ok(!hb.includes(room("kitchen").empty) && !hb.includes("It is drawn from these words, so never describe it differently"), "only the rooms it is in; the house's rooms are not drawn from the outline's words");
-  assert.ok(hb.includes('TWO KINDS OF MOMENT. "seen": false — NOTHING COMES IN: the room as it is, and ONE thing in it changes with nobody there to do it'));
+  // (it MOVES, in the shot — never a light, never "somewhere else": review, 2026-11-25)
+  assert.ok(hb.includes('TWO KINDS OF MOMENT. "seen": false — NOTHING COMES IN: the room as it is, and ONE thing in it moves with nobody there to do it, in the shot, at its real speed (a door swings slowly open; a chair slides back from the table; a ball rolls out across the floor) — never a light coming on or going out'));
   assert.ok(hb.includes("IT COMES IN through one of THIS room's own doors or doorways and goes the WHOLE way to where it stops — it never appears from nowhere"));
   assert.ok(hb.includes("Nothing in any moment speaks, and no spoken word is written anywhere.") && hb.includes(FOOTAGE_BUILD) && !hb.includes('"says"'));
   assert.ok(hb.includes('"who": what THE THING is — "he", "she" or "it", "thing": THE THING in one phrase starting with "a" or "an"'));
@@ -419,8 +429,12 @@ test("EVERY MOMENT IS CHECKED BY ONE TAKE'S OWN RULES: seen is a scare, unseen i
   const dog = parseFootageDirection({ moments: [hand(1, { says: [{ text: "Biscuit? Is that you?" }] }), hand(2), hand(3)] }, { ...o, kind: "plain" });
   assert.ok(dog.every((m) => m && m.cam === "hand" && m.take.genre === "plain"));
   assert.deepEqual(dog[0] && dog[0].cam === "hand" && dog[0].take.script, [{ at: 0.3, text: "Biscuit? Is that you?", mood: "calm" }]);
-  // A FILM WITH NO THING has nothing to be seen
-  assert.ok(parseFootageDirection({ moments: [hand(1), hand(2), hand(3)] }, { ...o, thing: "" }).every((m) => m && !m.seen && m.cam === "hand" && m.take.genre === "plain"));
+  // A FILM WITH NO THING THAT RECURS: not a horror — nothing to be seen, every moment plain; a SCARE — what its writer
+  // says is seen in a moment is still the scare's, with all its rules (review, 2026-11-25: it used to be made plain,
+  // directed "at its real speed" and its picture told "no figure" over a still that had one)
+  assert.ok(parseFootageDirection({ moments: [hand(1), hand(2), hand(3)] }, { ...o, kind: "plain", thing: "" }).every((m) => m && !m.seen && m.cam === "hand" && m.take.genre === "plain"));
+  const bare = parseFootageDirection({ moments: [hand(1, { seen: false }), hand(2), hand(3)] }, { ...o, thing: "" });
+  assert.deepEqual(bare.map((m) => m && m.cam === "hand" && [m.seen, m.take.genre]), [[false, "plain"], [true, undefined], [true, undefined]]);
 
   // A BODY CAMERA: the dispatcher's call opens the FIRST moment only — a separate voice, never in a direction; and a
   // plain moment with a weapon in it is not filmed (the drama's bounds)
@@ -501,7 +515,13 @@ test("THE PLACE AND THE THING, WORD FOR WORD, IN EVERY PICTURE — the first fro
   assert.ok(later.startsWith(`Vertical 9:16 picture. The SAME place and the SAME camera as the reference image — the same walls, floor, furniture, light and grain wherever the picture shows the same part of it — at ANOTHER MOMENT: ${still} THE PLACE, in words: ${PLACE} Real footage, never a render.`));
   // …and where the thing is in it, from the picture it was drawn up close in too: the SAME one
   const both = footageScenePrompt(o, { still, seen: true, who: "she" }, 2);
-  assert.ok(both.includes("as the first reference image") && both.includes(`It is the SAME she as in the second reference image — the same face, the same body, the same clothes: ${THING}`) && both.includes(`THE PLACE, in words: ${PLACE}`));
+  // (a pronoun is "the SAME one" — "the SAME she" is no sentence; review, 2026-11-25 — and "the figure" the SAME figure)
+  assert.ok(both.includes("as the first reference image") && both.includes(`It is the SAME one as in the second reference image — the same face, the same body, the same clothes: ${THING}`) && both.includes(`THE PLACE, in words: ${PLACE}`));
+  assert.ok(footageScenePrompt(o, { still, seen: true, who: "the figure" }, 2).includes("It is the SAME figure as in the second reference image"));
+  // A SCARE WHOSE WRITER NAMED NO THING THAT RECURS: a moment something is seen in is held to the creature's rules —
+  // never told "no figure" over a still that has one (review, 2026-11-25)
+  const nameless = footageScenePrompt({ ...o, thing: "" }, { still, seen: true, who: "she" });
+  assert.ok(nameless.includes(`${TAKE_WRONG} ${TAKE_HIDDEN}`) && !nameless.includes("no figure") && !nameless.includes("WHO OR WHAT IT IS"));
   assert.ok(footageScenePrompt(o, { still, seen: true }, 1).includes(`WHO OR WHAT IT IS: ${THING}`), "the payoff itself is drawn from the place and the words");
   // WORD FOR WORD: the member's own place and thing are in every picture the thing is in, however it is drawn
   for (const refs of [0, 1, 2] as const) { const p = footageScenePrompt(o, { still, seen: true, who: "she" }, refs); assert.ok(p.includes(PLACE) && p.includes(THING) && p.endsWith("Nothing written anywhere in the picture. No watermark, no signature."), `refs ${refs}`); }
