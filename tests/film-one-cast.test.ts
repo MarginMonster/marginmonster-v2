@@ -107,7 +107,9 @@ test("the picker of BEFORE the script is not beside the characters: it is behind
   // with a script the picker shows only when asked for; with none it is the panel, as it was
   assert.equal(count(panel, "{(!scripted || castOver) && (<>"), 1);
   const picker = between(panel, "{(!scripted || castOver) && (<>", "                </>)}\n              </div>");
-  assert.ok(picker.includes('<div className="mm-artistpick">') && picker.includes('{t("We cast it")}') && picker.includes("{rosterFor(template).map((r) => {"));
+  // (2026-11-25: the stars are `starRoster` — in a Horror film its people; its monsters have their own row in the
+  //  same picker, after the stars: tests/film-monster-slot.test.ts)
+  assert.ok(picker.includes('<div className="mm-artistpick">') && picker.includes('{t("We cast it")}') && picker.includes("{starRoster.map((r) => {"));
   assert.equal(count(panel, '<div className="mm-artistpick">'), 1, "one picker, shown in either state — not a copy");
   // the line that opens it: one button, under the characters, that says what it is
   // (…and not while a face is being cast: the portrait lands by row NUMBER, so a story started over under it
@@ -123,7 +125,8 @@ test("the picker of BEFORE the script is not beside the characters: it is behind
   assert.ok(picker.includes('{wipeNote("cast:")}'), "it says what the second tap does, right under the faces");
   assert.ok(ui.includes('? <p className="mm-note mm-shape-warn" role="status">{t("That starts your script over — tap it again to go ahead.")}</p>'));
   // a different cast IS a different story: the pick wipes the script and its characters (as before)…
-  assert.ok(ui.includes("useEffect(() => { setTreatment(null); setSeeds(null); setFrames([]); setCast([]); }, [told, storyPick.join(\",\")]);"));
+  // (…and so does another monster, 2026-11-25: the script is written about the film's thing, by its name)
+  assert.ok(ui.includes("useEffect(() => { setTreatment(null); setSeeds(null); setFrames([]); setCast([]); }, [told, storyPick.join(\",\"), storyMonster]);"));
   // …and with the script gone the line closes, so the next script does not open with the picker out
   assert.ok(ui.includes("const [castOver, setCastOver] = useState(false);\n  useEffect(() => { if (!scripted) setCastOver(false); }, [scripted]);"));
   // closing the line drops a half-made choice (an armed face must not stay armed out of sight)
@@ -135,7 +138,8 @@ test("what the step sets still reaches the story form — the hidden inputs live
     // the stars picked before the script
     '{isStoryboard && pickedCast.length > 0 && <input type="hidden" name="filmCast" value={filmCastJson} />}',
     // the script's characters: name, face, voice — and what a character IS when it is not a person
-    '{isStoryboard && !narrated && cast.some((c) => c.faceUrl || c.voiceId) && <input type="hidden" name="cast" value={JSON.stringify(cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId, ...(c.faceUrl && c.kind && c.kind !== "person" ? { kind: c.kind, look: c.look || "" } : {}) })))} />}',
+    // (2026-11-25: …and after them, in a Horror film, its THING as the one `role: "threat"` entry — film-monster-slot)
+    '{isStoryboard && !narrated && (cast.some((c) => c.faceUrl || c.voiceId) || !!thingPost) && <input type="hidden" name="cast" value={JSON.stringify([...cast.map((c) => ({ name: c.name, faceUrl: c.faceUrl, voiceId: c.voiceId, ...(c.faceUrl && c.kind && c.kind !== "person" ? { kind: c.kind, look: c.look || "" } : {}) })), ...(thingPost ? [thingPost] : [])])} />}',
     // Lock these voices
     '{isStoryboard && !narrated && lockVoices && cast.some((c) => c.voiceId) && <input type="hidden" name="filmLockVoices" value="1" />}',
   ]) {
@@ -216,10 +220,11 @@ test("the step's CARD says what is true: before a script as it was; after, the s
   // (the discs are decoration for the eye; the names and the count are what is read out)
   assert.ok(after.includes('<span className="mm-card-cast" aria-hidden="true">') && !after.includes('<span className="mm-cast-count" aria-hidden'));
   // BEFORE a script the card is what it was — the picked stars, the characters a told story brings back, or:
+  // (2026-11-25: the STARS — `pickedStars`; a Horror film's monster is not one of them, it has its own line after them)
   const before = card.slice(card.indexOf("              </>) : (<>"));
   assert.ok(before.includes(': t("We invent them · or pick your own")}</span>'));
-  assert.ok(before.includes("{pickedCast.length ? <><Ico n=\"check\" size={12} /> {pickedCast.map((r) => r.name).join(\" + \")}</>"));
-  assert.ok(before.includes("{!pickedCast.length && seriesOwn.length > 1 && ("));
+  assert.ok(before.includes("{pickedStars.length ? <><Ico n=\"check\" size={12} /> {pickedStars.map((r) => r.name).join(\" + \")}</>"));
+  assert.ok(before.includes("{!pickedStars.length && seriesOwn.length > 1 && ("));
   // the lettered disc is an empty frame in the step's own violet; the count turns green when everyone is cast
   assert.ok(ui.includes(".mm-card-castface.is-open{background:#F3EFFB;border:1.5px dashed #A792D6;color:#6C4FB0;box-shadow:none;}"));
   assert.ok(ui.includes(".mm-cast-count.done{color:#fff;background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);}"));

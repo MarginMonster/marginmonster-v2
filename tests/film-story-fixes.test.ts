@@ -85,13 +85,14 @@ test("the idea box does not wipe what is made: it stays until the maker starts i
 test("Generate says the film was sent, and stays sent until something in the film changes", () => {
   // (the idea counts only until a script exists: typing in the idea box afterwards must not make the button live again)
   // (…and the series it is an episode of: dropping it with ✕ makes it a different film)
-  assert.ok(ui.includes("const storySig = `story:${JSON.stringify([template, treatment ? \"\" : topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId]), series?.from || \"\"])}`;"));
+  // (…and a Horror film's monster, and the picture of its thing, 2026-11-25: another monster is another film)
+  assert.ok(ui.includes("const storySig = `story:${JSON.stringify([template, treatment ? \"\" : topic, scenes, told, storyPick, storyMonster, thing?.img || \"\", filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId]), series?.from || \"\"])}`;"));
   assert.ok(ui.includes("const storySent = sentSig === storySig;"));
   assert.ok(ui.includes("<Form method=\"post\" onSubmit={() => { sigAtSubmit.current = storySig; }}>"));
   assert.ok(ui.includes("<button type=\"submit\" className={`fs-go${storySent ? \" is-sent\" : \"\"}`} disabled={!canGo || storySent}>"));
   assert.ok(ui.includes("storySent ? <><Ico n=\"check\" size={16} /> {t(\"Rendering — it lands in your Archive\")}</>"));
   // declared after everything it reads (a `const` read before its line throws when the page renders)
-  for (const dep of ["const [lockVoices, setLockVoices]", "const [dialogueEngine, setDialogueEngine]", "const [prodImage, setProdImage]", "const [capPick, setCapPick]", "const [sentSig, setSentSig]"]) {
+  for (const dep of ["const [lockVoices, setLockVoices]", "const [dialogueEngine, setDialogueEngine]", "const [prodImage, setProdImage]", "const [capPick, setCapPick]", "const [sentSig, setSentSig]", "const [storyMonster, setStoryMonster]", "const thing = filmThing("]) {
     assert.ok(ui.indexOf(dep) > 0 && ui.indexOf(dep) < ui.indexOf("const storySig ="), dep);
   }
   assert.ok(ui.includes(".fs-go.is-sent:disabled{opacity:1;background:#E4F4EA;color:#0A5E37;"));

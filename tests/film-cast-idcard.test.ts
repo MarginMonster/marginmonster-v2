@@ -167,7 +167,10 @@ test("ONE hook and ONE layer, wired into all four pickers — and a face's card 
   assert.equal(count(film, "createPortal(\n    <div className=\"fs-peek\""), 1);
 
   // THE FOUR PICKERS
-  const story = between(film, "{rosterFor(template).map((r) => {\n                    const on = storyPick.includes(r.id);", '{wipeNote("cast:")}');
+  // (2026-11-25: in a Horror film the story's stars are its PEOPLE — `starRoster` — and its monsters have their
+  //  own row under them, the fifth picker below: tests/film-monster-slot.test.ts)
+  const story = between(film, "{starRoster.map((r) => {\n                    const on = storyPick.includes(r.id);", '{wipeNote("cast:")}');
+  const monster = between(film, "{monsterRoster.map((r) => {", '{wipeNote("cast:")}');
   const star = between(film, "{mvRoster.map((r) => (\n                  <button type=\"button\" key={r.id}", "{artistMakerOpen && (");
   const costar = between(film, '<div className="mm-artistpick mm-castpick">', "</div>\n              </div>\n            </div>\n          )}");
   const scene = between(film, '<div className="mm-sc-castpick">', '<div className="mm-cp-hint">{draftLead');
@@ -178,7 +181,9 @@ test("ONE hook and ONE layer, wired into all four pickers — and a face's card 
   assert.equal(count(scene, "{...peekOn(`scene:"), 3, "the star, a co-star, a face from the roster");
   assert.equal(count(scene, "faceOfImg("), 3, "a scene keeps faces by picture: who they are comes from the roster");
   assert.equal(count(actor, "{...peekOn(`actor${i}:${r.id}`, r, c.faceUrl === r.img,"), 1);
-  assert.equal(count(film, "{...peekOn("), 7);
+  // (the monster's row: its own key, so a monster's card and a star's never stand for each other)
+  assert.equal(count(monster, "{...peekOn(`monster:${r.id}`, r, on,"), 1);
+  assert.equal(count(film, "{...peekOn("), 8);
 
   // EVERY face's card picks what a tap on that face does — the same words, so they cannot drift apart
   let at = film.indexOf("{...peekOn(");
@@ -199,7 +204,7 @@ test("ONE hook and ONE layer, wired into all four pickers — and a face's card 
   assert.ok(actor.includes(", castingIndex !== null)}"));
 
   // NOTHING NEW TO TAP on a face: the pickers gained attributes, not buttons
-  for (const region of [story, star, costar, scene, actor]) assert.ok(!/fs-peek|<CastIdCard|aria-label=\{t\("(Show|See|View)/.test(region));
+  for (const region of [story, star, costar, scene, actor, monster]) assert.ok(!/fs-peek|<CastIdCard|aria-label=\{t\("(Show|See|View)/.test(region));
   // THE SHEET: their card, a close control with a 44px hit area, and ONE button that picks them
   const sheet = between(film, "function CastPeekSheet(", "export default function FilmStudio()");
   assert.equal(count(sheet, "<button"), 2);
@@ -224,7 +229,8 @@ test("on a touch screen only: one quiet line of help, under the first picker of 
   // under the story's cast, the music video's star, and the FIRST actor's roster — nowhere else
   assert.equal(count(film, "{peekHint}"), 2);
   assert.equal(count(film, "{i === 0 && peekHint}"), 1);
-  assert.ok(film.includes("                </div>\n                {peekHint}\n                {wipeNote(\"cast:\")}"));
+  // (2026-11-25: under the story's stars — and, in a Horror film, under its monster's row, which follows them)
+  assert.ok(film.includes("                  </div>\n                </>)}\n                {peekHint}\n                {wipeNote(\"cast:\")}"));
   assert.ok(film.includes("              </div>\n              {peekHint}\n              {artistMakerOpen && ("));
   // hidden unless the device has no hover and a coarse pointer — a phone, a tablet
   assert.ok(film.includes(".fs-peek-hint{display:none;"));

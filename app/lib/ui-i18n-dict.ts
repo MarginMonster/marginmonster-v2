@@ -9,6 +9,18 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  // ── added 2026-11-25: the Movie Maker's monster slot — a Horror film's thing, cast in its own row ──
+  "The monster": "El monstruo",
+  "We invent it": "Lo inventamos",
+  "It never speaks — the story is about it.": "Nunca habla — la historia gira en torno a él.",
+  "A monster we invent": "Un monstruo que inventamos",
+  "It is drawn from the script's own words, when it shows.": "Se dibuja con las palabras del guion, cuando aparece.",
+  "See it · free": "Verlo · gratis",
+  "Drawing it…": "Dibujándolo…",
+  "Another look": "Otra versión",
+  "It wouldn't draw just now — the film draws it when it's made.": "Ahora no se pudo dibujar — la película lo dibuja al hacerse.",
+  "and {name}": "y {name}",
+  "and a monster we invent": "y un monstruo que inventamos",
   "Start over with different stars": "Empezar de nuevo con otras estrellas",
   "tap to give them faces (optional)": "toca para darles un rostro (opcional)",
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
@@ -3488,6 +3500,18 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  // ── added 2026-11-25: the Movie Maker's monster slot — a Horror film's thing, cast in its own row ──
+  "The monster": "Le monstre",
+  "We invent it": "On l'invente",
+  "It never speaks — the story is about it.": "Il ne parle jamais — l'histoire tourne autour de lui.",
+  "A monster we invent": "Un monstre que nous inventons",
+  "It is drawn from the script's own words, when it shows.": "Il est dessiné d'après les mots du script, quand il apparaît.",
+  "See it · free": "Le voir · gratuit",
+  "Drawing it…": "On le dessine…",
+  "Another look": "Une autre version",
+  "It wouldn't draw just now — the film draws it when it's made.": "Impossible de le dessiner pour l'instant — le film le dessinera à sa création.",
+  "and {name}": "et {name}",
+  "and a monster we invent": "et un monstre que nous inventons",
   "Start over with different stars": "Recommencer avec d'autres vedettes",
   "tap to give them faces (optional)": "touche pour leur donner un visage (facultatif)",
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
@@ -6948,6 +6972,18 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  // ── added 2026-11-25: the Movie Maker's monster slot — a Horror film's thing, cast in its own row ──
+  "The monster": "Das Monster",
+  "We invent it": "Wir erfinden es",
+  "It never speaks — the story is about it.": "Es spricht nie — die Geschichte handelt von ihm.",
+  "A monster we invent": "Ein Monster, das wir erfinden",
+  "It is drawn from the script's own words, when it shows.": "Es wird nach den Worten des Drehbuchs gezeichnet, sobald es auftaucht.",
+  "See it · free": "Ansehen · gratis",
+  "Drawing it…": "Wird gezeichnet…",
+  "Another look": "Eine andere Version",
+  "It wouldn't draw just now — the film draws it when it's made.": "Es ließ sich gerade nicht zeichnen — der Film zeichnet es, wenn er entsteht.",
+  "and {name}": "und {name}",
+  "and a monster we invent": "und ein Monster, das wir erfinden",
   "Start over with different stars": "Mit anderen Stars neu anfangen",
   "tap to give them faces (optional)": "tippe, um ihnen Gesichter zu geben (optional)",
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
@@ -10418,6 +10454,18 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  // ── added 2026-11-25: the Movie Maker's monster slot — a Horror film's thing, cast in its own row ──
+  "The monster": "怪物",
+  "We invent it": "由我们来创造",
+  "It never speaks — the story is about it.": "它从不说话——故事围绕它展开。",
+  "A monster we invent": "由我们创造的怪物",
+  "It is drawn from the script's own words, when it shows.": "它出现时，会按剧本里的描述画出来。",
+  "See it · free": "看看它 · 免费",
+  "Drawing it…": "正在绘制…",
+  "Another look": "换个样子",
+  "It wouldn't draw just now — the film draws it when it's made.": "暂时画不出来——影片制作时会画出它。",
+  "and {name}": "以及{name}",
+  "and a monster we invent": "以及一个由我们创造的怪物",
   "Start over with different stars": "换一批主演，重新开始",
   "tap to give them faces (optional)": "点一下，给他们选张脸（可选）",
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
@@ -13940,6 +13988,18 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  // ── added 2026-11-25: the Movie Maker's monster slot — a Horror film's thing, cast in its own row ──
+  "The monster": "مونسٹر",
+  "We invent it": "ہم اسے بناتے ہیں",
+  "It never speaks — the story is about it.": "یہ کبھی نہیں بولتا — کہانی اسی کے بارے میں ہے۔",
+  "A monster we invent": "ہمارا بنایا ہوا مونسٹر",
+  "It is drawn from the script's own words, when it shows.": "جب یہ سامنے آتا ہے تو اسکرپٹ کے الفاظ سے بنایا جاتا ہے۔",
+  "See it · free": "اسے دیکھیں · مفت",
+  "Drawing it…": "بن رہا ہے…",
+  "Another look": "ایک اور روپ",
+  "It wouldn't draw just now — the film draws it when it's made.": "ابھی یہ نہیں بن سکا — فلم بنتے وقت یہ بن جائے گا۔",
+  "and {name}": "اور {name}",
+  "and a monster we invent": "اور ہمارا بنایا ہوا مونسٹر",
   "Start over with different stars": "دوسرے اسٹارز کے ساتھ نئے سرے سے شروع کریں",
   "tap to give them faces (optional)": "انہیں چہرے دینے کے لیے ٹیپ کریں (اختیاری)",
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
