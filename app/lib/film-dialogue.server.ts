@@ -585,7 +585,7 @@ export async function generateTestMovie(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string; ckMasters?: string; ckCastLooks?: string; /** the film's thing's portrait, and each sighting's picture (below) — read from the job's own row when the worker does not hand them over */ ckThreat?: string; ckSightings?: string; /** what each finished shot was (below → ShotKept) — read from the job's own row when the worker does not hand it over */ ckShots?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string; ckMasters?: string; ckCastLooks?: string; /** what each finished shot was (below → ShotKept) — read from the job's own row when the worker does not hand it over */ ckShots?: string; /** the film's thing's portrait, and each sighting's picture (below) — read from the job's own row when the worker does not hand them over */ ckThreat?: string; ckSightings?: string };
   /** Per-scene APPROVED storyboard frames (relative /renders URLs), index-aligned
    *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
    *  that scene so it lands exactly as the merchant staged it. */
