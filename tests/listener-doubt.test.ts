@@ -288,8 +288,10 @@ test("both narrated pipelines do it, the record stays with the piece, and only t
   assert.ok(arch.includes("opsTiming: operator ? (() => { try { return timingLine(JSON.parse(a.metaJson || \"{}\").timing) || undefined; } catch { return undefined; } })() : undefined,"));
   assert.ok(arch.includes("if (timingOf && operator) {"));
   assert.ok(arch.includes("where: { id: timingOf.slice(0, 64), shopId: shop.id }"), "of the operator's own shop");
-  // (…with how its pictures moved, and a take's own record — still only for the operator, only by id)
-  assert.ok(arch.includes("return json({ timingOf: piece?.id || null, title: piece?.title || null, timing, motion, take }) as never;"));
+  // (…with how its pictures moved, a take's own record, and an acted horror film's thing and the shots that first
+  //  showed it — still only for the operator, only by id)
+  assert.ok(arch.includes("return json({ timingOf: piece?.id || null, title: piece?.title || null, timing, motion, take, threat, sightings }) as never;"));
+  assert.ok(arch.includes("threat = m.threat ?? null; sightings = m.sightings ?? null;"));
   assert.ok(arch.includes("take = m.take ? { ...m.take, direction: undefined } : null;"));
   assert.ok(!arch.includes("a.opsTiming") && !arch.includes("viewer.opsTiming"), "never drawn");
   // an acted film's lines are timed the way they were (a snarl, a whisper: its own rule)

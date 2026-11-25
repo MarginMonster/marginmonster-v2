@@ -266,10 +266,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     try { timing = JSON.parse(piece?.metaJson || "{}").timing ?? null; } catch { timing = null; }
     // (…and how its pictures moved — each clip's last frame looked at beside its picture — and a take's own record:
     //  where its roll cut, what was trimmed, which host rolled it; the long direction left out)
-    let motion: unknown = null, take: unknown = null;
-    try { const m = JSON.parse(piece?.metaJson || "{}"); motion = m.motion ?? null; take = m.take ? { ...m.take, direction: undefined } : null; } catch { /* as nothing */ }
+    let motion: unknown = null, take: unknown = null, threat: unknown = null, sightings: unknown = null;
+    try { const m = JSON.parse(piece?.metaJson || "{}"); motion = m.motion ?? null; take = m.take ? { ...m.take, direction: undefined } : null; threat = m.threat ?? null; sightings = m.sightings ?? null; } catch { /* as nothing */ }
+    // (…and an acted horror film's THING — the one picture every shot of it is drawn from — and the shots that
+    //  first showed it: acted-staging.ts → sightingOf, film-dialogue → meta.threat / meta.sightings)
     // (typed as nothing, so the page's own data keeps its one shape)
-    return json({ timingOf: piece?.id || null, title: piece?.title || null, timing, motion, take }) as never;
+    return json({ timingOf: piece?.id || null, title: piece?.title || null, timing, motion, take, threat, sightings }) as never;
   }
 
   // ONE unified archive (owner 11-01): the Creator/Marketing toggle was far too
