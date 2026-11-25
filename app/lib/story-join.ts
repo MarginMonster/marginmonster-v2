@@ -21,8 +21,13 @@ import { motionChain } from "./story-motion.ts";
 
 const FPS = 30;
 
-/** The most scenes ONE ffmpeg cuts: what a told story was at most until 2026-11-25, cut on the live server every day. */
-export const STORY_ONE_CUT = 12;
+/** The most scenes ONE ffmpeg cuts. It was 12 — what a told story was at most until 2026-11-25, cut on the live server
+ *  every day at 720p. Since that day the story is cut in Full HD, and a tester's first 12-scene story (all twelve moving
+ *  clips made) ran the 2 GB server out of memory in its one cut, four times, 28 minutes apart (Render: "Ran out of
+ *  memory (used over 2GB)" at 12:14, 12:42, 1:10 and 1:39 PM ET — each restart reclaimed it, resumed it, and it died
+ *  three minutes later in the same cut). A story of 7 scenes or more is now cut in parts of at most STORY_PART_SCENES —
+ *  the path the first 13-scene story was made on, the same day, under the limit. */
+export const STORY_ONE_CUT = 6;
 /** …and once a story is longer, the most scenes one part of its cut has (an acted film's parts open six clips:
  *  acted-staging.ts → JOIN_PART_CLIPS). */
 export const STORY_PART_SCENES = 6;

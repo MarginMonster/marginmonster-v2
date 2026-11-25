@@ -23,11 +23,17 @@ const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").
 
 /* ---- THE PARTS ---- */
 
-test("a story of up to twelve scenes is cut whole, as it always was; a longer one in parts of six at most, as even as they come", () => {
-  assert.equal(STORY_ONE_CUT, 12);
+test("a story of up to six scenes is cut whole; a longer one in parts of six at most, as even as they come", () => {
+  // (12 at 720p was cut every day; at Full HD a 12-scene story's one cut ran the 2 GB server out of memory, four times,
+  //  2026-11-25 — six at most in one ffmpeg, the parts' own size)
+  assert.equal(STORY_ONE_CUT, 6);
+  assert.equal(STORY_ONE_CUT, STORY_PART_SCENES);
   assert.equal(STORY_PART_SCENES, 6);
   const sec = (n: number) => Array.from({ length: n }, (_, i) => 280 + (i % 3) * 15);
-  for (let n = 1; n <= 12; n++) assert.equal(storyParts(sec(n)).length, 1, `${n} scenes`);
+  for (let n = 1; n <= 6; n++) assert.equal(storyParts(sec(n)).length, 1, `${n} scenes`);
+  // (seven to twelve: two parts — the twelve-scene story that ran the server out of memory is cut 6 + 6)
+  for (let n = 7; n <= 12; n++) assert.equal(storyParts(sec(n)).length, 2, `${n} scenes`);
+  assert.deepEqual(storyParts(sec(12)).map((p) => p.to - p.from), [6, 6]);
   assert.deepEqual(storyParts(sec(13)).map((p) => p.to - p.from), [5, 4, 4]);
   assert.deepEqual(storyParts(sec(32)).map((p) => p.to - p.from), [6, 6, 5, 5, 5, 5]);
   // five minutes of a told story (film-length.ts) is cut in six parts
@@ -43,7 +49,7 @@ test("a story of up to twelve scenes is cut whole, as it always was; a longer on
       if (k) assert.equal(p.from, parts[k - 1].to);
       assert.equal(p.start, start);
       assert.equal(p.frames, f.slice(p.from, p.to).reduce((a, b) => a + b, 0));
-      assert.ok(n <= 12 || p.to - p.from <= STORY_PART_SCENES, `${n}: a part of ${p.to - p.from}`);
+      assert.ok(n <= STORY_ONE_CUT || p.to - p.from <= STORY_PART_SCENES, `${n}: a part of ${p.to - p.from}`);
       start += p.frames;
     });
     const sizes = parts.map((p) => p.to - p.from);
