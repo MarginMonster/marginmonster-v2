@@ -362,7 +362,7 @@ export async function narratedSceneSeeds(o: {
       // THE BEST OF THE GOES STILL HAS SOMEBODY UNCLOTHED (every go had: one without it would have weighed less —
       // story-picture.ts → UNCLOTHED_FAULT): that picture is dressed by ONE edit on the story's best model and looked at
       // again (clothed.server.ts → keepClothed). Dressed, it is kept with whatever else its look found; still bare, the
-      // picture is kept as it was and its scene is flagged — "Someone unclothed" — for the maker to draw again.
+      // picture is kept as it was and its scene is flagged — "Needs clothes" — for the maker to draw again.
       if (!img && best?.check.unclothed) {
         const was = best;
         const dressed = await keepClothed({ url: was.img, ref: (u) => abs(u) || u, seen: { unclothed: true, who: was.check.unclothedWho || "" }, edit: (u, bare) => clothedEditOn(u, bare, aspect), still: "drop", log: (l) => console.log(`[narrated] scene ${i + 1}: ${l}`) });
