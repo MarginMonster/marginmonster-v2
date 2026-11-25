@@ -201,7 +201,12 @@ export type NightRule = (setting: string, idea: string | null | undefined, shot?
  *  Bread, 2026-11-23) also works at first light. Foreseen, not yet seen: said so a scene's time is never guessed from
  *  them. (A night ferry, a night bus, a night shift ARE the night: they stay.) */
 const OTHER_NIGHT = /\b(?:last|previous|other|tomorrow)\s+night\b|\b(?:the\s+)?night\s+before\b|\bnight[- ](?:watchm[ae]n|guards?|porters?|nurses?)\b/gi;
-const otherNight = (s: string | null | undefined): string => String(s || "").replace(OTHER_NIGHT, " ");
+/** …AND THE SMALL HOURS WRITTEN ANOTHER WAY ARE THE NIGHT (review of S11, 2026-11-25): NIGHT_SAID knows "3am" and "three
+ *  in the morning", but a writer also writes "3 a.m.", "2:30am" and "two in the morning" — and the "morning" in that
+ *  one is a day word to the rule, so "Vale climbs the stairs at 2 in the morning" in the night ferry came out DAY. Read
+ *  as the night they are, before anything else is asked. */
+const SMALL_HOURS = /\b(?:[1-4](?::[0-5]\d)?\s?a\.?m\b\.?|(?:[1-4]|one|two|three|four)(?::[0-5]\d)?(?:\s*o'?clock)?\s+in\s+the\s+morning\b)/gi;
+const otherNight = (s: string | null | undefined): string => String(s || "").replace(OTHER_NIGHT, " ").replace(SMALL_HOURS, " at night ");
 const NIGHT_EVERY = new RegExp(NIGHT_SAID.source, "gi");
 /** IS THIS TOLD SCENE AT NIGHT? Its picture's own words decide first, then its narration: either one that says night
  *  (NIGHT_SAID) — and names no time of day as well ("at dawn, the night watchman…", "as dusk turns to night" are left to

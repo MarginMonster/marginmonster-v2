@@ -53,6 +53,14 @@ test("WHEN: its own words, its narration or its place say night — whatever the
   assert.equal(night("As dusk turns to night, the ferry pulls away.", "", { idea: day }), false);
   // a job named for the night is a person, not the hour
   assert.equal(night("Walter the night watchman sweeps the step.", "", { idea: "An old night watchman leaves bread out for a stray dog." }), false);
+  // the small hours written another way are the night (review of S11: "two in the morning" has a "morning" in it, and
+  // came out day in the night ferry) — and so is a day idea's scene that names them
+  for (const w of ["Vale climbs the stairs at 2 in the morning.", "Vale climbs the stairs at two in the morning.", "At 3 a.m. Vale climbs the stairs.", "At 2:30am Vale climbs the stairs.", "Vale climbs the stairs at four o'clock in the morning."]) {
+    assert.equal(night(w), true, w);
+    assert.equal(night(w, "", { idea: day }), true, `${w} (a day idea)`);
+  }
+  assert.equal(night("Vale climbs the stairs at 9 in the morning."), false, "nine in the morning is the morning");
+  assert.equal(night("Vale reads 4 amp on the meter.", "", { idea: day }), false, "an amp is not an hour");
   // no idea handed in (a storyboard that has not sent it yet): only the scene's own words and its place
   assert.equal(sp.storyNight({ words: "Vale grips the rail." }, nightSetting), false);
   assert.equal(sp.storyNight({ words: "Vale grips the rail at midnight." }, nightSetting), true);
