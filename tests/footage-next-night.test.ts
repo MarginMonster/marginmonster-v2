@@ -247,6 +247,16 @@ test("a series of nights never forks: it goes on from its newest FINISHED piece,
   assert.equal(latestNight(n1, [n4, n3, other, n2, n1]).id, "n2", "the newest with its video, never a failed one");
   assert.equal(latestNight(n2, [n2, n1]).id, "n2");
   assert.equal(latestNight(other, [n2, n1, other]).id, "o1");
+  // THE MARK NAMES THE LATEST (review, 2026-11-25): the server reads the series' OTHER pieces — older ones included — and
+  // puts the named one in its place by age (footageNextFor). Put after them, the latest named went on from the night
+  // before it: night 3 asked for night 4 and got a second "episode 3".
+  const at = (r: typeof n1, d: number) => ({ ...r, createdAt: new Date(Date.UTC(2026, 10, d)) });
+  const m3 = at({ ...n3, bodyJson: J(FILM_BODY) }, 3), m2 = at(n2, 2), m1 = at(n1, 1);
+  const others = [m2, m1]; // newest first, as findMany orders them — the named one (m3) left out
+  assert.equal(latestNight(m3, [...others, m3]).id, "n2", "(the order the first build used: it forks)");
+  assert.equal(latestNight(m3, [...others, m3].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())).id, "n3", "the latest named goes on from itself");
+  assert.equal(footageSeriesOf(latestNight(m3, [...others, m3].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())))!.episode, 4);
+  assert.equal(latestNight(m1, [...[m3, m2], m1].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())).id, "n3", "an older one named still goes on from the latest");
 });
 
 /* ---- THE WRITER: "previously", fenced; the rule; the cards going on ---- */
@@ -406,7 +416,12 @@ test("wiring: the builder's server read — this shop's own piece, never a faile
   assert.ok(fn.includes('db.asset.findFirst({ where: { id, shopId, type: "VIDEO_AD", status: { not: "FAILED" } }, select: pick });'));
   assert.ok(fn.includes("if (!asked || !footageContinues(asked.metaJson)) return null;"));
   assert.ok(fn.includes('where: { shopId, type: "VIDEO_AD", status: { not: "FAILED" }, id: { not: asked.id }, metaJson: { contains: `"id":"${seriesKeyOf(asked).replace(/[^A-Za-z0-9_-]/g, "")}"` } },'));
-  assert.ok(fn.includes("orderBy: { createdAt: \"desc\" }, take: 12, select: pick,") && fn.includes("from = latestNight(asked, [...later, asked]);"));
+  assert.ok(fn.includes("orderBy: { createdAt: \"desc\" }, take: 12, select: pick,"));
+  // (the named piece in ITS place, newest first — put after the series' other pieces, the latest named went on from the
+  //  night before it: review, 2026-11-25)
+  assert.ok(fn.includes("const pick = { id: true, title: true, metaJson: true, bodyJson: true, status: true, createdAt: true } as const;"));
+  assert.ok(fn.includes("from = latestNight(asked, [...others, asked].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));"));
+  assert.ok(!fn.includes("[...later, asked]"), "never the named piece put last whatever its age");
   assert.ok(fn.includes("return footageSeriesOf(from);"));
   assert.ok(!fn.includes("request") && !fn.includes("formData"), "nothing from the page but the id");
 });

@@ -104,16 +104,19 @@ export async function writeFootageOutline(o: { idea: string; camera: CameraLook;
 export async function footageNextFor(shopId: string, askedId: unknown): Promise<FootageSeries | null> {
   const id = String(askedId ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
   if (!id || !shopId) return null;
-  const pick = { id: true, title: true, metaJson: true, bodyJson: true, status: true } as const;
+  const pick = { id: true, title: true, metaJson: true, bodyJson: true, status: true, createdAt: true } as const;
   const asked = await db.asset.findFirst({ where: { id, shopId, type: "VIDEO_AD", status: { not: "FAILED" } }, select: pick });
   if (!asked || !footageContinues(asked.metaJson)) return null;
   let from = asked;
   try {
-    const later = await db.asset.findMany({
+    const others = await db.asset.findMany({
       where: { shopId, type: "VIDEO_AD", status: { not: "FAILED" }, id: { not: asked.id }, metaJson: { contains: `"id":"${seriesKeyOf(asked).replace(/[^A-Za-z0-9_-]/g, "")}"` } },
       orderBy: { createdAt: "desc" }, take: 12, select: pick,
     });
-    from = latestNight(asked, [...later, asked]);
+    // (NEWEST FIRST with the named piece IN ITS PLACE — latestNight takes the first finished one it meets. The series'
+    //  other pieces are OLDER ones too: put after them all, the latest named — the Archive's own mark — went on from the
+    //  night before it, and night 4 was filmed again as a second "episode 3" — review, 2026-11-25)
+    from = latestNight(asked, [...others, asked].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
   } catch { /* goes on from the piece that was named */ }
   return footageSeriesOf(from);
 }
