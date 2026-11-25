@@ -102,7 +102,7 @@ test("a told story's detail shot shows ONE person's hands — two people's hands
 test("a story picture has nobody the words do not put there, and everybody in it ONCE", async () => {
   const sp = await import("../app/lib/story-picture.ts");
   assert.ok(sp.NO_EXTRAS.includes("no passer-by, no figure in the distance, no one at a window or a door") && sp.NO_EXTRAS.includes("appears exactly ONCE"));
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
   // (…and nobody in a story picture looks into the camera: the parents "turning toward him in alarm" faced the lens)
   const spx = await import("../app/lib/story-picture.ts");
   assert.ok(spx.NO_LENS.startsWith("Nobody looks into the camera: each one looks at whoever or whatever this moment has them looking at"));
@@ -259,4 +259,36 @@ test("inside a house its outside walls are not drawn; outside stays outside; the
   assert.ok(pr.IDEA_CHECK.includes("Then read it as somebody who has only heard it: the ending makes sense from what the story told, and turns on nothing it never told.") && pr.IDEA_CHECK.endsWith("Change whatever is not."));
   const mo = await import("../app/lib/story-motion.ts");
   assert.ok(mo.motionPrompt("x").includes("Every face stays exactly the face it is — its features, its skin, its smile — never turning into another face or a more ordinary one."));
+});
+
+/* "STILL SHOTTY" (the owner, 2026-11-25, of "Whoever Waits on the Porch"): its ghost was "the ghost lady, a tall
+ * woman who stands unnaturally still…" — a creature only by her NAME — so she was drawn as a PERSON: whole, evenly
+ * lit, grinning and waving at the window like a decoration. And its last picture stood the locked front door
+ * wide open onto the porch. */
+test("a story's own creature is known by its name as well as its look; a door the words do not open is shut", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  const ghost = "a tall woman who stands unnaturally still, her pale gown hanging damp and heavy, her smile stretched too wide";
+  assert.equal(sp.keepGuess(ghost).kind, "person", "her look alone reads as a woman…");
+  assert.equal(sp.characterKind("the ghost lady", ghost), "monster", "…her name says what she is");
+  assert.equal(sp.characterKind("the shadow", "a dark shape with no face, standing under the old tree"), "monster");
+  assert.equal(sp.characterKind("the thing in the well", "a pale shape, long thin arms"), "monster");
+  assert.equal(sp.characterKind("Leni", "a 9-year-old girl with twin braids"), "person");
+  assert.equal(sp.characterKind("Ghost", "a quiet boy in a grey hoodie"), "person", "a proper name never decides it");
+  assert.equal(sp.characterKind("Howl", "a drowned ghost in a rotted oilskin"), "monster", "…the look still does");
+  assert.equal(sp.characterKind("the old fisherman", "a weathered man in his seventies"), "person");
+  // the creature word must be what the name IS
+  assert.equal(sp.characterKind("the shadow figure", "a tall dark shape"), "monster");
+  assert.equal(sp.characterKind("the headless rider", "a man in a black cloak on a horse"), "monster");
+  assert.equal(sp.characterKind("the drowned girl", "a girl of ten in a wet white dress"), "monster");
+  assert.equal(sp.characterKind("the monster under the bed", "something with long grey fingers"), "monster");
+  assert.equal(sp.characterKind("the ghost hunter", "a wiry man in his forties with a camera"), "person");
+  assert.equal(sp.characterKind("the shadow puppeteer", "a cheerful old man with a lamp"), "person");
+  assert.equal(sp.characterKind("the vampire slayer", "a young woman with a crossbow"), "person");
+  // its portrait is the photographed creature's, not a person's
+  assert.ok(sp.portraitPrompt(`the ghost lady, ${ghost}`, "dark horror").includes("wardrobe-test photograph"));
+  assert.ok(!sp.portraitPrompt("Leni, a 9-year-old girl with twin braids", "dark horror").includes("wardrobe-test photograph"));
+  // a door the words do not open is shut — said whenever a picture has a door, a window or an outside
+  assert.equal(sp.DOORS_SHUT, "Every door in the picture is SHUT unless these words open it.");
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT}` : \"\"}"));
 });

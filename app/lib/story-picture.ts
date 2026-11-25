@@ -65,6 +65,10 @@ export const insideNote = (visual: string): string => (INSIDE_OUT.test(String(vi
  *  parents' doorframe and both parents, "turning toward him in alarm", sat up in bed looking straight at the lens
  *  — the owner, of a film the day before: "talking about something outside yet looking towards the camera"). */
 export const NO_LENS = "Nobody looks into the camera: each one looks at whoever or whatever this moment has them looking at — each other, the door, the window — the way people in a film never notice the camera.";
+/** A DOOR THE WORDS DO NOT OPEN IS SHUT (2026-11-25): the kids' story's last picture — the children on the sofa after
+ *  they locked the front door — stood the front door wide open onto the lit porch; its "turning the lock" picture
+ *  turned a bolt on a door standing open. */
+export const DOORS_SHUT = "Every door in the picture is SHUT unless these words open it.";
 /** A SOUND IS NEVER DRAWN in a picture either (the same night's film drew its knocks as a glowing ring on a window). */
 export const STORY_SOUND = "A sound is never drawn: nothing glows, rings or lights up where a knock, a bell or a voice comes from.";
 /** TODAY'S REAL WORLD, IN THE PICTURE TOO. The writer is told a home is an ordinary modern home (premise-rules.ts →
@@ -301,11 +305,36 @@ export function creatureHidden(name: string): string {
 /** What the story's writer is told a creature of its own must be (a horror story only). */
 export const WHAT_FRIGHTENS = "WHAT FRIGHTENS — if this story has a creature, a ghost or a thing that YOU invent, it is NEARLY human and slightly wrong: give it ONE or TWO exact wrongnesses and nothing more — a smile far too wide, crowded with thin teeth; eyes sunk in dark sockets with one wet glint; fingers or a neck too long; skin like candle wax; a way of standing perfectly still. Never horns, wings, tentacles, armour, glowing magic, flames or a bare skull — those are costumes. Its \"cast\" entry says exactly what is wrong with it, plainly. And it is never fully seen: in most VISUALS it is half in darkness, behind something, far off, or only a part of it is in the frame — a hand on a door frame, a face at the edge of the light.";
 
+/** WHAT A STORY'S OWN CHARACTER IS — read from its NAME as well as its look. The writer is told a creature it invents
+ *  is "NEARLY human" (WHAT_FRIGHTENS), so its look reads like a person's ("a tall woman who stands unnaturally
+ *  still, her pale gown hanging damp…") and only its NAME says what it is: "the ghost lady". Read from the look
+ *  alone she was a PERSON — drawn whole and evenly lit, grinning and waving at the window like a decoration, in a
+ *  story the owner called "still shotty" (2026-11-25). A descriptive name ("the ghost lady", "the shadow", "the
+ *  thing in the well") that names a creature makes it one; a proper name ("Howl", "Mr. Fox") never decides it. */
+// (…the creature word must be what the name IS: last, or followed by who it is or where — "the ghost LADY", "the
+//  shadow FIGURE", "the thing IN the well". "The ghost hunter" and "the shadow puppeteer" are people.)
+const THREAT_ALONE = /^(?:shadows?|things?|presence|entity)$/i;
+const BEING_AFTER = /^(?:lady|woman|man|girl|boy|child|kid|baby|bride|groom|king|queen|mother|father|sister|brother|twins?|figure|rider|horseman|doll|nun|sailor|soldier|knight)$/i;
+const PLACE_AFTER = /^(?:in|under|at|from|behind|beneath|below|outside|inside|on|by|of|near|across)$/i;
+export function characterKind(name: string | null | undefined, look: string | null | undefined): "person" | "cartoon" | "monster" {
+  const words = String(name || "").replace(/\s+/g, " ").trim().split(" ").map((w) => w.replace(/[^\p{L}'’-]/gu, ""));
+  if (/^(?:the|a|an)$/i.test(words[0] || "")) {
+    for (let k = 1; k < words.length; k++) {
+      const w = words[k];
+      if (!w || !(MONSTERS.test(w) || UNDEAD.test(w) || THREAT_ALONE.test(w))) continue;
+      const next = words[k + 1] || "";
+      if (!next || BEING_AFTER.test(next) || PLACE_AFTER.test(next)) return "monster";
+    }
+  }
+  return keepGuess(String(look || "")).kind;
+}
+
 /** What the picture model is asked for: THIS one character, whole, on a plain ground, in the story's style. */
 export function portraitPrompt(entry: string, sceneHint: string, safe = ""): string {
   // A CREATURE A GROWN-UP STORY INVENTS is photographed, not illustrated (below): its portrait is what
   // every scene is drawn from, and a clean, evenly lit, rendered monster stays one in all of them.
-  if (!safe && keepGuess(castEntry(entry).look || entry).kind === "monster") {
+  // (…a creature by its NAME as well: "the ghost lady, a tall woman who…" — characterKind)
+  if (!safe && characterKind(castEntry(entry).name, castEntry(entry).look || entry) === "monster") {
     return `${sceneHint}. ${CREATURE_REAL} A wardrobe-test photograph of ${String(entry || "").replace(/\s+/g, " ").trim().slice(0, 320)} — this ONE creature alone, the whole figure from head to feet, standing, turned a little toward the camera, against a plain dark wall under one hard light from above, so that everything about it can be seen. ${NOTHING_WRITTEN}`;
   }
   return `${safe}${sceneHint}. A character portrait of ${String(entry || "").replace(/\s+/g, " ").trim().slice(0, 320)} — this ONE character alone, the whole body from head to feet, standing, turned a little toward the viewer, the face clearly seen, on a plain neutral background. In the exact art style of the story. ${NOTHING_WRITTEN}`;

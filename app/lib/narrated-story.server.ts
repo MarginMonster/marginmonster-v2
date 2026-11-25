@@ -39,7 +39,7 @@ import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { cameraLine, sceneShot } from "./story-shots";
-import { FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NO_LENS, NOTHING_WRITTEN, ONE_PICTURE, STORY_SOUND, TODAY_LOOK, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, creatureHidden, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryOutside, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
+import { DOORS_SHUT, FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NO_LENS, NOTHING_WRITTEN, ONE_PICTURE, STORY_SOUND, TODAY_LOOK, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, characterKind, creatureHidden, creatureNote, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryOutside, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -207,7 +207,7 @@ export async function narratedSceneSeeds(o: {
       const sheet = who[k].others.length && sheetRef ? sheetRef : null;
       const chosen = who[k].picked.map((p) => picked[p]).slice(0, sheet ? 2 : 3);
       const own = sheet ? [] : who[k].others.map(cardFor).filter((c): c is StoryCastRef => !!c).slice(0, Math.max(0, 3 - chosen.length));
-      const here: Array<{ name: string; look?: string; faceUrl?: string | null; kind?: "person" | "cartoon" | "monster" }> = [...chosen, ...own.map((c) => ({ name: c.name, look: c.look, faceUrl: c.img, kind: keepGuess(c.look || "").kind }))];
+      const here: Array<{ name: string; look?: string; faceUrl?: string | null; kind?: "person" | "cartoon" | "monster" }> = [...chosen, ...own.map((c) => ({ name: c.name, look: c.look, faceUrl: c.img, kind: characterKind(c.name, c.look) }))];
       // HOW THIS SCENE IS SEEN (story-shots.ts): the camera line its picture is given — none for a scene with no plan
       // (…what its own words say first — a storyboard written before the words won, or words the maker changed:
       //  story-shots.ts → sceneShot)
@@ -226,7 +226,9 @@ export async function narratedSceneSeeds(o: {
       here.forEach((c) => { const note = creatureNote(c.name, c.kind); if (note) notes.push(note); });
       // WHAT FRIGHTENS (story-picture.ts): a creature the STORY invented is mostly hidden — never a cast
       // member the maker chose (a show's own star is seen), never in a children's format
-      if (!tmpl.childSafe) own.forEach((c) => { if (keepGuess(c.look || "").kind === "monster") notes.push(creatureHidden(c.name)); });
+      // (…a creature by its NAME as well as its look: "the ghost lady, a tall woman who…" was drawn whole and lit,
+      //  grinning and waving at the window — story-picture.ts → characterKind)
+      if (!tmpl.childSafe) own.forEach((c) => { if (characterKind(c.name, c.look) === "monster") notes.push(creatureHidden(c.name)); });
       if (sheet) notes.push(`Reference image ${here.length + 1} is a sheet of other characters: from it take ONLY ${who[k].others.map((e) => e.slice(0, 200)).join("; and ")}.`);
       // (the place's own lines are kept apart: a scene that keeps coming back as a framed panel is drawn once
       //  more WITHOUT its place's sheet — from its words, as every scene was before there were sheets)
@@ -241,7 +243,7 @@ export async function narratedSceneSeeds(o: {
       const written = (scene.visual || "").replace(/\s+/g, " ").trim();
       const visual = oneMoment(noLettering(written));
       const twoMoments = oneMoment(written) !== written;
-      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS}` : ""}${tmpl.childSafe ? "" : ` ${TODAY_LOOK}`} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
+      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT}` : ""}${tmpl.childSafe ? "" : ` ${TODAY_LOOK}`} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
       // …and THE PICTURE IS LOOKED AT before it is kept: is each of the maker's cast in it (never asked
       // about clothes — a story dresses people for the part), and is it one picture. The cast is looked for
       // whenever the scene has any; panels only where the words described two moments (that is when a

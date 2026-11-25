@@ -209,5 +209,5 @@ test("what frightens: a creature a horror story invents is photographed, slightl
   assert.ok(engine.includes("(tmpl.key === \"horror\" ? `${WHAT_FRIGHTENS}\\n` : \"\") +"), "a horror story only");
   assert.ok(engine.includes("deep shadows that hide more than they show, shot on 35mm at night, underexposed, film grain"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("if (!tmpl.childSafe) own.forEach((c) => { if (keepGuess(c.look || \"\").kind === \"monster\") notes.push(creatureHidden(c.name)); });"), "only a creature the STORY invented — a cast member the maker chose is seen");
+  assert.ok(nar.includes("if (!tmpl.childSafe) own.forEach((c) => { if (characterKind(c.name, c.look) === \"monster\") notes.push(creatureHidden(c.name)); });"), "only a creature the STORY invented — a cast member the maker chose is seen");
 });

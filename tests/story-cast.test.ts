@@ -117,7 +117,7 @@ test("where the pictures are drawn: a portrait each, the reference in every scen
   assert.ok(fn.includes("const cards: StoryCastRef[] = castStillIn(carried.refs, others).filter((c) => fs.existsSync(path.join(RENDERS(), path.basename(c.img))));"));
   // in a scene: the maker's cast first, then the story's own — three reference pictures at most
   assert.ok(fn.includes("const own = sheet ? [] : who[k].others.map(cardFor).filter((c): c is StoryCastRef => !!c).slice(0, Math.max(0, 3 - chosen.length));"));
-  assert.ok(fn.includes("const here: Array<{ name: string; look?: string; faceUrl?: string | null; kind?: \"person\" | \"cartoon\" | \"monster\" }> = [...chosen, ...own.map((c) => ({ name: c.name, look: c.look, faceUrl: c.img, kind: keepGuess(c.look || \"\").kind }))];"), "each with what KIND of somebody they are (a creature is told to stay one)");
+  assert.ok(fn.includes("const here: Array<{ name: string; look?: string; faceUrl?: string | null; kind?: \"person\" | \"cartoon\" | \"monster\" }> = [...chosen, ...own.map((c) => ({ name: c.name, look: c.look, faceUrl: c.img, kind: characterKind(c.name, c.look) }))];"), "each with what KIND of somebody they are (a creature is told to stay one) — read from its name as well as its look");
   assert.ok(fn.includes("here.forEach((c, n) => notes.push(`${c.name} is the character in reference image ${n + 1}${c.look ? ` (${c.look.slice(0, 160)})` : \"\"}.`));"));
   // …a character with no portrait is still drawn, from its words
   assert.ok(fn.includes("const unpictured = sheet ? [] : who[k].others.filter((e) => !own.some((c) => c === cardFor(e)));"));
