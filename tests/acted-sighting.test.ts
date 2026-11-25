@@ -341,7 +341,8 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   assert.ok(eng.includes("const thingRef = (): { url: string; kind: ThingRef } | null => (threat ? { url: abs(threat.img) || threat.img, kind: threat.creature ? \"creature\" : \"figure\" } : firstShown ? { url: abs(firstShown.url) || firstShown.url, kind: \"scene\" } : null);"));
   assert.ok(eng.includes("revealSeen = !!seen || (!!ref && !creatureRef);"));
   // ON THE PIECE: who the monster was
-  assert.ok(eng.includes("...(threat ? { threat: { name: threat.name, img: threat.img, from: threat.from } } : {}),"));
+  // (…and, since S10b, its look and whether it is a creature: Part 2 carries it — film-series.ts → seriesCarryOf)
+  assert.ok(eng.includes("...(threat ? { threat: { name: threat.name, img: threat.img, from: threat.from, ...(threat.look ? { look: threat.look.slice(0, 200) } : {}), ...(threat.creature ? { creature: true } : {}) } } : {}),"));
 });
 
 test("a place whose first scene has the thing in view is drawn with its picture, bound by name like a cast member's photo", () => {

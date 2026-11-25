@@ -310,7 +310,9 @@ test("the next episode says who comes back, before a word is written", () => {
   const acted = JSON.stringify({ kind: "testmovie", template: "testmovie", castCards: [{ name: "X", look: "", img: "/renders/x.jpg" }] });
   assert.deepEqual(nextEpisodeCards([{ id: "b1", title: "Short Film — x", metaJson: acted, bodyJson: body }], 3)[0].setup.returning, []);
   const page = read("app", "routes", "web.film.tsx");
-  assert.ok(page.includes("setSeriesOwn(isNarr ? (s.returning || []) : []);"));
+  // (…but since S10b an acted film RECORDS its invented people's faces in meta.cast — film-series.ts → carryRecord — and
+  //  the card it opens says they are back: every carried face no roster pick holds. tests/series-carry.test.ts)
+  assert.ok(page.includes("setSeriesOwn(isNarr ? (s.returning || []) : s.cast.filter((m) => !!m.faceUrl && !d.roster.some((r) => r.img === m.faceUrl)).map((m) => ({ name: m.name, img: m.faceUrl as string })));"));
   assert.ok(page.includes(": seriesOwn.length ? <><Ico n=\"check\" size={12} /> {t(\"Back: {names}\", { names: seriesOwn.map((r) => r.name).join(\" + \") })}</>"));
   assert.ok(page.includes("? <span className=\"mm-card-face\" style={{ backgroundImage: `url(${seriesOwn[0].img})`, backgroundPosition: \"center top\" }} aria-hidden=\"true\" />"), "a full-length portrait is shown from the head down");
   // (2026-11-25: the STARS the maker picked — `pickedStars`; a Horror film's monster has its own line on the card)
