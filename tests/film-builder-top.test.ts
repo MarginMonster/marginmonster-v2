@@ -421,18 +421,6 @@ test("A SLIDER CANNOT ASK FIRST PER VALUE: under a written script a new length w
   for (const k of ["This rewrites your script", "Rewrite", "Keep"]) assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
 });
 
-test("on a phone the slider's 'free' tag takes a line of its own when it does not fit — the page stays 390px wide", () => {
-  // (review, 2026-11-25: one line in the film kit's grid, "gratis, solange wir an den Filmen feilen" ran to 401px,
-  //  French to 418, Spanish to 422 on a 390px phone. Measured after: 390 in en/de/fr/es/ur/zh at 0:17, 1:27, 5:00.)
-  const css = sheetOf("FS_STYLE");
-  const narrow = between(css, "@container fklen (max-width:599.98px){", "\n}\n");
-  assert.ok(narrow.includes(".mm-opts .fk-len-est{display:flex;flex-wrap:wrap;align-items:center;}"));
-  assert.ok(narrow.includes(".mm-opts .fk-len-free{order:2;max-width:100%;white-space:normal;}"));
-  assert.ok(narrow.includes(".mm-opts .fk-len-takes{order:3;flex:1 0 100%;min-width:0;}"));
-  // (the kit's own wide layout — one row with a dot — is left alone: it is the 600px-and-up container rule)
-  assert.ok(read("app", "components", "film", "film-kit-style.ts").includes("@container fklen (min-width:600px){"));
-});
-
 test("a long film says so in the Generate area: past twenty minutes, one calm line — the same estimate the slider says", () => {
   assert.ok(page.includes("const LONG_RENDER_MINUTES = 20;"));
   assert.ok(ui.includes("const [renderLo, renderHi] = lenMinutes(scenes);\n  const renderAbout = (renderLo + renderHi) / 2;\n  const longRender = isStoryboard && renderAbout > LONG_RENDER_MINUTES;"));

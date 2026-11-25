@@ -6136,15 +6136,6 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-lenwipe-go{border:0;background:var(--green,#0C7A46);color:#fff;}
 .mm-lenwipe-go:disabled{opacity:.55;cursor:default;}
 .mm-lenwipe-keep{border:1.5px solid #E2C98A;background:#FFFDF7;color:#7A5A12;}
-/* (…and on a phone the slider's "free while we finish films" tag goes to a line of its own when it does not fit
-   beside the tokens: one line in the film kit's grid, it ran 11 to 32px off a 390px phone in German, French and
-   Spanish — seen in review, 2026-11-25. Too long even alone, it wraps inside its tag. The render time stays last.) */
-@container fklen (max-width:599.98px){
-  .mm-opts .fk-len-est{display:flex;flex-wrap:wrap;align-items:center;}
-  .mm-opts .fk-len-cost{order:1;}
-  .mm-opts .fk-len-free{order:2;max-width:100%;white-space:normal;}
-  .mm-opts .fk-len-takes{order:3;flex:1 0 100%;min-width:0;}
-}
 /* THE SCENE BOARD'S NOTES (2026-11-25). The board is its own wall (components/film/SceneBoard.tsx, its look in
    film-kit-style.ts), not a cream card — so what is said under it stands on the PAGE, and carries its own paper
    to read the same on the cream page and the dark one: the "a rewrite replaces every line" warning (amber, as
