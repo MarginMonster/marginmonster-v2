@@ -1,0 +1,319 @@
+/* FILMS UP TO FIVE MINUTES — the numbers, the parts, and the wiring that makes them true.
+ *
+ * The owner, 2026-11-25, of the Length step (five buttons, "≈ 10s · 2 shots" to "≈ 30s · 6 shots"): "The how long
+ * can be adjusted to a sexy slider allowing up to 5 minutes with estimated final pricing for generations".
+ *
+ * A slider that says five minutes is a promise: this file holds the page's numbers (film-length.ts) to what the
+ * two engines really make — the same clamp in both, a script written in parts, a join made in parts, a film that
+ * is picked up after a restart without paying for a finished shot twice, and a job that says it is alive while it
+ * works for two hours.
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  FILM_TOKENS_PER_SECOND, MAX_FILM_SECONDS, SHOT_SECONDS, WRITE_AT_ONCE, clampShots, clockLabel, filmPlaces, lengthStops, maxShots, minShots, partBrief, planBrief, planSchema,
+  renderMinutes, scriptParts, secondsFor, takePlan, tokensFor, turnPart, type FilmWay,
+} from "../app/lib/film-length.ts";
+import { TYPICAL_SHOT_SECONDS, clipSecondsFor, estimateSpeakSeconds } from "../app/lib/speech-meter.ts";
+import { MOTION_USD_PER_SECOND, motionSeconds, storyTypicalSeconds } from "../app/lib/story-motion.ts";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
+const WAYS: FilmWay[] = ["acted", "narrated"];
+
+/* ---- THE NUMBERS ---- */
+
+test("five minutes is 52 acted shots or 32 told scenes — and a slow narrator's five minutes is fewer", () => {
+  assert.equal(MAX_FILM_SECONDS, 300);
+  assert.deepEqual(SHOT_SECONDS, { acted: 5.8, narrated: 9.5 });
+  assert.equal(maxShots("acted"), 52);
+  assert.equal(maxShots("narrated"), 32);
+  assert.equal(minShots("acted"), 1);
+  assert.equal(minShots("narrated"), 3);
+  // the fewest shots that REACH five minutes: one fewer falls short of it
+  for (const way of WAYS) {
+    assert.ok(maxShots(way) * SHOT_SECONDS[way] >= MAX_FILM_SECONDS, way);
+    assert.ok((maxShots(way) - 1) * SHOT_SECONDS[way] < MAX_FILM_SECONDS, way);
+  }
+  // a narrator who takes 14 seconds a scene (the page's figure for the Hollow voice) tells five minutes in 22
+  assert.equal(maxShots("narrated", 14), 22);
+  assert.equal(maxShots("narrated", 10), 30);
+  // …and a pace can only LOWER the ceiling: the engines' limit is the one with no pace
+  assert.equal(maxShots("narrated", 5), 32);
+  assert.equal(maxShots("acted", 3), 52);
+  assert.equal(maxShots("acted", NaN), 52);
+});
+
+test("an acted shot is 5.8 seconds: what the meter says a written line comes to, and what this morning's films ran", () => {
+  // a line as the writer is told to write it: 15-18 words, two sentences
+  const lines = [
+    "I told you not to come back here. Nothing in this house belongs to you anymore.",
+    "You say that, but the key was under the mat. Somebody wanted me to find it.",
+    "Listen to me, there is no key. We changed every lock the week she died.",
+  ];
+  for (const l of lines) {
+    const said = estimateSpeakSeconds(l);
+    // what stays in the film is the line and a breath at each end, less a few frames of dissolve
+    assert.ok(Math.abs(said + 0.5 - SHOT_SECONDS.acted) <= 0.9, `${said.toFixed(2)} s said`);
+    // …and what is PAID for is the take, which is longer than what stays (the price is reckoned on it)
+    assert.ok(clipSecondsFor(l) >= 6 && clipSecondsFor(l) <= 8, `${clipSecondsFor(l)} s take`);
+  }
+  // five shots: 29 s — inside the 26 to 32 s the films of 2026-11-25 ran (the card's five-a-shot said 25)
+  assert.equal(secondsFor("acted", 5), 29);
+  assert.ok(secondsFor("acted", 5) >= 26 && secondsFor("acted", 5) <= 32);
+  assert.ok(5 * TYPICAL_SHOT_SECONDS < 26, "the old card's figure was under every one of them");
+  // five told scenes: 47.5 s and the 0.8 s tail — the 47 to 50 s they ran
+  assert.equal(secondsFor("narrated", 5), 48);
+});
+
+test("a count is held to what is made: whole, between the floor and five minutes", () => {
+  assert.equal(clampShots("acted", 4), 4);
+  assert.equal(clampShots("acted", 4.4), 4);
+  assert.equal(clampShots("acted", 999), 52);
+  assert.equal(clampShots("acted", -3), 1);
+  assert.equal(clampShots("narrated", 1), 3);
+  assert.equal(clampShots("narrated", 40), 32);
+  // nothing usable: the fallback (held too), else the floor
+  assert.equal(clampShots("acted", NaN, { fallback: 4 }), 4);
+  assert.equal(clampShots("acted", "", { fallback: 400 }), 52);
+  assert.equal(clampShots("narrated", undefined), 3);
+  assert.equal(clampShots("narrated", 0, { fallback: 6 }), 6);
+  // a format's own floor (a horror film is a line and then the scare)
+  assert.equal(clampShots("acted", 1, { min: 2 }), 2);
+  assert.equal(clampShots("acted", NaN, { min: 2 }), 2);
+  // a slow narrator's ceiling
+  assert.equal(clampShots("narrated", 30, { per: 14 }), 22);
+});
+
+test("the slider's stops: increasing, from the floor, every shot up to a minute, ending exactly at five minutes", () => {
+  for (const way of WAYS) {
+    const stops = lengthStops(way);
+    assert.equal(stops[0], minShots(way), way);
+    assert.equal(stops[stops.length - 1], maxShots(way), way);
+    assert.equal(clockLabel(secondsFor(way, stops[stops.length - 1])), "5:00", way);
+    for (let i = 1; i < stops.length; i++) assert.ok(stops[i] > stops[i - 1], `${way}: ${stops.join(",")}`);
+    // every shot while the film is under a minute…
+    const short = stops.filter((n) => n * SHOT_SECONDS[way] < 60);
+    assert.deepEqual(short, Array.from({ length: short.length }, (_, i) => minShots(way) + i), way);
+    // …then coarser: no two stops less than about ten seconds apart past the minute, and never a gap over 45 s
+    for (let i = 1; i < stops.length; i++) {
+      const gap = (stops[i] - stops[i - 1]) * SHOT_SECONDS[way];
+      if (stops[i - 1] * SHOT_SECONDS[way] >= 120) assert.ok(gap >= 20, `${way}: ${stops[i - 1]}→${stops[i]}`);
+      assert.ok(gap <= 45, `${way}: ${stops[i - 1]}→${stops[i]} is ${gap.toFixed(0)} s`);
+    }
+    assert.ok(stops.length >= 12 && stops.length <= 30, `${way}: ${stops.length} stops — a slider, not a list`);
+    // seconds, tokens and minutes never go down as the slider goes up
+    for (let i = 1; i < stops.length; i++) {
+      assert.ok(secondsFor(way, stops[i]) > secondsFor(way, stops[i - 1]) || secondsFor(way, stops[i]) === MAX_FILM_SECONDS, way);
+      assert.ok(tokensFor(way, secondsFor(way, stops[i])) >= tokensFor(way, secondsFor(way, stops[i - 1])), way);
+      assert.ok(renderMinutes(way, stops[i])[0] >= renderMinutes(way, stops[i - 1])[0] && renderMinutes(way, stops[i])[1] >= renderMinutes(way, stops[i - 1])[1], way);
+    }
+  }
+  assert.deepEqual(lengthStops("acted"), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 21, 26, 31, 36, 41, 46, 52]);
+  assert.deepEqual(lengthStops("narrated"), [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 19, 22, 25, 28, 32]);
+  // a format's own floor; a slow narrator's own five minutes
+  assert.equal(lengthStops("acted", { min: 2 })[0], 2);
+  const slow = lengthStops("narrated", { per: 14 });
+  assert.equal(slow[0], 3);
+  assert.equal(slow[slow.length - 1], 22);
+  assert.equal(clockLabel(secondsFor("narrated", 22, 14)), "5:00");
+});
+
+test("a clock reads to the nearest five seconds, and a film is never said to be longer than five minutes", () => {
+  assert.equal(clockLabel(20), "0:20");
+  assert.equal(clockLabel(87), "1:25");
+  assert.equal(clockLabel(90), "1:30");
+  assert.equal(clockLabel(300), "5:00");
+  assert.equal(clockLabel(0), "0:00");
+  assert.equal(clockLabel(-4), "0:00");
+  assert.equal(clockLabel(58), "1:00");
+  assert.equal(secondsFor("acted", 52), 300);
+  assert.equal(secondsFor("narrated", 32), 300);
+  assert.equal(secondsFor("acted", 10), 58);
+  assert.equal(secondsFor("narrated", 6), 57);
+  assert.equal(secondsFor("narrated", 6, 14), 84);
+  assert.equal(secondsFor("acted", 0), 0);
+});
+
+test("THE PRICE: an estimate, rounded up to a five — and at these rates every generation clears his 20%", () => {
+  assert.deepEqual(FILM_TOKENS_PER_SECOND, { acted: 5, narrated: 2.5 });
+  assert.equal(tokensFor("acted", 20), 100);
+  assert.equal(tokensFor("acted", 29), 145);
+  assert.equal(tokensFor("acted", 29.1), 150);
+  assert.equal(tokensFor("acted", 300), 1500);
+  assert.equal(tokensFor("narrated", 57), 145);
+  assert.equal(tokensFor("narrated", 300), 750);
+  assert.equal(tokensFor("acted", 0), 0);
+  for (const way of WAYS) for (const s of [5, 37, 141, 299]) assert.equal(tokensFor(way, s) % 5, 0);
+  // the arithmetic in film-length.ts, from the code's own figures. A Studio token is worth $0.0433.
+  const TOKEN_USD = 0.0433;
+  // ACTED: the take is paid by the second, at fal Kling 3 Omni pro's $0.14 — a 7 s take for 5.8 s of film
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  assert.ok(eng.includes("fal: \"fal · Kling 3 Omni pro ($0.14/s)\","));
+  const take = clipSecondsFor("I told you not to come back here. Nothing in this house belongs to you anymore.");
+  assert.equal(take, 7);
+  const acted = (take * 0.14) / SHOT_SECONDS.acted + 0.011; // …and about a cent a second for pictures, looks, listens
+  assert.ok(acted > 0.17 && acted < 0.19, `$${acted.toFixed(3)} a second`);
+  assert.ok(FILM_TOKENS_PER_SECOND.acted * TOKEN_USD >= acted * 1.2, "acted: at least 20% over what it costs");
+  // NARRATED: every scene's picture moves, asked for in whole seconds; a 2K picture a scene, one in three twice
+  const told = (motionSeconds(SHOT_SECONDS.narrated) * MOTION_USD_PER_SECOND + 0.15 * 1.33 + 0.05) / SHOT_SECONDS.narrated + 0.004;
+  assert.ok(told > 0.07 && told < 0.09, `$${told.toFixed(3)} a second`);
+  assert.ok(FILM_TOKENS_PER_SECOND.narrated * TOKEN_USD >= told * 1.2, "told: at least 20% over what it costs");
+});
+
+test("how long it takes: acted shots one after another; a told story by the sum the page already counts down from", () => {
+  // ACTED: 2.5 to 3 minutes a shot (measured 2026-11-25), a little wider at the top
+  assert.deepEqual(renderMinutes("acted", 5), [15, 20]);
+  assert.deepEqual(renderMinutes("acted", 52), [132, 170]);
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  assert.ok(eng.includes("for (let i = clips.length; i < treatment.scenes.length; i++) {"), "one shot after another: each is seeded from the last frame of the one before");
+  // NARRATED: never under what the page's own measured sum says, for any length it could be before today
+  for (const n of [3, 4, 6, 8, 12]) {
+    for (const moves of [true, false]) {
+      const [lo, hi] = renderMinutes("narrated", n, { moves });
+      const s = storyTypicalSeconds(n, moves);
+      assert.ok(lo >= Math.floor((s * 0.8) / 60) && hi >= Math.round((s * 1.35) / 60), `${n} scenes, moves=${moves}: ${lo}-${hi} against ${s} s`);
+      assert.ok(hi > lo);
+    }
+  }
+  assert.deepEqual(renderMinutes("narrated", 6), [4, 6]);
+  assert.deepEqual(renderMinutes("narrated", 32), [14, 26]);
+  assert.ok(renderMinutes("narrated", 6, { moves: false })[1] < renderMinutes("narrated", 6)[1], "still pictures are quicker");
+  // the engine's own shape, which the sum counts: pictures four at a time, clips three at a time
+  const told = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(told.includes("await Promise.all(Array.from({ length: Math.min(4, todo.length) }, () => worker()));"));
+  assert.ok(read("app", "lib", "story-motion.server.ts").includes("const AT_ONCE = 3;"));
+});
+
+/* ---- A LONG SCRIPT IS WRITTEN IN PARTS ---- */
+
+test("a script is dealt into parts: one answer up to six shots or twelve scenes, then scenes of six and parts of eight", () => {
+  assert.deepEqual(WRITE_AT_ONCE, { acted: 6, narrated: 12 });
+  // as it always was
+  for (let n = 1; n <= 6; n++) assert.deepEqual(scriptParts("acted", n), [n]);
+  for (let n = 3; n <= 12; n++) assert.deepEqual(scriptParts("narrated", n), [n]);
+  // a long film: as few parts as hold it, as even as they come
+  assert.deepEqual(scriptParts("acted", 7), [4, 3]);
+  assert.deepEqual(scriptParts("acted", 13), [5, 4, 4]);
+  assert.deepEqual(scriptParts("acted", 52), [6, 6, 6, 6, 6, 6, 6, 5, 5]);
+  assert.deepEqual(scriptParts("narrated", 13), [7, 6]);
+  assert.deepEqual(scriptParts("narrated", 32), [8, 8, 8, 8]);
+  assert.deepEqual(scriptParts("narrated", 22), [8, 7, 7]);
+  for (const way of WAYS) {
+    for (let n = minShots(way); n <= maxShots(way); n++) {
+      const parts = scriptParts(way, n);
+      assert.equal(parts.reduce((a, b) => a + b, 0), n, `${way} ${n}`);
+      assert.ok(Math.max(...parts) <= WRITE_AT_ONCE[way], `${way} ${n}: no part is more than one answer writes`);
+      assert.ok(Math.max(...parts) - Math.min(...parts) <= 1, `${way} ${n}: even`);
+      if (way === "acted") assert.ok(Math.min(...parts) >= Math.min(n, 3), `${n}: no scene of one or two lines`);
+    }
+  }
+  // every stop of the slider is a script that can be dealt
+  for (const way of WAYS) for (const n of lengthStops(way)) assert.ok(scriptParts(way, n).length >= 1);
+});
+
+test("an acted film comes back to its places: about half as many places as scenes, five at most, a turn in the middle", () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map(filmPlaces), [1, 2, 2, 3, 3, 4, 4, 5, 5]);
+  assert.deepEqual([1, 2, 3, 4, 5, 9].map(turnPart), [0, 0, 2, 2, 3, 5]);
+});
+
+const PLAN_ACTED = {
+  title: "The Second Key",
+  musicMood: "uneasy strings",
+  cast: ["Odalys, a wiry night nurse in her forties with a grey braid", "Bram, a broad locksmith in his fifties in a canvas jacket"],
+  places: ["a narrow hallway at night, one bulb", "A LOCKSMITH'S VAN in the rain", "an attic nobody listed"],
+  parts: [
+    { where: "a narrow hallway at night, one bulb", what: "Odalys shows Bram the door that will not open. He finds the lock was changed from inside. She admits she heard it turn." },
+    { where: "a locksmith's van in the rain", what: "Bram wants to leave; Odalys will not let him. He finds a second key cut to his own pattern. They go back." },
+    { where: "a narrow hallway at night, one bulb", what: "The door is open now. What is behind it is their answer, and it is not empty." },
+  ],
+};
+
+test("the plan, checked: exactly its parts, each acted scene in one of its places, in the list's own words", () => {
+  const plan = takePlan(PLAN_ACTED, { way: "acted", parts: 3 });
+  assert.ok(plan);
+  assert.equal(plan.parts.length, 3);
+  assert.equal(plan.title, "The Second Key");
+  // a place that differs only in its letters' case is the listed one (other words would be another picture)
+  assert.equal(plan.parts[1].where, "A LOCKSMITH'S VAN in the rain");
+  assert.equal(plan.parts[0].where, plan.parts[2].where, "the film comes back to the hallway: the same words, the same place");
+  // only the places a scene is set in are kept
+  assert.deepEqual(plan.places, ["a narrow hallway at night, one bulb", "A LOCKSMITH'S VAN in the rain"]);
+  // a longer answer is cut to the film's parts; a shorter one is not a plan
+  assert.equal(takePlan(PLAN_ACTED, { way: "acted", parts: 2 })?.parts.length, 2);
+  assert.equal(takePlan(PLAN_ACTED, { way: "acted", parts: 4 }), null);
+  // a place a scene names that was not listed is listed
+  const stray = takePlan({ ...PLAN_ACTED, places: ["a narrow hallway at night, one bulb"] }, { way: "acted", parts: 3 });
+  assert.deepEqual(stray?.places, ["a narrow hallway at night, one bulb", "a locksmith's van in the rain"]);
+  // no cast, no place for a scene, nothing at all: not a plan
+  assert.equal(takePlan({ ...PLAN_ACTED, cast: [] }, { way: "acted", parts: 3 }), null);
+  assert.equal(takePlan({ ...PLAN_ACTED, parts: PLAN_ACTED.parts.map((p, i) => (i === 1 ? { ...p, where: "" } : p)) }, { way: "acted", parts: 3 }), null);
+  assert.equal(takePlan(null, { way: "acted", parts: 3 }), null);
+  assert.equal(takePlan("a plan", { way: "acted", parts: 3 }), null);
+  assert.equal(takePlan({ ...PLAN_ACTED, parts: "three" }, { way: "acted", parts: 3 }), null);
+  // a told story's parts have no place of their own; its places are kept as "name: look"
+  const told = takePlan({ title: "t", musicMood: "m", cast: ["Wren, a girl of nine in a yellow raincoat"], places: ["the ferry: an old low black wooden river ferry with a square wheelhouse"], parts: [{ what: "Wren boards the ferry alone and finds the wheelhouse door open." }, { what: "The ferryman is not who she was told he was." }] }, { way: "narrated", parts: 2 });
+  assert.deepEqual(told?.parts.map((p) => p.where), ["", ""]);
+  assert.deepEqual(told?.places, ["the ferry: an old low black wooden river ferry with a square wheelhouse"]);
+  // the shape it is asked for in
+  const acted = planSchema("acted") as { required: string[]; properties: { parts: { items: { required: string[] } } } };
+  assert.deepEqual(acted.required, ["title", "musicMood", "cast", "places", "parts"]);
+  assert.deepEqual(acted.properties.parts.items.required, ["where", "what"]);
+  assert.deepEqual((planSchema("narrated") as typeof acted).properties.parts.items.required, ["what"]);
+});
+
+test("what the planner is asked: its scenes counted, a turn in the middle, places it comes back to, the ending at the end", () => {
+  const nine = planBrief("acted", { sizes: scriptParts("acted", 52), ending: "on what the two SEE" });
+  assert.ok(nine.includes("about 5:00, in 9 SCENES"));
+  assert.ok(nine.includes("5 or 6 spoken lines long"));
+  assert.ok(nine.includes("the 5 PLACES this film is set in"));
+  assert.ok(nine.includes("\"parts\" — EXACTLY 9 entries"));
+  assert.ok(nine.includes("Scene 5 is THE TURN"));
+  assert.ok(nine.includes("comes BACK to a place it has been at least once") && nine.includes("two scenes in a row are never in the same place"));
+  assert.ok(nine.includes("The LAST scene ends the film on what the two SEE — and nothing before it does"));
+  assert.ok(nine.includes("You do not write the lines now"));
+  // two scenes: a place each, and no turn to name
+  const two = planBrief("acted", { sizes: scriptParts("acted", 8) });
+  assert.ok(two.includes("in 2 SCENES") && two.includes("4 spoken lines long") && two.includes("the 2 PLACES"));
+  assert.ok(two.includes("Each scene is in a place of its own.") && !two.includes("THE TURN"));
+  assert.ok(two.includes("The LAST scene ends the film the way its kind of story ends"));
+  // a told story: pictures and parts, the engine's own words for its places, the same few characters
+  const told = planBrief("narrated", { sizes: scriptParts("narrated", 32), ending: "and says the lesson in one clear closing line", placesAsk: "the ONE or TWO places this story keeps coming back to" });
+  assert.ok(told.includes("about 5:00 of telling, 32 pictures, in 4 PARTS"));
+  assert.ok(told.includes("• \"places\" — the ONE or TWO places this story keeps coming back to"));
+  assert.ok(told.includes("Part 2 is THE TURN"));
+  assert.ok(told.includes("whoever matters at the end is met in part 1"));
+  assert.ok(told.includes("The LAST part ends the story and says the lesson in one clear closing line"));
+  // a slow narrator's five minutes is said as five minutes
+  assert.ok(planBrief("narrated", { sizes: scriptParts("narrated", 22), per: 14 }).includes("about 5:00 of telling, 22 pictures"));
+});
+
+test("where a part stands: the whole plan, its own line of it, what came before — and only the last part ends the film", () => {
+  const plan = takePlan(PLAN_ACTED, { way: "acted", parts: 3 })!;
+  const first = partBrief("acted", { plan, index: 0, shots: 6, idea: "A locksmith is called to a door that \"locks itself\"." });
+  assert.ok(first.startsWith("THIS IS SCENE 1 OF 3 of one longer film, made from this idea: \"A locksmith is called to a door that 'locks itself'.\"."));
+  assert.ok(first.includes("  2. [A LOCKSMITH'S VAN in the rain] Bram wants to leave"));
+  assert.ok(first.includes("Write ONLY scene 1"));
+  assert.ok(first.includes("IT IS SET IN \"a narrow hallway at night, one bulb\" — every one of its shots has exactly these words as its WHERE"));
+  assert.ok(!first.includes("ended on:"), "nothing came before the first scene");
+  assert.ok(first.includes("IT DOES NOT END THE FILM") && first.includes("what scene 2 picks up") && !first.includes("IT ENDS THE FILM"));
+  // the middle: told the last lines before it (two at most), and still not the end
+  const mid = partBrief("acted", { plan, index: 1, shots: 6, before: ["ODALYS: a.", "BRAM: b.", "ODALYS: I heard it turn. From this side."] });
+  assert.ok(mid.includes("The scene before it ended on:\n  BRAM: b.\n  ODALYS: I heard it turn. From this side.\nThis one begins AFTER that"));
+  assert.ok(!mid.includes("ODALYS: a."));
+  assert.ok(mid.includes("IT DOES NOT END THE FILM") && mid.includes("what scene 3 picks up"));
+  // the last: it ends the film — and it is back in the hallway, told what that place's picture was drawn from
+  const last = partBrief("acted", { plan, index: 2, shots: 6, seenAs: "Odalys holds a torch on the lock while Bram kneels at the \"stuck\" door" });
+  assert.ok(last.includes("IT ENDS THE FILM") && !last.includes("IT DOES NOT END"));
+  assert.ok(last.includes("The film has been here before: this place's picture was drawn from \"Odalys holds a torch on the lock while Bram kneels at the 'stuck' door\""));
+  // a told story's part: no place of its own, the storyteller carries on
+  const toldPlan = takePlan({ title: "t", musicMood: "m", cast: ["Wren, a girl of nine"], places: [], parts: [{ what: "Wren boards the ferry alone at dusk." }, { what: "The ferryman is not who she was told." }] }, { way: "narrated", parts: 2 })!;
+  const part = partBrief("narrated", { plan: toldPlan, index: 0, shots: 7 });
+  assert.ok(part.startsWith("THIS IS PART 1 OF 2 of one longer story. Its plan"));
+  assert.ok(part.includes("  1. Wren boards the ferry alone at dusk.") && !part.includes("IT IS SET IN"));
+  assert.ok(part.includes("IT DOES NOT END THE STORY") && part.includes("its last sentence leaves open what part 2 picks up"));
+  assert.ok(partBrief("narrated", { plan: toldPlan, index: 1, shots: 6, before: ["And the wheelhouse door stood open."] }).includes("IT ENDS THE STORY"));
+});
