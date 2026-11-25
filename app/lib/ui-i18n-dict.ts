@@ -10,6 +10,7 @@ import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
+  "Couldn't rewrite that scene — it is as it was. Try the note again.": "No se pudo reescribir esa escena — sigue como estaba. Prueba la nota otra vez.",
   "Sketching…": "Dibujando…",
   "Storyboard": "Guion gráfico",
   "Untitled film": "Película sin título",
@@ -3292,6 +3293,7 @@ const es: Record<string, string> = {
 
 const fr: Record<string, string> = {
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
+  "Couldn't rewrite that scene — it is as it was. Try the note again.": "Impossible de réécrire cette scène — elle est restée telle quelle. Réessaie la note.",
   "Sketching…": "Esquisse en cours…",
   "Storyboard": "Storyboard",
   "Untitled film": "Film sans titre",
@@ -6554,6 +6556,7 @@ const fr: Record<string, string> = {
 
 const de: Record<string, string> = {
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
+  "Couldn't rewrite that scene — it is as it was. Try the note again.": "Diese Szene ließ sich nicht neu schreiben – sie ist geblieben, wie sie war. Versuch die Notiz noch einmal.",
   "Sketching…": "Wird skizziert…",
   "Storyboard": "Storyboard",
   "Untitled film": "Film ohne Titel",
@@ -9825,6 +9828,7 @@ const de: Record<string, string> = {
 
 const zh: Record<string, string> = {
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
+  "Couldn't rewrite that scene — it is as it was. Try the note again.": "没能重写这个场景——它保持原样。请再试一次这条指示。",
   "Sketching…": "正在画草图…",
   "Storyboard": "分镜板",
   "Untitled film": "未命名影片",
@@ -13150,6 +13154,7 @@ const zh: Record<string, string> = {
 
 const ur: Record<string, string> = {
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
+  "Couldn't rewrite that scene — it is as it was. Try the note again.": "یہ منظر دوبارہ نہیں لکھا جا سکا — یہ جیسا تھا ویسا ہی ہے۔ ہدایت دوبارہ آزمائیں۔",
   "Sketching…": "خاکہ بن رہا ہے…",
   "Storyboard": "اسٹوری بورڈ",
   "Untitled film": "بے نام فلم",

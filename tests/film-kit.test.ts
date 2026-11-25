@@ -48,7 +48,7 @@ import {
   sketchKey, sketchPrompt, sketchesFor, unsketched,
 } from "../app/lib/film-sketch.ts";
 import {
-  GENERIC_NOTES, NEW_TAKE, applyRewrite, noteByKey, parseRewrite, parseRewriteLines, rewriteBrief, rewriteSchema, speakersInPlace,
+  GENERIC_NOTES, NEW_TAKE, REWRITE_FAILED, applyRewrite, noteByKey, parseRewrite, parseRewriteLines, rewriteBrief, rewriteSchema, speakersInPlace,
 } from "../app/lib/film-rewrite.ts";
 import { nameTok } from "../app/lib/character-prompts.ts";
 import { LINE_WORDS_MAX } from "../app/lib/dialogue-fit.ts";
@@ -980,9 +980,12 @@ test("every word the three pieces show is in all five languages — with its {pl
   for (const f of ["SceneBoard.tsx", "LengthSlider.tsx", "StarterNudges.tsx"]) {
     for (const m of read("app", "components", "film", f).matchAll(/\bt\("((?:[^"\\]|\\.)*)"/g)) found.add(JSON.parse(`"${m[1]}"`));
   }
-  // …and the words that reach t() through a variable: the empty box's line, and the notes' own labels
+  // …and the words that reach t() through a variable: the empty box's line, the notes' own labels, and what
+  // the page says when a note could not be carried out
   found.add(nudges.nudgeHint);
   for (const n of [...GENERIC_NOTES, NEW_TAKE]) found.add(n.label);
+  found.add(REWRITE_FAILED);
+  assert.equal(REWRITE_FAILED, "Couldn't rewrite that scene — it is as it was. Try the note again.");
   assert.ok(found.size >= 60, `${found.size} strings`);
   for (const must of ["Rewrite all", "CUT TO", "FADE IN", "Seen, not said", "New take", "Need a nudge?", "More ideas", "free while we finish films", "≈ {n} tokens", "renders in about {a}–{b} min", "SC {n}", "Sketching…"]) assert.ok(found.has(must), must);
   const holes = (s: string) => (s.match(/\{[a-z]+\}/g) || []).sort().join(",");

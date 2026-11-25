@@ -48,6 +48,10 @@ export const GENERIC_NOTES: ReadonlyArray<DirectorNote> = [
   { key: "twist", label: "Add a twist", ask: "Add a twist: one of them says or reveals something in this scene that changes what the other — and the viewer — thought was going on, without breaking the scenes after it." },
 ];
 
+/** What the page says when a note could not be carried out — the scene is as it was, and the note can be
+ *  tapped again. (An English source string: the action says it with tr(), and it is in all five languages.) */
+export const REWRITE_FAILED = "Couldn't rewrite that scene — it is as it was. Try the note again.";
+
 /** The note a key names, among the ones this scene offers ("New take" is always one of them). */
 export function noteByKey(notes: ReadonlyArray<DirectorNote> | null | undefined, key: unknown): DirectorNote | null {
   const k = String(key ?? "").trim();
