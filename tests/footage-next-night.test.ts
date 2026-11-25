@@ -301,6 +301,11 @@ test("the cards go on: a writer that went back to NIGHT 1 has every count moved 
   assert.deepEqual(nightsOn([m("NIGHT 3 · 3:14 AM"), m("NIGHT 4 · 1:00 AM"), m("NIGHT 6")], 3, 4).map((x) => x.when), ["NIGHT 3 · 3:14 AM", "NIGHT 4 · 1:00 AM", "NIGHT 6"], "picked up right there");
   assert.deepEqual(nightsOn([m("NIGHT ONE"), m("2:00 AM"), m("DAY TWO · NOON")], 3, 4).map((x) => x.when), ["NIGHT 4", "2:00 AM", "DAY 5 · NOON"], "words become figures; a card with no count is left");
   assert.deepEqual(nightsOn([m("3:00 AM"), m("4:00 AM")], 3, 4).map((x) => x.when), ["3:00 AM", "4:00 AM"]);
+  // picked up right there, THEN counted from NIGHT 1 again (seen in the harness, 2026-11-25: one shift for all made the
+  // picked-up moment NIGHT 6) — the pick-up stays, and what went back goes on after it
+  assert.deepEqual(nightsOn([m("NIGHT 3 · 3:14 AM"), m("NIGHT 1 · 1:02 AM"), m("NIGHT 2 · 2:40 AM")], 3, 4).map((x) => x.when), ["NIGHT 3 · 3:14 AM", "NIGHT 4 · 1:02 AM", "NIGHT 5 · 2:40 AM"]);
+  // two moments of one night stay one night; a card never comes before the one ahead of it
+  assert.deepEqual(nightsOn([m("NIGHT 4 · 1:00 AM"), m("NIGHT 4 · 3:00 AM"), m("NIGHT 2")], 3, 4).map((x) => x.when), ["NIGHT 4 · 1:00 AM", "NIGHT 4 · 3:00 AM", "NIGHT 5"]);
   // never longer than a card may be
   for (const x of nightsOn([m("NIGHT 9 · THE LONGEST NIGHT"), m("NIGHT 10")], 98, 99)) assert.ok(x.when.length <= FOOTAGE_LIMITS.when, x.when);
 });
@@ -404,6 +409,60 @@ test("wiring: the builder's server read — this shop's own piece, never a faile
   assert.ok(fn.includes("orderBy: { createdAt: \"desc\" }, take: 12, select: pick,") && fn.includes("from = latestNight(asked, [...later, asked]);"));
   assert.ok(fn.includes("return footageSeriesOf(from);"));
   assert.ok(!fn.includes("request") && !fn.includes("formData"), "nothing from the page but the id");
+});
+
+/* ---- THE BUILDER ON THE NEXT NIGHT (routes/web.found-footage.tsx) ---- */
+
+test("the builder's server read: ?next=<id> → this shop's own piece, its series' latest; the page is shown only its banner", () => {
+  const src = read("app", "routes", "web.found-footage.tsx");
+  const loader = src.slice(src.indexOf("export const loader"), src.indexOf("export const action"));
+  const action = src.slice(src.indexOf("export const action"), src.indexOf("function CamScreen("));
+  // still behind the admin gate, before anything is read
+  assert.ok(loader.indexOf('throw new Response("Not found", { status: 404 })') < loader.indexOf("footageNextFor"));
+  assert.ok(loader.includes('const askedNext = (new URL(request.url).searchParams.get("next") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);'));
+  assert.ok(loader.includes("const s = await footageNextFor(shop.id, askedNext);\n      next = s ? nightBanner(s) : null;"));
+  assert.ok(loader.includes("    kept,\n    next,\n  });"));
+  // every post that writes or rolls reads it AGAIN off the piece — the page sends only the id
+  assert.ok(action.includes('const id = String(form.get("next") || "");') && action.includes('try { return await (await import("../lib/footage-film.server")).footageNextFor(shop.id, id); }'));
+  assert.ok(action.indexOf("const nightOf = async () => {") > action.indexOf('capabilitiesFor(shop.activePlan).has("creatorvideo")'), "after the plan checks");
+  assert.equal(action.split("await nightOf()").length - 1, 2, "the outline and the film — the only two that need it");
+  assert.ok(!action.includes('form.get("night")') && !action.includes("takeNight"), "never a series from the page");
+});
+
+test("the builder on a next night: the series' camera held, a calm banner, the box EMPTY and allowed to be, no starter cards, two moments at least", () => {
+  const ui = read("app", "routes", "web.found-footage.tsx");
+  // set from the last piece (the server's read): its camera and its shape
+  assert.ok(ui.includes("if (d.next) return { ...p, camera: d.next.camera };"));
+  assert.ok(ui.includes('const [wide, setWide] = useState<"9:16" | "16:9">(d.next?.aspect || "16:9");'));
+  // THE BANNER: "Night 4 of <title>" — picks up from: <the last card> <its last line>; ✕ is new footage
+  const banner = ui.slice(ui.indexOf('{next && (\n        <div className="ff-night" role="note">'), ui.indexOf("{/* 1 · WHAT WAS CAUGHT ON CAMERA?"));
+  assert.ok(banner.includes('{t("Night {n} of “{title}”", { n: next.night, title: isolate(next.title) })}'), "the title isolated in its own direction (an Urdu page)");
+  assert.ok(ui.includes("const isolate = (s: string): string => `${String.fromCodePoint(0x2068)}${s}${String.fromCodePoint(0x2069)}`;"));
+  assert.ok(!new RegExp(`[${String.fromCodePoint(0x2066)}-${String.fromCodePoint(0x2069)}]`).test(ui), "no invisible direction marks in the source itself");
+  assert.ok(banner.includes('<b>{t("Picks up from")}</b>{next.card ? <span className="ff-night-card" dir="ltr">{next.card}</span> : null}<q dir="auto">{next.line}</q>'));
+  assert.ok(banner.includes('<a className="ff-night-x" href="/web/found-footage" aria-label={t("Make new footage instead")}'));
+  assert.ok(banner.includes("<img src={next.pic}") && banner.includes('<i className="ff-night-rec"><b />REC</i>'));
+  assert.ok(ui.indexOf('<header className="ff-hero">') < ui.indexOf('<div className="ff-night" role="note">') && ui.indexOf('<div className="ff-night" role="note">') < ui.indexOf('<section className="ff-card ff-what"'), "under the hero, above the box");
+  // THE BOX: empty, and allowed to be — it asks what happens on THIS night
+  assert.ok(ui.includes('? t("What happens on night {n}? (or leave it — it picks up where it stopped)", { n: next.night })'));
+  assert.ok(ui.includes(': next && !own.trim() ? <><Ico n="check" size={13} /> {t("Empty is fine — the writer picks up where the last night stopped.")}</>'));
+  assert.ok(ui.includes("const ownReady = !!next || !written || own.trim().length >= 8;"));
+  assert.ok(ui.includes('{!next && <div role="radiogroup" aria-labelledby="ff-what">'), "no starter cards: a card brings a camera of its own");
+  // THE CAMERA: held — the card says so and does not open
+  assert.ok(ui.includes('aria-disabled={next ? true : undefined} onClick={() => { if (!next) tap("camera"); }}'));
+  assert.ok(ui.includes('{next ? t("The same camera, every night") : t(camLook(pick.camera).line)}'));
+  // THE CUT: a next night is a film — two moments at least, the thumb still over its frame
+  assert.ok(ui.includes("t={t} min={next ? 2 : 1} />") && ui.includes("onChange={(e) => onChange(Math.max(min, Math.min(FOOTAGE_MAX_MOMENTS, Math.round(Number(e.target.value)) || 1)))} />"));
+  assert.ok(ui.includes('<input id={id} className="ff-cut-in" type="range" min={1} max={FOOTAGE_MAX_MOMENTS} step={1} value={n}'));
+  // WRITE and ROLL post the piece's id — the server reads the series off it
+  assert.equal(ui.split('{next ? <input type="hidden" name="next" value={next.from} /> : null}').length - 1, 2, "the writer's form and the roll's");
+  assert.ok(ui.includes('{t("Write the footage — free")}'), "the button that writes the next night's moments is the page's own");
+  // a reel comes back only on the night it was written for
+  assert.ok(ui.includes('if (String(k.next ?? "") !== (d.next?.from || "")) return;'));
+  // the look: phone-first, a 44px ✕, still for reduced motion, the same both themes (tape-black, as the reel)
+  assert.ok(ui.includes(".ff-night-x{position:absolute;top:4px;right:4px;display:grid;place-items:center;width:44px;height:44px;"));
+  assert.ok(ui.includes("@media(prefers-reduced-motion:reduce){.ff-night-rec b{animation:none;}}"));
+  assert.ok(ui.includes(".ff-dark .ff-night{"));
 });
 
 /* ---- THE ARCHIVE: the same marks, to the footage builder ---- */

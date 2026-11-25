@@ -47,7 +47,8 @@ test("ONE SCREEN: what was caught — one box first, the cards its starters — 
   // the box sits right under its heading, which is its label — never behind a button
   assert.ok(ui.includes('<h2 className="ff-lbl" id="ff-what"><span className="ff-n">1</span> <label htmlFor="ff-own-in">{t("What was caught on camera?")}</label></h2>\n        <textarea id="ff-own-in"'));
   // (…and "not limited" — the owner, 2026-11-25: the box says a film is whatever a camera could catch, not only a scare)
-  assert.ok(ui.includes('placeholder={t("Anything a camera could catch — a haunting, the dog raiding the fridge, a meteor over the road. Or tap a card below.")}'));
+  // (…on a next night it asks what happens on THAT night, and may be left as it is — S10c, tests/footage-next-night.test.ts)
+  assert.ok(ui.includes(': t("Anything a camera could catch — a haunting, the dog raiding the fridge, a meteor over the road. Or tap a card below.")} />'));
   assert.ok(ui.includes('{t("Write what happens, pick what it was shot on — we film it.")}'));
   // "Describe your own" is gone: the box is it
   for (const gone of ["Describe your own", "chooseScare(OWN_SCARE)", "ff-own-box", "isOwn", '"What happens")']) assert.ok(!ui.includes(gone), gone);
@@ -270,7 +271,8 @@ test("FOUR INTENTS: one take, exactly as it was; the moments written (free); one
   const first = Math.min(...['if (intent === "outline" || intent === "rewrite") {', 'if (intent === "film") {', "const job = footageJob("].map((m) => action.indexOf(m)));
   for (const g of ["isAdminEmail(account.email)", "if (!shop.activePlan?.active)", 'capabilitiesFor(shop.activePlan).has("creatorvideo")']) assert.ok(action.indexOf(g) > 0 && action.indexOf(g) < first, g);
   // "outline": the same choices one press would film (footage-film.ts → footageOutlineAsk), then the writer — free
-  assert.ok(action.includes('const ask = footageOutlineAsk({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room"), moments: form.get("moments") }, (s) => tr(lang, s));'));
+  // (…and, on a next night, the series read off the piece itself — S10c: nightOf)
+  assert.ok(action.includes('const ask = footageOutlineAsk({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room"), moments: form.get("moments") }, (s) => tr(lang, s), await nightOf());'));
   assert.ok(action.includes("try { return json({ ok: true as const, outline: await writer.writeFootageOutline(ask) }); }"));
   // "rewrite": the outline the page sent is cleaned before the writer sees it, and the index must be one of its moments
   assert.ok(action.includes('const outline = cleanFootageOutline(form.get("outline"));'));
@@ -279,7 +281,7 @@ test("FOUR INTENTS: one take, exactly as it was; the moments written (free); one
   // the writer's refusals reach the member only as words the page can show; anything else it throws is "try again"
   assert.ok(action.includes("return tr(lang, [writer.FOOTAGE_WRITER_BUSY, writer.FOOTAGE_NEEDS_IDEA, FOOTAGE_OUTLINE_UNREADABLE].includes(m) ? m : writer.FOOTAGE_WRITER_BUSY);"));
   // "film": the reel the member approved, cleaned again on the server (footageFilmJob) — then queued like one take
-  assert.ok(action.includes('const film = footageFilmJob({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room"), outline: form.get("outline") }, (s) => tr(lang, s));'));
+  assert.ok(action.includes('const film = footageFilmJob({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room"), outline: form.get("outline") }, (s) => tr(lang, s), await nightOf());'));
   assert.ok(action.includes("return roll(film);") && action.includes("return roll(job);"));
   // ONE queue for both: three in the making at once (a film counts as one), nothing charged
   const roll = action.slice(action.indexOf("const roll = async"), action.indexOf('if (intent === "film") {'));
@@ -415,8 +417,9 @@ test("THE REEL IS KEPT FOR THE TAB: a phone that reloads the page never loses a 
   const ui = page();
   assert.ok(ui.includes('const REEL_KEPT = "ff-reel-v1";'));
   // saved whenever it changes, with the words in the box and the card it was written from (so it is not "changed")
-  // (…and the shape, night vision and time-lapse they picked, and which film this tab already rolled)
-  assert.ok(ui.includes("try { window.sessionStorage.setItem(REEL_KEPT, JSON.stringify({ reel: { ...reel, moments: reel.moments.map(({ key: _key, ...m }) => m) }, from: reelFrom, count, pick, own, wide, lapse, ir, rolled: rolledAs })); }"));
+  // (…and the shape, night vision and time-lapse they picked, and which film this tab already rolled — and the night it
+  //  was written for, S10c: it comes back only on that night)
+  assert.ok(ui.includes("try { window.sessionStorage.setItem(REEL_KEPT, JSON.stringify({ reel: { ...reel, moments: reel.moments.map(({ key: _key, ...m }) => m) }, from: reelFrom, count, pick, own, wide, lapse, ir, rolled: rolledAs, next: d.next?.from || \"\" })); }"));
   // put back once, on arrival — never over a link that asked for a card or a camera — through the engine's own cleaning
   const at = ui.indexOf("window.sessionStorage.getItem(REEL_KEPT)");
   const restore = ui.slice(ui.lastIndexOf("useEffect(() => {", at), ui.indexOf("}, []);", at));
