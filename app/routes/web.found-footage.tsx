@@ -812,7 +812,7 @@ export default function FoundFootage() {
               const clock = clocks[i] || clocks[0];
               const n = i + 1;
               return (
-                <li className={`ff-mo${mine ? " is-retaking" : ""}`} key={m.key}>
+                <li className={`ff-mo${mine ? " is-retaking" : ""}`} key={m.key} style={{ ["--i" as string]: i } as CSSProperties}>
                   <div className="ff-mo-bar">
                     <span className="ff-mo-n">{t("Moment {n}", { n })}{i === shown.moments.length - 1 ? <em> · {t("the payoff")}</em> : null}</span>
                     <span className="ff-mo-moves">
@@ -1200,6 +1200,10 @@ const FF_STYLE = `
 .ff-add:disabled{opacity:.4;cursor:default;}
 .ff-reel.is-writing .ff-mo{animation:ffin .5s ease-out both;animation-delay:calc(var(--i,0) * 140ms);}
 @keyframes ffin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+/* the written reel DEVELOPS as it arrives — each frame from a blown-out white to its own picture, one after another;
+   a moment added later develops on its own (an element is only animated when it first appears) */
+.ff-reel:not(.is-writing) .ff-vf-screen{animation:ffdev .9s ease-out both;animation-delay:calc(var(--i,0) * 160ms);}
+@keyframes ffdev{from{filter:brightness(3.2) contrast(.45) saturate(0);}to{filter:none;}}
 /* the button */
 .ff-go-card{border-color:transparent;box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 18px 40px rgba(12,122,70,.12);}
 .ff-go{position:relative;overflow:hidden;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:56px;padding:14px 16px;border:0;border-radius:15px;background:linear-gradient(135deg,#0C7A46,#15B165 55%,#1EA85C);color:#fff;font:800 16px/1.25 Poppins,sans-serif;letter-spacing:-.01em;text-align:center;cursor:pointer;box-shadow:0 14px 30px -14px rgba(12,122,70,.7),inset 0 1px 0 rgba(255,255,255,.25);}
@@ -1232,7 +1236,7 @@ const FF_STYLE = `
 .ff-scare:focus-visible .ff-cover,.ff-cam:focus-visible .ff-screen,.ff-sw:focus-visible,.ff-chip:focus-visible,.ff-seg button:focus-visible,.ff-undo:focus-visible,.ff-go:focus-visible,.ff-step:focus-visible,.ff-again-btn:focus-visible{outline:3px solid rgba(12,122,70,.4);outline-offset:2px;}
 .ff-ico-btn:focus-visible,.ff-dicebtn:focus-visible,.ff-secs button:focus-visible,.ff-add:focus-visible,.ff-room-pick:focus-visible{outline:3px solid rgba(231,200,121,.75);outline-offset:2px;}
 @media(min-width:640px){.ff-hero{height:210px;}.ff-hero-copy b{font-size:28px;}.ff-card{padding:18px 20px;}.ff-scare{flex-basis:150px;}.ff-cam{flex-basis:150px;}.ff-screen{height:116px;}.ff-step-screen{width:150px;}.ff-reel{padding:20px 0 18px;}.ff-tape,.ff-case{margin-left:22px;margin-right:22px;}.ff-case{grid-template-columns:1fr 1fr;}.ff-strip{padding:6px 44px;}.ff-vf:not(.is-tall){width:min(100%,560px);margin:0 auto;}.ff-vf.is-tall{width:min(100%,290px);}.ff-mo-card{max-width:560px;margin-left:auto;margin-right:auto;}.ff-mo-bar,.ff-mo-tools{max-width:560px;margin-left:auto;margin-right:auto;}.ff-add{width:calc(100% - 44px);margin-left:22px;margin-right:22px;}.ff-room-pick{flex:0 1 200px;}}
-@media(prefers-reduced-motion:reduce){.ff-rec i,.ff-go.is-rolling .ff-go-dot,.ff-cut-film i.at::after,.ff-vf-dot,.ff-vf-osd,.ff-vf-grain,.ff-vf-scan::after,.ff-mo.is-retaking .ff-dice,.ff-reel.is-writing .ff-mo{animation:none;}.ff-go::after{animation:none;display:none;}.ff-cover,.ff-cover img,.ff-sw-knob i,.ff-cut-film i,.ff-dice,.ff-step{transition:none;}}
+@media(prefers-reduced-motion:reduce){.ff-rec i,.ff-go.is-rolling .ff-go-dot,.ff-cut-film i.at::after,.ff-vf-dot,.ff-vf-osd,.ff-vf-grain,.ff-vf-scan::after,.ff-mo.is-retaking .ff-dice,.ff-reel.is-writing .ff-mo,.ff-reel:not(.is-writing) .ff-vf-screen{animation:none;}.ff-go::after{animation:none;display:none;}.ff-cover,.ff-cover img,.ff-sw-knob i,.ff-cut-film i,.ff-dice,.ff-step{transition:none;}}
 `;
 
 /* ---- THE DARK: the shell's (lib/theater-shell.ts) goes dark; every card here stays the cream card it is and

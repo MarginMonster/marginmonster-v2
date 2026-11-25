@@ -457,7 +457,9 @@ test("THE REEL'S LOOK: every frame in its own camera's viewfinder, its clock rea
   const vf = ui.slice(ui.indexOf("function Viewfinder("), ui.indexOf("export default function FoundFootage()"));
   assert.ok(vf.includes('if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;'));
   const reduce = /@media\(prefers-reduced-motion:reduce\)\{([^\n]*)\}/.exec(ui)?.[1] || "";
-  for (const sel of [".ff-cut-film i.at::after", ".ff-vf-dot", ".ff-vf-osd", ".ff-vf-grain", ".ff-vf-scan::after", ".ff-mo.is-retaking .ff-dice", ".ff-reel.is-writing .ff-mo"]) assert.ok(reduce.includes(sel), sel);
+  for (const sel of [".ff-cut-film i.at::after", ".ff-vf-dot", ".ff-vf-osd", ".ff-vf-grain", ".ff-vf-scan::after", ".ff-mo.is-retaking .ff-dice", ".ff-reel.is-writing .ff-mo", ".ff-reel:not(.is-writing) .ff-vf-screen"]) assert.ok(reduce.includes(sel), sel);
+  // (the written reel develops as it arrives — from a blown-out white to its picture, one frame after another)
+  assert.ok(ui.includes(".ff-reel:not(.is-writing) .ff-vf-screen{animation:ffdev .9s ease-out both;animation-delay:calc(var(--i,0) * 160ms);}"));
   // phone-first: every box on the reel is 16px (a phone never zooms in on it); every tap is 44px
   for (const r of [/\.ff-vf-line\{[^}]*font:600 16px/, /\.ff-case textarea\{[^}]*font:500 16px/, /\.ff-room-pick\{[^}]*font:600 16px/, /\.ff-mo-card input\{[^}]*font:700 17px/, /\.ff-tape-title,\.ff-tape-name\{[^}]*font:800 20px/]) assert.ok(r.test(ui), String(r));
   for (const r of [/\.ff-ico-btn\{[^}]*min-width:44px;height:44px/, /\.ff-dicebtn\{[^}]*min-height:44px/, /\.ff-secs button\{width:44px;height:44px/, /\.ff-again-btn\{[^}]*min-height:44px/, /\.ff-chip\{[^}]*min-height:44px/, /\.ff-seg button\{[^}]*min-height:44px/, /\.ff-cut-in::-webkit-slider-thumb\{-webkit-appearance:none;width:44px/]) assert.ok(r.test(ui), String(r));
