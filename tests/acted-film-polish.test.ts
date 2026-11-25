@@ -27,7 +27,9 @@ test("the two-shot is told what the scene shows, inside the same framing", () =>
   assert.ok(img.includes("THE MOMENT this shot shows:"));
   assert.ok(img.includes("where it conflicts with the framing described here, the framing wins"));
   const eng = read("app/lib/film-dialogue.server.ts");
-  assert.ok(eng.includes("i === 0 ? abs(approvedFrames[0]) : undefined, scene.visual)"), "the engine passes the scene's picture");
+  // (…except a horror film's last shot in a place of its own: that place is drawn with only the two in it, and the
+  //  thing is added by the reveal — acted-staging.ts → revealPicture)
+  assert.ok(eng.includes("i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === \"location\" ? undefined : scene.visual)"), "the engine passes the scene's picture");
 });
 
 test("a film's loudness is read from ffmpeg's own report", () => {
