@@ -278,3 +278,52 @@ test("the builder's banner reads where it picks up — the last line said, by wh
   // the invented faces are the card's cast now: a tap on it opens with them
   assert.deepEqual(card.setup.cast.map((m) => m.faceUrl), ["/renders/face-1700000000000-ab12cd34-l.jpg", "/renders/face-1700000000000-ab12cd34-r.jpg"]);
 });
+
+/* ---- THE WIRING (film-dialogue.server.ts) — what cannot run without paid models ---- */
+const eng = read("app", "lib", "film-dialogue.server.ts");
+const loop = eng.indexOf("for (let i = clips.length; i < treatment.scenes.length; i++) {");
+
+test("wiring: the record is written in the create — every speaking face, the places' masters, the last frame and its place", () => {
+  const at = eng.lastIndexOf("await db.asset.create({");
+  const rec = eng.indexOf("const nextPart = carryRecord({");
+  assert.ok(rec > loop && rec < at, "after the shots, before the piece");
+  const call = eng.slice(rec, eng.indexOf("});", rec));
+  assert.ok(call.includes("cast: castActors,"));
+  assert.ok(call.includes("faces: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, faceUrl: ownRel(firstFaces[firstName(n)]) })),"), "the faces the film first showed");
+  assert.ok(call.includes("places: locOrder.filter((k) => !!masters[k]?.url).map((k) => ({ name: k, where: whereAt[locFirst.get(k) ?? 0] || \"\", img: ownRel(masters[k].url) })),"));
+  assert.ok(call.includes("lastFrame: ownRel(prevFrameUrl),"), "the last shot's own last frame — before any caption was drawn over the film");
+  assert.ok(call.includes("lastPlace: clips.length ? locKeyAt(clips.length - 1) : null,"));
+  assert.ok(call.includes("carried: carry,"));
+  assert.ok(eng.slice(at, eng.indexOf("return asset.id;", at)).includes("...nextPart,"));
+  // the cut faces and the last frame are put in the render store (the masters already are)
+  assert.ok(eng.includes("if (n && /^(?:face|tmf)-/.test(n)) { try { await mirrorRender(n, fs.readFileSync(path.join(RENDERS(), n))); } catch { /* non-fatal */ } }"));
+});
+
+test("wiring: Part N casts the carried people, draws a shared place from its picture, brings the thing, opens on the last frame", () => {
+  // THE SAME PEOPLE — before anything reads the cast
+  const cast = eng.indexOf("const castActors = castWithCarry(");
+  assert.ok(cast > 0 && cast < eng.indexOf("const castLooks: Record<string, string> = {};"));
+  assert.ok(eng.includes("const carry = opts.series?.carry || null;"));
+  // THE SAME PLACES — the room of a master, inside masterFor, after a drawn master is returned as it was (never twice)
+  const mf = eng.indexOf("const masterFor = async (");
+  const room = eng.indexOf("roomRef = roomRef || roomFor(locKey);", mf);
+  assert.ok(room > eng.indexOf("if (masters[locKey]?.url) return masters[locKey];", mf) && room < eng.indexOf("renderSideBySideTwoShot({ roomRefUrl: roomRef,", mf));
+  assert.ok(eng.includes("const p = carriedPlaceFor(whereAt[locFirst.get(k) ?? 0], carry.places);\n      if (p && onDisk(p.img)) carriedRoom.set(k, p.img);"), "only a picture still on our disk");
+  assert.ok(eng.includes("const roomFor = (locKey: string): string | undefined => (openFrame && locKey === locKeyAt(0) ? abs(openFrame) : abs(carriedRoom.get(locKey)));"));
+  assert.ok(eng.indexOf("const roomFor = ") < loop, "known before the first master is drawn");
+  // …and a master drawn so is checkpointed as every master is
+  assert.ok(eng.includes("await ckpt({ ckMasters: JSON.stringify(masters) });"));
+  // THE SAME THING — S7's own cast-threat path, after the maker's own
+  assert.ok(eng.includes("const chosen = castThreat(castActors) || carriedThing;"));
+  assert.ok(eng.includes("const t = carriedThreat(carry.threat, own);"));
+  assert.ok(eng.includes("if (castActors.some((c) => !!c.faceUrl && isCreature(c) && !talks(c.name))) return null;"), "a creature the maker cast wins");
+  // IT OPENS WHERE IT ENDED — only a first shot not made yet, no frame the maker approved, the film's own shape, read sides
+  assert.ok(eng.includes("if (carry?.lastFrame && isTwoHander && !clips.length && !approvedFrames[0] && opensWhereItEnded({ visual: scenesArr[0]?.visual, where: whereAt[0] }, carry)) {"));
+  assert.ok(eng.includes("if (shape && Math.abs(shape - AW / AH) / (AW / AH) < 0.03) {"));
+  assert.ok(eng.includes("openFrame = (await removeLetterbox(carry.lastFrame)) || \"\";"), "letterbox removed");
+  const seed = eng.indexOf("let seedAbs = abs(approvedFrames[i]);", loop);
+  const opened = eng.indexOf("const opened = !seedAbs && i === 0 && !!openFrame && !!master?.url && openLeft !== null && openLeft === master.aOnLeft;", loop);
+  assert.ok(opened > seed && opened < eng.indexOf("if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {", loop), "before every other seed");
+  assert.ok(eng.includes("if (opened) { seedAbs = abs(openFrame);"));
+  assert.ok(eng.indexOf("if (opened) chainStaging = null;") > eng.indexOf("if (!chained) chainStaging = approvedFrames[i] || !master?.url || (tr === \"angle\" && !sighted) ? null : stagingOf(master);"), "the last frame is no staged picture");
+});
