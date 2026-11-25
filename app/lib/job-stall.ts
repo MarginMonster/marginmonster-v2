@@ -79,19 +79,22 @@ export function reclaimStall(payload: Record<string, unknown>): ReclaimStall {
 
 /** WHAT THE REAPER WRITES when it hands a job back: the payload with its restart counted (`__reclaims`, as it always
  *  was) and this rule's two marks (`__ckSig`, `__stalls`); how many restarts it had before this one; and the rule's
- *  answer. A payload that is not a JSON object is left exactly as it is (no count, no answer). */
-export function onReclaim(payloadText: string): { payload: string; reclaims: number; stall: ReclaimStall | null } {
+ *  answer. A payload that is not a JSON object is left exactly as it is (no count, no answer).
+ *  (Pure: it writes nothing. The reaper writes what it returns, conditionally on the row it read —
+ *  tests/no-blind-writes.) */
+export function onReclaim(raw: string): { payload: string; reclaims: number; stall: ReclaimStall | null } {
   try {
-    const p = JSON.parse(payloadText);
-    if (!p || typeof p !== "object" || Array.isArray(p)) return { payload: payloadText, reclaims: 0, stall: null };
+    const p = JSON.parse(raw);
+    if (!p || typeof p !== "object" || Array.isArray(p)) return { payload: raw, reclaims: 0, stall: null };
     const reclaims = typeof p.__reclaims === "number" ? p.__reclaims : 0;
     p.__reclaims = reclaims + 1;
     const stall = reclaimStall(p);
     p.__ckSig = stall.sig;
     p.__stalls = stall.stalls;
-    return { payload: JSON.stringify(p), reclaims, stall };
+    const next = JSON.stringify(p);
+    return { payload: next, reclaims, stall };
   } catch {
-    return { payload: payloadText, reclaims: 0, stall: null };
+    return { payload: raw, reclaims: 0, stall: null };
   }
 }
 
