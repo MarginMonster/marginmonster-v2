@@ -291,3 +291,113 @@ test("seriesCarryOf on hostile values: only our own pictures, every length cappe
   assert.ok(!("threat" in seriesCarryOf({ threat: "the woman" })));
   assert.deepEqual(seriesCarryOf({ threat: { name: "N".repeat(90), img: "/renders/t.jpg" } }).threat, { name: "N".repeat(40), img: "/renders/t.jpg" });
 });
+
+/* ---- THE ARCHIVE: where he looks ---- */
+const src = read("app", "routes", "web.archive.tsx");
+const loader = src.slice(src.indexOf("export const loader"), src.indexOf("export const action"));
+const page = src.slice(src.indexOf("export default function WebArchive()"));
+const cssAt = src.indexOf("const WA_CSS = `");
+const css = src.slice(cssAt, src.indexOf("`;", cssAt));
+const count = (s: string, needle: string) => s.split(needle).length - 1;
+
+test("the loader: every piece's mark, from this page's films — and a search or a collection reads the series' newer episodes too", () => {
+  assert.ok(loader.includes('const videoRows = assets.filter((a) => a.type === "VIDEO_AD");'));
+  assert.ok(loader.includes("const nextOf = nextMarks(markRows);"));
+  // only when something narrows the shelf, only this shop's own, never a failed one, a bounded read
+  assert.ok(loader.includes("const markSeries = q || col ? [...new Set(videoRows.filter((a) => continuable(a.metaJson)).map((a) => seriesKeyOf(a)))].slice(0, 30) : [];"));
+  assert.ok(loader.includes('where: { shopId: shop.id, type: "VIDEO_AD", status: { not: "FAILED" }, OR: markSeries.map((id) => ({ metaJson: { contains: seriesNeedle({ kind: "film", id }) } })) },'));
+  assert.ok(loader.includes("take: 40,") && loader.includes("select: { id: true, metaJson: true, bodyJson: true, status: true, createdAt: true },"));
+  assert.ok(loader.includes("} catch { /* the page's own films decide, as they do with no search */ }"));
+  assert.ok(loader.indexOf("const nextOf = ") < loader.indexOf("const mapAsset = "));
+  // what the page is given: the mark, and — only for an older one — its series' HASHED key (never an id in an address)
+  assert.ok(loader.includes('return m ? { state: m.state, next: m.next, from: m.from, episode: m.episode, of: m.of, key: m.state === "older" ? seriesKey("film", seriesKeyOf(a)) : null } : null;'));
+  assert.ok(!loader.includes("canContinue"), "one rule, one field");
+});
+
+test("a card's mark: its wording for each state, at the end of its last line, one tap to the series' LATEST film", () => {
+  const fn = page.slice(page.indexOf("const nextMarkOf = (n: PieceNext) => {"), page.indexOf("const markHere = "));
+  assert.ok(fn.length > 200 && fn.length < 1800);
+  // "Make it a series" / "Episode N →" — to the Movie Maker, continued from the series' latest (`from`)
+  assert.ok(fn.includes('href={`/web/film?episode=${n.from}`} title={t("Continue this story — the next episode, with the same cast")}'));
+  assert.ok(fn.includes('{n.state === "start" ? t("Make it a series") : <>{t("Episode {n}", { n: n.next })}<Ico n="arrow" size={11} /></>}'));
+  // "Episode 3 of 4" on an older one — to its whole series, never to the Movie Maker (an older one never forks)
+  const older = fn.slice(fn.indexOf('if (n.state === "older") {'), fn.indexOf("return (\n"));
+  assert.ok(older.includes('<Link className={cls} to={seriesWholeHref(n.key || "")} preventScrollReset'));
+  assert.ok(older.includes('{t("Episode {n} of {total}", { n: n.episode, total: n.of })}'));
+  assert.ok(!older.includes("/web/film"));
+  assert.ok(page.includes('const seriesWholeHref = (key: string) => { const n = new URLSearchParams(searchParams); for (const k of ["open", "q", "col"]) n.delete(k); n.set("tab", "video"); n.set("series", key); return `?${n.toString()}`; };'));
+  // while pieces are being picked it stands aside
+  assert.ok(fn.includes('const stand = selecting ? { "aria-disabled": true, tabIndex: -1 } : {};'));
+  assert.equal(count(fn, "onClick={(e) => { if (selecting) e.preventDefault(); }}"), 2);
+  // inside its open series an older one says so on its top line instead — the next one's tile ends that shelf
+  assert.ok(page.includes('const markHere = (n: PieceNext | null | undefined): boolean => !!n && !(openSeries && n.state === "older");'));
+  assert.ok(page.includes('{openSeries && a.series && <span className="wa-epno">{a.next ? t("Episode {n} of {total}", { n: a.series.episode, total: a.next.of }) : t("Episode {n}", { n: a.series.episode })}</span>}'));
+  // on the card's own last line — never a line of its own (archive-series.test.ts holds the line itself)
+  assert.ok(page.includes("{markHere(a.next) && <>{shortDate(a.when)}{nextMarkOf(a.next!)}</>}</div>"));
+  assert.ok(page.includes('const shortDate = (when: string) => <span className="wa-date-short" suppressHydrationWarning>{new Date(when).toLocaleDateString(undefined, { month: "numeric", day: "numeric" })}</span>;'));
+});
+
+test("a series' card carries its latest's mark — a link beside the card, never inside it; and its shelf ends with the next episode", () => {
+  const card = page.slice(page.indexOf("            if (c.series) {"), page.indexOf("            // (its face: the cover made for it, else its poster"));
+  assert.ok(card.includes("const sn = seriesNextOf(s);"));
+  const closeLink = card.indexOf("</Link>");
+  assert.ok(closeLink > 0 && card.indexOf("nextMarkOf(") > closeLink, "the mark is outside the card's own link");
+  assert.equal(count(card, "<a "), 0, "no other link inside the card");
+  assert.ok(card.includes('return sn ? <div key={`series|${s.key}`} className="wa-seriescell">{card}{nextMarkOf(sn.state === "older" ? { ...sn, state: "next" } : sn)}</div> : card;'));
+  assert.ok(page.includes("const seriesNextOf = (s: SeriesItem): PieceNext | null => s.episodes.map((id) => pieceById.get(id)?.next).find((m): m is PieceNext => !!m) || null;"));
+  // THE NEXT EPISODE'S TILE: only in an open series that can go on, after its episodes, one tap to its latest
+  const tile = page.slice(page.indexOf("{openSeries && openNext && ("), page.indexOf("{/* OLDER PIECES, ASKED FOR WHERE THEY ARE WANTED"));
+  assert.ok(tile.includes('<a id="wa-nextep" className={`wb-asset wa-nexttile${selecting ? " off" : ""}`} href={`/web/film?episode=${openNext.from}`}'));
+  assert.ok(tile.includes('aria-disabled={selecting || undefined} tabIndex={selecting ? -1 : undefined} onClick={(e) => { if (selecting) e.preventDefault(); }}'));
+  assert.ok(tile.includes('<span className="wa-title">{t("Episode {n} — what happens next?", { n: openNext.next })}</span>'));
+  assert.ok(tile.includes('<span className="s">{t("Picks up where it left off")}</span>'));
+  assert.ok(tile.includes('<span className="wa-nexttile-num"><Ico n="filmreel" size={16} /> {t("Episode {n}", { n: openNext.next })}</span>'));
+  assert.ok(page.indexOf("{shelfCards.map((c, k) => {") < page.indexOf("{openSeries && openNext && ("), "it ends the shelf");
+  assert.ok(page.includes("const openNext = openSeries ? seriesNextOf(openSeries) : null;"));
+});
+
+test("the viewer: its FIRST button, a primary, worded as the card is — before Post", () => {
+  const viewer = page.slice(page.indexOf("{viewer && mounted ? createPortal("), page.indexOf("{/* Delete / retry confirmation toast."));
+  const at = viewer.indexOf('<a className="wa-vbtn full wa-vnext" href={`/web/film?episode=${viewer.next.from}`}');
+  assert.ok(at > 0 && at < viewer.indexOf("onClick={() => startPost(viewer.id)}"), "first in its row");
+  assert.ok(viewer.includes('{viewer.next.state === "start" ? t("Make it a series") : t("Make episode {n}", { n: viewer.next.next })}<span className="c">{t("Picks up where it left off")}</span>'));
+  assert.ok(!viewer.includes('{t("Next episode")}'), "the quiet ghost button is gone");
+});
+
+test("the look: never taller, 44px to the thumb, the series' own colours, still for reduced motion", () => {
+  // no line of its own: the line becomes a row, the kind gives way, and on a phone the date drops its year
+  assert.ok(css.includes(".wb-asset .s.has-next{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:3px;margin:2px 0 -2px;}"));
+  assert.ok(css.includes(".s.has-next .wa-kind,.wa-date-short{display:none;}"));
+  const phoneAt = css.indexOf("@media(max-width:640px){\n  .s.has-next .wa-date");
+  assert.ok(phoneAt > 0);
+  const phone = css.slice(phoneAt, css.indexOf("\n}", phoneAt));
+  assert.ok(phone.includes(".s.has-next .wa-date,.wa-seriescell .wa-series .wa-date{display:none;}"));
+  assert.ok(phone.includes(".s.has-next .wa-date-short,.wa-seriescell .wa-series .wa-date-short{display:inline;}"));
+  // 44px to the thumb: the pill's height plus its invisible reach (upward over the title, which taps nothing)
+  const h = Number(/\.wa-next\{[^}]*min-height:(\d+)px/.exec(css)![1]);
+  const reach = (s: string) => { const m = /inset:-(\d+)px -\d+px -(\d+)px/.exec(s)!; return Number(m[1]) + Number(m[2]); };
+  assert.ok(h + reach(/\.wa-next::before\{content:"";position:absolute;inset:[^}]*\}/.exec(css)![0]) >= 44, "wide screen");
+  assert.ok(h + reach(/\.wa-next::before\{inset:[^}]*\}/.exec(phone)![0]) >= 44, "phone");
+  // a phone's reach downward stays inside the card (its foot is 11px of padding): nothing is reached past it
+  assert.ok(Number(/\.wa-next::before\{inset:-\d+px -\d+px -(\d+)px/.exec(phone)![1]) <= 11);
+  // the series' own deep green and gold; never the brown-black
+  assert.ok(css.includes(".wa-vacts .wa-vbtn.wa-vnext{background:linear-gradient(165deg,#173D2A,#0E2619);color:#F6E7C1;"));
+  assert.ok(!/1B1410|27,20,16/i.test(css.slice(css.indexOf("/* ── WHAT COMES NEXT"))));
+  // the tile waits — and holds still for reduced motion; RTL turns the arrow
+  assert.ok(css.includes("@media(prefers-reduced-motion:reduce){.wa-nexttile-frame{animation:none;}.wb-asset.wa-nexttile{transition:none;}.wa-nexttile:hover{transform:none;}}"));
+  assert.ok(css.includes('[dir="rtl"] .wa-next svg{transform:scaleX(-1);}'));
+  assert.ok(css.includes(".wa-seriescell > .wa-next{position:absolute;bottom:11px;inset-inline-end:12px;max-width:calc(100% - 24px);}"));
+});
+
+test("every new word is in all five languages", () => {
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  for (const k of ["Make it a series", "Episode {n} of {total}", "Make episode {n}", "Episode {n} — what happens next?", "Picks up where it left off"]) {
+    assert.equal(dict.split(`\n  ${J(k)}:`).length - 1, 5, k);
+  }
+  // …each keeps its placeholders
+  for (const block of dict.split(/\nconst (?:es|fr|de|zh|ur): Record<string, string> = \{\n/).slice(1)) {
+    const line = (k: string) => block.split("\n").find((l) => l.startsWith(`  ${J(k)}:`)) || "";
+    assert.ok(line("Episode {n} of {total}").split(":").slice(1).join(":").includes("{n}") && line("Episode {n} of {total}").includes("{total}", 30));
+    assert.ok(line("Make episode {n}").slice(20).includes("{n}"));
+  }
+});

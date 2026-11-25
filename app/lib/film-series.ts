@@ -563,7 +563,9 @@ function lastMomentLines(m: LastMoment | null | undefined): string {
 /** FOUND FOOTAGE — THE HOOK (2026-11-25). A found-footage take (meta.kind "take", template "foundfootage" —
  *  take.server.ts, house-take.server.ts) is a story too, and gets the same mark the day its pipeline can make
  *  a next part (writes meta.series, takes a SeriesBrief). Its engine is being finished elsewhere today, so
- *  this says no; when it says yes, every surface that asks `continuable` offers it, with nothing else to change. */
+ *  this says no; when it says yes, every surface that asks `continuable` offers it — and the one thing to change
+ *  with it is where the mark leads: the Archive's marks open /web/film?episode=…, a take's next part is made in
+ *  its own builder (routes/web.found-footage.tsx). */
 export function footageContinues(meta: unknown): boolean {
   void meta;
   return false;
