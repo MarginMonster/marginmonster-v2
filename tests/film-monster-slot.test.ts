@@ -54,7 +54,8 @@ const panel = between(ui, '            {storyCard === "cast" && (', '           
 const picker = between(panel, "{(!scripted || castOver) && (<>", "                </>)}\n              </div>");
 const after = between(panel, "{scripted && (<>", "{(!scripted || castOver) && (<>");
 const state = between(ui, "  // THE MONSTER (2026-11-25 — \"Monster should be castable also\")", "  // THE NARRATOR");
-const form = between(ui, '<Form method="post" onSubmit={() => { sigAtSubmit.current = storySig; }}>', "</Form>");
+// (the story's form, by the signature it keeps at submit — main's form now also refuses an empty idea first)
+const form = between(ui, "sigAtSubmit.current = storySig; }}>", "</Form>");
 
 /* THE THREE HELPERS, RUN — the route's own functions, compiled as they stand. */
 type Thing = { name: string; img: string | null; look: string; picked: boolean; see: boolean } | null;
