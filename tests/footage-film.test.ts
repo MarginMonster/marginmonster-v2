@@ -28,6 +28,7 @@ import {
   footageOpensPrompt, footageOutlineAsk, footageOutlineBrief, footageOutlineSchema, footageScenePlan, footageScenePrompt, footageSeconds, footageTolerance, momentCount, momentScript, momentSeconds,
   parseFootageDirection, parseFootageMoment, parseFootageOutline, prose, undirected, withDirected,
   HOLD_BEAT, beatsFor, directionFaults, quietBeat, threeBeats,
+  FOOTAGE_PART_PIECES, footageFilmArgs, footageJoinList, footageJoinParts, footagePartArgs,
 } from "../app/lib/footage-film.ts";
 
 test("a moment's beats are made THREE, and a sentence with somebody speaking is taken out — never the moment (the first live film lost all three, 2026-11-25)", () => {
@@ -846,6 +847,194 @@ test("CARDS AND MOMENTS, JOINED BY REAL FFMPEG: the film's length is the sum of 
     // the check itself: a film cut short is not whole
     assert.equal(footageJoinCheck({ ...j.streams, frames: j.plan.frames + 48, fps: 24 }).ok, false);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+/* ---- A FILM OF MORE THAN SIX PIECES IS JOINED IN PARTS (2026-11-25: sixteen Full-HD inputs in one ffmpeg is the
+ *      shape of the told story's cut that ran the 2 GB server out of memory four times that afternoon) ---- */
+
+test("THE FILM IN PARTS: six pieces or fewer joined exactly as always; more, in parts of six at most — every piece's chain the one graph's, the sound meeting at a part's edge in the same two fades", () => {
+  assert.equal(FOOTAGE_PART_PIECES, 6);
+  const sec = (n: number) => Array.from({ length: n }, (_, i) => (i % 2 ? 180 + i * 7 : 29));
+  // up to six pieces (three moments and their cards): ONE part, and its graph is the one graph, character for character
+  for (let n = 1; n <= 6; n++) {
+    const one = footageJoinGraph({ frames: sec(n), fps: 24, w: 1080, h: 1920 });
+    const p = footageJoinParts({ frames: sec(n), fps: 24, w: 1080, h: 1920 });
+    assert.equal(p.parts.length, 1, `${n} pieces`);
+    assert.equal(p.parts[0].graph, one.graph, `${n} pieces: joined exactly as it always was`);
+    assert.equal(p.frames, one.frames);
+  }
+  // more: as few parts of at most six as hold it, as even as they come — eight moments and their cards are 6 + 5 + 5
+  assert.deepEqual(footageJoinParts({ frames: sec(16), fps: 24, w: 2, h: 2 }).parts.map((p) => p.to - p.from), [6, 5, 5]);
+  assert.deepEqual(footageJoinParts({ frames: sec(7), fps: 24, w: 2, h: 2 }).parts.map((p) => p.to - p.from), [4, 3]);
+  assert.deepEqual(footageJoinParts({ frames: sec(12), fps: 24, w: 2, h: 2 }).parts.map((p) => p.to - p.from), [6, 6]);
+  assert.deepEqual(footageJoinParts({ frames: sec(13), fps: 24, w: 2, h: 2 }).parts.map((p) => p.to - p.from), [5, 4, 4]);
+  assert.deepEqual(footageJoinParts({ frames: [], fps: 24, w: 2, h: 2 }), { parts: [], frames: 0 });
+  for (let n = 1; n <= 40; n++) {
+    const f = sec(n);
+    const silent = f.map((_, i) => i % 5 === 3);
+    const whole = footageJoinGraph({ frames: f, fps: 24, w: 1080, h: 1920, silent });
+    const { parts, frames } = footageJoinParts({ frames: f, fps: 24, w: 1080, h: 1920, silent });
+    // every piece in exactly one part, in order; no part opens more than six; the film as long as the one graph's
+    assert.equal(parts[0].from, 0);
+    assert.equal(parts[parts.length - 1].to, n);
+    parts.forEach((p, k) => { if (k) assert.equal(p.from, parts[k - 1].to); assert.ok(p.to - p.from <= FOOTAGE_PART_PIECES, `${n}: a part of ${p.to - p.from}`); });
+    assert.equal(frames, whole.frames, `${n}: as long as one graph's film`);
+    const sizes = parts.map((p) => p.to - p.from);
+    assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, `${n}: ${sizes.join(",")}`);
+    // EVERY PIECE'S OWN CHAIN — picture and sound, its fades included — is the one graph's, only its input numbered
+    // within its part: the film made in parts is the film one graph makes
+    const chains = (g: string) => g.split(";").filter((s) => !s.includes("concat="));
+    const all = chains(whole.graph);
+    for (const p of parts) {
+      const own = chains(p.graph);
+      assert.equal(own.length, 2 * (p.to - p.from));
+      own.forEach((c, j) => {
+        const k = Math.floor(j / 2), i = p.from + k;
+        const asWhole = c.replace(new RegExp(`^\\[${k}:([va])\\]`), `[${i}:$1]`).replace(new RegExp(`\\[([va])${k}\\]$`), `[$1${i}]`);
+        assert.equal(asWhole, all[2 * i + (j % 2)], `${n} pieces: piece ${i + 1}'s ${j % 2 ? "sound" : "picture"}`);
+      });
+    }
+  }
+  // (the film's first piece never fades in, its last never fades out; at a part's edge both sides fade, as two pieces do)
+  const sixteen = footageJoinParts({ frames: sec(16), fps: 24, w: 2, h: 2 }).parts;
+  assert.ok(!sixteen[0].graph.split(";")[1].includes("afade=t=in"));
+  assert.ok(sixteen[0].graph.split(";")[11].includes("afade=t=out"), "the last piece of part 1 fades out");
+  assert.ok(sixteen[1].graph.split(";")[1].includes("afade=t=in"), "the first piece of part 2 fades in");
+  assert.ok(!sixteen[2].graph.split(";").slice(-2)[0].includes("afade=t=out"));
+
+  // ONE PART'S ARGUMENTS: one decoding thread a piece, the film's picture encoder, its sound uncompressed, a .mov
+  assert.deepEqual(footagePartArgs(["a.mp4", "b.mp4"], "G", ["-c:v", "libx264"], "x.part1.mov"),
+    ["-y", "-threads", "1", "-i", "a.mp4", "-threads", "1", "-i", "b.mp4", "-filter_complex", "G", "-map", "[vc]", "-map", "[ac]", "-c:v", "libx264", "-c:a", "pcm_s16le", "-f", "mov", "x.part1.mov"]);
+  // THE LIST: every part and its exact length at the film's own rate (a phone's 24, a house camera's 15) — escaped
+  assert.equal(footageJoinList(["C:\\r\\footage-1.mp4.part1.mov", "/r/it's.mov"], [149, 29], 24), "file 'C:/r/footage-1.mp4.part1.mov'\nduration 6.208333\nfile '/r/it'\\''s.mov'\nduration 1.208333\n");
+  assert.equal(footageJoinList(["a.mov"], [18], 15), "file 'a.mov'\nduration 1.200000\n");
+  // THE LAST PASS: the picture copied as it is, the sound encoded once, ready to play as it downloads
+  assert.deepEqual(footageFilmArgs("l.txt", ["-c:a", "aac", "-b:a", "192k"], "f.mp4"),
+    ["-y", "-f", "concat", "-safe", "0", "-i", "l.txt", "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "f.mp4"]);
+});
+
+test("EIGHT MOMENTS AND THEIR CARDS — sixteen pieces — JOINED IN PARTS BY REAL FFMPEG: whole, and frame for frame the film one graph makes", { skip: !ffmpegOk }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "footage-parts-"));
+  const PICTURE = ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"];
+  const SOUND = ["-c:a", "aac", "-b:a", "192k"];
+  const W = 360, H = 640, FPS = 24;
+  try {
+    // eight TEST moments, each a colour and a tone of its own; some whose sound runs 30 ms past their picture, one
+    // with none at all, one with too little
+    const colour = (i: number): [number, number, number] => [(i * 67 + 40) % 200 + 50, (i * 131 + 90) % 200 + 50, (i * 29 + 160) % 200 + 50];
+    const moments = Array.from({ length: 8 }, (_, i) => {
+      const out = path.join(dir, `m${i}.mp4`);
+      const picture = 1 + (i % 4) * 0.25;
+      const sound = i === 5 ? 0 : i === 2 ? picture - 0.4 : picture + (i % 2 ? 0.03 : 0);
+      const hex = colour(i).map((c) => c.toString(16).padStart(2, "0")).join("");
+      const args = ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=0x${hex}:s=${W}x${H}:r=${FPS}:d=${picture}`];
+      if (sound > 0) args.push("-f", "lavfi", "-i", `sine=frequency=${330 + i * 55}:sample_rate=44100:duration=${sound}`);
+      args.push("-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", ...(sound > 0 ? ["-c:a", "aac"] : []), out);
+      const r = spawnSync("ffmpeg", args, { encoding: "utf8" });
+      assert.equal(r.status, 0, r.stderr);
+      return { file: out, when: `NIGHT ${i + 1} · 3:0${i} AM` };
+    });
+    // the cards, and every piece measured by its PICTURE — as joinFootage does
+    const pieces: string[] = [];
+    moments.forEach((m, i) => {
+      const card = path.join(dir, `card${i}.mp4`);
+      const c = spawnSync("ffmpeg", footageCardArgs({ when: m.when, w: W, h: H, fps: FPS, font: FONT, out: card }), { encoding: "utf8" });
+      assert.equal(c.status, 0, c.stderr);
+      pieces.push(card, m.file);
+    });
+    const measured = pieces.map(streamsOf);
+    const frames = measured.map((s) => Math.max(1, Math.round(s.video * FPS)));
+    const silent = measured.map((s) => s.audio === null);
+    assert.equal(pieces.length, 16);
+
+    // ONE GRAPH of all sixteen — what the join did until now (here, on small pictures, it still can)
+    const one = footageJoinGraph({ frames, fps: FPS, w: W, h: H, silent });
+    const oneFile = path.join(dir, "one.mp4");
+    const r1 = spawnSync("ffmpeg", ["-v", "error", "-y", ...pieces.flatMap((p) => ["-threads", "1", "-i", p]), "-filter_complex", one.graph, "-map", "[vc]", "-map", "[ac]", ...PICTURE, ...SOUND, oneFile], { encoding: "utf8" });
+    assert.equal(r1.status, 0, r1.stderr);
+
+    // IN PARTS — the very arguments footage-film.server.ts → joinInParts runs
+    const plan = footageJoinParts({ frames, fps: FPS, w: W, h: H, silent });
+    assert.deepEqual(plan.parts.map((p) => p.to - p.from), [6, 5, 5], "no ffmpeg opens more than six pieces");
+    const files = plan.parts.map((_, p) => path.join(dir, `film.mp4.part${p + 1}.mov`));
+    plan.parts.forEach((part, p) => {
+      const r = spawnSync("ffmpeg", ["-v", "error", ...footagePartArgs(pieces.slice(part.from, part.to), part.graph, PICTURE, files[p])], { encoding: "utf8" });
+      assert.equal(r.status, 0, `part ${p + 1}: ${r.stderr}`);
+      // every part MEASURED, as the film is
+      const check = footageJoinCheck({ ...streamsOf(files[p]), frames: part.frames, fps: FPS });
+      assert.ok(check.ok, `part ${p + 1}: ${check.why}`);
+    });
+    const list = path.join(dir, "film.parts.txt");
+    fs.writeFileSync(list, footageJoinList(files, plan.parts.map((p) => p.frames), FPS), "utf8");
+    const film = path.join(dir, "film.mp4");
+    const r2 = spawnSync("ffmpeg", ["-v", "error", ...footageFilmArgs(list, SOUND, film)], { encoding: "utf8" });
+    assert.equal(r2.status, 0, r2.stderr);
+
+    // WHOLE: picture = sound = the sum of its pieces, within footageTolerance — footageJoinCheck passes, measured
+    const streams = streamsOf(film);
+    const check = footageJoinCheck({ ...streams, frames: plan.frames, fps: FPS });
+    assert.ok(check.ok, check.why);
+    assert.equal(plan.frames, one.frames, "as long as the one graph's film");
+    assert.equal(plan.frames, frames.reduce((a, b) => a + b, 0));
+    assert.ok(Math.abs(streams.video - plan.frames / FPS) <= footageTolerance(FPS), `picture ${streams.video} of ${plan.frames / FPS}`);
+    assert.ok(Math.abs((streams.audio as number) - plan.frames / FPS) <= footageTolerance(FPS), `sound ${streams.audio} of ${plan.frames / FPS}`);
+    assert.deepEqual([streams.w, streams.h, Math.round(streams.fps), streams.rate], [W, H, FPS, 48000], "the takes' own size and rate");
+
+    // FRAME FOR FRAME the film the one graph makes: the same number of frames, each the same colour
+    const framesOf = (f: string): Array<[number, number, number]> => {
+      const raw = spawnSync("ffmpeg", ["-v", "error", "-i", f, "-vf", "scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { encoding: "buffer", maxBuffer: 1 << 26 }).stdout;
+      const out: Array<[number, number, number]> = [];
+      for (let k = 0; k + 2 < raw.length; k += 3) out.push([raw[k], raw[k + 1], raw[k + 2]]);
+      return out;
+    };
+    const a = framesOf(oneFile), b = framesOf(film);
+    assert.equal(b.length, plan.frames, "every frame is there");
+    assert.equal(a.length, b.length);
+    let worst = 0;
+    for (let k = 0; k < a.length; k++) worst = Math.max(worst, Math.abs(a[k][0] - b[k][0]), Math.abs(a[k][1] - b[k][1]), Math.abs(a[k][2] - b[k][2]));
+    assert.ok(worst <= 6, `the two films differ by ${worst} somewhere — a frame is not where it should be`);
+    // …every moment ALL there, in order, each exactly its own frames long (no moment's picture lost at a part's edge)
+    let at = 0;
+    pieces.forEach((_, k) => {
+      if (k % 2) {
+        const [r0, g0, b0] = colour((k - 1) / 2);
+        const own = b.slice(at, at + frames[k]).filter((px) => Math.abs(px[0] - r0) <= 8 && Math.abs(px[1] - g0) <= 8 && Math.abs(px[2] - b0) <= 8).length;
+        assert.equal(own, frames[k], `moment ${(k + 1) / 2}: ${own} of its ${frames[k]} frames where they belong`);
+      }
+      at += frames[k];
+    });
+    // …its SOUND the one graph's too (every moment has its own tone: a part that began a few milliseconds off would
+    //  put one moment's tone over the next card)
+    const heard = (f: string): Int16Array => { const raw = spawnSync("ffmpeg", ["-v", "error", "-i", f, "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1"], { encoding: "buffer", maxBuffer: 1 << 26 }).stdout; return new Int16Array(raw.buffer, raw.byteOffset, Math.floor(raw.length / 2)); };
+    const sa = heard(oneFile), sb = heard(film);
+    assert.ok(Math.abs(sa.length - sb.length) <= 8000 * footageTolerance(FPS), `${sa.length} and ${sb.length} samples`);
+    let off = 0;
+    const len = Math.min(sa.length, sb.length);
+    for (let k = 0; k < len; k++) if (Math.abs(sa[k] - sb[k]) > 3300) off++;
+    assert.ok(off / len < 0.004, `${((off / len) * 100).toFixed(2)}% of the sound is not where the one graph has it`);
+    // …and its frames evenly spaced, one every 24th of a second, across every part's edge
+    const pts = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0", film], { encoding: "utf8" }).stdout
+      .trim().split(/\r?\n/).map((l) => parseFloat(l)).filter((x) => Number.isFinite(x)).sort((x, y) => x - y);
+    assert.equal(pts.length, plan.frames);
+    for (let k = 1; k < pts.length; k++) assert.ok(Math.abs(pts[k] - pts[k - 1] - 1 / FPS) < 0.002, `frame ${k} comes ${(pts[k] - pts[k - 1]).toFixed(4)} s after the one before`);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("THE JOIN IN PARTS, as joinFootage runs it: more than six pieces → parts, each measured; the film measured against their sum; the parts' files gone", () => {
+  const srv = read("app", "lib", "footage-film.server.ts");
+  const join = srv.slice(srv.indexOf("export async function joinFootage("), srv.indexOf("export type FootageFilmOptions"));
+  assert.ok(join.includes("if (pieces.length > FOOTAGE_PART_PIECES) {"));
+  assert.ok(join.includes("whole = await joinInParts({ files: pieces.map((p) => p.file), frames, silent, fps, w: big.w, h: big.h, hd: big.w * big.h > 1_500_000, outPath, label });"));
+  const parts = srv.slice(srv.indexOf("async function joinInParts("), srv.indexOf("/** CARDS AND MOMENTS, JOINED AND MEASURED."));
+  assert.ok(parts.includes("const plan = footageJoinParts({ frames: o.frames, fps: o.fps, w: o.w, h: o.h, silent: o.silent });"));
+  assert.ok(parts.includes("const run = await runFfmpeg(footagePartArgs(o.files.slice(part.from, part.to), part.graph, filmPicture(o.hd), files[p]));"), "the app's one-encode-at-a-time runner, the film's own picture encoder");
+  assert.ok(parts.includes("? footageJoinCheck({ ...streamSeconds(files[p]), frames: part.frames, fps: o.fps })"), "every part is measured");
+  assert.ok(parts.includes("fs.writeFileSync(list, footageJoinList(files, plan.parts.map((x) => x.frames), o.fps), \"utf8\");"));
+  assert.ok(parts.includes("const run = await runFfmpeg(footageFilmArgs(list, FILM_SOUND, o.outPath));"));
+  assert.ok(parts.includes("? footageJoinCheck({ ...streamSeconds(o.outPath), frames: plan.frames, fps: o.fps })"), "…and so is the film, against the sum of its parts");
+  assert.ok(parts.includes("for (const f of [...files, list]) { try { fs.rmSync(f, { force: true }); } catch { /* best effort */ } }"), "the parts are gone when it returns");
+  // the film's encoder, told apart: the picture every part gets, the sound encoded once
+  assert.ok(srv.includes('const FILM_SOUND = ["-c:a", "aac", "-b:a", "192k"];') && srv.includes('const filmEncode = (hd: boolean): string[] => [...filmPicture(hd), ...FILM_SOUND, "-movflags", "+faststart"];'));
 });
 
 /* ---- THE MAKING, as its source says it (it rolls on paid models: nothing here can be run in a test) ---- */

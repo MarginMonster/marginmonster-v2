@@ -48,9 +48,9 @@ import { ffmpegTurn } from "./ffmpeg-turn";
 import { streamSeconds } from "./film-join.server";
 import { levelFilm } from "./film-loudness.server";
 import {
-  FOOTAGE_DIRECTED_AT_ONCE, FOOTAGE_OUTLINE_UNREADABLE, FOOTAGE_REROLLS, FOOTAGE_ROLLS_AT_ONCE,
-  camStamp, cleanFootageOutline, footageCardArgs, footageClocks, footageDirectionBrief, footageDirectionSchema, footageFps, footageFrom, footageIdea,
-  footageJoinCheck, footageJoinGraph, footageMomentBrief, footageMomentSchema, footageOpensPrompt, footageOutlineBrief, footageOutlineSchema, footageScenePlan,
+  FOOTAGE_DIRECTED_AT_ONCE, FOOTAGE_OUTLINE_UNREADABLE, FOOTAGE_PART_PIECES, FOOTAGE_REROLLS, FOOTAGE_ROLLS_AT_ONCE,
+  camStamp, cleanFootageOutline, footageCardArgs, footageClocks, footageDirectionBrief, footageDirectionSchema, footageFilmArgs, footageFps, footageFrom, footageIdea,
+  footageJoinCheck, footageJoinGraph, footageJoinList, footageJoinParts, footagePartArgs, footageMomentBrief, footageMomentSchema, footageOpensPrompt, footageOutlineBrief, footageOutlineSchema, footageScenePlan,
   footageScenePrompt, momentCount, parseFootageDirection, parseFootageMoment, parseFootageOutline, undirected, withDirected, directionFaults,
   nightTitle, onNight,
   type DirectedMoment, type FootageDirection, type FootageMoment, type FootageOutline,
@@ -228,7 +228,39 @@ const lookFor = (camera: CameraLook, clock: HouseClock | undefined): Pick<TakeDr
 
 /** How a joined film is encoded: the dressed takes' own rate control (take.server.ts → dressTake: grain is
  *  incompressible, so it is capped), a little finer — it is their second encode. Two threads: the server has 2 GB. */
-const filmEncode = (hd: boolean): string[] => ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-maxrate", hd ? "10M" : "7M", "-bufsize", hd ? "20M" : "14M", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"];
+const filmPicture = (hd: boolean): string[] => ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-maxrate", hd ? "10M" : "7M", "-bufsize", hd ? "20M" : "14M", "-pix_fmt", "yuv420p"];
+/** …and its sound — encoded once, whole: in the one join, or in the last pass of a film joined in parts. */
+const FILM_SOUND = ["-c:a", "aac", "-b:a", "192k"];
+const filmEncode = (hd: boolean): string[] => [...filmPicture(hd), ...FILM_SOUND, "-movflags", "+faststart"];
+
+/** A FILM OF MORE THAN SIX PIECES, JOINED IN PARTS (footage-film.ts → footageJoinParts): each part a few pieces, joined
+ *  by the film's own graph and MEASURED like the film — picture and sound the same length, the length its pieces add
+ *  up to; then the parts end to end, their picture copied, the sound encoded once — and the film measured against the
+ *  sum of them. The parts' files are gone when it returns. Whether it came out whole, and why not. */
+async function joinInParts(o: { files: string[]; frames: number[]; silent: boolean[]; fps: number; w: number; h: number; hd: boolean; outPath: string; label: string }): Promise<{ ok: boolean; why: string }> {
+  const plan = footageJoinParts({ frames: o.frames, fps: o.fps, w: o.w, h: o.h, silent: o.silent });
+  const files = plan.parts.map((_, p) => `${o.outPath}.part${p + 1}.mov`);
+  const list = `${o.outPath}.parts.txt`;
+  try {
+    for (let p = 0; p < plan.parts.length; p++) {
+      const part = plan.parts[p];
+      const run = await runFfmpeg(footagePartArgs(o.files.slice(part.from, part.to), part.graph, filmPicture(o.hd), files[p]));
+      const whole = run.status === 0 && fs.existsSync(files[p])
+        ? footageJoinCheck({ ...streamSeconds(files[p]), frames: part.frames, fps: o.fps })
+        : { ok: false, why: `ffmpeg stopped: ${(run.stderr || "").slice(-200)}` };
+      if (!whole.ok) return { ok: false, why: `part ${p + 1} of ${plan.parts.length} (pieces ${part.from + 1} to ${part.to}): ${whole.why}` };
+    }
+    fs.writeFileSync(list, footageJoinList(files, plan.parts.map((x) => x.frames), o.fps), "utf8");
+    const run = await runFfmpeg(footageFilmArgs(list, FILM_SOUND, o.outPath));
+    const whole = run.status === 0 && fs.existsSync(o.outPath)
+      ? footageJoinCheck({ ...streamSeconds(o.outPath), frames: plan.frames, fps: o.fps })
+      : { ok: false, why: `the parts put end to end: ffmpeg stopped: ${(run.stderr || "").slice(-200)}` };
+    if (whole.ok) console.log(`${o.label} ${o.files.length} pieces joined in ${plan.parts.length} parts (${plan.parts.map((x) => x.to - x.from).join(", ")} pieces), ${(plan.frames / o.fps).toFixed(1)} s`);
+    return whole;
+  } finally {
+    for (const f of [...files, list]) { try { fs.rmSync(f, { force: true }); } catch { /* best effort */ } }
+  }
+}
 
 /** CARDS AND MOMENTS, JOINED AND MEASURED. `moments`: the finished moments' files, in order, each with its card's
  *  words. Returns the film's file name, its size and rate, its length, and where each moment starts in it — or throws
@@ -265,12 +297,19 @@ export async function joinFootage(moments: ReadonlyArray<{ file: string; when: s
     const silent = pieces.map((p) => streamSeconds(p.file).audio === null);
     const plan = footageJoinGraph({ frames, fps, w: big.w, h: big.h, silent });
     const name = `footage-${stamp()}.mp4`, outPath = path.join(dir, name);
-    // (one decoding thread for each piece: sixteen 1080p decoders at the machine's own thread count is memory the
-    //  server does not have)
-    const joined = await runFfmpeg(["-y", ...pieces.flatMap((p) => ["-threads", "1", "-i", p.file]), "-filter_complex", plan.graph, "-map", "[vc]", "-map", "[ac]", ...filmEncode(big.w * big.h > 1_500_000), outPath]);
-    const whole = joined.status === 0 && fs.existsSync(outPath)
-      ? footageJoinCheck({ ...streamSeconds(outPath), frames: plan.frames, fps })
-      : { ok: false, why: `ffmpeg stopped: ${(joined.stderr || "").slice(-200)}` };
+    let whole: { ok: boolean; why: string };
+    if (pieces.length > FOOTAGE_PART_PIECES) {
+      // A FILM OF MORE THAN SIX PIECES IS JOINED IN PARTS (footage-film.ts): sixteen Full-HD inputs in one ffmpeg —
+      // eight moments and their cards — is the shape of the cut that ran the server out of memory on 2026-11-25
+      whole = await joinInParts({ files: pieces.map((p) => p.file), frames, silent, fps, w: big.w, h: big.h, hd: big.w * big.h > 1_500_000, outPath, label });
+    } else {
+      // (one decoding thread for each piece: six 1080p decoders at the machine's own thread count is memory the
+      //  server does not have)
+      const joined = await runFfmpeg(["-y", ...pieces.flatMap((p) => ["-threads", "1", "-i", p.file]), "-filter_complex", plan.graph, "-map", "[vc]", "-map", "[ac]", ...filmEncode(big.w * big.h > 1_500_000), outPath]);
+      whole = joined.status === 0 && fs.existsSync(outPath)
+        ? footageJoinCheck({ ...streamSeconds(outPath), frames: plan.frames, fps })
+        : { ok: false, why: `ffmpeg stopped: ${(joined.stderr || "").slice(-200)}` };
+    }
     // NEVER SHIPPED: the job fails here, and a film missing a moment's picture (or its sound) never reaches anybody
     if (!whole.ok) { fs.rmSync(outPath, { force: true }); throw new Error(`${label} the film could not be joined whole — ${whole.why}`); }
     const starts: number[] = [];
