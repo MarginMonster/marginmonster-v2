@@ -1052,7 +1052,7 @@ async function runJob(
             aspect: ck("takeAspect"),
             section: (payload.section as string) || "creator",
             jobId: takeJob,
-            resume: { ckTake: ck("ckTake"), ckStill: ck("ckStill"), ckOpens: ck("ckOpens"), ckRaw: ck("ckRaw"), ckSpoke: ck("ckSpoke") },
+            resume: { ckTake: ck("ckTake"), ckStill: ck("ckStill"), ckOpens: ck("ckOpens"), ckRaw: ck("ckRaw"), ckSpoke: ck("ckSpoke"), ckCuts: ck("ckCuts"), ckTrim: ck("ckTrim") },
           });
         // (the piece is created carrying its section and this job — take.server.ts / house-take.server.ts)
         try {

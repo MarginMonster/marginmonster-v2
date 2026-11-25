@@ -15,7 +15,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   HAND_CAMS, TAKE_CAUGHT, TAKE_HIDDEN, TAKE_HISS, TAKE_IDEAS, TAKE_LIFT_MAX_DB, TAKE_LINE_GAP, TAKE_OPENS_SECONDS, TAKE_PROMPT_MAX, TAKE_RADIO_VOICE, TAKE_REF, TAKE_ROOM_DB,
@@ -107,7 +109,8 @@ test("the direction: off the subject, the camera finds it, one wrong movement, t
       assert.ok(at[0] > 0 && at[0] < at[1] && at[1] < at[2] && at[2] < at[3], `${idea.key}: four parts in order`);
       assert.ok(p.includes(`FIRST TWO SECONDS: ${idea.first}`));
       // it ARRIVES at the scene: the reference picture, named the way this host names it
-      assert.ok(p.includes(`THEN the camera ${idea.finds} and stops: there, exactly as in <<<image_1>>>, `), `${idea.key}: found exactly as in the reference`);
+      // …by a MOVE, never a cut (the owner, of a take that cut to it: "the cut is far too obvious")
+      assert.ok(p.includes(`THEN the camera ${idea.finds} — in the same shot, one smooth unbroken move, never a cut — and stops: there, exactly as in <<<image_1>>>, `), `${idea.key}: found exactly as in the reference, by a move`);
       // WHAT NEVER HAPPENS (the first take: a "zap", then she ran into the room and turned around)
       for (const never of ["never runs", "never flinches", "never turns around", "never looks away", "never screams", "never speaks", "never mouths a word", "it never swings away, never drops, never falls.", "Nothing flashes", "the light does not change", "never glitches or tears"]) assert.ok(p.includes(never), `${idea.key}: ${never}`);
       // …and the one filming is never IN it (a take ended with a pair of legs walking into the frame)
@@ -224,15 +227,15 @@ test("a take of the member's own: the writer is told how a scare is built, and i
   // …and whatever the writer returns, the direction built from it fits the engine and carries no word to say
   const p = takePrompt(t!, "phone");
   assert.ok(p.length <= TAKE_PROMPT_MAX && !/["“”]/.test(p) && !p.includes("Who's there"));
-  assert.ok(p.includes("THEN the camera turns slowly to the far corner and stops: there, exactly as in <<<image_1>>>, the man stands facing the corner, perfectly still. Its mouth does not open or close."));
+  assert.ok(p.includes("THEN the camera turns slowly to the far corner — in the same shot, one smooth unbroken move, never a cut — and stops: there, exactly as in <<<image_1>>>, the man stands facing the corner, perfectly still. Its mouth does not open or close."));
 });
 
 test("the making: started off its subject, listened to, voiced afterwards — and every step after the take degrades instead of failing", () => {
   const srv = read("app", "lib", "take.server.ts");
-  // the same model on the same host order the acted films use — fal's standard tier first — on the endpoint
-  // that takes a first frame AND a picture to arrive at
+  // the same model on the same host order the acted films use — fal's PRO tier (1080p) first ("upgrade the best image
+  // possible"), then its standard tier — on the endpoint that takes a first frame AND a picture to arrive at
   assert.ok(srv.includes('const FAL_OMNI_STD = "fal-ai/kling-video/o3/standard/reference-to-video";') && srv.includes('const FAL_OMNI = "fal-ai/kling-video/o3/pro/reference-to-video";'));
-  assert.ok(srv.indexOf('host: "fal kling 3 omni standard"') < srv.indexOf('host: "fal kling 3 omni"') && srv.indexOf('host: "fal kling 3 omni"') < srv.indexOf('host: "replicate kling 3 omni"'));
+  assert.ok(srv.indexOf('host: "fal kling 3 omni"') < srv.indexOf('host: "fal kling 3 omni standard"') && srv.indexOf('host: "fal kling 3 omni standard"') < srv.indexOf('host: "replicate kling 3 omni"'));
   assert.ok(srv.includes("startImage: o.first, referenceImages: [o.scene], prompt: o.direction(TAKE_REF.fal), generateAudio: true, durationSec: secs, aspect: o.aspect"));
   assert.ok(srv.includes('prompt: o.direction(TAKE_REF.replicate), start_image: o.first, reference_images: [o.scene], generate_audio: true, duration: secs, mode: "pro"'));
   // (a handheld take is TAKE_SECONDS; a house take asks for its own — always inside the engine's 3–15)
@@ -247,10 +250,11 @@ test("the making: started off its subject, listened to, voiced afterwards — an
   // a writer that fails or half-answers → a ready-made scare written for that camera, never half a direction
   assert.ok(srv.includes("take = written || { ...fallback, title: fallback.name };"));
   assert.ok(srv.includes("const fallbackFor = (camera: CameraLook): TakeIdea => TAKE_IDEAS.find((i) => (i.cams || HAND_CAMS).includes(camera)) || TAKE_IDEAS[0];"));
-  // NO WORDS: the take is listened to; if the engine spoke it is rolled again (once, unless told otherwise)
-  // and the quieter roll is kept — a roll that could not be heard never replaces one that was
-  assert.ok(srv.includes("for (let again = 0; silent && again < rerolls() && wordsIn(spoke) > 0; again++) {"));
-  assert.ok(srv.includes("if (nextSpoke !== null && wordsIn(nextSpoke) < wordsIn(spoke)) { rawName = next; spoke = nextSpoke;"));
+  // NO WORDS, NO CUT: the take is listened to and looked at; if the engine spoke or cut it is rolled again (once,
+  // unless told otherwise) and the better roll is kept (take.ts → betterRoll: a roll that could not be heard never
+  // replaces one that was, for its words)
+  assert.ok(srv.includes("for (let again = 0; again < rerolls() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, silent); again++) {"));
+  assert.ok(srv.includes("if (betterRoll({ cuts: nextCuts.length, words: said(nextSpoke) }, { cuts: cuts.length, words: said(spoke) }, silent)) { rawName = next; spoke = nextSpoke; cuts = nextCuts;"));
   assert.ok(srv.includes("Number.isFinite(n) && n >= 0 ? Math.min(2, Math.floor(n)) : 1;"), "TAKE_REROLLS: once by default, never more than twice");
   // THE VOICE is the app's own, laid on by takeSound; the picture is copied, never re-encoded
   assert.ok(srv.includes("voice_id: voice.id, emotion: voice.emotion, speed: voice.speed"));
@@ -263,7 +267,7 @@ test("the making: started off its subject, listened to, voiced afterwards — an
   // a look that will not render ships the take as it is
   assert.ok(srv.includes("const outPath = dressed || path.join(dir, soundName);"));
   // grain is incompressible: the dressed take is encoded under a cap
-  assert.ok(srv.includes('"-crf", "22", "-maxrate", "7M", "-bufsize", "14M"'));
+  assert.ok(srv.includes('"-crf", "22", "-maxrate", hd ? "10M" : "7M", "-bufsize", hd ? "20M" : "14M"') && srv.includes("const hd = look.w * look.h > 1_500_000;"));
   // the phone's two faces are given a moment, never waited on for long
   assert.ok(srv.includes("const fonts = await overlayFonts(8_000);"));
   // the piece says what was laid on, and what the engine said on its own (which should be nothing)
@@ -373,7 +377,7 @@ test("THE BODY CAM'S POLICE DRAMA (\"doesn't nessesarily need to be horror\"): t
   const srv = read("app", "lib", "take.server.ts");
   assert.ok(srv.includes("const seed = parseInt(stamp().slice(-6), 16);") && srv.includes("else if (ready) take = { ...castTake(ready, seed), title: ready.name };"));
   assert.ok(srv.includes("const seconds = take.seconds || TAKE_SECONDS;") && srv.includes("direction, aspect, seconds });"));
-  assert.ok(srv.includes('const silent = take.genre !== "drama";') && srv.includes("for (let again = 0; silent && again < rerolls() && wordsIn(spoke) > 0; again++) {"));
+  assert.ok(srv.includes('const silent = take.genre !== "drama";') && srv.includes("for (let again = 0; again < rerolls() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, silent); again++) {"));
   assert.ok(srv.includes('const voice = l.radio ? TAKE_RADIO_VOICE : take.genre === "drama" ? TAKE_OFFICER_VOICE : TAKE_VOICE;'));
 });
 
@@ -737,4 +741,114 @@ test("THE MAKING of a take written from a card: the card goes to its writer — 
   assert.ok(srv.includes("const seconds = take.seconds || TAKE_SECONDS;") && srv.includes('const silent = take.genre !== "drama";') && srv.includes('const voice = l.radio ? TAKE_RADIO_VOICE : take.genre === "drama" ? TAKE_OFFICER_VOICE : TAKE_VOICE;'));
   // the piece says which card it was written from, and how it ends
   assert.ok(srv.includes("...(from && opts.idea ? { from: from.key } : {}),") && srv.includes("...(take.ends ? { ends: take.ends } : {}),"));
+});
+
+/* 2026-11-25, the owner, of a take made from his own words ("The Hallway at 3AM"): "weird cut in that one … 1 second to
+ * 2 second the cut is far too obvious"; "why the fuck is the camera man a generic as 'roomate what are you doing no no'";
+ * "voice sounds like shit he is in monotone - no fear, the wording choice is fucking sad". */
+
+/** That take's own frames (its phone overlay cropped away), as ffmpeg measured them: [second, brightness, scene score]. */
+const HALLWAY: Array<[number, number, number]> = [
+  // the cut: the dark hall, then — one frame later — her, grinning, from another angle; the light hardly changes
+  [1.958333, 36.2229, 0.000445], [2, 36.3948, 0.000711], [2.041667, 36.4112, 0.001929], [2.083333, 34.5999, 0.113012],
+  [2.125, 35.1542, 0.041297], [2.166667, 35.7034, 0.00646], [2.208333, 38.702, 0.023573],
+  // the lamp goes out (a higher score than the cut — and NOT a cut)
+  [7.666667, 40.8003, 0.009094], [7.708333, 40.6661, 0.001491], [7.75, 22.5515, 0.160988], [7.791667, 22.5405, 0.001392],
+  // …on again, and out again
+  [10.166667, 22.2656, 0.000183], [10.208333, 28.2101, 0.058463], [10.25, 35.0488, 0.009579],
+  [10.708333, 38.376, 0.001147], [10.75, 37.1048, 0.000602], [10.791667, 24.7832, 0.108775], [10.833333, 24.8449, 0.003406],
+];
+
+test("A CUT IN A ONE-SHOT TAKE (\"the cut is far too obvious\"): found by how unlike the frame before it is while the light stays — a lamp going out is not one", async () => {
+  const { CUT_LIGHT, CUT_SCORE, TRIM_WITHIN, cutLookArgs, cutsAt, framesOf } = await import("../app/lib/take.ts");
+  const frames = HALLWAY.map(([t, y, s]) => ({ t, y, s }));
+  assert.deepEqual(cutsAt(frames), [2.08], "the cut he saw — and neither lamp");
+  assert.deepEqual([CUT_SCORE, CUT_LIGHT, TRIM_WITHIN], [0.08, 5, 4]);
+  // a camera swung fast is several unlike frames in a row, not one
+  const swing = [0.004, 0.07, 0.11, 0.09, 0.02].map((s, i) => ({ t: i / 24, y: 30 + i, s }));
+  assert.deepEqual(cutsAt(swing), []);
+  // a black frame either side is the dark, not a cut
+  assert.deepEqual(cutsAt([{ t: 0, y: 4, s: 0 }, { t: 0.04, y: 6, s: 0.2 }, { t: 0.08, y: 6, s: 0 }]), []);
+  // read from ffmpeg's own log: one record per frame, its brightness and its score (signalstats logs more than YAVG)
+  const log = [
+    "[Parsed_metadata_4 @ 000002c325cacd40] frame:49   pts:25600   pts_time:2.08333",
+    "[Parsed_metadata_4 @ 000002c325cacd40] lavfi.signalstats.YMIN=16",
+    "[Parsed_metadata_4 @ 000002c325cacd40] lavfi.signalstats.YAVG=34.5999",
+    "[Parsed_metadata_4 @ 000002c325cacd40] lavfi.signalstats.UAVG=127.1",
+    "[Parsed_metadata_4 @ 000002c325cacd40] lavfi.scene_score=0.113012",
+  ].join("\r\n");
+  assert.deepEqual(framesOf(log), [{ t: 2.08333, y: 34.5999, s: 0.113012 }]);
+  // THE REAL THING: ffmpeg run the way the server runs it, on a stand-in take — a picture that jumps to another
+  // angle at 2 s, and one whose light drops at 2 s
+  if (spawnSync("ffmpeg", ["-version"], { encoding: "utf8" }).status !== 0) return;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "take-cut-"));
+  try {
+    const make = (name: string, second: string): string => {
+      const out = path.join(dir, `${name}.mp4`);
+      const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=360x640:r=24:d=2", "-f", "lavfi", "-i", "testsrc2=s=360x640:r=24:d=2",
+        "-filter_complex", `[1:v]${second}[b];[0:v][b]concat=n=2:v=1[v]`, "-map", "[v]", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", out], { encoding: "utf8" });
+      assert.equal(r.status, 0, r.stderr);
+      return out;
+    };
+    const look = (file: string) => cutsAt(framesOf(spawnSync("ffmpeg", cutLookArgs(file), { encoding: "utf8", maxBuffer: 1 << 26 }).stderr));
+    const cut = look(make("cut", "hflip,vflip"));
+    assert.equal(cut.length, 1, `one cut: ${cut}`);
+    assert.ok(Math.abs(cut[0] - 2) < 0.05, `at 2 s: ${cut}`);
+    assert.deepEqual(look(make("lamp", "eq=brightness=-0.25")), [], "the light dropping is not a cut");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("A ROLL THAT CUTS IS ROLLED AGAIN, the better roll kept — and a cut still in its first seconds is cut off, its lines coming that much earlier", async () => {
+  const { betterRoll, rollFaulty, shiftLines } = await import("../app/lib/take.ts");
+  // which roll is kept: fewer cuts first; then, in a take that must be silent, fewer words — never an unheard one for its words
+  assert.equal(betterRoll({ cuts: 0, words: 3 }, { cuts: 1, words: 0 }, true), true, "a cut is worse than a few words (those are under the voice)");
+  assert.equal(betterRoll({ cuts: 0, words: null }, { cuts: 1, words: 0 }, true), true);
+  assert.equal(betterRoll({ cuts: 0, words: 0 }, { cuts: 0, words: 4 }, true), true);
+  assert.equal(betterRoll({ cuts: 0, words: null }, { cuts: 0, words: 4 }, true), false, "not known to be quieter");
+  assert.equal(betterRoll({ cuts: 0, words: 0 }, { cuts: 0, words: 4 }, false), false, "a drama's driver is meant to speak");
+  assert.equal(betterRoll({ cuts: 1, words: 0 }, { cuts: 1, words: 0 }, true), false);
+  // what is rolled again: a cut, any take; words, only a silent one
+  assert.equal(rollFaulty({ cuts: 1, words: 0 }, false), true);
+  assert.equal(rollFaulty({ cuts: 0, words: 5 }, false), false);
+  assert.equal(rollFaulty({ cuts: 0, words: 5 }, true), true);
+  assert.equal(rollFaulty({ cuts: 0, words: null }, true), false);
+  // a take that starts 2.08 s in: the question on finding her comes 0.72 s in (the camera has found her at once), the
+  // plea 6.52 s in — still inside its last four seconds — and never before the take's first moment; the radio at its own
+  assert.deepEqual(shiftLines(takeLines(takeIdea("smile")!), 2.08).map((l) => l.at), [0.72, 6.52]);
+  assert.deepEqual(shiftLines([{ at: 0.3, text: "a" }, { at: 0.2, text: "r", radio: true as const }], 2.08).map((l) => l.at), [0.3, 0.2]);
+  assert.deepEqual(shiftLines(takeLines(takeIdea("smile")!), 0), takeLines(takeIdea("smile")!), "no cut: as it was");
+
+  const srv = read("app", "lib", "take.server.ts");
+  // looked at as it is made, the way ffmpeg logs it (a whole take's log is far longer than `run` keeps)
+  assert.ok(srv.includes('const p = spawn("ffmpeg", cutLookArgs(file), { stdio: ["ignore", "ignore", "pipe"] });') && srv.includes("resolve(code === 0 ? cutsAt(framesOf(kept)) : []);"));
+  assert.ok(srv.includes("cuts = await cutsIn(path.join(dir, rawName));") && srv.includes("const nextCuts = await cutsIn(path.join(dir, next));"));
+  // a cut before TRIM_WITHIN is cut off — once — and the take must still be more than four seconds long
+  assert.ok(srv.includes("const early = cuts.find((t) => t > 0.3 && t < TRIM_WITHIN);") && srv.includes('if (!trimmed && early != null && !rawName.startsWith("takecut-")) {'));
+  assert.ok(srv.includes('"-ss", Math.max(0, early - 0.005).toFixed(3), "-i", path.join(dir, rawName), "-c:v", "libx264", "-preset", "fast", "-tune", "film", "-crf", "18"'));
+  assert.ok(srv.includes("(await secondsOf(path.join(dir, cutName))) > 4") && srv.includes("await ckpt({ ckRaw: rawName, ckTrim: String(early) });"));
+  assert.ok(srv.includes("const voiced = await voiceTake(rawName, take, trimmed);") && srv.includes("const asked = shiftLines(takeLines(take), trimmed);"));
+  // …and a job that restarts keeps what it found
+  assert.ok(read("app", "lib", "job-queue.server.ts").includes('ckSpoke: ck("ckSpoke"), ckCuts: ck("ckCuts"), ckTrim: ck("ckTrim") },'));
+  assert.ok(srv.includes("...(cuts.length ? { cuts } : {}), ...(trimmed ? { trimmed } : {}),"), "the piece says where it cut");
+  // a 1080p roll (the pro tier) is dressed at 1080p, not shrunk to 720
+  assert.ok(srv.includes("const hd = Math.max(rolledAt.w, rolledAt.h) >= 1800;") && srv.includes('(hd ? { w: 1080, h: 1920 } : { w: 720, h: 1280 })'));
+});
+
+test("THE ONE FILMING IS PERFORMED (\"he is in monotone - no fear\") and says what a real person in THAT situation would (\"the wording choice is fucking sad\")", async () => {
+  const { TAKE_ACTED, takeActing } = await import("../app/lib/take.ts");
+  // ElevenLabs v3, a man's voice, low stability for a bigger performance — scared, then terrified on the last line
+  assert.deepEqual(TAKE_ACTED, { voice: "Mark", stability: 0.2, style: 0.85, speed: 1 });
+  assert.equal(takeActing(0, 2), "[scared] [shaky breath] [whispering]");
+  assert.equal(takeActing(1, 2), "[terrified] [breathing heavily] [whispering]");
+  assert.equal(takeActing(0, 1), "[scared] [shaky breath] [whispering]", "one line: said as they see it");
+  const srv = read("app", "lib", "take.server.ts");
+  assert.ok(srv.includes('repCreate("elevenlabs/v3", input)') && srv.includes("prompt: `${acting} ${text}`, voice: TAKE_ACTED.voice, stability: TAKE_ACTED.stability, style: TAKE_ACTED.style"));
+  // the one filming in a scare is acted; a drama's officer and the radio keep their own voices; the plain voice behind it
+  assert.ok(srv.includes('const acted = !l.radio && take.genre !== "drama" ? await actLine(l.text, takeActing(own.indexOf(l), own.length)) : "";'));
+  assert.ok(srv.includes("const file = acted || await sayLine(l.text, voice);"));
+  // THE WORDS: specific to what the idea says they know, broken off — never a stock line, never just "no no"
+  const brief = takeWriterBrief("my roommate is standing in the hallway at 3am staring at me");
+  for (const rule of ["what a real, frightened person would actually blurt in THIS situation", "the name of the person they live with", "never a stock line (\"what are you doing\", \"who is there\", \"hello?\" on its own)", "never just \"no no\""]) assert.ok(brief.includes(rule), rule);
+  // the ready-made scares keep the lines the owner called cinema
+  assert.ok(SCARES.every((i) => i.says[0].endsWith("?")));
 });

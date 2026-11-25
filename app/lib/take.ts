@@ -328,7 +328,7 @@ export function takePrompt(t: Take, camera: CameraLook = "phone", ref: string = 
   const text = [
     `${HELD[camera]}. One continuous take, no cuts, nothing written on screen. NOBODY SPEAKS in this shot: no voice, no words, no whisper — only breathing and the quiet of the place.`,
     `FIRST TWO SECONDS: ${stop(one(t.first, 260))}`,
-    `THEN the camera ${one(t.finds, 160)} and stops: there, exactly as in ${ref}, ${stop(b1)} ${cap(poss)} mouth does not open or close.`,
+    `THEN the camera ${one(t.finds, 160)} — in the same shot, one smooth unbroken move, never a cut — and stops: there, exactly as in ${ref}, ${stop(b1)} ${cap(poss)} mouth does not open or close.`,
     `THEN, slowly: ${stop(b2)}`,
     `LAST FOUR SECONDS: ${stop(b3)}`,
     `${cap(who)} never runs, never flinches, never turns around and never looks away; never screams, never speaks, never opens ${poss} mouth, never mouths a word. ${held} The one filming is never in the picture: no legs, no feet, no body. ${light}`,
@@ -394,6 +394,16 @@ export function dramaPrompt(t: Take, camera: CameraLook = "bodycam", ref: string
 /** The voice of the one filming, and how it is said (the voice and the manner of the takes the owner
  *  called cinema). */
 export const TAKE_VOICE = { id: "English_magnetic_voiced_man", emotion: "fearful", speed: 0.95 } as const;
+/** THE ONE FILMING, PERFORMED (2026-11-25, the owner, of a take from his own words: "voice sounds like shit he is in
+ *  monotone - no fear"). The speech model's "fearful" read every line flat. ElevenLabs v3 — the engine the character
+ *  voices are ACTED on (character-voices.ts) — takes a man's voice told how to say each line, at low stability for a
+ *  bigger performance: the first a scared, shaky whisper as they see it, the last terrified and out of breath.
+ *  TAKE_VOICE stays behind it, for when it will not speak. */
+export const TAKE_ACTED = { voice: "Mark", stability: 0.2, style: 0.85, speed: 1.0 } as const;
+/** How the `index`-th of `total` lines is said. */
+export function takeActing(index: number, total: number): string {
+  return total > 1 && index === total - 1 ? "[terrified] [breathing heavily] [whispering]" : "[scared] [shaky breath] [whispering]";
+}
 /** How long after the camera finds the thing the question comes, when it is asked on seeing it. */
 const ASK_AFTER_FOUND = 0.8;
 /** The plea comes as it starts toward the lens (the last four seconds begin at TAKE_SECONDS − 4). */
@@ -444,6 +454,64 @@ export function placeLines<T extends { at: number; seconds: number }>(lines: T[]
     free = at + l.seconds + TAKE_LINE_GAP;
   }
   return out;
+}
+
+/** A CUT IN A ONE-SHOT TAKE (2026-11-25, the owner, of a take from his own words: "1 second to 2 second the cut is far
+ *  too obvious"). Told to swing from the way in to the thing, the engine now and then CUTS to it instead. A cut is ONE
+ *  frame unlike the one before it (ffmpeg's scene score ≥ CUT_SCORE) while the light stays as it was, with calm
+ *  frames either side. Measured on that take, its overlay cropped away: the cut scored 0.113 at a brightness change
+ *  of 1.8 (of 255), between frames scoring 0.002 and 0.041; its two lamps going out scored 0.16 and 0.11 at changes of
+ *  18 and 12 — a lamp is not a cut, and a camera swung fast is several unlike frames in a row, not one. */
+export const CUT_SCORE = 0.08;
+/** The most the brightness may change across a cut (a bigger change is the light, not the camera). */
+export const CUT_LIGHT = 5;
+/** A cut this early is cut OFF: the take starts just after it (later than this, too much of the take would go). */
+export const TRIM_WITHIN = 4;
+/** How a take is looked at for its cuts: ffmpeg logs every frame's brightness and scene score (read by framesOf). */
+export const cutLookArgs = (file: string): string[] => ["-v", "info", "-nostats", "-i", file, "-an", "-vf", "scale=320:-2,signalstats,select='gte(scene,0)',metadata=print", "-f", "null", "-"];
+/** Each frame of a take as ffmpeg logs it (signalstats + metadata=print): its second, brightness and scene score. */
+export function framesOf(log: string): Array<{ t: number; y: number; s: number }> {
+  const out: Array<{ t: number; y: number; s: number }> = [];
+  let cur: { t: number; y: number; s: number } | null = null;
+  for (const line of log.split(/\r?\n/)) {
+    const t = /pts_time:(-?[\d.]+)/.exec(line);
+    if (t) { cur = { t: Number(t[1]), y: NaN, s: 0 }; out.push(cur); continue; }
+    if (!cur) continue;
+    const y = /lavfi\.signalstats\.YAVG=([\d.]+)/.exec(line);
+    if (y) cur.y = Number(y[1]);
+    const s = /lavfi\.scene_score=([\d.]+)/.exec(line);
+    if (s) cur.s = Number(s[1]);
+  }
+  return out.filter((f) => Number.isFinite(f.t) && Number.isFinite(f.y));
+}
+/** The seconds a take CUTS at (see CUT_SCORE). */
+export function cutsAt(frames: ReadonlyArray<{ t: number; y: number; s: number }>): number[] {
+  const out: number[] = [];
+  for (let i = 1; i < frames.length; i++) {
+    const f = frames[i], before = frames[i - 1], after = frames[i + 1];
+    if (f.s < CUT_SCORE) continue;
+    // (the light changed — a lamp, a torch, the dark — not the camera; or a black frame either side)
+    if (Math.abs(f.y - before.y) > CUT_LIGHT || Math.min(f.y, before.y) < 8) continue;
+    // (a camera swung fast: unlike frames on either side of this one too)
+    if (before.s > f.s * 0.3 || (after && after.s > f.s * 0.6)) continue;
+    out.push(Math.round(f.t * 100) / 100);
+  }
+  return out;
+}
+/** Which of two rolls of a take is KEPT: the one with fewer cuts; then, for a take that must be silent, the one the
+ *  engine spoke fewer words in (`words` null: it could not be heard — and a roll that could not be heard is not
+ *  known to be quieter). True when `a` is better than `b`. */
+export function betterRoll(a: { cuts: number; words: number | null }, b: { cuts: number; words: number | null }, silent: boolean): boolean {
+  if (a.cuts !== b.cuts) return a.cuts < b.cuts;
+  return silent && a.words !== null && b.words !== null && a.words < b.words;
+}
+/** A roll worth rolling again: it cuts, or the engine spoke in a take that must be silent. */
+export const rollFaulty = (r: { cuts: number; words: number | null }, silent: boolean): boolean => r.cuts > 0 || (silent && (r.words ?? 0) > 0);
+/** The lines of a take that now starts `by` seconds later (its cut cut off): each said that much earlier — never
+ *  before the take's first moment (the radio at its own). */
+export function shiftLines<T extends { at: number; radio?: true }>(lines: T[], by: number): T[] {
+  if (!(by > 0)) return lines;
+  return lines.map((l) => ({ ...l, at: Math.round(Math.max(l.radio ? RADIO_AT : 0.3, l.at - by) * 100) / 100 }));
 }
 
 /** How loud the room of a take should be once it is finished, and the most it is ever lifted by. Told that
@@ -551,7 +619,7 @@ export function takeWriterBrief(idea: string, camera?: CameraLook, from?: TakeId
     "ITS MOUTH NEVER MOVES. Nothing it does involves speaking, mouthing, chewing, or its mouth opening or closing: a smile it has is fixed from the first frame to the last. (The one filming speaks, and a mouth that moves would look like it is saying their words.)",
     "THE THING is nearly human and slightly wrong: ONE or TWO exact wrongnesses and no more (a smile far too wide, crowded with thin teeth; eyes sunk in dark sockets; a neck or fingers too long; skin like candle wax). Never horns, wings, tentacles, glowing eyes, flames or a bare skull. No blood, no gore, no wounds.",
     "The one filming is never seen: write what THE CAMERA does (\"the camera backs away\"), never what their body does.",
-    'Answer with JSON only, in English whatever language the idea is in: {"title": a short name for this take (2–5 words), "who": what to call the thing in a sentence ("she", "the figure", "the face" — lower case, 1–3 words), "still": THE SCENE THE CAMERA ARRIVES AT, as one picture, in 2–4 sentences — where the camera is, what is in the dark, exactly what is wrong with it, what little light there is, "opens": WHERE THE CAMERA LOOKS FIRST, as one picture of the same place with NOBODY in it, in one or two sentences, "first": what the camera sees and what its holder is doing for those two seconds, one sentence starting "the camera", "finds": how the camera gets from there to the thing, a few words starting with a verb ("swings up to the hallway ahead", "sinks slowly down to the floor and looks under the bed"), "beats": [the stillness — say again here exactly what the thing looks like and where it is, since this is where the camera finds it —, the wrong movement, THE END — one or two sentences each, in the present tense; the first two start with the thing], "says": [what the one filming asks (a few worried words, ending in a question mark), what they whisper at the end (two or three words)], "asks": "looking" if the question is asked BEFORE the camera finds the thing ("Who is up there?"), "found" if it is asked on seeing it ("What is wrong?"), "ends": how THE END ends — "comes" (it comes toward the camera), "stays" (the camera stays on it and the light does not change), "dark" (the light goes out or changes), "away" (the camera turns or swings away from it), "sound": the sound of the thing moving, in a few words}',
+    'Answer with JSON only, in English whatever language the idea is in: {"title": a short name for this take (2–5 words), "who": what to call the thing in a sentence ("she", "the figure", "the face" — lower case, 1–3 words), "still": THE SCENE THE CAMERA ARRIVES AT, as one picture, in 2–4 sentences — where the camera is, what is in the dark, exactly what is wrong with it, what little light there is, "opens": WHERE THE CAMERA LOOKS FIRST, as one picture of the same place with NOBODY in it, in one or two sentences, "first": what the camera sees and what its holder is doing for those two seconds, one sentence starting "the camera", "finds": how the camera gets from there to the thing, a few words starting with a verb ("swings up to the hallway ahead", "sinks slowly down to the floor and looks under the bed"), "beats": [the stillness — say again here exactly what the thing looks like and where it is, since this is where the camera finds it —, the wrong movement, THE END — one or two sentences each, in the present tense; the first two start with the thing], "says": [what the one filming says first — as they look, or the moment they see it (see "asks") — what a real, frightened person would actually blurt in THIS situation: specific to what the idea says they know (the name of the person they live with, what they heard a minute ago, whose room it is), broken off, breathless, 4 to 12 words — never a stock line ("what are you doing", "who is there", "hello?" on its own), what they whisper as the end lands (2 to 6 raw words of their own, never just "no no")], "asks": "looking" if the question is asked BEFORE the camera finds the thing ("Who is up there?"), "found" if it is asked on seeing it ("What is wrong?"), "ends": how THE END ends — "comes" (it comes toward the camera), "stays" (the camera stays on it and the light does not change), "dark" (the light goes out or changes), "away" (the camera turns or swings away from it), "sound": the sound of the thing moving, in a few words}',
     ...(worn ? ['…and with it, "radio": what a dispatcher says over the radio as the take opens — ONE short call: a unit number, why they were sent and a MADE-UP house number and street ("Four-twelve, welfare check at fourteen Alder Lane. No lights in three days."); no real agency, no crime, no weapon.'] : []),
   ].join("\n");
 }

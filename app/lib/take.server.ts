@@ -13,12 +13,15 @@
  *                        FROM the scene (the owner: "a 2 second off of subject at the beggining then pans
  *                        to the actual scene"). When it will not draw, the take starts on the scene itself.
  *   4. THE TAKE          Kling 3 Omni with its own sound, started on the way in and told to find the scene
- *                        "exactly as in" the reference picture. fal's standard tier first (what the acted
- *                        films render on), then the same model elsewhere.
- *   5. NO WORDS          the engine is given none (it lip-syncs any line onto the only mouth it can see —
- *                        "bro the monster literally lipsynced every word"), and the take is LISTENED to: if
- *                        the engine spoke anyway, it is rolled once more and the quieter roll is kept.
- *   6. THE VOICE         what the one filming says is the app's own speaking voice, laid over the take with
+ *                        "exactly as in" the reference picture — in one unbroken move. fal's pro tier first
+ *                        (1080p, what the acted films render on), then its standard tier, then elsewhere.
+ *   5. NO WORDS, NO CUT  the engine is given no words (it lip-syncs any line onto the only mouth it can see —
+ *                        "bro the monster literally lipsynced every word"), and the take is LISTENED to and
+ *                        LOOKED at: if the engine spoke anyway, or CUT ("the cut is far too obvious"), it is
+ *                        rolled once more and the better roll kept; a cut still in its first seconds is cut
+ *                        off — the take starts on the frame after it, and its lines come that much earlier.
+ *   6. THE VOICE         what the one filming says is PERFORMED (ElevenLabs v3: scared, then terrified —
+ *                        "he is in monotone - no fear"), the plain voice behind it, laid over the take with
  *                        the room lifted to a real level (take.ts → takeSound) — and, on a body cam, the
  *                        dispatcher's call over the radio, in a voice of its own. The picture is never touched.
  *   7. THE CAMERA        the take is dressed as a phone, a camcorder, nothing, or a body cam (camera-dress.ts),
@@ -44,7 +47,7 @@ import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { persistRemote, repRun } from "./image-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { overlayFonts } from "./overlay-fonts.server";
-import { DRAMA_SCHEMA, TAKE_HISS, TAKE_IDEAS, TAKE_OFFICER_VOICE, TAKE_RADIO_VOICE, TAKE_REF, TAKE_SCHEMA, TAKE_SECONDS, TAKE_VOICE, HAND_CAMS, castPick, castTake, dramaWriterBrief, parseTake, placeLines, shapeFor, takeIdea, takeLines, takeOpensPrompt, takePrompt, takeSound, takeStillPrompt, takeWriterBrief, type Take, type TakeIdea } from "./take";
+import { DRAMA_SCHEMA, TAKE_ACTED, TAKE_HISS, TAKE_IDEAS, TAKE_OFFICER_VOICE, TAKE_RADIO_VOICE, TAKE_REF, TAKE_SCHEMA, TAKE_SECONDS, TAKE_VOICE, TRIM_WITHIN, HAND_CAMS, betterRoll, cutLookArgs, cutsAt, framesOf, rollFaulty, shiftLines, takeActing, castPick, castTake, dramaWriterBrief, parseTake, placeLines, shapeFor, takeIdea, takeLines, takeOpensPrompt, takePrompt, takeSound, takeStillPrompt, takeWriterBrief, type Take, type TakeIdea } from "./take";
 import { checkpointJob, repCreate, repPoll } from "./ugc-ad-pipeline.server";
 
 // (the same model, three hosts. The two fal ids are its "reference" endpoint — a first frame AND a picture to
@@ -53,7 +56,7 @@ const FAL_OMNI_STD = "fal-ai/kling-video/o3/standard/reference-to-video";
 const FAL_OMNI = "fal-ai/kling-video/o3/pro/reference-to-video";
 const REP_OMNI = "kwaivgi/kling-v3-omni-video";
 const TAKE_POLL_MS = 20 * 60_000;
-/** How many times a take is rolled again because the engine SPOKE (0 = never). Each one is a whole take
+/** How many times a take is rolled again because the engine SPOKE or CUT (0 = never). Each one is a whole take
  *  paid for a second time — the owner's to turn off: TAKE_REROLLS=0. */
 export const rerolls = (): number => { const n = Number(process.env.TAKE_REROLLS); return Number.isFinite(n) && n >= 0 ? Math.min(2, Math.floor(n)) : 1; };
 
@@ -91,9 +94,10 @@ export function imageRef(base: string, rel: string): string {
 export async function rollTake(o: { first: string; scene: string; direction: (ref: string) => string; aspect: "9:16" | "16:9"; seconds?: number }): Promise<{ url: string; host: string }> {
   const secs = Math.max(3, Math.min(15, Math.round(o.seconds ?? TAKE_SECONDS)));
   const viaFal = (model: string) => async () => falVideoPoll(model, await falVideoSubmit(model, { startImage: o.first, referenceImages: [o.scene], prompt: o.direction(TAKE_REF.fal), generateAudio: true, durationSec: secs, aspect: o.aspect }), TAKE_POLL_MS);
+  // (the pro tier — 1080p — first: the owner, of the picture, 2026-11-24: "upgrade the best image possible")
   const order: Array<{ host: string; fal: boolean; go: () => Promise<string> }> = [
-    { host: "fal kling 3 omni standard", fal: true, go: viaFal(FAL_OMNI_STD) },
     { host: "fal kling 3 omni", fal: true, go: viaFal(FAL_OMNI) },
+    { host: "fal kling 3 omni standard", fal: true, go: viaFal(FAL_OMNI_STD) },
     { host: "replicate kling 3 omni", fal: false, go: async () => repPoll(await repCreate(REP_OMNI, { prompt: o.direction(TAKE_REF.replicate), start_image: o.first, reference_images: [o.scene], generate_audio: true, duration: secs, mode: "pro" }), TAKE_POLL_MS, "take") },
   ];
   let last = "no host";
@@ -181,6 +185,37 @@ async function sayLine(text: string, voice: { id: string; emotion: string; speed
   return "";
 }
 
+/** One line of the one filming, PERFORMED (take.ts → TAKE_ACTED): ElevenLabs v3 told how to say it — "" when it would
+ *  not speak (the caller falls back to sayLine). */
+async function actLine(text: string, acting: string): Promise<string> {
+  try {
+    const input = { prompt: `${acting} ${text}`, voice: TAKE_ACTED.voice, stability: TAKE_ACTED.stability, style: TAKE_ACTED.style, speed: TAKE_ACTED.speed, similarity_boost: 0.75, language_code: "en" };
+    const url = await repPoll(await repCreate("elevenlabs/v3", input), 3 * 60_000, "take-voice");
+    const res = await fetch(String(url));
+    if (!res.ok) throw new Error(`fetch ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 2_000) throw new Error("empty");
+    const name = `takesay-${stamp()}.mp3`;
+    fs.writeFileSync(path.join(renders(), name), buf);
+    return name;
+  } catch (e) { console.error(`[take] the acted voice would not speak — the plain one says it: ${e instanceof Error ? e.message.slice(0, 120) : e}`); return ""; }
+}
+
+/** THE SECONDS A TAKE CUTS AT (take.ts → cutsAt — the owner: "the cut is far too obvious"): every frame's brightness
+ *  and scene score, read from ffmpeg as it goes (a whole take's log is far longer than `run` keeps). [] when it
+ *  cannot be read — a take that cannot be looked at is kept as it is. */
+export function cutsIn(file: string, maxMs = 120_000): Promise<number[]> {
+  return new Promise((resolve) => {
+    const p = spawn("ffmpeg", cutLookArgs(file), { stdio: ["ignore", "ignore", "pipe"] });
+    let kept = "", rest = "";
+    const keep = (text: string) => { for (const l of text.split("\n")) if (/pts_time:|YAVG=|scene_score=/.test(l)) kept += `${l}\n`; };
+    p.stderr.on("data", (d) => { rest += String(d); const i = rest.lastIndexOf("\n"); if (i >= 0) { keep(rest.slice(0, i)); rest = rest.slice(i + 1); } });
+    const timer = setTimeout(() => { try { p.kill("SIGKILL"); } catch { /* gone */ } }, maxMs);
+    p.on("close", (code) => { clearTimeout(timer); keep(rest); resolve(code === 0 ? cutsAt(framesOf(kept)) : []); });
+    p.on("error", () => { clearTimeout(timer); resolve([]); });
+  });
+}
+
 /** How loud a take's own room is, and whether it has a sound at all. */
 async function roomOf(file: string): Promise<{ hasSound: boolean; roomDb: number | null }> {
   const probe = await run("ffmpeg", ["-v", "info", "-i", file, "-vn", "-af", "volumedetect", "-f", "null", "-"], 60_000);
@@ -191,18 +226,21 @@ async function roomOf(file: string): Promise<{ hasSound: boolean; roomDb: number
 /** THE VOICE BEHIND THE CAMERA, laid over the take's own room (take.ts → takeSound). Returns the voiced
  *  take's file name and the lines as they were placed — or null when nothing could be laid on (the caller
  *  keeps the take as it is). The picture is copied, never re-encoded. */
-async function voiceTake(rawName: string, take: Take): Promise<{ name: string; lines: Array<{ at: number; text: string; radio?: true }> } | null> {
+async function voiceTake(rawName: string, take: Take, trimmed = 0): Promise<{ name: string; lines: Array<{ at: number; text: string; radio?: true }> } | null> {
   const dir = renders();
   const said: string[] = [];
   try {
-    const asked = takeLines(take);
+    // (a take that starts after its cut: every line that much earlier)
+    const asked = shiftLines(takeLines(take), trimmed);
     if (!asked.length) return null;
     const spoken: Array<{ at: number; text: string; radio?: true; file: string; seconds: number }> = [];
+    const own = asked.filter((l) => !l.radio);
     for (const l of asked) {
-      // (the one filming in the fearful voice of the takes he called cinema — an officer in a drama, firm; the
-      //  dispatcher in a radio's own)
+      // (the one filming in a scare: PERFORMED — scared and whispered, then terrified (take.ts → TAKE_ACTED); the plain
+      //  fearful voice only when that will not speak. An officer in a drama, firm; the dispatcher in a radio's own)
       const voice = l.radio ? TAKE_RADIO_VOICE : take.genre === "drama" ? TAKE_OFFICER_VOICE : TAKE_VOICE;
-      const file = await sayLine(l.text, voice);
+      const acted = !l.radio && take.genre !== "drama" ? await actLine(l.text, takeActing(own.indexOf(l), own.length)) : "";
+      const file = acted || await sayLine(l.text, voice);
       if (!file) continue;
       said.push(file);
       spoken.push({ ...l, file, seconds: await secondsOf(path.join(dir, file)) });
@@ -273,8 +311,10 @@ export async function dressTake(inPath: string, look: TakeDress): Promise<string
     fs.writeFileSync(script, d.filter);
     // (a time-lapse re-times the sound with the picture, inside the graph: [a] is its sound then)
     const sound = d.audioInGraph ? ["-map", "[a]"] : ["-map", "0:a?", ...(d.audio ? ["-af", d.audio] : [])];
+    // (1080p has twice the pixels of 720p: a little more room for its grain)
+    const hd = look.w * look.h > 1_500_000;
     const r = await run("ffmpeg", ["-v", "error", "-y", ...inputs, "-filter_complex_script", script, "-map", "[v]", ...sound,
-      "-c:v", "libx264", "-preset", "medium", "-crf", "22", "-maxrate", "7M", "-bufsize", "14M", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out], 300_000);
+      "-c:v", "libx264", "-preset", "medium", "-crf", "22", "-maxrate", hd ? "10M" : "7M", "-bufsize", hd ? "20M" : "14M", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out], 300_000);
     fs.rmSync(script, { force: true });
     for (const f of fs.readdirSync(dir)) if (f.startsWith(`take-${id}-chrome`)) fs.rmSync(path.join(dir, f), { force: true });
     if (r.code !== 0 || !fs.existsSync(out) || fs.statSync(out).size < 50_000) throw new Error(r.err.slice(-240) || "no file");
@@ -304,7 +344,7 @@ export type TakeOptions = {
   aspect?: string;
   section?: string;
   jobId?: string;
-  resume?: { ckTake?: string; ckStill?: string; ckOpens?: string; ckRaw?: string; ckSpoke?: string };
+  resume?: { ckTake?: string; ckStill?: string; ckOpens?: string; ckRaw?: string; ckSpoke?: string; ckCuts?: string; ckTrim?: string };
 };
 
 /** Make one take. Returns the new piece's id. */
@@ -379,28 +419,51 @@ export async function generateTake(opts: TakeOptions): Promise<string> {
   // (a DRAMA's driver is meant to speak — only a scare that spoke is rolled again)
   const silent = take.genre !== "drama";
   let spoke: Array<{ at: number; text: string }> | null = resume.ckSpoke ? JSON.parse(resume.ckSpoke) : null;
+  // (and A CUT — take.ts → cutsAt — the owner: "the cut is far too obvious": a roll that cuts is rolled again too, in
+  //  the same one roll more, and the roll with fewer cuts kept)
+  let cuts: number[] = resume.ckCuts ? JSON.parse(resume.ckCuts) : [];
+  const said = (s: typeof spoke) => (s === null ? null : wordsIn(s));
   if (!rawName) {
     rawName = await roll();
     await ckpt({ ckRaw: rawName });
     spoke = await heard(base, rawName);
-    for (let again = 0; silent && again < rerolls() && wordsIn(spoke) > 0; again++) {
-      console.log(`[take] the engine spoke (${wordsIn(spoke)} words) — rolled again`);
+    cuts = await cutsIn(path.join(dir, rawName));
+    for (let again = 0; again < rerolls() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, silent); again++) {
+      console.log(`[take] ${cuts.length ? `the take cuts (at ${cuts.join("s, ")}s)` : `the engine spoke (${wordsIn(spoke)} words)`} — rolled again`);
       try {
         const next = await roll();
         const nextSpoke = await heard(base, next);
-        // (a roll that could not be heard is not known to be quieter: the one that was heard is kept)
-        if (nextSpoke !== null && wordsIn(nextSpoke) < wordsIn(spoke)) { rawName = next; spoke = nextSpoke; await ckpt({ ckRaw: rawName }); }
+        const nextCuts = await cutsIn(path.join(dir, next));
+        if (betterRoll({ cuts: nextCuts.length, words: said(nextSpoke) }, { cuts: cuts.length, words: said(spoke) }, silent)) { rawName = next; spoke = nextSpoke; cuts = nextCuts; await ckpt({ ckRaw: rawName }); }
       } catch (e) { console.error(`[take] the second roll failed — the first is kept: ${e instanceof Error ? e.message.slice(0, 140) : e}`); break; }
     }
-    await ckpt({ ckSpoke: JSON.stringify(spoke) });
+    await ckpt({ ckSpoke: JSON.stringify(spoke), ckCuts: JSON.stringify(cuts) });
+  }
+
+  // 5½) A CUT IN ITS FIRST SECONDS IS CUT OFF: the take starts on the frame after it (a later one stays — too much of the
+  //     take would go). Once: a take already started after its cut is not trimmed again.
+  let trimmed = Number(resume.ckTrim) || 0;
+  const early = cuts.find((t) => t > 0.3 && t < TRIM_WITHIN);
+  if (!trimmed && early != null && !rawName.startsWith("takecut-")) {
+    const cutName = `takecut-${stamp()}.mp4`;
+    const r = await run("ffmpeg", ["-v", "error", "-y", "-ss", Math.max(0, early - 0.005).toFixed(3), "-i", path.join(dir, rawName), "-c:v", "libx264", "-preset", "fast", "-tune", "film", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", path.join(dir, cutName)], 180_000);
+    if (r.code === 0 && fs.existsSync(path.join(dir, cutName)) && (await secondsOf(path.join(dir, cutName))) > 4) {
+      console.log(`[take] a cut at ${early}s in a one-shot take — it starts after it`);
+      rawName = cutName;
+      trimmed = early;
+      await ckpt({ ckRaw: rawName, ckTrim: String(early) });
+    }
   }
 
   // 6) the voice behind the camera (and a body cam's radio)
-  const voiced = await voiceTake(rawName, take);
+  const voiced = await voiceTake(rawName, take, trimmed);
   const soundName = voiced?.name || rawName;
 
-  // 7) the camera (a body cam prints the night it was worn: today, a little before midnight)
-  const size = aspect === "16:9" ? { w: 1280, h: 720 } : { w: 720, h: 1280 };
+  // 7) the camera (a body cam prints the night it was worn: today, a little before midnight) — at the size it was
+  //    rolled at: a 1080p roll (the pro tier) is dressed at 1080p
+  const rolledAt = await sizeOf(path.join(dir, soundName));
+  const hd = Math.max(rolledAt.w, rolledAt.h) >= 1800;
+  const size = aspect === "16:9" ? (hd ? { w: 1920, h: 1080 } : { w: 1280, h: 720 }) : (hd ? { w: 1080, h: 1920 } : { w: 720, h: 1280 });
   const worn = camera === "bodycam" ? { clock: { date: camToday(), start: 23 * 3600 + 5 * 60 + (parseInt(stamp().slice(-4), 16) % 2900) } } : {};
   const dressed = await dressTake(path.join(dir, soundName), { look: camera, w: size.w, h: size.h, ...worn });
   const outPath = dressed || path.join(dir, soundName);
@@ -421,7 +484,8 @@ export async function generateTake(opts: TakeOptions): Promise<string> {
         // the job that made it (what waits for "my piece" asks for exactly this)
         ...(opts.jobId ? { jobId: opts.jobId } : {}),
         // what it was made from, so a take can be looked into (and rolled again) later
-        take: { ...(take.key ? { idea: take.key } : {}), ...(from && opts.idea ? { from: from.key } : {}), ...(take.genre ? { genre: take.genre } : {}), ...(take.ends ? { ends: take.ends } : {}), camera, dressed: !!dressed, host, rolls, still, opens: firstFrame === still ? null : opens, raw: `/renders/${rawName}`, direction: direction(TAKE_REF.replicate).slice(0, 2400) },
+        // (`cuts`: where the kept roll cut, in its own seconds; `trimmed`: the seconds cut off its start, a cut with them)
+        take: { ...(take.key ? { idea: take.key } : {}), ...(from && opts.idea ? { from: from.key } : {}), ...(take.genre ? { genre: take.genre } : {}), ...(take.ends ? { ends: take.ends } : {}), camera, dressed: !!dressed, host, rolls, ...(cuts.length ? { cuts } : {}), ...(trimmed ? { trimmed } : {}), still, opens: firstFrame === still ? null : opens, raw: `/renders/${rawName}`, direction: direction(TAKE_REF.replicate).slice(0, 2400) },
         // what the one filming says, and when — laid on afterwards (null: the take has no voice on it)
         lines: voiced?.lines || null,
         // what the listening model heard in the take AS THE ENGINE MADE IT — it is given no words, so this
