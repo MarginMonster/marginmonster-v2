@@ -358,6 +358,9 @@ test("phone first, dark and light, a little menace — and less motion honoured"
   assert.ok(ui.includes("@media(max-width:560px){.mm-thing{padding:10px;gap:6px 12px;}.mm-thing-see{width:100%;justify-content:center;}}"));
   // the row's strip is the stars' strip (it scrolls inside itself, never the page)
   assert.ok(ui.includes(".mm-artistpick{display:flex;gap:9px;overflow-x:auto;overflow-y:hidden;"));
+  // …and it opens at its start: the tiles snap, and without scroll padding the strip opened 8px in, cutting the left
+  // of the ring off the ticked "We cast it" / "We invent it" (measured at 390, review)
+  assert.ok(ui.includes(".mm-story .mm-artistpick{scroll-padding-inline:8px;}"));
   // a long name never pushes the card wider than its column
   assert.ok(ui.includes(".mm-cast-thingname{min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}"));
 });

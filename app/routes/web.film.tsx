@@ -5824,6 +5824,10 @@ a.mm-pace-auto{text-decoration:none;}
    the wide green halo was cut off square at the strip's edge. A little room inside the strip, taken back
    outside it, and a halo that fits in that room.) */
 .mm-story .mm-artistpick{padding:8px 8px 14px;margin:-6px -6px -4px;}
+/* (…and that room is kept when the strip snaps: its tiles snap to the strip's start, and with no scroll padding
+   the strip opened scrolled 8px in, the first tile flush with its edge — "We cast it" and "We invent it", both
+   ticked by default, had the left of their ring cut off. Measured at 390, review 2026-11-25: scrollLeft 8.) */
+.mm-story .mm-artistpick{scroll-padding-inline:8px;}
 .mm-story .mm-artistpick .fs-rface.on:not(.is-arm){box-shadow:0 0 0 2.5px var(--green,#0C7A46),0 0 9px -1px rgba(18,168,94,.55),0 5px 9px -5px rgba(12,122,70,.5);}
 /* THE MONSTER (2026-11-25 — "Monster should be castable also"): a Horror film's thing, cast in its own row of the
    Cast step under the stars, named on the step's card after them, and — once the script has one — shown in the
