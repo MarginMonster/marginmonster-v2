@@ -148,4 +148,8 @@ test("the writer is dealt its hand where the story is written — a story format
   // person — unless a character hosts their own show — and in a familiar documentary voice by default.
   assert.ok(engine.includes("(teller ? \"\" : `THE STORYTELLER is outside the story — a narrator, the kind a documentary has: every CAPTION is in the third person"));
   assert.ok(read("app", "lib", "narrated-story.server.ts").includes("  horror: \"English_ManWithDeepVoice\","), "not a creature's voice (those are still there to be picked)");
+  // …and every new movie category has its narrator, the same familiar voice (2026-11-25), never the fallback
+  for (const g of ["comedy", "thriller", "action", "romance", "scifi", "fantasy", "mystery"]) {
+    assert.ok(read("app", "lib", "narrated-story.server.ts").includes(`  ${g}: "English_ManWithDeepVoice",`), `${g} has its narrator`);
+  }
 });
