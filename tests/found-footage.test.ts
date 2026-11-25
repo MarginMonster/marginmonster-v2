@@ -37,15 +37,17 @@ test("the builder is the OWNER'S ALONE until the tier has a name and a price: th
   assert.ok(!/spendTokens|prePaid|chargedTokens/.test(ui));
 });
 
-test("ONE SCREEN: what happens — one box first, the cards its starters — the camera, the settings that apply, one button; the last tap wins and the button names the pair", () => {
+test("ONE SCREEN: what was caught — one box first, the cards its starters — the camera, the cut, the settings that apply, the reel, one button; the last tap wins and the button names the pair", () => {
   const ui = read("app", "routes", "web.found-footage.tsx");
-  // the parts, in order — and the box is the first thing under "What happens?", above every card
-  const at = ['{t("What happens?")}', '<textarea id="ff-own-in"', "{FOOTAGE_SHELVES.map((sh) => (", '{t("The camera")}', '{t("Scene settings")}', 'className={`ff-go'].map((m) => ui.indexOf(m));
+  // the parts, in order — and the box is the first thing under "What was caught on camera?", above every card; then
+  // the step cards (2026-11-25: the Movie Maker's — the camera, the cut, the settings), the reel, the button
+  const at = ['{t("What was caught on camera?")}', '<textarea id="ff-own-in"', "{FOOTAGE_SHELVES.map((sh) => (", '{t("The camera")}', '{t("The cut")}', '{t("The settings")}', '<section className={`ff-reel', 'className={`ff-go'].map((m) => ui.indexOf(m));
   assert.ok(at.every((x, i) => x > 0 && (i === 0 || x > at[i - 1])), "in order");
   // ALWAYS THERE (the owner: "These found footage options leave zero room for creativity, it's just what happens"):
   // the box sits right under its heading, which is its label — never behind a button
-  assert.ok(ui.includes('<h2 className="ff-lbl" id="ff-what"><span className="ff-n">1</span> <label htmlFor="ff-own-in">{t("What happens?")}</label></h2>\n        <textarea id="ff-own-in"'));
-  assert.ok(ui.includes('placeholder={t("Write it your way — or tap a scare below to start from it")}'));
+  assert.ok(ui.includes('<h2 className="ff-lbl" id="ff-what"><span className="ff-n">1</span> <label htmlFor="ff-own-in">{t("What was caught on camera?")}</label></h2>\n        <textarea id="ff-own-in"'));
+  // (…and "not limited" — the owner, 2026-11-25: the box says a film is whatever a camera could catch, not only a scare)
+  assert.ok(ui.includes('placeholder={t("Anything a camera could catch — a haunting, the dog raiding the fridge, a meteor over the road. Or tap a card below.")}'));
   assert.ok(ui.includes('{t("Write what happens, pick what it was shot on — we film it.")}'));
   // "Describe your own" is gone: the box is it
   for (const gone of ["Describe your own", "chooseScare(OWN_SCARE)", "ff-own-box", "isOwn", '"What happens")']) assert.ok(!ui.includes(gone), gone);
@@ -74,15 +76,17 @@ test("ONE SCREEN: what happens — one box first, the cards its starters — the
   // (measured again once the web font is in: measured before it, a card's last line was cut off — seen at 390 px)
   assert.ok(ui.includes("document.fonts?.ready.then(fit).catch(() => undefined);"));
   assert.ok(ui.includes('el.scrollIntoView({ block: "start", behavior:') && ui.includes("showBox();"));
-  // every scare as a card ON ITS SHELF (the body cam has its own: a scare, and a police drama), every camera as a card
-  assert.ok(ui.includes("{shelfScares(sh.family).map((s) => {") && ui.includes("{CAMERA_LOOKS.map((c) => {"));
+  // every scare as a card ON ITS SHELF (the body cam has its own: a scare, and a police drama), every camera as a card —
+  // in the order the owner named them (2026-11-25: "House cam, Body cam, phone or cam recording")
+  assert.ok(ui.includes("{shelfScares(sh.family).map((s) => {") && ui.includes("{CAMERAS.map((c) => {"));
+  assert.ok(ui.includes('const CAM_ORDER: readonly CameraLook[] = ["house", "bodycam", "phone", "camcorder", "bare"];'));
   assert.ok(ui.includes('{s.genre === "drama" ? t("Drama") : t("Horror")}'));
   // settings only where they apply: the house's for the house camera, the shape for the two that can shoot either
   assert.ok(ui.includes("const settings = house || shapeChoosable(pick.camera);") && ui.includes("{settings && ("));
   for (const s of ['label={t("Time-lapse")}', 'label={t("Night vision")}', '{t("Room")}', '{t("Shape")}']) assert.ok(ui.includes(s), s);
-  // the room is a ready-made scare's own; any take the writer writes picks one (a house card's version starts in its
-  // room) — and the house's kept rooms say their camera
-  assert.ok(ui.includes("const hs = edited ? undefined : houseCard;") && ui.includes("const roomKey = hs ? hs.room : room;") && ui.includes("{written ? ("));
+  // the room is a ready-made scare's own; any ONE take the writer writes picks one (a house card's version starts in its
+  // room) — and the house's kept rooms say their camera. A FILM's moments each have their own room, on the reel.
+  assert.ok(ui.includes("const hs = edited ? undefined : houseCard;") && ui.includes("const roomKey = hs ? hs.room : room;") && ui.includes("const roomPick = written && !film;") && ui.includes("{roomPick ? ("));
   // the button names the take and its camera — the card's name, or "Film it" for words of their own — says how long,
   // and becomes the REC light while it rolls
   assert.ok(ui.includes('const goLabel = written ? t("Film it · {camera}", { camera: t(camName) }) : t("Film “{name}” · {camera}"') && ui.includes('t("~{lo}–{hi} min", { lo, hi })') && ui.includes('t("REC — rolling. It lands in your Archive.")'));
