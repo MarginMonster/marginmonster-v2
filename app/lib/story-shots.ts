@@ -46,15 +46,19 @@ export const STORY_SHOTS: Record<StoryShot, ShotSpec> = {
     camera: "CAMERA: straight ahead of them at eye level — caught mid-stride, walking toward us, full figure in view, the way they came stretching away behind.",
     motion: "Whoever is mid-stride walks slowly and steadily toward the camera, keeping exactly the body, face and clothes they have in the picture. The camera holds still.",
   },
+  // (NEVER A STRANGER TO FILL THE SHOT, 2026-11-24: the kids' horror story's door scene was planned "over" and
+  //  written naming only the ghost at the glass — and the camera line's "nearer figure seen from BEHIND" was
+  //  drawn as a grown man in a dark jumper, who then walked to the door in the clip. Each line that wants a
+  //  figure near the lens now says it is one of the people the words NAME, and what stands there instead.)
   depth: {
     write: "NEAR AND FAR — one of them close to the camera at one edge of the frame (perhaps only a shoulder, or half a face), the other far off and small, deep in the picture, with clear distance between them",
-    camera: "CAMERA: deep staging — one figure close to the lens at one edge of the frame, the other far away and small in the background, real distance between them.",
+    camera: "CAMERA: deep staging — one figure close to the lens at one edge of the frame, the other far away and small in the background, real distance between them. Both are people these words NAME; when they name only one, the near edge is a thing of the place (a door frame, a lamp, a chair back) — never a stranger.",
     motion: "Both hold their places; only small movement. The camera holds still.",
     far: true,
   },
   over: {
-    write: "OVER THE SHOULDER — from just behind one of them (their back and shoulder dark in the foreground), looking at who or what they are looking at, several steps away",
-    camera: "CAMERA: over the shoulder — the nearer figure is seen from BEHIND, large in the foreground at one side; beyond them, several steps away, is what they are looking at.",
+    write: "OVER THE SHOULDER — from just behind one of them (their back and shoulder dark in the foreground), looking at who or what they are looking at, several steps away; NAME whose shoulder it is (\"over NAME's shoulder\")",
+    camera: "CAMERA: over the shoulder — the nearer figure is one of the people these words NAME, seen from BEHIND, large in the foreground at one side; beyond them, several steps away, is what they are looking at. When these words name nobody to stand there, the foreground is the dark edge of the place instead (a door frame, a curtain, a chair back) — never a stranger.",
     motion: "Both hold their places; only small movement. The camera holds still.",
   },
   close: {

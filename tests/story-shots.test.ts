@@ -114,6 +114,18 @@ test("a scene's own words name how it is seen — and win over the plan's tag", 
   assert.equal(sh.sceneShot(null), null);
 });
 
+/* NEVER A STRANGER TO FILL THE SHOT (2026-11-24, "Her Face in the Glass"): the door scene was planned "over" and
+ * written naming only the ghost at the glass — and "the nearer figure is seen from BEHIND" came back as a grown
+ * man in a dark jumper, who walked to the door in the clip. */
+test("a shot that wants a figure near the lens takes one of the people the words name — or a thing, never a stranger", async () => {
+  const sh = await import("../app/lib/story-shots.ts");
+  assert.ok(sh.STORY_SHOTS.over.camera.includes("the nearer figure is one of the people these words NAME, seen from BEHIND"));
+  assert.ok(sh.STORY_SHOTS.over.camera.includes("When these words name nobody to stand there, the foreground is the dark edge of the place instead (a door frame, a curtain, a chair back) — never a stranger."));
+  assert.ok(sh.STORY_SHOTS.depth.camera.includes("Both are people these words NAME; when they name only one, the near edge is a thing of the place (a door frame, a lamp, a chair back) — never a stranger."));
+  assert.ok(sh.STORY_SHOTS.over.write.includes("NAME whose shoulder it is (\"over NAME's shoulder\")"), "the writer says whose back it is (a placeholder, never a name it could copy)");
+  assert.ok(sh.cameraLine("over").startsWith("CAMERA: over the shoulder"));
+});
+
 test("a creature stays that creature: said in the picture's words, said again when it came out wrong", () => {
   const note = creatureNote("Howl", "monster");
   assert.ok(note.startsWith("Howl is a creature — not a person and not an ordinary animal:"));
