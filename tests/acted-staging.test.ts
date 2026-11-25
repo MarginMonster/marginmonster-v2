@@ -190,7 +190,7 @@ test("the master's whole prompt in a staging: the scene's moment IN the picture,
   const img = read("app", "lib", "image-generation.server.ts");
   const classic = img.split("\n").find((l) => l.startsWith("    const prompt = `${styleLead} of BOTH people together in ${setting}")) || "";
   assert.equal(crypto.createHash("sha256").update(classic, "utf8").digest("hex"), "e8bb6ae6d7bcac2b9832b103383a6bad3754a8571fa7cc0d306df40bc6dbc062", "the two-shot's own prompt is not to change with this");
-  assert.ok(img.includes("const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: (opts.action || \"\").replace(/\\s+/g, \" \").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, comp }) : \"\";"));
+  assert.ok(img.includes("const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: action.replace(/\\s+/g, \" \").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, comp }) : \"\";"));
   // (…drawn on the good model first, the everyday one only if it will not: story-picture.ts → STORY_MODEL)
   assert.ok(img.includes("for (const m of [STORY_MODEL, STORY_LAST_MODEL]) {") && img.includes("try { url = await repRun(m, storyPictureInput(m, { prompt: staged || prompt, refs, aspect: ar }), 150_000); used = m; break; }"));
   // (…and a staged picture of a photographed film is told today's world, a lived-in home and what a shadow is)
