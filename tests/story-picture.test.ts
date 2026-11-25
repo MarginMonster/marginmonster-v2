@@ -60,7 +60,7 @@ test("the cast question: write down each character in their own picture and in t
   assert.ok(q2.includes("clothes do NOT matter, a story dresses people for the part"), "a baker in an apron is still the baker");
   assert.ok(q2.includes("Seen from behind, small in the frame or in different clothes still counts"));
   assert.ok(q2.includes("If your two descriptions differ in hair colour"));
-  assert.ok(q2.endsWith(`Reply with ONLY this JSON: {"own": ["…" for each character], "inPicture": ["…" for each], "seen": [true or false for each, in order]}.`));
+  assert.ok(q2.endsWith(`Reply with ONLY this JSON: {"own": ["…" for each character], "inPicture": ["…" for each], "seen": [true or false for each, in order], "twice": [true if that character is drawn more than once, else false — for each, in order]}.`));
   assert.ok(!/panel/i.test(q2), "one question, one job");
   // creatures and cartoons are told apart their own way — ears included (a cartoon puppy became a fox-eared
   // dog between two scenes of a Kids Cartoon, 2026-11-22). This wording, on the real reader: 9 of 9 story
@@ -119,7 +119,7 @@ test("a split picture is the worst fault, then each cast member who is not in it
 test("the pipeline: words tidied, picture drawn, picture looked at, drawn again when wrong — and never left bare", () => {
   const s = read("app", "lib", "narrated-story.server.ts");
   assert.ok(s.includes("const visual = oneMoment(noLettering(written));"));
-  assert.ok(s.includes("${ONE_PICTURE} ${NOTHING_WRITTEN}`;") && !s.includes("No readable text, captions or lettering anywhere."));
+  assert.ok(s.includes("${ONE_PICTURE} ${NO_EXTRAS} ${NOTHING_WRITTEN}`;") && !s.includes("No readable text, captions or lettering anywhere."));
   assert.ok(ONE_PICTURE.includes("never a split screen, a collage, comic panels, a before-and-after or a grid") && NOTHING_WRITTEN.includes("no signs with words, labels, notices, numbers, letters or captions"));
   // WHO is looked for: the maker's own cast in this scene — by their own pictures, never the sheet of invented characters
   assert.ok(s.includes("const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);"));

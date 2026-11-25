@@ -94,3 +94,37 @@ test("a told story's detail shot shows ONE person's hands — two people's hands
   assert.ok(detail.write.includes("ONE person's hand (or their two hands)") && detail.write.includes("Never two people's hands together on one thing"));
   assert.ok(detail.camera.includes("at most one person's hands"));
 });
+
+/* ROUND FIVE — the first finished Horror Story made from the tester's idea on the new rules (2026-11-24): the idea
+ * kept, the pictures sharp — but its opening shot ("the house sits alone at dusk") had a man walking up to the house,
+ * the little brother was drawn OUTSIDE on the porch while his sister locked the door, and in the last picture he sat
+ * on the sofa AND stood on the porch. And the acted film's last shot never showed the werewolf the maker chose. */
+test("a story picture has nobody the words do not put there, and everybody in it ONCE", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  assert.ok(sp.NO_EXTRAS.includes("no passer-by, no figure in the distance, no one at a window or a door") && sp.NO_EXTRAS.includes("appears exactly ONCE"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS} ${NOTHING_WRITTEN}`;"));
+  // the look asks who is drawn twice — and an answer that does not say means nobody
+  assert.ok(sp.storyCastPrompt(2).includes("look across the WHOLE first image for a second copy of them"));
+  assert.deepEqual(sp.parseStoryTwice('{"seen":[true,true],"twice":[false,true]}', 2), [false, true]);
+  assert.equal(sp.parseStoryTwice('{"seen":[true,true]}', 2), null);
+  assert.equal(sp.parseStoryTwice('{"twice":[true]}', 2), null, "one answer for two is no answer");
+  // a character drawn twice is a fault like a missing one — and is told so on the next go
+  assert.equal(sp.storyFaults({ seen: [true, true], panels: false, twice: [false, true] }), 3);
+  assert.equal(sp.storyFaults({ seen: [true, false], panels: false, twice: [false, true] }), 3, "missing is not ALSO twice");
+  assert.equal(sp.storyFaults({ seen: [true, true], panels: false }), 0, "an older reading: nothing more");
+  assert.ok(sp.storyFix({ seen: [true, true], panels: false, twice: [false, true] }, ["Nessa", "Dovey"]).includes("Dovey was drawn TWICE in the last try — they appear exactly ONCE in this picture, nowhere else in it"));
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}) };"));
+});
+
+test("a told story's picture says which side of a door or a window everybody is on", () => {
+  assert.ok(read("app", "lib", "film-engine.server.ts").includes("When a door or a window is in the picture, say which SIDE of it each person is on"));
+});
+
+test("an acted film's chosen threat is SEEN at the end, whatever the writer's last shot said", () => {
+  const eng = read("app", "lib", "film-engine.server.ts");
+  assert.ok(eng.includes("if (!threatNames.some((n) => said.toLowerCase().includes(n.trim().toLowerCase()))) {"));
+  assert.ok(eng.includes("visual: `${said.replace(/[\\s.;,]+$/, \"\")}; in the dark behind them, ${threatNames[0]} is there — a tall shape, only its face in the light`"));
+  // …after the cast is held to the two, and before the film draws it from its own picture (film-dialogue → thing)
+  assert.ok(eng.indexOf("cast.splice(0, cast.length, ...kept);") < eng.indexOf("in the dark behind them, ${threatNames[0]} is there"));
+});
