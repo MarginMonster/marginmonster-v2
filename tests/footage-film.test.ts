@@ -26,8 +26,24 @@ import {
   FOOTAGE_REROLLS, FOOTAGE_ROLLS_AT_ONCE, camStamp, cardText, cardWhen, cardWords, cleanFootageOutline, footageCardArgs, footageClocks, footageDirectionBrief,
   footageDirectionSchema, footageFilmEta, footageFilmJob, footageFps, footageFrom, footageIdea, footageJoinCheck, footageJoinGraph, footageMomentBrief, footageMomentSchema,
   footageOpensPrompt, footageOutlineAsk, footageOutlineBrief, footageOutlineSchema, footageScenePlan, footageScenePrompt, footageSeconds, footageTolerance, momentCount, momentScript, momentSeconds,
-  parseFootageDirection, parseFootageMoment, parseFootageOutline, undirected, withDirected,
+  parseFootageDirection, parseFootageMoment, parseFootageOutline, prose, undirected, withDirected,
 } from "../app/lib/footage-film.ts";
+
+test("the place and the thing are cut as PROSE — at a sentence, else a whole word, never on a dangling comma (live, 2026-11-25)", () => {
+  // the first live outline ("What Circled the Tent") showed its place as "…whatever the camera's tiny lamp catches,"
+  const place = "A wooded campsite at the edge of a state forest, with a dirt clearing ringed by tall pines, a fire pit of blackened stones, a canvas tent, and a wooden picnic table scarred with old carvings. At night the only light is the orange fire and whatever the camera's tiny lamp catches, and the pines stand black against a starless sky.";
+  assert.equal(prose(place, FOOTAGE_LIMITS.place), "A wooded campsite at the edge of a state forest, with a dirt clearing ringed by tall pines, a fire pit of blackened stones, a canvas tent, and a wooden picnic table scarred with old carvings.");
+  // no sentence end that keeps half of it: the last whole word, with no comma hanging off it
+  const long = `${"a narrow hallway with peeling paper, ".repeat(9)}and a door`;
+  const cut = prose(long, 120);
+  assert.ok(cut.length <= 120 && !/[,;:—–-]$/.test(cut) && long.startsWith(cut), cut);
+  // short prose is left as it is; one word longer than the cap is cut where it must be
+  assert.equal(prose("a quiet kitchen at night", 280), "a quiet kitchen at night");
+  assert.equal(prose("x".repeat(900), 280).length, 280);
+  // …and the outline cleans its place and its thing so
+  const o = cleanFootageOutline({ v: 1, camera: "camcorder", aspect: "16:9", kind: "scare", title: "TEST", place, thing: "a thin pale figure, " + "taller than a man, ".repeat(20), moments: [{ when: "NIGHT 1", line: "a light between the trees", seconds: 7 }] })!;
+  assert.ok(o.place.endsWith("old carvings.") && !/[,;:]$/.test(o.thing), `${o.place} | ${o.thing}`);
+});
 import { DRAMA_BOUNDS, DRAMA_CAUGHT, PLAIN_BOUNDS, PLAIN_CAUGHT, TAKE_CAUGHT, TAKE_HIDDEN, TAKE_MOODS, TAKE_PROMPT_MAX, TAKE_REF, TAKE_WRONG, footageEta, footageJob, takeIdea, takeLines, takePrompt } from "../app/lib/take.ts";
 import { HOUSE_ROOMS, houseScare, houseScarePrompt, houseScenePrompt } from "../app/lib/house-cam.ts";
 import { clockText } from "../app/lib/camera-dress.ts";

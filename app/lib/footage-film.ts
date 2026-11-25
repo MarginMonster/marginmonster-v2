@@ -107,6 +107,19 @@ export type FootageOutline = {
 };
 
 const words = (s: unknown, max: number): string => String(s ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/["“”]/g, "'").replace(/\s+/g, " ").trim().slice(0, max).trim();
+/** PROSE cut to `max` — the place, the thing — at the last full sentence that fits (when that keeps half of it or
+ *  more), else at the last whole word, never on a dangling comma: the first live outline (2026-11-25, "What Circled
+ *  the Tent") showed the member its place as "…and whatever the camera's tiny lamp catches,". One word longer than
+ *  `max` is cut where it must be. */
+export const prose = (s: unknown, max: number): string => {
+  const t = String(s ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/["“”]/g, "'").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max + 1);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  if (end >= max * 0.5) return cut.slice(0, end + 1).trim();
+  const sp = cut.lastIndexOf(" ");
+  return (sp > 0 ? cut.slice(0, sp) : t.slice(0, max)).replace(/[\s,;:—–-]+$/, "").trim();
+};
 const stop = (s: string): string => (s && !/[.!?…—]$/.test(s) ? `${s}.` : s);
 const shapeOf = (aspect: "9:16" | "16:9"): string => (aspect === "16:9" ? "Wide 16:9 picture." : "Vertical 9:16 picture.");
 
@@ -160,7 +173,7 @@ const readAnswer = (raw: unknown): Record<string, unknown> | null => {
 };
 const kindOf = (v: unknown): FootageKind => (String(v ?? "").trim().toLowerCase() === "plain" ? "plain" : "scare");
 /** "none" is not a thing */
-const thingWords = (v: unknown): string => { const t = words(v, FOOTAGE_LIMITS.thing); return /^(none|nothing|nobody|no one|n\/a|-+)\.?$/i.test(t) ? "" : t; };
+const thingWords = (v: unknown): string => { const t = prose(v, FOOTAGE_LIMITS.thing); return /^(none|nothing|nobody|no one|n\/a|-+)\.?$/i.test(t) ? "" : t; };
 
 function momentsOf(list: unknown, camera: CameraLook, most: number): FootageMoment[] {
   const out: FootageMoment[] = [];
@@ -177,7 +190,7 @@ function momentsOf(list: unknown, camera: CameraLook, most: number): FootageMome
 export function parseFootageOutline(raw: unknown, camera: CameraLook, aspect: "9:16" | "16:9", count: number): FootageOutline | null {
   const o = readAnswer(raw);
   if (!o) return null;
-  const place = words(o.place, FOOTAGE_LIMITS.place);
+  const place = prose(o.place, FOOTAGE_LIMITS.place);
   const moments = momentsOf(o.moments, camera, momentCount(count));
   if (place.length < 12 || moments.length < 2) return null;
   return { v: 1, title: words(o.title, FOOTAGE_LIMITS.title) || "Found footage", camera, aspect: shapeFor(camera, aspect), kind: kindOf(o.kind), place, thing: thingWords(o.thing), moments };
@@ -194,7 +207,7 @@ export function cleanFootageOutline(o: unknown): FootageOutline | null {
   if (!camera) return null;
   const moments = momentsOf(r.moments, camera, FOOTAGE_MAX_MOMENTS);
   if (!moments.length) return null;
-  return { v: 1, title: words(r.title, FOOTAGE_LIMITS.title) || "Found footage", camera, aspect: shapeFor(camera, r.aspect), kind: kindOf(r.kind), place: words(r.place, FOOTAGE_LIMITS.place), thing: thingWords(r.thing), moments };
+  return { v: 1, title: words(r.title, FOOTAGE_LIMITS.title) || "Found footage", camera, aspect: shapeFor(camera, r.aspect), kind: kindOf(r.kind), place: prose(r.place, FOOTAGE_LIMITS.place), thing: thingWords(r.thing), moments };
 }
 
 /** ONE MOMENT the writer wrote again ("another take on this moment"), checked — or null. What it does not say stays
