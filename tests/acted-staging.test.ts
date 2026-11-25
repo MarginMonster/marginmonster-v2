@@ -801,7 +801,9 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   for (const rule of [
     "It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter",
     "never in another room; the film draws it into that place's own picture",
-    "BARELY: only a part of it, the way a horror film shows it — at a door, the door eased open a hand's width on the dark and a tall shape in the gap with only its face in the light; at a window, its face close to the dark glass, OUTSIDE, the glass whole; in a wall (only when it is IN the wall), its FACE pressed into a hole broken in the plaster, one eye catching the light; anywhere else, a tall shape standing in the dark with only its face in the light — never a hand, an arm or a body reaching out into the light — never at the edge of the picture",
+    // (…and, since 2026-11-25 (S12), at a TENT: OUTSIDE — its face pressing the canvas, or in the gap of the shut door's
+    //  zipper; the lake films' reveals stood the woman in the open doorway between them)
+    "BARELY: only a part of it, the way a horror film shows it — at a door, the door eased open a hand's width on the dark and a tall shape in the gap with only its face in the light; at a window, its face close to the dark glass, OUTSIDE, the glass whole; in a wall (only when it is IN the wall), its FACE pressed into a hole broken in the plaster, one eye catching the light; at a TENT (always when its door was shut), it is OUTSIDE — its FACE pressing the thin canvas in from outside, the wet fabric stretched over its features, or the zipper of the shut door sliding up a hand's width from outside and, in that gap, its face — never inside with them, never in an opening that is shut; anywhere else, a tall shape standing in the dark with only its face in the light — never a hand, an arm or a body reaching out into the light — never at the edge of the picture",
     "WHERE ITS SOUND CAME FROM — at the door it knocked at, at the window it knocked on, in the wall only when the story has it IN the wall, or right behind one of them in the dark",
     "Say its one or two wrongnesses in so many words (skin like old candle wax; an eye open far too wide that never blinks; a face a little too high up) — never just \"wrong\" or \"strange\".",
     "what HAPPENS in that shot is IT, SLOWLY and IN PLACE: its eye turns to them, or its head tilts — it never comes out of where it is, never comes nearer, never reaches for anybody — and the two FREEZE, and one of them slowly turns to it.",
@@ -819,7 +821,9 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.equal(revealPart("In the dark corner behind June something tall stands perfectly still."), "figure");
   // (a doorway is a door: what comes from one is found in its gap — the door eased open on the dark)
   assert.equal(revealPart("A hand reaches out of the dark doorway behind Peggy."), "door");
-  assert.deepEqual(Object.keys(REVEAL_PARTS).sort(), ["door", "face", "figure", "window"], "the fingers form drew right and moved wrong: it is not drawn any more");
+  // (the cloth's three — its face in a tent's wall, in its roof, in the gap of the shut door's zipper — came 2026-11-25, S12:
+  //  tests/place-state-reveal.test.ts)
+  assert.deepEqual(Object.keys(REVEAL_PARTS).sort(), ["door", "fabric", "face", "figure", "roof", "window", "zipper"], "the fingers form drew right and moved wrong: it is not drawn any more");
   // THE OWNER, 2026-11-24, of a boy's film whose werewolf hung half out of the parents' wall: "what the fuck is that
   // plot?" — a knock FROM a wall is not a thing IN it; a creature the maker chose is never in a wall at all
   assert.equal(revealPart("Three slow knocks echo from inside the hallway wall as Dariusz and Marisol run into the dim bedroom."), "face", "inside the wall: the knocks are IN it");

@@ -39,6 +39,7 @@ import { CLIP_MAX_SECONDS, clipSecondsFor } from "./speech-meter.ts";
 import { CREATURE_REAL, DRESSED, SHADOW_SHAPE, TODAY_LOOK, shadowNote } from "./story-picture.ts";
 import { castEntry, characterKind, dressedInWater, portraitPrompt } from "./story-picture.ts";
 import { TAKE_HIDDEN } from "./take.ts";
+import type { PlaceChange } from "./place-state.ts";
 
 export type ActedStaging = "apart" | "depth" | "levels" | "across" | "walk" | "doing";
 
@@ -345,7 +346,7 @@ const lockOf = (note: string): string => {
  *  two stay where they are and the camera does not move; `implied` = …whose thing could not be drawn into its
  *  picture: the scene's words are not said at all, and the two react to something never seen
  *  (REVEAL_UNSEEN_REACT). */
-export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; others?: ReadonlyArray<{ name: string; side: string }>; heard?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; outdoors?: boolean; seen?: boolean; implied?: boolean; /** a SIGHTING this film drew into its picture (sightingOf): what is seen is told to be there, far off, and does what the words say, slowly — sightingClip */ sighted?: boolean; /** …who it is, as the words call it */ sight?: string | null }): T {
+export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; others?: ReadonlyArray<{ name: string; side: string }>; heard?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; outdoors?: boolean; seen?: boolean; implied?: boolean; /** a SIGHTING this film drew into its picture (sightingOf): what is seen is told to be there, far off, and does what the words say, slowly — sightingClip */ sighted?: boolean; /** …who it is, as the words call it */ sight?: string | null; /** …only its SHADOW on the shut tent's cloth (sightingClip) */ shadow?: boolean; /** the drawn reveal is OUTSIDE, in the cloth (revealClip) */ cloth?: boolean }): T {
   if (!isActedStaging(o.staging)) return base;
   const spec = ACTED_STAGINGS[o.staging];
   if (o.implied) {
@@ -362,7 +363,7 @@ export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown
   // (A SIGHTING — sightingOf: what is seen is in the picture, far off; the two stay where they are and the camera does
   //  not travel away from it. Never also a sound the shot opens on: "nobody else appears" would be untrue.)
   const sighted = !drawn && !!o.sighted && !!said;
-  const event = drawn ? revealClip(said, { creature: o.creature, outdoors: o.outdoors, seen: o.seen }) : sighted ? sightingClip(said, o.sight) : said;
+  const event = drawn ? revealClip(said, { creature: o.creature, outdoors: o.outdoors, seen: o.seen, cloth: o.cloth }) : sighted ? sightingClip(said, o.sight, o.shadow) : said;
   const heard = !!o.heard && !!event && !drawn && !sighted;
   const who = event && !heard && !drawn
     ? (o.others || []).map((p) => {
@@ -509,12 +510,12 @@ const unquoted = (s: string): string => s.replace(/["“”«»„‟‹›‘�
  *  where they are, the camera does not move; `implied` = …whose thing could not be drawn into its picture: the
  *  scene's words are not said, and the two react to something never seen (REVEAL_UNSEEN_REACT); `face` = who
  *  must not smile (faceNote) — every one of them in words with no quotation mark in them either. */
-export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; sides?: ReadonlyArray<{ name: string; side: string }>; unseen?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; outdoors?: boolean; seen?: boolean; implied?: boolean; face?: string | null; /** a SIGHTING this film drew (stagedRules → sighted) */ sighted?: boolean; sight?: string | null } = {}): T {
+export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; sides?: ReadonlyArray<{ name: string; side: string }>; unseen?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; outdoors?: boolean; seen?: boolean; implied?: boolean; face?: string | null; /** a SIGHTING this film drew (stagedRules → sighted) */ sighted?: boolean; sight?: string | null; /** …only its SHADOW on the shut tent's cloth; the drawn reveal in the cloth (stagedRules) */ shadow?: boolean; cloth?: boolean } = {}): T {
   const spec = isActedStaging(o.staging) ? ACTED_STAGINGS[o.staging] : null;
   const said = o.implied ? "" : clipEvent(o.event, o.eventMax && o.eventMax > 0 ? o.eventMax : EVENT_MAX);
   const drawn = !!o.reveal && !!o.drawn && !!said;
   const sighted = !drawn && !!o.sighted && !!said;
-  const event = drawn ? revealClip(said, { creature: o.creature, outdoors: o.outdoors, seen: o.seen }) : unquoted(sighted ? sightingClip(said, o.sight) : said);
+  const event = drawn ? revealClip(said, { creature: o.creature, outdoors: o.outdoors, seen: o.seen, cloth: o.cloth }) : unquoted(sighted ? sightingClip(said, o.sight, o.shadow) : said);
   const who = event && !drawn
     ? (o.sides || []).map((p) => {
         const name = unquoted(oneLine(p?.name));
@@ -864,6 +865,34 @@ export const REVEAL_PARTS = {
     clip: "Outside the window, close to the dark glass, is a pale FACE that is not quite human: one eye in the light, open far too wide.",
     moves: "Only its EYE moves: it slides slowly round to look at them, and it never blinks. The face stays OUTSIDE the glass — it never comes through, never breaks it, never grows, and nothing comes toward the camera.",
   },
+  /* THROUGH THE CLOTH (2026-11-25, stream S12). Part 1 of the lake films said "a tall shape leans close until only the
+   * woman's face presses the fabric", Episode 2 "through the sagging roof fabric, pressed flat from above, the woman's
+   * wide crowded smile shows pale through soaked white cloth" — and both reveals drew her STANDING IN THE OPEN DOORWAY
+   * between them, Part 1's face glowing like a mask: out of doors every reveal was "a figure close behind them", and in
+   * a tent whose door is open that is the doorway. At a tent — and wherever the moment presses on cloth, or the door has
+   * been SHUT (place-state.ts) — what is outside stays OUTSIDE: never inside with them, never in an opening that is shut.
+   * Its face presses the cloth in; where the words say the roof, the roof sags down toward them. */
+  /** …its face, pressed into the tent's wall from outside. */
+  fabric: {
+    seen: "pressed into the thin cloth from OUTSIDE is the shape of a FACE: the wet fabric stretched tight over its brow, its nose and its open mouth, its features showing pale through the cloth — nothing of it is inside, and nothing of it comes through",
+    wrong: "the mouth under the cloth is stretched far too wide, and it is perfectly still",
+    clip: "From OUTSIDE, the shape of a face is pressed into the thin cloth, the wet fabric stretched over its features, pale through it.",
+    moves: "Only the cloth moves: it presses in a little further, slowly, as the face under it turns toward them. Nothing comes through the cloth, nothing tears, nothing is inside with them, and nothing comes toward the camera.",
+  },
+  /** …in the ROOF: pressed down from above, the roof sagging toward them. */
+  roof: {
+    seen: "pressed DOWN into it from OUTSIDE is the shape of a FACE: the sagging wet fabric stretched tight over its brow, its nose and its open mouth, its features showing pale through the cloth — nothing of it is inside, and nothing of it comes through",
+    wrong: "the mouth under the cloth is stretched far too wide, and it is perfectly still",
+    clip: "Above them, from OUTSIDE, the shape of a face is pressed down into the sagging roof, the wet fabric stretched over its features, pale through the cloth.",
+    moves: "Only the cloth moves: the roof sags a little lower, slowly, as the face in it turns toward them. Nothing comes through the cloth, nothing tears, nothing is inside with them, and nothing comes toward the camera.",
+  },
+  /** …or the ZIPPER of the shut door, drawn up a hand's width from outside: in that gap, its face. */
+  zipper: {
+    seen: "the zipper of the shut door has been drawn up a hand's width from OUTSIDE: in that narrow dark gap, close to the cloth, is its FACE — only its pale shape and one eye catch the light; the rest of the door stays shut",
+    wrong: "the skin is grey-white like old candle wax; the eye is open far too wide, and it does not blink",
+    clip: "The zipper of the shut door has been drawn up a hand's width from outside: in the narrow gap, its pale face and one eye.",
+    moves: "Only its EYE moves: it slides slowly round to look at them. The zipper stays where it is and the gap grows no wider; the face stays OUTSIDE — it never comes through, never reaches in, never grows, and nothing comes toward the camera.",
+  },
 } as const;
 export type RevealPart = keyof typeof REVEAL_PARTS;
 /** IN A WALL only when the thing is IN it — "inside the wall", "a hole in the plaster" — not when a knock merely
@@ -888,8 +917,14 @@ export function openAirPlace(where: string | null | undefined): boolean {
   const out = w.search(OPEN_AIR), inn = w.search(INDOOR);
   return out >= 0 && (inn < 0 || out < inn);
 }
-export const revealPart = (moment: string | null | undefined, o: { creature?: boolean; outdoors?: boolean } = {}): RevealPart => {
+/** …AT A TENT (`cloth`: the place is a tent, the moment presses on cloth, or its door was SHUT — place-state.ts →
+ *  clothPlace, shutCloth): OUTSIDE — its face in the cloth; in the ROOF where the words say so; in the gap of the shut
+ *  door's zipper where the words have the zipper drawn up. */
+const CLOTH_ROOF = /\b(?:roof|ceiling|from above|overhead)\b/i;
+const CLOTH_ZIPPER = /\b(?:zipper|zip)\b[^.;]{0,60}\b(?:up|open|gap)\b|\bunzip(?:s|ped|ping)?\b/i;
+export const revealPart = (moment: string | null | undefined, o: { creature?: boolean; outdoors?: boolean; cloth?: boolean } = {}): RevealPart => {
   const m = oneLine(moment);
+  if (o.cloth) return CLOTH_ZIPPER.test(m) ? "zipper" : CLOTH_ROOF.test(m) ? "roof" : "fabric";
   // (out of doors there is no wall, door or window to find it in: it stands in the dark)
   if (o.outdoors) return "figure";
   if (!o.creature && REVEAL_IN_WALL.test(m)) return "face";
@@ -911,10 +946,10 @@ const REVEAL_NO_HAND = "only that FACE shows — no hand, no fingers and no arm 
  *  lake film's woman as a grey ghoul. */
 const SEEN_FIGURE = "it stands in the dark, almost all of it in shadow; only the pale shape of its face catches the light";
 const SEEN_FIGURE_CLIP = "In the dark behind them stands the one this film already showed, almost all of it in shadow: only the pale shape of its face in the light.";
-export const revealClip = (moment: string | null | undefined, o: { creature?: boolean; outdoors?: boolean; seen?: boolean } = {}): string => {
+export const revealClip = (moment: string | null | undefined, o: { creature?: boolean; outdoors?: boolean; seen?: boolean; /** at a tent, or a shut cloth door: OUTSIDE, in the cloth (revealPart) */ cloth?: boolean } = {}): string => {
   // (the one the film already showed is a FIGURE that stands — never a face in a hole in a wall: the same placing as
-  //  its picture, revealPicture → `known`)
-  const part = revealPart(moment, { creature: o.creature || o.seen, outdoors: o.outdoors });
+  //  its picture, revealPicture → `known`; at a tent, its face in the cloth, as its picture has it)
+  const part = revealPart(moment, { creature: o.creature || o.seen, outdoors: o.outdoors, cloth: o.cloth });
   const p = REVEAL_PARTS[part];
   // (the one the film already showed is drawn as itself, not as "a tall, thin figure": its clip says so)
   return `${o.seen && !o.creature && part === "figure" ? SEEN_FIGURE_CLIP : p.clip} ${p.moves}`;
@@ -980,17 +1015,23 @@ export const PHOTOGRAPHED = caughtAt > 0 ? `It is PHOTOGRAPHED: ${CREATURE_REAL.
 export type ThingRef = "creature" | "figure" | "scene";
 /** The reveal of a thing its place's picture already has far off: one of it, come close — never two. */
 export const REVEAL_MOVED = "The one already standing far off in this picture is gone from there: it is this one, now close behind them — there is only ONE of it in the picture.";
-export function thingRefNote(ref: ThingRef | null | undefined, o: { name?: string | null; near?: boolean; seen?: string | null } = {}): string {
+/** …and when it has come to the cloth (revealPart "fabric", "roof", "zipper"): never also standing out there. */
+export const REVEAL_MOVED_CLOTH = "The one already standing far off in this picture is gone from there: it is this one, now at the cloth — there is only ONE of it in the picture.";
+/** `cloth` = the reveal has it OUTSIDE, its face in the cloth (revealPart): its picture lends its FACE, never the whole
+ *  of it standing in the tent — the lake films' reveals drew the woman standing in the doorway between them. */
+export function thingRefNote(ref: ThingRef | null | undefined, o: { name?: string | null; near?: boolean; seen?: string | null; cloth?: boolean } = {}): string {
   const name = oneLine(o.name);
   const seen = oneLine(o.seen).replace(/"/g, "'").slice(0, 240);
   const where = o.near ? "now close behind them" : "far off";
+  if (o.cloth && o.near && ref === "creature") return `What is found is ${name || "it"}: the creature in the SECOND picture — ONLY its face, that exact face, pressing into the cloth from OUTSIDE the way this says; never the whole creature, never inside; everything else in the first picture stays exactly as it is.`;
+  if (o.cloth && o.near && (ref === "figure" || ref === "scene")) return `It is the SAME one this film already showed: ONLY the FACE of the ${ref === "scene" ? "far-off figure" : "figure"} in the SECOND picture${ref === "scene" && seen ? ` ("${seen}")` : ""} — that exact face — pressing into the cloth from OUTSIDE; never the whole figure, never inside, and nothing else of the second picture comes with it.`;
   if (ref === "creature") return `What is found is ${name || "it"}: the creature in the SECOND picture — that exact creature, its face, its fur or skin and its colours and whatever it wears — drawn INTO the first picture the way this says${o.near ? "" : ", far off"}; everything else in the first picture stays exactly as it is.`;
   if (ref === "figure") return `It is the SAME one this film already showed: the figure in the SECOND picture — that exact figure, the same face, hair and clothes — ${where}; never a different face or a different creature, and nothing else of the second picture comes with it.`;
   if (ref === "scene") return `It is the SAME one this film already showed: the far-off figure in the SECOND picture${seen ? ` — "${seen}"` : ""} — never the two people in that picture: that exact figure, the same face, hair and clothes, ${where}; never a different face or a different creature, and nothing else of the second picture comes with it.`;
   return "";
 }
 
-export function revealPicture(o: { moment: string | null | undefined; mood?: string | null; sides?: ReadonlyArray<{ name: string; side: string }>; /** the thing is a creature the maker chose, drawn from its own picture */ creature?: boolean; /** how the film showed the thing before, in that shot's words (seenBefore) */ seen?: string | null; /** the place is out of doors (openAirPlace) */ outdoors?: boolean; /** the thing's own picture rides along as the SECOND image (thingRefNote) — never said to an editor that takes one picture */ ref?: ThingRef | null; /** …and its name, for a creature */ name?: string | null; /** the place's own picture already has it, far off (REVEAL_MOVED) */ away?: boolean }): string {
+export function revealPicture(o: { moment: string | null | undefined; mood?: string | null; sides?: ReadonlyArray<{ name: string; side: string }>; /** the thing is a creature the maker chose, drawn from its own picture */ creature?: boolean; /** how the film showed the thing before, in that shot's words (seenBefore) */ seen?: string | null; /** the place is out of doors (openAirPlace) */ outdoors?: boolean; /** the thing's own picture rides along as the SECOND image (thingRefNote) — never said to an editor that takes one picture */ ref?: ThingRef | null; /** …and its name, for a creature */ name?: string | null; /** the place's own picture already has it, far off (REVEAL_MOVED) */ away?: boolean; /** at a tent, a moment pressing on cloth, or a shut cloth door: OUTSIDE, its face in the cloth (revealPart) */ cloth?: boolean; /** …and the place is a tent */ tent?: boolean; /** THE PLACE AS IT NOW IS — what was done to it, in plain sentences (place-state.ts → stateNow): the picture it is drawn into shows it, and it stays so */ state?: string | null }): string {
   const moment = clipEvent(o.moment, REVEAL_MOMENT_MAX);
   if (!moment) return "";
   const mood = oneLine(o.mood);
@@ -1003,22 +1044,33 @@ export function revealPicture(o: { moment: string | null | undefined; mood?: str
   // in the plaster: the eighth lake film's reveal drew "a face pressed into the canvas"
   const ref = o.ref === "creature" || o.ref === "figure" || o.ref === "scene" ? o.ref : null;
   const known = !o.creature && ref !== "creature" && (!!oneLine(o.seen) || !!ref);
-  const part = revealPart(moment, { creature: o.creature || known, outdoors: o.outdoors });
+  const part = revealPart(moment, { creature: o.creature || known, outdoors: o.outdoors, cloth: o.cloth });
+  // (AT A TENT it is OUTSIDE — its face in the tent's wall, or in its roof, or in the gap of the shut door's zipper:
+  //  the lake films' reveals stood the woman in the open doorway between them — S12, 2026-11-25)
+  const cloth = part === "fabric" || part === "roof" || part === "zipper";
+  const wall = o.tent ? "the tent's wall" : "the cloth";
   const where = part === "face"
     ? `In the wall ${at}, at the height of a head — not over a window or a door, well inside the picture — ${REVEAL_HOLE}; `
     : part === "door"
     ? "At the door the two are facing — the one this moment is about, well inside the picture — "
     : part === "window"
     ? "At the window the two are facing — the one this moment is about, well inside the picture — "
+    : part === "fabric"
+    ? `In ${wall} ${at}, at the height of a head, well inside the picture, `
+    : part === "roof"
+    ? `In ${o.tent ? "the tent's roof" : "the cloth overhead"}, above them and well inside the picture, `
+    : part === "zipper"
+    ? `At the shut ${o.tent ? "tent " : ""}door the two are near — well inside the picture — `
     : `In the dark ${at}, well inside the picture, `;
   const only = part === "face" && REVEAL_HAND.test(moment) ? `; ${REVEAL_NO_HAND}` : "";
   // (a creature the maker chose is drawn as ITSELF — its own picture says what it looks like; the "what is wrong"
   //  words are a made-up thing's, and would paint candle-wax skin on a werewolf)
   // (…and a thing the film has ALREADY SHOWN is that same one — its look as that shot's words gave it, never a new one;
   //  and since 2026-11-25 its own PICTURE when the film has one: "that exact figure — the same face, hair and clothes —
-  //  now close behind them" — thingRefNote)
+  //  now close behind them" — thingRefNote; at the cloth, its FACE only)
   const seen = !known ? ""
-    : ref === "figure" || ref === "scene" ? ` ${thingRefNote(ref, { near: true, seen: o.seen })}`
+    : ref === "figure" || ref === "scene" ? ` ${thingRefNote(ref, { near: true, seen: o.seen, cloth })}`
+    : cloth ? ` It is the SAME one this film already showed — "${oneLine(o.seen).replace(/"/g, "'").slice(0, 240)}" — ONLY its face, the same face, pressing into the cloth from OUTSIDE: never the whole of it, never inside.`
     : ` It is the SAME one this film already showed — "${oneLine(o.seen).replace(/"/g, "'").slice(0, 240)}" — the same look, the same hair, the same clothes, only nearer: never a different face or a different creature.`;
   // (…whose look is THOSE words: the generic thing's "too tall, too thin, candle-wax skin" would contradict them — told
   //  both, the editor drew the lake film's woman as a grey ghoul)
@@ -1030,14 +1082,35 @@ export function revealPicture(o: { moment: string | null | undefined; mood?: str
   //  the eighth lake film's editor drew the woman as a grey zombie man)
   const real = known ? PHOTOGRAPHED : CREATURE_REAL;
   // (a creature handed over as its own picture: said last, as it always was — film-dialogue used to append it)
-  const creatureRef = ref === "creature" ? ` ${thingRefNote("creature", { name: o.name, near: true })}` : "";
+  const creatureRef = ref === "creature" ? ` ${thingRefNote("creature", { name: o.name, near: true, cloth })}` : "";
   // (…and where the place's own picture was DRAWN with it far off — its first scene showed it, film-dialogue →
   //  thingInMaster — the one out there is the one that has come close: kept, as "keep everything" says, the place would
   //  have two of it. Review, 2026-11-25: the shore film's reveal is an edit of the shore's picture, the woman already
   //  standing in the lake in it.)
-  const moved = o.away ? ` ${REVEAL_MOVED}` : "";
-  return `${KEEP_FRAME}${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${shows}${only}.${wrong}${seen}${moved}${open} ${DRESSED} ${REVEAL_REAL} ${real} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.${creatureRef}`;
+  const moved = o.away ? ` ${cloth ? REVEAL_MOVED_CLOTH : REVEAL_MOVED}` : "";
+  // (THE PLACE AS IT NOW IS — S12: the picture this is drawn into is the place after what was done to it, the door
+  //  zipped shut; said, so that it stays so. At the cloth it is OUTSIDE: never inside, never in what is shut.)
+  const state = oneLine(o.state).slice(0, 420);
+  const now = (st: string): string => `${st ? ` The place as it now is, and it stays exactly so: ${st}` : ""}${part === "zipper" ? ` ${CLOTH_OUTSIDE_GAP}` : cloth ? ` ${CLOTH_OUTSIDE}` : ""}`;
+  // (…and lit only by the light that is there: Part 1's face glowed in the doorway like a mask — NOTHING_GLOWS)
+  // (at the cloth the place's own out-of-doors sentence goes: "OUTSIDE, never inside" says it, and nothing is built)
+  const make = (withMood: boolean, st: string, glow: boolean): string => `${KEEP_FRAME}${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${shows}${only}.${wrong}${seen}${moved}${cloth ? "" : open}${now(st)} ${DRESSED}${glow ? ` ${NOTHING_GLOWS}` : ""} ${REVEAL_REAL} ${real} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${withMood && mood ? ` ${mood}` : ""} No text anywhere.${creatureRef}`;
+  // (inside what both editors read — REVEAL_PICTURE_MAX: the place's state is said in its first sentence only — the door
+  //  that is shut — then NOTHING_GLOWS gives way where the thing is not at the cloth (a face in a hole in the plaster is
+  //  in the dark already), and the format's face mood last)
+  const first = (state.match(/^[^.]*\./) || [state])[0];
+  let p = make(true, state, true);
+  if (p.length > REVEAL_PICTURE_MAX) p = make(true, first, true);
+  if (p.length > REVEAL_PICTURE_MAX && !cloth) p = make(true, first, false);
+  if (p.length > REVEAL_PICTURE_MAX) p = make(false, first, cloth);
+  return p;
 }
+/** What a reveal's picture runs to at most — what both editors read (SIGHT_PICTURE_MAX is the same). */
+export const REVEAL_PICTURE_MAX = 2400;
+/** What the reveal at the cloth is told of where it is NOT. */
+export const CLOTH_OUTSIDE = "It is OUTSIDE: never inside with them, never in an opening that is shut.";
+/** …and at the zipper's gap: the door is open by that hand's width, and no more. */
+export const CLOTH_OUTSIDE_GAP = "It is OUTSIDE: never inside with them; the door stays shut but for that hand's width.";
 
 /* ---- WHEN THEY SEE IT, WE SEE IT: THE SIGHTING ----
  *
@@ -1261,6 +1334,9 @@ export function sightingOf(o: {
 /** Where a sighting puts what is seen, and how the two take it — in the picture. */
 const SIGHT_FAR = "FAR OFF beyond the two of them: deep in the picture, small in the frame and half in the dark, seen past them — never between them and the camera, never nearer than these words put it, and well inside the picture";
 const SIGHT_TURN = "Both of them stay where they stand; only their heads have turned toward it, three-quarters, so their faces stay in view — neither looks at the camera.";
+/** …and WHILE THE TENT IS SHUT (2026-11-25, S12 — place-state.ts → shutCloth): nothing is seen THROUGH a shut door. What
+ *  they see of it is its SHADOW, thrown on the cloth from outside by the light out there — the moon, a torch. */
+export const SIGHT_SHADOW = "ONLY ITS SHADOW: thrown from OUTSIDE onto the thin cloth wall behind them by the light out there — a tall dark shape on the cloth, soft at its edges, as big as somebody standing close outside; nothing of it is inside, the shut door stays exactly as it is, and nothing is seen through it";
 /** THE PICTURE OF A SIGHTING: the shot's starting picture (its place's own) with what the moment newly shows added
  *  WHERE ITS WORDS PUT IT — far off, beyond the two, half in the dark — the two turned toward it. Its look is its own
  *  cast line, or the words of the shot that first showed it (`seen`); with its own picture as the SECOND image (`ref`,
@@ -1268,20 +1344,24 @@ const SIGHT_TURN = "Both of them stay where they stand; only their heads have tu
  *  in water dressed in the same sentence — dressedInWater), lit only by the lights there (NOTHING_GLOWS), photographed
  *  (CREATURE_REAL for a creature, else PHOTOGRAPHED), mostly hidden (TAKE_HIDDEN); out of doors nothing is built into
  *  the place. The reveal's own words wherever it is the same idea. "" when there is no moment. */
-export function sightingPicture(o: { moment: string | null | undefined; sides?: ReadonlyArray<{ name: string; side: string }>; seen?: string | null; outdoors?: boolean; mood?: string | null; creature?: boolean; ref?: ThingRef | null; name?: string | null }): string {
+export function sightingPicture(o: { moment: string | null | undefined; sides?: ReadonlyArray<{ name: string; side: string }>; seen?: string | null; outdoors?: boolean; mood?: string | null; creature?: boolean; ref?: ThingRef | null; name?: string | null; /** the tent's door is SHUT (place-state.ts → shutCloth): only its SHADOW on the cloth — SIGHT_SHADOW */ shadow?: boolean; /** the place as it now is (place-state.ts → stateNow) */ state?: string | null }): string {
   const moment = clipEvent(o.moment, REVEAL_MOMENT_MAX);
   if (!moment) return "";
   const sides = (o.sides || []).map((p) => ({ name: oneLine(p?.name), side: oneLine(p?.side).toLowerCase() })).filter((p) => p.name && (p.side === "left" || p.side === "right"));
   const who = sides.length ? ` ${sides.map((p) => `${p.name} is the one on the ${p.side}`).join("; ")}.` : "";
   const seen = oneLine(o.seen).replace(/"/g, "'").slice(0, 240);
-  const ref = o.ref === "creature" || o.ref === "figure" || o.ref === "scene" ? o.ref : null;
+  // (a shadow has no face: no picture of it rides along, and its look is the SHAPE of what the words say — S12)
+  const ref = o.shadow ? null : o.ref === "creature" || o.ref === "figure" || o.ref === "scene" ? o.ref : null;
   // (its look in words only where no picture of it rides along — the picture is the look)
-  const look = seen && !ref ? ` What it looks like, as this story has it: "${seen}".` : "";
+  const look = seen && !ref ? (o.shadow ? ` Whose shadow it is, as this story has it (only its outline shows): "${seen}".` : ` What it looks like, as this story has it: "${seen}".`) : "";
   const refNote = ref ? ` ${thingRefNote(ref, { name: o.name, seen })}` : "";
   const mood = oneLine(o.mood);
   const creature = !!o.creature || ref === "creature";
+  const state = oneLine(o.state).slice(0, 420);
+  const now = state ? ` The place as it now is, and it stays exactly so: ${state}` : "";
   // (a shadow in the words is drawn as a shadow — the told stories' own sentence, story-picture.ts → SHADOW_SHAPE)
-  const make = (m: string, withMood: boolean) => `${KEEP_FRAME}${who} Add one thing — what the two of them SEE at this moment of the story (its words say WHAT it is and WHERE): ${dressedInWater(m)} Show it like this, and no nearer: ${SIGHT_FAR}.${shadowNote(m) ? ` ${SHADOW_SHAPE}` : ""}${look}${refNote}${o.outdoors ? OUT_OF_DOORS : ""} ${SIGHT_TURN}${withMood && mood ? ` ${mood}` : ""} ${DRESSED} ${NOTHING_GLOWS} ${REVEAL_REAL} ${creature ? CREATURE_REAL : PHOTOGRAPHED} ${TAKE_HIDDEN} No text anywhere.`;
+  // (…and WHILE THE TENT IS SHUT nothing is seen through it: what they see is its SHADOW on the cloth — SIGHT_SHADOW)
+  const make = (m: string, withMood: boolean) => `${KEEP_FRAME}${who} Add one thing — what the two of them SEE at this moment of the story (its words say WHAT it is and WHERE): ${dressedInWater(m)} Show it like this, and no nearer: ${o.shadow ? SIGHT_SHADOW : SIGHT_FAR}.${shadowNote(m) && !o.shadow ? ` ${SHADOW_SHAPE}` : ""}${look}${refNote}${o.outdoors ? OUT_OF_DOORS : ""}${now} ${SIGHT_TURN}${withMood && mood ? ` ${mood}` : ""} ${DRESSED} ${NOTHING_GLOWS} ${REVEAL_REAL} ${creature ? CREATURE_REAL : PHOTOGRAPHED} ${TAKE_HIDDEN} No text anywhere.`;
   // (inside what both editors read: the format's face mood gives way first, then the moment is said shorter)
   let p = make(moment, true);
   if (p.length > SIGHT_PICTURE_MAX) p = make(moment, false);
@@ -1295,12 +1375,47 @@ export const SIGHT_PICTURE_MAX = 2400;
  *  slowed: a few slow steps at most, never running, never reaching, never at the camera, never growing. (No quotation
  *  marks: a shot nobody speaks in has none.) */
 export const SIGHT_MOVES = "What they see stays FAR OFF, small and half in the dark: it does only what these words say it does, SLOWLY — a few slow steps at most — never running, never reaching, never coming near the camera and never growing; they look toward it, never at the camera.";
-export const sightingClip = (said: string | null | undefined, who?: string | null): string => {
+export const sightingClip = (said: string | null | undefined, who?: string | null, shadow?: boolean): string => {
   const s = oneLine(said);
   if (!s) return "";
   const w = oneLine(who).replace(/["“”«»]/g, "");
+  // (its SHADOW on the shut tent's cloth — never the scene's own words, which put it out by the water: told them, the
+  //  engine draws it there, through a door that is shut — S12)
+  if (shadow) return `On the cloth wall behind them, thrown from outside, is the shadow of ${w || "something standing close outside"}. ${SIGHT_SHADOW_MOVES}`;
   return `${w ? `Far off beyond them, already in the picture, is ${w}. ` : ""}${s} ${SIGHT_MOVES}`;
 };
+export const SIGHT_SHADOW_MOVES = "Only its shadow moves, slowly along the cloth: nothing comes in, the cloth does not tear, the shut door stays shut, nothing is seen through it, and nothing comes toward the camera; they look toward it, never at the camera.";
+
+/* ---- WHAT WAS DONE TO THE PLACE: THE PICTURE OF A CHANGE (2026-11-25, stream S12) ----
+ *
+ * "they say "close the tent up" then "put the bag in front of the door" but they never actually zipped the tent doors
+ * up" — the owner, of the lake films. Each shot of a place started from its master (the moment BEFORE anything was
+ * done), from the last frame of a take that never finished the zip, or from a re-anchor of the master: no picture ever
+ * showed the door shut, so it was never shut. Now a shot whose scene CHANGES its place (place-state.ts → placeChangeIn)
+ * has that change DRAWN: an edit of the shot's own start picture with ONE thing changed — the door zipped shut, the bag
+ * wedged against it — and the shot ENDS on it (the video engine's end frame); every later picture there grows out of it. */
+/** How a change's edit begins: the reveal's KEEP_FRAME without its "every window, door … exactly as they are" (the door
+ *  is what changes) and without "a horror film" (a door is shut in a drama too). */
+export const CHANGE_KEEP = "Edit this photo, a frame from a live-action film. Keep the camera and the framing, the light, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes.";
+/** THE PICTURE OF A CHANGE — what the edit of the shot's start picture is told: the ONE thing done (its `end`, and what
+ *  was put against it), who still has a hand on it (by their side of the picture: an editor is handed no names), what
+ *  was already done there and stays so, and that nothing else changes. "" when there is nothing to draw. */
+export function changePicture(o: { change: PlaceChange | null | undefined; sides?: ReadonlyArray<{ name: string; side: string }>; /** what was already true there (place-state.ts → stateNow of the state before this shot, without what this changes) */ kept?: string | null; outdoors?: boolean }): string {
+  const c = o.change;
+  const done = c ? [c.now ? c.end : "", c.also || ""].filter(Boolean).join(" ") : "";
+  if (!c || !done) return "";
+  const sides = (o.sides || []).map((p) => ({ name: oneLine(p?.name), side: oneLine(p?.side).toLowerCase() })).filter((p) => p.name && (p.side === "left" || p.side === "right"));
+  const who = sides.length ? ` ${sides.map((p) => `${p.name} is the one on the ${p.side}`).join("; ")}.` : "";
+  // (who did it still has a hand on it — the shot ends with the deed just done, not with hands back in laps)
+  const by = c.by ? sides.find((p) => p.name.toLowerCase() === c.by!.toLowerCase()) : null;
+  const on = c.now === "shut" && /tent door/i.test(c.what) ? "its zipper pull, low on the shut door" : c.now ? "it" : c.put ? c.put.thing.replace(/^The\b/, "the") : "it";
+  const hand = by ? ` ${by.name}, the one on the ${by.side}, still has one hand on ${on}.` : "";
+  const kept = oneLine(o.kept).slice(0, 420);
+  const before = kept ? ` Already so, and kept exactly so: ${kept}` : "";
+  // (the outside a shut door hid is GONE from the picture — said, or the editor paints the cloth half-transparent)
+  const hides = c.now === "shut" && /tent door|curtain|blinds|shutters/i.test(c.what) ? " What showed through it before is gone: the closed cloth is all there is to see there." : "";
+  return `${CHANGE_KEEP}${who} Change ONE thing — what this moment of the story has DONE to the place: ${done}${hides}${hand}${before} Everything else in the picture stays exactly as it is: nothing is added, nobody else appears, nobody moves.${o.outdoors ? " Nothing is built into the place." : ""} ${NOTHING_GLOWS} One photograph of one instant — never panels or a before-and-after. No text anywhere.`;
+}
 
 /* ---- THE FILM'S THING: ONE FACE, KNOWN BEFORE ANYTHING IS FILMED ----
  * The owner, of the eighth lake film, minutes after "It looked really good till that last scene bro": "Monster should
@@ -1400,6 +1515,13 @@ export function happensBrief(ideas: ReadonlyArray<string> = []): string {
  *  clip starts on the last frame of the one before. */
 export const ONE_TAKE = "ONE PLACE, ONE TAKE — the picture of a place is drawn ONCE, from the VISUAL of the FIRST shot set there, and every later shot in that place carries on from where the shot before it ended. So a later shot there uses only what that first VISUAL already put in view — whatever is handled, opened or put out later is named in the first — and whatever a shot changes stays changed: what was opened stays open, and whoever crossed the room is still where they went. For the same reason the film never comes BACK to a place it has left.";
 
+/** WHAT IS DONE TO A PLACE STAYS DONE (2026-11-25, stream S12). The owner, of the lake films: "the writer may need to be
+ *  more deliberate on what it's telling the ai to do, for example they say "close the tent up" then "put the bag in front
+ *  of the door" but they never actually zipped the tent doors up". The film draws what a VISUAL says is done, and keeps
+ *  it (place-state.ts) — so a VISUAL says what it looks like AFTER, and every later one keeps it in so many words. Said
+ *  to every acted film (film-engine.server.ts), and named in a next episode's brief (film-series.ts). */
+export const DONE_STAYS_DONE = "WHAT IS DONE TO A PLACE STAYS DONE — a shot that shuts, zips, locks or blocks something says in its VISUAL what it looks like AFTER, in so many words (\"…until the tent door is zipped completely shut, no gap\"; \"…wedges the duffel bag against the bottom of the zipped-shut door\"), and every later VISUAL in that place keeps it so in so many words (\"inside the zipped-shut tent\") until a shot shows it being opened. Nothing comes in, and nothing is seen, through what is shut: whatever is outside a shut tent presses the cloth in, throws its shadow on it, or opens the zipper — and that opening is a shot of its own.";
+
 /** What replaced 'SHOT — set this to EXACTLY "wide two-shot" for EVERY beat'. */
 export const CAMERA_IS_DEALT = "THE CAMERA IS NOT YOURS — how the two are placed and filmed in each place (how far apart they are, who is nearer, standing or seated or walking, where the camera is) is dealt by the film itself: one staging for each location, and no two locations alike. So there is no \"shot\" field, and no VISUAL names a shot size, a lens, an angle or a \"two-shot\". Never write the two side by side or shoulder to shoulder: people in a film keep a natural distance, and look at each other or at what they are doing — not at us.";
 
@@ -1439,7 +1561,7 @@ export const HEARD_BEFORE_SAID = "A SOUND COMES BEFORE ANY WORD ABOUT IT — whe
  *  waist-deep in the lake" — was acted as five shots in the tent: the two talked about her smiling, she was never in a
  *  picture, and the last shot's reveal did not come — so she was never seen at all. Said before SEEN_AT_THE_END. */
 export const SEEN_WHEN_SEEN = "WHEN THEY SEE IT, WE SEE IT — when the IDEA has its people see the thing before the end (they shine a light and there it stands; they look out and it is there), the VISUAL of THAT shot shows it where the idea puts it: in the frame behind or beyond the two, far off and small, half in the dark, the way WHAT FRIGHTENS says such a thing is seen — and says what it is and what is wrong with it, in the same few words in every VISUAL that shows it. It is never only talked about.";
-export const SEEN_AT_THE_END = "THE LAST SHOT IS SEEN, NOT SAID — a horror film ends on something the viewer SEES, not on a line about it. So the LAST shot has NO LINE: its CAPTION is \"\" (empty — no NAME, no words) and it has no TONE. Nobody speaks in it, not a word and not a whisper; the last words of the film are the line of the shot BEFORE it. It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter: the thing is found where the two already are, WHERE ITS SOUND CAME FROM — at the door it knocked at, at the window it knocked on, in the wall only when the story has it IN the wall, or right behind one of them in the dark — never in another room; the film draws it into that place's own picture, the one thing in the film that was not in that place's first VISUAL. In that last shot's VISUAL the thing this story has been circling is IN the picture with the two of them, seen the way WHAT FRIGHTENS (below) says such a thing is seen — BARELY: only a part of it, the way a horror film shows it — at a door, the door eased open a hand's width on the dark and a tall shape in the gap with only its face in the light; at a window, its face close to the dark glass, OUTSIDE, the glass whole; in a wall (only when it is IN the wall), its FACE pressed into a hole broken in the plaster, one eye catching the light; anywhere else, a tall shape standing in the dark with only its face in the light — never a hand, an arm or a body reaching out into the light — never at the edge of the picture. Say its one or two wrongnesses in so many words (skin like old candle wax; an eye open far too wide that never blinks; a face a little too high up) — never just \"wrong\" or \"strange\". And what HAPPENS in that shot is IT, SLOWLY and IN PLACE: its eye turns to them, or its head tilts — it never comes out of where it is, never comes nearer, never reaches for anybody — and the two FREEZE, and one of them slowly turns to it. Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so. When it is not one of the two, it has no \"cast\" entry: say what it is, and the one or two things that are wrong with it, in that VISUAL (which may run to 40 words).";
+export const SEEN_AT_THE_END = "THE LAST SHOT IS SEEN, NOT SAID — a horror film ends on something the viewer SEES, not on a line about it. So the LAST shot has NO LINE: its CAPTION is \"\" (empty — no NAME, no words) and it has no TONE. Nobody speaks in it, not a word and not a whisper; the last words of the film are the line of the shot BEFORE it. It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter: the thing is found where the two already are, WHERE ITS SOUND CAME FROM — at the door it knocked at, at the window it knocked on, in the wall only when the story has it IN the wall, or right behind one of them in the dark — never in another room; the film draws it into that place's own picture, the one thing in the film that was not in that place's first VISUAL. In that last shot's VISUAL the thing this story has been circling is IN the picture with the two of them, seen the way WHAT FRIGHTENS (below) says such a thing is seen — BARELY: only a part of it, the way a horror film shows it — at a door, the door eased open a hand's width on the dark and a tall shape in the gap with only its face in the light; at a window, its face close to the dark glass, OUTSIDE, the glass whole; in a wall (only when it is IN the wall), its FACE pressed into a hole broken in the plaster, one eye catching the light; at a TENT (always when its door was shut), it is OUTSIDE — its FACE pressing the thin canvas in from outside, the wet fabric stretched over its features, or the zipper of the shut door sliding up a hand's width from outside and, in that gap, its face — never inside with them, never in an opening that is shut; anywhere else, a tall shape standing in the dark with only its face in the light — never a hand, an arm or a body reaching out into the light — never at the edge of the picture. Say its one or two wrongnesses in so many words (skin like old candle wax; an eye open far too wide that never blinks; a face a little too high up) — never just \"wrong\" or \"strange\". And what HAPPENS in that shot is IT, SLOWLY and IN PLACE: its eye turns to them, or its head tilts — it never comes out of where it is, never comes nearer, never reaches for anybody — and the two FREEZE, and one of them slowly turns to it. Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so. When it is not one of the two, it has no \"cast\" entry: say what it is, and the one or two things that are wrong with it, in that VISUAL (which may run to 40 words).";
 
 /* ---- PEOPLE WHO ARE RELATED ARE THE RIGHT AGES FOR IT ----
  * The owner, of the same live film: "Also want to note in that video they are "sisters" but one of them is 130
