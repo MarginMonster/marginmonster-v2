@@ -70,8 +70,11 @@ import { useTheme } from "../lib/use-theme";
 // is shared (lib/theater-shell.ts); this page's own dark rules (FS_THEATER) follow it in the same <style>
 import { THEATER_SHELL_CSS } from "../lib/theater-shell";
 // (2026-11-25) THE GENRES ARE MOVIE CATEGORIES — each genre's own places for a scene (the page kept three lists
-// of its own; there are eleven genres now, and the table is film-genres.ts)
-import { backdropsOf } from "../lib/film-genres";
+// of its own; there are eleven genres now, and the table is film-genres.ts) — and its starter ideas, dealt
+// under the idea box so the writer is never handed nothing (the film kit's StarterNudges)
+import { backdropsOf, dealStarters } from "../lib/film-genres";
+import { StarterNudges } from "../components/film/StarterNudges";
+import { FILM_KIT_CSS } from "../components/film/film-kit-style";
 
 // (theme-color: in the DARK theme the Movie Maker is a theater — FS_THEATER, at the foot of this file — and
 //  a phone's own bar goes dark with it instead of framing it in white. The shell's loader knows the theme.)
@@ -1042,7 +1045,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 // (`singer`: Music Video featured verse — the NAME of the co-star who sings this scene; absent = the artist)
 type Scene = { visual: string; caption?: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll"; singer?: string };
-type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: string[] };
+// (`nudge`: the starter the server dealt when the idea was under three words — film-genres.ts → nudgeFor — in
+//  ENGLISH, as the dictionary keys it; the page puts it back in the idea box, said in the member's language)
+type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: string[]; nudge?: string };
+
+/** THE NUDGE COMES BACK (2026-11-25). An idea of a word or two is not written as typed: the server deals one of
+ *  the genre's starters and writes from that (film-genres.ts → nudgeFor), and says which (`treatment.nudge`).
+ *  The idea box then holds what the story was written from — the starter, in the member's language (`shown`) —
+ *  so it can be read, changed and written again. What the member DID type is not thrown out of the box: unless
+ *  the starter already says it (the server takes the starter that holds the typed word: "lighthouse" → the
+ *  lighthouse one), it stays after the starter, in brackets. Pure — tests/film-builder-top.test.ts runs it. */
+function nudgeFill(shown: string, english: string, sent: string): string {
+  const typed = (sent || "").replace(/\s+/g, " ").trim();
+  if (!typed || !/[\p{L}\p{N}]/u.test(typed)) return shown;
+  const says = (s: string) => (s || "").toLowerCase().includes(typed.toLowerCase());
+  return says(english) || says(shown) ? shown : `${shown} (${typed})`;
+}
 // A locked "actor": one character's reusable face + pinned voice, cast once and
 // reused as the identity reference for every shot they appear in.
 // autoVoice = the voice was picked FOR this character (not by the merchant, not brought by a presenter),
@@ -2123,11 +2141,51 @@ export default function FilmStudio() {
   // in a music video, the song with them): one stray letter cost a storyboard. What is made now stays until
   // the maker starts it over — a line under the box says so, and starting over uses the new idea.
   const [ideaChanged, setIdeaChanged] = useState(false);
+  /* THE WRITER'S NUDGE (2026-11-25). The owner: "the "write your dialogue" button generates a random scene and
+   * dialogue, atleast need a starter "nudge" couple sentences to hand to the writer". The box said "…or leave
+   * blank and we'll surprise you", and a blank box got a film about nothing its maker had in mind. Now a story
+   * format deals three of its genre's starters under the box (StarterNudges; "More ideas" deals three others),
+   * and an EMPTY box never reaches the writer: "Write" and Generate put the cursor in the box instead, say so,
+   * and stir the starters once (`nudgeUrge`).
+   * EXCEPT A NEXT EPISODE: there an empty box is the normal case — the last episode's ending and its recap ARE
+   * the idea (the owner: "need the ability to pick up where left off to continue") — so the writer is called.
+   * (And a finished story opened to be edited has its own words; a sung format has no starters.) */
+  const nudgeable = isStoryboard && !tmpl?.lipSyncSinger && !series && !editing && dealStarters(template, 0, 1).length > 0;
+  const [nudgeSeed, setNudgeSeed] = useState(0);
+  const [nudgeUrge, setNudgeUrge] = useState(false);
+  // (a different hand of starters each visit — dealt in the browser, so the page the server drew is the same)
+  useEffect(() => { setNudgeSeed(Math.floor(Math.random() * 1e6)); }, []);
+  useEffect(() => { setNudgeUrge(false); }, [template, series?.from]);
+  /** No idea in the box, and this format wants one: the box asks instead of the writer being called. */
+  const noIdeaYet = () => {
+    if (!nudgeable || topic.trim()) return false;
+    // (urged again while it already was: the stir is played again)
+    if (nudgeUrge) { setNudgeUrge(false); window.requestAnimationFrame(() => setNudgeUrge(true)); } else setNudgeUrge(true);
+    const box = document.getElementById("fs-topic-in");
+    if (box) {
+      const reduce = !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      box.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+      box.focus({ preventScroll: true });
+    }
+    return true;
+  };
+  // the idea the writer was last sent, and the box as the server's starter filled it (THE NUDGE COMES BACK)
+  const sentTopic = useRef("");
+  const nudgeFilled = useRef<string | null>(null);
 
   // When a fresh treatment arrives, adopt it (and lock the scene count to it) + cast.
   useEffect(() => {
     const tr2 = treatmentFetcher.data?.treatment;
     if (tr2 && tr2.scenes?.length) { setTreatment(tr2); setScenes(tr2.scenes.length); setFrames([]); setCast((prev) => keepCasting(castFromSeries(castFromPicked(deriveCast(tr2))), prev)); setIdeaChanged(false); }
+  }, [treatmentFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // THE NUDGE COMES BACK (nudgeFill): the server wrote from a starter it dealt — the box now holds it, said in
+  // the member's language, to be read and changed. Only while the box is what was sent (typed since: theirs).
+  useEffect(() => {
+    const tr2 = treatmentFetcher.data?.treatment;
+    if (!tr2?.nudge || !tr2.scenes?.length || topic !== sentTopic.current) return;
+    const fill = nudgeFill(t(tr2.nudge), tr2.nudge, sentTopic.current);
+    nudgeFilled.current = fill;
+    setTopic(fill);
   }, [treatmentFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Store each actor's portrait as it's cast; clear the busy flag.
@@ -2402,6 +2460,9 @@ export default function FilmStudio() {
     setTreatment(null); setFrames([]); setCast([]);
   };
   const writeTreatment = () => {
+    // (THE WRITER'S NUDGE: an empty box asks for an idea instead — but a next episode's is the last one's ending)
+    if (noIdeaYet()) return;
+    sentTopic.current = topic;
     treatmentFetcher.submit(
       { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(series && isStoryboard ? { seriesFrom: series.from } : {}), ...(langOn ? { filmLang: storyLang } : {}) },
       { method: "post" }
@@ -2425,6 +2486,7 @@ export default function FilmStudio() {
     if (writing || seedBusy) return;
     if (songSource === "upload" && filmSongUrl) { previewScenes(); return; } // own track — no song to write
     if (treatment && !seeds) { previewScenes(); return; }                    // song already written — add visuals
+    if (noIdeaYet()) return;                                                 // a story with no idea yet: the box asks first (nothing is thrown away)
     if (seeds) { setSeeds(null); }                                           // start over — fresh song + scenes
     setChainToScenes(true);
     writeTreatment();
@@ -2602,6 +2664,8 @@ export default function FilmStudio() {
   // (the note under the idea box says so) and "Start over" writes a new song from the new idea.
   useEffect(() => {
     if (restoring.current) return;
+    // (the box filled with the starter a script was just written from is not a new idea — THE NUDGE COMES BACK)
+    if (nudgeFilled.current !== null && topic === nudgeFilled.current) return;
     if (seeds || (treatment && !tmpl?.lipSyncSinger)) setIdeaChanged(true);
     else if (tmpl?.lipSyncSinger) setTreatment(null);
   }, [topic]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -3464,6 +3528,9 @@ export default function FilmStudio() {
   return (
     <div className={`fs-wrap${theme === "dark" ? " fs-theater" : ""}`} data-theme={theme}>
       <style dangerouslySetInnerHTML={{ __html: FS_STYLE }} />
+      {/* THE FILM KIT (components/film): the starters under the idea box, the scene board — in both themes; it
+          reads the theme from this root's data-theme, and its rules are its own (fk-) */}
+      <style dangerouslySetInnerHTML={{ __html: FILM_KIT_CSS }} />
       {/* a wide screen's arrows on a shelf that runs on (FS_SHELF_GO) — only while the shelves are shown */}
       {!entered && <style dangerouslySetInnerHTML={{ __html: FS_SHELF_GO }} />}
       {/* the Lyric Video's card badge and builder, and the Found Footage door (LV_STYLE) — only where they are offered */}
@@ -4109,8 +4176,18 @@ export default function FilmStudio() {
           <label htmlFor="fs-topic-in">{tmpl?.needsProduct ? t("What's the gag?") : narrated ? t("What's your story about?") : tmpl?.sung ? t("What's your song about?") : t("What's your movie about?")}</label>
         )}
         {wipeNote("series:")}
-        <textarea id="fs-topic-in" rows={3} value={topic} onChange={(e) => setTopic(e.target.value)}
-          placeholder={isStoryboard && series ? t("What happens next? Leave it empty and we'll decide.") : tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={IDEA_MAX} />
+        {/* (THE WRITER'S NUDGE: a story's box asks for who, where and what goes wrong — it no longer promises to
+            "surprise you" with a blank; a next episode's may be left empty: it picks up where the last one ended) */}
+        <textarea id="fs-topic-in" rows={3} value={topic} onChange={(e) => { setTopic(e.target.value); if (e.target.value.trim()) setNudgeUrge(false); }}
+          placeholder={isStoryboard && series ? t("What happens next? (or leave it — we pick up where it ended)") : tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : nudgeable ? t("a sentence or two: who, where, what goes wrong") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={IDEA_MAX} />
+        {/* the genre's starters, under the box, until there is a script (or the box is asked about again) */}
+        {nudgeable && (nudgeUrge || (!treatment && !seeds)) && (
+          <StarterNudges starters={dealStarters(template, nudgeSeed, 3)} urge={nudgeUrge} disabled={writing}
+            onPick={(text) => { setTopic(text); setNudgeUrge(false); if (window.matchMedia?.("(hover:hover) and (pointer:fine)").matches) document.getElementById("fs-topic-in")?.focus({ preventScroll: true }); }}
+            onMore={() => setNudgeSeed((s) => s + 1)} t={t} />
+        )}
+        {/* …and when the SERVER dealt one (an idea of a word or two), the box holds it now: said once, under it */}
+        {!!treatment && !ideaChanged && nudgeFilled.current !== null && topic === nudgeFilled.current && <p className="mm-note mm-idea-kept" role="status">{t("Written from a starter idea — change it and write again to make it yours.")}</p>}
         {ideaChanged && (seeds || treatment) && <p className="mm-note mm-idea-kept" role="status">{isStoryboard && !narrated ? t("Your script stays as it is — Rewrite to use the new idea.") : t("What you've made stays as it is — start over to use the new idea.")}</p>}
         {/* THE LANGUAGE IT IS TOLD IN — हिन्दी and اردو among them (2026-11-24, a tester in Pakistan) */}
         {langOn && (
@@ -4687,7 +4764,9 @@ export default function FilmStudio() {
       {/* Step 3 — generate (the only paid step) */}
       <div className="fs-card fs-go-card">
         <div className="fs-lbl"><span className="fs-n">{isStoryboard ? <Ico n="film" size={13} /> : 3}</span> {t("Generate")}</div>
-        <Form method="post" onSubmit={() => { sigAtSubmit.current = storySig; }}>
+        {/* (THE WRITER'S NUDGE: Generate with nothing written and an empty box would have the writer make one up —
+            the box asks instead; with a script or a storyboard on the page, the writer is not called at all) */}
+        <Form method="post" onSubmit={(e) => { if (!treatment && !seeds && noIdeaYet()) { e.preventDefault(); return; } sigAtSubmit.current = storySig; }}>
           <input type="hidden" name="intent" value="film" />
           <input type="hidden" name="template" value={template} />
           {isStoryboard && <input type="hidden" name="dialogueEngine" value={dialogueEngine} />}

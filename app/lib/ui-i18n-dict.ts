@@ -9,6 +9,9 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "a sentence or two: who, where, what goes wrong": "una o dos frases: quién, dónde, qué sale mal",
+  "What happens next? (or leave it — we pick up where it ended)": "¿Qué pasa después? (o déjalo así: seguimos donde terminó)",
+  "Written from a starter idea — change it and write again to make it yours.": "Escrito a partir de una idea de inicio: cámbiala y vuelve a escribir para hacerla tuya.",
   "Start over with different stars": "Empezar de nuevo con otras estrellas",
   "tap to give them faces (optional)": "toca para darles un rostro (opcional)",
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
@@ -3488,6 +3491,9 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "a sentence or two: who, where, what goes wrong": "une phrase ou deux : qui, où, ce qui tourne mal",
+  "What happens next? (or leave it — we pick up where it ended)": "Que se passe-t-il ensuite ? (ou laissez vide : on reprend là où ça s'est arrêté)",
+  "Written from a starter idea — change it and write again to make it yours.": "Écrit à partir d'une idée de départ — modifiez-la et réécrivez pour en faire la vôtre.",
   "Start over with different stars": "Recommencer avec d'autres vedettes",
   "tap to give them faces (optional)": "touche pour leur donner un visage (facultatif)",
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
@@ -6948,6 +6954,9 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "a sentence or two: who, where, what goes wrong": "ein, zwei Sätze: wer, wo, was schiefgeht",
+  "What happens next? (or leave it — we pick up where it ended)": "Wie geht es weiter? (oder leer lassen – wir machen da weiter, wo es aufgehört hat)",
+  "Written from a starter idea — change it and write again to make it yours.": "Aus einer Startidee geschrieben – ändere sie und schreib neu, damit sie deine wird.",
   "Start over with different stars": "Mit anderen Stars neu anfangen",
   "tap to give them faces (optional)": "tippe, um ihnen Gesichter zu geben (optional)",
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
@@ -10418,6 +10427,9 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "a sentence or two: who, where, what goes wrong": "一两句话：谁、在哪里、出了什么问题",
+  "What happens next? (or leave it — we pick up where it ended)": "接下来发生什么？（也可以留空——我们从上一集的结尾接着讲）",
+  "Written from a starter idea — change it and write again to make it yours.": "这是根据一个开头创意写的——改一改，再写一次，让它成为你自己的故事。",
   "Start over with different stars": "换一批主演，重新开始",
   "tap to give them faces (optional)": "点一下，给他们选张脸（可选）",
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──
@@ -13940,6 +13952,9 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  "a sentence or two: who, where, what goes wrong": "ایک دو جملے: کون، کہاں، کیا غلط ہوتا ہے",
+  "What happens next? (or leave it — we pick up where it ended)": "آگے کیا ہوتا ہے؟ (یا خالی چھوڑ دیں — ہم وہیں سے آگے بڑھیں گے جہاں پچھلی قسط ختم ہوئی تھی)",
+  "Written from a starter idea — change it and write again to make it yours.": "یہ ایک ابتدائی خیال سے لکھا گیا ہے — اسے بدلیں اور دوبارہ لکھیں تاکہ یہ آپ کا اپنا بن جائے۔",
   "Start over with different stars": "دوسرے اسٹارز کے ساتھ نئے سرے سے شروع کریں",
   "tap to give them faces (optional)": "انہیں چہرے دینے کے لیے ٹیپ کریں (اختیاری)",
   // ── added 2026-11-25: the Movie Maker's film kit — the scene board, the length slider, the starter nudges ──

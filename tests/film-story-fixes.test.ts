@@ -88,7 +88,9 @@ test("Generate says the film was sent, and stays sent until something in the fil
   // (…and the series it is an episode of: dropping it with ✕ makes it a different film)
   assert.ok(ui.includes("const storySig = `story:${JSON.stringify([template, treatment ? \"\" : topic, scenes, told, storyPick, filmAspect, captions, narratorId, dialogueEngine, lockVoices, prodTitle, prodImage, treatment, frames, seeds?.imgs || null, cast.map((c) => [c.name, c.faceUrl, c.voiceId]), series?.from || \"\"])}`;"));
   assert.ok(ui.includes("const storySent = sentSig === storySig;"));
-  assert.ok(ui.includes("<Form method=\"post\" onSubmit={() => { sigAtSubmit.current = storySig; }}>"));
+  // (2026-11-25, the writer's nudge: with nothing written and an empty idea box the submit asks for an idea
+  //  first — tests/film-builder-top.test.ts; a film that IS sent is remembered as sent, as before)
+  assert.ok(ui.includes("<Form method=\"post\" onSubmit={(e) => { if (!treatment && !seeds && noIdeaYet()) { e.preventDefault(); return; } sigAtSubmit.current = storySig; }}>"));
   assert.ok(ui.includes("<button type=\"submit\" className={`fs-go${storySent ? \" is-sent\" : \"\"}`} disabled={!canGo || storySent}>"));
   assert.ok(ui.includes("storySent ? <><Ico n=\"check\" size={16} /> {t(\"Rendering — it lands in your Archive\")}</>"));
   // declared after everything it reads (a `const` read before its line throws when the page renders)
@@ -152,7 +154,7 @@ test("each story format offers its own places — a kids' cartoon is not asked a
   //  same three, from there; and the page offers a scene the places of ITS genre.)
   const rows = (fmt: string) => backdropsOf(fmt).map((b) => ({ key: b.key, label: b.label, where: b.where }));
   assert.ok(!ui.includes("const BACKDROPS_BY_FORMAT") && !ui.includes("const FILM_BACKDROPS") && !ui.includes("const backdropsFor ="), "one table, not two");
-  assert.ok(ui.includes("import { backdropsOf } from \"../lib/film-genres\";"));
+  assert.ok(/\nimport \{[^}]*\bbackdropsOf\b[^}]*\} from "\.\.\/lib\/film-genres";/.test(ui));
   for (const fmt of ["kidstv", "horror", "moral"]) {
     const list = rows(fmt);
     assert.equal(list.length, 9, fmt);
