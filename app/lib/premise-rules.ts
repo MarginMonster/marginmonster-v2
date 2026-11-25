@@ -60,13 +60,19 @@ export const STORY_SAFETY =
  *  it. In an ACTED film the two who talk are the idea's own people — the creature is the thing they hear,
  *  glimpse and, in the last shot, see (the film's two speakers are on screen in every shot, faces large: a
  *  creature that is one of them stands beside the other in plain light from the first shot — the werewolf in
- *  the bedroom). `acted`: the film format. */
+ *  the bedroom). `acted`: the film format.
+ *  (2026-11-25 — THE MONSTER IS CASTABLE, and WHEN THEY SEE IT, WE SEE IT: the film now draws the thing from its own
+ *  picture in every shot that shows it, and a shot whose words put it in view far off is drawn with it there —
+ *  acted-staging.ts → sightingOf. So the writer may show it when the idea has the two see it, far off, instead of
+ *  "SEEN only in the last shot"; and it calls it by its NAME in every VISUAL that shows it, which is how the film
+ *  knows it is the one in the picture.) */
 export function chosenThreat(names: ReadonlyArray<string>, acted: boolean): string {
   const list = names.map((n) => String(n || "").trim()).filter(Boolean);
   if (!list.length) return "";
   const who = list.join(" and ");
   const it = list.length > 1 ? "they are" : "it is";
+  const is = list.length > 1 ? "are" : "is";
   return acted
-    ? ` THE CHOSEN CREATURE${list.length > 1 ? "S" : ""} (${who}): when the idea's threat is something unseen, far off or hidden — a shadow, a voice, a knock, something outside — ${who} ${list.length > 1 ? "ARE" : "IS"} that threat, and NOT one of the two who talk: the two in "cast" are the idea's own people (who it is about, and whoever the idea gives them — a parent, a sister, a friend), and ${who} ${list.length > 1 ? "have" : "has"} no "cast" entry. ${who} ${it} heard and glimpsed the way the idea says (a dark shape under the tree, a whisper through the glass) and SEEN only in the last shot. Only when the idea itself has ${who} talking with somebody face to face ${it} one of the two.`
+    ? ` THE CHOSEN CREATURE${list.length > 1 ? "S" : ""} (${who}): when the idea's threat is something unseen, far off or hidden — a shadow, a voice, a knock, something outside — ${who} ${list.length > 1 ? "ARE" : "IS"} that threat, and NOT one of the two who talk: the two in "cast" are the idea's own people (who it is about, and whoever the idea gives them — a parent, a sister, a friend), and ${who} ${list.length > 1 ? "have" : "has"} no "cast" entry. ${who} ${is} heard and glimpsed the way the idea says (a dark shape under the tree, a whisper through the glass); when the idea has the two SEE ${list.length > 1 ? "them" : "it"} before the end, the VISUAL of that shot shows ${who} there, far off and half in the dark — close only in the last shot. Every VISUAL that shows ${who} calls ${list.length > 1 ? `them by their names (${list.map((n) => `"${n}"`).join(", ")})` : `it by name, "${who}"`} — never just "a figure" or "something": the film draws ${who} from ${list.length > 1 ? "their" : "its"} own picture wherever that name is. Only when the idea itself has ${who} talking with somebody face to face ${it} one of the two.`
     : ` THE CHOSEN CREATURE${list.length > 1 ? "S" : ""} (${who}): when the idea calls its threat something else — a shadow, a figure, a voice — ${who} ${list.length > 1 ? "ARE" : "IS"} that threat and ${it} seen only the way the idea sees it: a dark shape far off, a face at the glass, a sound — whole and in the light only when the idea says so, or at the very end.`;
 }
