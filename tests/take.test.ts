@@ -255,7 +255,10 @@ test("the making: started off its subject, listened to, voiced afterwards — an
   // NO WORDS, NO CUT: the take is listened to and looked at; if the engine spoke or cut it is rolled again (once,
   // unless told otherwise) and the better roll is kept (take.ts → betterRoll: a roll that could not be heard never
   // replaces one that was, for its words)
-  assert.ok(srv.includes("for (let again = 0; again < rerolls() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, silent); again++) {"));
+  // (`more` is TAKE_REROLLS for one take — the same rule; a found-footage FILM's moment hands in its own, from the few
+  //  rolls the film has for all of its moments: footage-film.server.ts, 2026-11-25)
+  assert.ok(srv.includes("const more = opts.rerolls ?? rerolls;"));
+  assert.ok(srv.includes("for (let again = 0; again < more() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, silent); again++) {"));
   assert.ok(srv.includes("if (betterRoll({ cuts: nextCuts.length, words: said(nextSpoke) }, { cuts: cuts.length, words: said(spoke) }, silent)) { rawName = next; spoke = nextSpoke; cuts = nextCuts;"));
   assert.ok(srv.includes("Number.isFinite(n) && n >= 0 ? Math.min(2, Math.floor(n)) : 1;"), "TAKE_REROLLS: once by default, never more than twice");
   // THE VOICE is the app's own, laid on by takeSound; the picture is copied, never re-encoded
@@ -379,7 +382,7 @@ test("THE BODY CAM'S POLICE DRAMA (\"doesn't nessesarily need to be horror\"): t
   const srv = read("app", "lib", "take.server.ts");
   assert.ok(srv.includes("const seed = parseInt(stamp().slice(-6), 16);") && srv.includes("else if (ready) take = { ...castTake(ready, seed), title: ready.name };"));
   assert.ok(srv.includes("const seconds = take.seconds || TAKE_SECONDS;") && srv.includes("direction, aspect, seconds });"));
-  assert.ok(srv.includes('const silent = take.genre !== "drama";') && srv.includes("for (let again = 0; again < rerolls() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, silent); again++) {"));
+  assert.ok(srv.includes('const silent = take.genre !== "drama";') && srv.includes("for (let again = 0; again < more() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, silent); again++) {"));
   assert.ok(srv.includes('const voice = l.radio ? TAKE_RADIO_VOICE : take.genre === "drama" ? TAKE_OFFICER_VOICE : TAKE_VOICE;'));
 });
 
@@ -851,8 +854,13 @@ test("THE ONE FILMING IS PERFORMED (\"he is in monotone - no fear\") and says wh
   const srv = read("app", "lib", "take.server.ts");
   assert.ok(srv.includes('repCreate("elevenlabs/v3", input)') && srv.includes("prompt: `${acting} ${text}`, voice: TAKE_ACTED.voice, stability: TAKE_ACTED.stability, style: TAKE_ACTED.style"));
   // the one filming in a scare is acted; a drama's officer and the radio keep their own voices; the plain voice behind it
-  assert.ok(srv.includes('const acted = !l.radio && take.genre !== "drama" ? await actLine(l.text, takeActing(own.indexOf(l), own.length)) : "";'));
-  assert.ok(srv.includes("const file = acted || await sayLine(l.text, voice);"));
+  // (`l.mood`: a found-footage FILM's line carries the mood its writer picked; one take's lines carry none, and are
+  //  said exactly as above — takeActing(0, 2) and moodVoice(voice) with no mood are the take's own two manners)
+  assert.ok(srv.includes('const acted = !l.radio && take.genre !== "drama" ? await actLine(l.text, takeActing(own.indexOf(l), own.length, l.mood)) : "";'));
+  assert.ok(srv.includes("const file = acted || await sayLine(l.text, moodVoice(voice, l.mood));"));
+  const { moodVoice } = await import("../app/lib/take.ts");
+  assert.equal(moodVoice(TAKE_VOICE), TAKE_VOICE, "no mood: the voice as it is");
+  assert.equal(takeActing(0, 2, undefined), "[scared] [shaky breath] [whispering]");
   // THE WORDS: specific to what the idea says they know, broken off — never a stock line, never just "no no"
   const brief = takeWriterBrief("my roommate is standing in the hallway at 3am staring at me");
   for (const rule of ["what a real, frightened person would actually blurt in THIS situation", "the name of the person they live with", "never a stock line (\"what are you doing\", \"who is there\", \"hello?\" on its own)", "what they have just UNDERSTOOD, said out loud and broken off", "never \"no\", \"no no\", \"oh god\" or \"what the\""]) assert.ok(brief.includes(rule), rule);
@@ -865,4 +873,93 @@ test("THE ONE FILMING IS PERFORMED (\"he is in monotone - no fear\") and says wh
   assert.deepEqual(SCARES.map((i) => i.says[1]), ["babe... you're scaring me... stop—", "don't come down... please don't come down—", "it's coming out... it's coming out—", "ma'am... stop... please..."]);
   for (const i of SCARES) assert.ok(!/^\s*(oh\s+)?no\b/i.test(i.says[1]) && !/\bno[.,!\s]+no\b/i.test(i.says[1]), `${i.key}: "${i.says[1]}"`);
   assert.ok(SCARES.every((i) => i.says[0].endsWith("?")));
+});
+
+/* 2026-11-25, the owner: "Found footage needs redone … It currently appears to pipeline singular events But needs to be
+ * more like \"Found Footage\" House cam, Body cam, phone or cam recording, with describe events flow like the others -
+ * make it look banging and not limited". A FILM (app/lib/footage-film.ts) is several takes; what it asks of a take is
+ * held here: one that is NOT a scare, and a mood for each line of the one filming. */
+
+/** a TEST take that is no scare: a dog at a fridge */
+const DOG = {
+  genre: "plain" as const, who: "the dog",
+  still: "A small brown TEST terrier stands on its hind legs at an open fridge in a dim kitchen, its front paws on the bottom shelf, a packet of sausages in its mouth, looking back over its shoulder at the camera.",
+  opens: "the camera looks along a dim kitchen floor from the doorway — floor tiles, the leg of a table, the fridge door standing open, its light spilling out; the fridge itself is out of the picture.",
+  first: "the camera looks along the kitchen floor from the doorway while the one filming stands still.",
+  finds: "lifts to the open fridge",
+  beats: ["the small brown terrier stands on its hind legs at the open fridge, its front paws on the bottom shelf, a packet of sausages in its mouth.", "the dog looks back over its shoulder at the camera and freezes, the packet still in its mouth.", "the dog drops to all fours and trots out of the kitchen past the camera with the packet."] as [string, string, string],
+  says: ["Biscuit? ... Is that the sausages?", "oh you little thief—"] as [string, string], asks: "found" as const,
+  sound: "a fridge humming, claws on floor tiles",
+};
+
+test("A TAKE THAT IS NOT A SCARE (\"make it look banging and not limited\"): no creature in its picture or its direction — and everything a take keeps, kept", async () => {
+  const { PLAIN_BOUNDS, PLAIN_CAUGHT, hurtIn, plainPrompt } = await import("../app/lib/take.ts");
+  // THE PICTURE: caught as it happened, in whatever light there was — never the creature recipe
+  const p = takeStillPrompt(DOG, "16:9");
+  assert.equal(p, `Wide 16:9 picture. ${PLAIN_CAUGHT} ${DOG.still} ${PLAIN_BOUNDS} Nothing written anywhere in the picture. No watermark, no signature.`);
+  for (const creature of [TAKE_CAUGHT, TAKE_WRONG, TAKE_HIDDEN]) assert.ok(!p.includes(creature));
+  assert.ok(/never CGI, never a 3D render, never an illustration/.test(PLAIN_CAUGHT) && !/night|underexposed/.test(PLAIN_CAUGHT), "real footage, and no night is claimed");
+  assert.equal(PLAIN_BOUNDS, "Everyone in it is fully clothed. No blood, no gore, nobody hurt.");
+  // THE WAY IN: the same place a moment earlier, in the light its scene has — what it is about is not there yet
+  const o = takeOpensPrompt(DOG);
+  assert.ok(o.startsWith("Vertical 9:16 picture. The SAME place and the SAME camera as the reference image, a moment earlier: the camera looks along a dim kitchen floor"));
+  assert.ok(o.includes("What the camera is about to find is NOT in the picture yet. The same light and the same look as the reference image — real footage, never a render.") && o.endsWith("Nothing written anywhere."));
+  assert.ok(!o.includes("the camera's own small weak light") && !o.includes("underexposed"));
+  // THE DIRECTION, on every camera and both hosts
+  for (const camera of ["phone", "camcorder", "bare", "bodycam", "house"] as const) for (const ref of [TAKE_REF.replicate, TAKE_REF.fal]) {
+    const d = takePrompt(DOG, camera, ref);
+    assert.equal(d, plainPrompt(DOG, camera, ref), "a plain take is directed by plainPrompt");
+    // what every take keeps
+    assert.ok(d.includes("One continuous take, no cuts, nothing written on screen. NOBODY SPEAKS in this shot: no voice, no words, no whisper — only the sound of the place."), camera);
+    const at = ["FIRST TWO SECONDS:", "THEN the camera ", "THEN: ", "LAST FOUR SECONDS:"].map((m) => d.indexOf(m));
+    assert.ok(at[0] > 0 && at[0] < at[1] && at[1] < at[2] && at[2] < at[3], `${camera}: four parts in order`);
+    assert.ok(d.includes(`THEN the camera lifts to the open fridge — in the same shot, one smooth unbroken move, never a cut — and stops: there, exactly as in ${ref}, the small brown terrier stands`), `${camera}: found by a move, exactly as in the reference`);
+    assert.ok(d.includes("Nobody in the picture speaks or mouths a word. The one filming is never in the picture: no legs, no feet, no body. Nothing flashes; the picture never glitches or tears."));
+    assert.ok(d.endsWith("Sound: a fridge humming, claws on floor tiles. No voice at all. No music.") && d.length <= TAKE_PROMPT_MAX);
+    // NO WORD FOR THE ENGINE: nothing quoted, and neither line of the one filming
+    assert.ok(!/["“”]/.test(d) && !d.includes("Biscuit?") && !d.includes("thief"), camera);
+    // nothing of the creature's: no stillness to hold, no mouth to keep shut, no list of what it never does, no night claimed
+    for (const scare of ["never runs", "never flinches", "never looks away", "mouth stays exactly", "THEN, slowly:", "a quiet house at night", "at night"]) assert.ok(!d.includes(scare), `${camera}: ${scare}`);
+  }
+  // a body camera's keeps the drama's bounds — fiction, nobody hurt — and nobody else's does
+  assert.ok(takePrompt(DOG, "bodycam").includes("A FICTIONAL scene, and nobody is hurt: no weapon is drawn or fired, nobody is struck, no blood."));
+  assert.ok(!takePrompt(DOG, "phone").includes("FICTIONAL"));
+  assert.equal(hurtIn("He draws his gun."), true);
+  assert.equal(hurtIn("No weapon is drawn, no blood, nobody is hurt."), false);
+  assert.equal(hurtIn("The dog trots out with the sausages."), false);
+  // A SHORT MOMENT (a film's glimpse, under eight seconds: two of them are its way in) ends in its last THREE seconds —
+  // a plain one and a scare alike; from eight seconds up, and with no length said, the last four as always
+  assert.ok(takePrompt({ ...DOG, seconds: 6 }).includes("LAST THREE SECONDS: the dog drops to all fours") && !takePrompt({ ...DOG, seconds: 6 }).includes("LAST FOUR"));
+  assert.ok(takePrompt({ ...DOG, seconds: 8 }).includes("LAST FOUR SECONDS:"));
+  const smile = takeIdea("smile")!;
+  const brief = takePrompt({ ...smile, seconds: 7, ends: "away" });
+  assert.ok(brief.includes("LAST THREE SECONDS:") && brief.includes("until the last three seconds: it never drops, never falls.") && !brief.includes("four"));
+  assert.ok(takePrompt({ ...smile, seconds: 7, ends: "dark" }).includes("the light changes only as the last three seconds say"));
+  assert.equal(takePrompt({ ...smile, seconds: 12 }), takePrompt(smile), "twelve seconds said is twelve seconds unsaid");
+});
+
+test("A MOOD FOR EACH LINE (a film is not all terror; a plain one is never whispered in terror): a closed list, its acting tags, the plain voice behind it", async () => {
+  const { TAKE_MOODS, moodVoice, takeActing, takeMood } = await import("../app/lib/take.ts");
+  assert.deepEqual([...TAKE_MOODS], ["scared", "terrified", "whispering", "calm", "excited", "laughing", "annoyed", "shouting"]);
+  assert.equal(takeMood(" Calm "), "calm");
+  for (const not of ["furious", "", null, undefined, 3]) assert.equal(takeMood(not), undefined);
+  // each mood is performed with tags of its own — tags only (the acted voice reads them and does not say them)
+  const tags = TAKE_MOODS.map((m) => takeActing(0, 2, m));
+  assert.equal(new Set(tags).size, TAKE_MOODS.length);
+  for (const t of tags) assert.ok(/^(\[[a-z ]+\])( \[[a-z ]+\])*$/.test(t), t);
+  // the first two are one take's own two manners, word for word
+  assert.equal(takeActing(1, 2, "scared"), takeActing(0, 2));
+  assert.equal(takeActing(0, 2, "terrified"), takeActing(1, 2));
+  assert.equal(takeActing(1, 2, "calm"), "[calm] [casual]", "the mood wins over the line's place");
+  assert.ok(!/whisper|scared|terrified/.test(takeActing(1, 2, "laughing") + takeActing(1, 2, "annoyed") + takeActing(1, 2, "excited") + takeActing(1, 2, "calm")));
+  // the plain voice behind it: the same voice at the same speed, asked for the mood in the speech model's own words
+  assert.deepEqual(moodVoice(TAKE_VOICE, "annoyed"), { ...TAKE_VOICE, emotion: "angry" });
+  assert.deepEqual(moodVoice(TAKE_VOICE, "scared"), TAKE_VOICE);
+  for (const m of TAKE_MOODS) assert.ok(["fearful", "neutral", "happy", "angry", "surprised"].includes(moodVoice(TAKE_VOICE, m).emotion), m);
+  // the lines carry it from a take's script to the voice — a mood nobody listed is dropped, and a line without one has none
+  assert.deepEqual(takeLines({ says: ["", ""], asks: "found", script: [{ at: 2.8, text: "Biscuit?", mood: "calm" }, { at: 6.6, text: "oh you little thief—", mood: "laughing" }, { at: 9, text: "hey", mood: "furious" as never }] }), [
+    { at: 2.8, text: "Biscuit?", mood: "calm" }, { at: 6.6, text: "oh you little thief—", mood: "laughing" }, { at: 9, text: "hey" },
+  ]);
+  // …and one take's script (the traffic stop's) is what it was: no mood on any line
+  assert.ok(takeLines(takeIdea("traffic")!).every((l) => !("mood" in l)));
 });
