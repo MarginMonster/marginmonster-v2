@@ -52,7 +52,7 @@ import { makeCastPoster } from "./story-poster.server";
 import { castForWriter } from "./dialogue-cast";
 import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
-import { EVENT_MAX, EVENT_MAX_LAST, FILM_FPS, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, joinCheck, kinLooks, revealPicture, sceneEvent, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging, type SeamKind } from "./acted-staging";
+import { EVENT_MAX, EVENT_MAX_LAST, FILM_FPS, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, joinCheck, kinLooks, revealPicture, sceneEvent, seenBefore, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging, type SeamKind } from "./acted-staging";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -1067,7 +1067,11 @@ export async function generateTestMovie(opts: {
       // one made up from the words (the stronger editor takes it as a second picture; the permissive one cannot).
       const thing = castActors.find((c) => !!c.faceUrl && isCreature(c) && ![spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name)) && (scene.visual || "").toLowerCase().includes(c.name.trim().toLowerCase()));
       const thingFace = thing ? abs(thing.faceUrl) : undefined;
-      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace) });
+      // (…and a threat the STORY invented is the one the film already showed: the words of the shot that showed it go
+      //  with it — "Who Calls From the Shallows" showed a woman waist-deep in the lake, and its last shot drew a
+      //  bald ghoul's face in a window in the tent: acted-staging.ts → seenBefore)
+      const seen = thing && thingFace ? "" : seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || ""));
+      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace), seen });
       const ask = askOne && thing && thingFace
         ? `${askOne} What is found is ${thing.name.trim()}: the creature in the SECOND picture — that exact creature, its face, its fur or skin and its colours and whatever it wears — drawn INTO the first picture the way this says; everything else in the first picture stays exactly as it is.`
         : askOne;

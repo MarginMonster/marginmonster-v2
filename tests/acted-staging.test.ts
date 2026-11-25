@@ -887,7 +887,7 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.ok(eng.includes("const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);"));
   const at = eng.indexOf("if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {");
   assert.ok(at > eng.indexOf("let seedAbs = abs(approvedFrames[i]);") && eng.indexOf("if (!seedAbs && master?.url) {", at) > at);
-  assert.ok(eng.includes("const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace) });"));
+  assert.ok(eng.includes("const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace), seen });"));
   const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [abs(master.url), ...(thing && thingFace ? [thingFace] : [])], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],");
   const kontext = eng.indexOf("[\"black-forest-labs/flux-kontext-pro\", { prompt: askOne, input_image: abs(master.url), aspect_ratio: aspect, output_format: \"jpg\", output_quality: 92 }],");
   assert.ok(pro > at && kontext > pro, "the place's master is the first reference picture, on nano-banana-pro, then flux-kontext-pro");
@@ -1309,4 +1309,34 @@ test("a title of its own, or asked for once more — never the idea", () => {
   assert.ok(engine.includes("if (!parsed.title && storyFormat && list.length) {"));
   assert.ok(engine.includes("const raw = await anthropicText(titleAsk({ idea: topic, scenes: list, language: langName }), {"));
   assert.ok(engine.includes("parsed.title = ownTitle((JSON.parse(raw) as { title?: unknown }).title, topic) || undefined;"));
+});
+
+/* "WHO CALLS FROM THE SHALLOWS" (2026-11-25, the owner: "that one looks pretty slop"): a woman stood waist-deep in the lake
+ * in its third shot — lit from inside like a lamp — and its last shot, "she" close behind them, came back as a bald grey
+ * ghoul's face in a window in the tent wall. A threat the story invented had no picture to be drawn from, so the words of
+ * the shot that showed it now go with it; and nothing in a photographed film glows unless it is a light. */
+test("the reveal is the thing the film already showed, in that shot's words; nothing glows that is not a light", async () => {
+  const st = await import("../app/lib/acted-staging.ts");
+  const earlier = [
+    "Esperanza and Rupert sit up in their sleeping bags inside the tent, the lake dark behind the open flap",
+    "Rupert holds the flashlight at the tent flap, Esperanza beside him, staring out at the water",
+    "Far out in the lake a woman stands waist-deep, long black hair over her shoulders, white dress soaked, smiling",
+  ];
+  assert.equal(st.seenBefore("She is right behind Rupert now, smiling, water dripping from her hair", earlier), earlier[2], "'she' finds the woman");
+  assert.equal(st.seenBefore("The figure stands at the tent flap", ["a tall figure stands under the pines, far off", "the two sit by the fire"]), "a tall figure stands under the pines, far off", "the latest earlier scene that names the same kind of thing");
+  assert.equal(st.seenBefore("Something knocks on the tent pole", earlier), "", "a moment that names no figure carries nothing");
+  assert.equal(st.seenBefore("", earlier), "");
+  const sides = [{ name: "Esperanza", side: "left" }, { name: "Rupert", side: "right" }];
+  const p = st.revealPicture({ moment: "She is right behind Rupert now, smiling", sides, seen: earlier[2] });
+  assert.ok(p.includes(`It is the SAME one this film already showed — "${earlier[2]}" — the same look, the same hair, the same clothes, only nearer: never a different face or a different creature.`));
+  assert.ok(p.length < 2400, "inside what both editors read");
+  assert.ok(!st.revealPicture({ moment: "She is right behind Rupert now", sides, seen: earlier[2], creature: true }).includes("It is the SAME one this film already showed"), "a chosen creature is drawn from its own picture");
+  assert.ok(!st.revealPicture({ moment: "She is right behind Rupert now", sides }).includes("It is the SAME one"), "nothing seen before: as it was");
+  // the engine hands it the earlier shots' words, unless the thing is a creature the maker chose
+  const eng = fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(eng.includes("const seen = thing && thingFace ? \"\" : seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || \"\"));"));
+  assert.ok(eng.includes("creature: !!(thing && thingFace), seen });"));
+  // nothing glows that is not a light — in every picture of a photographed film
+  assert.ok(st.NOTHING_GLOWS.includes("a pale figure is lit only by the lights that are there, never from within"));
+  assert.ok(st.actedRealism(false, "x").endsWith(` ${st.NOTHING_GLOWS}`) && st.actedRealism(true, "x") === "");
 });

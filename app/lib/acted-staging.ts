@@ -185,8 +185,11 @@ const HANDS = "Hands are empty unless the moment puts something in them — then
  *  drawn from the same kind of words, with the same horror look, and had neither (story-picture.ts). */
 export function actedRealism(cartoon: boolean | undefined, moment: string | null | undefined): string {
   if (cartoon) return "";
-  return ` ${TODAY_LOOK}${shadowNote(String(moment || "")) ? ` ${SHADOW_SHAPE}` : ""}`;
+  return ` ${TODAY_LOOK}${shadowNote(String(moment || "")) ? ` ${SHADOW_SHAPE}` : ""} ${NOTHING_GLOWS}`;
 }
+/** NOTHING GLOWS THAT IS NOT A LIGHT (2026-11-25, "Who Calls From the Shallows": the woman standing in the lake was
+ *  drawn lit from inside like a lamp — a ghost's glow, in a film that is meant to look photographed). */
+export const NOTHING_GLOWS = "Nothing in the picture glows unless it is a light — a lamp, a torch, a screen, the moon: a pale figure is lit only by the lights that are there, never from within.";
 
 export function stagedTwoShot(o: {
   staging: unknown;
@@ -878,7 +881,28 @@ const REVEAL_REAL = "Real, photographed in this place with the same grain and so
  *  right); `mood` = the format's face mood (a horror cast does not grin — film-engine → faceMood). "" when
  *  there is no moment to draw. The recipe the horror stories use is said in its own words: photographed, a
  *  practical effect (story-picture.ts → CREATURE_REAL), mostly hidden (take.ts → TAKE_HIDDEN). */
-export function revealPicture(o: { moment: string | null | undefined; mood?: string | null; sides?: ReadonlyArray<{ name: string; side: string }>; /** the thing is a creature the maker chose, drawn from its own picture */ creature?: boolean }): string {
+/* THE THING THE FILM HAS ALREADY SHOWN (2026-11-25, "Who Calls From the Shallows"): a woman stood waist-deep in the lake
+ * in its third shot — long dark hair, a white dress, smiling — and its last shot, "she" close behind them, came back as
+ * a bald grey ghoul's face in a window in the tent wall: the reveal is drawn from the last scene's words alone, and a
+ * threat the STORY invented (not a creature the maker chose) has no picture of its own to be drawn from. So the words
+ * of the shot that showed it go with it: the latest earlier scene that names the same kind of thing the moment does. */
+const THING_WORDS = /\b(?:woman|women|lady|girl|man|men|boy|child|figure|figures|shadow|shadows|ghost|creature|thing|stranger|shape|monster|face)\b/gi;
+export function seenBefore(moment: string | null | undefined, earlier: ReadonlyArray<string | null | undefined>): string {
+  const m = oneLine(moment).toLowerCase();
+  if (!m) return "";
+  const want = new Set((m.match(THING_WORDS) || []).map((w) => w.toLowerCase().replace(/s$/, "")));
+  if (/\b(?:she|her)\b/.test(m)) ["woman", "lady", "girl"].forEach((w) => want.add(w));
+  if (/\b(?:he|him|his)\b/.test(m)) ["man", "boy"].forEach((w) => want.add(w));
+  if (!want.size) return "";
+  for (let k = earlier.length - 1; k >= 0; k--) {
+    const v = oneLine(earlier[k]);
+    const words = (v.toLowerCase().match(THING_WORDS) || []).map((w) => w.replace(/s$/, ""));
+    if (words.some((w) => want.has(w))) return v.slice(0, 240);
+  }
+  return "";
+}
+
+export function revealPicture(o: { moment: string | null | undefined; mood?: string | null; sides?: ReadonlyArray<{ name: string; side: string }>; /** the thing is a creature the maker chose, drawn from its own picture */ creature?: boolean; /** how the film showed the thing before, in that shot's words (seenBefore) */ seen?: string | null }): string {
   const moment = clipEvent(o.moment, REVEAL_MOMENT_MAX);
   if (!moment) return "";
   const mood = oneLine(o.mood);
@@ -899,7 +923,9 @@ export function revealPicture(o: { moment: string | null | undefined; mood?: str
   // (a creature the maker chose is drawn as ITSELF — its own picture says what it looks like; the "what is wrong"
   //  words are a made-up thing's, and would paint candle-wax skin on a werewolf)
   const wrong = o.creature ? "" : ` What is wrong with it: ${REVEAL_PARTS[part].wrong}.`;
-  return `Edit this photo, a frame from a live-action horror film. Keep the camera and the framing, every window, door and lamp, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes.${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${REVEAL_PARTS[part].seen}${only}.${wrong} ${REVEAL_REAL} ${CREATURE_REAL} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.`;
+  // (…and a thing the film has ALREADY SHOWN is that same one — its look as that shot's words gave it, never a new one)
+  const seen = !o.creature && oneLine(o.seen) ? ` It is the SAME one this film already showed — "${oneLine(o.seen).replace(/"/g, "'").slice(0, 240)}" — the same look, the same hair, the same clothes, only nearer: never a different face or a different creature.` : "";
+  return `Edit this photo, a frame from a live-action horror film. Keep the camera and the framing, every window, door and lamp, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes.${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${REVEAL_PARTS[part].seen}${only}.${wrong}${seen} ${REVEAL_REAL} ${CREATURE_REAL} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.`;
 }
 
 /* ---- THE WRITER ---- */
