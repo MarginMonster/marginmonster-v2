@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { backdropsOf } from "../app/lib/film-genres.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // (line endings made the same: a fresh checkout on Windows has CRLF, and two tests here failed on it alone)
@@ -146,9 +147,12 @@ test("every new line is translated", () => {
 });
 
 test("each story format offers its own places — a kids' cartoon is not asked about a Bar", () => {
-  const lists = ui.slice(ui.indexOf("const BACKDROPS_BY_FORMAT:"), ui.indexOf("const backdropsFor ="));
-  const of = (fmt: string) => lists.slice(lists.indexOf(`\n  ${fmt}: [`), lists.indexOf("\n  ],", lists.indexOf(`\n  ${fmt}: [`)));
-  const rows = (fmt: string) => [...of(fmt).matchAll(/\{ key: "([^"]+)", label: "([^"]+)", where: "([^"]+)" \}/g)].map((m) => ({ key: m[1], label: m[2], where: m[3] }));
+  // (2026-11-25: the page's three lists moved, word for word, into the genres' table — film-genres.ts →
+  //  backdropsOf, eleven genres now, tests/film-genres.test.ts holds every one. These are the same checks on the
+  //  same three, from there; and the page offers a scene the places of ITS genre.)
+  const rows = (fmt: string) => backdropsOf(fmt).map((b) => ({ key: b.key, label: b.label, where: b.where }));
+  assert.ok(!ui.includes("const BACKDROPS_BY_FORMAT") && !ui.includes("const FILM_BACKDROPS") && !ui.includes("const backdropsFor ="), "one table, not two");
+  assert.ok(ui.includes("import { backdropsOf } from \"../lib/film-genres\";"));
   for (const fmt of ["kidstv", "horror", "moral"]) {
     const list = rows(fmt);
     assert.equal(list.length, 9, fmt);
@@ -159,8 +163,10 @@ test("each story format offers its own places — a kids' cartoon is not asked a
   }
   for (const grown of ["Bar", "Diner", "Warehouse", "Office"]) assert.ok(!rows("kidstv").some((b) => b.label === grown), grown);
   for (const b of rows("horror")) assert.ok(/night|bare bulb/.test(b.where), `a horror place is dark: ${b.where}`);
-  assert.ok(ui.includes("const backdropsFor = (format: string) => BACKDROPS_BY_FORMAT[format] || FILM_BACKDROPS;"), "Short Film keeps the general list");
-  assert.ok(ui.includes("{backdropsFor(template).map((bd) => (") && !ui.includes("{FILM_BACKDROPS.map((bd) => ("));
+  // the Short Film (Drama) keeps the general list — and so does a format with none of its own
+  assert.deepEqual(rows("testmovie").map((b) => b.key), ["diner", "street", "office", "kitchen", "car", "living", "bar", "park", "warehouse"]);
+  assert.deepEqual(rows("musicvideo"), rows("testmovie"), "Short Film keeps the general list");
+  assert.ok(ui.includes("{backdropsOf(template).map((bd) => (") && !ui.includes("{FILM_BACKDROPS.map((bd) => ("));
   // the chip that lights is the place's key as a WHOLE WORD: a lighthouse lit "Old house" (seen 2026-11-22)
   assert.ok(ui.includes("const backdropIs = (where: string, key: string): boolean => new RegExp(`(^|[^a-z])${key}([^a-z]|$)`, \"i\").test(where || \"\");"));
   assert.ok(ui.includes("className={`fs-bchip${backdropIs(loc.where, bd.key) ? \" on\" : \"\"}`}") && !ui.includes("loc.where.toLowerCase().includes(bd.key)"));

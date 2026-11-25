@@ -78,8 +78,9 @@ import { useTheme } from "../lib/use-theme";
  *  two together, so a replaced file is bumped in both). */
 const STILL_V = 8;
 const LOOP_V = 5;
-/** Formats whose poster has its own 4:5 picture (the other two are one wide picture, cropped). */
-const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo", "testmovie", "moral", "horrorstory", "shortstory", "moralstory"]);
+/** Formats whose poster has its own 4:5 picture (the other two are one wide picture, cropped). The Movie
+ *  Maker's own list, word for word (2026-11-25: the new genres' phone covers joined it there). */
+const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo", "testmovie", "moral", "horrorstory", "shortstory", "moralstory", "comedy", "comedystory", "thriller", "thrillerstory", "action", "romance", "romancestory", "scifi", "scifistory", "fantasy", "fantasystory", "mystery", "mysterystory"]);
 
 /** The houses a card can come from, besides the Movie Maker. Their names are the nav's own (web.tsx). */
 type House = "ad" | "creator" | "cast" | "autopost";

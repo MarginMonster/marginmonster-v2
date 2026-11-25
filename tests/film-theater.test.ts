@@ -40,8 +40,9 @@
  *   · a shelf is a TICKET in both themes — the rosette engraved in its paper in its own colour, a perforation
  *     between two notches, a printed hairline — and its words read as they did; the card itself clips nothing
  *   · the hero's clip is FLUSH: the band's far side from top to foot, no box round it, its near edge dissolved
- *   · a shelf is one row: about 2.3 posters on a phone with the next one peeking, four across on a wide
- *     screen — and the page itself never scrolls sideways
+ *   · a shelf is one row: about 2.3 posters on a phone with the next one peeking, four and three tenths on a
+ *     wide screen (2026-11-25: with nine Stories and eleven Films a row runs on there too, and must show it) —
+ *     and the page itself never scrolls sideways
  *   · it is still the same list of buttons in the same order; a tapped poster still pops
  *   · everything that moves stands still for anyone who asks for less motion
  *   · no control does anything it did not do, no word was added, no file but the rosette is asked for
@@ -605,14 +606,18 @@ const num = (re: RegExp, sheet = rows) => { const m = re.exec(sheet); assert.ok(
 const ROW = {
   ps: num(/\.fs-shelf\{--tp:14px;--ps:(\d+)px;/), gap: num(/--gap:(\d+)px;/), peWide: num(/--ps:14px;--pe:(\d+)px;/), pe: num(/@media\(max-width:979px\)\{\n  \.fs-shelf\{--pe:(\d+)px;/),
   phone: num(/--pw:min\(calc\(\(100% \+ var\(--pe\) - 2 \* var\(--gap\)\) \/ ([\d.]+)\),190px\);/), tablet: num(/--pw:calc\(\(100% \+ var\(--pe\) - 3 \* var\(--gap\)\) \/ ([\d.]+)\);/),
+  wide: num(/\.fs-shelf\{--tp:14px;--ps:14px;--pe:14px;--gap:12px;--pw:calc\(\(100% \+ var\(--pe\) - 4 \* var\(--gap\)\) \/ ([\d.]+)\);/),
 };
 /** A row on a screen `vw` wide: its posters' width, and how many of them show before the screen's edge. */
 function rowAt(vw: number): { w: number; shown: number; rowWidth: number; trayEnd: number } {
   const gut = vw <= 760 ? 16 : Math.min(56, Math.max(18, 0.03 * vw)); // the shell's .wb-main padding
   if (vw >= 980) {
     const row = vw - 2 * gut - 2; // the tray, inside its two borders (the row runs from one to the other)
-    const w = (row - ROW.ps - ROW.peWide - 3 * ROW.gap) / 4;
-    return { w, shown: (row - ROW.ps - ROW.peWide + ROW.gap) / (w + ROW.gap), rowWidth: row, trayEnd: vw - gut };
+    // (from the first poster's edge to the tray's far border: four posters, four gaps and the peek of a fifth)
+    const w = (row - ROW.ps - 4 * ROW.gap) / ROW.wide;
+    const room = row - ROW.ps;
+    const whole = Math.floor((room + ROW.gap) / (w + ROW.gap));
+    return { w, shown: whole + Math.min(1, Math.max(0, room - whole * (w + ROW.gap)) / w), rowWidth: row, trayEnd: vw - gut };
   }
   const row = vw - gut - 1; // the tray runs to the screen's edge: one border, at its start
   const inside = row - ROW.ps - ROW.pe;
@@ -622,20 +627,28 @@ function rowAt(vw: number): { w: number; shown: number; rowWidth: number; trayEn
   return { w, shown: whole + Math.min(1, Math.max(0, room - whole * (w + ROW.gap)) / w), rowWidth: row, trayEnd: gut + (vw - gut) };
 }
 
-test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a phone with the next one peeking, four across on a wide screen", () => {
+test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a phone with the next one peeking, four and three tenths on a wide screen", () => {
   // the list is the list it was — the same shelves, the same buttons in the same order, nothing taken out of
   // the tab order — and the element that was the grid is the row (no markup changed)
+  // (2026-11-25: a poster says its movie CATEGORY — `card`, "Comedy" — and a screen reader is told its whole
+  //  name, "Comedy Film", with its line: two shelves now carry the same word)
   for (const k of [
     "{heroShelves(heroes).map((sh) => (",
     "<section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>",
     "<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`} role=\"tablist\" aria-label={t(sh.name)}>",
     "{sh.heroes.map((h) => (",
-    "<button type=\"button\" role=\"tab\" key={h.id} className={`fs-fmt${zoomKey === h.id ? \" zoom\" : \"\"}${h.told === \"narrated\" ? \" is-told\" : \"\"}`}\n                aria-selected={heroId === h.id} onClick={() => enterFormat(h.id)}>",
-    "<span className=\"fs-fmt-label\"><b>{t(h.name)}</b></span>",
+    "<button type=\"button\" role=\"tab\" key={h.id} className={`fs-fmt${zoomKey === h.id ? \" zoom\" : \"\"}${h.told === \"narrated\" ? \" is-told\" : \"\"}`}\n                aria-selected={heroId === h.id} aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")} onClick={() => enterFormat(h.id)}>",
+    "<span className=\"fs-fmt-label\"><b>{t(h.card)}</b></span>",
     "{h.kick ? <span className=\"fs-fmt-sub\">{t(h.kick)}{h.meta ? <em> · {t(h.meta)}</em> : null}</span> : null}",
   ]) assert.equal(count(ui, k), 1, k);
   const shelvesJsx = ui.slice(ui.indexOf("{heroShelves(heroes).map((sh) => ("), ui.indexOf("{entered && ("));
-  assert.ok(shelvesJsx.length > 1200 && !/tabIndex|inert|scrollIntoView|scrollTo|scrollLeft|scrollBy/.test(shelvesJsx), "every poster is reached by Tab and brought into view by the browser; the row is moved by a finger, a wheel or the keyboard — never by script");
+  // (2026-11-25: a wide screen's ARROWS sit beside a row that runs on — FS_SHELF_GO. They are for a mouse only:
+  //  plain marks, hidden from a screen reader and out of the Tab order, and what moves a row is a CLICK on one —
+  //  a function outside this markup. Nothing here moves a row by itself, and no poster leaves the Tab order.)
+  assert.ok(shelvesJsx.length > 1200 && !/tabIndex|inert|scrollIntoView|scrollTo|scrollLeft|scrollBy/.test(shelvesJsx), "every poster is reached by Tab and brought into view by the browser; the row is moved by a finger, a wheel, the keyboard or a click on a wide screen's arrow — never by itself");
+  assert.equal(count(shelvesJsx, "className=\"fs-shelf-arrow "), 2);
+  for (const a of shelvesJsx.split("\n").filter((l) => l.includes("className=\"fs-shelf-arrow "))) assert.ok(a.includes("aria-hidden=\"true\"") && /onClick=\{\(e\) => stepShelf\(e\.currentTarget, (-1|1)\)\}/.test(a), a);
+  assert.ok(!/<button[^>]*fs-shelf-arrow/.test(shelvesJsx), "an arrow is no button: nothing a keyboard steps through");
   // the page's own rules above the rows are as they were (other tests pin them too): the shelves, their
   // accents, the four columns a wide screen had
   for (const k of [".fs-shelves{display:grid;gap:18px;margin:18px 0 6px;}", ".fs-shelf .fs-fmtgrid{margin:0;}", "@media(min-width:980px){.fs-shelf .fs-fmtgrid{grid-template-columns:repeat(4,minmax(0,1fr));}}", ".fs-fmtgrid .fs-fmt{flex:none;width:auto;transform-origin:center;}"]) assert.ok(before.includes(k), k);
@@ -661,19 +674,22 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   // THE ROW'S END. A small gold rosette stood there (a finial); it is gone, and its ROOM IS KEPT, empty — to
   // the pixel: the same width (86% of a poster; 62% from 640px) and the same two margins. Below 980px it is
   // still an item of the row after the last poster — the row's end margin — so not a row scrolls a pixel
-  // further or less than it did; from 980px, where four stand across, there is nothing to end.
+  // further or less than it did. (From 980px there was nothing to end while four stood across; since
+  // 2026-11-25 a row runs on there too, in a card framed on all four sides, and its end is a pixel-wide item:
+  // one gap and the row's own padding after the last poster, kept by a browser that drops a scroller's.)
   const end = R.filter((r) => /\.fs-fmtgrid::after$/.test(r.sel));
   assert.deepEqual(end.map((r) => [named(r), r.body]), [
     [".fs-shelf .fs-fmtgrid::after", "flex:0 0 auto;align-self:center;width:calc(var(--pw) * .86);height:1px;margin-inline:6px 14px;pointer-events:none;"],
     ["@media(max-width:979px) .fs-shelf .fs-fmtgrid::after", "content:\"\";"],
     ["@media(min-width:640px) .fs-shelf .fs-fmtgrid::after", "width:calc(var(--pw) * .62);"],
+    ["@media(min-width:980px) .fs-shelf .fs-fmtgrid::after", "content:\"\";width:1px;margin-inline:0;"],
   ]);
   // (MEASURED on the TEST page at 390px, as with the finial: that room is 125.3px wide, and the three rows
   //  scroll 275, 433 and 118px)
   assert.ok(Math.abs(0.86 * rowAt(390).w - 125.26) < 0.05);
   assert.ok(rows.includes(".fs-shelf .fs-fmtgrid .fs-fmt{flex:0 0 var(--pw);min-width:0;}"));
-  assert.deepEqual([ROW.ps, ROW.gap, ROW.pe, ROW.peWide, ROW.phone, ROW.tablet], [14, 12, 16, 14, 2.3, 3.3]);
-  assert.ok(rows.includes(".fs-shelf{--tp:14px;--ps:14px;--pe:14px;--gap:12px;--pw:calc((100% - 3 * var(--gap)) / 4);min-width:0;padding-bottom:0;}"), "four across where there is room");
+  assert.deepEqual([ROW.ps, ROW.gap, ROW.pe, ROW.peWide, ROW.phone, ROW.tablet, ROW.wide], [14, 12, 16, 14, 2.3, 3.3, 4.3]);
+  assert.ok(rows.includes(".fs-shelf{--tp:14px;--ps:14px;--pe:14px;--gap:12px;--pw:calc((100% + var(--pe) - 4 * var(--gap)) / 4.3);min-width:0;padding-bottom:0;}"), "four and a peek where there is room");
   // (the row spans the tray from border to border: it takes back the tray's own padding, which is 14 — 10 on a small phone)
   assert.ok(before.includes(".fs-shelf{position:relative;border-radius:22px;padding:14px 14px 14px;border:1px solid var(--line,#E4DFCF);") && before.includes("@media(max-width:420px){.fs-shelf{padding:12px 10px 12px;border-radius:18px;}"));
   assert.ok(rows.includes("@media(max-width:420px){.fs-shelf{--tp:10px;}}"));
@@ -693,12 +709,15 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   for (const vw of [520, 600, 639]) assert.ok(rowAt(vw).w === 190 && rowAt(vw).shown > 2.3, `${vw}px`);
   // A TABLET: three and three tenths
   for (const vw of [640, 768, 834, 979]) assert.ok(Math.abs(rowAt(vw).shown - 3.3) < 1e-9, `${vw}px shows ${rowAt(vw).shown}`);
-  // A WIDE SCREEN: four, exactly — as wide as the four columns were
+  // A WIDE SCREEN: four and three tenths — the fifth peeks in at the card's edge, as the third does on a phone.
+  // (It was four, exactly — "as wide as the four columns were" — and with nine Stories and eleven Films that
+  //  said the row ENDED where it did not: 2026-11-25, the genres stream's review, photographed at 1280px.)
   for (const vw of [980, 1280, 1440, 1920]) {
     const r = rowAt(vw);
-    assert.ok(Math.abs(r.shown - 4) < 1e-9, `${vw}px shows ${r.shown}`);
+    assert.ok(Math.abs(r.shown - 4.3) < 1e-9, `${vw}px shows ${r.shown}`);
     const gut = Math.min(56, Math.max(18, 0.03 * vw));
-    assert.ok(Math.abs(r.w - (vw - 2 * gut - 2 - 28 - 36) / 4) < 1e-9, "the tray's inside (two borders, two paddings of 14), three gaps of 12");
+    assert.ok(Math.abs(r.w - (vw - 2 * gut - 2 - 14 - 48) / 4.3) < 1e-9, "the tray's inside (two borders, the first padding of 14), four gaps of 12, and three tenths of a fifth poster");
+    assert.ok(0.3 * r.w >= 55, `${vw}px: ${(0.3 * r.w).toFixed(1)}px of the fifth poster shows`);
   }
   // with today's shelves: a phone scrolls Stories and Films, and Music videos' two stand whole
   // (2026-11-25, the genres became movie categories — "Our genres need to be movie categories (drama, horror,

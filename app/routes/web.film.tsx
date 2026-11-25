@@ -69,6 +69,9 @@ import { useTheme } from "../lib/use-theme";
 // (2026-11-24) THE SHELL'S OWN DARK — what any page that is dark under the theme mounts while it is dark —
 // is shared (lib/theater-shell.ts); this page's own dark rules (FS_THEATER) follow it in the same <style>
 import { THEATER_SHELL_CSS } from "../lib/theater-shell";
+// (2026-11-25) THE GENRES ARE MOVIE CATEGORIES — each genre's own places for a scene (the page kept three lists
+// of its own; there are eleven genres now, and the table is film-genres.ts)
+import { backdropsOf } from "../lib/film-genres";
 
 // (theme-color: in the DARK theme the Movie Maker is a theater — FS_THEATER, at the foot of this file — and
 //  a phone's own bar goes dark with it instead of framing it in white. The shell's loader knows the theme.)
@@ -1095,60 +1098,11 @@ function castCardSummary(cast: Array<{ name: string; faceUrl: string | null }>) 
   return { names, discs, more: Math.max(0, cast.length - CAST_CARD_DISCS), done, total: cast.length, all: cast.length > 0 && done === cast.length };
 }
 
-// Backdrop presets — like the avatar-AI backdrop picker: tap one to set a scene's
-// location (the `where`), or type your own. `key` is matched against the where text
-// to light the active chip.
-const FILM_BACKDROPS: Array<{ key: string; label: string; where: string }> = [
-  { key: "diner", label: "Diner", where: "a warm dim diner at night, rain on the windows" },
-  { key: "street", label: "Street", where: "a rain-soaked city street at night, neon reflections on the wet asphalt" },
-  { key: "office", label: "Office", where: "a quiet modern office after hours, city lights through the glass" },
-  { key: "kitchen", label: "Kitchen", where: "a stainless-steel restaurant kitchen late at night, one lamp burning" },
-  { key: "car", label: "Car", where: "inside a parked car at night, streetlights sliding past the windows" },
-  { key: "living", label: "Living room", where: "a cozy living room in the evening, warm lamplight" },
-  { key: "bar", label: "Bar", where: "a moody, dimly lit bar at night" },
-  { key: "park", label: "Park", where: "a quiet park bench at dusk, soft golden light" },
-  { key: "warehouse", label: "Warehouse", where: "a cold empty warehouse at night, shafts of moonlight" },
-];
-// …and each story format has its OWN places. The list above was offered everywhere: a Kids Cartoon about
-// a lost bandana was asked whether it happens in a Bar, a Diner or a Warehouse, and a horror story was
-// offered an Office (seen making both as a customer, 2026-11-22). `key` must be a word of its `where`
-// (that is how the chip of the place a scene is in lights up).
-const BACKDROPS_BY_FORMAT: Record<string, Array<{ key: string; label: string; where: string }>> = {
-  kidstv: [
-    { key: "park", label: "Park", where: "a sunny park with a big green lawn and a red slide" },
-    { key: "playground", label: "Playground", where: "a bright playground with swings and a sandbox under a blue sky" },
-    { key: "bedroom", label: "Bedroom", where: "a cozy bedroom full of toys, warm morning light through the curtains" },
-    { key: "classroom", label: "Classroom", where: "a cheerful classroom with crayon drawings on the walls" },
-    { key: "backyard", label: "Backyard", where: "a leafy backyard with a treehouse in the afternoon sun" },
-    { key: "beach", label: "Beach", where: "a sandy beach with gentle waves and a bright blue sky" },
-    { key: "farm", label: "Farm", where: "a friendly farm with a red barn and a white fence" },
-    { key: "forest", label: "Forest", where: "a sunlit forest clearing with tall trees and wildflowers" },
-    { key: "kitchen", label: "Kitchen", where: "a bright family kitchen in the morning, sunlight through the window" },
-  ],
-  horror: [
-    { key: "house", label: "Old house", where: "the hallway of an old house at night, wallpaper peeling, one bulb flickering" },
-    { key: "woods", label: "Woods", where: "dark woods at night, thin fog between the trees, a pale moon" },
-    { key: "hospital", label: "Hospital", where: "an empty hospital corridor at night, one fluorescent light flickering" },
-    { key: "basement", label: "Basement", where: "a damp basement lit by a single bare bulb" },
-    { key: "cemetery", label: "Cemetery", where: "an old cemetery at night, mist low over the headstones" },
-    { key: "motel", label: "Motel", where: "a highway motel room at night, the neon sign buzzing behind thin curtains" },
-    { key: "attic", label: "Attic", where: "a dusty attic at night, moonlight through a round window" },
-    { key: "road", label: "Empty road", where: "an empty country road at night, headlights fading into fog" },
-    { key: "chapel", label: "Chapel", where: "an abandoned chapel at night, candles guttering in the draft" },
-  ],
-  moral: [
-    { key: "home", label: "At home", where: "a modest family home in the evening, warm lamplight" },
-    { key: "school", label: "School", where: "a school corridor after the bell, lockers along the wall" },
-    { key: "market", label: "Market", where: "a lively open-air market in the morning, stalls of fruit and bread" },
-    { key: "office", label: "Office", where: "a small open office in the afternoon, desks by the window" },
-    { key: "park", label: "Park", where: "a quiet park bench at dusk, soft golden light" },
-    { key: "kitchen", label: "Kitchen", where: "a small family kitchen at dinner time, steam rising from a pot" },
-    { key: "shop", label: "Corner shop", where: "a small corner shop, shelves to the ceiling, a bell on the door" },
-    { key: "bus", label: "Bus stop", where: "a bus stop in the rain, one shelter light on" },
-    { key: "street", label: "Street", where: "a neighbourhood street in the late afternoon, long shadows" },
-  ],
-};
-const backdropsFor = (format: string) => BACKDROPS_BY_FORMAT[format] || FILM_BACKDROPS;
+// Backdrop presets — like the avatar-AI backdrop picker: tap one to set a scene's location (the `where`), or
+// type your own. Each story GENRE has its own nine (film-genres.ts → backdropsOf): one list offered everywhere
+// asked a Kids Cartoon about a lost bandana whether it happens in a Bar, a Diner or a Warehouse, and offered a
+// horror story an Office (seen making both as a customer, 2026-11-22). The page kept three lists of its own
+// here until 2026-11-25, when the genres became movie categories and the table moved to film-genres.ts.
 /** Is this the place a scene is in? Its key as a WHOLE WORD of the scene's `where` — a lighthouse lit up
  *  the "Old house" chip, and a carpark would have lit "Car" and "Park" (seen 2026-11-22). */
 const backdropIs = (where: string, key: string): boolean => new RegExp(`(^|[^a-z])${key}([^a-z]|$)`, "i").test(where || "");
@@ -1184,8 +1138,11 @@ const backdropIs = (where: string, key: string): boolean => new RegExp(`(^|[^a-z
 const LOOP_V = 5;
 const STILL_V = 8;
 const LOOP_KEYS = ["musicvideo", "testmovie", "shortstory", "kidstv", "moralstory", "moral", "horrorstory", "horror", "kidsmusicvideo"];
-/** Formats whose cover has its own 4:5 picture for phones (the rest are one picture cropped both ways). */
-const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo", "testmovie", "moral", "horrorstory", "shortstory", "moralstory"]);
+/** Formats whose cover has its own 4:5 picture for phones (the rest are one picture cropped both ways).
+ *  (2026-11-25: the genres added that day each have one — a told Story's poster is a strip of three upright
+ *  pictures, and a centre crop of it on a phone card was the middle panel alone. The sign-in lobby keeps the
+ *  very same list: tests/auth-lobby.test.ts holds the two together.) */
+const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo", "testmovie", "moral", "horrorstory", "shortstory", "moralstory", "comedy", "comedystory", "thriller", "thrillerstory", "action", "romance", "romancestory", "scifi", "scifistory", "fantasy", "fantasystory", "mystery", "mysterystory"]);
 const stillOf = (key: string) => `/landing/film-still-${key}.jpg?v=${STILL_V}`;
 const stillFallback = (e: React.SyntheticEvent<HTMLImageElement>) => {
   const el = e.currentTarget;
@@ -2410,6 +2367,34 @@ export default function FilmStudio() {
     setAnim("out");
     window.setTimeout(() => { setEntered(false); setAnim(""); setLyricOn(false); }, 300);
   };
+  /* A WIDE SCREEN'S ARROWS (FS_SHELF_GO, 2026-11-25): each shelf is told which way its row can still go
+   * (data-moved: it has left its start; data-end: it is at its end) and where its pictures' middle is (--go-y,
+   * from the shelf's top: the row's top, its air above the posters, half a picture) — on arrival, on every
+   * scroll of a row, and when the window or the fonts change the layout. Only attributes of the shelf are
+   * written; nothing here moves a row. */
+  useEffect(() => {
+    if (entered) return;
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".fs-shelf .fs-fmtgrid"));
+    const ends = (row: HTMLElement) => {
+      const shelf = row.parentElement;
+      if (!shelf) return;
+      const x = Math.abs(row.scrollLeft);
+      shelf.toggleAttribute("data-moved", x > 2);
+      shelf.toggleAttribute("data-end", x >= row.scrollWidth - row.clientWidth - 2);
+    };
+    const place = () => rows.forEach((row) => {
+      const pic = row.querySelector<HTMLElement>(".fs-fmt-cover");
+      if (pic && row.parentElement) row.parentElement.style.setProperty("--go-y", `${Math.round(row.offsetTop + (parseFloat(getComputedStyle(row).paddingTop) || 0) + pic.offsetHeight / 2)}px`);
+      ends(row);
+    });
+    const onScroll = (e: Event) => ends(e.currentTarget as HTMLElement);
+    rows.forEach((row) => row.addEventListener("scroll", onScroll, { passive: true }));
+    window.addEventListener("resize", place);
+    place();
+    let live = true;
+    document.fonts?.ready.then(() => { if (live) place(); }).catch(() => undefined);
+    return () => { live = false; rows.forEach((row) => row.removeEventListener("scroll", onScroll)); window.removeEventListener("resize", place); };
+  }, [entered, heroes.length, d.lyricVideo, d.foundFootage]); // eslint-disable-line react-hooks/exhaustive-deps
   const pickCatalog = (idx: number) => {
     const p = d.products[idx];
     if (!p) return;
@@ -3464,10 +3449,23 @@ export default function FilmStudio() {
     if (key === "kidstv") return <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8" /><circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="6" r="2.5" /><circle cx="9.5" cy="12" r="1" /><circle cx="14.5" cy="12" r="1" /><path d="M9 16c1 1 5 1 6 0" /></svg>;
     return <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.5" /><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 7h5M17 17h5" /></svg>;
   };
+  /** A WIDE SCREEN'S ARROWS (FS_SHELF_GO): one click moves a shelf four posters, the way the arrow points (in
+   *  a right-to-left page the row runs the other way). It glides — but not for anyone who asks for less motion. */
+  const stepShelf = (el: HTMLElement, dir: -1 | 1) => {
+    const row = el.closest(".fs-shelf")?.querySelector<HTMLElement>(".fs-fmtgrid");
+    if (!row) return;
+    const one = row.querySelector<HTMLElement>(".fs-fmt");
+    const cs = getComputedStyle(row);
+    const step = one ? 4 * (one.offsetWidth + (parseFloat(cs.columnGap) || 12)) : row.clientWidth * 0.8;
+    const reduce = !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    row.scrollBy({ left: dir * (cs.direction === "rtl" ? -1 : 1) * step, behavior: reduce ? "auto" : "smooth" });
+  };
 
   return (
     <div className={`fs-wrap${theme === "dark" ? " fs-theater" : ""}`} data-theme={theme}>
       <style dangerouslySetInnerHTML={{ __html: FS_STYLE }} />
+      {/* a wide screen's arrows on a shelf that runs on (FS_SHELF_GO) — only while the shelves are shown */}
+      {!entered && <style dangerouslySetInnerHTML={{ __html: FS_SHELF_GO }} />}
       {/* the Lyric Video's card badge and builder, and the Found Footage door (LV_STYLE) — only where they are offered */}
       {(d.lyricVideo || d.foundFootage) && <style dangerouslySetInnerHTML={{ __html: LV_STYLE }} />}
       {/* THE THEATER: this section's DARK theme. Its own stylesheet, mounted only while the dark is chosen
@@ -3566,13 +3564,17 @@ export default function FilmStudio() {
           <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t(sh.name)}>
             {/* one poster per HERO (film-heroes.ts): a format as it is told. A narrated hero's poster is a
                 strip of three upright pictures with their captions — it looks like what it makes. */}
+            {/* THE POSTER SAYS THE MOVIE CATEGORY (2026-11-25 — the owner: "Our genres need to be movie categories
+                (drama, horror, comedy, etch)"): "Comedy", not "Comedy Film" — the shelf it stands on says how it
+                is told. Two posters now carry the same word, one per shelf, so a screen reader is told the whole
+                name ("Comedy Film", "Comedy Story") with the line under it. */}
             {sh.heroes.map((h) => (
               <button type="button" role="tab" key={h.id} className={`fs-fmt${zoomKey === h.id ? " zoom" : ""}${h.told === "narrated" ? " is-told" : ""}`}
-                aria-selected={heroId === h.id} onClick={() => enterFormat(h.id)}>
+                aria-selected={heroId === h.id} aria-label={[t(h.name), h.kick ? t(h.kick) : "", h.meta ? t(h.meta) : ""].filter(Boolean).join(" · ")} onClick={() => enterFormat(h.id)}>
                 <span className="fs-fmt-cover">
                   <LoopCover k={h.media} />
                   <span className={`fs-fmt-ico ${h.tint}`} aria-hidden="true">{fmtIcon(h.tmpl, h.told === "narrated")}</span>
-                  <span className="fs-fmt-label"><b>{t(h.name)}</b></span>
+                  <span className="fs-fmt-label"><b>{t(h.card)}</b></span>
                 </span>
                 {h.kick ? <span className="fs-fmt-sub">{t(h.kick)}{h.meta ? <em> · {t(h.meta)}</em> : null}</span> : null}
               </button>
@@ -3602,6 +3604,12 @@ export default function FilmStudio() {
               </a>
             )}
           </div>
+              {/* A WIDE SCREEN'S ARROWS (FS_SHELF_GO): a mouse's way along a shelf that runs on past four — shown
+                  only where there is a mouse and room for four; nothing a keyboard or a screen reader steps through */}
+              {sh.heroes.length + (sh.key === "sung" && d.lyricVideo ? 1 : 0) + (sh.key === "acted" && d.foundFootage ? 1 : 0) > 4 && (<>
+                <span className="fs-shelf-arrow is-back" aria-hidden="true" onClick={(e) => stepShelf(e.currentTarget, -1)}><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" /></svg></span>
+                <span className="fs-shelf-arrow is-on" aria-hidden="true" onClick={(e) => stepShelf(e.currentTarget, 1)}><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg></span>
+              </>)}
             </section>
             ))}
           </div>
@@ -4545,7 +4553,7 @@ export default function FilmStudio() {
                       </div>
                       <div className="fs-backdrops" role="group" aria-label={t("Backdrop")}>
                         <span className="fs-backdrops-lbl">{t("backdrop")}</span>
-                        {backdropsFor(template).map((bd) => (
+                        {backdropsOf(template).map((bd) => (
                           <button type="button" key={bd.key} className={`fs-bchip${backdropIs(loc.where, bd.key) ? " on" : ""}`} onClick={() => setWhere(loc, bd.where)}>{t(bd.label)}</button>
                         ))}
                       </div>
@@ -5994,6 +6002,11 @@ a.mm-pace-auto{text-decoration:none;}
        scrolls sideways, because the tray ends exactly where the page's own gutter does (--fs-gut is the
        shell's .wb-main padding, width for width — a test holds the two together);
      · from 980px four stand across, as before; a fifth would scroll (the row is only un-clipped while it fits);
+       (2026-11-25: …and a fifth is there now on two shelves — nine Stories, eleven Films, the genres made movie
+       categories — and four whole posters with nothing after them said the row ENDED: five of the Stories and
+       seven of the Films were invisible on a laptop. So from 980px a shelf shows four and THREE TENTHS, the
+       fifth peeking in at the card's edge as the third does on a phone, and a mouse gets two arrows of its
+       own — FS_SHELF_GO, below the page's sheet;)
      · it is the same list of buttons in the same order: Tab reaches every poster and brings it into view;
      · a tapped poster still pops where it stands and the others fall away (enterFormat) — the row keeps
        28px of its own air above and 24 below so the pop is not cut, and a poster that was only PEEKING is
@@ -6004,7 +6017,7 @@ a.mm-pace-auto{text-decoration:none;}
 @media(max-width:979px){.fs-wrap{--fs-gut:clamp(18px,3vw,56px);}}
 @media(max-width:760px){.fs-wrap{--fs-gut:16px;}}
 .fs-shelves{grid-template-columns:minmax(0,1fr);}
-.fs-shelf{--tp:14px;--ps:14px;--pe:14px;--gap:12px;--pw:calc((100% - 3 * var(--gap)) / 4);min-width:0;padding-bottom:0;}
+.fs-shelf{--tp:14px;--ps:14px;--pe:14px;--gap:12px;--pw:calc((100% + var(--pe) - 4 * var(--gap)) / 4.3);min-width:0;padding-bottom:0;}
 @media(max-width:979px){
   .fs-shelf{--pe:16px;--pw:calc((100% + var(--pe) - 3 * var(--gap)) / 3.3);margin-inline-end:calc(var(--fs-gut) * -1);border-inline-end-width:0;border-start-end-radius:0;border-end-end-radius:0;}
 }
@@ -6031,10 +6044,13 @@ a.mm-pace-auto{text-decoration:none;}
    "Those little rosettes on the cards appear slightly out of place"). The room it took is kept, and nothing
    is drawn in it: below 980px it is still an item of the row after its last poster — the row's end margin (a
    browser may drop a scroller's own end padding) — and, scrolled to its end, a row now opens onto the
-   card's own engraving (THE TICKET, below). From 980px, where four stand across, there is nothing to end. */
+   card's own engraving (THE TICKET, below). From 980px a row runs on too (2026-11-25), inside a card framed on
+   all four sides: its end is one gap and the row's own end padding — a pixel-wide item, so that a browser that
+   drops a scroller's end padding still leaves the last poster off the card's edge. */
 .fs-shelf .fs-fmtgrid::after{flex:0 0 auto;align-self:center;width:calc(var(--pw) * .86);height:1px;margin-inline:6px 14px;pointer-events:none;}
 @media(max-width:979px){.fs-shelf .fs-fmtgrid::after{content:"";}}
 @media(min-width:640px){.fs-shelf .fs-fmtgrid::after{width:calc(var(--pw) * .62);}}
+@media(min-width:980px){.fs-shelf .fs-fmtgrid::after{content:"";width:1px;margin-inline:0;}}
 /* (the Next-episode row is the same kind of row: it runs to the same edge) */
 .fs-eps-row{margin-inline-end:calc(var(--fs-gut) * -1);padding-inline-end:16px;scroll-padding-inline-end:16px;}
 
@@ -6152,6 +6168,35 @@ a.mm-pace-auto{text-decoration:none;}
   .fs-shelf-wm,.fs-shelf::after{transition:none;}
   .fs-shelf .fs-fmt,.fs-shelf .fs-fmt:hover,.fs-shelf .fs-fmt:active{transition:none;transform:none;}
 }
+`;
+
+/* A WIDE SCREEN'S ARROWS — a shelf that runs on past its fourth poster, said to a mouse (2026-11-25).
+ *
+ * The genres became movie categories (the owner: "Our genres need to be movie categories (drama, horror,
+ * comedy, etch)") and two shelves now hold nine and eleven posters. A phone swipes and a trackpad slides, but a
+ * mouse wheel scrolls the PAGE: a laptop with a mouse had the thin gold bar alone to reach the Fantasy Film.
+ * So where there is a mouse and room for four, a shelf that runs on has a round arrow at each end, over its
+ * pictures' middle: one click moves it four posters. An arrow is there only while the row can go that way.
+ *
+ * They are for the mouse only, and add nothing anyone else must step through: hidden from a screen reader and
+ * out of the Tab order (Tab already walks every poster, and the browser brings each into view), absent on a
+ * touch screen and below 980px. The page tells them where the pictures' middle is (--go-y) and which way a
+ * row can still go (data-moved, data-end) — FilmStudio's "A WIDE SCREEN'S ARROWS" effect. They sit on the
+ * cream card in both themes, so they are cream in both. A click is the only thing that moves a row: never by
+ * itself, and with no glide for anyone who asks for less motion. */
+const FS_SHELF_GO = `
+.fs-shelf-arrow{display:none;}
+@media(min-width:980px) and (hover:hover) and (pointer:fine){
+  .fs-shelf-arrow{display:grid;place-items:center;position:absolute;z-index:5;top:var(--go-y,50%);width:46px;height:46px;margin-top:-23px;border-radius:50%;cursor:pointer;color:#14201A;background:#FFFEFA;border:1px solid rgba(176,133,38,.55);box-shadow:0 1px 0 #fff inset,0 6px 16px -6px rgba(20,32,26,.45),0 2px 4px rgba(20,32,26,.18);transition:opacity .2s ease,transform .2s ease,background .2s ease;}
+  .fs-shelf-arrow svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+  .fs-shelf-arrow.is-back{inset-inline-start:2px;}
+  .fs-shelf-arrow.is-on{inset-inline-end:2px;}
+  [dir=rtl] .fs-shelf-arrow svg{transform:scaleX(-1);}
+  .fs-shelf-arrow:hover{background:#fff;transform:scale(1.07);}
+  .fs-shelf-arrow:active{transform:scale(.96);}
+  .fs-shelf:not([data-moved]) .fs-shelf-arrow.is-back,.fs-shelf[data-end] .fs-shelf-arrow.is-on,.fs-shelves.throw .fs-shelf-arrow{opacity:0;pointer-events:none;}
+}
+@media(prefers-reduced-motion:reduce){.fs-shelf-arrow,.fs-shelf-arrow:hover,.fs-shelf-arrow:active{transition:none;transform:none;}}
 `;
 
 /* THE THEATER — the Movie Maker as a dark movie theater.

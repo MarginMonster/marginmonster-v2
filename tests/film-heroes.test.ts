@@ -93,7 +93,10 @@ test("the grid shows a poster per hero, and opening one sets the format AND how 
   assert.ok(ui.includes("const heroes = heroesFor(d.templates.map((x) => x.key), d.narratable || []);"));
   // (the posters stand on shelves now — told, acted, sung: each shelf lists its own heroes)
   const grid = ui.slice(ui.indexOf("{sh.heroes.map((h) => ("), ui.indexOf("{sh.heroes.map((h) => (") + 900);
-  assert.ok(grid.includes("onClick={() => enterFormat(h.id)}") && grid.includes("<LoopCover k={h.media} />") && grid.includes("<b>{t(h.name)}</b>"));
+  // (2026-11-25, the genres are movie categories: the poster says its CATEGORY — "Comedy" — and the shelf says
+  //  how it is told; the whole name, "Comedy Film", is what a screen reader is told, with the line under it)
+  assert.ok(grid.includes("onClick={() => enterFormat(h.id)}") && grid.includes("<LoopCover k={h.media} />") && grid.includes("<b>{t(h.card)}</b>"));
+  assert.ok(grid.includes("aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")}") && !grid.includes("<b>{t(h.name)}</b>"));
   assert.ok(grid.includes("{t(h.kick)}{h.meta ? <em> · {t(h.meta)}</em> : null}"));
   assert.ok(!ui.includes("{d.templates.map((x) => {\n              const m = FMT["), "the grid is no longer one poster per template");
   const sw = ui.slice(ui.indexOf("const switchHero = (id: string) => {"), ui.indexOf("const switchHero = (id: string) => {") + 1100);
@@ -143,6 +146,10 @@ test("every hero has its poster files, and every name and line is translated", (
     else assert.ok(!exists("public", "landing", `film-loop-${h.media}.mp4`), `${h.media} has a loop on disk that LOOP_MEDIA does not list`);
     if (TALL_STILL_MEDIA.includes(h.media)) assert.ok(exists("public", "landing", `film-still-${h.media}-tall.jpg`), `tall still for ${h.id}`);
     if (h.told === "narrated") assert.ok(TALL_STILL_MEDIA.includes(h.media), `${h.id}: a strip of three upright pictures cannot be centre-cropped for a phone card`);
+    // (re-tightened 2026-11-25, once the page listed the new genres' phone covers: every phone cover there is,
+    //  the page SHOWS — a told Story's above all, or a phone card gets the middle panel of its strip)
+    if (TALL_STILL_MEDIA.includes(h.media)) assert.ok(talls.includes(`"${h.media}"`), `${h.id}: the page shows its phone cover`);
+    if (h.told === "narrated") assert.ok(talls.includes(`"${h.media}"`), `${h.id}: the page shows its phone cover`);
   }
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const h of FILM_HEROES) for (const k of [h.card, h.name, h.kick, h.meta].filter(Boolean)) assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
