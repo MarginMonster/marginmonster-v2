@@ -1422,3 +1422,192 @@ test("A NIGHT FILM'S PLACES ARE AT NIGHT (the lake film: its idea said 3am, its 
   const eng = fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8");
   assert.ok(eng.includes("setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect"));
 });
+
+/* ---- A LONG FILM IS JOINED IN PARTS ----
+ * The owner, 2026-11-25: films "up to 5 minutes". Five minutes is fifty-two shots (film-length.ts), and the join
+ * opened every clip of a film in one ffmpeg: fifty Full-HD inputs on a 2 GB server, in an encode that is stopped
+ * at ten minutes. A film of more than six clips is joined in parts — each a handful of shots, cut where the film
+ * already cuts straight when it can — and the parts are put end to end without being encoded again. */
+
+test("a long film is dealt into parts of six clips at most, cut at its straight cuts — and a dissolve at a part's edge is carried, not lost", async () => {
+  const st = await import("../app/lib/acted-staging.ts");
+  assert.equal(st.JOIN_PART_CLIPS, 6);
+  // nine scenes of six shots, a straight cut into each: the parts ARE the scenes
+  const scenes = Array.from({ length: 54 }, (_, i): Seam => (i === 0 ? null : i % 6 === 0 ? "hard" : i % 3 === 0 ? "reframe" : "soft"));
+  const frames = scenes.map((_, i) => 150 + (i % 4) * 6);
+  const film = st.joinParts({ frames, seams: scenes, prep: "fps=30" });
+  assert.equal(film.parts.length, 9);
+  assert.deepEqual(film.parts.map((p) => [p.from, p.to, p.carried]), Array.from({ length: 9 }, (_, k) => [k * 6, k * 6 + 6, 0]));
+  assert.ok(film.parts.every((p) => p.clips.length <= st.JOIN_PART_CLIPS));
+  // the film is as long as one graph of all of it would be: its shots less its dissolves
+  const whole = st.joinGraph({ frames, seams: scenes, prep: "fps=30" });
+  assert.equal(film.frames, whole.frames);
+  assert.equal(film.frames, frames.reduce((a, b) => a + b, 0) - st.seamFades(frames, scenes).reduce((a, b) => a + b, 0));
+  assert.deepEqual(st.seamFades([150, 120, 90, 60], [null, "soft", "reframe", "hard"]), [0, 5, 10, 0]);
+  assert.deepEqual(st.seamFades([150, 120, 90], [null, "soft", "reframe"], false), [0, 0, 0]);
+  // a part that begins at a straight cut fades its sound in, one that ends at one fades it out — as two runs meet
+  assert.ok(film.parts[0].graph.includes("afade=t=out:st=") && !film.parts[0].graph.includes("afade=t=in"));
+  assert.ok(film.parts[4].graph.includes("afade=t=in:d=0.012,afade=t=out:st="));
+  assert.ok(film.parts[8].graph.includes("afade=t=in:d=0.012") && !film.parts[8].graph.includes("afade=t=out"));
+
+  // ONE LONG SCENE — twenty shots in one room, not a straight cut among them: a part ends at a dissolve, and the
+  // next one opens the shot before it again, for just the frames the dissolve needs
+  const room = Array.from({ length: 20 }, (_, i): Seam => (i === 0 ? null : i % 4 === 0 ? "reframe" : "soft"));
+  const lens = room.map(() => 165);
+  const long = st.joinParts({ frames: lens, seams: room, prep: "fps=30" });
+  assert.deepEqual(long.parts.map((p) => [p.from, p.to, p.carried]), [[0, 6, 0], [6, 11, 5], [11, 16, 5], [16, 20, 10]]);
+  assert.ok(long.parts.every((p) => p.clips.length <= st.JOIN_PART_CLIPS), "the shot opened again counts as one of a part's clips");
+  assert.deepEqual(long.parts[1].clips, [5, 6, 7, 8, 9, 10]);
+  assert.equal(long.frames, st.joinGraph({ frames: lens, seams: room, prep: "fps=30" }).frames);
+  // part 1 stops five frames short of its last shot…
+  assert.ok(long.parts[0].graph.includes("[5:v]fps=30,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=3,trim=end_frame=160,"));
+  // …and part 2 opens that shot at its 160th frame, for five frames, and dissolves all five into its own first shot
+  assert.ok(long.parts[1].graph.includes("[0:v]fps=30,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=3,trim=start_frame=160:end_frame=165,"));
+  assert.ok(long.parts[1].graph.includes("atrim=start_sample=235200:end_sample=242550,"));
+  assert.ok(long.parts[1].graph.includes("[v0][v1]xfade=transition=fade:duration=0.166667:offset=0.000000[r0v0]"));
+  assert.ok(!long.parts[1].graph.includes("afade=t=in"), "its sound carries on: nothing fades at a dissolve");
+  // the plain way: every seam a straight join, nothing carried
+  const plain = st.joinParts({ frames: lens, seams: room, prep: "fps=30", dissolve: false });
+  assert.ok(plain.parts.every((p) => p.carried === 0 && !/xfade/.test(p.graph)));
+  assert.equal(plain.frames, 20 * 165);
+  // a film short enough for one ffmpeg is one part, and its graph is joinGraph's own
+  const six = st.joinParts({ frames: [150, 120, 130, 140, 150, 160], seams: [null, "soft", "soft", "hard", "soft", "reframe"], prep: "fps=30" });
+  assert.equal(six.parts.length, 1);
+  assert.equal(six.parts[0].graph, st.joinGraph({ frames: [150, 120, 130, 140, 150, 160], seams: [null, 5, 5, 0, 5, 10], prep: "fps=30" }).graph);
+  // nothing asked of joinGraph that it was not asked before changes what it writes
+  assert.ok(st.joinGraph({ frames: [165], prep: "fps=30", hold: 2.5 }).graph.endsWith("[v0]null[vc];[a0]anull[ac]"));
+});
+
+test("the encoder's arguments are told apart: the picture is encoded in every part, the sound once, for the whole film", async () => {
+  const st = await import("../app/lib/acted-staging.ts");
+  const ENCODE = ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "fast", "-tune", "film", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"];
+  assert.deepEqual(st.joinEncode(ENCODE), {
+    picture: ["-threads", "2", "-filter_complex_threads", "2", "-c:v", "libx264", "-preset", "fast", "-tune", "film", "-crf", "18", "-pix_fmt", "yuv420p"],
+    sound: ["-c:a", "aac", "-b:a", "160k"],
+    file: ["-movflags", "+faststart"],
+  });
+  // the acted film's own encoder is the one told apart here
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  assert.ok(eng.includes(`const ENCODE = [${ENCODE.map((a) => `"${a}"`).join(", ")}];`));
+  assert.deepEqual(st.joinPartArgs({ graph: "G" }, ["a.mp4", "b.mp4"], ENCODE, "p.mov"), ["-y", "-i", "a.mp4", "-i", "b.mp4", "-filter_complex", "G", "-map", "[vc]", "-map", "[ac]", ...st.joinEncode(ENCODE).picture, "-c:a", "pcm_s16le", "-f", "mov", "p.mov"]);
+  assert.deepEqual(st.joinFilmArgs("l.txt", ENCODE, "f.mp4"), ["-y", "-f", "concat", "-safe", "0", "-i", "l.txt", "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "f.mp4"]);
+  // each part starts on the frame the one before it ended: its length is said, to the microsecond
+  assert.equal(st.joinList(["C:\\r\\tm-1.mp4.part1.mov", "/r/it's.mov"], [1001, 30]), "file 'C:/r/tm-1.mp4.part1.mov'\nduration 33.366667\nfile '/r/it'\\''s.mov'\nduration 1.000000\n");
+  // the film's own join hands a long film to the parts, and measures every part and the finished file
+  const join = read("app", "lib", "film-join.server.ts");
+  assert.ok(join.includes("if (clips.length > JOIN_PART_CLIPS) return joinInParts({ ...o, frames, silent, hold });"));
+  assert.ok(join.includes("const run = await runFfmpeg(joinPartArgs(part, part.clips.map((i) => clips[i]), o.encode, files[p]));"));
+  assert.ok(join.includes("? joinCheck({ ...streamSeconds(files[p]), frames: part.frames })"), "every part is measured");
+  assert.ok(join.includes("const run = await runFfmpeg(joinFilmArgs(list, o.encode, outPath));"));
+  assert.ok(join.includes("? joinCheck({ ...streamSeconds(outPath), frames: plan.frames })"), "…and so is the film, against the sum of its parts");
+  assert.ok(join.includes("throw new Error(`${label} the film could not be joined whole — ${tried.join(\"; \")}`);"), "not whole either way: the job fails");
+  assert.ok(join.includes("for (const f of [...files, list]) { try { fs.rmSync(f, { force: true }); } catch { /* best effort */ } }"), "the parts are gone when it returns");
+  assert.ok(join.includes("if (o.beat) await o.beat();"), "the job says it is alive between parts");
+});
+
+/** a small stand-in shot of its own colour and its own tone (0: no sound stream) — 320×180, quick to make */
+const smallShot = (dir: string, name: string, rgb: [number, number, number], picture: number, sound: number): string => {
+  const out = path.join(dir, `${name}.mp4`);
+  const hex = rgb.map((c) => c.toString(16).padStart(2, "0")).join("");
+  const args = ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=0x${hex}:s=320x180:r=24:d=${picture}`];
+  if (sound > 0) args.push("-f", "lavfi", "-i", `sine=frequency=${300 + (rgb[0] + rgb[1] * 2 + rgb[2] * 3) % 500}:sample_rate=44100:duration=${sound}`);
+  args.push("-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", ...(sound > 0 ? ["-c:a", "aac"] : []), out);
+  const r = spawnSync("ffmpeg", args, { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  return out;
+};
+/** every frame of a film as one colour (its picture brought down to a single pixel) */
+const framesOf = (ff: string, film: string): Array<[number, number, number]> => {
+  const raw = spawnSync(ff, ["-v", "error", "-i", film, "-vf", "scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { encoding: "buffer", maxBuffer: 1 << 26 }).stdout;
+  const out: Array<[number, number, number]> = [];
+  for (let k = 0; k + 2 < raw.length; k += 3) out.push([raw[k], raw[k + 1], raw[k + 2]]);
+  return out;
+};
+
+test("TWENTY-SEVEN SHOTS JOINED IN PARTS come out whole — and frame for frame the film one graph makes of them", { skip: !ffmpegOk }, async () => {
+  const st = await import("../app/lib/acted-staging.ts");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "join-parts-"));
+  const PREP = "scale=320:180:force_original_aspect_ratio=increase,crop=320:180,setsar=1,fps=30";
+  const ENCODE = ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"];
+  try {
+    // 27 shots, each a colour of its own: three scenes that end in a straight cut, then ONE scene of twelve shots
+    // with no straight cut in it (a part has to end at a dissolve there), then a last scene. Some shots' sound runs
+    // 30 ms past their picture (knock4's fault), one has no sound at all, one has too little.
+    const N = 27;
+    const colour = (i: number): [number, number, number] => [(i * 67 + 20) % 236 + 10, (i * 131 + 90) % 236 + 10, (i * 29 + 160) % 236 + 10];
+    const hardAt = new Set([4, 9, 12, 24]);
+    const seams: Seam[] = Array.from({ length: N }, (_, i) => (i === 0 ? null : hardAt.has(i) ? "hard" : i % 3 === 0 ? "reframe" : "soft"));
+    const clips = Array.from({ length: N }, (_, i) => {
+      const picture = 1 + (i % 5) * 0.2;
+      return smallShot(dir, `s${i}`, colour(i), picture, i === 7 ? 0 : i === 15 ? picture - 0.4 : picture + (i % 2 ? 0.03 : 0));
+    });
+    const sizes = clips.map((c) => { const s = streamsOf(c); return { frames: clipFrames({ picture: s.video }), silent: s.audio === null }; });
+    const frames = sizes.map((s) => s.frames);
+    const silent = sizes.map((s) => s.silent);
+    for (const ff of joiners) {
+      // (the plain way — every seam a straight join — on the first ffmpeg only: it is the same arguments)
+      for (const dissolve of ff === joiners[0] ? [true, false] : [true]) {
+        const at = `${ff} dissolve=${dissolve}`;
+        // ONE GRAPH of all twenty-seven — what the join did until now (here, on small pictures, it still can)
+        const one = st.joinGraph({ frames, seams, prep: PREP, silent, dissolve });
+        const oneFile = path.join(dir, `one-${joiners.indexOf(ff)}-${dissolve}.mp4`);
+        const r1 = spawnSync(ff, ["-v", "error", "-y", ...clips.flatMap((c) => ["-i", c]), "-filter_complex", one.graph, "-map", "[vc]", "-map", "[ac]", ...ENCODE, oneFile], { encoding: "utf8" });
+        assert.equal(r1.status, 0, r1.stderr);
+        // IN PARTS — the very arguments film-join.server.ts runs
+        const plan = st.joinParts({ frames, seams, prep: PREP, silent, dissolve });
+        assert.ok(plan.parts.length >= 5 && plan.parts.every((p) => p.clips.length <= st.JOIN_PART_CLIPS), `${at}: ${plan.parts.map((p) => p.clips.length).join(",")}`);
+        if (dissolve) assert.ok(plan.parts.some((p) => p.carried > 0), "the twelve-shot scene makes a part end at a dissolve");
+        const partFiles = plan.parts.map((_, p) => path.join(dir, `film-${joiners.indexOf(ff)}-${dissolve}.mp4.part${p + 1}.mov`));
+        plan.parts.forEach((part, p) => {
+          const r = spawnSync(ff, ["-v", "error", ...st.joinPartArgs(part, part.clips.map((i) => clips[i]), ENCODE, partFiles[p])], { encoding: "utf8" });
+          assert.equal(r.status, 0, `${at} part ${p + 1}: ${r.stderr}`);
+          const whole = joinCheck({ ...streamsOf(partFiles[p]), frames: part.frames });
+          assert.ok(whole.ok, `${at} part ${p + 1}: ${whole.why}`);
+        });
+        const list = path.join(dir, `film-${joiners.indexOf(ff)}-${dissolve}.parts.txt`);
+        fs.writeFileSync(list, st.joinList(partFiles, plan.parts.map((p) => p.frames)), "utf8");
+        const film = path.join(dir, `film-${joiners.indexOf(ff)}-${dissolve}.mp4`);
+        const r2 = spawnSync(ff, ["-v", "error", ...st.joinFilmArgs(list, ENCODE, film)], { encoding: "utf8" });
+        assert.equal(r2.status, 0, `${at}: ${r2.stderr}`);
+
+        // WHOLE: its picture and its sound the same length, and the length its shots add up to
+        const streams = streamsOf(film);
+        const whole = joinCheck({ ...streams, frames: plan.frames });
+        assert.ok(whole.ok, `${at}: ${whole.why}`);
+        assert.equal(plan.frames, one.frames, `${at}: as long as the one graph's film`);
+        assert.ok(Math.abs(streams.video - (streams.audio ?? 0)) <= JOIN_TOLERANCE, `${at}: picture ${streams.video}, sound ${streams.audio}`);
+        // FRAME FOR FRAME the film the one graph makes: the same number of frames, each the same colour
+        const a = framesOf(ff, oneFile), b = framesOf(ff, film);
+        assert.equal(b.length, plan.frames, `${at}: every frame is there`);
+        assert.equal(a.length, b.length, at);
+        let worst = 0;
+        for (let k = 0; k < a.length; k++) worst = Math.max(worst, Math.abs(a[k][0] - b[k][0]), Math.abs(a[k][1] - b[k][1]), Math.abs(a[k][2] - b[k][2]));
+        assert.ok(worst <= 6, `${at}: the two films differ by ${worst} somewhere — a frame is not where it should be`);
+        // …every shot's own colour is in it, in order (no shot's picture lost at a part's edge)
+        let from = 0;
+        for (let i = 0; i < N; i++) {
+          const [r0, g0, b0] = colour(i);
+          const hit = b.findIndex((px, k) => k >= from && Math.abs(px[0] - r0) <= 8 && Math.abs(px[1] - g0) <= 8 && Math.abs(px[2] - b0) <= 8);
+          assert.ok(hit >= from, `${at}: shot ${i + 1}'s picture is in the film, after shot ${i}'s`);
+          from = hit + 1;
+        }
+        // …its SOUND is the one graph's too, sample for sample (every shot has its own tone: a part that began a few
+        //  milliseconds off would put one shot's tone over the next shot's)
+        const heard = (f: string): Int16Array => { const raw = spawnSync(ff, ["-v", "error", "-i", f, "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1"], { encoding: "buffer", maxBuffer: 1 << 26 }).stdout; return new Int16Array(raw.buffer, raw.byteOffset, Math.floor(raw.length / 2)); };
+        const sa = heard(oneFile), sb = heard(film);
+        assert.ok(Math.abs(sa.length - sb.length) <= 8000 * JOIN_TOLERANCE, `${at}: ${sa.length} and ${sb.length} samples`);
+        let off = 0;
+        const len = Math.min(sa.length, sb.length);
+        for (let k = 0; k < len; k++) if (Math.abs(sa[k] - sb[k]) > 3300) off++;
+        assert.ok(off / len < 0.004, `${at}: ${((off / len) * 100).toFixed(2)}% of the sound is not where the one graph has it`);
+        // …and its frames are evenly spaced, one every thirtieth of a second, across every part's edge
+        const pts = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0", film], { encoding: "utf8" }).stdout
+          .trim().split(/\r?\n/).map((l) => parseFloat(l)).filter((x) => Number.isFinite(x)).sort((x, y) => x - y);
+        assert.equal(pts.length, plan.frames, at);
+        for (let k = 1; k < pts.length; k++) assert.ok(Math.abs(pts[k] - pts[k - 1] - 1 / FILM_FPS) < 0.002, `${at}: frame ${k} comes ${(pts[k] - pts[k - 1]).toFixed(4)} s after the one before`);
+      }
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

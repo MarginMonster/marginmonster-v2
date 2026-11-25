@@ -1477,20 +1477,27 @@ const frameSecs = (frames: number): string => (frames / FILM_FPS).toFixed(6);
  *  length is made for it); `hold` = how many seconds a clip's last frame may be held to reach its length (3: the
  *  few frames a picture-length clip can be short of itself; more where a clip is as long as its sound);
  *  `dissolve: false` = every seam a straight join (the plain way, tried when the first way does not come out
- *  whole). Returns the graph and the film's length in frames. */
-export function joinGraph(o: { frames: ReadonlyArray<number>; seams?: ReadonlyArray<Seam>; prep: string; silent?: ReadonlyArray<boolean>; dissolve?: boolean; hold?: number }): { graph: string; frames: number } {
+ *  whole). Returns the graph and the film's length in frames.
+ *  FOR A PART OF A LONGER FILM (joinParts, below — a film with none of these is joined exactly as it was):
+ *  `skip[i]` = frames of clip i left out at its head (the clip is then frames skip…skip+frames of its picture, and
+ *  the same stretch of its sound); `head` = clip 0 is the last `head` frames of the shot BEFORE this part's first
+ *  shot, and all of it dissolves into clip 1; `fadeIn` / `fadeOut` = the film is joined STRAIGHT to what comes
+ *  before / after this graph, so its sound meets there in the same 12 ms fades two runs meet in. */
+export function joinGraph(o: { frames: ReadonlyArray<number>; seams?: ReadonlyArray<Seam>; prep: string; silent?: ReadonlyArray<boolean>; dissolve?: boolean; hold?: number; skip?: ReadonlyArray<number>; head?: number; fadeIn?: boolean; fadeOut?: boolean }): { graph: string; frames: number } {
   const n = o.frames.map((f) => Math.max(1, Math.round(Number(f) || 0)));
   if (!n.length) return { graph: "", frames: 0 };
   const hold = Math.max(3, Math.ceil(Number(o.hold) || 0));
+  const head = n.length > 1 && Number(o.head) > 0 ? Math.max(1, Math.min(n[0], n[1] - 1, Math.round(Number(o.head)))) : 0;
   const g: string[] = [];
   n.forEach((frames, i) => {
+    const skip = Math.max(0, Math.round(Number(o.skip?.[i]) || 0));
     // the picture, exactly `frames` long: brought to 30 fps, its last frame held as long as it must be, then cut
-    g.push(`[${i}:v]${o.prep},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${hold},trim=end_frame=${frames},setpts=PTS-STARTPTS[v${i}]`);
+    g.push(`[${i}:v]${o.prep},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${hold},trim=${skip ? `start_frame=${skip}:` : ""}end_frame=${skip + frames},setpts=PTS-STARTPTS[v${i}]`);
     // …and its sound exactly as long: cut, or padded with silence (a clip with no sound gets silence)
     const samples = frames * SAMPLES_PER_FRAME;
     g.push(o.silent?.[i]
       ? `anullsrc=r=${FILM_RATE}:cl=stereo,atrim=end_sample=${samples},asetpts=PTS-STARTPTS[a${i}]`
-      : `[${i}:a]aresample=${FILM_RATE},aformat=sample_rates=${FILM_RATE}:channel_layouts=stereo,asetpts=PTS-STARTPTS,apad,atrim=end_sample=${samples},asetpts=PTS-STARTPTS[a${i}]`);
+      : `[${i}:a]aresample=${FILM_RATE},aformat=sample_rates=${FILM_RATE}:channel_layouts=stereo,asetpts=PTS-STARTPTS,apad,atrim=${skip ? `start_sample=${skip * SAMPLES_PER_FRAME}:` : ""}end_sample=${skip * SAMPLES_PER_FRAME + samples},asetpts=PTS-STARTPTS[a${i}]`);
   });
   // runs of shots joined by dissolves; a straight cut starts a new run
   const runs: number[][] = [];
@@ -1501,8 +1508,9 @@ export function joinGraph(o: { frames: ReadonlyArray<number>; seams?: ReadonlyAr
   const joined = runs.map((run, r) => {
     let v = `v${run[0]}`, a = `a${run[0]}`, len = n[run[0]];
     run.slice(1).forEach((i, k) => {
-      // (never longer than either shot it joins)
-      const fade = Math.max(1, Math.min(seamFrames(o.seams?.[i]), len - 1, n[i] - 1));
+      // (never longer than either shot it joins — and the tail of the shot before a part dissolves WHOLE into the
+      //  part's first shot: it is exactly as long as the dissolve it was cut for)
+      const fade = head && i === 1 ? head : Math.max(1, Math.min(seamFrames(o.seams?.[i]), len - 1, n[i] - 1));
       const vo = `r${r}v${k}`, ao = `r${r}a${k}`;
       g.push(`[${v}][v${i}]xfade=transition=fade:duration=${frameSecs(fade)}:offset=${frameSecs(len - fade)}[${vo}]`);
       g.push(`[${a}][a${i}]acrossfade=d=${frameSecs(fade)}[${ao}]`);
@@ -1510,18 +1518,147 @@ export function joinGraph(o: { frames: ReadonlyArray<number>; seams?: ReadonlyAr
     });
     return { v, a, frames: len };
   });
+  // a straight cut is a join; its sound meets in two 12 ms fades, out then in, so that it never clicks
+  const meets = (p: { frames: number }, r: number): string[] => [
+    ...(r > 0 || o.fadeIn ? ["afade=t=in:d=0.012"] : []),
+    ...(r < joined.length - 1 || o.fadeOut ? [`afade=t=out:st=${(p.frames / FILM_FPS - 0.012).toFixed(6)}:d=0.012`] : []),
+  ];
   if (joined.length === 1) {
-    g.push(`[${joined[0].v}]null[vc]`, `[${joined[0].a}]anull[ac]`);
+    g.push(`[${joined[0].v}]null[vc]`, `[${joined[0].a}]${meets(joined[0], 0).join(",") || "anull"}[ac]`);
   } else {
-    // a straight cut is a join; its sound meets in two 12 ms fades, out then in, so that it never clicks
     const parts = joined.map((p, r) => {
-      const fades = [...(r > 0 ? ["afade=t=in:d=0.012"] : []), ...(r < joined.length - 1 ? [`afade=t=out:st=${(p.frames / FILM_FPS - 0.012).toFixed(6)}:d=0.012`] : [])];
-      g.push(`[${p.a}]${fades.join(",")}[j${r}]`);
+      g.push(`[${p.a}]${meets(p, r).join(",")}[j${r}]`);
       return `[${p.v}][j${r}]`;
     });
     g.push(`${parts.join("")}concat=n=${joined.length}:v=1:a=1[vc][ac]`);
   }
   return { graph: g.join(";"), frames: joined.reduce((s, p) => s + p.frames, 0) };
+}
+
+/** How many frames each seam dissolves over, as joinGraph joins them (0: a straight join — and seam 0, which
+ *  joins nothing). The one sum both ways of joining a film agree on: its length is its shots less these. */
+export function seamFades(frames: ReadonlyArray<number>, seams?: ReadonlyArray<Seam>, dissolve = true): number[] {
+  const n = frames.map((f) => Math.max(1, Math.round(Number(f) || 0)));
+  let len = 0;
+  return n.map((f, i) => {
+    if (i === 0 || dissolve === false || seamFrames(seams?.[i]) === 0) { len = f; return 0; }
+    const fade = Math.max(1, Math.min(seamFrames(seams?.[i]), len - 1, f - 1));
+    len += f - fade;
+    return fade;
+  });
+}
+
+/* ---- A LONG FILM IS JOINED IN PARTS ----
+ * joinGraph opens every clip of the film in ONE ffmpeg. That was six clips at most; a five-minute film is fifty
+ * (film-length.ts), in Full HD, on a server with 2 GB — and an encode there is stopped at ten minutes
+ * (ugc-ad-pipeline.server.ts → runFfmpeg), which nine thousand frames of 1080p do not fit in. So a film of more
+ * than JOIN_PART_CLIPS clips is joined in PARTS: each part is a handful of its shots, joined by the very graph
+ * above and encoded the way the film is; then the parts are put end to end WITHOUT being encoded again (their
+ * picture is copied; only the sound — kept uncompressed until then — is encoded, once, for the whole film).
+ * A part ends where the film already cuts straight — a change of place — whenever one is within reach. Where
+ * none is (a long scene in one room), it ends at a dissolve, and the dissolve is not lost: the part before it
+ * stops short by the dissolve's frames, and the next part opens the same shot again for just those frames and
+ * dissolves them into its own first shot. Frame for frame, and sample for sample, the film is the one a single
+ * graph would have made (tests/acted-staging.test.ts joins twenty-seven clips both ways and counts them). */
+
+/** No more clips than this are opened by one ffmpeg: what a whole film had at most until 2026-11-25, joined on
+ *  the live server every day. */
+export const JOIN_PART_CLIPS = 6;
+
+export type JoinPart = {
+  /** the clips this part opens, by their place in the film, in the order its graph reads them — when `carried`,
+   *  the first is the shot BEFORE the part's own first shot, opened again for its last frames */
+  clips: number[];
+  /** the part's own shots: from `from` up to, not including, `to` */
+  from: number; to: number;
+  /** frames of dissolve this part carries in from the shot before it (0: it begins at a straight cut, or the film) */
+  carried: number;
+  graph: string;
+  /** how long the part is, in frames */
+  frames: number;
+};
+
+/** THE FILM IN PARTS. The same arguments as joinGraph (for the whole film), and `most` = how many clips one part
+ *  may open (JOIN_PART_CLIPS). Returns the parts in order and the film's length in frames — the sum of theirs,
+ *  which is what a single graph of the same shots comes to. */
+export function joinParts(o: { frames: ReadonlyArray<number>; seams?: ReadonlyArray<Seam>; prep: string; silent?: ReadonlyArray<boolean>; dissolve?: boolean; hold?: number; most?: number }): { parts: JoinPart[]; frames: number } {
+  const n = o.frames.map((f) => Math.max(1, Math.round(Number(f) || 0)));
+  const N = n.length;
+  const fades = seamFades(n, o.seams, o.dissolve);
+  const most = Math.max(2, Math.round(Number(o.most) || JOIN_PART_CLIPS));
+  // a dissolve can be carried over a part's edge when both its shots outlast it with room to spare (always, for a
+  // real shot: a dissolve is ten frames at most) — and the shot before it can still give its own head away
+  const carries = (c: number): boolean => n[c] >= fades[c] + 2 && n[c - 1] - fades[c] >= fades[c - 1] + 2;
+  const parts: JoinPart[] = [];
+  let from = 0;
+  while (from < N) {
+    const carried = from > 0 ? fades[from] : 0;
+    // (the shot opened again for its tail is one of the clips this part opens)
+    let to = Math.min(N, from + most - (carried ? 1 : 0));
+    if (to < N) {
+      let cut = -1;
+      // the LAST straight cut within reach; failing that, the last dissolve there that can be carried
+      for (let c = to; c > from && cut < 0; c--) if (fades[c] === 0) cut = c;
+      for (let c = to; c > from && cut < 0; c--) if (carries(c)) cut = c;
+      // (shots too short to carry a dissolve across: the part runs on to the first seam that can be cut)
+      for (let c = to + 1; c < N && cut < 0; c++) if (fades[c] === 0 || carries(c)) cut = c;
+      to = cut < 0 ? N : cut;
+    }
+    const own = Array.from({ length: to - from }, (_, k) => from + k);
+    const tail = to < N ? fades[to] : 0;
+    const clips = carried ? [from - 1, ...own] : own;
+    const made = joinGraph({
+      frames: [...(carried ? [carried] : []), ...own.map((i) => n[i] - (i === to - 1 ? tail : 0))],
+      // (the seams as the whole film has them, in frames — a part must not work them out again from its own shots)
+      seams: [...(carried ? [null, carried] : [null]), ...own.slice(1).map((i) => fades[i])],
+      skip: carried ? [n[from - 1] - carried, ...own.map(() => 0)] : undefined,
+      head: carried || undefined,
+      prep: o.prep, hold: o.hold,
+      silent: clips.map((i) => !!o.silent?.[i]),
+      fadeIn: from > 0 && !carried,
+      fadeOut: to < N && !tail,
+    });
+    parts.push({ clips, from, to, carried, graph: made.graph, frames: made.frames });
+    from = to;
+  }
+  return { parts, frames: parts.reduce((s, p) => s + p.frames, 0) };
+}
+
+/** A part is kept, between its making and the film's last pass, as a QuickTime file: its picture encoded the way
+ *  the film's is, its sound uncompressed — so that the parts meet on a sample, and the film's sound is encoded
+ *  once, whole (AAC is written in blocks of 1,024 samples: nine parts encoded apart would each end on a rounded
+ *  block, and the picture would drift from the sound by up to a fifth of a second). */
+export const JOIN_PART_SOUND = ["-c:a", "pcm_s16le"] as const;
+
+/** The encoder's arguments, told apart: what encodes the PICTURE (every part gets these), what encodes the SOUND
+ *  and what is the file's own (the film's last pass gets those). Flags come in pairs: a flag, then its value. */
+export function joinEncode(encode: ReadonlyArray<string>): { picture: string[]; sound: string[]; file: string[] } {
+  const out = { picture: [] as string[], sound: [] as string[], file: [] as string[] };
+  for (let i = 0; i < encode.length; i += 2) {
+    const flag = String(encode[i]);
+    const to = /^-(?:c:a|codec:a|acodec|b:a|ar|ac|q:a)$/.test(flag) ? out.sound : flag === "-movflags" ? out.file : out.picture;
+    to.push(...encode.slice(i, i + 2));
+  }
+  return out;
+}
+
+/** ffmpeg's arguments for ONE part: its clips (`files`, in the part's own order), its graph, the film's picture
+ *  encoder, uncompressed sound, into `out` (a .mov). */
+export function joinPartArgs(part: { graph: string }, files: ReadonlyArray<string>, encode: ReadonlyArray<string>, out: string): string[] {
+  return ["-y", ...files.flatMap((f) => ["-i", f]), "-filter_complex", part.graph, "-map", "[vc]", "-map", "[ac]", ...joinEncode(encode).picture, ...JOIN_PART_SOUND, "-f", "mov", out];
+}
+
+/** The list the last pass reads: every part's file and its exact length (so each part starts on the frame the
+ *  one before it ended — a file's own length is only kept to the millisecond). */
+export function joinList(files: ReadonlyArray<string>, frames: ReadonlyArray<number>): string {
+  return files.map((f, i) => `file '${String(f).replace(/\\/g, "/").replace(/'/g, "'\\''")}'\nduration ${frameSecs(frames[i])}\n`).join("");
+}
+
+/** ffmpeg's arguments for the film's LAST pass: the parts end to end, their picture copied as it is, their sound
+ *  encoded once. */
+export function joinFilmArgs(list: string, encode: ReadonlyArray<string>, out: string): string[] {
+  const e = joinEncode(encode);
+  return ["-y", "-f", "concat", "-safe", "0", "-i", list, "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy", ...e.sound, ...e.file, out];
 }
 
 /** IS THE FINISHED FILM WHOLE? Its picture and its sound the same length, and the length its shots add up to
