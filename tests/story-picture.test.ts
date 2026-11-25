@@ -126,9 +126,11 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   assert.ok(s.includes("anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: \"claude-sonnet-4-6\" })"));
   // panels are looked for only where the words described two moments
   assert.ok(s.includes("const twoMoments = oneMoment(written) !== written;") && s.includes("twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: \"claude-sonnet-4-6\" })"));
-  assert.ok(s.includes("if (!pic || (!castPics.length && !twoMoments)) return null;"), "a scene with nobody in it and one moment costs no look");
+  // (every picture is looked at now — at least for anybody its words do not put there: an empty room at night came
+  //  back with a grown man at a screen in it; storyExtrasPrompt)
+  assert.ok(s.includes("if (!pic) return null;") && s.includes("anthropicVision(storyExtrasPrompt(visual), [pic], { maxTokens: 400, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"), "every picture is looked at for strangers");
   // a look that fails or says nothing keeps the picture
-  assert.ok(s.includes("if (seen == null && panels == null) return null;") && s.includes("const faults = seenAs ? storyFaults(seenAs) : 0;"));
+  assert.ok(s.includes("if (seen == null && panels == null && extra == null) return null;") && s.includes("const faults = seenAs ? storyFaults(seenAs) : 0;"));
   // wrong → drawn again with the fault named; the best of three goes is kept
   assert.ok(s.includes("fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || \"person\"));") && s.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
   // (…and a best-of that is still wrong SAYS so: the storyboard flags that scene — tests/story-cast.test.ts)

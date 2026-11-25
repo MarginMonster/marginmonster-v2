@@ -114,7 +114,7 @@ test("a story picture has nobody the words do not put there, and everybody in it
   assert.equal(sp.storyFaults({ seen: [true, true], panels: false }), 0, "an older reading: nothing more");
   assert.ok(sp.storyFix({ seen: [true, true], panels: false, twice: [false, true] }, ["Nessa", "Dovey"]).includes("Dovey was drawn TWICE in the last try — they appear exactly ONCE in this picture, nowhere else in it"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}) };"));
+  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}) };"));
 });
 
 test("a told story's picture says which side of a door or a window everybody is on", () => {
@@ -167,4 +167,20 @@ test("an acted film: a sound is never drawn, and what they talk about, they look
   // …and the clip
   const rules = st.stagedRules({ look: "Keep EVERYONE and the setting EXACTLY as in the starting image.", lookTight: "Keep EVERYONE.", lookShort: "Keep.", style: "", steady: "", noText: "" }, { staging: "apart", event: "Omar points at the window as Ana turns." });
   assert.ok(rules.look.includes("They look at the window when they speak of it, not at the camera."));
+});
+
+/* THE STRANGER AT THE SCREEN (2026-11-24): the realism pass's own Horror Story ended on "the ghost woman's face
+ * pressed near the window glass from outside … while inside the dark room only the television flickers" — and the
+ * picture model sat a grown man at a screen in that room. NO_EXTRAS had asked; nothing LOOKED. */
+test("every story picture is looked at for anybody its words do not put there — and drawn again without them", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  const q = sp.storyExtrasPrompt('only the "television" flickers in the dark room');
+  assert.ok(q.includes("It was asked to show exactly this: \"only the 'television' flickers in the dark room\"") && q.includes("\"uninvited\": true or false"));
+  assert.equal(sp.parseStoryExtras('{"people":["a man at a desk"],"uninvited":true}'), true);
+  assert.equal(sp.parseStoryExtras('{"people":[],"uninvited":false}'), false);
+  assert.equal(sp.parseStoryExtras("no idea"), null, "an answer that cannot be read keeps the picture");
+  assert.equal(sp.storyFaults({ seen: [true], panels: false, extra: true }), 3);
+  assert.ok(sp.storyFix({ seen: [true], panels: false, extra: true }, ["Priya"]).includes("draw NOBODY but who they name"));
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null) return null;"));
 });

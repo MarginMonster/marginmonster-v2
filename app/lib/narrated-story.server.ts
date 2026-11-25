@@ -39,7 +39,7 @@ import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { cameraLine, shotOf } from "./story-shots";
-import { FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NOTHING_WRITTEN, ONE_PICTURE, STORY_SOUND, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, creatureHidden, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
+import { FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NOTHING_WRITTEN, ONE_PICTURE, STORY_SOUND, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, creatureHidden, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -245,19 +245,23 @@ export async function narratedSceneSeeds(o: {
       const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
       const lookAt = async (got: string): Promise<StoryCheck | null> => {
         const pic = abs(got);
-        if (!pic || (!castPics.length && !twoMoments)) return null;
+        // (every picture is looked at now — at least for anybody its words do not put there: an empty room at
+        //  night came back with a grown man at a screen in it, a house at dusk with a man walking up to it)
+        if (!pic) return null;
         try {
           const { anthropicVision } = await import("./anthropic.server");
-          const [castRaw, panelsRaw] = await Promise.all([
+          const [castRaw, panelsRaw, extrasRaw] = await Promise.all([
             castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
             twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
+            anthropicVision(storyExtrasPrompt(visual), [pic], { maxTokens: 400, model: "claude-sonnet-4-6" }).catch(() => ""),
           ]);
           const seen = castPics.length ? parseStoryCast(String(castRaw || ""), castPics.length) : [];
           // (…and whoever is drawn TWICE — the little brother on the sofa and again on the porch: story-picture.ts)
           const twice = castPics.length ? parseStoryTwice(String(castRaw || ""), castPics.length) : null;
           const panels = twoMoments ? parseStoryPanels(String(panelsRaw || "")) : false;
-          if (seen == null && panels == null) return null;
-          return { seen: seen || castPics.map(() => true), panels: panels === true, ...(twice ? { twice } : {}) };
+          const extra = parseStoryExtras(String(extrasRaw || ""));
+          if (seen == null && panels == null && extra == null) return null;
+          return { seen: seen || castPics.map(() => true), panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}) };
         } catch (e) {
           console.error(`[narrated] scene ${i + 1}: the picture could not be looked at, keeping it: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
           return null;

@@ -63,7 +63,7 @@ export const STORY_SOUND = "A sound is never drawn: nothing glows, rings or ligh
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference
  *  pictures, whether that same character is in it; and whether the picture is split into panels. */
-export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[] };
+export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean };
 /** …and what is handed to the storyboard about a picture that was KEPT with something still wrong (the
  *  best of its goes): the reading, and who was looked for — in the order of `seen` — so the scene's flag
  *  can say who is missing. */
@@ -83,6 +83,20 @@ export function storyCastPrompt(refs: number): string {
   const n = Math.max(1, Math.min(3, Math.round(refs || 1)));
   const who = `The FIRST image is a picture from an illustrated story. The ${n === 1 ? "image after it is the one character" : `${n} images after it are the ${n} characters`} who must be in it (${Array.from({ length: n }, (_, k) => `character ${k + 1} is the ${NTH[k]} image`).join(", ")}).`;
   return `${who} For EACH character, first write down in a few words what identifies them in their OWN image — for a person: hair colour, hair length and style, skin tone, apparent age, beard or none; for a creature or cartoon: what kind of creature, HOW IT IS BUILT (standing upright on two legs like a person, or going on four legs like an animal; a body covered in fur, scales or bare skin), its colours, the shape of its ears, its markings, and what it wears — and then the one in the first image who is closest to that, in the same few words (or "nobody"). Then COMPARE the two descriptions you wrote and say whether that character IS in the first image. It is the same individual only if the hair colour, the skin tone and the apparent age all agree (for a creature or cartoon: the kind of creature, how it is built, its colours, its ears and its markings). Seen from behind, small in the frame or in different clothes still counts — for a PERSON clothes do NOT matter, a story dresses people for the part. A creature or cartoon is another matter: an ordinary animal on four legs is NOT an upright creature, and a human being with that creature's head — a person's body in ordinary clothes — is NOT that creature either. If your two descriptions differ in hair colour (silver against brown, red against black), in skin tone or clearly in age — or, for a creature, in what kind of creature it is, in how it is built, in its colour, its ears or its markings — the answer is false. Last, for EACH character, look across the WHOLE first image for a second copy of them — the same person drawn again somewhere else in the same picture (on the sofa and again outside the window), not a reflection in a mirror or glass. Reply with ONLY this JSON: {"own": ["…" for each character], "inPicture": ["…" for each], "seen": [true or false for each, in order], "twice": [true if that character is drawn more than once, else false — for each, in order]}.`;
+}
+
+/** ANYBODY THE WORDS DO NOT PUT THERE — asked of every picture, with its own words (2026-11-24: a told horror
+ *  story's last picture was "the ghost woman's face at the window … inside the dark room only the television
+ *  flickers", and the picture model sat a grown man at a screen in that room; the owner, of an earlier one: "the
+ *  kid is outside with the monster, like the fuck?"). NO_EXTRAS asks the picture model; this LOOKS. */
+export function storyExtrasPrompt(visual: string): string {
+  const words = String(visual || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().slice(0, 600);
+  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}". First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false}.`;
+}
+/** …its answer: true / false, or null when it cannot be read (the picture is then kept as it is). */
+export function parseStoryExtras(raw: string): boolean | null {
+  const u = jsonIn(raw)?.uninvited;
+  return typeof u === "boolean" ? u : null;
 }
 
 /** Who was drawn TWICE, in the order asked — null when the answer does not say (an older reading, or one that
@@ -118,7 +132,7 @@ export function parseStoryPanels(raw: string): boolean | null {
 
 /** How wrong a picture is: a split picture is the worst (it cannot be used at all), then each cast member
  *  who is not in it. 0 = keep it. */
-export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length;
+export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0);
 
 /** What to tell the picture model on the next go: the fault, named. `names` in the order of the references. */
 export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<string | undefined> = []): string {
@@ -128,6 +142,8 @@ export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<st
   const gone = missing.map((k) => names[k] || `the character in reference image ${k + 1}`);
   if (gone.length) out.push(`${gone.join(" and ")} ${gone.length === 1 ? "was" : "were"} missing or drawn as someone else in the last try — draw ${gone.length === 1 ? "them" : "each of them"} EXACTLY as in their reference image: the same face, hair colour and hair`);
   // (a creature that came back as an animal, or as a person, is told what it IS)
+  // (somebody the words do not put there is told to be gone)
+  if (c.extra) out.push("The last try had somebody in it whom these words do not put there — draw NOBODY but who they name: no stranger, no passer-by, nobody sitting, standing or watching anywhere in the picture");
   // (a character drawn twice is told it is in the picture ONCE)
   const doubled = (c.twice || []).map((t, k) => (t && c.seen[k] !== false ? names[k] || `the character in reference image ${k + 1}` : "")).filter(Boolean);
   if (doubled.length) out.push(`${doubled.join(" and ")} ${doubled.length === 1 ? "was" : "were"} drawn TWICE in the last try — ${doubled.length === 1 ? "they appear" : "each of them appears"} exactly ONCE in this picture, nowhere else in it`);
