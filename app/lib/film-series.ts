@@ -885,16 +885,24 @@ const PLACE_SKIP = /^(?:the|a|an|their|his|her|its|our|my|your|this|that|same|of
 const PLACE_BREAK = /^(?:of|in|at|on|by|near|beside|behind|under|over|across|beyond|outside|inside|within|with|from|where|which|that|while|during|pitched|parked|set|built|standing|lit|overlooking|facing|next|toward|towards|into|onto|after|before|as|and|or|for)$/;
 const TIME_WORD = /^(?:night|nighttime|midnight|morning|dawn|dusk|evening|afternoon|noon|midday|later|moments?|seconds?|minutes?|hours?|today|tonight|now|again|\d{1,2}(?::\d\d)?(?:am|pm)|am|pm)$/;
 const placeWords = (s: string): string[] => oneLine(s).toLowerCase().replace(/[’']s\b/g, "").replace(/[^\p{L}\p{N}\s:-]/gu, " ").split(/\s+/).filter(Boolean);
-/** A place's head noun ("tent"; "out:tent" for outside it) — "" when it has none. */
-export function placeHead(where: string | null | undefined): string {
-  const first = oneLine(str(where)).split(/[,;—–(]/)[0] || "";
+/** Words that say how a place LOOKS, not which place it is: "a small motel room" and "a small hospital room" share
+ *  "small" and are two rooms. */
+const PLACE_LOOK = /^(?:small|tiny|little|big|large|huge|vast|dark|darkened|dim|dimly|old|new|empty|cramped|narrow|wide|cold|warm|quiet|silent|abandoned|cozy|cosy|messy|tidy|bright|shadowy|long|tall|low|grey|gray|black|white|cluttered|deserted)$/;
+/** A place's head noun ("tent"; "out:tent" outside it) and the words before it that say what KIND it is ("dome"). */
+function placeParts(where: string): { head: string; kinds: string[] } {
+  const first = oneLine(where).split(/[,;—–(]/)[0] || "";
   const w = placeWords(first);
   let k = 0, out = false;
   while (k < w.length && (PLACE_LEAD.test(w[k]) || PLACE_OUT.test(w[k]) || PLACE_SKIP.test(w[k]))) { if (PLACE_OUT.test(w[k])) out = true; k++; }
+  const before: string[] = [];
   let head = "";
-  for (; k < w.length; k++) { if (PLACE_BREAK.test(w[k])) break; if (!PLACE_SKIP.test(w[k]) && !TIME_WORD.test(w[k])) head = w[k]; }
+  for (; k < w.length; k++) { if (PLACE_BREAK.test(w[k])) break; if (!PLACE_SKIP.test(w[k]) && !TIME_WORD.test(w[k])) { if (head) before.push(head); head = w[k]; } }
   if (head.length > 3 && /s$/.test(head) && !/ss$/.test(head)) head = head.slice(0, -1);
-  return head ? `${out ? "out:" : ""}${head}` : "";
+  return { head: head ? `${out ? "out:" : ""}${head}` : "", kinds: before.filter((x) => !PLACE_LOOK.test(x)) };
+}
+/** A place's head noun ("tent"; "out:tent" for outside it) — "" when it has none. */
+export function placeHead(where: string | null | undefined): string {
+  return placeParts(str(where)).head;
 }
 /** Its words without time — what two descriptions of one place share. */
 const placeKey = (s: string): string => placeWords(s.split(/[;—–(]/)[0] || "").filter((x) => !PLACE_SKIP.test(x) && !TIME_WORD.test(x)).join(" ");
@@ -902,8 +910,11 @@ const placeKey = (s: string): string => placeWords(s.split(/[;—–(]/)[0] || "
 export const samePlace = (a: string | null | undefined, b: string | null | undefined): boolean => {
   const ka = placeKey(str(a)), kb = placeKey(str(b));
   if (ka && ka === kb) return true;
-  const ha = placeHead(a);
-  return !!ha && ha === placeHead(b);
+  const pa = placeParts(str(a)), pb = placeParts(str(b));
+  if (!pa.head || pa.head !== pb.head) return false;
+  // (one head, two KINDS of it — review, 2026-11-25: "a cramped motel room" was "a hospital room at night", and Part 2's
+  //  hospital would have been drawn in Part 1's motel. When both say what kind of room, they share a word.)
+  return !pa.kinds.length || !pb.kinds.length || pa.kinds.some((x) => pb.kinds.includes(x));
 };
 /** Night or day, when its words say so ("" when they do not, or say both). */
 export function lightOf(s: string | null | undefined): "night" | "day" | "" {

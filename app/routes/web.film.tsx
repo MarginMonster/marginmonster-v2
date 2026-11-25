@@ -56,7 +56,7 @@ import { LYRIC_HERO } from "../lib/film-heroes";
 // (2026-11-24) FOUND FOOTAGE has its own builder (web.found-footage.tsx): a door to it on the Films shelf, operators only
 import { FOUND_FOOTAGE_DOOR } from "../lib/film-heroes";
 import { LYRIC_LOOKS, RIGHTS_ASK, RIGHTS_LINE, RIGHTS_NOTE, lyricEtaMinutes, songTitleOf, type LyricLook, type LyricShape } from "../lib/lyric-video";
-import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
+import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, sameThing, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 import type { StoryToEdit } from "../lib/story-edit";
 import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
 // (2026-11-23) a story's pictures move — what that takes is said beside Generate
@@ -2281,6 +2281,16 @@ export default function FilmStudio() {
   // …and the card the episode was opened from (THE EPISODE BANNER: who comes back, and the line it picks up from).
   // Held, not looked up again: the loader's cards move on as soon as a film is made, the episode being made does not.
   const episodeCard = useRef<NextEpisodeCard | null>(null);
+  // …and THE SERIES' THING, already seen (S10b review, 2026-11-25): when an episode's script brings back the thing the
+  // last one drew (sameThing — "the woman in the lake", or "the pale woman"), its row shows THAT picture and the film is
+  // sent with it, as if "See it" had drawn it. Without this the row offered "See it · free" on a bare name, and a tap
+  // drew a NEW woman that was then posted as the film's thing — the episode's monster no longer the series' monster.
+  useEffect(() => {
+    const ep = episodeCard.current;
+    // (a picture already held for THIS line — "See it" pressed, or this — stays; one held for a line since rewritten does not)
+    if (!series || !storyThing || threatFace?.entry === storyThing.entry || !ep || ep.from !== series.from || !ep.thing || !sameThing(ep.thing.name, storyThing.name)) return;
+    setThreatFace({ name: storyThing.name, entry: storyThing.entry, url: ep.thing.img });
+  }, [series?.from, storyThing?.entry, threatFace?.entry]); // eslint-disable-line react-hooks/exhaustive-deps
   const castFromSeries = (list: CastMember[]): CastMember[] => {
     if (!series || !seriesCast.length) return list;
     return rebalanceVoices(list.map((c) => {

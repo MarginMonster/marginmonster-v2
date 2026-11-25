@@ -195,6 +195,15 @@ test("Part N's places: the same place by its words or its head noun — never th
   const two = [{ name: "a", where: "the red tent at the festival", img: "/renders/a.jpg" }, { name: "b", where: "the small dome tent beside a still lake", img: "/renders/b.jpg" }];
   assert.equal(carriedPlaceFor("inside the dome tent by the still lake", two)?.name, "b");
   assert.equal(carriedPlaceFor("", places), null);
+  // (review) one head noun, two KINDS of it, is two places: Part 2's hospital is never drawn in Part 1's motel room —
+  // and a carried place it shares only a head with is still handed on (carryRecord keeps it)
+  assert.ok(!samePlace("a cramped motel room, after midnight", "a hospital room at night"));
+  assert.ok(!samePlace("a small motel room", "a small hospital room"), "how a place looks is not which place it is");
+  assert.ok(samePlace("a cramped motel room", "the motel room"));
+  assert.ok(samePlace("the room", "a cramped motel room"), "a place said without its kind is the one it has been");
+  assert.equal(carriedPlaceFor("a hospital room at night", [{ name: "m", where: "a cramped motel room, at night", img: "/renders/m.jpg" }]), null);
+  const kept = carryRecord({ cast: [], places: [{ name: "h", where: "a hospital room at night", img: "/renders/h.jpg" }], carried: { cast: [], places: [{ name: "m", where: "a cramped motel room, at night", img: "/renders/m.jpg" }] } });
+  assert.deepEqual(kept.places?.map((p) => p.name), ["h", "m"]);
 });
 
 test("Part N's thing: the carried one, named as this episode names it — unless this episode's thing is another", () => {
@@ -304,6 +313,9 @@ test("the builder: 'Episode N of …' with the carried faces and 'Picks up from:
   assert.ok(page.includes(".fs-epb-said{flex:1 1 100%;min-width:0;font-size:13px;line-height:1.42;color:#3E5247;display:-webkit-box;-webkit-line-clamp:3;"));
   assert.ok(page.includes(".fs-epline-x{flex:none;position:relative;width:32px;height:32px;") && page.includes(".fs-epline-x::after{content:\"\";position:absolute;inset:-6px;}"));
   assert.ok(page.includes("@media(prefers-reduced-motion:reduce){.fs-epb-face,.fs-epb-face.is-thing{animation:none;}}"));
+  // (review) the series' THING is already seen on the Cast step's thing row: when the script brings it back, its row
+  // holds the last episode's picture, and the film is sent with it — never a "See it" that draws a new one
+  assert.ok(page.includes("if (!series || !storyThing || threatFace?.entry === storyThing.entry || !ep || ep.from !== series.from || !ep.thing || !sameThing(ep.thing.name, storyThing.name)) return;\n    setThreatFace({ name: storyThing.name, entry: storyThing.entry, url: ep.thing.img });"));
   // the new word, in all five languages
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   assert.equal(dict.split(`\n  ${J("Picks up from")}:`).length - 1, 5);
