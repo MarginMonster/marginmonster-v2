@@ -42,18 +42,25 @@ test("the reveal's picture at a tent: the place as it now is, the face pressed i
   ], 2));
   // EPISODE 2's last shot, its thing's portrait as the second picture
   const roof = revealPicture({ moment: EP2_LAST, sides, outdoors: true, ref: "figure", cloth: true, tent: true, state, mood: "Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs." });
-  assert.ok(roof.includes(`Show it like this, and no more of it: In the tent's roof, above them and well inside the picture, ${REVEAL_PARTS.roof.seen}.`));
+  assert.ok(roof.includes(`Show it like this, and no more of it: High in the picture, in the tent's sloping roof above Costin, the one on the right, ${REVEAL_PARTS.roof.seen}.`));
+  // (drawn from Episode 2's own frames and LOOKED at: "pale through the cloth" drew a face seen through gauze, and a face
+  //  as tall as the two of them was printed on the door — the cloth hides it, it is life-size, a bulge in the cloth)
+  for (const k of ["fabric", "roof"] as const) {
+    assert.ok(REVEAL_PARTS[k].seen.includes("life-size, no bigger than their own heads") && REVEAL_PARTS[k].seen.includes("never a picture printed on the cloth, never skin or colour showing through it"), k);
+    assert.ok(!/pale through/.test(REVEAL_PARTS[k].seen + REVEAL_PARTS[k].clip), k);
+  }
   assert.ok(roof.includes(thingRefNote("figure", { near: true, cloth: true })) && roof.includes("ONLY the FACE of the figure in the SECOND picture") && !roof.includes("now close behind them"), "its FACE, from the portrait — never the whole of it standing in the tent");
   assert.ok(roof.includes("The place as it now is, and it stays exactly so: The tent door is zipped completely shut"), "drawn into the shut tent, and it stays shut");
   assert.ok(roof.includes(CLOTH_OUTSIDE) && roof.includes(NOTHING_GLOWS));
   assert.ok(!roof.includes("In the dark close behind") && !roof.includes("This is out of doors"), "not the figure standing close behind them — the doorway");
   assert.ok(roof.length <= 2400, `${roof.length}: inside what both editors read`);
   // (with room, the place's whole state — the bag too)
-  assert.ok(revealPicture({ moment: EP2_LAST, sides, outdoors: true, cloth: true, tent: true, state }).includes(`The place as it now is, and it stays exactly so: ${state}`));
+  const roomy = revealPicture({ moment: "Her face presses down into the roof.", sides, outdoors: true, cloth: true, tent: true, state, ref: "figure" });
+  assert.ok(roomy.includes(`The place as it now is, and it stays exactly so: ${state}`) && roomy.length <= 2400, `${roomy.length}`);
   // PART 1's last shot: "presses the fabric" — in the tent's wall, close behind the one on the right; told by words alone
   const wall = revealPicture({ moment: P1_LAST, sides, outdoors: true, seen: LOOK, cloth: true, tent: true });
   assert.ok(wall.includes(`In the tent's wall close behind Costin, the one on the right, at the height of a head, well inside the picture, ${REVEAL_PARTS.fabric.seen}.`));
-  assert.ok(wall.includes("ONLY its face, the same face, pressing into the cloth from OUTSIDE: never the whole of it, never inside."));
+  assert.ok(wall.includes("but only the SHAPE of its face shows, moulded in the stretched cloth from OUTSIDE: never the whole of it, never inside."));
   assert.ok(!wall.includes("What is wrong with it"), "its look is the film's own");
   // a thing nobody had seen: its wrongness, in the cloth
   const fresh = revealPicture({ moment: "Something presses against the canvas behind Mireille.", sides, outdoors: true, cloth: true, tent: true });

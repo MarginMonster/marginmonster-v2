@@ -873,17 +873,22 @@ export const REVEAL_PARTS = {
    * been SHUT (place-state.ts) — what is outside stays OUTSIDE: never inside with them, never in an opening that is shut.
    * Its face presses the cloth in; where the words say the roof, the roof sags down toward them. */
   /** …its face, pressed into the tent's wall from outside. */
+  /* (Drawn from Episode 2's own frames on nano-banana-pro and LOOKED at, 2026-11-25: told its features "show pale through
+   *  the cloth", the editor drew a plain smiling woman's face seen through the door as if through gauze — a projection,
+   *  not a thing outside; told "the canvas stretched tight over it in relief", a face as tall as the two of them printed
+   *  on the door between them, the tent's pole gone. The cloth HIDES it, it is the size of a face, and it is where the
+   *  words put it: a bulge in the cloth, shown only by light and shadow.) */
   fabric: {
-    seen: "pressed into the thin cloth from OUTSIDE is the shape of a FACE: the wet fabric stretched tight over its brow, its nose and its open mouth, its features showing pale through the cloth — nothing of it is inside, and nothing of it comes through",
+    seen: "the cloth bulges IN where a FACE presses against it from OUTSIDE — life-size, no bigger than their own heads: the canvas stretched over it in shallow relief, so that a brow, a nose and an open mouth stand out in the fabric, the same dull colour as the rest of the cloth and shown only by the light and shadow on its folds — never a picture printed on the cloth, never skin or colour showing through it; nothing of it is inside or comes through",
     wrong: "the mouth under the cloth is stretched far too wide, and it is perfectly still",
-    clip: "From OUTSIDE, the shape of a face is pressed into the thin cloth, the wet fabric stretched over its features, pale through it.",
+    clip: "From OUTSIDE, a face is pushed into the thin cloth: the canvas stretched over it in relief, its brow, nose and open mouth moulded in the cloth.",
     moves: "Only the cloth moves: it presses in a little further, slowly, as the face under it turns toward them. Nothing comes through the cloth, nothing tears, nothing is inside with them, and nothing comes toward the camera.",
   },
   /** …in the ROOF: pressed down from above, the roof sagging toward them. */
   roof: {
-    seen: "pressed DOWN into it from OUTSIDE is the shape of a FACE: the sagging wet fabric stretched tight over its brow, its nose and its open mouth, its features showing pale through the cloth — nothing of it is inside, and nothing of it comes through",
+    seen: "the roof sags DOWN toward them where a FACE presses into it from OUTSIDE — life-size, no bigger than their own heads: the canvas stretched over it in shallow relief, so that a brow, a nose and an open mouth stand out in the fabric, the same dull colour as the rest of the cloth and shown only by the light from below and the shadow on its folds — never a picture printed on the cloth, never skin or colour showing through it; nothing of it is inside or comes through",
     wrong: "the mouth under the cloth is stretched far too wide, and it is perfectly still",
-    clip: "Above them, from OUTSIDE, the shape of a face is pressed down into the sagging roof, the wet fabric stretched over its features, pale through the cloth.",
+    clip: "Above them, from OUTSIDE, a face is pushed down into the sagging roof: the canvas stretched over it in relief, its brow, nose and open mouth moulded in the cloth.",
     moves: "Only the cloth moves: the roof sags a little lower, slowly, as the face in it turns toward them. Nothing comes through the cloth, nothing tears, nothing is inside with them, and nothing comes toward the camera.",
   },
   /** …or the ZIPPER of the shut door, drawn up a hand's width from outside: in that gap, its face. */
@@ -1024,7 +1029,7 @@ export function thingRefNote(ref: ThingRef | null | undefined, o: { name?: strin
   const seen = oneLine(o.seen).replace(/"/g, "'").slice(0, 240);
   const where = o.near ? "now close behind them" : "far off";
   if (o.cloth && o.near && ref === "creature") return `What is found is ${name || "it"}: the creature in the SECOND picture — ONLY its face, that exact face, pressing into the cloth from OUTSIDE the way this says; never the whole creature, never inside; everything else in the first picture stays exactly as it is.`;
-  if (o.cloth && o.near && (ref === "figure" || ref === "scene")) return `It is the SAME one this film already showed: ONLY the FACE of the ${ref === "scene" ? "far-off figure" : "figure"} in the SECOND picture${ref === "scene" && seen ? ` ("${seen}")` : ""} — that exact face — pressing into the cloth from OUTSIDE; never the whole figure, never inside, and nothing else of the second picture comes with it.`;
+  if (o.cloth && o.near && (ref === "figure" || ref === "scene")) return `It is the SAME one this film already showed: ONLY the FACE of the ${ref === "scene" ? "far-off figure" : "figure"} in the SECOND picture${ref === "scene" && seen ? ` ("${seen}")` : ""} — that exact face — pressing into the cloth from OUTSIDE; never the whole figure, never inside.`;
   if (ref === "creature") return `What is found is ${name || "it"}: the creature in the SECOND picture — that exact creature, its face, its fur or skin and its colours and whatever it wears — drawn INTO the first picture the way this says${o.near ? "" : ", far off"}; everything else in the first picture stays exactly as it is.`;
   if (ref === "figure") return `It is the SAME one this film already showed: the figure in the SECOND picture — that exact figure, the same face, hair and clothes — ${where}; never a different face or a different creature, and nothing else of the second picture comes with it.`;
   if (ref === "scene") return `It is the SAME one this film already showed: the far-off figure in the SECOND picture${seen ? ` — "${seen}"` : ""} — never the two people in that picture: that exact figure, the same face, hair and clothes, ${where}; never a different face or a different creature, and nothing else of the second picture comes with it.`;
@@ -1058,7 +1063,7 @@ export function revealPicture(o: { moment: string | null | undefined; mood?: str
     : part === "fabric"
     ? `In ${wall} ${at}, at the height of a head, well inside the picture, `
     : part === "roof"
-    ? `In ${o.tent ? "the tent's roof" : "the cloth overhead"}, above them and well inside the picture, `
+    ? `High in the picture, in ${o.tent ? "the tent's sloping roof" : "the cloth overhead"} ${behind ? `above ${behind.name}, the one on the ${behind.side}` : "above one of them"}, `
     : part === "zipper"
     ? `At the shut ${o.tent ? "tent " : ""}door the two are near — well inside the picture — `
     : `In the dark ${at}, well inside the picture, `;
@@ -1070,7 +1075,7 @@ export function revealPicture(o: { moment: string | null | undefined; mood?: str
   //  now close behind them" — thingRefNote; at the cloth, its FACE only)
   const seen = !known ? ""
     : ref === "figure" || ref === "scene" ? ` ${thingRefNote(ref, { near: true, seen: o.seen, cloth })}`
-    : cloth ? ` It is the SAME one this film already showed — "${oneLine(o.seen).replace(/"/g, "'").slice(0, 240)}" — ONLY its face, the same face, pressing into the cloth from OUTSIDE: never the whole of it, never inside.`
+    : cloth ? ` It is the SAME one this film already showed — "${oneLine(o.seen).replace(/"/g, "'").slice(0, 240)}" — but only the SHAPE of its face shows, moulded in the stretched cloth from OUTSIDE: never the whole of it, never inside.`
     : ` It is the SAME one this film already showed — "${oneLine(o.seen).replace(/"/g, "'").slice(0, 240)}" — the same look, the same hair, the same clothes, only nearer: never a different face or a different creature.`;
   // (…whose look is THOSE words: the generic thing's "too tall, too thin, candle-wax skin" would contradict them — told
   //  both, the editor drew the lake film's woman as a grey ghoul)
@@ -1093,8 +1098,9 @@ export function revealPicture(o: { moment: string | null | undefined; mood?: str
   const state = oneLine(o.state).slice(0, 420);
   const now = (st: string): string => `${st ? ` The place as it now is, and it stays exactly so: ${st}` : ""}${part === "zipper" ? ` ${CLOTH_OUTSIDE_GAP}` : cloth ? ` ${CLOTH_OUTSIDE}` : ""}`;
   // (…and lit only by the light that is there: Part 1's face glowed in the doorway like a mask — NOTHING_GLOWS)
-  // (at the cloth the place's own out-of-doors sentence goes: "OUTSIDE, never inside" says it, and nothing is built)
-  const make = (withMood: boolean, st: string, glow: boolean): string => `${KEEP_FRAME}${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${shows}${only}.${wrong}${seen}${moved}${cloth ? "" : open}${now(st)} ${DRESSED}${glow ? ` ${NOTHING_GLOWS}` : ""} ${REVEAL_REAL} ${real} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${withMood && mood ? ` ${mood}` : ""} No text anywhere.${creatureRef}`;
+  // (at the cloth the place's own out-of-doors sentence goes: "OUTSIDE, never inside" says it, and nothing is built;
+  //  and so does TAKE_HIDDEN's "lost in the dark or behind something": the cloth is what hides it)
+  const make = (withMood: boolean, st: string, glow: boolean): string => `${KEEP_FRAME}${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${shows}${only}.${wrong}${seen}${moved}${cloth ? "" : open}${now(st)} ${DRESSED}${glow ? ` ${NOTHING_GLOWS}` : ""} ${REVEAL_REAL} ${real}${cloth ? "" : ` ${TAKE_HIDDEN}`} Both have frozen where they stand, faces drained, and neither looks at the camera.${withMood && mood ? ` ${mood}` : ""} No text anywhere.${creatureRef}`;
   // (inside what both editors read — REVEAL_PICTURE_MAX: the place's state is said in its first sentence only — the door
   //  that is shut — then NOTHING_GLOWS gives way where the thing is not at the cloth (a face in a hole in the plaster is
   //  in the dark already), and the format's face mood last)
