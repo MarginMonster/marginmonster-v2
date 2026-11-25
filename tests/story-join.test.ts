@@ -167,6 +167,26 @@ test("a story that is drawing says it is at work whenever a picture comes back â
   assert.ok(nar.includes("const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null, beat: () => ckpt({ ckBeat: Date.now() }) });"));
 });
 
+test("every scene of a long story moves â€” handed to the motion engine twelve at a time, put back in the story's order", () => {
+  // the motion engine brings at most twelve scenes of one story to life (story-motion.ts), the most a story had
+  const motion = read("app", "lib", "story-motion.ts");
+  assert.ok(motion.includes("export const MOTION_MAX_SCENES = 12;"));
+  assert.ok(read("app", "lib", "story-motion.server.ts").includes("while (next < Math.min(N, MOTION_MAX_SCENES)) {"));
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  const fn = nar.slice(nar.indexOf("async function animateInRuns("), nar.indexOf("/** The readings of a long story"));
+  for (const s of [
+    "if (N <= MOTION_MAX_SCENES) return animateScenes(o);",
+    "for (let from = 0; from < N; from += MOTION_MAX_SCENES) {",
+    "const run = await animateScenes({ ...o, seeds: o.seeds.slice(from, to), visuals: o.visuals.slice(from, to), cams: o.cams?.slice(from, to), told: o.told.slice(from, to), still: o.still?.slice(from, to) });",
+    "run.clips.forEach((c, k) => { out.clips[from + k] = c; });",
+    "out.made += run.made; out.reused += run.reused; out.seconds += run.seconds;",
+    "out.faults.push(...run.faults.map((f) => ({ ...f, scene: f.scene + from })));",
+    "out.looks.push(...run.looks.map((l) => ({ ...l, scene: l.scene + from })));",
+  ]) assert.ok(fn.includes(s), s);
+  assert.ok(nar.includes("      motion = await animateInRuns({\n        seeds, visuals:"));
+  assert.ok(!nar.includes("motion = await animateScenes("));
+});
+
 /* ---- THE CUT, MADE ---- */
 
 const ffmpegOk = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" }).status === 0 && spawnSync("ffprobe", ["-version"], { encoding: "utf8" }).status === 0;

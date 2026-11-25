@@ -36,7 +36,7 @@ import { heroName } from "./film-heroes";
 import { posterFilters, posterLayout, posterName, posterScene } from "./story-poster";
 import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
-import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
+import { MOTION_MAX_SCENES, STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { cameraLine, sceneShot } from "./story-shots";
 import { DOORS_SHUT, DRESSED, FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NO_LENS, NOTHING_WRITTEN, ONE_PICTURE, SHADOW_SHAPE, shadowNote, STORY_SOUND, TODAY_LOOK, TRUE_SIZE, parseStoryGrime, parseStoryInset, storyGrimePrompt, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, characterKind, creatureHidden, creatureNote, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryLens, parseStoryOutside, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
@@ -365,6 +365,29 @@ export async function recastStoryCharacter(o: {
   const kept = carried.refs.filter((r) => !sameCharacter(r.name, o.name));
   const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept, carried.places) || null });
   return { ...r, scenes };
+}
+
+/** THE PICTURES MOVE, A RUN AT A TIME (2026-11-25, stories up to five minutes). story-motion.server.ts brings at most
+ *  MOTION_MAX_SCENES scenes of a story to life — the most a story had: twelve — "so a story never moves for ten scenes
+ *  and stands still for its last two". A story of thirty-two would have moved for twelve and stood still for twenty.
+ *  So a long one is handed over in runs of that many, one after another, and what comes back is put together in the
+ *  story's own order (a scene's number in a fault or a look is its number in the story). A story of twelve scenes or
+ *  fewer is one run, exactly as before; and the runs share the checkpoint of the clips still being waited for, which
+ *  is kept by picture, so a story picked up again neither waits for nor pays for a clip twice. */
+async function animateInRuns(o: Parameters<typeof animateScenes>[0]): Promise<MotionResult> {
+  const N = o.seeds.length;
+  if (N <= MOTION_MAX_SCENES) return animateScenes(o);
+  const out: MotionResult = { clips: new Array(N).fill(null), made: 0, reused: 0, seconds: 0, faults: [], looks: [] };
+  for (let from = 0; from < N; from += MOTION_MAX_SCENES) {
+    const to = Math.min(N, from + MOTION_MAX_SCENES);
+    const run = await animateScenes({ ...o, seeds: o.seeds.slice(from, to), visuals: o.visuals.slice(from, to), cams: o.cams?.slice(from, to), told: o.told.slice(from, to), still: o.still?.slice(from, to) });
+    run.clips.forEach((c, k) => { out.clips[from + k] = c; });
+    out.made += run.made; out.reused += run.reused; out.seconds += run.seconds;
+    out.faults.push(...run.faults.map((f) => ({ ...f, scene: f.scene + from })));
+    out.looks.push(...run.looks.map((l) => ({ ...l, scene: l.scene + from })));
+  }
+  console.log(`[narrated] ${N} scenes brought to life in runs of ${MOTION_MAX_SCENES}: ${out.clips.filter(Boolean).length} move`);
+  return out;
 }
 
 /** The readings of a long story, read ONE AFTER ANOTHER (each by `read`), in order. */
@@ -856,7 +879,8 @@ export async function generateNarratedStory(opts: {
       //  a show's own star moves.)
       const creatures = (treatment.cast || []).map((e) => castEntry(e)).filter((c) => !!c.name && characterKind(c.name, c.look) === "monster").map((c) => c.name);
       const still = treatment.scenes.map((s) => sceneShot(s) === "close" && creatures.some((n) => presentIn(n, s.visual || "")));
-      motion = await animateScenes({
+      // (…a run of twelve at a time, for a story longer than that: animateInRuns, above)
+      motion = await animateInRuns({
         seeds, visuals: treatment.scenes.map((s) => s.visual || s.caption || ""), cams: treatment.scenes.map((s) => sceneShot(s)),
         told: windows.map((w, i) => (i === windows.length - 1 ? end : w.t1) - w.t0),
         base, W, H, jobId, ckMotion: resume.ckMotion, still,
