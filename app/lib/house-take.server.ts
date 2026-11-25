@@ -36,8 +36,8 @@ import { camDate, timeLapseOf, type HouseClock, type TimeLapse } from "./camera-
 import { EMPTY_HOUSE, HOUSE_SCARES, HOUSE_TAKE_SECONDS, camOf, houseNight, houseRoom, houseScare, houseScarePrompt, houseScenePrompt, houseSetPrompt, houseWriterBrief, keptHouseOf, parseHouseScare, playedSeconds, roomImg, roomPrompt, roomToDraw, thingImg, withRoom, withThing, type HouseNight, type HouseScare, type KeptHouse } from "./house-cam";
 import { persistRemote, repRun } from "./image-generation.server";
 import { mirrorRender } from "./object-storage.server";
-import { TAKE_REF } from "./take";
-import { dressTake, heard, imageRef, keepRoll, renders, rerolls, rollTake, roomTake, secondsOf, sizeOf, stamp, wordsIn } from "./take.server";
+import { TAKE_REF, betterRoll, rollFaulty } from "./take";
+import { cutsIn, dressTake, heard, imageRef, keepRoll, renders, rerolls, rollTake, roomTake, secondsOf, sizeOf, stamp, wordsIn } from "./take.server";
 import { checkpointJob } from "./ugc-ad-pipeline.server";
 
 /** What a house take's record carries its house under — and how the newest one is found. */
@@ -186,16 +186,22 @@ export async function makeHouseTake(o: HouseTakeOptions & { house: KeptHouse | n
     return keepRoll(rolled.url);
   };
   let spoke: Array<{ at: number; text: string }> | null = resume.ckSpoke ? JSON.parse(resume.ckSpoke) : null;
+  // (and A CUT — a camera screwed to the wall never cuts: a roll that does is rolled again in the same one extra roll,
+  //  the better kept — take.ts → betterRoll. Never trimmed: the house's clock runs from the take's first frame)
+  const said = (s: typeof spoke) => (s === null ? null : wordsIn(s));
+  let cuts: number[] = [];
   if (!rawName) {
     rawName = await roll();
     await ckpt({ ckRaw: rawName });
     spoke = await heard(base, rawName);
-    for (let again = 0; again < rerolls() && wordsIn(spoke) > 0; again++) {
-      console.log(`[house-take] the engine spoke (${wordsIn(spoke)} words) — rolled again`);
+    cuts = await cutsIn(path.join(dir, rawName));
+    for (let again = 0; again < rerolls() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, true); again++) {
+      console.log(`[house-take] ${cuts.length ? `the take cuts (at ${cuts.join("s, ")}s)` : `the engine spoke (${wordsIn(spoke)} words)`} — rolled again`);
       try {
         const next = await roll();
         const nextSpoke = await heard(base, next);
-        if (nextSpoke !== null && wordsIn(nextSpoke) < wordsIn(spoke)) { rawName = next; spoke = nextSpoke; await ckpt({ ckRaw: rawName }); }
+        const nextCuts = await cutsIn(path.join(dir, next));
+        if (betterRoll({ cuts: nextCuts.length, words: said(nextSpoke) }, { cuts: cuts.length, words: said(spoke) }, true)) { rawName = next; spoke = nextSpoke; cuts = nextCuts; await ckpt({ ckRaw: rawName }); }
       } catch (e) { console.error(`[house-take] the second roll failed — the first is kept: ${e instanceof Error ? e.message.slice(0, 140) : e}`); break; }
     }
     await ckpt({ ckSpoke: JSON.stringify(spoke) });
@@ -227,7 +233,7 @@ export async function makeHouseTake(o: HouseTakeOptions & { house: KeptHouse | n
   return {
     outName, rawName, dressed: !!dressed, scare, house, cam, clock: cut.clock, lapse, ir,
     seconds: Math.round(playedSeconds(rawSeconds, lapse) * 100) / 100,
-    set, scene, host, rolls, spoke, direction: direction(TAKE_REF.replicate),
+    set, scene, host, rolls, spoke, ...(cuts.length ? { cuts } : {}), direction: direction(TAKE_REF.replicate),
   };
 }
 

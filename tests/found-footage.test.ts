@@ -154,8 +154,11 @@ test("A HOUSE TAKE KEEPS THE HOUSE: the room is drawn once and kept on the take'
   assert.ok(srv.includes("scene = await draw(houseScenePrompt(scare, { kept: !!known, ir }), known ? [set, known] : [set]);"));
   // the roll starts on the room as the take finds it and is told to arrive at the scene, fifteen seconds, wide
   assert.ok(srv.includes('rollTake({ first: imageRef(base, set), scene: imageRef(base, scene), direction, aspect: "16:9", seconds: HOUSE_TAKE_SECONDS })'));
-  // no words: listened to and rolled once more if the engine spoke — the handheld take's own rule
-  assert.ok(srv.includes("for (let again = 0; again < rerolls() && wordsIn(spoke) > 0; again++) {"));
+  // no words, no cut: listened to and looked at, and rolled once more if the engine spoke or CUT — the handheld take's
+  // own rule (a camera screwed to the wall never cuts) — but never trimmed: the house's clock runs from its first frame
+  assert.ok(srv.includes("for (let again = 0; again < rerolls() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, true); again++) {"));
+  assert.ok(srv.includes("cuts = await cutsIn(path.join(dir, rawName));") && srv.includes("if (betterRoll({ cuts: nextCuts.length, words: said(nextSpoke) }, { cuts: cuts.length, words: said(spoke) }, true)) {"));
+  assert.ok(!srv.includes("takecut-") && !srv.includes("TRIM_WITHIN"));
   // nobody speaks over it: the room lifted with its hiss — and the house look with the house's night
   assert.ok(srv.includes("const roomed = await roomTake(rawName);"));
   assert.ok(srv.includes('dressTake(soundPath, { look: "house", w: size.w || 1280, h: size.h || 720, clock: cut.clock, timelapse: lapse, seconds: rawSeconds, camName: cam, ir })'));
