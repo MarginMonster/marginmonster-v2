@@ -53,7 +53,7 @@ import { tellerVisual } from "./character-series";
 import { planShots, shotInWords, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
 // (2026-11-24) an acted film: every shot is something that HAPPENS, and the camera is dealt, not written
-import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, takeAgeFix, titleAsk, wordless } from "./acted-staging";
+import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, SEEN_WHEN_SEEN, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, takeAgeFix, titleAsk, wordless } from "./acted-staging";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 // i2v clips routinely run a few minutes on fal/Replicate; give each a generous
@@ -722,7 +722,7 @@ export async function previewFilmTreatment(opts: {
       `${HEARD_BEFORE_SAID}\n` +
       `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places — but when the IDEA moves them ("he ran to his parents' room"), that IS such a move: the shots that come after it are in the new place — and the move happens BEFORE the last shot, never in it: the last shot is in the same place as the shot before it (THE LAST SHOT, below).\n` +
       // (a horror film ends on something SEEN — said last, so it is read as the exception to the line above)
-      (tmpl.key === "horror" ? `${SEEN_AT_THE_END}\n` : "")
+      (tmpl.key === "horror" ? `${SEEN_WHEN_SEEN}\n${SEEN_AT_THE_END}\n` : "")
     : tmpl.sung
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}, featuring the artist/cast performing) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes and flows with the others. Read in order the captions ARE the song's lyrics: give the whole thing a clear, repeating, sing-along HOOK${tmpl.childSafe ? " a toddler can sing along to" : ""}, like a real ${tmpl.childSafe ? "preschool nursery sing-along" : "pop song"}.\n${VISUAL_STANDS_ALONE}\n`
     : tmpl.narrated

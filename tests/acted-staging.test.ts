@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import {
   ACTED_STAGINGS, AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, EVENT_IDEAS, EVENT_IDEAS_SMALL, EVENT_MAX, EVENT_MAX_LAST, HEARD_AUDIO, HEARD_BEFORE_SAID,
   HEARD_FIRST_SECONDS, HEARD_NOT_DRAWN, HEARD_OPEN, HEARD_THEN, HEARD_UNSEEN, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, NOBODY_SPEAKS, ONE_TAKE,
-  FILM_FPS, JOIN_TOLERANCE, PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, SOUND_NOT_DRAWN, SOUND_NOT_SHOWN, lookAtPicture, lookTarget, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEAM_FRAMES, SEEN_AT_THE_END, SILENT_SHOT_SECONDS, TWO_ALWAYS,
+  FILM_FPS, JOIN_TOLERANCE, PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, SOUND_NOT_DRAWN, SOUND_NOT_SHOWN, lookAtPicture, lookTarget, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEAM_FRAMES, SEEN_AT_THE_END, SEEN_WHEN_SEEN, SILENT_SHOT_SECONDS, TWO_ALWAYS,
   ageAsk, ageOf, castAgeProblem, clipEvent, clipFrames, clipHearsFirst, clipMoves, clipSilent, dealStagings, eventIdeas, faceNote, happensBrief, heardIn, heardSeconds,
   heardTalk, isActedStaging, joinCheck, joinGraph, kinLooks, kinNote, noRoomIn, ownTitle, relationOf, repairAges, revealClip, revealPart, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot,
   stagingClip, stagingPicture, stagingsFor, takeAgeFix, titleAsk, twoOnScreen, wordless,
@@ -411,10 +411,12 @@ test("the writer: every shot is something that HAPPENS, the camera is dealt, and
   // (the two's looks are said once, in "cast": a VISUAL is said to the video engine, and looks said there redraw a face)
   assert.ok(engine.includes("Every shot's VISUAL has these same two in it, called by these exact names — their looks are said HERE, once, and never repeated in a VISUAL.${noSlop}`"));
   assert.ok(engine.includes("`${CAMERA_IS_DEALT}\\n` +\n      `${ONE_TAKE}\\n` +\n      `${TWO_ALWAYS}\\n` +"));
-  // a horror film only — and before WHAT FRIGHTENS, which it points down to
-  const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_AT_THE_END}\\n` : \"\")");
+  // a horror film only — and before WHAT FRIGHTENS, which it points down to (with WHEN THEY SEE IT, WE SEE IT before
+  // it: the lake film kept the woman its idea had them SEE off screen until a last shot that did not come)
+  const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_WHEN_SEEN}\\n${SEEN_AT_THE_END}\\n` : \"\")");
   const frightens = engine.indexOf("(tmpl.key === \"horror\" ? `${WHAT_FRIGHTENS}\\n` : \"\") +");
   assert.ok(seen > 0 && frightens > seen);
+  assert.ok(SEEN_WHEN_SEEN.startsWith("WHEN THEY SEE IT, WE SEE IT — when the IDEA has its people see the thing before the end") && SEEN_WHEN_SEEN.endsWith("It is never only talked about."));
   // the writer does not choose the camera: whatever it put in "shot" is not kept, so a place stays one take
   assert.ok(engine.includes("shot: !acted && typeof s.shot === \"string\" && s.shot.trim() ? s.shot.trim().slice(0, 60) : undefined,"));
   // a script written this way says so — that is what lets each clip be told its scene's words
@@ -741,7 +743,7 @@ test("the writer: a sound comes before any word about it, what is heard is not s
   const engine = read("app", "lib", "film-engine.server.ts");
   const two = engine.indexOf("`${TWO_ALWAYS}\\n` +");
   const heard = engine.indexOf("`${HEARD_BEFORE_SAID}\\n` +");
-  const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_AT_THE_END}\\n` : \"\")");
+  const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_WHEN_SEEN}\\n${SEEN_AT_THE_END}\\n` : \"\")");
   assert.ok(two > 0 && heard > two && seen > heard);
 });
 
