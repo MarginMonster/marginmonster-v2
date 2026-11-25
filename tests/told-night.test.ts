@@ -149,14 +149,20 @@ test("THE WORDS: a night scene's picture is told the night right behind its word
   // the acted master's sentence, word for word
   assert.ok(NIGHT_LINE.startsWith("It is the middle of the night: the sky outside is black") && NIGHT_LINE.includes("never dusk, twilight or a blue evening glow"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? \"\" : \".\"}${night ? ` ${NIGHT_LINE}` : \"\"} Style: ${tmpl.sceneHint}."));
+  // (…and, right behind it and before the style it is about, that only the style's night light is taken — review of S11:
+  //  the Mystery's style offers "flat grey daylight through rain", and the ferry was a Mystery Story)
+  assert.ok(nar.includes("const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? \"\" : \".\"}${night ? ` ${NIGHT_LINE} ${NIGHT_STYLE_LIGHT}` : \"\"} Style: ${tmpl.sceneHint}."));
+  assert.ok(sp.NIGHT_STYLE_LIGHT.startsWith("Of the light the style below names, this picture takes only a night's") && sp.NIGHT_STYLE_LIGHT.includes("never daylight, sun, golden hour or grey daylight through fog or rain"));
+  // the styles it is about really do offer a day light beside the night one (if they stop, this line can go)
+  const genres = read("app", "lib", "film-genres.ts");
+  assert.ok(genres.includes("pools of lamplight in a dim room, or flat grey daylight through rain") && genres.includes("soft window light or golden hour"));
   // the lenient last path: said FIRST (its prompt is cut at 500 characters — the night must not be what is cut)
   assert.ok(nar.includes("renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : \"\"}${dressedInWater((scene.visual || \"\").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);"));
 });
 
 test("WIRING: decided once a scene, from its words, its narration, its place and the idea; looked at in the place question; the idea reaches every draw", () => {
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes('import { NIGHT_LINE, nightSetting } from "./acted-staging";') && nar.includes('import { parseStoryNight, storyNight } from "./story-picture";'));
+  assert.ok(nar.includes('import { NIGHT_LINE, nightSetting } from "./acted-staging";') && nar.includes('import { NIGHT_STYLE_LIGHT, parseStoryNight, storyNight } from "./story-picture";'));
   // the idea: the maker's, and the starter the story was written from when theirs was too short
   assert.ok(nar.includes("idea?: string | null;") && nar.includes('const idea = `${o.idea || ""} ${o.treatment.nudge || ""}`.trim();'));
   const fn = nar.slice(nar.indexOf("export async function narratedSceneSeeds("), nar.indexOf("/** DRAW ONE CHARACTER AGAIN."));

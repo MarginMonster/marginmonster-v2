@@ -49,7 +49,7 @@ import { STORY_ONE_CUT, cardsDuring, readingParts, sceneIn, storyJoinArgs, story
 import { joinList } from "./acted-staging";
 // NIGHT IS NIGHT (2026-11-25): the acted engine's own night rule and night sentence — story-picture.ts → storyNight
 import { NIGHT_LINE, nightSetting } from "./acted-staging";
-import { parseStoryNight, storyNight } from "./story-picture";
+import { NIGHT_STYLE_LIGHT, parseStoryNight, storyNight } from "./story-picture";
 import { streamSeconds } from "./film-join.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -297,10 +297,12 @@ export async function narratedSceneSeeds(o: {
       // thirteen pictures were pale misty daylight): is this scene at night — by its picture's words, its narration, its
       // place or the story's idea (story-picture.ts → storyNight, on the acted engine's own rule)? Then its picture is told
       // so right behind its words, from the first go (the acted master's NIGHT_LINE), and its sky is looked at.
+      // (…and told to take only the night's light from its style: the Mystery's offers "flat grey daylight through rain" —
+      //  story-picture.ts → NIGHT_STYLE_LIGHT, review of S11)
       const night = storyNight({ words: visual, said: scene.caption, place: setAt ? `${setAt.name}: ${setAt.look}` : "", idea, childSafe: tmpl.childSafe, cartoon: tmpl.cartoon }, nightSetting);
       // (a genre whose world is its OWN — Fantasy, film-genres.ts → ownWorld — is told everybody is clothed, and not that
       //  its places look the way they look TODAY: "no cottage and no castle unless they name one", 2026-11-25)
-      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."}${night ? ` ${NIGHT_LINE}` : ""} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : ""}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : ""} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
+      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."}${night ? ` ${NIGHT_LINE} ${NIGHT_STYLE_LIGHT}` : ""} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : ""}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : ""} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
       // …and THE PICTURE IS LOOKED AT before it is kept: is each of the maker's cast in it (never asked
       // about clothes — a story dresses people for the part), and is it one picture. The cast is looked for
       // whenever the scene has any; panels only where the words described two moments (that is when a

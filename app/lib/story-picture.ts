@@ -225,6 +225,13 @@ export function storyNight(o: { words: string; said?: string | null; place?: str
   const by = (wider: string | null | undefined): boolean => rule(pic, otherNight(wider), said) !== pic;
   return by(o.place) || (!o.childSafe && !o.cartoon && by(o.idea));
 }
+/** …AND THE STYLE'S OWN DAYLIGHT IS NOT ITS LIGHT (review of S11, 2026-11-25). A told picture's words end with its genre's
+ *  style, and most styles offer a day light beside a night one: the Mystery's — "Eleven Went Aboard" was a Mystery Story —
+ *  is "pools of lamplight in a dim room, or flat grey daylight through rain"; the Romance's "soft window light or golden
+ *  hour"; the Comedy's "bright even daylight or warm household lamps" (film-genres.ts). Told the night and then offered
+ *  flat grey daylight, the model is free to draw what the ferry was drawn as. Said right behind NIGHT_LINE, before the
+ *  style it is about. */
+export const NIGHT_STYLE_LIGHT = "Of the light the style below names, this picture takes only a night's — lamps, street lights, firelight, a torch, the moon — never daylight, sun, golden hour or grey daylight through fog or rain.";
 /** …ASKED IN THE QUESTION THAT LOOKS AT THE PLACE (storyGrimePrompt), last — the master's own question (nightLookPrompt)
  *  in its words, with the ferry's daylight named ("pale misty daylight": fog lit by day is not fog lit by a lamp) and a
  *  drawn night allowed its deep night-blue (a cartoon's night is told as one only where its own words say night). The
