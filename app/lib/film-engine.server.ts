@@ -48,7 +48,7 @@ import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from ".
 import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 // (2026-11-24) a told story's places: a scene set at one says so in its own words
 import { WHAT_FRIGHTENS, inheritPlaces, keepGuess, placeNamed, placesAsk, takePlaces } from "./story-picture";
-import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, STORY_SAFETY, chosenThreat } from "./premise-rules";
+import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, REAL_WORLD, STORY_SAFETY, chosenThreat } from "./premise-rules";
 import { tellerVisual } from "./character-series";
 import { planShots, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
@@ -720,7 +720,7 @@ export async function previewFilmTreatment(opts: {
       // (a sound comes FIRST, in the shot whose line answers it; heard from out of sight, it is made by nothing
       //  on screen; and what is said about it is what is heard — the owner's knocking film, 2026-11-24)
       `${HEARD_BEFORE_SAID}\n` +
-      `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places — but when the IDEA moves them ("he ran to his parents' room"), that IS such a move: the shots that come after it are in the new place.\n` +
+      `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places — but when the IDEA moves them ("he ran to his parents' room"), that IS such a move: the shots that come after it are in the new place — and the move happens BEFORE the last shot, never in it: the last shot is in the same place as the shot before it (THE LAST SHOT, below).\n` +
       // (a horror film ends on something SEEN — said last, so it is read as the exception to the line above)
       (tmpl.key === "horror" ? `${SEEN_AT_THE_END}\n` : "")
     : tmpl.sung
@@ -765,6 +765,8 @@ export async function previewFilmTreatment(opts: {
     freshLine +
     // WHAT FRIGHTENS (story-picture.ts): a horror story's own creature is nearly human, slightly wrong, half seen
     (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
+    // TODAY'S REAL WORLD (premise-rules.ts): never a fairytale cottage for "a house" — not in a children's format
+    (storyFormat && !tmpl.childSafe ? `${REAL_WORLD}\n` : "") +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
     safetyLine +
     // (the idea checked last of all — premise-rules.ts → IDEA_CHECK)

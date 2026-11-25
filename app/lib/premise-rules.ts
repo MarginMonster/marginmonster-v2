@@ -37,6 +37,12 @@ export const PREMISE_WINS =
 export const IDEA_CHECK =
   "LAST, BEFORE YOU ANSWER: read your story against the idea once more — the same people at the same ages, the same place, every event it names in its order and for real, the threat as it named it, and nothing it said made untrue by your ending. Change whatever is not.";
 
+/** IT IS TODAY'S REAL WORLD. The owner, of a Horror Story made from the tester's "two children in house alone"
+ *  (2026-11-24): "there isn't much realism … looks like the kids live in a cobblestone house from a fairytale" —
+ *  the writer had made the house a lone stone cottage with a round porthole window and a dark green door. */
+export const REAL_WORLD =
+  "IT IS TODAY'S REAL WORLD unless the idea says otherwise: places look the way real people live in them now — a house is an ordinary modern home of the kind real families in the story's own country live in today (painted walls, an ordinary front door, ordinary rectangular windows, electric lights, ordinary furniture), a street is a real street. Never a storybook or fairytale place — no lone stone cottage, no round porthole window, no hobbit door, no castle, no gothic mansion, no cabin in the woods — unless the idea itself names one. Every picture should look like a photograph of a real place.";
+
 /** Children in a story: they stay children, and nothing happens to them. */
 export const CHILDREN_STAY =
   "CHILDREN STAY CHILDREN — a child, a boy or a girl in the idea is that age in the story and in every picture: never a teenager, never a grown-up. A child in a frightening story is NEVER HURT — the fear is suspense: they hear it, see it, hide, run, lock a door, call for help, and they are safe. Nothing grabs, touches, wounds, takes or kills a child, and the threat is never close to one: it is outside a window or a door, at the far end of a hall, deep in the dark, or only heard. In a story with a child in it there is no blood, no violence and nothing graphic. When the idea has no child in it, its people are grown-ups.";

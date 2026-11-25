@@ -1037,8 +1037,12 @@ export async function generateTestMovie(opts: {
     // The merchant's APPROVED storyboard frame always wins. A flat treatment is one
     // location of "continue" beats → beat 0 = master, the rest chain (validated behaviour).
     const tr = transitionAt(i);
+    const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);
     // the master of a location is drawn from the first scene set there: that scene's picture says what the shot shows
-    const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, scene.visual);
+    // — EXCEPT a horror film's last shot in a place of its own: that place is drawn with only the two in it, and the
+    // thing is added to it by THE REVEAL below. (Drawn from the scene's words, the boy's parents' bedroom came with
+    // the werewolf already in it, half out of the wall — the owner: "what the fuck is that plot?", 2026-11-24.)
+    const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === "location" ? undefined : scene.visual);
     const sideFor = sideForMaster(master);
     let seedAbs = abs(approvedFrames[i]);
     // THE REVEAL (acted-staging.ts → revealPicture). A horror film's last shot is in the SAME place as the shot
@@ -1048,15 +1052,15 @@ export async function generateTestMovie(opts: {
     // says). It used to be given a place of its own and drawn whole: a different bedroom, reached through a
     // dissolve, with a mannequin's arm in its wall (the owner: "more odd than actual realism"). A picture that
     // will not come leaves the shot to be seeded as any other; a frame the maker approved is never drawn over.
-    const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);
     let revealed = false;
-    if (!seedAbs && lastHorror && tr !== "location" && master?.url && stagingOf(master)) {
+    let revealedCreature = false;
+    if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {
       // THE CHOSEN CREATURE AS THE THING (premise-rules.ts → chosenThreat): a creature the maker chose that is not
       // one of the two who talk, and that this last shot finds, is drawn FROM ITS OWN PICTURE — that creature, not
       // one made up from the words (the stronger editor takes it as a second picture; the permissive one cannot).
       const thing = castActors.find((c) => !!c.faceUrl && isCreature(c) && ![spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name)) && (scene.visual || "").toLowerCase().includes(c.name.trim().toLowerCase()));
       const thingFace = thing ? abs(thing.faceUrl) : undefined;
-      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })) });
+      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace) });
       const ask = askOne && thing && thingFace
         ? `${askOne} What is found is ${thing.name.trim()}: the creature in the SECOND picture — that exact creature, its face, its fur or skin and its colours and whatever it wears — drawn INTO the first picture the way this says; everything else in the first picture stays exactly as it is.`
         : askOne;
@@ -1074,14 +1078,14 @@ export async function generateTestMovie(opts: {
         try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), "jpg"))); }
         catch (e) { console.error(`[testmovie] shot ${i + 1}: the reveal on ${model} did not come: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
       }
-      if (seedAbs) { revealed = true; sinceAnchor = 0; console.log(`[testmovie] shot ${i + 1}: the reveal — drawn into the place's own picture (${locKeyAt(i).slice(0, 40)})`); }
+      if (seedAbs) { revealed = true; revealedCreature = !!(thing && thingFace); sinceAnchor = 0; console.log(`[testmovie] shot ${i + 1}: the reveal — drawn into the place's own picture (${locKeyAt(i).slice(0, 40)})`); }
       else console.error(`[testmovie] shot ${i + 1}: the reveal's picture did not come — the shot is seeded as any other, and the clip is not told what the thing is (the two react to something never seen)`);
     }
     // THE REVEAL THAT COULD NOT BE DRAWN — in its place, with no picture of it: its clip is not told what the thing
     // is (a clip told to show a thing that is not in its picture draws one of its own), and the two react to
     // something never seen (acted-staging.ts → REVEAL_UNSEEN_REACT). A last shot in a place of its own (a script
     // written before the reveal moved into the room) has its thing in that place's own picture, and keeps it.
-    const implied = lastHorror && !revealed && tr !== "location" && !approvedFrames[i];
+    const implied = lastHorror && !revealed && !approvedFrames[i];
     if (!seedAbs && master?.url) {
       if (tr === "location") {
         seedAbs = abs(master.url); sinceAnchor = 0; if (i > 0) softSeams.add(i);
@@ -1222,7 +1226,7 @@ export async function generateTestMovie(opts: {
       const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)])?.unseen;
       const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : "";
       try {
-        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, implied, face: scared });
+        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, implied, face: scared });
       } catch (e) {
         // (never a shot lost to its words: it is a held, quiet beat — and still told that nobody speaks)
         console.error(`[testmovie] shot ${i + 1}: the wordless shot's rules were not built — it is told to hold: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
@@ -1230,7 +1234,7 @@ export async function generateTestMovie(opts: {
       }
     } else if (chainStaging) {
       try {
-        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, implied });
+        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, implied });
       } catch (e) {
         // (never a shot lost to its staging: it is told what a shot was always told)
         console.error(`[testmovie] shot ${i + 1}: staging words not built — the shot is told to hold, as before: ${e instanceof Error ? e.message.slice(0, 140) : e}`);

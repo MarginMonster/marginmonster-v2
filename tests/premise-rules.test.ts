@@ -56,7 +56,7 @@ test("a creature the maker chose plays the idea's threat — in an acted film it
 
 test("the writer is given all of it — the idea's rules right after the idea, and the idea whole", () => {
   const eng = read("app", "lib", "film-engine.server.ts");
-  assert.ok(eng.includes("import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, STORY_SAFETY, chosenThreat } from \"./premise-rules\";"));
+  assert.ok(eng.includes("import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, REAL_WORLD, STORY_SAFETY, chosenThreat } from \"./premise-rules\";"));
   assert.ok(eng.includes("\"${topic.slice(0, IDEA_MAX)}\". Tell EXACTLY this") && eng.includes("${storyFormat ? `${PREMISE_WINS}\\n` : \"\"}"), "said right after the idea, in every story format");
   assert.ok(eng.includes("    ? HORROR_SAFETY\n    : STORY_SAFETY;") || eng.includes("    ? HORROR_SAFETY\r\n    : STORY_SAFETY;"));
   assert.ok(!eng.includes("CAST ONLY ADULTS") && !eng.includes("recast any such role as an adult"));
@@ -82,7 +82,7 @@ test("the writer is given all of it — the idea's rules right after the idea, a
   assert.ok(eng.includes("(storyFormat && topic ? `\\n${IDEA_CHECK}` : \"\");"));
   assert.ok(eng.includes("a twist that leaves every fact of the idea TRUE"));
   // an acted film goes where the idea goes
-  assert.ok(eng.includes("but when the IDEA moves them (\"he ran to his parents' room\"), that IS such a move: the shots that come after it are in the new place."));
+  assert.ok(eng.includes("but when the IDEA moves them (\"he ran to his parents' room\"), that IS such a move: the shots that come after it are in the new place"));
   // the Movie Maker sends the whole idea
   const page = read("app", "routes", "web.film.tsx");
   assert.ok(page.includes("const topic = ((form.get(\"filmTopic\") as string) || \"\").trim().slice(0, IDEA_MAX);"));
@@ -102,7 +102,7 @@ test("a told story's detail shot shows ONE person's hands — two people's hands
 test("a story picture has nobody the words do not put there, and everybody in it ONCE", async () => {
   const sp = await import("../app/lib/story-picture.ts");
   assert.ok(sp.NO_EXTRAS.includes("no passer-by, no figure in the distance, no one at a window or a door") && sp.NO_EXTRAS.includes("appears exactly ONCE"));
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS} ${NOTHING_WRITTEN}`;"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${insideNote(visual) ? ` ${INSIDE_STAYS}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
   // the look asks who is drawn twice — and an answer that does not say means nobody
   assert.ok(sp.storyCastPrompt(2).includes("look across the WHOLE first image for a second copy of them"));
   assert.deepEqual(sp.parseStoryTwice('{"seen":[true,true],"twice":[false,true]}', 2), [false, true]);
@@ -127,4 +127,44 @@ test("an acted film's chosen threat is SEEN at the end, whatever the writer's la
   assert.ok(eng.includes("visual: `${said.replace(/[\\s.;,]+$/, \"\")}; in the dark behind them, ${threatNames[0]} is there — a tall shape, only its face in the light`"));
   // …after the cast is held to the two, and before the film draws it from its own picture (film-dialogue → thing)
   assert.ok(eng.indexOf("cast.splice(0, cast.length, ...kept);") < eng.indexOf("in the dark behind them, ${threatNames[0]} is there"));
+});
+
+/* ROUND SIX — the owner, of the two horror pieces made from the tester's ideas (2026-11-24): "there isn't much
+ * realism. First one looks like the kids live in a cobblestone house from a fairytale, the monster is outside trying
+ * to get in, but in one of the scenes the kid is outside with the monster" and "there is an orb glowing that pulses
+ * with the knocks in the window, both the parent and child are talking about something outside yet looking towards
+ * the camera - then it cuts to a scene with a monster half way hanging out of the wall. Like what the fuck is that plot?" */
+test("today's real world: a house is an ordinary modern home, never a fairytale cottage — said to every grown-up story", async () => {
+  const pr = await import("../app/lib/premise-rules.ts");
+  assert.ok(pr.REAL_WORLD.includes("a house is an ordinary modern home of the kind real families in the story's own country live in today"));
+  assert.ok(pr.REAL_WORLD.includes("no lone stone cottage, no round porthole window, no hobbit door"));
+  const eng = read("app", "lib", "film-engine.server.ts");
+  assert.ok(eng.includes("(storyFormat && !tmpl.childSafe ? `${REAL_WORLD}\\n` : \"\") +"), "a children's cartoon keeps its own world");
+  // …and in an acted film, the idea's move happens BEFORE the last shot (its reveal is drawn into that place)
+  assert.ok(eng.includes("the move happens BEFORE the last shot, never in it: the last shot is in the same place as the shot before it"));
+});
+
+test("a told story's picture keeps inside INSIDE, and never draws a sound", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  assert.ok(sp.INSIDE_STAYS.includes("Whoever these words put INSIDE stays inside") && sp.INSIDE_STAYS.includes("never standing beside them"));
+  assert.equal(sp.insideNote("from behind Mira's shoulder, inside at the round window, looking out at the ghost lady on the porch"), sp.INSIDE_STAYS);
+  assert.equal(sp.insideNote("Mira and Tomi sit pressed together on the sofa"), "");
+  assert.ok(sp.STORY_SOUND.includes("nothing glows, rings or lights up where a knock, a bell or a voice comes from"));
+});
+
+test("an acted film: a sound is never drawn, and what they talk about, they look at", async () => {
+  const st = await import("../app/lib/acted-staging.ts");
+  assert.ok(st.SOUND_NOT_DRAWN.includes("nothing glows, rings, ripples, flashes, cracks or lights up where it comes from"));
+  assert.equal(st.lookTarget("Three slow knocks thud against the glass of the bedroom window"), "the window");
+  assert.equal(st.lookTarget("He pulls the curtains back"), "the curtain");
+  assert.equal(st.lookTarget("She grips the doorway"), "the doorway");
+  assert.equal(st.lookTarget("They sit on the sofa"), "");
+  assert.ok(st.lookAtPicture("the window").includes("the window this moment is about is at one SIDE of the frame, near the camera — beside them, never behind them"));
+  assert.equal(st.lookAtPicture(""), "");
+  // the master picture says both — the knocked window came back with a glowing ring, and the two faced the lens
+  const pic = st.stagedTwoShot({ staging: "apart", setting: "a boy's bedroom at night", personA: "Omar, a 9-year-old boy", personB: "Ana, his mother", act: "Three slow knocks thud against the window glass as Omar grips his blanket", consistency: "", comp: "wide composition" });
+  assert.ok(pic.includes(st.SOUND_NOT_DRAWN) && pic.includes(st.lookAtPicture("the window")), pic);
+  // …and the clip
+  const rules = st.stagedRules({ look: "Keep EVERYONE and the setting EXACTLY as in the starting image.", lookTight: "Keep EVERYONE.", lookShort: "Keep.", style: "", steady: "", noText: "" }, { staging: "apart", event: "Omar points at the window as Ana turns." });
+  assert.ok(rules.look.includes("They look at the window when they speak of it, not at the camera."));
 });

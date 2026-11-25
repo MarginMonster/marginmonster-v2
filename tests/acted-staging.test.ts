@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import {
   ACTED_STAGINGS, AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, EVENT_IDEAS, EVENT_IDEAS_SMALL, EVENT_MAX, EVENT_MAX_LAST, HEARD_AUDIO, HEARD_BEFORE_SAID,
   HEARD_FIRST_SECONDS, HEARD_NOT_DRAWN, HEARD_OPEN, HEARD_THEN, HEARD_UNSEEN, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, NOBODY_SPEAKS, ONE_TAKE,
-  FILM_FPS, JOIN_TOLERANCE, PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEAM_FRAMES, SEEN_AT_THE_END, SILENT_SHOT_SECONDS, TWO_ALWAYS,
+  FILM_FPS, JOIN_TOLERANCE, PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, SOUND_NOT_DRAWN, SOUND_NOT_SHOWN, lookAtPicture, lookTarget, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEAM_FRAMES, SEEN_AT_THE_END, SILENT_SHOT_SECONDS, TWO_ALWAYS,
   ageAsk, ageOf, castAgeProblem, clipEvent, clipFrames, clipHearsFirst, clipMoves, clipSilent, dealStagings, eventIdeas, faceNote, happensBrief, heardIn, heardSeconds,
   heardTalk, isActedStaging, joinCheck, joinGraph, kinLooks, kinNote, noRoomIn, ownTitle, relationOf, repairAges, revealClip, revealPart, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot,
   stagingClip, stagingPicture, stagingsFor, takeAgeFix, titleAsk, twoOnScreen, wordless,
@@ -431,13 +431,13 @@ test("the wiring: dealt per location, drawn into its master, said to its clips, 
   // KEPT with the picture (and so in the checkpoint a restarted film is picked up from)
   assert.ok(eng.includes("masters[locKey] = { url, aOnLeft, a: firstName(spkA), b: firstName(spkB), ...(drawnAs ? { staging: drawnAs } : {}) };"));
   // one master per location is still the seed of every clip there, drawn from the first scene set there…
-  assert.ok(eng.includes("const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, scene.visual);"));
+  assert.ok(eng.includes("const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === \"location\" ? undefined : scene.visual);"));
   // …and the shot / reverse-shot panels have not come back
   assert.ok(!eng.includes("renderTwoPanelShotReverse"));
   // SAID to a clip only when the picture it grows out of was drawn in a staging: not a frame the maker approved,
   // not an angle they added by hand, not a film with no master
   assert.ok(eng.includes("if (!chained) chainStaging = approvedFrames[i] || !master?.url || tr === \"angle\" ? null : stagingOf(master);"));
-  assert.ok(eng.includes("    } else if (chainStaging) {\n      try {\n        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, implied });\n      } catch (e) {"), "the film's last scene may say more (a horror film's says what is seen, and what it does); and no shot is lost to its staging");
+  assert.ok(eng.includes("    } else if (chainStaging) {\n      try {\n        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, implied });\n      } catch (e) {"), "the film's last scene may say more (a horror film's says what is seen, and what it does); and no shot is lost to its staging");
   assert.ok(eng.includes("let playRules = rules;\n    if (silent) {"), "…after the one kind of shot that is told something else: nobody speaks in it");
   // a film is never lost to its staging either: with none dealt, every place is drawn as it always was
   assert.ok(eng.includes("    } catch (e) {\n      // (a film is never lost to its staging: with none dealt, every place is drawn as it always was)\n      stagingAt.clear();"));
@@ -632,7 +632,7 @@ test("a shot that opens on a sound: the sound first, heard alone — then the li
   const face = "Neither Dagny nor Ylva smiles at any moment: both faces show fear.";
   const line = "Dagny, stop moving for a second. Tell me you heard that too.";
   const one = heardTalk({ event, unseen: true, speaker: "Dagny", side: "left", line, other: "Ylva", otherSide: "right", deliver, face });
-  assert.ok(one.startsWith(`${HEARD_OPEN} ${event} ${HEARD_UNSEEN} ${HEARD_THEN} Dagny, the person on the LEFT side of the frame, says exactly this one line, ONCE, word for word, in accurate lip-sync, and nothing else: "${line}".`), one);
+  assert.ok(one.startsWith(`${HEARD_OPEN} ${event} ${HEARD_UNSEEN} ${SOUND_NOT_SHOWN} ${HEARD_THEN} Dagny, the person on the LEFT side of the frame, says exactly this one line, ONCE, word for word, in accurate lip-sync, and nothing else: "${line}".`), one);
   assert.ok(HEARD_OPEN.startsWith("THE SHOT OPENS ON A SOUND, heard ALONE before anybody says a word") && HEARD_THEN === "ONLY AFTER IT does anybody speak, in answer to it.");
   assert.ok(one.indexOf("knocks") < one.indexOf("Tell me you heard that"), "the sound is said before what is said about it");
   // the line once, in quotes — the only quotation in it
@@ -647,7 +647,7 @@ test("a shot that opens on a sound: the sound first, heard alone — then the li
   // put everything the moment names in the picture, it would draw whoever makes it — a hand knocking
   const parts = { setting: "a bedroom in an old house at dusk", personA: "Dagny — EXACTLY the person in reference image 1", personB: "Ylva, a tall woman in her fifties", consistency: "Keep the two people clearly distinct.", comp: "wide cinematic landscape composition" };
   const knocks = stagedTwoShot({ staging: "depth", ...parts, act: "Three slow, heavy knocks come from inside the bedroom wall, a full second apart, as Dagny freezes and Ylva turns toward it." });
-  assert.ok(knocks.includes(`is IN the picture, seen the way the moment says it is seen, and well above the picture's bottom edge. ${HEARD_NOT_DRAWN} Draw the instant it BEGINS`));
+  assert.ok(knocks.includes(`is IN the picture, seen the way the moment says it is seen, and well above the picture's bottom edge. ${HEARD_NOT_DRAWN} ${SOUND_NOT_DRAWN} Draw the instant it BEGINS`));
   assert.ok(HEARD_NOT_DRAWN.startsWith("What is HEARD in this moment is not drawn: nothing in the picture makes that sound"));
   for (const act of ["Dagny knocks on the wall twice while Ylva holds the lamp.", "Ylva pulls the drawer open while Dagny grips the torch.", "The phone on the hall table rings as Dagny and Ylva stare at each other."]) {
     assert.ok(!stagedTwoShot({ staging: "depth", ...parts, act }).includes(HEARD_NOT_DRAWN), act);
@@ -657,7 +657,7 @@ test("a shot that opens on a sound: the sound first, heard alone — then the li
   const two = heardTalk({ event, speaker: "Dagny", side: "left", line: "Did you hear that?", deliver, reply: { speaker: "Ylva", side: "right", line: "It came from the wall." } });
   assert.ok(two.includes("FIRST Dagny (on the left side of the frame) says: \"Did you hear that?\". THEN Ylva (on the right side) replies: \"It came from the wall.\"") && two.includes("Apart from that sound there are exactly TWO voices, Dagny's and then Ylva's"));
   const anon = heardTalk({ event, line: "Did you hear that?", deliver });
-  assert.ok(anon.startsWith(`${HEARD_OPEN} ${event} ${HEARD_THEN} Then ONE voice says this line, ONCE, word for word`));
+  assert.ok(anon.startsWith(`${HEARD_OPEN} ${event} ${SOUND_NOT_SHOWN} ${HEARD_THEN} Then ONE voice says this line, ONCE, word for word`));
   // known again from the prompt alone (a re-rolled shot is trimmed the way its first take was), and it keeps its pauses
   for (const p of [one, two, anon]) { assert.ok(clipHearsFirst(p)); assert.ok(clipMoves(p)); }
   assert.equal(clipHearsFirst("Only one person speaks and says the line exactly once."), false);
@@ -776,8 +776,8 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   for (const rule of [
     "It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter",
     "never in another room; the film draws it into that place's own picture",
-    "BARELY: only a part of it, the way a horror film shows it — in a wall, its FACE pressed into a hole broken in the plaster, one eye catching the light; anywhere else, a tall shape standing in the dark with only its face in the light — never a hand, an arm or a body reaching out into the light",
-    "close behind one of the two or between them, where the light gives out, never at the edge of the picture",
+    "BARELY: only a part of it, the way a horror film shows it — at a door, the door eased open a hand's width on the dark and a tall shape in the gap with only its face in the light; at a window, its face close to the dark glass, OUTSIDE, the glass whole; in a wall (only when it is IN the wall), its FACE pressed into a hole broken in the plaster, one eye catching the light; anywhere else, a tall shape standing in the dark with only its face in the light — never a hand, an arm or a body reaching out into the light — never at the edge of the picture",
+    "WHERE ITS SOUND CAME FROM — at the door it knocked at, at the window it knocked on, in the wall only when the story has it IN the wall, or right behind one of them in the dark",
     "Say its one or two wrongnesses in so many words (skin like old candle wax; an eye open far too wide that never blinks; a face a little too high up) — never just \"wrong\" or \"strange\".",
     "what HAPPENS in that shot is IT, SLOWLY and IN PLACE: its eye turns to them, or its head tilts — it never comes out of where it is, never comes nearer, never reaches for anybody — and the two FREEZE, and one of them slowly turns to it.",
     "Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so.",
@@ -792,8 +792,22 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.equal(revealPart("Long fingers curl round the edge as a face presses into the gap."), "face");
   assert.equal(revealPart("Long grey fingers with one joint too many curl out of a fresh hole in the plaster between Colette and Prudence, creeping nearer to Prudence's hair."), "face", "THE THIRD LIVE FILM'S KIND OF SCENE");
   assert.equal(revealPart("In the dark corner behind June something tall stands perfectly still."), "figure");
-  assert.equal(revealPart("A hand reaches out of the dark doorway behind Peggy."), "figure");
-  assert.deepEqual(Object.keys(REVEAL_PARTS).sort(), ["face", "figure"], "the fingers form drew right and moved wrong: it is not drawn any more");
+  // (a doorway is a door: what comes from one is found in its gap — the door eased open on the dark)
+  assert.equal(revealPart("A hand reaches out of the dark doorway behind Peggy."), "door");
+  assert.deepEqual(Object.keys(REVEAL_PARTS).sort(), ["door", "face", "figure", "window"], "the fingers form drew right and moved wrong: it is not drawn any more");
+  // THE OWNER, 2026-11-24, of a boy's film whose werewolf hung half out of the parents' wall: "what the fuck is that
+  // plot?" — a knock FROM a wall is not a thing IN it; a creature the maker chose is never in a wall at all
+  assert.equal(revealPart("Three slow knocks echo from inside the hallway wall as Dariusz and Marisol run into the dim bedroom."), "face", "inside the wall: the knocks are IN it");
+  assert.equal(revealPart("Three slow knocks echo from inside the hallway wall; in the dark behind them, Howl is there.", { creature: true }), "figure");
+  assert.equal(revealPart("Three slow knocks on the bedroom door as they freeze."), "door");
+  assert.equal(revealPart("Three slow knocks on the window glass as they freeze."), "window");
+  assert.equal(revealPart("Knocks on the window; a hole in the plaster splits open beside Dana."), "face", "a hole IN the plaster is in the wall");
+  assert.ok(REVEAL_PARTS.window.seen.includes("OUTSIDE the window") && REVEAL_PARTS.window.moves.includes("stays OUTSIDE the glass"));
+  assert.ok(REVEAL_PARTS.door.seen.includes("the door has eased open a hand's width on the dark") && REVEAL_PARTS.door.moves.includes("never steps through"));
+  // a creature the maker chose is drawn as ITSELF: no made-up wrongness painted on it
+  const wolf = revealPicture({ moment: "Knocks on the bedroom door; Howl is there.", sides: [{ name: "Ana", side: "left" }], creature: true });
+  assert.ok(wolf.includes("At the door the two are facing") && !wolf.includes("What is wrong with it"));
+  assert.equal(revealClip("Knocks on the bedroom door.", { creature: true }), `${REVEAL_PARTS.door.clip} ${REVEAL_PARTS.door.moves}`);
   const mood = "Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs.";
   const sides = [{ name: "Peggy", side: "left" }, { name: "June", side: "right" }];
   // THE LIVE FILMS' KIND OF SCENE (a hand reaching out of the wallpaper toward the older one): drawn as a FACE in
@@ -864,9 +878,9 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   // never over a frame the maker approved — drawn on the stronger editor first, the more permissive one after
   const eng = read("app", "lib", "film-dialogue.server.ts");
   assert.ok(eng.includes("const lastHorror = staged && horror && i > 0 && i === treatment.scenes.length - 1 && !!eventAt(i);"));
-  const at = eng.indexOf("if (!seedAbs && lastHorror && tr !== \"location\" && master?.url && stagingOf(master)) {");
+  const at = eng.indexOf("if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {");
   assert.ok(at > eng.indexOf("let seedAbs = abs(approvedFrames[i]);") && eng.indexOf("if (!seedAbs && master?.url) {", at) > at);
-  assert.ok(eng.includes("const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })) });"));
+  assert.ok(eng.includes("const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace) });"));
   const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [abs(master.url), ...(thing && thingFace ? [thingFace] : [])], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],");
   const kontext = eng.indexOf("[\"black-forest-labs/flux-kontext-pro\", { prompt: askOne, input_image: abs(master.url), aspect_ratio: aspect, output_format: \"jpg\", output_quality: 92 }],");
   assert.ok(pro > at && kontext > pro, "the place's master is the first reference picture, on nano-banana-pro, then flux-kontext-pro");
@@ -875,9 +889,9 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.ok(eng.includes("const thing = castActors.find((c) => !!c.faceUrl && isCreature(c) && ![spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name)) && (scene.visual || \"\").toLowerCase().includes(c.name.trim().toLowerCase()));"));
   assert.ok(eng.includes("const ask = askOne && thing && thingFace") && eng.includes(": askOne;"));
   assert.ok(eng.includes("try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\"))); }"));
-  assert.ok(eng.includes("const implied = lastHorror && !revealed && tr !== \"location\" && !approvedFrames[i];"));
-  assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, implied, face: scared });"));
-  assert.ok(eng.includes("others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, implied });"));
+  assert.ok(eng.includes("const implied = lastHorror && !revealed && !approvedFrames[i];"));
+  assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, implied, face: scared });"));
+  assert.ok(eng.includes("others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, implied });"));
 });
 
 /* ---- A CUT TO ANOTHER PLACE IS A STRAIGHT CUT ---- */

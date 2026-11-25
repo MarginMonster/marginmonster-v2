@@ -209,9 +209,14 @@ export function stagedTwoShot(o: {
   const mood = oneLine(o.mood);
   // (a moment that is a sound from out of sight: told to put everything the moment names IN the picture, the
   //  picture model draws whoever is making it — a hand knocking. A picture cannot hold a sound.)
-  const unheard = act && heardIn(act, [o.personA, o.personB].map((p) => (oneLine(p).split(/[,—–(:]/)[0] || "").trim()))?.unseen ? ` ${HEARD_NOT_DRAWN}` : "";
+  const heardHere = act ? heardIn(act, [o.personA, o.personB].map((p) => (oneLine(p).split(/[,—–(:]/)[0] || "").trim())) : null;
+  const unheard = heardHere?.unseen ? ` ${HEARD_NOT_DRAWN}` : "";
+  // (…and NO sound is drawn, from out of sight or not — the knocked window came back with a glowing ring on it; and
+  //  what the moment is about — a window, a door — is at the side, so that looking at it keeps their faces to us)
+  const soundless = heardHere ? ` ${SOUND_NOT_DRAWN}` : "";
+  const eyeline = act && !o.cartoon ? lookAtPicture(lookTarget(act)) : "";
   const moment = act
-    ? ` THE MOMENT this frame is taken at: ${act} — everything it names (what somebody holds, what is being done, what is in the place) is IN the picture, seen the way the moment says it is seen, and well above the picture's bottom edge.${unheard} Draw the instant it BEGINS, before it is done, so that it can happen in the seconds that follow: ONE picture of ONE instant — never a split screen, panels or a before-and-after. Where the moment says how somebody is placed (standing, sitting, crouching, walking), the moment decides; the distance between the two, the camera and their faces stay as described above.`
+    ? ` THE MOMENT this frame is taken at: ${act} — everything it names (what somebody holds, what is being done, what is in the place) is IN the picture, seen the way the moment says it is seen, and well above the picture's bottom edge.${unheard}${soundless}${eyeline ? ` ${eyeline}` : ""} Draw the instant it BEGINS, before it is done, so that it can happen in the seconds that follow: ONE picture of ONE instant — never a split screen, panels or a before-and-after. Where the moment says how somebody is placed (standing, sitting, crouching, walking), the moment decides; the distance between the two, the camera and their faces stay as described above.`
     : "";
   const tail = o.cartoon
     ? `Clean cheerful cartoon lighting, soft candy colors, rounded friendly shapes, ${o.comp}, no on-screen text, no watermark.`
@@ -306,7 +311,7 @@ const lockOf = (note: string): string => {
  *  two stay where they are and the camera does not move; `implied` = …whose thing could not be drawn into its
  *  picture: the scene's words are not said at all, and the two react to something never seen
  *  (REVEAL_UNSEEN_REACT). */
-export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; others?: ReadonlyArray<{ name: string; side: string }>; heard?: boolean; reveal?: boolean; drawn?: boolean; implied?: boolean }): T {
+export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; others?: ReadonlyArray<{ name: string; side: string }>; heard?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; implied?: boolean }): T {
   if (!isActedStaging(o.staging)) return base;
   const spec = ACTED_STAGINGS[o.staging];
   if (o.implied) {
@@ -320,7 +325,7 @@ export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown
   }
   const said = clipEvent(o.event, o.eventMax && o.eventMax > 0 ? o.eventMax : EVENT_MAX);
   const drawn = !!o.reveal && !!o.drawn && !!said;
-  const event = drawn ? revealClip(said) : said;
+  const event = drawn ? revealClip(said, { creature: o.creature }) : said;
   const heard = !!o.heard && !!event && !drawn;
   const who = event && !heard && !drawn
     ? (o.others || []).map((p) => {
@@ -333,7 +338,12 @@ export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown
       }).filter(Boolean).join(" ")
     : "";
   const slow = drawn ? ` ${REVEAL_REACT}` : event && o.reveal ? ` ${REVEAL_MOVES} ${REVEAL_REACT}` : "";
-  const does = heard ? HEARD_AFTER : event ? `${who ? `${who} ` : ""}${EVENT_LEAD} ${event}${slow}` : "Only natural talking, small gestures and shifts of weight.";
+  // (no sound is drawn — SOUND_NOT_SHOWN; and what they talk about, they look at — lookTarget)
+  const does = heard ? `${HEARD_AFTER} ${SOUND_NOT_SHOWN}` : event ? `${who ? `${who} ` : ""}${EVENT_LEAD} ${event}${slow}` : "Only natural talking, small gestures and shifts of weight.";
+  const target = !drawn && event ? lookTarget(event) : "";
+  // (in the fullest note only: a long shot steps down to the tighter note first — the picture's own eyeline,
+  //  lookAtPicture, has already turned them toward it)
+  const eye = target ? ` They look at ${target} when they speak of it, not at the camera.` : "";
   const rest = event ? "Nothing else" : "Nothing";
   const alive = /background stays/.test(base.look) ? " The background stays gently alive." : "";
   // (a drawn reveal: the two stay where they are and the camera does not move — nothing may come nearer the lens)
@@ -345,7 +355,7 @@ export function stagedRules<T extends ClipNotes>(base: T, o: { staging?: unknown
   const steady = travels ? base.steady.replace(CAMERA_LOCKED, travels) : base.steady;
   return {
     ...base,
-    look: `${lock(base.look)} ${clip} ${does}${alive} ${rest} new enters and no new object appears; anything held keeps its exact size and shape.`,
+    look: `${lock(base.look)} ${clip}${eye} ${does}${alive} ${rest} new enters and no new object appears; anything held keeps its exact size and shape.`,
     lookTight: `${lock(base.lookTight)} ${clip} ${does} ${rest} new enters; held things keep their size and shape.`,
     lookShort: `${lock(base.lookShort)} ${clip} ${does}`,
     // (told "no music or sound effects", the engine has no leave to make the knock the shot opens on)
@@ -461,11 +471,11 @@ const unquoted = (s: string): string => s.replace(/["“”«»„‟‹›‘�
  *  where they are, the camera does not move; `implied` = …whose thing could not be drawn into its picture: the
  *  scene's words are not said, and the two react to something never seen (REVEAL_UNSEEN_REACT); `face` = who
  *  must not smile (faceNote) — every one of them in words with no quotation mark in them either. */
-export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; sides?: ReadonlyArray<{ name: string; side: string }>; unseen?: boolean; reveal?: boolean; drawn?: boolean; implied?: boolean; face?: string | null } = {}): T {
+export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; sides?: ReadonlyArray<{ name: string; side: string }>; unseen?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; implied?: boolean; face?: string | null } = {}): T {
   const spec = isActedStaging(o.staging) ? ACTED_STAGINGS[o.staging] : null;
   const said = o.implied ? "" : clipEvent(o.event, o.eventMax && o.eventMax > 0 ? o.eventMax : EVENT_MAX);
   const drawn = !!o.reveal && !!o.drawn && !!said;
-  const event = drawn ? revealClip(said) : unquoted(said);
+  const event = drawn ? revealClip(said, { creature: o.creature }) : unquoted(said);
   const who = event && !drawn
     ? (o.sides || []).map((p) => {
         const name = unquoted(oneLine(p?.name));
@@ -598,6 +608,23 @@ export const HEARD_UNSEEN = "It comes from out of sight, and nothing in the pict
 /** …and what a PICTURE is told of such a moment (a place's master — stagedTwoShot — and a re-anchor drawn at
  *  it): told to put everything the moment names in the picture, the picture model draws whoever makes it. */
 export const HEARD_NOT_DRAWN = "What is HEARD in this moment is not drawn: nothing in the picture makes that sound — no hand knocks or taps on anything, and nobody else is there; the two only hear it.";
+/** A SOUND IS NEVER DRAWN — from out of sight or not. A boy's three knocks on his own window came back as a
+ *  glowing ring on the glass that pulsed with every knock (the owner, 2026-11-24: "there is an orb glowing that
+ *  pulses with the knocks in the window"): the window was in the picture, so nothing said the knock was not. */
+export const SOUND_NOT_DRAWN = "A sound is never drawn: nothing glows, rings, ripples, flashes, cracks or lights up where it comes from — the glass, the wall and the door look exactly as they would in silence.";
+/** …and in a clip, in fewer words (its prompt is short of room). */
+export const SOUND_NOT_SHOWN = "Nothing glows, pulses or lights up with the sound.";
+/** WHAT THEY TALK ABOUT, THEY LOOK AT. The same film: "both the parent and child are talking about something
+ *  outside yet looking towards the camera" — every staging turns both faces to the lens (the lip-sync needs
+ *  them), and the window they were talking about stood behind them. So the thing a moment is about is put at the
+ *  SIDE of the frame, near the camera: looking at it keeps their faces toward us. */
+const LOOK_THING = /\b(?:window|windows|door|doorway|curtain|curtains)\b/i;
+export const lookTarget = (moment: string | null | undefined): string => {
+  const m = LOOK_THING.exec(oneLine(moment));
+  return m ? `the ${m[0].toLowerCase().replace(/(?<=w|n)s$/, "")}` : "";
+};
+export const lookAtPicture = (target: string): string =>
+  target ? `WHAT THEY LOOK AT: ${target} this moment is about is at one SIDE of the frame, near the camera — beside them, never behind them — and both look toward it, turned three-quarters, so their faces stay toward us; nobody looks into the lens.` : "";
 /** …and only then the line. */
 export const HEARD_THEN = "ONLY AFTER IT does anybody speak, in answer to it.";
 /** What the look-note says happens once the sound has been heard (the scene's words lead the prompt). */
@@ -637,7 +664,7 @@ export function heardTalk(t: {
   reply?: { speaker: string; side?: string | null; line: string } | null;
 }): string {
   const event = clipEvent(t.event, Math.max(EVENT_MAX_LAST, oneLine(t.event).length));
-  const open = `${HEARD_OPEN} ${event}${t.unseen ? ` ${HEARD_UNSEEN}` : ""} ${HEARD_THEN}`;
+  const open = `${HEARD_OPEN} ${event}${t.unseen ? ` ${HEARD_UNSEEN}` : ""} ${SOUND_NOT_SHOWN} ${HEARD_THEN}`;
   const deliver = `${oneLine(t.deliver)}${oneLine(t.face) ? ` ${oneLine(t.face)}` : ""}`;
   const speaker = oneLine(t.speaker);
   const side = oneLine(t.side).toLowerCase();
@@ -755,8 +782,10 @@ export const REVEAL_MOMENT_MAX = 320;
  *  "between them", it painted over the window. */
 const REVEAL_HAND = /\b(?:hand|hands|finger|fingers|fingertips|arm|arms|knuckles?|claws?|nails?|grip|grips|gripping|reach|reaches|reaching)\b/i;
 /** A scene whose thing is in a WALL — then it is in a hole broken through real plaster (with thickness: torn
- *  paper, crumbled plaster, splintered lath), not a black shape laid over the picture. */
-const REVEAL_WALL = /\b(?:wall|walls|plaster|wallpaper|paper|panel|panelling|paneling|boards|hole|gap|crack|split|torn)\b/i;
+ *  paper, crumbled plaster, splintered lath), not a black shape laid over the picture. (Since 2026-11-24 only
+ *  the opening words: a scene that merely MENTIONS a wall — "knocks from the hallway wall" — is not one;
+ *  revealPart reads REVEAL_IN_WALL first.) */
+const REVEAL_WALL = /\b(?:hole|gap|crack|split|torn)\b/i;
 const REVEAL_HOLE = "the plaster has been broken open from inside into a ragged hole: torn wallpaper curling outward, crumbled plaster and splintered wooden lath at its edges, deep black inside";
 /** Each form: what the picture is told is SEEN of it, and what is WRONG with it; and what its clip is told is in
  *  the picture (`clip`) and the ONLY thing it may do there (`moves`) — a little, in place, never toward the
@@ -779,19 +808,52 @@ export const REVEAL_PARTS = {
     clip: "In the dark behind them stands a tall, thin FIGURE, almost all of it in shadow: only the pale shape of its face in the light, a little too high up.",
     moves: "Only its HEAD moves: it tilts slowly to one side. It never takes a step, never raises its arms, never comes nearer, never grows, and nothing comes toward the camera.",
   },
+  /** AT THE DOOR THE KNOCKING CAME FROM — the owner, of a film whose boy ran to his parents' room and then a
+   *  werewolf hung half out of its wall (2026-11-24): "monster half way hanging out of the wall. Like what the
+   *  fuck is that plot?". A thing that knocks at a door is found at that door: it has eased open on the dark. */
+  door: {
+    seen: "the door has eased open a hand's width on the dark beyond it; in that gap stands a tall FIGURE, almost all of it in shadow — only the pale shape of its face catches the light, a little too high up",
+    wrong: "it is too tall and too thin, and perfectly still; its face is grey-white like old candle wax, and one eye is open far too wide — never a zombie, never a skull, never a mask",
+    clip: "The door has eased open a hand's width on the dark: in the gap stands a tall FIGURE, almost all of it in shadow, only the pale shape of its face in the light.",
+    moves: "Only its HEAD moves: it tilts slowly to one side. It never steps through, never pushes the door, never reaches, never comes nearer, and nothing comes toward the camera.",
+  },
+  /** …and one that knocks at a WINDOW is outside it, at the glass — never inside, nothing broken. */
+  window: {
+    seen: "OUTSIDE the window, close to the dark glass, is a FACE that is not quite human — only its pale shape and one eye catch the light; the glass is whole, between it and the room",
+    wrong: "the skin is grey-white like old candle wax and the cheek is sunken; the eye is open far too wide, the white showing all the way round it, and it does not blink",
+    clip: "Outside the window, close to the dark glass, is a pale FACE that is not quite human: one eye in the light, open far too wide.",
+    moves: "Only its EYE moves: it slides slowly round to look at them, and it never blinks. The face stays OUTSIDE the glass — it never comes through, never breaks it, never grows, and nothing comes toward the camera.",
+  },
 } as const;
 export type RevealPart = keyof typeof REVEAL_PARTS;
-/** Which of them a scene calls for: in a WALL, the face — whatever part of it the scene's words name (a hand at
- *  the edge of a hole is a hand about to reach, and the engine finishes the reach); anywhere else, the figure. */
-export const revealPart = (moment: string | null | undefined): RevealPart => (REVEAL_WALL.test(oneLine(moment)) ? "face" : "figure");
+/** IN A WALL only when the thing is IN it — "inside the wall", "a hole in the plaster" — not when a knock merely
+ *  sounds "from the hallway wall" while the story's thing is somewhere else. */
+const REVEAL_IN_WALL = /\b(?:in|inside|within|behind|through)\s+(?:the\s+|a\s+|its\s+|that\s+|their\s+)?(?:[\p{L}'’-]+\s+){0,2}?(?:wall|walls|plaster|wallpaper)\b|\b(?:hole|crack|split)\s+(?:in|through)\s+(?:the\s+|a\s+)?(?:[\p{L}'’-]+\s+){0,2}?(?:wall|walls|plaster|wallpaper)\b/iu;
+const REVEAL_DOOR = /\b(?:door|doors|doorway)\b/i;
+const REVEAL_WINDOW = /\b(?:window|windows|windowpane|pane|glass)\b/i;
+/** Which of them a scene calls for — WHERE ITS STORY PUTS IT: in a wall (the face — whatever part of it the
+ *  scene's words name: a hand at the edge of a hole is a hand about to reach, and the engine finishes the reach)
+ *  only when the scene has it IN the wall; at the door it knocked at; outside the window it knocked on; else
+ *  standing in the dark of the room. A CREATURE the maker chose (`creature`) is never in a wall: a werewolf's
+ *  head through the plaster was the owner's "what the fuck is that plot". */
+export const revealPart = (moment: string | null | undefined, o: { creature?: boolean } = {}): RevealPart => {
+  const m = oneLine(moment);
+  if (!o.creature && REVEAL_IN_WALL.test(m)) return "face";
+  if (REVEAL_DOOR.test(m)) return "door";
+  if (REVEAL_WINDOW.test(m)) return "window";
+  // (a gap, a crack, a split or a hole that is not a door or a window is in the wall or its paper — the owner's
+  //  own wall films said "a gap behind June", "presses into the gap")
+  if (!o.creature && REVEAL_WALL.test(m)) return "face";
+  return "figure";
+};
 /** …said of the face when the scene's words name a hand: its words are given to the picture whole, and told
  *  "fingers" the picture model draws fingers. */
 const REVEAL_NO_HAND = "only that FACE shows — no hand, no fingers and no arm of it anywhere in the picture";
 /** THE CLIP OF A REVEAL THAT WAS DRAWN: what is in its picture, and the one small thing it does there — in place
  *  of the scene's own words, which may say "reaching", "nearer", "pushes out" (no quotation marks: a shot nobody
  *  speaks in has none). */
-export const revealClip = (moment: string | null | undefined): string => {
-  const p = REVEAL_PARTS[revealPart(moment)];
+export const revealClip = (moment: string | null | undefined, o: { creature?: boolean } = {}): string => {
+  const p = REVEAL_PARTS[revealPart(moment, o)];
   return `${p.clip} ${p.moves}`;
 };
 /** The light it is seen in: the place's own, dimmed — the frame that worked was the one in which the light had
@@ -807,7 +869,7 @@ const REVEAL_REAL = "Real, photographed in this place with the same grain and so
  *  right); `mood` = the format's face mood (a horror cast does not grin — film-engine → faceMood). "" when
  *  there is no moment to draw. The recipe the horror stories use is said in its own words: photographed, a
  *  practical effect (story-picture.ts → CREATURE_REAL), mostly hidden (take.ts → TAKE_HIDDEN). */
-export function revealPicture(o: { moment: string | null | undefined; mood?: string | null; sides?: ReadonlyArray<{ name: string; side: string }> }): string {
+export function revealPicture(o: { moment: string | null | undefined; mood?: string | null; sides?: ReadonlyArray<{ name: string; side: string }>; /** the thing is a creature the maker chose, drawn from its own picture */ creature?: boolean }): string {
   const moment = clipEvent(o.moment, REVEAL_MOMENT_MAX);
   if (!moment) return "";
   const mood = oneLine(o.mood);
@@ -816,12 +878,19 @@ export function revealPicture(o: { moment: string | null | undefined; mood?: str
   const behind = sides.find((p) => { try { return new RegExp(`\\b(?:behind|over)\\s+${escapeRe(p.name)}\\b`, "iu").test(moment); } catch { return false; } })
     || sides.find((p) => p.side === "right") || null;
   const at = behind ? `close behind ${behind.name}, the one on the ${behind.side}` : "close behind one of them";
-  const part = revealPart(moment);
+  const part = revealPart(moment, { creature: o.creature });
   const where = part === "face"
     ? `In the wall ${at}, at the height of a head — not over a window or a door, well inside the picture — ${REVEAL_HOLE}; `
+    : part === "door"
+    ? "At the door the two are facing — the one this moment is about, well inside the picture — "
+    : part === "window"
+    ? "At the window the two are facing — the one this moment is about, well inside the picture — "
     : `In the dark ${at}, well inside the picture, `;
   const only = part === "face" && REVEAL_HAND.test(moment) ? `; ${REVEAL_NO_HAND}` : "";
-  return `Edit this photo, a frame from a live-action horror film. Keep the camera and the framing, every window, door and lamp, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes.${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${REVEAL_PARTS[part].seen}${only}. What is wrong with it: ${REVEAL_PARTS[part].wrong}. ${REVEAL_REAL} ${CREATURE_REAL} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.`;
+  // (a creature the maker chose is drawn as ITSELF — its own picture says what it looks like; the "what is wrong"
+  //  words are a made-up thing's, and would paint candle-wax skin on a werewolf)
+  const wrong = o.creature ? "" : ` What is wrong with it: ${REVEAL_PARTS[part].wrong}.`;
+  return `Edit this photo, a frame from a live-action horror film. Keep the camera and the framing, every window, door and lamp, the furniture and both people exactly as they are, each where they stand, with the same faces, hair and clothes.${who} ${REVEAL_DIM} Add one thing — what this moment of the story has in it (its words say WHAT it is and WHERE; never how much of it shows): ${moment} Show it like this, and no more of it: ${where}${REVEAL_PARTS[part].seen}${only}.${wrong} ${REVEAL_REAL} ${CREATURE_REAL} ${TAKE_HIDDEN} Both have frozen where they stand, faces drained, and neither looks at the camera.${mood ? ` ${mood}` : ""} No text anywhere.`;
 }
 
 /* ---- THE WRITER ---- */
@@ -903,7 +972,7 @@ export const HEARD_BEFORE_SAID = "A SOUND COMES BEFORE ANY WORD ABOUT IT — whe
  *  fingers come out of the hole, and the engine made them a big hand reaching at the lens. So the writer is
  *  given the forms the film draws (a face in a hole in a wall; a tall shape in the dark) and what they may do:
  *  an eye turns, a head tilts — never out, never nearer, never reaching. */
-export const SEEN_AT_THE_END = "THE LAST SHOT IS SEEN, NOT SAID — a horror film ends on something the viewer SEES, not on a line about it. So the LAST shot has NO LINE: its CAPTION is \"\" (empty — no NAME, no words) and it has no TONE. Nobody speaks in it, not a word and not a whisper; the last words of the film are the line of the shot BEFORE it. It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter: the thing is found where the two already are (in the wall they have been listening to, in the doorway they came through, right behind one of them), never in another room; the film draws it into that place's own picture, the one thing in the film that was not in that place's first VISUAL. In that last shot's VISUAL the thing this story has been circling is IN the picture with the two of them, seen the way WHAT FRIGHTENS (below) says such a thing is seen — BARELY: only a part of it, the way a horror film shows it — in a wall, its FACE pressed into a hole broken in the plaster, one eye catching the light; anywhere else, a tall shape standing in the dark with only its face in the light — never a hand, an arm or a body reaching out into the light — close behind one of the two or between them, where the light gives out, never at the edge of the picture. Say its one or two wrongnesses in so many words (skin like old candle wax; an eye open far too wide that never blinks; a face a little too high up) — never just \"wrong\" or \"strange\". And what HAPPENS in that shot is IT, SLOWLY and IN PLACE: its eye turns to them, or its head tilts — it never comes out of where it is, never comes nearer, never reaches for anybody — and the two FREEZE, and one of them slowly turns to it. Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so. When it is not one of the two, it has no \"cast\" entry: say what it is, and the one or two things that are wrong with it, in that VISUAL (which may run to 40 words).";
+export const SEEN_AT_THE_END = "THE LAST SHOT IS SEEN, NOT SAID — a horror film ends on something the viewer SEES, not on a line about it. So the LAST shot has NO LINE: its CAPTION is \"\" (empty — no NAME, no words) and it has no TONE. Nobody speaks in it, not a word and not a whisper; the last words of the film are the line of the shot BEFORE it. It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter: the thing is found where the two already are, WHERE ITS SOUND CAME FROM — at the door it knocked at, at the window it knocked on, in the wall only when the story has it IN the wall, or right behind one of them in the dark — never in another room; the film draws it into that place's own picture, the one thing in the film that was not in that place's first VISUAL. In that last shot's VISUAL the thing this story has been circling is IN the picture with the two of them, seen the way WHAT FRIGHTENS (below) says such a thing is seen — BARELY: only a part of it, the way a horror film shows it — at a door, the door eased open a hand's width on the dark and a tall shape in the gap with only its face in the light; at a window, its face close to the dark glass, OUTSIDE, the glass whole; in a wall (only when it is IN the wall), its FACE pressed into a hole broken in the plaster, one eye catching the light; anywhere else, a tall shape standing in the dark with only its face in the light — never a hand, an arm or a body reaching out into the light — never at the edge of the picture. Say its one or two wrongnesses in so many words (skin like old candle wax; an eye open far too wide that never blinks; a face a little too high up) — never just \"wrong\" or \"strange\". And what HAPPENS in that shot is IT, SLOWLY and IN PLACE: its eye turns to them, or its head tilts — it never comes out of where it is, never comes nearer, never reaches for anybody — and the two FREEZE, and one of them slowly turns to it. Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so. When it is not one of the two, it has no \"cast\" entry: say what it is, and the one or two things that are wrong with it, in that VISUAL (which may run to 40 words).";
 
 /* ---- PEOPLE WHO ARE RELATED ARE THE RIGHT AGES FOR IT ----
  * The owner, of the same live film: "Also want to note in that video they are "sisters" but one of them is 130

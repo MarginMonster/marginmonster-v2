@@ -51,6 +51,15 @@ export const NOTHING_WRITTEN = "Nothing in the picture is written: no signs with
  *  dusk" — and the picture model put a man walking up to it; its last had the little brother on the sofa AND a
  *  second of him outside on the porch. */
 export const NO_EXTRAS = "Nobody is in the picture whom these words do not put there — no passer-by, no figure in the distance, no one at a window or a door — and every character in it appears exactly ONCE.";
+/** INSIDE STAYS INSIDE (2026-11-24, the owner of the same story: "the monster is outside trying to get in, but in
+ *  one of the scenes the kid is outside with the monster, like the fuck?"). Its words were "from behind Mira's dark
+ *  shoulder, INSIDE at the round porthole window, looking out at the ghost lady standing on the porch" — and the
+ *  picture model stood Mira on the porch beside her. Said whenever a picture has a window, a door or an outside. */
+export const INSIDE_STAYS = "Whoever these words put INSIDE stays inside: what is outside is seen THROUGH the glass of the window or the gap of the door — its frame and its glass between them — never standing beside them.";
+const INSIDE_OUT = /\b(?:window|windows|door|doors|doorway|glass|porch|outside|through the)\b/i;
+export const insideNote = (visual: string): string => (INSIDE_OUT.test(String(visual || "")) ? INSIDE_STAYS : "");
+/** A SOUND IS NEVER DRAWN in a picture either (the same night's film drew its knocks as a glowing ring on a window). */
+export const STORY_SOUND = "A sound is never drawn: nothing glows, rings or lights up where a knock, a bell or a voice comes from.";
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference
  *  pictures, whether that same character is in it; and whether the picture is split into panels. */

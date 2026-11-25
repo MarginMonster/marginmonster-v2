@@ -39,7 +39,7 @@ import { readVoiceSound } from "./voice-sound.server";
 import { STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { cameraLine, shotOf } from "./story-shots";
-import { FRAMED_FIX, FRAMED_SIZE, framedIn, NO_EXTRAS, NOTHING_WRITTEN, ONE_PICTURE, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, creatureHidden, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, storyCastPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
+import { FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NOTHING_WRITTEN, ONE_PICTURE, STORY_SOUND, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, creatureHidden, creatureNote, keepGuess, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -237,7 +237,7 @@ export async function narratedSceneSeeds(o: {
       const written = (scene.visual || "").replace(/\s+/g, " ").trim();
       const visual = oneMoment(noLettering(written));
       const twoMoments = oneMoment(written) !== written;
-      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS} ${NOTHING_WRITTEN}`;
+      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${insideNote(visual) ? ` ${INSIDE_STAYS}` : ""} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
       // …and THE PICTURE IS LOOKED AT before it is kept: is each of the maker's cast in it (never asked
       // about clothes — a story dresses people for the part), and is it one picture. The cast is looked for
       // whenever the scene has any; panels only where the words described two moments (that is when a
