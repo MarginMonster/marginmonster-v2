@@ -228,8 +228,13 @@ export function storyNight(o: { words: string; said?: string | null; place?: str
 /** …ASKED IN THE QUESTION THAT LOOKS AT THE PLACE (storyGrimePrompt), last — the master's own question (nightLookPrompt)
  *  in its words, with the ferry's daylight named ("pale misty daylight": fog lit by day is not fog lit by a lamp) and a
  *  drawn night allowed its deep night-blue (a cartoon's night is told as one only where its own words say night). The
- *  reader says what it sees outside before it answers. */
-export const NIGHT_ASKED = 'Last, this picture is meant to be set in the MIDDLE OF THE NIGHT. Look at the sky and at whatever is outdoors or seen through a window, a door or a tent opening, and say in a few words how it is lit ("outdoors"). "sky" is "night" if it is night there: a black or near-black sky (in a drawn picture, a deep night-blue one with the moon or stars), the outdoors dark except for lamps, torches or the moon, and fog, if there is any, dark except where a lamp lights it. "sky" is "dusk" or "day" if it reads as dusk, twilight, blue hour, an overcast evening, pale misty daylight or day: a sky that is pale, blue, grey or lit, fog pale with daylight, or daylight falling in through a window or a door. If no sky and nothing outdoors can be seen at all, "sky" is "night".';
+ *  reader says what it sees outside before it answers.
+ *  (Review of S11, 2026-11-25, read as the reader will read it: the day side said "a sky that is … grey or lit", and the
+ *  ferry's own right answer — thick fog at night, glowing round the deck lamps under a dark grey murk — is a grey, lit sky.
+ *  Told both, a reader may call the very picture we want "dusk", and every night scene in fog is drawn three times and
+ *  kept flagged. So fog that glows round the lamps and fades to dark is named as night, and the day side's grey is a
+ *  LIGHT grey, its fog pale with daylight all the way across.) */
+export const NIGHT_ASKED = 'Last, this picture is meant to be set in the MIDDLE OF THE NIGHT. Look at the sky and at whatever is outdoors or seen through a window, a door or a tent opening, and say in a few words how it is lit ("outdoors"). "sky" is "night" if it is night there: a black or near-black sky (in a drawn picture, a deep night-blue one with the moon or stars), the outdoors dark except for lamps, torches or the moon, and fog, if there is any, dark except where a lamp lights it — fog that glows round the lamps and fades to dark away from them is night. "sky" is "dusk" or "day" if it reads as dusk, twilight, blue hour, an overcast evening, pale misty daylight or day: a sky that is pale, blue or light grey, fog pale with daylight all the way across, or daylight falling in through a window or a door. If no sky and nothing outdoors can be seen at all, "sky" is "night".';
 /** …its answer: true = night, false = the sky reads as dusk or day (the fault), null = the answer does not say — and then
  *  it is night (as parseNightLook: an answer that cannot be read never costs a story its picture). */
 export function parseStoryNight(raw: string): boolean | null {

@@ -104,6 +104,10 @@ test("THE LOOK: asked last in the question that looks at the place — a day sce
   for (const part of ["MIDDLE OF THE NIGHT", "seen through a window, a door or a tent opening", "a black or near-black sky", "the outdoors dark except for lamps, torches or the moon", "dusk, twilight, blue hour, an overcast evening, pale misty daylight or day", 'If no sky and nothing outdoors can be seen at all, "sky" is "night".']) assert.ok(sp.NIGHT_ASKED.includes(part), part);
   for (const part of ["MIDDLE OF THE NIGHT", "seen through a window, a door or a tent opening", "a black or near-black sky", "If no sky and nothing outdoors can be seen at all"]) assert.ok(sp.nightLookPrompt().includes(part), `the master asks it the same way: ${part}`);
   assert.ok(sp.NIGHT_ASKED.includes("fog, if there is any, dark except where a lamp lights it") && sp.NIGHT_ASKED.includes("fog pale with daylight"), "fog lit by a lamp is night; fog lit by day is not");
+  // (review of S11: the ferry's right answer — fog glowing round the deck lamps under a dark grey murk — must never read as
+  //  the day side's "grey or lit" sky: the glow is named as night, and the day's grey is a LIGHT one)
+  assert.ok(sp.NIGHT_ASKED.includes("fog that glows round the lamps and fades to dark away from them is night") && sp.NIGHT_ASKED.includes("a sky that is pale, blue or light grey, fog pale with daylight all the way across,"));
+  assert.ok(!sp.NIGHT_ASKED.includes("grey or lit"), "a lamp-lit sky is not a day sky");
   assert.ok(sp.NIGHT_ASKED.includes("(in a drawn picture, a deep night-blue one with the moon or stars)"));
 });
 
