@@ -463,6 +463,11 @@ test("THE REEL'S LOOK: every frame in its own camera's viewfinder, its clock rea
   // phone-first: every box on the reel is 16px (a phone never zooms in on it); every tap is 44px
   for (const r of [/\.ff-vf-line\{[^}]*font:600 16px/, /\.ff-case textarea\{[^}]*font:500 16px/, /\.ff-room-pick\{[^}]*font:600 16px/, /\.ff-mo-card input\{[^}]*font:700 17px/, /\.ff-tape-title,\.ff-tape-name\{[^}]*font:800 20px/]) assert.ok(r.test(ui), String(r));
   for (const r of [/\.ff-ico-btn\{[^}]*min-width:44px;height:44px/, /\.ff-dicebtn\{[^}]*min-height:44px/, /\.ff-secs button\{width:44px;height:44px/, /\.ff-again-btn\{[^}]*min-height:44px/, /\.ff-chip\{[^}]*min-height:44px/, /\.ff-seg button\{[^}]*min-height:44px/, /\.ff-cut-in::-webkit-slider-thumb\{-webkit-appearance:none;width:44px/]) assert.ok(r.test(ui), String(r));
+  // ON AN URDU PAGE (right to left): a camera's marks are still burned in left to right; a card is Latin capitals; every
+  // box of the member's words takes its words' own direction (a reel is in the idea's language, not the page's); and a
+  // mono label's letter-spacing never pulls a joined script apart
+  assert.ok(ui.includes(".ff-vf{direction:ltr;}") && ui.includes('return <textarea ref={ref} rows={1} dir="auto" {...props} />;') && ui.includes('<input dir="ltr" value={m.when}'));
+  assert.ok(ui.includes("[dir=rtl] .ff-mo-n,[dir=rtl] .ff-case label>span,[dir=rtl] .ff-tape-stamp,[dir=rtl] .ff-tape-sum,[dir=rtl] .ff-step-kick,[dir=rtl] .ff-shelf-h b{letter-spacing:0;}"));
   // the reel is tape in either theme: black — and in the dark it gets the gold edge every card has
   assert.ok(ui.includes(".ff-dark .ff-reel{box-shadow:0 0 0 1px rgba(231,200,121,.45)"));
 });

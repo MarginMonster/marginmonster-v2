@@ -246,7 +246,9 @@ function GrowArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [props.value]);
-  return <textarea ref={ref} rows={1} {...props} />;
+  // (its direction is its words' own: a reel is written in the idea's language, whatever the page's is — an English line
+  //  on an Urdu page had its full stop drawn at the wrong end)
+  return <textarea ref={ref} rows={1} dir="auto" {...props} />;
 }
 
 /** THE CUT — how many moments, on ONE control: a strip of film, eight frames, lit up to the one the thumb is on.
@@ -827,7 +829,7 @@ export default function FoundFootage() {
                   {/* ITS CARD, as the film shows it: white on black — tap to retype */}
                   <label className="ff-mo-card">
                     <span className="ff-sr">{t("The card before moment {n}", { n })}</span>
-                    <input value={m.when} maxLength={FOOTAGE_LIMITS.when} placeholder={`NIGHT ${n}`} disabled={mine}
+                    <input dir="ltr" value={m.when} maxLength={FOOTAGE_LIMITS.when} placeholder={`NIGHT ${n}`} disabled={mine}
                       onChange={(e) => change(m.key, { when: e.target.value.toUpperCase() })}
                       onBlur={(e) => change(m.key, { when: cardWords(e.target.value) || `NIGHT ${n}` })} />
                   </label>
@@ -1129,6 +1131,10 @@ const FF_STYLE = `
    long line makes the frame taller rather than covering a mark) */
 .ff-vf{position:relative;display:flex;flex-direction:column;justify-content:flex-end;width:100%;box-sizing:border-box;aspect-ratio:16/9;padding:8% 4% 7%;border-radius:4px;background:#0B0C0B;isolation:isolate;container-type:inline-size;}
 .ff-vf.is-tall{aspect-ratio:9/16;width:min(100%,216px);margin:0 auto;padding:21% 5% 27%;}
+/* a camera's marks are burned in left to right on any page — an Urdu page read "SUN 02:14:13 2026-11-22" — and a
+   mono label's letter-spacing breaks a joined script apart */
+.ff-vf{direction:ltr;}
+[dir=rtl] .ff-mo-n,[dir=rtl] .ff-case label>span,[dir=rtl] .ff-tape-stamp,[dir=rtl] .ff-tape-sum,[dir=rtl] .ff-step-kick,[dir=rtl] .ff-shelf-h b{letter-spacing:0;}
 .ff-vf.is-bodycam{padding-top:13%;}
 .ff-vf.is-camcorder{padding-top:10%;padding-bottom:14%;}
 .ff-vf.is-bare{padding:4%;}
