@@ -202,6 +202,15 @@ test("the film's thing: the script's own threat is found by what it IS — never
   const portrait = threatPortrait("the woman in the lake, a pale woman standing waist-deep in the water, long black hair", "a dark horror scene, photorealistic");
   assert.ok(portrait.includes("A wardrobe-test photograph of the woman in the lake") || portrait.includes("A character portrait of the woman in the lake"), portrait);
   assert.ok(portrait.includes("She is fully clothed: a long pale nightgown, soaked and clinging") && portrait.includes(DRESSED) && portrait.endsWith(NOTHING_GLOWS));
+  // A PERSON-LIKE THREAT IS PHOTOGRAPHED, never "a practical-effects creature" (review, 2026-11-25): the lake film's own
+  // cast line reads as a monster ("her smile far too wide"), and every picture of her after the portrait is "that exact
+  // figure" — the portrait must not be the grey zombie the eighth film's reveal drew
+  const her = threatPortrait(CAST[2], "a dark horror scene, photorealistic");
+  assert.ok(her.includes("A wardrobe-test photograph of the woman in the lake") && her.includes("this ONE figure alone") && her.includes(PHOTOGRAPHED), her);
+  assert.ok(!her.includes(CREATURE_REAL) && !/\bcreature\b/i.test(her), her);
+  // …a creature by its own name stays one
+  const wolf = threatPortrait("the werewolf, huge and lean, with shaggy grey fur", "a dark horror scene, photorealistic");
+  assert.ok(wolf.includes(CREATURE_REAL) && wolf.includes("this ONE creature alone"), wolf);
 });
 
 test("which figure with no cast line of its own may be drawn as the film's thing — never somebody the words make else, never a shadow", () => {

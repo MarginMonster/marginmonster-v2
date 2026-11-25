@@ -1258,9 +1258,16 @@ export function storyThreat(o: { cast?: ReadonlyArray<string | null | undefined>
 
 /** THE PORTRAIT of the story's own threat: the told stories' portrait recipe (story-picture.ts → portraitPrompt — a
  *  creature by its name or its look is photographed as a practical effect), its look dressed where it is in water,
- *  and DRESSED and NOTHING_GLOWS said with it. The picture is then LOOKED at for an unclothed figure, as a master is. */
+ *  and DRESSED and NOTHING_GLOWS said with it. The picture is then LOOKED at for an unclothed figure, as a master is.
+ *  (Review, 2026-11-25: a threat whose NAME makes it a person-like figure — "the woman in the lake" — is PHOTOGRAPHED,
+ *  never "a practical-effects creature". characterKind reads her "smile far too wide" as a monster, so the recipe
+ *  asked for a creature; and every picture of her after it is "that exact figure" — told "creature", the eighth lake
+ *  film's editor drew her as a grey zombie man. The recipe's own words otherwise, as the reveal does — PHOTOGRAPHED.) */
 export function threatPortrait(entry: string, sceneHint: string): string {
-  return `${portraitPrompt(dressedInWater(oneLine(entry)), sceneHint)} ${DRESSED} ${NOTHING_GLOWS}`;
+  const p = portraitPrompt(dressedInWater(oneLine(entry)), sceneHint);
+  const personLike = /\b(?:woman|women|lady|girl|man|men|boy|child|stranger)\b/i.test(castEntry(oneLine(entry)).name);
+  const asFigure = personLike && p.includes(CREATURE_REAL) ? p.replace(CREATURE_REAL, PHOTOGRAPHED).replace("this ONE creature alone", "this ONE figure alone") : p;
+  return `${asFigure} ${DRESSED} ${NOTHING_GLOWS}`;
 }
 
 /** …AND A PLACE WHOSE FIRST SCENE HAS IT IN VIEW is drawn with that picture beside the cast's, bound to it by name the
