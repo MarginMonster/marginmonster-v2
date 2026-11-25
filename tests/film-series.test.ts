@@ -117,9 +117,13 @@ test("the writer is told: the series, 'Previously' as fenced quoted material, no
   assert.match(w, /do NOT retell/);
   assert.match(w, /moves FORWARD/);
   // (an episode 2 with the idea box left empty came back as "let us fly our kite again", 2026-11-23)
-  assert.match(w, /This episode has an event OF ITS OWN — a new small problem, place, visitor or discovery\. Not the same activity as last time done again\./);
+  // (2026-11-25: an episode that knows where the last one STOPPED — tests/make-it-a-series.test.ts — has that
+  //  event of its own either right there, or later; one that does not is told exactly what it always was)
+  assert.match(w, /This episode has an event OF ITS OWN — when it opens right where the last one stopped, what happens NEXT there; when it starts later, a new small problem, place, visitor or discovery\. Not the same activity as last time done again\./);
+  assert.match(seriesWriterBrief({ ...brief!, last: undefined }), /This episode has an event OF ITS OWN — a new small problem, place, visitor or discovery\. Not the same activity as last time done again\./);
   assert.match(w, /SAME named characters continue, with the same looks and the same voices/);
   assert.match(w, /stands on its own/);
+  assert.match(seriesWriterBrief({ ...brief!, last: undefined }), /This episode still stands on its own: someone who missed the last one can follow it\.\n/);
   assert.ok(w.includes("Tom, a weathered old keeper"), "who was in it, as the writer described them");
   assert.ok(w.includes(`"The Lighthouse Keeper — Episode 2"`));
   // …and it goes to the WRITER, after the brief — never into a picture prompt

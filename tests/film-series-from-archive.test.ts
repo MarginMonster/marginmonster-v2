@@ -69,9 +69,13 @@ test("only a finished story film of the rows given can be continued", () => {
 
 test("the Archive viewer offers it on a story film, and the Movie Maker opens that episode once", () => {
   const archive = read("app", "routes", "web.archive.tsx");
-  assert.ok(archive.includes("canContinue: a.type === \"VIDEO_AD\" && !!storyHeroOf(a.metaJson),"));
-  assert.ok(archive.includes("{viewer.canContinue && viewer.media && !viewer.expired && <a className=\"wa-vbtn ghost\" href={`/web/film?episode=${viewer.id}`} title={t(\"Continue this story — the next episode, with the same cast\")}><Ico n=\"video\" /> {t(\"Next episode\")}</a>}"));
+  // (2026-11-25: what a piece offers next is its MARK — film-series.ts → nextMarks — and the viewer's button is a
+  //  primary one, the first in its row, worded as the card is; it names the series' LATEST film, which is the one
+  //  continued from. tests/make-it-a-series.test.ts holds the rest.)
+  assert.ok(archive.includes("const m: NextMark | undefined = a.type === \"VIDEO_AD\" ? nextOf.get(a.id) : undefined;"));
+  assert.ok(archive.includes("{viewer.next && viewer.media && !viewer.expired && <a className=\"wa-vbtn full wa-vnext\" href={`/web/film?episode=${viewer.next.from}`} title={t(\"Continue this story — the next episode, with the same cast\")}><Ico n=\"filmreel\" /> {viewer.next.state === \"start\" ? t(\"Make it a series\") : t(\"Make episode {n}\", { n: viewer.next.next })}<span className=\"c\">{t(\"Picks up where it left off\")}</span></a>}"));
   assert.ok(archive.includes("import { storyHeroOf } from \"../lib/film-series\";"));
+  assert.ok(archive.includes("import { continuable, nextMarks, seriesKeyOf, type NextMark } from \"../lib/film-series\";"));
 
   const film = read("app", "routes", "web.film.tsx");
   // the id from the address is reduced to id characters before it goes anywhere near a query
