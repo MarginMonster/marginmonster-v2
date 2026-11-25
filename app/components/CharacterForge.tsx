@@ -29,7 +29,8 @@ import { CHAR_DESC_MAX, type CharKind } from "../lib/character-prompts";
 import { VoicePicker, type MyVoiceT } from "./VoicePicker";
 
 type Info = { hasPlan: boolean; canCreate: boolean; costs: { person: number; character: number }; left: number; perDay: number; myVoices: MyVoiceT[]; canMakeVoice: boolean; error?: string };
-type PreviewReply = { preview?: { file: string; refFile: string; kind: CharKind; left: number }; error?: string };
+/** `from`: the look a preview was EDITED from ("Edit description") — "Try another" then edits that same look again. */
+type PreviewReply = { preview?: { file: string; refFile: string; kind: CharKind; left: number; from?: string }; error?: string };
 type RegisterReply = { registered?: { name: string; kind: CharKind }; error?: string };
 
 const KINDS: Array<{ k: CharKind; label: string; icon: string; hint: string; eg: string }> = [
@@ -58,7 +59,10 @@ export function CharacterForge({ open, onClose, seed }: { open: boolean; onClose
   const [file, setFile] = useState<File | null>(null);
   const [thumb, setThumb] = useState("");
   const [desc, setDesc] = useState("");
-  const [preview, setPreview] = useState<{ file: string; refFile: string } | null>(null);
+  const [preview, setPreview] = useState<{ file: string; refFile: string; from?: string } | null>(null);
+  // EDITING A LOOK (the owner, 2026-11-24: "I tried to edit her hair to blonde and it changed her face"): after
+  // "Edit description" the next preview is that look, changed only where the words change — not a new face
+  const [editing, setEditing] = useState<{ file: string; refFile: string } | null>(null);
   const [left, setLeft] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [gender, setGender] = useState<"f" | "m">("m");
@@ -75,7 +79,7 @@ export function CharacterForge({ open, onClose, seed }: { open: boolean; onClose
   useEffect(() => setMounted(true), []);
 
   const reset = useCallback(() => {
-    setKind("person"); setFile(null); setDesc(""); setPreview(null); setName(""); setGender("m");
+    setKind("person"); setFile(null); setDesc(""); setPreview(null); setEditing(null); setName(""); setGender("m");
     setVoice(DEFAULT_AVATAR_VOICE.m); setEnergy("warm"); setRegistering(false);
   }, []);
   const registered = registrar.state === "idle" ? registrar.data?.registered : undefined;
@@ -96,8 +100,10 @@ export function CharacterForge({ open, onClose, seed }: { open: boolean; onClose
   }, [file]);
   useEffect(() => {
     if (drawer.state !== "idle" || !drawer.data?.preview) return;
-    setPreview({ file: drawer.data.preview.file, refFile: drawer.data.preview.refFile });
-    setLeft(drawer.data.preview.left);
+    const p = drawer.data.preview;
+    setPreview({ file: p.file, refFile: p.refFile, ...(p.from ? { from: p.from } : {}) });
+    setEditing(null);
+    setLeft(p.left);
   }, [drawer.state, drawer.data]);
   // the new character should be in the cast behind the dialog the moment it exists
   useEffect(() => { if (registered) revalidator.revalidate(); }, [registered]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -130,7 +136,8 @@ export function CharacterForge({ open, onClose, seed }: { open: boolean; onClose
 
   const pickKind = (k: CharKind) => {
     if (k === kind) return;
-    setKind(k); setPreview(null); setVoice(voiceFor(k, gender));
+    // (another kind is another drawing — not an edit of the look they saw)
+    setKind(k); setPreview(null); setEditing(null); setVoice(voiceFor(k, gender));
   };
   const pickGender = (g: "f" | "m") => { setGender(g); setVoice(voiceFor(kind, g)); };
   // (a story's character: "a cartoon, not a person" — the same portrait, kept as another kind. The price
@@ -140,14 +147,16 @@ export function CharacterForge({ open, onClose, seed }: { open: boolean; onClose
     setKind(k); setVoice(voiceFor(k, gender));
     adopt(seed, k);
   };
-  // ask for a preview: with the picture just added, or (for "Try another") the one already uploaded
-  const askPreview = (keptRef?: string) => {
+  // ask for a preview: with the picture just added, or (for "Try another") the one already uploaded — and, for
+  // an edit, the look being edited (`base`), which the server changes only where the words change
+  const askPreview = (keptRef?: string, base?: string) => {
     const fd = new FormData();
     fd.set("intent", "preview");
     fd.set("charKind", kind);
     fd.set("avatarDesc", desc.trim());
     if (keptRef) fd.set("refFile", keptRef);
-    else if (file) fd.set("avatarPhoto", file);
+    else if (file && !base) fd.set("avatarPhoto", file);
+    if (base) fd.set("editOf", base);
     drawer.submit(fd, { method: "post", action: "/api/character", encType: "multipart/form-data" });
   };
   const register = () => {
@@ -238,19 +247,28 @@ export function CharacterForge({ open, onClose, seed }: { open: boolean; onClose
                     </button>
                   ))}
                 </div>
-                <label className={`cf-up${thumb ? " has" : ""}`}>
-                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0] || null)} hidden />
-                  {thumb
-                    ? <><span className="cf-thumb" style={{ backgroundImage: `url(${thumb})` }} aria-hidden="true" /><span className="cf-up-t">{t("Picture added — tap to change")}</span></>
-                    : <><Ico n="camera" size={26} /><span className="cf-up-t">{t("Add a picture")}<em> · {t("optional")}</em></span><span className="cf-up-s">{t(spec.hint)}</span></>}
-                </label>
+                {editing ? (
+                  // (the look they saw stays on screen while they change the words — it is what gets changed)
+                  <div className="cf-up has cf-editing">
+                    <span className="cf-thumb" style={{ backgroundImage: `url(/uploads/${editing.file})` }} aria-hidden="true" />
+                    <span className="cf-up-t">{t("Editing this look — only what you change in the words will change")}</span>
+                    <button type="button" className="cf-fresh" disabled={drawing} onClick={() => setEditing(null)}>{t("Start fresh")}</button>
+                  </div>
+                ) : (
+                  <label className={`cf-up${thumb ? " has" : ""}`}>
+                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0] || null)} hidden />
+                    {thumb
+                      ? <><span className="cf-thumb" style={{ backgroundImage: `url(${thumb})` }} aria-hidden="true" /><span className="cf-up-t">{t("Picture added — tap to change")}</span></>
+                      : <><Ico n="camera" size={26} /><span className="cf-up-t">{t("Add a picture")}<em> · {t("optional")}</em></span><span className="cf-up-s">{t(spec.hint)}</span></>}
+                  </label>
+                )}
                 <label className="cf-lbl" htmlFor="cf-desc">{t("Describe them")}<span>{t("the more you say, the more it's them")}</span></label>
                 <textarea id="cf-desc" className="wb-in cf-desc" rows={3} maxLength={CHAR_DESC_MAX} placeholder={t(spec.eg)} value={desc} onChange={(e) => setDesc(e.target.value)} />
                 <span className={`cf-count${desc.length >= CHAR_DESC_MAX * 0.9 ? " near" : ""}`} aria-live="polite">{desc.length}/{CHAR_DESC_MAX}</span>
                 {drawError}
                 {d && !d.hasPlan && <p className="cf-gate">{t("Pick a plan first — creating a character runs on tokens.")} <Link to="/web#plans" onClick={close}>{t("See plans")}</Link></p>}
                 {d && d.hasPlan && !d.canCreate && <p className="cf-gate">{t("Custom characters need a plan with video — Studio and up.")} <Link to="/web#plans" onClick={close}>{t("See plans")}</Link></p>}
-                <button type="button" className="wb-btn cf-go" disabled={drawing || (!file && desc.trim().length < 8) || !canCreate || left === 0} onClick={() => askPreview()}>
+                <button type="button" className="wb-btn cf-go" disabled={drawing || (editing ? desc.trim().length < 3 : !file && desc.trim().length < 8) || !canCreate || left === 0} onClick={() => (editing ? askPreview(editing.refFile, editing.file) : askPreview())}>
                   {drawing ? <><span className="cf-spin sm" aria-hidden="true" /> {t("Drawing them — about half a minute…")}</> : <><Ico n="eye" size={16} /> {t("Show me first — free")}</>}
                 </button>
                 <p className="cf-note">
@@ -277,8 +295,9 @@ export function CharacterForge({ open, onClose, seed }: { open: boolean; onClose
                   ) : preview ? (
                     <>
                       <div className="cf-prevacts">
-                        <button type="button" disabled={drawing || left === 0} onClick={() => askPreview(preview.refFile)}>{drawing ? <><span className="cf-spin sm" aria-hidden="true" /> {t("Drawing another…")}</> : <><Ico n="refresh" size={13} /> {t("Try another")}</>}</button>
-                        <button type="button" disabled={drawing} onClick={() => setPreview(null)}><Ico n="pencil" size={13} /> {t("Edit description")}</button>
+                        {/* (a look that was itself an edit is tried again AS that edit — the same face, another take) */}
+                        <button type="button" disabled={drawing || left === 0} onClick={() => askPreview(preview.refFile, preview.from)}>{drawing ? <><span className="cf-spin sm" aria-hidden="true" /> {t("Drawing another…")}</> : <><Ico n="refresh" size={13} /> {t("Try another")}</>}</button>
+                        <button type="button" disabled={drawing} onClick={() => { setEditing({ file: preview.file, refFile: preview.refFile }); setPreview(null); }}><Ico n="pencil" size={13} /> {t("Edit description")}</button>
                       </div>
                       {leftNote ? <p className="cf-left">{leftNote}</p> : null}
                     </>
@@ -343,6 +362,11 @@ export const FORGE_CSS = `
 .cf-up-t em{font-style:normal;font-weight:600;opacity:.7;}
 .cf-up-s{font-size:11.5px;font-weight:600;color:var(--ink2,#4A554E);}
 .cf-thumb{flex:0 0 auto;width:52px;height:52px;border-radius:12px;background:#fff center/cover no-repeat;box-shadow:inset 0 0 0 1px rgba(12,18,14,.12);}
+.cf-editing{cursor:default;}
+.cf-editing:hover{background:#EFF8F1;}
+.cf-editing .cf-up-t{flex:1 1 auto;min-width:0;text-align:start;font-size:13px;line-height:1.4;}
+.cf-fresh{flex:0 0 auto;min-height:44px;padding:6px 4px;border:0;background:transparent;color:var(--green,#0C7A46);font:inherit;font-size:12.5px;font-weight:800;text-decoration:underline;text-underline-offset:3px;cursor:pointer;}
+.cf-fresh:disabled{opacity:.6;cursor:default;}
 .cf-lbl{display:flex;align-items:baseline;gap:8px;font-weight:800;font-size:12.5px;color:var(--ink,#14201A);margin:12px 0 7px;}
 .cf-lbl:first-child{margin-top:0;}
 .cf-lbl span{font-weight:500;font-size:11.5px;color:var(--ink2,#4A554E);}

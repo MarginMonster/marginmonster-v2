@@ -11,11 +11,22 @@
  * they said yes to is what they get.
  *
  * Previews are free, so they are counted — an uncounted free button is an open tap — and they are
- * drawn on the EVERYDAY image model (4¢ a picture), not the premium one (15¢). That is what keeps the
- * price honest: a character is registered for about 87¢ of tokens and its 3D view costs about 53¢, so
- * at 15¢ a look the third preview already sold the character at a loss; at 4¢ a whole day's eight fit
- * (plan-config.ts has the sum). It is also the model that drew the stock characters the owner approved,
- * and on his own creature drawing it kept the beast's bulk better than the premium one did.
+ * drawn on an EVERYDAY-priced image model (about 4¢ a picture), not the premium one (15¢). That is what
+ * keeps the price honest: a character is registered for about 87¢ of tokens and its 3D view costs about
+ * 53¢, so at 15¢ a look the third preview already sold the character at a loss; at 4¢ a whole day's eight
+ * fit (plan-config.ts has the sum).
+ *
+ * WHICH model (2026-11-24, character-look.ts → previewLadder): a first look from words is drawn on Seedream 4.5,
+ * then nano-banana (both about 4¢); one from a picture on nano-banana first (it keeps the picture). The owner's
+ * Creature description ("Demonic woman human body with a mouth too large to be human…") was REFUSED by
+ * nano-banana's safety filter, as a creature and as a person; Seedream drew her right once the writer had spelled
+ * her out (below). Only three things go to the strongest model, nano-banana-pro (about 15¢): the ONE more go after
+ * a look that missed, an EDIT ("Edit description"), and a human with a mood when the writer could not be had.
+ *
+ * …AND EACH LOOK IS CHECKED (character-look.ts): a writer reads the words into a brief before it is drawn, a
+ * reader looks at what came back — everything the words state, nothing they did not ask for — and a picture
+ * that misses is drawn ONCE more, told what. Still one of the day's free looks; both steps fail open. About
+ * 1.5¢ a look on the Anthropic side, plus about 16¢ for the one more go when it is needed.
  *
  * WHAT IS WRITTEN DOWN, per shop, in one small file beside the uploads (so a restart forgets nothing):
  *   at     when each of the day's previews was TAKEN — reserved before the picture is drawn, in the same
@@ -32,7 +43,9 @@ import crypto from "node:crypto";
 import { brandStill } from "./commercial-ad-pipeline.server";
 import { repRun } from "./image-generation.server";
 import { isServableUploadName, shopSlug, uploadFileName, type UploadExt } from "./upload-names";
-import { characterPreviewPrompt, type CharKind } from "./character-prompts";
+import { characterEditPrompt, characterPreviewPrompt, type CharBrief, type CharKind } from "./character-prompts";
+import { CHARACTER_BRIEF_SCHEMA, STRONG_LADDER, characterBriefAsk, characterCheckAsk, characterEditCheckAsk, characterEditFix, characterFaults, characterFix, editFaults, keepSecond, keepSecondEdit, previewLadder, readCharacterBrief, readCharacterCheck, readCharacterEditCheck, type CharCheck, type EditCheck } from "./character-look";
+import { storyPictureInput } from "./story-picture";
 
 /** Free previews a shop may make in any 24 hours. */
 export const PREVIEWS_PER_DAY = 8;
@@ -134,38 +147,167 @@ export function reservePreview(shopId: string): (() => void) | null {
   };
 }
 
-/** Should the premium model be asked when the everyday one fails? Not when we were simply told to slow
- *  down — the next try on the everyday model will work, and the premium one costs four times as much. */
+/** Should the premium model be asked when the everyday ones fail? Not when we were simply told to slow
+ *  down — the next try on an everyday model will work, and the premium one costs four times as much. */
 const worthThePremium = (e: unknown): boolean => !/\b429\b|rate.?limit|throttl/i.test(e instanceof Error ? e.message : String(e));
 
-/** Draw one preview. `refFile` is a picture already in the shop's upload space (see ownsUpload).
- *  Returns the preview's file name in that same space. The caller has already TAKEN a preview with
- *  reservePreview() and gives it back if this throws. */
-export async function makeCharacterPreview(o: { shopId: string; kind: CharKind; desc: string; refFile?: string }): Promise<string> {
-  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-  if (o.refFile && !base) throw new Error("previews from a picture need SHOPIFY_APP_URL");
-  const prompt = characterPreviewPrompt(o.kind, o.desc, !!o.refFile);
-  const refUrl = o.refFile ? `${base}/uploads/${o.refFile}` : undefined;
-  let url: string;
-  try {
-    url = await repRun("google/nano-banana", { prompt, ...(refUrl ? { image_input: [refUrl] } : {}), aspect_ratio: "3:4", output_format: "jpg" }, 150_000);
-  } catch (e) {
-    if (!worthThePremium(e)) throw e;
-    // It balks at some creatures, and it has outages of its own. The maker still gets their picture —
+/** One picture, on `ladder` (character-look.ts → previewLadder for a first look; STRONG_LADDER for the one more
+ *  go and for an edit), then — only when every rung FAILED rather than asked us to slow down — the premium
+ *  model. Returns the picture's bytes. */
+async function drawPreview(prompt: string, refUrl: string | undefined, kind: CharKind, ladder: ReadonlyArray<string>): Promise<Buffer> {
+  let url = "";
+  let last: unknown = null;
+  for (const m of ladder) {
+    try {
+      url = await repRun(m, storyPictureInput(m, { prompt, refs: refUrl ? [refUrl] : [], aspect: "3:4" }), 150_000);
+      break;
+    } catch (e) {
+      last = e;
+      console.warn(`[character] a ${kind} preview failed on ${m.split("/")[1]}: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
+    }
+  }
+  if (!url) {
+    if (!worthThePremium(last)) throw last;
+    // Both balk at some creatures, and they have outages of their own. The maker still gets their picture —
     // from the premium model, at our cost — rather than a dead end; logged, because it is the dear path.
-    console.warn(`[character] everyday image model failed for a ${o.kind} preview (${e instanceof Error ? e.message.slice(0, 140) : e}) — drawing it on the premium model`);
+    console.warn(`[character] everyday image models failed for a ${kind} preview — drawing it on the premium model`);
     url = await brandStill(prompt, refUrl, true);
   }
   const res = await fetch(url, { signal: AbortSignal.timeout(3 * 60_000) });
   if (!res.ok) throw new Error(`preview fetch ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.length < 1000) throw new Error("the preview came back empty");
+  return buf;
+}
+
+/* ---- THE TWO LOOKS (character-look.ts) — each FAILS OPEN, and neither may hold a maker up for long ---- */
+
+/** `CHARACTER_LOOK=off` draws from the words alone, unread and unchecked (they still lead the prompt). */
+const looksOn = (): boolean => (process.env.CHARACTER_LOOK || "").trim().toLowerCase() !== "off";
+const BRIEF_MS = 15_000;
+const CHECK_MS = 25_000;
+/** `p`, or null once `ms` have passed (what it does after that is let go). */
+const within = <T>(p: Promise<T>, ms: number): Promise<T | null> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p, new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ms); })]).finally(() => clearTimeout(timer));
+};
+
+/** BEFORE: the writer's brief from the maker's words — null when it cannot be had or is not fit to use. */
+async function briefFor(kind: CharKind, desc: string, hasRef: boolean): Promise<CharBrief | null> {
+  try {
+    const { anthropicText } = await import("./anthropic.server");
+    const ask = anthropicText(characterBriefAsk(kind, desc, hasRef), { model: "claude-sonnet-5", maxTokens: 800, jsonSchema: { name: "character_brief", schema: CHARACTER_BRIEF_SCHEMA } });
+    ask.catch(() => { /* answered after we stopped waiting — nothing to do */ });
+    const raw = await within(ask, BRIEF_MS);
+    if (raw == null) { console.warn(`[character] the brief took longer than ${BRIEF_MS / 1000}s — drawing from the words alone`); return null; }
+    const brief = readCharacterBrief(raw, kind, desc);
+    if (!brief) console.warn("[character] the brief could not be used — drawing from the words alone");
+    return brief;
+  } catch (e) {
+    console.warn(`[character] no brief (${e instanceof Error ? e.message.slice(0, 120) : e}) — drawing from the words alone`);
+    return null;
+  }
+}
+
+/** AFTER: what the reader sees in the picture against the words — null when it cannot say. */
+async function checkPreview(buf: Buffer, kind: CharKind, desc: string, attributes: ReadonlyArray<string>): Promise<CharCheck | null> {
+  try {
+    const { anthropicVision } = await import("./anthropic.server");
+    const ask = anthropicVision(characterCheckAsk(kind, desc, attributes), [`data:image/jpeg;base64,${buf.toString("base64")}`], { maxTokens: 700, model: "claude-sonnet-4-6" });
+    ask.catch(() => { /* answered after we stopped waiting */ });
+    const raw = await within(ask, CHECK_MS);
+    return raw == null ? null : readCharacterCheck(raw);
+  } catch (e) {
+    console.warn(`[character] the preview could not be looked at, keeping it: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return null;
+  }
+}
+
+const said = (c: CharCheck): string => [c.missing.length ? `missed ${c.missing.join(", ")}` : "", c.added.length ? `added ${c.added.join(", ")}` : ""].filter(Boolean).join("; ");
+
+/** AN EDIT, looked at: the edit beside the look it was made from — still the same individual, the change there,
+ *  nothing else changed. Null when it cannot say. */
+async function checkEdit(edited: Buffer, was: Buffer, kind: CharKind, before: string, after: string): Promise<EditCheck | null> {
+  try {
+    const { anthropicVision } = await import("./anthropic.server");
+    const ask = anthropicVision(characterEditCheckAsk(kind, before, after), [`data:image/jpeg;base64,${edited.toString("base64")}`, `data:image/jpeg;base64,${was.toString("base64")}`], { maxTokens: 500, model: "claude-sonnet-4-6" });
+    ask.catch(() => { /* answered after we stopped waiting */ });
+    const raw = await within(ask, CHECK_MS);
+    return raw == null ? null : readCharacterEditCheck(raw);
+  } catch (e) {
+    console.warn(`[character] the edit could not be looked at, keeping it: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return null;
+  }
+}
+
+/** "EDIT DESCRIPTION" (the owner, 2026-11-24: "I tried to edit her hair to blonde and it changed her face"): the
+ *  look the maker saw is the reference, and only what the new words change is changed — drawn on the model that
+ *  holds a face best, looked at beside the look it came from, and drawn once more when it is someone else. */
+async function editPreview(o: { kind: CharKind; desc: string; edit: { file: string; desc: string } }, base: string, looks: boolean): Promise<Buffer> {
+  const refUrl = `${base}/uploads/${o.edit.file}`;
+  const prompt = characterEditPrompt(o.kind, o.edit.desc, o.desc);
+  let buf = await drawPreview(prompt, refUrl, o.kind, STRONG_LADDER);
+  let was: Buffer;
+  try { was = fs.readFileSync(uploadPath(o.edit.file)); } catch { return buf; }
+  if (!looks) return buf;
+  const first = await checkEdit(buf, was, o.kind, o.edit.desc, o.desc);
+  if (first && editFaults(first)) {
+    try {
+      const again = await drawPreview(`${prompt}${characterEditFix(first)}`, refUrl, o.kind, STRONG_LADDER);
+      const second = await checkEdit(again, was, o.kind, o.edit.desc, o.desc);
+      const keep = keepSecondEdit(first, second);
+      if (keep) buf = again;
+      console.log(`[character] an edit of a ${o.kind} ${first.same ? "" : "became someone else; "}${first.unasked.length ? `changed ${first.unasked.join(", ")}; ` : ""}${first.missing.length ? `missed ${first.missing.join(", ")}; ` : ""}drawn once more — showing the ${keep ? "second" : "first"}`);
+    } catch (e) {
+      console.warn(`[character] the edit's second go failed (${e instanceof Error ? e.message.slice(0, 120) : e}) — showing the first`);
+    }
+  }
+  return buf;
+}
+
+/** Draw one preview. `refFile` is a picture already in the shop's upload space (see ownsUpload); `edit` is one of
+ *  the shop's own previews being edited ("Edit description"), with the words it was drawn from. Returns the
+ *  preview's file name in that same space. The caller has already TAKEN a preview with reservePreview() and
+ *  gives it back if this throws. */
+export async function makeCharacterPreview(o: { shopId: string; kind: CharKind; desc: string; refFile?: string; edit?: { file: string; desc: string } }): Promise<string> {
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if ((o.refFile || o.edit) && !base) throw new Error("previews from a picture need SHOPIFY_APP_URL");
+  const refUrl = o.refFile ? `${base}/uploads/${o.refFile}` : undefined;
+  // the two looks are for words: a picture alone has nothing written to keep to
+  const looks = looksOn() && o.desc.trim().length >= 8;
+  let buf: Buffer;
+  if (o.edit) buf = await editPreview({ kind: o.kind, desc: o.desc, edit: o.edit }, base, looks);
+  else buf = await drawFresh(o.kind, o.desc, refUrl, looks);
   const name = uploadFileName(o.shopId, crypto.randomBytes(8).toString("hex"), "jpg", "mascot");
   fs.writeFileSync(uploadPath(name), buf);
   const l = readLedger(o.shopId);
   l.made[name] = { kind: o.kind, desc: o.desc, refFile: o.refFile || "", at: Date.now() };
   writeLedger(o.shopId, l);
   return name;
+}
+
+/** A preview drawn from the words (and the picture the maker added): the writer's brief, the draw, the look, and
+ *  — when the look finds something missed or added — one more go. */
+async function drawFresh(kind: CharKind, desc: string, refUrl: string | undefined, looks: boolean): Promise<Buffer> {
+  const brief = looks ? await briefFor(kind, desc, !!refUrl) : null;
+  const prompt = characterPreviewPrompt(kind, desc, !!refUrl, brief);
+  let buf = await drawPreview(prompt, refUrl, kind, previewLadder({ kind, desc, hasRef: !!refUrl, brief: !!brief }));
+  if (!looks) return buf;
+  const first = await checkPreview(buf, kind, desc, brief?.attributes || []);
+  if (first && characterFaults(first)) {
+    // ONE more go, told what the first got wrong, on the model that does what it is told — the same free look;
+    // whatever happens, a picture is shown
+    try {
+      const again = await drawPreview(`${prompt}${characterFix(first)}`, refUrl, kind, STRONG_LADDER);
+      const second = await checkPreview(again, kind, desc, brief?.attributes || []);
+      const keep = keepSecond(first, second);
+      if (keep) buf = again;
+      console.log(`[character] a ${kind} preview ${said(first)} — drawn once more${second ? (characterFaults(second) ? ` (${said(second)})` : " (all there)") : ""}; showing the ${keep ? "second" : "first"}`);
+    } catch (e) {
+      console.warn(`[character] the second go failed (${e instanceof Error ? e.message.slice(0, 120) : e}) — showing the first`);
+    }
+  }
+  return buf;
 }
 
 /* ---- KEEP A STORY'S CHARACTER ----

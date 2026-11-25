@@ -362,6 +362,14 @@ export const TOKEN_COST = {
   //   ⚠ This only holds while previews are drawn on the EVERYDAY model. On the premium one ($0.15) the
   //   third preview already puts the character under water — character-preview.server.ts keeps the
   //   premium model as the fallback only, and tests/character-prompts.test.ts pins that order.
+  //   ⚠ 2026-11-24 (owner: "it's kind of difficult to make accurate generations from scratch… how can we
+  //   improve?"): a look is now READ before it is drawn and CHECKED after (character-look.ts) — about $0.055
+  //   a look instead of $0.039 (Seedream 4.5 $0.04 + ~1.5¢ of Claude); a look the check finds wrong is drawn
+  //   once more on nano-banana-pro (+~$0.16), and an "Edit description" is drawn on it too (~$0.165). Two
+  //   looks with one in four redrawn ≈ $0.19, not $0.08: $0.72 a creature — inside 20 tokens monthly, level
+  //   on annual; a person ≈ $2.68 against 60 tokens ($2.60). The worst case (eight looks, every one redrawn)
+  //   is no longer inside either price. NOT re-priced here — that is the owner's call; CHARACTER_LOOK=off
+  //   turns the read and the check (and so the redraws) off.
   characterForge: 20,
   // One outfit's 3D view bought on its own — for a presenter made before the 3D views existed. $0.47 is
   // 11 tokens; kept at the 10-an-outfit the price above works out to (60 − the 20 the portraits cost),

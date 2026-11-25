@@ -130,7 +130,8 @@ test("the dialog opens ON the character: their portrait, name and words — and 
   assert.ok(cf.includes("const cost = d ? (kind === \"person\" ? d.costs.person : d.costs.character) : null;"));
   // no "Try another" on a kept character (it would draw someone else); the plain dialog is as it was
   assert.ok(cf.includes("{!preview && !seed ? ("));
-  assert.ok(cf.includes(") : preview ? (") && cf.includes("onClick={() => askPreview(preview.refFile)}"));
+  // ("Try another" on a look that was itself an EDIT edits that same look again — character-look.test.ts)
+  assert.ok(cf.includes(") : preview ? (") && cf.includes("onClick={() => askPreview(preview.refFile, preview.from)}"));
   // afterwards the maker stays with their story: "Done", and the cast opens beside it
   assert.ok(cf.includes("<button type=\"button\" className=\"wb-btn cf-go\" onClick={close}>{t(\"Done\")}</button>"));
   assert.ok(cf.includes("<Link className=\"cf-again\" to=\"/web/presenters?show=mine\" target=\"_blank\" rel=\"noopener\">{t(\"See your cast\")}</Link>"));

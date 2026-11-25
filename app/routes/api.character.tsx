@@ -5,8 +5,10 @@
  *
  *   GET                         → what the dialog needs to draw itself: prices, previews left today,
  *                                 the shop's own voices, whether the plan can create characters at all
- *   POST intent=preview         multipart { charKind, avatarDesc, avatarPhoto? | refFile? }
- *                               → { preview: { file, refFile, kind, left } }        FREE, counted
+ *   POST intent=preview         multipart { charKind, avatarDesc, avatarPhoto? | refFile?, editOf? }
+ *                               → { preview: { file, refFile, kind, left, from? } }  FREE, counted
+ *                                 editOf: "Edit description" — one of their own previews, changed only
+ *                                 where the new words change it (`from` = the look it was edited from)
  *   POST intent=adopt           { img (one of our /renders pictures), charKind, avatarDesc }
  *                               → { preview: { file, refFile: "", kind, left } }    FREE, nothing drawn —
  *                                 "Keep in my cast": a story's own character, from the portrait it drew
@@ -92,7 +94,15 @@ export async function action({ request }: ActionFunctionArgs) {
       ext = pv.sniffImage(upload); // what the bytes are, not what the browser called them
       if (!ext) return json({ error: tr(lang, "That file isn't an image — use a JPG, PNG or WebP.") });
     }
-    if (!upload && !refFile && desc.length < 8) return json({ error: tr(lang, "Describe your character, or add a picture of them.") });
+    // AN EDIT of a look they have already seen ("Edit description"): that picture is the reference, and only what
+    // the new words change is changed — never a fresh draw (the owner, 2026-11-24: "I tried to edit her hair to
+    // blonde and it changed her face"). Only one of this shop's own previews, of the kind being drawn, is edited;
+    // anything else is drawn afresh. A few words are enough to say what changes ("red hat").
+    const editOf = hasPhoto ? "" : String(form.get("editOf") || "").trim();
+    const editRec = editOf ? pv.previewRecord(shop.id, editOf) : null;
+    const edit = editRec && editRec.kind === kind ? { file: editOf, desc: editRec.desc } : undefined;
+    if (edit && desc.length < 3) return json({ error: tr(lang, "Describe your character, or add a picture of them.") });
+    if (!edit && !upload && !refFile && desc.length < 8) return json({ error: tr(lang, "Describe your character, or add a picture of them.") });
 
     // Take one of today's previews NOW — before the screen and the half-minute draw are awaited — so
     // parallel requests cannot all pass the check. Given back on every path that draws nothing.
@@ -108,8 +118,8 @@ export async function action({ request }: ActionFunctionArgs) {
         if (!verdict.ok) { giveBack(); return json({ error: verdict.message }); }
       }
       if (upload && ext) { saved = pv.saveReference(shop.id, upload, ext); refFile = saved; }
-      const file = await pv.makeCharacterPreview({ shopId: shop.id, kind, desc, refFile: refFile || undefined });
-      return json({ preview: { file, refFile, kind, left: pv.previewsLeft(shop.id) } }, noStore);
+      const file = await pv.makeCharacterPreview({ shopId: shop.id, kind, desc, refFile: refFile || undefined, edit });
+      return json({ preview: { file, refFile, kind, left: pv.previewsLeft(shop.id), ...(edit ? { from: edit.file } : {}) } }, noStore);
     } catch (e) {
       giveBack();
       if (saved) pv.dropUpload(shop.id, saved);
