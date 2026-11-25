@@ -2615,6 +2615,7 @@ export default function FilmStudio() {
   // minutes the Generate area says so in one calm line — about how long, and that it waits in the Archive
   const [renderLo, renderHi] = lenMinutes(scenes);
   const renderAbout = (renderLo + renderHi) / 2;
+  const longRender = isStoryboard && renderAbout > LONG_RENDER_MINUTES;
   // Capture the previewed stills + the hero; the render then uses these EXACT images (no surprise),
   // and the hero lets a single scene be re-rolled without changing the artist.
   useEffect(() => {
@@ -4899,11 +4900,13 @@ export default function FilmStudio() {
           <button type="submit" className={`fs-go${storySent ? " is-sent" : ""}`} disabled={!canGo || storySent || notingPlace !== null}>
             {generating ? <>… {t("Starting your film")}</> : storySent ? <><Ico n="check" size={16} /> {t("Rendering — it lands in your Archive")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(heroTitle), cost }) : t("Generate {name} · Free", { name: t(heroTitle) })}</>}
           </button>
-          <div className="fs-eta" aria-live="polite" title={t("A rough estimate — longer films and lip-sync take more time.")}>
-            <span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, per: lenPer, narrated, moves: d.storyMotion && pictures !== "still", scenes, engine: dialogueEngine })}</b>
+          {/* (a long film — past twenty minutes to make — is said once, calmly, in the estimate's place: about how long,
+              and that it is kept for them while they do something else. Its range is on the Length slider.) */}
+          <div className={`fs-eta${longRender ? " is-long" : ""}`} aria-live="polite" title={t("A rough estimate — longer films and lip-sync take more time.")}>
+            <span aria-hidden="true">⏱</span> {longRender
+              ? t("About {time} to render — we'll keep it in your Archive", { time: waitSaid(renderAbout, t) })
+              : <>{t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, per: lenPer, narrated, moves: d.storyMotion && pictures !== "still", scenes, engine: dialogueEngine })}</b></>}
           </div>
-          {/* (a long film: said once, calmly — it is made while they do something else, and kept for them) */}
-          {isStoryboard && renderAbout > LONG_RENDER_MINUTES && <p className="fs-longrun">{t("About {time} to render — we'll keep it in your Archive", { time: waitSaid(renderAbout, t) })}</p>}
         </Form>
         <p className="fs-cost">
           {cost > 0
@@ -5022,9 +5025,9 @@ ${CAST_ID_CSS}
 .fs-wrap{max-width:none;margin:0 auto;--fs-gold:#C79A3A;--fs-gold-lt:#E7C879;}
 .fs-eta{display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 0;font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
 .fs-eta b{font-weight:800;color:var(--ink,#14201A);}
-/* a long film (2026-11-25, films up to five minutes): one calm line under the estimate — how long, and that it waits
-   in the Archive. Not a warning: no amber, no icon that shouts */
-.fs-longrun{margin:6px auto 0;max-width:440px;text-align:center;font-size:12.5px;font-weight:600;line-height:1.4;color:var(--ink2,#4A554E);}
+/* a long film (2026-11-25, films up to five minutes): the estimate's line says, calmly, about how long and that it
+   waits in the Archive — a sentence, so it wraps as one (centred, the clock inline); not a warning: no amber */
+.fs-eta.is-long{display:block;max-width:440px;margin-inline:auto;text-align:center;text-wrap:balance;font-weight:600;line-height:1.45;}
 /* Cinematic hero — a dark "movie theatre" band with a gold spotlight + underline. */
 /* Green hero band — SOFTENED so it sits in the page (light shadow + a crisp inner
    edge + slimmer) instead of a floating slab. Gold rosette, the still bleeds in. */

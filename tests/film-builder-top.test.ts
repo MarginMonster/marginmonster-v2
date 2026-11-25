@@ -391,10 +391,12 @@ test("A SLIDER CANNOT ASK FIRST PER VALUE: under a written script a new length w
 });
 
 test("a long film says so in the Generate area: past twenty minutes, one calm line — the same estimate the slider says", () => {
-  assert.ok(ui.includes("const LONG_RENDER_MINUTES = 20;") || page.includes("const LONG_RENDER_MINUTES = 20;"));
-  const go = between(ui, "<div className=\"fs-eta\" aria-live=\"polite\"", "</Form>");
-  assert.ok(go.includes("{isStoryboard && renderAbout > LONG_RENDER_MINUTES && <p className=\"fs-longrun\">{t(\"About {time} to render — we'll keep it in your Archive\", { time: waitSaid(renderAbout, t) })}</p>}"));
-  assert.ok(ui.includes("const [renderLo, renderHi] = lenMinutes(scenes);\n  const renderAbout = (renderLo + renderHi) / 2;"));
+  assert.ok(page.includes("const LONG_RENDER_MINUTES = 20;"));
+  assert.ok(ui.includes("const [renderLo, renderHi] = lenMinutes(scenes);\n  const renderAbout = (renderLo + renderHi) / 2;\n  const longRender = isStoryboard && renderAbout > LONG_RENDER_MINUTES;"));
+  // said ONCE: in the estimate's own place (its range is on the slider), never a second line saying it again
+  const go = between(ui, "<div className={`fs-eta${longRender ? \" is-long\" : \"\"}`} aria-live=\"polite\"", "</Form>");
+  assert.ok(go.includes("<span aria-hidden=\"true\">⏱</span> {longRender\n              ? t(\"About {time} to render — we'll keep it in your Archive\", { time: waitSaid(renderAbout, t) })\n              : <>{t(\"Est. render time\")} <b>{filmEta("));
+  assert.equal(count(ui, "About {time} to render"), 1);
   // ONE estimate: the slider's minutes, "Est. render time" and this line are all storyMinutes (renderMinutes)
   assert.ok(ui.includes("const lenMinutes = (n: number): [number, number] => storyMinutes(lenWay, n, { moves: d.storyMotion && pictures !== \"still\", per: lenPer, veo: dialogueEngine === \"veo\" });"));
   assert.ok(page.includes("[lo, hi] = storyMinutes(\"narrated\", n, { moves: opts.moves, per: opts.per });") && page.includes("[lo, hi] = storyMinutes(\"acted\", n, { veo: opts.engine === \"veo\" });"));
@@ -415,8 +417,8 @@ test("a long film says so in the Generate area: past twenty minutes, one calm li
   assert.equal(waitSaid(60, enT), "1 h");
   assert.equal(waitSaid(66, enT), "1 h 5 min");
   for (const k of ["About {time} to render — we'll keep it in your Archive", "{n} min", "{h} h {m} min", "{h} h"]) assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
-  // calm: no amber
+  // calm: no amber — a sentence, centred, wrapping as one
   const css = sheetOf("FS_STYLE");
-  const rule = css.slice(css.indexOf(".fs-longrun{"), css.indexOf("}", css.indexOf(".fs-longrun{")));
-  assert.ok(rule && !/#7A5A12|#FFF7E3|#EBD9A8/.test(rule), rule);
+  const rule = css.slice(css.indexOf(".fs-eta.is-long{"), css.indexOf("}", css.indexOf(".fs-eta.is-long{")));
+  assert.ok(rule.includes("display:block;") && rule.includes("text-align:center;") && !/#7A5A12|#FFF7E3|#EBD9A8/.test(rule), rule);
 });
