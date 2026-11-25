@@ -249,6 +249,46 @@ test("a script that has just arrived makes the card ASK, once — nothing opens 
   assert.ok(ui.includes("const tapStory = (key: StoryCard) => { setStoryCard((cur) => (cur === key ? null : key));"));
 });
 
+test("on a phone the rows are comfortable inside the panel: nothing sideways, pickers the full width, 44px to the thumb, 16px to type in", () => {
+  const css = between(ui, "/* ONE PLACE TO CAST (2026-11-25): those rows INSIDE the Cast step's panel.", "@media(prefers-reduced-motion:reduce){.fs-go::after{display:none;}");
+  const phone = between(css, "@media(max-width:560px){", "\n}\n");
+  // the face beside the name and the look; the voice the full width under them; the options under that
+  for (const k of [
+    ".mm-castpanel .fs-actor-face{grid-row:1 / span 2;grid-column:1;}",
+    ".mm-castpanel .fs-actor-name-in{grid-row:1;grid-column:2;min-height:44px;font-size:16px;}",
+    ".mm-castpanel .fs-actor-voice{grid-row:3;grid-column:1 / -1;}",
+    ".mm-castpanel .fs-actor-voice select{min-height:44px;font-size:16px;}",
+    ".mm-castpanel .fs-voice-play{width:46px;}",
+    ".mm-castpanel .fs-shot-url{font-size:16px;}",
+    ".mm-castpanel .fs-cast-add{width:100%;justify-content:center;min-height:46px;box-sizing:border-box;}",
+  ]) assert.ok(phone.includes(k), k);
+  // the look: 16px in the reading face, growing with what is written where the browser can
+  assert.ok(phone.includes(".mm-castpanel .fs-actor-desc-in{grid-row:2;grid-column:2;display:block;min-height:79px;max-height:230px;field-sizing:content;font-family:Inter,system-ui,sans-serif;font-weight:400;font-size:16px;line-height:1.36;}"));
+  // every field a thumb types in, in the panel, is 16px (a smaller one makes an iPhone zoom the page)
+  for (const field of [".fs-actor-name-in", ".fs-actor-desc-in", ".fs-actor-voice select", ".fs-shot-url"]) {
+    const rule = new RegExp(`\\.mm-castpanel ${field.replace(/[.]/g, "\\.")}\\{[^}]*font-size:16px;`);
+    assert.ok(rule.test(phone), field);
+  }
+  // the two ways to bring a face share a line; "Re-cast" and, at the far end, "Remove" the next
+  assert.ok(phone.includes(".mm-castpanel .fs-actor-opts{grid-row:4;gap:12px 16px;}"));
+  assert.ok(phone.includes(".mm-castpanel .fs-actor-opts > details{order:1;}") && phone.includes(".mm-castpanel .fs-actor-opts > .fs-actor-del{order:3;margin-inline-start:auto;}"));
+  // the guarantees the old section had on a phone are the page's own rules still (tests/film-cast-picker-width.test.ts):
+  // an opened picker takes the whole row, the row goes under the face, and the small controls have 44px to tap
+  assert.ok(ui.includes(".fs-actor-opts > details[open]{flex:1 1 100%;min-width:0;}"));
+  assert.ok(ui.includes("  .fs-actor-opts{grid-column:1 / -1;}"));
+  for (const sel of [".fs-actor-del::after", ".fs-actor-recast::after", ".fs-shot-own summary::after"]) assert.ok(ui.includes(sel), sel);
+  // the panel's own line is a full-size tap too, and the panel never needs more room than the phone has
+  assert.ok(css.includes(".mm-castover{position:relative;display:flex;align-items:center;gap:7px;width:100%;min-height:44px;"));
+  assert.ok(phone.includes(".mm-castpanel{padding:14px 12px;}"));
+  assert.ok(phone.includes(".mm-story a.mm-pace-auto{min-height:44px;}"), "\"Create a new character\", under the faces");
+  // (these phone rules come AFTER the page's general phone rules for a row, or they would lose to them)
+  assert.ok(ui.indexOf(".mm-castpanel .fs-actor-face{grid-row:1 / span 2;grid-column:1;}") > ui.indexOf("  .fs-actor-face{grid-row:1 / span 3;}"));
+  // where there is room the rows stay one under another, the full width of the panel: side by side, an opened
+  // "Pick a presenter" was five faces across instead of thirteen (tried in the harness, and taken out)
+  assert.ok(!/\.mm-castpanel \.fs-cast\{[^}]*grid-template-columns/.test(ui));
+  assert.ok(ui.includes(".fs-cast{display:flex;flex-direction:column;gap:12px;margin-top:10px;}"));
+});
+
 test("every new line is translated", () => {
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["Start over with different stars", "tap to give them faces (optional)"]) {

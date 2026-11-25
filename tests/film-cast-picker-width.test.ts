@@ -51,4 +51,10 @@ test("on a phone the options row sits under the face, the full width of the card
   // the phone rules come AFTER the desktop ones they change, or they would lose
   assert.ok(at > src.indexOf(".fs-actor-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:8px;}"));
   assert.ok(at > src.indexOf(".fs-actor{display:flex;gap:14px;align-items:flex-start;"));
+  // (2026-11-25) inside the Cast step's panel the row is still under the face, the full width of the card — the
+  // panel only moves the VOICE under the face too, and those rules come after the ones above, which they adjust
+  const inPanel = src.indexOf("  .mm-castpanel .fs-actor-opts{grid-row:4;gap:12px 16px;}");
+  assert.ok(inPanel > at, "the panel's phone rules follow the general ones");
+  assert.ok(!/\.mm-castpanel \.fs-actor-opts\{[^}]*grid-column/.test(src), "the panel does not narrow the row: it keeps grid-column:1 / -1");
+  assert.ok(!/\.mm-castpanel \.fs-actor-opts > details\[open\]/.test(src), "nor the opened picker: it keeps the whole row");
 });

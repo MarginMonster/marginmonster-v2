@@ -5193,6 +5193,33 @@ ${CAST_ID_CSS}
 .mm-castover.on::after{content:"–";}
 .mm-castover:hover,.mm-castover.on{color:var(--green,#0C7A46);}
 .mm-castover + .mm-opts-sub{margin-top:8px;}
+/* (Where there is room the rows stay one under another, the full width of the panel — two side by side were
+   tried in the mock, and "Pick a presenter" then opened five faces across instead of thirteen.) */
+/* On a phone, inside the panel: the face stands beside the name and the look (a caption beside its picture,
+   as it was), and the VOICE takes the full width under them — beside a 98px face the picked voice's name
+   was cut off after a dozen letters. Everything typed in is 16px: a smaller field makes an iPhone zoom the
+   whole page on the first tap; the look is set in the page's reading face so 16px of it stays quiet, and
+   it grows with what is written where the browser can (field-sizing). Every control is 44px to the thumb. */
+@media(max-width:560px){
+  .mm-castpanel{padding:14px 12px;}
+  .mm-castpanel .fs-actor{padding:10px;gap:8px 12px;}
+  .mm-castpanel .fs-actor-face{grid-row:1 / span 2;grid-column:1;}
+  .mm-castpanel .fs-actor-name-in{grid-row:1;grid-column:2;min-height:44px;font-size:16px;}
+  .mm-castpanel .fs-actor-desc-in{grid-row:2;grid-column:2;display:block;min-height:79px;max-height:230px;field-sizing:content;font-family:Inter,system-ui,sans-serif;font-weight:400;font-size:16px;line-height:1.36;}
+  .mm-castpanel .fs-actor-voice{grid-row:3;grid-column:1 / -1;}
+  .mm-castpanel .fs-actor-voice select{min-height:44px;font-size:16px;}
+  .mm-castpanel .fs-voice-play{width:46px;}
+  /* (the two ways to bring a face share the first line; "Re-cast" and, at the far end, "Remove" the next —
+     four small things in a row broke wherever the row ran out, and left "Use my own photo" alone on a line) */
+  .mm-castpanel .fs-actor-opts{grid-row:4;gap:12px 16px;}
+  .mm-castpanel .fs-actor-opts > details{order:1;}
+  .mm-castpanel .fs-actor-opts > .fs-actor-recast{order:2;}
+  .mm-castpanel .fs-actor-opts > .fs-actor-del{order:3;margin-inline-start:auto;}
+  .mm-castpanel .fs-shot-url{font-size:16px;}
+  .mm-castpanel .fs-cast-add{width:100%;justify-content:center;min-height:46px;box-sizing:border-box;}
+  /* (…and the step's one link, "Create a new character", was 31px tall under the faces) */
+  .mm-story a.mm-pace-auto{min-height:44px;}
+}
 @media(prefers-reduced-motion:reduce){.fs-go::after{display:none;}.fs-tmpl,.fs-shot-make,.fs-write,.fs-go,.fs-actor-cast{transition:none;}.fs-head-img,.fs-head-copy b,.fs-head-rose{animation:none;}}
 @media(max-width:640px){.fs-head{padding:18px;min-height:114px;}.fs-head-copy{max-width:60%;padding:0;}.fs-head-vid{width:52%;}.fs-head-copy b{font-size:21px;}.fs-head-media{width:52%;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
 /* ---- Story flow (location + camera-angle storyboard) ---- */
