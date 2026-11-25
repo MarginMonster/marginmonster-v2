@@ -91,6 +91,8 @@ test("a story is known by the worker's own two tests, and the mark cannot be typ
   assert.equal(storyKindOf({ contentType: "film", filmMode: "narrated", filmTemplate: "musicvideo" }, narratable), null, "told by a narrator only where the format can be");
   assert.equal(storyKindOf({ contentType: "film", filmMode: "narrated" }, narratable), null);
   assert.equal(storyKindOf({ contentType: "commercial" }, narratable), null);
+  // (a found-footage take runs beside the films, not behind one: one short clip and an overlay — 2026-11-25)
+  assert.equal(storyKindOf({ contentType: "take" }, narratable), "take");
   assert.equal(storyKindOf({}, narratable), null);
   // the mark is the field as JSON.stringify writes it…
   assert.ok(JSON.stringify({ a: 1, __lane: "story" }).includes(STORY_MARK));

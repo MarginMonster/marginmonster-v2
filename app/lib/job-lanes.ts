@@ -40,8 +40,11 @@ export const STORY_MARK = '"__lane":"story"';
 /** Is this the payload of a story job — and which kind? THE SAME TWO TESTS THE WORKER USES to choose the
  *  pipeline (job-queue → runJob): a faceless video; a film told by a narrator, in a format that can be.
  *  `canNarrate` is film-engine's (handed in: this file knows no formats). */
-export function storyKindOf(p: { contentType?: unknown; filmMode?: unknown; filmTemplate?: unknown }, canNarrate: (template: string | undefined) => boolean): "faceless" | "narrated" | null {
+export function storyKindOf(p: { contentType?: unknown; filmMode?: unknown; filmTemplate?: unknown }, canNarrate: (template: string | undefined) => boolean): "faceless" | "narrated" | "take" | null {
   if (p.contentType === "faceless") return "faceless";
+  // (a FOUND-FOOTAGE TAKE too: one twelve-second clip and an overlay — it waited in the render lane behind a whole
+  //  acted film, a quarter of an hour for a five-minute take; the owner, 2026-11-25: "hurry up")
+  if (p.contentType === "take") return "take";
   if (p.contentType === "film" && p.filmMode === "narrated" && canNarrate(typeof p.filmTemplate === "string" ? p.filmTemplate : undefined)) return "narrated";
   return null;
 }
