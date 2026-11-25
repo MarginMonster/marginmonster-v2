@@ -32,7 +32,7 @@ import { trimTitle } from "./text-trim";
 import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, PROPS, type FilmTreatment } from "./film-engine.server";
 import { singToDisk } from "./music-generation.server";
 import { ensureVoiceModel, coverSongInVoice, matchLoudness, revoiceSongVocals } from "./singing-voice.server";
-import { MV_MAX_SECONDS, beatTimes, defaultRole, editPlan, mvFallbackJoinArgs, mvFallbackPartArgs, mvFallbackParts, paceFor, planFilter, sceneSecondsOf, shotSlot, shotTimes, type Cut, type Pace } from "./mv-pace";
+import { MV_MAX_SECONDS, beatTimes, defaultRole, editPlan, mvEditJoinArgs, mvEditList, mvEditPartArgs, mvEditParts, mvFallbackJoinArgs, mvFallbackPartArgs, mvFallbackParts, paceFor, sceneSecondsOf, shotSlot, shotTimes, type Cut, type Pace } from "./mv-pace";
 import {
   CAST_PROMPT_MAX, MAX_COSTARS, MIC_MOTION_LINE, NO_NEW_MIC_LINE, SOLO_EDIT_MAX,
   MOUTH_CHECK_PROMPT, STYLE_PROMPT_MAX, castCheckPrompt, castFaults, castFix, castMotionLine, castStillPrompt, castStylePrompt, micFits, parseCastCheck, parseMouthCheck, pictureFile, sceneCast, singerOf, soloEditPrompt, soloStillPrompt,
@@ -335,15 +335,29 @@ async function assembleMusicVideo(clips: string[], songPath: string, D: number, 
     const silent = path.join(RENDERS(), `mvcat-${Date.now()}-${rid()}.mp4`);
     let joined = false;
     if (edit) {
-      const args = ["-y"];
-      // (ONE DECODING THREAD A CLIP — 2026-11-25: the paced edit opens every clip at once, twenty-four for two minutes
-      //  of five-second scenes; measured on TEST stand-ins at a 16-core host's thread counts, 870 MB with each decoder
-      //  sized to the cores, 672 MB with one thread each, in the same 17 seconds)
-      norm.forEach((p) => args.push("-threads", "1", "-i", p));
-      const re = await runFfmpeg([...args, "-filter_complex", planFilter(edit, N, 30), "-map", "[v]", "-an",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", silent]);
-      joined = re.status === 0 && fs.existsSync(silent) && Math.abs(ffprobeDuration(silent) - N * D) < 0.5;
-      if (!joined) console.error(`[musicvideo] the paced edit (${edit.length} cuts) could not be made — joining the clips whole: ${(re.stderr || "").slice(-200)}`);
+      // THE PACED EDIT IN PARTS OF SIX CUTS (mv-pace.ts → mvEditParts): in one ffmpeg, a fast edit of two minutes of
+      // ten-second scenes climbed to 1,610 MB (measured 2026-11-25, one decoding thread a clip) — the frames of a clip
+      // lent ahead of its own place wait in the graph. Each part opens one input a cut, nothing split, nothing waits.
+      const plan = mvEditParts(edit, 30);
+      const partFiles = plan.parts.map((_, p) => `${silent}.part${p + 1}.mp4`);
+      const partList = `${silent}.parts.txt`;
+      let why = "";
+      try {
+        for (let p = 0; p < plan.parts.length && !why; p++) {
+          const part = plan.parts[p];
+          const re = await runFfmpeg(mvEditPartArgs(part.files.map((i) => norm[i]), part.graph, plan.parts.length === 1 ? silent : partFiles[p]));
+          if (re.status !== 0) why = `part ${p + 1} of ${plan.parts.length}: ${(re.stderr || "").slice(-200)}`;
+        }
+        if (!why && plan.parts.length > 1) {
+          fs.writeFileSync(partList, mvEditList(partFiles, plan.parts.map((x) => x.frames), 30), "utf8");
+          const re = await runFfmpeg(mvEditJoinArgs(partList, silent));
+          if (re.status !== 0) why = `the parts put together: ${(re.stderr || "").slice(-200)}`;
+        }
+      } finally {
+        for (const f of [...partFiles, partList]) { try { fs.rmSync(f, { force: true }); } catch { /* best effort */ } }
+      }
+      joined = !why && fs.existsSync(silent) && Math.abs(ffprobeDuration(silent) - N * D) < 0.5;
+      if (!joined) console.error(`[musicvideo] the paced edit (${edit.length} cuts in ${plan.parts.length} parts) could not be made — joining the clips whole: ${why || "its length is not the video's"}`);
     }
     if (!joined) {
       const listPath = path.join(RENDERS(), `mvlist-${Date.now()}-${rid()}.txt`);
