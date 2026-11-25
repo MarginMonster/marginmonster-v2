@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { castForWriter, castOnScreen, pickedAsCast, speakerKey, takeSeen, unseenAsk, unseenLines } from "../app/lib/dialogue-cast.ts";
+import { castForWriter, castOnScreen, castRoleOf, castThreat, pickedAsCast, speakerKey, takeSeen, unseenAsk, unseenLines } from "../app/lib/dialogue-cast.ts";
 import { saidWords } from "../app/lib/dialogue-fit.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -152,6 +152,21 @@ test("an acted film made in one press is cast with the people the maker picked",
   ]);
   assert.deepEqual(castForWriter([{ name: "Maya", faceUrl: "/avatars/maya.png" }, { name: "Uncast", faceUrl: null }, { name: " ", faceUrl: "/x.png" }, null]), [{ name: "Maya", desc: "" }], "only who has a picture: an uncast role is the writer's to invent");
   assert.deepEqual(castForWriter(undefined), []);
+  // THE MONSTER IS CASTABLE (2026-11-25, "Monster should be castable also"): one entry may be the film's THING — it keeps
+  // its role, one at most; the writer is told it as a creature (the threat, no line, no "cast" entry), whatever it is
+  const withThreat = pickedAsCast([
+    { name: "Omarine", faceUrl: "/avatars/omarine.jpg", kind: "person", look: "a TEST woman in a green coat", voiceId: null },
+    { name: "Howlette", faceUrl: "/uploads/howlette.png", kind: "monster", look: "a TEST werewolf with grey fur", voiceId: null, role: "threat" },
+    { name: "the lake lady", faceUrl: "/renders/lady.jpg", kind: "person", look: "a TEST pale woman in a soaked dress", voiceId: null, role: "threat" },
+  ], ok);
+  assert.deepEqual(withThreat.map((c) => c.role || ""), ["", "threat", ""], "one thing at most: the first");
+  assert.deepEqual(castThreat(withThreat), withThreat[1]);
+  assert.equal(castThreat(pickedAsCast(picks, ok)), null, "an old payload has none");
+  assert.equal(castThreat([{ name: "x", faceUrl: "", role: "threat" }]), null, "a thing with no picture is no thing to draw from");
+  assert.deepEqual(castForWriter([{ name: "the lake lady", faceUrl: "/renders/lady.jpg", look: "a pale woman", role: "threat" }]), [{ name: "the lake lady", desc: "a pale woman", kind: "monster" }]);
+  // …and how a reader of a posted cast keeps it: nothing else is ever a role
+  assert.deepEqual(castRoleOf({ role: "threat" }), { role: "threat" });
+  for (const x of [{ role: "hero" }, { role: "THREAT" }, {}, null, "threat"]) assert.deepEqual(castRoleOf(x), {});
 
   // THE ACTION: with no storyboard, the picks ARE the cast — for an acted film only, voices checked
   const page = read("app", "routes", "web.film.tsx");

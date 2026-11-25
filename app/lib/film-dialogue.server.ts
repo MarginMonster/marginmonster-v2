@@ -53,6 +53,10 @@ import { castForWriter } from "./dialogue-cast";
 import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
 import { EVENT_MAX, EVENT_MAX_LAST, FILM_FPS, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, joinCheck, kinLooks, nightSetting, openAirPlace, revealPicture, sceneEvent, seenBefore, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging, type SeamKind } from "./acted-staging";
+// THE SIGHTING, AND THE FILM'S THING (2026-11-25 — acted-staging.ts → sightingOf, storyThreat; dialogue-cast.ts → castThreat)
+import { figureIn, sightingOf, sightingPicture, storyThreat, threatPortrait, type Sighting, type ThingRef } from "./acted-staging";
+import { castThreat } from "./dialogue-cast";
+import { PORTRAIT_ASPECT, STORY_LADDER, STORY_MODEL, castEntry, clothedEdit, parseUnclothed, storyPictureInput, unclothedPrompt } from "./story-picture";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const VEO_POLL_MS = 10 * 60_000;
@@ -565,7 +569,7 @@ export async function generateTestMovie(opts: {
   sceneCount?: number;
   section?: string;
   jobId?: string;
-  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string; ckMasters?: string; ckCastLooks?: string };
+  resume?: { ckTreatment?: string; ckCastRef?: string; ckClips?: string[]; ckLastStill?: string; ckPanels?: string; ckSideShot?: string; ckMasters?: string; ckCastLooks?: string; /** the film's thing's portrait, and each sighting's picture (below) — read from the job's own row when the worker does not hand them over */ ckThreat?: string; ckSightings?: string };
   /** Per-scene APPROVED storyboard frames (relative /renders URLs), index-aligned
    *  with the treatment's scenes. A present entry overrides the auto-seed/chain for
    *  that scene so it lands exactly as the merchant staged it. */
@@ -574,7 +578,7 @@ export async function generateTestMovie(opts: {
    *  pinned voice id. Every shot's auto-seed is composed from the faces of the cast
    *  present in it (locked identity), and the speaker's voice timbre is pinned into
    *  the Veo prompt so the voice stays consistent across shots. */
-  cast?: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string }>;
+  cast?: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string; /** THE FILM'S THING (dialogue-cast.ts → castThreat): the member's chosen monster, or the portrait they had drawn of the story's own threat — one entry at most; an old payload has none */ role?: "threat" }>;
   /** Which renderer runs the dialogue clips — the ONE thing that differs between the
    *  otherwise-identical engine pipelines. "kling3" (default, cheaper) or "veo" (premium,
    *  native audio). Recorded on the asset so the Archive shows which model made the film. */
@@ -716,7 +720,8 @@ export async function generateTestMovie(opts: {
   // person is the other name on the cast list, when that list is exactly two. A film with no wordless shot
   // is read exactly as it always was.
   const leads = treatment.scenes.map((s) => (wordless(s.caption) ? null : splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || ""));
-  const allSpeakers = twoOnScreen(leads, treatment.cast, castActors.map((c) => c.name));
+  // (the film's THING is never one of the two who talk — dialogue-cast.ts → castThreat)
+  const allSpeakers = twoOnScreen(leads, treatment.cast, castActors.filter((c) => c.role !== "threat").map((c) => c.name));
   const isTwoHander = allSpeakers.length === 2;
   const [spkA, spkB] = allSpeakers;
   // A character's look in words: the TRUE one read off their cast photo when they have one, else the
@@ -820,7 +825,12 @@ export async function generateTestMovie(opts: {
    *  known; read here when a location's master is drawn. A location with none is drawn as it always was. */
   const stagingAt = new Map<string, ActedStaging | null>();
   const stagingOf = (m: Master | undefined): ActedStaging | null => (m && isActedStaging(m.staging) ? m.staging : null);
-  const masterFor = async (locKey: string, where: string, roomRef?: string, action?: string): Promise<Master | undefined> => {
+  /** THE FILM'S THING (acted-staging.ts → storyThreat; dialogue-cast.ts → castThreat) — its ONE picture, found or drawn
+   *  below, before the first shot; null: the film has none (or it would not draw). */
+  type Threat = { name: string; img: string; from: "cast" | "story"; look: string; entry: string; creature: boolean };
+  let threat: Threat | null = null;
+  // (`thingIn`: this place's first scene has the thing in view — its picture rides along, bound by name: thingBound)
+  const masterFor = async (locKey: string, where: string, roomRef?: string, action?: string, thingIn?: boolean): Promise<Master | undefined> => {
     if (!isTwoHander) return undefined;
     if (masters[locKey]?.url) return masters[locKey];
     // The master two-shot is the WHOLE film's seed — nano-banana occasionally returns null,
@@ -840,7 +850,7 @@ export async function generateTestMovie(opts: {
     let castOk = true;
     for (let attempt = 0; attempt < 3; attempt++) {
       const staging = attempt === 2 && !url ? undefined : dealt;
-      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect }));
+      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null }));
       if (!tryUrl) continue;
       url = tryUrl;
       drawnAs = staging;
@@ -1059,6 +1069,121 @@ export async function generateTestMovie(opts: {
   // smile at what frightens it (acted-staging.ts).
   const staged = process.env.ACTED_STAGING !== "off";
   const horror = tmpl.key === "horror";
+
+  /* THE FILM'S THING — ONE FACE, KNOWN BEFORE ANYTHING IS FILMED (2026-11-25). The eighth render of the lake idea ("Who
+   * Calls From Still Water") had everything right until its last shot: the woman stood waist-deep in the lake in a
+   * soaked white dress, walked toward them — and the reveal, an edit of the tent's picture told in WORDS that she was
+   * "the SAME one this film already showed", drew a grey zombie man in the tent opening. The owner: "It looked really
+   * good till that last scene bro", and then "Monster should be castable also". Words do not carry a face. So the film's
+   * thing has ONE picture, and everything that shows it is drawn from it — a place's master whose first scene has it in
+   * view (masterFor → thingIn), a SIGHTING's edit, and the REVEAL:
+   *   · the maker's cast threat (dialogue-cast.ts → castThreat: `role: "threat"`) — or, in a horror film, a creature
+   *     they cast that is neither of the two who talk (it was used only when the last scene's words named it);
+   *   · else the script's own threat (acted-staging.ts → storyThreat: "the woman in the lake"), whose PORTRAIT is drawn
+   *     here once, on the told stories' portrait recipe and ladder, LOOKED at for an unclothed figure, and kept in the
+   *     checkpoint (a restarted film does not draw it twice);
+   *   · and when no portrait will draw, the picture that FIRST showed it (a sighting, or the master of the place it
+   *     first stood in), whole, with words saying which figure in it — `firstShown`, below.
+   * The piece keeps who it was (meta.threat). A cartoon, a film that is not staged, and a film that is not a two-hander
+   * are made as they were. */
+  const keptOnJob = async (key: string): Promise<string | undefined> => {
+    // (what the worker does not hand over is read from the job's own row, where every checkpoint is written)
+    if (!jobId) return undefined;
+    try { const row = await db.job.findUnique({ where: { id: jobId }, select: { payload: true } }); const v = (JSON.parse(row?.payload || "{}") as Record<string, unknown>)[key]; return typeof v === "string" && v ? v : undefined; } catch { return undefined; }
+  };
+  const onDisk = (u: string | null | undefined): boolean => { const s = String(u || ""); return /^https?:\/\//.test(s) || (s.startsWith("/renders/") && fs.existsSync(path.join(RENDERS(), path.basename(s)))); };
+  /** EVERYBODY IN IT IS CLOTHED — LOOKED AT (story-picture.ts → unclothedPrompt; the master's own look,
+   *  image-generation → renderSideBySideTwoShot): a picture with an unclothed figure is edited ONCE (clothedEdit, on the
+   *  story's best model) and looked at again; still unclothed, it is dropped (null) and the caller goes on as if it had
+   *  not come. A look that cannot be made keeps the picture — never a film lost to its check. */
+  const clothedOrDropped = async (rel: string, ar: string): Promise<string | null> => {
+    const look = async (u: string) => {
+      try { const { anthropicVision } = await import("./anthropic.server"); return parseUnclothed(String((await anthropicVision(unclothedPrompt(), [abs(u) || u], { maxTokens: 120, model: "claude-sonnet-4-6" })) || "")); }
+      catch { return { unclothed: false, who: "" }; }
+    };
+    const seen = await look(rel);
+    if (!seen.unclothed) return rel;
+    console.log(`[testmovie] an unclothed figure (${seen.who || "somewhere in it"}) — the picture is dressed by one edit`);
+    try {
+      const edited = await persistRemote(await repRun(STORY_MODEL, storyPictureInput(STORY_MODEL, { prompt: clothedEdit(seen.who), refs: [abs(rel) || rel], aspect: ar }), 150_000), "jpg");
+      if (!(await look(edited)).unclothed) return edited;
+    } catch (e) { console.error(`[testmovie] the clothing edit did not come: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
+    console.error("[testmovie] still an unclothed figure after the edit — the picture is dropped");
+    return null;
+  };
+  const sightOn = staged && horror && !cartoon && isTwoHander;
+  /** The thing's own cast line (or its name, for a cast thing) — kept even when its portrait would not draw. */
+  let threatEntry = "";
+  if (sightOn) {
+    const named = castThreat(castActors) || castActors.find((c) => !!c.faceUrl && isCreature(c) && ![spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name)));
+    if (named?.faceUrl) {
+      threat = { name: named.name.trim(), img: named.faceUrl, from: "cast", look: castLooks[nameKey(named.name)] || (named.look || "").replace(/\s+/g, " ").trim(), entry: named.name.trim(), creature: isCreature(named) };
+      threatEntry = threat.entry;
+    } else {
+      const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual });
+      if (own) threatEntry = own.entry;
+      if (own) {
+        let kept: Threat | null = null;
+        try { const k = JSON.parse(resume.ckThreat ?? (await keptOnJob("ckThreat")) ?? "null"); if (k && typeof k === "object" && k.from === "story" && k.entry === own.entry && onDisk(k.img)) kept = k as Threat; } catch { /* drawn again */ }
+        let img = kept?.img || "";
+        for (const model of kept ? [] : STORY_LADDER) {
+          try {
+            const drawn = await persistRemote(await repRun(model, storyPictureInput(model, { prompt: threatPortrait(own.entry, tmpl.sceneHint), refs: [], aspect: PORTRAIT_ASPECT }), 150_000), "jpg");
+            img = (await clothedOrDropped(drawn, PORTRAIT_ASPECT)) || "";
+          } catch (e) { console.error(`[testmovie] the thing's portrait on ${model} did not come: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
+          if (img) break;
+        }
+        if (img) {
+          threat = { name: own.name, img, from: "story", look: castEntry(own.entry).look, entry: own.entry, creature: false };
+          if (!kept) await ckpt({ ckThreat: JSON.stringify(threat) });
+        } else console.error(`[testmovie] no portrait of ${own.name} would draw — it is drawn from the picture that first shows it`);
+      }
+    }
+    if (threat) console.log(`[testmovie] the film's thing: ${threat.name} (${threat.from}) — ${threat.img}`);
+  }
+  /** WHAT EACH SIGHTING DREW (by shot), kept the moment it is drawn — a restarted film does not draw it twice, and the
+   *  shots after it in its place, and the reveal, still have it. */
+  type Sighted = { url: string; words: string; who: string; entry: string };
+  const sightings: Record<number, Sighted> = {};
+  if (sightOn) {
+    try { const r = JSON.parse(resume.ckSightings ?? (await keptOnJob("ckSightings")) ?? "null"); if (r && typeof r === "object") for (const [k, v] of Object.entries(r as Record<string, Sighted>)) if (v && typeof v.url === "string" && onDisk(v.url)) sightings[Number(k)] = { url: v.url, words: String(v.words || ""), who: String(v.who || ""), entry: String(v.entry || "") }; } catch { /* none kept */ }
+  }
+  /** THE PICTURE THAT FIRST SHOWED THE THING — the fallback when it has no portrait (a sighting, or the master of the
+   *  place it first stood in): whole, with the words that showed it. */
+  let firstShown: { url: string; words: string } | null = null;
+  /** The thing's picture as an edit is handed it, and how it is told which figure to take: its portrait (a creature
+   *  the maker chose, as itself), else the picture that first showed it. */
+  const thingRef = (): { url: string; kind: ThingRef } | null => (threat ? { url: abs(threat.img) || threat.img, kind: threat.creature ? "creature" : "figure" } : firstShown ? { url: abs(firstShown.url) || firstShown.url, kind: "scene" } : null);
+  /** The cast lines the sighting is read against: the script's, and the cast thing's (it has none in the script). */
+  const thingCast = [...(treatment.cast || []), ...(threat && threat.from === "cast" ? [`${threat.name}${threat.look ? `, ${threat.look}` : ""}`] : [])];
+  /** Is a figure the words found the film's thing (and so drawn from its picture)? Its own cast line, or a figure with
+   *  no cast line of its own — in a horror film that is the thing. */
+  const isTheThing = (entry: string): boolean => !entry || (!!threatEntry && nameTok(entry) === nameTok(threatEntry));
+  /** Where the film last came to the place shot i is in — the shot whose cut brought it there. */
+  const arrivedAt = (i: number): number => { let a = i; while (a > 0 && transitionAt(a) !== "location") a--; return a; };
+  /** What the place looks like NOW at shot i: the latest sighting drawn there since the film came to it — what was
+   *  seen stays seen (a re-anchor or a new angle there grows out of it) — else "" (its master). */
+  const shownAt = (i: number): string => { for (let j = i - 1; j >= arrivedAt(i); j--) if (sightings[j]?.url) return sightings[j].url; return ""; };
+  /** The words the picture shot i would start from was drawn from: its place's first scene — and, when it carries on
+   *  in that place, every sighting drawn there since the film came to it. */
+  const startedFrom = (i: number, tr: string): string[] => {
+    const words = [scenesArr[locFirst.get(locKeyAt(i)) ?? i]?.visual || ""];
+    if (tr !== "location") for (let j = arrivedAt(i); j < i; j++) if (sightings[j]?.words) words.push(sightings[j].words);
+    return words;
+  };
+  /** The thing is in view in the FIRST scene of shot i's place, and that place's picture is drawn from it (never the
+   *  last horror shot's own place: that one is drawn with only the two in it, and the reveal adds the thing). */
+  const thingInMaster = (i: number, lastHorror: boolean): boolean => {
+    if (!sightOn || (lastHorror && transitionAt(i) === "location") || (locFirst.get(locKeyAt(i)) ?? i) !== i) return false;
+    const f = figureIn(scenesArr[i]?.visual, { speakers: [spkA, spkB], cast: thingCast, names: castActors.map((c) => c.name) });
+    return !!f && isTheThing(f.entry);
+  };
+  // (a film picked up after a restart: the picture that first showed the thing, among its finished shots)
+  for (let j = 0; j < clips.length && !firstShown; j++) {
+    if (sightings[j] && isTheThing(sightings[j].entry)) firstShown = { url: sightings[j].url, words: sightings[j].words };
+    else if (thingInMaster(j, false) && masters[locKeyAt(j)]?.url) firstShown = { url: masters[locKeyAt(j)].url, words: scenesArr[j]?.visual || "" };
+  }
+
   for (let i = clips.length; i < treatment.scenes.length; i++) {
     const scene = treatment.scenes[i];
     // A SHOT NOBODY SPEAKS IN (acted-staging.ts → wordless): a horror film's last shot has no line, and a
@@ -1092,7 +1217,10 @@ export async function generateTestMovie(opts: {
     // — EXCEPT a horror film's last shot in a place of its own: that place is drawn with only the two in it, and the
     // thing is added to it by THE REVEAL below. (Drawn from the scene's words, the boy's parents' bedroom came with
     // the werewolf already in it, half out of the wall — the owner: "what the fuck is that plot?", 2026-11-24.)
-    const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === "location" ? undefined : withLooks(scene.visual));
+    // (…and where that first scene has the film's THING in view, its own picture rides along: thingInMaster)
+    const thingHere = !masters[locKeyAt(i)]?.url && thingInMaster(i, lastHorror);
+    const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === "location" ? undefined : withLooks(scene.visual), thingHere);
+    if (thingHere && master?.url && !firstShown) firstShown = { url: master.url, words: scene.visual || "" };
     const sideFor = sideForMaster(master);
     let seedAbs = abs(approvedFrames[i]);
     // THE REVEAL (acted-staging.ts → revealPicture). A horror film's last shot is in the SAME place as the shot
@@ -1109,20 +1237,23 @@ export async function generateTestMovie(opts: {
     const outdoors = openAirPlace(whereAt[i]);
     let revealSeen = false;
     if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {
-      // THE CHOSEN CREATURE AS THE THING (premise-rules.ts → chosenThreat): a creature the maker chose that is not
-      // one of the two who talk, and that this last shot finds, is drawn FROM ITS OWN PICTURE — that creature, not
-      // one made up from the words (the stronger editor takes it as a second picture; the permissive one cannot).
-      const thing = castActors.find((c) => !!c.faceUrl && isCreature(c) && ![spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name)) && (scene.visual || "").toLowerCase().includes(c.name.trim().toLowerCase()));
-      const thingFace = thing ? abs(thing.faceUrl) : undefined;
-      // (…and a threat the STORY invented is the one the film already showed: the words of the shot that showed it go
-      //  with it — "Who Calls From the Shallows" showed a woman waist-deep in the lake, and its last shot drew a
-      //  bald ghoul's face in a window in the tent: acted-staging.ts → seenBefore)
-      const seen = thing && thingFace ? "" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || "")));
-      revealSeen = !!seen;
-      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace), seen, outdoors });
-      const ask = askOne && thing && thingFace
-        ? `${askOne} What is found is ${thing.name.trim()}: the creature in the SECOND picture — that exact creature, its face, its fur or skin and its colours and whatever it wears — drawn INTO the first picture the way this says; everything else in the first picture stays exactly as it is.`
-        : askOne;
+      // THE FILM'S THING, FROM ITS PICTURE (above: castThreat / storyThreat / firstShown). A creature the maker chose is
+      // drawn FROM ITS OWN PICTURE — that creature, not one made up from the words; and since 2026-11-25 so is a threat
+      // the story invented: its portrait, else the picture that first showed it — "that exact figure — the same face,
+      // hair and clothes — now close behind them" (acted-staging.ts → thingRefNote). Told it in words alone, the eighth
+      // lake film's reveal drew a grey zombie man in the tent opening. It no longer depends on the last scene's words
+      // naming it. (The stronger editors take the picture as a second image; the permissive one, never told of it,
+      // has the words.)
+      const ref = thingRef();
+      const thingFace = ref?.url;
+      const creatureRef = ref?.kind === "creature";
+      // (…and the words of the shot that showed it still go with it — "Who Calls From the Shallows" showed a woman
+      //  waist-deep in the lake, and its last shot drew a bald ghoul's face in a window in the tent: seenBefore)
+      const seen = creatureRef ? "" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || "")) || (ref?.kind === "scene" ? firstShown?.words || "" : ""));
+      revealSeen = !!seen || (!!ref && !creatureRef);
+      const revealSides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) }));
+      const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors });
+      const ask = ref ? revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, ref: ref.kind, name: threat?.name }) : askOne;
       // ON THE STRONGER EDITOR. Drawn from a frame of the owner's second film, nine rounds of it and looked at:
       // the everyday picture model (the one this used, and the one that drew the mannequin's arm) made every
       // thing it added look stuck on — a white bony claw, a cartoon eyeball, a face in a black cut-out over the
@@ -1130,18 +1261,65 @@ export async function generateTestMovie(opts: {
       // in real plaster with the face or the fingers in it, photographed. flux-kontext-pro is the more
       // permissive editor when that one refuses (horror is refused now and then). About 15 cents a film.
       for (const [model, input] of [
-        ["google/nano-banana-pro", { prompt: ask, image_input: [abs(master.url), ...(thing && thingFace ? [thingFace] : [])], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
+        ["google/nano-banana-pro", { prompt: ask, image_input: [abs(master.url), ...(thingFace ? [thingFace] : [])], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
         ["black-forest-labs/flux-kontext-pro", { prompt: askOne, input_image: abs(master.url), aspect_ratio: aspect, output_format: "jpg", output_quality: 92 }],
         // (…and Seedream 4.5, a third maker's editor, when both refuse: the lake film's reveal did not come, and the
         //  woman it had circled for five shots was never seen — 2026-11-25)
-        ["bytedance/seedream-4.5", { prompt: ask, image_input: [abs(master.url), ...(thing && thingFace ? [thingFace] : [])], aspect_ratio: aspect, size: "2K", max_images: 1 }],
+        ["bytedance/seedream-4.5", { prompt: ask, image_input: [abs(master.url), ...(thingFace ? [thingFace] : [])], aspect_ratio: aspect, size: "2K", max_images: 1 }],
       ] as Array<[string, Record<string, unknown>]>) {
         if (!ask || seedAbs) break;
         try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), "jpg"))); }
         catch (e) { console.error(`[testmovie] shot ${i + 1}: the reveal on ${model} did not come: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
       }
-      if (seedAbs) { revealed = true; revealedCreature = !!(thing && thingFace); sinceAnchor = 0; console.log(`[testmovie] shot ${i + 1}: the reveal — drawn into the place's own picture (${locKeyAt(i).slice(0, 40)})`); }
+      if (seedAbs) { revealed = true; revealedCreature = creatureRef; sinceAnchor = 0; console.log(`[testmovie] shot ${i + 1}: the reveal — drawn into the place's own picture (${locKeyAt(i).slice(0, 40)})${ref ? `, from the thing's own picture (${ref.kind})` : ""}`); }
       else console.error(`[testmovie] shot ${i + 1}: the reveal's picture did not come — the shot is seeded as any other, and the clip is not told what the thing is (the two react to something never seen)`);
+    }
+    // THE SIGHTING (acted-staging.ts → sightingOf, sightingPicture). WHEN THEY SEE IT, WE SEE IT: kept all five shots in
+    // the tent, the lake film's woman was never seen — the tent's picture was drawn from its first scene, and every
+    // later clip there was told "nothing new enters" (2026-11-25, "Who Smiles In Still Water"). A shot whose own words
+    // put somebody or something in view that the picture it would start from was not drawn with is seeded from its
+    // place's picture AS IT NOW IS (its master, or what an earlier sighting there drew) with that one added FAR OFF —
+    // on the reveal's editor ladder, the thing's own picture as the second image where it is the film's thing, LOOKED
+    // at for an unclothed figure (edited once, or dropped) — and the cut into it is a straight one: the film cuts to
+    // what they see. Its picture is checkpointed the moment it is drawn; a picture that will not come leaves the shot
+    // exactly as it is made today. Never a sound from out of sight, never the last horror shot (the reveal's), never a
+    // frame the maker approved, never a cartoon, a film that is not staged, or one that is not a two-hander.
+    let sighted: Sighting | null = null;
+    if (!seedAbs && sightOn && !lastHorror && master?.url && stagingOf(master)) {
+      const s = sightingOf({ moment: eventAt(i), startedFrom: startedFrom(i, tr), speakers: [spkA, spkB], cast: thingCast, names: castActors.map((c) => c.name), last: lastHorror, cartoon, approved: !!approvedFrames[i] });
+      if (s) {
+        let pic = sightings[i]?.url && sightings[i].words === s.words ? sightings[i].url : "";
+        if (!pic) {
+          const base = abs(shownAt(i) || master.url);
+          const theThing = isTheThing(s.entry);
+          const ref = theThing ? thingRef() : null;
+          const look = s.entry || (theThing ? threatEntry || threat?.look || "" : "");
+          const sightSides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) }));
+          const creature = !!ref && ref.kind === "creature";
+          const askOne = sightingPicture({ moment: s.words, sides: sightSides, seen: look, outdoors, mood: tmpl.faceMood, creature });
+          const ask = ref ? sightingPicture({ moment: s.words, sides: sightSides, seen: look, outdoors, mood: tmpl.faceMood, creature, ref: ref.kind, name: threat?.name }) : askOne;
+          for (const [model, input] of [
+            ["google/nano-banana-pro", { prompt: ask, image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
+            ["black-forest-labs/flux-kontext-pro", { prompt: askOne, input_image: base, aspect_ratio: aspect, output_format: "jpg", output_quality: 92 }],
+            ["bytedance/seedream-4.5", { prompt: ask, image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, size: "2K", max_images: 1 }],
+          ] as Array<[string, Record<string, unknown>]>) {
+            if (!askOne || pic) break;
+            try {
+              const drawn = await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), "jpg"));
+              pic = drawn ? (await clothedOrDropped(drawn, aspect)) || "" : "";
+            } catch (e) { console.error(`[testmovie] shot ${i + 1}: the sighting on ${model} did not come: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
+          }
+          if (pic) {
+            sightings[i] = { url: pic, words: s.words, who: s.who, entry: s.entry };
+            await ckpt({ ckSightings: JSON.stringify(sightings) });
+          }
+        }
+        if (pic) {
+          seedAbs = abs(pic); sighted = s; sinceAnchor = 0;
+          if (!firstShown && isTheThing(s.entry)) firstShown = { url: pic, words: s.words };
+          console.log(`[testmovie] shot ${i + 1}: a sighting — ${s.who} drawn into the place's picture, far off (${locKeyAt(i).slice(0, 40)})`);
+        } else console.error(`[testmovie] shot ${i + 1}: the sighting's picture did not come — the shot is made as it always was`);
+      }
     }
     // THE REVEAL THAT COULD NOT BE DRAWN — in its place, with no picture of it: its clip is not told what the thing
     // is (a clip told to show a thing that is not in its picture draws one of its own), and the two react to
@@ -1152,9 +1330,10 @@ export async function generateTestMovie(opts: {
       if (tr === "location") {
         seedAbs = abs(master.url); sinceAnchor = 0; if (i > 0) softSeams.add(i);
       } else if (tr === "angle") {
+        // (…of the place AS IT NOW IS: what a sighting there drew stays seen — shownAt)
         const reangled = await removeLetterbox(await renderSceneSeedChained(
           `${whereAt[i]}. A ${shotAt[i]} of the same scene — the identical room, lighting, wardrobe and people, only the camera angle changes. ${NO_TEXT}`,
-          abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
+          abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
         ));
         seedAbs = abs(reangled) || abs(prevFrameUrl) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
       } else if (sinceAnchor >= ANCHOR_EVERY) {
@@ -1176,7 +1355,8 @@ export async function generateTestMovie(opts: {
           now
             ? `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people on the same sides of the frame, ONLY the camera angle changes. At this moment: ${now}${unheard} ${NO_TEXT}`
             : `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people in the same positions, ONLY the camera angle changes. ${NO_TEXT}`,
-          abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
+          // (from the place AS IT NOW IS: a re-anchor after a sighting keeps what was seen — shownAt)
+          abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
         ));
         seedAbs = abs(reangled) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
       } else {
@@ -1198,13 +1378,15 @@ export async function generateTestMovie(opts: {
     // gets the softer dissolve, and the shot may simply start on its line.
     const chained = i > 0 && !!prevFrameUrl && seedAbs === abs(prevFrameUrl);
     if (i > 0 && !chained) softSeams.add(i);
-    // …and a cut to ANOTHER PLACE, or to the reveal, is a straight cut — never a dissolve
-    if (i > 0 && !chained && (tr === "location" || revealed)) hardSeams.add(i);
+    // …and a cut to ANOTHER PLACE, or to the reveal, is a straight cut — never a dissolve; so is the cut to a SIGHTING
+    // (the film cuts to what they see)
+    if (i > 0 && !chained && (tr === "location" || revealed || !!sighted)) hardSeams.add(i);
     // THE STAGING THIS SHOT IS PLAYED IN (acted-staging.ts) is that of the PICTURE it grows out of: the
     // location's own master, or a re-anchor on it. A frame the maker approved, an angle they added by hand,
     // a seed composed without a master — none of those is a staged picture, and its shot is told what a shot
     // was always told. A shot that continues the last one keeps the staging of the picture before it.
-    if (!chained) chainStaging = approvedFrames[i] || !master?.url || tr === "angle" ? null : stagingOf(master);
+    // (a SIGHTING is an edit of the place's own staged picture — its staging, whatever angle the script asked for)
+    if (!chained) chainStaging = approvedFrames[i] || !master?.url || (tr === "angle" && !sighted) ? null : stagingOf(master);
 
     // Veo prompt: ONE speaker talks a full beat (clean single voice), the other
     // present and reacting; two-shot; voice pinned consistent; NO on-screen text.
@@ -1246,7 +1428,8 @@ export async function generateTestMovie(opts: {
     // longer by it (heardSeconds) and keeps its head (clipHearsFirst). Only where the scene is told to the clip
     // at all: a staged picture, in a film whose shots happen. (Never a reveal this film drew: its clip is told what
     // is in its picture instead of the scene's words — acted-staging.ts → revealClip.)
-    const heard = !silent && chainStaging && !implied && !revealed ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;
+    // (…nor a SIGHTING: what they see is in its picture, so "nobody else appears" would be untrue — stagedRules → sighted)
+    const heard = !silent && chainStaging && !implied && !revealed && !sighted ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;
     const voiceLine = heard
       ? heardTalk({
           event: clipEvent(eventAt(i), i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : EVENT_MAX), unseen: heard.unseen,
@@ -1288,7 +1471,7 @@ export async function generateTestMovie(opts: {
       const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)])?.unseen;
       const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : "";
       try {
-        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared });
+        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, sighted: !!sighted, sight: sighted?.who });
       } catch (e) {
         // (never a shot lost to its words: it is a held, quiet beat — and still told that nobody speaks)
         console.error(`[testmovie] shot ${i + 1}: the wordless shot's rules were not built — it is told to hold: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
@@ -1296,7 +1479,7 @@ export async function generateTestMovie(opts: {
       }
     } else if (chainStaging) {
       try {
-        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied });
+        playRules = stagedRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, sighted: !!sighted, sight: sighted?.who });
       } catch (e) {
         // (never a shot lost to its staging: it is told what a shot was always told)
         console.error(`[testmovie] shot ${i + 1}: staging words not built — the shot is told to hold, as before: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
@@ -1409,6 +1592,11 @@ export async function generateTestMovie(opts: {
         ...(opts.series ? { series: seriesMeta(opts.series) } : {}),
         // THE POSTER: its cover on the shelf — the cast's portraits under the title (story-poster.ts)
         ...(poster ? { poster } : {}),
+        // THE FILM'S THING (2026-11-25, "Monster should be castable also"): who the monster was — the maker's cast threat,
+        // or the portrait the film drew of the story's own — so the Archive and a re-cut can show it
+        ...(threat ? { threat: { name: threat.name, img: threat.img, from: threat.from } } : {}),
+        // …and the shots a SIGHTING drew (the picture each was seeded from is its `seed`, below)
+        ...(Object.keys(sightings).length ? { sightings: Object.keys(sightings).map(Number).sort((a, b) => a - b) } : {}),
         // THE STAGING (acted-staging.ts): how the two were placed in each location, in the order the film
         // first visits them — what each place's picture was ASKED for (null: the close two-shot, as before).
         // A film with no staged place at all carries no such list.
