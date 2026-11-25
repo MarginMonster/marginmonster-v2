@@ -180,3 +180,15 @@ test("the Archive's in-progress card expects a take to take about eight and a ha
   assert.ok(src.includes("const TAKE_TYPICAL_SEC = 510;"));
   assert.ok(src.includes(': (j.type === "GENERATE_VIDEO_AD" && p.contentType === "take") ? TAKE_TYPICAL_SEC'));
 });
+
+/* THEIR WORDS ARE KEPT (2026-11-25): in the first build of the box, a card tapped while the box held the member's own words
+ * replaced them for good — a stray tap on a shelf lost a paragraph. Now they stay one tap away until they type again. */
+test("a card tapped over the member's own words keeps them one tap away", () => {
+  const page = read("app", "routes", "web.found-footage.tsx");
+  assert.ok(page.includes("const [kept, setKept] = useState<{ words: string; pick: FootagePick } | null>(null);"));
+  assert.ok(page.includes("if (written && own.trim().length >= 8) setKept({ words: own, pick });"), "saved only when the box held their words");
+  assert.ok(page.includes("const bringBack = () => { if (!kept) return; setPick(kept.pick); setOwn(kept.words); setKept(null); };"));
+  assert.ok(page.includes("setOwn(words);\n    setKept(null);"), "typing again lets the old words go");
+  assert.ok(page.includes("{!edited && kept && <button type=\"button\" className=\"ff-undo\" onClick={bringBack}><Ico n=\"refresh\" size={12} /> {t(\"Bring back your words\")}</button>}"));
+  assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("\"Bring back your words\":").length - 1, 5, "es, fr, de, zh and ur");
+});

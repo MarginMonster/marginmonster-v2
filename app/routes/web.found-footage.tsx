@@ -187,17 +187,24 @@ export default function FoundFootage() {
     el.scrollIntoView({ block: "start", behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   });
 
+  // THEIR WORDS ARE KEPT: a card tapped while the box holds the member's own words (written from a card, or from
+  // nothing) puts the card's words in the box — and theirs stay one tap away ("Bring back your words") until they type
+  // again. (The first build replaced them for good: a stray tap on a shelf lost a paragraph.)
+  const [kept, setKept] = useState<{ words: string; pick: FootagePick } | null>(null);
   const write = (v: string) => {
     const words = v.replace(/[\r\n]+/g, " ");
     setOwn(words);
+    setKept(null);
     // (the box emptied: no card is picked any more — what is written next is their own)
     if (!words.trim() && scare) setPick((p) => ({ ...p, scare: OWN_SCARE }));
   };
+  const bringBack = () => { if (!kept) return; setPick(kept.pick); setOwn(kept.words); setKept(null); };
   const chooseScare = (key: string) => {
     const s = footageScare(key);
     if (!s) return;
     // (the card being changed, tapped again, keeps their words — "Undo" puts the card's back)
     if (!(pick.scare === key && edited)) {
+      if (written && own.trim().length >= 8) setKept({ words: own, pick });
       setPick((p) => pickScare(p, key, lastHand));
       setOwn(t(s.premise));
       setLapse(null);
@@ -270,6 +277,7 @@ export default function FoundFootage() {
               : t("Slow and still is what frightens. It never speaks — nobody's words are put in its mouth.")}
           </span>
           {edited && <button type="button" className="ff-undo" onClick={undo}><Ico n="refresh" size={12} /> {t("Undo")}</button>}
+          {!edited && kept && <button type="button" className="ff-undo" onClick={bringBack}><Ico n="refresh" size={12} /> {t("Bring back your words")}</button>}
         </div>
         <div role="radiogroup" aria-labelledby="ff-what">
           {FOOTAGE_SHELVES.map((sh) => (
