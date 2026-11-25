@@ -404,13 +404,15 @@ export const STORY_SECOND_MODEL = "bytedance/seedream-4.5";
 export const STORY_LAST_MODEL = "google/nano-banana";
 /** The models a told story's picture is tried on, in order. */
 export const STORY_LADDER: ReadonlyArray<string> = [STORY_MODEL, STORY_SECOND_MODEL, STORY_LAST_MODEL];
-/** What each of them is asked — the same picture, in each one's own words: nano-banana-pro at its plainest size
- *  (1K — what the story is cut at), Seedream at its smallest (2K: it has no 1K), the everyday model as it was. */
+/** What each of them is asked — the same picture, in each one's own words: nano-banana-pro at 2K, Seedream at 2K,
+ *  the everyday model as it was. (nano-banana-pro was asked for 1K — "what the story is cut at" — until the owner
+ *  called the stories' look "rough", 2026-11-25: its 2K is the same price as its 1K ($0.15 a picture; 4K is
+ *  $0.30), and a story's slow push-in and the motion engine both start from this picture.) */
 export function storyPictureInput(model: string, o: { prompt: string; refs: ReadonlyArray<string>; aspect: string }): Record<string, unknown> {
   const refs = o.refs.length ? { image_input: [...o.refs] } : {};
   if (model === STORY_SECOND_MODEL) return { prompt: o.prompt, ...refs, aspect_ratio: o.aspect, size: "2K", max_images: 1 };
   if (model === STORY_LAST_MODEL) return { prompt: o.prompt, ...refs, aspect_ratio: o.aspect, output_format: "jpg" };
-  return { prompt: o.prompt, ...refs, aspect_ratio: o.aspect, output_format: "jpg", resolution: "1K" };
+  return { prompt: o.prompt, ...refs, aspect_ratio: o.aspect, output_format: "jpg", resolution: "2K" };
 }
 
 /** The token: the portraits — and the story's PLACES (below), which travel with them — each by its own

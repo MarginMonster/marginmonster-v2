@@ -228,7 +228,8 @@ test("a told story is drawn on the good model — every picture of it — and on
   assert.deepEqual([...STORY_LADDER], [STORY_MODEL, STORY_SECOND_MODEL, STORY_LAST_MODEL]);
   // each is asked in its own words — the same picture, the same references, the same shape
   const refs = ["https://x.example/renders/a.jpg", "https://x.example/renders/b.jpg"];
-  assert.deepEqual(storyPictureInput(STORY_MODEL, { prompt: "p", refs, aspect: "16:9" }), { prompt: "p", image_input: refs, aspect_ratio: "16:9", output_format: "jpg", resolution: "1K" });
+  // (2K: the same price as 1K on this model — the owner called the stories' look "rough", 2026-11-25)
+  assert.deepEqual(storyPictureInput(STORY_MODEL, { prompt: "p", refs, aspect: "16:9" }), { prompt: "p", image_input: refs, aspect_ratio: "16:9", output_format: "jpg", resolution: "2K" });
   assert.deepEqual(storyPictureInput(STORY_SECOND_MODEL, { prompt: "p", refs, aspect: "9:16" }), { prompt: "p", image_input: refs, aspect_ratio: "9:16", size: "2K", max_images: 1 });
   assert.deepEqual(storyPictureInput(STORY_LAST_MODEL, { prompt: "p", refs: [], aspect: "1:1" }), { prompt: "p", aspect_ratio: "1:1", output_format: "jpg" });
   const nar = read("app", "lib", "narrated-story.server.ts");
