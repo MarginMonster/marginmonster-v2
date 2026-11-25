@@ -889,8 +889,10 @@ test("THE MAKING: three rolls at once and their encodes in turn; one more roll a
   assert.ok(pics.includes("const prompt = footageScenePrompt(film, { still: dressedInWater(d.take.still), seen: d.seen, who: d.take.who }, refs.length as 0 | 1 | 2);"));
   assert.equal(count(pics, 'aspect_ratio: aspect, output_format: "jpg" }, true'), 2, "the scene and the way in, both at their best");
   assert.ok(pics.includes("ckStill: await drawClothed({ prompt,") && pics.includes("opens = await drawPicture({ prompt: footageOpensPrompt(film, d.take),"));
-  assert.ok(pics.includes("if (!text(records[plan.place].ckStill)) { await drawScene(plan.place, []); continue; }"));
-  assert.ok(pics.includes("if (plan.thing !== null && plan.thing !== plan.place && !text(records[plan.thing].ckStill)) { await drawScene(plan.thing, [placePic]); continue; }"));
+  // (the place first — from words; on a next night FROM the carried place, S10c: tests/footage-next-night.test.ts)
+  assert.ok(pics.includes("if (!text(records[plan.place].ckStill)) { await drawScene(plan.place, carriedPlace ? [carriedPlace, ...(carriedThing && thingIn(plan.place) ? [carriedThing] : [])] : []); continue; }"));
+  // (then the thing's payoff FROM the place — and on a next night from the carried thing too)
+  assert.ok(pics.includes("if (plan.thing !== null && plan.thing !== plan.place && !text(records[plan.thing].ckStill)) { await drawScene(plan.thing, carriedThing ? [placePic, carriedThing] : [placePic]); continue; }"));
   assert.ok(pics.includes("(direction[i] as DirectedMoment).seen && thingPic ? [placePic, thingPic] : [placePic]"));
   assert.ok(pics.includes("prompt: footageOpensPrompt(film, d.take), image_input: [imageRef(base, text(records[i].ckStill) as string)]") && pics.includes('let opens = "-";'));
 });
