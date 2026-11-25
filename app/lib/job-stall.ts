@@ -117,6 +117,21 @@ export function withoutStallMarks(raw: string): string {
   }
 }
 
+/** A RETRY IS A NEW RUN (web.archive.tsx / app.archive.tsx → retryJob): the counts of the run that ended — its
+ *  restarts (`__reclaims`) and this rule's marks (`__ckSig`, `__stalls`) — come off, so the new run counts afresh.
+ *  Left on (review of R1, 2026-11-25): a job ended at MAX_RECLAIMS and tried again died at its FIRST hand-back, and one
+ *  that stalled once and then failed in the worker (processNextJob's own terminal write, which the reaper's
+ *  withoutStallMarks never sees) was failed again by a single deploy. Its checkpoints are the caller's business: a
+ *  refunded retry drops them (a fresh purchase), a free one keeps them (it resumes). */
+export const RUN_COUNTS = ["__reclaims", "__ckSig", "__stalls"] as const;
+export function freshRun(payload: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(payload || {}) };
+  for (const k of RUN_COUNTS) delete out[k];
+  return out;
+}
+/** …and whether a payload carries any of them (a free retry rewrites its payload only then). */
+export const hasRunCounts = (payload: Record<string, unknown>): boolean => RUN_COUNTS.some((k) => k in (payload || {}));
+
 /** The operator's line for a job the rule ended: its type, its id, and where it was stuck. */
 export function stalledLog(o: { id: string; type: string; after: string | null; reclaims: number }): string {
   return `[worker] job ${o.id} (${o.type}) stopped twice in a row with no progress — stuck after ${o.after ? `checkpoint ${o.after}` : "its start (no checkpoint yet)"}, restart ${o.reclaims} — FAILED and refunded, not tried a third time`;

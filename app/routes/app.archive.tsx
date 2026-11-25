@@ -185,10 +185,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // ckFalRequestId, ckTalkingUrl and friends would re-attach to — or
       // re-deliver — work from the earlier attempt, handing over an old video
       // for a new charge. Everything the pipelines checkpoint is prefixed ck.
+      // (…and a new run counts its restarts afresh — job-stall.ts → freshRun)
+      const { freshRun } = await import("../lib/job-stall");
       const fresh = Object.fromEntries(
-        Object.entries(payload as Record<string, unknown>).filter(([k]) => !k.startsWith("ck"))
+        Object.entries(freshRun(payload as Record<string, unknown>)).filter(([k]) => !k.startsWith("ck"))
       );
       newPayload = JSON.stringify({ ...fresh, prePaid: true, refunded: false, chargedTokens: cost, chargedFromExtra: retryFromExtra });
+    } else {
+      // A FREE retry resumes from its checkpoints — but it is a new run all the same: the restarts and stall marks of
+      // the run that ended come off, or one deploy could end it at once (job-stall.ts → freshRun; review of R1).
+      const { freshRun, hasRunCounts } = await import("../lib/job-stall");
+      if (hasRunCounts(payload)) newPayload = JSON.stringify(freshRun(payload));
     }
     // CLAIM THE RETRY, AND REFUND THE LOSER. This was a bare update: two
     // overlapping clicks — a double-tap, a resubmitted form — both read

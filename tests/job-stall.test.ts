@@ -215,3 +215,30 @@ test("THE REAPER IS WIRED TO IT: the rule's answer fails the row, with its reaso
   // the restart cap stays as the backstop
   assert.ok(q.includes("const MAX_RECLAIMS = 6;"));
 });
+
+test("A RETRY FROM THE ARCHIVE IS A NEW RUN: the ended run's restarts and stall marks come off — refunded or free (follow-up to the R1 review)", async () => {
+  const { freshRun, hasRunCounts, RUN_COUNTS } = await import("../app/lib/job-stall.ts");
+  assert.deepEqual([...RUN_COUNTS], ["__reclaims", "__ckSig", "__stalls"]);
+  // a job ended at the restart cap, with a stall on it, and its checkpoints
+  const ended = { ...told(), __reclaims: 6, __ckSig: "0123456789abcdef", __stalls: 1, ckClips: "[\"/renders/a.mp4\"]" };
+  const fresh = freshRun(ended);
+  for (const k of RUN_COUNTS) assert.ok(!(k in fresh), `${k} is gone`);
+  // …everything else as it was: a FREE retry resumes from its checkpoints (the refunded one drops them itself)
+  assert.equal(fresh.ckClips, ended.ckClips);
+  assert.equal(fresh.filmScenes, 12);
+  assert.equal(ended.__reclaims, 6, "the input is not changed");
+  // the new run's first hand-back has nothing to compare with — never the second stall of the old run
+  const first = onReclaim(JSON.stringify(fresh));
+  assert.equal(first.reclaims, 0, "its restarts count from zero");
+  assert.equal(first.stall?.stalls, 0);
+  assert.equal(first.stall?.stuck, false);
+  // a payload with none of them is not rewritten by a free retry
+  assert.equal(hasRunCounts(told()), false);
+  assert.equal(hasRunCounts(ended), true);
+  // BOTH retry routes, BOTH branches
+  for (const route of [["app", "routes", "web.archive.tsx"], ["app", "routes", "app.archive.tsx"]]) {
+    const src = read(...route);
+    assert.ok(src.includes("Object.entries(freshRun(payload as Record<string, unknown>)).filter(([k]) => !k.startsWith(\"ck\"))"), `${route[2]}: a refunded retry`);
+    assert.ok(src.includes("if (hasRunCounts(payload)) newPayload = JSON.stringify(freshRun(payload));"), `${route[2]}: a free retry`);
+  }
+});
