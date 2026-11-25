@@ -9,6 +9,7 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "Picked up again after a restart": "Retomado tras un reinicio",
   "Should be night": "Debería ser de noche",
   "Continue this footage — the next night, on the same camera": "Continúa este metraje: la noche siguiente, con la misma cámara",
   "Night {n}": "Noche {n}",
@@ -3576,6 +3577,7 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "Picked up again after a restart": "Repris après un redémarrage",
   "Should be night": "Devrait être la nuit",
   "Continue this footage — the next night, on the same camera": "Continue ces images : la nuit suivante, avec la même caméra",
   "Night {n}": "Nuit {n}",
@@ -7124,6 +7126,7 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "Picked up again after a restart": "Nach einem Neustart fortgesetzt",
   "Should be night": "Sollte Nacht sein",
   "Continue this footage — the next night, on the same camera": "Dieses Material fortsetzen: die nächste Nacht, mit derselben Kamera",
   "Night {n}": "Nacht {n}",
@@ -10682,6 +10685,7 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "Picked up again after a restart": "重启后已继续制作",
   "Should be night": "应该是夜晚",
   "Continue this footage — the next night, on the same camera": "接着拍这段录像：下一夜，同一台摄像机",
   "Night {n}": "第 {n} 夜",
@@ -14292,6 +14296,7 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  "Picked up again after a restart": "ری اسٹارٹ کے بعد دوبارہ جاری",
   "Should be night": "رات ہونی چاہیے",
   "Continue this footage — the next night, on the same camera": "اس فوٹیج کو آگے بڑھائیں: اگلی رات، اسی کیمرے سے",
   "Night {n}": "رات {n}",

@@ -479,6 +479,20 @@ test("THE STOP MARK is written on each running job: conditionally, its status un
   assert.ok(STOP_MARK_DEADLINE_MS <= 5_000, "a few seconds — Render ends the process 30 s after SIGTERM");
 });
 
+test("THE ARCHIVE SAYS IT: a piece running again after a restart reads “Picked up again after a restart”, from the payload it already reads — in every language", async () => {
+  const src = read("app", "routes", "web.archive.tsx");
+  // no new query: the card's payload is the one the loader already parsed
+  assert.ok(src.includes("const restarted = j.status === \"IN_PROGRESS\" && typeof p.__reclaims === \"number\" && p.__reclaims > 0;"));
+  assert.ok(src.includes("ahead: places.get(j.id) ?? null, restarted });"));
+  // in place of "Rendering", beside the same estimate; a waiting piece still says where it stands in line
+  assert.ok(src.includes("{j.waiting ? inLineText(j.ahead, t) : <>{j.restarted ? t(\"Picked up again after a restart\") : t(\"Rendering\")} · {j.etaSec > 10 ? \"~\" : \"\"}{fmtEta(j.etaSec, j.elapsedSec, t)}</>}"));
+  const { UI_DICT } = await import("../app/lib/ui-i18n-dict.ts");
+  for (const lang of ["es", "fr", "de", "zh", "ur"] as const) {
+    const said = UI_DICT[lang]?.["Picked up again after a restart"];
+    assert.ok(said && said !== "Picked up again after a restart", lang);
+  }
+});
+
 test("ON SIGTERM the worker stops taking jobs and starting chores, marks what it is running, and lets it be — wired", () => {
   const q = read("app", "lib", "job-queue.server.ts");
   // no claim once stopped — checked before the slot is even reserved, and again after a claim that was in flight

@@ -195,8 +195,9 @@ test("a waiting piece knows how many are made before it — and its card says th
   const archive = read("app", "routes", "web.archive.tsx");
   assert.ok(archive.includes('const inLine = jobs.filter((j) => j.status === "PENDING" && (!j.runAt || j.runAt.getTime() <= nowMs));'));
   assert.ok(archive.includes("await placesInLine(inLine.map((j) => ({ id: j.id, type: j.type, payload: j.payload })))"), "its own lane: a story is not behind the films");
-  assert.ok(archive.includes('waiting: !failed && j.status === "PENDING", ahead: places.get(j.id) ?? null });'));
-  assert.ok(archive.includes('{j.waiting ? inLineText(j.ahead, t) : <>{t("Rendering")} · '));
+  // (…and, 2026-11-25, a piece running again after a restart says so in place of "Rendering": tests/job-beat.test.ts)
+  assert.ok(archive.includes('waiting: !failed && j.status === "PENDING", ahead: places.get(j.id) ?? null, restarted });'));
+  assert.ok(archive.includes('{j.waiting ? inLineText(j.ahead, t) : <>{j.restarted ? t("Picked up again after a restart") : t("Rendering")} · '));
   assert.ok(archive.includes('{j.waiting ? t("In line") : <>'));
   const words = archive.slice(archive.indexOf("function inLineText("), archive.indexOf("function fmtEta("));
   assert.ok(words.includes('if (ahead == null) return t("In line — it starts when its turn comes");'));
