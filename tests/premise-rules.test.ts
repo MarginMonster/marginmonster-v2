@@ -102,7 +102,7 @@ test("a told story's detail shot shows ONE person's hands — two people's hands
 test("a story picture has nobody the words do not put there, and everybody in it ONCE", async () => {
   const sp = await import("../app/lib/story-picture.ts");
   assert.ok(sp.NO_EXTRAS.includes("no passer-by, no figure in the distance, no one at a window or a door") && sp.NO_EXTRAS.includes("appears exactly ONCE"));
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${insideNote(visual) ? ` ${INSIDE_STAYS}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("${ONE_PICTURE} ${NO_EXTRAS}${insideNote(visual) ? ` ${INSIDE_STAYS}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`} ${STORY_SOUND} ${NOTHING_WRITTEN}`;"));
   // the look asks who is drawn twice — and an answer that does not say means nobody
   assert.ok(sp.storyCastPrompt(2).includes("look across the WHOLE first image for a second copy of them"));
   assert.deepEqual(sp.parseStoryTwice('{"seen":[true,true],"twice":[false,true]}', 2), [false, true]);
@@ -114,7 +114,7 @@ test("a story picture has nobody the words do not put there, and everybody in it
   assert.equal(sp.storyFaults({ seen: [true, true], panels: false }), 0, "an older reading: nothing more");
   assert.ok(sp.storyFix({ seen: [true, true], panels: false, twice: [false, true] }, ["Nessa", "Dovey"]).includes("Dovey was drawn TWICE in the last try — they appear exactly ONCE in this picture, nowhere else in it"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}) };"));
+  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}) };"));
 });
 
 test("a told story's picture says which side of a door or a window everybody is on", () => {
@@ -146,7 +146,7 @@ test("today's real world: a house is an ordinary modern home, never a fairytale 
 
 test("a told story's picture keeps inside INSIDE, and never draws a sound", async () => {
   const sp = await import("../app/lib/story-picture.ts");
-  assert.ok(sp.INSIDE_STAYS.includes("Whoever these words put INSIDE stays inside") && sp.INSIDE_STAYS.includes("never standing beside them"));
+  assert.ok(sp.INSIDE_STAYS.includes("Whoever these words put INSIDE — and whoever looks OUT or peers out through a window or a door — stays inside") && sp.INSIDE_STAYS.includes("never standing beside them"));
   assert.equal(sp.insideNote("from behind Mira's shoulder, inside at the round window, looking out at the ghost lady on the porch"), sp.INSIDE_STAYS);
   assert.equal(sp.insideNote("Mira and Tomi sit pressed together on the sofa"), "");
   assert.ok(sp.STORY_SOUND.includes("nothing glows, rings or lights up where a knock, a bell or a voice comes from"));
@@ -182,5 +182,58 @@ test("every story picture is looked at for anybody its words do not put there �
   assert.equal(sp.storyFaults({ seen: [true], panels: false, extra: true }), 3);
   assert.ok(sp.storyFix({ seen: [true], panels: false, extra: true }, ["Priya"]).includes("draw NOBODY but who they name"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null) return null;"));
+  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null && outside == null) return null;"));
+});
+
+/* WHOEVER LOOKS OUT, DRAWN OUT THERE (2026-11-24): the kids' horror story made again with INSIDE_STAYS in every
+ * picture's prompt still stood Leni out on the porch with the ghost lady — its words were "At the front door: Leni,
+ * near the camera at the window's edge, peers out while far down the dark porch the ghost lady stands". The same
+ * story built the house of rough grey stone again, and gave the girl bloodied "scraped knees". */
+test("whoever looks out is looked for OUTSIDE — and drawn again inside; today's houses; no hurt child even in a look", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  // the question: who is who by their looks, about THE LOOKER only, "outdoors" = standing out there
+  const q = sp.storyExtrasPrompt("At the front door: Leni peers out while far down the dark porch the ghost lady stands.", ["Leni: a 9-year-old girl with twin braids", "the ghost lady: a tall pale woman in a grey dress"]);
+  assert.ok(q.includes("It was asked to show exactly this: \"At the front door: Leni peers out while far down the dark porch the ghost lady stands\". Who is who: Leni: a 9-year-old girl with twin braids; the ghost lady: a tall pale woman in a grey dress."), q);
+  assert.ok(q.includes("say where THEY are — the looker, not what they look at — judged only by what you SEE, not by what the words wanted"));
+  assert.ok(q.includes("\"outdoors\": you can see the looker STANDING out on the porch boards") && q.includes("seen in a window's frame behind its sill (glass or no glass)"));
+  assert.ok(q.includes("\"looker\": \"the looker's name, or an empty string\"") && q.includes("\"lookerStands\": \"indoors\" or \"outdoors\" or \"\""));
+  assert.ok(!sp.storyExtrasPrompt("an empty street").includes("Who is who"), "nobody named: no who-is-who");
+  // the answer
+  assert.equal(sp.parseStoryOutside('{"people":[],"uninvited":false,"looker":"Leni","lookerIs":"porch boards","lookerStands":"outdoors"}'), true);
+  assert.equal(sp.parseStoryOutside('```json {"looker":"Leni","lookerStands":"Outdoors "} ```'), true);
+  assert.equal(sp.parseStoryOutside('{"looker":"Priya","lookerStands":"indoors"}'), false);
+  assert.equal(sp.parseStoryOutside('{"looker":"","lookerStands":"outdoors"}'), false, "nobody looks out: the ghost being outside is no fault");
+  assert.equal(sp.parseStoryOutside('{"looker":"","lookerStands":""}'), false);
+  assert.equal(sp.parseStoryOutside('{"people":[],"uninvited":false}'), null, "an older answer says nothing about it");
+  assert.equal(sp.parseStoryOutside("no idea"), null);
+  // the fault, and what the next go is told
+  assert.equal(sp.storyFaults({ seen: [true, true], panels: false, outside: true }), 3);
+  assert.equal(sp.storyFaults({ seen: [true, true], panels: false, outside: false }), 0);
+  assert.ok(sp.storyFix({ seen: [true], panels: false, outside: true }, ["Leni"]).includes("they are INSIDE the house: behind the glass of the window or inside the doorway"));
+  // the picture's own prompt: a looker is inside too, and "peers" alone says so
+  assert.ok(sp.INSIDE_STAYS.includes("and whoever looks OUT or peers out through a window or a door — stays inside"));
+  assert.equal(sp.insideNote("Leni peers into the dark"), sp.INSIDE_STAYS);
+  assert.equal(sp.insideNote("Leni sits on the sofa"), "");
+  // the pipeline asks it with who is who, reads it, and says what was wrong
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("const whoIsWho = here.map((c) => (c.look ? `${c.name}: ${c.look.slice(0, 120)}` : c.name));"));
+  assert.ok(nar.includes("const outside = parseStoryOutside(String(extrasRaw || \"\"));"));
+  assert.ok(nar.includes("seenAs!.outside ? \"whoever looks out stood outside\" : \"\""));
+  // TODAY'S WORLD: every picture and every place's sheet of a story that is not a children's cartoon
+  assert.ok(sp.TODAY_LOOK.includes("Where these words do not say how old a place is, it looks the way such a place looks TODAY") && sp.TODAY_LOOK.includes("no rough stone walls, no cottage and no castle unless they name one"));
+  const place = { name: "the front door", look: "a narrow wooden door set in a dark porch wall" };
+  assert.ok(sp.placeSheetPrompt(place, "dark horror", "", true).includes(sp.TODAY_LOOK));
+  assert.ok(!sp.placeSheetPrompt(place, "bright cartoon").includes(sp.TODAY_LOOK), "a children's cartoon is left as it was");
+  // the writer: whoever looks out is written INSIDE; no storybook cottage handed to it as an example; today's materials said
+  const w = read("app", "lib", "film-engine.server.ts");
+  assert.ok(w.includes("Whoever looks OUT through a window or a door is INSIDE, and the VISUAL says the word"));
+  assert.ok(!w.includes("round green door") && w.includes("(\"the blue house on the corner\"), never by their name (\"NAME's house\")"));
+  const pr = await import("../app/lib/premise-rules.ts");
+  assert.ok(pr.REAL_WORLD.includes("so SAY it in the words the pictures are drawn from"));
+  assert.ok(pr.CHILDREN_STAY.includes("not even in how a child looks: no scraped or bloody knees, no bruise, no bandage, no torn clothes"));
+  // the storyboard's flag says what is wrong, in every language
+  const film = read("app", "routes", "web.film.tsx");
+  assert.ok(film.includes("if (c.outside === true) return t(\"Standing outside\");") && film.includes("if (c.extra === true) return t(\"A stranger in it\");"));
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  for (const s of ["Standing outside", "A stranger in it"]) assert.equal(dict.split(`"${s}":`).length - 1, 5, `${s}: es, fr, de, zh and ur`);
 });

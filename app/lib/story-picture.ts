@@ -55,15 +55,24 @@ export const NO_EXTRAS = "Nobody is in the picture whom these words do not put t
  *  one of the scenes the kid is outside with the monster, like the fuck?"). Its words were "from behind Mira's dark
  *  shoulder, INSIDE at the round porthole window, looking out at the ghost lady standing on the porch" — and the
  *  picture model stood Mira on the porch beside her. Said whenever a picture has a window, a door or an outside. */
-export const INSIDE_STAYS = "Whoever these words put INSIDE stays inside: what is outside is seen THROUGH the glass of the window or the gap of the door — its frame and its glass between them — never standing beside them.";
-const INSIDE_OUT = /\b(?:window|windows|door|doors|doorway|glass|porch|outside|through the)\b/i;
+/** (…and whoever LOOKS OUT is inside too: the re-made story's words were "At the front door: Leni, near the camera at
+ *  the window's edge, peers out while far down the dark porch the ghost lady stands" — no "inside" — and Leni was
+ *  drawn standing out on the porch with her, 2026-11-24) */
+export const INSIDE_STAYS = "Whoever these words put INSIDE — and whoever looks OUT or peers out through a window or a door — stays inside: what is outside is seen THROUGH the glass of the window or the gap of the door — its frame and its glass between them — never standing beside them.";
+const INSIDE_OUT = /\b(?:window|windows|door|doors|doorway|glass|porch|outside|through the|peers?|peering|peeks?|peeking)\b/i;
 export const insideNote = (visual: string): string => (INSIDE_OUT.test(String(visual || "")) ? INSIDE_STAYS : "");
 /** A SOUND IS NEVER DRAWN in a picture either (the same night's film drew its knocks as a glowing ring on a window). */
 export const STORY_SOUND = "A sound is never drawn: nothing glows, rings or lights up where a knock, a bell or a voice comes from.";
+/** TODAY'S REAL WORLD, IN THE PICTURE TOO. The writer is told a home is an ordinary modern home (premise-rules.ts →
+ *  REAL_WORLD) — but a place's words seldom say how OLD it is ("the front door: a narrow wooden door set in a dark
+ *  porch wall"), and the horror picture model, left to guess, built the children's house of rough grey stone twice
+ *  (the owner, 2026-11-24: "looks like the kids live in a cobblestone house from a fairytale"). Said to every
+ *  picture, and every place's design sheet, of a story that is not a children's cartoon. */
+export const TODAY_LOOK = "Where these words do not say how old a place is, it looks the way such a place looks TODAY — a home is an ordinary modern house with painted walls or siding, ordinary rectangular windows and an ordinary front door — never older, rougher or more storybook than the words say: no rough stone walls, no cottage and no castle unless they name one.";
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference
  *  pictures, whether that same character is in it; and whether the picture is split into panels. */
-export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean };
+export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean };
 /** …and what is handed to the storyboard about a picture that was KEPT with something still wrong (the
  *  best of its goes): the reading, and who was looked for — in the order of `seen` — so the scene's flag
  *  can say who is missing. */
@@ -88,15 +97,36 @@ export function storyCastPrompt(refs: number): string {
 /** ANYBODY THE WORDS DO NOT PUT THERE — asked of every picture, with its own words (2026-11-24: a told horror
  *  story's last picture was "the ghost woman's face at the window … inside the dark room only the television
  *  flickers", and the picture model sat a grown man at a screen in that room; the owner, of an earlier one: "the
- *  kid is outside with the monster, like the fuck?"). NO_EXTRAS asks the picture model; this LOOKS. */
-export function storyExtrasPrompt(visual: string): string {
-  const words = String(visual || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().slice(0, 600);
-  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}". First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false}.`;
+ *  kid is outside with the monster, like the fuck?"). NO_EXTRAS asks the picture model; this LOOKS.
+ *  …and, in the same answer, WHOEVER LOOKS OUT, DRAWN OUT THERE: the story made again with INSIDE_STAYS in every
+ *  prompt still stood Leni out on the porch with the ghost lady she was peering out at (2026-11-24) — asking had
+ *  not been enough there either.
+ *
+ *  HOW IT IS ASKED, tried on the live reader with seven real stills (two drawn out on the porch, five rightly
+ *  inside), 2026-11-24: asked "is the glass between them?", the reader answered from the WORDS ("she peers out
+ *  through the glass pane", of a girl standing on the porch boards); asked "indoors or outdoors?", it called a girl
+ *  leaning in an open window "outdoors" and mixed up which figure was the girl. Told who is who by their looks,
+ *  asked about THE LOOKER ONLY, and given "outdoors" as STANDING on the porch boards, the yard or the street:
+ *  twelve of twelve inside pictures passed, and the clear porch picture was caught three times of four (a scene
+ *  has three goes). `who`: "Name: look" for each of the people in the scene. */
+export function storyExtrasPrompt(visual: string, who: ReadonlyArray<string> = []): string {
+  const words = String(visual || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().replace(/[.\s]+$/, "").slice(0, 600);
+  const names = (who || []).map((w) => String(w || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().slice(0, 160)).filter(Boolean).slice(0, 4);
+  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}".${names.length ? ` Who is who: ${names.join("; ")}.` : ""} First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Last, only if those words have somebody INSIDE looking OUT — peering out, looking or watching through a window, a glass pane or a door — at somebody or something out there (on a porch, in a yard, in the street, in the dark): that person is the LOOKER (otherwise there is none). Find the looker in the picture by how they look, and say where THEY are — the looker, not what they look at — judged only by what you SEE, not by what the words wanted. "outdoors": you can see the looker STANDING out on the porch boards, its steps, a yard or a street — the same open floor or ground as what they look at, nothing but open air between. "indoors": anything else — in a room or a hallway, behind a window's glass, or seen in a window's frame behind its sill (glass or no glass). Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false, "looker": "the looker's name, or an empty string", "lookerIs": "what the looker stands on and what is around the looker, in a few words", "lookerStands": "indoors" or "outdoors" or ""}.`;
 }
 /** …its answer: true / false, or null when it cannot be read (the picture is then kept as it is). */
 export function parseStoryExtras(raw: string): boolean | null {
   const u = jsonIn(raw)?.uninvited;
   return typeof u === "boolean" ? u : null;
+}
+/** …and whether the looker was drawn standing OUT THERE: true only for a named looker said to be "outdoors"; false
+ *  for indoors, or nobody looking out; null when the answer does not say (the picture is then kept as it is). */
+export function parseStoryOutside(raw: string): boolean | null {
+  const j = jsonIn(raw);
+  const at = j?.lookerStands;
+  const looker = j?.looker;
+  if (typeof at !== "string") return null;
+  return at.trim().toLowerCase() === "outdoors" && typeof looker === "string" && !!looker.trim();
 }
 
 /** Who was drawn TWICE, in the order asked — null when the answer does not say (an older reading, or one that
@@ -132,7 +162,7 @@ export function parseStoryPanels(raw: string): boolean | null {
 
 /** How wrong a picture is: a split picture is the worst (it cannot be used at all), then each cast member
  *  who is not in it. 0 = keep it. */
-export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0);
+export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0);
 
 /** What to tell the picture model on the next go: the fault, named. `names` in the order of the references. */
 export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<string | undefined> = []): string {
@@ -144,6 +174,8 @@ export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<st
   // (a creature that came back as an animal, or as a person, is told what it IS)
   // (somebody the words do not put there is told to be gone)
   if (c.extra) out.push("The last try had somebody in it whom these words do not put there — draw NOBODY but who they name: no stranger, no passer-by, nobody sitting, standing or watching anywhere in the picture");
+  // (whoever looks out, drawn standing out there with what they look at, is told where they are)
+  if (c.outside) out.push("The last try stood whoever looks out OUTSIDE, out there with what they look at — they are INSIDE the house: behind the glass of the window or inside the doorway, the glass or the door between them and what is out there, never out on the porch or in the yard with it");
   // (a character drawn twice is told it is in the picture ONCE)
   const doubled = (c.twice || []).map((t, k) => (t && c.seen[k] !== false ? names[k] || `the character in reference image ${k + 1}` : "")).filter(Boolean);
   if (doubled.length) out.push(`${doubled.join(" and ")} ${doubled.length === 1 ? "was" : "were"} drawn TWICE in the last try — ${doubled.length === 1 ? "they appear" : "each of them appears"} exactly ONCE in this picture, nowhere else in it`);
@@ -447,8 +479,8 @@ export function inheritPlaces(listed: ReadonlyArray<string | null | undefined>, 
 }
 
 /** What the picture model is asked for: the place and nothing else, as a sheet an artist copies a design from. */
-export function placeSheetPrompt(place: { name: string; look: string }, sceneHint: string, safe = ""): string {
-  return `${safe}A DESIGN SHEET of one place, for artists to copy it from: ${place.name} — ${place.look}. The same place is shown in three views on a plain pale-grey studio background — two different views of the whole of it, and one close view of its most recognisable part — like a scale model photographed on a table: no scenery, no sky, no ground, no weather around it. Style: ${sceneHint}. No people, no animals, no figures anywhere. ${NOTHING_WRITTEN}`;
+export function placeSheetPrompt(place: { name: string; look: string }, sceneHint: string, safe = "", today = false): string {
+  return `${safe}A DESIGN SHEET of one place, for artists to copy it from: ${place.name} — ${place.look}. The same place is shown in three views on a plain pale-grey studio background — two different views of the whole of it, and one close view of its most recognisable part — like a scale model photographed on a table: no scenery, no sky, no ground, no weather around it. Style: ${sceneHint}.${today ? ` ${TODAY_LOOK}` : ""} No people, no animals, no figures anywhere. ${NOTHING_WRITTEN}`;
 }
 
 /** What a scene's picture is told about the place it is set at, given as reference image `n`. */

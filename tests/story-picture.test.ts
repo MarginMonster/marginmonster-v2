@@ -119,7 +119,7 @@ test("a split picture is the worst fault, then each cast member who is not in it
 test("the pipeline: words tidied, picture drawn, picture looked at, drawn again when wrong — and never left bare", () => {
   const s = read("app", "lib", "narrated-story.server.ts");
   assert.ok(s.includes("const visual = oneMoment(noLettering(written));"));
-  assert.ok(s.includes("${ONE_PICTURE} ${NO_EXTRAS}${insideNote(visual) ? ` ${INSIDE_STAYS}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;") && !s.includes("No readable text, captions or lettering anywhere."));
+  assert.ok(s.includes("${ONE_PICTURE} ${NO_EXTRAS}${insideNote(visual) ? ` ${INSIDE_STAYS}` : \"\"}${tmpl.childSafe ? \"\" : ` ${TODAY_LOOK}`} ${STORY_SOUND} ${NOTHING_WRITTEN}`;") && !s.includes("No readable text, captions or lettering anywhere."));
   assert.ok(ONE_PICTURE.includes("never a split screen, a collage, comic panels, a before-and-after or a grid") && NOTHING_WRITTEN.includes("no signs with words, labels, notices, numbers, letters or captions"));
   // WHO is looked for: the maker's own cast in this scene — by their own pictures, never the sheet of invented characters
   assert.ok(s.includes("const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);"));
@@ -128,9 +128,9 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   assert.ok(s.includes("const twoMoments = oneMoment(written) !== written;") && s.includes("twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: \"claude-sonnet-4-6\" })"));
   // (every picture is looked at now — at least for anybody its words do not put there: an empty room at night came
   //  back with a grown man at a screen in it; storyExtrasPrompt)
-  assert.ok(s.includes("if (!pic) return null;") && s.includes("anthropicVision(storyExtrasPrompt(visual), [pic], { maxTokens: 400, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"), "every picture is looked at for strangers");
+  assert.ok(s.includes("if (!pic) return null;") && s.includes("anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 500, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"), "every picture is looked at for strangers");
   // a look that fails or says nothing keeps the picture
-  assert.ok(s.includes("if (seen == null && panels == null && extra == null) return null;") && s.includes("const faults = seenAs ? storyFaults(seenAs) : 0;"));
+  assert.ok(s.includes("if (seen == null && panels == null && extra == null && outside == null) return null;") && s.includes("const faults = seenAs ? storyFaults(seenAs) : 0;"));
   // wrong → drawn again with the fault named; the best of three goes is kept
   assert.ok(s.includes("fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || \"person\"));") && s.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
   // (…and a best-of that is still wrong SAYS so: the storyboard flags that scene — tests/story-cast.test.ts)

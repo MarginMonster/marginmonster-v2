@@ -185,7 +185,7 @@ test("where the pictures are drawn: one sheet per place, beside the portraits, t
   assert.ok(fn.includes("const needPlaces = wanted.filter((p) => p.scenes.some((i) => todo.includes(i)) && !sheetFor(p.name));"), "only a sheet a scene being drawn NOW needs, and does not have");
   // drawn on the everyday model, square, from words alone — STARTED before the portraits and awaited after
   // them, so a story's pictures take no longer than they did
-  const start = fn.indexOf("const sheetsDrawing = Promise.all(needPlaces.map(async (p) => ({ p, img: await drawScene(placeSheetPrompt(p, tmpl.sceneHint, safe), [], PLACE_SHEET_ASPECT) })));");
+  const start = fn.indexOf("const sheetsDrawing = Promise.all(needPlaces.map(async (p) => ({ p, img: await drawScene(placeSheetPrompt(p, tmpl.sceneHint, safe, !tmpl.childSafe), [], PLACE_SHEET_ASPECT) })));");
   const portraits = fn.indexOf("const drawn = await Promise.all(need.map(async (e) =>");
   const done = fn.indexOf("for (const d of await sheetsDrawing) if (d.img) placeCards.push({ name: d.p.name, look: d.p.look, img: d.img });");
   assert.ok(start > 0 && portraits > start && done > portraits, "started, then the portraits, then awaited");

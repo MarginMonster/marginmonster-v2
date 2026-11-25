@@ -2460,7 +2460,7 @@ export default function FilmStudio() {
   /** WHY a still is flagged, in two words — from what the check read off it (mv-cast.ts CastCheck). The
    *  flag used to say only "Worth a re-roll", with the reason in a tooltip a phone does not have. */
   const flagWhy = (i: number): string => {
-    const c = ((seeds?.checks || [])[i] || null) as { seen?: boolean[]; twin?: boolean; dressed?: boolean[]; odd?: boolean; mic?: string; bars?: boolean; panels?: boolean; who?: string[] } | null;
+    const c = ((seeds?.checks || [])[i] || null) as { seen?: boolean[]; twin?: boolean; twice?: boolean[]; extra?: boolean; outside?: boolean; dressed?: boolean[]; odd?: boolean; mic?: string; bars?: boolean; panels?: boolean; who?: string[] } | null;
     if (!c) return t("Worth a re-roll");
     if (c.panels === true) return t("Split picture");
     // (a told story knows WHO it looked for: "Marta is missing")
@@ -2468,7 +2468,11 @@ export default function FilmStudio() {
     // (…a short name: the flag sits on a third of a phone-wide card, and a long one filled half the picture)
     if (gone.length === 1 && gone[0].length <= 16 && (c.seen || []).filter((x) => x === false).length === 1) return t("{name} is missing", { name: gone[0] });
     if ((c.seen || []).some((x) => x === false)) return t("Missing someone");
-    if (c.twin === true) return t("Someone doubled");
+    // (a told story's own looks — story-picture.ts: whoever looks out drawn standing outside with it, somebody
+    //  its words do not put there, somebody drawn twice)
+    if (c.outside === true) return t("Standing outside");
+    if (c.extra === true) return t("A stranger in it");
+    if (c.twin === true || (c.twice || []).some((x) => x === true)) return t("Someone doubled");
     if ((c.dressed || []).some((x) => x === false)) return t("Wrong clothes");
     if (c.odd === true) return t("Looks impossible");
     if (c.bars === true) return t("Bars round the picture");
