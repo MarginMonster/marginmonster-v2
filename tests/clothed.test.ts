@@ -87,3 +87,101 @@ test("NIGHT IS NIGHT, LOOKED AT: a night film's master whose sky reads as dusk o
   assert.ok(src.includes("storyPictureInput(used, { prompt: `${NIGHT_FIRST} ${staged || prompt}`, refs, aspect: ar })"));
   assert.ok(src.includes("if (again && (await night(again))) url = again;"), "the redraw is kept only if ITS sky is night");
 });
+
+/* ---- EVERYWHERE A PICTURE IS DRAWN FOR A FILM (2026-11-25, stream S8) ----
+ * The master's look is now ONE sequence (clothed.server.ts → keepClothed) that every film picture goes through: a told
+ * story's scenes and portraits, a found-footage take's scene, a house camera's room as the take finds it, the acted
+ * reveal, the thing's portrait and the sighting. Run here with stand-ins for the reader and the picture models. */
+type Look = { unclothed: boolean; who: string };
+const stand = (answers: Record<string, Look>) => {
+  const asked: string[] = [];
+  return { asked, look: async (u: string): Promise<Look> => { asked.push(u); return answers[u] || { unclothed: false, who: "" }; } };
+};
+const BARE: Look = { unclothed: true, who: "far left, waist-deep in the lake" };
+
+test("keepClothed: a clothed picture costs one look and nothing else", async () => {
+  const { keepClothed } = await import("../app/lib/clothed.server.ts");
+  const r = stand({});
+  let drawn = 0, edited = 0;
+  const out = await keepClothed({ url: "/renders/a.jpg", ref: (u) => `https://x.test${u}`, look: r.look, redraw: async () => { drawn++; return "/renders/b.jpg"; }, edit: async () => { edited++; return "/renders/c.jpg"; } });
+  assert.equal(out, "/renders/a.jpg");
+  assert.deepEqual(r.asked, ["https://x.test/renders/a.jpg"], "looked at once, as a model is handed it");
+  assert.equal(drawn + edited, 0, "a redraw or an edit only on a fault");
+  // …and a look the caller already made is not asked again
+  const r2 = stand({});
+  assert.equal(await keepClothed({ url: "/renders/a.jpg", seen: { unclothed: false, who: "" }, look: r2.look }), "/renders/a.jpg");
+  assert.equal(r2.asked.length, 0);
+});
+
+test("keepClothed: unclothed → drawn again clothes first, kept only if ITS look is clean; else ONE edit of the first picture", async () => {
+  const { keepClothed } = await import("../app/lib/clothed.server.ts");
+  // the redraw is clean: it is the picture, and no edit is made
+  let edits = 0;
+  const a = stand({ "/renders/a.jpg": BARE });
+  assert.equal(await keepClothed({ url: "/renders/a.jpg", look: a.look, redraw: async () => "/renders/b.jpg", edit: async () => { edits++; return "/renders/c.jpg"; } }), "/renders/b.jpg");
+  assert.deepEqual(a.asked, ["/renders/a.jpg", "/renders/b.jpg"]);
+  assert.equal(edits, 0);
+  // the redraw is bare too: the edit is made of the FIRST picture, told where the figure is — and its look is clean
+  const b = stand({ "https://x.test/renders/a.jpg": BARE, "https://x.test/renders/b.jpg": BARE });
+  const handed: string[] = [];
+  const said: string[] = [];
+  assert.equal(await keepClothed({ url: "/renders/a.jpg", ref: (u) => `https://x.test${u}`, look: b.look, redraw: async () => "/renders/b.jpg", edit: async (u, who) => { handed.push(`${u} | ${who}`); return "/renders/c.jpg"; }, log: (l) => said.push(l) }), "/renders/c.jpg");
+  assert.deepEqual(handed, ["https://x.test/renders/a.jpg | far left, waist-deep in the lake"]);
+  assert.deepEqual(b.asked, ["https://x.test/renders/a.jpg", "https://x.test/renders/b.jpg", "https://x.test/renders/c.jpg"], "three looks at most: the picture, the redraw, the edit");
+  assert.ok(said[0].startsWith("an unclothed figure (far left, waist-deep in the lake)") && said.includes("dressed by one edit"), said.join(" / "));
+  // no redraw asked for: straight to the edit (a told story's best-of has had its goes; a ladder's next model is the redraw)
+  const c = stand({ "/renders/a.jpg": BARE });
+  assert.equal(await keepClothed({ url: "/renders/a.jpg", look: c.look, edit: async () => "/renders/c.jpg", still: "drop" }), "/renders/c.jpg");
+});
+
+test("keepClothed: still unclothed after the edit — the caller says: kept (and said), or dropped; never a film lost to a look", async () => {
+  const { keepClothed } = await import("../app/lib/clothed.server.ts");
+  const allBare = stand({ "/renders/a.jpg": BARE, "/renders/b.jpg": BARE, "/renders/c.jpg": BARE });
+  const said: string[] = [];
+  assert.equal(await keepClothed({ url: "/renders/a.jpg", look: allBare.look, redraw: async () => "/renders/b.jpg", edit: async () => "/renders/c.jpg", log: (l) => said.push(l) }), "/renders/c.jpg", "keep: the edited picture (the master's own last resort)");
+  assert.ok(said.includes("STILL an unclothed figure after the edit — the edited picture is kept; look at this film"));
+  assert.equal(await keepClothed({ url: "/renders/a.jpg", look: allBare.look, edit: async () => "/renders/c.jpg", still: "drop" }), null, "drop: the caller goes on without it");
+  // an edit that fails or throws: kept as it was — or dropped
+  for (const edit of [async () => null, async () => { throw new Error("refused"); }]) {
+    const s = stand({ "/renders/a.jpg": BARE });
+    assert.equal(await keepClothed({ url: "/renders/a.jpg", look: s.look, edit }), "/renders/a.jpg");
+    assert.equal(await keepClothed({ url: "/renders/a.jpg", look: s.look, edit, still: "drop" }), null);
+  }
+  // a redraw that throws goes on to the edit
+  const r = stand({ "/renders/a.jpg": BARE });
+  assert.equal(await keepClothed({ url: "/renders/a.jpg", look: r.look, redraw: async () => { throw new Error("down"); }, edit: async () => "/renders/c.jpg" }), "/renders/c.jpg");
+  // a look that cannot be made reads as clothed: the picture is kept, nothing is spent
+  let spent = 0;
+  assert.equal(await keepClothed({ url: "/renders/a.jpg", look: async () => { throw new Error("no credit"); }, redraw: async () => { spent++; return "x"; }, edit: async () => { spent++; return "y"; }, still: "drop" }), "/renders/a.jpg");
+  assert.equal(spent, 0);
+});
+
+test("the told story's look asks it in the SAME question that lists the people — one question more, never a fifth call", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  const q = sp.storyExtrasPrompt("A pale woman stands waist-deep in the lake. She is fully clothed: a long pale nightgown, soaked and clinging, covering her from neck to knee.", ["Farida: a woman in a red raincoat"]);
+  assert.ok(q.includes(sp.UNCLOTHED_ASKED) && q.indexOf("First list every person or creature you can see in it") < q.indexOf(sp.UNCLOTHED_ASKED), "after the people are written down");
+  assert.ok(q.includes('"unclothed": true or false, "unclothedWho": "where that one is, in a few words — an empty string when nobody is"}.'));
+  // the master's own words — and an animal wears its own coat, in both
+  assert.ok(sp.UNCLOTHED_ASKED.includes("a bare chest or bare torso, or a body with no clothing visible on it? Bare arms, bare legs, bare feet and a swimsuit all count as CLOTHED"));
+  assert.ok(sp.UNCLOTHED_ASKED.endsWith(sp.COATED) && unclothedPrompt().includes(sp.COATED));
+  assert.equal(sp.COATED, "An animal, or a creature covered in its own fur, feathers or scales — real or a cartoon — counts as CLOTHED.");
+  // its answer — null when the answer does not say (an older reading: nobody is taken to be unclothed)
+  assert.deepEqual(sp.parseStoryUnclothed('{"people":["a woman in the lake"],"uninvited":false,"intoLens":[],"unclothed":true,"unclothedWho":"in the lake,   far right"}'), { unclothed: true, who: "in the lake, far right" });
+  assert.deepEqual(sp.parseStoryUnclothed('{"unclothed":false,"unclothedWho":""}'), { unclothed: false, who: "" });
+  for (const junk of ['{"uninvited":false}', '{"unclothed":"yes"}', "no idea", ""]) assert.equal(sp.parseStoryUnclothed(junk), null, junk);
+});
+
+test("a picture with somebody unclothed is never the one kept while one without exists — and the next go is told FIRST", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  // every other fault at once (three looked for and none there, split, pasted inset, a stranger, stood outside, a stare, run-down)
+  const worst = { seen: [false, false, false], panels: true, extra: true, outside: true, lens: ["Farida"], grimy: true, inset: true };
+  assert.equal(sp.storyFaults(worst), 27);
+  assert.ok(sp.storyFaults({ seen: [true], panels: false, unclothed: true }) > sp.storyFaults(worst), "unclothed alone outweighs all of them");
+  assert.equal(sp.storyFaults({ seen: [true], panels: false, unclothed: true }), sp.UNCLOTHED_FAULT);
+  assert.equal(sp.storyFaults({ seen: [true], panels: false, unclothed: false }), 0);
+  // the fix: CLOTHED_FIRST, said ahead of everything on the next go; nothing for any other fault
+  assert.equal(sp.storyFirst({ seen: [true], panels: false, unclothed: true, unclothedWho: "in the lake" }), `${CLOTHED_FIRST} `);
+  for (const c of [{ seen: [false], panels: true, extra: true }, null, undefined]) assert.equal(sp.storyFirst(c), "");
+  // a picture kept with somebody STILL unclothed is written down for the operator
+  assert.deepEqual(sp.keptFaults([{ seen: [true], panels: false, unclothed: true, who: ["Farida"] }, { seen: [true], panels: false, who: ["Farida"] }]), [{ scene: 1, missing: [], unclothed: true }]);
+});
