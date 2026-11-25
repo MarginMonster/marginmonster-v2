@@ -64,6 +64,12 @@ const DOWN_SHUTS = /^(?:zipper|zip|blinds|shutters|window|windows|windowpane|hat
  *  way a tent's zipper closes is not in the words. */
 const UP_OPENS = /^(?:window|windows|windowpane|blinds|shutters|hatch|trapdoor|trap door)$/i;
 
+/** A door that belongs to a THING in the place, not to the place — "slams the fridge door", "shuts the cupboard door".
+ *  (Review of S12, 2026-11-25: read as the place's own door, "slams the fridge door" in a tent became "the tent door",
+ *  and in a kitchen "the door": the change picture would shut the room's door, and every later clip be told it stays
+ *  shut.) Not a change of the place. */
+const FITTED = /\b(?:fridge|refrigerator|freezer|oven|microwave|dishwasher|cupboard|cupboards|cabinet|cabinets|wardrobe|locker|safe|glovebox|glove-box|dryer|washer|washing-machine|stove|furnace|cage|crate|kennel|mailbox|letterbox|cooler|wood-stove|medicine)\s+$/i;
+
 type Hit = { at: number; now: PlaceNow; noun: string; adjs: string; verb: string; agent: boolean };
 
 /** Every shut and every open in the words, where it is said. */
@@ -75,7 +81,10 @@ function hitsIn(text: string): Hit[] {
       const n = typeof now === "function" ? now(mm) : now;
       if (!n) continue;
       if (NOT_DONE.test(text.slice(Math.max(0, (mm.index ?? 0) - 40), mm.index))) continue;
-      hits.push({ at: mm.index ?? 0, now: n, ...pick(mm), agent });
+      const picked = pick(mm);
+      // (the fridge's door is not the place's — FITTED)
+      if (FITTED.test(picked.adjs || "")) continue;
+      hits.push({ at: mm.index ?? 0, now: n, ...picked, agent });
     }
   };
   // SHUT — "slams the front door", "zips the tent door", "zips up the tent", "draws the curtains" (drawn, they are shut).
@@ -204,6 +213,8 @@ function putIn(text: string, ctx: string): (PutAgainst & { at: number }) | null 
   const re = new RegExp(`\\b(${PUT_V})\\s+(it|them|${NP.slice(1, -1)})\\s+(?:(?:[\\p{L}]+ly|hard|tight|firmly|right|flat|up|back|down|over|all the way)\\s+){0,3}?${PREP}\\s+(?:${DET}\\s+(?:bottom|foot|base|middle|front|side)\\s+of\\s+)?${DET}\\s+((?:[\\p{L}'’-]+\\s+){0,3}?)${TARGET}\\b`, "giu");
   for (const m of text.matchAll(re)) {
     if (NOT_DONE.test(text.slice(Math.max(0, (m.index ?? 0) - 40), m.index))) continue;
+    // (against the fridge's door is not against the place's — FITTED)
+    if (FITTED.test(m[4] || "")) continue;
     let obj = m[2];
     if (/^(?:it|them)$/i.test(obj)) {
       // (what "it" is: the last thing moved before it in the same words)
@@ -388,7 +399,11 @@ export function changesState(before: PlaceState | null | undefined, c: PlaceChan
  *  is outside stays outside: it presses the cloth in (acted-staging.ts → revealPart "fabric"). */
 const CLOTH = /\b(?:fabric|canvas|cloth|nylon|tent wall|tent's wall|tent roof|tent's roof|tent walls|curtain|curtains|sheet)\b/i;
 const PRESSES = /\b(?:press|presses|pressed|pressing|push|pushes|pushed|pushing|through|bulge|bulges|bulged|bulging|sag|sags|sagged|sagging|stretch|stretches|stretched|stretching|outlined|dents?|dented)\b/i;
+/*  (…a place that is BESIDE a tent is not a tent: "the campsite outside the tent, by the lake" has the two standing in the
+ *   open — told "in the tent's wall", the reveal's editor has to build a tent into the picture. Review of S12.) */
+const BESIDE_TENT = /\b(?:outside|beside|near|by|behind|next to|in front of|away from|around)\s+(?:(?:the|a|an|their|his|her|our|my)\s+)?(?:[\p{L}'’-]+\s+)?tents?\b(?!\s+(?:door|doors|flap|flaps|wall|walls|roof|pole|poles|zipper|entrance|opening|floor))/iu;
+const IN_TENT = /\b(?:inside|in|within|into)\s+(?:(?:the|a|an|their|his|her|our|my)\s+)?(?:[\p{L}'’-]+\s+){0,2}?tents?\b/iu;
 export function clothPlace(where: string | null | undefined, moment?: string | null): boolean {
-  const m = one(moment);
-  return TENT.test(one(where)) || (CLOTH.test(m) && PRESSES.test(m));
+  const m = one(moment), w = one(where);
+  return (TENT.test(w) && (IN_TENT.test(w) || !BESIDE_TENT.test(w))) || (CLOTH.test(m) && PRESSES.test(m));
 }

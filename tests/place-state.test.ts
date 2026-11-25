@@ -174,3 +174,25 @@ test("a tent is cloth; so is a moment that presses on cloth", () => {
   assert.ok(!clothPlace("a kitchen at night", "A face at the window glass."));
   assert.ok(!shutCloth(placeStateAt([{ visual: "Dana slams the front door." }], 1)), "a shut house door is no cloth");
 });
+
+/* REVIEW OF S12 (2026-11-25): a door that belongs to a THING in the place is not the place's door, and a place beside a
+ * tent is not a tent. Read as the place's own door, "slams the fridge door" in a tent became "the tent door" — the change
+ * picture would have zipped the tent shut, and every later clip been told it stays so. */
+test("the fridge's door is not the place's: no change, nothing put against the place's door", () => {
+  for (const visual of ["Dana slams the fridge door and turns to face him.", "Rook shuts the cupboard door with his hip.", "Ivo locks the cabinet door and pockets the key.", "Wren eases the oven door open to check the bread."]) {
+    assert.equal(placeChangeIn(visual, "", { where: TENT_WHERE }), null, visual);
+    assert.equal(placeChangeIn(visual, "", { where: "a farmhouse kitchen at night" }), null, visual);
+  }
+  assert.equal(placeChangeIn("Ash pushes the chair in front of the fridge door.", "", { where: "a farmhouse kitchen" }), null);
+  // (…while the place's own doors still are)
+  assert.equal(placeChangeIn("Dana slams the front door and turns to face him.", "", { where: "a farmhouse kitchen" })?.what, "the front door");
+  assert.equal(placeChangeIn("Ash pushes the chair in front of the door.", "", { where: "a farmhouse kitchen" })?.also, "The chair is pushed in front of the door.");
+});
+
+test("a place BESIDE a tent is not cloth; a place in one is", () => {
+  assert.ok(!clothPlace("the campsite outside the tent, by the lake"));
+  assert.ok(!clothPlace("on the shore beside their small tent"));
+  assert.ok(clothPlace("inside the tent, near the tent door"));
+  assert.ok(clothPlace("crouched by the tent door, inside a small tent"));
+  assert.ok(clothPlace("a two-person tent on the shore"));
+});
