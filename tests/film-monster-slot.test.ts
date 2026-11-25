@@ -25,7 +25,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { storyThreat, threatPortrait } from "../app/lib/acted-staging.ts";
+import { storyThreat, threatFromWords, threatPortrait } from "../app/lib/acted-staging.ts";
 import { castEntry } from "../app/lib/story-picture.ts";
 import { nameTok } from "../app/lib/character-prompts.ts";
 import { castRoleOf, castThreat } from "../app/lib/dialogue-cast.ts";
@@ -60,10 +60,10 @@ const form = between(ui, "sigAtSubmit.current = storySig; }}>", "</Form>");
 /* THE THREE HELPERS, RUN — the route's own functions, compiled as they stand. */
 type Thing = { name: string; img: string | null; look: string; picked: boolean; see: boolean } | null;
 const helpers = compile<{
-  scriptThing: (tr: unknown, picked?: string | null) => { entry: string; name: string; look: string } | null;
+  scriptThing: (tr: unknown, picked?: string | null, idea?: string | null, names?: string[]) => { entry: string; name: string; look: string } | null;
   filmThing: (o: unknown) => Thing;
   thingCastEntry: (t: Thing) => Record<string, unknown> | null;
-}>(between(ui, "function scriptThing(", "\n\n// Backdrop presets"), ["scriptThing", "filmThing", "thingCastEntry"], { storyThreat, castEntry, nameTok });
+}>(between(ui, "function scriptThing(", "\n\n// Backdrop presets"), ["scriptThing", "filmThing", "thingCastEntry"], { storyThreat, threatFromWords, castEntry, nameTok });
 
 // the lake film's own shape, with made-up people
 const LAKE = {
@@ -87,9 +87,21 @@ test("RUN: which of a script's cast lines is the film's thing — found the way 
   assert.equal(found.look, "a pale woman in a soaked white nightgown, long black hair over her face, her smile far too wide");
   // …exactly the one the engine draws (acted-staging.ts → storyThreat, with the two who talk)
   assert.equal(storyThreat({ cast: LAKE.cast, speakers: ["Mara", "Jonah"], last: LAKE.scenes[2].visual })?.entry, found.entry);
-  // a script with no threat of its own: nothing — the row says "A monster we invent"
-  assert.equal(helpers.scriptThing({ cast: LAKE.cast.slice(0, 2), scenes: LAKE.scenes }), null);
-  assert.equal(helpers.scriptThing({ cast: [], scenes: LAKE.scenes }), null);
+  // a script that gives its thing NO cast line (the ninth lake film): the first figure its words put in view — exactly
+  // the one the engine falls back to (acted-staging.ts → threatFromWords), so the row can show it and draw it
+  const noLine = { cast: LAKE.cast.slice(0, 2), scenes: LAKE.scenes };
+  const fromWords = helpers.scriptThing(noLine, null, "TEST: two friends by a lake hear their names from the water", ["Mara", "Jonah"]);
+  const engine = threatFromWords({ visuals: LAKE.scenes.map((s) => s.visual), said: LAKE.scenes.map((s) => s.caption), idea: "TEST: two friends by a lake hear their names from the water", speakers: ["Mara", "Jonah"], cast: noLine.cast, names: ["Mara", "Jonah"] });
+  assert.ok(fromWords && engine);
+  assert.equal(fromWords.entry, engine.entry);
+  assert.equal(fromWords.name, "the woman in the lake");
+  assert.ok(!noLine.cast.includes(fromWords.entry), "never a line of the script's: no talking row is taken away");
+  // …and the maker's idea when no scene shows anyone
+  const quiet = { cast: LAKE.cast.slice(0, 2), scenes: [{ visual: "Inside the tent at 3am, the two of them wake.", caption: "Mara: Did you hear that?" }, { visual: "Jonah unzips the flap.", caption: "Jonah: Nothing out there." }] };
+  assert.equal(helpers.scriptThing(quiet, null, "TEST: a pale woman stands waist-deep in the lake, smiling", ["Mara", "Jonah"])?.name, "the woman in the lake");
+  // a script and an idea with no figure anywhere: nothing — the row says "A monster we invent"
+  assert.equal(helpers.scriptThing(quiet, null, "TEST: two friends camp by a lake", ["Mara", "Jonah"]), null);
+  assert.equal(helpers.scriptThing({ cast: [], scenes: [] }), null);
   assert.equal(helpers.scriptThing(null), null);
   // one who TALKS is never the thing, even with a figure word in their name
   const talks = { cast: ["Mara, TEST", "the old man, TEST — a neighbour"], scenes: [{ visual: "x", caption: "Mara: Hello?" }, { visual: "y", caption: "the old man: Go home." }] };
@@ -253,7 +265,8 @@ test("after a script: the row shows the film's thing — the monster picked, or 
   // the threat is the row's — never a talking row with a voice, never one of "1/2 cast"
   assert.ok(ui.includes("const entries = (Array.isArray(tr2.cast) ? tr2.cast : []).filter((entry) => entry !== thingEntry).slice(0, 8);"));
   assert.ok(ui.includes("const thingEntry = monsterOn && !narrated ? scriptThing(tr2, pickedMonster?.name)?.entry : undefined;"));
-  assert.ok(state.includes("const storyThing = monsterOn && !narrated && !pickedMonster && treatment ? scriptThing(treatment) : null;"));
+  // (with the idea and the cast's people, as the film is given them — so a thing with no cast line is found too)
+  assert.ok(state.includes("const storyThing = monsterOn && !narrated && !pickedMonster && treatment ? scriptThing(treatment, null, topic, cast.map((c) => c.name)) : null;"));
 });
 
 test("\"See it · free\": ONE new intent beside the portrait intent — free, guarded like the page's other stills, on the engine's own recipe", () => {
@@ -292,7 +305,10 @@ test("a drawn portrait IS the film's thing: it is sent with the threat, and the 
   assert.ok(state.includes("threatAsked.current = { entry: storyThing.entry, name: storyThing.name };"));
   assert.ok(state.includes("threatNow.current = storyThing?.entry || \"\";"));
   assert.ok(state.includes("if (asked.entry !== threatNow.current) return;"));
-  assert.ok(state.includes("if (threatFetcher.data?.threatUrl) setThreatFace({ name: asked.name, url: threatFetcher.data.threatUrl });"));
+  assert.ok(state.includes("if (threatFetcher.data?.threatUrl) setThreatFace({ name: asked.name, entry: asked.entry, url: threatFetcher.data.threatUrl });"));
+  // …and it stays its face only while the script's line is the one it was drawn from: the same name in a new look
+  // is drawn again, never sent with another look's words
+  assert.ok(state.includes("script: storyThing, face: threatFace && storyThing && threatFace.entry === storyThing.entry ? threatFace : null });"));
   assert.ok(state.includes("else setThreatErr(asked.name);"));
   // a story started over loses it
   assert.ok(state.includes('useEffect(() => { if (!treatment) { setThreatFace(null); setThreatErr(""); } }, [treatment]);'));

@@ -47,7 +47,7 @@ import { pickedAsCast } from "../lib/dialogue-cast";
 // (2026-11-25) THE MONSTER IS CAST: a Horror film's thing has its own row in the Cast step, rides with the cast as
 // `role: "threat"`, and a script's own threat is found the way the film finds it (acted-staging.ts → storyThreat)
 import { castRoleOf, type CastRole } from "../lib/dialogue-cast";
-import { storyThreat } from "../lib/acted-staging";
+import { storyThreat, threatFromWords } from "../lib/acted-staging";
 import { castEntry } from "../lib/story-picture";
 // (2026-11-24) the posters stand on three shelves: told · acted · sung
 import { heroShelves } from "../lib/film-heroes";
@@ -1240,10 +1240,14 @@ function castCardSummary(cast: Array<{ name: string; faceUrl: string | null }>) 
 /** WHICH OF A SCRIPT'S CAST LINES IS THE FILM'S THING — found the way the film itself finds it (acted-staging.ts →
  *  storyThreat: a cast line that is neither of those who talk, and a creature or a figure by its name: "the woman
  *  in the lake"); or, when the maker picked a monster, that monster's own line if the writer gave it one. Either
- *  way it is the monster row's: it is never a talking row with a voice, and never one of "1/2 cast". */
-function scriptThing(tr: { scenes?: ReadonlyArray<{ visual?: string; caption?: string }>; cast?: ReadonlyArray<string> } | null | undefined, picked?: string | null): { entry: string; name: string; look: string } | null {
+ *  way it is the monster row's: it is never a talking row with a voice, and never one of "1/2 cast".
+ *  (Review, 2026-11-25: …and when the script gave its thing NO cast line, the first figure its words put in view,
+ *  else the maker's idea — acted-staging.ts → threatFromWords, as the film does since the ninth lake film, whose
+ *  writer listed only the two who talk. Without it this row said "A monster we invent" with nothing to see, for the
+ *  very film that drew its woman wrong. `idea` = the idea box, `names` = the cast's people, as the film is given.
+ *  Such an entry is no line of the script's, so it never takes a talking row away.) */
+function scriptThing(tr: { scenes?: ReadonlyArray<{ visual?: string; caption?: string }>; cast?: ReadonlyArray<string> } | null | undefined, picked?: string | null, idea?: string | null, names?: ReadonlyArray<string>): { entry: string; name: string; look: string } | null {
   const cast = (tr?.cast || []).filter((e): e is string => typeof e === "string" && !!e.trim());
-  if (!cast.length) return null;
   const scenes = tr?.scenes || [];
   // (who talks: the speaker of each line, read the way the page reads a line — "Mara: …")
   const speakers = Array.from(new Set(scenes.map((s) => (/^\s*([^:]{1,40}):/.exec(s?.caption || "")?.[1] || "").trim()).filter(Boolean)));
@@ -1252,13 +1256,15 @@ function scriptThing(tr: { scenes?: ReadonlyArray<{ visual?: string; caption?: s
     const own = cast.find((e) => !!k && nameTok(castEntry(e).name) === k && !speakers.some((s) => nameTok(s) === k));
     return own ? { entry: own, ...castEntry(own) } : null;
   }
-  const found = storyThreat({ cast, speakers, last: scenes[scenes.length - 1]?.visual });
+  if (!cast.length && !scenes.length) return null;
+  const found = storyThreat({ cast, speakers, last: scenes[scenes.length - 1]?.visual })
+    || (scenes.length ? threatFromWords({ visuals: scenes.map((s) => s?.visual), said: scenes.map((s) => s?.caption), idea, speakers, cast, names: names || [] }) : null);
   return found ? { entry: found.entry, name: found.name, look: castEntry(found.entry).look } : null;
 }
 
 /** WHAT THE FILM'S THING IS — for the Cast card, the monster row and the form: the monster picked (its face and
  *  name, as picked); else the script's own threat (its name and look, and its portrait once the maker has drawn
- *  it — kept by NAME, so a rewrite that keeps the same threat keeps its picture); else nothing known yet: "a
+ *  it — the page hands it in only for the very line it was drawn from, and it must carry the same name); else nothing known yet: "a
  *  monster we invent" (name ""). null outside Horror. `see`: the row offers to draw it. */
 function filmThing(o: { on: boolean; picked?: { name: string; img: string; look?: string | null } | null; script?: { name: string; look: string } | null; face?: { name: string; url: string } | null }): { name: string; img: string | null; look: string; picked: boolean; see: boolean } | null {
   if (!o.on) return null;
@@ -2213,10 +2219,13 @@ export default function FilmStudio() {
   // its own threat ("the woman in the lake"); "See it · free" draws it now, on the engine's own recipe for it (the
   // action's `previewFilmThreat` → acted-staging.ts → threatPortrait), and from then on it IS the film's thing:
   // posted with the film as its `role: "threat"` entry, so the engine never draws it again. Kept beside the cast,
-  // never in it (it never speaks: no voice, not one of "1/2 cast", not a speaker to the server) and by its NAME:
-  // a rewrite that keeps the same threat keeps its picture; a story started over loses it.
-  const storyThing = monsterOn && !narrated && !pickedMonster && treatment ? scriptThing(treatment) : null;
-  const [threatFace, setThreatFace] = useState<{ name: string; url: string } | null>(null);
+  // never in it (it never speaks: no voice, not one of "1/2 cast", not a speaker to the server) and by its LINE —
+  // the words it was drawn from: a rewrite that keeps the same line keeps its picture; one that keeps its name and
+  // changes its look does not (review, 2026-11-25: "the woman in the lake" written again in a black veil would have
+  // kept the white nightgown's picture, and been sent with the veil's words); a story started over loses it.
+  // (the idea and the cast's people go in as the film is given them — scriptThing → threatFromWords)
+  const storyThing = monsterOn && !narrated && !pickedMonster && treatment ? scriptThing(treatment, null, topic, cast.map((c) => c.name)) : null;
+  const [threatFace, setThreatFace] = useState<{ name: string; entry: string; url: string } | null>(null);
   const [threatErr, setThreatErr] = useState("");
   useEffect(() => { if (!treatment) { setThreatFace(null); setThreatErr(""); } }, [treatment]);
   const threatFetcher = useFetcher<{ threatUrl?: string; error?: string }>();
@@ -2236,10 +2245,10 @@ export default function FilmStudio() {
     threatAsked.current = null;
     // (only for the very line it was drawn from: a story started over or rewritten while it drew has another one, or none)
     if (asked.entry !== threatNow.current) return;
-    if (threatFetcher.data?.threatUrl) setThreatFace({ name: asked.name, url: threatFetcher.data.threatUrl });
+    if (threatFetcher.data?.threatUrl) setThreatFace({ name: asked.name, entry: asked.entry, url: threatFetcher.data.threatUrl });
     else setThreatErr(asked.name); // (one calm line; the row stays as it was, and the film draws it when it is made)
   }, [threatFetcher.state, threatFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
-  const thing = filmThing({ on: monsterOn, picked: pickedMonster ? { name: pickedMonster.name, img: pickedMonster.img, look: pickedMonster.look } : null, script: storyThing, face: threatFace });
+  const thing = filmThing({ on: monsterOn, picked: pickedMonster ? { name: pickedMonster.name, img: pickedMonster.img, look: pickedMonster.look } : null, script: storyThing, face: threatFace && storyThing && threatFace.entry === storyThing.entry ? threatFace : null });
   // …and as the acted film is sent, once its script is on the page (with none, the picks are its cast and the
   // monster keeps its role there — the action → pickedAsCast)
   const thingPost = treatment && !narrated ? thingCastEntry(thing) : null;
