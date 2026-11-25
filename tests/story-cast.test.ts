@@ -313,6 +313,7 @@ test("the next episode says who comes back, before a word is written", () => {
   assert.ok(page.includes("setSeriesOwn(isNarr ? (s.returning || []) : []);"));
   assert.ok(page.includes(": seriesOwn.length ? <><Ico n=\"check\" size={12} /> {t(\"Back: {names}\", { names: seriesOwn.map((r) => r.name).join(\" + \") })}</>"));
   assert.ok(page.includes("? <span className=\"mm-card-face\" style={{ backgroundImage: `url(${seriesOwn[0].img})`, backgroundPosition: \"center top\" }} aria-hidden=\"true\" />"), "a full-length portrait is shown from the head down");
-  assert.ok(page.includes("{!pickedCast.length && seriesOwn.length > 1 && ("), "the maker's own picks take the card over");
+  // (2026-11-25: the STARS the maker picked — `pickedStars`; a Horror film's monster has its own line on the card)
+  assert.ok(page.includes("{!pickedStars.length && seriesOwn.length > 1 && ("), "the maker's own picks take the card over");
   assert.equal(read("app", "lib", "ui-i18n-dict.ts").split(`${JSON.stringify("Back: {names}")}:`).length - 1, 5);
 });
