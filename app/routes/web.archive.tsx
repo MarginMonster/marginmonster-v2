@@ -204,12 +204,15 @@ function buildDetails(type: string, metaJson: string | null, bodyJson: string | 
   const style = str(meta.style) || str(body.style);
   const isFaceless = meta.kind === "faceless" || style === "FACELESS";
   const isStory = meta.kind === "narrated" || style === "NARRATED";
+  // (a found-footage take: its script is what the one filming says — not a prompt)
+  const isTake = meta.kind === "take" || style === "TAKE";
   const hasPresenter = style === "AI_AVATAR" || style === "COMMERCIAL" || style === "CARTOON" || style === "JINGLE";
   const kind =
     type === "AUDIO" ? "Music track"
     : type === "BLOG_POST" ? "Article"
     : type === "IMAGE_AD" ? "Image ad"
     : isFaceless ? "Faceless video"
+    : isTake ? "Found footage"
     : style === "AI_AVATAR" ? "Avatar video"
     : style === "COMMERCIAL" ? "Commercial"
     : style === "CARTOON" ? "Cartoon ad"
@@ -244,7 +247,7 @@ function buildDetails(type: string, metaJson: string | null, bodyJson: string | 
     tagline: str(body.tagline),
     direction: str(meta.direction) || (creative ? str(meta.productTitle) : null),
     script,
-    scriptLabel: script ? (adWords ? "Words on the ad" : isFaceless || isStory ? "Narration" : hasPresenter ? "What they say" : "Prompt") : null,
+    scriptLabel: script ? (adWords ? "Words on the ad" : isFaceless || isStory ? "Narration" : hasPresenter || (isTake && str(body.script)) ? "What they say" : "Prompt") : null,
   };
 }
 

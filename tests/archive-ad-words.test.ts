@@ -45,7 +45,10 @@ test("the viewer: an image ad shows its words; only a picture the member describ
   assert.ok(src.includes("const ownPicture = meta.kind === \"create\" || meta.kind === \"edit\";"));
   assert.ok(src.includes("const adWords = type === \"IMAGE_AD\" && !ownPicture ? adWordsOf(body.formatCopy) : null;"));
   assert.ok(src.includes("if (type === \"IMAGE_AD\" && !ownPicture) script = adWords;"), "our brief and the internal tag are never printed");
-  assert.ok(src.includes("scriptLabel: script ? (adWords ? \"Words on the ad\" : isFaceless || isStory ? \"Narration\" : hasPresenter ? \"What they say\" : \"Prompt\") : null,"));
+  assert.ok(src.includes("scriptLabel: script ? (adWords ? \"Words on the ad\" : isFaceless || isStory ? \"Narration\" : hasPresenter || (isTake && str(body.script)) ? \"What they say\" : \"Prompt\") : null,"));
+  // a found-footage take is called what it is, and its lines are what the one filming says — not a "Prompt"
+  // (the Archive titled the cameraman's lines "Prompt", 2026-11-25)
+  assert.ok(src.includes("const isTake = meta.kind === \"take\" || style === \"TAKE\";") && src.includes(": isTake ? \"Found footage\""));
   // the block keeps its line breaks and shows six lines
   assert.ok(src.includes("white-space:pre-wrap;}"));
   assert.ok(src.includes(".wa-prompt-script{-webkit-line-clamp:6;}"));
