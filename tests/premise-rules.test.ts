@@ -287,6 +287,16 @@ test("a story's own creature is known by its name as well as its look; a door th
   assert.equal(sp.characterKind("the monster under the bed", "something with long grey fingers"), "monster");
   assert.equal(sp.characterKind("the ghost hunter", "a wiry man in his forties with a camera"), "person");
   assert.equal(sp.characterKind("the shadow puppeteer", "a cheerful old man with a lamp"), "person");
+  // "THE FIGURE IN ROOM 14" ("The Dent in the Pillow", 2026-11-25) was read as a person, and drawn whole, in plain light,
+  // a step from the nurse: a figure the idea names is its threat — and "skin like PALE candle wax" is still candle wax
+  const room14 = "a gaunt patient-shaped presence with skin like pale candle wax, sunken dark eye sockets with one wet glint of light, and a way of standing perfectly still";
+  assert.equal(sp.characterKind("the figure in Room 14", room14), "monster");
+  assert.equal(sp.characterKind("the figure", "a tall man in a long coat"), "monster");
+  assert.equal(sp.characterKind("Mara", "her skin like old yellow candle wax"), "monster");
+  assert.equal(sp.characterKind("Kay", "a gaunt patient-shaped presence"), "monster");
+  assert.equal(sp.characterKind("the figure skater", "a young woman in a sequinned dress"), "person");
+  assert.equal(sp.characterKind("Dad", "tired, with sunken dark eye sockets after a week of night shifts"), "person", "a tired man is a man");
+  assert.equal(sp.characterKind("Ottilie", "a 34-year-old night-shift nurse with a sharp bob haircut"), "person");
   assert.equal(sp.characterKind("the vampire slayer", "a young woman with a crossbow"), "person");
   // its portrait is the photographed creature's, not a person's
   assert.ok(sp.portraitPrompt(`the ghost lady, ${ghost}`, "dark horror").includes("wardrobe-test photograph"));

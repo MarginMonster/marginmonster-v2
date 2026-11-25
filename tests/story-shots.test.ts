@@ -197,6 +197,9 @@ test("what frightens: a creature a horror story invents is photographed, slightl
   assert.ok(WHAT_FRIGHTENS.includes("Never horns, wings, tentacles, armour, glowing magic, flames or a bare skull — those are costumes."));
   assert.ok(WHAT_FRIGHTENS.includes("it is never fully seen"));
   assert.ok(creatureHidden("The Smiler").startsWith("The Smiler is never shown whole or well lit:"));
+  // …and never beside somebody who would see it ("The Dent in the Pillow": the figure stood in the nurse's phone light,
+  // a step from her, while she looked at a bed)
+  assert.ok(creatureHidden("The Smiler").endsWith("The Smiler is never in the light of anyone's lamp, torch or phone, and never within arm's reach of anybody who is not looking straight at The Smiler: unnoticed, The Smiler is far back in the dark, small in the frame."));
   assert.equal(creatureHidden(""), "");
   // an invented CREATURE's portrait is a photograph of a built thing; a person's is what it always was;
   // and a children's format never gets it

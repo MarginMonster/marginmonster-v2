@@ -354,7 +354,9 @@ export const CREATURE_REAL = "It is PHOTOGRAPHED: a practical-effects creature a
 /** What a scene's picture is told about a creature the story invented: most of it is not seen. */
 export function creatureHidden(name: string): string {
   const n = String(name || "").replace(/\s+/g, " ").trim();
-  return n ? `${n} is never shown whole or well lit: darkness, distance, or something in the way hides most of ${n} — we see less than we want to, and what we do see is exactly as in the reference image.` : "";
+  // (…and never beside somebody who would see it: "The Dent in the Pillow", 2026-11-25 — the figure stood full length in
+  //  the hallway behind the nurse, then right next to her in the room, in her phone's light, while she looked at a bed)
+  return n ? `${n} is never shown whole or well lit: darkness, distance, or something in the way hides most of ${n} — we see less than we want to, and what we do see is exactly as in the reference image. ${n} is never in the light of anyone's lamp, torch or phone, and never within arm's reach of anybody who is not looking straight at ${n}: unnoticed, ${n} is far back in the dark, small in the frame.` : "";
 }
 
 /** What the story's writer is told a creature of its own must be (a horror story only). */
@@ -368,7 +370,9 @@ export const WHAT_FRIGHTENS = "WHAT FRIGHTENS — if this story has a creature, 
  *  thing in the well") that names a creature makes it one; a proper name ("Howl", "Mr. Fox") never decides it. */
 // (…the creature word must be what the name IS: last, or followed by who it is or where — "the ghost LADY", "the
 //  shadow FIGURE", "the thing IN the well". "The ghost hunter" and "the shadow puppeteer" are people.)
-const THREAT_ALONE = /^(?:shadows?|things?|presence|entity)$/i;
+// ("the figure in Room 14" — the threat of "The Dent in the Pillow", 2026-11-25 — was read as a PERSON, drawn whole in
+//  plain light like the nurse herself; a story names its threat as the idea does, and "a figure" is one)
+const THREAT_ALONE = /^(?:shadows?|things?|presence|entity|figures?)$/i;
 const BEING_AFTER = /^(?:lady|woman|man|girl|boy|child|kid|baby|bride|groom|king|queen|mother|father|sister|brother|twins?|figure|rider|horseman|doll|nun|sailor|soldier|knight)$/i;
 const PLACE_AFTER = /^(?:in|under|at|from|behind|beneath|below|outside|inside|on|by|of|near|across)$/i;
 export function characterKind(name: string | null | undefined, look: string | null | undefined): "person" | "cartoon" | "monster" {
@@ -706,7 +710,7 @@ const UNDEAD = /(?<!half-)\b(?:drowned|dead(?![- ]eyed)|undead|ghostly(?! pale| 
 // (…and the "nearly human, slightly wrong" the horror writer is told to give a thing it invents (WHAT_FRIGHTENS): "a
 //  woman … her smile far too wide and crowded with thin teeth, eyes sunk in dark wet sockets" was read as a PERSON —
 //  drawn whole and lit, and her close-up's smile softened as it moved, 2026-11-25)
-const UNNATURAL = /\b(?:empty (?:eye )?sockets|glowing (?:\w+ )?eyes|translucent|see-through|rotting (?:flesh|skin)|skin tinged (?:blue|grey|gray|green)|fangs|tentacles|smile (?:far |much |way )?too wide|too-wide smile|crowded with (?:thin |small |sharp |grey |gray |yellow )?teeth|(?:eyes )?sunk(?:en)? (?:deep )?in(?:to)? (?:dark |black )?(?:wet )?(?:sockets|hollows)|skin (?:like|the colou?r of) (?:old )?candle ?wax|candle[- ]wax skin|(?:fingers|neck|arms|limbs) (?:far |much )?too long|unnaturally (?:long|tall|still))\b/i;
+const UNNATURAL = /\b(?:empty (?:eye )?sockets|glowing (?:\w+ )?eyes|translucent|see-through|rotting (?:flesh|skin)|skin tinged (?:blue|grey|gray|green)|fangs|tentacles|smile (?:far |much |way )?too wide|too-wide smile|crowded with (?:thin |small |sharp |grey |gray |yellow )?teeth|(?:eyes )?sunk(?:en)? (?:deep )?in(?:to)? (?:dark |black )?(?:wet )?(?:sockets|hollows)|skin (?:like|the colou?r of) (?:[\w-]+ ){0,2}candle ?wax|candle[- ]wax skin|(?:[\w-]+[- ]shaped |shapeless |formless )presence|(?:fingers|neck|arms|limbs) (?:far |much )?too long|unnaturally (?:long|tall|still))\b/i;
 
 /** WHAT a story's character most likely is, read off the words the writer described them with — only a
  *  first guess, which the maker can change before anything is charged (the price follows the kind):
