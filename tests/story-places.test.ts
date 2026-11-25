@@ -348,7 +348,8 @@ test("a scene that comes back as a framed panel on a plain ground is drawn again
   assert.ok(FRAMED_FIX.includes("fills the whole frame from edge to edge"));
   // a framed panel is never the picture that is kept: only a clean picture, the best of the looked-at ones,
   // or a letterboxed one are
-  assert.ok(fn.includes("if (!img && best) { img = best.img;") && fn.includes("if (!img) img = barred;"));
+  // (…the letterboxed one looked at for anybody unclothed since the review of S8, 2026-11-25: tests/clothed.test.ts)
+  assert.ok(fn.includes("if (!img && best) { img = best.img;") && fn.includes("if (!img && barred) img = await keepClothed({ url: barred,"));
   assert.ok(!/img = (?:boxed|framed)/.test(fn));
   // read from the picture itself, at a small size; a picture that cannot be read is not called one
   const m = nar.slice(nar.indexOf("async function framedPanel("), nar.indexOf("/** THE POSTER (story-poster.ts)"));

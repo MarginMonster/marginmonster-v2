@@ -137,7 +137,8 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   assert.ok(s.includes("fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || \"person\"));") && s.includes("const got = await drawScene(`${first}${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
   // (…and a best-of that is still wrong SAYS so: the storyboard flags that scene — tests/story-cast.test.ts)
   assert.ok(s.includes("if (!best || faults < best.faults) best = { img: got, faults, check: seenAs! };") && s.includes("if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }"));
-  assert.ok(s.indexOf("if (!img && best) { img = best.img;") < s.indexOf("if (!img) img = barred;"), "a looked-at picture is preferred to a letterboxed one");
+  // (…the letterboxed one LOOKED at for anybody unclothed since the review of S8, 2026-11-25: tests/clothed.test.ts)
+  assert.ok(s.indexOf("if (!img && best) { img = best.img;") < s.indexOf("if (!img && barred) img = await keepClothed({ url: barred,"), "a looked-at picture is preferred to a letterboxed one");
   // …and the writer is told the same three things
   const w = read("app", "lib", "film-engine.server.ts");
   assert.ok(w.includes("It is ONE moment only — a picture cannot show two times") && w.includes("at most ONE other person") && w.includes("nothing in it is WRITTEN"));

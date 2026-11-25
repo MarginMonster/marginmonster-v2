@@ -221,6 +221,9 @@ test("TOLD STORIES: the lake scene's words dress her before the picture model re
   assert.ok(nar.includes("best = { img: dressed, faults: storyFaults(rest), check: rest };") && nar.includes("if (!best.faults) img = dressed;"), "dressed, it keeps whatever else its look found");
   // the portraits every scene is drawn from: dressed in their words, looked at, drawn again clothes first, edited — or none
   assert.ok(nar.includes("return img ? keepClothed({ url: img, ref: (u) => abs(u) || u, redraw: () => drawScene(`${CLOTHED_FIRST} ${ask}`, [], PORTRAIT_ASPECT), edit: (u, bare) => clothedEditOn(u, bare, PORTRAIT_ASPECT), still: \"drop\","));
+  // …a letterboxed picture kept because every go was letterboxed (never looked at by the story's look): looked at, kept
+  //  (review of S8, 2026-11-25)
+  assert.ok(nar.includes("if (!img && barred) img = await keepClothed({ url: barred, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, aspect), log:") && !nar.includes("if (!img) img = barred;"));
   // …and the lenient last path: dressed words, looked at, kept
   assert.ok(nar.includes("renderCreativeSeed(`${safe}${dressedInWater((scene.visual || \"\").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);") && nar.includes("img = lenient ? await keepClothed({ url: lenient,"));
 });

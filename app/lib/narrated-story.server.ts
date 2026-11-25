@@ -374,7 +374,9 @@ export async function narratedSceneSeeds(o: {
         await alive();
       }
       if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }
-      if (!img) img = barred;
+      // (…a letterboxed picture kept because every go was letterboxed was never looked at — review of S8, 2026-11-25:
+      //  it is looked at for anybody unclothed now, dressed by one edit if it must be, else kept as it is)
+      if (!img && barred) img = await keepClothed({ url: barred, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, aspect), log: (l) => console.log(`[narrated] scene ${i + 1} (letterboxed, kept): ${l}`) });
       // the lenient path last: its safety and outage fallbacks still get a picture (without the cast's own looks)
       // (…its words dressed too, and the picture looked at: dressed by one edit, else kept as it is — clothed.server.ts)
       if (!img) {
