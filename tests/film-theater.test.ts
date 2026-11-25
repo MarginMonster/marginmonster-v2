@@ -701,9 +701,13 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
     assert.ok(Math.abs(r.w - (vw - 2 * gut - 2 - 28 - 36) / 4) < 1e-9, "the tray's inside (two borders, two paddings of 14), three gaps of 12");
   }
   // with today's shelves: a phone scrolls Stories and Films, and Music videos' two stand whole
+  // (2026-11-25, the genres became movie categories — "Our genres need to be movie categories (drama, horror,
+  //  comedy, etch)": the shelves were [3, 4, 2] and nothing scrolled on a wide screen, "a fifth poster on a shelf
+  //  would". Stories now holds nine and Films eleven, so those two rows scroll sideways on EVERY screen — four
+  //  across on a wide one, as the row was built to; only Music videos still stands whole.)
   const shelves = heroShelves(FILM_HEROES).map((s) => s.heroes.length);
-  assert.deepEqual(shelves, [3, 4, 2]);
-  assert.ok(Math.max(...shelves) <= 4, "nothing scrolls on a wide screen today — a fifth poster on a shelf would");
+  assert.deepEqual(shelves, [9, 11, 2]);
+  assert.ok(shelves[0] > 4 && shelves[1] > 4 && shelves[2] <= 4, "Stories and Films scroll on a wide screen too; Music videos' two do not");
 
   // THE PAGE NEVER SCROLLS SIDEWAYS. The tray runs to the screen's edge by taking back the page's own gutter
   // — the shell's .wb-main padding, width for width — and not a pixel more.

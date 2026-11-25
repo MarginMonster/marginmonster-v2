@@ -66,6 +66,10 @@ const objOf = (raw: unknown): Obj => {
 };
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
+/** The movie categories a film's name can begin with since 2026-11-25 ("Drama Film — …", "Sci-Fi Story — …":
+ *  film-heroes.ts) — as a pattern. Horror and Moral were names before that and are spelled out where they are read. */
+const GENRE_WORDS = "drama|comedy|thriller|action|romance|sci-fi|fantasy|mystery";
+
 /** A piece as the cover reads it: its type, its title, and the two records it carries. */
 export type CoverPiece = { type: string; title?: string | null; meta?: unknown; body?: unknown };
 
@@ -91,10 +95,12 @@ export function coverKind(p: CoverPiece): CoverKind | null {
   if (kind === "musicvideo" || style === "MUSICVIDEO" || tmpl === "musicvideo" || kidsSung || /^music video\b/i.test(title)) return { family: "music", kids: kidsSung };
   const kids = tmpl === "kidstv" || /^kids (cartoon|story)\b/i.test(title);
   // TOLD: a narrated story, and the older engine's films (stills and clips under one voice)
-  if (kind === "narrated" || style === "NARRATED" || kind === "film" || style === "FILM" || /^(moral|short|kids) story\b/i.test(title)) return { family: "story", kids };
+  // (the genres became movie categories on 2026-11-25 — film-heroes.ts: a "Comedy Story" is told, a "Comedy
+  //  Film" acted; "Short …" is what a Drama was called before, and the Archive still holds those)
+  if (kind === "narrated" || style === "NARRATED" || kind === "film" || style === "FILM" || new RegExp(`^(moral|short|kids|${GENRE_WORDS}) story\\b`, "i").test(title)) return { family: "story", kids };
   // ACTED: the cast speak on camera — and the tests of it
   if (kind === "testmovie" || kind === "avatardialogue" || kind === "enginetest" || style === "TESTMOVIE" || style === "AVATARDIALOGUE" || style === "ENGINETEST"
-    || /^(short|moral) film\b|^kids cartoon\b|^dialogue\b|^engine test\b/i.test(title)) return { family: "film", kids };
+    || new RegExp(`^(short|moral|${GENRE_WORDS}) film\\b|^kids cartoon\\b|^dialogue\\b|^engine test\\b`, "i").test(title)) return { family: "film", kids };
   // CREATOR: a faceless video, a described Creator video (the pipeline stamps `creative`; an older one is
   // known by the brief every such video was built from), an edited clip — and a presenter with no product
   // (the talking head: the Ad Maker's "No product")
@@ -113,7 +119,7 @@ export const posterIsCover = (family: CoverFamily): boolean => family === "story
 /* ---- THE WORDS ---- */
 
 /** The name a pipeline puts in front of a title ("Music Video — Neon Hearts"): the cover says the title. */
-const KIND_PREFIX = /^(?:kids music video|music video|horror film|horror story|moral film|moral story|short film|short story|kids cartoon|kids story|found footage|faceless video|commercial|anthem|product video|edited video|video|dialogue \(actors\)|dialogue · actors|skit|youtube video)\s*[—–-]\s*/i;
+const KIND_PREFIX = new RegExp(`^(?:kids music video|music video|horror film|horror story|moral film|moral story|short film|short story|(?:${GENRE_WORDS}) (?:film|story)|kids cartoon|kids story|found footage|faceless video|commercial|anthem|product video|edited video|video|dialogue \\(actors\\)|dialogue · actors|skit|youtube video)\\s*[—–-]\\s*`, "i");
 
 /** WHAT THE COVER SAYS: the piece's own title — without the kind its pipeline put in front of it — and the
  *  names it bills (three at most): the cast of a story or a film, who sang a verse, who presents. */
