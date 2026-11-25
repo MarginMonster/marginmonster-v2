@@ -47,6 +47,12 @@ export type FalVideoOpts = {
    *  the Omni "reference-to-video" endpoint (a found-footage take starts off its subject and is told to
    *  find the scene "exactly as in @Image1": take.server.ts). */
   referenceImages?: string[];
+  /** THE FRAME THE CLIP ENDS ON — read only by the Omni "O3" image-to-video endpoints, where fal's schema has it as
+   *  `end_image_url`, "URL of the end frame image (optional)" (read 2026-11-25 for both o3/pro and o3/standard). An acted
+   *  film's shot that SHUTS a door ends on the picture of it shut (place-state.ts, film-dialogue.server.ts): told in
+   *  words, from a still with the door open, the engine never finished "zips the tent door shut" — the owner's tent
+   *  films. Sent only when given, and to no other engine. */
+  endImage?: string;
 };
 
 /** What every motion clip is told NOT to do when its caller names nothing more specific. */
@@ -112,6 +118,8 @@ export function falVideoBody(model: string, opts: FalVideoOpts): Record<string, 
     return {
       prompt: opts.prompt,
       ...(omni ? { image_url: opts.startImage } : { start_image_url: opts.startImage }),
+      // (the frame the shot ends on — the O3 models only, and only when the caller has one: FalVideoOpts.endImage)
+      ...(omni && opts.endImage ? { end_image_url: opts.endImage } : {}),
       duration: String(klingThreeSeconds(opts.durationSec)),
       generate_audio: opts.generateAudio === true,
       ...(omni ? {} : { negative_prompt: opts.negativePrompt || DEFAULT_NEGATIVE_PROMPT }),

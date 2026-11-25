@@ -133,7 +133,8 @@ test("a pipeline asks for sound exactly when it ships the clip's own sound", () 
   assert.ok(vid.includes("\"-map\", \"[v]\", \"-map\", \"0:a?\","), "…because this is the pipeline whose frame step carries the audio through");
   // ships it: a film's dialogue shot
   const dia = read("app", "lib", "film-dialogue.server.ts");
-  assert.ok(dia.includes("falVideoSubmit(model, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur })"));
+  // (…and, since S12, the frame it ends on when its scene changes its place — sent to the O3 bodies only, below)
+  assert.ok(dia.includes("falVideoSubmit(model, { startImage: seedAbs, prompt, generateAudio: true, durationSec: dur, ...(endImage ? { endImage } : {}) })"));
   // lay their own track over the clip: never ask
   for (const f of ["cartoon-ad-pipeline.server.ts", "jingle-ad-pipeline.server.ts", "commercial-ad-pipeline.server.ts", "film-engine.server.ts"]) {
     assert.equal(count(read("app", "lib", f), "generateAudio"), 0, `${f} pays for no sound it will discard`);
@@ -240,4 +241,25 @@ test("every fal engine is asked only for fields its schema has, with every field
       else assert.ok(!("generate_audio" in body), `${model} has no sound flag`);
     }
   }
+});
+
+/* THE FRAME A SHOT ENDS ON (2026-11-25, stream S12 — place-state.ts). An acted shot that zips a tent door shut ends on
+ * the picture of it shut: told in words, from a still with the door open, the engine never finished the zip (the
+ * owner's tent films). fal's O3 image-to-video schema has `end_image_url` (read 2026-11-25, pro and standard). */
+test("the end frame goes to the O3 image-to-video endpoints only, and only when given", () => {
+  const end = "https://x.test/renders/change.jpg";
+  for (const o3 of [O3_STD, "fal-ai/kling-video/o3/pro/image-to-video"]) {
+    const body = falVideoBody(o3, { ...seed, endImage: end, generateAudio: true, durationSec: 8 });
+    assert.equal(body.end_image_url, end, o3);
+    for (const k of Object.keys(body)) assert.ok(SCHEMAS[o3].fields.includes(k), `${o3}: "${k}" is in its schema`);
+    assert.ok(!("end_image_url" in falVideoBody(o3, seed)), `${o3}: not sent when there is none`);
+    assert.ok(!("end_image_url" in falVideoBody(o3, { ...seed, endImage: "" })), `${o3}: nor when it is empty`);
+  }
+  // never to another engine — not even one whose schema has a field of that name (a different model, its own rules)
+  for (const other of [V3_PRO, K26, K25, SEEDANCE, SEEDANCE_V1, VEO, "fal-ai/kling-video/o3/standard/reference-to-video"]) {
+    const body = falVideoBody(other, { ...seed, endImage: end, referenceImages: ["https://x.test/renders/ref.jpg"] });
+    assert.ok(!Object.values(body).includes(end), other);
+  }
+  // the submit hands the caller's options to this one function, unchanged
+  assert.ok(read("app", "lib", "fal-video.server.ts").includes("const body = falVideoBody(model, opts);"));
 });
