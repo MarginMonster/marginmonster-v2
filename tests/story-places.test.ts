@@ -185,7 +185,8 @@ test("where the pictures are drawn: one sheet per place, beside the portraits, t
   assert.ok(fn.includes("const needPlaces = wanted.filter((p) => p.scenes.some((i) => todo.includes(i)) && !sheetFor(p.name));"), "only a sheet a scene being drawn NOW needs, and does not have");
   // drawn on the everyday model, square, from words alone — STARTED before the portraits and awaited after
   // them, so a story's pictures take no longer than they did
-  const start = fn.indexOf("const sheetsDrawing = Promise.all(needPlaces.map(async (p) => ({ p, img: await drawScene(placeSheetPrompt(p, tmpl.sceneHint, safe, !tmpl.childSafe), [], PLACE_SHEET_ASPECT) })));");
+  // (…never "today" for a genre whose world is its own — Fantasy, film-genres.ts → ownWorld)
+  const start = fn.indexOf("const sheetsDrawing = Promise.all(needPlaces.map(async (p) => ({ p, img: await drawScene(placeSheetPrompt(p, tmpl.sceneHint, safe, !tmpl.childSafe && !tmpl.ownWorld), [], PLACE_SHEET_ASPECT) })));");
   const portraits = fn.indexOf("const drawn = await Promise.all(need.map(async (e) =>");
   const done = fn.indexOf("for (const d of await sheetsDrawing) if (d.img) placeCards.push({ name: d.p.name, look: d.p.look, img: d.img });");
   assert.ok(start > 0 && portraits > start && done > portraits, "started, then the portraits, then awaited");
@@ -193,7 +194,7 @@ test("where the pictures are drawn: one sheet per place, beside the portraits, t
   assert.ok(fn.includes("const setAt = wanted.find((p) => p.scenes.includes(i));"));
   assert.ok(fn.includes("const refs = [...people, ...(placeUrl ? [placeUrl] : [])];"));
   assert.ok(fn.includes("const placeNotes = place && placeUrl ? [placeNote(refs.length, place), ...(here.length && !cam ? [PLACE_FRAMING] : [])] : [];"), "the framing line only where there are people to frame — and only for a scene with no camera line of its own (it made every picture at a place the same medium two-shot)");
-  assert.ok(fn.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
+  assert.ok(fn.includes("const got = await drawScene(`${first}${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
   // a sheet that could not be drawn changes nothing: the scene is drawn from its words, as before
   assert.ok(fn.includes("const place = setAt ? sheetFor(setAt.name) : undefined;"));
   // what comes back: the token with the places in it, and the sheets themselves

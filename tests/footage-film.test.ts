@@ -884,8 +884,11 @@ test("THE MAKING: three rolls at once and their encodes in turn; one more roll a
   assert.ok(house.includes("house = keptHouseOf(resume(\"ckFh\")) || (await keptHouseFor(opts.shopId));"));
   // THE PICTURES of a held camera: on the strongest picture model at 2K — the place, then the thing's payoff, then the rest
   const pics = srv.slice(srv.indexOf("// 3) THE PICTURES"), srv.indexOf("// 4) THE TAKES"));
-  assert.ok(pics.includes("const prompt = footageScenePrompt(film, { still: d.take.still, seen: d.seen, who: d.take.who }, refs.length as 0 | 1 | 2);"));
-  assert.equal(count(pics, 'aspect_ratio: aspect, output_format: "jpg" }, true)'), 2, "the scene and the way in, both at their best");
+  // (…the scene's words dressed where they put somebody in water, and its picture drawn CLOTHED — take.server.ts →
+  //  drawClothed, 2026-11-25: tests/clothed.test.ts)
+  assert.ok(pics.includes("const prompt = footageScenePrompt(film, { still: dressedInWater(d.take.still), seen: d.seen, who: d.take.who }, refs.length as 0 | 1 | 2);"));
+  assert.equal(count(pics, 'aspect_ratio: aspect, output_format: "jpg" }, true'), 2, "the scene and the way in, both at their best");
+  assert.ok(pics.includes("ckStill: await drawClothed({ prompt,") && pics.includes("opens = await drawPicture({ prompt: footageOpensPrompt(film, d.take),"));
   assert.ok(pics.includes("if (!text(records[plan.place].ckStill)) { await drawScene(plan.place, []); continue; }"));
   assert.ok(pics.includes("if (plan.thing !== null && plan.thing !== plan.place && !text(records[plan.thing].ckStill)) { await drawScene(plan.thing, [placePic]); continue; }"));
   assert.ok(pics.includes("(direction[i] as DirectedMoment).seen && thingPic ? [placePic, thingPic] : [placePic]"));

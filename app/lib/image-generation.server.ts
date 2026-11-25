@@ -15,7 +15,8 @@ import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { characterInRef } from "./character-prompts";
 import { stagedTwoShot, thingBound } from "./acted-staging";
-import { CLOTHED_FIRST, NIGHT_FIRST, NIGHT_SAID, STORY_LAST_MODEL, STORY_MODEL, clothedEdit, dressedInWater, nightLookPrompt, parseNightLook, parseUnclothed, storyPictureInput, unclothedPrompt } from "./story-picture";
+import { CLOTHED_FIRST, NIGHT_FIRST, NIGHT_SAID, STORY_LAST_MODEL, STORY_MODEL, clothedEdit, dressedInWater, nightLookPrompt, parseNightLook, storyPictureInput } from "./story-picture";
+import { keepClothed } from "./clothed.server";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
 import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
@@ -4914,7 +4915,7 @@ export async function renderTwoPanelShotReverse(opts: { roomRefUrl?: string | nu
 // room are identical by construction and never drift. Seeded 9:16 to match the clips.
 // (2026-11-24: with a `staging` — acted-staging.ts — the two are placed at a natural distance in a medium
 // shot instead of chest-up and close; both faces are still in it, and it is still the one seed of its place.)
-export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; nameA?: string; nameB?: string; lookA?: string; lookB?: string; /** a cast member who is not a person (a cartoon character, a monster) is bound to its picture as a CHARACTER, not as a face-hair-and-age */ creatureA?: boolean; creatureB?: boolean; /** how the people look, where the format has a say (a horror cast does not grin) */ mood?: string; /** what the scene shows (who holds what, what is happening) — drawn inside the same two-shot framing */ action?: string; /** THE FILM'S THING (acted-staging.ts → thingBound), where this place's first scene has it in view: its one picture, after the cast's, bound by name like a cast member's photo — so the woman in the lake is the same woman in every picture of her (2026-11-25). Only in a STAGED picture: the close two-shot's own prompt is left letter for letter */ thing?: { url: string; name: string; look?: string } | null; /** HOW THE TWO ARE STAGED (acted-staging.ts): where each one is and where the camera is — a natural distance, the room around them, what the scene calls for IN the picture. None (or not a staging) → the close two-shot this always drew, word for word */ staging?: string | null; setting: string; style?: "photoreal" | "cartoon"; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
+export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null; faceA?: string | null; faceB?: string | null; descA: string; descB: string; nameA?: string; nameB?: string; lookA?: string; lookB?: string; /** a cast member who is not a person (a cartoon character, a monster) is bound to its picture as a CHARACTER, not as a face-hair-and-age */ creatureA?: boolean; creatureB?: boolean; /** how the people look, where the format has a say (a horror cast does not grin) */ mood?: string; /** what the scene shows (who holds what, what is happening) — drawn inside the same two-shot framing */ action?: string; /** THE FILM'S THING (acted-staging.ts → thingBound), where this place's first scene has it in view: its one picture, after the cast's, bound by name like a cast member's photo — so the woman in the lake is the same woman in every picture of her (2026-11-25). Only in a STAGED picture: the close two-shot's own prompt is left letter for letter */ thing?: { url: string; name: string; look?: string } | null; /** a genre whose world is its own (Fantasy — film-genres.ts → ownWorld): a STAGED picture is told everybody is clothed and NOT that its places look the way they look today (acted-staging.ts → actedRealism, 2026-11-25) */ ownWorld?: boolean; /** HOW THE TWO ARE STAGED (acted-staging.ts): where each one is and where the camera is — a natural distance, the room around them, what the scene calls for IN the picture. None (or not a staging) → the close two-shot this always drew, word for word */ staging?: string | null; setting: string; style?: "photoreal" | "cartoon"; aspect?: "9:16" | "16:9" | "1:1" }): Promise<string | null> {
   try {
     if (!process.env.REPLICATE_API_TOKEN) return null;
     const refs = [opts.roomRefUrl, opts.faceA, opts.faceB, opts.staging ? opts.thing?.url : null].filter((u): u is string => !!u).slice(0, 4);
@@ -4983,7 +4984,7 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
     // reference picture is the same text as above. No staging → the prompt above, unchanged.
     // (The moment has more room here than the 240 characters above: a film's last scene may be written longer — and
     //  since 2026-11-25 it carries the story's own description of anybody else it names, the woman in the lake.)
-    const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: action.replace(/\s+/g, " ").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, thingNote, comp }) : "";
+    const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: action.replace(/\s+/g, " ").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, thingNote, comp, ownWorld: opts.ownWorld }) : "";
     // ON THE GOOD MODEL (story-picture.ts → STORY_MODEL), the everyday one only if it will not draw it. An acted
     // film's master is the picture every clip of it is filmed FROM — and it was still drawn on the everyday model
     // after the owner called that one "a poop engine for the stills" and every told story moved off it (2026-11-24).
@@ -5011,24 +5012,17 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
         } catch (e) { artLog("image-ad", `two-shot: the night redraw failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
       }
     }
-    const bare = async (u: string) => { try { return parseUnclothed(String((await anthropicVision(unclothedPrompt(), [u], { maxTokens: 120, model: "claude-sonnet-4-6" })) || "")); } catch { return { unclothed: false, who: "" }; } };
-    let seen = await bare(url);
-    if (seen.unclothed) {
-      artLog("image-ad", `two-shot: an unclothed figure (${seen.who || "somewhere in it"}) — drawn again, clothes first`);
-      try {
-        const again = await repRun(used, storyPictureInput(used, { prompt: `${CLOTHED_FIRST} ${staged || prompt}`, refs, aspect: ar }), 150_000);
-        const look = again ? await bare(again) : seen;
-        if (again && !look.unclothed) { url = again; seen = look; }
-      } catch (e) { artLog("image-ad", `two-shot: the clothed redraw failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
-    }
-    if (seen.unclothed) {
-      try {
-        const edited = await repRun(STORY_MODEL, storyPictureInput(STORY_MODEL, { prompt: clothedEdit(seen.who), refs: [url], aspect: ar }), 150_000);
-        const look = edited ? await bare(edited) : seen;
-        if (edited && !look.unclothed) { url = edited; seen = look; }
-        else if (edited) { url = edited; artLog("image-ad", "two-shot: STILL an unclothed figure after the edit — the edited picture is kept; look at this film"); }
-      } catch (e) { artLog("image-ad", `two-shot: the clothing edit failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
-    }
+    // (the ONE look every film picture has since 2026-11-25 — clothed.server.ts → keepClothed, its sequence exactly what
+    //  stood here: the look; once more on the model that drew it, clothes first, kept only if ITS look is clean; then
+    //  ONE edit of the picture as first drawn, on the good model; still bare, the edited picture is kept and said)
+    const shot = url;
+    url = (await keepClothed({
+      url: shot,
+      redraw: () => repRun(used, storyPictureInput(used, { prompt: `${CLOTHED_FIRST} ${staged || prompt}`, refs, aspect: ar }), 150_000),
+      edit: (u, who) => repRun(STORY_MODEL, storyPictureInput(STORY_MODEL, { prompt: clothedEdit(who), refs: [u], aspect: ar }), 150_000),
+      still: "keep",
+      log: (l) => artLog("image-ad", `two-shot: ${l}`),
+    })) || shot;
     const durable = await persistRemote(url, "jpg");
     artLog("image-ad", `side-by-side two-shot rendered on ${used} (refs x${refs.length}${staged ? `, staged ${opts.staging}` : ""})`);
     return durable;

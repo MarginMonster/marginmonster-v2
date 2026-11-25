@@ -40,7 +40,8 @@ import { camDate, timeLapseOf, type HouseClock, type TimeLapse } from "./camera-
 import { EMPTY_HOUSE, HOUSE_SCARES, HOUSE_TAKE_SECONDS, camOf, houseNight, houseRoom, houseScare, houseScarePrompt, houseScenePrompt, houseSetPrompt, houseWriterBrief, keptHouseOf, parseHouseScare, playedSeconds, roomImg, roomPrompt, roomToDraw, thingImg, withRoom, withThing, type HouseNight, type HouseScare, type KeptHouse } from "./house-cam";
 import { mirrorRender } from "./object-storage.server";
 import { TAKE_REF, betterRoll, rollFaulty } from "./take";
-import { cutsIn, drawPicture, dressTake, heard, imageRef, inTheAir, keepRoll, renders, rerolls, rollTake, roomTake, secondsOf, sizeOf, stamp, wordsIn } from "./take.server";
+import { dressedInWater } from "./story-picture";
+import { cutsIn, drawClothed, drawPicture, dressTake, heard, imageRef, inTheAir, keepRoll, renders, rerolls, rollTake, roomTake, secondsOf, sizeOf, stamp, wordsIn } from "./take.server";
 import { checkpointJob } from "./ugc-ad-pipeline.server";
 
 /** What a house take's record carries its house under — and how the newest one is found. */
@@ -126,6 +127,11 @@ export async function houseTakePictures(o: HouseTakeOptions & { house: KeptHouse
   //  one behind it — take.server.ts → drawPicture; the owner, 2026-11-25: "upgrade the best image possible")
   const draw = async (prompt: string, refs: string[]): Promise<string> =>
     drawPicture({ prompt, ...(refs.length ? { image_input: refs.map((r) => imageRef(base, r)) } : {}), aspect_ratio: "16:9", output_format: "jpg" }, !!o.best);
+  // (…and a picture somebody is in — the room as the take finds it, somebody asleep in it; the scene, the thing where it
+  //  stops — is drawn CLOTHED, 2026-11-25: its words dressed where they put somebody in water, the picture looked at,
+  //  drawn again clothes first, dressed by one edit — take.server.ts → drawClothed. The empty room needs nothing.)
+  const drawDressed = async (prompt: string, refs: string[], what: string): Promise<string> =>
+    drawClothed({ prompt: dressedInWater(prompt), ...(refs.length ? { image_input: refs.map((r) => imageRef(base, r)) } : {}), aspect_ratio: "16:9", output_format: "jpg" }, !!o.best, `[house-take] ${what}:`);
 
   // 1) the scare
   let scare: HouseScare & { title: string };
@@ -168,7 +174,8 @@ export async function houseTakePictures(o: HouseTakeOptions & { house: KeptHouse
   let set = resume.ckSet || "";
   if (!set) {
     const p = houseSetPrompt(scare, { ir });
-    set = p ? await draw(p, [roomPic]) : roomPic;
+    // (only the room's lamp, with nothing added to it, has nobody to look at)
+    set = p ? (scare.set.trim() ? await drawDressed(p, [roomPic], "the room as the take finds it") : await draw(p, [roomPic])) : roomPic;
     await ckpt({ ckSet: set });
   }
 
@@ -177,7 +184,7 @@ export async function houseTakePictures(o: HouseTakeOptions & { house: KeptHouse
   const known = o.thingPic || thingImg(house, scare.thing.key);
   let scene = resume.ckScene || "";
   if (!scene) {
-    scene = await draw(houseScenePrompt(scare, { kept: !!known, ir }), known ? [set, known] : [set]);
+    scene = await drawDressed(houseScenePrompt(scare, { kept: !!known, ir }), known ? [set, known] : [set], "the scene");
     await ckpt({ ckScene: scene });
   }
   if (!known && scare.thing.key) {

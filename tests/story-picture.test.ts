@@ -118,8 +118,9 @@ test("a split picture is the worst fault, then each cast member who is not in it
 
 test("the pipeline: words tidied, picture drawn, picture looked at, drawn again when wrong — and never left bare", () => {
   const s = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(s.includes("const visual = oneMoment(noLettering(written));"));
-  assert.ok(s.includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : \"\"}${tmpl.childSafe ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;") && !s.includes("No readable text, captions or lettering anywhere."));
+  // (…and a person the words put in water is dressed in those same words — story-picture.ts → dressedInWater, 2026-11-25)
+  assert.ok(s.includes("const visual = dressedInWater(oneMoment(noLettering(written)));"));
+  assert.ok(s.includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : \"\"}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;") && !s.includes("No readable text, captions or lettering anywhere."));
   assert.ok(ONE_PICTURE.includes("never a split screen, a collage, comic panels, a before-and-after or a grid") && NOTHING_WRITTEN.includes("no signs with words, labels, notices, numbers, letters or captions"));
   // WHO is looked for: the maker's own cast in this scene — by their own pictures, never the sheet of invented characters
   assert.ok(s.includes("const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);"));
@@ -128,11 +129,12 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   assert.ok(s.includes("const twoMoments = oneMoment(written) !== written;") && s.includes("twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: \"claude-sonnet-4-6\" })"));
   // (every picture is looked at now — at least for anybody its words do not put there: an empty room at night came
   //  back with a grown man at a screen in it; storyExtrasPrompt)
-  assert.ok(s.includes("if (!pic) return null;") && s.includes("anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 500, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"), "every picture is looked at for strangers");
+  // (…its answer a line longer since 2026-11-25: it also says whether anybody is unclothed — UNCLOTHED_ASKED)
+  assert.ok(s.includes("if (!pic) return null;") && s.includes("anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 600, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"), "every picture is looked at for strangers");
   // a look that fails or says nothing keeps the picture
-  assert.ok(s.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null) return null;") && s.includes("const faults = seenAs ? storyFaults(seenAs) : 0;"));
+  assert.ok(s.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null && bare == null) return null;") && s.includes("const faults = seenAs ? storyFaults(seenAs) : 0;"));
   // wrong → drawn again with the fault named; the best of three goes is kept
-  assert.ok(s.includes("fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || \"person\"));") && s.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
+  assert.ok(s.includes("fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || \"person\"));") && s.includes("const got = await drawScene(`${first}${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
   // (…and a best-of that is still wrong SAYS so: the storyboard flags that scene — tests/story-cast.test.ts)
   assert.ok(s.includes("if (!best || faults < best.faults) best = { img: got, faults, check: seenAs! };") && s.includes("if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }"));
   assert.ok(s.indexOf("if (!img && best) { img = best.img;") < s.indexOf("if (!img) img = barred;"), "a looked-at picture is preferred to a letterboxed one");
@@ -147,8 +149,9 @@ test("a horror cast does not grin: the format's own line reaches the narrated pi
   // only horror has a say (a kids' cartoon, a moral story and a short film keep whatever the scene calls for)
   assert.equal(engine.split("\n    faceMood: ").length - 1, 1);
   assert.ok(read("app", "lib", "narrated-story.server.ts").includes("Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : \"\"}${cam ? ` ${cameraLine(cam)}` : \"\"} ${[...notes, ...(withPlace ? placeNotes : [])].join(\" \")}"));
-  // (…the film's THING by its own picture rides after it since 2026-11-25 — tests/acted-sighting.test.ts)
-  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null }));"));
+  // (…the film's THING by its own picture rides after it since 2026-11-25 — tests/acted-sighting.test.ts — and the
+  //  genre's own world after that: tests/clothed.test.ts)
+  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null, ownWorld: tmpl.ownWorld }));"));
   const img = read("app", "lib", "image-generation.server.ts");
   assert.ok(img.includes("const mood = (opts.mood || \"\").replace(/\\s+/g, \" \").trim().slice(0, 160);"));
   assert.ok(img.includes("${moment}${mood ? ` ${mood}` : \"\"} ${consistencyNote}"));

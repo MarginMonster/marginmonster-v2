@@ -155,7 +155,7 @@ test("a creature stays that creature: said in the picture's words, said again wh
   assert.ok(nar.includes("here.forEach((c) => { const note = creatureNote(c.name, c.kind); if (note) notes.push(note); });"));
   // EVERY GO of a scene is on the good model now (story-picture.ts → STORY_LADDER) — the last go of a scene whose
   // cast came out wrong twice used to be the one moved up to it
-  assert.ok(!nar.includes("STORY_STRONG_RETRY") && nar.includes("const got = await drawScene(`${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
+  assert.ok(!nar.includes("STORY_STRONG_RETRY") && nar.includes("const got = await drawScene(`${first}${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);"));
 });
 
 test("a picture kept with somebody still wrong is written down on the piece", () => {

@@ -54,6 +54,9 @@ import { mirrorRender } from "./object-storage.server";
 import { overlayFonts } from "./overlay-fonts.server";
 import { DRAMA_SCHEMA, TAKE_ACTED, TAKE_HISS, TAKE_IDEAS, TAKE_OFFICER_VOICE, TAKE_RADIO_VOICE, TAKE_REF, TAKE_SCHEMA, TAKE_SECONDS, TAKE_VOICE, TRIM_WITHIN, HAND_CAMS, betterRoll, cutLookArgs, cutsAt, framesOf, moodVoice, rollFaulty, shiftLines, takeActing, castPick, castTake, dramaWriterBrief, parseTake, placeLines, shapeFor, takeIdea, takeLines, takeOpensPrompt, takePrompt, takeSound, takeStillPrompt, takeWriterBrief, type Take, type TakeIdea, type TakeLine } from "./take";
 import { checkpointJob, repCreate, repPoll } from "./ugc-ad-pipeline.server";
+// EVERYBODY IN EVERY PICTURE IS CLOTHED (2026-11-25 — clothed.server.ts → keepClothed)
+import { CLOTHED_FIRST, dressedInWater } from "./story-picture";
+import { clothedEditOn, keepClothed } from "./clothed.server";
 
 // (the same model, three hosts. The two fal ids are its "reference" endpoint — a first frame AND a picture to
 //  arrive at, fal-video-body.ts — at the two tiers the acted films use, in film-dialogue.server.ts's order.)
@@ -102,6 +105,25 @@ export async function drawPicture(input: Record<string, unknown>, best = false):
     catch (e) { console.error(`[take] the 2K picture did not come — drawn on the everyday model: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   }
   return persistRemote(await repRun("google/nano-banana", input), "jpg");
+}
+
+/** A PICTURE SOMEBODY MAY BE IN, DRAWN CLOTHED (2026-11-25: three acted lake films drew the woman "standing waist-deep in
+ *  the lake" bare, and a take is drawn by the same kind of model from the same kind of words). drawPicture, then the look
+ *  (clothed.server.ts → keepClothed): a picture with somebody unclothed is drawn once more with the clothes said FIRST
+ *  (CLOTHED_FIRST), then that one figure is dressed by an edit at the picture's own shape; still bare, the edited picture
+ *  is used and the log says so. One vision question a picture; a redraw or an edit only on a fault; a look that cannot be
+ *  made keeps the picture. The caller dresses the words (story-picture.ts → dressedInWater) and checkpoints what comes
+ *  back — the picture that is used. For a take's scene and a film's moments (footage-film.server.ts), and a house
+ *  camera's room as the take finds it and its scene (house-take.server.ts); never for a picture with nobody in it. */
+export async function drawClothed(input: Record<string, unknown> & { prompt: string; aspect_ratio: string }, best = false, label = "[take]"): Promise<string> {
+  const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  const drawn = await drawPicture(input, best);
+  return (await keepClothed({
+    url: drawn, ref: (u) => imageRef(base, u),
+    redraw: () => drawPicture({ ...input, prompt: `${CLOTHED_FIRST} ${input.prompt}` }, best),
+    edit: (u, who) => clothedEditOn(u, who, input.aspect_ratio),
+    log: (l) => console.log(`${label} ${l}`),
+  })) || drawn;
 }
 
 /** The take itself, started on `first` and told to arrive at `scene`: fal's standard tier, then the same
@@ -468,9 +490,12 @@ export async function makeTake(opts: TakeOptions, ckpt: (patch: Record<string, u
   await ckpt({ ckTake: JSON.stringify(take) });
 
   // 2) the scene the take arrives at
+  //    — EVERYBODY IN IT CLOTHED (2026-11-25): its words dressed where they put somebody in water (dressedInWater), the
+  //    picture looked at, drawn again clothes first, dressed by one edit (drawClothed); the picture used is the one kept.
+  //    The way in is drawn FROM it with nobody in it, and needs nothing.
   let still = resume.ckStill || "";
   if (!still) {
-    still = await persistRemote(await repRun("google/nano-banana", { prompt: takeStillPrompt(take, aspect), aspect_ratio: aspect, output_format: "jpg" }), "jpg");
+    still = await drawClothed({ prompt: takeStillPrompt({ ...take, still: dressedInWater(take.still) }, aspect), aspect_ratio: aspect, output_format: "jpg" }, false, "[take] the scene:");
     await ckpt({ ckStill: still });
   }
 
