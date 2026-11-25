@@ -192,6 +192,10 @@ test("a picture with somebody unclothed is never the one kept while one without 
   const worst = { seen: [false, false, false], panels: true, extra: true, outside: true, lens: ["Farida"], grimy: true, inset: true };
   assert.equal(sp.storyFaults(worst), 27);
   assert.ok(sp.storyFaults({ seen: [true], panels: false, unclothed: true }) > sp.storyFaults(worst), "unclothed alone outweighs all of them");
+  // (…and a night drawn as day beside them since 2026-11-25 — 30 in all; a dressed day picture is kept before an undressed
+  //  night one: tests/told-night.test.ts)
+  assert.equal(sp.storyFaults({ ...worst, notNight: true }), 30);
+  assert.ok(sp.storyFaults({ seen: [true], panels: false, unclothed: true }) > sp.storyFaults({ ...worst, notNight: true }), "unclothed alone outweighs all of them, the night too");
   assert.equal(sp.storyFaults({ seen: [true], panels: false, unclothed: true }), sp.UNCLOTHED_FAULT);
   assert.equal(sp.storyFaults({ seen: [true], panels: false, unclothed: false }), 0);
   // the fix: CLOTHED_FIRST, said ahead of everything on the next go; nothing for any other fault
