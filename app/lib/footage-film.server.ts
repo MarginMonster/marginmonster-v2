@@ -51,7 +51,7 @@ import {
   FOOTAGE_DIRECTED_AT_ONCE, FOOTAGE_OUTLINE_UNREADABLE, FOOTAGE_REROLLS, FOOTAGE_ROLLS_AT_ONCE,
   camStamp, cleanFootageOutline, footageCardArgs, footageClocks, footageDirectionBrief, footageDirectionSchema, footageFps, footageFrom, footageIdea,
   footageJoinCheck, footageJoinGraph, footageMomentBrief, footageMomentSchema, footageOpensPrompt, footageOutlineBrief, footageOutlineSchema, footageScenePlan,
-  footageScenePrompt, momentCount, parseFootageDirection, parseFootageMoment, parseFootageOutline, undirected, withDirected,
+  footageScenePrompt, momentCount, parseFootageDirection, parseFootageMoment, parseFootageOutline, undirected, withDirected, directionFaults,
   type DirectedMoment, type FootageDirection, type FootageMoment, type FootageOutline,
 } from "./footage-film";
 import { houseRoom, keptHouseOf, type KeptHouse } from "./house-cam";
@@ -115,8 +115,13 @@ export async function rewriteFootageMoment(o: { outline: FootageOutline; index: 
  *  tokens). */
 async function directFootage(outline: FootageOutline): Promise<FootageDirection> {
   const all = outline.moments.map((_, i) => i);
-  const ask = async (only?: number[]): Promise<FootageDirection> =>
-    parseFootageDirection(await anthropicText(footageDirectionBrief(outline, only), { model: WRITER, maxTokens: 600 + 700 * (only?.length || all.length), jsonSchema: footageDirectionSchema(outline.camera) }), outline, only);
+  const ask = async (only?: number[]): Promise<FootageDirection> => {
+    const raw = await anthropicText(footageDirectionBrief(outline, only), { model: WRITER, maxTokens: 600 + 700 * (only?.length || all.length), jsonSchema: footageDirectionSchema(outline.camera) });
+    const d = parseFootageDirection(raw, outline, only);
+    // (a refused moment says WHY — the first live film lost all three of its moments with nothing in the log to say why)
+    if ((only || all).some((i) => !d[i])) for (const why of directionFaults(raw, outline, only)) console.error(`[footage-film] refused — ${why}`);
+    return d;
+  };
   const asked = async (only: number[] | undefined, what: string): Promise<FootageDirection> => {
     try { return await ask(only); }
     catch (e) { console.error(`[footage-film] the direction's writer did not answer ${what}: ${short(e)}`); return all.map(() => null); }

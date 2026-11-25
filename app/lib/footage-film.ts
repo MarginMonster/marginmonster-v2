@@ -432,8 +432,8 @@ export function footageDirectionSchema(camera: CameraLook): { name: string; sche
         moments: { type: "array", items: {
           type: "object", additionalProperties: false, required: ["n", "seen", "who", "still", "opens", "first", "finds", "beats", "says", "asks", "ends", "sound"],
           properties: {
-            n, seen, who: str, still: str, opens: str, first: str, finds: str, beats: { type: "array", items: str },
-            says: { type: "array", items: { type: "object", additionalProperties: false, required: ["text", "mood"], properties: { text: str, mood: { type: "string", enum: [...TAKE_MOODS] } } } },
+            n, seen, who: str, still: str, opens: str, first: str, finds: str, beats: { type: "array", items: str, minItems: 3, maxItems: 3 },
+            says: { type: "array", minItems: 1, maxItems: 2, items: { type: "object", additionalProperties: false, required: ["text", "mood"], properties: { text: str, mood: { type: "string", enum: [...TAKE_MOODS] } } } },
             asks: { type: "string", enum: ["looking", "found"] }, ends: { type: "string", enum: ["comes", "stays", "dark", "away"] }, sound: str,
           },
         } },
@@ -448,6 +448,64 @@ const unquoted = (v: unknown): string => String(v ?? "").replace(/["“”]/g, "
 const THING_SPEAKS = /\b(speaks?|says?|whispers?|screams?|shouts?|laughs?|mouths)\b/i;
 /** … and what nobody on camera does in a plain one: the engine is given no word, so nobody is written speaking */
 const SOMEBODY_SPEAKS = /\b(speaks?|says?|whispers?|shouts?|yells?|screams?|talks?|tells?|replies|sings?|mouths)\b/i;
+
+/* THE FIRST LIVE FILM (2026-11-25, "What Circled the Tent", camcorder, three moments): every moment of its direction was
+ * refused, twice, and the film was made as ONE take of its last night. The single take's checker (take.ts → parseTake)
+ * takes EXACTLY three beats, and refuses a moment whole when a beat has anybody speaking in it; the film's writer is
+ * asked for "the three beats" and its answer was held to neither by its schema — and "a scream echoes through the
+ * trees" is a horror moment's ordinary sentence. So a moment's beats are made three (more folded into the third; two
+ * become three at the longer one's sentence break), and a sentence with anybody speaking in it is taken OUT of the beats
+ * rather than the moment refused. What is still refused says why (directionFaults → the server's log). */
+const sentencesOf = (s: string): string[] => s.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
+export function threeBeats(list: ReadonlyArray<unknown>): string[] {
+  const b = list.map((x) => unquoted(x).replace(/\s+/g, " ").trim()).filter(Boolean);
+  if (b.length >= 3) return [b[0], b[1], b.slice(2).join(" ")];
+  if (b.length === 2) {
+    const k = b[0].length >= b[1].length ? 0 : 1;
+    const parts = sentencesOf(b[k]);
+    if (parts.length >= 2) {
+      const half = Math.ceil(parts.length / 2), a = parts.slice(0, half).join(" "), c = parts.slice(half).join(" ");
+      return k === 0 ? [a, c, b[1]] : [b[0], a, c];
+    }
+  }
+  if (b.length === 1) { const parts = sentencesOf(b[0]); if (parts.length >= 3) return [parts[0], parts[1], parts.slice(2).join(" ")]; }
+  return b;
+}
+/** A beat with every sentence that has anybody SPEAKING in it taken out ("" when nothing is left). */
+export const quietBeat = (beat: string, speaks: RegExp): string => sentencesOf(beat).filter((s) => !speaks.test(s)).join(" ").trim();
+/** The beat a moment is given when only two are left — what found footage does between two things anyway. */
+export const HOLD_BEAT = "The camera holds on it for a breath, unsteady.";
+/** A moment's three beats: made three, every sentence with somebody speaking taken out, made three again — and when
+ *  two are left, the camera's hold between them. Fewer than two: none (the moment is refused, as before). */
+export function beatsFor(list: ReadonlyArray<unknown>, speaks: RegExp): string[] {
+  const three = threeBeats(threeBeats(list).map((b) => quietBeat(b, speaks)).filter(Boolean));
+  return three.length === 2 ? [three[0], HOLD_BEAT, three[1]] : three;
+}
+/** WHY a direction's moments would be refused — one line per moment that would be, for the server's log (the first
+ *  live film was refused with nothing to say why). Mirrors handMoment's rules. */
+export function directionFaults(raw: unknown, o: FootageOutline, only?: readonly number[]): string[] {
+  const r = readAnswer(raw);
+  const list = r && Array.isArray(r.moments) ? r.moments : [];
+  const wanted = only && only.length ? [...only] : o.moments.map((_, i) => i);
+  if (!list.length) return [`no moments in the answer (${String(typeof raw === "string" ? raw : JSON.stringify(raw) || "").slice(0, 160)})`];
+  const out: string[] = [];
+  list.forEach((x, k) => {
+    const m = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    const n = Math.round(Number(m.n)), i = Number.isFinite(n) && wanted.includes(n - 1) ? n - 1 : wanted[k];
+    if (i == null || o.camera === "house") return;
+    const scare = o.kind === "scare" && m.seen !== false && (!!o.thing || o.kind === "scare");
+    const beats = beatsFor(Array.isArray(m.beats) ? m.beats : [], scare ? THING_SPEAKS : SOMEBODY_SPEAKS);
+    const why: string[] = [];
+    if (beats.length !== 3) why.push(`${Array.isArray(m.beats) ? m.beats.length : 0} beats (${beats.length} after speech is taken out)`);
+    if (unquoted(m.still).trim().length < 40) why.push("still under 40 characters");
+    if (!unquoted(m.who).trim()) why.push("no who");
+    if (unquoted(m.opens).trim().length < 20) why.push("opens under 20 characters");
+    if (unquoted(m.first).trim().length < 12) why.push("first under 12 characters");
+    if (unquoted(m.finds).replace(/^the camera\s+/i, "").trim().length < 4) why.push("finds under 4 characters");
+    if (why.length) out.push(`moment ${i + 1}: ${why.join("; ")}`);
+  });
+  return out;
+}
 
 /** The mood a line is said in when its writer named none: nobody in a plain film is frightened; in a scare the fear
  *  is the last moment's (scared, then terrified — one take's own two manners), and before it they whisper. */
@@ -478,7 +536,9 @@ function handMoment(raw: Record<string, unknown>, o: FootageOutline, i: number, 
   const scare = o.kind === "scare" && seen;
   const said = (Array.isArray(raw.says) ? raw.says : []).map((s): { text?: unknown; mood?: unknown } => (s && typeof s === "object" ? (s as { text?: unknown; mood?: unknown }) : { text: s }))
     .map((s) => ({ text: words(s.text, 90), mood: takeMood(s.mood) })).filter((s) => s.text).slice(0, 2);
-  const beats = (Array.isArray(raw.beats) ? raw.beats : []).map(unquoted);
+  // (three beats, always, and nobody speaking in them — a sentence that has somebody speak is taken out, never the
+  //  whole moment: the first live film lost all three of its moments to these two rules — threeBeats, quietBeat)
+  const beats = beatsFor(Array.isArray(raw.beats) ? raw.beats : [], scare ? THING_SPEAKS : SOMEBODY_SPEAKS);
   // THE SINGLE TAKE'S OWN RULES: every part there and of a sane length (parseTake) — a moment is never filmed from half
   // a direction
   const take = parseTake({

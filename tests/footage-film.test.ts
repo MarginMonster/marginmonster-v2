@@ -27,7 +27,33 @@ import {
   footageDirectionSchema, footageFilmEta, footageFilmJob, footageFps, footageFrom, footageIdea, footageJoinCheck, footageJoinGraph, footageMomentBrief, footageMomentSchema,
   footageOpensPrompt, footageOutlineAsk, footageOutlineBrief, footageOutlineSchema, footageScenePlan, footageScenePrompt, footageSeconds, footageTolerance, momentCount, momentScript, momentSeconds,
   parseFootageDirection, parseFootageMoment, parseFootageOutline, prose, undirected, withDirected,
+  HOLD_BEAT, beatsFor, directionFaults, quietBeat, threeBeats,
 } from "../app/lib/footage-film.ts";
+
+test("a moment's beats are made THREE, and a sentence with somebody speaking is taken out — never the moment (the first live film lost all three, 2026-11-25)", () => {
+  // four beats: the extra is folded into the third; two: the longer one splits at its sentence break; one of three sentences: three
+  assert.deepEqual(threeBeats(["a", "b", "c", "d"]), ["a", "b", "c d"]);
+  assert.deepEqual(threeBeats(["The light drifts between the trunks. It stops.", "It winks out."]), ["The light drifts between the trunks.", "It stops.", "It winks out."]);
+  assert.deepEqual(threeBeats(["One. Two. Three. Four."]), ["One.", "Two.", "Three. Four."]);
+  assert.deepEqual(threeBeats(["only one beat"]), ["only one beat"], "one sentence is not three");
+  // speech out, the rest kept ("a scream echoes through the trees" is a horror moment's ordinary sentence)
+  const SPEAKS = /\b(speaks?|says?|whispers?|screams?|shouts?|laughs?|mouths)\b/i;
+  assert.equal(quietBeat("The light drifts between the trunks. A scream echoes through the trees. It winks out.", SPEAKS), "The light drifts between the trunks. It winks out.");
+  assert.deepEqual(beatsFor(["The light drifts.", "A scream echoes through the trees.", "It winks out."], SPEAKS), ["The light drifts.", HOLD_BEAT, "It winks out."]);
+  assert.deepEqual(beatsFor(["She screams.", "She whispers."], SPEAKS), [], "nothing left: refused, as before");
+  // …and what is still refused SAYS WHY, for the server's log
+  const o = cleanFootageOutline({ v: 1, camera: "camcorder", aspect: "16:9", kind: "scare", title: "TEST", place: "a TEST campsite", thing: "a thin pale TEST figure", moments: [{ when: "NIGHT 1", line: "a light between the trees", seconds: 7 }, { when: "NIGHT 2", line: "a shape circles the tent", seconds: 10 }] })!;
+  const faults = directionFaults({ moments: [{ n: 1, seen: true, who: "it", still: "short", opens: "x", first: "y", finds: "", beats: ["one"] }] }, o);
+  assert.equal(faults.length, 1);
+  assert.ok(faults[0].startsWith("moment 1: 1 beats (1 after speech is taken out); still under 40 characters; opens under 20 characters; first under 12 characters; finds under 4 characters"), faults[0]);
+  assert.ok(directionFaults("not json at all", o)[0].startsWith("no moments in the answer"));
+  // the writer is held to it by its schema too: three beats, one or two lines
+  const schema = footageDirectionSchema("camcorder").schema as { properties: { moments: { items: { properties: Record<string, { minItems?: number; maxItems?: number }> } } } };
+  assert.deepEqual([schema.properties.moments.items.properties.beats.minItems, schema.properties.moments.items.properties.beats.maxItems], [3, 3]);
+  assert.deepEqual([schema.properties.moments.items.properties.says.minItems, schema.properties.moments.items.properties.says.maxItems], [1, 2]);
+  // the engine logs why
+  assert.ok(fs.readFileSync(new URL("../app/lib/footage-film.server.ts", import.meta.url), "utf8").includes("for (const why of directionFaults(raw, outline, only)) console.error(`[footage-film] refused — ${why}`);"));
+});
 
 test("the place and the thing are cut as PROSE — at a sentence, else a whole word, never on a dangling comma (live, 2026-11-25)", () => {
   // the first live outline ("What Circled the Tent") showed its place as "…whatever the camera's tiny lamp catches,"
@@ -431,9 +457,15 @@ test("EVERY MOMENT IS CHECKED BY ONE TAKE'S OWN RULES: seen is a scare, unseen i
   const half = parseFootageDirection({ moments: [hand(1), hand(2, { beats: ["only one beat"] }), hand(3, { opens: "" })] }, o);
   assert.deepEqual(undirected(half), [1, 2]);
   assert.ok(half[0]);
-  // a THING that speaks is not followed (the engine would give it every word); nor, in a plain moment, anybody written speaking
-  assert.deepEqual(undirected(parseFootageDirection({ moments: [hand(1), hand(2, { beats: ["she stands at the far end, perfectly still.", "she whispers the name of the one filming.", "she walks toward the camera."] }), hand(3)] }, o)), [1]);
-  assert.deepEqual(undirected(parseFootageDirection({ moments: [hand(1, { seen: false, beats: ["the coat sways on the rack.", "a man in the doorway tells the camera to leave.", "the coat is still."] }), hand(2), hand(3)] }, o)), [0]);
+  // a THING that speaks is not followed (the engine would give it every word); nor, in a plain moment, anybody written
+  // speaking — the SENTENCE that has them speak is taken out, never the whole moment (the first live film, 2026-11-25,
+  // lost all three of its moments to these rules): what is left is filmed, the camera's hold where the speech was
+  const spoke = parseFootageDirection({ moments: [hand(1), hand(2, { beats: ["she stands at the far end, perfectly still.", "she whispers the name of the one filming.", "she walks toward the camera."] }), hand(3)] }, o);
+  assert.deepEqual(undirected(spoke), []);
+  const spokeBeats = (spoke[1] as { take: { beats: string[] } }).take.beats;
+  assert.deepEqual(spokeBeats, ["she stands at the far end, perfectly still.", HOLD_BEAT, "she walks toward the camera."]);
+  const told = parseFootageDirection({ moments: [hand(1, { seen: false, beats: ["the coat sways on the rack.", "a man in the doorway tells the camera to leave.", "the coat is still."] }), hand(2), hand(3)] }, o);
+  assert.ok(told[0] && !(told[0] as { take: { beats: string[] } }).take.beats.some((b) => /\btells?\b/.test(b)));
   // nobody is given a line: a moment with nothing said is no moment (one take's rule)
   assert.deepEqual(undirected(parseFootageDirection({ moments: [hand(1, { says: [] }), hand(2), hand(3)] }, o)), [0]);
   // no answer at all: every moment is still to be written
