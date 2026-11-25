@@ -54,7 +54,7 @@ import { tellerVisual } from "./character-series";
 import { planShots, shotInWords, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
 // (2026-11-24) an acted film: every shot is something that HAPPENS, and the camera is dealt, not written
-import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, SEEN_WHEN_SEEN, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, takeAgeFix, titleAsk, wordless } from "./acted-staging";
+import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, SEEN_WHEN_SEEN, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, storyThreat, takeAgeFix, titleAsk, wordless } from "./acted-staging";
 // (2026-11-25) films up to five minutes: one limit for every story format, and a long script written in parts
 import { clampShots, maxShots, minShots, partBrief, planBrief, planSchema, scriptParts, takePlan, type FilmPlan, type FilmWay } from "./film-length";
 
@@ -920,9 +920,15 @@ export async function previewFilmTreatment(opts: {
   // by — its shots, its lines, its world. The idea is not handed over to be told again from the top (that is the
   // plan's), nor checked here: a part tells its own line of the plan.
   const chosen = one!.plan.cast.join("; ");
+  // (an acted film's plan may cast its own THREAT beside the two — WHAT FRIGHTENS asks a threat the idea names for a
+  //  "cast" entry, and the film draws its one picture from it: acted-staging.ts → storyThreat. Handed on as one of
+  //  "THE TWO", every part would be told to put it in every shot: the werewolf beside the boy from the first shot,
+  //  2026-11-24. So it is said apart.)
+  const thing = !narrated && one!.plan.cast.length > 2 ? storyThreat({ cast: one!.plan.cast }) : null;
+  const two = thing ? one!.plan.cast.filter((e) => e !== thing.entry).join("; ") : chosen;
   const partCast = narrated
     ? `\nTHE CAST of the whole story is already chosen — ${chosen}. Return them as "cast" exactly as they are here. Call each of them by that exact name in every VISUAL they are in, never rename them, and give nobody else a name.${noSlop}${chosenThreat(threatNames, false)}`
-    : `\nTHE TWO who carry the whole film are already chosen — ${chosen}. Return them as "cast" exactly as they are here. Every shot's VISUAL has these same two in it, called by these exact names — their looks are said HERE, once, and never repeated in a VISUAL.${noSlop}`;
+    : `\nTHE TWO who carry the whole film are already chosen — ${two}. Return them as "cast" exactly as they are here.${thing ? ` After them "cast" has the film's own threat, also exactly as it is here: ${thing.entry} — it is NOT one of the two, it never speaks, and it is in a VISUAL only where the rules below put it.` : ""} Every shot's VISUAL has these same two in it, called by these exact names — their looks are said HERE, once, and never repeated in a VISUAL.${noSlop}`;
   // (a creature the maker chose as an acted film's threat is SEEN in the film's last shot — premise-rules.ts →
   //  chosenThreat — so only the scene that ends the film is told so; before it, it is heard and glimpsed)
   const partThreat = !actedThreat ? "" : ends ? threatBrief

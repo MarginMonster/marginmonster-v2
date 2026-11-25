@@ -19,6 +19,7 @@ import {
 } from "../app/lib/film-length.ts";
 import { TYPICAL_SHOT_SECONDS, clipSecondsFor, estimateSpeakSeconds } from "../app/lib/speech-meter.ts";
 import { MOTION_USD_PER_SECOND, motionSeconds, storyTypicalSeconds } from "../app/lib/story-motion.ts";
+import { storyThreat } from "../app/lib/acted-staging.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
@@ -440,6 +441,19 @@ test("THE RESUME, when a finished shot's file is gone: the next shot grows out o
   assert.ok(at > src.indexOf("const firstGone = had.findIndex((p) => !p || !fs.existsSync(p));"));
   assert.ok(src.includes("if (firstGone >= 0) prevFrameUrl = clips.length ? (await extractLastFrame(clips[clips.length - 1])) || undefined : undefined;"));
   assert.ok(src.indexOf("if (firstGone >= 0) prevFrameUrl =") > at);
+});
+
+test("A LONG ACTED FILM'S OWN THREAT, cast by its plan, is handed to each part apart from THE TWO — never as one of them", () => {
+  // WHAT FRIGHTENS asks a threat the idea names for a "cast" entry of its own; the plan keeps up to five entries
+  const plan = ["Odalys, a wiry night nurse in her forties with a grey braid", "Bram, a broad locksmith in his fifties in a canvas jacket", "The Knocker, a tall pale woman in a soaked nightgown with a smile far too wide"];
+  assert.equal(storyThreat({ cast: plan })?.entry, plan[2]);
+  assert.equal(storyThreat({ cast: [plan[2], plan[0], plan[1]] })?.entry, plan[2], "wherever it stands in the list");
+  // three people, no threat among them: nothing is taken out (the text is then as it always was)
+  assert.equal(storyThreat({ cast: [plan[0], plan[1], "Mara, their late mother's neighbour in her seventies"] }), null);
+  const eng = engine();
+  assert.ok(eng.includes("const thing = !narrated && one!.plan.cast.length > 2 ? storyThreat({ cast: one!.plan.cast }) : null;"));
+  assert.ok(eng.includes("const two = thing ? one!.plan.cast.filter((e) => e !== thing.entry).join(\"; \") : chosen;"));
+  assert.ok(eng.includes("`\\nTHE TWO who carry the whole film are already chosen — ${two}. Return them as \"cast\" exactly as they are here.${thing ? ` After them \"cast\" has the film's own threat, also exactly as it is here: ${thing.entry} — it is NOT one of the two, it never speaks, and it is in a VISUAL only where the rules below put it.` : \"\"} Every shot's VISUAL has these same two in it,"));
 });
 
 test("A GENRE WHOSE WORLD IS ITS OWN is never told today's real world — not in a long film's plan, nor in any of its parts", () => {
