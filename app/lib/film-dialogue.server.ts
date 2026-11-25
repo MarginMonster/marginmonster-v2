@@ -673,7 +673,10 @@ export async function generateTestMovie(opts: {
   //  INVENTED too, cut from its first master, which used to be thrown away, so an episode 2 drew new people under the
   //  same names. A face the maker gave that name stays theirs; a character the writer brings in new is drawn new.)
   const carry = opts.series?.carry || null;
-  const castActors = castWithCarry((opts.cast || []).filter((c) => c && c.name && c.name.trim()), carry?.cast, { labels: treatment.scenes.map((s) => (wordless(s.caption) ? "" : splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "")), castLines: treatment.cast });
+  // (a carried face of ours no longer on our disk is not handed on: the picture model would fetch nothing and the place
+  //  would not draw — that character is drawn new, as one the writer brought in; its voice still comes)
+  const carriedCast = (carry?.cast || []).map((c) => (c.faceUrl && c.faceUrl.startsWith("/renders/") && !fs.existsSync(path.join(RENDERS(), path.basename(c.faceUrl))) ? { ...c, faceUrl: null } : c));
+  const castActors = castWithCarry((opts.cast || []).filter((c) => c && c.name && c.name.trim()), carriedCast, { labels: treatment.scenes.map((s) => (wordless(s.caption) ? "" : splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "")), castLines: treatment.cast });
   // The script writer invents a look for every name without seeing who the merchant cast. For a
   // character who HAS a cast photo that written look is wrong by construction, so it is kept out of
   // every prompt: the photo is the look. What the photo actually shows is READ once per film, in words
@@ -1208,6 +1211,8 @@ export async function generateTestMovie(opts: {
    * not when this episode's words make its thing ANOTHER one (a werewolf where there was a woman): that one is drawn new.
    * It is named as this episode's own words name it, so every line about it finds it. */
   const carriedThing = sightOn && carry?.threat ? (() => {
+    // (its picture must still be ours to hand an editor — as a kept portrait must: onDisk)
+    if (carry.threat.img.startsWith("/renders/") && !onDisk(carry.threat.img)) return null;
     const talks = (n: string): boolean => [spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(n));
     if (castActors.some((c) => !!c.faceUrl && isCreature(c) && !talks(c.name))) return null;
     const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual })

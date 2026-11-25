@@ -333,6 +333,9 @@ test("wiring: Part N casts the carried people, draws a shared place from its pic
   const cast = eng.indexOf("const castActors = castWithCarry(");
   assert.ok(cast > 0 && cast < eng.indexOf("const castLooks: Record<string, string> = {};"));
   assert.ok(eng.includes("const carry = opts.series?.carry || null;"));
+  // (a carried face — or the thing's picture — no longer on our disk is never handed to a picture model)
+  assert.ok(eng.includes("const carriedCast = (carry?.cast || []).map((c) => (c.faceUrl && c.faceUrl.startsWith(\"/renders/\") && !fs.existsSync(path.join(RENDERS(), path.basename(c.faceUrl))) ? { ...c, faceUrl: null } : c));"));
+  assert.ok(eng.includes("if (carry.threat.img.startsWith(\"/renders/\") && !onDisk(carry.threat.img)) return null;"));
   // THE SAME PLACES — the room of a master, inside masterFor, after a drawn master is returned as it was (never twice)
   const mf = eng.indexOf("const masterFor = async (");
   const room = eng.indexOf("roomRef = roomRef || roomFor(locKey);", mf);
