@@ -6,7 +6,7 @@
  * "creatorvideo" (all plans). */
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction, type SerializeFrom } from "@remix-run/node";
-import { Form, useActionData, useFetcher, useLoaderData, useNavigate, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useFetcher, useLoaderData, useNavigate, useNavigation, type ShouldRevalidateFunction } from "@remix-run/react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { lookLabel } from "../lib/avatar-looks";
 import { createPortal } from "react-dom";
@@ -89,6 +89,15 @@ export const meta: MetaFunction = ({ matches }) => {
   const shell = matches.find((m) => m.id === "routes/web")?.data as { theme?: unknown } | undefined;
   return [{ title: "Movie Maker · EasyMode" }, ...(themeOf(shell?.theme) === "dark" ? [{ name: "theme-color", content: "#0A1C13" }] : [])];
 };
+
+// THE SCENE BOARD'S TWO ASKS CHANGE NOTHING THE PAGE LOADED (2026-11-25, review of the scene board). A sketch
+// and a director's note are answered with a picture address and a scene's lines; no token, film, cast or
+// product moves. But every answer to a fetcher re-ran this whole loader (the catalogue, the gallery, the cast,
+// the voices, the Archive's stories and their jobs) — and the sketches are asked for BY THEMSELVES, a second
+// after every script and every renamed place. Those two do not reload the page's data; everything else does.
+const BOARD_INTENTS = new Set(["sketchFilmScenes", "rewriteFilmScene"]);
+export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultShouldRevalidate }) =>
+  BOARD_INTENTS.has(String(formData?.get("intent") || "")) ? false : defaultShouldRevalidate;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop, account } = await requireWebIdentity(request);
@@ -4814,7 +4823,10 @@ export default function FilmStudio() {
           {isStoryboard && series && <input type="hidden" name="seriesFrom" value={series.from} />}
           {isStoryboard && narrated && editing && <input type="hidden" name="editFrom" value={editing.from} />}
           {isStoryboard && narrated && pictures === "still" && <input type="hidden" name="filmPictures" value="still" />}
-          <button type="submit" className={`fs-go${storySent ? " is-sent" : ""}`} disabled={!canGo || storySent}>
+          {/* (2026-11-25, review of the scene board: while a director's note is being written, Generate waits — sent
+              then, the film was made from the script WITHOUT the note just tapped, and the new lines landed a
+              moment later on a page that no longer said "sent": a second press made a second render) */}
+          <button type="submit" className={`fs-go${storySent ? " is-sent" : ""}`} disabled={!canGo || storySent || notingPlace !== null}>
             {generating ? <>… {t("Starting your film")}</> : storySent ? <><Ico n="check" size={16} /> {t("Rendering — it lands in your Archive")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(heroTitle), cost }) : t("Generate {name} · Free", { name: t(heroTitle) })}</>}
           </button>
           <div className="fs-eta" aria-live="polite" title={t("A rough estimate — longer films and lip-sync take more time.")}>

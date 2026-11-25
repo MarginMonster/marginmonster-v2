@@ -94,7 +94,8 @@ test("Generate says the film was sent, and stays sent until something in the fil
   // (2026-11-25, the writer's nudge: with nothing written and an empty idea box the submit asks for an idea
   //  first — tests/film-builder-top.test.ts; a film that IS sent is remembered as sent, as before)
   assert.ok(ui.includes("<Form method=\"post\" onSubmit={(e) => { if (!treatment && !seeds && noIdeaYet()) { e.preventDefault(); return; } sigAtSubmit.current = storySig; }}>"));
-  assert.ok(ui.includes("<button type=\"submit\" className={`fs-go${storySent ? \" is-sent\" : \"\"}`} disabled={!canGo || storySent}>"));
+  // (2026-11-25: …and it waits while a director's note is being written — tests/film-scene-board.test.ts)
+  assert.ok(ui.includes("<button type=\"submit\" className={`fs-go${storySent ? \" is-sent\" : \"\"}`} disabled={!canGo || storySent || notingPlace !== null}>"));
   assert.ok(ui.includes("storySent ? <><Ico n=\"check\" size={16} /> {t(\"Rendering — it lands in your Archive\")}</>"));
   // declared after everything it reads (a `const` read before its line throws when the page renders)
   for (const dep of ["const [lockVoices, setLockVoices]", "const [dialogueEngine, setDialogueEngine]", "const [prodImage, setProdImage]", "const [capPick, setCapPick]", "const [sentSig, setSentSig]"]) {

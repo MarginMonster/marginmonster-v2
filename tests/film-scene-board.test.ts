@@ -250,6 +250,22 @@ test("the board's look is its own sheet, mounted once in both themes; every new 
   for (const m of board.matchAll(/\bt\("((?:[^"\\]|\\.)*)"/g)) assert.equal(count(dict, `\n  ${JSON.stringify(JSON.parse(`"${m[1]}"`))}:`), 5, m[1]);
 });
 
+test("review of 2026-11-25: Generate waits for a note being written, and the board's asks do not reload the page's data", () => {
+  // sent mid-note, the film was made without the note just tapped — and a second press made a second render
+  assert.ok(ui.includes("<button type=\"submit\" className={`fs-go${storySent ? \" is-sent\" : \"\"}`} disabled={!canGo || storySent || notingPlace !== null}>"));
+  // (declared before the JSX reads it — a `const` read before its line throws when the page renders)
+  assert.ok(ui.indexOf("const [notingPlace, setNotingPlace] = useState<number | null>(null);") < ui.indexOf("disabled={!canGo || storySent || notingPlace !== null}"));
+  // a sketch or a note moves nothing the loader reads: its answer does not re-run the loader; everything else does
+  assert.ok(page.includes("const BOARD_INTENTS = new Set([\"sketchFilmScenes\", \"rewriteFilmScene\"]);"));
+  assert.ok(page.includes("export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultShouldRevalidate }) =>\n  BOARD_INTENTS.has(String(formData?.get(\"intent\") || \"\")) ? false : defaultShouldRevalidate;"));
+  // RUN the rule with a few intents
+  const BOARD = new Set(["sketchFilmScenes", "rewriteFilmScene"]);
+  const sr = (intent: string | null, dflt: boolean) => { const fd = new FormData(); if (intent) fd.set("intent", intent); return BOARD.has(String(fd.get("intent") || "")) ? false : dflt; };
+  assert.equal(sr("sketchFilmScenes", true), false);
+  assert.equal(sr("rewriteFilmScene", true), false);
+  for (const other of ["previewFilmTreatment", "previewFilmPortrait", "film", null]) assert.equal(sr(other, true), true, String(other));
+});
+
 test("removing a place is asked twice by the board, and a script keeps at least one place", () => {
   assert.ok(board.includes("if (armed !== li) { setArmed(li); return; }"));
   assert.deepEqual(flowOf(removePlace(SCRIPT, 1)).map((l) => l.where), [KITCHEN]);
