@@ -876,6 +876,11 @@ test("…the picture: a sketch where there is one, a drawn sheet where there is 
   const drawing = sheets(draw(SceneBoard, boardProps({ sketching: true })));
   assert.ok(drawing[1].includes('<div class="fk-blank is-drawing">') && drawing[1].includes('<span class="fk-blank-say">Sketching…</span>'));
   assert.ok(!drawing[0].includes("Sketching…"), "a sheet that has its sketch does not");
+  // a sketch that will not load goes back to the drawn sheet — never a broken picture (review 2026-11-25)
+  const boardSrc = read("app", "components", "film", "SceneBoard.tsx");
+  assert.ok(boardSrc.includes("if (failed) return fallback;"));
+  assert.ok(boardSrc.includes("onError={() => setFailed(true)}"));
+  assert.ok(boardSrc.includes("fallback={<BlankSheet n={li + 1} glyph={lit ? backdropGlyph(lit.key) : null} drawing={false} t={t} />}"));
   // the film's shape is the board's
   assert.ok(draw(SceneBoard, boardProps({ aspect: "9:16" })).startsWith('<section class="fk fk-board" data-aspect="9:16"'));
 });
@@ -893,7 +898,8 @@ test("…the lines: a conversation in TEXT — bubbles beside faces, sides by sp
   assert.deepEqual([...kitchen.matchAll(/class="fk-line (left|right)"/g)].map((m) => m[1]), ["left", "right"]);
   assert.deepEqual([...sheets(html)[1].matchAll(/class="fk-line (left|right)"/g)].map((m) => m[1]), ["right", "left"]);
   // a face when they are cast, their letter when they are not — and a tap on either is "the next speaker"
-  assert.ok(kitchen.includes('<button type="button" class="fk-face" style="background-image:url(/avatars/test-face.jpg)" aria-label="Wren says this — tap for the next speaker" title="Tap to switch who speaks"></button>'), kitchen.slice(0, 2400));
+  // (the face's address is quoted in url(): a picture address with a bracket or a space in it still shows — review 2026-11-25)
+  assert.ok(kitchen.includes('<button type="button" class="fk-face" style="background-image:url(&quot;/avatars/test-face.jpg&quot;)" aria-label="Wren says this — tap for the next speaker" title="Tap to switch who speaks"></button>'), kitchen.slice(0, 2400));
   assert.ok(kitchen.includes('aria-label="Odo says this — tap for the next speaker" title="Tap to switch who speaks"><span aria-hidden="true">O</span></button>'));
   // every line can be taken out…
   assert.equal(count(html, 'aria-label="Remove this line"'), 8);

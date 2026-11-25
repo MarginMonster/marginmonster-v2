@@ -152,12 +152,16 @@ const grow = (el: HTMLTextAreaElement | null) => {
 /* ---- the picture -------------------------------------------------------------------------------------- */
 
 /** A sketch DEVELOPS in: it is there, blurred and faint, and comes sharp — once, when its picture has loaded
- *  (also when it was already in the browser's cache, which fires no load event the page can hear). */
-function Sketch({ url, alt }: { url: string; alt: string }) {
+ *  (also when it was already in the browser's cache, which fires no load event the page can hear).
+ *  A sketch that will not load (a /renders file gone after a disk change, a network drop) is NOT shown as a
+ *  broken picture: the sheet goes back to its drawn blank (`fallback`) — review of 2026-11-25. */
+function Sketch({ url, alt, fallback }: { url: string; alt: string; fallback: JSX.Element }) {
   const ref = useRef<HTMLImageElement | null>(null);
   const [ready, setReady] = useState(false);
-  useEffect(() => { setReady(false); const el = ref.current; if (el && el.complete && el.naturalWidth > 0) setReady(true); }, [url]);
-  return <img ref={ref} className={`fk-sketch${ready ? " is-in" : ""}`} src={url} alt={alt} loading="lazy" decoding="async" draggable={false} onLoad={() => setReady(true)} onError={() => setReady(true)} />;
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setReady(false); setFailed(false); const el = ref.current; if (el && el.complete && el.naturalWidth > 0) setReady(true); }, [url]);
+  if (failed) return fallback;
+  return <img ref={ref} className={`fk-sketch${ready ? " is-in" : ""}`} src={url} alt={alt} loading="lazy" decoding="async" draggable={false} onLoad={() => setReady(true)} onError={() => setFailed(true)} />;
 }
 
 /** The sheet before its sketch: storyboard paper with the frame ruled in thirds, the scene's number, and —
@@ -279,6 +283,8 @@ export function SceneBoard(props: SceneBoardProps) {
     if (next && flow[li] && next !== flow[li].where) props.onWhere(li, next);
   };
   const toggleSlate = (li: number) => {
+    // (one thing open at a time: a bubble or a close-up being typed in closes — what was typed is already sent)
+    setEditing(null); setAngleAt(null);
     if (openPlace === li) { sendWhere(li); setOpenPlace(null); return; }
     if (openPlace !== null) sendWhere(openPlace);
     setWhereDraft(flow[li]?.where || "");
@@ -340,7 +346,7 @@ export function SceneBoard(props: SceneBoardProps) {
                   <div className="fk-sheet">
                     <div className="fk-panel">
                       {sketch
-                        ? <Sketch key={sketch} url={sketch} alt={t("Storyboard sketch of scene {n}", { n: li + 1 })} />
+                        ? <Sketch key={sketch} url={sketch} alt={t("Storyboard sketch of scene {n}", { n: li + 1 })} fallback={<BlankSheet n={li + 1} glyph={lit ? backdropGlyph(lit.key) : null} drawing={false} t={t} />} />
                         : <BlankSheet n={li + 1} glyph={lit ? backdropGlyph(lit.key) : null} drawing={sketching} t={t} />}
                     </div>
                   </div>
@@ -414,7 +420,7 @@ export function SceneBoard(props: SceneBoardProps) {
                         const swap = speakers.length > 1 && !held;
                         return (
                           <div className={`fk-line ${sideOf(b.speaker, speakers)}${isEdit ? " is-edit" : ""}${state ? ` ${state}` : ""}`} key={b.idx} style={{ ["--k" as string]: bi }}>
-                            <button type="button" className="fk-face" onClick={() => props.onSpeaker(b.idx)} disabled={!swap} style={face ? { backgroundImage: `url(${face})` } : undefined}
+                            <button type="button" className="fk-face" onClick={() => props.onSpeaker(b.idx)} disabled={!swap} style={face ? { backgroundImage: `url(${JSON.stringify(face)})` } : undefined}
                               aria-label={swap ? t("{name} says this — tap for the next speaker", { name: name || "?" }) : name || "?"} title={swap ? t("Tap to switch who speaks") : name}>
                               {!face && <span aria-hidden="true">{(name || "?").slice(0, 1).toUpperCase()}</span>}
                             </button>
