@@ -131,7 +131,10 @@ test("what it costs is known, and it can be turned off", () => {
   assert.equal(motionOn(undefined, true), true);
   // every scene of the longest story a maker can ask for moves — never ten that do and two that stand still
   assert.equal(MOTION_MAX_SCENES, 12);
-  assert.ok(read("app", "routes", "web.film.tsx").includes("narratedScenes: { min: 3, max: 12, def: 6 },"));
+  // (2026-11-25: a story may be five minutes — 32 scenes, the engine's own limit, which the page now offers — and
+  //  it is brought to life in runs of MOTION_MAX_SCENES, so every scene of it still moves)
+  assert.ok(read("app", "routes", "web.film.tsx").includes("narratedScenes: { min: NARRATED_MIN_SCENES, max: NARRATED_MAX_SCENES, def: NARRATED_DEFAULT_SCENES },"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("for (let from = 0; from < N; from += MOTION_MAX_SCENES) {"));
   assert.equal(motionCost(Array.from({ length: 12 }, () => 12)), 7, "the most a story's motion can cost (at 1080p)");
 });
 

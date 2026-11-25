@@ -101,7 +101,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultSh
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop, account } = await requireWebIdentity(request);
-  const { LIVE_FILM_TEMPLATES, GENRES, PROPS } = await import("../lib/film-engine.server");
+  const { LIVE_FILM_TEMPLATES, GENRES, PROPS, NARRATED_MIN_SCENES, NARRATED_MAX_SCENES, NARRATED_DEFAULT_SCENES } = await import("../lib/film-engine.server");
   const templates = LIVE_FILM_TEMPLATES.map((t) => ({
     key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger, cartoon: !!t.cartoon, sung: !!t.sung,
   }));
@@ -262,9 +262,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     myVoices,
     perScene: FILM_PER_SCENE,
     base: FILM_BASE,
-    // NARRATED stories: which formats can be told by a narrator, and how long one may be
+    // NARRATED stories: which formats can be told by a narrator, and how long one may be — the engine's own limits
+    // (3 to 32 scenes, five minutes: film-length.ts; it was 12 until 2026-11-25), so a next episode or a story
+    // opened to edit keeps the length it has
     narratable: (await import("../lib/film-engine.server")).NARRATABLE_KEYS,
-    narratedScenes: { min: 3, max: 12, def: 6 },
+    narratedScenes: { min: NARRATED_MIN_SCENES, max: NARRATED_MAX_SCENES, def: NARRATED_DEFAULT_SCENES },
     // a story's pictures move (story-motion.ts) — the estimate beside Generate says what that takes
     storyMotion: storyMotionOn(),
     defaultNarrator: (await import("../lib/narrated-story.server")).DEFAULT_NARRATOR,
@@ -439,7 +441,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, account } = await requireWebIdentity(request);
   const form = await request.formData();
   const intent = ((form.get("intent") as string) || "").trim();
-  const { FILM_TEMPLATES, filmTemplate, previewFilmTreatment, canNarrate, clampNarrated } = await import("../lib/film-engine.server");
+  const { FILM_TEMPLATES, filmTemplate, previewFilmTreatment, canNarrate, filmShots } = await import("../lib/film-engine.server");
 
   // THE CAST CHECK, ASKED BY HAND — admin only, and it reads only pictures on our own render disk or among
   // the built-in avatars. The question the storyboard asks about a cast still, put to the same reader with
@@ -488,7 +490,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // seconds (mv-pace.ts). Anything else, and every older form, is 10.
   const filmSceneSeconds = tmpl.lipSyncSinger ? sceneSecondsOf(((form.get("filmSceneSeconds") as string) || "").trim()) : 10;
   const maxScenes = tmpl.lipSyncSinger ? Math.min(tmpl.maxScenes, Math.floor(MV_MAX_SECONDS / filmSceneSeconds)) : tmpl.maxScenes;
-  const clampScenes = (n: number) => (narrated ? clampNarrated(n) : Math.max(tmpl.minScenes, Math.min(maxScenes, Math.round(n || tmpl.defaultScenes))));
+  // A STORY's length is the one limit both engines hold it to (film-engine.server.ts → filmShots, from
+  // film-length.ts): its format's floor to five minutes, acted or told — exactly the stops the Length slider
+  // offers (2026-11-25; the owner: "allowing up to 5 minutes"). The Music Video and the Kids Music Video keep their
+  // own: a sung film's length is its song's.
+  const storyLength = !!tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung;
+  const clampScenes = (n: number) => (storyLength ? filmShots(tmpl.key, narrated, n) : Math.max(tmpl.minScenes, Math.min(maxScenes, Math.round(n || tmpl.defaultScenes))));
   // The cast the maker picked before the script was written (story formats).
   const storyCast = tmpl.lipSyncSinger ? [] : parseStoryCast(form.get("filmCast") as string);
   // THE LANGUAGE IT IS TOLD IN — the story formats' "Told in" (the account's content language, set from the
