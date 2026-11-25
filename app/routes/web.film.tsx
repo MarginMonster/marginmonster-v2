@@ -12,7 +12,7 @@ import { lookLabel } from "../lib/avatar-looks";
 import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
-import { estimateSpeakSeconds, CLIP_MAX_SECONDS, TYPICAL_SHOT_SECONDS } from "../lib/speech-meter";
+import { estimateSpeakSeconds, CLIP_MAX_SECONDS } from "../lib/speech-meter";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { CONTENT_LANG_NATIVE, askedContentLang, normalizeContentLang } from "../lib/content-lang";
@@ -55,7 +55,7 @@ import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, s
 import type { StoryToEdit } from "../lib/story-edit";
 import { editCarryFor, storyToEdit } from "../lib/story-edit.server";
 // (2026-11-23) a story's pictures move — what that takes is said beside Generate
-import { storyPicturesOf, storyTypicalSeconds, type StoryPictures } from "../lib/story-motion";
+import { storyPicturesOf, type StoryPictures } from "../lib/story-motion";
 import { IDEA_MAX } from "../lib/premise-rules";
 import { storyMotionOn } from "../lib/story-motion.server";
 // (2026-11-23) THE STORY'S OWN CAST: a portrait for every character a story invents — shown, and kept
@@ -82,6 +82,12 @@ import { SceneBoard } from "../components/film/SceneBoard";
 import { addCloseUp, addLine, addScene, cycleSpeaker, flowOf, movePlace, parseBeat, removeAngle, removeLine, removePlace, setAngleShot, setLine, setWhere, speakersOf } from "../lib/film-flow";
 import { keepSketches, placesForSketch, sketchKey, sketchesFor, unsketched, type SketchPlace } from "../lib/film-sketch";
 import { REWRITE_FAILED, applyRewrite, type RewriteTreatment, type RewrittenLine } from "../lib/film-rewrite";
+// (2026-11-25) HOW LONG A FILM IS — a slider up to five minutes, with what it will cost (the owner: "The how long
+// can be adjusted to a sexy slider allowing up to 5 minutes with estimated final pricing for generations"). Its
+// stops, seconds, tokens and render minutes are film-length.ts's: the very numbers both engines hold a film to.
+import { LengthSlider } from "../components/film/LengthSlider";
+import { filmClock } from "../lib/film-flow";
+import { lengthStops, maxShots, renderMinutes, scriptParts, secondsFor, tokensFor, type FilmWay } from "../lib/film-length";
 
 // (theme-color: in the DARK theme the Movie Maker is a theater — FS_THEATER, at the foot of this file — and
 //  a phone's own bar goes dark with it instead of framing it in white. The shell's loader knows the theme.)
@@ -101,7 +107,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultSh
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop, account } = await requireWebIdentity(request);
-  const { LIVE_FILM_TEMPLATES, GENRES, PROPS } = await import("../lib/film-engine.server");
+  const { LIVE_FILM_TEMPLATES, GENRES, PROPS, NARRATED_MIN_SCENES, NARRATED_MAX_SCENES, NARRATED_DEFAULT_SCENES } = await import("../lib/film-engine.server");
   const templates = LIVE_FILM_TEMPLATES.map((t) => ({
     key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger, cartoon: !!t.cartoon, sung: !!t.sung,
   }));
@@ -262,9 +268,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     myVoices,
     perScene: FILM_PER_SCENE,
     base: FILM_BASE,
-    // NARRATED stories: which formats can be told by a narrator, and how long one may be
+    // NARRATED stories: which formats can be told by a narrator, and how long one may be — the engine's own limits
+    // (3 to 32 scenes, five minutes: film-length.ts; it was 12 until 2026-11-25), so a next episode or a story
+    // opened to edit keeps the length it has
     narratable: (await import("../lib/film-engine.server")).NARRATABLE_KEYS,
-    narratedScenes: { min: 3, max: 12, def: 6 },
+    narratedScenes: { min: NARRATED_MIN_SCENES, max: NARRATED_MAX_SCENES, def: NARRATED_DEFAULT_SCENES },
     // a story's pictures move (story-motion.ts) — the estimate beside Generate says what that takes
     storyMotion: storyMotionOn(),
     defaultNarrator: (await import("../lib/narrated-story.server")).DEFAULT_NARRATOR,
@@ -439,7 +447,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, account } = await requireWebIdentity(request);
   const form = await request.formData();
   const intent = ((form.get("intent") as string) || "").trim();
-  const { FILM_TEMPLATES, filmTemplate, previewFilmTreatment, canNarrate, clampNarrated } = await import("../lib/film-engine.server");
+  const { FILM_TEMPLATES, filmTemplate, previewFilmTreatment, canNarrate, filmShots } = await import("../lib/film-engine.server");
 
   // THE CAST CHECK, ASKED BY HAND — admin only, and it reads only pictures on our own render disk or among
   // the built-in avatars. The question the storyboard asks about a cast still, put to the same reader with
@@ -488,7 +496,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // seconds (mv-pace.ts). Anything else, and every older form, is 10.
   const filmSceneSeconds = tmpl.lipSyncSinger ? sceneSecondsOf(((form.get("filmSceneSeconds") as string) || "").trim()) : 10;
   const maxScenes = tmpl.lipSyncSinger ? Math.min(tmpl.maxScenes, Math.floor(MV_MAX_SECONDS / filmSceneSeconds)) : tmpl.maxScenes;
-  const clampScenes = (n: number) => (narrated ? clampNarrated(n) : Math.max(tmpl.minScenes, Math.min(maxScenes, Math.round(n || tmpl.defaultScenes))));
+  // A STORY's length is the one limit both engines hold it to (film-engine.server.ts → filmShots, from
+  // film-length.ts): its format's floor to five minutes, acted or told — exactly the stops the Length slider
+  // offers (2026-11-25; the owner: "allowing up to 5 minutes"). The Music Video and the Kids Music Video keep their
+  // own: a sung film's length is its song's.
+  const storyLength = !!tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung;
+  const clampScenes = (n: number) => (storyLength ? filmShots(tmpl.key, narrated, n) : Math.max(tmpl.minScenes, Math.min(maxScenes, Math.round(n || tmpl.defaultScenes))));
   // The cast the maker picked before the script was written (story formats).
   const storyCast = tmpl.lipSyncSinger ? [] : parseStoryCast(form.get("filmCast") as string);
   // THE LANGUAGE IT IS TOLD IN — the story formats' "Told in" (the account's content language, set from the
@@ -558,8 +571,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       let treatment;
       // One more go before the maker is told it failed: the first write after a restart failed once on
       // the live site (2026-11-21) and the very same request then succeeded twelve times running.
+      // (Not for a script written in PARTS — a long film is a plan and up to ten answers, film-length.ts →
+      //  scriptParts, each already asked again on its own; asked again whole it is all of them twice over, a wait
+      //  of minutes doubled, since the Length slider reaches five minutes, 2026-11-25.)
+      const inParts = storyLength && scriptParts(narrated ? "narrated" : "acted", scenes).length > 1;
       try { treatment = await previewFilmTreatment(args); }
       catch (first) {
+        if (inParts) throw first;
         console.error(`[film] treatment write failed, trying once more: ${first instanceof Error ? first.message.slice(0, 200) : first}`);
         await new Promise((r) => setTimeout(r, 1200));
         treatment = await previewFilmTreatment(args);
@@ -2547,6 +2565,62 @@ export default function FilmStudio() {
     if (tr2 && tr2.scenes?.length) { setChainToScenes(false); firePreviewScenes(tr2); }
     else if (treatmentFetcher.data?.error) setChainToScenes(false);
   }, [treatmentFetcher.data, writing, chainToScenes]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* THE LENGTH SLIDER (2026-11-25). The owner, of the Length step's buttons ("≈ 10s · 2 shots" … "≈ 30s · 6
+   * shots"): "The how long can be adjusted to a sexy slider allowing up to 5 minutes with estimated final pricing
+   * for generations". One strip (the film kit's LengthSlider), from the format's floor to five minutes; everything
+   * it says — the stops, how long the film runs, what it will cost, how long it takes to make — is film-length.ts's,
+   * by the way the story is told, and the action holds the film to the same numbers (filmShots). */
+  const lenWay: FilmWay = narrated ? "narrated" : "acted";
+  // (a told story goes at its narrator's pace: a slow, performed voice takes longer a scene — and still stops at 5:00)
+  const lenPer = narrated ? NARRATOR_PACE[narratorId] : undefined;
+  const lenSecs = (n: number) => secondsFor(lenWay, n, lenPer);
+  const lenMinutes = (n: number): [number, number] => storyMinutes(lenWay, n, { moves: d.storyMotion && pictures !== "still", per: lenPer, veo: dialogueEngine === "veo" });
+  // what the film will cost: while films are free, the ESTIMATE film-length.ts makes (said beside "free while we
+  // finish films" — the page's FREE badges stay); the day a price is set, that price (plan-config.ts →
+  // estimateFilmTokens, the one function that quotes AND charges), so the slider never says one number and the
+  // button another
+  const lenTokens = (n: number) => (cost > 0 ? estimateFilmTokens(n) : tokensFor(lenWay, lenSecs(n)));
+  // A SLIDER CANNOT ASK FIRST PER VALUE. Each length button was armed before it threw a written script away (the
+  // page's "tap again" way); a drag passes through a dozen lengths. So with a script on the page a new length is
+  // held as PENDING — the thumb shows it, nothing is thrown away — and one calm line under the slider asks, "This
+  // rewrites your script", Rewrite / Keep, through the page's own arming (orArm, key "len:"). Keep — or anything
+  // that drops the arming: closing the card, another format, another armed tap — puts the thumb back. A length is
+  // never changed under a written script without that tap.
+  const [lenDraft, setLenDraft] = useState<number | null>(null);
+  const lenPending = wipeArm === "len:" && lenDraft !== null ? lenDraft : null;
+  const pickLen = (n: number) => {
+    if (!treatment || treatment.scenes.length === n) { setLenDraft(null); orArm("len:", false, () => setStoryLen(n)); return; }
+    setLenDraft(n);
+    // (the first move ARMS — orArm's first tap; while armed, a move only changes what is pending)
+    if (wipeArm !== "len:") orArm("len:", true, () => setStoryLen(n));
+  };
+  const keepLen = () => { setLenDraft(null); setWipeArm(""); };
+  // Rewrite: the new length, and the script written again at it — free, as "Write the dialogue" is; a told story
+  // that had its pictures is drawn again too, as "Write it and draw it" does. Written once the new length is ON the
+  // page (the writer is sent the length the page holds), so from an effect.
+  const [lenRedo, setLenRedo] = useState<{ draw: boolean } | null>(null);
+  const rewriteAtLen = () => {
+    if (lenPending === null) return;
+    const n = lenPending;
+    orArm("len:", true, () => { setLenDraft(null); setStoryLen(n); setLenRedo({ draw: narrated && !!seeds }); });
+  };
+  useEffect(() => {
+    if (!lenRedo) return;
+    setLenRedo(null);
+    if (lenRedo.draw) makeStoryboard(); else writeTreatment();
+  }, [lenRedo]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A SLOW NARRATOR PICKED AFTER A LONG LENGTH: the story still ends at five minutes (maxShots at its pace) — while
+  // nothing is written; a story already written keeps the length it has
+  useEffect(() => {
+    if (!narrated || restoring.current || treatment || seeds) return;
+    const most = maxShots("narrated", lenPer);
+    if (scenes > most) setScenes(most);
+  }, [narratorId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A LONG FILM TAKES LONG TO MAKE (a five-minute acted film is two to three hours of honest work): past twenty
+  // minutes the Generate area says so in one calm line — about how long, and that it waits in the Archive
+  const [renderLo, renderHi] = lenMinutes(scenes);
+  const renderAbout = (renderLo + renderHi) / 2;
+  const longRender = isStoryboard && renderAbout > LONG_RENDER_MINUTES;
   // Capture the previewed stills + the hero; the render then uses these EXACT images (no surprise),
   // and the hero lets a single scene be re-rolled without changing the artist.
   useEffect(() => {
@@ -4284,13 +4358,12 @@ export default function FilmStudio() {
 
       {/* ───────── The STORY builder — the Music Video's card flow, for the story formats ───────── */}
       {isStoryboard && (() => {
-        const lens = narrated ? [3, 4, 5, 6, 8, 10, 12] : Array.from({ length: Math.max(1, tmpl.maxScenes - tmpl.minScenes + 1) }, (_, k) => tmpl.minScenes + k);
-        // a scene is two or three sentences: about ten seconds in an ordinary voice, more in a slow, performed one
-        // (the first live story, told by the Hollow voice, ran 83 s for six scenes)
-        const perScene = ({ "char:keeper": 14, "char:mary": 13, "char:coco": 12, "char:howl": 12 } as Record<string, number>)[narratorId] || 10;
-        const secLabel = (sec: number) => { const r = Math.round(sec / 5) * 5; return r < 60 ? `${r}s` : `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`; };
-        // (an acted shot is about five seconds, not eight — speech-meter.ts TYPICAL_SHOT_SECONDS)
-        const lenLabel = (n: number) => (narrated ? `≈ ${secLabel(n * perScene)}` : `≈ ${n * TYPICAL_SHOT_SECONDS}s`);
+        // HOW LONG (film-length.ts): the slider's stops, from the format's own floor to five minutes — with the length
+        // the film HAS among them, wherever that falls (a script taken to twelve lines on the board)
+        const lenStops = stopsWith(lengthStops(lenWay, { min: narrated ? undefined : tmpl.minScenes, per: lenPer }), scenes);
+        // …and the card says what the slider says: "≈ 1:44 · 18 shots". (A shot is 5.8 s, as the films of 2026-11-25
+        // ran — the card said 5, and every one ran longer than its card; a told scene 9.5 s, more in a slow voice.)
+        const lenLabel = (n: number) => `≈ ${filmClock(lenSecs(n))}`;
         const shapeName = filmAspect === "16:9" ? t("Wide") : filmAspect === "9:16" ? t("Vertical") : t("Square");
         const capName = t(CAPTION_STYLES.find((c) => c.key === captions)?.label || "Off");
         // ONE PLACE TO CAST: what the Cast card and its panel say of a written script's characters
@@ -4565,15 +4638,18 @@ export default function FilmStudio() {
                 <div className="mm-opts-sub">{narrated
                   ? t("Each scene is one picture and two or three spoken sentences — about ten seconds. A slow, spooky narrator takes a little longer.")
                   : t("Each shot is one spoken line on camera, up to about ten seconds. More shots, longer film — and a longer render.")}</div>
-                <div className="mm-lenpick" role="group" aria-label={t("Length")}>
-                  {lens.map((n) => (
-                    <button type="button" key={n} className={`mm-lenopt${scenes === n ? " on" : ""}${wipeArm === `len:${n}` ? " is-arm" : ""}`} aria-pressed={scenes === n} onClick={() => orArm(`len:${n}`, !!treatment && treatment.scenes.length !== n, () => setStoryLen(n))}>
-                      <b>{lenLabel(n)}</b>
-                      <small>{narrated ? t("{n} scenes", { n }) : n === 1 ? t("1 shot") : t("{n} shots", { n })}</small>
-                    </button>
-                  ))}
-                </div>
-                {wipeNote("len:")}
+                <LengthSlider stops={lenStops} value={lenPending ?? scenes} onChange={pickLen} secondsOf={lenSecs} tokensOf={lenTokens} minutesOf={lenMinutes}
+                  unit={narrated ? "scenes" : "shots"} free={cost === 0} disabled={writing} t={t} />
+                {/* a new length under a written script waits here for its answer (pickLen) */}
+                {lenPending !== null && (
+                  <p className="mm-note mm-shape-warn mm-lenwipe" role="status">
+                    <span>{t("This rewrites your script")}</span>
+                    <span className="mm-lenwipe-do">
+                      <button type="button" className="mm-lenwipe-go" onClick={rewriteAtLen} disabled={writing}>{t("Rewrite")}</button>
+                      <button type="button" className="mm-lenwipe-keep" onClick={keepLen}>{t("Keep")}</button>
+                    </span>
+                  </p>
+                )}
               </div>
             )}
             {storyCard === "shape" && (
@@ -4829,8 +4905,12 @@ export default function FilmStudio() {
           <button type="submit" className={`fs-go${storySent ? " is-sent" : ""}`} disabled={!canGo || storySent || notingPlace !== null}>
             {generating ? <>… {t("Starting your film")}</> : storySent ? <><Ico n="check" size={16} /> {t("Rendering — it lands in your Archive")}</> : <><Ico n="film" size={16} /> {cost > 0 ? t("Generate {name} · {cost} Tokens", { name: t(heroTitle), cost }) : t("Generate {name} · Free", { name: t(heroTitle) })}</>}
           </button>
-          <div className="fs-eta" aria-live="polite" title={t("A rough estimate — longer films and lip-sync take more time.")}>
-            <span aria-hidden="true">⏱</span> {t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, narrated, moves: d.storyMotion && pictures !== "still", scenes, engine: dialogueEngine })}</b>
+          {/* (a long film — past twenty minutes to make — is said once, calmly, in the estimate's place: about how long,
+              and that it is kept for them while they do something else. Its range is on the Length slider.) */}
+          <div className={`fs-eta${longRender ? " is-long" : ""}`} aria-live="polite" title={t("A rough estimate — longer films and lip-sync take more time.")}>
+            <span aria-hidden="true">⏱</span> {longRender
+              ? t("About {time} to render — we'll keep it in your Archive", { time: waitSaid(renderAbout, t) })
+              : <>{t("Est. render time")} <b>{filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, per: lenPer, narrated, moves: d.storyMotion && pictures !== "still", scenes, engine: dialogueEngine })}</b></>}
           </div>
         </Form>
         <p className="fs-cost">
@@ -4858,17 +4938,53 @@ export default function FilmStudio() {
   );
 }
 
+/* ---- HOW LONG A STORY IS (2026-11-25) ----
+ * The Length step is a slider up to five minutes (the owner: "The how long can be adjusted to a sexy slider
+ * allowing up to 5 minutes with estimated final pricing for generations"). What it says comes from film-length.ts;
+ * these are the page's own few words about it. */
+
+/** A told story's pace when its narrator is a slow, performed voice: seconds a scene (the first live story, told
+ *  by the Hollow voice, ran 83 s for six scenes). Every other voice tells at film-length.ts's usual pace. */
+const NARRATOR_PACE: Record<string, number> = { "char:keeper": 14, "char:mary": 13, "char:coco": 12, "char:howl": 12 };
+
+/** The slider's stops with the length the film HAS among them — a script taken to twelve lines on the board, a next
+ *  episode of eighteen scenes — so the thumb sits on what will be made, never on the stop beside it. A length past
+ *  either end is not added (the slider shows the end it is nearest). */
+function stopsWith(stops: number[], n: number): number[] {
+  if (!stops.length || !Number.isInteger(n) || stops.includes(n) || n < stops[0] || n > stops[stops.length - 1]) return stops;
+  return [...stops, n].sort((a, b) => a - b);
+}
+
+/** How long a story takes to make, in minutes [from, to]: film-length.ts's renderMinutes — the ONE estimate the
+ *  Length slider, "Est. render time" and the long-render line all say. (Veo 3, the premium engine, was never timed:
+ *  it is kept the seventh slower than Kling 3 that this page has always said it is — 4 minutes a shot to 3.5.) */
+function storyMinutes(way: FilmWay, n: number, o: { moves?: boolean; per?: number; veo?: boolean } = {}): [number, number] {
+  const [lo, hi] = renderMinutes(way, n, { moves: o.moves, per: o.per });
+  return way === "acted" && o.veo ? [Math.round((lo * 8) / 7), Math.round((hi * 8) / 7)] : [lo, hi];
+}
+
+/** Past this many minutes' making, the Generate area says how long, and that the film waits in the Archive. */
+const LONG_RENDER_MINUTES = 20;
+
+/** A wait as people say it, to the nearest five minutes: "25 min", "1 h 5 min", "2 h". */
+function waitSaid(minutes: number, t: (s: string, p?: Record<string, string | number>) => string): string {
+  const m = Math.max(5, Math.round((Number(minutes) || 0) / 5) * 5);
+  if (m < 60) return t("{n} min", { n: m });
+  return m % 60 ? t("{h} h {m} min", { h: Math.floor(m / 60), m: m % 60 }) : t("{h} h", { h: m / 60 });
+}
+
 /** Rough render-time estimate shown beside Generate so the wait is expected. Buckets
  *  by engine: lip-sync Music Video (OmniHuman, ~2 clips at a time — the slow lane),
  *  dialogue films (per-beat Kling/Veo clips), and sung/other (parallel i2v). Returns a
  *  friendly range string; recomputed live from scene count + template + engine. */
-function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; narrated?: boolean; moves?: boolean; scenes: number; sceneSec?: number; engine: "veo" | "kling3" }): string {
+function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; narrated?: boolean; moves?: boolean; per?: number; scenes: number; sceneSec?: number; engine: "veo" | "kling3" }): string {
   const n = Math.max(1, opts.scenes || 1);
   let lo: number, hi: number;
   if (opts.narrated) {
-    lo = 2; hi = n > 8 ? 5 : 4; // a narration, an alignment pass, a picture a scene, one cut
-    // …and, when its pictures move, a clip a scene — the same sum the Archive's card counts down from
-    if (opts.moves) { const s = storyTypicalSeconds(n, true); lo = Math.max(3, Math.round((s * 0.8) / 60)); hi = Math.round((s * 1.35) / 60); }
+    // A TOLD STORY: the very range its Length slider says (storyMinutes, 2026-11-25) — built on the sum the
+    // Archive's card counts down from (story-motion.ts → storyTypicalSeconds: a narration, a picture a scene, a clip
+    // a scene when they move), with its Full HD cut on top, and never under what that sum alone said
+    [lo, hi] = storyMinutes("narrated", n, { moves: opts.moves, per: opts.per });
   } else if (opts.lipSyncSinger) {
     // The scenes are filmed three at a time. MEASURED 2026-11-21: a 30-second video of six five-second
     // scenes took 11 min 46 s start to finish (about four minutes a wave of three, plus the song, the
@@ -4877,8 +4993,9 @@ function filmEta(opts: { lipSyncSinger?: boolean; dialogue?: boolean; narrated?:
     const half = opts.sceneSec === 5;
     lo = Math.round((half ? 4 : 5) + waves * (half ? 3 : 7)); hi = Math.round((half ? 6 : 8) + waves * (half ? 4.5 : 10));
   } else if (opts.dialogue) {
-    const per = opts.engine === "veo" ? 4 : 3.5;
-    lo = Math.round(3 + n * per * 0.8); hi = Math.round(5 + n * per * 1.3);
+    // AN ACTED FILM: the same range as its slider — its shots made one after another, 2.5 to 3 minutes each, as the
+    // films of 2026-11-25 took (it was 3.5 a shot here, a guess, and said 14–23 min of a 4-shot film that takes 12–17)
+    [lo, hi] = storyMinutes("acted", n, { veo: opts.engine === "veo" });
   } else {
     lo = Math.round(4 + n * 1.2); hi = Math.round(7 + n * 2); // sung / other (parallel scenes)
   }
@@ -4913,6 +5030,9 @@ ${CAST_ID_CSS}
 .fs-wrap{max-width:none;margin:0 auto;--fs-gold:#C79A3A;--fs-gold-lt:#E7C879;}
 .fs-eta{display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 0;font-size:12.5px;font-weight:700;color:var(--ink2,#4A554E);}
 .fs-eta b{font-weight:800;color:var(--ink,#14201A);}
+/* a long film (2026-11-25, films up to five minutes): the estimate's line says, calmly, about how long and that it
+   waits in the Archive — a sentence, so it wraps as one (centred, the clock inline); not a warning: no amber */
+.fs-eta.is-long{display:block;max-width:440px;margin-inline:auto;text-align:center;text-wrap:balance;font-weight:600;line-height:1.45;}
 /* Cinematic hero — a dark "movie theatre" band with a gold spotlight + underline. */
 /* Green hero band — SOFTENED so it sits in the page (light shadow + a crisp inner
    edge + slimmer) instead of a floating slab. Gold rosette, the still bleeds in. */
@@ -5565,6 +5685,19 @@ a.mm-pace-auto{text-decoration:none;}
    title floated in the middle of its height. The story builder's cards start from the top, so the titles
    of a row stand on one line.) */
 .mm-story .mm-grid > .mm-card{display:flex;flex-direction:column;justify-content:flex-start;}
+/* (…and on a phone a card's kicker keeps clear of its step number, which sits over the card's top corner: at 390px
+   the Captions card's "THE WORDS" ran into its "4" — seen 2026-11-25 — and Spanish, French and German kickers ran
+   up to 18px under theirs. The number is a little smaller and nearer the corner, the kicker a half-point smaller,
+   so every English one stands on one line clear of it; a longer one FLOWS ROUND it (a float the number's width),
+   dropping a word to the next line. Not padding: that made every card wider, and German ran off the phone. The
+   number sits by the right edge — in a right-to-left page the icon's side, not the kicker's.) */
+@media(max-width:560px){
+  .mm-story .mm-grid > .mm-card .mm-step{top:10px;right:10px;width:22px;height:22px;font-size:11.5px;}
+  .mm-story .mm-grid > .mm-card .mm-card-kick{font-size:10px;}
+  .mm-story .mm-grid > .mm-card .mm-card-ttl{flex:1 1 auto;}
+  .mm-story .mm-grid > .mm-card .mm-card-ttl::before{content:"";float:right;width:18px;height:16px;}
+  [dir=rtl] .mm-story .mm-grid > .mm-card .mm-card-ttl::before{content:none;}
+}
 /* (…and the picked face of its Cast panel keeps a whole glow: the strip scrolls sideways, so it clips, and
    the wide green halo was cut off square at the strip's edge. A little room inside the strip, taken back
    outside it, and a halo that fits in that room.) */
@@ -5987,6 +6120,16 @@ a.mm-pace-auto{text-decoration:none;}
 .fs-stepper button.is-arm{background:#FFF1CF;color:#7A5A12;}
 .mm-opts .mm-shape-warn,.mm-topic .mm-shape-warn{text-align:left;margin-top:10px;}
 .mm-idea-kept{text-align:left;margin-top:7px;font-size:11.5px;font-weight:600;}
+/* THE LENGTH SLIDER'S ONE ASK (2026-11-25): a new length under a written script waits here — the amber every arming
+   on the page wears, its two answers each a finger's size to tap (44px by an invisible edge; the look stays small) */
+.mm-opts .mm-lenwipe{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;padding-block:6px;padding-inline:12px 6px;text-align:start;}
+.mm-lenwipe > span:first-child{flex:1 1 150px;min-width:0;font-size:12.5px;font-weight:700;}
+.mm-lenwipe-do{display:flex;gap:6px;flex:none;}
+.mm-lenwipe-do button{position:relative;min-height:34px;padding:0 14px;border-radius:9px;font:800 13px/1 Poppins,sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.mm-lenwipe-do button::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%);}
+.mm-lenwipe-go{border:0;background:var(--green,#0C7A46);color:#fff;}
+.mm-lenwipe-go:disabled{opacity:.55;cursor:default;}
+.mm-lenwipe-keep{border:1.5px solid #E2C98A;background:#FFFDF7;color:#7A5A12;}
 /* THE SCENE BOARD'S NOTES (2026-11-25). The board is its own wall (components/film/SceneBoard.tsx, its look in
    film-kit-style.ts), not a cream card — so what is said under it stands on the PAGE, and carries its own paper
    to read the same on the cream page and the dark one: the "a rewrite replaces every line" warning (amber, as

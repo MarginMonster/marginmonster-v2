@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLIP_MIN_SECONDS, TYPICAL_SHOT_SECONDS, estimateSpeakSeconds } from "../app/lib/speech-meter.ts";
+import { secondsFor } from "../app/lib/film-length.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
@@ -35,9 +36,16 @@ test("a typical written line is about five seconds on the meter — which is wha
   assert.ok(Math.abs(4 * TYPICAL_SHOT_SECONDS - total) < 2, "five a shot says 20");
 });
 
-test("the Length card is fed from the meter's own constant", () => {
+test("the Length card is fed from what films are measured to run — the figure its slider says", () => {
   const ui = read("app", "routes", "web.film.tsx");
-  assert.ok(ui.includes("const lenLabel = (n: number) => (narrated ? `≈ ${secLabel(n * perScene)}` : `≈ ${n * TYPICAL_SHOT_SECONDS}s`);"));
+  // (2026-11-25: the Length step is a slider up to five minutes, and the card says what the slider says —
+  //  film-length.ts's seconds: 5.8 a shot, as the films of that morning ran; this meter's five was under every one
+  //  of them — tests/film-length.test.ts. The meter itself still measures each written line, on the scene board.)
+  assert.ok(ui.includes("const lenLabel = (n: number) => `≈ ${filmClock(lenSecs(n))}`;"));
+  assert.ok(ui.includes("const lenSecs = (n: number) => secondsFor(lenWay, n, lenPer);"));
   assert.ok(!ui.includes("`≈ ${n * 8}s`"));
-  assert.ok(ui.includes("CLIP_MAX_SECONDS, TYPICAL_SHOT_SECONDS } from \"../lib/speech-meter\";"));
+  assert.ok(ui.includes("import { estimateSpeakSeconds, CLIP_MAX_SECONDS } from \"../lib/speech-meter\";"));
+  // four shots are said at what four shots come to — far nearer the made film than eight a shot was
+  const total = LINES.map((l) => estimateSpeakSeconds(l)).reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(secondsFor("acted", 4) - total) < Math.abs(4 * 8 - total) / 2, `${secondsFor("acted", 4)} s against ${total.toFixed(1)} s`);
 });
