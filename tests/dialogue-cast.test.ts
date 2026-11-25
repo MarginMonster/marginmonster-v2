@@ -180,7 +180,8 @@ test("an acted film made in one press is cast with the people the maker picked",
   assert.ok(page.includes("...(cast ? { cast } : {}),"), "…and on to the job");
   // THE FILM: when it writes its own script, the writer hears who was cast
   const film = read("app", "lib", "film-dialogue.server.ts");
-  assert.ok(film.includes("else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, ...(castForWriter(opts.cast).length ? { cast: castForWriter(opts.cast) } : {}), series: opts.series });"));
+  // (…and, since 2026-11-25, says it is at work while a five-minute script is written: tests/film-length.test.ts)
+  assert.ok(film.includes("else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, ...(castForWriter(opts.cast).length ? { cast: castForWriter(opts.cast) } : {}), series: opts.series, beat: alive });"));
   const engine = read("app", "lib", "film-engine.server.ts");
   assert.ok(engine.includes("THE CAST IS ALREADY CHOSEN — write the story for exactly these characters:"));
 });

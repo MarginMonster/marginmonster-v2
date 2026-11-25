@@ -539,6 +539,11 @@ export async function previewFilmTreatment(opts: {
   /** …and WHO TELLS IT: the name of the one of the chosen cast whose own voice narrates. The story is then
    *  theirs, told as "I" — a told story only, and only for somebody who is in `cast`. */
   teller?: string;
+  /** A JOB THAT IS WRITING SAYS SO (2026-11-25, films up to five minutes): called when a long film's plan, and each
+   *  of its parts, comes back. A five-minute script written inside a job is ten answers or more one after another
+   *  — each up to two minutes, and asked again down the rungs — and the worker takes a job nobody has touched for 25
+   *  minutes to be dead (job-queue.server.ts → reclaimOrphanJobs). Never called for a film written in one answer. */
+  beat?: () => unknown;
 }): Promise<FilmTreatment> {
   const tmpl = filmTemplate(opts.template);
   const narrated = opts.mode === "narrated" && !tmpl.lipSyncSinger && !tmpl.sung;
@@ -965,6 +970,9 @@ export async function previewFilmTreatment(opts: {
   // (where each part's scenes are in the finished script — one span, the whole of it, for a film written in one answer)
   let spans: Array<[number, number]> = [];
   let acts: FilmTreatment["acts"];
+  // (a long film's job says it is at work as each of its answers comes back — `beat`, above; a beat that fails is
+  //  skipped, and a film written in one answer never beats)
+  const alive = async (): Promise<void> => { if (inParts) try { await opts.beat?.(); } catch { /* skipped */ } };
   if (inParts) {
     // A LONG FILM IS WRITTEN IN PARTS (film-length.ts): its PLAN first — one small answer — and then each part in
     // order, by the brief above, told the plan, where it stands in it and the lines the part before it ended on.
@@ -984,6 +992,7 @@ export async function previewFilmTreatment(opts: {
         jsonSchema: { name: "film_plan", schema: planSchema(way) },
       }));
       try { plan = takePlan(JSON.parse(raw), { way, parts: partSizes.length }); } catch { plan = null; }
+      await alive();
     }
     // (never a shorter film than was asked for, written the old way: the maker is told, and tries again)
     if (!plan) throw new Error(`[film] a ${scenes}-${narrated ? "scene story" : "shot film"} could not be planned in ${partSizes.length} parts`);
@@ -1007,6 +1016,7 @@ export async function previewFilmTreatment(opts: {
           const t = await down((extra) => write(`${ask}${extra}${go ? `\nIMPORTANT: your last answer had ${got.length} ${narrated ? "scenes" : "shots"}. Return EXACTLY ${n} — count them before you answer.` : ""}`));
           const came = (t.scenes || []).filter((s) => s && s.visual).slice(0, n);
           if (came.length > got.length) got = came;
+          await alive();
         } catch (e) {
           // (asked again only because the first answer was short: what it had is kept)
           if (!got.length) throw e;
@@ -1187,7 +1197,7 @@ export async function previewFilmTreatment(opts: {
   const done: Array<Awaited<ReturnType<typeof checkPart>>> = new Array(spans.length);
   let nextPart = 0;
   await Promise.all(Array.from({ length: Math.min(3, spans.length) }, async () => {
-    while (nextPart < spans.length) { const k = nextPart++; done[k] = await checkPart(spans[k]); }
+    while (nextPart < spans.length) { const k = nextPart++; done[k] = await checkPart(spans[k]); await alive(); }
   }));
   list = done.flatMap((d) => d.list);
   const castNotes = done.map((d) => d.castNote).filter((n): n is NonNullable<FilmTreatment["castFit"]> => !!n);

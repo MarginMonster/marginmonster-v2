@@ -422,6 +422,32 @@ test("THE HEARTBEAT: a film that works for two hours is never taken for dead —
   assert.ok(src.includes("// (a picture came back, or did not — either way the film is at work, and says so: see `say`)\n      await say(alive);"));
   // …and the join between its parts (film-join.server.ts → joinInParts), the loudness and the captions as before
   assert.ok(src.includes("return joinWhole({ clips, outPath, prep: SCALE, seams, length: \"picture\", encode: ENCODE, label: \"[testmovie]\", beat });"));
+  // …and while a script is written INSIDE the job (a film made in one press): ten answers or more for five minutes,
+  // the job beating as each comes back — the plan, each part, each part's line check — and never for a short film
+  const eng = engine();
+  assert.ok(eng.includes("const alive = async (): Promise<void> => { if (inParts) try { await opts.beat?.(); } catch { /* skipped */ } };"));
+  assert.ok(eng.includes("try { plan = takePlan(JSON.parse(raw), { way, parts: partSizes.length }); } catch { plan = null; }\n      await alive();"));
+  assert.ok(eng.includes("if (came.length > got.length) got = came;\n          await alive();"));
+  assert.ok(eng.includes("done[k] = await checkPart(spans[k]); await alive();"));
+  assert.ok(src.indexOf("const alive = () => ckpt({ ckBeat: Date.now() });") < src.indexOf("series: opts.series, beat: alive });"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("series: opts.series, beat: () => ckpt({ ckBeat: Date.now() }) });"));
+});
+
+test("THE RESUME, when a finished shot's file is gone: the next shot grows out of the last shot still there, never out of one that is made again", () => {
+  const src = acted();
+  // `ckLastStill` is the last frame of the last CHECKPOINTED shot; picked up before a gone one, that shot is made again
+  const at = src.indexOf("let prevFrameUrl: string | undefined = resume.ckLastStill;");
+  assert.ok(at > src.indexOf("const firstGone = had.findIndex((p) => !p || !fs.existsSync(p));"));
+  assert.ok(src.includes("if (firstGone >= 0) prevFrameUrl = clips.length ? (await extractLastFrame(clips[clips.length - 1])) || undefined : undefined;"));
+  assert.ok(src.indexOf("if (firstGone >= 0) prevFrameUrl =") > at);
+});
+
+test("A GENRE WHOSE WORLD IS ITS OWN is never told today's real world — not in a long film's plan, nor in any of its parts", () => {
+  const eng = engine();
+  // the whole-film brief (film-genres.ts → ownWorld) — and the plan's and every part's, the same rule
+  assert.ok(eng.includes("(storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\\n` : \"\") +"));
+  assert.equal(eng.split("(!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\\n` : \"\") +").length - 1, 2, "the plan and the part");
+  assert.ok(!eng.includes("(!tmpl.childSafe ? `${REAL_WORLD}\\n` : \"\") +"));
 });
 
 test("A LONG FILM HOLDS ITS LANE: the worker does not start the next film beside one that is two hours into its work", () => {
