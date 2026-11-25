@@ -16,11 +16,14 @@
  *                           wording, the request, the four-at-a-time loop that never throws.
  *   lib/film-rewrite.ts     a director's one-tap note: what the writer is told, and the check on what comes
  *                           back — anything unusable is refused whole.
- *   components/film/*       the three pieces and their one stylesheet. They cannot be mounted in a test
- *                           (no DOM); they were looked at, at phone and desktop width, in both themes — the
- *                           harness is public/_harness/film-kit (not committed). What is pinned here is
- *                           what cannot be seen in a photograph: that every word is in all five languages,
- *                           what a screen reader is told, and the rules for a finger and for less motion.
+ *   components/film/*       the three pieces and their one stylesheet. They cannot be MOUNTED in a test (no
+ *                           DOM) — what a tap does was driven with real touches, a real drag and real keys
+ *                           in the harness (public/_harness/film-kit, not committed) and photographed at
+ *                           phone and desktop width in both themes. Here they are DRAWN: compiled as they
+ *                           stand and rendered to markup, so what the page is handed is held — one real
+ *                           range control and what a screen reader is told, lines as text and not as boxes,
+ *                           what holds while the writer has a sheet — along with what no photograph shows:
+ *                           every word in all five languages, and the rules for a finger and less motion.
  *
  * The two calls that cost something or need the writer (film-sketch.server.ts, film-rewrite.server.ts) are
  * not run from here: twelve real sketches were drawn and looked at; the writer has no credit on this machine.
@@ -31,6 +34,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import * as flowLib from "../app/lib/film-flow.ts";
+import { FILM_KIT_CSS } from "../app/components/film/film-kit-style.ts";
+import { UI_DICT } from "../app/lib/ui-i18n-dict.ts";
 import {
   WIDE, addCloseUp, addLine, addScene, backdropIs, cycleSpeaker, filmClock, flowOf, movePlace, nextSpeaker, parseBeat, placeLines,
   removeAngle, removeLine, removePlace, setAngleShot, setLine, setSpeaker, setWhere, sideOf, speakersOf, whereOf,
@@ -642,4 +649,461 @@ test("the rewrite itself: the films' own writer, the schema forced, asked twice 
   assert.ok(src.includes("const lines = parseRewriteLines(raw, who, had || undefined);"));
   assert.ok(src.includes("const who = speakersInPlace(scenes, placeIndex, speakers);"));
   assert.ok(!/\bthrow\b/.test(codeOf(src)), "the code never throws");
+});
+
+/* ==== THE THREE PIECES, DRAWN =============================================================================
+ * They cannot be mounted here (there is no DOM), but they can be DRAWN: each is compiled as it stands and
+ * rendered to markup by React's own server renderer, with the real icons and the real film-flow under it.
+ * What a tap does was driven and photographed in the harness (real touches, a real drag, real keys);
+ * what is held here is what the page is handed before anything is tapped. */
+
+const requireCjs = createRequire(import.meta.url);
+function loadTsx(file: string[], mods: Record<string, unknown>): Record<string, unknown> {
+  const ts = requireCjs("typescript");
+  const js: string = ts.transpileModule(read(...file), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+  const mod = { exports: {} as Record<string, unknown> };
+  new Function("module", "exports", "require", js)(mod, mod.exports, (id: string) => (id in mods ? mods[id] : requireCjs(id)));
+  return mod.exports;
+}
+const React = requireCjs("react") as { createElement: (type: unknown, props: unknown) => unknown };
+const { renderToStaticMarkup } = requireCjs("react-dom/server") as { renderToStaticMarkup: (el: unknown) => string };
+const icons = loadTsx(["app", "lib", "icons.tsx"], {});
+const kit = { "../../lib/icons": icons, "../../lib/film-flow": flowLib };
+const { SceneBoard, NEW_TAKE_KEY } = loadTsx(["app", "components", "film", "SceneBoard.tsx"], kit) as { SceneBoard: unknown; NEW_TAKE_KEY: string };
+const slider = loadTsx(["app", "components", "film", "LengthSlider.tsx"], kit) as {
+  LengthSlider: unknown; LENGTH_TICKS: readonly number[];
+  tickAt: (seconds: number, stops: number[]) => number | null; ticksFor: (stops: number[], gap?: number) => Array<{ seconds: number; at: number }>;
+};
+const nudges = loadTsx(["app", "components", "film", "StarterNudges.tsx"], kit) as { StarterNudges: unknown; nudgeHint: string };
+const draw = (type: unknown, props: Record<string, unknown>) => renderToStaticMarkup(React.createElement(type, props));
+const count = (hay: string, needle: string) => hay.split(needle).length - 1;
+/** t(), as the page hands it over — here it only fills the {placeholders} in. */
+const say = (s: string, p?: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (_, k) => String(p?.[k] ?? `{${k}}`));
+const nothing = () => {};
+
+const STOPS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 21, 24, 27, 30, 36, 42, 48, 54, 60];
+const sliderProps = (over: Record<string, unknown> = {}) => ({
+  stops: STOPS, value: 18, onChange: nothing, secondsOf: (n: number) => n * 5, tokensOf: (n: number) => n * 25,
+  minutesOf: (n: number) => [n * 2.5, n * 3.05] as [number, number], unit: "shots", free: true, t: say, ...over,
+});
+
+test("THE LENGTH SLIDER (\"a sexy slider … up to 5 minutes with estimated final pricing\"): one real range control, the length large, the price and the wait under it", () => {
+  const html = draw(slider.LengthSlider, sliderProps());
+  // ONE control, and it is a real one: a keyboard and a screen reader get it for nothing
+  assert.equal(count(html, "<input"), 1);
+  assert.equal(count(html, "<button"), 0, "it replaced five buttons with no button at all");
+  const input = /<input[^>]*>/.exec(html)![0];
+  for (const attr of ['type="range"', 'min="0"', 'max="22"', 'step="1"', 'value="13"', 'aria-label="How long?"', 'aria-valuetext="1:30 · 18 shots · ≈ 450 tokens"', 'class="fk-len-in"']) assert.ok(input.includes(attr), `${attr} in ${input}`);
+  // the readout belongs to that control
+  const id = /id="([^"]+)"/.exec(input)![1];
+  assert.ok(html.includes(`<output class="fk-len-time fk-num" for="${id}">1:30</output>`), html);
+  assert.ok(html.includes('<span class="fk-len-count fk-num">18 shots</span>'));
+  // under it: what it costs, how long it takes — and "free" BESIDE the estimate, never instead of it
+  assert.ok(html.includes('<span class="fk-len-cost fk-num">≈ 450 tokens</span>'));
+  assert.ok(html.includes('<span class="fk-len-takes fk-num">renders in about 45–55 min</span>'));
+  assert.ok(html.includes('<span class="fk-len-free">free while we finish films</span>'));
+  const paid = draw(slider.LengthSlider, sliderProps({ free: false }));
+  assert.ok(!paid.includes("fk-len-free") && paid.includes("≈ 450 tokens"), "no tag when it is not free; the estimate either way");
+  // the thumb is where the stop is (13 of 22), and the figures' boxes are as wide as the widest they will show
+  assert.ok(html.includes(`--p:${13 / 22}`), html.slice(0, 200));
+  assert.ok(html.includes("--clock:4ch") && html.includes("--count:9ch"), "\"5:00\" and \"60 shots\", reserved");
+  // the film and the frame are pictures of the control, not controls
+  assert.ok(html.includes('<span class="fk-len-film" aria-hidden="true"><i class="fk-len-lit"></i></span>'));
+  assert.ok(html.includes('<span class="fk-len-thumb" aria-hidden="true">'));
+  assert.ok(html.indexOf("fk-len-in") < html.indexOf("fk-len-thumb"), "the thumb comes after the input: its focus ring is drawn on the thumb");
+});
+
+test("…at its ends, between its stops, and for a told story", () => {
+  const at = (value: number, over: Record<string, unknown> = {}) => draw(slider.LengthSlider, sliderProps({ value, ...over }));
+  // twenty seconds
+  const short = at(4);
+  assert.ok(short.includes(">0:20</output>") && short.includes(">4 shots<") && short.includes("≈ 100 tokens") && short.includes("renders in about 10–12 min"), short);
+  assert.ok(short.includes('value="2"'));
+  // five minutes: thousands are grouped, and past an hour the wait is said to the nearest five minutes
+  const long = at(60);
+  assert.ok(long.includes(">5:00</output>") && long.includes(">60 shots<") && long.includes("≈ 1,500 tokens"), long);
+  assert.ok(long.includes("renders in about 2 h 30 min – 3 h 5 min"), long);
+  assert.ok(long.includes('aria-valuetext="5:00 · 60 shots · ≈ 1,500 tokens"'));
+  assert.ok(long.includes("--p:1;"));
+  assert.ok(at(2).includes("--p:0;") && at(2).includes(">0:10</output>"));
+  // a count that is not one of the stops shows the stop nearest it (and never a position that is not one)
+  assert.ok(at(17).includes('value="12"') && at(17).includes(">16 shots<"));
+  assert.ok(at(999).includes(">60 shots<") && at(-4).includes(">2 shots<"));
+  // one shot is "1 shot"; a told story counts scenes
+  assert.ok(at(1, { stops: [1, 2, 3] }).includes(">1 shot<"));
+  const told = at(6, { unit: "scenes", stops: [3, 4, 5, 6, 8, 10, 12], secondsOf: (n: number) => n * 10 });
+  assert.ok(told.includes(">6 scenes<") && told.includes(">1:00</output>") && told.includes('aria-valuetext="1:00 · 6 scenes · ≈ 150 tokens"'), told);
+  // a wait that is one number, an hour on the dot, and no stops at all
+  assert.ok(at(18, { minutesOf: () => [50, 50] }).includes("renders in about 50 min"));
+  assert.ok(at(18, { minutesOf: () => [55, 120] }).includes("renders in about 55 min – 2 h"));
+  assert.ok(at(7, { stops: [] }).includes(">7 shots<"));
+  assert.ok(at(18, { disabled: true }).includes('disabled=""') && at(18, { disabled: true }).includes("fk-len is-off"));
+});
+
+test("the strip is labelled BY TIME: each label where its length falls between the stops — and none on top of another", () => {
+  assert.deepEqual([...slider.LENGTH_TICKS], [30, 60, 120, 180, 300]);
+  const secs = STOPS.map((n) => n * 5);
+  // a length that IS a stop sits on that stop; one between two stops, between them in proportion
+  assert.equal(slider.tickAt(60, secs), 10 / 22);
+  assert.equal(slider.tickAt(300, secs), 1);
+  assert.equal(slider.tickAt(10, secs), 0);
+  assert.equal(slider.tickAt(120, secs), 15 / 22, "2:00 is 24 shots: the sixteenth stop");
+  assert.equal(slider.tickAt(65, secs), 10.5 / 22, "halfway between 12 shots (1:00) and 14 (1:10)");
+  // a strip that does not reach a length has no label for it
+  assert.equal(slider.tickAt(5, secs), null);
+  assert.equal(slider.tickAt(301, secs), null);
+  assert.equal(slider.tickAt(60, []), null);
+  assert.deepEqual(slider.ticksFor(secs).map((k) => k.seconds), [30, 60, 120, 180, 300]);
+  const html = draw(slider.LengthSlider, sliderProps());
+  assert.deepEqual([...html.matchAll(/--at:([\d.]+)">([\d:]+)</g)].map((m) => [m[2], Number(m[1])]), [["0:30", 4 / 22], ["1:00", 10 / 22], ["2:00", 15 / 22], ["3:00", 18 / 22], ["5:00", 1]]);
+  assert.ok(html.includes('<div class="fk-len-ticks" aria-hidden="true">'));
+  // a short strip (a told story of up to two minutes): only what it reaches
+  assert.deepEqual(slider.ticksFor([30, 40, 50, 60, 80, 100, 120]).map((k) => k.seconds), [30, 60, 120]);
+  // labels that would touch: one too close to the label before it is left out (here 1:00 and 2:00, a
+  // quarter of the strip or less after 0:30)…
+  assert.deepEqual(slider.ticksFor([20, 100, 200, 290, 300], 0.3).map((k) => [k.seconds, Math.round(k.at * 1000) / 1000]), [[30, 0.031], [180, 0.45], [300, 1]]);
+  // …and the last (the longest film there is) is always there: the label before it gives way (here 3:00)
+  assert.deepEqual(slider.ticksFor([100, 170, 180, 300], 0.4).map((k) => k.seconds), [120, 300]);
+});
+
+const STARTERS = ["TEST — Two keepers hear the lamp room door bang, though the stairs have been empty since noon.", "TEST — A baker finds her late husband's handwriting on tomorrow's order slips.", "TEST — Two sisters find a music box only one of them can hear.", "TEST — a fourth, not shown"];
+
+test("STARTER NUDGES (\"atleast need a starter nudge … to hand to the writer\"): three starters, each whole, a tap away from the box", () => {
+  const html = draw(nudges.StarterNudges, { starters: STARTERS, onPick: nothing, onMore: nothing, t: say });
+  assert.ok(html.includes("Need a nudge?"));
+  assert.equal(count(html, 'class="fk-nudge-card"'), 3, "three, however many there are");
+  for (const s of STARTERS.slice(0, 3)) assert.ok(html.includes(`<span class="fk-nudge-txt" dir="auto">${s.replace(/'/g, "&#x27;")}</span>`), `whole: ${s}`);
+  assert.ok(!html.includes("a fourth, not shown"));
+  assert.equal(count(html, "Use this"), 3);
+  assert.ok(/<button type="button" class="fk-nudge-more">.*More ideas<\/button>/.test(html), html);
+  // not urged: no line about an empty box
+  assert.ok(!html.includes("fk-nudge-hint") && html.includes('<div class="fk fk-nudge">'));
+  // the line for a press of "write" on an empty box, and where it is said
+  assert.equal(nudges.nudgeHint, "Give the writer a sentence or two — or tap a starter");
+  const urged = draw(nudges.StarterNudges, { starters: STARTERS, onPick: nothing, onMore: nothing, urge: true, t: say });
+  assert.ok(urged.includes('<p class="fk-nudge-hint" role="status">Give the writer a sentence or two — or tap a starter</p>'));
+  assert.ok(urged.includes('<div class="fk fk-nudge is-urge">'));
+  // the cards a member arrives to are simply there: nothing is "dealt" until they ask
+  assert.ok(html.includes('<ul class="fk-nudge-list">'));
+  // nothing to offer, nothing drawn
+  assert.equal(draw(nudges.StarterNudges, { starters: [], onPick: nothing, onMore: nothing, t: say }), "");
+  // what is tapped is what goes in the box — in the member's language
+  const src = read("app", "components", "film", "StarterNudges.tsx");
+  assert.ok(src.includes("const text = t(s);") && src.includes("onClick={() => { setTaken(s); onPick(text); }}"));
+});
+
+const boardProps = (over: Record<string, unknown> = {}) => {
+  const scenes = (over.scenes as FlowScene[]) || LIGHTHOUSE;
+  const speakers = speakersOf(scenes, CAST);
+  return {
+    flow: flowOf(scenes), speakers, faceOf: (n: string) => (nameTok(n) === "wren" ? "/avatars/test-face.jpg" : null), displayName: (n: string) => speakers.find((s) => nameTok(s) === nameTok(n)) || n,
+    backdrops: [{ key: "house", label: "Old house", where: "the hallway of an old house at night" }, { key: "kitchen", label: "Kitchen" }],
+    notes: [{ key: "scarier", label: "Scarier" }, { key: "slower", label: "Slower burn" }, { key: "shorter", label: "Shorter" }, { key: "twist", label: "Add a twist" }],
+    sketches: ["/renders/img-test-1.jpg", null, "/renders/img-test-3.jpg", null], sketching: false, noting: null, aspect: "16:9", title: "TEST — The Lighthouse",
+    totalSeconds: 26, secondsOf: (text: string) => text.split(/\s+/).filter(Boolean).length * 0.5, maxSeconds: 10,
+    onLine: nothing, onSpeaker: nothing, onAddLine: nothing, onRemoveLine: nothing, onCloseUp: nothing, onAngleShot: nothing, onRemoveAngle: nothing,
+    onWhere: nothing, onMove: nothing, onRemovePlace: nothing, onAddScene: nothing, onNote: nothing, onRewriteAll: nothing, t: say, ...over,
+  };
+};
+const sheets = (html: string) => html.split("<article").slice(1).map((s) => s.split("</article>")[0]);
+
+test("THE SCENE BOARD (\"boring and a chore\" → a board): a slate, a sheet per place, a dashed frame for the next one", () => {
+  const html = draw(SceneBoard, boardProps());
+  assert.ok(html.startsWith('<section class="fk fk-board" data-aspect="16:9" aria-label="Storyboard">'), html.slice(0, 120));
+  // the slate: the film's title, "4 scenes · ≈ 0:26", Rewrite all
+  assert.ok(html.includes("<i>Production</i><b>TEST — The Lighthouse</b>"));
+  assert.ok(html.includes('<div class="fk-slate-meta">4 scenes <span aria-hidden="true">·</span> <span class="fk-num" title="Estimated spoken length of the whole film">≈ 0:26</span></div>'), html.slice(0, 900));
+  assert.ok(/<button type="button" class="fk-slate-rw">.*Rewrite all<\/button>/.test(html.split("</header>")[0]));
+  assert.ok(draw(SceneBoard, boardProps({ title: "  " })).includes("<b>Untitled film</b>"));
+  assert.ok(draw(SceneBoard, boardProps({ rewriteArmed: true })).includes("Tap again to rewrite"), "the page's \"asked first\" shows on the button");
+  // four sheets, each a place: its number and its own words on the strip
+  const four = sheets(html);
+  assert.equal(four.length, 4);
+  [KITCHEN, STAIRS, LAMP, ROCKS].forEach((where, i) => {
+    assert.ok(four[i].includes(`<span class="fk-tag"><i aria-hidden="true"></i>SC ${i + 1}</span><span class="fk-place" dir="auto">${where}</span>`), `sheet ${i + 1}`);
+    assert.ok(four[i].includes(`aria-label="Scene ${i + 1}: ${where}"`));
+  });
+  // between sheets a cut mark, not a sentence: the film fades in, then cuts
+  assert.deepEqual([...html.matchAll(/<\/svg> (FADE IN|CUT TO)<span>/g)].map((m) => m[1]), ["FADE IN", "CUT TO", "CUT TO", "CUT TO", "CUT TO"]);
+  // after the last, the next one
+  assert.ok(/<button type="button" class="fk-new">.*<b>New scene<\/b><small>They go somewhere else<\/small><\/button><\/li><\/ol><\/section>$/.test(html));
+  // "New take" is the board's own note, under the key the writer's side knows it by
+  assert.equal(NEW_TAKE_KEY, NEW_TAKE.key);
+});
+
+test("…the picture: a sketch where there is one, a drawn sheet where there is not — never a grey box", () => {
+  const html = draw(SceneBoard, boardProps());
+  const four = sheets(html);
+  assert.ok(four[0].includes('<img class="fk-sketch" src="/renders/img-test-1.jpg" alt="Storyboard sketch of scene 1" loading="lazy"'));
+  assert.ok(four[2].includes('src="/renders/img-test-3.jpg"'));
+  for (const i of [1, 3]) {
+    assert.ok(!four[i].includes("<img"), `sheet ${i + 1} has no picture yet`);
+    assert.ok(four[i].includes('<div class="fk-blank">') && four[i].includes(`<span class="fk-blank-n" aria-hidden="true">${i + 1}</span>`));
+  }
+  assert.ok(!html.includes("Sketching…"));
+  // while they are being drawn, the blank ones say so
+  const drawing = sheets(draw(SceneBoard, boardProps({ sketching: true })));
+  assert.ok(drawing[1].includes('<div class="fk-blank is-drawing">') && drawing[1].includes('<span class="fk-blank-say">Sketching…</span>'));
+  assert.ok(!drawing[0].includes("Sketching…"), "a sheet that has its sketch does not");
+  // the film's shape is the board's
+  assert.ok(draw(SceneBoard, boardProps({ aspect: "9:16" })).startsWith('<section class="fk fk-board" data-aspect="9:16"'));
+});
+
+test("…the lines: a conversation in TEXT — bubbles beside faces, sides by speaker, no box to fill in", () => {
+  const html = draw(SceneBoard, boardProps());
+  // AT REST NOTHING IS A FORM: not one text box on the whole board
+  assert.equal(count(html, "<textarea"), 0);
+  assert.equal(count(html, "<input"), 0);
+  // every spoken line is a bubble (a button to tap), with its words as they are
+  assert.equal(count(html, 'class="fk-bubble"'), 8);
+  assert.ok(html.includes('<button type="button" class="fk-bubble" dir="auto" title="Tap to edit this line">Look at the glass.</button>'));
+  // sides: Wren on the left, Odo answering from the right
+  const kitchen = sheets(html)[0];
+  assert.deepEqual([...kitchen.matchAll(/class="fk-line (left|right)"/g)].map((m) => m[1]), ["left", "right"]);
+  assert.deepEqual([...sheets(html)[1].matchAll(/class="fk-line (left|right)"/g)].map((m) => m[1]), ["right", "left"]);
+  // a face when they are cast, their letter when they are not — and a tap on either is "the next speaker"
+  assert.ok(kitchen.includes('<button type="button" class="fk-face" style="background-image:url(/avatars/test-face.jpg)" aria-label="Wren says this — tap for the next speaker" title="Tap to switch who speaks"></button>'), kitchen.slice(0, 2400));
+  assert.ok(kitchen.includes('aria-label="Odo says this — tap for the next speaker" title="Tap to switch who speaks"><span aria-hidden="true">O</span></button>'));
+  // every line can be taken out…
+  assert.equal(count(html, 'aria-label="Remove this line"'), 8);
+  // …but not the only line of a script
+  const one = draw(SceneBoard, boardProps({ scenes: [{ visual: "v", where: "a test yard", caption: "Wren: Only this." }] }));
+  assert.equal(count(one, "Remove this"), 0);
+  // with one speaker there is nobody to hand a line to
+  const solo = boardProps({ scenes: [{ visual: "v", where: "a test yard", caption: "Wren: Only this." }] });
+  assert.ok(draw(SceneBoard, { ...solo, speakers: ["Wren"] }).includes('<button type="button" class="fk-face" disabled=""'));
+  // THE SECONDS: no meter on a line at rest; a quiet mark on one that runs long (0.5 s a word here, 10 s a shot)
+  assert.equal(count(html, "fk-meter"), 0);
+  assert.equal(count(html, "fk-long"), 0);
+  const words = (n: number) => `Wren: ${Array.from({ length: n }, () => "word").join(" ")}`;
+  const long = draw(SceneBoard, boardProps({ scenes: [{ visual: "v", where: "w", caption: words(19) }, { visual: "v", where: "w", caption: words(24) }, { visual: "v", where: "w", caption: words(10) }] }));
+  assert.ok(long.includes('<span class="fk-long warn"') && long.includes("9.5s — nearly a full shot"));
+  assert.ok(long.includes('<span class="fk-long over"') && long.includes("12s — too long for one shot"));
+  assert.equal(count(long, "fk-long "), 2);
+  assert.equal(count(long, "fk-meter"), 0, "the meter is for typing");
+});
+
+test("…a shot with no line is \"Seen, not said\", and a close-up is a small tag between the bubbles", () => {
+  const html = draw(SceneBoard, boardProps());
+  const rocks = sheets(html)[3];
+  assert.equal(count(html, "Seen, not said"), 1);
+  assert.ok(/<div class="fk-line is-unsaid"[^>]*><button type="button" class="fk-unsaid" title="Tap to give this shot a line">.*Seen, not said<\/button>/.test(rocks), rocks.slice(-1800));
+  assert.ok(rocks.includes('aria-label="Remove this shot"'));
+  // a line somebody added and never typed is one too (it is filmed with nobody speaking)
+  const blank = draw(SceneBoard, boardProps({ scenes: [{ visual: "v", where: "w", caption: "Wren: Hello." }, { visual: "v", where: "w", caption: "Odo: " }] }));
+  assert.equal(count(blank, "Seen, not said"), 1);
+  assert.equal(count(blank, 'class="fk-bubble"'), 1);
+  // the close-up: one tag, in the lamp room, before the line it is on
+  assert.equal(count(html, 'class="fk-cam"'), 1);
+  const lamp = sheets(html)[2];
+  assert.ok(/<div class="fk-cam">.*<button type="button" class="fk-cam-txt" dir="auto" title="Change what the close-up is on">close-up on Odo<\/button><button type="button" class="fk-cam-x" aria-label="Remove this angle change">/.test(lamp), lamp);
+  assert.ok(lamp.indexOf("It is warm.") < lamp.indexOf('class="fk-cam"') && lamp.indexOf('class="fk-cam"') < lamp.indexOf("Look at the glass."));
+});
+
+test("…directing is one tap: the genre's four notes and \"New take\" under every scene — and a sheet with the writer holds", () => {
+  const html = draw(SceneBoard, boardProps());
+  for (const sheet of sheets(html)) {
+    assert.deepEqual([...sheet.split('class="fk-notes"')[1].split("</div>")[0].matchAll(/<button type="button" class="fk-note[^"]*">(?:<svg.*?<\/svg> )?([^<]+)<\/button>/g)].map((m) => m[1]), ["Scarier", "Slower burn", "Shorter", "Add a twist", "New take"]);
+    assert.ok(sheet.includes('<div class="fk-notes" role="group" aria-label="Direct this scene">'));
+    assert.ok(sheet.includes('<p class="fk-status" role="status" aria-live="polite"></p>'), "nothing said until something is happening");
+  }
+  assert.equal(count(html, "disabled"), 0, "nothing is held");
+  // the stairs are with the writer
+  const noting = draw(SceneBoard, boardProps({ noting: 1 }));
+  const held = sheets(noting);
+  assert.ok(noting.includes('<article class="fk-frame is-noting" aria-busy="true" aria-label="Scene 2:'));
+  assert.equal(count(noting, "is-noting"), 1, "that sheet and no other");
+  assert.ok(held[1].includes('<p class="fk-status" role="status" aria-live="polite">Rewriting scene 2…</p>'));
+  assert.ok(!held[0].includes("Rewriting"));
+  // …and nothing on the board can be changed until it is back (two rewrites at once would cross)
+  assert.equal(count(noting, '<button type="button" class="fk-note" disabled="">') + count(noting, '<button type="button" class="fk-note fk-note-dice" disabled="">'), 20);
+  assert.equal(count(noting, '<button type="button" class="fk-bubble" dir="auto" disabled=""'), 8);
+  assert.ok(noting.includes('<button type="button" class="fk-slate-rw" disabled="">'));
+  assert.ok(noting.includes('<button type="button" class="fk-new" disabled="">'));
+  // the whole script being written again: every sheet holds
+  const busy = draw(SceneBoard, boardProps({ busy: true }));
+  assert.ok(busy.startsWith('<section class="fk fk-board is-busy"'));
+  assert.equal(count(busy, '<article class="fk-frame is-noting" aria-busy="true"'), 4);
+});
+
+test("…quiet tools: \"+ line\" and \"close-up\" at the foot; earlier / later / remove on the corner — where they mean something", () => {
+  const html = draw(SceneBoard, boardProps());
+  const four = sheets(html);
+  for (const sheet of four) {
+    const foot = sheet.split('<div class="fk-foot">')[1];
+    assert.ok(/^<button type="button" class="fk-quiet">.*<\/svg> line<\/button><button type="button" class="fk-quiet">.*<\/svg> close-up<\/button><span class="fk-foot-len fk-num" title="Estimated spoken length of this scene">≈ \d:\d\d<\/span><\/div>$/.test(foot), foot);
+  }
+  const has = (sheet: string) => ["earlier", "later"].map((w) => sheet.includes(`aria-label="Move scene ${four.indexOf(sheet) + 1} ${w}"`));
+  assert.deepEqual(four.map(has), [[false, true], [true, true], [true, true], [true, false]], "the first cannot go earlier, the last cannot go later");
+  assert.equal(count(html, 'class="fk-tool fk-rm" aria-label="Remove scene'), 4);
+  assert.equal(count(html, "Remove?"), 0, "removing a scene is asked twice: nothing is armed until it is tapped");
+  // a script of one place has nothing to move and nothing that may be removed
+  const one = draw(SceneBoard, boardProps({ scenes: OLD }));
+  assert.equal(count(one, "fk-tools"), 0);
+  // the place opens on a tap of the strip — and until then the backdrops are not there
+  assert.equal(count(html, 'class="fk-strip" aria-expanded="false" title="Change where this scene happens"'), 4);
+  assert.equal(count(html, "fk-bds") + count(html, "fk-where"), 0, "hidden until asked for");
+});
+
+test("what a tap sends: scene indexes into the FLAT script, place indexes into the flow — exactly what film-flow takes", () => {
+  const src = read("app", "components", "film", "SceneBoard.tsx");
+  for (const call of [
+    // a line's own shot
+    "onChange={(e) => typeLine(b.idx, e.target.value)}", "const typeLine = (idx: number, text: string) => { setDraft(text); props.onLine(idx, text); };",
+    "onClick={() => props.onSpeaker(b.idx)}", "props.onRemoveLine(b.idx);",
+    // "+ line": after the LAST angle's last shot; "close-up": after the place's last shot; and the new line opens
+    "openWhenAdded(lastAngle.lastIdx + 1); props.onAddLine(lastAngle.lastIdx);", "openWhenAdded(loc.lastIdx + 1); props.onCloseUp(loc.lastIdx);", "openWhenAdded(total); props.onAddScene();",
+    // a close-up, by the first shot of its angle
+    "props.onAngleShot(idx, next);", "onBlur={() => sendAngle(ang.beats[0].idx)}", "props.onRemoveAngle(ang.beats[0].idx);",
+    // a place, by its place in the flow
+    "props.onMove(li, -1);", "props.onMove(li, 1);", "props.onRemovePlace(li);", "props.onWhere(li, next);", "onClick={() => note(li, n.key)}", "onClick={() => note(li, NEW_TAKE_KEY)}",
+    "const note = (li: number, key: string) => { settle(); setNoteKey(key); props.onNote(li, key); };",
+    "props.onRewriteAll();",
+  ]) assert.ok(src.includes(call), call);
+  // WHAT IS TYPED IS KEPT WHILE IT IS TYPED: the box shows its own text, not the script's (which comes back trimmed)
+  assert.ok(src.includes('<textarea ref={box} className="fk-bubble fk-bubble-in" dir="auto" rows={1} value={draft}'));
+  // a place or a close-up is only sent when it is not empty (an emptied place IS the place before it)
+  assert.ok(src.includes('const next = whereDraft.replace(/\\s+/g, " ").trim();\n    if (next && flow[li] && next !== flow[li].where) props.onWhere(li, next);'));
+  assert.ok(src.includes('const next = angleDraft.replace(/\\s+/g, " ").trim();\n    if (next) props.onAngleShot(idx, next);'));
+  // a backdrop writes its place into the scene — its own words, or its label when it has none
+  assert.ok(src.includes("const where = (bd.where || t(bd.label)).trim();"));
+  // removing a scene is asked twice
+  assert.ok(src.includes("if (armed !== li) { setArmed(li); return; }"));
+  // Escape puts back what was there — and touches nothing when nothing was typed
+  assert.ok(src.includes('else if (e.key === "Escape") { e.preventDefault(); if (draft !== was.current) props.onLine(idx, was.current); closeLine(); }'));
+});
+
+/* ==== EVERY WORD, IN FIVE LANGUAGES ====================================================================== */
+
+test("every word the three pieces show is in all five languages — with its {placeholders} intact", () => {
+  const found = new Set<string>();
+  for (const f of ["SceneBoard.tsx", "LengthSlider.tsx", "StarterNudges.tsx"]) {
+    for (const m of read("app", "components", "film", f).matchAll(/\bt\("((?:[^"\\]|\\.)*)"/g)) found.add(JSON.parse(`"${m[1]}"`));
+  }
+  // …and the words that reach t() through a variable: the empty box's line, and the notes' own labels
+  found.add(nudges.nudgeHint);
+  for (const n of [...GENERIC_NOTES, NEW_TAKE]) found.add(n.label);
+  assert.ok(found.size >= 60, `${found.size} strings`);
+  for (const must of ["Rewrite all", "CUT TO", "FADE IN", "Seen, not said", "New take", "Need a nudge?", "More ideas", "free while we finish films", "≈ {n} tokens", "renders in about {a}–{b} min", "SC {n}", "Sketching…"]) assert.ok(found.has(must), must);
+  const holes = (s: string) => (s.match(/\{[a-z]+\}/g) || []).sort().join(",");
+  const missing: string[] = [];
+  for (const lang of ["es", "fr", "de", "zh", "ur"] as const) {
+    const dict = UI_DICT[lang] || {};
+    for (const key of found) {
+      const said = dict[key];
+      if (typeof said !== "string" || !said.trim()) { missing.push(`${lang}: ${key}`); continue; }
+      assert.equal(holes(said), holes(key), `${lang}: ${key} → ${said}`);
+    }
+  }
+  assert.deepEqual(missing, []);
+  // the other way of counting, the one the rest of the suite uses: the key, written five times
+  const text = read("app", "lib", "ui-i18n-dict.ts");
+  for (const key of found) assert.ok(count(text, `${JSON.stringify(key)}:`) >= 5, key);
+});
+
+/* ==== THE LOOK: what cannot be seen in a photograph ===================================================== */
+
+/** The stylesheet's rules: [selector, declarations], with what encloses each (an @media, @container, @supports or @keyframes). */
+function rulesOf(css: string): Array<{ sel: string; body: string; at: string }> {
+  const out: Array<{ sel: string; body: string; at: string }> = [];
+  const clean = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  let depth = 0; let at = ""; let buf = "";
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i];
+    if (ch === "{") {
+      const head = buf.trim(); buf = "";
+      if (head.startsWith("@")) { at = head; depth++; continue; }
+      const end = clean.indexOf("}", i);
+      out.push({ sel: head, body: clean.slice(i + 1, end).trim(), at });
+      i = end;
+    } else if (ch === "}") { depth--; if (depth <= 0) { depth = 0; at = ""; } buf = ""; }
+    else buf += ch;
+  }
+  return out;
+}
+
+test("the kit's stylesheet styles the kit and nothing else, in two themes, with the dark its own default", () => {
+  const css = FILM_KIT_CSS;
+  // plain text: nothing interpolated, no backslash to lose
+  assert.ok(!css.includes("\\") && !css.includes("${"));
+  const src = read("app", "components", "film", "film-kit-style.ts");
+  assert.equal(count(src, "export const "), 1, "one exported string");
+  const rules = rulesOf(css);
+  assert.ok(rules.length > 180, `${rules.length} rules`);
+  // every rule names the kit: .fk… — or, inside @keyframes, a step of an fk- animation
+  for (const r of rules) {
+    if (r.at.startsWith("@keyframes")) { assert.ok(/^@keyframes fk-[a-z]+$/.test(r.at), r.at); continue; }
+    for (const part of r.sel.split(",")) assert.ok(/^(\[data-theme="light"\] |\[dir=rtl\] )?\.fk[-\w]*/.test(part.trim()), `"${part.trim()}" is not the kit's`);
+  }
+  for (const m of css.matchAll(/animation:(fk-[a-z]+)/g)) assert.ok(css.includes(`@keyframes ${m[1]}{`), m[1]);
+  for (const m of css.matchAll(/animation:([a-z-]+) /g)) assert.ok(m[1].startsWith("fk-") , `animation ${m[1]}`);
+  // THE DARK IS ITS OWN DEFAULT — a deep green wall, gold marks; the light is anything inside data-theme="light"
+  const root = rules.find((r) => r.sel === ".fk")!;
+  assert.ok(root.body.includes("--fk-wall:#0C2217;") && root.body.includes("--fk-mark:#E7C879;") && root.body.includes("--fk-on-wall:#FFFDF7;"));
+  const light = rules.find((r) => r.sel === '[data-theme="light"] .fk,.fk[data-theme="light"]')!;
+  assert.ok(light.body.includes("--fk-wall:#EDF3EC;") && light.body.includes("--fk-mark:#0C7A46;") && light.body.includes("--fk-on-wall:#14201A;"));
+  // …and the light changes ONLY what is around the cards: the wall, its marks, a card's edge, shadow and pin
+  assert.deepEqual([...light.body.matchAll(/(--fk-[a-z0-9-]+):/g)].map((m) => m[1]).sort(), ["--fk-drop", "--fk-edge", "--fk-mark", "--fk-mark-ink", "--fk-on-wall", "--fk-on-wall2", "--fk-pin", "--fk-pin-deep", "--fk-wall", "--fk-wall-edge", "--fk-wall-lit"]);
+  assert.equal(count(css, "[data-theme="), 2, "no other rule knows the theme: the colours do the work");
+  // "deep GREEN dark, never brown": the wall's red is its smallest part
+  const [, rr, gg, bb] = /--fk-wall:#(..)(..)(..);/.exec(root.body)!.map((h) => parseInt(h, 16));
+  assert.ok(gg > rr && gg > bb, "green");
+  // what a member works in is the same cream and ink in both themes — a sheet, a bubble, the slider, a starter
+  for (const sel of [".fk-frame", ".fk-bubble", ".fk-len", ".fk-nudge-card", ".fk-bd", ".fk-where-in"]) {
+    const r = rules.find((x) => x.sel === sel && !x.at)!;
+    assert.ok(/background:(#fff|var\(--fk-cream\)|linear-gradient\(180deg,#fff,#FBF8EF\))/.test(r.body), `${sel} carries its own surface`);
+  }
+});
+
+test("…a finger, a phone, and less motion", () => {
+  const css = FILM_KIT_CSS;
+  const rules = rulesOf(css);
+  const rule = (sel: string, at = "") => { const r = rules.find((x) => x.sel === sel && x.at === at); assert.ok(r, `${at} ${sel}`); return r!.body; };
+  // a small control is 44px to the finger by an invisible ::after — never by growing what is drawn
+  assert.equal(rule(".fk-tool::after"), 'content:"";position:absolute;inset:-6px;');           // 32 + 12
+  assert.ok(rule(".fk-tool").includes("height:32px;min-width:32px;"));
+  assert.ok(rule(".fk-tools").includes("gap:12px;"), "…and the three are far enough apart that their 44s do not overlap");
+  assert.equal(rule(".fk-x::after"), 'content:"";position:absolute;inset:-9px;');              // 26 + 18
+  assert.equal(rule(".fk-cam-x::after"), 'content:"";position:absolute;inset:-10px;');         // 24 + 20
+  assert.equal(rule(".fk-face::after"), 'content:"";position:absolute;inset:-3px;');           // 38 + 6
+  assert.equal(rule(".fk-note::after"), 'content:"";position:absolute;inset:-6px -2px;');      // 33 inside its border + 12
+  for (const sel of [".fk-slate-rw::after", ".fk-quiet::after", ".fk-unsaid::after", ".fk-cam-txt::after", ".fk-nudge-more::after"]) assert.equal(rule(sel), 'content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%);', sel);
+  assert.ok(rule(".fk-bubble").includes("min-height:44px;") && rule(".fk-strip").includes("min-height:46px;") && rule(".fk-where-in").includes("min-height:44px;") && rule(".fk-bd").includes("min-height:60px;"));
+  // the slider's real thumb is as wide as a finger and as tall as the strip
+  assert.equal(rule(".fk-len-in::-webkit-slider-thumb"), "-webkit-appearance:none;appearance:none;width:44px;height:56px;border:0;background:transparent;");
+  assert.ok(rule(".fk-len-in::-moz-range-thumb").startsWith("width:44px;height:56px;"));
+  assert.ok(rule(".fk-len-strip").includes("height:56px;") && rule(".fk-len-strip").includes("touch-action:pan-y;"), "a finger that starts on it can still scroll the page");
+  // …the frame a member sees is drawn at that thumb's centre, and the green reaches exactly there
+  assert.ok(rule(".fk-len-thumb").includes("left:calc(var(--p,0) * (100% - 44px) + 22px);") && rule(".fk-len-lit").includes("width:calc(var(--p,0) * (100% - 44px) + 22px);") && rule(".fk-len-ticks span").includes("left:calc(var(--at,0) * (100% - 44px) + 22px);"));
+  // a strip of film reads left to right in every language (the control under it must agree with the picture over it)
+  assert.equal(rule(".fk-len-strip,.fk-len-ticks"), "direction:ltr;");
+  // NOTHING JUMPS: tabular figures in boxes as wide as the widest value; the estimate is always two rows on a narrow strip
+  assert.equal(rule(".fk-num"), "font-variant-numeric:tabular-nums;");
+  assert.ok(rule(".fk-len-time").includes("min-width:var(--clock,4ch);") && rule(".fk-len-count").includes("min-width:calc(var(--count,9ch) + 24px);"));
+  assert.ok(rule(".fk-len-est").includes('display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"cost free" "takes takes";'));
+  assert.ok(rule(".fk-len-est", "@container fklen (min-width:600px)").startsWith("display:flex;flex-wrap:nowrap;"));
+  // a phone: what is typed into is 16px (a smaller box makes iOS zoom the page) — and the rule that says so
+  // comes AFTER the 15px of a line at rest, with .fk in front, so the 15 can never win
+  const phone = css.split("@media(max-width:640px){")[1].split("\n}")[0];
+  assert.ok(phone.includes(".fk-bubble{font-size:15px;}\n  .fk .fk-where-in,.fk .fk-bubble-in,.fk .fk-cam-in{font-size:16px;}"), phone);
+  // the one row that scrolls sideways scrolls inside itself
+  assert.ok(rule(".fk-bds").includes("overflow-x:auto;") && rule(".fk-bds").includes("overscroll-behavior-x:contain;"));
+  // THE BOARD ON A WALL: one column; two from a board 780px wide; three from 1240px — and never four
+  assert.ok(rule(".fk-wall").includes("grid-template-columns:minmax(0,1fr);"));
+  assert.equal(rule(".fk-wall", "@container fkboard (min-width:780px)"), "grid-template-columns:repeat(2,minmax(0,1fr));");
+  assert.equal(rule(".fk-wall", "@container fkboard (min-width:1240px)"), "grid-template-columns:repeat(3,minmax(0,1fr));");
+  assert.ok(rule(".fk-board").startsWith("container-type:inline-size;container-name:fkboard;"));
+  assert.ok(css.includes("@supports not (container-type:inline-size){\n  @media(min-width:900px){.fk-wall{grid-template-columns:repeat(2,minmax(0,1fr));}}\n  @media(min-width:1400px){.fk-wall{grid-template-columns:repeat(3,minmax(0,1fr));}}\n}"));
+  // a hover is for a pointer that can hover: a finger's tap leaves :hover stuck
+  const hover = css.split("@media(hover:hover){")[1].split("\n}")[0];
+  assert.equal(count(css.replace(/\/\*[\s\S]*?\*\//g, ""), ":hover"), count(hover, ":hover") + 1, "every :hover rule is inside the one block (+1 for the block's own name)");
+  assert.ok(count(hover, ":hover") >= 18);
+  // LESS MOTION: nothing moves, and a sketch is simply there
+  assert.ok(css.includes("@media(prefers-reduced-motion:reduce){\n  .fk *,.fk *::before,.fk *::after{animation:none!important;transition:none!important;}\n  .fk-sketch{filter:grayscale(1) contrast(1.3);opacity:1;transform:none;}"));
+  // THE SKETCH: grey (one came back with a green lantern), laid on the sheet's own paper, developing in once
+  assert.ok(rule(".fk-sketch").includes("mix-blend-mode:multiply;filter:grayscale(1) contrast(1.3) blur(14px);opacity:0;"));
+  assert.equal(rule(".fk-sketch.is-in"), "filter:grayscale(1) contrast(1.3);opacity:1;transform:none;");
+  // …and the slate strip lies over the picture's lower edge (where a picture model signs its work)
+  assert.ok(rule(".fk-strip").includes("position:absolute;left:10px;right:10px;bottom:-22px;min-height:46px;"));
+  assert.ok(rule(".fk-pic").includes("margin-bottom:24px;"), "…with room left under the picture for the half of it that hangs below");
 });
