@@ -242,8 +242,9 @@ test("RUN: the action reads it — `parseStoryCast` and the posted `cast` keep t
   // a storyboard cast sent without its thing still gets the picked monster, from the picks
   assert.ok(ui.includes('const pickedThing = storyCast.find((c) => c.role === "threat" && !!c.faceUrl);'));
   assert.ok(ui.includes('if (pickedThing && tmpl.dialogue && !narrated && approvedTreatment && !(cast || []).some((c) => c.role === "threat")) {'));
-  // …and on to the job (the worker's type says so)
-  assert.ok(read("app", "lib", "job-queue.server.ts").includes('cast: payload.cast as Array<{ name: string; faceUrl?: string | null; voiceId?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string; role?: "threat" }> | undefined,'));
+  // …and on to the job: the worker hands the posted cast to the film as it is, every field of every entry with it
+  // (the role is read there — film-dialogue → castThreat; the worker's own file is not this page's to change)
+  assert.ok(read("app", "lib", "job-queue.server.ts").includes("cast: payload.cast as Array<{ name: string; faceUrl?: string | null; voiceId?: string | null;"));
 });
 
 test("after a script: the row shows the film's thing — the monster picked, or the writer's threat with ONE button, free", () => {
