@@ -40,7 +40,7 @@ import { camDate, timeLapseOf, type HouseClock, type TimeLapse } from "./camera-
 import { EMPTY_HOUSE, HOUSE_SCARES, HOUSE_TAKE_SECONDS, camOf, houseNight, houseRoom, houseScare, houseScarePrompt, houseScenePrompt, houseSetPrompt, houseWriterBrief, keptHouseOf, parseHouseScare, playedSeconds, roomImg, roomPrompt, roomToDraw, thingImg, withRoom, withThing, type HouseNight, type HouseScare, type KeptHouse } from "./house-cam";
 import { mirrorRender } from "./object-storage.server";
 import { TAKE_REF, betterRoll, rollFaulty } from "./take";
-import { cutsIn, drawPicture, dressTake, heard, imageRef, keepRoll, renders, rerolls, rollTake, roomTake, secondsOf, sizeOf, stamp, wordsIn } from "./take.server";
+import { cutsIn, drawPicture, dressTake, heard, imageRef, inTheAir, keepRoll, renders, rerolls, rollTake, roomTake, secondsOf, sizeOf, stamp, wordsIn } from "./take.server";
 import { checkpointJob } from "./ugc-ad-pipeline.server";
 
 /** What a house take's record carries its house under — and how the newest one is found. */
@@ -74,7 +74,7 @@ export type HouseTakeOptions = {
   ir?: boolean;
   section?: string;
   jobId?: string;
-  resume?: { ckScare?: string; ckHouse?: string; ckSet?: string; ckScene?: string; ckRaw?: string; ckSpoke?: string; ckCut?: string };
+  resume?: { ckScare?: string; ckHouse?: string; ckSet?: string; ckScene?: string; ckRoll?: string; ckRaw?: string; ckHost?: string; ckSpoke?: string; ckCut?: string };
   /* ---- A FILM'S MOMENT (footage-film.server.ts) asks for these; one take leaves every one of them unset ---- */
   /** the moment's scare, already written (house-cam.ts → parseHouseScare / parseHouseTrace with a film's shape) */
   scare?: HouseScare & { title: string };
@@ -200,13 +200,16 @@ export async function makeHouseTake(o: HouseTakeOptions & { house: KeptHouse | n
 
   // 5) the take — and no words: listened to, rolled once more if the engine spoke
   let rawName = resume.ckRaw && fs.existsSync(path.join(dir, resume.ckRaw)) ? resume.ckRaw : "";
-  let host = "";
+  // (the host a kept roll came from is kept with it — ckHost — so a take resumed after its roll still says where)
+  let host = (rawName && resume.ckHost) || "";
   let rolls = 0;
   const direction = (ref: string) => houseScarePrompt(scare, ref, { ir });
   // (fifteen seconds — the walk-in's own length; a film's moment may ask for fewer, never under ten)
   const seconds = Math.max(10, Math.min(HOUSE_TAKE_SECONDS, Math.round(o.seconds ?? HOUSE_TAKE_SECONDS)));
+  // (a roll this job asked for before it was stopped is waited for, not asked for again — take.server.ts → rollTake)
+  const flying = inTheAir(rawName ? undefined : resume.ckRoll, ckpt);
   const roll = async (): Promise<string> => {
-    const rolled = await rollTake({ first: imageRef(base, set), scene: imageRef(base, scene), direction, aspect: "16:9", seconds });
+    const rolled = await rollTake({ ...flying(), first: imageRef(base, set), scene: imageRef(base, scene), direction, aspect: "16:9", seconds });
     host = rolled.host; rolls++;
     return keepRoll(rolled.url);
   };
@@ -219,7 +222,7 @@ export async function makeHouseTake(o: HouseTakeOptions & { house: KeptHouse | n
   let cuts: number[] = [];
   if (!rawName) {
     rawName = await roll();
-    await ckpt({ ckRaw: rawName });
+    await ckpt({ ckRaw: rawName, ckHost: host });
     spoke = await heard(base, rawName);
     cuts = await cutsIn(path.join(dir, rawName));
     for (let again = 0; again < more() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, true); again++) {

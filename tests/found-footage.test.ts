@@ -128,6 +128,8 @@ test("THE QUEUE'S BRANCH: one take, handheld or house, resumed from its own chec
   assert.ok(branch.includes('payload.takeCamera === "house"') && branch.includes('(await import("./house-take.server")).generateHouseTake({') && branch.includes('(await import("./take.server")).generateTake({'));
   // everything each pipeline checkpoints comes back on a resume (a retry from the Archive clears ck… first)
   for (const k of ["ckScare", "ckHouse", "ckSet", "ckScene", "ckRaw", "ckSpoke", "ckCut", "ckTake", "ckStill", "ckOpens"]) assert.ok(branch.includes(`${k}: ck("${k}")`), k);
+  // …and, to both makers of one take, the roll that was in the air when the job stopped and the host the kept roll came from
+  assert.equal(count(branch, 'ckRoll: ck("ckRoll"), ckRaw: ck("ckRaw"), ckHost: ck("ckHost"),'), 2);
   // a take of the member's own words reaches either maker with the card those words started from (take.ts → footageJob)
   assert.equal(count(branch, 'idea: ck("takeOwn"),'), 2);
   assert.equal(count(branch, 'from: ck("takeFrom"),'), 2, "the card a take's own words started from reaches both makers");
@@ -155,7 +157,9 @@ test("A HOUSE TAKE KEEPS THE HOUSE: the room is drawn once and kept on the take'
   // the roll starts on the room as the take finds it and is told to arrive at the scene, fifteen seconds, wide
   // (fifteen unless a found-footage FILM's moment asks for fewer — never under ten, never over the walk-in's fifteen)
   assert.ok(srv.includes("const seconds = Math.max(10, Math.min(HOUSE_TAKE_SECONDS, Math.round(o.seconds ?? HOUSE_TAKE_SECONDS)));"));
-  assert.ok(srv.includes('rollTake({ first: imageRef(base, set), scene: imageRef(base, scene), direction, aspect: "16:9", seconds })'));
+  // (…flying(): a roll this job asked for before it was stopped is waited for, never asked — and paid — for again)
+  assert.ok(srv.includes('rollTake({ ...flying(), first: imageRef(base, set), scene: imageRef(base, scene), direction, aspect: "16:9", seconds })'));
+  assert.ok(srv.includes("const flying = inTheAir(rawName ? undefined : resume.ckRoll, ckpt);"));
   // no words, no cut: listened to and looked at, and rolled once more if the engine spoke or CUT — the handheld take's
   // own rule (a camera screwed to the wall never cuts) — but never trimmed: the house's clock runs from its first frame
   // (`more` is TAKE_REROLLS for one take; a film's moment hands in its own, from the few the film has for all of them)

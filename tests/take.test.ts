@@ -963,3 +963,32 @@ test("A MOOD FOR EACH LINE (a film is not all terror; a plain one is never whisp
   // …and one take's script (the traffic stop's) is what it was: no mood on any line
   assert.ok(takeLines(takeIdea("traffic")!).every((l) => !("mood" in l)));
 });
+
+/* 2026-11-25. A roll is paid for from the moment it is ASKED for — minutes before it exists — and a found-footage film
+ * has three in the air at once. A job stopped in those minutes (a restart) used to ask for the roll again on its
+ * resume, and pay for it twice: only the roll on the disk (ckRaw) was remembered. */
+test("A ROLL IN THE AIR IS WAITED FOR, NOT PAID FOR AGAIN: the asking is kept the moment it is made, and a job that stopped mid-roll takes that roll up", () => {
+  const srv = read("app", "lib", "take.server.ts");
+  const roll = srv.slice(srv.indexOf("export async function rollTake("), srv.indexOf("export function inTheAir("));
+  // the asking is said — its host, its model, its id — on every host, the moment the host has answered with an id
+  assert.ok(roll.includes("const asked = async (host: string, model: string, id: string): Promise<string> => { try { await o.onSubmit?.(`${host}|${model}|${id}`); } catch { /* the roll is what matters */ } return id; };"));
+  assert.ok(roll.includes("falVideoPoll(model, await asked(host, model, await falVideoSubmit(model, {") && roll.includes('repPoll(await asked("replicate kling 3 omni", REP_OMNI, await repCreate(REP_OMNI, {'));
+  // A ROLL LEFT IN THE AIR is waited for on the host it was asked of — before any host is asked for a new one
+  const waits = roll.indexOf("if (o.pending) {"), asks = roll.indexOf("const order: Array<{ host: string; fal: boolean; go: () => Promise<string> }> = [");
+  assert.ok(waits > 0 && waits < asks);
+  assert.ok(roll.includes('const [host, model, id] = o.pending.split("|");') && roll.includes('try { return { url: host.startsWith("fal") ? await falVideoPoll(model, id, TAKE_POLL_MS) : await repPoll(id, TAKE_POLL_MS, "take"), host }; }'));
+  // …and when it cannot be had (it failed; its host has forgotten it) the take is rolled afresh, as ever
+  assert.ok(roll.includes("catch (e) { console.error(`[take] the roll left in the air could not be had — rolled afresh:"));
+  // handed over ONCE, for the take's first roll — a roll asked for after that (the roll again) is a new one — and
+  // never when the roll is already on the disk
+  assert.ok(srv.includes("let pending = left;\n  return () => { const p = pending; pending = undefined; return { ...(p ? { pending: p } : {}), onSubmit: (handle: string) => ckpt({ ckRoll: handle }) }; };"));
+  assert.ok(srv.includes("const flying = inTheAir(rawName ? undefined : resume.ckRoll, ckpt);"));
+  assert.ok(srv.includes("const rolled = await rollTake({ ...flying(), first: imageRef(base, firstFrame), scene: imageRef(base, still), direction, aspect, seconds });"));
+  // the kept roll says where it was rolled, so a take resumed after it still does (a job that hands none back: "", as ever)
+  assert.ok(srv.includes("await ckpt({ ckRaw: rawName });\n    await ckpt({ ckHost: host });") && srv.includes('let host = (rawName && resume.ckHost) || "";'));
+  // a house take's the same; and the queue hands both back to both makers of one take
+  const house = read("app", "lib", "house-take.server.ts");
+  assert.ok(house.includes("const flying = inTheAir(rawName ? undefined : resume.ckRoll, ckpt);") && house.includes("await ckpt({ ckRaw: rawName, ckHost: host });") && house.includes('let host = (rawName && resume.ckHost) || "";'));
+  const q = read("app", "lib", "job-queue.server.ts");
+  assert.equal(q.split('ckRoll: ck("ckRoll"), ckRaw: ck("ckRaw"), ckHost: ck("ckHost"),').length - 1, 2);
+});

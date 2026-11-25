@@ -106,15 +106,27 @@ export async function drawPicture(input: Record<string, unknown>, best = false):
 
 /** The take itself, started on `first` and told to arrive at `scene`: fal's standard tier, then the same
  *  model elsewhere. A refused or failed render is not billed, so falling through never pays twice. `seconds`:
- *  a handheld take is TAKE_SECONDS; a house take is longer. */
-export async function rollTake(o: { first: string; scene: string; direction: (ref: string) => string; aspect: "9:16" | "16:9"; seconds?: number }): Promise<{ url: string; host: string }> {
+ *  a handheld take is TAKE_SECONDS; a house take is longer.
+ *  A ROLL IS PAID FOR FROM THE MOMENT IT IS ASKED FOR, minutes before it exists — and a found-footage film has three
+ *  in the air at once (2026-11-25). So the asking is said (`onSubmit`: its host, model and id, kept as ckRoll), and a
+ *  job that stopped with a roll in the air WAITS FOR THAT ROLL (`pending`) instead of asking — and paying — again.
+ *  When it cannot be had (it failed; its host has forgotten it), the take is rolled afresh. */
+export async function rollTake(o: { first: string; scene: string; direction: (ref: string) => string; aspect: "9:16" | "16:9"; seconds?: number; pending?: string; onSubmit?: (handle: string) => Promise<void> | void }): Promise<{ url: string; host: string }> {
   const secs = Math.max(3, Math.min(15, Math.round(o.seconds ?? TAKE_SECONDS)));
-  const viaFal = (model: string) => async () => falVideoPoll(model, await falVideoSubmit(model, { startImage: o.first, referenceImages: [o.scene], prompt: o.direction(TAKE_REF.fal), generateAudio: true, durationSec: secs, aspect: o.aspect }), TAKE_POLL_MS);
+  if (o.pending) {
+    const [host, model, id] = o.pending.split("|");
+    if (host && model && id) {
+      try { return { url: host.startsWith("fal") ? await falVideoPoll(model, id, TAKE_POLL_MS) : await repPoll(id, TAKE_POLL_MS, "take"), host }; }
+      catch (e) { console.error(`[take] the roll left in the air could not be had — rolled afresh: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
+    }
+  }
+  const asked = async (host: string, model: string, id: string): Promise<string> => { try { await o.onSubmit?.(`${host}|${model}|${id}`); } catch { /* the roll is what matters */ } return id; };
+  const viaFal = (host: string, model: string) => async () => falVideoPoll(model, await asked(host, model, await falVideoSubmit(model, { startImage: o.first, referenceImages: [o.scene], prompt: o.direction(TAKE_REF.fal), generateAudio: true, durationSec: secs, aspect: o.aspect })), TAKE_POLL_MS);
   // (the pro tier — 1080p — first: the owner, of the picture, 2026-11-24: "upgrade the best image possible")
   const order: Array<{ host: string; fal: boolean; go: () => Promise<string> }> = [
-    { host: "fal kling 3 omni", fal: true, go: viaFal(FAL_OMNI) },
-    { host: "fal kling 3 omni standard", fal: true, go: viaFal(FAL_OMNI_STD) },
-    { host: "replicate kling 3 omni", fal: false, go: async () => repPoll(await repCreate(REP_OMNI, { prompt: o.direction(TAKE_REF.replicate), start_image: o.first, reference_images: [o.scene], generate_audio: true, duration: secs, mode: "pro" }), TAKE_POLL_MS, "take") },
+    { host: "fal kling 3 omni", fal: true, go: viaFal("fal kling 3 omni", FAL_OMNI) },
+    { host: "fal kling 3 omni standard", fal: true, go: viaFal("fal kling 3 omni standard", FAL_OMNI_STD) },
+    { host: "replicate kling 3 omni", fal: false, go: async () => repPoll(await asked("replicate kling 3 omni", REP_OMNI, await repCreate(REP_OMNI, { prompt: o.direction(TAKE_REF.replicate), start_image: o.first, reference_images: [o.scene], generate_audio: true, duration: secs, mode: "pro" })), TAKE_POLL_MS, "take") },
   ];
   let last = "no host";
   for (const h of order) {
@@ -124,6 +136,14 @@ export async function rollTake(o: { first: string; scene: string; direction: (re
     catch (e) { last = `${h.host}: ${e instanceof Error ? e.message.slice(0, 160) : e}`; console.error(`[take] ${last}`); }
   }
   throw new Error(`[take] the take could not be rolled — ${last}`);
+}
+
+/** WHAT A MAKER HANDS rollTake ABOUT ROLLS IN THE AIR: the one a stopped job left there (`left`: its ckRoll — handed
+ *  over ONCE, for the take's first roll; a roll asked for after that is a new one), and the word, kept as ckRoll,
+ *  that one has been asked for. */
+export function inTheAir(left: string | undefined, ckpt: (patch: Record<string, unknown>) => Promise<void>): () => { pending?: string; onSubmit: (handle: string) => Promise<void> } {
+  let pending = left;
+  return () => { const p = pending; pending = undefined; return { ...(p ? { pending: p } : {}), onSubmit: (handle: string) => ckpt({ ckRoll: handle }) }; };
 }
 
 /** A rolled take, fetched and on the disk the moment it exists. */
@@ -362,7 +382,7 @@ export type TakeOptions = {
   aspect?: string;
   section?: string;
   jobId?: string;
-  resume?: { ckTake?: string; ckStill?: string; ckOpens?: string; ckRaw?: string; ckSpoke?: string; ckCuts?: string; ckTrim?: string };
+  resume?: { ckTake?: string; ckStill?: string; ckOpens?: string; ckRoll?: string; ckRaw?: string; ckHost?: string; ckSpoke?: string; ckCuts?: string; ckTrim?: string };
   /* ---- A FILM'S MOMENT (footage-film.server.ts) asks for these; one take leaves every one of them unset ---- */
   /** how many more rolls this take may have (unset: TAKE_REROLLS) — a film allows a moment one, from the three it
    *  has for all of them — and a word when one is spent */
@@ -467,12 +487,16 @@ export async function makeTake(opts: TakeOptions, ckpt: (patch: Record<string, u
   // 4) the take (the seconds that cost money: on the disk the moment they exist) — and 5) no words: it is
   //    listened to, and rolled once more if the engine spoke
   let rawName = resume.ckRaw && fs.existsSync(path.join(dir, resume.ckRaw)) ? resume.ckRaw : "";
-  let host = "";
+  // (the host a kept roll came from is kept with it — ckHost — so a take resumed after its roll still says where it was
+  //  rolled; a job that hands none back says "", as it always did)
+  let host = (rawName && resume.ckHost) || "";
   let rolls = 0;
   const direction = (ref: string) => takePrompt(take, camera, ref);
   const seconds = take.seconds || TAKE_SECONDS;
+  // (a roll this job asked for before it was stopped is waited for, not asked for again — rollTake)
+  const flying = inTheAir(rawName ? undefined : resume.ckRoll, ckpt);
   const roll = async (): Promise<string> => {
-    const rolled = await rollTake({ first: imageRef(base, firstFrame), scene: imageRef(base, still), direction, aspect, seconds });
+    const rolled = await rollTake({ ...flying(), first: imageRef(base, firstFrame), scene: imageRef(base, still), direction, aspect, seconds });
     host = rolled.host; rolls++;
     return keepRoll(rolled.url);
   };
@@ -488,6 +512,7 @@ export async function makeTake(opts: TakeOptions, ckpt: (patch: Record<string, u
   if (!rawName) {
     rawName = await roll();
     await ckpt({ ckRaw: rawName });
+    await ckpt({ ckHost: host });
     spoke = await heard(base, rawName);
     cuts = await cutsIn(path.join(dir, rawName));
     for (let again = 0; again < more() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, silent); again++) {
