@@ -15,7 +15,7 @@
  *
  * Everything here is plain logic (no database, no network), so it is tested: tests/film-series.test.ts. */
 
-import { FILM_HEROES, heroOf, type FilmHero } from "./film-heroes.ts";
+import { FILM_HEROES, FORMER_HERO_NAMES, heroOf, type FilmHero } from "./film-heroes.ts";
 import { castCardsOf } from "./story-picture.ts";
 import { posterOf } from "./story-poster.ts";
 
@@ -127,7 +127,9 @@ export const episodeOf = (meta: unknown): number => seriesOf(meta)?.episode || 1
 /** A "title" that is only a FORMAT's name ("Short Film", "Horror Story") is no title. It is what the writer
  *  step fell back to when the writer gave none and the idea box was empty — and an episode made that way
  *  came out as "… — Episode 2: Short Film" (live, 2026-11-23). */
-const FORMAT_NAMES = new Set([...FILM_HEROES.map((h) => h.name), "Skit", "Dialogue · Actors"].map((n) => n.toLowerCase()));
+// (…and what a hero's films were called before the genres became movie categories, 2026-11-25: a series
+//  begun as a "Short Story" still has episodes whose writer may hand that name back as a title)
+const FORMAT_NAMES = new Set([...FILM_HEROES.map((h) => h.name), ...FORMER_HERO_NAMES, "Skit", "Dialogue · Actors"].map((n) => n.toLowerCase()));
 export const isFormatName = (title: string | null | undefined): boolean => FORMAT_NAMES.has(oneLine(str(title)).toLowerCase());
 
 /** "<Series title> — Episode <N>", with the writer's short episode name after a colon when it has one
