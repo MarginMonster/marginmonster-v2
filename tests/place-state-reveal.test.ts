@@ -91,7 +91,9 @@ test("a sighting while the tent is shut is its SHADOW on the cloth — never see
   const p = sightingPicture({ moment: "A woman stands at the edge of the lake, watching the tent.", sides, seen: LOOK, outdoors: true, shadow: true, ref: "figure", state: "The tent door is zipped completely shut." });
   assert.ok(p.includes(`Show it like this, and no nearer: ${SIGHT_SHADOW}.`) && !p.includes("FAR OFF beyond the two of them"));
   assert.ok(!p.includes("SECOND picture"), "a shadow has no face: no picture of it rides along");
-  assert.ok(p.includes("Whose shadow it is, as this story has it (only its outline shows)") && p.includes("The place as it now is, and it stays exactly so: The tent door is zipped completely shut."));
+  assert.ok(p.includes("Whose shadow it is, as this story has it — only its OUTLINE shows, never its face:") && p.includes("The place as it now is, and it stays exactly so: The tent door is zipped completely shut."));
+  // (drawn on Episode 2's frames and looked at: told her look, the editor lit a toothy grin INSIDE the shadow)
+  assert.ok(SIGHT_SHADOW.includes("flat and featureless: no face, no eyes, no teeth, nothing lit inside it"));
   assert.ok(p.length <= 2400);
   assert.equal(sightingClip("A woman stands at the edge of the lake.", "the woman", true), `On the cloth wall behind them, thrown from outside, is the shadow of the woman. ${SIGHT_SHADOW_MOVES}`);
   assert.ok(!sightingClip("A woman stands at the edge of the lake.", "the woman", true).includes("edge of the lake"), "the scene's words would put her out by the water, through a shut door");

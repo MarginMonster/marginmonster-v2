@@ -1342,7 +1342,9 @@ const SIGHT_FAR = "FAR OFF beyond the two of them: deep in the picture, small in
 const SIGHT_TURN = "Both of them stay where they stand; only their heads have turned toward it, three-quarters, so their faces stay in view — neither looks at the camera.";
 /** …and WHILE THE TENT IS SHUT (2026-11-25, S12 — place-state.ts → shutCloth): nothing is seen THROUGH a shut door. What
  *  they see of it is its SHADOW, thrown on the cloth from outside by the light out there — the moon, a torch. */
-export const SIGHT_SHADOW = "ONLY ITS SHADOW: thrown from OUTSIDE onto the thin cloth wall behind them by the light out there — a tall dark shape on the cloth, soft at its edges, as big as somebody standing close outside; nothing of it is inside, the shut door stays exactly as it is, and nothing is seen through it";
+/*  (Drawn on Episode 2's own frames and LOOKED at: told her look — "a smile far too wide and crowded with thin teeth" —
+ *   the editor put a lit, toothy grin INSIDE the shadow. A shadow is flat: no face, no teeth.) */
+export const SIGHT_SHADOW = "ONLY ITS SHADOW: thrown from OUTSIDE onto the thin cloth wall behind them by the light out there — a tall dark shape on the cloth, soft at its edges, as big as somebody standing close outside, flat and featureless: no face, no eyes, no teeth, nothing lit inside it; nothing of it is inside, the shut door stays exactly as it is, and nothing is seen through it";
 /** THE PICTURE OF A SIGHTING: the shot's starting picture (its place's own) with what the moment newly shows added
  *  WHERE ITS WORDS PUT IT — far off, beyond the two, half in the dark — the two turned toward it. Its look is its own
  *  cast line, or the words of the shot that first showed it (`seen`); with its own picture as the SECOND image (`ref`,
@@ -1359,7 +1361,7 @@ export function sightingPicture(o: { moment: string | null | undefined; sides?: 
   // (a shadow has no face: no picture of it rides along, and its look is the SHAPE of what the words say — S12)
   const ref = o.shadow ? null : o.ref === "creature" || o.ref === "figure" || o.ref === "scene" ? o.ref : null;
   // (its look in words only where no picture of it rides along — the picture is the look)
-  const look = seen && !ref ? (o.shadow ? ` Whose shadow it is, as this story has it (only its outline shows): "${seen}".` : ` What it looks like, as this story has it: "${seen}".`) : "";
+  const look = seen && !ref ? (o.shadow ? ` Whose shadow it is, as this story has it — only its OUTLINE shows, never its face: "${seen}".` : ` What it looks like, as this story has it: "${seen}".`) : "";
   const refNote = ref ? ` ${thingRefNote(ref, { name: o.name, seen })}` : "";
   const mood = oneLine(o.mood);
   const creature = !!o.creature || ref === "creature";
