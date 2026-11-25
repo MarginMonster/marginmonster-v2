@@ -726,7 +726,44 @@ export async function generateTestMovie(opts: {
     if (actor) return `${actor.name.trim()}, ${castLooks[firstName(actor.name)] || (isCreature(actor) ? "the character in their reference picture" : "the person in their reference photo")}`;
     return pictureEntry((treatment.cast || []).find((c) => firstName(n) && c.toLowerCase().includes(firstName(n))) || "") || `${n}, a person`;
   };
-  const faceFor = (n: string) => { const k = firstName(n); return abs(castActors.find((c) => { const nm = (c.name || "").toLowerCase(); return firstName(c.name) === k || (!!k && nm.split(/[\s,]/).includes(k)); })?.faceUrl); };
+  // WHO ELSE A SCENE'S WORDS NAME, AS THE STORY DESCRIBED THEM. The two who talk are bound to the picture by name and
+  // look; anybody else the words name was drawn from those words alone — the woman the lake story had written as "a
+  // pale woman in a soaked grey dress, her smile far too wide" came out of the water as a swimmer in a swimsuit, small
+  // at the edge of the frame ("She Walks Out Smiling", 2026-11-25). Their own "cast" line goes with the words.
+  const othersIn = (text: string | undefined): string[] => {
+    const words = String(text || "").toLowerCase();
+    if (!words) return [];
+    return (treatment.cast || []).map((e) => String(e || "").replace(/\s+/g, " ").trim()).filter((e) => {
+      const nm = (e.split(/[,—–(:]/)[0] || "").trim().toLowerCase();
+      if (!nm || [spkA, spkB].some((s) => !!s && firstName(s) === firstName(nm))) return false;
+      const bare = nm.replace(/^(?:the|a|an)\s+/, "");
+      return !!bare && new RegExp(`\\b${bare.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(words);
+    }).map((e) => e.slice(0, 220));
+  };
+  const withLooks = (visual: string | undefined): string | undefined => {
+    const others = othersIn(visual);
+    return visual && others.length ? `${visual} (Who else is in it, as the story describes them: ${others.join("; ")}.)` : visual;
+  };
+  // THE FACES THE FILM FIRST SHOWED. A character the STORY invented has no cast photo, so every NEW location drew
+  // them again from their words alone — and "Tunde" was a Black man in the tent and a white man in the same shirt on
+  // the shore ("She Walks Out Smiling", 2026-11-25). Once the film's first master is drawn, each of the two is cut
+  // out of it (their own half of the frame) and that cut-out is their face for every master and re-angle after it.
+  const firstFaces: Record<string, string> = {};
+  const faceFor = (n: string) => { const k = firstName(n); return abs(castActors.find((c) => { const nm = (c.name || "").toLowerCase(); return firstName(c.name) === k || (!!k && nm.split(/[\s,]/).includes(k)); })?.faceUrl) || firstFaces[k]; };
+  const cutFirstFaces = async (m: { url: string; aOnLeft: boolean }): Promise<void> => {
+    if (Object.keys(firstFaces).length || !spkA || !spkB) return;
+    const local = m.url.startsWith("/renders/") ? path.join(RENDERS(), path.basename(m.url)) : "";
+    if (!local || !fs.existsSync(local)) return;
+    const stamp = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+    for (const [who, left] of [[spkA, m.aOnLeft], [spkB, !m.aOnLeft]] as Array<[string, boolean]>) {
+      const k = firstName(who);
+      if (!k || castActors.some((c) => !!c.faceUrl && firstName(c.name) === k)) continue; // a cast photo wins
+      const name = `face-${stamp}-${left ? "l" : "r"}.jpg`;
+      const r = await runFfmpeg(["-y", "-i", local, "-vf", left ? "crop=iw/2:ih:0:0" : "crop=iw/2:ih:iw/2:0", "-frames:v", "1", "-q:v", "2", path.join(RENDERS(), name)]);
+      if (r.status === 0 && fs.existsSync(path.join(RENDERS(), name))) firstFaces[k] = abs(`/renders/${name}`) || "";
+    }
+    if (Object.keys(firstFaces).length) console.log(`[testmovie] the two as the film first showed them — cut from its first master: ${Object.keys(firstFaces).join(", ")}`);
+  };
   const cleanSetting = (s: string) => (((s || "").split(/[.;]/)[0] || "")
     .replace(/\b(two[- ]?shot|wide shot|close[- ]?up|medium shot|over[- ]the[- ]shoulder|establishing|shot)\b/gi, "")
     .replace(/^\s*(across|of)\s+/i, "a ").replace(/\s+/g, " ").trim().slice(0, 130) || "a cinematic interior");
@@ -851,6 +888,8 @@ export async function generateTestMovie(opts: {
     //  each place in the staging its picture was drawn in, not in one dealt afresh)
     masters[locKey] = { url, aOnLeft, a: firstName(spkA), b: firstName(spkB), ...(drawnAs ? { staging: drawnAs } : {}) };
     await ckpt({ ckMasters: JSON.stringify(masters) });
+    // (the first master drawn: the two invented characters' faces from now on — see cutFirstFaces)
+    try { await cutFirstFaces(masters[locKey]); } catch (e) { console.error(`[testmovie] the first faces could not be cut — each place draws them from words: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
     return masters[locKey];
   };
   const sideForMaster = (m: Master | undefined) => (sp: string): "left" | "right" | "" => {
@@ -1049,7 +1088,7 @@ export async function generateTestMovie(opts: {
     // — EXCEPT a horror film's last shot in a place of its own: that place is drawn with only the two in it, and the
     // thing is added to it by THE REVEAL below. (Drawn from the scene's words, the boy's parents' bedroom came with
     // the werewolf already in it, half out of the wall — the owner: "what the fuck is that plot?", 2026-11-24.)
-    const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === "location" ? undefined : scene.visual);
+    const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === "location" ? undefined : withLooks(scene.visual));
     const sideFor = sideForMaster(master);
     let seedAbs = abs(approvedFrames[i]);
     // THE REVEAL (acted-staging.ts → revealPicture). A horror film's last shot is in the SAME place as the shot
@@ -1070,7 +1109,7 @@ export async function generateTestMovie(opts: {
       // (…and a threat the STORY invented is the one the film already showed: the words of the shot that showed it go
       //  with it — "Who Calls From the Shallows" showed a woman waist-deep in the lake, and its last shot drew a
       //  bald ghoul's face in a window in the tent: acted-staging.ts → seenBefore)
-      const seen = thing && thingFace ? "" : seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || ""));
+      const seen = thing && thingFace ? "" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || "")));
       const askOne = revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), creature: !!(thing && thingFace), seen });
       const ask = askOne && thing && thingFace
         ? `${askOne} What is found is ${thing.name.trim()}: the creature in the SECOND picture — that exact creature, its face, its fur or skin and its colours and whatever it wears — drawn INTO the first picture the way this says; everything else in the first picture stays exactly as it is.`

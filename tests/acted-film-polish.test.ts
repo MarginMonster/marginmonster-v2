@@ -29,7 +29,8 @@ test("the two-shot is told what the scene shows, inside the same framing", () =>
   const eng = read("app/lib/film-dialogue.server.ts");
   // (…except a horror film's last shot in a place of its own: that place is drawn with only the two in it, and the
   //  thing is added by the reveal — acted-staging.ts → revealPicture)
-  assert.ok(eng.includes("i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === \"location\" ? undefined : scene.visual)"), "the engine passes the scene's picture");
+  // (…with the story's own description of anybody else it names: the woman in the lake came out as a swimmer)
+  assert.ok(eng.includes("i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === \"location\" ? undefined : withLooks(scene.visual))"), "the engine passes the scene's picture");
 });
 
 test("a film's loudness is read from ffmpeg's own report", () => {

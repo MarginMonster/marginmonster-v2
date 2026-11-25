@@ -190,7 +190,7 @@ test("the master's whole prompt in a staging: the scene's moment IN the picture,
   const img = read("app", "lib", "image-generation.server.ts");
   const classic = img.split("\n").find((l) => l.startsWith("    const prompt = `${styleLead} of BOTH people together in ${setting}")) || "";
   assert.equal(crypto.createHash("sha256").update(classic, "utf8").digest("hex"), "e8bb6ae6d7bcac2b9832b103383a6bad3754a8571fa7cc0d306df40bc6dbc062", "the two-shot's own prompt is not to change with this");
-  assert.ok(img.includes("const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: (opts.action || \"\").replace(/\\s+/g, \" \").trim().slice(0, 320), mood, consistency: consistencyNote, roomNote, faceNote, comp }) : \"\";"));
+  assert.ok(img.includes("const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: (opts.action || \"\").replace(/\\s+/g, \" \").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, comp }) : \"\";"));
   // (…drawn on the good model first, the everyday one only if it will not: story-picture.ts → STORY_MODEL)
   assert.ok(img.includes("for (const m of [STORY_MODEL, STORY_LAST_MODEL]) {") && img.includes("try { url = await repRun(m, storyPictureInput(m, { prompt: staged || prompt, refs, aspect: ar }), 150_000); used = m; break; }"));
   // (…and a staged picture of a photographed film is told today's world, a lived-in home and what a shadow is)
@@ -438,7 +438,7 @@ test("the wiring: dealt per location, drawn into its master, said to its clips, 
   // KEPT with the picture (and so in the checkpoint a restarted film is picked up from)
   assert.ok(eng.includes("masters[locKey] = { url, aOnLeft, a: firstName(spkA), b: firstName(spkB), ...(drawnAs ? { staging: drawnAs } : {}) };"));
   // one master per location is still the seed of every clip there, drawn from the first scene set there…
-  assert.ok(eng.includes("const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === \"location\" ? undefined : scene.visual);"));
+  assert.ok(eng.includes("const master = await masterFor(locKeyAt(i), whereAt[i], i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === \"location\" ? undefined : withLooks(scene.visual));"));
   // …and the shot / reverse-shot panels have not come back
   assert.ok(!eng.includes("renderTwoPanelShotReverse"));
   // SAID to a clip only when the picture it grows out of was drawn in a staging: not a frame the maker approved,
@@ -1334,9 +1334,30 @@ test("the reveal is the thing the film already showed, in that shot's words; not
   assert.ok(!st.revealPicture({ moment: "She is right behind Rupert now", sides }).includes("It is the SAME one"), "nothing seen before: as it was");
   // the engine hands it the earlier shots' words, unless the thing is a creature the maker chose
   const eng = fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-  assert.ok(eng.includes("const seen = thing && thingFace ? \"\" : seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || \"\"));"));
+  assert.ok(eng.includes("const seen = thing && thingFace ? \"\" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || \"\")));"), "(the story's own cast line for it first, when the moment names it)");
   assert.ok(eng.includes("creature: !!(thing && thingFace), seen });"));
   // nothing glows that is not a light — in every picture of a photographed film
   assert.ok(st.NOTHING_GLOWS.includes("a pale figure is lit only by the lights that are there, never from within"));
   assert.ok(st.actedRealism(false, "x").endsWith(` ${st.NOTHING_GLOWS}`) && st.actedRealism(true, "x") === "");
+});
+
+/* "SHE WALKS OUT SMILING" (2026-11-25, on the 1080p build): "Tunde" was a Black man in the tent and a white man in the same
+ * shirt on the shore — a character the story invented has no cast photo, and each new place drew him again from words;
+ * and the woman written "a pale woman in a soaked grey dress, her smile far too wide" came out of the lake as a swimmer
+ * in a swimsuit — anybody but the two who talk was drawn from the scene's bare words. */
+test("an invented character keeps the face the film first showed; anybody else named carries the story's own description", () => {
+  const eng = fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  // the faces: cut from the first master, each from their own half; a cast photo wins
+  assert.ok(eng.includes("const faceFor = (n: string) => { const k = firstName(n); return abs(castActors.find((c) => { const nm = (c.name || \"\").toLowerCase(); return firstName(c.name) === k || (!!k && nm.split(/[\\s,]/).includes(k)); })?.faceUrl) || firstFaces[k]; };"));
+  assert.ok(eng.includes("for (const [who, left] of [[spkA, m.aOnLeft], [spkB, !m.aOnLeft]] as Array<[string, boolean]>) {"));
+  assert.ok(eng.includes("if (!k || castActors.some((c) => !!c.faceUrl && firstName(c.name) === k)) continue; // a cast photo wins"));
+  assert.ok(eng.includes("left ? \"crop=iw/2:ih:0:0\" : \"crop=iw/2:ih:iw/2:0\""));
+  const set = eng.indexOf("masters[locKey] = { url, aOnLeft, a: firstName(spkA), b: firstName(spkB),");
+  const cut = eng.indexOf("try { await cutFirstFaces(masters[locKey]); }");
+  assert.ok(set > 0 && cut > set, "cut once the first master — and its sides — are known");
+  // anybody else the words name: their own cast line rides with the words, into the master and the reveal
+  assert.ok(eng.includes("return visual && others.length ? `${visual} (Who else is in it, as the story describes them: ${others.join(\"; \")}.)` : visual;"));
+  assert.ok(eng.includes("lastHorror && tr === \"location\" ? undefined : withLooks(scene.visual));"));
+  assert.ok(eng.includes("const seen = thing && thingFace ? \"\" : (othersIn(eventAt(i))[0] || seenBefore(eventAt(i), treatment.scenes.slice(0, i).map((s) => s.visual || \"\")));"));
+  assert.ok(eng.includes("if (!nm || [spkA, spkB].some((s) => !!s && firstName(s) === firstName(nm))) return false;"), "the two who talk are not 'anybody else'");
 });

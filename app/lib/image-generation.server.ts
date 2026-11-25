@@ -4977,8 +4977,9 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
     // shot with the room around them, both faces still readable — and the scene's own moment is IN the
     // picture instead of being told "the framing wins". Everything that binds a cast member to their
     // reference picture is the same text as above. No staging → the prompt above, unchanged.
-    // (The moment has more room here than the 240 characters above: a film's last scene may be written longer.)
-    const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: (opts.action || "").replace(/\s+/g, " ").trim().slice(0, 320), mood, consistency: consistencyNote, roomNote, faceNote, comp }) : "";
+    // (The moment has more room here than the 240 characters above: a film's last scene may be written longer — and
+    //  since 2026-11-25 it carries the story's own description of anybody else it names, the woman in the lake.)
+    const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: (opts.action || "").replace(/\s+/g, " ").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, comp }) : "";
     // ON THE GOOD MODEL (story-picture.ts → STORY_MODEL), the everyday one only if it will not draw it. An acted
     // film's master is the picture every clip of it is filmed FROM — and it was still drawn on the everyday model
     // after the owner called that one "a poop engine for the stills" and every told story moved off it (2026-11-24).
