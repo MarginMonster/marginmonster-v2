@@ -87,7 +87,7 @@ import { REWRITE_FAILED, applyRewrite, type RewriteTreatment, type RewrittenLine
 // stops, seconds, tokens and render minutes are film-length.ts's: the very numbers both engines hold a film to.
 import { LengthSlider } from "../components/film/LengthSlider";
 import { filmClock } from "../lib/film-flow";
-import { lengthStops, maxShots, renderMinutes, secondsFor, tokensFor, type FilmWay } from "../lib/film-length";
+import { lengthStops, maxShots, renderMinutes, scriptParts, secondsFor, tokensFor, type FilmWay } from "../lib/film-length";
 
 // (theme-color: in the DARK theme the Movie Maker is a theater — FS_THEATER, at the foot of this file — and
 //  a phone's own bar goes dark with it instead of framing it in white. The shell's loader knows the theme.)
@@ -571,8 +571,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       let treatment;
       // One more go before the maker is told it failed: the first write after a restart failed once on
       // the live site (2026-11-21) and the very same request then succeeded twelve times running.
+      // (Not for a script written in PARTS — a long film is a plan and up to ten answers, film-length.ts →
+      //  scriptParts, each already asked again on its own; asked again whole it is all of them twice over, a wait
+      //  of minutes doubled, since the Length slider reaches five minutes, 2026-11-25.)
+      const inParts = storyLength && scriptParts(narrated ? "narrated" : "acted", scenes).length > 1;
       try { treatment = await previewFilmTreatment(args); }
       catch (first) {
+        if (inParts) throw first;
         console.error(`[film] treatment write failed, trying once more: ${first instanceof Error ? first.message.slice(0, 200) : first}`);
         await new Promise((r) => setTimeout(r, 1200));
         treatment = await previewFilmTreatment(args);

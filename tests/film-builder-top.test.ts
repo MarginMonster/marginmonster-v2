@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { FILM_HEROES, TALL_STILL_MEDIA, heroShelves } from "../app/lib/film-heroes.ts";
 import { dealStarters, nudgeFor, startersOf } from "../app/lib/film-genres.ts";
-import { MAX_FILM_SECONDS, lengthStops, maxShots, renderMinutes, secondsFor, tokensFor } from "../app/lib/film-length.ts";
+import { MAX_FILM_SECONDS, lengthStops, maxShots, renderMinutes, scriptParts, secondsFor, tokensFor } from "../app/lib/film-length.ts";
 import { filmClock } from "../app/lib/film-flow.ts";
 import { estimateFilmTokens } from "../app/lib/plan-config.ts";
 
@@ -284,7 +284,7 @@ const lengthPanel = () => between(ui, "            {storyCard === \"length\" && 
 
 test("the Length step's panel is the slider — up to five minutes, by the way the story is told", () => {
   assert.ok(page.includes("import { LengthSlider } from \"../components/film/LengthSlider\";"));
-  assert.ok(page.includes("import { lengthStops, maxShots, renderMinutes, secondsFor, tokensFor, type FilmWay } from \"../lib/film-length\";"));
+  assert.ok(page.includes("import { lengthStops, maxShots, renderMinutes, scriptParts, secondsFor, tokensFor, type FilmWay } from \"../lib/film-length\";"));
   // the panel's opener is kept to the byte: it is also where the Cast panel ends (tests/film-one-cast.test.ts,
   // tests/film-cast-picker-width.test.ts)
   assert.equal(count(ui, "\n            {storyCard === \"length\" && (\n"), 1);
@@ -367,6 +367,16 @@ test("the action holds a story to the slider's own numbers (filmShots); the Musi
   assert.ok(eng.includes("return narrated && canNarrate(t.key) ? clampNarrated(Number(n)) : clampScenes(t, Number(n));"));
   // …and the page is handed the told story's range of the engine (it said 3 to 12)
   assert.ok(page.includes("narratedScenes: { min: NARRATED_MIN_SCENES, max: NARRATED_MAX_SCENES, def: NARRATED_DEFAULT_SCENES },"));
+});
+
+test("a script written in parts is not asked for again whole when it fails — a short one still gets its second go", () => {
+  const act = page.slice(page.indexOf("if (intent === \"previewFilmTreatment\") {"), page.indexOf("if (intent === \"previewFilmFrame\") {"));
+  assert.ok(act.includes("const inParts = storyLength && scriptParts(narrated ? \"narrated\" : \"acted\", scenes).length > 1;"));
+  assert.ok(act.includes("try { treatment = await previewFilmTreatment(args); }\n      catch (first) {\n        if (inParts) throw first;\n        console.error(`[film] treatment write failed, trying once more:"));
+  // (everything a film was before today is written in one answer, and keeps its retry)
+  for (let n = 1; n <= 6; n++) assert.equal(scriptParts("acted", n).length, 1);
+  for (let n = 3; n <= 12; n++) assert.equal(scriptParts("narrated", n).length, 1);
+  assert.ok(scriptParts("acted", maxShots("acted")).length > 1 && scriptParts("narrated", maxShots("narrated")).length > 1);
 });
 
 test("a slow narrator picked after a long length: the story still ends at five minutes — while nothing is written", () => {
