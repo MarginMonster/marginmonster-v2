@@ -656,6 +656,10 @@ export async function generateTestMovie(opts: {
   // Locked cast (faces + voices) the merchant cast in the UI — drives per-shot
   // identity conditioning and the Veo voice pin.
   const castActors = (opts.cast || []).filter((c) => c && c.name && c.name.trim());
+  // THE FILM'S PEOPLE, BY NAME — never its thing (the monster row's review, 2026-11-25): a drawn threat posted as a cast
+  // entry named "the woman in the lake" made heardIn read "the", "in", "woman" and "lake" as people's names, and "a voice
+  // calls their names softly from the water" came out SEEN. Every list of names the staging reads is the people's.
+  const peopleNames = castActors.filter((c) => c.role !== "threat").map((c) => c.name);
   // The script writer invents a look for every name without seeing who the merchant cast. For a
   // character who HAS a cast photo that written look is wrong by construction, so it is kept out of
   // every prompt: the photo is the look. What the photo actually shows is READ once per film, in words
@@ -1194,7 +1198,7 @@ export async function generateTestMovie(opts: {
       // (…and when the script gave its thing no cast line of its own — the ninth lake film's writer listed only the two
       //  who talk, and that film had no thing at all — the first figure its words put in view, else the maker's idea)
       const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual })
-        || threatFromWords({ visuals: scenesArr.map((s) => s.visual), said: scenesArr.map((s) => s.caption), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: castActors.map((c) => c.name) });
+        || threatFromWords({ visuals: scenesArr.map((s) => s.visual), said: scenesArr.map((s) => s.caption), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: peopleNames });
       if (own) threatEntry = own.entry;
       if (own) {
         let kept: Threat | null = null;
@@ -1255,7 +1259,7 @@ export async function generateTestMovie(opts: {
    *  last horror shot's own place: that one is drawn with only the two in it, and the reveal adds the thing). */
   const thingInMaster = (i: number, lastHorror: boolean): boolean => {
     if (!sightOn || (lastHorror && transitionAt(i) === "location") || (locFirst.get(locKeyAt(i)) ?? i) !== i) return false;
-    const f = figureIn(scenesArr[i]?.visual, { speakers: [spkA, spkB], cast: thingCast, names: castActors.map((c) => c.name) });
+    const f = figureIn(scenesArr[i]?.visual, { speakers: [spkA, spkB], cast: thingCast, names: peopleNames });
     return !!f && isTheThing(f.entry, f.who);
   };
   // (a film picked up after a restart: the picture that first showed the thing, among its finished shots)
@@ -1369,7 +1373,7 @@ export async function generateTestMovie(opts: {
     // frame the maker approved, never a cartoon, a film that is not staged, or one that is not a two-hander.
     let sighted: Sighting | null = null;
     if (!seedAbs && sightOn && !lastHorror && master?.url && stagingOf(master)) {
-      const s = sightingOf({ moment: eventAt(i), startedFrom: startedFrom(i, tr), speakers: [spkA, spkB], cast: thingCast, names: castActors.map((c) => c.name), last: lastHorror, cartoon, approved: !!approvedFrames[i] });
+      const s = sightingOf({ moment: eventAt(i), startedFrom: startedFrom(i, tr), speakers: [spkA, spkB], cast: thingCast, names: peopleNames, last: lastHorror, cartoon, approved: !!approvedFrames[i] });
       if (s) {
         let pic = sightings[i]?.url && sightings[i].words === s.words ? sightings[i].url : "";
         if (!pic) {
@@ -1433,7 +1437,7 @@ export async function generateTestMovie(opts: {
         //  on, which is how a line finds its mouth. Any other film: the words it always had.)
         const now = stagingOf(master) ? clipEvent(eventAt(i), 110) : "";
         // (a moment that is a sound from out of sight is HEARD, not drawn — acted-staging.ts → HEARD_NOT_DRAWN)
-        const unheard = now && heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)])?.unseen ? ` ${HEARD_NOT_DRAWN}` : "";
+        const unheard = now && heardIn(eventAt(i), [spkA, spkB, ...peopleNames])?.unseen ? ` ${HEARD_NOT_DRAWN}` : "";
         const reangled = await removeLetterbox(await renderSceneSeedChained(
           now
             ? `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people on the same sides of the frame, ONLY the camera angle changes. At this moment: ${now}${unheard} ${NO_TEXT}`
@@ -1512,7 +1516,7 @@ export async function generateTestMovie(opts: {
     // at all: a staged picture, in a film whose shots happen. (Never a reveal this film drew: its clip is told what
     // is in its picture instead of the scene's words — acted-staging.ts → revealClip.)
     // (…nor a SIGHTING: what they see is in its picture, so "nobody else appears" would be untrue — stagedRules → sighted)
-    const heard = !silent && chainStaging && !implied && !revealed && !sighted ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;
+    const heard = !silent && chainStaging && !implied && !revealed && !sighted ? heardIn(eventAt(i), [spkA, spkB, ...peopleNames]) : null;
     const voiceLine = heard
       ? heardTalk({
           event: clipEvent(eventAt(i), i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : EVENT_MAX), unseen: heard.unseen,
@@ -1551,7 +1555,7 @@ export async function generateTestMovie(opts: {
       // does there, in place — never the scene's own words: the third live film's were "nearer", and the engine
       // pushed the fingers out into a big hand reaching at the lens (acted-staging.ts → revealClip).
       const sides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })).filter((p) => !!p.side);
-      const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)])?.unseen;
+      const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...peopleNames])?.unseen;
       const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : "";
       try {
         playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, sighted: !!sighted, sight: sighted?.who });
@@ -1677,7 +1681,9 @@ export async function generateTestMovie(opts: {
         ...(dialogueEngine === "kling3" ? { host: filmKlingHost() } : {}),
         // NEXT EPISODE (film-series.ts): who was cast — face and voice — so the next episode casts them
         // again, and the series this film is an episode of (an ordinary film has no `series`)
-        cast: castForMeta(opts.cast),
+        // (an acted film's thing is not one of its cast: meta.threat carries it to the next part — kept here, a next
+        //  episode matched "the woman in the lake" by "woman" and gave her portrait to a new "woman next door")
+        cast: castForMeta((opts.cast || []).filter((c) => c.role !== "threat")),
         ...(opts.series ? { series: seriesMeta(opts.series) } : {}),
         // THE POSTER: its cover on the shelf — the cast's portraits under the title (story-poster.ts)
         ...(poster ? { poster } : {}),

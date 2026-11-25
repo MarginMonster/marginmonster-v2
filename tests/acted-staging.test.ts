@@ -737,7 +737,7 @@ test("a sound shot is longer by the sound, keeps its head, and is only made wher
   }
   assert.equal(heardSeconds("Dagny, stop moving for a second. Tell me you heard that too."), 9);
   const eng = read("app", "lib", "film-dialogue.server.ts");
-  assert.ok(eng.includes("const heard = !silent && chainStaging && !implied && !revealed && !sighted ? heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)]) : null;"), "a staged picture in a film whose shots happen: where the scene is told at all (and never a reveal that could not be drawn — its words are not said; nor a sighting — what they see IS in its picture, 2026-11-25)");
+  assert.ok(eng.includes("const heard = !silent && chainStaging && !implied && !revealed && !sighted ? heardIn(eventAt(i), [spkA, spkB, ...peopleNames]) : null;"), "a staged picture in a film whose shots happen: where the scene is told at all (and never a reveal that could not be drawn — its words are not said; nor a sighting — what they see IS in its picture, 2026-11-25)");
   assert.ok(eng.includes("const voiceLine = heard\n      ? heardTalk({"));
   // the trims: nothing before the line is cut or played fast — the first take and a re-rolled one alike
   assert.equal(eng.split("keepHead: clipHearsFirst(prompt)").length - 1, 2);

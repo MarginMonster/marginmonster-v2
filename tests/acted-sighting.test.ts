@@ -18,7 +18,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   NOTHING_GLOWS, PHOTOGRAPHED, REVEAL_MOVED, REVEAL_STAY, SIGHT_MOVES, SIGHT_PICTURE_MAX,
-  couldBeThing, figureIn, revealClip, revealPicture, sightingClip, sightingOf, sightingPicture, silentRules, stagedRules, stagedTwoShot, storyThreat, thingBound, thingRefNote, threatFromWords, threatPortrait,
+  couldBeThing, figureIn, heardIn, revealClip, revealPicture, sightingClip, sightingOf, sightingPicture, silentRules, stagedRules, stagedTwoShot, storyThreat, thingBound, thingRefNote, threatFromWords, threatPortrait,
 } from "../app/lib/acted-staging.ts";
 import { clipRules } from "../app/lib/clip-prompt.ts";
 import { CREATURE_REAL, DRESSED, SHADOW_SHAPE } from "../app/lib/story-picture.ts";
@@ -289,7 +289,12 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   assert.ok(eng.includes("const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual })"));
   // (…and when the script gave its thing no cast line — the ninth lake film, live 2026-11-25 — the first figure its words
   //  put in view, else the maker's own idea: the film never goes without its thing because the writer forgot a line)
-  assert.ok(eng.includes("|| threatFromWords({ visuals: scenesArr.map((s) => s.visual), said: scenesArr.map((s) => s.caption), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: castActors.map((c) => c.name) });"));
+  assert.ok(eng.includes("|| threatFromWords({ visuals: scenesArr.map((s) => s.visual), said: scenesArr.map((s) => s.caption), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: peopleNames });"));
+  // (every list of NAMES the staging reads is the film's people's — never its thing: "the woman in the lake" as a name made
+  //  heardIn read "the", "in", "woman" and "lake" as names, and a voice from the water came out seen — monster row review)
+  assert.ok(eng.includes('const peopleNames = castActors.filter((c) => c.role !== "threat").map((c) => c.name);'));
+  assert.ok(!eng.includes("castActors.map((c) => c.name)"), "no list of names with the thing in it");
+  assert.equal(heardIn("A voice calls their names softly from the water.", ["Mara", "Jonah"])?.unseen, true);
   assert.ok(eng.includes("for (const model of kept ? [] : STORY_LADDER) {") && eng.includes("storyPictureInput(model, { prompt: threatPortrait(own.entry, tmpl.sceneHint), refs: [], aspect: PORTRAIT_ASPECT })"), "the told stories' portrait recipe and ladder");
   assert.ok(eng.includes("img = (await clothedOrDropped(drawn, PORTRAIT_ASPECT)) || \"\";"), "looked at for an unclothed figure");
   assert.ok(eng.includes("if (!kept) await ckpt({ ckThreat: JSON.stringify(threat) });"), "kept: a restarted film does not draw it twice");
@@ -306,7 +311,7 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   const sight = eng.indexOf("if (!seedAbs && sightOn && !lastHorror && master?.url && stagingOf(master)) {", loop);
   const branches = eng.indexOf("if (!seedAbs && master?.url) {", loop);
   assert.ok(reveal > loop && sight > reveal && branches > sight);
-  assert.ok(eng.includes("const s = sightingOf({ moment: eventAt(i), startedFrom: startedFrom(i, tr), speakers: [spkA, spkB], cast: thingCast, names: castActors.map((c) => c.name), last: lastHorror, cartoon, approved: !!approvedFrames[i] });"));
+  assert.ok(eng.includes("const s = sightingOf({ moment: eventAt(i), startedFrom: startedFrom(i, tr), speakers: [spkA, spkB], cast: thingCast, names: peopleNames, last: lastHorror, cartoon, approved: !!approvedFrames[i] });"));
   assert.ok(eng.includes("const base = abs(shownAt(i) || master.url);"));
   const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],", sight);
   const kontext = eng.indexOf("[\"black-forest-labs/flux-kontext-pro\", { prompt: askOne, input_image: base, aspect_ratio: aspect, output_format: \"jpg\", output_quality: 92 }],", sight);
