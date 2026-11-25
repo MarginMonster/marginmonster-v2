@@ -243,3 +243,235 @@ test("a card tapped over the member's own words keeps them one tap away", () => 
   assert.ok(page.includes("{!edited && kept && <button type=\"button\" className=\"ff-undo\" onClick={bringBack}><Ico n=\"refresh\" size={12} /> {t(\"Bring back your words\")}</button>}"));
   assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("\"Bring back your words\":").length - 1, 5, "es, fr, de, zh and ur");
 });
+
+/* 2026-11-25, the owner: "Found footage needs redone … It currently appears to pipeline singular events But needs to be
+ * more like \"Found Footage\" House cam, Body cam, phone or cam recording, with describe events flow like the others -
+ * make it look banging and not limited". The page became a film builder over footage-film.ts (stream S1's engine): what
+ * it asks the server for, what it posts, and what the server does with it are held here. */
+
+const page = () => read("app", "routes", "web.found-footage.tsx");
+const actionOf = (ui: string) => ui.slice(ui.indexOf("export const action"), ui.indexOf("/** A camera card's screen"));
+
+test("FOUR INTENTS: one take, exactly as it was; the moments written (free); one moment written again (free); the reel rolled — each behind the admin gate and the plan", () => {
+  const action = actionOf(page());
+  assert.ok(page().includes('const INTENTS = ["take", "outline", "rewrite", "film"];'));
+  assert.ok(action.includes('if (!INTENTS.includes(intent)) return json({ error: tr(lang, "Unknown action.") }, { status: 400 });'));
+  // the gate and the plan come before anything any intent does
+  const first = Math.min(...['if (intent === "outline" || intent === "rewrite") {', 'if (intent === "film") {', "const job = footageJob("].map((m) => action.indexOf(m)));
+  for (const g of ["isAdminEmail(account.email)", "if (!shop.activePlan?.active)", 'capabilitiesFor(shop.activePlan).has("creatorvideo")']) assert.ok(action.indexOf(g) > 0 && action.indexOf(g) < first, g);
+  // "outline": the same choices one press would film (footage-film.ts → footageOutlineAsk), then the writer — free
+  assert.ok(action.includes('const ask = footageOutlineAsk({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room"), moments: form.get("moments") }, (s) => tr(lang, s));'));
+  assert.ok(action.includes("try { return json({ ok: true as const, outline: await writer.writeFootageOutline(ask) }); }"));
+  // "rewrite": the outline the page sent is cleaned before the writer sees it, and the index must be one of its moments
+  assert.ok(action.includes('const outline = cleanFootageOutline(form.get("outline"));'));
+  assert.ok(action.includes("if (!outline || !Number.isInteger(index) || index < 0 || index >= outline.moments.length) return json({ error: tr(lang, FOOTAGE_OUTLINE_UNREADABLE) }, { status: 400 });"));
+  assert.ok(action.includes('moment: await writer.rewriteFootageMoment({ outline, index, note: String(form.get("note") || "").slice(0, 300) })'));
+  // the writer's refusals reach the member only as words the page can show; anything else it throws is "try again"
+  assert.ok(action.includes("return tr(lang, [writer.FOOTAGE_WRITER_BUSY, writer.FOOTAGE_NEEDS_IDEA, FOOTAGE_OUTLINE_UNREADABLE].includes(m) ? m : writer.FOOTAGE_WRITER_BUSY);"));
+  // "film": the reel the member approved, cleaned again on the server (footageFilmJob) — then queued like one take
+  assert.ok(action.includes('const film = footageFilmJob({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room"), outline: form.get("outline") }, (s) => tr(lang, s));'));
+  assert.ok(action.includes("return roll(film);") && action.includes("return roll(job);"));
+  // ONE queue for both: three in the making at once (a film counts as one), nothing charged
+  const roll = action.slice(action.indexOf("const roll = async"), action.indexOf('if (intent === "film") {'));
+  assert.ok(roll.includes("if (making >= 3)") && roll.includes('await enqueueJob(shop.id, "GENERATE_VIDEO_AD", job.payload);'));
+  // the writer is the film's server module, loaded only when it is asked for (as the loader loads the house)
+  assert.ok(action.includes('const writer = await import("../lib/footage-film.server");'));
+  const srv = read("app", "lib", "footage-film.server.ts");
+  for (const k of ["export const FOOTAGE_WRITER_BUSY", "export const FOOTAGE_NEEDS_IDEA", "export async function writeFootageOutline(", "export async function rewriteFootageMoment("]) assert.ok(srv.includes(k), k);
+});
+
+test("ONE MOMENT IS TODAY'S TAKE: the cut at one posts exactly the form one take always posted", () => {
+  const ui = page();
+  // a film of three unless they say; one is the single take
+  assert.ok(ui.includes("const [count, setCount] = useState(3);") && ui.includes("const film = count > 1;"));
+  const at = ui.indexOf("{!film ? (");
+  const form = ui.slice(at, ui.indexOf("</fetcher.Form>", at)).split("\n").slice(1).map((l) => l.trim());
+  assert.deepEqual(form.slice(0, 11), [
+    "<fetcher.Form method=\"post\" onSubmit={() => setSentSig(sig)}>",
+    "<input type=\"hidden\" name=\"intent\" value=\"take\" />",
+    "<input type=\"hidden\" name=\"scare\" value={pick.scare} />",
+    "<input type=\"hidden\" name=\"camera\" value={pick.camera} />",
+    "<input type=\"hidden\" name=\"aspect\" value={aspect} />",
+    "{/* the words in the box, always — the server decides whether they are still the card's (footageJob) */}",
+    "{own.trim() ? <input type=\"hidden\" name=\"own\" value={own} /> : null}",
+    "{house && <input type=\"hidden\" name=\"lapse\" value={lapseOn ? \"1\" : \"0\"} />}",
+    "{house && <input type=\"hidden\" name=\"ir\" value={ir ? \"1\" : \"0\"} />}",
+    "{house && <input type=\"hidden\" name=\"room\" value={roomKey} />}",
+    "<button type=\"submit\" className={`ff-go${rolling ? \" is-rolling\" : \"\"}`} disabled={!canGo}>",
+  ]);
+  // …with the time-lapse the scare starts with, as before (a FILM's starts off — footageFilmJob)
+  assert.ok(ui.includes("const lapseOn = lapse ?? (film ? false : !!houseCard?.lapseOn);"));
+});
+
+test("THE CUT: one control — a strip of film over a real range input, one take to eight moments, with the length and how long it takes", () => {
+  const ui = page();
+  assert.ok(ui.includes('<input id={id} className="ff-cut-in" type="range" min={1} max={FOOTAGE_MAX_MOMENTS} step={1} value={n}'));
+  assert.ok(ui.includes('aria-label={t("How many moments?")}') && ui.includes("aria-valuetext={"));
+  // one take is called what it is, with its length; a film says its moments, its length and how long it takes to make
+  assert.ok(ui.includes('const count = n === 1 ? t("One take · {s} s", { s: secs }) : t("{n} moments", { n });'));
+  assert.ok(ui.includes("const [lo, hi] = n === 1 ? footageEta(camera) : footageFilmEta({ camera, moments: ms });"));
+  // (a reel of that many moments is reckoned by its own seconds; before one is written, each at its camera's usual length)
+  assert.ok(ui.includes("const ms = written && written.length === n ? [...written] : standIn(camera, n);"));
+  assert.ok(ui.includes("const standIn = (camera: CameraLook, n: number): FootageMoment[] => Array.from({ length: n }, () => ({ when: \"\", line: \"\", seconds: momentSeconds(camera, undefined) }));"));
+  // the button's estimate is the same reckoning
+  assert.ok(ui.includes("const [lo, hi] = film ? footageFilmEta({ camera: pick.camera, moments: plan }) : footageEta(pick.camera);"));
+});
+
+test("THE REEL: what is posted is the reel as the member left it — and the server cleans it, keeps their words, and films exactly that", async () => {
+  const ui = page();
+  const { footageFilmJob, cleanFootageOutline, FOOTAGE_OUTLINE_UNREADABLE, FOOTAGE_OUTLINE_OTHER_CAMERA, FOOTAGE_LIMITS } = await import("../app/lib/footage-film.ts");
+  // the page: every moment with a line, in the member's order, on the camera now picked — its own key left behind
+  assert.ok(ui.includes("moments: r.moments.filter((m) => filmable(m.line)).map(({ key: _key, ...m }) => m),"));
+  assert.ok(ui.includes('const filmable = (line: string): boolean => line.replace(/[^\\p{L}\\p{N}]+/gu, "").length >= 4;'));
+  assert.ok(ui.includes('const posted = film && shown && !otherCam ? JSON.stringify(outlineOf(shown, pick.camera, aspect)) : "";'));
+  assert.ok(ui.includes('<input type="hidden" name="intent" value="film" />') && ui.includes('<input type="hidden" name="outline" value={posted} />'));
+  // (a moment with no words yet stops the roll, and says which)
+  assert.ok(ui.includes("const canRoll = d.canFilm && !!posted && blank < 0 && !retaking && !writing && !busy && !rolling;"));
+  // AS POSTED: a phone film the member edited — a line rewritten, a card retyped in lower case, too many seconds, a key
+  const reel = {
+    v: 1, title: "TEST · Biscuit and the Fridge, the whole sorry saga of a terrier and a door", camera: "phone", aspect: "9:16", kind: "plain",
+    place: "A small kitchen in a made-up flat: yellow cupboards, a humming fridge.", thing: "Biscuit, a scruffy brown terrier with a red collar.",
+    moments: [
+      { key: "m1", when: "day 1 · 7:42 pm", line: "My own line: Biscuit pretends to sleep, one eye open on the fridge.", seconds: 30 },
+      { key: "m2", when: "DAY 3 · 2:05 AM", line: "Caught: Biscuit noses the fridge door open, the bell on his collar jingling.", seconds: 10 },
+    ],
+  };
+  const form = { scare: "own", own: "Our dog keeps raiding the fridge at night", camera: "camcorder", aspect: "16:9", outline: JSON.stringify(reel) };
+  const job = footageFilmJob(form);
+  assert.ok(job.ok);
+  if (!job.ok) return;
+  assert.equal(job.moments, 2);
+  const filmed = JSON.parse(String(job.payload.takeOutline));
+  // the camera on the form wins (carried the same way: a phone's moments, filmed on a camcorder), its shape with it
+  assert.equal(filmed.camera, "camcorder");
+  assert.equal(filmed.aspect, "16:9");
+  // their words are the words filmed; the card is a card; the seconds are a moment's; nothing else of the page's survives
+  assert.equal(filmed.moments[0].line, "My own line: Biscuit pretends to sleep, one eye open on the fridge.");
+  assert.equal(filmed.moments[0].when, "DAY 1 · 7:42 PM");
+  assert.equal(filmed.moments[0].seconds, 12);
+  assert.ok(!("key" in filmed.moments[0]) && !("key" in filmed.moments[1]));
+  assert.ok(filmed.title.length <= FOOTAGE_LIMITS.title);
+  // …and it is exactly what cleanFootageOutline makes of it — the job the queue runs cleans it once more (job-queue.server.ts)
+  assert.deepEqual(filmed, { ...cleanFootageOutline(reel), camera: "camcorder", aspect: "16:9" });
+  // a house's rooms cannot be walked through with a phone: refused, in words the page shows
+  const other = footageFilmJob({ ...form, camera: "house" });
+  assert.deepEqual(other, { ok: false, error: FOOTAGE_OUTLINE_OTHER_CAMERA });
+  assert.ok(ui.includes('t("These moments were written for the {camera} — write them again for this camera."'), "the page says so before the server has to");
+  // what is not an outline is refused; an outline cut down to one moment is ONE take, queued as one always is
+  assert.deepEqual(footageFilmJob({ ...form, outline: "{not json" }), { ok: false, error: FOOTAGE_OUTLINE_UNREADABLE });
+  const one = footageFilmJob({ ...form, outline: JSON.stringify({ ...reel, moments: [reel.moments[0]] }) });
+  assert.ok(one.ok && one.moments === 1 && !("takeOutline" in one.payload) && one.payload.contentType === "take");
+  // a HOUSE film: night vision on, the time-lapse off unless switched on
+  const house = { ...reel, camera: "house", aspect: "16:9", moments: reel.moments.map((m, i) => ({ ...m, room: i ? "kitchen" : "living", seconds: 15 })) };
+  const hj = footageFilmJob({ scare: "own", own: "x", camera: "house", aspect: "16:9", lapse: "0", ir: "1", outline: JSON.stringify(house) });
+  assert.ok(hj.ok && hj.payload.takeLapse === false && hj.payload.takeIr === true);
+  if (hj.ok) assert.deepEqual(JSON.parse(String(hj.payload.takeOutline)).moments.map((m: { room: string }) => m.room), ["living", "kitchen"]);
+});
+
+test("THE WRITER, ASKED BY THE PAGE: the moments from what one press would film; one moment again — a new one says where it sits", async () => {
+  const ui = page();
+  const { footageOutlineAsk, cleanFootageOutline } = await import("../app/lib/footage-film.ts");
+  // the writer's form: the card, the camera, the shape, the words, the house's settings, and how many moments
+  const fields = ui.slice(ui.indexOf("const writeFields = ("), ui.indexOf("const writeErr ="));
+  for (const f of ['name="intent" value="outline"', 'name="scare" value={pick.scare}', 'name="camera" value={pick.camera}', 'name="aspect" value={aspect}', 'name="own" value={own}', 'name="lapse"', 'name="ir"', 'name="moments" value={count}']) assert.ok(fields.includes(f), f);
+  // what the server makes of it: a card left as it was is its own words and where the film starts
+  const ask = footageOutlineAsk({ scare: "overbed", camera: "house", aspect: "16:9", lapse: "0", ir: "1", moments: "4" });
+  assert.ok(ask.ok && ask.from === "overbed" && ask.camera === "house" && ask.count === 4 && ask.idea.length > 20);
+  // words of their own too few to write from: said, in the page's words
+  const none = footageOutlineAsk({ scare: "own", own: "dog", camera: "phone", moments: "3" });
+  assert.deepEqual(none, { ok: false, error: "Say what happens, in a few words." });
+  // ANOTHER TAKE: the reel as it stands, the moment by its place in it — a moment with no words yet is left out of what
+  // is posted, except the one being written, which says where it sits (the server drops a moment without a line, and the
+  // index would point at the wrong one)
+  assert.ok(ui.includes("const list = r.moments.filter((m) => m.key === key || filmable(m.line));"));
+  assert.ok(ui.includes("moments: list.map(({ key: k, ...m }) => (k === key && !filmable(m.line) ? { ...m, line: NEW_MOMENT } : m))"));
+  assert.ok(ui.includes('retake.submit({ intent: "rewrite", outline: JSON.stringify(posted), index: String(index) }, { method: "post" });'));
+  const NEW_MOMENT = /const NEW_MOMENT = ("[^"]+");/.exec(ui)?.[1];
+  assert.ok(NEW_MOMENT);
+  const posted = { v: 1, title: "TEST", camera: "phone", aspect: "9:16", kind: "scare", place: "A made-up hallway, long and dark.", thing: "", moments: [
+    { when: "NIGHT 1", line: "Something far off at the end of the hall.", seconds: 8 },
+    { when: "", line: JSON.parse(NEW_MOMENT), seconds: 10 },
+    { when: "NIGHT 3", line: "It is right outside the door.", seconds: 10 },
+  ] };
+  const clean = cleanFootageOutline(JSON.stringify(posted));
+  assert.ok(clean && clean.moments.length === 3 && clean.moments[1].line === JSON.parse(NEW_MOMENT), "the new moment keeps its place");
+  // + ADD A MOMENT goes in just before the payoff (the last moment stays the last), and the writer fills it in
+  assert.ok(ui.includes("const at = Math.max(0, reel.moments.length - 1);") && ui.includes("askAgain(next, m.key);"));
+  // the answer is put back by the moment's KEY — wherever the member moved it meanwhile
+  assert.ok(ui.includes("setReel((x) => (x ? { ...x, moments: x.moments.map((y) => (y.key === key ? { ...m, key } : y)) } : x));"));
+});
+
+test("THE REEL'S LIMITS: the engine's own — words, seconds, moments; removing asks twice; a moment being written again is left alone", async () => {
+  const ui = page();
+  const { momentSeconds, FOOTAGE_MAX_MOMENTS } = await import("../app/lib/footage-film.ts");
+  // every box is held to what the engine keeps (FOOTAGE_LIMITS: title 60, place 280, thing 280, card 28, line 180)
+  for (const k of ["title", "place", "thing", "when", "line"]) assert.ok(ui.includes(`maxLength={FOOTAGE_LIMITS.${k}}`), k);
+  // a moment's seconds: the engine's span for its camera — 6 to 12 held or worn, 10 to 15 on a wall
+  assert.ok(ui.includes('const secondsSpan = (camera: CameraLook): [number, number] => (camera === "house" ? [10, HOUSE_TAKE_SECONDS] : [6, 12]);'));
+  assert.deepEqual([momentSeconds("phone", 5), momentSeconds("phone", 13), momentSeconds("house", 9), momentSeconds("house", 16)], [6, 12, 10, 15]);
+  // two moments at least (fewer is one take: the cut does that), eight at most
+  assert.ok(ui.includes("disabled={shown.moments.length <= 2 || mine}"));
+  assert.ok(ui.includes("{shown.moments.length < FOOTAGE_MAX_MOMENTS && !otherCam && (") && FOOTAGE_MAX_MOMENTS === 8);
+  // removing is a second tap ("Remove?"), and lets go by itself
+  assert.ok(ui.includes("if (armDel !== key) { setArmDel(key); return; }") && ui.includes('{armDel === m.key ? t("Remove?") : <Ico n="x" size={14} />}'));
+  assert.ok(ui.includes("useEffect(() => { if (!armDel) return; const id = window.setTimeout(() => setArmDel(null), 3500); return () => window.clearTimeout(id); }, [armDel]);"));
+  // writing it all again replaces the reel: a second tap too
+  assert.ok(ui.includes('{armAgain ? t("Tap again — this replaces the reel") : t("Write it again — free")}'));
+  // a card retyped is a card (footage-film.ts → cardWords) once the member leaves it — never an empty one
+  assert.ok(ui.includes("onBlur={(e) => change(m.key, { when: cardWords(e.target.value) || `NIGHT ${n}` })}"));
+  // a moment the writer is writing again cannot be moved, removed, retyped or re-timed until its answer is in — and one
+  // is written again at a time
+  for (const s of ["disabled={i === 0 || mine}", "disabled={i === shown.moments.length - 1 || mine}", "placeholder={`NIGHT ${n}`} disabled={mine}", "disabled={m.seconds <= loS || mine}", "disabled={m.seconds >= hiS || mine}", "disabled={retaking || writing || otherCam}"]) assert.ok(ui.includes(s), s);
+  assert.ok(ui.includes("const retaking = retake.state !== \"idle\" || !!retakeKey;") && ui.includes("if (retake.state !== \"idle\") return;"));
+});
+
+test("THE REEL'S LOOK: every frame in its own camera's viewfinder, its clock read from its card, ticking — unless less motion was asked for", () => {
+  const ui = page();
+  // the marks each camera burns into its takes (camera-dress.ts): the house's date and CAM; the body cam's stamp and its
+  // AI DRAMATIZATION; the camcorder's REC, tape counter and its date (footage-film.ts → camStamp); the phone's red timer
+  assert.ok(ui.includes('{camera === "house" && <><b className="tl">{clock.date} {hms(clock.start + s)}</b>{cam ? <b className="bl">{cam}</b> : null}</>}'));
+  assert.ok(ui.includes('{camera === "bodycam" && <><b className="tr">{clock.date.slice(0, 10)} T{hms(clock.start + s)} -0500<br />BODYCAM 412</b><b className="bl dim">AI DRAMATIZATION</b></>}'));
+  assert.ok(ui.includes('<b className="bl">SP {hms(s)}</b>') && ui.includes('<b className="br ff-vf-date">{stamp.date}<br />{stamp.time}</b>') && ui.includes("const stamp = camStamp(clock);"));
+  assert.ok(ui.includes('{camera === "phone" && <><b className="tc ff-vf-timer">{hms(s)}</b><i className="ff-vf-stop" /></>}'));
+  // each frame's clock is the one its card gives it — the way the server works out the film's (footage-film.ts)
+  assert.ok(ui.includes('const clocks = useMemo(() => footageClocks(whens.split("\\n"), today, 7), [whens, today]);'));
+  // a house camera's CAM numbers: the shop's own rooms first, then each new room in the order the film comes to it
+  assert.ok(ui.includes('const houseCams = shown ? [...new Set([...d.kept, ...shown.moments.map((m) => m.room || "living")])] : d.kept;'));
+  // the clocks run — but not for a member who asked for less motion; and none of the new movement plays for them
+  const vf = ui.slice(ui.indexOf("function Viewfinder("), ui.indexOf("export default function FoundFootage()"));
+  assert.ok(vf.includes('if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;'));
+  const reduce = /@media\(prefers-reduced-motion:reduce\)\{([^\n]*)\}/.exec(ui)?.[1] || "";
+  for (const sel of [".ff-cut-film i.at::after", ".ff-vf-dot", ".ff-vf-osd", ".ff-vf-grain", ".ff-vf-scan::after", ".ff-mo.is-retaking .ff-dice", ".ff-reel.is-writing .ff-mo"]) assert.ok(reduce.includes(sel), sel);
+  // phone-first: every box on the reel is 16px (a phone never zooms in on it); every tap is 44px
+  for (const r of [/\.ff-vf-line\{[^}]*font:600 16px/, /\.ff-case textarea\{[^}]*font:500 16px/, /\.ff-room-pick\{[^}]*font:600 16px/, /\.ff-mo-card input\{[^}]*font:700 17px/, /\.ff-tape-title,\.ff-tape-name\{[^}]*font:800 20px/]) assert.ok(r.test(ui), String(r));
+  for (const r of [/\.ff-ico-btn\{[^}]*min-width:44px;height:44px/, /\.ff-dicebtn\{[^}]*min-height:44px/, /\.ff-secs button\{width:44px;height:44px/, /\.ff-again-btn\{[^}]*min-height:44px/, /\.ff-chip\{[^}]*min-height:44px/, /\.ff-seg button\{[^}]*min-height:44px/, /\.ff-cut-in::-webkit-slider-thumb\{-webkit-appearance:none;width:44px/]) assert.ok(r.test(ui), String(r));
+  // the reel is tape in either theme: black — and in the dark it gets the gold edge every card has
+  assert.ok(ui.includes(".ff-dark .ff-reel{box-shadow:0 0 0 1px rgba(231,200,121,.45)"));
+});
+
+test("every new word on the builder — and every refusal a film can give — is in all five languages", async () => {
+  const ui = page();
+  const dict = read("app", "lib", "ui-i18n-dict.ts");
+  const words = new Set<string>();
+  for (const m of ui.matchAll(/\bt(?:r)?\(\s*(?:lang\s*,\s*)?("(?:[^"\\]|\\.)*")/g)) words.add(JSON.parse(m[1]));
+  const { FOOTAGE_OUTLINE_UNREADABLE, FOOTAGE_OUTLINE_OTHER_CAMERA } = await import("../app/lib/footage-film.ts");
+  words.add(FOOTAGE_OUTLINE_UNREADABLE);
+  words.add(FOOTAGE_OUTLINE_OTHER_CAMERA);
+  // (the writer's own two live in its server module, which a test cannot load: read as written)
+  const srv = read("app", "lib", "footage-film.server.ts");
+  for (const k of ["FOOTAGE_WRITER_BUSY", "FOOTAGE_NEEDS_IDEA"]) words.add(JSON.parse(new RegExp(`export const ${k} = ("[^"]+");`).exec(srv)![1]));
+  const blocks = ["es", "fr", "de", "zh", "ur"];
+  for (let i = 0; i < blocks.length; i++) {
+    const from = dict.indexOf(`const ${blocks[i]}: Record<string, string> = {`);
+    const block = dict.slice(from, i + 1 < blocks.length ? dict.indexOf(`const ${blocks[i + 1]}: Record<string, string> = {`) : dict.length);
+    const missing = [...words].filter((w) => !block.includes(`\n  ${JSON.stringify(w)}:`));
+    assert.deepEqual(missing, [], `${blocks[i]}: untranslated`);
+  }
+  // a placeholder is carried over word for word in every translation
+  const ph = (s: string) => (s.match(/\{[a-z]+\}/g) || []).sort().join(",");
+  for (const w of [...words].filter((x) => /\{[a-z]+\}/.test(x))) {
+    const found = [...dict.matchAll(new RegExp(`\\n  ${JSON.stringify(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: ("(?:[^"\\\\]|\\\\.)*"),`, "g"))];
+    assert.ok(found.length >= 5, `${w}: ${found.length} translations read`);
+    for (const m of found) assert.equal(ph(JSON.parse(m[1])), ph(w), w);
+  }
+});
