@@ -281,7 +281,8 @@ test("one character can be drawn again: a new portrait, and only the scenes that
   assert.ok(fn.includes("if (!scenes.length) return null;"));
   // their portrait is dropped from what is carried in → the drawing makes a new one; everyone else is kept
   assert.ok(fn.includes("const kept = carried.refs.filter((r) => !sameCharacter(r.name, o.name));"));
-  assert.ok(fn.includes("const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept, carried.places) || null });"), "nobody else changes — and neither do the story's places");
+  // (…nor the story's night: the idea rides along since 2026-11-25 — tests/told-night.test.ts)
+  assert.ok(fn.includes("const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept, carried.places) || null, idea: o.idea });"), "nobody else changes — and neither do the story's places");
   // …and the cast stays in the story's own order (a redrawn character does not move to the end of the row)
   assert.ok(nar.includes("cards.sort((a, b) => billed(a) - billed(b));"));
   const page = read("app", "routes", "web.film.tsx");

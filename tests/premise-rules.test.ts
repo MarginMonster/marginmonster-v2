@@ -122,7 +122,7 @@ test("a story picture has nobody the words do not put there, and everybody in it
   assert.equal(sp.storyFaults({ seen: [true, true], panels: false }), 0, "an older reading: nothing more");
   assert.ok(sp.storyFix({ seen: [true, true], panels: false, twice: [false, true] }, ["Nessa", "Dovey"]).includes("Dovey was drawn TWICE in the last try — they appear exactly ONCE in this picture, nowhere else in it"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };"));
+  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(dark === false ? { notNight: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };"));
 });
 
 test("a told story's picture says which side of a door or a window everybody is on", () => {
@@ -195,7 +195,7 @@ test("every story picture is looked at for anybody its words do not put there �
   assert.equal(sp.storyFaults({ seen: [true], panels: false, extra: true }), 3);
   assert.ok(sp.storyFix({ seen: [true], panels: false, extra: true }, ["Priya"]).includes("draw NOBODY but who they name"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null && bare == null) return null;"));
+  assert.ok(nar.includes("const extra = parseStoryExtras(String(extrasRaw || \"\"));") && nar.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null && bare == null && dark == null) return null;"));
 });
 
 /* WHOEVER LOOKS OUT, DRAWN OUT THERE (2026-11-24): the kids' horror story made again with INSIDE_STAYS in every
@@ -382,7 +382,8 @@ test("a run-down place is looked for and drawn again; a face is a face's size; a
   assert.ok(sp.TRUE_SIZE.includes("a face at a window or a door is the size of a face"));
   const nar = read("app", "lib", "narrated-story.server.ts");
   // (asked of every picture — the inset is anybody's fault; a run-down place counts only in a grown-up story)
-  assert.ok(nar.includes("anthropicVision(storyGrimePrompt(visual), [pic], { maxTokens: 360, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"));
+  // (…and, for a night scene only, its sky in the same question since 2026-11-25 — tests/told-night.test.ts)
+  assert.ok(nar.includes("anthropicVision(storyGrimePrompt(visual, night), [pic], { maxTokens: night ? 420 : 360, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"));
   assert.ok(nar.includes("const grimy = tmpl.childSafe ? null : parseStoryGrime(String(grimeRaw || \"\"));") && nar.includes("const inset = parseStoryInset(String(grimeRaw || \"\"));"));
   const film = read("app", "routes", "web.film.tsx");
   assert.ok(film.includes("if (c.grimy === true) return t(\"Looks run-down\");"));

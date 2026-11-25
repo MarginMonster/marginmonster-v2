@@ -13,6 +13,7 @@
  *     is not (storyCheckPrompt / parseStoryCheck / storyFaults / storyFix).
  * Clothes are NOT judged here: a story dresses its people for the part (the baker wears an apron). Whether anybody
  * is UNCLOTHED is (2026-11-25 — UNCLOTHED_ASKED, storyFirst; the sequence is clothed.server.ts → keepClothed).
+ * And a NIGHT scene's sky is (2026-11-25 — storyNight, NIGHT_ASKED, NOT_NIGHT_FAULT: night is night, as in the acted films).
  */
 import { firstJson } from "./first-json.ts";
 
@@ -182,11 +183,83 @@ export function parseNightLook(raw: string): boolean {
 }
 /** Said FIRST when a night picture came back as dusk or day. */
 export const NIGHT_FIRST = "NIGHT, about three in the morning: the sky is BLACK, with no blue in it and no glow on the horizon; water and land outdoors are black shapes; the only light is what is really there — a lantern, a torch, a phone — and it falls off fast into darkness.";
+
+/* ---- NIGHT IS NIGHT IN A TOLD STORY TOO ----
+ * 2026-11-25, "Mystery Story — Eleven Went Aboard", the first long told story (13 scenes, two minutes): its idea said "A
+ * night ferry crosses a foggy harbour…" and every one of its pictures was pale misty daylight. The acted film's master had
+ * had its night look since that morning (above); a told story's pictures had none — and the owner's lake films had failed
+ * the same way before the acted fix ("the tent shots still dusk-blue"). So a told scene that is at night says so in its
+ * picture's words (acted-staging.ts → NIGHT_LINE, narrated-story.server.ts), its picture is LOOKED at for it in the
+ * question that already looks at the place (NIGHT_ASKED in storyGrimePrompt — no extra call), and a picture whose sky
+ * reads as dusk or day is drawn again with NIGHT_FIRST said first (storyFirst). The best of its goes is kept, as always. */
+
+/** The acted engine's rule for a place whose own words name no time of day (acted-staging.ts → nightSetting), handed in:
+ *  acted-staging imports this file, so this file never imports it back. */
+export type NightRule = (setting: string, idea: string | null | undefined, shot?: string | null) => string;
+/** A NIGHT THAT IS NOT THIS SCENE'S. "The next morning, Vale stands where the eleventh passenger stood last night" is a
+ *  morning; and a job named for the night is a person, not the hour — "Walter, an elderly night watchman" (The Patience of
+ *  Bread, 2026-11-23) also works at first light. Foreseen, not yet seen: said so a scene's time is never guessed from
+ *  them. (A night ferry, a night bus, a night shift ARE the night: they stay.) */
+const OTHER_NIGHT = /\b(?:last|previous|other|tomorrow)\s+night\b|\b(?:the\s+)?night\s+before\b|\bnight[- ](?:watchm[ae]n|guards?|porters?|nurses?)\b/gi;
+/** …AND THE SMALL HOURS WRITTEN ANOTHER WAY ARE THE NIGHT (review of S11, 2026-11-25): NIGHT_SAID knows "3am" and "three
+ *  in the morning", but a writer also writes "3 a.m.", "2:30am" and "two in the morning" — and the "morning" in that
+ *  one is a day word to the rule, so "Vale climbs the stairs at 2 in the morning" in the night ferry came out DAY. Read
+ *  as the night they are, before anything else is asked. */
+const SMALL_HOURS = /\b(?:[1-4](?::[0-5]\d)?\s?a\.?m\b\.?|(?:[1-4]|one|two|three|four)(?::[0-5]\d)?(?:\s*o'?clock)?\s+in\s+the\s+morning\b)/gi;
+const otherNight = (s: string | null | undefined): string => String(s || "").replace(OTHER_NIGHT, " ").replace(SMALL_HOURS, " at night ");
+const NIGHT_EVERY = new RegExp(NIGHT_SAID.source, "gi");
+/** IS THIS TOLD SCENE AT NIGHT? Its picture's own words decide first, then its narration: either one that says night
+ *  (NIGHT_SAID) — and names no time of day as well ("at dawn, the night watchman…", "as dusk turns to night" are left to
+ *  their words) — makes it night; either one that names another time of day makes it not. When neither names a time at
+ *  all, the place it is set at, or the story's IDEA, says it — the acted engine's own rule, word for word (`rule`):
+ *  "A night ferry crosses a foggy harbour" makes "the ferry slides out from the pier into thick fog" night, and "the
+ *  ferry noses into the far pier at dawn" stays dawn.
+ *  NEVER IN A CHILDREN'S STORY'S DAYTIME, NEVER IN A CARTOON UNLESS THE STORY SAYS NIGHT: a children's story and a cartoon
+ *  are at night only where the scene itself or its place says so — the idea alone never darkens a picture they would draw
+ *  by day ("bright and friendly"). A world of its own (Fantasy) is told the night like any grown-up story. */
+export function storyNight(o: { words: string; said?: string | null; place?: string | null; idea?: string | null; childSafe?: boolean; cartoon?: boolean }, rule: NightRule): boolean {
+  const pic = otherNight(o.words);
+  const said = otherNight(o.said);
+  // (do these words name a time of day besides the night? Asked of the rule itself, never a second list: told the idea is
+  //  night, it leaves alone only words that already name a time — and the night's own words are taken out first)
+  const dayIn = (w: string): boolean => { const left = w.replace(NIGHT_EVERY, " "); return rule(left, "night") === left; };
+  for (const own of [pic, said]) {
+    if (NIGHT_SAID.test(own)) return !dayIn(own);
+    if (dayIn(own)) return false;
+  }
+  const by = (wider: string | null | undefined): boolean => rule(pic, otherNight(wider), said) !== pic;
+  return by(o.place) || (!o.childSafe && !o.cartoon && by(o.idea));
+}
+/** …AND THE STYLE'S OWN DAYLIGHT IS NOT ITS LIGHT (review of S11, 2026-11-25). A told picture's words end with its genre's
+ *  style, and most styles offer a day light beside a night one: the Mystery's — "Eleven Went Aboard" was a Mystery Story —
+ *  is "pools of lamplight in a dim room, or flat grey daylight through rain"; the Romance's "soft window light or golden
+ *  hour"; the Comedy's "bright even daylight or warm household lamps" (film-genres.ts). Told the night and then offered
+ *  flat grey daylight, the model is free to draw what the ferry was drawn as. Said right behind NIGHT_LINE, before the
+ *  style it is about. */
+export const NIGHT_STYLE_LIGHT = "Of the light the style below names, this picture takes only a night's — lamps, street lights, firelight, a torch, the moon — never daylight, sun, golden hour or grey daylight through fog or rain.";
+/** …ASKED IN THE QUESTION THAT LOOKS AT THE PLACE (storyGrimePrompt), last — the master's own question (nightLookPrompt)
+ *  in its words, with the ferry's daylight named ("pale misty daylight": fog lit by day is not fog lit by a lamp) and a
+ *  drawn night allowed its deep night-blue (a cartoon's night is told as one only where its own words say night). The
+ *  reader says what it sees outside before it answers.
+ *  (Review of S11, 2026-11-25, read as the reader will read it: the day side said "a sky that is … grey or lit", and the
+ *  ferry's own right answer — thick fog at night, glowing round the deck lamps under a dark grey murk — is a grey, lit sky.
+ *  Told both, a reader may call the very picture we want "dusk", and every night scene in fog is drawn three times and
+ *  kept flagged. So fog that glows round the lamps and fades to dark is named as night, and the day side's grey is a
+ *  LIGHT grey, its fog pale with daylight all the way across.) */
+export const NIGHT_ASKED = 'Last, this picture is meant to be set in the MIDDLE OF THE NIGHT. Look at the sky and at whatever is outdoors or seen through a window, a door or a tent opening, and say in a few words how it is lit ("outdoors"). "sky" is "night" if it is night there: a black or near-black sky (in a drawn picture, a deep night-blue one with the moon or stars), the outdoors dark except for lamps, torches or the moon, and fog, if there is any, dark except where a lamp lights it — fog that glows round the lamps and fades to dark away from them is night. "sky" is "dusk" or "day" if it reads as dusk, twilight, blue hour, an overcast evening, pale misty daylight or day: a sky that is pale, blue or light grey, fog pale with daylight all the way across, or daylight falling in through a window or a door. If no sky and nothing outdoors can be seen at all, "sky" is "night".';
+/** …its answer: true = night, false = the sky reads as dusk or day (the fault), null = the answer does not say — and then
+ *  it is night (as parseNightLook: an answer that cannot be read never costs a story its picture). */
+export function parseStoryNight(raw: string): boolean | null {
+  const sky = jsonIn(raw)?.sky;
+  if (typeof sky !== "string") return null;
+  const s = sky.trim().toLowerCase();
+  return s !== "dusk" && s !== "day";
+}
 export const TODAY_LOOK = "Where these words do not say how old a place is, it looks the way such a place looks TODAY — a home is an ordinary modern house (outside, painted siding or plaster; inside, plain painted walls), with ordinary rectangular windows and an ordinary front door — never older, rougher or more storybook than the words say: no rough stone walls, no cottage and no castle unless they name one. " + LIVED_IN + " " + DRESSED;
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference
  *  pictures, whether that same character is in it; and whether the picture is split into panels. */
-export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean; /** who stares into the lens (absent: nobody, or not asked) */ lens?: string[]; /** the place drawn run-down when its words do not say so */ grimy?: boolean; /** a smaller picture pasted into it */ inset?: boolean; /** somebody in it UNCLOTHED (absent: nobody, or not asked) — and where that one is, in a few words */ unclothed?: boolean; unclothedWho?: string };
+export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean; /** who stares into the lens (absent: nobody, or not asked) */ lens?: string[]; /** the place drawn run-down when its words do not say so */ grimy?: boolean; /** a smaller picture pasted into it */ inset?: boolean; /** somebody in it UNCLOTHED (absent: nobody, or not asked) — and where that one is, in a few words */ unclothed?: boolean; unclothedWho?: string; /** a NIGHT scene whose sky reads as dusk or day (absent: night, not a night scene, or not asked) */ notNight?: boolean };
 /** …and what is handed to the storyboard about a picture that was KEPT with something still wrong (the
  *  best of its goes): the reading, and who was looked for — in the order of `seen` — so the scene's flag
  *  can say who is missing. */
@@ -251,9 +324,10 @@ export function parseStoryUnclothed(raw: string): { unclothed: boolean; who: str
  *  on a flashlight, came back as the wide shore with the hand in a small framed box in its top-left corner — the
  *  panel look-out only runs where the words describe two moments). Asked on the live reader with five real stills,
  *  three times each: the inset caught every time, none seen in the four without one, the grime answers unchanged. */
-export function storyGrimePrompt(visual: string): string {
+// (…and, for a NIGHT scene only, its sky — NIGHT_ASKED, 2026-11-25: a day scene's question is word for word as it was tuned)
+export function storyGrimePrompt(visual: string, night = false): string {
   const words = String(visual || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().replace(/[.\s]+$/, "").slice(0, 600);
-  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}". First look at the PLACE and describe in a few words its walls, floor and windows and the state they are in. "grimy" is true only if the place looks dirty, stained, damp, peeling, cracked, crumbling, dusty or abandoned — and those words do not say it is old, abandoned or ruined; an ordinary clean home that is simply dark at night is NOT grimy. Then look at the WHOLE frame, corner to corner: "inset" is true only if a SMALLER separate picture sits inside this one — a framed box, a picture-in-picture, a second view or a close-up pasted into a corner or along an edge. A window, a mirror, a screen or a doorway that belongs to the scene is NOT an inset. Reply with ONLY this JSON: {"place": "…", "grimy": true or false, "corners": "what is in each corner, in a few words", "inset": true or false}.`;
+  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}". First look at the PLACE and describe in a few words its walls, floor and windows and the state they are in. "grimy" is true only if the place looks dirty, stained, damp, peeling, cracked, crumbling, dusty or abandoned — and those words do not say it is old, abandoned or ruined; an ordinary clean home that is simply dark at night is NOT grimy. Then look at the WHOLE frame, corner to corner: "inset" is true only if a SMALLER separate picture sits inside this one — a framed box, a picture-in-picture, a second view or a close-up pasted into a corner or along an edge. A window, a mirror, a screen or a doorway that belongs to the scene is NOT an inset.${night ? ` ${NIGHT_ASKED}` : ""} Reply with ONLY this JSON: {"place": "…", "grimy": true or false, "corners": "what is in each corner, in a few words", "inset": true or false${night ? ', "outdoors": "how the sky and the outdoors are lit, in a few words", "sky": "night" or "dusk" or "day"' : ""}}.`;
 }
 /** …its answer — null when it cannot be read. */
 export function parseStoryGrime(raw: string): boolean | null {
@@ -327,15 +401,26 @@ export function parseStoryPanels(raw: string): boolean | null {
 /** How wrong a picture is: a split picture is the worst (it cannot be used at all), then each cast member
  *  who is not in it. 0 = keep it. */
 /** …and SOMEBODY UNCLOTHED is worse than all of them together (2026-11-25: a lake film nobody could send — whatever
- *  else is right in it). Every other fault at once comes to 27 (three looked for, none there; split; inset; a stranger;
- *  stood outside; a stare; run-down), so a picture with it is never the one kept while one without it exists. */
-export const UNCLOTHED_FAULT = 30;
-export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0) + (c.lens?.length ? 2 : 0) + (c.grimy ? 2 : 0) + (c.inset ? 4 : 0) + (c.unclothed ? UNCLOTHED_FAULT : 0);
+ *  else is right in it). Every other fault at once comes to 30 (three looked for, none there; split; inset; a stranger;
+ *  stood outside; a stare; run-down; a night drawn as day), so a picture with it is never the one kept while one without
+ *  it exists. (It was 30 while every other came to 27 — raised when the night came in beside them.) */
+export const UNCLOTHED_FAULT = 40;
+/** …and A NIGHT SCENE DRAWN AS DUSK OR DAY (2026-11-25, the night ferry told over thirteen daylight pictures) weighs what
+ *  the other faults that break the story weigh — somebody missing, a stranger, the looker stood outside — over the
+ *  cosmetic ones (a stare, a run-down room), under a split picture that cannot be used at all, and far under somebody
+ *  unclothed: a dressed day picture is kept before an undressed night one. */
+export const NOT_NIGHT_FAULT = 3;
+export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0) + (c.lens?.length ? 2 : 0) + (c.grimy ? 2 : 0) + (c.inset ? 4 : 0) + (c.notNight ? NOT_NIGHT_FAULT : 0) + (c.unclothed ? UNCLOTHED_FAULT : 0);
 
 /** What the next go is told FIRST about the last one (the master's own lesson, image-generation.server.ts: DRESSED said
  *  at the end of a long prompt did not dress the woman in the lake; said first, it did). A picture that came back with
  *  somebody unclothed → CLOTHED_FIRST, ahead of everything; anything else → "" (its fault is named at the end, storyFix). */
-export const storyFirst = (c: StoryCheck | null | undefined): string => (c?.unclothed ? `${CLOTHED_FIRST} ` : "");
+// (…and a night scene whose sky came out dusk or day → NIGHT_FIRST, the master's own redraw line — after the clothes,
+//  which weigh more: 2026-11-25)
+export const storyFirst = (c: StoryCheck | null | undefined): string => {
+  const first = [c?.unclothed ? CLOTHED_FIRST : "", c?.notNight ? NIGHT_FIRST : ""].filter(Boolean).join(" ");
+  return first ? `${first} ` : "";
+};
 
 /** What to tell the picture model on the next go: the fault, named. `names` in the order of the references. */
 export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<string | undefined> = []): string {
@@ -414,11 +499,12 @@ export function creatureNote(name: string, kind: string | null | undefined): str
 /** What a piece records about the pictures it KEPT with somebody still not right (the best of three goes):
  *  which scene, who, and whether it was split into panels. [] when every picture passed its look. */
 // (…and whether somebody in it is STILL unclothed — after its goes and its one edit: the operator's record says so)
-export function keptFaults(checks: ReadonlyArray<StoryKept | null | undefined>): Array<{ scene: number; missing: string[]; panels?: true; unclothed?: true }> {
-  const out: Array<{ scene: number; missing: string[]; panels?: true; unclothed?: true }> = [];
+// (…and whether a night scene was still drawn as dusk or day after its goes, 2026-11-25)
+export function keptFaults(checks: ReadonlyArray<StoryKept | null | undefined>): Array<{ scene: number; missing: string[]; panels?: true; unclothed?: true; notNight?: true }> {
+  const out: Array<{ scene: number; missing: string[]; panels?: true; unclothed?: true; notNight?: true }> = [];
   (checks || []).forEach((c, i) => {
     if (!c || !storyFaults(c)) return;
-    out.push({ scene: i + 1, missing: (c.who || []).filter((_, k) => c.seen[k] === false).map((n) => String(n).slice(0, 40)).slice(0, 3), ...(c.panels ? { panels: true as const } : {}), ...(c.unclothed ? { unclothed: true as const } : {}) });
+    out.push({ scene: i + 1, missing: (c.who || []).filter((_, k) => c.seen[k] === false).map((n) => String(n).slice(0, 40)).slice(0, 3), ...(c.panels ? { panels: true as const } : {}), ...(c.unclothed ? { unclothed: true as const } : {}), ...(c.notNight ? { notNight: true as const } : {}) });
   });
   return out.slice(0, 24);
 }

@@ -192,6 +192,10 @@ test("a picture with somebody unclothed is never the one kept while one without 
   const worst = { seen: [false, false, false], panels: true, extra: true, outside: true, lens: ["Farida"], grimy: true, inset: true };
   assert.equal(sp.storyFaults(worst), 27);
   assert.ok(sp.storyFaults({ seen: [true], panels: false, unclothed: true }) > sp.storyFaults(worst), "unclothed alone outweighs all of them");
+  // (…and a night drawn as day beside them since 2026-11-25 — 30 in all; a dressed day picture is kept before an undressed
+  //  night one: tests/told-night.test.ts)
+  assert.equal(sp.storyFaults({ ...worst, notNight: true }), 30);
+  assert.ok(sp.storyFaults({ seen: [true], panels: false, unclothed: true }) > sp.storyFaults({ ...worst, notNight: true }), "unclothed alone outweighs all of them, the night too");
   assert.equal(sp.storyFaults({ seen: [true], panels: false, unclothed: true }), sp.UNCLOTHED_FAULT);
   assert.equal(sp.storyFaults({ seen: [true], panels: false, unclothed: false }), 0);
   // the fix: CLOTHED_FIRST, said ahead of everything on the next go; nothing for any other fault
@@ -225,7 +229,8 @@ test("TOLD STORIES: the lake scene's words dress her before the picture model re
   //  (review of S8, 2026-11-25)
   assert.ok(nar.includes("if (!img && barred) img = await keepClothed({ url: barred, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, aspect), log:") && !nar.includes("if (!img) img = barred;"));
   // …and the lenient last path: dressed words, looked at, kept
-  assert.ok(nar.includes("renderCreativeSeed(`${safe}${dressedInWater((scene.visual || \"\").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);") && nar.includes("img = lenient ? await keepClothed({ url: lenient,"));
+  // (…a night scene's night said first in it since 2026-11-25 — tests/told-night.test.ts)
+  assert.ok(nar.includes("renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : \"\"}${dressedInWater((scene.visual || \"\").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);") && nar.includes("img = lenient ? await keepClothed({ url: lenient,"));
 });
 
 test("FANTASY KEEPS ITS OWN WORLD: everybody clothed, but never told its places look the way they look TODAY", async () => {
