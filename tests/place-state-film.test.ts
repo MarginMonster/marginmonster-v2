@@ -19,7 +19,9 @@ test("what each scene does to its place is read off its own words, for a staged 
 });
 
 test("the picture of a change: an edit of the shot's OWN start picture, looked at, checkpointed and read back after a restart", () => {
-  const at = eng.indexOf("const placeChange = placeOn && !revealed && !approvedFrames[i] ? changeAt(i) : null;");
+  // (never on the reveal's shot, drawn or not — review of S12: one whose thing would not come is `implied`, and ending it
+  //  on the zipper drawn up opens the door on nothing)
+  const at = eng.indexOf("const placeChange = placeOn && !revealed && !lastHorror && !approvedFrames[i] ? changeAt(i) : null;");
   assert.ok(at > loopAt && at > eng.indexOf("if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);", loopAt), "after the shot's seed is settled — whatever seeds it");
   assert.ok(eng.includes("const changing = !!placeChange && changesState(placeBefore, placeChange);"), "only what is not already so");
   // nano-banana-pro, then Seedream 4.5, on the shot's own start picture (flux-kontext-pro left the door open: not asked)
@@ -66,6 +68,9 @@ test("the place as it now is: every later picture there grows out of the change,
   assert.ok(eng.includes("const revealBase = abs(shownAt(i) || master.url);"));
   assert.ok(!eng.includes("image_input: [abs(master.url)") && !eng.includes("input_image: abs(master.url)"), "no editor is handed the pristine master any more");
   assert.equal(eng.split("abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)]").length - 1, 2);
+  // (…and a re-anchor that will not come falls back to the place as it now is, never the pristine master — review of S12)
+  assert.ok(eng.includes("seedAbs = abs(reangled) || abs(shownAt(i) || master.url); sinceAnchor = 0; softSeams.add(i);"));
+  assert.ok(!eng.includes("seedAbs = abs(reangled) || abs(master.url);"));
   assert.ok(eng.includes("const keptSo = placeNow ? ` The place as it is when this moment begins: ${placeNow}` : \"\";"));
   // the clip: where it ends, and what stays — in the camera-and-sound rules the prompt builder keeps whole
   assert.ok(eng.includes("const placeLines = placeOn ? [changing ? changeEndLine(placeChange) : \"\", stateLine(placeBefore, changeAt(i))].filter(Boolean).join(\" \") : \"\";"));

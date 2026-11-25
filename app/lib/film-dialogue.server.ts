@@ -1629,7 +1629,9 @@ export async function generateTestMovie(opts: {
           // (from the place AS IT NOW IS: a re-anchor after a sighting keeps what was seen — shownAt)
           abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
         ));
-        seedAbs = abs(reangled) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
+        // (a re-anchor that will not come falls back to the place AS IT NOW IS — never the pristine master, where the door
+        //  the story zipped shut is open again: review of S12)
+        seedAbs = abs(reangled) || abs(shownAt(i) || master.url); sinceAnchor = 0; softSeams.add(i);
       } else {
         seedAbs = abs(prevFrameUrl) || abs(master.url); sinceAnchor++;
       }
@@ -1654,7 +1656,10 @@ export async function generateTestMovie(opts: {
     // blacked the lake out and left the door OPEN, and a wrong end frame is worse than none, so it is not asked. About 15
     // cents a change. Never the reveal (its picture is the moment), never a frame the maker approved; a picture that will
     // not come leaves the shot as it is made today.
-    const placeChange = placeOn && !revealed && !approvedFrames[i] ? changeAt(i) : null;
+    // (never the reveal's shot at all — drawn or not: one whose thing would not come is acted as `implied`, the two
+    //  reacting to what is never seen, and ending it on "the zipper drawn up a hand's width" opens the door on nothing.
+    //  Review of S12, 2026-11-25.)
+    const placeChange = placeOn && !revealed && !lastHorror && !approvedFrames[i] ? changeAt(i) : null;
     const changing = !!placeChange && changesState(placeBefore, placeChange);
     let endImage: string | undefined;
     if (changing && placeChange && master?.url) {
