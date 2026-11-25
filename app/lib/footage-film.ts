@@ -346,17 +346,22 @@ const countOf = (when: string): number | null => {
   const c = d ? (/^\d/.test(d[3]) ? Number(d[3]) : NUMBER_WORDS.indexOf(d[3])) : 0;
   return c >= 1 ? c : null;
 };
-/** THE CARDS GO ON: a next night's cards never go back. When a writer counted from NIGHT 1 again — or from any night before
- *  the `last` one — every count is moved on together, so its first counted card is night `n`, the order and the gaps it
- *  wrote kept; a card ON the last night (a moment picked up right there) is left as it is. */
+/** THE CARDS GO ON: a next night's cards never go back — not before the `last` night the footage reached, and not
+ *  before the card ahead of them. Read in order: a card on the last night itself (a moment picked up right there) stays;
+ *  the first card that goes back — a writer counting from NIGHT 1 again — is moved to the night after the one before it
+ *  (night `n` when nothing came before it), and every card after it is moved on with it, the gaps it wrote kept. (Seen in
+ *  the harness, 2026-11-25: "NIGHT 3 · 3:14 AM" picked up right there, then "NIGHT 1", "NIGHT 2" — moving every count by
+ *  one amount made the picked-up moment NIGHT 6, after the nights it comes before.) */
 export function nightsOn(moments: readonly FootageMoment[], last: number, n: number): FootageMoment[] {
-  const counts = moments.map((m) => countOf(m.when));
-  const known = counts.filter((c): c is number => c !== null);
-  if (!known.length || !(last >= 1) || Math.min(...known) >= last) return moments.map((m) => ({ ...m }));
-  const by = n - Math.min(...known);
-  return moments.map((m, i) => {
-    const c = counts[i];
-    return c === null ? { ...m } : { ...m, when: cardWords(m.when.toUpperCase().replace(COUNTED, (_all, w: string, gap: string) => `${w}${gap || " "}${c + by}`)) };
+  if (!(last >= 1)) return moments.map((m) => ({ ...m }));
+  let shift = 0, prev = Math.min(last, n - 1);
+  return moments.map((m) => {
+    const c = countOf(m.when);
+    if (c === null) return { ...m };
+    let v = c + shift;
+    if (v < prev) { shift = prev + 1 - c; v = prev + 1; }
+    prev = v;
+    return v === c ? { ...m } : { ...m, when: cardWords(m.when.toUpperCase().replace(COUNTED, (_all, w: string, gap: string) => `${w}${gap || " "}${v}`)) };
   });
 }
 
