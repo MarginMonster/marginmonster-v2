@@ -275,6 +275,15 @@ test("ACTED FILMS: the thing's portrait, a sighting and the REVEAL all go throug
   assert.ok(actor.includes("return keepClothed({ url, ref: (u) => (u.startsWith(\"http\") ? u : `${base}${u}`), edit: (u, bare) => clothedEditOn(u, bare, \"9:16\"),") && !actor.includes("still: \"drop\""));
 });
 
+test("the storyboard says it: a scene still unclothed after its goes and its edit is flagged first, in every language", () => {
+  const film = read("app", "routes", "web.film.tsx");
+  const fn = film.slice(film.indexOf("const flagWhy = (i: number): string => {"), film.indexOf("// Tap a scene still to inspect it big (lightbox)."));
+  // (two short words: the flag is a third of a phone-wide card — "Someone unclothed" broke as "unclothe-d" in the mock)
+  const bare = fn.indexOf("if (c.unclothed === true) return t(\"Needs clothes\");");
+  assert.ok(bare > 0 && bare < fn.indexOf("if (c.panels === true || c.inset === true) return t(\"Split picture\");"), "the heaviest fault, said first");
+  assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("\"Needs clothes\":").length - 1, 5, "es, fr, de, zh and ur");
+});
+
 test("the take's own words: a person in the water is dressed where they are said, inside the scene's prompt", async () => {
   const { takeStillPrompt } = await import("../app/lib/take.ts");
   const still = "A TEST phone light sweeps the black pond: a pale woman stands waist-deep in the water among the reeds, perfectly still, facing the camera.";

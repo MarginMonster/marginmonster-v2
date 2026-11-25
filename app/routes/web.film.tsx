@@ -2607,8 +2607,11 @@ export default function FilmStudio() {
   /** WHY a still is flagged, in two words — from what the check read off it (mv-cast.ts CastCheck). The
    *  flag used to say only "Worth a re-roll", with the reason in a tooltip a phone does not have. */
   const flagWhy = (i: number): string => {
-    const c = ((seeds?.checks || [])[i] || null) as { seen?: boolean[]; twin?: boolean; twice?: boolean[]; extra?: boolean; outside?: boolean; lens?: string[]; grimy?: boolean; inset?: boolean; dressed?: boolean[]; odd?: boolean; mic?: string; bars?: boolean; panels?: boolean; who?: string[] } | null;
+    const c = ((seeds?.checks || [])[i] || null) as { seen?: boolean[]; twin?: boolean; twice?: boolean[]; extra?: boolean; outside?: boolean; lens?: string[]; grimy?: boolean; inset?: boolean; unclothed?: boolean; dressed?: boolean[]; odd?: boolean; mic?: string; bars?: boolean; panels?: boolean; who?: string[] } | null;
     if (!c) return t("Worth a re-roll");
+    // (the heaviest fault first: somebody still unclothed after its goes and its one edit — story-picture.ts → UNCLOTHED_FAULT.
+    //  Two short words: on a phone the flag is a third of the card, and "Someone unclothed" broke as "unclothe-d" in a mock)
+    if (c.unclothed === true) return t("Needs clothes");
     // (…or a smaller picture pasted into a corner of it — the same fault to a viewer: story-picture.ts)
     if (c.panels === true || c.inset === true) return t("Split picture");
     // (a told story knows WHO it looked for: "Marta is missing")
