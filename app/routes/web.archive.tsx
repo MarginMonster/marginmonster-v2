@@ -69,6 +69,8 @@ import { externalOrigin } from "../lib/origin.server";
 // (2026-11-22) the "Today" of the When filter starts at midnight where the shop is
 import { isValidTimeZone, zonedDateString, zonedInstant } from "../lib/timezone";
 import { storyHeroOf } from "../lib/film-series";
+// (2026-11-25) "Make it a series": every story film's card says what comes next — and the next episode is one tap
+import { continuable, nextMarks, seriesKeyOf, type NextMark } from "../lib/film-series";
 // (2026-11-23) a finished film says who is in it — its cast, on the piece itself
 import { cookingReel, cookingTitle, keepGuess, storyStars } from "../lib/story-picture";
 import { showMeta } from "../lib/character-series";
@@ -80,6 +82,8 @@ import { COVER_LABEL, coverAsk, coverKind, coverOf, type CoverFamily } from "../
 import { coverFailedLately } from "../lib/archive-cover.server";
 // (2026-11-24) a series is ONE card on the shelf — its cover, and how many episodes are inside
 import { archiveShelf, episodeOwnLabel, episodesOf, seriesNeedle, seriesOnShelf, seriesRefs, seriesTags, type SeriesItem } from "../lib/archive-series";
+// (2026-11-25) …and an older episode's mark leads to its series, by the series' hashed key
+import { seriesKey } from "../lib/archive-series";
 // (2026-11-24) KEEP IN MY CAST: a story's own character, registered from the finished film
 import { CharacterForge, FORGE_CSS, type ForgeSeed } from "../components/CharacterForge";
 import { VOICE_UI_CSS } from "../components/VoicePicker";
@@ -502,6 +506,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       seriesTotals[ref.key] = named + first;
     } catch { /* the cover then counts the shelf */ }
   }));
+  // WHAT COMES NEXT (2026-11-25, film-series.ts → nextMarks). The owner: "We also need for every video in archive
+  // "Make it a series" start on next part or episode two / 3 /4 intelligently know". Every film that can be
+  // continued says so on its card — "Make it a series", "Episode N →" on a series' latest, "Episode 3 of 4" on an
+  // older one — worked out over this page's films, newest first: the page holds the newest of every kind, so a
+  // series' latest is always here when any of it is. Only a SEARCH or a COLLECTION can leave its newer episodes
+  // out; then they are read as well (one query, this shop's own), so no card offers a number the Movie Maker would
+  // not make (it continues from the latest anyway: film-series.ts → latestEpisode).
+  const videoRows = assets.filter((a) => a.type === "VIDEO_AD");
+  let markRows: ReadonlyArray<{ id: string; metaJson?: unknown; bodyJson?: unknown; status?: string | null; createdAt: Date }> = videoRows;
+  const markSeries = q || col ? [...new Set(videoRows.filter((a) => continuable(a.metaJson)).map((a) => seriesKeyOf(a)))].slice(0, 30) : [];
+  if (markSeries.length) {
+    try {
+      const more = await db.asset.findMany({
+        where: { shopId: shop.id, type: "VIDEO_AD", status: { not: "FAILED" }, OR: markSeries.map((id) => ({ metaJson: { contains: seriesNeedle({ kind: "film", id }) } })) },
+        orderBy: { createdAt: "desc" },
+        take: 40,
+        select: { id: true, metaJson: true, bodyJson: true, status: true, createdAt: true },
+      });
+      const have = new Set(videoRows.map((a) => a.id));
+      markRows = [...videoRows, ...more.filter((r) => !have.has(r.id))].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    } catch { /* the page's own films decide, as they do with no search */ }
+  }
+  const nextOf = nextMarks(markRows);
   const mapAsset = (a: (typeof assets)[number]) => {
       let body: { videoUrl?: string; imageUrl?: string; audioUrl?: string; title?: string; html?: string; needsRegen?: boolean } = {};
       try { body = JSON.parse(a.bodyJson || "{}"); } catch { /* ignore */ }
@@ -551,9 +578,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // …and which of a story's pictures were KEPT with somebody still not right — the best of three goes
         // (story-picture.ts → keptFaults): a story made in one press has no storyboard to flag them on
         opsPictures: operator ? (() => { try { const p = JSON.parse(a.metaJson || "{}").pictureFaults; return Array.isArray(p) && p.length ? p.slice(0, 24) : undefined; } catch { return undefined; } })() : undefined,
-        // Is it a STORY film (acted or narrated)? Those can be continued: the viewer's "Next episode" opens
-        // the Movie Maker on the next episode of its series (film-series.ts → storyHeroOf / episodeCardFor).
-        canContinue: a.type === "VIDEO_AD" && !!storyHeroOf(a.metaJson),
+        // WHAT COMES NEXT, if it can be continued (film-series.ts → nextMarks): "start" (not in a series yet),
+        // "next" (a series' latest) or "older"; the episode a tap makes; the film it continues from — and, for an
+        // older one, its series' hashed key (archive-series.ts), where its tap goes. null for an ad, a music
+        // video, a character's show (it makes its own), a telling in another language, a film that never finished.
+        next: (() => {
+          const m: NextMark | undefined = a.type === "VIDEO_AD" ? nextOf.get(a.id) : undefined;
+          return m ? { state: m.state, next: m.next, from: m.from, episode: m.episode, of: m.of, key: m.state === "older" ? seriesKey("film", seriesKeyOf(a)) : null } : null;
+        })(),
         // ITS POSTER (story-poster.ts): a story film is shown on the shelf as its poster — title and cast over
         // its most "cast" picture — instead of whatever its first frame happened to be. null = the first frame.
         poster: a.type === "VIDEO_AD" ? posterOf(a.metaJson) : null,
@@ -2051,6 +2083,62 @@ button.wa-colchip.wa-coladd{font-size:12px;}
   .wa-epno{font-size:10px;}
 }
 @media(prefers-reduced-motion:reduce){.wa-sheet.open{animation:none;}}
+/* ── WHAT COMES NEXT (2026-11-25) ─────────────────────────────────────────────────────────────────────────────
+   The owner: "We also need for every video in archive "Make it a series" start on next part or episode two / 3 /4
+   intelligently know … need the ability to pick up where left off to continue". A film that can be continued
+   carries ONE small mark at the END of its card's last line — a quiet pill in the app's own pale green, a link of
+   its own (44px to the thumb, the extra reach invisible, upward over the title, which taps nothing) — so it never
+   covers a poster and never makes a card taller. Beside it the kind goes (the title says it: "Horror Film — …"),
+   and on a phone the date gives up its year. An older episode's mark is plainer: it only says which it is. */
+.wb-asset .s.has-next{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:3px;margin-block:-2px;}
+.s.has-next .wa-kind,.wa-date-short{display:none;}
+.wa-next{position:relative;margin-inline-start:auto;display:inline-flex;align-items:center;gap:2px;min-height:19px;box-sizing:border-box;max-width:100%;padding:0 9px;border-radius:999px;background:#EAF6EF;color:var(--green,#0C7A46);box-shadow:inset 0 0 0 1px #BFE2CD;font:800 11px/1 Poppins,sans-serif;letter-spacing:.01em;text-decoration:none;white-space:nowrap;-webkit-tap-highlight-color:transparent;}
+.wa-next::before{content:"";position:absolute;inset:-18px -8px -7px;}
+.wa-next svg{flex:0 0 auto;}
+[dir="rtl"] .wa-next svg{transform:scaleX(-1);}
+.wa-next.is-older{background:none;box-shadow:none;padding:0 2px;color:#8a6207;text-decoration:underline dotted rgba(138,98,7,.55);text-underline-offset:3px;}
+.wa-next:focus-visible{outline:3px solid var(--green,#0C7A46);outline-offset:2px;}
+.wa-next.off{opacity:.45;pointer-events:none;}
+@media(hover:hover){.wa-next:not(.off):not(.is-older):hover{background:#DCF0E5;}.wa-next.is-older:hover{text-decoration-style:solid;}}
+/* a SERIES' card carries its latest's mark: a link beside the card (never one inside it), at the end of the card's
+   last line — which is pushed to the foot of the card so the two always sit on one line; "All episodes" makes room
+   (the whole card still opens the series, and its cover says how many) */
+.wa-seriescell{position:relative;display:flex;flex-direction:column;}
+.wa-seriescell > .wa-series{flex:1 1 auto;}
+.wa-seriescell .wa-series .m{flex:1 1 auto;display:flex;flex-direction:column;}
+.wa-seriescell .wa-series .s{display:flex;align-items:center;min-height:19px;margin-top:auto;padding-top:4px;padding-inline-end:46%;}
+.wa-seriescell .wa-series-open,.wa-seriescell .wa-series .wa-kind,.wa-seriescell .wa-series .wa-date-short{display:none;}
+.wa-seriescell > .wa-next{position:absolute;bottom:11px;inset-inline-end:12px;max-width:calc(100% - 24px);}
+/* THE NEXT EPISODE, at the end of an open series' shelf: the poster it has not got yet — the picture it continues
+   from behind it, out of focus, between the sprocket holes of a film strip, and a gold frame waiting for it */
+.wb-asset.wa-nexttile{display:flex;flex-direction:column;text-decoration:none;color:inherit;border:1.5px dashed rgba(176,133,38,.6);background:#FBF7EA;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .16s ease,box-shadow .16s ease;}
+.wa-nexttile-cover{position:relative;display:block;aspect-ratio:4/5;overflow:hidden;background:radial-gradient(120% 90% at 50% 40%,#1D4A33,#102A1D 70%);}
+.wb-asset .wa-nexttile-cover img{position:absolute;inset:0;width:100%;height:100%;aspect-ratio:auto;object-fit:cover;filter:blur(5px) brightness(.42) saturate(.75);transform:scale(1.12);}
+.wa-nexttile-cover::before,.wa-nexttile-cover::after{content:"";position:absolute;top:0;bottom:0;z-index:1;width:13px;background:rgba(11,31,21,.82) repeating-linear-gradient(180deg,transparent 0 5px,rgba(246,231,193,.5) 5px 12px,transparent 12px 17px) center/5px 100% no-repeat;}
+.wa-nexttile-cover::before{left:0;}
+.wa-nexttile-cover::after{right:0;}
+.wa-nexttile-frame{position:absolute;inset:16px 24px;z-index:1;border:1.5px dashed rgba(231,200,121,.75);border-radius:10px;animation:waNextWait 3.4s ease-in-out infinite;}
+@keyframes waNextWait{0%,100%{box-shadow:0 0 0 0 rgba(231,200,121,0);border-color:rgba(231,200,121,.55);}50%{box-shadow:0 0 22px 2px rgba(231,200,121,.22);border-color:rgba(231,200,121,.95);}}
+.wa-nexttile-num{position:absolute;left:50%;top:50%;z-index:2;transform:translate(-50%,-50%);display:inline-flex;align-items:center;gap:6px;max-width:calc(100% - 56px);box-sizing:border-box;padding:8px 13px;border-radius:999px;background:rgba(16,42,29,.92);color:#E7C879;font:800 13.5px/1.15 Poppins,sans-serif;white-space:nowrap;box-shadow:inset 0 0 0 1px rgba(231,200,121,.45),0 6px 18px rgba(0,0,0,.35);}
+.wa-nexttile .m{display:block;overflow-wrap:anywhere;}
+.wa-nexttile .wa-title{font-family:Poppins,sans-serif;font-weight:800;}
+.wa-nexttile .s{display:block;color:var(--green,#0C7A46);font-weight:700;}
+.wa-nexttile:focus-visible{outline:3px solid var(--green,#0C7A46);outline-offset:3px;}
+.wa-nexttile.off{opacity:.45;cursor:default;pointer-events:none;}
+@media(hover:hover){.wa-nexttile:not(.off):hover{transform:translateY(-3px);box-shadow:0 14px 28px -16px rgba(16,42,29,.55);border-color:rgba(176,133,38,.9);}}
+/* …and the viewer's own button for it: a primary, in the series' green and gold */
+.wa-vacts .wa-vbtn.wa-vnext{background:linear-gradient(165deg,#173D2A,#0E2619);color:#F6E7C1;box-shadow:inset 0 0 0 1px rgba(231,200,121,.5),0 6px 16px rgba(16,42,29,.28);}
+.wa-vacts .wa-vbtn.wa-vnext svg,.wa-vacts .wa-vbtn.wa-vnext .c{color:#E7C879;}
+@media(max-width:640px){
+  .s.has-next .wa-date,.wa-seriescell .wa-series .wa-date{display:none;}
+  .s.has-next .wa-date-short,.wa-seriescell .wa-series .wa-date-short{display:inline;}
+  .wa-next::before{inset:-14px -8px -11px;}
+  .wa-seriescell .wa-series .s{padding-inline-end:58%;}
+  .wa-seriescell > .wa-next{bottom:12px;inset-inline-end:10px;max-width:calc(100% - 20px);}
+  .wa-nexttile-num{font-size:12px;padding:7px 11px;gap:5px;max-width:calc(100% - 40px);}
+  .wa-nexttile-frame{inset:12px 18px;}
+}
+@media(prefers-reduced-motion:reduce){.wa-nexttile-frame{animation:none;}.wb-asset.wa-nexttile{transition:none;}.wa-nexttile:hover{transform:none;}}
 `;
 
 /** One shape in the viewer's "Every size" panel: tap → made on the server → a Save link. */
@@ -2699,6 +2787,51 @@ export default function WebArchive() {
   // …and "Show older pieces" at the foot of the shelf: the same address with more of it loaded
   const olderHref = (() => { const n = new URLSearchParams(searchParams); n.delete("open"); n.set("tab", tab); n.set("show", String(nextShow ?? "")); return `?${n.toString()}`; })();
   const leaveSeries = () => { if (searchParams.get("series")) setSearchParams((p) => { const n = new URLSearchParams(p); n.delete("series"); return n; }, { replace: true, preventScrollReset: true }); };
+  // WHAT COMES NEXT (2026-11-25, film-series.ts → nextMarks) — the one small mark on a film's card. The owner:
+  // "We also need for every video in archive "Make it a series" start on next part or episode two / 3 /4
+  // intelligently know". The next episode was a quiet button inside the viewer, and he did not find it.
+  //   · "Make it a series" / "Episode N →" open the Movie Maker on that next episode — continued from the series'
+  //     LATEST film (the Movie Maker checks that again: a series never forks);
+  //   · "Episode 3 of 4" on an older one goes to its series — inside an open series, to the next-episode tile at
+  //     the end of its shelf (outside one — a search hid the newer episodes — to the whole series).
+  // While pieces are being picked it stands aside, as a series' card does.
+  type PieceNext = NonNullable<(typeof shelf)[number]["next"]>;
+  const toNextTile = (e: { preventDefault(): void }) => {
+    e.preventDefault();
+    if (selecting) return;
+    const tile = document.getElementById("wa-nextep");
+    tile?.scrollIntoView({ block: "center" });
+    tile?.focus({ preventScroll: true });
+  };
+  const seriesWholeHref = (key: string) => { const n = new URLSearchParams(searchParams); for (const k of ["open", "q", "col"]) n.delete(k); n.set("tab", "video"); n.set("series", key); return `?${n.toString()}`; };
+  // (on a phone the date beside a mark is the short one — CSS chooses: the card stays its own height)
+  const shortDate = (when: string) => <span className="wa-date-short" suppressHydrationWarning>{new Date(when).toLocaleDateString(undefined, { month: "numeric", day: "numeric" })}</span>;
+  const nextMarkOf = (n: PieceNext) => {
+    const cls = `wa-next${n.state === "start" ? " is-start" : n.state === "older" ? " is-older" : ""}${selecting ? " off" : ""}`;
+    const stand = selecting ? { "aria-disabled": true, tabIndex: -1 } : {};
+    if (n.state === "older") {
+      const label = t("Episode {n} of {total}", { n: n.episode, total: n.of });
+      return openSeries || !n.key
+        ? <a className={cls} href="#wa-nextep" onClick={toNextTile} {...stand}>{label}</a>
+        : <Link className={cls} to={seriesWholeHref(n.key)} preventScrollReset onClick={(e) => { if (selecting) e.preventDefault(); }} {...stand}>{label}</Link>;
+    }
+    return (
+      <a className={cls} href={`/web/film?episode=${n.from}`} title={t("Continue this story — the next episode, with the same cast")} onClick={(e) => { if (selecting) e.preventDefault(); }} {...stand}>
+        {n.state === "start" ? t("Make it a series") : <>{t("Episode {n}", { n: n.next })}<Ico n="arrow" size={11} /></>}
+      </a>
+    );
+  };
+  // a series says what its LATEST says (each of its episodes carries the same next number and the same film)
+  const seriesNextOf = (s: SeriesItem): PieceNext | null => s.episodes.map((id) => pieceById.get(id)?.next).find((m): m is PieceNext => !!m) || null;
+  // …an OPEN series' next episode — the tile at the end of its shelf — and the picture behind it: the face of the
+  // film it continues from (its cover or poster, else its first frame)
+  const openNext = openSeries ? seriesNextOf(openSeries) : null;
+  const nextFace = (() => {
+    const p = openNext ? pieceById.get(openNext.from) : undefined;
+    if (!p) return null;
+    const f = faceOf(p);
+    return f.poster || (f.media ? `/vthumb/${f.media.split("?")[0].split("/").pop()}` : null);
+  })();
   // OPENING A SERIES BRINGS ITS HEADER TO THE TOP; LEAVING ONE RETURNS TO ITS CARD. The page above the shelf
   // is long, and the shelf behind a series is longer: without this a tap on a card far down the page left
   // the member looking at whatever now sat at that height. A new shelf also ends a selection, as a When
@@ -3252,7 +3385,10 @@ export default function WebArchive() {
             if (c.series) {
               const s = c.series;
               const isPoster = !!s.cover && s.cover !== s.frame;
-              return (
+              // (…and what comes next for it — its latest's mark, at the end of its last line: a link of its own
+              //  beside the card, never a link inside a link. 2026-11-25)
+              const sn = seriesNextOf(s);
+              const card = (
                 <Link key={`series|${s.key}`} to={seriesHref(s.key)} preventScrollReset data-series={s.key} data-cover-ask={askFor(seriesFace(s))}
                   className={`wb-asset wa-series${selecting ? " off" : ""}`} aria-disabled={selecting || undefined} tabIndex={selecting ? -1 : undefined}
                   onClick={(e) => { if (selecting) e.preventDefault(); }} title={`${s.title} · ${episodesLabel(episodesIn(s))}`}>
@@ -3265,11 +3401,12 @@ export default function WebArchive() {
                   </span>
                   <span className="m">
                     <span className="wa-title">{s.title}</span>
-                    <span className="s"><span className="wa-kind">{t("Series")} · </span><span suppressHydrationWarning>{new Date(s.latestWhen).toLocaleDateString()}</span></span>
+                    <span className="s"><span className="wa-kind">{t("Series")} · </span><span className="wa-date" suppressHydrationWarning>{new Date(s.latestWhen).toLocaleDateString()}</span>{sn && shortDate(s.latestWhen)}</span>
                     <span className="wa-series-open">{t("All episodes")} <Ico n="arrow" size={12} /></span>
                   </span>
                 </Link>
               );
+              return sn ? <div key={`series|${s.key}`} className="wa-seriescell">{card}{nextMarkOf(sn.state === "older" ? { ...sn, state: "next" } : sn)}</div> : card;
             }
             // (its face: the cover made for it, else its poster — the viewer opens the piece itself)
             const a = faceOf(c.a);
@@ -3334,7 +3471,11 @@ export default function WebArchive() {
                       "switch to client rendering"), which is why the Archive
                       re-rendered itself from scratch on every visit. Keep the
                       local date; let React reconcile this one node. */}
-                  <div className="s"><span className="wa-kind">{a.isVideo ? t(a.family ? COVER_LABEL[a.family] : "Video") : a.isAudio ? t("Music") : t("Image ad")} · </span><span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>
+                  {/* WHAT COMES NEXT (2026-11-25): a film that can be continued says so at the end of this line —
+                      "Make it a series", "Episode N →" on a series' latest, "Episode 3 of 4" on an older one. It takes
+                      no line of its own, so the card is never taller for it: the kind is said by the title already,
+                      and on a phone the date gives up its year to make room. */}
+                  <div className={`s${a.next ? " has-next" : ""}`}><span className="wa-kind">{a.isVideo ? t(a.family ? COVER_LABEL[a.family] : "Video") : a.isAudio ? t("Music") : t("Image ad")} · </span><span className="wa-date" suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span>{a.next && <>{shortDate(a.when)}{nextMarkOf(a.next)}</>}</div>
                   <div className="wa-tileacts">
                     <span className={`wa-chip ${cc}`}>{cl}</span>
                     {a.media && <a className="wa-icon" href={a.media} download={dlName(a.title, a.isVideo, a.isAudio)} title={t("Download")}><Ico n="download" /></a>}
@@ -3345,6 +3486,24 @@ export default function WebArchive() {
               </div>
             );
           })}
+          {/* THE NEXT EPISODE (2026-11-25): an open series' shelf ends with the episode it has not got yet — in the
+              series' own green and gold, the picture it continues from behind it, out of focus, like the next frame
+              on the reel. One tap opens the Movie Maker on it, continued from the series' latest film. */}
+          {openSeries && openNext && (
+            <a id="wa-nextep" className={`wb-asset wa-nexttile${selecting ? " off" : ""}`} href={`/web/film?episode=${openNext.from}`}
+              aria-disabled={selecting || undefined} tabIndex={selecting ? -1 : undefined} onClick={(e) => { if (selecting) e.preventDefault(); }}
+              title={t("Continue this story — the next episode, with the same cast")}>
+              <span className="wa-nexttile-cover">
+                {nextFace && <img src={nextFace} alt="" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />}
+                <span className="wa-nexttile-frame" aria-hidden="true" />
+                <span className="wa-nexttile-num"><Ico n="filmreel" size={16} /> {t("Episode {n}", { n: openNext.next })}</span>
+              </span>
+              <span className="m">
+                <span className="wa-title">{t("Episode {n} — what happens next?", { n: openNext.next })}</span>
+                <span className="s">{t("Picks up where it left off")}</span>
+              </span>
+            </a>
+          )}
         </div>
       )}
 
@@ -3604,6 +3763,11 @@ export default function WebArchive() {
               ) : (
                 <>
                   <div className="wa-vacts">
+                    {/* A story film is continued from where it is watched (2026-11-25: the FIRST button now, a primary,
+                        worded as its card is — it was a quiet "Next episode" further down, and the owner did not find
+                        it). The Movie Maker opens on the next episode of its series, continued from the series'
+                        LATEST film whichever episode this one is — same cast, same voices — picking up where it stopped. */}
+                    {viewer.next && viewer.media && !viewer.expired && <a className="wa-vbtn full wa-vnext" href={`/web/film?episode=${viewer.next.from}`} title={t("Continue this story — the next episode, with the same cast")}><Ico n="filmreel" /> {viewer.next.state === "start" ? t("Make it a series") : t("Make episode {n}", { n: viewer.next.next })}<span className="c">{t("Picks up where it left off")}</span></a>}
                     {canPost && linked.length > 0 && !capOpen && viewer.media && !viewer.isAudio && (
                       <button type="button" className="wa-vbtn full" disabled={busy} onClick={() => startPost(viewer.id)}>{isCreator ? t("Share to socials") : t("Post to socials")}</button>
                     )}
@@ -3625,9 +3789,6 @@ export default function WebArchive() {
                       </div>
                     )}
                     {viewer.hasShots && viewer.media && <a className="wa-vbtn ghost" href={`/web/filmedit/${viewer.id}`} title={t("Open the shot timeline — preview and edit each shot")}><Ico n="video" /> {t("Edit shots")}</a>}
-                    {/* A story film is continued from where it is watched: the Movie Maker opens on the next
-                        episode of its series — same cast, same voices — whichever episode this one is. */}
-                    {viewer.canContinue && viewer.media && !viewer.expired && <a className="wa-vbtn ghost" href={`/web/film?episode=${viewer.id}`} title={t("Continue this story — the next episode, with the same cast")}><Ico n="video" /> {t("Next episode")}</a>}
                     {/* A narrated story's WORDS can be changed and the story told again with the same pictures:
                         it opens in the Movie Maker's own storyboard (story-edit.ts) and lands as a new piece. */}
                     {viewer.tellIn && viewer.media && !viewer.expired && <a className="wa-vbtn ghost" href={`/web/film?edit=${viewer.id}`} title={t("Change the words — it is told again with the same pictures")}><Ico n="sliders" /> {t("Edit story")}</a>}

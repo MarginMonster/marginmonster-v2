@@ -9,6 +9,11 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "Make it a series": "Hazla una serie",
+  "Episode {n} of {total}": "Episodio {n} de {total}",
+  "Make episode {n}": "Crear el episodio {n}",
+  "Episode {n} — what happens next?": "Episodio {n}: ¿qué pasa después?",
+  "Picks up where it left off": "Sigue justo donde se quedó",
   "Write what happens, pick what it was shot on — we film it.": "Escribe qué pasa, elige con qué se grabó — nosotros lo filmamos.",
   "Write it your way — or tap a scare below to start from it": "Escríbelo a tu manera — o toca un susto de abajo para empezar desde él",
   "Your version of “{name}”": "Tu versión de «{name}»",
@@ -3239,6 +3244,11 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "Make it a series": "En faire une série",
+  "Episode {n} of {total}": "Épisode {n} sur {total}",
+  "Make episode {n}": "Créer l'épisode {n}",
+  "Episode {n} — what happens next?": "Épisode {n} : et ensuite ?",
+  "Picks up where it left off": "Reprend là où elle s'est arrêtée",
   "Write what happens, pick what it was shot on — we film it.": "Écris ce qui se passe, choisis avec quoi c'est filmé — on s'occupe du tournage.",
   "Write it your way — or tap a scare below to start from it": "Écris-le à ta façon — ou touche une frayeur ci-dessous pour partir d'elle",
   "Your version of “{name}”": "Ta version de « {name} »",
@@ -6449,6 +6459,11 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "Make it a series": "Zur Serie machen",
+  "Episode {n} of {total}": "Folge {n} von {total}",
+  "Make episode {n}": "Folge {n} drehen",
+  "Episode {n} — what happens next?": "Folge {n}: Wie geht es weiter?",
+  "Picks up where it left off": "Geht genau dort weiter, wo sie aufgehört hat",
   "Write what happens, pick what it was shot on — we film it.": "Schreib, was passiert, wähle, womit es gefilmt wurde — wir drehen es.",
   "Write it your way — or tap a scare below to start from it": "Schreib es auf deine Art — oder tippe unten auf einen Schocker und fang damit an",
   "Your version of “{name}”": "Deine Version von „{name}“",
@@ -9668,6 +9683,11 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "Make it a series": "做成系列",
+  "Episode {n} of {total}": "第 {n} 集，共 {total} 集",
+  "Make episode {n}": "制作第 {n} 集",
+  "Episode {n} — what happens next?": "第 {n} 集：接下来会发生什么？",
+  "Picks up where it left off": "从上一集停下的地方接着讲",
   "Write what happens, pick what it was shot on — we film it.": "写下发生什么，选好用什么拍——剩下的交给我们。",
   "Write it your way — or tap a scare below to start from it": "按你的想法写——或点下面任意一个吓人场景，从它开始",
   "Your version of “{name}”": "你版本的“{name}”",
@@ -12941,6 +12961,11 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  "Make it a series": "اسے سیریز بنائیں",
+  "Episode {n} of {total}": "قسط {n} از {total}",
+  "Make episode {n}": "قسط {n} بنائیں",
+  "Episode {n} — what happens next?": "قسط {n}: آگے کیا ہوگا؟",
+  "Picks up where it left off": "وہیں سے شروع جہاں پچھلی قسط رکی تھی",
   "Write what happens, pick what it was shot on — we film it.": "لکھیں کہ کیا ہوتا ہے، چنیں کہ کس کیمرے سے فلمایا گیا — ہم اسے فلما دیں گے۔",
   "Write it your way — or tap a scare below to start from it": "اپنے انداز میں لکھیں — یا نیچے کسی ڈراؤنے منظر پر ٹیپ کریں اور وہیں سے شروع کریں",
   "Your version of “{name}”": "“{name}” کا آپ کا ورژن",

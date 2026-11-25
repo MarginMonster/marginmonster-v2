@@ -490,7 +490,9 @@ test("a card on a phone: its cover, its title, when — and ONE badge, on the co
   // says which family a video is ("Horror", "Music video"…: archive-cover.ts); on a phone its cover says it
   // (inside an opened series an episode is called by its own name — the band above already says the series')
   assert.ok(page.includes('<span className="wa-title">{openSeries && a.series ? episodeOwnLabel(a.title) : a.title}</span>'));
-  assert.ok(page.includes('<div className="s"><span className="wa-kind">{a.isVideo ? t(a.family ? COVER_LABEL[a.family] : "Video") : a.isAudio ? t("Music") : t("Image ad")} · </span><span suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span></div>'));
+  // (2026-11-25: a film that can be continued ends this line with its mark — "Make it a series" / "Episode N" —
+  //  and on a phone its date is the short one beside it: tests/make-it-a-series.test.ts)
+  assert.ok(page.includes('<div className={`s${a.next ? " has-next" : ""}`}><span className="wa-kind">{a.isVideo ? t(a.family ? COVER_LABEL[a.family] : "Video") : a.isAudio ? t("Music") : t("Image ad")} · </span><span className="wa-date" suppressHydrationWarning>{new Date(a.when).toLocaleDateString()}</span>{a.next && <>{shortDate(a.when)}{nextMarkOf(a.next)}</>}</div>'));
   assert.ok(phone.includes(".wa-kind{display:none;}"));
   assert.ok(phone.includes(".wa-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;}"));
   // nothing on it is smaller than it was: the title is the wide screen's 13px, the date 11px
