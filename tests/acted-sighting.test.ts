@@ -18,10 +18,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   NOTHING_GLOWS, PHOTOGRAPHED, REVEAL_STAY, SIGHT_MOVES, SIGHT_PICTURE_MAX,
-  figureIn, revealClip, revealPicture, sightingClip, sightingOf, sightingPicture, silentRules, stagedRules, stagedTwoShot, storyThreat, thingBound, thingRefNote, threatPortrait,
+  couldBeThing, figureIn, revealClip, revealPicture, sightingClip, sightingOf, sightingPicture, silentRules, stagedRules, stagedTwoShot, storyThreat, thingBound, thingRefNote, threatPortrait,
 } from "../app/lib/acted-staging.ts";
 import { clipRules } from "../app/lib/clip-prompt.ts";
-import { CREATURE_REAL, DRESSED } from "../app/lib/story-picture.ts";
+import { CREATURE_REAL, DRESSED, SHADOW_SHAPE } from "../app/lib/story-picture.ts";
 import { TAKE_HIDDEN } from "../app/lib/take.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -197,6 +197,24 @@ test("the film's thing: the script's own threat is found by what it IS — never
   assert.ok(portrait.includes("She is fully clothed: a long pale nightgown, soaked and clinging") && portrait.includes(DRESSED) && portrait.endsWith(NOTHING_GLOWS));
 });
 
+test("which figure with no cast line of its own may be drawn as the film's thing — never somebody the words make else, never a shadow", () => {
+  // (review, 2026-11-25: a third person the words name in a horror shot was handed the woman's portrait — "that exact
+  //  figure, the same face, hair and clothes" — where the words say a man)
+  const lady = CAST[2];
+  assert.equal(couldBeThing("A man", lady), false, "a man is not the woman in the lake");
+  assert.equal(couldBeThing("a boy", "the pale woman, grey dress"), false);
+  assert.ok(couldBeThing("a woman", lady) && couldBeThing("the lady", lady) && couldBeThing("a girl", lady));
+  assert.ok(couldBeThing("Something", lady) && couldBeThing("a figure", lady) && couldBeThing("a pale face", lady), "anything not said to be somebody else may be it");
+  assert.ok(couldBeThing("a man", "Howlette a TEST werewolf with grey fur") && couldBeThing("a woman", ""), "a thing with no sex in its words: anything may be it");
+  // a shadow is drawn as a shadow (SHADOW_SHAPE): never with the thing's face, hair and clothes
+  assert.equal(couldBeThing("A shadow", lady), false);
+  assert.equal(couldBeThing("a shape", ""), false);
+  // …and its sighting says so, in the told stories' own sentence
+  const shadow = sightingPicture({ moment: "A shadow moves slowly past the tent, watching.", sides: SIDES });
+  assert.ok(shadow.includes(`FAR OFF beyond the two of them: deep in the picture, small in the frame and half in the dark, seen past them — never between them and the camera, never nearer than these words put it, and well inside the picture. ${SHADOW_SHAPE}`), shadow);
+  assert.ok(!sightingPicture({ moment: TENT[2], sides: SIDES }).includes(SHADOW_SHAPE), "nobody else is told of a shadow");
+});
+
 test("the engine: the thing's one picture before the first shot, the sighting's seed and cut, its clip, its checkpoint, the reveal from the picture", () => {
   const eng = read("app", "lib", "film-dialogue.server.ts");
   const loop = eng.indexOf("for (let i = clips.length; i < treatment.scenes.length; i++) {");
@@ -204,7 +222,9 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   // no longer needs the last scene to name it; else the script's own, whose portrait is drawn, looked at and kept
   const thingAt = eng.indexOf("const sightOn = staged && horror && !cartoon && isTwoHander;");
   assert.ok(thingAt > 0 && thingAt < loop, "before the shots");
-  assert.ok(eng.includes("const named = castThreat(castActors) || castActors.find((c) => !!c.faceUrl && isCreature(c) && ![spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name)));"));
+  // (…never one of the two who talk: a cast threat the script gave lines to is not the thing — review, 2026-11-25)
+  assert.ok(eng.includes("const speaks = (c: { name: string }): boolean => [spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name));"));
+  assert.ok(eng.includes("const named = (chosen && !speaks(chosen) ? chosen : null) || castActors.find((c) => !!c.faceUrl && isCreature(c) && !speaks(c));"));
   assert.ok(eng.includes("const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual });"));
   assert.ok(eng.includes("for (const model of kept ? [] : STORY_LADDER) {") && eng.includes("storyPictureInput(model, { prompt: threatPortrait(own.entry, tmpl.sceneHint), refs: [], aspect: PORTRAIT_ASPECT })"), "the told stories' portrait recipe and ladder");
   assert.ok(eng.includes("img = (await clothedOrDropped(drawn, PORTRAIT_ASPECT)) || \"\";"), "looked at for an unclothed figure");
@@ -243,7 +263,11 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   // a place whose first scene has the thing in view is drawn with its picture; the first picture that showed it is kept
   assert.ok(eng.includes("const thingHere = !masters[locKeyAt(i)]?.url && thingInMaster(i, lastHorror);"));
   assert.ok(eng.includes("if (thingHere && master?.url && !firstShown) firstShown = { url: master.url, words: scene.visual || \"\" };"));
-  assert.ok(eng.includes("if (!firstShown && isTheThing(s.entry)) firstShown = { url: pic, words: s.words };"));
+  assert.ok(eng.includes("if (!firstShown && isTheThing(s.entry, s.who)) firstShown = { url: pic, words: s.words };"));
+  // (…and which figure IS the thing: its cast line by its NAME, or one with no line that its words do not make somebody
+  //  else or a shadow — couldBeThing; review, 2026-11-25)
+  assert.ok(eng.includes("const isTheThing = (entry: string, who = \"\"): boolean => (!entry ? couldBeThing(who, thingWords) : !!threatEntry && lineName(entry) === lineName(threatEntry));"));
+  assert.ok(eng.includes("const theThing = isTheThing(s.entry, s.who);") && eng.includes("return !!f && isTheThing(f.entry, f.who);") && eng.includes("if (sightings[j] && isTheThing(sightings[j].entry, sightings[j].who))"));
   // THE REVEAL from the thing's picture: its portrait, else the picture that first showed it
   assert.ok(eng.includes("const thingRef = (): { url: string; kind: ThingRef } | null => (threat ? { url: abs(threat.img) || threat.img, kind: threat.creature ? \"creature\" : \"figure\" } : firstShown ? { url: abs(firstShown.url) || firstShown.url, kind: \"scene\" } : null);"));
   assert.ok(eng.includes("revealSeen = !!seen || (!!ref && !creatureRef);"));

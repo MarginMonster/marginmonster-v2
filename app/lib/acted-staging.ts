@@ -963,9 +963,11 @@ export const PHOTOGRAPHED = caughtAt > 0 ? `It is PHOTOGRAPHED: ${CREATURE_REAL.
  *  the tent's picture told in WORDS that it is "the SAME one this film already showed", drew a grey zombie man in the
  *  tent opening and a face pressed into the canvas. The owner: "It looked really good till that last scene bro". Words
  *  do not carry a face.) So whatever shows the thing is handed ITS picture and told which figure in it to take:
- *    · "creature" — a creature the maker chose (or one the story invented and the film drew a portrait of): the
- *      creature in that picture, as the reveal has always said it;
- *    · "figure"   — the portrait of a person-like thing (one figure alone on a plain ground): that exact figure;
+ *    · "creature" — a creature the maker cast (its kind is "monster" or "cartoon"): the creature in that picture, as
+ *      the reveal has always said it;
+ *    · "figure"   — the portrait of anything else: a thing the maker cast as a person, and EVERY threat the story
+ *      invented (the film draws its portrait — characterKind reads the lake film's smiling woman as a monster, and
+ *      told "creature" an editor drew her as a grey zombie man): that exact figure;
  *    · "scene"    — no portrait would draw, so the picture that FIRST showed it (a sighting, or the master of the
  *      place it first stood in), whole: the far-off figure in it, never the two people in it.
  *  `near` = the reveal (close behind them); else a sighting (far off). The editor that takes ONE picture is never told
@@ -1125,6 +1127,21 @@ export function figureIn(words: string | null | undefined, o: { speakers?: Reado
   return f ? { who: f.who, entry: f.entry } : null;
 }
 
+/** MAY A FIGURE WITH NO CAST LINE OF ITS OWN BE DRAWN AS THE FILM'S THING — from its picture? (Review, 2026-11-25: in
+ *  a horror film a figure the script gives no cast line is taken to be its thing, and handed the thing's picture
+ *  with "that exact figure — the same face, hair and clothes".) Not when the words make it somebody else: "a man walks
+ *  past the tent with a lantern" is no woman in the lake — told both, an editor draws her where the words say a man.
+ *  And never a shadow or a shape: a shadow is drawn as a shadow, a featureless black shape (story-picture.ts →
+ *  SHADOW_SHAPE), never with a face, hair and clothes. `thing` = the thing's own cast line or name (and look). */
+export function couldBeThing(who: string | null | undefined, thing: string | null | undefined): boolean {
+  const mine = (oneLine(who).match(THING_WORDS) || []).map(nounOf);
+  if (mine.some((n) => n === "shadow" || n === "shape")) return false;
+  const sex = (n: string): string => (/^(?:woman|lady|girl)$/.test(n) ? "f" : /^(?:man|boy)$/.test(n) ? "m" : "");
+  const a = new Set(mine.map(sex).filter(Boolean));
+  const b = new Set((oneLine(thing).match(THING_WORDS) || []).map(nounOf).map(sex).filter(Boolean));
+  return !a.size || !b.size || [...a].some((s) => b.has(s));
+}
+
 /** What a sighting is: who is newly seen (as the words call them), their cast line when the story has one, and the
  *  words that show them (a sound from out of sight taken out) — what the sighting's picture is drawn from, and what is
  *  kept of it for the reveal. */
@@ -1179,7 +1196,8 @@ export function sightingPicture(o: { moment: string | null | undefined; sides?: 
   const refNote = ref ? ` ${thingRefNote(ref, { name: o.name, seen })}` : "";
   const mood = oneLine(o.mood);
   const creature = !!o.creature || ref === "creature";
-  const make = (m: string, withMood: boolean) => `${KEEP_FRAME}${who} Add one thing — what the two of them SEE at this moment of the story (its words say WHAT it is and WHERE): ${dressedInWater(m)} Show it like this, and no nearer: ${SIGHT_FAR}.${look}${refNote}${o.outdoors ? OUT_OF_DOORS : ""} ${SIGHT_TURN}${withMood && mood ? ` ${mood}` : ""} ${DRESSED} ${NOTHING_GLOWS} ${REVEAL_REAL} ${creature ? CREATURE_REAL : PHOTOGRAPHED} ${TAKE_HIDDEN} No text anywhere.`;
+  // (a shadow in the words is drawn as a shadow — the told stories' own sentence, story-picture.ts → SHADOW_SHAPE)
+  const make = (m: string, withMood: boolean) => `${KEEP_FRAME}${who} Add one thing — what the two of them SEE at this moment of the story (its words say WHAT it is and WHERE): ${dressedInWater(m)} Show it like this, and no nearer: ${SIGHT_FAR}.${shadowNote(m) ? ` ${SHADOW_SHAPE}` : ""}${look}${refNote}${o.outdoors ? OUT_OF_DOORS : ""} ${SIGHT_TURN}${withMood && mood ? ` ${mood}` : ""} ${DRESSED} ${NOTHING_GLOWS} ${REVEAL_REAL} ${creature ? CREATURE_REAL : PHOTOGRAPHED} ${TAKE_HIDDEN} No text anywhere.`;
   // (inside what both editors read: the format's face mood gives way first, then the moment is said shorter)
   let p = make(moment, true);
   if (p.length > SIGHT_PICTURE_MAX) p = make(moment, false);

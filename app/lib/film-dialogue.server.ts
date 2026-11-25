@@ -54,7 +54,7 @@ import { trimTitle } from "./text-trim";
 import { parseStoryCast, storyCastPrompt } from "./story-picture";
 import { EVENT_MAX, EVENT_MAX_LAST, FILM_FPS, HEARD_NOT_DRAWN, NOBODY_SPEAKS, SILENT_SHOT_SECONDS, clipEvent, clipHearsFirst, clipMoves, clipSilent, dealStagings, faceNote, heardIn, heardSeconds, heardTalk, isActedStaging, joinCheck, kinLooks, nightSetting, openAirPlace, revealPicture, sceneEvent, seenBefore, silentRules, stagedRules, twoOnScreen, wordless, type ActedStaging, type SeamKind } from "./acted-staging";
 // THE SIGHTING, AND THE FILM'S THING (2026-11-25 — acted-staging.ts → sightingOf, storyThreat; dialogue-cast.ts → castThreat)
-import { figureIn, sightingOf, sightingPicture, storyThreat, threatPortrait, type Sighting, type ThingRef } from "./acted-staging";
+import { couldBeThing, figureIn, sightingOf, sightingPicture, storyThreat, threatPortrait, type Sighting, type ThingRef } from "./acted-staging";
 import { castThreat } from "./dialogue-cast";
 import { PORTRAIT_ASPECT, STORY_LADDER, STORY_MODEL, castEntry, clothedEdit, parseUnclothed, storyPictureInput, unclothedPrompt } from "./story-picture";
 
@@ -1115,7 +1115,11 @@ export async function generateTestMovie(opts: {
   /** The thing's own cast line (or its name, for a cast thing) — kept even when its portrait would not draw. */
   let threatEntry = "";
   if (sightOn) {
-    const named = castThreat(castActors) || castActors.find((c) => !!c.faceUrl && isCreature(c) && ![spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name)));
+    // (never one of the two who talk — a cast threat the script gave lines to is one of them, and "close behind them"
+    //  would put the speaker behind themself: review, 2026-11-25)
+    const speaks = (c: { name: string }): boolean => [spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name));
+    const chosen = castThreat(castActors);
+    const named = (chosen && !speaks(chosen) ? chosen : null) || castActors.find((c) => !!c.faceUrl && isCreature(c) && !speaks(c));
     if (named?.faceUrl) {
       threat = { name: named.name.trim(), img: named.faceUrl, from: "cast", look: castLooks[nameKey(named.name)] || (named.look || "").replace(/\s+/g, " ").trim(), entry: named.name.trim(), creature: isCreature(named) };
       threatEntry = threat.entry;
@@ -1157,8 +1161,14 @@ export async function generateTestMovie(opts: {
   /** The cast lines the sighting is read against: the script's, and the cast thing's (it has none in the script). */
   const thingCast = [...(treatment.cast || []), ...(threat && threat.from === "cast" ? [`${threat.name}${threat.look ? `, ${threat.look}` : ""}`] : [])];
   /** Is a figure the words found the film's thing (and so drawn from its picture)? Its own cast line, or a figure with
-   *  no cast line of its own — in a horror film that is the thing. */
-  const isTheThing = (entry: string): boolean => !entry || (!!threatEntry && nameTok(entry) === nameTok(threatEntry));
+   *  no cast line of its own — in a horror film that is the thing, unless its words make it somebody else ("a man"
+   *  when the thing is the woman in the lake) or a shadow (acted-staging.ts → couldBeThing). A cast line is the thing's
+   *  by its NAME (what comes before its first comma), never by a first word: "the woman next door" is not "the woman
+   *  in the lake" (review, 2026-11-25 — nameTok made both "woman", and "A pale man" and "A child" both "a"). */
+  const lineName = (e: string): string => (e.split(/[,:—–(]/)[0] || "").trim().toLowerCase().replace(/^(?:the|a|an)\s+/, "").replace(/\s+/g, " ");
+  // (with no thing known by name, what the REVEAL finds — the last scene's own words — is what it is)
+  const thingWords = threatEntry ? `${threatEntry} ${threat?.look || ""}` : scenesArr[scenesArr.length - 1]?.visual || "";
+  const isTheThing = (entry: string, who = ""): boolean => (!entry ? couldBeThing(who, thingWords) : !!threatEntry && lineName(entry) === lineName(threatEntry));
   /** Where the film last came to the place shot i is in — the shot whose cut brought it there. */
   const arrivedAt = (i: number): number => { let a = i; while (a > 0 && transitionAt(a) !== "location") a--; return a; };
   /** What the place looks like NOW at shot i: the latest sighting drawn there since the film came to it — what was
@@ -1176,11 +1186,11 @@ export async function generateTestMovie(opts: {
   const thingInMaster = (i: number, lastHorror: boolean): boolean => {
     if (!sightOn || (lastHorror && transitionAt(i) === "location") || (locFirst.get(locKeyAt(i)) ?? i) !== i) return false;
     const f = figureIn(scenesArr[i]?.visual, { speakers: [spkA, spkB], cast: thingCast, names: castActors.map((c) => c.name) });
-    return !!f && isTheThing(f.entry);
+    return !!f && isTheThing(f.entry, f.who);
   };
   // (a film picked up after a restart: the picture that first showed the thing, among its finished shots)
   for (let j = 0; j < clips.length && !firstShown; j++) {
-    if (sightings[j] && isTheThing(sightings[j].entry)) firstShown = { url: sightings[j].url, words: sightings[j].words };
+    if (sightings[j] && isTheThing(sightings[j].entry, sightings[j].who)) firstShown = { url: sightings[j].url, words: sightings[j].words };
     else if (thingInMaster(j, false) && masters[locKeyAt(j)]?.url) firstShown = { url: masters[locKeyAt(j)].url, words: scenesArr[j]?.visual || "" };
   }
 
@@ -1291,7 +1301,7 @@ export async function generateTestMovie(opts: {
         let pic = sightings[i]?.url && sightings[i].words === s.words ? sightings[i].url : "";
         if (!pic) {
           const base = abs(shownAt(i) || master.url);
-          const theThing = isTheThing(s.entry);
+          const theThing = isTheThing(s.entry, s.who);
           const ref = theThing ? thingRef() : null;
           const look = s.entry || (theThing ? threatEntry || threat?.look || "" : "");
           const sightSides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) }));
@@ -1316,7 +1326,7 @@ export async function generateTestMovie(opts: {
         }
         if (pic) {
           seedAbs = abs(pic); sighted = s; sinceAnchor = 0;
-          if (!firstShown && isTheThing(s.entry)) firstShown = { url: pic, words: s.words };
+          if (!firstShown && isTheThing(s.entry, s.who)) firstShown = { url: pic, words: s.words };
           console.log(`[testmovie] shot ${i + 1}: a sighting — ${s.who} drawn into the place's picture, far off (${locKeyAt(i).slice(0, 40)})`);
         } else console.error(`[testmovie] shot ${i + 1}: the sighting's picture did not come — the shot is made as it always was`);
       }
