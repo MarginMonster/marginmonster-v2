@@ -142,10 +142,13 @@ test("what the step sets still reaches the story form — the hidden inputs live
   // the panel posts nothing itself, and is not inside the form (it is far above it)
   assert.ok(!panel.includes('type="hidden"') && !card.includes('type="hidden"'));
   assert.ok(ui.indexOf(panel) < ui.indexOf(form));
-  // Generate waits on none of it: whoever has no face gets one invented, as before
-  assert.ok(ui.includes("const canGo = d.hasPlan && d.canFilm && affordable && productReady && !generating;"));
+  // Generate waits on none of it: whoever has no face gets one invented, as before — what makes the button live
+  // names neither the cast nor the script's characters (whatever else it comes to depend on)
+  const canGo = (ui.match(/\n  const canGo = [^\n]+;\n/) || [""])[0];
+  assert.ok(canGo.includes("d.hasPlan") && !/cast|scripted|faceUrl/i.test(canGo), canGo);
   // …and the film that was SENT is still judged on the cast as it stands (a new face is another film)
-  assert.ok(ui.includes("cast.map((c) => [c.name, c.faceUrl, c.voiceId]), series?.from || \"\"])}`;"));
+  const storySig = (ui.match(/\n  const storySig = [^\n]+;\n/) || [""])[0];
+  assert.ok(storySig.includes("cast.map((c) => [c.name, c.faceUrl, c.voiceId])") && storySig.includes("storyPick") && storySig.includes("lockVoices"), storySig);
 });
 
 /* THE CARD'S SUMMARY, RUN — the route's own function, compiled as it stands. */
