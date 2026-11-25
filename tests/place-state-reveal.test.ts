@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CHANGE_KEEP, CLOTH_OUTSIDE, CLOTH_OUTSIDE_GAP, DONE_STAYS_DONE, NOTHING_GLOWS, REVEAL_MOVED, REVEAL_MOVED_CLOTH, REVEAL_PARTS, REVEAL_STAY, SEEN_AT_THE_END, SIGHT_SHADOW, SIGHT_SHADOW_MOVES,
+  CHANGE_KEEP, CLOTH_OUTSIDE, CLOTH_OUTSIDE_GAP, DONE_STAYS_DONE, NOTHING_GLOWS, REVEAL_MOVED, REVEAL_MOVED_CLOTH, REVEAL_PARTS, REVEAL_STAY, SEEN_AT_THE_END, SIGHT_SHADOW, SIGHT_SHADOW_MOVES, SIGHT_TURN_SHADOW,
   changePicture, revealClip, revealPart, revealPicture, sightingClip, sightingPicture, silentRules, stagedRules, thingRefNote,
 } from "../app/lib/acted-staging.ts";
 import { placeChangeIn, placeStateAt, stateNow } from "../app/lib/place-state.ts";
@@ -95,6 +95,12 @@ test("a sighting while the tent is shut is its SHADOW on the cloth — never see
   // (drawn on Episode 2's frames and looked at: told her look, the editor lit a toothy grin INSIDE the shadow)
   assert.ok(SIGHT_SHADOW.includes("flat and featureless: no face, no eyes, no teeth, nothing lit inside it"));
   assert.ok(p.length <= 2400);
+  // (…BEHIND them, each where they are, heads turned to it in profile: told "turned toward it, faces in view", the editor
+  //  turned both faces to the lens — the S12 review LOOKED, 2026-11-25; a shadow moved to one side, drawn and looked at,
+  //  fixed the eyes and moved both people to one side of the picture, which loses who is who)
+  assert.ok(SIGHT_SHADOW.startsWith("ONLY ITS SHADOW: thrown from OUTSIDE onto the thin cloth wall behind them by the light out there — a tall dark shape"));
+  assert.ok(p.includes(SIGHT_TURN_SHADOW) && SIGHT_TURN_SHADOW === "Both of them stay exactly where they are, each on their own side of the picture; only their heads have turned toward the shadow, so we see their faces in profile, eyes on it — neither looks at the camera.");
+  assert.ok(!p.includes("three-quarters, so their faces stay in view"), "never the far-off sighting's turn, which reads as 'to the lens' when the shadow is behind them");
   assert.equal(sightingClip("A woman stands at the edge of the lake.", "the woman", true), `On the cloth wall behind them, thrown from outside, is the shadow of the woman. ${SIGHT_SHADOW_MOVES}`);
   assert.ok(!sightingClip("A woman stands at the edge of the lake.", "the woman", true).includes("edge of the lake"), "the scene's words would put her out by the water, through a shut door");
   const live = clipRules({ cartoon: false, sing: false, horror: true });
@@ -102,6 +108,7 @@ test("a sighting while the tent is shut is its SHADOW on the cloth — never see
   assert.ok(silentRules(live, { staging: "depth", event: "A woman stands at the edge of the lake.", sighted: true, sight: "the woman", shadow: true }).look.includes(SIGHT_SHADOW_MOVES));
   // the open tent's sighting is as it was
   assert.ok(sightingPicture({ moment: "A woman stands at the edge of the lake.", sides, outdoors: true }).includes("FAR OFF beyond the two of them"));
+  assert.ok(sightingPicture({ moment: "A woman stands at the edge of the lake.", sides, outdoors: true }).includes("three-quarters, so their faces stay in view — neither looks at the camera.") && !sightingPicture({ moment: "A woman stands at the edge of the lake.", sides, outdoors: true }).includes(SIGHT_TURN_SHADOW));
 });
 
 test("the picture of a change: ONE thing done to the place, who did it with a hand still on it, what was done before kept", () => {

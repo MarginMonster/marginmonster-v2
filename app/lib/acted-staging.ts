@@ -1340,6 +1340,11 @@ export function sightingOf(o: {
 /** Where a sighting puts what is seen, and how the two take it — in the picture. */
 const SIGHT_FAR = "FAR OFF beyond the two of them: deep in the picture, small in the frame and half in the dark, seen past them — never between them and the camera, never nearer than these words put it, and well inside the picture";
 const SIGHT_TURN = "Both of them stay where they stand; only their heads have turned toward it, three-quarters, so their faces stay in view — neither looks at the camera.";
+/** …and toward a SHADOW on the cloth BEHIND them (2026-11-25, the S12 review LOOKED at Episode 2's shadow: told "turned
+ *  toward it, faces in view", the editor turned both faces to the lens). Moving the shadow to one side was tried and
+ *  LOOKED at too: it fixed the eyes and moved both of them to one side of the picture — and the film tells the two apart
+ *  by their side. So: the shadow behind them, each where they are, and their heads turned to it in profile. */
+export const SIGHT_TURN_SHADOW = "Both of them stay exactly where they are, each on their own side of the picture; only their heads have turned toward the shadow, so we see their faces in profile, eyes on it — neither looks at the camera.";
 /** …and WHILE THE TENT IS SHUT (2026-11-25, S12 — place-state.ts → shutCloth): nothing is seen THROUGH a shut door. What
  *  they see of it is its SHADOW, thrown on the cloth from outside by the light out there — the moon, a torch. */
 /*  (Drawn on Episode 2's own frames and LOOKED at: told her look — "a smile far too wide and crowded with thin teeth" —
@@ -1369,7 +1374,7 @@ export function sightingPicture(o: { moment: string | null | undefined; sides?: 
   const now = state ? ` The place as it now is, and it stays exactly so: ${state}` : "";
   // (a shadow in the words is drawn as a shadow — the told stories' own sentence, story-picture.ts → SHADOW_SHAPE)
   // (…and WHILE THE TENT IS SHUT nothing is seen through it: what they see is its SHADOW on the cloth — SIGHT_SHADOW)
-  const make = (m: string, withMood: boolean) => `${KEEP_FRAME}${who} Add one thing — what the two of them SEE at this moment of the story (its words say WHAT it is and WHERE): ${dressedInWater(m)} Show it like this, and no nearer: ${o.shadow ? SIGHT_SHADOW : SIGHT_FAR}.${shadowNote(m) && !o.shadow ? ` ${SHADOW_SHAPE}` : ""}${look}${refNote}${o.outdoors ? OUT_OF_DOORS : ""}${now} ${SIGHT_TURN}${withMood && mood ? ` ${mood}` : ""} ${DRESSED} ${NOTHING_GLOWS} ${REVEAL_REAL} ${creature ? CREATURE_REAL : PHOTOGRAPHED} ${TAKE_HIDDEN} No text anywhere.`;
+  const make = (m: string, withMood: boolean) => `${KEEP_FRAME}${who} Add one thing — what the two of them SEE at this moment of the story (its words say WHAT it is and WHERE): ${dressedInWater(m)} Show it like this, and no nearer: ${o.shadow ? SIGHT_SHADOW : SIGHT_FAR}.${shadowNote(m) && !o.shadow ? ` ${SHADOW_SHAPE}` : ""}${look}${refNote}${o.outdoors ? OUT_OF_DOORS : ""}${now} ${o.shadow ? SIGHT_TURN_SHADOW : SIGHT_TURN}${withMood && mood ? ` ${mood}` : ""} ${DRESSED} ${NOTHING_GLOWS} ${REVEAL_REAL} ${creature ? CREATURE_REAL : PHOTOGRAPHED} ${TAKE_HIDDEN} No text anywhere.`;
   // (inside what both editors read: the format's face mood gives way first, then the moment is said shorter)
   let p = make(moment, true);
   if (p.length > SIGHT_PICTURE_MAX) p = make(moment, false);
