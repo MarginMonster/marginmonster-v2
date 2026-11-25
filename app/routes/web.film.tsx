@@ -5680,6 +5680,19 @@ a.mm-pace-auto{text-decoration:none;}
    title floated in the middle of its height. The story builder's cards start from the top, so the titles
    of a row stand on one line.) */
 .mm-story .mm-grid > .mm-card{display:flex;flex-direction:column;justify-content:flex-start;}
+/* (…and on a phone a card's kicker keeps clear of its step number, which sits over the card's top corner: at 390px
+   the Captions card's "THE WORDS" ran into its "4" — seen 2026-11-25 — and Spanish, French and German kickers ran
+   up to 18px under theirs. The number is a little smaller and nearer the corner, the kicker a half-point smaller,
+   so every English one stands on one line clear of it; a longer one FLOWS ROUND it (a float the number's width),
+   dropping a word to the next line. Not padding: that made every card wider, and German ran off the phone. The
+   number sits by the right edge — in a right-to-left page the icon's side, not the kicker's.) */
+@media(max-width:560px){
+  .mm-story .mm-grid > .mm-card .mm-step{top:10px;right:10px;width:22px;height:22px;font-size:11.5px;}
+  .mm-story .mm-grid > .mm-card .mm-card-kick{font-size:10px;}
+  .mm-story .mm-grid > .mm-card .mm-card-ttl{flex:1 1 auto;}
+  .mm-story .mm-grid > .mm-card .mm-card-ttl::before{content:"";float:right;width:18px;height:16px;}
+  [dir=rtl] .mm-story .mm-grid > .mm-card .mm-card-ttl::before{content:none;}
+}
 /* (…and the picked face of its Cast panel keeps a whole glow: the strip scrolls sideways, so it clips, and
    the wide green halo was cut off square at the strip's edge. A little room inside the strip, taken back
    outside it, and a halo that fits in that room.) */

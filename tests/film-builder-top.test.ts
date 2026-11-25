@@ -247,6 +247,22 @@ test("every new line of the top is translated, five times over", () => {
   }
 });
 
+test("on a phone a step card's kicker keeps clear of its number — and no card is made wider for it", () => {
+  // (2026-11-25: at 390px the Captions card's "THE WORDS" ran into its "4"; in Spanish, French and German kickers
+  //  ran up to 18px under theirs. Measured after: every English kicker on one line, 5px or more clear; the longer
+  //  ones wrap; the page 390px wide in all six languages.)
+  const css = sheetOf("FS_STYLE");
+  const phone = between(css, "@media(max-width:560px){\n  .mm-story .mm-grid > .mm-card .mm-step{", "\n}\n");
+  assert.ok(phone.includes("top:10px;right:10px;width:22px;height:22px;font-size:11.5px;}"));
+  assert.ok(phone.includes(".mm-story .mm-grid > .mm-card .mm-card-kick{font-size:10px;}"));
+  assert.ok(phone.includes(".mm-story .mm-grid > .mm-card .mm-card-ttl{flex:1 1 auto;}"));
+  assert.ok(phone.includes(".mm-story .mm-grid > .mm-card .mm-card-ttl::before{content:\"\";float:right;width:18px;height:16px;}"));
+  // (a right-to-left card has its icon on the number's side, not its words)
+  assert.ok(phone.includes("[dir=rtl] .mm-story .mm-grid > .mm-card .mm-card-ttl::before{content:none;}"));
+  // never by padding the row: that made every card wider, and German ran off the phone
+  assert.ok(!/\.mm-card-top\{[^}]*padding/.test(css));
+});
+
 /* ---- THE LENGTH SLIDER ------------------------------------------------------------------------------------
  * "The how long can be adjusted to a sexy slider allowing up to 5 minutes with estimated final pricing for
  * generations". The Length step's panel is the film kit's LengthSlider; every figure on it — the stops, how long
