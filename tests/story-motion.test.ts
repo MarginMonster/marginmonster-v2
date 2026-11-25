@@ -131,7 +131,10 @@ test("what it costs is known, and it can be turned off", () => {
   assert.equal(motionOn(undefined, true), true);
   // every scene of the longest story a maker can ask for moves — never ten that do and two that stand still
   assert.equal(MOTION_MAX_SCENES, 12);
-  assert.ok(read("app", "routes", "web.film.tsx").includes("narratedScenes: { min: 3, max: 12, def: 6 },"));
+  // (2026-11-25: a story may be five minutes — 32 scenes, the engine's own limit, which the page now offers — and
+  //  it is brought to life in runs of MOTION_MAX_SCENES, so every scene of it still moves)
+  assert.ok(read("app", "routes", "web.film.tsx").includes("narratedScenes: { min: NARRATED_MIN_SCENES, max: NARRATED_MAX_SCENES, def: NARRATED_DEFAULT_SCENES },"));
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("for (let from = 0; from < N; from += MOTION_MAX_SCENES) {"));
   assert.equal(motionCost(Array.from({ length: 12 }, () => 12)), 7, "the most a story's motion can cost (at 1080p)");
 });
 
@@ -151,7 +154,10 @@ test("the wait is said honestly: a story whose pictures move takes minutes longe
   assert.ok(arch.includes("? storyTypicalSeconds(typeof p.filmScenes === \"number\" ? p.filmScenes : 6, storyMotionOn(p.filmPictures))"), "a story asked for over still pictures is timed as one (tests/video-ladder.test.ts)");
   const film = read("app", "routes", "web.film.tsx");
   assert.ok(film.includes("storyMotion: storyMotionOn(),"));
-  assert.ok(film.includes("if (opts.moves) { const s = storyTypicalSeconds(n, true); lo = Math.max(3, Math.round((s * 0.8) / 60)); hi = Math.round((s * 1.35) / 60); }"));
+  // (2026-11-25: beside Generate the builder says what its Length slider says — film-length.ts → renderMinutes,
+  //  built on this very sum with the Full HD cut on top, and never under it: tests/film-length.test.ts)
+  assert.ok(film.includes("[lo, hi] = storyMinutes(\"narrated\", n, { moves: opts.moves, per: opts.per });"));
+  assert.ok(film.includes("const [lo, hi] = renderMinutes(way, n, { moves: o.moves, per: o.per });"));
   // (…unless its maker chose STILL pictures on the storyboard's Motion card — tests/video-ladder.test.ts)
   assert.ok(film.includes("narrated, moves: d.storyMotion && pictures !== \"still\", scenes, engine: dialogueEngine })}"));
   // …and the storyboard says the pictures will move, in every language

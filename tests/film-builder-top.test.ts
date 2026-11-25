@@ -5,6 +5,8 @@
  *   "Our genres need to be movie categories (drama, horror, comedy, etch)"
  *   "the "write your dialogue" button generates a random scene and dialogue, atleast need a starter "nudge"
  *    couple sentences to hand to the writer"
+ *   "The how long can be adjusted to a sexy slider allowing up to 5 minutes with estimated final pricing for
+ *    generations"
  *
  * The genres themselves (app/lib/film-genres.ts, the heroes' `card`, the covers) were made and reviewed in their
  * own stream; this file holds how the PAGE (app/routes/web.film.tsx) shows them:
@@ -12,6 +14,7 @@
  *   · every genre's phone cover is shown on a phone — the page's list and the sign-in lobby's are the same;
  *   · a scene's places are its genre's (backdropsOf), the page keeps no lists of its own;
  *   · on a wide screen a shelf that runs on SHOWS it: the fifth poster peeks, and a mouse gets two arrows.
+ * …and the Length step (at the foot of this file): a slider up to five minutes, every figure film-length.ts's.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -21,6 +24,9 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { FILM_HEROES, TALL_STILL_MEDIA, heroShelves } from "../app/lib/film-heroes.ts";
 import { dealStarters, nudgeFor, startersOf } from "../app/lib/film-genres.ts";
+import { MAX_FILM_SECONDS, lengthStops, maxShots, renderMinutes, scriptParts, secondsFor, tokensFor } from "../app/lib/film-length.ts";
+import { filmClock } from "../app/lib/film-flow.ts";
+import { estimateFilmTokens } from "../app/lib/plan-config.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
@@ -239,4 +245,219 @@ test("every new line of the top is translated, five times over", () => {
     assert.ok(ui.includes(`t(${JSON.stringify(k)})`), k);
     assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
   }
+});
+
+test("on a phone a step card's kicker keeps clear of its number — and no card is made wider for it", () => {
+  // (2026-11-25: at 390px the Captions card's "THE WORDS" ran into its "4"; in Spanish, French and German kickers
+  //  ran up to 18px under theirs. Measured after: every English kicker on one line, 5px or more clear; the longer
+  //  ones wrap; the page 390px wide in all six languages.)
+  const css = sheetOf("FS_STYLE");
+  const phone = between(css, "@media(max-width:560px){\n  .mm-story .mm-grid > .mm-card .mm-step{", "\n}\n");
+  assert.ok(phone.includes("top:10px;right:10px;width:22px;height:22px;font-size:11.5px;}"));
+  assert.ok(phone.includes(".mm-story .mm-grid > .mm-card .mm-card-kick{font-size:10px;}"));
+  assert.ok(phone.includes(".mm-story .mm-grid > .mm-card .mm-card-ttl{flex:1 1 auto;}"));
+  assert.ok(phone.includes(".mm-story .mm-grid > .mm-card .mm-card-ttl::before{content:\"\";float:right;width:18px;height:16px;}"));
+  // (a right-to-left card has its icon on the number's side, not its words)
+  assert.ok(phone.includes("[dir=rtl] .mm-story .mm-grid > .mm-card .mm-card-ttl::before{content:none;}"));
+  // never by padding the row: that made every card wider, and German ran off the phone
+  assert.ok(!/\.mm-card-top\{[^}]*padding/.test(css));
+});
+
+/* ---- THE LENGTH SLIDER ------------------------------------------------------------------------------------
+ * "The how long can be adjusted to a sexy slider allowing up to 5 minutes with estimated final pricing for
+ * generations". The Length step's panel is the film kit's LengthSlider; every figure on it — the stops, how long
+ * the film runs, what it will cost, how long it takes to make — is film-length.ts's, and the action holds a film
+ * to the same numbers. */
+
+/** One of the page's own module functions, compiled as it stands (with what it calls handed in). */
+const pageFn = <F,>(head: string, name: string, deps: Record<string, unknown> = {}): F => {
+  const src = between(page, head, "\n}\n") + "\n}\n";
+  const ts = createRequire(import.meta.url)("typescript");
+  const js: string = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  return new Function(...Object.keys(deps), `${js}\nreturn ${name};`)(...Object.values(deps)) as F;
+};
+const stopsWith = pageFn<(stops: number[], n: number) => number[]>("function stopsWith(stops: number[], n: number): number[] {", "stopsWith");
+const storyMinutes = pageFn<(way: "acted" | "narrated", n: number, o?: { moves?: boolean; per?: number; veo?: boolean }) => [number, number]>("function storyMinutes(", "storyMinutes", { renderMinutes });
+const enT = (s: string, p: Record<string, string | number> = {}) => s.replace(/\{(\w+)\}/g, (_, k) => String(p[k]));
+const waitSaid = pageFn<(m: number, t: typeof enT) => string>("function waitSaid(", "waitSaid");
+const lengthPanel = () => between(ui, "            {storyCard === \"length\" && (\n", "            {storyCard === \"shape\" && (");
+
+test("the Length step's panel is the slider — up to five minutes, by the way the story is told", () => {
+  assert.ok(page.includes("import { LengthSlider } from \"../components/film/LengthSlider\";"));
+  assert.ok(page.includes("import { lengthStops, maxShots, renderMinutes, scriptParts, secondsFor, tokensFor, type FilmWay } from \"../lib/film-length\";"));
+  // the panel's opener is kept to the byte: it is also where the Cast panel ends (tests/film-one-cast.test.ts,
+  // tests/film-cast-picker-width.test.ts)
+  assert.equal(count(ui, "\n            {storyCard === \"length\" && (\n"), 1);
+  const panel = lengthPanel();
+  assert.ok(panel.includes("<LengthSlider stops={lenStops} value={lenPending ?? scenes} onChange={pickLen} secondsOf={lenSecs} tokensOf={lenTokens} minutesOf={lenMinutes}\n                  unit={narrated ? \"scenes\" : \"shots\"} free={cost === 0} disabled={writing} t={t} />"));
+  // the row of buttons is gone (52 of them, once a film could be five minutes); the other steps' pickers stay
+  assert.ok(!panel.includes("mm-lenopt") && !panel.includes("mm-lenpick") && !ui.includes("lens.map("));
+  assert.ok(ui.includes("<div className=\"mm-lenpick mm-shapepick\" role=\"group\" aria-label={t(\"Shape\")}>"));
+  // acted or told: the way, and a told story's narrator's own pace
+  assert.ok(ui.includes("const lenWay: FilmWay = narrated ? \"narrated\" : \"acted\";"));
+  assert.ok(ui.includes("const lenPer = narrated ? NARRATOR_PACE[narratorId] : undefined;"));
+  assert.ok(ui.includes("const lenSecs = (n: number) => secondsFor(lenWay, n, lenPer);"));
+  assert.ok(ui.includes("const lenStops = stopsWith(lengthStops(lenWay, { min: narrated ? undefined : tmpl.minScenes, per: lenPer }), scenes);"));
+  // every story format's strip starts at its floor and ends at exactly five minutes
+  for (const min of [1, 2]) {
+    const s = lengthStops("acted", { min });
+    assert.equal(s[0], min);
+    assert.equal(s[s.length - 1], maxShots("acted"));
+    assert.equal(filmClock(secondsFor("acted", s[s.length - 1])), "5:00");
+  }
+  for (const per of [undefined, 12, 13, 14]) {
+    const s = lengthStops("narrated", { per });
+    assert.equal(s[0], 3);
+    assert.equal(filmClock(secondsFor("narrated", s[s.length - 1], per)), "5:00", `a told story at ${per ?? "the usual"} s a scene ends at five minutes`);
+  }
+});
+
+test("RUN: the thumb sits on the length the film HAS — a script edited to twelve lines is twelve, not the stop beside it", () => {
+  const acted = lengthStops("acted", { min: 1 });
+  assert.ok(!acted.includes(12) && !acted.includes(18), "(twelve and eighteen are not stops)");
+  assert.ok(stopsWith(acted, 12).includes(12) && stopsWith(acted, 12).length === acted.length + 1);
+  assert.deepEqual(stopsWith(acted, 12), [...acted, 12].sort((a, b) => a - b));
+  // a stop already, or past either end: the stops as they are
+  assert.deepEqual(stopsWith(acted, 4), acted);
+  assert.deepEqual(stopsWith(acted, 0), acted);
+  assert.deepEqual(stopsWith(acted, 60), acted);
+  assert.deepEqual(stopsWith([], 6), []);
+});
+
+test("the card says what the slider says: '≈ 1:44 · 18 shots' — 'scenes' for a story", () => {
+  assert.ok(ui.includes("const lenLabel = (n: number) => `≈ ${filmClock(lenSecs(n))}`;"));
+  assert.ok(ui.includes("<span className=\"mm-val\">{lenLabel(scenes)} · {narrated ? (scenes === 1 ? t(\"1 scene\") : t(\"{n} scenes\", { n: scenes })) : (scenes === 1 ? t(\"1 shot\") : t(\"{n} shots\", { n: scenes }))}</span>"));
+  // the slider's own big figure is the same clock of the same seconds
+  const kit = read("app", "components", "film", "LengthSlider.tsx");
+  assert.ok(kit.includes("const secs = secondsOf(shots);") && kit.includes("{filmClock(secs)}</output>"));
+  assert.equal(`≈ ${filmClock(secondsFor("acted", 18))}`, "≈ 1:44");
+  assert.equal(`≈ ${filmClock(secondsFor("acted", 52))}`, "≈ 5:00");
+  assert.equal(`≈ ${filmClock(secondsFor("narrated", 6))}`, "≈ 0:57");
+});
+
+test("the cost line is the ESTIMATE, with 'free while we finish films' beside it while films are free", () => {
+  assert.ok(ui.includes("const lenTokens = (n: number) => (cost > 0 ? estimateFilmTokens(n) : tokensFor(lenWay, lenSecs(n)));"));
+  // films are free today — the page's own price is nothing — so the slider shows the estimate AND the tag
+  assert.equal(estimateFilmTokens(52), 0);
+  assert.ok(ui.includes("const cost = estimateFilmTokens(tmpl?.lipSyncSinger ? mvBillScenes(mvSceneCount, mvSceneSec) : scenes);"));
+  assert.ok(lengthPanel().includes("free={cost === 0}"));
+  assert.equal(count(dict, "\n  \"free while we finish films\":"), 5);
+  // (review, 2026-11-25: the tag is one unbroken line beside the tokens — film-kit-style.ts, .fk-len-free nowrap — and
+  //  the longer translations ran it off a 390px phone: German to 401px, French 418, Spanish 422. Each is now about
+  //  as long as the English, whose tag fits at every length; measured 390px in all six languages at 0:17, 1:27, 5:00.)
+  //  (Chinese and Urdu are not set in capitals and were already narrower: 117 and 141px.)
+  for (const said of ["gratis mientras probamos", "gratuit pendant les essais", "gratis, solange wir testen"]) {
+    assert.ok(dict.includes(`\n  "free while we finish films": ${JSON.stringify(said)},`), said);
+    assert.ok(said.length <= "free while we finish films".length, said);
+  }
+  // what five minutes is estimated at
+  assert.equal(tokensFor("acted", secondsFor("acted", maxShots("acted"))), 1500);
+  assert.equal(tokensFor("narrated", secondsFor("narrated", maxShots("narrated"))), 750);
+  // the page's FREE badges stay
+  assert.ok(ui.includes("t(\"Generate {name} · Free\", { name: t(heroTitle) })") && ui.includes("t(\"Free while we get this section dialed in — pricing comes later\")"));
+});
+
+test("the action holds a story to the slider's own numbers (filmShots); the Music Video and the Kids Music Video keep theirs", () => {
+  const act = page.slice(page.indexOf("export const action = async"), page.indexOf("export default function FilmStudio"));
+  assert.ok(act.includes("const { FILM_TEMPLATES, filmTemplate, previewFilmTreatment, canNarrate, filmShots } = await import(\"../lib/film-engine.server\");"));
+  assert.ok(act.includes("const storyLength = !!tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung;"));
+  assert.ok(act.includes("const clampScenes = (n: number) => (storyLength ? filmShots(tmpl.key, narrated, n) : Math.max(tmpl.minScenes, Math.min(maxScenes, Math.round(n || tmpl.defaultScenes))));"));
+  // the sung formats' own: a Music Video's length in seconds
+  assert.ok(act.includes("const maxScenes = tmpl.lipSyncSinger ? Math.min(tmpl.maxScenes, Math.floor(MV_MAX_SECONDS / filmSceneSeconds)) : tmpl.maxScenes;"));
+  // all three places a length comes in go through it (the write, the storyboard, the film) — and the length of a
+  // script that is sent with the film
+  assert.equal(count(act, "clampScenes(parseInt((form.get(\"filmScenes\") as string) || \"\", 10) || tmpl.defaultScenes)"), 3);
+  assert.ok(act.includes("scenes = clampScenes(n);"));
+  assert.ok(!page.includes("clampNarrated"));
+  // the slider's last stop is exactly the engines' ceiling
+  const eng = read("app", "lib", "film-engine.server.ts");
+  assert.ok(eng.includes("export const ACTED_MAX_SHOTS = maxShots(\"acted\");") && eng.includes("export const NARRATED_MAX_SCENES = maxShots(\"narrated\");"));
+  assert.ok(eng.includes("return narrated && canNarrate(t.key) ? clampNarrated(Number(n)) : clampScenes(t, Number(n));"));
+  // …and the page is handed the told story's range of the engine (it said 3 to 12)
+  assert.ok(page.includes("narratedScenes: { min: NARRATED_MIN_SCENES, max: NARRATED_MAX_SCENES, def: NARRATED_DEFAULT_SCENES },"));
+});
+
+test("a script written in parts is not asked for again whole when it fails — a short one still gets its second go", () => {
+  const act = page.slice(page.indexOf("if (intent === \"previewFilmTreatment\") {"), page.indexOf("if (intent === \"previewFilmFrame\") {"));
+  assert.ok(act.includes("const inParts = storyLength && scriptParts(narrated ? \"narrated\" : \"acted\", scenes).length > 1;"));
+  assert.ok(act.includes("try { treatment = await previewFilmTreatment(args); }\n      catch (first) {\n        if (inParts) throw first;\n        console.error(`[film] treatment write failed, trying once more:"));
+  // (everything a film was before today is written in one answer, and keeps its retry)
+  for (let n = 1; n <= 6; n++) assert.equal(scriptParts("acted", n).length, 1);
+  for (let n = 3; n <= 12; n++) assert.equal(scriptParts("narrated", n).length, 1);
+  assert.ok(scriptParts("acted", maxShots("acted")).length > 1 && scriptParts("narrated", maxShots("narrated")).length > 1);
+});
+
+test("a slow narrator picked after a long length: the story still ends at five minutes — while nothing is written", () => {
+  const fx = between(ui, "useEffect(() => {\n    if (!narrated || restoring.current || treatment || seeds) return;", "}, [narratorId]);");
+  assert.ok(fx.includes("const most = maxShots(\"narrated\", lenPer);\n    if (scenes > most) setScenes(most);"));
+  assert.ok(ui.includes("const NARRATOR_PACE: Record<string, number> = { \"char:keeper\": 14, \"char:mary\": 13, \"char:coco\": 12, \"char:howl\": 12 };"));
+  assert.equal(maxShots("narrated", 14), 22);
+  assert.ok(22 * 14 >= MAX_FILM_SECONDS && 21 * 14 < MAX_FILM_SECONDS);
+});
+
+test("A SLIDER CANNOT ASK FIRST PER VALUE: under a written script a new length waits — 'This rewrites your script', Rewrite / Keep", () => {
+  // held PENDING while the page's own arming ("len:") stands; anything that drops the arming puts the thumb back
+  assert.ok(ui.includes("const [lenDraft, setLenDraft] = useState<number | null>(null);"));
+  assert.ok(ui.includes("const lenPending = wipeArm === \"len:\" && lenDraft !== null ? lenDraft : null;"));
+  assert.ok(ui.includes("useEffect(() => { setWipeArm(\"\"); }, [storyCard, template, storyHasWork]);"));
+  const pick = between(ui, "const pickLen = (n: number) => {", "\n  };\n");
+  // nothing written, or back to the script's own length: it is simply the length
+  assert.ok(pick.includes("if (!treatment || treatment.scenes.length === n) { setLenDraft(null); orArm(\"len:\", false, () => setStoryLen(n)); return; }"));
+  // else held — and armed once (orArm's first tap); while armed a move only changes what is pending, never commits
+  assert.ok(pick.includes("setLenDraft(n);\n    // (the first move ARMS — orArm's first tap; while armed, a move only changes what is pending)\n    if (wipeArm !== \"len:\") orArm(\"len:\", true, () => setStoryLen(n));"));
+  assert.ok(!pick.includes("setScenes("), "never a length under a script without the tap");
+  // Keep: the thumb goes back
+  assert.ok(ui.includes("const keepLen = () => { setLenDraft(null); setWipeArm(\"\"); };"));
+  // Rewrite: orArm's second tap — the length, and the script written again at it (a told story with pictures drawn again)
+  const redo = between(ui, "const rewriteAtLen = () => {", "\n  };\n");
+  assert.ok(redo.includes("orArm(\"len:\", true, () => { setLenDraft(null); setStoryLen(n); setLenRedo({ draw: narrated && !!seeds }); });"));
+  // (review, 2026-11-25: Rewrite never throws a script away to then write or draw NOTHING — not while the pictures
+  //  are still being drawn (makeStoryboard refuses then), and not with an empty idea box (the writer is never called
+  //  without one): the box asks first, and the script and the pending length both stay)
+  assert.ok(redo.includes("if (lenPending === null || writing || seedBusy) return;"));
+  assert.ok(redo.indexOf("if (noIdeaYet()) return;") > -1 && redo.indexOf("if (noIdeaYet()) return;") < redo.indexOf("orArm(\"len:\", true,"), "the box asks BEFORE anything is wiped");
+  assert.ok(ui.includes("if (!lenRedo) return;\n    setLenRedo(null);\n    if (lenRedo.draw) makeStoryboard(); else writeTreatment();\n  }, [lenRedo]);"));
+  // the line, under the slider, in the panel
+  const panel = lengthPanel();
+  assert.ok(panel.indexOf("{lenPending !== null && (") > panel.indexOf("<LengthSlider "));
+  assert.ok(panel.includes("<p className=\"mm-note mm-shape-warn mm-lenwipe\" role=\"status\">\n                    <span>{t(\"This rewrites your script\")}</span>"));
+  assert.ok(panel.includes("<button type=\"button\" className=\"mm-lenwipe-go\" onClick={rewriteAtLen} disabled={writing || seedBusy}>{t(\"Rewrite\")}</button>"));
+  assert.ok(panel.includes("<button type=\"button\" className=\"mm-lenwipe-keep\" onClick={keepLen}>{t(\"Keep\")}</button>"));
+  // each answer a finger's size to tap, the look kept small
+  const css = sheetOf("FS_STYLE");
+  assert.ok(css.includes(".mm-lenwipe-do button::after{content:\"\";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%);}"));
+  for (const k of ["This rewrites your script", "Rewrite", "Keep"]) assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
+});
+
+test("a long film says so in the Generate area: past twenty minutes, one calm line — the same estimate the slider says", () => {
+  assert.ok(page.includes("const LONG_RENDER_MINUTES = 20;"));
+  assert.ok(ui.includes("const [renderLo, renderHi] = lenMinutes(scenes);\n  const renderAbout = (renderLo + renderHi) / 2;\n  const longRender = isStoryboard && renderAbout > LONG_RENDER_MINUTES;"));
+  // said ONCE: in the estimate's own place (its range is on the slider), never a second line saying it again
+  const go = between(ui, "<div className={`fs-eta${longRender ? \" is-long\" : \"\"}`} aria-live=\"polite\"", "</Form>");
+  assert.ok(go.includes("<span aria-hidden=\"true\">⏱</span> {longRender\n              ? t(\"About {time} to render — we'll keep it in your Archive\", { time: waitSaid(renderAbout, t) })\n              : <>{t(\"Est. render time\")} <b>{filmEta("));
+  assert.equal(count(ui, "About {time} to render"), 1);
+  // ONE estimate: the slider's minutes, "Est. render time" and this line are all storyMinutes (renderMinutes)
+  assert.ok(ui.includes("const lenMinutes = (n: number): [number, number] => storyMinutes(lenWay, n, { moves: d.storyMotion && pictures !== \"still\", per: lenPer, veo: dialogueEngine === \"veo\" });"));
+  assert.ok(page.includes("[lo, hi] = storyMinutes(\"narrated\", n, { moves: opts.moves, per: opts.per });") && page.includes("[lo, hi] = storyMinutes(\"acted\", n, { veo: opts.engine === \"veo\" });"));
+  assert.ok(ui.includes("filmEta({ lipSyncSinger: tmpl?.lipSyncSinger, dialogue: isStoryboard, per: lenPer, narrated, moves: d.storyMotion && pictures !== \"still\", scenes, engine: dialogueEngine })"));
+  // RUN: who sees it
+  const about = (way: "acted" | "narrated", n: number, o?: { moves?: boolean; per?: number; veo?: boolean }) => { const [lo, hi] = storyMinutes(way, n, o); return (lo + hi) / 2; };
+  assert.deepEqual(storyMinutes("acted", 4), renderMinutes("acted", 4));
+  assert.ok(about("acted", 4) <= 20, "a short acted film: no line");
+  assert.ok(about("acted", 6) <= 20 && about("acted", 7) > 20, "from seven shots (about forty seconds) it is said");
+  assert.equal(waitSaid(about("acted", 7), enT), "25 min");
+  assert.equal(waitSaid(about("acted", 52), enT), "2 h 30 min");
+  assert.ok(about("narrated", maxShots("narrated")) <= 20, "a told story, even five minutes of it, is under twenty");
+  // (Veo, never timed, kept the seventh slower the page has always said)
+  assert.deepEqual(storyMinutes("acted", 52, { veo: true }), [Math.round((132 * 8) / 7), Math.round((170 * 8) / 7)]);
+  assert.deepEqual(storyMinutes("narrated", 6, { veo: true }), renderMinutes("narrated", 6));
+  // said as people say it, to the nearest five minutes
+  assert.equal(waitSaid(44, enT), "45 min");
+  assert.equal(waitSaid(60, enT), "1 h");
+  assert.equal(waitSaid(66, enT), "1 h 5 min");
+  for (const k of ["About {time} to render — we'll keep it in your Archive", "{n} min", "{h} h {m} min", "{h} h"]) assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
+  // calm: no amber — a sentence, centred, wrapping as one
+  const css = sheetOf("FS_STYLE");
+  const rule = css.slice(css.indexOf(".fs-eta.is-long{"), css.indexOf("}", css.indexOf(".fs-eta.is-long{")));
+  assert.ok(rule.includes("display:block;") && rule.includes("text-align:center;") && !/#7A5A12|#FFF7E3|#EBD9A8/.test(rule), rule);
 });

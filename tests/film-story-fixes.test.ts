@@ -35,7 +35,11 @@ test("a tap that would start the story over is armed first, and done on the seco
   // (Acted | Narrated is not one of them any more: how a story is told is the HERO that was picked —
   //  tests/film-heroes.test.ts — so there is no switch in the builder to arm)
   assert.ok(!ui.includes("orArm(\"told:") && !ui.includes("storyCard === \"told\""));
-  assert.ok(ui.includes("onClick={() => orArm(`len:${n}`, !!treatment && treatment.scenes.length !== n, () => setStoryLen(n))}"));
+  // (2026-11-25: the Length step is a SLIDER, and a drag cannot be asked per value — a new length under a written
+  //  script is held pending and ARMED once through the same orArm; only its Rewrite does it. tests/film-builder-top.test.ts)
+  assert.ok(ui.includes("if (!treatment || treatment.scenes.length === n) { setLenDraft(null); orArm(\"len:\", false, () => setStoryLen(n)); return; }"));
+  assert.ok(ui.includes("if (wipeArm !== \"len:\") orArm(\"len:\", true, () => setStoryLen(n));"));
+  assert.ok(ui.includes("orArm(\"len:\", true, () => { setLenDraft(null); setStoryLen(n); setLenRedo({ draw: narrated && !!seeds }); });"));
   assert.ok(ui.includes("onClick={() => orArm(\"bump:-1\", !!treatment, () => bump(-1))}") && ui.includes("onClick={() => orArm(\"bump:1\", !!treatment, () => bump(1))}"));
   // (2026-11-25: "Rewrite" is the scene board's "Rewrite all" — the board asks the page, and the page arms it as before)
   assert.ok(ui.includes("onRewriteAll={() => orArm(\"rewrite\", true, writeTreatment)}") && ui.includes("rewriteArmed={wipeArm === \"rewrite\"}"));
@@ -44,7 +48,9 @@ test("a tap that would start the story over is armed first, and done on the seco
     assert.ok(!ui.includes(direct), direct);
   }
   // it SAYS what the second tap does, beside the control
-  for (const prefix of ["cast:", "len:", "bump:"]) assert.ok(ui.includes(`{wipeNote(${JSON.stringify(prefix)})}`), prefix);
+  for (const prefix of ["cast:", "bump:"]) assert.ok(ui.includes(`{wipeNote(${JSON.stringify(prefix)})}`), prefix);
+  // (the slider's arming says it in its own line, with its two answers, under the slider)
+  assert.ok(ui.includes("{lenPending !== null && (") && ui.includes("<span>{t(\"This rewrites your script\")}</span>"));
   // (…and the board's button says what the second tap does, from the page's arming)
   assert.ok(read("app", "components", "film", "SceneBoard.tsx").includes("{props.rewriteArmed ? t(\"Tap again to rewrite\") : t(\"Rewrite all\")}"));
   assert.ok(ui.includes("{wipeArm === \"rewrite\" && <p className=\"mm-note mm-shape-warn\" role=\"status\">{t(\"A rewrite replaces every line, your edits too. The cast you picked stays.\")}</p>}"));
