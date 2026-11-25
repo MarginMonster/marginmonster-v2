@@ -700,10 +700,15 @@ export async function generateNarratedStory(opts: {
       const seeds: string[] = [];
       for (const s of stills) seeds.push(await withoutBars(s));
       const end = windows[windows.length - 1].t1 + TAIL_S;
+      // (a CREATURE'S face seen close stays still — its picture's slow push-in: the engine softened the lake woman's
+      //  too-wide smile into an ordinary face as her close-up moved, 2026-11-25. Only a creature the story invented:
+      //  a show's own star moves.)
+      const creatures = (treatment.cast || []).map((e) => castEntry(e)).filter((c) => !!c.name && characterKind(c.name, c.look) === "monster").map((c) => c.name);
+      const still = treatment.scenes.map((s) => sceneShot(s) === "close" && creatures.some((n) => presentIn(n, s.visual || "")));
       motion = await animateScenes({
         seeds, visuals: treatment.scenes.map((s) => s.visual || s.caption || ""), cams: treatment.scenes.map((s) => sceneShot(s)),
         told: windows.map((w, i) => (i === windows.length - 1 ? end : w.t1) - w.t0),
-        base, W, H, jobId, ckMotion: resume.ckMotion,
+        base, W, H, jobId, ckMotion: resume.ckMotion, still,
       });
     } catch (e) { console.error(`[narrated] the pictures could not be brought to life — told over the still pictures: ${e instanceof Error ? e.message.slice(0, 160) : e}`); }
   }

@@ -49,6 +49,9 @@ export async function animateScenes(o: {
   jobId?: string;
   /** request ids of clips a stopped job was still waiting for: picture name → id (JSON) */
   ckMotion?: string;
+  /** scenes that stay STILL (their picture's slow push-in): a creature's face seen close — the engine softened the
+   *  lake woman's too-wide smile into an ordinary face as her close-up moved (2026-11-25); the still is the scare */
+  still?: ReadonlyArray<boolean>;
 }): Promise<MotionResult> {
   const N = o.seeds.length;
   const out: MotionResult = { clips: new Array(N).fill(null), made: 0, reused: 0, seconds: 0, faults: [] };
@@ -91,9 +94,11 @@ export async function animateScenes(o: {
       try {
         await download(url, raw);
         if (!(seconds(raw) > 1)) throw new Error("the clip that came back does not play");
-        // the story's own size and nothing more — a clip is kept for days, and six of them a story add up
+        // the story's own size and nothing more — a clip is kept for days, and six of them a story add up. (At
+        // CRF 18, "fast": it was CRF 24 "veryfast", and the story is encoded once more after this — the night's
+        // shadows went to blocks twice over; the owner, 2026-11-25: "quality looks rough".)
         const r = await runFfmpeg(["-y", "-i", raw, "-an", "-vf", `scale=${o.W}:${o.H}:force_original_aspect_ratio=increase,crop=${o.W}:${o.H},setsar=1`,
-          "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-pix_fmt", "yuv420p", "-movflags", "+faststart", tmp]);
+          "-c:v", "libx264", "-preset", "fast", "-tune", "film", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", tmp]);
         if (r.status === 0 && seconds(tmp) > 1) fs.renameSync(tmp, file);
         else fs.renameSync(raw, file); // as it came: larger, and it plays
       } finally {
@@ -114,6 +119,7 @@ export async function animateScenes(o: {
     const worker = async () => {
       while (next < Math.min(N, MOTION_MAX_SCENES)) {
         const i = next++;
+        if (o.still?.[i]) { console.log(`[story-motion] scene ${i + 1} stays still: a creature's face, seen close`); continue; }
         try { out.clips[i] = await clipFor(i); }
         catch (e) { out.faults.push({ scene: i + 1, error: (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").slice(0, 180) }); }
       }

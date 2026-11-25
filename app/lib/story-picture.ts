@@ -79,7 +79,7 @@ export const SHADOW_SHAPE = "A shadow in these words is drawn as a shadow: a tal
 const SHADOW_FIGURE = /\b(?:a|the|that)\s+(?:[\p{L}-]+\s+){0,2}(?:shadows?\b(?![-\s]*(?:of|on|across|over|fills?|filling|falls?|falling|cast|pools?|pooling|play|dances?|stretch(?:es)?|from))|shadowy\s+(?:figure|shape|form|man|woman|person|thing)\b)/iu;
 export const shadowNote = (visual: string): string => (SHADOW_FIGURE.test(String(visual || "")) ? SHADOW_SHAPE : "");
 /** A SOUND IS NEVER DRAWN in a picture either (the same night's film drew its knocks as a glowing ring on a window). */
-export const STORY_SOUND = "A sound is never drawn: nothing glows, rings or lights up where a knock, a bell or a voice comes from.";
+export const STORY_SOUND = "A sound is never drawn: nothing glows, rings or lights up where a knock, a bell or a voice comes from — and whoever makes it is not in the picture unless these words put them there.";
 /** TODAY'S REAL WORLD, IN THE PICTURE TOO. The writer is told a home is an ordinary modern home (premise-rules.ts →
  *  REAL_WORLD) — but a place's words seldom say how OLD it is ("the front door: a narrow wooden door set in a dark
  *  porch wall"), and the horror picture model, left to guess, built the children's house of rough grey stone twice
@@ -703,7 +703,10 @@ const WOMEN = /\b(?:woman|girl|lady|she|her|hers|mother|mom|mum|grandmother|gran
 // Story's ghost was written as "a pale drowned bride … skin tinged blue-grey": no monster word in it, and she
 // was offered as a PERSON.) Kept narrow: "half-drowned", "dead-eyed" and "ghostly pale" are living people.
 const UNDEAD = /(?<!half-)\b(?:drowned|dead(?![- ]eyed)|undead|ghostly(?! pale| white| quiet)|spectral|skeletal|rotting|decaying|decayed|headless|faceless|eyeless|possessed|demonic|monstrous|mummified|corpses?|cadavers?|mumm(?:y|ies))\b/i;
-const UNNATURAL = /\b(?:empty (?:eye )?sockets|glowing (?:\w+ )?eyes|translucent|see-through|rotting (?:flesh|skin)|skin tinged (?:blue|grey|gray|green)|fangs|tentacles)\b/i;
+// (…and the "nearly human, slightly wrong" the horror writer is told to give a thing it invents (WHAT_FRIGHTENS): "a
+//  woman … her smile far too wide and crowded with thin teeth, eyes sunk in dark wet sockets" was read as a PERSON —
+//  drawn whole and lit, and her close-up's smile softened as it moved, 2026-11-25)
+const UNNATURAL = /\b(?:empty (?:eye )?sockets|glowing (?:\w+ )?eyes|translucent|see-through|rotting (?:flesh|skin)|skin tinged (?:blue|grey|gray|green)|fangs|tentacles|smile (?:far |much |way )?too wide|too-wide smile|crowded with (?:thin |small |sharp |grey |gray |yellow )?teeth|(?:eyes )?sunk(?:en)? (?:deep )?in(?:to)? (?:dark |black )?(?:wet )?(?:sockets|hollows)|skin (?:like|the colou?r of) (?:old )?candle ?wax|candle[- ]wax skin|(?:fingers|neck|arms|limbs) (?:far |much )?too long|unnaturally (?:long|tall|still))\b/i;
 
 /** WHAT a story's character most likely is, read off the words the writer described them with — only a
  *  first guess, which the maker can change before anything is charged (the price follows the kind):

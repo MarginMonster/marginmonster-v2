@@ -268,8 +268,12 @@ test("inside a house its outside walls are not drawn; outside stays outside; the
 test("a story's own creature is known by its name as well as its look; a door the words do not open is shut", async () => {
   const sp = await import("../app/lib/story-picture.ts");
   const ghost = "a tall woman who stands unnaturally still, her pale gown hanging damp and heavy, her smile stretched too wide";
-  assert.equal(sp.keepGuess(ghost).kind, "person", "her look alone reads as a woman…");
-  assert.equal(sp.characterKind("the ghost lady", ghost), "monster", "…her name says what she is");
+  // (her look alone read as a woman when this was written; "unnaturally still" now reads as a creature too — the lake
+  //  woman's look had no creature word at all: see the test below. Her NAME still decides it on its own:)
+  assert.equal(sp.keepGuess(ghost).kind, "monster", "her look reads as a creature now…");
+  assert.equal(sp.keepGuess("a tall woman, her pale gown hanging damp and heavy").kind, "person", "…a look with no wrongness in it is a woman…");
+  assert.equal(sp.characterKind("the ghost lady", "a tall woman, her pale gown hanging damp and heavy"), "monster", "…and her name says what she is");
+  assert.equal(sp.characterKind("the ghost lady", ghost), "monster");
   assert.equal(sp.characterKind("the shadow", "a dark shape with no face, standing under the old tree"), "monster");
   assert.equal(sp.characterKind("the thing in the well", "a pale shape, long thin arms"), "monster");
   assert.equal(sp.characterKind("Leni", "a 9-year-old girl with twin braids"), "person");
@@ -364,4 +368,21 @@ test("a run-down place is looked for and drawn again; a face is a face's size; a
   const sh = await import("../app/lib/story-shots.ts");
   assert.ok(sh.STORY_SHOTS.detail.write.includes("A hand in it is always somebody's, and the VISUAL says whose"));
   assert.ok(sh.cameraLine("detail").includes("they are the hands of whoever these words name (a child's hand is a child's: small)."));
+});
+
+/* "NEEDS WORK BUT QUALITY WAY BETTER" (the owner, 2026-11-25, of the lake story in 1080p): its "woman standing waist-deep,
+ * her smile far too wide and crowded with thin teeth" was read as a PERSON — so never kept half-hidden — and her
+ * close-up's smile softened into an ordinary face as it moved; its first picture drew her on the tent wall when the
+ * words had only her voice; and every moving clip had been squeezed at CRF 24 before the story's own encode. */
+test("a nearly-human thing is a creature; its close-up stays still; a voice's maker is not drawn; clips kept finer", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  for (const look of ["a pale woman standing waist-deep in the lake, her smile far too wide and crowded with thin teeth", "a tall woman who stands unnaturally still, her pale gown hanging damp", "a woman with skin like candle wax", "a thin man, eyes sunk in dark sockets"]) assert.equal(sp.keepGuess(look).kind, "monster", look);
+  for (const look of ["a tired widow with hollow eyes and a black shawl", "an old fisherman with a wide grin and crooked teeth", "a nervous man with long fingers and a thin neck", "a ghostly pale child in a nightgown"]) assert.equal(sp.keepGuess(look).kind, "person", look);
+  assert.ok(sp.STORY_SOUND.endsWith("— and whoever makes it is not in the picture unless these words put them there."));
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("const creatures = (treatment.cast || []).map((e) => castEntry(e)).filter((c) => !!c.name && characterKind(c.name, c.look) === \"monster\").map((c) => c.name);"));
+  assert.ok(nar.includes("const still = treatment.scenes.map((s) => sceneShot(s) === \"close\" && creatures.some((n) => presentIn(n, s.visual || \"\")));") && nar.includes("ckMotion: resume.ckMotion, still,"));
+  const mo = read("app", "lib", "story-motion.server.ts");
+  assert.ok(mo.includes("if (o.still?.[i]) { console.log(`[story-motion] scene ${i + 1} stays still: a creature's face, seen close`); continue; }"));
+  assert.ok(mo.includes("\"-c:v\", \"libx264\", \"-preset\", \"fast\", \"-tune\", \"film\", \"-crf\", \"18\"") && !mo.includes("\"-crf\", \"24\""), "a clip is kept at the story's own quality, not squeezed before its last encode");
 });
