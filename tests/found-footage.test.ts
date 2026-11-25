@@ -131,8 +131,17 @@ test("THE QUEUE'S BRANCH: one take, handheld or house, resumed from its own chec
   // …and, to both makers of one take, the roll that was in the air when the job stopped and the host the kept roll came from
   assert.equal(count(branch, 'ckRoll: ck("ckRoll"), ckRaw: ck("ckRaw"), ckHost: ck("ckHost"),'), 2);
   // a take of the member's own words reaches either maker with the card those words started from (take.ts → footageJob)
-  assert.equal(count(branch, 'idea: ck("takeOwn"),'), 2);
+  // — and a FILM's maker, the third (2026-11-25: footage-film.server.ts; it was 2 when there were two makers)
+  assert.equal(count(branch, 'idea: ck("takeOwn"),'), 3);
   assert.equal(count(branch, 'from: ck("takeFrom"),'), 2, "the card a take's own words started from reaches both makers");
+  // A FILM — the outline the member approved, or more than one moment asked for — goes to the film's maker, with the
+  // payload itself as what it resumes from (its own checkpoints, and the one take's it can fall back to); a film from a
+  // card left as it was starts from that card. ANYTHING ELSE is one take, by the same two calls as ever.
+  assert.ok(branch.includes('const takeFilm = !!ck("takeOutline") || (typeof payload.takeMoments === "number" && payload.takeMoments > 1);'));
+  assert.ok(branch.includes('const takeAssetId = takeFilm\n          ? await (await import("./footage-film.server")).generateFootageFilm({'));
+  assert.ok(branch.includes('outline: (await import("./footage-film")).cleanFootageOutline(ck("takeOutline")) || undefined,'), "what the page sent is cleaned again before it is filmed");
+  assert.ok(branch.includes('from: ck("takeFrom") || ck("takeIdea"),') && branch.includes('moments: typeof payload.takeMoments === "number" ? payload.takeMoments : undefined,') && branch.includes("resume: ck,"));
+  assert.ok(branch.includes('          : payload.takeCamera === "house"\n          ? await (await import("./house-take.server")).generateHouseTake({'));
   // the piece is created carrying its section and its job (as the lyric video's is) — nothing is tagged after
   assert.ok(!branch.includes("tagAssetSection("));
   for (const f of ["take.server.ts", "house-take.server.ts"]) {

@@ -1029,7 +1029,28 @@ async function runJob(
         }
         const takeJob = payload.__jobId as string | undefined;
         const ck = (k: string) => (typeof payload[k] === "string" ? (payload[k] as string) : undefined);
-        const takeAssetId = payload.takeCamera === "house"
+        // A FILM (2026-11-25, the owner: "It currently appears to pipeline singular events But needs to be more like
+        // \"Found Footage\" … with describe events flow like the others"): several moments from one camera, a card
+        // before each (footage-film.server.ts) — when the builder sent the outline the member approved
+        // (`takeOutline`) or asked for more than one moment (`takeMoments`). Its own checkpoints (ckFo, ckFm0 …)
+        // and the one take's it falls back to are all read through `ck`. ANYTHING ELSE IS ONE TAKE, exactly as below.
+        const takeFilm = !!ck("takeOutline") || (typeof payload.takeMoments === "number" && payload.takeMoments > 1);
+        const takeAssetId = takeFilm
+          ? await (await import("./footage-film.server")).generateFootageFilm({
+            shopId,
+            outline: (await import("./footage-film")).cleanFootageOutline(ck("takeOutline")) || undefined,
+            idea: ck("takeOwn"),
+            from: ck("takeFrom") || ck("takeIdea"),
+            camera: ck("takeCamera"),
+            aspect: ck("takeAspect"),
+            moments: typeof payload.takeMoments === "number" ? payload.takeMoments : undefined,
+            lapse: typeof payload.takeLapse === "boolean" ? payload.takeLapse : undefined,
+            ir: typeof payload.takeIr === "boolean" ? payload.takeIr : undefined,
+            section: (payload.section as string) || "creator",
+            jobId: takeJob,
+            resume: ck,
+          })
+          : payload.takeCamera === "house"
           ? await (await import("./house-take.server")).generateHouseTake({
             shopId,
             scareKey: ck("takeIdea"),
