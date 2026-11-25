@@ -96,6 +96,52 @@ export const LIVED_IN = "A family's home is clean, cared for and lived in — fr
  *  the picture model drew her bare — a bather — and the video engine kept what its first frame had). Said in every
  *  grown-up picture (TODAY_LOOK), every reveal (acted-staging.ts) and every children's picture. */
 export const DRESSED = "Everyone in the picture is fully clothed in ordinary clothes — a figure standing in water too, its own clothes soaked and clinging (a nightgown, a dress, a coat).";
+/** …AND SAID WHERE THE FIGURE IS SAID (2026-11-25, "Still Water Calls Twice"): DRESSED sat at the end of a long prompt and
+ *  the woman "standing waist-deep in the lake" was still drawn bare — three films running, none of them sent. A picture
+ *  model draws a person in water as a bather unless the words that put them there also dress them. So the sentence
+ *  that puts a person in water gets their clothes right behind it — unless that sentence or the next already does. */
+const IN_WATER = /\b(?:waist|chest|knee|neck|ankle|shoulder)[- ]deep\b|\b(?:in|into|from|out of|under) the (?:lake|water|river|sea|ocean|pond|pool|creek|stream|swamp|marsh|bath|bathtub|tub|shower|surf|waves|shallows)\b|\b(?:wading|wades|swimming|swims|floating|floats|bathing|submerged)\b/i;
+const A_PERSON = /\b(woman|lady|girl|bride|mother|man|boy|figure|stranger|someone|somebody|person|child|kid|swimmer|she|he|women|men|girls|boys|kids|children|people|friends|they)\b/i;
+/** …in a bath or a shower nobody wears a nightgown: only the head and shoulders are seen. */
+const A_BATH = /\b(?:bath|bathtub|tub|shower)\b/i;
+const CLOTHES = /\b(?:dress|gown|nightgown|nightdress|coat|raincoat|shirt|blouse|clothes|clothing|clothed|suit|uniform|jacket|sweater|hoodie|robe|jeans|trousers|skirt|shroud|cloak|wearing|wears|dressed|swimsuit|wetsuit|trunks)\b/i;
+const SWIM = /\b(?:swimming|swims|swimmer|pool|beach|bathing)\b/i;
+export function dressedInWater(text: string): string {
+  const t = String(text || "");
+  if (!IN_WATER.test(t)) return t;
+  const sentences = t.split(/(?<=[.!?])\s+/);
+  const at = sentences.findIndex((s) => IN_WATER.test(s));
+  if (at < 0) return t;
+  const near = `${sentences[at]} ${sentences[at + 1] || ""}`;
+  const who = A_PERSON.exec(sentences[at]) || A_PERSON.exec(t);
+  if (!who || CLOTHES.test(near)) return t;
+  const w = who[1].toLowerCase();
+  const garment = A_BATH.test(near) ? "Only the head and shoulders show above the water and the foam — nothing else of the body is seen."
+    : SWIM.test(near) || /^(?:women|men|girls|boys|kids|children|people|friends|they)$/.test(w) ? "Everyone in the water wears a modest swimsuit."
+    : /^(?:woman|lady|girl|bride|mother|she)$/.test(w) ? "She is fully clothed: a long pale nightgown, soaked and clinging, covering her from neck to knee."
+    : /^(?:man|boy|he)$/.test(w) ? "He is fully clothed: a shirt and trousers, soaked and clinging."
+    : "The one in the water is fully clothed: plain everyday clothes, soaked and clinging, from neck to knee.";
+  sentences.splice(at + 1, 0, garment);
+  return sentences.join(" ");
+}
+/** …AND THE PICTURE IS LOOKED AT: is anybody in it unclothed? (Asked of a film's master before it is kept —
+ *  image-generation.server.ts → renderSideBySideTwoShot. A picture with an unclothed figure is never the one a film is
+ *  shot from: it is drawn again with the clothes said FIRST, and if the model still will not, the figure is dressed by
+ *  an edit of that picture.) */
+export function unclothedPrompt(): string {
+  return 'Look at every person and every human-like figure in this picture, however small, far away or pale. Is ANY of them unclothed — a bare chest or bare torso, or a body with no clothing visible on it? Bare arms, bare legs, bare feet and a swimsuit all count as CLOTHED; a figure whose body is hidden by water, dark or distance and shows no bare torso counts as clothed. Reply with ONLY this JSON: {"unclothed": true or false, "who": "where that figure is, in a few words — an empty string when nobody is"}';
+}
+export function parseUnclothed(raw: string): { unclothed: boolean; who: string } {
+  try {
+    const m = /\{[\s\S]*\}/.exec(String(raw || ""));
+    const j = m ? JSON.parse(m[0]) : null;
+    return { unclothed: j?.unclothed === true, who: typeof j?.who === "string" ? j.who.replace(/\s+/g, " ").trim().slice(0, 80) : "" };
+  } catch { return { unclothed: false, who: "" }; }
+}
+/** Said FIRST when a picture is drawn again because somebody in it was not dressed. */
+export const CLOTHED_FIRST = "EVERY person and every figure in this picture is fully clothed, the far and the pale ones too: anyone standing in water wears a long, soaked, pale nightgown or their own soaked everyday clothes, covering the body from neck to knee.";
+/** …and the edit that dresses the one figure when the model will not draw it dressed. */
+export const clothedEdit = (who: string): string => `Edit this photo and change ONE thing: the figure ${who ? `(${who}) ` : ""}who has no clothes on now wears a long, soaked, pale nightgown that covers the body from neck to knee. Everything else stays exactly as it is — the same place, light, framing, people, faces, hair and what the others wear. No text anywhere.`;
 export const TODAY_LOOK = "Where these words do not say how old a place is, it looks the way such a place looks TODAY — a home is an ordinary modern house (outside, painted siding or plaster; inside, plain painted walls), with ordinary rectangular windows and an ordinary front door — never older, rougher or more storybook than the words say: no rough stone walls, no cottage and no castle unless they name one. " + LIVED_IN + " " + DRESSED;
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference

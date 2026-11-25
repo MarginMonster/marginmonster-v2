@@ -15,7 +15,7 @@ import { anthropicText, anthropicVision } from "./anthropic.server";
 import { artLog } from "./art-log.server";
 import { characterInRef } from "./character-prompts";
 import { stagedTwoShot } from "./acted-staging";
-import { STORY_LAST_MODEL, STORY_MODEL, storyPictureInput } from "./story-picture";
+import { CLOTHED_FIRST, STORY_LAST_MODEL, STORY_MODEL, clothedEdit, dressedInWater, parseUnclothed, storyPictureInput, unclothedPrompt } from "./story-picture";
 import { merchantBusy, releaseArtSlot, takeArtSlot } from "./art-throttle.server";
 import { findCorruptedWord } from "./text-gate";
 import { hasCJK, langDirective } from "./content-lang";
@@ -4955,7 +4955,9 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
     // What the scene SHOWS. Without it every acted film was two people talking in a room, whatever the
     // story said was in their hands or happening around them (a film about a rescued baby bird had no
     // bird). The framing rules of this shot win any conflict with it.
-    const act = (opts.action || "").replace(/\s+/g, " ").trim().slice(0, 240);
+    // (a person the moment puts IN WATER is dressed by the same words: story-picture.ts → dressedInWater)
+    const action = dressedInWater(opts.action || "");
+    const act = action.replace(/\s+/g, " ").trim().slice(0, 240);
     const mood = (opts.mood || "").replace(/\s+/g, " ").trim().slice(0, 160);
     const moment = act ? ` THE MOMENT this shot shows: ${act} — include what the scene calls for (what a character holds, what is happening around them) inside this same close two-shot; where it conflicts with the framing described here, the framing wins.` : "";
     const styleLead = cartoon
@@ -4979,7 +4981,7 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
     // reference picture is the same text as above. No staging → the prompt above, unchanged.
     // (The moment has more room here than the 240 characters above: a film's last scene may be written longer — and
     //  since 2026-11-25 it carries the story's own description of anybody else it names, the woman in the lake.)
-    const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: (opts.action || "").replace(/\s+/g, " ").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, comp }) : "";
+    const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: action.replace(/\s+/g, " ").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, comp }) : "";
     // ON THE GOOD MODEL (story-picture.ts → STORY_MODEL), the everyday one only if it will not draw it. An acted
     // film's master is the picture every clip of it is filmed FROM — and it was still drawn on the everyday model
     // after the owner called that one "a poop engine for the stills" and every told story moved off it (2026-11-24).
@@ -4990,6 +4992,28 @@ export async function renderSideBySideTwoShot(opts: { roomRefUrl?: string | null
       catch (e) { artLog("image-ad", `two-shot on ${m} failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
     }
     if (!url) return null;
+    // EVERYBODY IN IT IS CLOTHED — LOOKED AT (2026-11-25: three lake films in a row had the woman in the water drawn bare,
+    // whatever the words said, and none could be sent). A film is never shot from a picture with an unclothed figure:
+    // it is drawn once more with the clothes said first; if the model still will not, that one figure is dressed by an
+    // edit of the picture. A look that cannot be made keeps the picture (never a film lost to its check).
+    const bare = async (u: string) => { try { return parseUnclothed(String((await anthropicVision(unclothedPrompt(), [u], { maxTokens: 120, model: "claude-sonnet-4-6" })) || "")); } catch { return { unclothed: false, who: "" }; } };
+    let seen = await bare(url);
+    if (seen.unclothed) {
+      artLog("image-ad", `two-shot: an unclothed figure (${seen.who || "somewhere in it"}) — drawn again, clothes first`);
+      try {
+        const again = await repRun(used, storyPictureInput(used, { prompt: `${CLOTHED_FIRST} ${staged || prompt}`, refs, aspect: ar }), 150_000);
+        const look = again ? await bare(again) : seen;
+        if (again && !look.unclothed) { url = again; seen = look; }
+      } catch (e) { artLog("image-ad", `two-shot: the clothed redraw failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+    }
+    if (seen.unclothed) {
+      try {
+        const edited = await repRun(STORY_MODEL, storyPictureInput(STORY_MODEL, { prompt: clothedEdit(seen.who), refs: [url], aspect: ar }), 150_000);
+        const look = edited ? await bare(edited) : seen;
+        if (edited && !look.unclothed) { url = edited; seen = look; }
+        else if (edited) { url = edited; artLog("image-ad", "two-shot: STILL an unclothed figure after the edit — the edited picture is kept; look at this film"); }
+      } catch (e) { artLog("image-ad", `two-shot: the clothing edit failed — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
+    }
     const durable = await persistRemote(url, "jpg");
     artLog("image-ad", `side-by-side two-shot rendered on ${used} (refs x${refs.length}${staged ? `, staged ${opts.staging}` : ""})`);
     return durable;
