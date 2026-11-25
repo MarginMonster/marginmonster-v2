@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  FILM_TOKENS_PER_SECOND, MAX_FILM_SECONDS, SHOT_SECONDS, WRITE_AT_ONCE, clampShots, clockLabel, filmPlaces, lengthStops, maxShots, minShots, partBrief, planBrief, planSchema,
+  FILM_TOKENS_PER_SECOND, MAX_FILM_SECONDS, SHOT_SECONDS, WRITE_AT_ONCE, clampShots, clockLabel, filmPlaces, laneMinutes, lengthStops, maxShots, minShots, partBrief, planBrief, planSchema,
   renderMinutes, scriptParts, secondsFor, takePlan, tokensFor, turnPart, type FilmWay,
 } from "../app/lib/film-length.ts";
 import { TYPICAL_SHOT_SECONDS, clipSecondsFor, estimateSpeakSeconds } from "../app/lib/speech-meter.ts";
@@ -422,6 +422,23 @@ test("THE HEARTBEAT: a film that works for two hours is never taken for dead —
   assert.ok(src.includes("// (a picture came back, or did not — either way the film is at work, and says so: see `say`)\n      await say(alive);"));
   // …and the join between its parts (film-join.server.ts → joinInParts), the loudness and the captions as before
   assert.ok(src.includes("return joinWhole({ clips, outPath, prep: SCALE, seams, length: \"picture\", encode: ENCODE, label: \"[testmovie]\", beat });"));
+});
+
+test("A LONG FILM HOLDS ITS LANE: the worker does not start the next film beside one that is two hours into its work", () => {
+  // the ceiling after which a lane is given back (one render at a time: two at once restarted the server)
+  const q = read("app", "lib", "job-queue.server.ts");
+  assert.ok(q.includes("const RENDER_SLOT_MS = 70 * 60_000;"));
+  // a short film's own ceiling is under it (nothing changes); a five-minute one is well over it
+  assert.ok(laneMinutes("acted", 6) * 60_000 <= 70 * 60_000);
+  assert.equal(laneMinutes("acted", 6), 35);
+  assert.equal(laneMinutes("acted", 52), 255);
+  for (let n = 1; n <= maxShots("acted"); n++) assert.ok(laneMinutes("acted", n) >= renderMinutes("acted", n)[1], `${n}`);
+  // the slot is still reserved before the first await, and released only by its owner (tests/job-lanes.test.ts)…
+  assert.ok(q.includes("const slot = slots[lane];\n  if (Date.now() < slot.until) return false;\n  const myToken = ++slot.token;\n  slot.until = Date.now() + RENDER_SLOT_MS;"));
+  // …and the reservation that runs an acted film is lengthened to the film's own ceiling, never shortened
+  assert.ok(q.includes("return await claimAndRunOneJob(lane, (ms) => { if (slot.token === myToken) slot.until = Math.max(slot.until, Date.now() + ms); });"));
+  assert.ok(q.includes("if (t.dialogue && !t.sung && !t.lipSyncSinger) hold(laneMinutes(\"acted\", p.filmScenes) * 60_000);"));
+  assert.ok(q.includes("if (job.type === \"GENERATE_VIDEO_AD\" && p.contentType === \"film\" && p.filmMode !== \"narrated\" && typeof p.filmScenes === \"number\") {"));
 });
 
 test("THE WRITER IN PARTS: a long film is planned, then written a part at a time — each told every line before it", () => {

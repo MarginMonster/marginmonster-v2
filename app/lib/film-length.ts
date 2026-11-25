@@ -148,6 +148,13 @@ export function renderMinutes(way: FilmWay, shots: number, o: { /** a told story
   return [lo, Math.max(lo + 1, Math.round((made * 1.35 + film) / 60))];
 }
 
+/** HOW LONG A FILM MAY HOLD ITS LANE, in minutes (job-queue.server.ts → processNextJob). The worker renders one film
+ *  at a time — two at once is the memory spike that restarted the server — and frees the lane after 70 minutes in
+ *  case a render never settles: "the ceiling must sit ABOVE the longest legitimate render". A five-minute acted film
+ *  is two to three hours of honest work, so a film's own ceiling is half again the top of its own range. */
+export const laneMinutes = (way: FilmWay, shots: number, o: { moves?: boolean; per?: number } = {}): number =>
+  Math.ceil(renderMinutes(way, shots, o)[1] * 1.5);
+
 /* ---- A LONG SCRIPT IS WRITTEN IN PARTS ----
  * Until 2026-11-25 a film was at most six acted shots or twelve told scenes, and its writer wrote all of it in
  * one answer. Five minutes is fifty-two shots, and one answer cannot be that:
