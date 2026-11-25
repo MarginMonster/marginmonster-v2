@@ -26,7 +26,11 @@
  *                       Kept take keeps it for good.
  *
  * makeHouseTake is all of it but the database (a local run makes a take with it); generateHouseTake reads the
- * shop's house and writes the piece. */
+ * shop's house and writes the piece.
+ *
+ * A FILM's house moments (footage-film.server.ts, 2026-11-25) are made by makeHouseTake too, one after another: each
+ * arrives written, with its own length, the clock its card says and the picture the film's thing was first drawn in
+ * (HouseTakeOptions, below). One take asks for none of that, and is made exactly as it was. */
 
 import fs from "node:fs";
 import path from "node:path";
@@ -34,10 +38,9 @@ import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { camDate, timeLapseOf, type HouseClock, type TimeLapse } from "./camera-dress";
 import { EMPTY_HOUSE, HOUSE_SCARES, HOUSE_TAKE_SECONDS, camOf, houseNight, houseRoom, houseScare, houseScarePrompt, houseScenePrompt, houseSetPrompt, houseWriterBrief, keptHouseOf, parseHouseScare, playedSeconds, roomImg, roomPrompt, roomToDraw, thingImg, withRoom, withThing, type HouseNight, type HouseScare, type KeptHouse } from "./house-cam";
-import { persistRemote, repRun } from "./image-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { TAKE_REF, betterRoll, rollFaulty } from "./take";
-import { cutsIn, dressTake, heard, imageRef, keepRoll, renders, rerolls, rollTake, roomTake, secondsOf, sizeOf, stamp, wordsIn } from "./take.server";
+import { cutsIn, drawPicture, dressTake, heard, imageRef, keepRoll, renders, rerolls, rollTake, roomTake, secondsOf, sizeOf, stamp, wordsIn } from "./take.server";
 import { checkpointJob } from "./ugc-ad-pipeline.server";
 
 /** What a house take's record carries its house under — and how the newest one is found. */
@@ -72,6 +75,21 @@ export type HouseTakeOptions = {
   section?: string;
   jobId?: string;
   resume?: { ckScare?: string; ckHouse?: string; ckSet?: string; ckScene?: string; ckRaw?: string; ckSpoke?: string; ckCut?: string };
+  /* ---- A FILM'S MOMENT (footage-film.server.ts) asks for these; one take leaves every one of them unset ---- */
+  /** the moment's scare, already written (house-cam.ts → parseHouseScare / parseHouseTrace with a film's shape) */
+  scare?: HouseScare & { title: string };
+  /** how long the moment is, 10–15 (unset: HOUSE_TAKE_SECONDS) */
+  seconds?: number;
+  /** THE CLOCK ITS CARD SAYS ("NIGHT 2 · 3:07 AM" → the second night, 03:07 — footage-film.ts → footageClocks),
+   *  printed instead of the house's own night going on; the house's night stays where it was */
+  clock?: HouseClock;
+  /** the picture the film's thing was first drawn in: the same one walks into every moment */
+  thingPic?: string;
+  /** draw on the strongest picture model at 2K, the everyday one behind it */
+  best?: boolean;
+  /** how many more rolls this moment may have (unset: TAKE_REROLLS), and a word when one is spent */
+  rerolls?: () => number;
+  onReroll?: () => void;
 };
 
 export type MadeHouseTake = {
@@ -104,13 +122,17 @@ export async function houseTakePictures(o: HouseTakeOptions & { house: KeptHouse
   const resume = o.resume || {};
   const ir = o.ir !== false;
   fs.mkdirSync(renders(), { recursive: true });
+  // (one take draws on the everyday picture model, as it always has; A FILM draws on the strongest at 2K with that
+  //  one behind it — take.server.ts → drawPicture; the owner, 2026-11-25: "upgrade the best image possible")
   const draw = async (prompt: string, refs: string[]): Promise<string> =>
-    persistRemote(await repRun("google/nano-banana", { prompt, ...(refs.length ? { image_input: refs.map((r) => imageRef(base, r)) } : {}), aspect_ratio: "16:9", output_format: "jpg" }), "jpg");
+    drawPicture({ prompt, ...(refs.length ? { image_input: refs.map((r) => imageRef(base, r)) } : {}), aspect_ratio: "16:9", output_format: "jpg" }, !!o.best);
 
   // 1) the scare
   let scare: HouseScare & { title: string };
   const ready = houseScare(o.scareKey);
   if (resume.ckScare) scare = JSON.parse(resume.ckScare);
+  // (a film's moment arrives written)
+  else if (o.scare) scare = o.scare;
   else if (ready) scare = { ...ready, title: ready.name };
   else {
     // (the card their words started from — a written scare's starting point, and what a failed writer falls back to)
@@ -150,8 +172,9 @@ export async function houseTakePictures(o: HouseTakeOptions & { house: KeptHouse
     await ckpt({ ckSet: set });
   }
 
-  // 4) the scene it arrives at — with the thing the house has already seen, when it has
-  const known = thingImg(house, scare.thing.key);
+  // 4) the scene it arrives at — with the thing the house has already seen, when it has (a film's thing is the
+  //    film's own: the picture it was first drawn in is handed in, and the house does not keep it)
+  const known = o.thingPic || thingImg(house, scare.thing.key);
   let scene = resume.ckScene || "";
   if (!scene) {
     scene = await draw(houseScenePrompt(scare, { kept: !!known, ir }), known ? [set, known] : [set]);
@@ -180,11 +203,15 @@ export async function makeHouseTake(o: HouseTakeOptions & { house: KeptHouse | n
   let host = "";
   let rolls = 0;
   const direction = (ref: string) => houseScarePrompt(scare, ref, { ir });
+  // (fifteen seconds — the walk-in's own length; a film's moment may ask for fewer, never under ten)
+  const seconds = Math.max(10, Math.min(HOUSE_TAKE_SECONDS, Math.round(o.seconds ?? HOUSE_TAKE_SECONDS)));
   const roll = async (): Promise<string> => {
-    const rolled = await rollTake({ first: imageRef(base, set), scene: imageRef(base, scene), direction, aspect: "16:9", seconds: HOUSE_TAKE_SECONDS });
+    const rolled = await rollTake({ first: imageRef(base, set), scene: imageRef(base, scene), direction, aspect: "16:9", seconds });
     host = rolled.host; rolls++;
     return keepRoll(rolled.url);
   };
+  // (how many more rolls: TAKE_REROLLS — or what a film allows this moment, from the few it has for all of them)
+  const more = o.rerolls ?? rerolls;
   let spoke: Array<{ at: number; text: string }> | null = resume.ckSpoke ? JSON.parse(resume.ckSpoke) : null;
   // (and A CUT — a camera screwed to the wall never cuts: a roll that does is rolled again in the same one extra roll,
   //  the better kept — take.ts → betterRoll. Never trimmed: the house's clock runs from the take's first frame)
@@ -195,8 +222,9 @@ export async function makeHouseTake(o: HouseTakeOptions & { house: KeptHouse | n
     await ckpt({ ckRaw: rawName });
     spoke = await heard(base, rawName);
     cuts = await cutsIn(path.join(dir, rawName));
-    for (let again = 0; again < rerolls() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, true); again++) {
+    for (let again = 0; again < more() && rollFaulty({ cuts: cuts.length, words: said(spoke) }, true); again++) {
       console.log(`[house-take] ${cuts.length ? `the take cuts (at ${cuts.join("s, ")}s)` : `the engine spoke (${wordsIn(spoke)} words)`} — rolled again`);
+      o.onReroll?.();
       try {
         const next = await roll();
         const nextSpoke = await heard(base, next);
@@ -213,10 +241,13 @@ export async function makeHouseTake(o: HouseTakeOptions & { house: KeptHouse | n
 
   // 7) the camera: its clock — the house's night, running on — night vision, and the time-lapse when it is on
   const soundPath = path.join(dir, soundName);
-  const rawSeconds = (await secondsOf(soundPath)) || HOUSE_TAKE_SECONDS;
+  const rawSeconds = (await secondsOf(soundPath)) || seconds;
   const lapse = (o.lapse ?? scare.lapseOn) ? timeLapseOf(scare.lapse, rawSeconds) : null;
-  let cut: { clock: HouseClock; night: HouseNight };
+  let cut: { clock: HouseClock; night: HouseNight | null };
   if (resume.ckCut) cut = JSON.parse(resume.ckCut);
+  // (A FILM'S MOMENT prints the clock its card says, and the house's own night stays where it was — the film's
+  //  nights are the film's, and the next take of the house picks its own night up again)
+  else if (o.clock) cut = { clock: o.clock, night: house.night };
   else {
     const now = new Date();
     cut = houseNight({ prev: house.night, seconds: rawSeconds, lapse, today: camDate(now.getUTCFullYear(), now.getUTCMonth() + 1, now.getUTCDate()), seed: parseInt(stamp().slice(-6), 16) });
