@@ -485,11 +485,17 @@ export function nudgeFor(tmplKey: string | null | undefined, idea: string | null
  *     are to each other. A maker who picked two presenters, or a werewolf, and typed nothing asked for a story
  *     about THEM: so for a dealt theme the cast decides who the people are, and the rules that follow are told
  *     that this is what "the idea" means here.
+ *   · …but in a HORROR a chosen creature is the THREAT, not one of the people (premise-rules.ts → chosenThreat;
+ *     film-engine's `threatNames`). `threat`: one was chosen. The engine counts only the chosen PEOPLE for
+ *     `castChosen` — so a werewolf picked alone leaves the starter's people as they are, with the werewolf as
+ *     what threatens them (review, 2026-11-25: a told Horror Story with only a werewolf chosen was told "its
+ *     people ARE the chosen cast" — the werewolf the one hearing the lullaby — and, a few lines on, that the
+ *     werewolf IS the threat; the acted Horror Film already left it out).
  *  "" when there is nothing to add (the starter alone, no cast chosen). */
-export function startLine(n: Nudge, castChosen: boolean): string {
+export function startLine(n: Nudge, castChosen: boolean, threat = false): string {
   const typed = n.typed ? `The maker typed only "${n.typed.replace(/["“”]/g, "'")}" — the theme above was dealt to start from that: work it into the story. ` : "";
   const cast = castChosen
-    ? "The theme above was dealt as a place to start, and the cast was chosen separately: its people ARE the chosen cast below — how many they are, who they are to each other, their ages and whether each is a man, a woman, a creature or a cartoon are the cast's, not the theme's; keep the theme's place and what goes wrong. For every rule that follows, \"the idea\" is this theme with the chosen cast as its people. "
+    ? `The theme above was dealt as a place to start, and the cast was chosen separately: its people ARE the chosen cast below${threat ? " (all but the chosen creature that is the THREAT: it is what threatens them, not one of them)" : ""} — how many they are, who they are to each other, their ages and whether each is a man, a woman, a creature or a cartoon are the cast's, not the theme's; keep the theme's place and what goes wrong. For every rule that follows, "the idea" is this theme with the chosen cast as its people. `
     : "";
   return typed || cast ? `${typed}${cast}`.trim() + "\n" : "";
 }

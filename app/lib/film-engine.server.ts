@@ -780,7 +780,7 @@ export async function previewFilmTreatment(opts: {
     // NEXT EPISODE: the series, the recap (fenced, quoted) and the rules of a next episode (film-series.ts)
     (series ? seriesWriterBrief(series) : "") +
     (topic
-      ? `${series ? "WHAT HAPPENS IN THIS EPISODE" : "THEME / what it's about"}: "${topic.slice(0, IDEA_MAX)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n${nudged ? startLine(nudged, castChosen.length > 0) : ""}${storyFormat ? `${PREMISE_WINS}\n` : ""}`
+      ? `${series ? "WHAT HAPPENS IN THIS EPISODE" : "THEME / what it's about"}: "${topic.slice(0, IDEA_MAX)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n${nudged ? startLine(nudged, castChosen.some((c) => !threatNames.includes(c.name)), threatNames.length > 0) : ""}${storyFormat ? `${PREMISE_WINS}\n` : ""}`
       : series ? `Decide what happens next in this episode.\n` : `Pick a fun, broadly-appealing theme.\n`) +
     // a sung piece: the words are ours, whatever song the theme names
     (tmpl.lipSyncSinger || tmpl.sung ? `${ORIGINAL_LYRICS_RULE}\n` : "") +

@@ -221,6 +221,12 @@ test("the starter fallback fires only under three words", () => {
   assert.ok(typed.startsWith("The maker typed only \"my 'lighthouse'\" — ") && typed.includes("work it into the story") && typed.endsWith("\n"));
   const cast = startLine({ topic: "x", nudge: "x", typed: "" }, true);
   assert.ok(cast.includes("its people ARE the chosen cast below") && cast.includes("keep the theme's place and what goes wrong") && cast.includes("\"the idea\" is this theme with the chosen cast as its people") && cast.endsWith("\n"));
+  assert.ok(!cast.includes("THREAT"), "no creature chosen: nothing said of one");
+  // a horror's chosen creature is the threat: with people chosen too, they are the starter's people and it is not
+  const withThreat = startLine({ topic: "x", nudge: "x", typed: "" }, true, true);
+  assert.ok(withThreat.includes("its people ARE the chosen cast below (all but the chosen creature that is the THREAT: it is what threatens them, not one of them) — "));
+  // …and with only the creature chosen, the starter's people stand as they are (chosenThreat makes it the threat)
+  assert.equal(startLine({ topic: "x", nudge: "x", typed: "" }, false, true), "");
   const both = startLine({ topic: "x", nudge: "x", typed: "love" }, true);
   assert.ok(both.indexOf("The maker typed only") === 0 && both.indexOf("its people ARE the chosen cast") > 0 && count(both, "\n") === 1);
 });
@@ -235,7 +241,10 @@ test("the fallback is in the one place every unwritten film comes through, and t
   assert.ok(fn.includes("const topic = nudged ? nudged.topic : typedIdea;"));
   assert.ok(fn.indexOf("const series = ") < fn.indexOf("const nudged = ") && fn.indexOf("const picked = ") < fn.indexOf("const nudged = "));
   // said right after the theme, before the rule that holds a story to its idea
-  assert.ok(fn.includes("events the user did not ask for.\\n${nudged ? startLine(nudged, castChosen.length > 0) : \"\"}${storyFormat ? `${PREMISE_WINS}\\n` : \"\"}`"));
+  // (only the chosen PEOPLE make the cast the starter's people: a horror's chosen creature is its THREAT — told,
+  //  it is still in castChosen, so it is taken out here; review, 2026-11-25)
+  assert.ok(fn.includes("events the user did not ask for.\\n${nudged ? startLine(nudged, castChosen.some((c) => !threatNames.includes(c.name)), threatNames.length > 0) : \"\"}${storyFormat ? `${PREMISE_WINS}\\n` : \"\"}`"));
+  assert.ok(fn.indexOf("const threatNames = ") < fn.indexOf("startLine(nudged"));
   // the starter rides back on the treatment, for the page to show
   assert.ok(fn.includes("return { title: outTitle, scenes: list, ...(nudged ? { nudge: nudged.nudge } : {}),"));
   assert.ok(eng.includes("  nudge?: string;"));
