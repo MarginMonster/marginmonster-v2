@@ -904,7 +904,8 @@ export async function previewFilmTreatment(opts: {
       planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined }) +
       freshLine +
       (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
-      (!tmpl.childSafe ? `${REAL_WORLD}\n` : "") +
+      // (a genre whose world is its own is never told today's real world — not in its plan either: film-genres.ts → ownWorld)
+      (!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\n` : "") +
       `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
       safetyLine +
       (topic ? `\n${IDEA_CHECK}` : "")
@@ -932,7 +933,8 @@ export async function previewFilmTreatment(opts: {
     // (a told story's first part is dealt its opening, as a whole story is — story-variety.ts)
     (narrated && opens ? freshLine : "") +
     (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
-    (!tmpl.childSafe ? `${REAL_WORLD}\n` : "") +
+    // (…nor in any of its parts: a Fantasy told "no castle" in scene 4 of 9 is the genre forbidden halfway through)
+    (!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\n` : "") +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
     safetyLine
   );
