@@ -142,7 +142,12 @@ test("today's real world: a house is an ordinary modern home, never a fairytale 
   assert.ok(pr.REAL_WORLD.includes("a house is an ordinary modern home of the kind real families in the story's own country live in today"));
   assert.ok(pr.REAL_WORLD.includes("no lone stone cottage, no round porthole window, no hobbit door"));
   const eng = read("app", "lib", "film-engine.server.ts");
-  assert.ok(eng.includes("(storyFormat && !tmpl.childSafe ? `${REAL_WORLD}\\n` : \"\") +"), "a children's cartoon keeps its own world");
+  // (2026-11-25, the genres became movie categories: a FANTASY keeps its own world too — said to one, "no castle,
+  //  no lone stone cottage, no cabin" forbids the genre. film-genres.ts → ownWorld; every other grown-up story is
+  //  told it exactly as before.)
+  assert.ok(eng.includes("(storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\\n` : \"\") +"), "a children's cartoon keeps its own world, and so does a fantasy");
+  const genres = await import("../app/lib/film-genres.ts");
+  assert.deepEqual(genres.GENRE_FILMS.filter((g) => g.ownWorld).map((g) => g.key), ["fantasy"], "and no other genre");
   // …and in an acted film, the idea's move happens BEFORE the last shot (its reveal is drawn into that place)
   assert.ok(eng.includes("the move happens BEFORE the last shot, never in it: the last shot is in the same place as the shot before it"));
 });

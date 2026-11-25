@@ -49,6 +49,7 @@ import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 // (2026-11-24) a told story's places: a scene set at one says so in its own words
 import { WHAT_FRIGHTENS, inheritPlaces, keepGuess, placeNamed, placesAsk, takePlaces } from "./story-picture";
 import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, REAL_WORLD, STORY_SAFETY, chosenThreat } from "./premise-rules";
+import { DRAMA_BRIEF, GENRE_FILMS, genreTemplate, nudgeFor, startLine } from "./film-genres";
 import { tellerVisual } from "./character-series";
 import { planShots, shotInWords, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
@@ -85,6 +86,9 @@ export interface FilmTemplate {
    *  smiles: both horror films made on 2026-11-22 opened with someone grinning through a frightened
    *  line (the acted one) or pushing a mop through a haunted theatre beaming (the narrated one). */
   faceMood?: string;
+  /** The genre's world is its own, not today's (Fantasy — film-genres.ts → GenreFilm.ownWorld): its writer is
+   *  not told "IT IS TODAY'S REAL WORLD … no castle, no cottage" (premise-rules.ts → REAL_WORLD). */
+  ownWorld?: boolean;
   /** Music mood the track generator falls back to. */
   musicHint: string;
   defaultScenes: number;
@@ -273,10 +277,14 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
     narrated: true,
     live: false, // removed from the picker (owner 11-09) — engine def kept for old assets
   },
+  // THE SHORT FILM IS DRAMA (film-genres.ts). The owner, 2026-11-25: "Our genres need to be movie categories
+  // (drama, horror, comedy, etch)". Its key is what it was — every saved draft, link and finished film holds
+  // "testmovie" — and its brief, which was a line of our own praise ("a cinematic SHORT FILM where your cast
+  // actually SPEAKS real dialogue … The flagship movie maker."), now says what HAPPENS in a drama.
   testmovie: {
     key: "testmovie",
-    name: "Short Film",
-    brief: "a cinematic SHORT FILM where your cast actually SPEAKS real dialogue to each other — scene by scene, with seamless flow and real emotion. The flagship movie maker.",
+    name: "Drama Film",
+    brief: DRAMA_BRIEF,
     sceneHint: "a cinematic, photorealistic live-action film scene — natural lighting, filmic composition, real-looking people; a clean, uncluttered set with NO readable text, documents, papers, bulletin boards, signage, posters or screens visible",
     musicHint: "subtle cinematic underscore",
     defaultScenes: 2,
@@ -320,6 +328,11 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
   // Planned — the engine drives it generically; out of the picker until wired.
   youtube: { key: "youtube", name: "YouTube Video", brief: "a long-form narrative YouTube video with a hook, body and payoff", sceneHint: "a clear, engaging cinematic scene", musicHint: "upbeat background music", defaultScenes: 10, minScenes: 6, maxScenes: 40, captions: true, live: false },
 };
+// THE NEW MOVIE CATEGORIES (film-genres.ts → GENRE_FILMS): Comedy, Thriller, Action, Romance, Sci-Fi, Fantasy,
+// Mystery. Each is the Short Film's template with its own key, name, briefing, look, score and faces — so
+// every pipeline that takes a template key (the acted engine, the narrator, the storyboard, the Archive)
+// makes it with no code of its own, and its lengths are the Short Film's by construction (genreTemplate).
+for (const g of GENRE_FILMS) FILM_TEMPLATES[g.key] = genreTemplate(FILM_TEMPLATES.testmovie, g);
 
 export function filmTemplate(key: string | undefined): FilmTemplate {
   return (key && FILM_TEMPLATES[key]) || FILM_TEMPLATES.musicvideo;
@@ -355,6 +368,10 @@ export interface FilmScene {
 }
 export interface FilmTreatment {
   title?: string; scenes: FilmScene[]; musicMood: string; cast?: string[];
+  /** THE STARTER this story was written from, when the maker's own idea was under three words (film-genres.ts
+   *  → nudgeFor): one of the genre's starter ideas, word for word — the page shows it, so "we wrote you a
+   *  random scene" becomes "we started from THIS; change it". Absent when the maker's idea was used. */
+  nudge?: string;
   /** A NARRATED story's places (story-picture.ts → "the story's places"): the one or two places or things it
    *  keeps coming back to, each as "name: look" — every scene whose words name one is drawn from that
    *  place's own design sheet, so it is the same place each time. */
@@ -429,7 +446,11 @@ const NARRATED_BRIEF: Record<string, string> = {
   horror: "a short NARRATED HORROR STORY — the kind a scary-story channel tells: one creepy, atmospheric tale in a storyteller's voice, dread building line by line to a chilling twist",
   moral: "a short NARRATED MORAL STORY: a relatable everyday situation told by a storyteller, building to a clear, uplifting life lesson",
   kidstv: "a gentle NARRATED STORY for little ones — a storybook read aloud: a small cast of cute characters, one simple happy adventure, warm and G-rated, with a cosy ending",
-  testmovie: "a short NARRATED STORY on the given theme — a storyteller's voice, a clear beginning, middle and end, and an ending that lands",
+  // (told, the Short Film is a Drama Story — film-genres.ts. It read "a short NARRATED STORY on the given theme
+  //  — a storyteller's voice, a clear beginning, middle and end, and an ending that lands": any story at all.)
+  testmovie: "a short NARRATED DRAMA — a storyteller's voice tells of people who matter to each other: somebody wants something, something real is in the way, and it ends on what they choose and what it costs them; a clear beginning, middle and end, and no speeches",
+  // …and every new movie category can be told too, each to its own brief (film-genres.ts → GENRE_FILMS)
+  ...Object.fromEntries(GENRE_FILMS.map((g) => [g.key, g.narrated])),
 };
 /** The templates that can be told by a narrator (for the page that offers the choice). */
 export const NARRATABLE_KEYS: string[] = Object.keys(NARRATED_BRIEF);
@@ -538,7 +559,20 @@ export async function previewFilmTreatment(opts: {
   // THE TELLER (a character's show): one of the chosen cast, by their own name as it is in `picked`
   const tellerWanted = narrated ? String(opts.teller || "").replace(/\s+/g, " ").trim().toLowerCase() : "";
   const teller = tellerWanted ? picked.find((c) => c.name.toLowerCase() === tellerWanted)?.name || "" : "";
-  const topic = (opts.topic || "").trim();
+  // THE WRITER IS NEVER HANDED NOTHING (film-genres.ts → nudgeFor). The owner, 2026-11-25: "the "write your
+  // dialogue" button generates a random scene and dialogue, atleast need a starter "nudge" couple sentences to
+  // hand to the writer". With the idea box empty the writer was told only "Pick a fun, broadly-appealing theme"
+  // — and picked its usual one. Now an idea of fewer than three words becomes one of the genre's own starters
+  // (a word or two the maker did type picks the starter, or rides along to be worked in; a cast the maker chose
+  // is the starter's people — startLine, said right after the theme), and the starter that
+  // was dealt goes back on the treatment (`nudge`) so the page can show what the story was written from. Story
+  // genres only — a music video names its own theme — and never an episode: a series decides what happens next
+  // from its own recap. Every caller that has no approved script comes through here (the page's preview, a
+  // one-press acted film, a one-press told story), so this is the one place.
+  const typedIdea = (opts.topic || "").trim();
+  const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff));
+  const topic = nudged ? nudged.topic : typedIdea;
+  if (nudged) console.log(`[film] ${typedIdea ? `the idea was only "${typedIdea.slice(0, 40)}"` : "no idea was given"} — a ${tmpl.key} starter was dealt: "${nudged.nudge.slice(0, 80)}…"`);
   // Lip-sync Music Video: the chosen genre drives the song style, the artist and
   // every setting; folded into the writer prompt so lyrics + visuals match it.
   const genreKey = tmpl.lipSyncSinger ? genreOrDefault(opts.genre) : "";
@@ -816,9 +850,9 @@ export async function previewFilmTreatment(opts: {
     ? `a SHORT ${videoSecs}-second MUSIC VIDEO cut — ONE artist actually sings a real genre hook on camera (lip-synced) ${scenes === 1 ? "in one vivid setting" : `across ${scenes} vivid settings`}`
     : narrated ? (NARRATED_BRIEF[tmpl.key] || NARRATED_BRIEF.testmovie)
     : tmpl.brief;
-  // (the idea, as its writer is handed it — a whole film's below, and a long film's PLAN)
+  // (the idea, as its writer is handed it — a whole film's below, and a long film's PLAN; a dealt starter with it)
   const ideaLine = topic
-      ? `${series ? "WHAT HAPPENS IN THIS EPISODE" : "THEME / what it's about"}: "${topic.slice(0, IDEA_MAX)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n${storyFormat ? `${PREMISE_WINS}\n` : ""}`
+      ? `${series ? "WHAT HAPPENS IN THIS EPISODE" : "THEME / what it's about"}: "${topic.slice(0, IDEA_MAX)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n${nudged ? startLine(nudged, castChosen.some((c) => !threatNames.includes(c.name)), threatNames.length > 0) : ""}${storyFormat ? `${PREMISE_WINS}\n` : ""}`
       : series ? `Decide what happens next in this episode.\n` : `Pick a fun, broadly-appealing theme.\n`;
   const prompt =
     `Write ${brief}.\n` +
@@ -843,7 +877,9 @@ export async function previewFilmTreatment(opts: {
     // WHAT FRIGHTENS (story-picture.ts): a horror story's own creature is nearly human, slightly wrong, half seen
     (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
     // TODAY'S REAL WORLD (premise-rules.ts): never a fairytale cottage for "a house" — not in a children's format
-    (storyFormat && !tmpl.childSafe ? `${REAL_WORLD}\n` : "") +
+    // (…nor in a genre whose world is its own: said to a Fantasy, "no castle, no lone stone cottage, no cabin"
+    //  forbids the genre — film-genres.ts → ownWorld, 2026-11-25)
+    (storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\n` : "") +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
     safetyLine +
     // (the idea checked last of all — premise-rules.ts → IDEA_CHECK)
@@ -1310,8 +1346,9 @@ export async function previewFilmTreatment(opts: {
   // (what it was dealt, so the maker's next story is dealt something else)
   const dealt = fresh ? { hook: fresh.hook, ...Object.fromEntries(freshKeys(series ? null : fresh).map((k) => k.split(":"))) } : null;
   // (an acted film written here says so: its scenes' VISUALs are things that HAPPEN, and each clip is told its own)
-  // (a long film says how it was planned: `acts` — film-length.ts)
-  return { title: outTitle, scenes: list, ...(acts ? { acts } : {}), ...(ageNote ? { ageFit: ageNote } : {}), musicMood: parsed.musicMood || tmpl.musicHint, ...(acted ? { events: true } : {}), ...(dealt ? { fresh: dealt } : {}), ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
+  // (…and the starter it was written from, when the maker gave no idea of their own — film-genres.ts → nudgeFor)
+  // (…and a long film says how it was planned: `acts` — film-length.ts)
+  return { title: outTitle, scenes: list, ...(nudged ? { nudge: nudged.nudge } : {}), ...(acts ? { acts } : {}), ...(ageNote ? { ageFit: ageNote } : {}), musicMood: parsed.musicMood || tmpl.musicHint, ...(acted ? { events: true } : {}), ...(dealt ? { fresh: dealt } : {}), ...(places.length ? { places } : {}), cast, ...(lineNote ? { lineFit: lineNote } : {}), ...(castNote ? { castFit: castNote } : {}), ...(fitNote ? { lyricFit: fitNote } : {}) };
 }
 
 // ---- Assembly ---------------------------------------------------------------

@@ -37,7 +37,7 @@ import fs from "node:fs";
 import * as nodeModule from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FILM_HEROES } from "../app/lib/film-heroes.ts";
+import { FILM_HEROES, LOOP_MEDIA } from "../app/lib/film-heroes.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // (a checkout with CRLF line endings must read the same as one with LF)
@@ -66,7 +66,10 @@ const list = (name: string) => {
   return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
 };
 const HOUSES = ["ad", "creator", "cast", "autopost"];
-const FILMS = FILM_HEROES.map((h) => h.media);
+/* The films a card of the wall can show: the heroes that have a LOOP to play (film-heroes.ts → LOOP_MEDIA). Until
+ * 2026-11-25 that was every hero; the movie categories added that day (Comedy, Thriller, Action, Romance, Sci-Fi,
+ * Fantasy, Mystery) have a still and no loop yet, and a wall card is a clip — so they are not on the wall. */
+const FILMS = FILM_HEROES.map((h) => h.media).filter((m) => LOOP_MEDIA.includes(m));
 
 /** The stylesheet as its rules: the selector, the declarations, and the @media it stands in ("" for none). */
 function rules(sheet: string): { media: string; sel: string; body: string }[] {

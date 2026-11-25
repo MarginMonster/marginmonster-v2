@@ -63,6 +63,16 @@ export const DEFAULT_NARRATOR: Record<string, string> = {
   moral: "English_Trustworth_Man",
   kidstv: "English_CalmWoman",
   testmovie: "English_ManWithDeepVoice",
+  // THE NEW MOVIE CATEGORIES (2026-11-25, "Our genres need to be movie categories") are told by the same familiar
+  // documentary voice he asked for the day before — each brief already sets its pace (deadpan, tight, at a run,
+  // warm and unhurried). Without an entry they fell to the generic default.
+  comedy: "English_ManWithDeepVoice",
+  thriller: "English_ManWithDeepVoice",
+  action: "English_ManWithDeepVoice",
+  romance: "English_ManWithDeepVoice",
+  scifi: "English_ManWithDeepVoice",
+  fantasy: "English_ManWithDeepVoice",
+  mystery: "English_ManWithDeepVoice",
 };
 export const narratorFor = (template: string | undefined, picked?: string | null): string => {
   const want = (picked || "").trim();

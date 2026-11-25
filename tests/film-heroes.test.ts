@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FILM_HEROES, heroById, heroName, heroOf, heroShelves, heroesFor } from "../app/lib/film-heroes.ts";
+import { FILM_HEROES, LOOP_MEDIA, TALL_STILL_MEDIA, heroById, heroName, heroOf, heroShelves, heroesFor } from "../app/lib/film-heroes.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8");
@@ -25,8 +25,11 @@ test("a Film is acted and a Story is told: every hero is one format told one way
   const byName = Object.fromEntries(FILM_HEROES.map((h) => [h.name, h]));
   assert.deepEqual([byName["Horror Film"].tmpl, byName["Horror Film"].told], ["horror", "acted"]);
   assert.deepEqual([byName["Horror Story"].tmpl, byName["Horror Story"].told], ["horror", "narrated"]);
-  assert.deepEqual([byName["Short Film"].tmpl, byName["Short Film"].told], ["testmovie", "acted"]);
-  assert.deepEqual([byName["Short Story"].tmpl, byName["Short Story"].told], ["testmovie", "narrated"]);
+  // (the Short Film is Drama since 2026-11-25 — the owner: "Our genres need to be movie categories (drama,
+  //  horror, comedy, etch)" — the same template, told the same two ways, under its category's name)
+  assert.deepEqual([byName["Drama Film"].tmpl, byName["Drama Film"].told], ["testmovie", "acted"]);
+  assert.deepEqual([byName["Drama Story"].tmpl, byName["Drama Story"].told], ["testmovie", "narrated"]);
+  assert.ok(!byName["Short Film"] && !byName["Short Story"]);
   assert.equal(byName["Moral Story"].told, "narrated");
   assert.equal(byName["Kids Cartoon"].told, "acted");
   // the name says how it is told
@@ -55,7 +58,7 @@ test("a hero is found by its id, and a finished film by how it was made", () => 
   // the Archive calls a film what its hero is called; an unknown template keeps its own name
   assert.equal(heroName("horror", false, "Horror Story"), "Horror Film");
   assert.equal(heroName("horror", true, "Horror Story"), "Horror Story");
-  assert.equal(heroName("testmovie", true, "Short Film"), "Short Story");
+  assert.equal(heroName("testmovie", true, "Short Film"), "Drama Story");
   // MORAL FILM (2026-11-23): the acted Moral Story is a hero again — a tester who had been making it:
   // "Moral story section previous model do amazing, set this like previous"
   assert.equal(heroName("moral", false, "Moral Story"), "Moral Film");
@@ -74,10 +77,15 @@ test("a hero is found by its id, and a finished film by how it was made", () => 
 });
 
 test("a page is offered only the heroes it can make", () => {
+  // (the six formats there were before the genres became movie categories, 2026-11-25 — a page that knows only
+  //  these is offered the nine heroes it always was, in the shelves' new order: Drama first, the Kids Cartoon last)
   const all = ["musicvideo", "kidstv", "kidsmusicvideo", "moral", "horror", "testmovie"];
-  assert.deepEqual(heroesFor(all, ["horror", "moral", "kidstv", "testmovie"]).map((h) => h.id), FILM_HEROES.map((h) => h.id));
+  assert.deepEqual(heroesFor(all, ["horror", "moral", "kidstv", "testmovie"]).map((h) => h.id), ["musicvideo", "kidsmusicvideo", "shortstory", "testmovie", "horror", "horrorfilm", "moral", "moralfilm", "kidstv"]);
+  // …and with the seven new templates, every hero there is
+  const genres = ["comedy", "thriller", "action", "romance", "scifi", "fantasy", "mystery"];
+  assert.deepEqual(heroesFor([...all, ...genres], ["horror", "moral", "kidstv", "testmovie", ...genres]).map((h) => h.id), FILM_HEROES.map((h) => h.id));
   // a template that cannot be narrated offers no told hero; a template the account lacks offers none at all
-  assert.deepEqual(heroesFor(all, ["moral"]).map((h) => h.id), ["musicvideo", "kidstv", "kidsmusicvideo", "moral", "moralfilm", "horrorfilm", "testmovie"]);
+  assert.deepEqual(heroesFor(all, ["moral"]).map((h) => h.id), ["musicvideo", "kidsmusicvideo", "testmovie", "horrorfilm", "moral", "moralfilm", "kidstv"]);
   assert.deepEqual(heroesFor(["musicvideo"], ["horror"]).map((h) => h.id), ["musicvideo"]);
 });
 
@@ -122,15 +130,22 @@ test("the builder's banner, the Generate button and a kept music video all speak
 test("every hero has its poster files, and every name and line is translated", () => {
   const loops = ui.slice(ui.indexOf("const LOOP_KEYS = ["), ui.indexOf("];", ui.indexOf("const LOOP_KEYS = [")));
   const talls = ui.slice(ui.indexOf("const TALL_STILLS = new Set(["), ui.indexOf("]);", ui.indexOf("const TALL_STILLS = new Set([")));
+  // (2026-11-25: the genres added that day — Comedy, Thriller, Action, Romance, Sci-Fi, Fantasy, Mystery — stand
+  //  on their STILL until a real film of each has been made to cut a loop from. So "every hero has a loop" is now
+  //  "every hero that has one, has all three files and is listed by the page": film-heroes.ts → LOOP_MEDIA is the
+  //  list, and the nine that had a loop before still do. The phone stills are held the same way — TALL_STILL_MEDIA.)
+  assert.deepEqual([...LOOP_MEDIA].sort(), ["horror", "horrorstory", "kidsmusicvideo", "kidstv", "moral", "moralstory", "musicvideo", "shortstory", "testmovie"]);
+  for (const k of LOOP_MEDIA) assert.ok(loops.includes(`"${k}"`), `${k} is a loop the page lists`);
+  for (const k of [...talls.matchAll(/"([^"]+)"/g)].map((m) => m[1])) assert.ok(TALL_STILL_MEDIA.includes(k), `${k}: the page's phone still is one film-heroes.ts knows`);
   for (const h of FILM_HEROES) {
     assert.ok(exists("public", "landing", `film-still-${h.media}.jpg`), `still for ${h.id}`);
-    assert.ok(loops.includes(`"${h.media}"`), `${h.id} has a loop listed`);
-    for (const f of [`film-loop-${h.media}.mp4`, `film-loop-${h.media}-tall.mp4`, `film-loop-${h.media}.jpg`]) assert.ok(exists("public", "landing", f), f);
-    if (talls.includes(`"${h.media}"`)) assert.ok(exists("public", "landing", `film-still-${h.media}-tall.jpg`), `tall still for ${h.id}`);
-    if (h.told === "narrated") assert.ok(talls.includes(`"${h.media}"`), `${h.id}: a strip of three upright pictures cannot be centre-cropped for a phone card`);
+    if (LOOP_MEDIA.includes(h.media)) for (const f of [`film-loop-${h.media}.mp4`, `film-loop-${h.media}-tall.mp4`, `film-loop-${h.media}.jpg`]) assert.ok(exists("public", "landing", f), f);
+    else assert.ok(!exists("public", "landing", `film-loop-${h.media}.mp4`), `${h.media} has a loop on disk that LOOP_MEDIA does not list`);
+    if (TALL_STILL_MEDIA.includes(h.media)) assert.ok(exists("public", "landing", `film-still-${h.media}-tall.jpg`), `tall still for ${h.id}`);
+    if (h.told === "narrated") assert.ok(TALL_STILL_MEDIA.includes(h.media), `${h.id}: a strip of three upright pictures cannot be centre-cropped for a phone card`);
   }
   const dict = read("app", "lib", "ui-i18n-dict.ts");
-  for (const h of FILM_HEROES) for (const k of [h.name, h.kick, h.meta].filter(Boolean)) assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
+  for (const h of FILM_HEROES) for (const k of [h.card, h.name, h.kick, h.meta].filter(Boolean)) assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
   // a poster's two lines fit a phone card (about 45 characters): "…your cast on…" was cut off at 390 px
   for (const h of FILM_HEROES) assert.ok((h.kick + (h.meta ? ` · ${h.meta}` : "")).length <= 45, `${h.name}: ${h.kick} · ${h.meta}`);
 });
@@ -156,7 +171,9 @@ test("an acted film's badge in the Archive is its poster's name too", () => {
   assert.ok(arch.includes('return `${heroName(tk, false, names[tk] || "Short Film")} · ${eng === "kling3" ? "Kling" : "Veo"}${ar}`;'));
   assert.equal(heroName("moral", false, "Moral Story"), "Moral Film");
   assert.equal(heroName("horror", false, "Horror Story"), "Horror Film");
-  assert.equal(heroName("testmovie", false, "Short Film"), "Short Film");
+  assert.equal(heroName("testmovie", false, "Short Film"), "Drama Film", "the Short Film is Drama since 2026-11-25");
+  assert.equal(heroName("comedy", false, "Comedy Film"), "Comedy Film");
+  assert.equal(heroName("scifi", true, "Sci-Fi Film"), "Sci-Fi Story", "a told one is a Story, whatever its template is called");
   assert.equal(heroName("kidstv", false, "Kids Cartoon"), "Kids Cartoon");
   assert.equal(heroName("kidsmusic", false, "Kids Music Video"), "Kids Music Video", "a template with no hero keeps its own name");
 });
@@ -167,10 +184,24 @@ test("an acted film's badge in the Archive is its poster's name too", () => {
 test("the posters stand on three shelves — told, acted, sung — and each says what its posters share", () => {
   const shelves = heroShelves(FILM_HEROES);
   assert.deepEqual(shelves.map((s) => [s.key, s.name, s.tag]), [["told", "Stories", "Narrated"], ["acted", "Films", "Acted"], ["sung", "Music videos", "Sung"]]);
-  assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.name)), [
-    ["Moral Story", "Horror Story", "Short Story"],
-    ["Kids Cartoon", "Moral Film", "Horror Film", "Short Film"],
+  // THE GENRES ARE MOVIE CATEGORIES. The owner, 2026-11-25: "Our genres need to be movie categories (drama,
+  // horror, comedy, etch)". The shelves read "Moral Story, Horror Story, Short Story" and "Kids Cartoon, Moral
+  // Film, Horror Film, Short Film" — our formats. Now each is a film shelf, in a film shelf's order, and the WORD
+  // on a poster is its category (the shelf says how it is told); the Archive's name still says Film or Story.
+  assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.card)), [
+    ["Drama", "Comedy", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
+    ["Drama", "Comedy", "Horror", "Thriller", "Action", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral", "Kids Cartoon"],
     ["Music Video", "Kids Music Video"],
+  ]);
+  assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.name)), [
+    ["Drama Story", "Comedy Story", "Horror Story", "Thriller Story", "Romance Story", "Sci-Fi Story", "Fantasy Story", "Mystery Story", "Moral Story"],
+    ["Drama Film", "Comedy Film", "Horror Film", "Thriller Film", "Action Film", "Romance Film", "Sci-Fi Film", "Fantasy Film", "Mystery Film", "Moral Film", "Kids Cartoon"],
+    ["Music Video", "Kids Music Video"],
+  ]);
+  assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.id)), [
+    ["shortstory", "comedy", "horror", "thriller", "romance", "scifi", "fantasy", "mystery", "moral"],
+    ["testmovie", "comedyfilm", "horrorfilm", "thrillerfilm", "actionfilm", "romancefilm", "scififilm", "fantasyfilm", "mysteryfilm", "moralfilm", "kidstv"],
+    ["musicvideo", "kidsmusicvideo"],
   ]);
   // every poster on exactly one shelf; a shelf holds one way of telling and nothing else
   assert.equal(shelves.flatMap((s) => s.heroes).length, FILM_HEROES.length);
