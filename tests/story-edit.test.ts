@@ -117,7 +117,9 @@ test("a story draws only the pictures it does not have", () => {
   // (…from the story's own cast portraits, when it has them: tests/story-cast.test.ts)
   // (…and, since stories can be five minutes long, 2026-11-25, saying the job is at work as each picture comes back:
   //  tests/story-join.test.ts)
-  assert.ok(nar.includes("const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null, beat: () => ckpt({ ckBeat: Date.now() }) });"));
+  // (…and the idea it was written from since 2026-11-25, so a night story's missing pictures are drawn at night:
+  //  tests/told-night.test.ts)
+  assert.ok(nar.includes("const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null, beat: () => ckpt({ ckBeat: Date.now() }), idea: opts.topic });"));
   assert.ok(nar.includes("only?: number | number[];"));
   assert.ok(nar.includes("const todo = (Array.isArray(o.only) ? o.only : typeof o.only === \"number\" ? [o.only] : scenes.map((_, i) => i)).filter((i, k, a) => Number.isInteger(i) && i >= 0 && i < scenes.length && a.indexOf(i) === k);"));
   // the pictures both features re-use come from one place, and must all be on our disk

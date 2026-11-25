@@ -170,7 +170,8 @@ test("a story that is drawing says it is at work whenever a picture comes back �
   assert.ok(fn.includes("const got = await drawScene(`${first}${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);\n        await alive();"));
   assert.ok(fn.includes("if (img && faultsOut[i] == null) faultsOut[i] = 0;\n      await alive();"));
   assert.ok(!/setInterval/.test(fn));
-  assert.ok(nar.includes("const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null, beat: () => ckpt({ ckBeat: Date.now() }) });"));
+  // (…and the idea rides after the beat since 2026-11-25 — tests/told-night.test.ts)
+  assert.ok(nar.includes("const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null, beat: () => ckpt({ ckBeat: Date.now() }), idea: opts.topic });"));
 });
 
 test("every scene of a long story moves — handed to the motion engine twelve at a time, put back in the story's order", () => {

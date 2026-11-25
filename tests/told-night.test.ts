@@ -85,6 +85,8 @@ test("NEVER IN A CHILDREN'S STORY'S DAYTIME, NEVER IN A CARTOON UNLESS THE STORY
   assert.equal(night("Pip waves goodbye in the sunny morning.", "", { idea: picnic, place: "", childSafe: true, cartoon: true }), false);
   // a grown-up story of any genre — Fantasy's own world too — is told its idea's night (only childSafe and cartoon are asked)
   assert.equal(night("Wren lifts the lantern in the timber hall.", "", { idea: "A night raid on the old king's hall.", place: "" }), true);
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("childSafe: tmpl.childSafe, cartoon: tmpl.cartoon }, nightSetting);"));
 });
 
 test("THE LOOK: asked last in the question that looks at the place — a day scene's question word for word as it was", () => {
@@ -137,4 +139,38 @@ test("THE FAULT: under the clothed one, over the cosmetic ones — and NIGHT_FIR
   assert.equal(sp.storyFix(nightOnly, ["Vale"]), "", "nothing more at the end: said first is what works");
   // a picture KEPT still drawn as day is written down for the operator
   assert.deepEqual(sp.keptFaults([{ ...nightOnly, who: ["Vale"] }, { seen: [true], panels: false, who: ["Vale"] }]), [{ scene: 1, missing: [], notNight: true }]);
+});
+
+test("THE WORDS: a night scene's picture is told the night right behind its words, from its first go", () => {
+  // the acted master's sentence, word for word
+  assert.ok(NIGHT_LINE.startsWith("It is the middle of the night: the sky outside is black") && NIGHT_LINE.includes("never dusk, twilight or a blue evening glow"));
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes("const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? \"\" : \".\"}${night ? ` ${NIGHT_LINE}` : \"\"} Style: ${tmpl.sceneHint}."));
+  // the lenient last path: said FIRST (its prompt is cut at 500 characters — the night must not be what is cut)
+  assert.ok(nar.includes("renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : \"\"}${dressedInWater((scene.visual || \"\").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);"));
+});
+
+test("WIRING: decided once a scene, from its words, its narration, its place and the idea; looked at in the place question; the idea reaches every draw", () => {
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  assert.ok(nar.includes('import { NIGHT_LINE, nightSetting } from "./acted-staging";') && nar.includes('import { parseStoryNight, storyNight } from "./story-picture";'));
+  // the idea: the maker's, and the starter the story was written from when theirs was too short
+  assert.ok(nar.includes("idea?: string | null;") && nar.includes('const idea = `${o.idea || ""} ${o.treatment.nudge || ""}`.trim();'));
+  const fn = nar.slice(nar.indexOf("export async function narratedSceneSeeds("), nar.indexOf("/** DRAW ONE CHARACTER AGAIN."));
+  const decided = fn.indexOf("const night = storyNight({ words: visual, said: scene.caption, place: setAt ? `${setAt.name}: ${setAt.look}` : \"\", idea, childSafe: tmpl.childSafe, cartoon: tmpl.cartoon }, nightSetting);");
+  assert.ok(decided > fn.indexOf("const visual = dressedInWater(oneMoment(noLettering(written)));") && decided < fn.indexOf("const promptOf = "), "from the words the picture is drawn from, before the prompt");
+  // looked at in the question that already looks at the place — still four questions to a picture, never a fifth
+  assert.ok(fn.includes("anthropicVision(storyGrimePrompt(visual, night), [pic], { maxTokens: night ? 420 : 360, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"));
+  assert.equal((nar.match(/anthropicVision\(/g) || []).length, 4);
+  assert.ok(fn.includes("const dark = night ? parseStoryNight(String(grimeRaw || \"\")) : null;"));
+  assert.ok(fn.includes("&& bare == null && dark == null) return null;") && fn.includes("...(dark === false ? { notNight: true } : {}),"), "only a clear dusk or day is the fault");
+  // the next go is told FIRST (storyFirst), and the log says why it was drawn again
+  assert.ok(fn.includes("first = storyFirst(seenAs);") && fn.includes('seenAs!.notNight ? "a night scene drawn as dusk or day" : ""'));
+  // the best of the goes is kept, as always — never a story lost to the look
+  assert.ok(fn.includes("if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }"));
+  // the idea reaches the render's own drawing and a character drawn again
+  assert.ok(nar.includes("beat: () => ckpt({ ckBeat: Date.now() }), idea: opts.topic });"));
+  assert.ok(nar.includes("only: scenes, castRef: castToken(kept, carried.places) || null, idea: o.idea });"));
+  // the acted master's own night look is untouched
+  const img = read("app", "lib", "image-generation.server.ts");
+  assert.ok(img.includes("if (!cartoon && NIGHT_SAID.test(`${setting} ${action}`)) {") && img.includes("storyPictureInput(used, { prompt: `${NIGHT_FIRST} ${staged || prompt}`, refs, aspect: ar })"));
 });

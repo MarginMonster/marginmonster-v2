@@ -229,7 +229,8 @@ test("TOLD STORIES: the lake scene's words dress her before the picture model re
   //  (review of S8, 2026-11-25)
   assert.ok(nar.includes("if (!img && barred) img = await keepClothed({ url: barred, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, aspect), log:") && !nar.includes("if (!img) img = barred;"));
   // …and the lenient last path: dressed words, looked at, kept
-  assert.ok(nar.includes("renderCreativeSeed(`${safe}${dressedInWater((scene.visual || \"\").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);") && nar.includes("img = lenient ? await keepClothed({ url: lenient,"));
+  // (…a night scene's night said first in it since 2026-11-25 — tests/told-night.test.ts)
+  assert.ok(nar.includes("renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : \"\"}${dressedInWater((scene.visual || \"\").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);") && nar.includes("img = lenient ? await keepClothed({ url: lenient,"));
 });
 
 test("FANTASY KEEPS ITS OWN WORLD: everybody clothed, but never told its places look the way they look TODAY", async () => {

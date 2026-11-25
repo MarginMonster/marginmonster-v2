@@ -47,6 +47,9 @@ import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment }
 // (2026-11-25, stories up to five minutes: a long story is cut in parts, and read in parts when it is that long)
 import { STORY_ONE_CUT, cardsDuring, readingParts, sceneIn, storyJoinArgs, storyPartArgs, storyParts, storySoundArgs } from "./story-join";
 import { joinList } from "./acted-staging";
+// NIGHT IS NIGHT (2026-11-25): the acted engine's own night rule and night sentence — story-picture.ts → storyNight
+import { NIGHT_LINE, nightSetting } from "./acted-staging";
+import { parseStoryNight, storyNight } from "./story-picture";
 import { streamSeconds } from "./film-join.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -162,12 +165,19 @@ export async function narratedSceneSeeds(o: {
    *  each up to three goes, each go up to two and a half minutes on each model of the ladder — can be longer
    *  than that. Called at a real step, never on a timer, so a job that is truly stuck still says nothing. */
   beat?: () => unknown;
+  /** THE MAKER'S IDEA (2026-11-25): a story whose idea says night ("A night ferry crosses a foggy harbour…") is drawn at
+   *  night wherever a scene's own words name no other time of day — story-picture.ts → storyNight. Unset: a scene is at
+   *  night only where its own words, its narration or its place say so. */
+  idea?: string | null;
 }): Promise<{ sceneImgs: (string | null)[]; castRef: string | null; /** the story's own characters, each with its portrait — to be shown */ castCards: StoryCastRef[]; /** the places the story comes back to, each with its design sheet — to be shown */ placeCards: StoryPlaceRef[]; /** for each scene drawn: how wrong the picture that was KEPT still is (0 = nothing; null = not drawn here), and what the look read off it */ sceneFaults: (number | null)[]; sceneChecks: (StoryKept | null)[] }> {
   const tmpl = filmTemplate(o.template);
   const { aspect } = storyFrame(o.aspect);
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   const abs = (u: string | null | undefined): string | null => (u ? (u.startsWith("http") ? u : `${base}${u}`) : null);
   const safe = tmpl.childSafe ? "Wholesome, child-safe, G-rated, bright and friendly. " : "";
+  // (the idea the story was written from: the maker's — and the starter it was written from when theirs was too short,
+  //  which the treatment keeps: film-engine.server.ts → FilmTreatment.nudge)
+  const idea = `${o.idea || ""} ${o.treatment.nudge || ""}`.trim();
   const picked = (o.cast || []).filter((c) => c && c.name && c.faceUrl);
   // the story's recurring characters nobody gave a picture to
   const others = (o.treatment.cast || []).filter((e) => !!e && !picked.some((c) => namedIn(c.name, entryName(e)) || namedIn(entryName(e), c.name)));
@@ -283,9 +293,14 @@ export async function narratedSceneSeeds(o: {
       const written = (scene.visual || "").replace(/\s+/g, " ").trim();
       const visual = dressedInWater(oneMoment(noLettering(written)));
       const twoMoments = oneMoment(written) !== written;
+      // NIGHT IS NIGHT (2026-11-25, "Eleven Went Aboard": the idea said "A night ferry crosses a foggy harbour…" and all
+      // thirteen pictures were pale misty daylight): is this scene at night — by its picture's words, its narration, its
+      // place or the story's idea (story-picture.ts → storyNight, on the acted engine's own rule)? Then its picture is told
+      // so right behind its words, from the first go (the acted master's NIGHT_LINE), and its sky is looked at.
+      const night = storyNight({ words: visual, said: scene.caption, place: setAt ? `${setAt.name}: ${setAt.look}` : "", idea, childSafe: tmpl.childSafe, cartoon: tmpl.cartoon }, nightSetting);
       // (a genre whose world is its OWN — Fantasy, film-genres.ts → ownWorld — is told everybody is clothed, and not that
       //  its places look the way they look TODAY: "no cottage and no castle unless they name one", 2026-11-25)
-      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : ""}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : ""} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
+      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."}${night ? ` ${NIGHT_LINE}` : ""} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : ""}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : ""} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
       // …and THE PICTURE IS LOOKED AT before it is kept: is each of the maker's cast in it (never asked
       // about clothes — a story dresses people for the part), and is it one picture. The cast is looked for
       // whenever the scene has any; panels only where the words described two moments (that is when a
@@ -307,7 +322,8 @@ export async function narratedSceneSeeds(o: {
             anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 600, model: "claude-sonnet-4-6" }).catch(() => ""),
             // (…and a place drawn run-down that its words do not call one — a grown-up story's — or a smaller picture
             //  pasted into a corner of it — any story's: story-picture.ts)
-            anthropicVision(storyGrimePrompt(visual), [pic], { maxTokens: 360, model: "claude-sonnet-4-6" }).catch(() => ""),
+            // (…and a NIGHT scene's sky, last in the same question — no extra call; its answer a line longer: NIGHT_ASKED)
+            anthropicVision(storyGrimePrompt(visual, night), [pic], { maxTokens: night ? 420 : 360, model: "claude-sonnet-4-6" }).catch(() => ""),
           ]);
           const seen = castPics.length ? parseStoryCast(String(castRaw || ""), castPics.length) : [];
           // (…and whoever is drawn TWICE — the little brother on the sofa and again on the porch: story-picture.ts)
@@ -322,8 +338,10 @@ export async function narratedSceneSeeds(o: {
           const inset = parseStoryInset(String(grimeRaw || ""));
           // (…and anybody UNCLOTHED — any story's, a children's too: story-picture.ts → parseStoryUnclothed)
           const bare = parseStoryUnclothed(String(extrasRaw || ""));
-          if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null && bare == null) return null;
-          return { seen: seen || castPics.map(() => true), panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };
+          // (…and a night scene's sky read as dusk or day — only a clear "dusk" or "day" is the fault: story-picture.ts → parseStoryNight)
+          const dark = night ? parseStoryNight(String(grimeRaw || "")) : null;
+          if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null && bare == null && dark == null) return null;
+          return { seen: seen || castPics.map(() => true), panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(dark === false ? { notNight: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };
         } catch (e) {
           console.error(`[narrated] scene ${i + 1}: the picture could not be looked at, keeping it: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
           return null;
@@ -357,7 +375,7 @@ export async function narratedSceneSeeds(o: {
         if (!best || faults < best.faults) best = { img: got, faults, check: seenAs! };
         fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || "person"));
         first = storyFirst(seenAs);
-        console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.unclothed ? `somebody unclothed (${seenAs!.unclothedWho || "somewhere in it"})` : "", seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : "", seenAs!.inset ? "a smaller picture pasted into it" : ""].filter(Boolean).join(", ")} — drawing it again`);
+        console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.unclothed ? `somebody unclothed (${seenAs!.unclothedWho || "somewhere in it"})` : "", seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : "", seenAs!.inset ? "a smaller picture pasted into it" : "", seenAs!.notNight ? "a night scene drawn as dusk or day" : ""].filter(Boolean).join(", ")} — drawing it again`);
       }
       // THE BEST OF THE GOES STILL HAS SOMEBODY UNCLOTHED (every go had: one without it would have weighed less —
       // story-picture.ts → UNCLOTHED_FAULT): that picture is dressed by ONE edit on the story's best model and looked at
@@ -379,9 +397,10 @@ export async function narratedSceneSeeds(o: {
       if (!img && barred) img = await keepClothed({ url: barred, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, aspect), log: (l) => console.log(`[narrated] scene ${i + 1} (letterboxed, kept): ${l}`) });
       // the lenient path last: its safety and outage fallbacks still get a picture (without the cast's own looks)
       // (…its words dressed too, and the picture looked at: dressed by one edit, else kept as it is — clothed.server.ts)
+      // (…and a night scene's night said FIRST: this prompt is cut at 500 characters, and the night must not be what is cut)
       if (!img) {
         try {
-          const lenient = await renderCreativeSeed(`${safe}${dressedInWater((scene.visual || "").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);
+          const lenient = await renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : ""}${dressedInWater((scene.visual || "").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);
           img = lenient ? await keepClothed({ url: lenient, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, aspect), log: (l) => console.log(`[narrated] scene ${i + 1} (the lenient path): ${l}`) }) : null;
         } catch { img = null; }
       }
@@ -403,6 +422,8 @@ export async function narratedSceneSeeds(o: {
  *  scene names them, or it is an older storyboard that still draws from one sheet. */
 export async function recastStoryCharacter(o: {
   template?: string; treatment: FilmTreatment; cast?: StoryCast; aspect?: string; castRef?: string | null; name: string;
+  /** the maker's idea — a night story's scenes are drawn again at night (narratedSceneSeeds → idea) */
+  idea?: string | null;
 }): Promise<(Awaited<ReturnType<typeof narratedSceneSeeds>> & { scenes: number[] }) | null> {
   const carried = readCastToken(o.castRef);
   if (carried.sheet) return null;
@@ -411,7 +432,7 @@ export async function recastStoryCharacter(o: {
   const scenes = o.treatment.scenes.map((s, i) => (presentIn(entryName(entry), s?.visual || "") ? i : -1)).filter((i) => i >= 0);
   if (!scenes.length) return null;
   const kept = carried.refs.filter((r) => !sameCharacter(r.name, o.name));
-  const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept, carried.places) || null });
+  const r = await narratedSceneSeeds({ template: o.template, treatment: o.treatment, cast: o.cast, aspect: o.aspect, only: scenes, castRef: castToken(kept, carried.places) || null, idea: o.idea });
   return { ...r, scenes };
 }
 
@@ -884,7 +905,8 @@ export async function generateNarratedStory(opts: {
       // have EVERY picture drawn again — and all but that one thrown away for the approved ones.)
       const missing = treatment.scenes.map((_, i) => i).filter((i) => !approved[i]);
       // (…saying the job is at work whenever a picture comes back: a five-minute story is thirty-two of them)
-      const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null, beat: () => ckpt({ ckBeat: Date.now() }) });
+      // (…and the idea it was written from: a night story's pictures are drawn at night — story-picture.ts → storyNight)
+      const drawn = await narratedSceneSeeds({ template: tmpl.key, treatment, cast: opts.cast, aspect, only: missing, castRef: storyCastRef || null, beat: () => ckpt({ ckBeat: Date.now() }), idea: opts.topic });
       if (drawn.castRef) storyCastRef = drawn.castRef;
       // (a picture KEPT with somebody still wrong — the best of its goes — is written down: nobody reads
       //  this server's log, and a story made in one press has no storyboard to flag it on)
