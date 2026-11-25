@@ -552,7 +552,9 @@ export function takeSound(o: { lines: Array<{ at: number; radio?: boolean; secon
       burst(`q${i}a`, Math.max(0, ms - 140));
       if (l.seconds && l.seconds > 0) burst(`q${i}b`, ms + Math.round(l.seconds * 1000) + 20);
     } else {
-      parts.push(`[${i + 1}:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=150,lowpass=f=6500,aecho=0.8:0.5:14:0.18,volume=-1dB,adelay=${ms}|${ms}[v${i}]`);
+      parts.push(`[${i + 1}:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=150,lowpass=f=6500,aecho=0.8:0.5:14:0.18,volume=8dB,adelay=${ms}|${ms}[v${i}]`);
+      // (+8 dB: the room echo halves what it is given and the filters take the rest — measured on "Not in Your Bed", a
+      //  -21 LUFS line came out at -34, six dB over the room; the one holding the camera is the loudest thing at its mic)
     }
   });
   parts.push(`[amb][hiss]${o.lines.map((_, i) => `[v${i}]`).join("")}${squelch.join("")}amix=inputs=${n + 2 + squelch.length}:normalize=0:duration=first,alimiter=limit=0.9[a]`);

@@ -172,7 +172,9 @@ test("THE VOICE BEHIND THE CAMERA is a separate track: what is said, when, and h
   const g = takeSound({ lines: [{ at: 2.8 }, { at: 8.6 }], roomDb: -54.8, hasSound: true });
   assert.ok(g.startsWith("[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=20.8dB[amb];"), "the room is lifted to −34 dB");
   assert.ok(g.includes("[3:a]aformat=channel_layouts=stereo,highpass=f=60,lowpass=f=1400,volume=-17dB[hiss];"), "the hiss is the input after the lines");
-  assert.ok(g.includes("[1:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=150,lowpass=f=6500,aecho=0.8:0.5:14:0.18,volume=-1dB,adelay=2800|2800[v0];"));
+  // (the one filming at +8 dB: the room echo halves its input and the filters take the rest — "Not in Your Bed" measured a
+  //  -21 LUFS line at -34 in the mix, six dB over the room; now about fifteen, the loudest thing at the camera mic)
+  assert.ok(g.includes("[1:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=150,lowpass=f=6500,aecho=0.8:0.5:14:0.18,volume=8dB,adelay=2800|2800[v0];"));
   assert.ok(g.includes("adelay=8600|8600[v1];") && g.endsWith("[amb][hiss][v0][v1]amix=inputs=4:normalize=0:duration=first,alimiter=limit=0.9[a]"));
   assert.equal(TAKE_ROOM_DB, -34);
   // a room that is already loud is not lifted; a silent one is lifted no further than the cap; one that
@@ -311,7 +313,7 @@ test("THE BODY CAM (\"What about body cam footage\"): a welfare check — worn, 
   assert.ok(g.includes("[1:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=450,lowpass=f=2700,acompressor=threshold=-26dB:ratio=8:attack=2:release=60,volume=-3dB,adelay=200|200[v0];"));
   assert.ok(g.includes("anoisesrc=d=0.12:c=white:a=0.22:r=48000,highpass=f=450,lowpass=f=2700,aformat=channel_layouts=stereo,adelay=60|60[q0a];"), "the squelch before the call");
   assert.ok(g.includes("adelay=4620|4620[q0b];"), "…and after it ends");
-  assert.ok(g.includes("[2:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=150,lowpass=f=6500,aecho=0.8:0.5:14:0.18,volume=-1dB,adelay=5200|5200[v1];"));
+  assert.ok(g.includes("[2:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=150,lowpass=f=6500,aecho=0.8:0.5:14:0.18,volume=8dB,adelay=5200|5200[v1];"));
   assert.ok(g.endsWith("[amb][hiss][v0][v1][q0a][q0b]amix=inputs=6:normalize=0:duration=first,alimiter=limit=0.9[a]"));
   // (a radio line whose length is not known still gets the burst before it)
   assert.ok(takeSound({ lines: [{ at: 1, radio: true }], roomDb: null, hasSound: true }).endsWith("[amb][hiss][v0][q0a]amix=inputs=4:normalize=0:duration=first,alimiter=limit=0.9[a]"));
