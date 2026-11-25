@@ -1034,6 +1034,8 @@ async function runJob(
             shopId,
             scareKey: ck("takeIdea"),
             idea: ck("takeOwn"),
+            // (the card the member's own words started from — its direction is where the writer starts)
+            from: ck("takeFrom"),
             room: ck("takeRoom"),
             lapse: typeof payload.takeLapse === "boolean" ? payload.takeLapse : undefined,
             ir: typeof payload.takeIr === "boolean" ? payload.takeIr : undefined,
@@ -1045,6 +1047,7 @@ async function runJob(
             shopId,
             ideaKey: ck("takeIdea"),
             idea: ck("takeOwn"),
+            from: ck("takeFrom"),
             camera: ck("takeCamera"),
             aspect: ck("takeAspect"),
             section: (payload.section as string) || "creator",

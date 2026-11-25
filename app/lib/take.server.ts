@@ -3,9 +3,11 @@
  * What it is and why it is built the way it is: take.ts (the recipe) and camera-dress.ts (the camera it was
  * "shot on"). This file is the making:
  *
- *   1. THE TAKE'S PARTS  a ready-made scare, or the member's own idea written into the same parts (a writer
- *                        that fails or half-answers falls back to the first ready-made one written for that
- *                        camera — a take is never made from half a direction).
+ *   1. THE TAKE'S PARTS  a ready-made scare, or the member's own idea written into the same parts — FROM the card
+ *                        their words started from, when they changed a card's words (the police drama's by a drama
+ *                        writer: the person on camera's lines, the officer's, the radio — inside the bounds). A
+ *                        writer that fails or half-answers falls back to that card as it is, else to the first
+ *                        ready-made one written for that camera — a take is never made from half a direction.
  *   2. THE SCENE         the picture the take ARRIVES at, drawn by the creature recipe.
  *   3. THE WAY IN        the take's first frame — the same place a moment earlier, off its subject — drawn
  *                        FROM the scene (the owner: "a 2 second off of subject at the beggining then pans
@@ -42,7 +44,7 @@ import { falEnabled, falVideoPoll, falVideoSubmit } from "./fal-video.server";
 import { persistRemote, repRun } from "./image-generation.server";
 import { mirrorRender } from "./object-storage.server";
 import { overlayFonts } from "./overlay-fonts.server";
-import { TAKE_HISS, TAKE_IDEAS, TAKE_OFFICER_VOICE, TAKE_RADIO_VOICE, TAKE_REF, TAKE_SECONDS, TAKE_VOICE, HAND_CAMS, castTake, parseTake, placeLines, shapeFor, takeIdea, takeLines, takeOpensPrompt, takePrompt, takeSound, takeStillPrompt, takeWriterBrief, type Take, type TakeIdea } from "./take";
+import { DRAMA_SCHEMA, TAKE_HISS, TAKE_IDEAS, TAKE_OFFICER_VOICE, TAKE_RADIO_VOICE, TAKE_REF, TAKE_SCHEMA, TAKE_SECONDS, TAKE_VOICE, HAND_CAMS, castPick, castTake, dramaWriterBrief, parseTake, placeLines, shapeFor, takeIdea, takeLines, takeOpensPrompt, takePrompt, takeSound, takeStillPrompt, takeWriterBrief, type Take, type TakeIdea } from "./take";
 import { checkpointJob, repCreate, repPoll } from "./ugc-ad-pipeline.server";
 
 // (the same model, three hosts. The two fal ids are its "reference" endpoint — a first frame AND a picture to
@@ -295,6 +297,9 @@ export type TakeOptions = {
   ideaKey?: string;
   /** …or the member's own idea, in a line */
   idea?: string;
+  /** the card that idea started from (they changed its words in the builder's box) — its direction is where the
+   *  writer starts, and what a writer that fails falls back to */
+  from?: string;
   camera?: string;
   aspect?: string;
   section?: string;
@@ -315,20 +320,29 @@ export async function generateTake(opts: TakeOptions): Promise<string> {
   // 1) the take's parts
   let take: Take & { title: string; key?: string };
   const ready = takeIdea(opts.ideaKey);
+  // (the card the member's words started from — only ever one this camera can film)
+  const card = ready ? undefined : takeIdea(opts.from);
+  const from = card && (card.cams || HAND_CAMS).includes(camera) ? card : undefined;
+  const seed = parseInt(stamp().slice(-6), 16);
   if (resume.ckTake) take = JSON.parse(resume.ckTake);
   // (a drama's somebody is picked for this take, from its cast — and kept with the take, so a resumed job keeps them)
-  else if (ready) take = { ...castTake(ready, parseInt(stamp().slice(-6), 16)), title: ready.name };
+  else if (ready) take = { ...castTake(ready, seed), title: ready.name };
   else {
+    // THE POLICE DRAMA, its words changed, is written by the drama writer — the person on camera's lines, the officer's,
+    // the radio — and filmed exactly as the ready-made one is (genre, speaks, script, fifteen seconds); anything else
+    // by the scare writer, starting from the card when there is one
+    const drama = from?.genre === "drama";
     let written: (Take & { title: string }) | null = null;
     try {
-      written = parseTake(await anthropicText(takeWriterBrief(opts.idea || "", camera), {
-        maxTokens: 1600,
-        jsonSchema: { name: "take", schema: { type: "object", additionalProperties: false, required: ["title", "who", "still", "opens", "first", "finds", "beats", "says", "asks", "sound"], properties: { title: { type: "string" }, who: { type: "string" }, still: { type: "string" }, opens: { type: "string" }, first: { type: "string" }, finds: { type: "string" }, beats: { type: "array", items: { type: "string" } }, says: { type: "array", items: { type: "string" } }, asks: { type: "string", enum: ["looking", "found"] }, sound: { type: "string" }, radio: { type: "string" } } } },
-      }));
+      written = parseTake(await anthropicText(drama && from ? dramaWriterBrief(opts.idea || "", from, castPick(from, seed)) : takeWriterBrief(opts.idea || "", camera, from), {
+        maxTokens: drama ? 2400 : 1600,
+        jsonSchema: drama ? DRAMA_SCHEMA : TAKE_SCHEMA,
+      }), drama ? "drama" : undefined);
     } catch (e) { console.error(`[take] the writer did not answer — a ready-made scare is used: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
     // (a body cam's radio call is kept only on a body cam)
     if (written && camera !== "bodycam") delete written.radio;
-    const fallback = fallbackFor(camera);
+    // (a writer that fails: the card their words started from, as it is — else the first one written for this camera)
+    const fallback = from ? castTake(from, seed) : fallbackFor(camera);
     take = written || { ...fallback, title: fallback.name };
   }
   await ckpt({ ckTake: JSON.stringify(take) });
@@ -407,7 +421,7 @@ export async function generateTake(opts: TakeOptions): Promise<string> {
         // the job that made it (what waits for "my piece" asks for exactly this)
         ...(opts.jobId ? { jobId: opts.jobId } : {}),
         // what it was made from, so a take can be looked into (and rolled again) later
-        take: { ...(take.key ? { idea: take.key } : {}), ...(take.genre ? { genre: take.genre } : {}), camera, dressed: !!dressed, host, rolls, still, opens: firstFrame === still ? null : opens, raw: `/renders/${rawName}`, direction: direction(TAKE_REF.replicate).slice(0, 2400) },
+        take: { ...(take.key ? { idea: take.key } : {}), ...(from && opts.idea ? { from: from.key } : {}), ...(take.genre ? { genre: take.genre } : {}), ...(take.ends ? { ends: take.ends } : {}), camera, dressed: !!dressed, host, rolls, still, opens: firstFrame === still ? null : opens, raw: `/renders/${rawName}`, direction: direction(TAKE_REF.replicate).slice(0, 2400) },
         // what the one filming says, and when — laid on afterwards (null: the take has no voice on it)
         lines: voiced?.lines || null,
         // what the listening model heard in the take AS THE ENGINE MADE IT — it is given no words, so this

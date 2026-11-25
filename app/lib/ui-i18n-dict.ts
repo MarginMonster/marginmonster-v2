@@ -9,6 +9,17 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "Write what happens, pick what it was shot on — we film it.": "Escribe qué pasa, elige con qué se grabó — nosotros lo filmamos.",
+  "Write it your way — or tap a scare below to start from it": "Escríbelo a tu manera — o toca un susto de abajo para empezar desde él",
+  "Your version of “{name}”": "Tu versión de «{name}»",
+  "Ready-made. Change any words to make it yours.": "Lista para filmar. Cambia cualquier palabra y será tuya.",
+  "My girlfriend is standing at the end of the dark hallway, smiling at me — the smile is far too wide. Her head tilts much too far. Then she walks slowly toward me until her face fills the screen.": "Mi novia está al fondo del pasillo oscuro, sonriéndome — la sonrisa es demasiado ancha. Su cabeza se inclina demasiado. Luego camina despacio hacia mí hasta que su cara llena la pantalla.",
+  "Something very tall and thin is standing at the top of the stairs, where the light gives out. Its head leans too far to one side. Then it comes down the stairs toward me, one slow step at a time.": "Algo muy alto y delgado está de pie en lo alto de la escalera, donde se acaba la luz. Su cabeza se ladea demasiado hacia un lado. Luego baja la escalera hacia mí, un paso lento tras otro.",
+  "I hear something under the bed. I crouch down and look: a pale face is lying there in the dark, staring back at me. Its long fingers creep toward me. Then it slides out from under the bed, slowly, toward me.": "Oigo algo debajo de la cama. Me agacho y miro: una cara pálida está ahí tumbada en la oscuridad, devolviéndome la mirada. Sus dedos largos se arrastran hacia mí. Luego sale de debajo de la cama, despacio, hacia mí.",
+  "A welfare check at an old house — no lights in three days, the front door open. At the end of the hall stands a very tall woman in a pale nightgown, her hair over her face. Her head jerks straight. Then she walks slowly toward me.": "Una visita de control en una casa vieja — tres días sin luces, la puerta principal abierta. Al fondo del pasillo hay una mujer altísima con un camisón pálido, el pelo sobre la cara. Su cabeza se endereza a sacudidas. Luego camina despacio hacia mí.",
+  "A traffic stop on a dark country road. The driver won't get out of the car — then jumps out and runs. I catch them at the back of the car, and it ends in handcuffs.": "Un control de tráfico en una carretera rural oscura. La persona al volante no quiere bajarse del coche — luego salta fuera y huye. La alcanzo en la parte trasera del coche, y todo acaba con esposas.",
+  "A very tall, thin man in an old dark suit walks into the bedroom and stands bent over a woman asleep in the bed — for hours. She never wakes. At the end, his head turns slowly up to the camera.": "Un hombre altísimo y delgado, con un viejo traje oscuro, entra en el dormitorio y se queda inclinado sobre una mujer dormida en la cama — durante horas. Ella nunca se despierta. Al final, su cabeza se gira despacio hacia la cámara.",
+  "A very tall, thin man in an old dark suit walks into the living room, stops, and stares up at the camera. Then he walks slowly closer until he is right under it, his face filling the frame.": "Un hombre altísimo y delgado, con un viejo traje oscuro, entra en la sala de estar, se detiene y mira fijamente hacia la cámara. Luego se acerca despacio hasta quedar justo debajo de ella, con la cara llenando el encuadre.",
   "Looking at your products…": "Revisando tus productos…",
   "Pulling your numbers…": "Consultando tus cifras…",
   "Checking your campaigns…": "Revisando tus campañas…",
@@ -3227,6 +3238,17 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "Write what happens, pick what it was shot on — we film it.": "Écris ce qui se passe, choisis avec quoi c'est filmé — on s'occupe du tournage.",
+  "Write it your way — or tap a scare below to start from it": "Écris-le à ta façon — ou touche une frayeur ci-dessous pour partir d'elle",
+  "Your version of “{name}”": "Ta version de « {name} »",
+  "Ready-made. Change any words to make it yours.": "Prête à filmer. Change n'importe quel mot et elle est à toi.",
+  "My girlfriend is standing at the end of the dark hallway, smiling at me — the smile is far too wide. Her head tilts much too far. Then she walks slowly toward me until her face fills the screen.": "Ma copine se tient au bout du couloir sombre et me sourit — un sourire bien trop large. Sa tête penche beaucoup trop. Puis elle marche lentement vers moi jusqu'à ce que son visage remplisse l'écran.",
+  "Something very tall and thin is standing at the top of the stairs, where the light gives out. Its head leans too far to one side. Then it comes down the stairs toward me, one slow step at a time.": "Quelque chose de très grand et très maigre se tient en haut de l'escalier, là où la lumière s'arrête. Sa tête penche trop d'un côté. Puis il descend l'escalier vers moi, une marche lente après l'autre.",
+  "I hear something under the bed. I crouch down and look: a pale face is lying there in the dark, staring back at me. Its long fingers creep toward me. Then it slides out from under the bed, slowly, toward me.": "J'entends quelque chose sous le lit. Je m'accroupis et je regarde : un visage pâle est allongé là, dans le noir, et me fixe. Ses longs doigts rampent vers moi. Puis il glisse hors de sous le lit, lentement, vers moi.",
+  "A welfare check at an old house — no lights in three days, the front door open. At the end of the hall stands a very tall woman in a pale nightgown, her hair over her face. Her head jerks straight. Then she walks slowly toward me.": "Une visite de contrôle dans une vieille maison — pas de lumière depuis trois jours, la porte d'entrée ouverte. Au bout du couloir se tient une femme immense en chemise de nuit pâle, les cheveux sur le visage. Sa tête se redresse par à-coups. Puis elle marche lentement vers moi.",
+  "A traffic stop on a dark country road. The driver won't get out of the car — then jumps out and runs. I catch them at the back of the car, and it ends in handcuffs.": "Un contrôle routier sur une route de campagne sombre. La personne au volant refuse de sortir de la voiture — puis bondit dehors et s'enfuit. Je la rattrape à l'arrière de la voiture, et ça finit avec les menottes.",
+  "A very tall, thin man in an old dark suit walks into the bedroom and stands bent over a woman asleep in the bed — for hours. She never wakes. At the end, his head turns slowly up to the camera.": "Un homme très grand et très maigre, en vieux costume sombre, entre dans la chambre et reste penché au-dessus d'une femme endormie dans le lit — pendant des heures. Elle ne se réveille jamais. À la fin, sa tête se lève lentement vers la caméra.",
+  "A very tall, thin man in an old dark suit walks into the living room, stops, and stares up at the camera. Then he walks slowly closer until he is right under it, his face filling the frame.": "Un homme très grand et très maigre, en vieux costume sombre, entre dans le salon, s'arrête et lève les yeux vers la caméra. Puis il s'approche lentement jusqu'à se tenir juste en dessous, son visage remplissant l'image.",
   "Looking at your products…": "Je regarde tes produits…",
   "Pulling your numbers…": "Je récupère tes chiffres…",
   "Checking your campaigns…": "Je vérifie tes campagnes…",
@@ -6425,6 +6447,17 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "Write what happens, pick what it was shot on — we film it.": "Schreib, was passiert, wähle, womit es gefilmt wurde — wir drehen es.",
+  "Write it your way — or tap a scare below to start from it": "Schreib es auf deine Art — oder tippe unten auf einen Schocker und fang damit an",
+  "Your version of “{name}”": "Deine Version von „{name}“",
+  "Ready-made. Change any words to make it yours.": "Fertig zum Drehen. Ändere beliebige Wörter, und es wird deins.",
+  "My girlfriend is standing at the end of the dark hallway, smiling at me — the smile is far too wide. Her head tilts much too far. Then she walks slowly toward me until her face fills the screen.": "Meine Freundin steht am Ende des dunklen Flurs und lächelt mich an — das Lächeln ist viel zu breit. Ihr Kopf neigt sich viel zu weit. Dann geht sie langsam auf mich zu, bis ihr Gesicht den ganzen Bildschirm füllt.",
+  "Something very tall and thin is standing at the top of the stairs, where the light gives out. Its head leans too far to one side. Then it comes down the stairs toward me, one slow step at a time.": "Etwas sehr Großes, Dünnes steht oben an der Treppe, wo das Licht aufhört. Sein Kopf neigt sich zu weit zur Seite. Dann kommt es die Treppe herunter auf mich zu, langsam, Stufe für Stufe.",
+  "I hear something under the bed. I crouch down and look: a pale face is lying there in the dark, staring back at me. Its long fingers creep toward me. Then it slides out from under the bed, slowly, toward me.": "Ich höre etwas unter dem Bett. Ich gehe in die Hocke und schaue: Ein bleiches Gesicht liegt dort im Dunkeln und starrt mich an. Seine langen Finger kriechen auf mich zu. Dann gleitet es unter dem Bett hervor, langsam, auf mich zu.",
+  "A welfare check at an old house — no lights in three days, the front door open. At the end of the hall stands a very tall woman in a pale nightgown, her hair over her face. Her head jerks straight. Then she walks slowly toward me.": "Ein Kontrollbesuch in einem alten Haus — seit drei Tagen kein Licht, die Haustür offen. Am Ende des Flurs steht eine sehr große Frau in einem blassen Nachthemd, die Haare über dem Gesicht. Ihr Kopf richtet sich ruckartig auf. Dann geht sie langsam auf mich zu.",
+  "A traffic stop on a dark country road. The driver won't get out of the car — then jumps out and runs. I catch them at the back of the car, and it ends in handcuffs.": "Eine Verkehrskontrolle auf einer dunklen Landstraße. Die Person am Steuer will nicht aussteigen — dann springt sie heraus und rennt los. Ich erwische sie am Heck des Wagens, und es endet in Handschellen.",
+  "A very tall, thin man in an old dark suit walks into the bedroom and stands bent over a woman asleep in the bed — for hours. She never wakes. At the end, his head turns slowly up to the camera.": "Ein sehr großer, dünner Mann in einem alten dunklen Anzug kommt ins Schlafzimmer und steht über eine schlafende Frau im Bett gebeugt — stundenlang. Sie wacht nie auf. Am Ende dreht sich sein Kopf langsam zur Kamera hinauf.",
+  "A very tall, thin man in an old dark suit walks into the living room, stops, and stares up at the camera. Then he walks slowly closer until he is right under it, his face filling the frame.": "Ein sehr großer, dünner Mann in einem alten dunklen Anzug kommt ins Wohnzimmer, bleibt stehen und starrt zur Kamera hinauf. Dann kommt er langsam näher, bis er direkt darunter steht und sein Gesicht das Bild füllt.",
   "Looking at your products…": "Ich sehe mir deine Produkte an…",
   "Pulling your numbers…": "Ich hole deine Zahlen…",
   "Checking your campaigns…": "Ich prüfe deine Kampagnen…",
@@ -9632,6 +9665,17 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "Write what happens, pick what it was shot on — we film it.": "写下发生什么，选好用什么拍——剩下的交给我们。",
+  "Write it your way — or tap a scare below to start from it": "按你的想法写——或点下面任意一个吓人场景，从它开始",
+  "Your version of “{name}”": "你版本的“{name}”",
+  "Ready-made. Change any words to make it yours.": "现成可拍。改动任意字词，它就成了你自己的。",
+  "My girlfriend is standing at the end of the dark hallway, smiling at me — the smile is far too wide. Her head tilts much too far. Then she walks slowly toward me until her face fills the screen.": "我女朋友站在漆黑走廊的尽头冲我笑——那笑容咧得太宽了。她的头歪得太过分。然后她慢慢朝我走来，直到她的脸占满整个画面。",
+  "Something very tall and thin is standing at the top of the stairs, where the light gives out. Its head leans too far to one side. Then it comes down the stairs toward me, one slow step at a time.": "有个又高又瘦的东西站在楼梯顶上，光照不到的地方。它的头歪向一边，歪得太过了。然后它朝我走下楼梯，一步一步，慢慢地。",
+  "I hear something under the bed. I crouch down and look: a pale face is lying there in the dark, staring back at me. Its long fingers creep toward me. Then it slides out from under the bed, slowly, toward me.": "我听见床底下有动静。我蹲下去看：一张苍白的脸躺在黑暗里，正盯着我。它长长的手指朝我爬过来。然后它从床底下慢慢滑出来，朝我而来。",
+  "A welfare check at an old house — no lights in three days, the front door open. At the end of the hall stands a very tall woman in a pale nightgown, her hair over her face. Her head jerks straight. Then she walks slowly toward me.": "去一栋老房子上门查看——三天没亮灯，前门敞着。走廊尽头站着一个极高的女人，穿着苍白的睡裙，头发遮住了脸。她的头一顿一顿地扶正。然后她慢慢朝我走来。",
+  "A traffic stop on a dark country road. The driver won't get out of the car — then jumps out and runs. I catch them at the back of the car, and it ends in handcuffs.": "漆黑乡间公路上的一次交通拦停。司机拒绝下车——接着跳下车就跑。我在车尾追上了人，最后戴上了手铐。",
+  "A very tall, thin man in an old dark suit walks into the bedroom and stands bent over a woman asleep in the bed — for hours. She never wakes. At the end, his head turns slowly up to the camera.": "一个穿旧黑西装、又高又瘦的男人走进卧室，弯着腰站在床上熟睡的女人上方——一站就是几个小时。她始终没有醒。最后，他的头慢慢抬起，转向摄像头。",
+  "A very tall, thin man in an old dark suit walks into the living room, stops, and stares up at the camera. Then he walks slowly closer until he is right under it, his face filling the frame.": "一个穿旧黑西装、又高又瘦的男人走进客厅，停下来，抬头盯着摄像头。然后他慢慢走近，直到站在它正下方，他的脸占满整个画面。",
   "Looking at your products…": "正在查看你的产品…",
   "Pulling your numbers…": "正在获取你的数据…",
   "Checking your campaigns…": "正在查看你的活动…",
@@ -12893,6 +12937,17 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  "Write what happens, pick what it was shot on — we film it.": "لکھیں کہ کیا ہوتا ہے، چنیں کہ کس کیمرے سے فلمایا گیا — ہم اسے فلما دیں گے۔",
+  "Write it your way — or tap a scare below to start from it": "اپنے انداز میں لکھیں — یا نیچے کسی ڈراؤنے منظر پر ٹیپ کریں اور وہیں سے شروع کریں",
+  "Your version of “{name}”": "“{name}” کا آپ کا ورژن",
+  "Ready-made. Change any words to make it yours.": "فلمانے کے لیے تیار۔ کوئی بھی لفظ بدلیں اور یہ آپ کا ہو جائے گا۔",
+  "My girlfriend is standing at the end of the dark hallway, smiling at me — the smile is far too wide. Her head tilts much too far. Then she walks slowly toward me until her face fills the screen.": "میری گرل فرینڈ اندھیری راہداری کے آخر میں کھڑی مجھے دیکھ کر مسکرا رہی ہے — مسکراہٹ حد سے زیادہ چوڑی ہے۔ اس کا سر بہت زیادہ جھک جاتا ہے۔ پھر وہ آہستہ آہستہ میری طرف چلتی ہے، یہاں تک کہ اس کا چہرہ پوری اسکرین بھر دیتا ہے۔",
+  "Something very tall and thin is standing at the top of the stairs, where the light gives out. Its head leans too far to one side. Then it comes down the stairs toward me, one slow step at a time.": "کوئی بہت لمبی اور دبلی چیز سیڑھیوں کے اوپر کھڑی ہے، جہاں روشنی ختم ہو جاتی ہے۔ اس کا سر ایک طرف حد سے زیادہ جھکا ہوا ہے۔ پھر وہ سیڑھیاں اترتی ہوئی میری طرف آتی ہے، ایک ایک آہستہ قدم۔",
+  "I hear something under the bed. I crouch down and look: a pale face is lying there in the dark, staring back at me. Its long fingers creep toward me. Then it slides out from under the bed, slowly, toward me.": "مجھے بستر کے نیچے کچھ سنائی دیتا ہے۔ میں جھک کر دیکھتا ہوں: اندھیرے میں ایک زرد چہرہ لیٹا ہے اور مجھے گھور رہا ہے۔ اس کی لمبی انگلیاں رینگتی ہوئی میری طرف بڑھتی ہیں۔ پھر وہ آہستہ آہستہ بستر کے نیچے سے نکل کر میری طرف سرکتا ہے۔",
+  "A welfare check at an old house — no lights in three days, the front door open. At the end of the hall stands a very tall woman in a pale nightgown, her hair over her face. Her head jerks straight. Then she walks slowly toward me.": "ایک پرانے گھر میں خیریت کی جانچ — تین دن سے کوئی روشنی نہیں، سامنے کا دروازہ کھلا ہے۔ راہداری کے آخر میں ایک بہت لمبی عورت ہلکے رنگ کے نائٹ گاؤن میں کھڑی ہے، بال چہرے پر بکھرے ہوئے۔ اس کا سر جھٹکوں سے سیدھا ہوتا ہے۔ پھر وہ آہستہ آہستہ میری طرف چلتی ہے۔",
+  "A traffic stop on a dark country road. The driver won't get out of the car — then jumps out and runs. I catch them at the back of the car, and it ends in handcuffs.": "ایک اندھیری دیہاتی سڑک پر ٹریفک اسٹاپ۔ ڈرائیور گاڑی سے نہیں اترتا — پھر اچانک کود کر بھاگ پڑتا ہے۔ میں گاڑی کے پیچھے جا پکڑتا ہوں، اور بات ہتھکڑیوں پر ختم ہوتی ہے۔",
+  "A very tall, thin man in an old dark suit walks into the bedroom and stands bent over a woman asleep in the bed — for hours. She never wakes. At the end, his head turns slowly up to the camera.": "پرانے گہرے رنگ کے سوٹ میں ایک بہت لمبا، دبلا آدمی سونے کے کمرے میں آتا ہے اور بستر پر سوئی ہوئی ایک عورت پر جھک کر کھڑا ہو جاتا ہے — گھنٹوں تک۔ وہ کبھی نہیں جاگتی۔ آخر میں اس کا سر آہستہ سے اوپر کیمرے کی طرف مڑتا ہے۔",
+  "A very tall, thin man in an old dark suit walks into the living room, stops, and stares up at the camera. Then he walks slowly closer until he is right under it, his face filling the frame.": "پرانے گہرے رنگ کے سوٹ میں ایک بہت لمبا، دبلا آدمی لیونگ روم میں آتا ہے، رک جاتا ہے اور اوپر کیمرے کو گھورتا ہے۔ پھر وہ آہستہ آہستہ قریب آتا ہے، یہاں تک کہ عین اس کے نیچے کھڑا ہو جاتا ہے اور اس کا چہرہ پورا فریم بھر دیتا ہے۔",
   "Looking at your products…": "آپ کی مصنوعات دیکھ رہا ہوں…",
   "Pulling your numbers…": "آپ کے اعداد و شمار نکال رہا ہوں…",
   "Checking your campaigns…": "آپ کی مہمات دیکھ رہا ہوں…",

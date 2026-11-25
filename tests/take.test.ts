@@ -186,8 +186,10 @@ test("THE VOICE BEHIND THE CAMERA is a separate track: what is said, when, and h
 test("a take of the member's own: the writer is told how a scare is built, and its answer is checked", () => {
   const brief = takeWriterBrief("a man in the corner of the nursery");
   assert.ok(brief.includes("THE IDEA: a man in the corner of the nursery"));
-  for (const rule of ["ONE continuous twelve-second shot", "for two seconds, the camera is NOT on the thing", "THEN the camera moves and FINDS it", "(1) STILLNESS", "(2) ONE WRONG MOVEMENT", "(3) IT COMES", "NEVER runs, flinches, turns away or screams", "ITS MOUTH NEVER MOVES", "nearly human and slightly wrong", "No blood, no gore, no wounds", "The one filming is never seen: write what THE CAMERA does", "Answer with JSON only", '"opens":', '"first":', '"finds":', '"asks":']) assert.ok(brief.includes(rule), rule);
+  for (const rule of ["ONE continuous twelve-second shot", "for two seconds, the camera is NOT on the thing", "THEN the camera moves and FINDS it", "(1) STILLNESS", "(2) ONE WRONG MOVEMENT", "(3) THE END", "NEVER runs, flinches, turns away or screams", "ITS MOUTH NEVER MOVES", "nearly human and slightly wrong", "No blood, no gore, no wounds", "The one filming is never seen: write what THE CAMERA does", "Answer with JSON only", '"opens":', '"first":', '"finds":', '"asks":', '"ends":']) assert.ok(brief.includes(rule), rule);
   assert.ok(takeWriterBrief("").includes("THE IDEA: something that should not be in the house"));
+  // (the answer is English whatever the member wrote in — the direction is for the engine, the lines for an English voice)
+  assert.ok(brief.includes("Answer with JSON only, in English whatever language the idea is in:"));
 
   const good = {
     title: "The Nursery Corner", who: "The Man",
@@ -369,7 +371,7 @@ test("THE BODY CAM'S POLICE DRAMA (\"doesn't nessesarily need to be horror\"): t
   assert.deepEqual(TAKE_OFFICER_VOICE, { id: "English_Trustworth_Man", emotion: "angry", speed: 1 });
   // the server: the driver is picked for each take, the take is fifteen seconds, and a drama that speaks is NOT rolled again
   const srv = read("app", "lib", "take.server.ts");
-  assert.ok(srv.includes("else if (ready) take = { ...castTake(ready, parseInt(stamp().slice(-6), 16)), title: ready.name };"));
+  assert.ok(srv.includes("const seed = parseInt(stamp().slice(-6), 16);") && srv.includes("else if (ready) take = { ...castTake(ready, seed), title: ready.name };"));
   assert.ok(srv.includes("const seconds = take.seconds || TAKE_SECONDS;") && srv.includes("direction, aspect, seconds });"));
   assert.ok(srv.includes('const silent = take.genre !== "drama";') && srv.includes("for (let again = 0; silent && again < rerolls() && wordsIn(spoke) > 0; again++) {"));
   assert.ok(srv.includes('const voice = l.radio ? TAKE_RADIO_VOICE : take.genre === "drama" ? TAKE_OFFICER_VOICE : TAKE_VOICE;'));
@@ -477,4 +479,262 @@ test("THE BUILDER'S RULES: what can film what, the shape that follows the camera
   // how long, start to Archive
   assert.deepEqual(footageEta("phone"), [5, 10]);
   assert.deepEqual(footageEta("house"), [6, 12]);
+});
+
+/* ---- EVERY CARD IS A STARTER ----
+ * The owner, 2026-11-24, on the builder's cards: "These found footage options leave zero room for creativity, it's
+ * just what happens". A card now puts its own words in the builder's box; left as they are, it is the ready-made
+ * take (hand-tuned — untouched); changed, it is the member's own, written FROM the card, ending the way their words
+ * say. (The fixtures below are made up, and look it.) */
+
+const ZORBLAT = "My TEST grandma Zorblat is standing at the end of the dark hallway, smiling far too wide. When the light comes back, she is gone.";
+
+test("EVERY CARD IS A STARTER: its words say what happens in it — who, where, what is wrong, how it ends — and the engine is never given them", async () => {
+  const { FOOTAGE_SCARES } = await import("../app/lib/take.ts");
+  assert.equal(new Set(FOOTAGE_SCARES.map((s) => s.premise)).size, FOOTAGE_SCARES.length, "each card its own words");
+  for (const s of FOOTAGE_SCARES) {
+    // a few lines on a phone, plain words to change — inside the box's 400 characters, nothing to trip on
+    assert.ok(s.premise.length >= 80 && s.premise.length <= 240, `${s.key}: ${s.premise.length} characters`);
+    assert.ok(!/["“”\n]/.test(s.premise), `${s.key}: no quotation mark, no line break`);
+  }
+  // each card's words say what its take is — who and where, and how it ends
+  const said = Object.fromEntries(FOOTAGE_SCARES.map((s) => [s.key, s.premise]));
+  assert.ok(/girlfriend/.test(said.smile) && /hallway/.test(said.smile) && /far too wide/.test(said.smile) && /walks slowly toward me until her face fills the screen\.$/.test(said.smile));
+  assert.ok(/top of the stairs/.test(said.stairs) && /comes down the stairs toward me, one slow step at a time\.$/.test(said.stairs));
+  assert.ok(/under the bed/.test(said.bed) && /slides out from under the bed, slowly, toward me\.$/.test(said.bed));
+  assert.ok(/^A welfare check/.test(said.welfare) && /nightgown/.test(said.welfare) && /walks slowly toward me\.$/.test(said.welfare));
+  assert.ok(/^A traffic stop/.test(said.traffic) && /won't get out of the car/.test(said.traffic) && /ends in handcuffs\.$/.test(said.traffic));
+  assert.ok(/bedroom/.test(said.overbed) && /asleep/.test(said.overbed) && /up to the camera\.$/.test(said.overbed));
+  assert.ok(/living room/.test(said.lookup) && /stares up at the camera/.test(said.lookup));
+  // the engine is never given the card's words: a ready-made take is directed exactly as it always was
+  for (const i of TAKE_IDEAS) for (const c of i.cams || HAND_CAMS) assert.ok(!takePrompt(i, c).includes(i.premise.slice(0, 30)), `${i.key}/${c}`);
+});
+
+test("A CARD IS A STARTER, decided on the server: its words left as they were → the ready-made take, exactly as before; changed → the member's own, written FROM the card; no card → their own words alone", async () => {
+  const { cardUnchanged, footageJob, footageScare, sameWords } = await import("../app/lib/take.ts");
+  const smile = footageScare("smile")!, traffic = footageScare("traffic")!, overbed = footageScare("overbed")!;
+  // LEFT AS THEY WERE — no words, or the card's own, whatever the spacing, capitals, dashes, apostrophes or full stop
+  const before = footageJob({ scare: "smile", camera: "phone" });
+  assert.ok(before.ok && before.payload.takeIdea === "smile" && !("takeOwn" in before.payload) && !("takeFrom" in before.payload) && before.name === "She's smiling");
+  for (const own of ["", smile.premise, `  ${smile.premise.toUpperCase()}  `, smile.premise.replace(/ — /g, " - ").replace(/\.$/, "")]) {
+    assert.deepEqual(footageJob({ scare: "smile", own, camera: "phone" }), before, JSON.stringify(own.slice(0, 30)));
+  }
+  const curly = footageJob({ scare: "traffic", own: traffic.premise.replace(/'/g, "’"), camera: "bodycam" });
+  assert.ok(curly.ok && curly.payload.takeIdea === "traffic" && !("takeOwn" in curly.payload), "a curly apostrophe is no change");
+  // …and in the member's own language: the card's words as the page showed them (the server is handed the same translation)
+  const ZZ = "ZZ-TEST: mi novia de prueba está al fondo del pasillo, sonriendo demasiado.";
+  const shown = (s: string) => (s === smile.premise ? ZZ : s);
+  const back = footageJob({ scare: "smile", own: ZZ, camera: "phone" }, shown);
+  assert.ok(back.ok && back.payload.takeIdea === "smile" && !("takeOwn" in back.payload));
+  const noLang = footageJob({ scare: "smile", own: ZZ, camera: "phone" });
+  assert.ok(noLang.ok && noLang.payload.takeFrom === "smile", "without that language, the same words are a change");
+
+  // CHANGED — the member's own take, written FROM the card: their words, and the card they started from
+  const mine = footageJob({ scare: "smile", own: ZORBLAT, camera: "camcorder", aspect: "9:16" });
+  assert.ok(mine.ok);
+  assert.equal(mine.ok && mine.payload.takeOwn, ZORBLAT);
+  assert.equal(mine.ok && mine.payload.takeFrom, "smile");
+  assert.ok(mine.ok && !("takeIdea" in mine.payload) && mine.payload.takeCamera === "camcorder" && mine.payload.takeAspect === "9:16");
+  // (named for their words; the Archive's tile shows the card it started from while it is made)
+  assert.ok(mine.ok && mine.name.endsWith("…") && mine.name.length <= 45 && mine.payload.productTitle === `Found Footage — ${mine.name}` && mine.payload.productImageUrl === smile.img);
+  // a card's words changed still have to say something; and a camera that cannot film the card is still refused
+  assert.deepEqual(footageJob({ scare: "smile", own: "boo", camera: "phone" }), { ok: false, error: "Say what happens, in a few words." });
+  assert.deepEqual(footageJob({ scare: "smile", own: ZORBLAT, camera: "house" }), { ok: false, error: "That camera can't film that one — pick another." });
+  // quotation marks are made safe, as a take of their own words always had them
+  const quoted = footageJob({ scare: "bed", own: 'Under the TEST bed: a "mime" is lying there, staring back.', camera: "phone" });
+  assert.ok(quoted.ok && quoted.payload.takeOwn === "Under the TEST bed: a 'mime' is lying there, staring back." && quoted.payload.takeFrom === "bed");
+
+  // NO CARD — their own words alone, any camera, as before
+  const free = footageJob({ scare: "own", own: ZORBLAT, camera: "bare" });
+  assert.ok(free.ok && free.payload.takeOwn === ZORBLAT && !("takeFrom" in free.payload) && !("takeIdea" in free.payload) && !("productImageUrl" in free.payload));
+
+  // THE POLICE DRAMA'S words changed — the drama, written from the traffic stop
+  const stop = footageJob({ scare: "traffic", own: "A TEST traffic stop outside the Zorblat County diner: the driver is a mime who won't talk, then hands over a balloon dog and gets a warning.", camera: "bodycam" });
+  assert.ok(stop.ok && stop.payload.takeFrom === "traffic" && typeof stop.payload.takeOwn === "string" && stop.payload.takeAspect === "16:9");
+
+  // A HOUSE CARD'S words changed: the room picked, else the card's; its time-lapse as the card has it, unless set
+  const TALL = "A very tall TEST mime walks into the room and stands over the sleeping cat — for hours. Then it backs out the door.";
+  const hb = footageJob({ scare: "overbed", own: TALL, camera: "house" });
+  assert.ok(hb.ok && hb.payload.takeFrom === "overbed" && hb.payload.takeOwn === TALL && hb.payload.takeRoom === "bedroom" && hb.payload.takeLapse === true && hb.payload.takeIr === true && !("takeIdea" in hb.payload));
+  const hk = footageJob({ scare: "overbed", own: TALL, camera: "house", room: "kitchen", lapse: "0" });
+  assert.ok(hk.ok && hk.payload.takeRoom === "kitchen" && hk.payload.takeLapse === false);
+  // …while the card left as it was keeps its own room, whatever room is sent
+  const kept = footageJob({ scare: "overbed", own: overbed.premise, camera: "house", room: "kitchen" });
+  assert.ok(kept.ok && kept.payload.takeIdea === "overbed" && kept.payload.takeRoom === "bedroom" && !("takeOwn" in kept.payload));
+
+  // THE TEST ITSELF: the same words in any script; no words are never "the same"
+  assert.ok(sameWords("我妹妹，梦游进厨房。", "我妹妹 梦游进厨房") && sameWords("یہ کبھی نہیں بولتا۔", "یہ کبھی نہیں بولتا") && !sameWords("我妹妹", "我弟弟"));
+  assert.ok(!sameWords("", "") && !sameWords("...", "!!!"));
+  assert.ok(cardUnchanged("", smile.premise) && cardUnchanged("   ", smile.premise) && !cardUnchanged("x", smile.premise));
+});
+
+test("THE WRITER STARTS FROM THE CARD: its own direction — what the member's words keep, it keeps; what they change, it changes", () => {
+  const smile = takeIdea("smile")!;
+  const brief = takeWriterBrief(ZORBLAT, "phone", smile);
+  assert.ok(brief.includes(`THE IDEA: ${ZORBLAT}`));
+  assert.ok(brief.includes(`IT STARTS FROM A READY-MADE TAKE, "She's smiling". Its own words were: ${smile.premise}`));
+  assert.ok(brief.indexOf("THE IDEA:") < brief.indexOf("IT STARTS FROM") && brief.indexOf("IT STARTS FROM") < brief.indexOf("It is built the way a scare is built."));
+  // every part of the card's direction is there to start from
+  for (const part of [`- the scene it arrives at: ${smile.still}`, `- where the camera looks first: ${smile.opens}`, `- the first two seconds: ${smile.first}`, `- how the camera finds it: the camera ${smile.finds}`, `- (1) ${smile.beats[0]}`, `- (2) ${smile.beats[1]}`, `- (3) ${smile.beats[2]}`, `- what the one filming says: "${smile.says[0]}" (on seeing it), then "${smile.says[1]}"`, `- the sound: ${smile.sound}`]) assert.ok(brief.includes(part), part.slice(0, 60));
+  assert.ok(brief.includes("Start from that direction and change it to fit THE IDEA: keep everything the idea keeps (and every detail it does not mention), and change everything it changes — who or what it is, where it is, what is wrong with it, what it does, how it ends. Where the idea says the same as the card, keep the card's own words."));
+  assert.ok(takeWriterBrief(ZORBLAT, "phone", takeIdea("bed")!).includes(`"${takeIdea("bed")!.says[0]}" (while still looking)`));
+  // the body cam's welfare check: its radio call is part of what is started from — and a radio call is asked for
+  const w = takeIdea("welfare")!;
+  const wb = takeWriterBrief("A welfare check at a TEST lighthouse: the keeper is standing at the top of the stairs.", "bodycam", w);
+  assert.ok(wb.includes(`- the radio, as the take opens: "${w.radio}"`) && wb.includes('"radio": what a dispatcher says over the radio'));
+  // with no card: no card
+  assert.ok(!takeWriterBrief(ZORBLAT, "phone").includes("IT STARTS FROM") && !takeWriterBrief(ZORBLAT, "phone").includes(smile.still));
+});
+
+test("THE END IS THEIRS: the last beat follows the member's words — only words with no ending come at the lens — and the direction loosens one rule, only for the ending that needs it", async () => {
+  const { TAKE_ENDS, TAKE_SCHEMA } = await import("../app/lib/take.ts");
+  const brief = takeWriterBrief("a TEST ghost of a mime in the hall");
+  // the end their words give: gone when the light comes back, right there when the camera turns back, the one filming runs, someone they know
+  assert.ok(brief.includes("(3) THE END — whatever THE IDEA says happens at the end: it is gone when the light comes back; the camera turns away, turns back, and it is right there; the one filming runs; it was someone they know."));
+  assert.ok(brief.includes("Only when the idea gives no ending does IT COME — slowly, smoothly, toward the camera, never taking its eyes off the lens, while the camera backs away, until it fills the frame."));
+  assert.ok(!brief.includes("(3) IT COMES"), "the one fixed ending is gone");
+  // still one continuous shot that a camera could film
+  assert.ok(brief.includes("All of it is ONE continuous shot of about twelve seconds that a real camera could film: no cut, no jump in time, nothing a second camera would have to see. If the end needs the camera to leave it, the camera swings away; if it needs the dark, the light goes out — no flash — and comes back."));
+  // THE CRAFT THAT WORKS STAYS: off the subject, the camera finds it, stillness, one impossible movement; slow; a mouth that never moves; nearly human, no gore
+  for (const rule of ["FIRST, for two seconds, the camera is NOT on the thing", "THEN the camera moves and FINDS it", "(1) STILLNESS — the thing is there, perfectly still, looking at the camera.", "(2) ONE WRONG MOVEMENT — small, slow, impossible for a person", "What frightens is slowness and stillness.", "ITS MOUTH NEVER MOVES.", "nearly human and slightly wrong", "No blood, no gore, no wounds."]) assert.ok(brief.includes(rule), rule);
+  // the writer says how it ends
+  assert.deepEqual([...TAKE_ENDS], ["comes", "stays", "dark", "away"]);
+  assert.ok(brief.includes('"ends": how THE END ends — "comes" (it comes toward the camera), "stays" (the camera stays on it and the light does not change), "dark" (the light goes out or changes), "away" (the camera turns or swings away from it)'));
+  assert.ok(TAKE_SCHEMA.schema.required.includes("ends"));
+  assert.deepEqual(TAKE_SCHEMA.schema.properties.ends, { type: "string", enum: ["comes", "stays", "dark", "away"] });
+
+  // THE DIRECTION of a written take whose light goes out — or whose camera turns away
+  const answer = { title: "TEST The Mime", who: "the mime", still: "A TEST mime in white face paint stands at the end of a dark hallway, perfectly still, its painted smile far too wide.", opens: "the camera looks down at bare floorboards in its own small light, nobody in the picture.", first: "the camera looks down at the floor as the one filming walks.", finds: "swings up to the hallway ahead", beats: ["the mime stands perfectly still at the end of the hall.", "its head tilts much too far, slowly.", "the light goes out; when it comes back, the hallway is empty."], says: ["Hello?", "no"], asks: "found", sound: "a floorboard creaks" };
+  const comes = takePrompt(parseTake(answer)!);
+  const stays = takePrompt(parseTake({ ...answer, ends: "stays" })!);
+  const dark = takePrompt(parseTake({ ...answer, ends: "dark" })!);
+  const away = takePrompt(parseTake({ ...answer, ends: "away" })!);
+  // coming at the lens, or staying on it: the rules every ready-made scare is directed with, word for word
+  assert.equal(stays, comes);
+  assert.ok(comes.includes("Once the camera has found the mime it never leaves the mime: it never swings away, never drops, never falls.") && comes.includes("Nothing flashes; the light does not change; the picture never glitches or tears."));
+  // "dark": the light may change — only as the last four seconds say; the camera still never leaves it
+  assert.ok(dark.includes("Nothing flashes; the light changes only as the last four seconds say; the picture never glitches or tears.") && !dark.includes("the light does not change") && dark.includes("it never leaves the mime: it never swings away"));
+  // "away": the camera stays on it until the last four seconds; the light still never changes
+  assert.ok(away.includes("Once the camera has found the mime it stays on the mime until the last four seconds: it never drops, never falls.") && !away.includes("never swings away") && away.includes("the light does not change"));
+  // whatever the ending: nobody speaks, its mouth never moves, the one filming is never seen, nothing quoted, it fits
+  for (const p of [comes, dark, away]) {
+    assert.ok(p.includes("NOBODY SPEAKS in this shot") && p.includes("never opens its mouth, never mouths a word") && p.includes("The one filming is never in the picture: no legs, no feet, no body."));
+    assert.ok(p.includes("LAST FOUR SECONDS: the light goes out; when it comes back, the hallway is empty.") && !/["“”]/.test(p) && p.length <= TAKE_PROMPT_MAX);
+  }
+  // the writer's ending is read: "comes" is never written down (it is the default); an unknown one is dropped
+  assert.equal(parseTake({ ...answer, ends: "DARK" })!.ends, "dark");
+  assert.ok(!("ends" in parseTake({ ...answer, ends: "comes" })!) && !("ends" in parseTake({ ...answer, ends: "sideways" })!) && !("ends" in parseTake(answer)!));
+  // EVERY READY-MADE SCARE ends as it always did — it comes, and fills the frame
+  for (const i of SCARES) assert.ok(!i.ends && takePrompt(i).includes("it never swings away, never drops, never falls.") && takePrompt(i).includes("the light does not change"), i.key);
+});
+
+test("THE POLICE DRAMA IS A STARTER TOO: changed, it is written by a DRAMA writer — the person on camera's lines, the officer's, the radio — inside the same bounds, and nobody the default", async () => {
+  const { castPick, dramaWriterBrief, DRAMA_BOUNDS, DRAMA_SCHEMA } = await import("../app/lib/take.ts");
+  const tr = takeIdea("traffic")!;
+  const idea = "A TEST traffic stop outside the Zorblat County diner: the driver is a mime who won't talk, then hands over a balloon dog and gets a warning.";
+  const who = castPick(tr, 2)!;
+  const brief = dramaWriterBrief(idea, tr, who);
+  // a drama, not a scare: none of the creature's words
+  assert.ok(brief.startsWith("You are directing ONE continuous fifteen-second shot of body-camera footage — a FICTIONAL police drama, not a horror"));
+  for (const creature of [TAKE_WRONG, TAKE_HIDDEN, "ITS MOUTH NEVER MOVES", "nearly human", "slightly wrong", "creature"]) assert.ok(!brief.includes(creature), creature);
+  // it starts from the traffic stop's own direction — with this take's person in it
+  assert.ok(brief.includes(`THE IDEA: ${idea}`) && brief.includes(`IT STARTS FROM A READY-MADE TAKE, "Traffic stop". Its own words were: ${tr.premise}`));
+  assert.ok(brief.includes(`- the scene it arrives at: ${tr.still.replace("{driver}", who)}`) && !brief.includes("{driver}"));
+  assert.ok(brief.includes(`- how the camera finds them: the camera ${tr.finds}, and stops at the window`));
+  for (const s of [...tr.speaks!, ...tr.script!]) assert.ok(brief.includes(`at ${s.at} s, "${s.text}"`), s.text);
+  assert.ok(brief.includes(`- the radio, as the take opens: "${tr.radio}"`));
+  assert.ok(brief.includes("keep everything the idea keeps (and every detail it does not mention), and change everything it changes — who is on camera, where it is, what they say, what they do, how it ends."));
+  // NOBODY IS THE DEFAULT: when the idea does not say who, it is one of the cast — picked for each take
+  assert.ok(brief.includes(`If the idea does not say who the person on camera is, it is ${who}. Never make them one kind of person by default; never mock or stereotype anyone.`));
+  assert.equal(new Set([0, 1, 2, 3, 4, 5].map((s) => castPick(tr, s))).size, 6);
+  assert.equal(castPick(takeIdea("smile")!, 3), undefined, "a scare has no cast");
+  assert.ok(dramaWriterBrief(idea, tr).includes(`it is ${tr.cast![0]}.`), "never nobody");
+  // the shape that films well, at its seconds
+  for (const rule of ["the first four seconds are THE WALK-UP, in silence", "BY THE FIFTH SECOND the camera has found the person and stopped on them, their face in full view", "FROM THE NINTH SECOND, THE TURN", "THE LAST FOUR SECONDS, THE END", "All of it is ONE continuous shot a real body camera could film: no cut, no jump in time."]) assert.ok(brief.includes(rule), rule);
+  // THE BOUNDS (DRAMA_BOUNDS, said to the writer)
+  for (const rule of ['it is FICTION: a generic unit ("Unit twelve") of a made-up county', "no real police department, agency, badge, patch, insignia or lettering; no real place, street, person or event", "No weapon is drawn, pointed or fired; nobody is struck, nobody is hurt, no blood.", "Resisting is refusing, pulling away and a short chase; it may end in handcuffs."]) assert.ok(brief.includes(rule), rule);
+  assert.ok(DRAMA_BOUNDS.includes("no weapon drawn; nobody hurt"));
+  // WHO SPEAKS: the person on camera, in the shot (the mouth the engine moves is theirs); the officer never — their lines and the radio are laid on after
+  assert.ok(brief.includes("the person on camera's own lines are said IN the shot — the video model moves their mouth to them — so each is short (under fifteen words), said once, after the sixth second, once their face is in view."));
+  assert.ok(brief.includes("The officer wearing the camera is never seen except their hands and never speaks in the shot: the officer's lines are recorded on their own and laid over the take"));
+  // the answer's shape
+  for (const k of ['"speaks": [{"at":', '"script": [{"at":', '"stops":', '"radio":', '"beats":', "Answer with JSON only, in English whatever language the idea is in:"]) assert.ok(brief.includes(k), k);
+  assert.deepEqual(DRAMA_SCHEMA.schema.required, ["title", "who", "still", "opens", "first", "finds", "stops", "beats", "speaks", "script", "radio", "sound"]);
+  assert.deepEqual(DRAMA_SCHEMA.schema.properties.speaks.items.required, ["at", "text"]);
+});
+
+test("parseTake on a DRAMA answer: the lines with their seconds, the bounds — and it is filmed exactly as the ready-made drama is", async () => {
+  const { DRAMA_LINE_ROOM, DRAMA_SECONDS, DRAMA_WINDOW_AT, dramaPrompt } = await import("../app/lib/take.ts");
+  const good = {
+    title: "TEST The Mime Stop", who: "The Driver",
+    still: "Through the open driver's window of a small TEST hatchback stopped outside a closed roadside diner at night, washed red and blue by the patrol car's lights: a mime in white face paint and a striped shirt, looking up at the camera, silent.",
+    opens: "the camera looks down at the wet asphalt of a diner parking lot in the patrol car's headlights, the back of a small hatchback at the top of the picture.",
+    first: "the camera looks down at the asphalt as the officer wearing it walks to the hatchback.",
+    finds: "The camera lifts to the driver's open window",
+    stops: "At the window.",
+    beats: ["the mime looks up at the camera, silent, both hands on the wheel.", "the mime slowly hands a balloon dog out of the window.", "the officer's hand takes the balloon dog; the mime bows, and the officer steps back from the car."],
+    speaks: [{ at: 7, text: 'Officer, I am "in character".' }, { at: 12.4, text: "Thank you, officer." }],
+    script: [{ at: 4.6, text: "License and registration, please." }, { at: 8, text: "Is that a balloon dog?" }, { at: 11, text: "This one's a warning." }],
+    radio: "Unit twelve, copy your stop outside the TEST diner on Zorblat Road.",
+    sound: "a buzzing neon sign, an idling engine",
+  };
+  const d = parseTake(good, "drama")!;
+  assert.ok(d, "a whole drama is read");
+  assert.ok(d.genre === "drama" && d.seconds === DRAMA_SECONDS && DRAMA_SECONDS === 15 && d.asks === "found");
+  assert.ok(d.who === "the driver" && d.finds === "lifts to the driver's open window" && d.stops === "at the window" && d.radio === good.radio);
+  // the person on camera's lines — quoted to the engine, so their quotation marks are made safe
+  assert.deepEqual(d.speaks, [{ at: 7, text: "Officer, I am 'in character'." }, { at: 12.4, text: "Thank you, officer." }]);
+  // the officer's — never laid over the person's: the line at 8 waits until the answer at 7 has been said
+  assert.deepEqual(d.script, [{ at: 4.6, text: "License and registration, please." }, { at: 7 + DRAMA_LINE_ROOM, text: "Is that a balloon dog?" }, { at: 11, text: "This one's a warning." }]);
+  assert.deepEqual(d.says, ["License and registration, please.", "This one's a warning."]);
+  // FILMED AS THE READY-MADE DRAMA IS: the drama's direction, the person's own lines quoted once each, after the window
+  const p = takePrompt(d, "bodycam");
+  assert.equal(p, dramaPrompt(d, "bodycam", "<<<image_1>>>"));
+  assert.ok(p.includes("A FICTIONAL police drama, and nobody is hurt") && p.includes("Only now, with the camera at the window and the driver's face in full view, the driver speaks."));
+  assert.ok(p.includes(`AT THE SEVENTH SECOND — not before — the driver says, once: "Officer, I am 'in character'."`) && p.includes(`AT THE TWELFTH SECOND — not before — the driver says, once: "Thank you, officer."`));
+  assert.equal([...p.matchAll(/"([^"]+)"/g)].length, 2, "only the person on camera's lines are quoted");
+  // …and the officer's lines and the radio are NOT in it in any form: their own voices, laid on after
+  for (const s of d.script!) assert.ok(!p.includes(s.text.replace(/[?.,]+$/, "")), s.text);
+  assert.ok(!p.includes("Zorblat Road") && p.length <= TAKE_PROMPT_MAX);
+  assert.deepEqual(takeLines(d), [
+    { at: 0.2, text: "Unit twelve, copy your stop outside the TEST diner on Zorblat Road.", radio: true },
+    { at: 4.6, text: "License and registration, please." },
+    { at: 9.4, text: "Is that a balloon dog?" },
+    { at: 11, text: "This one's a warning." },
+  ]);
+  // a person's line timed in the walk-up is said after the window; a place that is not one is not kept
+  assert.deepEqual(parseTake({ ...good, speaks: [{ at: 1, text: "Leave me alone." }] }, "drama")!.speaks, [{ at: DRAMA_WINDOW_AT + 1, text: "Leave me alone." }]);
+  const nowhere = parseTake({ ...good, stops: "whenever" }, "drama")!;
+  assert.ok(!("stops" in nowhere) && takePrompt(nowhere, "bodycam").includes("Only now, with the camera stopped and the driver's face in full view, the driver speaks."));
+  // REFUSED — no line for the person, none for the officer, a weapon, a blow or a wound anywhere, half a direction
+  for (const bad of [
+    { ...good, speaks: [] },
+    { ...good, script: [] },
+    { ...good, speaks: [{ at: "soon", text: "Hi." }] },
+    { ...good, beats: [good.beats[0], "the officer draws his gun and points it at the driver.", good.beats[2]] },
+    // (this line has no room left after the driver's at 12.4 and would be left out — the answer is refused all the same)
+    { ...good, script: [...good.script, { at: 13, text: "Drop the knife!" }] },
+    { ...good, beats: [good.beats[0], good.beats[1], "the driver is tased and falls, bleeding."] },
+    { ...good, radio: "Unit twelve, shots fired at the TEST diner." },
+    { ...good, beats: good.beats.slice(0, 2) },
+    { ...good, opens: "" },
+  ]) assert.equal(parseTake(bad, "drama"), null, JSON.stringify(bad).slice(0, 90));
+  // …the bounds said back are not a weapon
+  assert.ok(parseTake({ ...good, still: `${good.still} No weapon is drawn, no blood, nobody is hurt.` }, "drama"));
+  // read as a scare, a drama's answer is no take (it has no worried question for the one filming)
+  assert.equal(parseTake(good), null);
+});
+
+test("THE MAKING of a take written from a card: the card goes to its writer — the drama's to the drama writer — and a writer that fails falls back to that card, as it is", () => {
+  const srv = read("app", "lib", "take.server.ts");
+  assert.ok(srv.includes("const card = ready ? undefined : takeIdea(opts.from);"));
+  assert.ok(srv.includes("const from = card && (card.cams || HAND_CAMS).includes(camera) ? card : undefined;"), "only a card this camera can film");
+  assert.ok(srv.includes('const drama = from?.genre === "drama";'));
+  assert.ok(srv.includes('written = parseTake(await anthropicText(drama && from ? dramaWriterBrief(opts.idea || "", from, castPick(from, seed)) : takeWriterBrief(opts.idea || "", camera, from), {'));
+  assert.ok(srv.includes("maxTokens: drama ? 2400 : 1600,") && srv.includes("jsonSchema: drama ? DRAMA_SCHEMA : TAKE_SCHEMA,") && srv.includes('}), drama ? "drama" : undefined);'));
+  assert.ok(srv.includes("const fallback = from ? castTake(from, seed) : fallbackFor(camera);") && srv.includes("take = written || { ...fallback, title: fallback.name };"));
+  // a written drama is made as the ready-made one is: its fifteen seconds, the person's words not rolled away, the officer's voice
+  assert.ok(srv.includes("const seconds = take.seconds || TAKE_SECONDS;") && srv.includes('const silent = take.genre !== "drama";') && srv.includes('const voice = l.radio ? TAKE_RADIO_VOICE : take.genre === "drama" ? TAKE_OFFICER_VOICE : TAKE_VOICE;'));
+  // the piece says which card it was written from, and how it ends
+  assert.ok(srv.includes("...(from && opts.idea ? { from: from.key } : {}),") && srv.includes("...(take.ends ? { ends: take.ends } : {}),"));
 });

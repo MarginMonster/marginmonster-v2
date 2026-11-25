@@ -5,8 +5,12 @@
  * style creatives" — "make it easymode and selectable good UI interface" — "Found footage from house camera POVs
  * also" — "if we put it as a scene setting it would maximize easiness" — "What about body cam footage".
  *
- *   WHAT HAPPENS   the ready-made scares as picture cards (take.ts → FOOTAGE_SCARES: the handheld ones, the body
- *                  cam's, the house's), and "Describe your own".
+ *   WHAT HAPPENS?  ONE BOX, first and always there (the owner, on the cards alone: "These found footage options
+ *                  leave zero room for creativity, it's just what happens"). Write it your way — or tap a card
+ *                  (take.ts → FOOTAGE_SCARES: the handheld ones, the body cam's, the house's) and its own words
+ *                  arrive in the box to change: who, where, what is wrong, how it ends. Left as they are, the take
+ *                  is the ready-made one; changed, it is the member's own, written FROM that card (take.ts →
+ *                  cardUnchanged — asked on this page to say so, and again by the server, whose answer counts).
  *   THE CAMERA     Phone · Camcorder · No overlay · House camera · Body cam — each card plays a few seconds of a
  *                  real take dressed as that camera. A scare is written for one kind of camera (held, worn, on the
  *                  wall): the LAST TAP WINS and the other choice follows (take.ts → pickScare / pickCamera), and the
@@ -35,7 +39,7 @@ import { useT } from "../lib/ui-lang";
 import { Ico } from "../lib/icons";
 import { CAMERA_LOOKS, cameraLookOf, type CameraLook } from "../lib/camera-dress";
 import { HOUSE_ROOMS, houseScare } from "../lib/house-cam";
-import { FOOTAGE_SHELVES, OWN_SCARE, familyOf, footageEta, footageJob, footageScare, pickCamera, pickScare, shapeChoosable, shapeFor, shelfScares, type FootagePick } from "../lib/take";
+import { FOOTAGE_SHELVES, OWN_SCARE, cardUnchanged, familyOf, fits, footageEta, footageJob, footageScare, pickCamera, pickScare, shapeChoosable, shapeFor, shelfScares, type FootagePick } from "../lib/take";
 import { themeOf } from "../lib/theme";
 import { useTheme } from "../lib/use-theme";
 import { THEATER_SHELL_CSS } from "../lib/theater-shell";
@@ -69,7 +73,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (String(form.get("intent") || "") !== "take") return json({ error: tr(lang, "Unknown action.") }, { status: 400 });
   if (!shop.activePlan?.active) return json({ error: tr(lang, "Pick a plan on the Dashboard first — film runs on tokens.") });
   if (!capabilitiesFor(shop.activePlan).has("creatorvideo")) return json({ error: tr(lang, "Your plan doesn't include video yet — upgrade to make films.") });
-  const job = footageJob({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room") });
+  // (a card's words are compared as the member was shown them — in their own language — as well as in English)
+  const job = footageJob({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room") }, (s) => tr(lang, s));
   if (!job.ok) return json({ error: tr(lang, job.error) }, { status: 400 });
   // (three takes in the making at once is plenty — a fourth press is a slip of the finger)
   const making = await db.job.count({ where: { shopId: shop.id, type: "GENERATE_VIDEO_AD", status: { in: ["PENDING", "IN_PROGRESS"] }, payload: { contains: '"contentType":"take"' } } });
@@ -125,50 +130,102 @@ export default function FoundFootage() {
   const theme = useTheme();
   const fetcher = useFetcher<typeof action>();
   // A LINK CAN OPEN IT ON A SCARE OR A CAMERA (?scare=overbed, ?camera=bodycam — a card elsewhere in the app
-  // that leads here): read through the same rules as a tap, so a link can never pick a pair that cannot be filmed
+  // that leads here): read through the same rules as a tap, so a link can never pick a pair that cannot be filmed.
+  // With no scare asked for, no card is picked: the box is empty, waiting for words or a tap
   const [params] = useSearchParams();
   const [pick, setPick] = useState<FootagePick>(() => {
-    let p: FootagePick = { scare: "smile", camera: "phone" };
+    let p: FootagePick = { scare: OWN_SCARE, camera: "phone" };
     const cam = cameraLookOf(params.get("camera"));
     if (cam) p = pickCamera(p, cam);
     const asked = (params.get("scare") || "").trim().toLowerCase();
     if (asked) p = pickScare(p, asked, cam && familyOf(cam) === "hand" ? cam : "phone");
     return p;
   });
+  // THE BOX — what happens, in words. A card tapped puts its own words in it, as the member reads them (their
+  // language); changed, the take is theirs, written from that card
+  const [own, setOwn] = useState(() => { const s = footageScare(pick.scare); return s ? t(s.premise) : ""; });
   // the hand-held camera last in hand — a hand-held scare goes back to it after a house or body-cam one
   const [lastHand, setLastHand] = useState<CameraLook>("phone");
-  const [own, setOwn] = useState("");
   const [wide, setWide] = useState<"9:16" | "16:9">("16:9");
   // (null: the scare's own — "Over the bed" starts with its time-lapse on)
   const [lapse, setLapse] = useState<boolean | null>(null);
   const [ir, setIr] = useState(true);
-  const [room, setRoom] = useState<string>(d.kept[0] || "living");
+  // (the room a take of their own words is in — a house card tapped starts it in that card's room)
+  const [room, setRoom] = useState<string>(() => houseScare(pick.scare)?.room || d.kept[0] || "living");
 
   const scare = footageScare(pick.scare);
-  const isOwn = pick.scare === OWN_SCARE;
+  // A CARD IS A STARTER: its words changed, the take is the member's own — written from it (take.ts → cardUnchanged)
+  const edited = !!scare && !cardUnchanged(own, scare.premise, t);
+  // the writer writes it: their own words, with no card or from one
+  const written = !scare || edited;
   const house = pick.camera === "house";
-  const hs = house && scare ? houseScare(scare.key) : undefined;
-  const lapseOn = lapse ?? !!hs?.lapseOn;
+  const houseCard = house && scare ? houseScare(scare.key) : undefined;
+  // (a ready-made house scare, as it is: its own room)
+  const hs = edited ? undefined : houseCard;
+  const lapseOn = lapse ?? !!houseCard?.lapseOn;
   const roomKey = hs ? hs.room : room;
   const camName = CAMERA_LOOKS.find((c) => c.key === pick.camera)?.name || "Phone";
   const aspect = shapeFor(pick.camera, wide);
   const [lo, hi] = footageEta(pick.camera);
   const camOfRoom = (key: string) => { const i = d.kept.indexOf(key); return `CAM ${(i >= 0 ? i : d.kept.length) + 1}`; };
 
-  const chooseScare = (key: string) => { setPick((p) => pickScare(p, key, lastHand)); setLapse(null); };
+  // the box grows with its words (a card's run to a few lines on a phone) — never a box to scroll inside
+  const boxIn = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const fit = () => { const el = boxIn.current; if (!el) return; el.style.height = "auto"; el.style.height = `${el.scrollHeight + 3}px`; };
+    fit();
+    // (a web font that arrives after the first measure lays the words out taller — measured again once it has)
+    document.fonts?.ready.then(fit).catch(() => undefined);
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [own]);
+  // a card tapped with the box out of sight above it: the page comes up to the box, so its words are seen arriving
+  const what = useRef<HTMLElement | null>(null);
+  const showBox = () => window.requestAnimationFrame(() => {
+    const el = what.current;
+    if (!el || el.getBoundingClientRect().top >= 0) return;
+    el.scrollIntoView({ block: "start", behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  });
+
+  const write = (v: string) => {
+    const words = v.replace(/[\r\n]+/g, " ");
+    setOwn(words);
+    // (the box emptied: no card is picked any more — what is written next is their own)
+    if (!words.trim() && scare) setPick((p) => ({ ...p, scare: OWN_SCARE }));
+  };
+  const chooseScare = (key: string) => {
+    const s = footageScare(key);
+    if (!s) return;
+    // (the card being changed, tapped again, keeps their words — "Undo" puts the card's back)
+    if (!(pick.scare === key && edited)) {
+      setPick((p) => pickScare(p, key, lastHand));
+      setOwn(t(s.premise));
+      setLapse(null);
+      const h = houseScare(key);
+      if (h) setRoom(h.room);
+    }
+    showBox();
+  };
+  const undo = () => { if (scare) setOwn(t(scare.premise)); };
   const chooseCamera = (cam: CameraLook) => {
     if (familyOf(cam) === "hand") setLastHand(cam);
-    setPick((p) => pickCamera(p, cam));
     setLapse(null);
+    // THEIR WORDS ARE NEVER THROWN AWAY: a card being changed that this camera cannot film becomes their own idea
+    if (edited && !fits(pick.scare, cam)) { setPick({ scare: OWN_SCARE, camera: cam }); return; }
+    const next = pickCamera(pick, cam);
+    setPick(next);
+    // (the camera brought another card with it: that card's words take the box)
+    const s = next.scare !== pick.scare ? footageScare(next.scare) : undefined;
+    if (s) { setOwn(t(s.premise)); const h = houseScare(s.key); if (h) setRoom(h.room); }
   };
 
   // THE REC LIGHT: once a take is rolling the button says so — until a choice changes and another can be made
-  const sig = JSON.stringify([pick, isOwn ? own.trim() : "", aspect, house ? [lapseOn, ir, roomKey] : 0]);
+  const sig = JSON.stringify([pick, own.trim(), aspect, house ? [lapseOn, ir, roomKey] : 0]);
   const [sentSig, setSentSig] = useState<string | null>(null);
   const data = fetcher.data as { ok?: true; name?: string; error?: string } | undefined;
   const busy = fetcher.state !== "idle";
   const rolling = !!data?.ok && !busy && sentSig === sig;
-  const ownReady = !isOwn || own.trim().length >= 8;
+  const ownReady = !written || own.trim().length >= 8;
   const canGo = d.canFilm && ownReady && !busy && !rolling;
 
   const heroVid = useRef<HTMLVideoElement | null>(null);
@@ -179,7 +236,7 @@ export default function FoundFootage() {
   }, []);
 
   const settings = house || shapeChoosable(pick.camera);
-  const goLabel = isOwn ? t("Film it · {camera}", { camera: t(camName) }) : t("Film “{name}” · {camera}", { name: t(scare?.name || ""), camera: t(camName) });
+  const goLabel = written ? t("Film it · {camera}", { camera: t(camName) }) : t("Film “{name}” · {camera}", { name: t(scare?.name || ""), camera: t(camName) });
 
   return (
     <div className={`ff-wrap${theme === "dark" ? " ff-dark" : ""}`} data-theme={theme}>
@@ -194,13 +251,26 @@ export default function FoundFootage() {
         <div className="ff-hero-copy">
           <span className="ff-eyebrow"><Ico n="camera" size={13} /> {t("Found footage")}</span>
           <b>{t("Caught on camera.")}</b>
-          <span>{t("Pick what happens and what it was shot on — we film it.")}</span>
+          <span>{t("Write what happens, pick what it was shot on — we film it.")}</span>
         </div>
       </header>
 
-      {/* 1 · WHAT HAPPENS — on its shelves: someone filming, the body cam (a scare, or a police drama), the house */}
-      <section className="ff-card" aria-labelledby="ff-what">
-        <h2 className="ff-lbl" id="ff-what"><span className="ff-n">1</span> {t("What happens")}</h2>
+      {/* 1 · WHAT HAPPENS? — ONE BOX, first: write it your way, or tap a card on its shelf (someone filming, the body
+          cam — a scare, or a police drama — the house) and its own words arrive in the box to change. Left as they
+          are: the ready-made take. Changed: the member's own, written from that card */}
+      <section className="ff-card ff-what" aria-labelledby="ff-what" ref={what}>
+        <h2 className="ff-lbl" id="ff-what"><span className="ff-n">1</span> <label htmlFor="ff-own-in">{t("What happens?")}</label></h2>
+        <textarea id="ff-own-in" ref={boxIn} className={`ff-own-in${edited ? " is-yours" : ""}`} rows={3} maxLength={400} value={own} onChange={(e) => write(e.target.value)}
+          placeholder={t("Write it your way — or tap a scare below to start from it")} />
+        {/* whose take the words make: the card's as it is, the member's version of it, or their own */}
+        <div className={`ff-own-state${edited ? " is-yours" : scare ? " is-card" : ""}`}>
+          <span role="status">
+            {edited ? <><Ico n="pencil" size={13} /> {t("Your version of “{name}”", { name: t(scare?.name || "") })}</>
+              : scare ? <><Ico n="check" size={13} /> {t("Ready-made. Change any words to make it yours.")}</>
+              : t("Slow and still is what frightens. It never speaks — nobody's words are put in its mouth.")}
+          </span>
+          {edited && <button type="button" className="ff-undo" onClick={undo}><Ico n="refresh" size={12} /> {t("Undo")}</button>}
+        </div>
         <div role="radiogroup" aria-labelledby="ff-what">
           {FOOTAGE_SHELVES.map((sh) => (
             <div className={`ff-shelf is-${sh.family}`} key={sh.family}>
@@ -213,7 +283,8 @@ export default function FoundFootage() {
                       <span className="ff-cover">
                         <img src={s.img} alt="" loading="lazy" decoding="async" />
                         {sh.family === "worn" && <span className={`ff-tag${s.genre === "drama" ? " is-drama" : ""}`}><i aria-hidden="true" />{s.genre === "drama" ? t("Drama") : t("Horror")}</span>}
-                        {on && <span className="ff-check" aria-hidden="true"><Ico n="check" size={13} /></span>}
+                        {/* (the card picked: a check — a pencil once its words are the member's own) */}
+                        {on && <span className="ff-check" aria-hidden="true"><Ico n={edited ? "pencil" : "check"} size={13} /></span>}
                         <span className="ff-cover-name">{t(s.name)}</span>
                       </span>
                       <span className="ff-line">{t(s.line)}</span>
@@ -223,21 +294,7 @@ export default function FoundFootage() {
               </div>
             </div>
           ))}
-          {/* your own idea: any camera — one wide button under the shelves */}
-          <button type="button" role="radio" aria-checked={isOwn} className={`ff-own${isOwn ? " on" : ""}`} onClick={() => chooseScare(OWN_SCARE)}>
-            <span className="ff-own-ico" aria-hidden="true"><Ico n="pencil" size={18} /></span>
-            <span className="ff-own-txt"><b>{t("Describe your own")}</b><span>{t("Any camera. We write it the way the scares that work are written.")}</span></span>
-            {isOwn && <span className="ff-check ff-check-in" aria-hidden="true"><Ico n="check" size={13} /></span>}
-          </button>
         </div>
-        {isOwn && (
-          <div className="ff-own-box">
-            <label htmlFor="ff-own-in">{t("What happens?")}</label>
-            <textarea id="ff-own-in" className="ff-own-in" rows={2} maxLength={400} value={own} onChange={(e) => setOwn(e.target.value.replace(/[\r\n]+/g, " "))}
-              placeholder={t("e.g. my sister sleepwalks into the kitchen — but it isn't her")} />
-            <span className="ff-hint">{t("Slow and still is what frightens. It never speaks — nobody's words are put in its mouth.")}</span>
-          </div>
-        )}
       </section>
 
       {/* 2 · THE CAMERA */}
@@ -268,7 +325,7 @@ export default function FoundFootage() {
             <div className="ff-sets">
               <Switch on={lapseOn} onChange={setLapse} label={t("Time-lapse")} sub={t("Hours race by on its clock while it stands there.")} />
               <Switch on={ir} onChange={setIr} label={t("Night vision")} sub={ir ? t("The camera's infrared: grey, grainy, eyes that catch the light.") : t("Off: one small lamp is lit, in colour.")} />
-              {isOwn ? (
+              {written ? (
                 <div className="ff-rooms" role="radiogroup" aria-label={t("Room")}>
                   <span className="ff-sets-cap">{t("Room")}</span>
                   <div className="ff-chips">
@@ -305,7 +362,8 @@ export default function FoundFootage() {
           <input type="hidden" name="scare" value={pick.scare} />
           <input type="hidden" name="camera" value={pick.camera} />
           <input type="hidden" name="aspect" value={aspect} />
-          {isOwn && <input type="hidden" name="own" value={own} />}
+          {/* the words in the box, always — the server decides whether they are still the card's (footageJob) */}
+          {own.trim() ? <input type="hidden" name="own" value={own} /> : null}
           {house && <input type="hidden" name="lapse" value={lapseOn ? "1" : "0"} />}
           {house && <input type="hidden" name="ir" value={ir ? "1" : "0"} />}
           {house && <input type="hidden" name="room" value={roomKey} />}
@@ -323,7 +381,7 @@ export default function FoundFootage() {
         )}
         {!d.hasPlan && <p className="ff-err">{t("Pick a plan on the Dashboard first — film runs on tokens.")}</p>}
         {d.hasPlan && !d.canFilm && <p className="ff-err">{t("Your plan doesn't include video yet — upgrade to make films.")}</p>}
-        {isOwn && !ownReady && <p className="ff-hint ff-hint-c">{t("Say what happens, in a few words.")}</p>}
+        {written && !ownReady && <p className="ff-hint ff-hint-c">{t("Say what happens, in a few words.")}</p>}
         {data?.error && <p className="ff-err" role="alert">{data.error}</p>}
       </section>
     </div>
@@ -352,7 +410,7 @@ const FF_STYLE = `
 .ff-card{background:linear-gradient(180deg,#fff,#FDFCF8);border:1px solid var(--line,#E4DFCF);border-radius:20px;padding:14px 14px 16px;margin:0 0 12px;box-shadow:0 2px 4px rgba(20,32,26,.03),0 14px 32px rgba(20,32,26,.05);}
 .ff-lbl{display:flex;align-items:center;gap:9px;margin:0 0 11px;font:800 15px/1.2 Poppins,sans-serif;letter-spacing:-.01em;color:var(--ink,#14201A);}
 .ff-n{display:inline-grid;place-items:center;width:25px;height:25px;border-radius:999px;background:linear-gradient(135deg,var(--green,#0C7A46),var(--green2,#1FA463));color:#fff;font-size:13px;box-shadow:0 3px 9px rgba(12,122,70,.3);}
-/* the shelves of "What happens": one per way a camera is carried */
+/* the shelves of "What happens?" — the cards that start a take: one per way a camera is carried */
 .ff-shelf{margin:0 0 8px;}
 .ff-shelf-h{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px;margin:0 2px 7px;}
 .ff-shelf-h b{font:800 11.5px/1.2 Poppins,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#14201A);}
@@ -373,18 +431,22 @@ const FF_STYLE = `
 .ff-tag.is-drama i{background:#4C8DFF;}
 .ff-check{position:absolute;z-index:3;top:7px;right:7px;width:23px;height:23px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;display:grid;place-items:center;box-shadow:0 4px 10px -3px rgba(0,0,0,.5);}
 .ff-line{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-size:11.5px;font-weight:600;line-height:1.36;color:var(--ink2,#4A554E);padding:0 2px;}
-/* describe your own: one wide button under the shelves */
-.ff-own{position:relative;display:flex;align-items:center;gap:12px;width:100%;min-height:58px;margin:4px 0 0;padding:9px 12px;border:1.5px dashed var(--green,#0C7A46);border-radius:14px;background:linear-gradient(160deg,#F3FAF5,#E3F2E9);text-align:left;font:inherit;color:inherit;cursor:pointer;}
-.ff-own.on{border-style:solid;box-shadow:0 0 0 1.5px var(--green,#0C7A46);}
-.ff-own-ico{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:#fff;color:var(--green,#0C7A46);box-shadow:0 5px 12px -6px rgba(12,122,70,.45);}
-.ff-own-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;}
-.ff-own-txt b{font:800 14px/1.2 Poppins,sans-serif;color:var(--green,#0C7A46);}
-.ff-own-txt span{font-size:11.5px;line-height:1.35;color:var(--ink2,#4A554E);}
-.ff-check.ff-check-in{position:static;flex:none;}
-.ff-own-box{display:flex;flex-direction:column;gap:6px;margin-top:10px;}
-.ff-own-box label{font:800 13px/1.2 Poppins,sans-serif;color:var(--ink,#14201A);}
-.ff-own-in{width:100%;box-sizing:border-box;border:1.5px solid var(--line,#E4DFCF);border-radius:12px;padding:10px 12px;font:inherit;font-size:14.5px;line-height:1.45;color:var(--ink,#14201A);background:#fff;resize:vertical;}
+/* 1 · the box: what happens, in words — first, always there; a card's own words arrive in it (16px: a phone never
+   zooms in on it) */
+.ff-what{scroll-margin-top:12px;}
+.ff-own-in{display:block;width:100%;box-sizing:border-box;min-height:84px;border:1.5px solid var(--line,#E4DFCF);border-radius:14px;padding:11px 13px;font:inherit;font-size:16px;line-height:1.45;color:var(--ink,#14201A);background:#fff;resize:none;box-shadow:inset 0 1px 2px rgba(20,32,26,.05);transition:border-color .15s,box-shadow .15s,background .15s;}
+.ff-own-in::placeholder{color:#7E8882;}
 .ff-own-in:focus{outline:none;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
+.ff-own-in.is-yours{border-color:#BFE3CC;background:#F7FCF9;}
+/* whose take the words make: the card's as it is, the member's version of it, or their own */
+.ff-own-state{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:8px 2px 14px;min-height:24px;font-size:12px;line-height:1.4;color:var(--ink2,#4A554E);}
+.ff-own-state>span{flex:1 1 200px;min-width:0;display:inline-flex;align-items:center;gap:6px;}
+.ff-own-state svg{flex:none;color:var(--green,#0C7A46);}
+.ff-own-state.is-card>span{font-weight:600;}
+.ff-own-state.is-yours>span{font-weight:700;color:var(--green,#0C7A46);}
+.ff-undo{position:relative;flex:none;display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:0 12px;border:1.5px solid var(--line,#E4DFCF);border-radius:999px;background:#fff;font:700 12px/1 Poppins,sans-serif;color:var(--ink,#14201A);cursor:pointer;}
+.ff-undo::after{content:"";position:absolute;inset:-6px -3px;}
+.ff-undo:hover{border-color:var(--green,#0C7A46);color:var(--green,#0C7A46);}
 .ff-hint{font-size:12px;line-height:1.4;color:var(--ink2,#4A554E);}
 .ff-hint-c{text-align:center;margin:6px 0 0;}
 /* a camera's card: a little black screen with its own few seconds in it, in its own shape */
@@ -438,7 +500,7 @@ const FF_STYLE = `
 .ff-ok{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin:9px 0 0;font-size:13px;font-weight:700;color:var(--green,#0C7A46);text-align:center;}
 .ff-ok a{color:var(--green,#0C7A46);text-decoration:underline;text-underline-offset:2px;}
 .ff-err{margin:8px 0 0;text-align:center;font-size:12.5px;font-weight:600;color:#B3421E;}
-.ff-scare:focus-visible .ff-cover,.ff-cam:focus-visible .ff-screen,.ff-sw:focus-visible,.ff-chip:focus-visible,.ff-seg button:focus-visible,.ff-go:focus-visible{outline:3px solid rgba(12,122,70,.4);outline-offset:2px;}
+.ff-scare:focus-visible .ff-cover,.ff-cam:focus-visible .ff-screen,.ff-sw:focus-visible,.ff-chip:focus-visible,.ff-seg button:focus-visible,.ff-undo:focus-visible,.ff-go:focus-visible{outline:3px solid rgba(12,122,70,.4);outline-offset:2px;}
 @media(min-width:640px){.ff-hero{height:210px;}.ff-hero-copy b{font-size:28px;}.ff-card{padding:18px 20px;}.ff-scare{flex-basis:150px;}.ff-cam{flex-basis:150px;}.ff-screen{height:116px;}}
 @media(prefers-reduced-motion:reduce){.ff-rec i,.ff-go.is-rolling .ff-go-dot{animation:none;}.ff-go::after{animation:none;display:none;}.ff-cover,.ff-cover img,.ff-sw-knob i{transition:none;}}
 `;

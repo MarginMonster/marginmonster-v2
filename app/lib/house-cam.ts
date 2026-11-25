@@ -146,6 +146,9 @@ export type HouseScare = {
   name: string;
   /** a line for its card */
   line: string;
+  /** THE CARD'S WORDS: what happens in it, as a member can change it — put in the builder's box when the card is
+   *  tapped (take.ts → FootageScare.premise). "" for a scare the writer wrote. */
+  premise: string;
   /** the room it happens in (HOUSE_ROOMS) */
   room: string;
   thing: HouseThing;
@@ -175,6 +178,7 @@ const TALL_MAN: HouseThing = {
 export const HOUSE_SCARES: ReadonlyArray<HouseScare> = [
   {
     key: "overbed", name: "Over the bed", line: "He walks in. He stands over her. For hours.",
+    premise: "A very tall, thin man in an old dark suit walks into the bedroom and stands bent over a woman asleep in the bed — for hours. She never wakes. At the end, his head turns slowly up to the camera.",
     room: "bedroom", thing: TALL_MAN,
     set: "a woman asleep in the bed on her side under the pale duvet, her face turned toward the camera, her dark hair on the pillow",
     scene: "{thing} stands at the side of the bed nearest the camera, bent forward stiffly at the waist over the sleeping woman, his pale face a hand's width above her sleeping face, looking down at her; his long pale hands hang at his sides. He is perfectly still. She does not wake. Nearly human and slightly wrong: too tall, too thin, waxy bloodless skin. Fully clothed",
@@ -197,6 +201,7 @@ export const HOUSE_SCARES: ReadonlyArray<HouseScare> = [
   },
   {
     key: "lookup", name: "Looking up", line: "It walks in, stops, and stares up at the camera.",
+    premise: "A very tall, thin man in an old dark suit walks into the living room, stops, and stares up at the camera. Then he walks slowly closer until he is right under it, his face filling the frame.",
     room: "living", thing: TALL_MAN,
     set: "",
     scene: "{thing} stands in the middle of the floor between the coffee table and the camera, facing the camera, his long pale hands hanging at his sides, his head tipped back so that his pale face is turned straight UP at the camera in the corner; two small white points where his eyes catch the light. He is perfectly still. What frightens is how nearly human he is: too tall, too thin, the skin waxy and bloodless, nothing about him standing the way a person would. He is fully clothed",
@@ -242,7 +247,10 @@ export function houseScarePrompt(s: HouseScare, ref: string, opts: { ir?: boolea
 
 /* ---- A HOUSE SCARE OF THE MEMBER'S OWN ----
  * The writer fills in the parts; the app puts them in the shape that worked (the walk-in, the stillness — the
- * time-lapse window — and one slow movement), with the times. */
+ * time-lapse window — and the end), with the times. A scare written from a card (the member changed its words in
+ * the builder's box) starts from that card's own direction. THE END is the member's — it walks back out, the
+ * sleeper wakes and sees it — so long as a camera that never moves can see it in the same shot; only words that give
+ * no ending end with one slow movement toward the camera. */
 
 /** The window a written scare's stillness falls in — the shape is the walk-in's, so it is the walk-in's window. */
 export const OWN_SCARE_LAPSE: TimeLapse & { from: number } = { from: 8.5, fast: 3.5, speed: 3.5, hours: 2.5 };
@@ -251,17 +259,39 @@ const one = (s: unknown, max: number) => String(s ?? "").replace(/["“”]/g, "
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const stop = (s: string) => (s && !/[.!?]$/.test(s) ? `${s}.` : s);
 
-/** WRITE ME ONE — the brief for the writer when a member describes a house-camera scare of their own. The answer
- *  is JSON: { title, who, thing, set, door, stands, waits, acts, sound }. */
-export function houseWriterBrief(idea: string, room: Pick<HouseRoom, "name" | "empty">): string {
+/** A ready-made house scare's own direction, as the writer is shown it to start from. */
+function houseDirectionLines(s: HouseScare): string {
+  const named = (t: string) => t.replace(/\{thing\}/g, s.thing.first).replace(/\{ref\}/g, "the scene picture");
+  return [
+    `- the room: ${houseRoom(s.room)?.name || s.room}`,
+    `- who comes in: ${s.thing.first}`,
+    `- in the room before it comes: ${s.set || "nobody"}`,
+    `- the scene it arrives at: ${named(s.scene)}`,
+    ...s.beats.map((b) => `- ${named(b)}`),
+    `- what it never does: ${s.never}`,
+    `- the sound: ${s.sound}`,
+  ].join("\n");
+}
+
+/** WRITE ME ONE — the brief for the writer when a member describes a house-camera scare of their own. `from`: the
+ *  card their words started from (its own direction is where the writer starts). The answer is JSON:
+ *  { title, who, thing, set, door, stands, waits, acts, sound }. */
+export function houseWriterBrief(idea: string, room: Pick<HouseRoom, "name" | "empty">, from?: HouseScare): string {
   return [
     "You are directing ONE continuous fifteen-second shot from a home security camera: fixed high in the corner of a room, at night. Nobody is holding it; nobody is filming; nothing is said. Not a story: a moment.",
     `THE IDEA: ${one(idea, 400) || "something that should not be in the house"}`,
     `THE ROOM: ${room.name}. ${room.empty}`,
-    "It is built the way the scares that work are built. (1) An ordinary night: the room is still. (2) THE THING COMES IN through one of the room's own doors or doorways and WALKS the whole way to where it stops — it never appears from nowhere. (3) It stops, and HOLDS PERFECTLY STILL for a long time — this is the scare. (4) ONE slow, wrong movement: a head turning up to the camera, a step toward the lens.",
+    ...(from ? [
+      `IT STARTS FROM A READY-MADE TAKE, "${from.name}". Its own words were: ${from.premise}`,
+      "The member changed those words into THE IDEA above. This is that take's direction — it was filmed, and it works:",
+      houseDirectionLines(from),
+      "Start from that direction and change it to fit THE IDEA: keep everything the idea keeps (and every detail it does not mention), and change everything it changes — who or what comes in, who else is in the room, where it stops, what it does, how it ends. Where the idea says the same as the card, keep the card's own words. It happens in THE ROOM above.",
+    ] : []),
+    "It is built the way the scares that work are built. (1) An ordinary night: the room is still. (2) THE THING COMES IN through one of the room's own doors or doorways and WALKS the whole way to where it stops — it never appears from nowhere. (3) It stops, and HOLDS PERFECTLY STILL for a long time — this is the scare. (4) THE END — whatever THE IDEA says happens at the end, so long as the camera on the wall can see it: it walks back out the way it came; the sleeper wakes and sees it; it lies down beside them; it looks up at the camera. Only when the idea gives no ending is it ONE slow, wrong movement: a head turning up to the camera, a step toward the lens.",
+    "All of it is ONE continuous fifteen-second shot: the camera NEVER moves and the light never changes; no cut, no jump in time — whatever happens, happens in front of it.",
     "What frightens is slowness and stillness. It NEVER runs, flinches, screams or speaks; nothing flashes or glitches. ITS MOUTH NEVER MOVES.",
     "THE THING is nearly human and slightly wrong: ONE or TWO exact wrongnesses and no more (too tall, too thin, a neck or fingers too long, skin like candle wax, eyes sunk in dark sockets). Never horns, wings, tentacles, glowing eyes, flames or a bare skull. No blood, no gore, no wounds, nobody hurt. Fully clothed.",
-    'Answer with JSON only: {"title": a short name for it (2–5 words), "who": "he", "she" or "it", "thing": what it is and looks like, one phrase starting with "a" or "an" ("a very tall woman in a long grey nightgown, her wet hair hanging over her face"), "set": what is in the room before it arrives, as one short sentence (somebody asleep, a dog in its basket), or "" for nothing, "door": the door or doorway of THIS room it comes in through, as the room names it ("the half-open door on the right"), "stands": where it stops and how it stands there, present tense, without the subject ("stands at the foot of the bed, facing the sleeper, her head bowed"), "waits": what else moves while it stands perfectly still, one short sentence, or "" ("The man turns over in his sleep."), "acts": its one slow movement at the end, present tense, without the subject ("turns her head up toward the camera until she is looking straight into the lens"), "sound": the sound of the room and of it, in a few words}',
+    'Answer with JSON only, in English whatever language the idea is in: {"title": a short name for it (2–5 words), "who": "he", "she" or "it", "thing": what it is and looks like, one phrase starting with "a" or "an" ("a very tall woman in a long grey nightgown, her wet hair hanging over her face"), "set": what is in the room before it arrives, as one short sentence (somebody asleep, a dog in its basket), or "" for nothing, "door": the door or doorway of THIS room it comes in through, as the room names it ("the half-open door on the right"), "stands": where it stops and how it stands there, present tense, without the subject ("stands at the foot of the bed, facing the sleeper, her head bowed"), "waits": what else moves while it stands perfectly still, one short sentence, or "" ("The man turns over in his sleep."), "acts": what it does at THE END — what the idea says happens at the end, else its one slow movement — present tense, without the subject ("turns her head up toward the camera until she is looking straight into the lens", "backs slowly out through the door it came in by"), "sound": the sound of the room and of it, in a few words}',
   ].join("\n");
 }
 
@@ -289,7 +319,7 @@ export function parseHouseScare(raw: unknown, roomKey: string): (HouseScare & { 
   const doorThe = door.replace(/^(a|an)\s+/i, "the ");
   return {
     title: one(o.title, 60) || "House camera",
-    key: "own", name: one(o.title, 60) || "House camera", line: "", room: room.key,
+    key: "own", name: one(o.title, 60) || "House camera", line: "", premise: "", room: room.key,
     // (a thing of the member's own is not kept in the house: nothing says the next one is the same)
     thing: { key: "", first: thing, again: thing },
     set,

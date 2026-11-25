@@ -209,3 +209,36 @@ test("A HOUSE SCARE OF THE MEMBER'S OWN: written into the walk-in's shape, with 
   assert.equal(parseHouseScare("not json", "bedroom"), null);
   assert.ok(parseHouseScare("Sure:\n```json\n" + JSON.stringify(good) + "\n```", "bedroom"));
 });
+
+test("A HOUSE CARD IS A STARTER (\"These found footage options leave zero room for creativity, it's just what happens\"): its words go in the builder's box; changed, the writer starts from the card's own direction — and the end is theirs", () => {
+  // THE CARDS' WORDS: what happens in each, as a member can change it
+  for (const s of HOUSE_SCARES) assert.ok(s.premise.length >= 80 && s.premise.length <= 240 && !/["“”\n]/.test(s.premise), s.key);
+  const bed = houseScare("overbed")!, up = houseScare("lookup")!;
+  assert.ok(/walks into the bedroom/.test(bed.premise) && /asleep in the bed/.test(bed.premise) && /his head turns slowly up to the camera\.$/.test(bed.premise));
+  assert.ok(/walks into the living room/.test(up.premise) && /stares up at the camera/.test(up.premise));
+  // …never in what the engine is told (the ready-made direction is the walk-in that worked, word for word)
+  for (const s of HOUSE_SCARES) assert.ok(!houseScarePrompt(s, "<<<image_1>>>").includes(s.premise.slice(0, 30)), s.key);
+
+  // WRITTEN FROM THE CARD: its words, its direction — the one who comes in, the room as it was, the scene, every beat
+  const nursery = HOUSE_ROOMS.find((r) => r.key === "nursery")!;
+  const idea = "A very tall TEST mime walks into the nursery and stands over the sleeping cat for hours — then backs out the door.";
+  const brief = houseWriterBrief(idea, nursery, bed);
+  assert.ok(brief.includes(`THE IDEA: ${idea}`) && brief.includes(`THE ROOM: Nursery. ${nursery.empty}`));
+  assert.ok(brief.includes(`IT STARTS FROM A READY-MADE TAKE, "Over the bed". Its own words were: ${bed.premise}`));
+  assert.ok(brief.includes(`- the room: Bedroom`) && brief.includes(`- who comes in: ${bed.thing.first}`) && brief.includes(`- in the room before it comes: ${bed.set}`));
+  assert.ok(brief.includes(`- the scene it arrives at: ${bed.scene.replace("{thing}", bed.thing.first)}`) && !/\{(thing|ref)\}/.test(brief));
+  for (const b of bed.beats) assert.ok(brief.includes(`- ${b.replace(/\{ref\}/g, "the scene picture")}`), b.slice(0, 40));
+  assert.ok(brief.includes(`- what it never does: ${bed.never}`) && brief.includes(`- the sound: ${bed.sound}`));
+  assert.ok(brief.includes("Start from that direction and change it to fit THE IDEA: keep everything the idea keeps (and every detail it does not mention), and change everything it changes — who or what comes in, who else is in the room, where it stops, what it does, how it ends. Where the idea says the same as the card, keep the card's own words. It happens in THE ROOM above."));
+  // THE END IS THEIRS — what a camera that never moves can see — and only words with no ending end in one slow movement
+  assert.ok(brief.includes("(4) THE END — whatever THE IDEA says happens at the end, so long as the camera on the wall can see it: it walks back out the way it came; the sleeper wakes and sees it; it lies down beside them; it looks up at the camera. Only when the idea gives no ending is it ONE slow, wrong movement: a head turning up to the camera, a step toward the lens."));
+  assert.ok(brief.includes("All of it is ONE continuous fifteen-second shot: the camera NEVER moves and the light never changes; no cut, no jump in time — whatever happens, happens in front of it."));
+  assert.ok(brief.includes('"acts": what it does at THE END — what the idea says happens at the end, else its one slow movement') && brief.includes("Answer with JSON only, in English whatever language the idea is in:"));
+  // the walk-in and the stillness that work are kept
+  for (const rule of ["WALKS the whole way to where it stops — it never appears from nowhere", "HOLDS PERFECTLY STILL for a long time", "ITS MOUTH NEVER MOVES", "No blood, no gore"]) assert.ok(brief.includes(rule), rule);
+  // no card: no card
+  assert.ok(!houseWriterBrief(idea, nursery).includes("IT STARTS FROM"));
+  // the end they gave is the take's last beat — slow, in front of the camera — and a written scare has no card's words of its own
+  const s = parseHouseScare({ title: "TEST The Mime", who: "she", thing: "a very tall TEST mime in a grey nightgown", set: "A cat sleeps in the small bed", door: "the bedroom door ajar onto darkness", stands: "stands over the small bed, her head bowed", waits: "The cat turns over in its sleep.", acts: "backs out through the door she came in by", sound: "a quiet nursery, a clock ticking" }, "nursery")!;
+  assert.ok(s && s.premise === "" && houseScarePrompt(s, "<<<image_1>>>").includes("LAST FOUR SECONDS: very slowly, she backs out through the door she came in by."));
+});

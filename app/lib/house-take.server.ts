@@ -4,8 +4,9 @@
  * engine). The steps that are the same as a handheld take's — the roll, the listening, the dressing — are
  * take.server.ts's own, used here. This file is what a house adds:
  *
- *   1. THE SCARE        a ready-made one, or the member's own written into the walk-in's shape (a writer that
- *                       fails falls back to the first ready-made one).
+ *   1. THE SCARE        a ready-made one, or the member's own written into the walk-in's shape — from the card
+ *                       their words started from, when they changed a card's words (a writer that fails falls back
+ *                       to that card as it is, else to the first ready-made one).
  *   2. THE ROOM         the shop's HOUSE is kept (the owner: "Found footage would need to remember rooms even
  *                       when panning to other cams in the house"): a room it has is used as it was drawn; a room
  *                       it has not is drawn now — the house's first from words, any other FROM the first — and
@@ -61,6 +62,9 @@ export type HouseTakeOptions = {
   /** …or the member's own idea, in a line, and the room it happens in */
   idea?: string;
   room?: string;
+  /** the card the member's words started from (they changed its words in the builder's box) — its direction is
+   *  where the writer starts */
+  from?: string;
   /** the time-lapse setting (unset: the scare's own) */
   lapse?: boolean;
   /** night vision (unset: on) */
@@ -109,17 +113,20 @@ export async function houseTakePictures(o: HouseTakeOptions & { house: KeptHouse
   if (resume.ckScare) scare = JSON.parse(resume.ckScare);
   else if (ready) scare = { ...ready, title: ready.name };
   else {
-    const room = houseRoom(o.room) || houseRoom("living");
+    // (the card their words started from — a written scare's starting point, and what a failed writer falls back to)
+    const from = houseScare(o.from);
+    const room = houseRoom(o.room) || (from ? houseRoom(from.room) : undefined) || houseRoom("living");
     let written: (HouseScare & { title: string }) | null = null;
     try {
       if (room) {
-        written = parseHouseScare(await anthropicText(houseWriterBrief(o.idea || "", room), {
+        written = parseHouseScare(await anthropicText(houseWriterBrief(o.idea || "", room, from), {
           maxTokens: 1200,
           jsonSchema: { name: "house_take", schema: { type: "object", additionalProperties: false, required: ["title", "who", "thing", "set", "door", "stands", "waits", "acts", "sound"], properties: { title: { type: "string" }, who: { type: "string", enum: ["he", "she", "it"] }, thing: { type: "string" }, set: { type: "string" }, door: { type: "string" }, stands: { type: "string" }, waits: { type: "string" }, acts: { type: "string" }, sound: { type: "string" } } } },
         }), room.key);
       }
     } catch (e) { console.error(`[house-take] the writer did not answer — a ready-made scare is used: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
-    scare = written || { ...HOUSE_SCARES[0], title: HOUSE_SCARES[0].name };
+    const fallback = from || HOUSE_SCARES[0];
+    scare = written || { ...fallback, title: fallback.name };
   }
   await ckpt({ ckScare: JSON.stringify(scare) });
 
@@ -241,7 +248,7 @@ export async function generateHouseTake(opts: HouseTakeOptions): Promise<string>
         // the job that made it (what waits for "my piece" asks for exactly this)
         ...(opts.jobId ? { jobId: opts.jobId } : {}),
         // what it was made from, so a take can be looked into (and rolled again) later
-        take: { ...(m.scare.key !== "own" ? { idea: m.scare.key } : {}), camera: "house", dressed: m.dressed, host: m.host, rolls: m.rolls, room: m.scare.room, roomName, cam: m.cam, set: m.set, still: m.scene, raw: `/renders/${m.rawName}`, ir: m.ir, lapse: m.lapse, clock: m.clock, direction: m.direction.slice(0, 2400) },
+        take: { ...(m.scare.key !== "own" ? { idea: m.scare.key } : {}), ...(opts.from && opts.idea ? { from: opts.from } : {}), camera: "house", dressed: m.dressed, host: m.host, rolls: m.rolls, room: m.scare.room, roomName, cam: m.cam, set: m.set, still: m.scene, raw: `/renders/${m.rawName}`, ir: m.ir, lapse: m.lapse, clock: m.clock, direction: m.direction.slice(0, 2400) },
         // THE HOUSE as it now stands — its rooms, the things seen in it, its night: the next house take starts here
         house: m.house,
         // nobody is filming: nothing is laid on
