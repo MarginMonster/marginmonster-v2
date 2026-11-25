@@ -110,7 +110,10 @@ test("the picker of BEFORE the script is not beside the characters: it is behind
   assert.ok(picker.includes('<div className="mm-artistpick">') && picker.includes('{t("We cast it")}') && picker.includes("{rosterFor(template).map((r) => {"));
   assert.equal(count(panel, '<div className="mm-artistpick">'), 1, "one picker, shown in either state — not a copy");
   // the line that opens it: one button, under the characters, that says what it is
-  assert.ok(panel.includes('<button type="button" className={`mm-castover${castOver ? " on" : ""}`} aria-expanded={castOver} onClick={() => { setCastOver((v) => !v); setWipeArm(""); }}>\n                    <Ico n="refresh" size={13} /> {t("Start over with different stars")}\n                  </button>'));
+  // (…and not while a face is being cast: the portrait lands by row NUMBER, so a story started over under it
+  // would hand it to another story's character — reviewer, 2026-11-25)
+  assert.ok(panel.includes('<button type="button" className={`mm-castover${castOver ? " on" : ""}`} aria-expanded={castOver} disabled={castingIndex !== null} onClick={() => { setCastOver((v) => !v); setWipeArm(""); }}>\n                    <Ico n="refresh" size={13} /> {t("Start over with different stars")}\n                  </button>'));
+  assert.ok(ui.includes(".mm-castover:disabled{opacity:.5;cursor:default;}"));
   assert.ok(panel.indexOf('t("Start over with different stars")') > panel.indexOf('<div className="fs-cast">'), "under the script's characters");
   assert.ok(panel.indexOf('t("Start over with different stars")') < panel.indexOf('<div className="mm-artistpick">'), "and above the picker it opens");
   assert.equal(count(ui, 't("Start over with different stars")'), 1);

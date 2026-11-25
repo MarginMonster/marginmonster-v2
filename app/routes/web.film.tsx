@@ -4370,8 +4370,10 @@ export default function FilmStudio() {
                   )}
                   {portraitFetcher.data?.error && <p className="fs-err">{portraitFetcher.data.error}</p>}
                   {/* (the stars the story was written for: changing them writes a different story, so the picker
-                      is one line away — never beside the characters a tap in it would throw away) */}
-                  <button type="button" className={`mm-castover${castOver ? " on" : ""}`} aria-expanded={castOver} onClick={() => { setCastOver((v) => !v); setWipeArm(""); }}>
+                      is one line away — never beside the characters a tap in it would throw away. Not while a
+                      face is being cast: the portrait lands by its row NUMBER, so a story started over under it
+                      would hand it to somebody else's character.) */}
+                  <button type="button" className={`mm-castover${castOver ? " on" : ""}`} aria-expanded={castOver} disabled={castingIndex !== null} onClick={() => { setCastOver((v) => !v); setWipeArm(""); }}>
                     <Ico n="refresh" size={13} /> {t("Start over with different stars")}
                   </button>
                 </>)}
@@ -5191,7 +5193,8 @@ ${CAST_ID_CSS}
 .mm-castover svg{flex:none;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 .mm-castover::after{content:"+";margin-inline-start:auto;font-weight:800;font-size:15px;line-height:1;}
 .mm-castover.on::after{content:"–";}
-.mm-castover:hover,.mm-castover.on{color:var(--green,#0C7A46);}
+.mm-castover:hover:not(:disabled),.mm-castover.on{color:var(--green,#0C7A46);}
+.mm-castover:disabled{opacity:.5;cursor:default;}
 .mm-castover + .mm-opts-sub{margin-top:8px;}
 /* (Where there is room the rows stay one under another, the full width of the panel — two side by side were
    tried in the mock, and "Pick a presenter" then opened five faces across instead of thirteen.) */
