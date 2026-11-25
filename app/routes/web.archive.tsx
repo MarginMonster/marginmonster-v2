@@ -264,8 +264,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const piece = await db.asset.findFirst({ where: { id: timingOf.slice(0, 64), shopId: shop.id }, select: { id: true, title: true, metaJson: true } });
     let timing: unknown = null;
     try { timing = JSON.parse(piece?.metaJson || "{}").timing ?? null; } catch { timing = null; }
+    // (…and how its pictures moved — each clip's last frame looked at beside its picture — and a take's own record:
+    //  where its roll cut, what was trimmed, which host rolled it; the long direction left out)
+    let motion: unknown = null, take: unknown = null;
+    try { const m = JSON.parse(piece?.metaJson || "{}"); motion = m.motion ?? null; take = m.take ? { ...m.take, direction: undefined } : null; } catch { /* as nothing */ }
     // (typed as nothing, so the page's own data keeps its one shape)
-    return json({ timingOf: piece?.id || null, title: piece?.title || null, timing }) as never;
+    return json({ timingOf: piece?.id || null, title: piece?.title || null, timing, motion, take }) as never;
   }
 
   // ONE unified archive (owner 11-01): the Creator/Marketing toggle was far too
