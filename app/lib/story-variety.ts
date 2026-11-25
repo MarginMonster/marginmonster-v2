@@ -141,10 +141,15 @@ export const MORAL_WORLDS: Deck = [
   ["waterhole", "animals at a water hole on the savannah"], ["barnyard", "barnyard animals"], ["reef", "sea creatures on a reef"], ["sled", "sled dogs in the far north"],
   ["rivals", "two rival shopkeepers"], ["apprentice", "an old craftsman and an apprentice"], ["siblings", "grown siblings who have not spoken in years"], ["shelter", "strangers sharing a shelter in a storm"],
 ];
+// THE SHORT FILM IS DRAMA NOW (2026-11-25, the owner: "Our genres need to be movie categories (drama, horror,
+// comedy, etch)"). Its deck dealt a kind ghost, a near-future invention, a heist and a small mystery as the angle
+// "where the theme leaves it open" — each one now another shelf's whole genre (Fantasy, Sci-Fi, Thriller,
+// Mystery), and off-genre in a Drama. Replaced by four more of what a drama is: people, and what is at stake
+// between them.
 export const SHORT_KINDS: Deck = [
-  ["mystery", "a small mystery with an ordinary answer"], ["latelove", "a quiet love story between two people past fifty"], ["heist", "a heist that goes gently wrong"],
+  ["caretaker", "a grown child caring for a parent who is slipping away"], ["latelove", "a quiet love story between two people past fifty"], ["lateapology", "an apology twenty years late"],
   ["road", "a road story — two people, one car, one long day"], ["firstday", "a first day at something"], ["lastday", "a last day at something"],
-  ["kindghost", "a ghost story where the ghost is kind"], ["nearfuture", "a near-future moment — one small invention, one ordinary life"], ["underdog", "an underdog's one chance"],
+  ["homecoming", "coming home to a town that has moved on"], ["twoneeds", "a choice between two people who both need them"], ["underdog", "an underdog's one chance"],
   ["reunion", "a reunion that nearly did not happen"], ["rivalry", "a rivalry that turns into something else"], ["lateletter", "a letter that arrives decades late"],
   ["coincidence", "a coincidence too neat to be one"], ["delayed", "two strangers on a delayed train"], ["found", "something lost, and who finds it"],
   ["storm", "the night of a storm"], ["festival", "a festival in a small town"], ["recipe", "a recipe handed down, and what it carries"],
