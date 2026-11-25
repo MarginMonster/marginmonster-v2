@@ -1046,7 +1046,28 @@ async function runJob(
         }
         const takeJob = payload.__jobId as string | undefined;
         const ck = (k: string) => (typeof payload[k] === "string" ? (payload[k] as string) : undefined);
-        const takeAssetId = payload.takeCamera === "house"
+        // A FILM (2026-11-25, the owner: "It currently appears to pipeline singular events But needs to be more like
+        // \"Found Footage\" … with describe events flow like the others"): several moments from one camera, a card
+        // before each (footage-film.server.ts) — when the builder sent the outline the member approved
+        // (`takeOutline`) or asked for more than one moment (`takeMoments`). Its own checkpoints (ckFo, ckFm0 …)
+        // and the one take's it falls back to are all read through `ck`. ANYTHING ELSE IS ONE TAKE, exactly as below.
+        const takeFilm = !!ck("takeOutline") || (typeof payload.takeMoments === "number" && payload.takeMoments > 1);
+        const takeAssetId = takeFilm
+          ? await (await import("./footage-film.server")).generateFootageFilm({
+            shopId,
+            outline: (await import("./footage-film")).cleanFootageOutline(ck("takeOutline")) || undefined,
+            idea: ck("takeOwn"),
+            from: ck("takeFrom") || ck("takeIdea"),
+            camera: ck("takeCamera"),
+            aspect: ck("takeAspect"),
+            moments: typeof payload.takeMoments === "number" ? payload.takeMoments : undefined,
+            lapse: typeof payload.takeLapse === "boolean" ? payload.takeLapse : undefined,
+            ir: typeof payload.takeIr === "boolean" ? payload.takeIr : undefined,
+            section: (payload.section as string) || "creator",
+            jobId: takeJob,
+            resume: ck,
+          })
+          : payload.takeCamera === "house"
           ? await (await import("./house-take.server")).generateHouseTake({
             shopId,
             scareKey: ck("takeIdea"),
@@ -1058,7 +1079,9 @@ async function runJob(
             ir: typeof payload.takeIr === "boolean" ? payload.takeIr : undefined,
             section: (payload.section as string) || "creator",
             jobId: takeJob,
-            resume: { ckScare: ck("ckScare"), ckHouse: ck("ckHouse"), ckSet: ck("ckSet"), ckScene: ck("ckScene"), ckRaw: ck("ckRaw"), ckSpoke: ck("ckSpoke"), ckCut: ck("ckCut") },
+            // (ckRoll: a roll asked for and still in the air when the job stopped is waited for, not paid for again;
+            //  ckHost: where the kept roll came from — take.server.ts → rollTake)
+            resume: { ckScare: ck("ckScare"), ckHouse: ck("ckHouse"), ckSet: ck("ckSet"), ckScene: ck("ckScene"), ckRoll: ck("ckRoll"), ckRaw: ck("ckRaw"), ckHost: ck("ckHost"), ckSpoke: ck("ckSpoke"), ckCut: ck("ckCut") },
           })
           : await (await import("./take.server")).generateTake({
             shopId,
@@ -1069,7 +1092,7 @@ async function runJob(
             aspect: ck("takeAspect"),
             section: (payload.section as string) || "creator",
             jobId: takeJob,
-            resume: { ckTake: ck("ckTake"), ckStill: ck("ckStill"), ckOpens: ck("ckOpens"), ckRaw: ck("ckRaw"), ckSpoke: ck("ckSpoke"), ckCuts: ck("ckCuts"), ckTrim: ck("ckTrim") },
+            resume: { ckTake: ck("ckTake"), ckStill: ck("ckStill"), ckOpens: ck("ckOpens"), ckRoll: ck("ckRoll"), ckRaw: ck("ckRaw"), ckHost: ck("ckHost"), ckSpoke: ck("ckSpoke"), ckCuts: ck("ckCuts"), ckTrim: ck("ckTrim") },
           });
         // (the piece is created carrying its section and this job — take.server.ts / house-take.server.ts)
         try {

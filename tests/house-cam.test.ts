@@ -242,3 +242,70 @@ test("A HOUSE CARD IS A STARTER (\"These found footage options leave zero room f
   const s = parseHouseScare({ title: "TEST The Mime", who: "she", thing: "a very tall TEST mime in a grey nightgown", set: "A cat sleeps in the small bed", door: "the bedroom door ajar onto darkness", stands: "stands over the small bed, her head bowed", waits: "The cat turns over in its sleep.", acts: "backs out through the door she came in by", sound: "a quiet nursery, a clock ticking" }, "nursery")!;
   assert.ok(s && s.premise === "" && houseScarePrompt(s, "<<<image_1>>>").includes("LAST FOUR SECONDS: very slowly, she backs out through the door she came in by."));
 });
+
+/* 2026-11-25, the owner: found footage "needs to be more like \"Found Footage\" House cam, Body cam, phone or cam
+ * recording … make it look banging and not limited". A FILM (app/lib/footage-film.ts) is several moments from the
+ * house's cameras; what its moments ask of a house take is held here. */
+test("A FILM'S MOMENT ON A HOUSE CAMERA: the walk-in at its own length, a moment that is not a scare, and a moment nothing comes into", async () => {
+  const { houseTimes, parseHouseTrace } = await import("../app/lib/house-cam.ts");
+  const good = { title: "TEST The Roommate", who: "she", thing: "a very tall TEST woman in a long grey nightgown, her wet hair hanging over her face", set: "A man sleeps on his back in the bed", door: "the half-open door on the right", stands: "stands at the foot of the bed, facing the sleeper, her head bowed", waits: "The man turns over in his sleep.", acts: "turns her head up toward the camera until she is looking straight into the lens", sound: "a quiet bedroom, a clock ticking" };
+
+  // THE TIMES MOVE WITH THE LENGTH — and at fifteen seconds they are the ones that were rolled
+  assert.deepEqual(houseTimes(), { seconds: 15, arrive: 6, still: 5, last: 4 });
+  assert.deepEqual([10, 11, 12, 13, 14, 15].map((s) => houseTimes(s)), [
+    { seconds: 10, arrive: 5, still: 2, last: 3 }, { seconds: 11, arrive: 5, still: 3, last: 3 }, { seconds: 12, arrive: 5, still: 3, last: 4 },
+    { seconds: 13, arrive: 5, still: 4, last: 4 }, { seconds: 14, arrive: 6, still: 4, last: 4 }, { seconds: 15, arrive: 6, still: 5, last: 4 },
+  ]);
+  for (const s of [10, 11, 12, 13, 14, 15]) { const t = houseTimes(s); assert.equal(t.arrive + t.still + t.last, s, `${s}: the walk, the stillness and the end are the whole take`); }
+  // never under ten, never over the walk-in's fifteen
+  assert.equal(houseTimes(4).seconds, 10);
+  assert.equal(houseTimes(40).seconds, 15);
+  // a scare with no shape, and one asked for at fifteen, are the same scare — the one that was always written
+  assert.deepEqual(parseHouseScare(good, "bedroom", { seconds: 15 }), parseHouseScare(good, "bedroom"));
+  // …and a ten-second one says its own times
+  const short = houseScarePrompt(parseHouseScare(good, "bedroom", { seconds: 10 })!, "<<<image_1>>>");
+  assert.ok(short.includes("BY THE FIFTH SECOND she stands at the foot of the bed, facing the sleeper, her head bowed exactly as in <<<image_1>>>."));
+  assert.ok(short.includes("SHE DOES NOT MOVE AT ALL: perfectly still for two whole seconds.") && short.includes("LAST THREE SECONDS: very slowly, she turns her head up toward the camera"));
+  assert.ok(short.includes("She walks the whole way: she never appears from nowhere, never jumps, never fades in."), "it still walks in, the whole way");
+
+  // NOT A SCARE: it comes the whole way too (nothing spawns in) — but nothing is slow, stiff, still or wrong
+  const dog = { title: "TEST Fridge Raid", who: "it", thing: "a small brown TEST terrier with one white ear", set: "", door: "the doorway to the dark hall", stands: "stands on its hind legs at the fridge, its front paws on the door", waits: "The fridge door swings open.", acts: "takes a packet from the bottom shelf and trots back out through the doorway", sound: "a fridge humming, claws on the floor" };
+  const plain = parseHouseScare(dog, "kitchen", { plain: true, seconds: 12 })!;
+  const pp = houseScarePrompt(plain, "<<<image_1>>>");
+  assert.ok(pp.startsWith("A fixed home security camera mounted high in the corner of a kitchen records at night in infrared. The camera NEVER moves"));
+  assert.ok(pp.includes("FIRST TWO SECONDS: an ordinary night. The kitchen is empty and still. The doorway to the dark hall is black."));
+  assert.ok(pp.includes("THEN the small brown TEST terrier with one white ear — the one in <<<image_1>>> — comes in through the doorway to the dark hall and crosses the room the way it really would. It comes the whole way: it never appears from nowhere, never jumps, never fades in."));
+  assert.ok(pp.includes("BY THE FIFTH SECOND it stands on its hind legs at the fridge, its front paws on the door exactly as in <<<image_1>>>. THEN: The fridge door swings open. LAST FOUR SECONDS: it takes a packet from the bottom shelf and trots back out through the doorway."));
+  assert.ok(pp.includes("Nobody speaks. Nothing in it is staged or slowed down; nobody is hurt."));
+  for (const scare of ["slowly and stiffly", "DOES NOT MOVE AT ALL", "perfectly still", "does not blink", "never opens", "very slowly"]) assert.ok(!pp.includes(scare), scare);
+  assert.ok(pp.includes("NOBODY SPEAKS in this shot") && !/["“”]/.test(pp) && pp.length <= 2400);
+  // its picture: the thing where it stops, real and ordinary — no "nearly human and slightly wrong"
+  const pic = houseScenePrompt(plain);
+  assert.ok(pic.includes("with ONLY this added: a small brown TEST terrier with one white ear stands on its hind legs at the fridge, its front paws on the door. Real and ordinary; anybody in the picture is fully clothed.") && !pic.includes("slightly wrong"));
+  // a house take is never voiced: a plain thing that speaks is not followed either
+  assert.equal(parseHouseScare({ ...dog, acts: "says hello to the camera and trots out" }, "kitchen", { plain: true }), null);
+
+  // A MOMENT NOTHING COMES INTO (the first step of a haunting): the room, and ONE thing in it that changes
+  const trace = parseHouseTrace({ title: "TEST The Wardrobe", set: "A woman asleep in the bed under the pale duvet", happens: "the wardrobe door on the left swings slowly open", after: "the wardrobe door on the left standing wide open, black inside", sound: "a quiet bedroom, a hinge creaking" }, "bedroom", { seconds: 10 })!;
+  assert.ok(trace && trace.room === "bedroom" && trace.thing.first === "" && trace.thing.key === "" && trace.lapseOn === false);
+  const tp = houseScarePrompt(trace, "<<<image_1>>>");
+  assert.ok(tp.includes("FIRST THREE SECONDS: an ordinary night. A woman asleep in the bed under the pale duvet. Nothing moves."));
+  assert.ok(tp.includes("THEN, with nobody there to do it: the wardrobe door on the left swings slowly open. It happens once, at its real speed, and by the end the room is exactly as in <<<image_1>>>."));
+  assert.ok(tp.includes("LAST THREE SECONDS: nothing else moves. Nobody comes into the room.") && tp.includes("Nobody comes into the room, and nothing is seen doing it. Nothing else in the room moves."));
+  assert.ok(tp.includes("NOBODY SPEAKS in this shot") && !/["“”]/.test(tp) && !/\{(ref|thing)\}/.test(tp) && tp.length <= 2400);
+  // its scene picture is the room AFTER — that one change, and nobody in it
+  assert.ok(houseScenePrompt(trace).includes("with ONLY this added: this one change — the wardrobe door on the left standing wide open, black inside. NOBODY is in the room who was not there before. Nothing else in the room changes."));
+  // …and the room as the take finds it is the scare's own (somebody asleep)
+  assert.ok(houseSetPrompt(trace)!.includes("with ONLY this added: A woman asleep in the bed under the pale duvet"));
+  // an empty room, and a plain film's wording
+  const bare = parseHouseTrace({ happens: "the light in the hallway beyond the doorway comes on", after: "the doorway to the hallway lit from beyond", sound: "" }, "living", { plain: true })!;
+  assert.ok(houseScarePrompt(bare, "x").includes("FIRST THREE SECONDS: an ordinary night. The living room is empty and still. Nothing moves.") && houseScarePrompt(bare, "x").includes("LAST FOUR SECONDS: nothing else moves."));
+  assert.equal(bare.never, "Nobody comes into the room. Nothing else in it moves.");
+  assert.equal(bare.title, "House camera");
+  // refused: half an answer, something that speaks, a room the house cannot have, no answer
+  assert.equal(parseHouseTrace({ happens: "a door", after: "the door standing open" }, "bedroom"), null);
+  assert.equal(parseHouseTrace({ happens: "the wardrobe door swings open", after: "" }, "bedroom"), null);
+  assert.equal(parseHouseTrace({ happens: "a voice whispers her name from the wardrobe", after: "the wardrobe door standing open" }, "bedroom"), null);
+  assert.equal(parseHouseTrace({ happens: "the wardrobe door swings open", after: "the wardrobe door standing open" }, "attic"), null);
+  assert.equal(parseHouseTrace("not json", "bedroom"), null);
+});

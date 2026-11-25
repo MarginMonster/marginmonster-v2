@@ -295,9 +295,72 @@ export function houseWriterBrief(idea: string, room: Pick<HouseRoom, "name" | "e
   ].join("\n");
 }
 
+/* ---- A FILM'S MOMENT ON A HOUSE CAMERA (footage-film.ts) ----
+ * The owner, 2026-11-25: found footage "needs to be more like \"Found Footage\" House cam, Body cam, phone or cam
+ * recording … make it look banging and not limited". A film is several moments from the house's cameras, and they
+ * are not all the fifteen-second walk-in:
+ *   `seconds`  a moment can be shorter (10–15): the walk-in's own times move with it (houseTimes) — at fifteen they
+ *              are the times that were rolled, word for word.
+ *   `plain`    not a scare at all (a dog caught opening the fridge on the kitchen camera): whoever comes in comes the
+ *              whole way, as the walk-in does — that is what stops it appearing from nowhere — but nothing is made
+ *              slow, stiff or still, and there is no creature in its picture.
+ * …and a moment NOTHING comes into (parseHouseTrace): the first step of a haunting is a door that was shut, open.
+ * NOT YET ROLLED: written 2026-11-25 from the walk-in's wording, which was. */
+export type HouseShape = { seconds?: number; plain?: boolean };
+
+/** The walk-in's times for a take of `seconds` (10–15): the second it has arrived by, how long it then holds still,
+ *  how long the end is. Fifteen: by the sixth, five whole seconds, the last four — the take that was rolled. */
+export function houseTimes(seconds: number = HOUSE_TAKE_SECONDS): { seconds: number; arrive: number; still: number; last: number } {
+  const s = Math.max(10, Math.min(HOUSE_TAKE_SECONDS, Math.round(Number(seconds) || HOUSE_TAKE_SECONDS)));
+  const last = s >= 12 ? 4 : 3, arrive = s >= 14 ? 6 : 5;
+  return { seconds: s, arrive, still: s - arrive - last, last };
+}
+const NTH: Record<number, string> = { 5: "FIFTH", 6: "SIXTH" };
+const COUNT: Record<number, string> = { 2: "two", 3: "three", 4: "four", 5: "five" };
+
+const readAnswer = (raw: unknown): Record<string, unknown> | null => {
+  try {
+    const s = typeof raw === "string" ? raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1) : "";
+    return typeof raw === "object" && raw ? (raw as Record<string, unknown>) : s ? JSON.parse(s) : null;
+  } catch { return null; }
+};
+/** nothing in a house take speaks — a writer who has anything say a word is not followed */
+const SPEAKS = /\b(speaks?|says?|whispers?|screams?|shouts?|laughs?|mouths?)\b/i;
+
+/** A MOMENT NOTHING COMES INTO: the room as it is, and ONE thing in it that changes with nobody there to do it — a
+ *  door that swings open, a chair that is somewhere else, a light that comes on in the hall. The writer's answer
+ *  ({ set, happens, after, sound }), checked and put in a house take's shape — or null. Its scene picture is the room
+ *  AFTER (drawn from the room as the take finds it, with that one change), and nobody is in it. */
+export function parseHouseTrace(raw: unknown, roomKey: string, shape: HouseShape = {}): (HouseScare & { title: string }) | null {
+  const o = readAnswer(raw);
+  const room = houseRoom(roomKey);
+  if (!o || !room) return null;
+  const set = one(o.set, 200).replace(/\.$/, ""), happens = one(o.happens, 260).replace(/\.$/, ""), after = one(o.after, 200).replace(/\.$/, "");
+  if (happens.length < 12 || after.length < 8 || SPEAKS.test(`${happens} ${after}`)) return null;
+  const t = houseTimes(shape.seconds);
+  const title = one(o.title, 60) || "House camera";
+  return {
+    title, key: "own", name: title, line: "", premise: "", room: room.key,
+    // (nobody comes in: there is no thing to name, to draw or to keep)
+    thing: { key: "", first: "", again: "" },
+    set,
+    scene: `this one change — ${after}. NOBODY is in the room who was not there before`,
+    beats: [
+      `FIRST THREE SECONDS: an ordinary night. ${set ? stop(cap(set)) : `The ${room.name.toLowerCase()} is empty and still.`} Nothing moves.`,
+      `THEN, with nobody there to do it: ${stop(happens)} It happens once, at its real speed, and by the end the room is exactly as in {ref}.`,
+      `LAST ${COUNT[t.last].toUpperCase()} SECONDS: nothing else moves. Nobody comes into the room.`,
+    ],
+    never: shape.plain ? "Nobody comes into the room. Nothing else in it moves." : "Nobody comes into the room, and nothing is seen doing it. Nothing else in the room moves.",
+    sound: one(o.sound, 90) || "a quiet house at night, a clock ticking",
+    lapse: OWN_SCARE_LAPSE,
+    lapseOn: false,
+  };
+}
+
 /** The writer's answer, checked and put in the shape that works — or null (the caller falls back to a
- *  ready-made scare rather than film half a direction). */
-export function parseHouseScare(raw: unknown, roomKey: string): (HouseScare & { title: string }) | null {
+ *  ready-made scare rather than film half a direction). `shape`: a film's moment (HouseShape) — unset, the
+ *  fifteen-second scare exactly as it always was. */
+export function parseHouseScare(raw: unknown, roomKey: string, shape: HouseShape = {}): (HouseScare & { title: string }) | null {
   let o: Record<string, unknown> | null = null;
   try {
     const s = typeof raw === "string" ? raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1) : "";
@@ -317,24 +380,46 @@ export function parseHouseScare(raw: unknown, roomKey: string): (HouseScare & { 
   const Pro = cap(pro), poss = pro === "she" ? "her" : pro === "he" ? "his" : "its";
   const the = thing.replace(/^(a|an)\s+/i, "the ");
   const doorThe = door.replace(/^(a|an)\s+/i, "the ");
-  return {
+  // (the walk-in's times: at fifteen seconds, the ones that were rolled — the sixth second, five whole seconds, the last four)
+  const t = houseTimes(shape.seconds);
+  const first = `FIRST TWO SECONDS: an ordinary night. ${set ? stop(cap(set)) : `The ${room.name.toLowerCase()} is empty and still.`} ${cap(doorThe)} is black.`;
+  const common = {
     title: one(o.title, 60) || "House camera",
     key: "own", name: one(o.title, 60) || "House camera", line: "", premise: "", room: room.key,
     // (a thing of the member's own is not kept in the house: nothing says the next one is the same)
     thing: { key: "", first: thing, again: thing },
     set,
-    scene: `{thing} ${stands}. ${Pro} is perfectly still. Nearly human and slightly wrong. Fully clothed`,
-    beats: [
-      `FIRST TWO SECONDS: an ordinary night. ${set ? stop(cap(set)) : `The ${room.name.toLowerCase()} is empty and still.`} ${cap(doorThe)} is black.`,
-      `THEN ${the} — the one in {ref} — comes in through ${doorThe} from the darkness and walks slowly and stiffly across the room, each step placed carefully. ${Pro} walks the whole way: ${pro} never appears from nowhere, never jumps, never fades in.`,
-      `BY THE SIXTH SECOND ${pro} ${stands} exactly as in {ref}.`,
-      `THEN, FOR A LONG TIME, ${pro.toUpperCase()} DOES NOT MOVE AT ALL: perfectly still for five whole seconds.${waits ? ` ${stop(cap(waits))}` : ""} ${Pro} stays exactly where ${pro} is. ${Pro} does not blink.`,
-      `LAST FOUR SECONDS: very slowly, ${pro} ${acts}.`,
-    ],
-    never: `${Pro} never runs, never flinches, never speaks, never opens ${poss} mouth.`,
     sound: one(o.sound, 90) || "a quiet house at night, a clock ticking",
     lapse: OWN_SCARE_LAPSE,
     lapseOn: false,
+  };
+  // NOT A SCARE (a film's plain moment): it comes the whole way, as the walk-in does, and does what it does at its
+  // real speed — nothing is slow, stiff or still, and nothing about it is wrong
+  if (shape.plain) {
+    return {
+      ...common,
+      scene: `{thing} ${stands}. Real and ordinary; anybody in the picture is fully clothed`,
+      beats: [
+        first,
+        `THEN ${the} — the one in {ref} — comes in through ${doorThe} and crosses the room the way ${pro} really would. ${Pro} comes the whole way: ${pro} never appears from nowhere, never jumps, never fades in.`,
+        `BY THE ${NTH[t.arrive]} SECOND ${pro} ${stands} exactly as in {ref}.`,
+        ...(waits ? [`THEN: ${stop(cap(waits))}`] : []),
+        `LAST ${COUNT[t.last].toUpperCase()} SECONDS: ${pro} ${acts}.`,
+      ],
+      never: "Nobody speaks. Nothing in it is staged or slowed down; nobody is hurt.",
+    };
+  }
+  return {
+    ...common,
+    scene: `{thing} ${stands}. ${Pro} is perfectly still. Nearly human and slightly wrong. Fully clothed`,
+    beats: [
+      first,
+      `THEN ${the} — the one in {ref} — comes in through ${doorThe} from the darkness and walks slowly and stiffly across the room, each step placed carefully. ${Pro} walks the whole way: ${pro} never appears from nowhere, never jumps, never fades in.`,
+      `BY THE ${NTH[t.arrive]} SECOND ${pro} ${stands} exactly as in {ref}.`,
+      `THEN, FOR A LONG TIME, ${pro.toUpperCase()} DOES NOT MOVE AT ALL: perfectly still for ${COUNT[t.still]} whole seconds.${waits ? ` ${stop(cap(waits))}` : ""} ${Pro} stays exactly where ${pro} is. ${Pro} does not blink.`,
+      `LAST ${COUNT[t.last].toUpperCase()} SECONDS: very slowly, ${pro} ${acts}.`,
+    ],
+    never: `${Pro} never runs, never flinches, never speaks, never opens ${poss} mouth.`,
   };
 }
 
