@@ -32,7 +32,7 @@ import { trimTitle } from "./text-trim";
 import { filmTemplate, previewFilmTreatment, GENRES, genreOrDefault, PROPS, type FilmTreatment } from "./film-engine.server";
 import { singToDisk } from "./music-generation.server";
 import { ensureVoiceModel, coverSongInVoice, matchLoudness, revoiceSongVocals } from "./singing-voice.server";
-import { MV_MAX_SECONDS, beatTimes, defaultRole, editPlan, paceFor, planFilter, sceneSecondsOf, shotSlot, shotTimes, type Cut, type Pace } from "./mv-pace";
+import { MV_MAX_SECONDS, beatTimes, defaultRole, editPlan, mvFallbackJoinArgs, mvFallbackPartArgs, mvFallbackParts, paceFor, planFilter, sceneSecondsOf, shotSlot, shotTimes, type Cut, type Pace } from "./mv-pace";
 import {
   CAST_PROMPT_MAX, MAX_COSTARS, MIC_MOTION_LINE, NO_NEW_MIC_LINE, SOLO_EDIT_MAX,
   MOUTH_CHECK_PROMPT, STYLE_PROMPT_MAX, castCheckPrompt, castFaults, castFix, castMotionLine, castStillPrompt, castStylePrompt, micFits, parseCastCheck, parseMouthCheck, pictureFile, sceneCast, singerOf, soloEditPrompt, soloStillPrompt,
@@ -336,7 +336,10 @@ async function assembleMusicVideo(clips: string[], songPath: string, D: number, 
     let joined = false;
     if (edit) {
       const args = ["-y"];
-      norm.forEach((p) => args.push("-i", p));
+      // (ONE DECODING THREAD A CLIP — 2026-11-25: the paced edit opens every clip at once, twenty-four for two minutes
+      //  of five-second scenes; measured on TEST stand-ins at a 16-core host's thread counts, 870 MB with each decoder
+      //  sized to the cores, 672 MB with one thread each, in the same 17 seconds)
+      norm.forEach((p) => args.push("-threads", "1", "-i", p));
       const re = await runFfmpeg([...args, "-filter_complex", planFilter(edit, N, 30), "-map", "[v]", "-an",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", silent]);
       joined = re.status === 0 && fs.existsSync(silent) && Math.abs(ffprobeDuration(silent) - N * D) < 0.5;
@@ -366,22 +369,26 @@ async function assembleMusicVideo(clips: string[], songPath: string, D: number, 
     if (ra.status === 0 && fs.existsSync(outPath) && ffprobeDuration(outPath) > 1) return;
   } catch { /* fall through to the per-clip concat */ }
 
-  // FALLBACK: plain hard-cut concat keeping each clip's audio.
-  const args: string[] = ["-y"];
-  clips.forEach((c) => args.push("-i", c));
-  const f: string[] = [];
-  const labels: string[] = [];
-  clips.forEach((_, i) => {
-    f.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30[v${i}]`);
-    f.push(`[${i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
-    labels.push(`[v${i}][a${i}]`);
-  });
-  f.push(`${labels.join("")}concat=n=${N}:v=1:a=1[vo][ao]`);
-  args.push("-filter_complex", f.join(";"), "-map", "[vo]", "-map", "[ao]",
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", outPath);
-  const r = await runFfmpeg(args);
-  if (r.status === 0 && fs.existsSync(outPath)) return;
+  // FALLBACK: plain hard-cut concat keeping each clip's audio — SIX CLIPS AT MOST IN ONE ffmpeg (mv-pace.ts → THE
+  // FALLBACK JOIN: twenty-four Full-HD clips in one were 1,163 MB, measured): each part by the graph the fallback
+  // always had, then the parts end to end, the picture copied, the sound encoded once.
+  const parts = mvFallbackParts(N);
+  const partFiles = parts.map((_, p) => `${outPath}.part${p + 1}.mov`);
+  const partList = `${outPath}.parts.txt`;
+  try {
+    let made = true;
+    for (let p = 0; p < parts.length && made; p++) {
+      const r = await runFfmpeg(mvFallbackPartArgs(clips.slice(parts[p].from, parts[p].to), W, H, partFiles[p]));
+      made = r.status === 0 && fs.existsSync(partFiles[p]);
+    }
+    if (made) {
+      fs.writeFileSync(partList, partFiles.map((f) => `file '${f.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`).join("\n"), "utf8");
+      const r = await runFfmpeg(mvFallbackJoinArgs(partList, outPath));
+      if (r.status === 0 && fs.existsSync(outPath)) return;
+    }
+  } finally {
+    for (const f of [...partFiles, partList]) { try { fs.rmSync(f, { force: true }); } catch { /* best effort */ } }
+  }
   fs.copyFileSync(clips[0], outPath);
 }
 

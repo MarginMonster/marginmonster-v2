@@ -359,3 +359,53 @@ export function planFilter(cuts: Cut[], n: number, fps: number): string {
 
 /** How many times the picture changes in a video of these scenes at this pace (for the builder). */
 export const cutCount = (roles: ShotRole[], D: number, pace: Pace): number => Math.max(0, editPlan(roles, D, pace).length - 1);
+
+/* ---- THE FALLBACK JOIN, SIX CLIPS AT A TIME ----
+ * When the music video's own assembly cannot be made, its clips are joined as the engine gave them, each with its
+ * own sound. That was ONE ffmpeg of every clip — twenty-four Full-HD inputs for two minutes of five-second scenes:
+ * measured 2026-11-25 on TEST stand-ins at a 16-core host's thread counts, 1,163 MB (907 MB with one decoding thread
+ * a clip) on a server with 2 GB, in the one path that only runs when something has already gone wrong. Now: parts of
+ * at most MV_PART_CLIPS clips, each joined by the very graph the fallback always used, one decoding thread a clip,
+ * the picture encoded as the video is and the sound kept as PCM; then the parts end to end, the picture copied and
+ * the sound encoded once. */
+
+/** No more clips than this are opened by one ffmpeg of the fallback (the acted film's parts' own size). */
+export const MV_PART_CLIPS = 6;
+
+/** The fallback's graph for `n` clips (outputs [vo] and [ao]): each fitted to W×H at 30 fps, its sound at 44.1 kHz
+ *  stereo, all end to end — what the fallback has always been. */
+export function mvFallbackGraph(n: number, W: number, H: number): string {
+  const f: string[] = [];
+  const labels: string[] = [];
+  for (let i = 0; i < n; i++) {
+    f.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30[v${i}]`);
+    f.push(`[${i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
+    labels.push(`[v${i}][a${i}]`);
+  }
+  f.push(`${labels.join("")}concat=n=${n}:v=1:a=1[vo][ao]`);
+  return f.join(";");
+}
+
+/** The clips dealt into parts of at most `most`: as few as hold them, as even as they come. */
+export function mvFallbackParts(n: number, most = MV_PART_CLIPS): Array<{ from: number; to: number }> {
+  const N = Math.max(0, Math.floor(n));
+  if (!N) return [];
+  const k = Math.ceil(N / Math.max(1, most));
+  const out: Array<{ from: number; to: number }> = [];
+  let from = 0;
+  for (let p = 0; p < k; p++) { const to = from + Math.floor(N / k) + (p < N % k ? 1 : 0); out.push({ from, to }); from = to; }
+  return out;
+}
+
+/** ffmpeg's arguments for one part of the fallback: its clips (one decoding thread each), the fallback's graph, the
+ *  video's own picture encoder, its sound uncompressed — into `out`, a QuickTime file. */
+export function mvFallbackPartArgs(files: ReadonlyArray<string>, W: number, H: number, out: string): string[] {
+  return ["-y", ...files.flatMap((f) => ["-threads", "1", "-i", f]), "-filter_complex", mvFallbackGraph(files.length, W, H), "-map", "[vo]", "-map", "[ao]",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le", "-f", "mov", out];
+}
+
+/** …and the last pass: the parts end to end (`list`: one `file '…'` line a part), the picture copied, the sound
+ *  encoded once. */
+export function mvFallbackJoinArgs(list: string, out: string): string[] {
+  return ["-y", "-f", "concat", "-safe", "0", "-i", list, "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out];
+}
