@@ -405,7 +405,8 @@ test("THE REEL IS KEPT FOR THE TAB: a phone that reloads the page never loses a 
   const ui = page();
   assert.ok(ui.includes('const REEL_KEPT = "ff-reel-v1";'));
   // saved whenever it changes, with the words in the box and the card it was written from (so it is not "changed")
-  assert.ok(ui.includes("try { window.sessionStorage.setItem(REEL_KEPT, JSON.stringify({ reel: { ...reel, moments: reel.moments.map(({ key: _key, ...m }) => m) }, from: reelFrom, count, pick, own })); }"));
+  // (…and the shape, night vision and time-lapse they picked, and which film this tab already rolled)
+  assert.ok(ui.includes("try { window.sessionStorage.setItem(REEL_KEPT, JSON.stringify({ reel: { ...reel, moments: reel.moments.map(({ key: _key, ...m }) => m) }, from: reelFrom, count, pick, own, wide, lapse, ir, rolled: rolledAs })); }"));
   // put back once, on arrival — never over a link that asked for a card or a camera — through the engine's own cleaning
   const at = ui.indexOf("window.sessionStorage.getItem(REEL_KEPT)");
   const restore = ui.slice(ui.lastIndexOf("useEffect(() => {", at), ui.indexOf("}, []);", at));
@@ -415,6 +416,41 @@ test("THE REEL IS KEPT FOR THE TAB: a phone that reloads the page never loses a 
   assert.ok(restore.includes("setPick({ scare: (key === OWN_SCARE || footageScare(key)) && fits(key, cam) ? key : OWN_SCARE, camera: cam });"));
   // a browser that keeps nothing (a private window) simply starts empty
   assert.ok(restore.includes("catch { /* a nicety: a browser that keeps nothing simply starts empty */ }"));
+  // the member's shape comes back — not the reel's own (a phone's reel picked up on a camcorder, Wide, came back Tall)
+  assert.ok(restore.includes('setWide(k.wide === "9:16" || k.wide === "16:9" ? k.wide : o.aspect);'));
+  assert.ok(restore.includes('if (typeof k.lapse === "boolean") setLapse(k.lapse);') && restore.includes('if (typeof k.ir === "boolean") setIr(k.ir);'));
+  // A REEL ROLLED IS NOT ROLLED TWICE BY A RELOAD (review, 2026-11-25): the film it rolled is kept, compared as the server
+  // will film it, and the button stays REC until the film changes
+  assert.ok(restore.includes('if (typeof k.rolled === "string") setRolledAs(k.rolled);'));
+  assert.ok(ui.includes("const filmSig = useMemo(() => { const o = posted ? cleanFootageOutline(posted) : null; return o ? JSON.stringify([o, house ? [lapseOn, ir] : 0]) : \"\"; }, [posted, house, lapseOn, ir]);"));
+  assert.ok(ui.includes("const rolling = (!!data?.ok && !busy && sentSig === sig) || (film && !busy && !!filmSig && rolledAs === filmSig);"));
+  assert.ok(ui.includes("useEffect(() => { if (film && data?.ok && fetcher.state === \"idle\" && sentSig === sig && filmSig) setRolledAs(filmSig); }, [data, fetcher.state]);"));
+  // (rolledAs is declared before the effect that keeps it: a dependency list read before its useState is a crash)
+  assert.ok(ui.indexOf("const [rolledAs, setRolledAs] = useState<string | null>(null);") < ui.indexOf("window.sessionStorage.setItem(REEL_KEPT"));
+});
+
+test("a rolled reel, kept and brought back by a reload, is recognised as the SAME film (cleaning it twice changes nothing)", async () => {
+  const { cleanFootageOutline } = await import("../app/lib/footage-film.ts");
+  // as a member leaves it: a "quoted" word, stray spaces, a lower-case card, a long card, seconds out of range, an empty title
+  const reel = { v: 1, title: "  ", camera: "house", aspect: "9:16", kind: "scare", place: "  A made-up TEST house,   all \"wooden\" floors.", thing: "none", moments: [
+    { when: "night 1 · 2:14 am", line: "  The \"blanket\" slides   off the sofa.  ", seconds: 3, room: "nope" },
+    { when: "TUESDAY 14 OCTOBER · 11:52 PM", line: "Something tall stands at the end of the hallway.", seconds: 99 },
+    { when: "", line: "ok", seconds: 10 },
+  ] };
+  const once = cleanFootageOutline(JSON.stringify(reel));
+  assert.ok(once);
+  assert.deepEqual(cleanFootageOutline(JSON.stringify(once)), once);
+});
+
+test("WHILE THE WRITER WRITES, the tape's label says the film the cut asked for — its own length, never a fixed 'half a minute'", async () => {
+  const ui = page();
+  const { footageSeconds, momentSeconds } = await import("../app/lib/footage-film.ts");
+  assert.ok(!ui.includes("about half a minute"));
+  assert.ok(ui.includes("const asked = standIn(pick.camera, count);") && ui.includes("const askedEta = footageFilmEta({ camera: pick.camera, moments: asked });"));
+  assert.ok(ui.includes('{t("{n} moments", { n: count })} · ≈ {clockOf(footageSeconds({ moments: asked }))} · {t("ready in ~{lo}–{hi} min", { lo: askedEta[0], hi: askedEta[1] })}'));
+  // eight house moments are over two minutes of film — what the label printed as "about half a minute"
+  const eight = Array.from({ length: 8 }, () => ({ when: "", line: "", seconds: momentSeconds("house", undefined) }));
+  assert.ok(footageSeconds({ moments: eight }) > 120);
 });
 
 test("THE REEL'S LIMITS: the engine's own — words, seconds, moments; removing asks twice; a moment being written again is left alone", async () => {

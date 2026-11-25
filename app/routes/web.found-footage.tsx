@@ -436,6 +436,10 @@ export default function FoundFootage() {
   const retake = useFetcher<typeof action>();
   const writing = writer.state !== "idle";
   const [reel, setReel] = useState<Reel | null>(null);
+  // A REEL ROLLED IS NOT ROLLED TWICE BY A RELOAD: the tab keeps which film it rolled (with the reel), so a phone that
+  // reloads the page — the REC state gone with it — shows it rolling still, instead of a live button that queues the
+  // same paid film again (review, 2026-11-25: up to eight Kling rolls a press). Any change to the film frees the button.
+  const [rolledAs, setRolledAs] = useState<string | null>(null);
   // what the reel was written FROM (the card and the words in the box) — when that changes, the reel says so
   const ideaSig = JSON.stringify([pick.scare, own.trim()]);
   const [reelFrom, setReelFrom] = useState("");
@@ -534,35 +538,44 @@ export default function FoundFootage() {
   useEffect(() => {
     if (params.get("scare") || params.get("camera")) return;
     try {
-      const k = JSON.parse(window.sessionStorage.getItem(REEL_KEPT) || "null") as { reel?: unknown; from?: unknown; count?: unknown; pick?: Partial<FootagePick>; own?: unknown } | null;
+      const k = JSON.parse(window.sessionStorage.getItem(REEL_KEPT) || "null") as { reel?: unknown; from?: unknown; count?: unknown; pick?: Partial<FootagePick>; own?: unknown; wide?: unknown; lapse?: unknown; ir?: unknown; rolled?: unknown } | null;
       const o = k ? cleanFootageOutline(k.reel) : null;
       if (!k || !o || o.moments.length < 2) return;
       const cam = cameraLookOf(k.pick?.camera) || o.camera;
       const key = String(k.pick?.scare || OWN_SCARE);
       setPick({ scare: (key === OWN_SCARE || footageScare(key)) && fits(key, cam) ? key : OWN_SCARE, camera: cam });
       setOwn(String(k.own ?? "").replace(/[\r\n]+/g, " ").slice(0, 400));
-      setWide(o.aspect);
+      // (the shape, night vision and time-lapse they picked come back too — not the reel's own: a phone's reel rolled on a
+      //  camcorder came back Tall after a reload, and a house film's night vision came back on — review, 2026-11-25)
+      setWide(k.wide === "9:16" || k.wide === "16:9" ? k.wide : o.aspect);
+      if (typeof k.lapse === "boolean") setLapse(k.lapse);
+      if (typeof k.ir === "boolean") setIr(k.ir);
       setReel(reelOf(o));
       setReelFrom(String(k.from ?? ""));
       setCount(momentCount(k.count));
+      if (typeof k.rolled === "string") setRolledAs(k.rolled);
     } catch { /* a nicety: a browser that keeps nothing simply starts empty */ }
   }, []);
   useEffect(() => {
     if (!reel) return;
-    try { window.sessionStorage.setItem(REEL_KEPT, JSON.stringify({ reel: { ...reel, moments: reel.moments.map(({ key: _key, ...m }) => m) }, from: reelFrom, count, pick, own })); }
+    try { window.sessionStorage.setItem(REEL_KEPT, JSON.stringify({ reel: { ...reel, moments: reel.moments.map(({ key: _key, ...m }) => m) }, from: reelFrom, count, pick, own, wide, lapse, ir, rolled: rolledAs })); }
     catch { /* a nicety */ }
-  }, [reel, reelFrom, count, pick, own]);
+  }, [reel, reelFrom, count, pick, own, wide, lapse, ir, rolledAs]);
 
   // what Roll posts: the reel, every word as they left it
   const posted = film && shown && !otherCam ? JSON.stringify(outlineOf(shown, pick.camera, aspect)) : "";
   const blank = shown ? shown.moments.findIndex((m) => !filmable(m.line)) : -1;
+  // THE FILM AS THE SERVER WILL FILM IT (cleaned, on this camera, with the house's settings) — what "already rolled" is
+  // compared by
+  const filmSig = useMemo(() => { const o = posted ? cleanFootageOutline(posted) : null; return o ? JSON.stringify([o, house ? [lapseOn, ir] : 0]) : ""; }, [posted, house, lapseOn, ir]);
 
   // THE REC LIGHT: once a take is rolling the button says so — until a choice changes and another can be made
   const sig = JSON.stringify([pick, own.trim(), aspect, house ? [lapseOn, ir, roomKey] : 0, film ? posted : 0]);
   const [sentSig, setSentSig] = useState<string | null>(null);
   const data = fetcher.data as { ok?: true; name?: string; error?: string } | undefined;
   const busy = fetcher.state !== "idle";
-  const rolling = !!data?.ok && !busy && sentSig === sig;
+  const rolling = (!!data?.ok && !busy && sentSig === sig) || (film && !busy && !!filmSig && rolledAs === filmSig);
+  useEffect(() => { if (film && data?.ok && fetcher.state === "idle" && sentSig === sig && filmSig) setRolledAs(filmSig); }, [data, fetcher.state]);
   const ownReady = !written || own.trim().length >= 8;
   const canGo = d.canFilm && ownReady && !busy && !rolling;
   const canWrite = d.canFilm && ownReady && !writing && !busy;
