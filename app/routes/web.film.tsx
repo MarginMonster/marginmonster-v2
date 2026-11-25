@@ -12,7 +12,7 @@ import { lookLabel } from "../lib/avatar-looks";
 import { createPortal } from "react-dom";
 import { Ico } from "../lib/icons";
 import { useT } from "../lib/ui-lang";
-import { estimateSpeakSeconds, clipFill, secondsLabel, CLIP_MAX_SECONDS, TYPICAL_SHOT_SECONDS } from "../lib/speech-meter";
+import { estimateSpeakSeconds, CLIP_MAX_SECONDS, TYPICAL_SHOT_SECONDS } from "../lib/speech-meter";
 import { requireWebIdentity } from "../lib/web-auth.server";
 import { readUiLang, tr } from "../lib/ui-i18n";
 import { CONTENT_LANG_NATIVE, askedContentLang, normalizeContentLang } from "../lib/content-lang";
@@ -72,9 +72,16 @@ import { THEATER_SHELL_CSS } from "../lib/theater-shell";
 // (2026-11-25) THE GENRES ARE MOVIE CATEGORIES — each genre's own places for a scene (the page kept three lists
 // of its own; there are eleven genres now, and the table is film-genres.ts) — and its starter ideas, dealt
 // under the idea box so the writer is never handed nothing (the film kit's StarterNudges)
-import { backdropsOf, dealStarters } from "../lib/film-genres";
+import { backdropsOf, dealStarters, notesOf } from "../lib/film-genres";
 import { StarterNudges } from "../components/film/StarterNudges";
 import { FILM_KIT_CSS } from "../components/film/film-kit-style";
+// (2026-11-25) THE SCENE BOARD: an acted film's script as a storyboard you direct (the owner, of the editor it
+// replaced: "Scene design also comes across as fucking boring and a chore") — the script grouped into places
+// (film-flow.ts: every edit a function of the flat list), a pencil sketch per place, one-tap director's notes
+import { SceneBoard } from "../components/film/SceneBoard";
+import { addCloseUp, addLine, addScene, cycleSpeaker, flowOf, movePlace, parseBeat, removeAngle, removeLine, removePlace, setAngleShot, setLine, setWhere, speakersOf } from "../lib/film-flow";
+import { keepSketches, placesForSketch, sketchKey, sketchesFor, unsketched, type SketchPlace } from "../lib/film-sketch";
+import { REWRITE_FAILED, applyRewrite, type RewriteTreatment, type RewrittenLine } from "../lib/film-rewrite";
 
 // (theme-color: in the DARK theme the Movie Maker is a theater — FS_THEATER, at the foot of this file — and
 //  a phone's own bar goes dark with it instead of framing it in white. The shell's loader knows the theme.)
@@ -490,6 +497,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // last episode's. Read through the token's own check — only portraits on our own renders disk survive it.
   const castRefIn = (name: string): string => { const t = readCastToken(((form.get(name) as string) || "").trim().slice(0, 4000)); return castToken(t.refs, t.places); };
   const seriesCastRef = seriesHit?.ownCast || "";
+
+  // THE SCENE BOARD'S TWO ASKS (2026-11-25) — both FREE, both only for a story's script, neither changes what
+  // the film is made of. (The owner, of the script editor the board replaced: "Scene design also comes across as
+  // fucking boring and a chore".)
+  // SKETCHES: a pencil storyboard frame per place (lib/film-sketch.server.ts). A board, not the film: nothing
+  // downstream reads them. One /renders address or null per place sent, in the same order; it never throws, and
+  // a member's free sketches have an hourly budget (`by` = the shop).
+  if (intent === "sketchFilmScenes") {
+    const { parseSketchPlaces, sketchAspect } = await import("../lib/film-sketch");
+    const { sketchPlaces } = await import("../lib/film-sketch.server");
+    const places = parseSketchPlaces(form.get("places"));
+    return json({ sketches: places.length ? await sketchPlaces(places, sketchAspect(form.get("filmAspect")), undefined, shop.id) : [] });
+  }
+  // DIRECTOR'S NOTES: one place's lines written again to one of the genre's notes (lib/film-rewrite.server.ts).
+  // The browser sends the note's KEY; the sentence the writer reads is looked up here, never taken from a form.
+  // The reply is that place's new lines — the page puts them into the script itself; a failure says so in one
+  // line and the script is as it was.
+  if (intent === "rewriteFilmScene") {
+    const { noteByKey } = await import("../lib/film-rewrite");
+    const { rewritePlace } = await import("../lib/film-rewrite.server");
+    const placeIndex = parseInt((form.get("placeIndex") as string) || "", 10);
+    const note = noteByKey(notesOf(tmpl.key), form.get("note"));
+    let treatment: RewriteTreatment | null = null;
+    try { const t0 = JSON.parse((form.get("approvedTreatment") as string) || ""); if (t0 && Array.isArray(t0.scenes)) treatment = { title: typeof t0.title === "string" ? t0.title : undefined, scenes: t0.scenes.slice(0, 80) }; } catch { /* no script */ }
+    let speakers: string[] = [];
+    try { const a = JSON.parse((form.get("speakers") as string) || "[]"); if (Array.isArray(a)) speakers = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* none */ }
+    if (!note || !treatment || !(placeIndex >= 0)) return json({ error: tr(lang, REWRITE_FAILED), placeIndex });
+    const lines = await rewritePlace({ treatment, placeIndex, note, speakers, template: { key: tmpl.key, name: tmpl.name, brief: tmpl.brief, childSafe: tmpl.childSafe } });
+    return lines ? json({ rewrite: { placeIndex, lines } }) : json({ error: tr(lang, REWRITE_FAILED), placeIndex });
+  }
 
   // Product (skit): title + photo required for product templates.
   const productTitle = ((form.get("filmProductTitle") as string) || "").trim().slice(0, 120);
@@ -1121,9 +1158,9 @@ function castCardSummary(cast: Array<{ name: string; faceUrl: string | null }>) 
 // asked a Kids Cartoon about a lost bandana whether it happens in a Bar, a Diner or a Warehouse, and offered a
 // horror story an Office (seen making both as a customer, 2026-11-22). The page kept three lists of its own
 // here until 2026-11-25, when the genres became movie categories and the table moved to film-genres.ts.
-/** Is this the place a scene is in? Its key as a WHOLE WORD of the scene's `where` — a lighthouse lit up
- *  the "Old house" chip, and a carpark would have lit "Car" and "Park" (seen 2026-11-22). */
-const backdropIs = (where: string, key: string): boolean => new RegExp(`(^|[^a-z])${key}([^a-z]|$)`, "i").test(where || "");
+// (Which backdrop a scene is in — its key as a WHOLE WORD of the scene's `where`: a lighthouse lit up "Old
+//  house", and a carpark would have lit "Car" and "Park", seen 2026-11-22 — is film-flow.ts → backdropIs, which
+//  the scene board asks; the page's own copy went with the editor it served.)
 
 // The Music Video's EXACT-length tiers are picked in SECONDS (MV_SECONDS in mv-pace.ts); each scene is
 // one generated clip of 5 or 10 seconds (the pace decides), and the engine fits the song to EXACTLY
@@ -3321,77 +3358,100 @@ export default function FilmStudio() {
     setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, visual: v } : s)) });
   };
 
-  // ---- FLOW editor (location + camera-angle storyboard) --------------------
-  // Each beat carries where (location) + shot (camera angle). GROUP the flat scenes
-  // into locations → angles → beats for the flow view; edits write straight back to
-  // the flat array, so the existing submit (approvedTreatment = treatment) carries the
-  // whole structure to the engine. Inside a location it renders seamless; a new
-  // location is a scene-change cut (cast carried); a new shot is a same-room angle cut.
-  const WIDE = "wide two-shot";
-  const parseBeat = (cap?: string): { speaker: string; line: string } => {
-    const m = (cap || "").match(/^\s*([^:]{1,40}):\s*([\s\S]*)$/);
-    return m ? { speaker: m[1].trim(), line: m[2].trim() } : { speaker: "", line: (cap || "").trim() };
+  // ---- THE SCRIPT AS PLACES (lib/film-flow.ts) --------------------------------------------------------
+  // Each line carries where (its place) + shot (its camera angle). The flat list is GROUPED into places →
+  // angles → lines for the board; every edit writes straight back to the flat list, so the existing submit
+  // (approvedTreatment = treatment) carries the whole structure to the engine. Inside a place it plays as one
+  // seamless take; a new place is a scene-change cut (cast carried); a new angle is a same-room cut. (This was
+  // inline here until 2026-11-25: the scene board and this page must agree on what a place is to the index, so
+  // the grouping and every edit are one plain file, tested on their own — tests/film-kit.test.ts.)
+  const flow = flowOf(treatment?.scenes);
+  // (the cast's own spelling of each name first, then anybody the script has speaking who is not in the cast)
+  const speakerNames = speakersOf(treatment?.scenes, cast.map((c) => c.name));
+  const displayName = (sp: string) => speakerNames.find((n) => nameTok(n) === nameTok(sp)) || sp;
+  const faceOf = (name: string) => cast.find((c) => c.name && name && nameTok(c.name) === nameTok(name))?.faceUrl || null;
+  /* EVERY EDIT IS MADE ON THE LATEST SCRIPT (2026-11-25). The next script was built from the `treatment` this
+   * render saw, so two edits in one event lost the first — and the board makes that likely: a place being
+   * retyped is sent, then a move, a removal or a note, in one tap. Each edit is now handed the script as it
+   * stands (setTreatment's own argument), and a director's note's reply lands on it the same way. The scene
+   * count follows the script's length — an acted film's only (a music video's count drives resets of its own). */
+  const mutateScenes = (fn: (scenes: Scene[]) => Scene[]) => setTreatment((tr) => (tr ? { ...tr, scenes: fn(tr.scenes.slice()) } : tr));
+  const actedScript = !!treatment && isStoryboard && !narrated && !tmpl?.lipSyncSinger;
+  useEffect(() => { if (treatment && actedScript) setScenes(treatment.scenes.length); }, [treatment?.scenes.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (the script as it stands NOW — for what is sent a moment after an edit: noteScene)
+  const scriptNow = useRef<Treatment | null>(null);
+  scriptNow.current = treatment;
+
+  /* SKETCHES (lib/film-sketch.ts) — a pencil storyboard frame of each place, developing in on its sheet. FREE;
+   * a board, not the film: nothing downstream reads them. Asked for when a script arrives and when a place's
+   * words change — about a second after the last change (the board sends a place only when it is closed, never
+   * a keystroke), for the places that have no sketch yet and were not already asked for (a failed one is not
+   * asked for again and again: `sketchTried`). Kept BY THE PLACE'S WORDS, so a place moved or removed needs
+   * nothing; a new script asks once more for what failed; a new shape draws them again. A failure is silent:
+   * the drawn blank sheet stays. */
+  const [sketchByWhere, setSketchByWhere] = useState<Record<string, string>>({});
+  const sketchFetcher = useFetcher<{ sketches?: (string | null)[] }>();
+  const sketchSent = useRef<SketchPlace[] | null>(null);
+  const sketchTried = useRef<Set<string>>(new Set());
+  const placesKey = flow.map((l) => l.where).join("|");
+  useEffect(() => {
+    if (!actedScript || sketchFetcher.state !== "idle") return;
+    const id = window.setTimeout(() => {
+      const places = unsketched(placesForSketch(scriptNow.current?.scenes), sketchByWhere, sketchTried.current);
+      if (!places.length) return;
+      places.forEach((p) => sketchTried.current.add(sketchKey(p.where)));
+      sketchSent.current = places;
+      sketchFetcher.submit({ intent: "sketchFilmScenes", template, filmAspect, places: JSON.stringify(places) }, { method: "post" });
+    }, 900);
+    return () => window.clearTimeout(id);
+  }, [placesKey, sketchFetcher.state, actedScript]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const got = sketchFetcher.data;
+    if (sketchFetcher.state !== "idle" || !sketchSent.current) return;
+    const sent = sketchSent.current;
+    sketchSent.current = null;
+    if (got?.sketches) setSketchByWhere((k) => keepSketches(k, sent, got.sketches || []));
+  }, [sketchFetcher.state, sketchFetcher.data]);
+  // a new shape (or another format) draws them again — and what was on its way for the old one is not kept
+  useEffect(() => { setSketchByWhere({}); sketchTried.current = new Set(); sketchSent.current = null; }, [filmAspect, template]);
+
+  /* DIRECTOR'S NOTES (lib/film-rewrite.ts) — the genre's four notes and "New take", one tap each: the writer is
+   * handed the whole script, the place and the note, and that place's lines come back new. FREE. Meanwhile the
+   * sheet shimmers and the board holds every control; the new lines go into the script through mutateScenes
+   * (so onto the script as it stands) and glow for a second. A reply asked for on a script that has since been
+   * replaced (Rewrite all, the idea box's Write) is dropped. A failure says one calm line, and nothing changes. */
+  const scriptGen = useRef(0);
+  // (a new script — written, or gone — clears what was asked of the old one: its failed sketches get one more
+  //  chance, and a note's reply on it will not be put into the new one)
+  useEffect(() => { scriptGen.current += 1; sketchTried.current = new Set(); }, [treatmentFetcher.data, !treatment]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [notingPlace, setNotingPlace] = useState<number | null>(null);
+  const [noteFail, setNoteFail] = useState<{ place: number; text: string } | null>(null);
+  const rewriteFetcher = useFetcher<{ rewrite?: { placeIndex: number; lines: RewrittenLine[] }; error?: string; placeIndex?: number }>();
+  const noteAt = useRef(0);
+  const noteSent = useRef(false);
+  const noteScene = (li: number, key: string) => {
+    if (!treatment || notingPlace !== null || rewriteFetcher.state !== "idle" || writing) return;
+    setNotingPlace(li); setNoteFail(null);
+    noteAt.current = scriptGen.current;
+    // (sent a moment later, from the script as it stands THEN: the board puts a place that was being retyped
+    //  into the script in the same tap, and the writer must be handed that script)
+    window.setTimeout(() => {
+      const tr = scriptNow.current;
+      if (!tr || noteAt.current !== scriptGen.current) { setNotingPlace(null); return; }
+      noteSent.current = true;
+      rewriteFetcher.submit({ intent: "rewriteFilmScene", template, placeIndex: String(li), note: key, approvedTreatment: JSON.stringify(tr), speakers: JSON.stringify(speakersOf(tr.scenes, cast.map((c) => c.name))) }, { method: "post" });
+    }, 0);
   };
-  const whereOf = (s: Scene, prev: string) => (s.where || "").trim() || prev || (s.visual || "").split(/[.;]/)[0].trim().slice(0, 80) || "A cinematic location";
-  type FlowBeat = { idx: number; speaker: string; line: string };
-  type FlowAngle = { shot: string; beats: FlowBeat[]; lastIdx: number };
-  type FlowLoc = { where: string; firstIdx: number; lastIdx: number; angles: FlowAngle[] };
-  const flow: FlowLoc[] = (() => {
-    const locs: FlowLoc[] = []; let prevWhere = "";
-    (treatment?.scenes || []).forEach((s, idx) => {
-      const where = whereOf(s, prevWhere); prevWhere = where;
-      const shot = (s.shot || "").trim() || WIDE;
-      let loc = locs[locs.length - 1];
-      if (!loc || loc.where !== where) { loc = { where, firstIdx: idx, lastIdx: idx, angles: [] }; locs.push(loc); }
-      loc.lastIdx = idx;
-      let ang = loc.angles[loc.angles.length - 1];
-      if (!ang || ang.shot !== shot) { ang = { shot, beats: [], lastIdx: idx }; loc.angles.push(ang); }
-      ang.lastIdx = idx;
-      const { speaker, line } = parseBeat(s.caption);
-      ang.beats.push({ idx, speaker, line });
-    });
-    return locs;
-  })();
-  const firstTok = nameTok;
-  const speakerNames: string[] = (() => {
-    const seen = new Set<string>(); const out: string[] = [];
-    const add = (nm: string) => { const k = firstTok(nm); if (nm && k && !seen.has(k)) { seen.add(k); out.push(nm); } };
-    cast.forEach((c) => c.name && add(c.name)); // prefer the cast's proper-case names
-    (treatment?.scenes || []).forEach((s) => { const sp = parseBeat(s.caption).speaker; if (sp) add(sp); });
-    return out;
-  })();
-  const displayName = (sp: string) => speakerNames.find((n) => firstTok(n) === firstTok(sp)) || sp;
-  const faceOf = (name: string) => cast.find((c) => c.name && name && firstTok(c.name) === firstTok(name))?.faceUrl || null;
-  const mutateScenes = (fn: (scenes: Scene[]) => Scene[]) => {
-    if (!treatment) return;
-    const next = fn(treatment.scenes.slice());
-    setTreatment({ ...treatment, scenes: next }); setScenes(next.length);
-  };
-  const setBeatLine = (idx: number, line: string) => mutateScenes((ss) => ss.map((s, j) => (j === idx ? { ...s, caption: `${parseBeat(s.caption).speaker || speakerNames[0] || "Name"}: ${line}` } : s)));
-  const setBeatSpeaker = (idx: number, name: string) => mutateScenes((ss) => ss.map((s, j) => (j === idx ? { ...s, caption: `${name}: ${parseBeat(s.caption).line}` } : s)));
-  const nextSpeaker = (cur: string) => { if (!speakerNames.length) return cur; const i = speakerNames.findIndex((n) => firstTok(n) === firstTok(cur)); return speakerNames[((i < 0 ? -1 : i) + 1) % speakerNames.length]; };
-  const insertAt = (ss: Scene[], at: number, s: Scene) => { const out = ss.slice(); out.splice(Math.min(Math.max(0, at), out.length), 0, s); return out; };
-  const addBeat = (loc: FlowLoc, ang: FlowAngle) => mutateScenes((ss) => {
-    const base = ss[loc.firstIdx];
-    const prevSpk = ang.beats[ang.beats.length - 1]?.speaker || speakerNames[0] || "";
-    return insertAt(ss, ang.lastIdx + 1, { visual: base?.visual || loc.where, where: loc.where, shot: ang.shot, caption: `${nextSpeaker(prevSpk)}: ` });
-  });
-  const addAngle = (loc: FlowLoc) => mutateScenes((ss) => {
-    const base = ss[loc.firstIdx];
-    const who = speakerNames[0] || "Name";
-    return insertAt(ss, loc.lastIdx + 1, { visual: base?.visual || loc.where, where: loc.where, shot: `close-up on ${who}`, caption: `${who}: ` });
-  });
-  const addScene = () => mutateScenes((ss) => [...ss, { visual: "A new location", where: "A new location", shot: WIDE, caption: `${speakerNames[0] || "Name"}: ` }]);
-  const setWhere = (loc: FlowLoc, where: string) => mutateScenes((ss) => ss.map((s, j) => (j >= loc.firstIdx && j <= loc.lastIdx ? { ...s, where, visual: s.visual && s.visual !== loc.where ? s.visual : where } : s)));
-  const setAngleShot = (ang: FlowAngle, shot: string) => mutateScenes((ss) => ss.map((s, j) => (ang.beats.some((b) => b.idx === j) ? { ...s, shot } : s)));
-  // Remove an angle CHANGE: fold this angle's beats back into the location's FIRST shot,
-  // so they rejoin the one seamless take (the only things that keep a cut are the user's
-  // explicit "cut to a close-up" and a new scene).
-  const removeAngle = (loc: FlowLoc, ang: FlowAngle) => mutateScenes((ss) => {
-    const base = loc.angles[0]?.shot || WIDE;
-    return ss.map((s, j) => (ang.beats.some((b) => b.idx === j) ? { ...s, shot: base } : s));
-  });
-  const removeBeat = (idx: number) => mutateScenes((ss) => (ss.length > 1 ? ss.filter((_, j) => j !== idx) : ss));
+  useEffect(() => {
+    if (rewriteFetcher.state !== "idle" || !noteSent.current) return;
+    noteSent.current = false;
+    const got = rewriteFetcher.data;
+    if (got?.rewrite && noteAt.current === scriptGen.current) { const { placeIndex, lines } = got.rewrite; mutateScenes((ss) => applyRewrite(ss, placeIndex, lines)); }
+    else if (!got?.rewrite) setNoteFail({ place: typeof got?.placeIndex === "number" ? got.placeIndex : notingPlace ?? 0, text: got?.error || t(REWRITE_FAILED) });
+    setNotingPlace(null);
+  }, [rewriteFetcher.state, rewriteFetcher.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (the line about a failed note goes by itself)
+  useEffect(() => { if (!noteFail) return; const id = window.setTimeout(() => setNoteFail(null), 7000); return () => window.clearTimeout(id); }, [noteFail]);
   // Render (or re-roll) one scene's storyboard photo. Reuses a prior approved frame
   // as the style reference so faces + wardrobe stay consistent across shots.
   // The locked cast faces for the characters whose name appears in a shot — so the
@@ -4595,90 +4655,51 @@ export default function FilmStudio() {
           )}
           {storyboard(true, undefined, true)}
         </div>
+      ) : isStoryboard && treatment ? (
+        <>
+          {/* THE SCENE BOARD (components/film/SceneBoard.tsx, 2026-11-25): an acted film's script as a storyboard
+              you direct — a sheet for each place with its pencil sketch, the lines as speech bubbles beside the
+              cast's faces, the genre's one-tap director's notes. It replaced a wall of text boxes and grey chips;
+              the owner: "Scene design also comes across as fucking boring and a chore". Every edit is the one it
+              was (film-flow.ts, through mutateScenes), and two are new: a place moved earlier or later, a place
+              taken out (the board asks twice). A tap on a face still gives the line to the next of the cast — the
+              cast itself is cast in the Cast step only. A scene index is into the FLAT script, a place index into
+              `flow`. "Rewrite all" asks first, as it did (orArm). */}
+          <SceneBoard
+            flow={flow} speakers={speakerNames} faceOf={faceOf} displayName={displayName}
+            backdrops={[...backdropsOf(template)]} notes={notesOf(template).map(({ key, label }) => ({ key, label }))}
+            sketches={sketchesFor(flow, sketchByWhere)} sketching={sketchFetcher.state !== "idle"}
+            noting={notingPlace} busy={writing} rewriteArmed={wipeArm === "rewrite"}
+            aspect={filmAspect} title={treatment.title}
+            totalSeconds={treatment.scenes.reduce((a, s) => a + estimateSpeakSeconds(parseBeat(s.caption).line), 0)}
+            secondsOf={estimateSpeakSeconds} maxSeconds={CLIP_MAX_SECONDS}
+            onLine={(i, text) => mutateScenes((ss) => setLine(ss, i, text, speakerNames))}
+            onSpeaker={(i) => mutateScenes((ss) => cycleSpeaker(ss, i, speakerNames))}
+            onAddLine={(i) => mutateScenes((ss) => addLine(ss, i, speakerNames))}
+            onRemoveLine={(i) => mutateScenes((ss) => removeLine(ss, i))}
+            onCloseUp={(i) => mutateScenes((ss) => addCloseUp(ss, i, speakerNames))}
+            onAngleShot={(i, text) => mutateScenes((ss) => setAngleShot(ss, i, text))}
+            onRemoveAngle={(i) => mutateScenes((ss) => removeAngle(ss, i))}
+            onWhere={(li, where) => mutateScenes((ss) => setWhere(ss, li, where))}
+            onMove={(li, dir) => mutateScenes((ss) => movePlace(ss, li, dir))}
+            onRemovePlace={(li) => mutateScenes((ss) => removePlace(ss, li))}
+            onAddScene={() => mutateScenes((ss) => addScene(ss, speakerNames))}
+            onNote={noteScene} onRewriteAll={() => orArm("rewrite", true, writeTreatment)} t={t} />
+          {wipeArm === "rewrite" && <p className="mm-note mm-shape-warn" role="status">{t("A rewrite replaces every line, your edits too. The cast you picked stays.")}</p>}
+          {treatmentFetcher.data?.error && <p className="fs-err fs-boarderr">{treatmentFetcher.data.error}</p>}
+          {/* a note that could not be carried out: one calm line, at the foot of the screen wherever the member
+              is on the board (put on the page itself, so nothing around the board can hold it in), and the scene
+              is as it was */}
+          {noteFail && createPortal(<p className="fs-notefail" role="status">{t("Scene {n}: {where}", { n: noteFail.place + 1, where: noteFail.text })}</p>, document.body)}
+        </>
       ) : isStoryboard ? (
         <div className="fs-card fs-scenecard">
-          <div className="fs-lbl"><span className="fs-n"><Ico n="pencil" size={13} /></span> {t("Your scene")} <span className="fs-free">{t("free")}</span>{treatment && treatment.scenes.length > 0 && (() => { const fs = treatment.scenes.reduce((a, s) => a + estimateSpeakSeconds(parseBeat(s.caption).line), 0); return fs > 0 ? <span className="fs-filmlen" title={t("Estimated spoken length of the whole film")}>≈ {secondsLabel(fs)} {t("film")}</span> : null; })()}</div>
-          {!treatment ? (
-            <>
-              <p className="fs-hint">{t("We'll write the dialogue — then edit it like a text thread: tweak lines, swap who talks, add a scene. No tokens until you Generate.")}</p>
-              <button type="button" className="fs-write" onClick={writeTreatment} disabled={writing}>
-                {writing ? <>… {t("Writing")}</> : <><Ico n="wand" size={14} /> {t("Write the dialogue — free")}</>}
-              </button>
-              {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
-            </>
-          ) : (
-            <>
-              <div className="fs-scenetop">
-                <span className="fs-scenetop-hint">{t("Edit any line. Tap a name to swap who talks. Lines in a scene play as one seamless take.")}</span>
-                <button type="button" className={`fs-rewrite${wipeArm === "rewrite" ? " is-arm" : ""}`} onClick={() => orArm("rewrite", true, writeTreatment)} disabled={writing}>{writing ? "…" : <><Ico n="refresh" size={13} /> {wipeArm === "rewrite" ? t("Tap again to rewrite") : t("Rewrite")}</>}</button>
-              </div>
-              {wipeArm === "rewrite" && <p className="mm-note mm-shape-warn" role="status">{t("A rewrite replaces every line, your edits too. The cast you picked stays.")}</p>}
-              <div className="fs-flow">
-                {flow.map((loc, li) => (
-                  <div key={li}>
-                    {li > 0 && <div className="fs-scenecut"><Ico n="scissors" size={13} /> {t("scene change · the cast walks in")}</div>}
-                    <div className="fs-loc">
-                      <div className="fs-loc-head">
-                        <span className="fs-loc-pin" aria-hidden="true">📍</span>
-                        <input className="fs-loc-where" value={loc.where} maxLength={120} onChange={(e) => setWhere(loc, e.target.value)} placeholder={t("Where does this scene happen?")} />
-                        <span className="fs-loc-scene">{t("scene {n}", { n: li + 1 })}</span>
-                        {speakerNames.length > 0 && (
-                          <span className="fs-loc-who">
-                            {speakerNames.slice(0, 4).map((nm, k) => { const f = faceOf(nm); return <span key={k} className="fs-who" title={nm} style={f ? { backgroundImage: `url(${f})` } : undefined}>{!f && (nm || "?").slice(0, 1).toUpperCase()}</span>; })}
-                          </span>
-                        )}
-                      </div>
-                      <div className="fs-backdrops" role="group" aria-label={t("Backdrop")}>
-                        <span className="fs-backdrops-lbl">{t("backdrop")}</span>
-                        {backdropsOf(template).map((bd) => (
-                          <button type="button" key={bd.key} className={`fs-bchip${backdropIs(loc.where, bd.key) ? " on" : ""}`} onClick={() => setWhere(loc, bd.where)}>{t(bd.label)}</button>
-                        ))}
-                      </div>
-                      {loc.angles.map((ang, ai) => (
-                        <div key={ai}>
-                          {ai > 0 && (
-                            <div className="fs-anglecut">
-                              <Ico n="video" size={12} />
-                              <input className="fs-anglecut-in" value={ang.shot} maxLength={60} onChange={(e) => setAngleShot(ang, e.target.value)} placeholder={t("close-up on …")} />
-                              <button type="button" className="fs-anglecut-x" onClick={() => removeAngle(loc, ang)} aria-label={t("Remove this angle change")}><Ico n="trash" size={11} /></button>
-                            </div>
-                          )}
-                          <div className="fs-chat">
-                            {ang.beats.map((b) => {
-                              const f = faceOf(b.speaker);
-                              const side = !!speakerNames[1] && firstTok(b.speaker) === firstTok(speakerNames[1]) ? "right" : "left";
-                              const secs = estimateSpeakSeconds(b.line);
-                              const over = secs > CLIP_MAX_SECONDS;
-                              const meterState = over ? "over" : secs > CLIP_MAX_SECONDS * 0.92 ? "warn" : "";
-                              return (
-                                <div className={`fs-msg ${side}`} key={b.idx}>
-                                  <span className="fs-msg-face" title={b.speaker} style={f ? { backgroundImage: `url(${f})` } : undefined}>{!f && (b.speaker || "?").slice(0, 1).toUpperCase()}</span>
-                                  <div className="fs-msg-col">
-                                    {speakerNames.length > 1 && <button type="button" className="fs-msg-spk" onClick={() => setBeatSpeaker(b.idx, nextSpeaker(b.speaker))} title={t("Tap to switch who speaks")}>{displayName(b.speaker)} <Ico n="refresh" size={9} /></button>}
-                                    <textarea className="fs-msg-bubble" rows={2} value={b.line} maxLength={400} onChange={(e) => setBeatLine(b.idx, e.target.value)} placeholder={t("What do they say?")} />
-                                    <div className={`fs-meter ${meterState}`} title={t("How long this line takes to say — one clip holds about 10 seconds. Keep it under the cap so it isn't cut off or padded.")}>
-                                      <span className="fs-meter-bar"><i style={{ width: `${Math.min(100, clipFill(b.line) * 100)}%` }} /></span>
-                                      <span className="fs-meter-num">{secondsLabel(secs)}{over ? ` · over ${CLIP_MAX_SECONDS}s` : ` / ${CLIP_MAX_SECONDS}s`}</span>
-                                    </div>
-                                  </div>
-                                  {treatment.scenes.length > 1 && <button type="button" className="fs-msg-x" onClick={() => removeBeat(b.idx)} aria-label={t("Remove this line")}><Ico n="trash" size={11} /></button>}
-                                </div>
-                              );
-                            })}
-                            <div className="fs-chat-acts">
-                              <button type="button" className="fs-beat-add" onClick={() => addBeat(loc, ang)}>＋ {t("add a line")}</button>
-                              {ai === loc.angles.length - 1 && <button type="button" className="fs-loc-addangle" onClick={() => addAngle(loc)}><Ico n="video" size={12} /> {t("cut to a close-up")}</button>}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                <button type="button" className="fs-addscene" onClick={addScene}><span aria-hidden="true">📍</span> {t("new scene — move them somewhere else")}</button>
-              </div>
-            </>
-          )}
+          <div className="fs-lbl"><span className="fs-n"><Ico n="pencil" size={13} /></span> {t("Your scene")} <span className="fs-free">{t("free")}</span></div>
+          <p className="fs-hint">{t("We'll write the dialogue — then you direct it on a storyboard: tap a line to change it, a note to rewrite a scene. No tokens until you Generate.")}</p>
+          <button type="button" className="fs-write" onClick={writeTreatment} disabled={writing}>
+            {writing ? <>… {t("Writing")}</> : <><Ico n="wand" size={14} /> {t("Write the dialogue — free")}</>}
+          </button>
+          {treatmentFetcher.data?.error && <p className="fs-err">{treatmentFetcher.data.error}</p>}
         </div>
       ) : (
         <div className="fs-card">
@@ -5319,38 +5340,6 @@ ${CAST_ID_CSS}
 .fs-dot.seam{background:#12A85E;}
 .fs-dot.ang{background:#7F77DD;}
 .fs-dot.loc{background:#E3A531;}
-.fs-flow{display:flex;flex-direction:column;gap:4px;}
-.fs-loc{border:1.5px solid #9CCBB1;border-radius:18px;background:var(--card,#FDFCF7);box-shadow:0 9px 24px rgba(20,32,26,.10);padding:12px 13px 13px;}
-.fs-loc-head{display:flex;align-items:center;gap:9px;margin-bottom:11px;flex-wrap:wrap;}
-.fs-loc-pin{font-size:16px;line-height:1;flex:none;}
-.fs-loc-where{flex:1 1 180px;min-width:120px;border:0;border-bottom:1.5px solid transparent;background:transparent;font-family:Poppins,sans-serif;font-weight:800;font-size:15px;color:var(--ink,#14201A);padding:3px 2px;border-radius:0;transition:border-color .14s;}
-.fs-loc-where:focus{outline:0;border-bottom-color:var(--green,#0C7A46);}
-.fs-loc-scene{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#6F8A7C;background:#EAF6EF;padding:3px 8px;border-radius:7px;flex:none;}
-.fs-loc-who{display:inline-flex;align-items:center;flex:none;}
-.fs-who{width:28px;height:28px;border-radius:50%;background:#EAF6EF center/cover no-repeat;border:1.5px solid var(--card,#FDFCF7);box-shadow:0 0 0 1px #9CCBB1;display:grid;place-items:center;font-size:11px;font-weight:800;color:#0F6E56;margin-left:-7px;}
-.fs-loc-who .fs-who:first-child{margin-left:0;}
-.fs-shotblk{border:1px solid var(--line,#E4DFCF);border-radius:12px;background:#FCFBF5;padding:9px 10px;}
-.fs-shotblk-head{display:flex;align-items:center;gap:6px;color:var(--ink2,#4A554E);margin-bottom:8px;}
-.fs-shot-angle{flex:1;min-width:0;border:0;background:transparent;font-family:Poppins,sans-serif;font-weight:700;font-size:12px;color:var(--ink2,#4A554E);padding:2px;}
-.fs-shot-angle:focus{outline:0;color:var(--ink,#14201A);}
-.fs-beats{display:flex;flex-direction:column;gap:7px;}
-.fs-beat{display:flex;align-items:flex-start;gap:9px;}
-.fs-beat-face{width:30px;height:30px;flex:none;border-radius:50%;background:#EAF6EF center/cover no-repeat;box-shadow:0 0 0 1.5px #9CCBB1;display:grid;place-items:center;font-size:12px;font-weight:800;color:#0F6E56;margin-top:2px;}
-.fs-beat-body{flex:1;min-width:0;}
-.fs-beat-spk{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--green,#0C7A46);font-family:Poppins,sans-serif;font-weight:800;font-size:11.5px;padding:0 0 2px;cursor:pointer;}
-.fs-beat-line{width:100%;border:1.5px solid var(--line,#E4DFCF);border-radius:10px;background:#fff;font-family:Poppins,sans-serif;font-size:13px;color:var(--ink,#14201A);padding:7px 9px;resize:vertical;line-height:1.4;box-sizing:border-box;transition:border-color .14s,box-shadow .14s;}
-.fs-beat-line:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
-.fs-beat-x{flex:none;border:0;background:transparent;color:#C0B9A6;cursor:pointer;padding:6px 2px;border-radius:7px;transition:color .14s,background .14s;}
-.fs-beat-x:hover{color:#C2410C;background:#FBEAE3;}
-.fs-beat-add{align-self:flex-start;margin-top:2px;border:1px dashed #9CCBB1;background:#F3F9F4;color:var(--green,#0C7A46);font-family:Poppins,sans-serif;font-weight:800;font-size:11.5px;padding:5px 11px;border-radius:9px;cursor:pointer;transition:background .14s;}
-.fs-beat-add:hover{background:#EAF6EF;}
-.fs-anglecut{display:flex;align-items:center;gap:6px;margin:8px 0;font-size:11px;font-weight:700;color:#4A4397;}
-.fs-anglecut::before,.fs-anglecut::after{content:"";flex:1;border-top:1px dashed #C6C2EE;}
-.fs-loc-addangle{margin-top:10px;display:inline-flex;align-items:center;gap:6px;border:1px solid #C6C2EE;background:#F3F2FD;color:#4A4397;font-family:Poppins,sans-serif;font-weight:800;font-size:11.5px;padding:6px 12px;border-radius:9px;cursor:pointer;transition:background .14s;}
-.fs-loc-addangle:hover{background:#EEEDFB;}
-.fs-scenecut{display:flex;align-items:center;justify-content:center;gap:7px;margin:3px 0;padding:7px 12px;font-size:11.5px;font-weight:800;color:#8A5A12;background:#FBEFD6;border-radius:10px;}
-.fs-addscene{margin-top:8px;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px dashed #9CCBB1;background:#F3F9F4;color:var(--green,#0C7A46);font-family:Poppins,sans-serif;font-weight:800;font-size:13px;padding:11px;border-radius:14px;cursor:pointer;transition:background .14s,border-color .14s;}
-.fs-addscene:hover{background:#EAF6EF;border-color:var(--green,#0C7A46);}
 /* Cast roster picker (pick a presenter / avatar as a character's face) */
 .fs-actor-roster summary{display:inline-flex;align-items:center;gap:5px;}
 .fs-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:8px;margin:9px 0 2px;max-height:238px;overflow-y:auto;padding:2px;}
@@ -5360,45 +5349,6 @@ ${CAST_ID_CSS}
 .fs-rface-img{width:100%;aspect-ratio:1/1;border-radius:9px;background:#EAF6EF center/cover no-repeat;}
 .fs-rface-name{font-size:10px;font-weight:700;color:var(--ink2,#4A554E);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.1;}
 .fs-rface-chk{position:absolute;top:4px;right:4px;width:18px;height:18px;border-radius:50%;background:var(--green,#0C7A46);color:#fff;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.25);}
-/* Combined "Your scene" card + chat-style conversation */
-.fs-scenetop{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;}
-.fs-scenetop-hint{font-size:12px;color:var(--ink2,#4A554E);line-height:1.4;flex:1;}
-.fs-rewrite{flex:none;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--green,#0C7A46);font-family:Poppins,sans-serif;font-weight:800;font-size:12px;border-radius:999px;padding:6px 13px;cursor:pointer;transition:background .14s,border-color .14s;}
-.fs-rewrite:hover:not(:disabled){background:#EAF6EF;border-color:#9CCBB1;}
-.fs-backdrops{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 13px;}
-.fs-backdrops-lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink2,#4A554E);opacity:.7;margin-right:2px;}
-.fs-bchip{border:1px solid var(--line,#E4DFCF);background:var(--card,#FDFCF7);color:var(--ink2,#4A554E);font-family:Poppins,sans-serif;font-weight:700;font-size:11.5px;border-radius:999px;padding:4px 11px;cursor:pointer;transition:background .14s,border-color .14s,color .14s;}
-.fs-bchip:hover{border-color:#9CCBB1;background:#F3F9F4;}
-.fs-bchip.on{background:#E1F5EE;border-color:#1D9E75;color:#0F6E56;}
-.fs-chat{display:flex;flex-direction:column;gap:11px;padding:4px 0 2px;}
-.fs-msg{display:flex;align-items:flex-end;gap:8px;}
-.fs-msg.right{flex-direction:row-reverse;}
-.fs-msg-face{width:34px;height:34px;flex:none;border-radius:50%;background:#EAF6EF center/cover no-repeat;box-shadow:0 0 0 1.5px #9CCBB1;display:grid;place-items:center;font-size:13px;font-weight:800;color:#0F6E56;}
-.fs-msg-col{min-width:0;max-width:78%;display:flex;flex-direction:column;gap:3px;flex:1;}
-.fs-msg.right .fs-msg-col{align-items:flex-end;}
-.fs-msg-spk{align-self:flex-start;display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--green,#0C7A46);font-family:Poppins,sans-serif;font-weight:800;font-size:11px;padding:0 0 0 4px;cursor:pointer;}
-.fs-msg.right .fs-msg-spk{align-self:flex-end;padding:0 4px 0 0;}
-.fs-msg-bubble{width:100%;border:1.5px solid var(--line,#E4DFCF);background:#FCFBF5;border-radius:16px 16px 16px 5px;font-family:Poppins,sans-serif;font-size:13px;color:var(--ink,#14201A);padding:9px 13px;resize:vertical;line-height:1.45;box-sizing:border-box;transition:border-color .14s,box-shadow .14s;}
-.fs-msg.right .fs-msg-bubble{background:#EAF6EF;border-color:#B7DCC8;border-radius:16px 16px 5px 16px;}
-.fs-msg-bubble:focus{outline:0;border-color:var(--green,#0C7A46);box-shadow:0 0 0 3px rgba(12,122,70,.12);}
-.fs-meter{display:flex;align-items:center;gap:7px;margin-top:4px;padding:0 2px;}
-.fs-msg.right .fs-meter{flex-direction:row-reverse;}
-.fs-meter-bar{position:relative;flex:1;max-width:120px;height:4px;border-radius:3px;background:#E7EFEA;overflow:hidden;}
-.fs-meter-bar i{position:absolute;top:0;left:0;bottom:0;border-radius:3px;background:var(--green2,#1FA463);transition:width .12s ease;}
-.fs-meter-num{font-size:10px;font-weight:700;color:#6A8577;letter-spacing:.2px;white-space:nowrap;font-variant-numeric:tabular-nums;}
-.fs-meter.warn .fs-meter-bar i{background:#D59A2A;}
-.fs-meter.warn .fs-meter-num{color:#B07D16;}
-.fs-meter.over .fs-meter-bar i{background:#D6563F;}
-.fs-meter.over .fs-meter-num{color:#C0392B;font-weight:800;}
-.fs-filmlen{display:inline-flex;align-items:center;font-size:11px;font-weight:800;color:var(--green,#0C7A46);background:var(--mint,#EAF6EF);border:1px solid #CDE8DA;border-radius:999px;padding:2px 9px;margin-left:2px;font-variant-numeric:tabular-nums;}
-.fs-msg-x{flex:none;align-self:center;border:0;background:transparent;color:#C0B9A6;cursor:pointer;padding:5px;border-radius:7px;transition:color .14s,background .14s;}
-.fs-msg-x:hover{color:#C2410C;background:#FBEAE3;}
-.fs-chat-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:5px;padding-left:42px;}
-.fs-anglecut{display:flex;align-items:center;gap:7px;margin:12px 0 10px;color:#4A4397;}
-.fs-anglecut-in{flex:1;min-width:0;border:0;border-bottom:1px dashed #C6C2EE;background:transparent;font-family:Poppins,sans-serif;font-weight:700;font-size:11.5px;color:#4A4397;padding:2px;}
-.fs-anglecut-in:focus{outline:0;border-bottom-color:#7F77DD;}
-.fs-anglecut-x{flex:none;border:0;background:transparent;color:#C6C2EE;cursor:pointer;padding:3px;border-radius:6px;}
-.fs-anglecut-x:hover{color:#7F77DD;background:#EEEDFB;}
 
 /* ───────── Music Video — the card builder ───────── */
 .mm{margin:2px 0 0;}
@@ -6021,19 +5971,29 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-aspect-opt.arm small{color:#7A5A12;}
 .mm-shape-warn{font-size:11.5px;font-weight:600;color:#7A5A12;background:#FFF7E3;border:1px solid #EBD9A8;border-radius:10px;padding:8px 11px;}
 /* a tap that would start the story over is ARMED first (amber) and done on the second tap */
-.fs-rface.is-arm,.mm-told.is-arm,.mm-lenopt.is-arm,.fs-rewrite.is-arm{border-color:#D9A53A;box-shadow:0 0 0 2px #EBD9A8;background:#FFF7E3;color:#7A5A12;}
+.fs-rface.is-arm,.mm-told.is-arm,.mm-lenopt.is-arm{border-color:#D9A53A;box-shadow:0 0 0 2px #EBD9A8;background:#FFF7E3;color:#7A5A12;}
 .fs-stepper button.is-arm{background:#FFF1CF;color:#7A5A12;}
 .mm-opts .mm-shape-warn,.mm-topic .mm-shape-warn{text-align:left;margin-top:10px;}
-.fs-scenetop + .mm-shape-warn{text-align:left;margin:-4px 0 12px;}
 .mm-idea-kept{text-align:left;margin-top:7px;font-size:11.5px;font-weight:600;}
+/* THE SCENE BOARD'S NOTES (2026-11-25). The board is its own wall (components/film/SceneBoard.tsx, its look in
+   film-kit-style.ts), not a cream card — so what is said under it stands on the PAGE, and carries its own paper
+   to read the same on the cream page and the dark one: the "a rewrite replaces every line" warning (amber, as
+   everywhere) and a script that could not be written again. */
+.fk-board ~ .mm-shape-warn,.fk-board ~ .fs-boarderr{margin:12px 2px 0;text-align:left;}
+.fs-boarderr{background:#FFF4EF;border:1px solid #F1C6B6;border-radius:10px;padding:8px 11px;}
+/* …and a director's note that could not be carried out: one calm line where it is seen wherever the member has
+   scrolled — at the foot of the screen (over a phone's tab bar), for a few seconds; the scene is as it was */
+.fs-notefail{position:fixed;z-index:60;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);box-sizing:border-box;width:max-content;max-width:min(520px,calc(100vw - 32px));margin:0;padding:11px 15px;border-radius:12px;background:#FFF7E3;border:1px solid #EBD9A8;color:#7A5A12;font:600 13px/1.4 Inter,sans-serif;box-shadow:0 14px 30px -14px rgba(20,32,26,.55);animation:fsNoteIn .25s ease both;}
+@media(max-width:760px){.fs-notefail{bottom:calc(92px + env(safe-area-inset-bottom,0px));}}
+@keyframes fsNoteIn{from{opacity:0;transform:translate(-50%,8px);}to{opacity:1;transform:translate(-50%,0);}}
+@media(prefers-reduced-motion:reduce){.fs-notefail{animation:none;}}
 .fs-go.is-sent:disabled{opacity:1;background:#E4F4EA;color:#0A5E37;box-shadow:inset 0 0 0 1.5px #B9E0C8;}
 .fs-go.is-sent svg{stroke:#0A5E37;}
 /* phone: the story editor's small controls get a full-size place to tap — the look stays as it is */
 @media(max-width:640px){
 .fs-stepper button{width:44px;height:44px;}
-.fs-rewrite,.fs-beat-add,.fs-loc-addangle,.fs-bchip,.fs-actor-del,.fs-msg-x,.fs-anglecut-x,.fs-msg-spk,.fs-actor-recast,.fs-shot-own summary{position:relative;}
-.fs-rewrite::after,.fs-beat-add::after,.fs-loc-addangle::after,.fs-bchip::after,.fs-actor-del::after,.fs-msg-spk::after,.fs-actor-recast::after,.fs-shot-own summary::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%);}
-.fs-msg-x::after,.fs-anglecut-x::after{content:"";position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%);}
+.fs-actor-del,.fs-actor-recast,.fs-shot-own summary{position:relative;}
+.fs-actor-del::after,.fs-actor-recast::after,.fs-shot-own summary::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%);}
 .fs-hero-back{min-height:40px;}
 .fs-hero-back::after{content:"";position:absolute;inset:-4px -6px;}
 }

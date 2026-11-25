@@ -15,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { backdropsOf } from "../app/lib/film-genres.ts";
+import { backdropIs } from "../app/lib/film-flow.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // (line endings made the same: a fresh checkout on Windows has CRLF, and two tests here failed on it alone)
@@ -36,14 +37,16 @@ test("a tap that would start the story over is armed first, and done on the seco
   assert.ok(!ui.includes("orArm(\"told:") && !ui.includes("storyCard === \"told\""));
   assert.ok(ui.includes("onClick={() => orArm(`len:${n}`, !!treatment && treatment.scenes.length !== n, () => setStoryLen(n))}"));
   assert.ok(ui.includes("onClick={() => orArm(\"bump:-1\", !!treatment, () => bump(-1))}") && ui.includes("onClick={() => orArm(\"bump:1\", !!treatment, () => bump(1))}"));
-  assert.ok(ui.includes("onClick={() => orArm(\"rewrite\", true, writeTreatment)}"));
+  // (2026-11-25: "Rewrite" is the scene board's "Rewrite all" — the board asks the page, and the page arms it as before)
+  assert.ok(ui.includes("onRewriteAll={() => orArm(\"rewrite\", true, writeTreatment)}") && ui.includes("rewriteArmed={wipeArm === \"rewrite\"}"));
   // …and none of them is still wired straight to the thing that wipes
   for (const direct of ["onClick={() => toggleStoryPick(r.id)}", "onClick={() => setTold(\"acted\")}", "onClick={() => setTold(\"narrated\")}", "onClick={() => setStoryLen(n)}", "onClick={() => bump(-1)}", "onClick={() => bump(1)}", "className=\"fs-rewrite\" onClick={writeTreatment}"]) {
     assert.ok(!ui.includes(direct), direct);
   }
   // it SAYS what the second tap does, beside the control
   for (const prefix of ["cast:", "len:", "bump:"]) assert.ok(ui.includes(`{wipeNote(${JSON.stringify(prefix)})}`), prefix);
-  assert.ok(ui.includes("{wipeArm === \"rewrite\" ? t(\"Tap again to rewrite\") : t(\"Rewrite\")}"));
+  // (…and the board's button says what the second tap does, from the page's arming)
+  assert.ok(read("app", "components", "film", "SceneBoard.tsx").includes("{props.rewriteArmed ? t(\"Tap again to rewrite\") : t(\"Rewrite all\")}"));
   assert.ok(ui.includes("{wipeArm === \"rewrite\" && <p className=\"mm-note mm-shape-warn\" role=\"status\">{t(\"A rewrite replaces every line, your edits too. The cast you picked stays.\")}</p>}"));
 });
 
@@ -109,11 +112,18 @@ test("phone: the story editor's small controls have a full-size place to tap", (
   const css = ui.slice(ui.indexOf("/* phone: the story editor's small controls get a full-size place to tap"), ui.indexOf("/* phone: the story editor's small controls get a full-size place to tap") + 1200);
   assert.ok(css.startsWith("/* phone: the story editor's small controls get a full-size place to tap — the look stays as it is */\n@media(max-width:640px){"));
   assert.ok(css.includes(".fs-stepper button{width:44px;height:44px;}"));
-  for (const sel of [".fs-rewrite::after", ".fs-beat-add::after", ".fs-loc-addangle::after", ".fs-bchip::after", ".fs-actor-del::after", ".fs-msg-spk::after", ".fs-actor-recast::after", ".fs-shot-own summary::after"]) assert.ok(css.includes(sel), sel);
+  for (const sel of [".fs-actor-del::after", ".fs-actor-recast::after", ".fs-shot-own summary::after"]) assert.ok(css.includes(sel), sel);
   assert.ok(css.includes("{content:\"\";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%);}"));
-  assert.ok(css.includes(".fs-msg-x::after,.fs-anglecut-x::after{content:\"\";position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%);}"));
   // (.fs-shot-own summary keeps its "+" in ::before; the tap area is the ::after)
   assert.ok(ui.includes(".fs-shot-own summary::before{content:\"+\""));
+  // 2026-11-25: the script editor's small controls (Rewrite, add a line, close-up, the backdrop chips, who
+  // speaks, remove a line, remove an angle) went with the editor — the SCENE BOARD replaced it, and its controls
+  // are 44px to the finger by its own sheet (film-kit-style.ts; tests/film-kit.test.ts holds every one of them).
+  // Their rules here are gone with their markup, and none of the board's is said here.
+  for (const gone of [".fs-rewrite", ".fs-beat-add", ".fs-loc-addangle", ".fs-bchip", ".fs-msg-spk", ".fs-msg-x", ".fs-anglecut-x"]) assert.ok(!ui.includes(gone), gone);
+  const kit = read("app", "components", "film", "film-kit-style.ts");
+  for (const k of [".fk-slate-rw::after{content:\"\";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%);}", ".fk-quiet::after{content:\"\";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%);}", ".fk-unsaid::after{content:\"\";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%);}"]) assert.ok(kit.includes(k), k);
+  assert.ok(!/\.fk-/.test(css), "the board's rules are its own sheet's");
 });
 
 test("a music video's solo scene is drawn in the VIDEO'S shape, not the reference picture's", () => {
@@ -136,6 +146,8 @@ test("a music video's solo scene is drawn in the VIDEO'S shape, not the referenc
 
 test("every new line is translated", () => {
   const dict = read("app", "lib", "ui-i18n-dict.ts");
+  // ("Tap again to rewrite" is said by the scene board's own button since 2026-11-25 — SceneBoard.tsx)
+  const board = read("app", "components", "film", "SceneBoard.tsx");
   for (const k of [
     "That starts your script over — tap it again to go ahead.",
     "Tap again to rewrite",
@@ -143,7 +155,7 @@ test("every new line is translated", () => {
     "What you've made stays as it is — start over to use the new idea.",
     "Your script stays as it is — Rewrite to use the new idea.",
   ]) {
-    assert.ok(ui.includes(`t(${JSON.stringify(k)})`), k);
+    assert.ok(ui.includes(`t(${JSON.stringify(k)})`) || (k === "Tap again to rewrite" && board.includes(`t(${JSON.stringify(k)})`)), k);
     assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
   }
 });
@@ -168,11 +180,14 @@ test("each story format offers its own places — a kids' cartoon is not asked a
   // the Short Film (Drama) keeps the general list — and so does a format with none of its own
   assert.deepEqual(rows("testmovie").map((b) => b.key), ["diner", "street", "office", "kitchen", "car", "living", "bar", "park", "warehouse"]);
   assert.deepEqual(rows("musicvideo"), rows("testmovie"), "Short Film keeps the general list");
-  assert.ok(ui.includes("{backdropsOf(template).map((bd) => (") && !ui.includes("{FILM_BACKDROPS.map((bd) => ("));
+  // (since 2026-11-25 the scene board offers them — its genre's, with their `where`: a tap writes the place)
+  assert.ok(ui.includes("backdrops={[...backdropsOf(template)]}") && !ui.includes("{FILM_BACKDROPS.map((bd) => ("));
   // the chip that lights is the place's key as a WHOLE WORD: a lighthouse lit "Old house" (seen 2026-11-22)
-  assert.ok(ui.includes("const backdropIs = (where: string, key: string): boolean => new RegExp(`(^|[^a-z])${key}([^a-z]|$)`, \"i\").test(where || \"\");"));
-  assert.ok(ui.includes("className={`fs-bchip${backdropIs(loc.where, bd.key) ? \" on\" : \"\"}`}") && !ui.includes("loc.where.toLowerCase().includes(bd.key)"));
-  const is = (where: string, key: string) => new RegExp(`(^|[^a-z])${key}([^a-z]|$)`, "i").test(where);
+  // (2026-11-25: the board's chip — film-flow.ts → backdropIs, the page's own copy gone with its editor; run here)
+  assert.ok(!ui.includes("const backdropIs") && !ui.includes("loc.where.toLowerCase().includes(bd.key)"));
+  const board = read("app", "components", "film", "SceneBoard.tsx");
+  assert.ok(board.includes("className={`fk-bd${backdropIs(loc.where, bd.key) ? \" on\" : \"\"}`}") && board.includes("import { backdropIs, filmClock, sideOf, type FlowLoc } from \"../../lib/film-flow\";"));
+  const is = backdropIs;
   assert.equal(is("a lighthouse lamp room at night, the sea black beyond the glass", "house"), false);
   assert.equal(is("the hallway of an old house at night", "house"), true);
   assert.equal(is("a multi-storey carpark at night", "car"), false);
