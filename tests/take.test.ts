@@ -149,7 +149,7 @@ test("THE ENGINE IS GIVEN NO WORDS (\"bro the monster literally lipsynced every 
 
 test("THE VOICE BEHIND THE CAMERA is a separate track: what is said, when, and how it sits in the room", () => {
   // the question on finding her; while still looking for the other two; the plea as it comes
-  assert.deepEqual(takeLines(takeIdea("smile")!), [{ at: 2.8, text: "Babe? ... Babe, what's wrong?" }, { at: 8.6, text: "no... no..." }]);
+  assert.deepEqual(takeLines(takeIdea("smile")!), [{ at: 2.8, text: "Babe? ... Babe, what's wrong?" }, { at: 8.6, text: "babe... you're scaring me... stop—" }]);
   assert.deepEqual(takeLines(takeIdea("bed")!).map((l) => l.at), [0.3, 8.6]);
   assert.deepEqual(takeLines(takeIdea("stairs")!).map((l) => l.at), [0.3, 8.6]);
   assert.deepEqual(takeLines({ says: ["", ""], asks: "found" }), []);
@@ -848,7 +848,14 @@ test("THE ONE FILMING IS PERFORMED (\"he is in monotone - no fear\") and says wh
   assert.ok(srv.includes("const file = acted || await sayLine(l.text, voice);"));
   // THE WORDS: specific to what the idea says they know, broken off — never a stock line, never just "no no"
   const brief = takeWriterBrief("my roommate is standing in the hallway at 3am staring at me");
-  for (const rule of ["what a real, frightened person would actually blurt in THIS situation", "the name of the person they live with", "never a stock line (\"what are you doing\", \"who is there\", \"hello?\" on its own)", "never just \"no no\""]) assert.ok(brief.includes(rule), rule);
-  // the ready-made scares keep the lines the owner called cinema
+  for (const rule of ["what a real, frightened person would actually blurt in THIS situation", "the name of the person they live with", "never a stock line (\"what are you doing\", \"who is there\", \"hello?\" on its own)", "what they have just UNDERSTOOD, said out loud and broken off", "never \"no\", \"no no\", \"oh god\" or \"what the\""]) assert.ok(brief.includes(rule), rule);
+  // THE CARD'S LINES ARE NEVER KEPT under the member's own words (the writer of the hallway take kept the smile card's
+  // "no... no..." — what the owner heard as "roommate what are you doing no no")
+  const fromCard = takeWriterBrief("my roommate is standing in the hallway at 3am staring at me", "phone", takeIdea("smile")!);
+  assert.ok(fromCard.includes("BUT NEVER what the one filming says: write their words NEW, for THE IDEA (see \"says\") — not one of the card's lines, and not their shape."));
+  assert.ok(!takeWriterBrief("x").includes("BUT NEVER what the one filming says"), "no card, nothing to keep");
+  // …and no ready-made scare ends on "no" any more: the plea is what they understand, out loud
+  assert.deepEqual(SCARES.map((i) => i.says[1]), ["babe... you're scaring me... stop—", "don't come down... please don't come down—", "it's coming out... it's coming out—", "ma'am... stop... please..."]);
+  for (const i of SCARES) assert.ok(!/^\s*(oh\s+)?no\b/i.test(i.says[1]) && !/\bno[.,!\s]+no\b/i.test(i.says[1]), `${i.key}: "${i.says[1]}"`);
   assert.ok(SCARES.every((i) => i.says[0].endsWith("?")));
 });
