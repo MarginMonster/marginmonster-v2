@@ -68,7 +68,8 @@ export const STORY_SHOTS: Record<StoryShot, ShotSpec> = {
   },
   low: {
     write: "FROM BELOW — the camera is low, near the ground, looking up at them against the sky, the ceiling or the trees",
-    camera: "CAMERA: a low angle from near the ground, looking up — they tower in the frame against what is above them.",
+    // (…standing where people stand: a low angle at a window stood two children up on its sill, 2026-11-24)
+    camera: "CAMERA: a low angle from near the ground, looking up — they tower in the frame against what is above them, their feet on the floor or the ground where they stand (never up on a ledge or a sill).",
     motion: "They hold their places; only small movement. The camera rises very slightly.",
   },
   two: {

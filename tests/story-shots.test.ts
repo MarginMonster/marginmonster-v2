@@ -124,6 +124,11 @@ test("a shot that wants a figure near the lens takes one of the people the words
   assert.ok(sh.STORY_SHOTS.depth.camera.includes("Both are people these words NAME; when they name only one, the near edge is a thing of the place (a door frame, a lamp, a chair back) — never a stranger."));
   assert.ok(sh.STORY_SHOTS.over.write.includes("NAME whose shoulder it is (\"over NAME's shoulder\")"), "the writer says whose back it is (a placeholder, never a name it could copy)");
   assert.ok(sh.cameraLine("over").startsWith("CAMERA: over the shoulder"));
+  // (…and a low angle keeps feet where people stand: one at a window stood two children up on its sill)
+  assert.ok(sh.cameraLine("low").includes("their feet on the floor or the ground where they stand (never up on a ledge or a sill)."));
+  // (…and what the narration says is SEEN is in the picture: "they saw her standing on the porch" over an empty porch)
+  const w = read("app", "lib", "film-engine.server.ts");
+  assert.ok(w.includes("What the CAPTION over a picture says is SEEN at that moment is IN that VISUAL (\"they saw her standing on the porch\" → she is on the porch, through the glass)"));
 });
 
 test("a creature stays that creature: said in the picture's words, said again when it came out wrong", () => {
