@@ -1051,8 +1051,8 @@ export async function generateTestMovie(opts: {
       clips[idx] = await revoiceClip(clips[idx], modelUrl, base, { voiceId });
       shotVoice[idx] = voiceId;
       voicesLocked++;
-      await ckpt({ ckClips: clips });
-      await ckpt({ ckShots: shotsKept() });
+      // (the re-voiced clip and what its shot was, in one write — as every finished shot is, below)
+      await ckpt({ ckClips: clips, ckShots: shotsKept() });
     } catch (e) {
       console.error(`[testmovie] shot ${idx + 1}: cast voice not applied, keeping the generated voice: ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     }
@@ -1211,19 +1211,7 @@ export async function generateTestMovie(opts: {
     // written before the reveal moved into the room) has its thing in that place's own picture, and keeps it.
     const implied = lastHorror && !revealed && !approvedFrames[i];
     if (!seedAbs && master?.url) {
-      // THE FILM COMES BACK TO A PLACE (a long film does — film-length.ts → filmPlaces; a film written in one
-      // answer never did). That place's master is the place as it was FIRST seen, the two in the middle of what
-      // they were doing there then: started from it again, the scene that returns would open on the first scene's
-      // first moment. So, like a re-anchor (below), the shot that returns grows out of a fresh picture of the same
-      // room, the same light and the same two at THIS shot's moment. No such picture: the master, as it always was.
-      const backNow = tr === "location" && i > 0 && (locFirst.get(locKeyAt(i)) ?? i) < i && stagingOf(master) ? clipEvent(eventAt(i), 110) : "";
-      if (backNow) {
-        const again = await removeLetterbox(await renderSceneSeedChained(
-          `${whereAt[i]}. The same place again, later — the identical room, lighting, wardrobe and the same two people on the same sides of the frame. At this moment: ${backNow}${heardIn(eventAt(i), [spkA, spkB, ...castActors.map((c) => c.name)])?.unseen ? ` ${HEARD_NOT_DRAWN}` : ""} ${NO_TEXT}`,
-          abs(master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
-        ));
-        seedAbs = abs(again) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
-      } else if (tr === "location") {
+      if (tr === "location") {
         seedAbs = abs(master.url); sinceAnchor = 0; if (i > 0) softSeams.add(i);
       } else if (tr === "angle") {
         const reangled = await removeLetterbox(await renderSceneSeedChained(
