@@ -6,6 +6,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { db } from "../db.server";
 import { LANES, LANE_LOOKAHEAD, aheadInLine, claimNext, laneOf, laneWhere, storyKindOf, type Lane } from "./job-lanes";
 import { asJob } from "./ffmpeg-turn";
+import { STALLED_REASON, onReclaim, stalledLog } from "./job-stall";
 import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
 import { generateImageAd, editImage, isEditOp, createImage, tagAssetSection } from "./image-generation.server";
@@ -28,6 +29,8 @@ const MAX_ATTEMPTS = 3;
 // attempt it burned. But a job that can never finish must still terminate, so
 // restart-reclaims are counted separately in the payload and capped here. A
 // render legitimately spans a couple of deploys; six is well past that.
+// (A job that takes the server down itself never gets that far: handed back twice in a row with no new
+//  checkpoint, it is failed — job-stall.ts. Six is the backstop for one that keeps making a little progress.)
 const MAX_RECLAIMS = 6;
 
 // ONE heavy render at a time, PROCESS-WIDE. setInterval fires tick() every 8s
@@ -346,15 +349,16 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
     // MAX_ATTEMPTS budget — three deploys during one render used to mark it
     // FAILED with the work checkpointed and perfectly fine. A job that truly
     // can never finish still terminates, via the reclaim cap.
-    let reclaims = 0;
-    let bumpedPayload = j.payload;
-    try {
-      const p = JSON.parse(j.payload);
-      reclaims = typeof p.__reclaims === "number" ? p.__reclaims : 0;
-      p.__reclaims = reclaims + 1;
-      bumpedPayload = JSON.stringify(p);
-    } catch { /* payload isn't JSON — leave it, reclaims stays 0 */ }
-    const dead = j.attempts >= MAX_ATTEMPTS || reclaims >= MAX_RECLAIMS;
+    // (a payload that isn't JSON is left as it is, its count at 0)
+    //
+    // A CRASH LOOP ENDS AFTER TWO TRIES (job-stall.ts — 2026-11-25: one told story's cut ran the server out of
+    // memory four times, 28 minutes apart, each restart killing every other member's render with it). Handed back
+    // again with the very checkpoints it had when it was last handed back = no progress = a stall; the second stall
+    // in a row is a loop, and the job is failed and refunded here instead of being tried a third time.
+    const { payload: bumpedPayload, reclaims, stall } = onReclaim(j.payload);
+    const looped = !!stall?.stuck;
+    const dead = j.attempts >= MAX_ATTEMPTS || reclaims >= MAX_RECLAIMS || looped;
+    const why = looped ? STALLED_REASON : "Interrupted by a server restart — hit ROLL CAMERA to try again.";
     // CONDITIONAL write, pinned to the SNAPSHOT updatedAt: the row is only ours
     // if it's STILL IN_PROGRESS *and* nothing has written since the scan. The
     // scan is a snapshot — a render that checkpointed (its heartbeat) or
@@ -367,17 +371,19 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
     const claimed = await db.job.updateMany({
       where: { id: j.id, status: "IN_PROGRESS", updatedAt: j.updatedAt },
       data: dead
-        ? { status: "FAILED", lastError: "Interrupted by a server restart — hit ROLL CAMERA to try again." }
+        ? { status: "FAILED", lastError: why }
         : { status: "PENDING", attempts: Math.max(0, j.attempts - 1), payload: bumpedPayload },
     });
     if (claimed.count !== 1) continue; // completed, checkpointed, or taken by another instance — hands off
     reclaimed++;
+    // (the operator's log says which job looped, what kind, and the step it could not get past)
+    if (looped && stall) console.error(stalledLog({ id: j.id, type: j.type, after: stall.after, reclaims: reclaims + 1 }));
     // Terminal death via orphan-reclaim refunds exactly like a terminal
     // failure inside processNextJob — the merchant never pays for a
     // restart-killed render (companion forges included).
     if (dead) {
       await refundPrepaidOnce(j);
-      await markForgeFailed(j, "Interrupted by a server restart — forge it again.");
+      await markForgeFailed(j, looped ? "It stopped twice at the same step — forge it again." : "Interrupted by a server restart — forge it again.");
       // A questline slot must be told too. processNextJob's terminal path calls
       // this; the orphan-reclaim path did not, so a restart-killed drop left
       // its slot SCHEDULED forever — postDueSlots only ever publishes READY, so
