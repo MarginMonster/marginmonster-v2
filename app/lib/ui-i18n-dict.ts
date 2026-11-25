@@ -9,6 +9,15 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "Continue this footage — the next night, on the same camera": "Continúa este metraje: la noche siguiente, con la misma cámara",
+  "Night {n}": "Noche {n}",
+  "Night {n} — what happens next?": "Noche {n}: ¿qué pasa después?",
+  "Film night {n}": "Grabar la noche {n}",
+  "Night {n} of “{title}”": "Noche {n} de “{title}”",
+  "What happens on night {n}? (or leave it — it picks up where it stopped)": "¿Qué pasa la noche {n}? (o déjalo: sigue donde se quedó)",
+  "Empty is fine — the writer picks up where the last night stopped.": "Puedes dejarlo vacío: el guionista sigue donde terminó la última noche.",
+  "Make new footage instead": "Hacer metraje nuevo",
+  "The same camera, every night": "La misma cámara, todas las noches",
   "This rewrites your script": "Esto reescribe tu guion",
   "About {time} to render — we'll keep it in your Archive": "Unos {time} de render — lo guardamos en tu Archivo",
   "Picks up from": "Sigue desde",
@@ -3566,6 +3575,15 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "Continue this footage — the next night, on the same camera": "Continue ces images : la nuit suivante, avec la même caméra",
+  "Night {n}": "Nuit {n}",
+  "Night {n} — what happens next?": "Nuit {n} : et ensuite ?",
+  "Film night {n}": "Filmer la nuit {n}",
+  "Night {n} of “{title}”": "Nuit {n} de « {title} »",
+  "What happens on night {n}? (or leave it — it picks up where it stopped)": "Que se passe-t-il la nuit {n} ? (ou laisse vide : ça reprend là où ça s'est arrêté)",
+  "Empty is fine — the writer picks up where the last night stopped.": "Tu peux laisser vide : l'auteur reprend là où la dernière nuit s'est arrêtée.",
+  "Make new footage instead": "Faire de nouvelles images",
+  "The same camera, every night": "La même caméra, chaque nuit",
   "This rewrites your script": "Cela réécrit ton script",
   "About {time} to render — we'll keep it in your Archive": "Environ {time} de rendu — on le garde dans tes Archives",
   "Picks up from": "Reprend à",
@@ -7104,6 +7122,15 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "Continue this footage — the next night, on the same camera": "Dieses Material fortsetzen: die nächste Nacht, mit derselben Kamera",
+  "Night {n}": "Nacht {n}",
+  "Night {n} — what happens next?": "Nacht {n}: Wie geht es weiter?",
+  "Film night {n}": "Nacht {n} drehen",
+  "Night {n} of “{title}”": "Nacht {n} von „{title}“",
+  "What happens on night {n}? (or leave it — it picks up where it stopped)": "Was passiert in Nacht {n}? (oder leer lassen – es geht dort weiter, wo es aufgehört hat)",
+  "Empty is fine — the writer picks up where the last night stopped.": "Leer lassen ist okay – der Autor macht dort weiter, wo die letzte Nacht aufgehört hat.",
+  "Make new footage instead": "Stattdessen neues Material",
+  "The same camera, every night": "Dieselbe Kamera, jede Nacht",
   "This rewrites your script": "Das schreibt dein Skript neu",
   "About {time} to render — we'll keep it in your Archive": "Etwa {time} zum Rendern — wir bewahren ihn in deinem Archiv auf",
   "Picks up from": "Weiter ab",
@@ -10652,6 +10679,15 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "Continue this footage — the next night, on the same camera": "接着拍这段录像：下一夜，同一台摄像机",
+  "Night {n}": "第 {n} 夜",
+  "Night {n} — what happens next?": "第 {n} 夜：接下来会发生什么？",
+  "Film night {n}": "拍第 {n} 夜",
+  "Night {n} of “{title}”": "“{title}” 第 {n} 夜",
+  "What happens on night {n}? (or leave it — it picks up where it stopped)": "第 {n} 夜发生了什么？（也可以留空——从上次停下的地方接着拍）",
+  "Empty is fine — the writer picks up where the last night stopped.": "留空也可以——编剧会从上一夜停下的地方接着写。",
+  "Make new footage instead": "改拍新的录像",
+  "The same camera, every night": "同一台摄像机，每一夜",
   "This rewrites your script": "这会重写你的剧本",
   "About {time} to render — we'll keep it in your Archive": "渲染约需 {time}——我们会把它保存在你的存档里",
   "Picks up from": "从这句话接着讲",
@@ -14252,6 +14288,15 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  "Continue this footage — the next night, on the same camera": "اس فوٹیج کو آگے بڑھائیں: اگلی رات، اسی کیمرے سے",
+  "Night {n}": "رات {n}",
+  "Night {n} — what happens next?": "رات {n}: آگے کیا ہوگا؟",
+  "Film night {n}": "رات {n} فلمائیں",
+  "Night {n} of “{title}”": "“{title}” کی رات {n}",
+  "What happens on night {n}? (or leave it — it picks up where it stopped)": "رات {n} کو کیا ہوتا ہے؟ (یا خالی چھوڑ دیں — جہاں رکا تھا وہیں سے آگے چلے گا)",
+  "Empty is fine — the writer picks up where the last night stopped.": "خالی چھوڑنا ٹھیک ہے — لکھاری وہیں سے آگے لکھے گا جہاں پچھلی رات رکی تھی۔",
+  "Make new footage instead": "اس کے بجائے نئی فوٹیج بنائیں",
+  "The same camera, every night": "ہر رات وہی کیمرہ",
   "This rewrites your script": "اس سے آپ کا اسکرپٹ دوبارہ لکھا جائے گا",
   "About {time} to render — we'll keep it in your Archive": "رینڈر میں تقریباً {time} لگیں گے — ہم اسے آپ کے آرکائیو میں رکھیں گے",
   "Picks up from": "یہاں سے آگے",

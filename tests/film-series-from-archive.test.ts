@@ -73,7 +73,10 @@ test("the Archive viewer offers it on a story film, and the Movie Maker opens th
   //  primary one, the first in its row, worded as the card is; it names the series' LATEST film, which is the one
   //  continued from. tests/make-it-a-series.test.ts holds the rest.)
   assert.ok(archive.includes("const m: NextMark | undefined = a.type === \"VIDEO_AD\" ? nextOf.get(a.id) : undefined;"));
-  assert.ok(archive.includes("{viewer.next && viewer.media && !viewer.expired && <a className=\"wa-vbtn full wa-vnext\" href={`/web/film?episode=${viewer.next.from}`} title={t(\"Continue this story — the next episode, with the same cast\")}><Ico n=\"filmreel\" /> {viewer.next.state === \"start\" ? t(\"Make it a series\") : t(\"Make episode {n}\", { n: viewer.next.next })}<span className=\"c\">{t(\"Picks up where it left off\")}</span></a>}"));
+  // (…and a found-footage piece's leads to its own builder, as its next night — S10c: nextHref, nextTitle)
+  assert.ok(archive.includes("{viewer.next && viewer.media && !viewer.expired && <a className=\"wa-vbtn full wa-vnext\" href={nextHref(viewer.next)} title={nextTitle(viewer.next)}><Ico n={viewer.next.footage ? \"camera\" : \"filmreel\"} /> {viewer.next.state === \"start\" ? t(\"Make it a series\") : viewer.next.footage ? t(\"Film night {n}\", { n: viewer.next.night || viewer.next.next }) : t(\"Make episode {n}\", { n: viewer.next.next })}<span className=\"c\">{t(\"Picks up where it left off\")}</span></a>}"));
+  assert.ok(archive.includes("const nextHref = (n: Pick<PieceNext, \"from\" | \"footage\">) => (n.footage ? `/web/found-footage?next=${n.from}` : `/web/film?episode=${n.from}`);"));
+  assert.ok(archive.includes("const nextTitle = (n: Pick<PieceNext, \"footage\">) => (n.footage ? t(\"Continue this footage — the next night, on the same camera\") : t(\"Continue this story — the next episode, with the same cast\"));"));
   assert.ok(archive.includes("import { storyHeroOf } from \"../lib/film-series\";"));
   assert.ok(archive.includes("import { continuable, nextMarks, seriesKeyOf, type NextMark } from \"../lib/film-series\";"));
 

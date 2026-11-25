@@ -52,8 +52,10 @@ import {
   camStamp, cleanFootageOutline, footageCardArgs, footageClocks, footageDirectionBrief, footageDirectionSchema, footageFps, footageFrom, footageIdea,
   footageJoinCheck, footageJoinGraph, footageMomentBrief, footageMomentSchema, footageOpensPrompt, footageOutlineBrief, footageOutlineSchema, footageScenePlan,
   footageScenePrompt, momentCount, parseFootageDirection, parseFootageMoment, parseFootageOutline, undirected, withDirected, directionFaults,
+  nightTitle, onNight,
   type DirectedMoment, type FootageDirection, type FootageMoment, type FootageOutline,
 } from "./footage-film";
+import { footageContinues, footageNightOf, footageNightRecord, footageSeriesFromPayload, footageSeriesOf, latestNight, seriesKeyOf, seriesMeta, type FootageSeries } from "./film-series";
 import { houseRoom, keptHouseOf, type KeptHouse } from "./house-cam";
 import { generateHouseTake, keptHouseFor, makeHouseTake } from "./house-take.server";
 import { mirrorRender } from "./object-storage.server";
@@ -76,30 +78,58 @@ const short = (e: unknown, n = 160): string => (e instanceof Error ? e.message :
 /** WRITE THE MOMENTS — a free preview for the page ("describe events flow like the others"): the member's idea, a
  *  camera and how many moments → the outline they will read, edit and approve. `from`: the key of the ready-made
  *  take their words started from. Asked twice at most; throws in words the page can show. */
-export async function writeFootageOutline(o: { idea: string; camera: CameraLook; aspect: "9:16" | "16:9"; count: number; from?: string }): Promise<FootageOutline> {
+export async function writeFootageOutline(o: { idea: string; camera: CameraLook; aspect: "9:16" | "16:9"; count: number; from?: string; night?: FootageSeries | null }): Promise<FootageOutline> {
   const idea = String(o.idea || "").replace(/\s+/g, " ").trim();
-  const card = footageFrom(o.from, o.camera);
-  if (idea.length < 8 && !card) throw new Error(FOOTAGE_NEEDS_IDEA);
+  // (a NEXT NIGHT starts from no card, and needs no words: the footage so far is its idea — S10c)
+  const night = o.night || null;
+  const card = night ? undefined : footageFrom(o.from, o.camera);
+  if (idea.length < 8 && !card && !night) throw new Error(FOOTAGE_NEEDS_IDEA);
   const n = Math.max(2, momentCount(o.count));
-  const brief = footageOutlineBrief(idea, o.camera, n, card);
+  const brief = footageOutlineBrief(night && idea.length < 8 ? "" : idea, o.camera, n, card, night);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const outline = parseFootageOutline(await anthropicText(brief, { model: WRITER, maxTokens: 700 + 240 * n, jsonSchema: footageOutlineSchema(n, o.camera === "house") }), o.camera, shapeFor(o.camera, o.aspect), n);
-      if (outline) return outline;
+      // (…and held to its series: the title, the kind, the place and the thing word for word, the cards going on)
+      if (outline) return night ? onNight(outline, night) : outline;
       console.error(`[footage-film] the outline came back half written (attempt ${attempt + 1})`);
     } catch (e) { console.error(`[footage-film] the outline's writer did not answer (attempt ${attempt + 1}): ${short(e)}`); }
   }
   throw new Error(FOOTAGE_WRITER_BUSY);
 }
 
+/** THE NEXT NIGHT OF A PIECE (S10c) — for the builder's ?next=<id> and its every post, read here from the piece's OWN
+ *  ROW, never from the page: only this shop's own pieces; and the series always goes on from its LATEST finished piece,
+ *  whichever one was named (a stale tab, an older night — a series never forks: film-series.ts → latestNight). Null when
+ *  the piece is gone, another shop's, or not found footage that can go on. */
+export async function footageNextFor(shopId: string, askedId: unknown): Promise<FootageSeries | null> {
+  const id = String(askedId ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+  if (!id || !shopId) return null;
+  const pick = { id: true, title: true, metaJson: true, bodyJson: true, status: true, createdAt: true } as const;
+  const asked = await db.asset.findFirst({ where: { id, shopId, type: "VIDEO_AD", status: { not: "FAILED" } }, select: pick });
+  if (!asked || !footageContinues(asked.metaJson)) return null;
+  let from = asked;
+  try {
+    const others = await db.asset.findMany({
+      where: { shopId, type: "VIDEO_AD", status: { not: "FAILED" }, id: { not: asked.id }, metaJson: { contains: `"id":"${seriesKeyOf(asked).replace(/[^A-Za-z0-9_-]/g, "")}"` } },
+      orderBy: { createdAt: "desc" }, take: 12, select: pick,
+    });
+    // (NEWEST FIRST with the named piece IN ITS PLACE — latestNight takes the first finished one it meets. The series'
+    //  other pieces are OLDER ones too: put after them all, the latest named — the Archive's own mark — went on from the
+    //  night before it, and night 4 was filmed again as a second "episode 3" — review, 2026-11-25)
+    from = latestNight(asked, [...others, asked].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
+  } catch { /* goes on from the piece that was named */ }
+  return footageSeriesOf(from);
+}
+
 /** ANOTHER TAKE ON THIS MOMENT — a free preview for the page: moment `index` of the outline the member is editing,
  *  written again (`note`: what they asked for). The outline is cleaned first, like anything the page sends. Throws in
  *  words the page can show. */
-export async function rewriteFootageMoment(o: { outline: FootageOutline; index: number; note?: string }): Promise<FootageMoment> {
+export async function rewriteFootageMoment(o: { outline: FootageOutline; index: number; note?: string; night?: FootageSeries | null }): Promise<FootageMoment> {
   const outline = cleanFootageOutline(o.outline);
   const i = Math.floor(Number(o.index));
   if (!outline || !(i >= 0 && i < outline.moments.length)) throw new Error(FOOTAGE_OUTLINE_UNREADABLE);
-  const brief = footageMomentBrief(outline, i, o.note);
+  // (a next night's: read by the action off the piece it goes on from — its first moment goes on from there, S10c)
+  const brief = footageMomentBrief(outline, i, o.note, o.night);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const m = parseFootageMoment(await anthropicText(brief, { model: WRITER, maxTokens: 500, jsonSchema: footageMomentSchema(outline.camera === "house") }), outline.camera, i, outline.moments[i]);
@@ -268,6 +298,10 @@ export type FootageFilmOptions = {
   ir?: boolean;
   section?: string;
   jobId?: string;
+  /** A NEXT NIGHT (S10c): the series it goes on — as the builder's action read it off the piece it continues
+   *  (footageNextFor), carried in the payload as `takeNight`; checked again here. Unset: read off the payload through
+   *  `resume` (it is one of the payload's strings), so the queue needs no line of its own for it. */
+  night?: unknown;
   /** a getter over the job's payload: what this film — or the one take it fell back to — checkpointed before */
   resume: (key: string) => string | undefined;
 };
@@ -290,30 +324,68 @@ export async function generateFootageFilm(opts: FootageFilmOptions): Promise<str
   const written = resume("ckFa");
   if (written && (await db.asset.findUnique({ where: { id: written }, select: { id: true } }))) return written;
 
+  // THE NEXT NIGHT (S10c): the series this footage goes on — read by the builder's action off the piece it continues,
+  // carried by the queue, checked again here (film-series.ts → footageSeriesFromPayload). Its camera is the series'.
+  const night = footageSeriesFromPayload(opts.night ?? resume("takeNight"));
   const approved = cleanFootageOutline(opts.outline);
-  const camera: CameraLook = approved?.camera || cameraLookOf(opts.camera) || "phone";
-  const aspect = shapeFor(camera, approved?.aspect || opts.aspect);
+  const camera: CameraLook = approved?.camera || night?.last.camera || cameraLookOf(opts.camera) || "phone";
+  const aspect = shapeFor(camera, approved?.aspect || opts.aspect || night?.last.aspect);
+  // …AND THE PICTURES IT CARRIES: the place's first still ("refs 1": the same place) and the thing's ("refs 2": the same
+  // one) — while they are still on our disk; one that is not is drawn from words, as a first night is
+  const onDisk = (p: string | undefined): string => (p && fs.existsSync(path.join(dir, path.basename(p))) ? p : "");
+  const carriedPlace = night && camera !== "house" ? onDisk(night.last.placePic) : "";
+  const carriedThing = night ? onDisk(night.last.thingPic) : "";
+  if (night) console.log(`[footage-film] night ${night.night} of "${night.title}" — goes on from ${night.from}${carriedPlace ? "; the same place" : ""}${carriedThing ? "; the same thing" : ""}`);
+
+  // ONE TAKE IN A FILM'S PLACE KEEPS WHAT ITS NEXT NIGHT NEEDS — the record, read off the take it is (film-series.ts →
+  // footageNightOf) with the outline's words and the series' pictures — and, on a next night, it stays in its series
+  // under the night's own title. Best effort: the take is made either way.
+  const keepNightOn = async (id: string, outline?: FootageOutline | null): Promise<string> => {
+    try {
+      const row = await db.asset.findUnique({ where: { id }, select: { metaJson: true, bodyJson: true } });
+      const meta = readJson(row?.metaJson || undefined);
+      const took = row && meta ? footageNightOf(meta, row.bodyJson) : null;
+      if (!meta || !took) return id;
+      const payoff = outline?.moments[outline.moments.length - 1];
+      const record = footageNightRecord({
+        camera: took.camera, aspect: took.aspect, kind: outline?.kind || night?.last.kind || took.kind, place: outline?.place, thing: outline?.thing,
+        moments: [{ when: payoff?.when || "", line: payoff?.line || took.line, room: payoff?.room || took.rooms[0] }],
+        placePic: carriedPlace || took.placePic, thingPic: carriedThing || took.thingPic, night: night?.night, before: night?.last,
+      });
+      await db.asset.update({
+        where: { id },
+        data: {
+          ...(night ? { title: `Found Footage — ${nightTitle(night.title, night.night)}` } : {}),
+          metaJson: JSON.stringify({ ...meta, ...(night ? { series: seriesMeta(night) } : {}), ...(record ? { nextNight: record } : {}) }),
+        },
+      });
+    } catch (e) { console.error(`[footage-film] the one take's next night could not be kept: ${short(e)}`); }
+    return id;
+  };
 
   // ONE TAKE, THE WAY ONE TAKE IS ALWAYS MADE — what a film falls back to, so that a job is never lost for want of a
   // writer. Remembered (ckFo), so a resumed job goes straight back to its take and its own checkpoints.
   const oneTake = async (why: string, outline?: FootageOutline | null): Promise<string> => {
     console.error(`[footage-film] ${why} — ONE take is made instead`);
     await ckpt({ ckFo: JSON.stringify({ v: 1, single: why, ...(outline ? { outline } : {}) }) });
-    const card = footageFrom(opts.from, camera);
+    const card = night ? undefined : footageFrom(opts.from, camera);
     const idea = String(opts.idea || "").trim() || (outline ? footageIdea(outline) : "");
     // (a card whose own words are the idea is that card, exactly as it is; anything else is written, from the card)
     const ready = card && (!idea || sameWords(idea, card.premise)) ? card.key : undefined;
+    // (a next night with no outline and no words of its own: one take of where the last night stopped)
+    const said = idea || (night ? night.last.line : "");
+    const keep = (id: string) => keepNightOn(id, outline);
     if (camera === "house") {
       return generateHouseTake({
-        shopId: opts.shopId, ...(ready ? { scareKey: ready } : { idea, from: card?.key, room: outline?.moments[outline.moments.length - 1]?.room }),
+        shopId: opts.shopId, ...(ready ? { scareKey: ready } : { idea: said, from: card?.key, room: outline?.moments[outline.moments.length - 1]?.room || night?.last.rooms[night.last.rooms.length - 1] }),
         lapse: opts.lapse, ir: opts.ir, section: opts.section, jobId: opts.jobId,
         resume: { ckScare: resume("ckScare"), ckHouse: resume("ckHouse"), ckSet: resume("ckSet"), ckScene: resume("ckScene"), ckRoll: resume("ckRoll"), ckRaw: resume("ckRaw"), ckHost: resume("ckHost"), ckSpoke: resume("ckSpoke"), ckCut: resume("ckCut") },
-      });
+      }).then(keep);
     }
     return generateTake({
-      shopId: opts.shopId, ...(ready ? { ideaKey: ready } : { idea, from: card?.key }), camera, aspect, section: opts.section, jobId: opts.jobId,
+      shopId: opts.shopId, ...(ready ? { ideaKey: ready } : { idea: said, from: card?.key }), camera, aspect, section: opts.section, jobId: opts.jobId,
       resume: { ckTake: resume("ckTake"), ckStill: resume("ckStill"), ckOpens: resume("ckOpens"), ckRoll: resume("ckRoll"), ckRaw: resume("ckRaw"), ckHost: resume("ckHost"), ckSpoke: resume("ckSpoke"), ckCuts: resume("ckCuts"), ckTrim: resume("ckTrim") },
-    });
+    }).then(keep);
   };
 
   // 1) THE OUTLINE and 2) THE DIRECTION — kept as ckFo the moment each exists
@@ -321,8 +393,8 @@ export async function generateFootageFilm(opts: FootageFilmOptions): Promise<str
   if (kept && typeof kept.single === "string") return oneTake(kept.single, cleanFootageOutline(kept.outline));
   let outline = approved || cleanFootageOutline(kept?.outline);
   if (!outline) {
-    if (!String(opts.idea || "").trim() && !footageFrom(opts.from, camera)) throw new Error("[footage-film] nothing to film: no outline, and no idea to write one from");
-    try { outline = await writeFootageOutline({ idea: opts.idea || "", camera, aspect, count: momentCount(opts.moments ?? 3), from: opts.from }); }
+    if (!String(opts.idea || "").trim() && !footageFrom(opts.from, camera) && !night) throw new Error("[footage-film] nothing to film: no outline, and no idea to write one from");
+    try { outline = await writeFootageOutline({ idea: opts.idea || "", camera, aspect, count: momentCount(opts.moments ?? 3), from: opts.from, night }); }
     catch (e) { return oneTake(`the outline could not be written (${short(e, 80)})`); }
   }
   if (outline.moments.length < 2) return oneTake("the outline has one moment", outline);
@@ -370,12 +442,15 @@ export async function generateFootageFilm(opts: FootageFilmOptions): Promise<str
   const alive = setInterval(() => { void ckpt({ ckFbeat: Date.now() }); }, 4 * 60_000);
   if (typeof alive.unref === "function") alive.unref();
   let house: KeptHouse | null = null;
+  // (what this footage's NEXT night is drawn from — the place's first still and the thing's: kept on the piece, S10c)
+  let placeShot = "", filmThing = "";
   try {
     if (camera === "house") {
       // 3+4) A HOUSE CAMERA: one moment after another — the house (its rooms, drawn once) is kept from each to the
       //      next, and the picture the thing was first drawn in is the second reference of every later moment
+      //      (on a next night, the one the series' thing was drawn in: the same one walks in again — S10c)
       house = keptHouseOf(resume("ckFh")) || (await keptHouseFor(opts.shopId));
-      let thingPic = resume("ckFt") || "";
+      let thingPic = resume("ckFt") || carriedThing;
       for (const i of live()) {
         if (finished(i)) continue;
         const d = direction[i] as Extract<DirectedMoment, { cam: "house" }>;
@@ -395,6 +470,7 @@ export async function generateFootageFilm(opts: FootageFilmOptions): Promise<str
           await save(i, { done });
         } catch (e) { await leave(i, `it would not roll (${short(e, 100)})`); }
       }
+      filmThing = thingPic;
     } else {
       // 3) THE PICTURES — on the strongest picture model at 2K. The place first (from words), then the thing's payoff
       //    (from the place), then the rest three at a time (from both); a scene that will not draw leaves its moment out
@@ -409,13 +485,18 @@ export async function generateFootageFilm(opts: FootageFilmOptions): Promise<str
       };
       // (the thing is drawn up close once and then handed on — only when there IS one thing that recurs: a scare whose
       //  writer named none has a different something in each moment it is seen in, each drawn from the place alone)
+      // (A NEXT NIGHT, S10c: its first still is drawn FROM the carried place — "refs 1", the same place — and any moment
+      //  the thing is in FROM the carried thing too — "refs 2", the same one. Nothing carried: as a first night is drawn.)
+      const thingIn = (i: number): boolean => !!film.thing && !!(direction[i] as DirectedMoment | null)?.seen;
       for (;;) {
         const plan = footageScenePlan(direction.map((d, i) => (d && d.cam === "hand" && !records[i].left ? d.seen && !!film.thing : null)));
         if (!plan) break;
-        if (!text(records[plan.place].ckStill)) { await drawScene(plan.place, []); continue; }
+        if (!text(records[plan.place].ckStill)) { await drawScene(plan.place, carriedPlace ? [carriedPlace, ...(carriedThing && thingIn(plan.place) ? [carriedThing] : [])] : []); continue; }
         const placePic = text(records[plan.place].ckStill) as string;
-        if (plan.thing !== null && plan.thing !== plan.place && !text(records[plan.thing].ckStill)) { await drawScene(plan.thing, [placePic]); continue; }
-        const thingPic = plan.thing !== null && plan.thing !== plan.place ? text(records[plan.thing].ckStill) : undefined;
+        placeShot = placePic;
+        if (plan.thing !== null && plan.thing !== plan.place && !text(records[plan.thing].ckStill)) { await drawScene(plan.thing, carriedThing ? [placePic, carriedThing] : [placePic]); continue; }
+        const thingPic = carriedThing || (plan.thing !== null && plan.thing !== plan.place ? text(records[plan.thing].ckStill) : undefined);
+        filmThing = carriedThing || (plan.thing !== null ? text(records[plan.thing].ckStill) || "" : "");
         await inTurns(plan.rest.filter((i) => !text(records[i].ckStill)), FOOTAGE_ROLLS_AT_ONCE, (i) => drawScene(i, (direction[i] as DirectedMoment).seen && thingPic ? [placePic, thingPic] : [placePic]));
         break;
       }
@@ -484,6 +565,14 @@ export async function generateFootageFilm(opts: FootageFilmOptions): Promise<str
   const heardAny = made.some((x) => x.m.spoke !== null);
   const spoke = heardAny ? made.flatMap((x, k) => (x.m.spoke || []).map((l) => ({ ...l, at: at(k, l.at) }))) : null;
   const madeAt = new Map(made.map((x) => [x.i, x.m]));
+  // WHAT ITS NEXT NIGHT NEEDS (S10c — film-series.ts → footageNightRecord): the moments as they were made, after the
+  // footage before them; the series' own pictures first (every night is drawn from the same place and the same one as
+  // the first), else this footage's — its place's first still and its thing's
+  const nextNight = footageNightRecord({
+    camera, aspect, kind: film.kind, place: film.place, thing: film.thing,
+    moments: made.map((x) => film.moments[x.i]),
+    placePic: carriedPlace || placeShot, thingPic: carriedThing || filmThing, night: night?.night, before: night?.last,
+  });
   const asset = await db.asset.create({
     data: {
       shopId: opts.shopId,
@@ -519,6 +608,10 @@ export async function generateFootageFilm(opts: FootageFilmOptions): Promise<str
         },
         // THE HOUSE as it now stands (a house camera's film): the next house take starts here
         ...(camera === "house" && house ? { house } : {}),
+        // A NEXT NIGHT is an episode of its series — grouped and numbered in the Archive as a film series is (S10c)
+        ...(night ? { series: seriesMeta(night) } : {}),
+        // …and every piece says what ITS next night needs
+        ...(nextNight ? { nextNight } : {}),
         // what the one filming says, and when in the FILM — laid on afterwards (null: nobody speaks in it)
         lines: lines.length ? lines : null,
         // what the listening model heard in the takes AS THE ENGINE MADE THEM — it is given no words, so this

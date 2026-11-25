@@ -54,6 +54,7 @@ import {
   FOOTAGE_LIMITS, FOOTAGE_MAX_MOMENTS, FOOTAGE_OUTLINE_UNREADABLE, camStamp, cardWords, cleanFootageOutline, footageClocks, footageFilmEta, footageFilmJob, footageOutlineAsk,
   footageSeconds, momentCount, momentSeconds, type FootageMoment, type FootageOutline,
 } from "../lib/footage-film";
+import { nightBanner, type NightBanner } from "../lib/film-series";
 import { themeOf } from "../lib/theme";
 import { useTheme } from "../lib/use-theme";
 import { THEATER_SHELL_CSS } from "../lib/theater-shell";
@@ -72,10 +73,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { keptHouseFor } = await import("../lib/house-take.server");
     kept = ((await keptHouseFor(shop.id))?.rooms || []).map((r) => r.key);
   } catch (e) { console.error(`[found-footage] the house could not be read: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
+  // THE NEXT NIGHT (S10c, 2026-11-25): ?next=<a piece's id> — the Archive's "Make it a series" / "Night N →" on a
+  // found-footage piece. Read here from this shop's OWN piece — its series' LATEST — never from the page
+  // (footage-film.server.ts → footageNextFor); the page is shown only what its banner says. A piece that is gone,
+  // another shop's, or not found footage opens the builder as it always opens.
+  let next: NightBanner | null = null;
+  const askedNext = (new URL(request.url).searchParams.get("next") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+  if (askedNext) {
+    try {
+      const { footageNextFor } = await import("../lib/footage-film.server");
+      const s = await footageNextFor(shop.id, askedNext);
+      next = s ? nightBanner(s) : null;
+    } catch (e) { console.error(`[found-footage] the next night could not be read: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
+  }
   return json({
     hasPlan: !!shop.activePlan?.active,
     canFilm: !!shop.activePlan?.active && capabilitiesFor(shop.activePlan).has("creatorvideo"),
     kept,
+    next,
   });
 };
 
@@ -93,6 +108,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!INTENTS.includes(intent)) return json({ error: tr(lang, "Unknown action.") }, { status: 400 });
   if (!shop.activePlan?.active) return json({ error: tr(lang, "Pick a plan on the Dashboard first — film runs on tokens.") });
   if (!capabilitiesFor(shop.activePlan).has("creatorvideo")) return json({ error: tr(lang, "Your plan doesn't include video yet — upgrade to make films.") });
+  // A NEXT NIGHT (S10c): the series it goes on — read again from this shop's own piece on every post, never from the
+  // page (it sends only the id); one that cannot be read is ordinary new footage
+  const nightOf = async () => {
+    const id = String(form.get("next") || "");
+    if (!id) return null;
+    try { return await (await import("../lib/footage-film.server")).footageNextFor(shop.id, id); }
+    catch (e) { console.error(`[found-footage] the next night could not be read: ${e instanceof Error ? e.message.slice(0, 140) : e}`); return null; }
+  };
 
   // THE WRITER, FREE: the moments of a film, from the same choices one press would film (footage-film.ts →
   // footageOutlineAsk) — or another take on one moment of the outline the member is editing (cleaned first: a page
@@ -105,7 +128,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return tr(lang, [writer.FOOTAGE_WRITER_BUSY, writer.FOOTAGE_NEEDS_IDEA, FOOTAGE_OUTLINE_UNREADABLE].includes(m) ? m : writer.FOOTAGE_WRITER_BUSY);
     };
     if (intent === "outline") {
-      const ask = footageOutlineAsk({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room"), moments: form.get("moments") }, (s) => tr(lang, s));
+      const ask = footageOutlineAsk({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room"), moments: form.get("moments") }, (s) => tr(lang, s), await nightOf());
       if (!ask.ok) return json({ error: ask.error }, { status: 400 });
       try { return json({ ok: true as const, outline: await writer.writeFootageOutline(ask) }); }
       catch (e) { return json({ error: said(e) }); }
@@ -113,7 +136,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const outline = cleanFootageOutline(form.get("outline"));
     const index = Number(form.get("index"));
     if (!outline || !Number.isInteger(index) || index < 0 || index >= outline.moments.length) return json({ error: tr(lang, FOOTAGE_OUTLINE_UNREADABLE) }, { status: 400 });
-    try { return json({ ok: true as const, index, moment: await writer.rewriteFootageMoment({ outline, index, note: String(form.get("note") || "").slice(0, 300) }) }); }
+    try { return json({ ok: true as const, index, moment: await writer.rewriteFootageMoment({ outline, index, note: String(form.get("note") || "").slice(0, 300), night: await nightOf() }) }); }
     catch (e) { return json({ error: said(e) }); }
   }
 
@@ -132,7 +155,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   };
   if (intent === "film") {
     // A FILM: the outline the member approved, as they left it — cleaned again here (footage-film.ts → footageFilmJob)
-    const film = footageFilmJob({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room"), outline: form.get("outline") }, (s) => tr(lang, s));
+    const film = footageFilmJob({ scare: form.get("scare"), own: form.get("own"), camera: form.get("camera"), aspect: form.get("aspect"), lapse: form.get("lapse"), ir: form.get("ir"), room: form.get("room"), outline: form.get("outline") }, (s) => tr(lang, s), await nightOf());
     if (!film.ok) return json({ error: film.error }, { status: 400 });
     return roll(film);
   }
@@ -192,6 +215,9 @@ const camLook = (k: CameraLook) => CAMERA_LOOKS.find((c) => c.key === k) || CAME
 const clockOf = (sec: number): string => { const s = Math.max(0, Math.round(sec)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 /** A camera's clock: 02:14:07. */
 const hms = (sec: number): string => { const s = ((Math.floor(sec) % 86400) + 86400) % 86400; return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map((n) => String(n).padStart(2, "0")).join(":"); };
+/** Words isolated in their own direction (FIRST STRONG ISOLATE … POP DIRECTIONAL ISOLATE): an English title inside an
+ *  Urdu sentence (S10c). */
+const isolate = (s: string): string => `${String.fromCodePoint(0x2068)}${s}${String.fromCodePoint(0x2069)}`;
 /** A line that can be filmed: four letters or figures at least (footage-film.ts → cleanMoment leaves any other out). */
 const filmable = (line: string): boolean => line.replace(/[^\p{L}\p{N}]+/gu, "").length >= 4;
 /** One take's length on this camera (a house take is the walk-in's fifteen seconds). */
@@ -255,9 +281,9 @@ function GrowArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
  *  Under it a real <input type="range"> (arrows, Home and End; a screen reader hears "3 moments, about 0:34, ready
  *  in about 10 to 19 minutes"), as the Movie Maker's length slider is built (components/film/LengthSlider.tsx). One
  *  is today's single take; two to eight is a film. */
-function CutStrip({ value, onChange, camera, written, t }: { value: number; onChange: (n: number) => void; camera: CameraLook; written?: readonly FootageMoment[]; t: T }) {
+function CutStrip({ value, onChange, camera, written, t, min = 1 }: { value: number; onChange: (n: number) => void; camera: CameraLook; written?: readonly FootageMoment[]; t: T; /** a next night is a film: two moments at least (S10c) */ min?: number }) {
   const id = useId();
-  const n = Math.max(1, Math.min(FOOTAGE_MAX_MOMENTS, value));
+  const n = Math.max(min, Math.min(FOOTAGE_MAX_MOMENTS, value));
   // (a reel of this many moments: its own seconds — else each at its camera's usual length)
   const ms = written && written.length === n ? [...written] : standIn(camera, n);
   const secs = n === 1 ? oneTake(camera) : footageSeconds({ moments: ms });
@@ -274,11 +300,12 @@ function CutStrip({ value, onChange, camera, written, t }: { value: number; onCh
         <span className="ff-cut-film" aria-hidden="true">
           {Array.from({ length: FOOTAGE_MAX_MOMENTS }, (_, k) => <i key={k} className={`${k < n ? "lit" : ""}${k === n - 1 ? " at" : ""}`}><b>{k + 1}</b></i>)}
         </span>
+        {/* (the range stays 1–8, so its thumb sits over its frame at every value; a next night's one is clamped to two) */}
         <input id={id} className="ff-cut-in" type="range" min={1} max={FOOTAGE_MAX_MOMENTS} step={1} value={n}
           aria-label={t("How many moments?")} aria-valuetext={`${count} · ${n > 1 ? `≈ ${clockOf(secs)} · ` : ""}${ready}`}
-          onChange={(e) => onChange(Math.max(1, Math.min(FOOTAGE_MAX_MOMENTS, Math.round(Number(e.target.value)) || 1)))} />
+          onChange={(e) => onChange(Math.max(min, Math.min(FOOTAGE_MAX_MOMENTS, Math.round(Number(e.target.value)) || 1)))} />
       </div>
-      <div className="ff-cut-ends" aria-hidden="true"><span>{t("One take")}</span><span>{t("A film · up to {n} moments", { n: FOOTAGE_MAX_MOMENTS })}</span></div>
+      <div className="ff-cut-ends" aria-hidden="true"><span>{min > 1 ? t("{n} moments", { n: min }) : t("One take")}</span><span>{t("A film · up to {n} moments", { n: FOOTAGE_MAX_MOMENTS })}</span></div>
     </div>
   );
 }
@@ -330,8 +357,11 @@ export default function FoundFootage() {
   // that leads here): read through the same rules as a tap, so a link can never pick a pair that cannot be filmed.
   // With no scare asked for, no card is picked: the box is empty, waiting for words or a tap
   const [params] = useSearchParams();
+  // A NEXT NIGHT (S10c): the series' own camera, from no card — the last night is the idea
+  const next = d.next;
   const [pick, setPick] = useState<FootagePick>(() => {
     let p: FootagePick = { scare: OWN_SCARE, camera: "phone" };
+    if (d.next) return { ...p, camera: d.next.camera };
     const cam = cameraLookOf(params.get("camera"));
     if (cam) p = pickCamera(p, cam);
     const asked = (params.get("scare") || "").trim().toLowerCase();
@@ -343,7 +373,7 @@ export default function FoundFootage() {
   const [own, setOwn] = useState(() => { const s = footageScare(pick.scare); return s ? t(s.premise) : ""; });
   // the hand-held camera last in hand — a hand-held scare goes back to it after a house or body-cam one
   const [lastHand, setLastHand] = useState<CameraLook>("phone");
-  const [wide, setWide] = useState<"9:16" | "16:9">("16:9");
+  const [wide, setWide] = useState<"9:16" | "16:9">(d.next?.aspect || "16:9");
   // (null: the scare's own — "Over the bed" starts with its time-lapse on; a film's starts off: footageFilmJob)
   const [lapse, setLapse] = useState<boolean | null>(null);
   const [ir, setIr] = useState(true);
@@ -485,7 +515,9 @@ export default function FoundFootage() {
     const posted = { ...outlineOf(r, pick.camera, aspect), moments: list.map(({ key: k, ...m }) => (k === key && !filmable(m.line) ? { ...m, line: NEW_MOMENT } : m)) };
     setRetakeKey(key);
     setRetakeErr(null);
-    retake.submit({ intent: "rewrite", outline: JSON.stringify(posted), index: String(index) }, { method: "post" });
+    // (a next night's: only the piece's id — the server reads the night off it, so "another take" on its first moment
+    //  still goes on from where the last night stopped: S10c review)
+    retake.submit({ intent: "rewrite", outline: JSON.stringify(posted), index: String(index), ...(next ? { next: next.from } : {}) }, { method: "post" });
   };
   const took = useRef<unknown>(null);
   useEffect(() => {
@@ -538,9 +570,12 @@ export default function FoundFootage() {
   useEffect(() => {
     if (params.get("scare") || params.get("camera")) return;
     try {
-      const k = JSON.parse(window.sessionStorage.getItem(REEL_KEPT) || "null") as { reel?: unknown; from?: unknown; count?: unknown; pick?: Partial<FootagePick>; own?: unknown; wide?: unknown; lapse?: unknown; ir?: unknown; rolled?: unknown } | null;
+      const k = JSON.parse(window.sessionStorage.getItem(REEL_KEPT) || "null") as { reel?: unknown; from?: unknown; count?: unknown; pick?: Partial<FootagePick>; own?: unknown; wide?: unknown; lapse?: unknown; ir?: unknown; rolled?: unknown; next?: unknown } | null;
       const o = k ? cleanFootageOutline(k.reel) : null;
       if (!k || !o || o.moments.length < 2) return;
+      // (a reel comes back only on the night it was written for — a next night's never over new footage, nor the other
+      //  way round: S10c)
+      if (String(k.next ?? "") !== (d.next?.from || "")) return;
       const cam = cameraLookOf(k.pick?.camera) || o.camera;
       const key = String(k.pick?.scare || OWN_SCARE);
       setPick({ scare: (key === OWN_SCARE || footageScare(key)) && fits(key, cam) ? key : OWN_SCARE, camera: cam });
@@ -558,7 +593,7 @@ export default function FoundFootage() {
   }, []);
   useEffect(() => {
     if (!reel) return;
-    try { window.sessionStorage.setItem(REEL_KEPT, JSON.stringify({ reel: { ...reel, moments: reel.moments.map(({ key: _key, ...m }) => m) }, from: reelFrom, count, pick, own, wide, lapse, ir, rolled: rolledAs })); }
+    try { window.sessionStorage.setItem(REEL_KEPT, JSON.stringify({ reel: { ...reel, moments: reel.moments.map(({ key: _key, ...m }) => m) }, from: reelFrom, count, pick, own, wide, lapse, ir, rolled: rolledAs, next: d.next?.from || "" })); }
     catch { /* a nicety */ }
   }, [reel, reelFrom, count, pick, own, wide, lapse, ir, rolledAs]);
 
@@ -576,7 +611,8 @@ export default function FoundFootage() {
   const busy = fetcher.state !== "idle";
   const rolling = (!!data?.ok && !busy && sentSig === sig) || (film && !busy && !!filmSig && rolledAs === filmSig);
   useEffect(() => { if (film && data?.ok && fetcher.state === "idle" && sentSig === sig && filmSig) setRolledAs(filmSig); }, [data, fetcher.state]);
-  const ownReady = !written || own.trim().length >= 8;
+  // (a next night needs no words: the footage so far is its idea — S10c)
+  const ownReady = !!next || !written || own.trim().length >= 8;
   const canGo = d.canFilm && ownReady && !busy && !rolling;
   const canWrite = d.canFilm && ownReady && !writing && !busy;
   const canRoll = d.canFilm && !!posted && blank < 0 && !retaking && !writing && !busy && !rolling;
@@ -624,6 +660,8 @@ export default function FoundFootage() {
       {house && <input type="hidden" name="lapse" value={lapseOn ? "1" : "0"} />}
       {house && <input type="hidden" name="ir" value={ir ? "1" : "0"} />}
       <input type="hidden" name="moments" value={count} />
+      {/* (a next night: only the piece's id — the server reads the series off that piece itself) */}
+      {next ? <input type="hidden" name="next" value={next.from} /> : null}
     </>
   );
   const writeErr = (writer.data as { error?: string } | undefined)?.error;
@@ -645,18 +683,46 @@ export default function FoundFootage() {
         </div>
       </header>
 
+      {/* THE NEXT NIGHT (S10c, 2026-11-25 — the owner: "need the ability to pick up where left off to continue"): one
+          calm strip — which night of what, a frame of the place it goes on in, and where it picks up: the last card as
+          the film showed it and the last moment's line. Nothing in it asks for a tap but the ✕, which makes this new
+          footage instead. Tape-black in both themes, as the reel is. */}
+      {next && (
+        <div className="ff-night" role="note">
+          {next.pic ? (
+            <span className="ff-night-pic" aria-hidden="true">
+              <img src={next.pic} alt="" decoding="async" onError={(e) => { const p = e.currentTarget.parentElement; if (p) p.style.display = "none"; }} />
+              <i className="ff-night-rec"><b />REC</i>
+            </span>
+          ) : null}
+          <span className="ff-night-txt">
+            {/* (the series' title isolated in its own direction: an English title in an Urdu sentence broke apart round its
+                quote marks — seen at 390, S10c) */}
+            <span className="ff-night-kick">{t("Night {n} of “{title}”", { n: next.night, title: isolate(next.title) })}</span>
+            {next.line ? <span className="ff-night-picks"><b>{t("Picks up from")}</b>{next.card ? <span className="ff-night-card" dir="ltr">{next.card}</span> : null}<q dir="auto">{next.line}</q></span> : null}
+          </span>
+          {/* (a whole new page: what was written for this night stays with this night — the tab keeps it by its id) */}
+          <a className="ff-night-x" href="/web/found-footage" aria-label={t("Make new footage instead")} title={t("Make new footage instead")}><Ico n="x" size={14} /></a>
+        </div>
+      )}
+
       {/* 1 · WHAT WAS CAUGHT ON CAMERA? — ONE BOX, first: write it your way, or tap a card on its shelf (someone filming,
           the body cam — a scare, or a police drama — the house) and its own words arrive in the box to change. Left as
           they are: the ready-made take. Changed: the member's own, written from that card */}
       <section className="ff-card ff-what" aria-labelledby="ff-what" ref={what}>
         <h2 className="ff-lbl" id="ff-what"><span className="ff-n">1</span> <label htmlFor="ff-own-in">{t("What was caught on camera?")}</label></h2>
         <textarea id="ff-own-in" ref={boxIn} className={`ff-own-in${edited ? " is-yours" : ""}`} rows={3} maxLength={400} value={own} onChange={(e) => write(e.target.value)}
-          placeholder={t("Anything a camera could catch — a haunting, the dog raiding the fridge, a meteor over the road. Or tap a card below.")} />
+          placeholder={next
+            // (a next night's box asks what happens on THIS night — and may be left as it is: S10c)
+            ? t("What happens on night {n}? (or leave it — it picks up where it stopped)", { n: next.night })
+            : t("Anything a camera could catch — a haunting, the dog raiding the fridge, a meteor over the road. Or tap a card below.")} />
         {/* whose take the words make: the card's as it is, the member's version of it, or their own */}
         <div className={`ff-own-state${edited ? " is-yours" : scare ? " is-card" : ""}`}>
           <span role="status">
             {edited ? <><Ico n="pencil" size={13} /> {t("Your version of “{name}”", { name: t(scare?.name || "") })}</>
               : scare ? <><Ico n="check" size={13} /> {t("Ready-made. Change any words to make it yours.")}</>
+              // (a next night's box may stay empty: the footage so far is the idea — S10c)
+              : next && !own.trim() ? <><Ico n="check" size={13} /> {t("Empty is fine — the writer picks up where the last night stopped.")}</>
               // (a film of their own words is anything at all — "not limited", the owner, 2026-11-25: the dog raiding the
               //  fridge read "Slow and still is what frightens" under it. One take keeps the line it always had.)
               : film ? t("Say where it happens, who is there, and how it ends — the writer builds the moments.")
@@ -665,7 +731,8 @@ export default function FoundFootage() {
           {edited && <button type="button" className="ff-undo" onClick={undo}><Ico n="refresh" size={12} /> {t("Undo")}</button>}
           {!edited && kept && <button type="button" className="ff-undo" onClick={bringBack}><Ico n="refresh" size={12} /> {t("Bring back your words")}</button>}
         </div>
-        <div role="radiogroup" aria-labelledby="ff-what">
+        {/* (the starter cards: not on a next night — its idea is the footage so far, and a card would bring a camera of its own) */}
+        {!next && <div role="radiogroup" aria-labelledby="ff-what">
           {FOOTAGE_SHELVES.map((sh) => (
             <div className={`ff-shelf is-${sh.family}`} key={sh.family}>
               <div className="ff-shelf-h"><b>{t(sh.name)}</b><span>{t(sh.line)}</span></div>
@@ -688,17 +755,18 @@ export default function FoundFootage() {
               </div>
             </div>
           ))}
-        </div>
+        </div>}
       </section>
 
       {/* THE STEP CARDS — the Movie Maker's: each says what it is set to, a tap opens it under its row */}
       <div className="ff-steps">
-        {/* 2 · THE CAMERA — its card plays the camera picked */}
-        <button type="button" style={{ order: 1 }} className={`ff-step ff-step-cam${open === "camera" ? " on" : ""}`} aria-expanded={open === "camera"} aria-controls="ff-p-cam" onClick={() => tap("camera")}>
+        {/* 2 · THE CAMERA — its card plays the camera picked. (A NEXT NIGHT is on the series' own camera: the card says so
+            and does not open — "the same camera", S10c; the server films it on that camera whatever is posted) */}
+        <button type="button" style={{ order: 1 }} className={`ff-step ff-step-cam${open === "camera" ? " on" : ""}${next ? " is-held" : ""}`} aria-expanded={open === "camera"} aria-controls="ff-p-cam" aria-disabled={next ? true : undefined} onClick={() => { if (!next) tap("camera"); }}>
           <span className="ff-step-n" aria-hidden="true">2</span>
           {/* (a new camera is a new screen: a loop keeps the clip it first fetched) */}
           <span className="ff-step-screen"><CamScreen key={pick.camera} cam={pick.camera} /></span>
-          <span className="ff-step-ttl"><span className="ff-step-kick">{t("The camera")}</span><b>{t(camName)}</b><span className="ff-step-val">{t(camLook(pick.camera).line)}</span></span>
+          <span className="ff-step-ttl"><span className="ff-step-kick">{t("The camera")}{next ? <> <Ico n="lock" size={11} /></> : null}</span><b>{t(camName)}</b><span className="ff-step-val">{next ? t("The same camera, every night") : t(camLook(pick.camera).line)}</span></span>
         </button>
         {open === "camera" && (
           <div className="ff-panel" id="ff-p-cam" style={{ order: 2 }}>
@@ -741,7 +809,7 @@ export default function FoundFootage() {
         )}
         {open === "cut" && (
           <div className="ff-panel" id="ff-p-cut" style={{ order: 5 }}>
-            <CutStrip value={count} onChange={setCount} camera={pick.camera} written={shown && !otherCam ? shown.moments : undefined} t={t} />
+            <CutStrip value={count} onChange={setCount} camera={pick.camera} written={shown && !otherCam ? shown.moments : undefined} t={t} min={next ? 2 : 1} />
             <p className="ff-panel-note">{t("One take is one moment, as it always was. Two or more is a film from the same camera: a card on black before each moment — NIGHT 2 · 3:07 AM — and each one closer than the last.")}</p>
           </div>
         )}
@@ -926,6 +994,7 @@ export default function FoundFootage() {
             {house && <input type="hidden" name="lapse" value={lapseOn ? "1" : "0"} />}
             {house && <input type="hidden" name="ir" value={ir ? "1" : "0"} />}
             <input type="hidden" name="outline" value={posted} />
+            {next ? <input type="hidden" name="next" value={next.from} /> : null}
             <button type="submit" className={`ff-go${rolling ? " is-rolling" : ""}`} disabled={!canRoll}>
               {busy ? <>… {t("Starting your take")}</>
                 : rolling ? <><i className="ff-go-dot" aria-hidden="true" /> {t("REC — rolling. It lands in your Archive.")}</>
@@ -1264,6 +1333,29 @@ const FF_STYLE = `
 .ff-ico-btn:focus-visible,.ff-dicebtn:focus-visible,.ff-secs button:focus-visible,.ff-add:focus-visible,.ff-room-pick:focus-visible{outline:3px solid rgba(231,200,121,.75);outline-offset:2px;}
 @media(min-width:640px){.ff-hero{height:210px;}.ff-hero-copy b{font-size:28px;}.ff-card{padding:18px 20px;}.ff-scare{flex-basis:150px;}.ff-cam{flex-basis:150px;}.ff-screen{height:116px;}.ff-step-screen{width:150px;}.ff-reel{padding:20px 0 18px;}.ff-tape,.ff-case{margin-left:22px;margin-right:22px;}.ff-case{grid-template-columns:1fr 1fr;}.ff-strip{padding:6px 44px;}.ff-vf:not(.is-tall){width:min(100%,560px);margin:0 auto;}.ff-vf.is-tall{width:min(100%,290px);}.ff-mo-card{max-width:560px;margin-left:auto;margin-right:auto;}.ff-mo-bar,.ff-mo-tools{max-width:560px;margin-left:auto;margin-right:auto;}.ff-add{width:calc(100% - 44px);margin-left:22px;margin-right:22px;}.ff-room-pick{flex:0 1 200px;}}
 @media(prefers-reduced-motion:reduce){.ff-rec i,.ff-go.is-rolling .ff-go-dot,.ff-cut-film i.at::after,.ff-vf-dot,.ff-vf-osd,.ff-vf-grain,.ff-vf-scan::after,.ff-mo.is-retaking .ff-dice,.ff-reel.is-writing .ff-mo,.ff-reel:not(.is-writing) .ff-vf-screen{animation:none;}.ff-go::after{animation:none;display:none;}.ff-cover,.ff-cover img,.ff-sw-knob i,.ff-cut-film i,.ff-dice,.ff-step{transition:none;}}
+/* THE NEXT NIGHT (S10c): one calm strip under the hero — tape-black in both themes, as the reel is, a hair of gold round
+   it; a frame of the place it goes on in, its REC light; the last card as the film showed it, white mono on black */
+.ff-night{position:relative;display:flex;align-items:flex-start;gap:12px;margin:0 0 12px;padding:12px 50px 13px 12px;border-radius:18px;background:linear-gradient(180deg,#141A16,#0B0D0C);color:#FFFDF7;box-shadow:inset 0 0 0 1px rgba(231,200,121,.34),0 16px 32px -24px rgba(8,62,39,.75);}
+.ff-night-pic{position:relative;flex:0 0 104px;align-self:center;aspect-ratio:16/10;border-radius:10px;overflow:hidden;background:#1A201C;box-shadow:inset 0 0 0 1px rgba(255,253,247,.16);}
+.ff-night-pic img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(.7) contrast(1.06);}
+.ff-night-rec{position:absolute;left:6px;top:6px;display:inline-flex;align-items:center;gap:4px;font:700 9.5px/1 var(--ff-mono);font-style:normal;letter-spacing:.06em;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.85);}
+.ff-night-rec b{width:6px;height:6px;border-radius:50%;background:var(--ff-rec);box-shadow:0 0 6px rgba(229,72,58,.8);animation:ffblink 1.2s steps(1,end) infinite;}
+.ff-night-txt{display:flex;flex-direction:column;gap:7px;min-width:0;}
+.ff-night-kick{font:800 15.5px/1.25 Poppins,sans-serif;letter-spacing:-.01em;color:#FFFDF7;overflow-wrap:anywhere;}
+.ff-night-picks{display:flex;flex-wrap:wrap;align-items:center;gap:5px 8px;font-size:13px;line-height:1.45;color:#D8D4C6;}
+.ff-night-picks b{font:800 10px/1 Poppins,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#E7C879;}
+.ff-night-card{font:700 10.5px/1 var(--ff-mono);letter-spacing:.06em;color:#fff;background:#000;border:1px solid rgba(255,253,247,.3);border-radius:4px;padding:4px 6px;white-space:nowrap;}
+.ff-night-picks q{flex-basis:100%;overflow-wrap:anywhere;}
+.ff-night-x{position:absolute;top:4px;right:4px;display:grid;place-items:center;width:44px;height:44px;border-radius:999px;color:#C9C4B4;text-decoration:none;}
+.ff-night-x svg{stroke:currentColor;}
+.ff-night-x:hover{color:#fff;background:rgba(255,253,247,.08);}
+.ff-night-x:focus-visible{outline:3px solid rgba(231,200,121,.75);outline-offset:-3px;}
+.ff-step.is-held{cursor:default;}
+.ff-step.is-held:hover{border-color:var(--line,#E4DFCF);box-shadow:0 1px 2px rgba(20,32,26,.04),0 12px 26px -20px rgba(20,32,26,.25);}
+.ff-step.is-held .ff-step-kick svg{vertical-align:-1px;stroke:currentColor;}
+[dir=rtl] .ff-night-picks b{letter-spacing:0;}
+@media(max-width:420px){.ff-night-pic{flex-basis:84px;}.ff-night-kick{font-size:14.5px;}}
+@media(prefers-reduced-motion:reduce){.ff-night-rec b{animation:none;}}
 `;
 
 /* ---- THE DARK: the shell's (lib/theater-shell.ts) goes dark; every card here stays the cream card it is and
@@ -1280,4 +1372,6 @@ const FF_DARK = `
 .ff-dark .ff-reel{box-shadow:0 0 0 1px rgba(231,200,121,.45),0 30px 56px -30px #000;}
 .ff-dark .ff-back:focus-visible{outline:2px solid #E7C879;outline-offset:2px;}
 .ff-dark .ff-step:focus-visible{outline:3px solid #E7C879;outline-offset:2px;}
+.ff-dark .ff-step.is-held:hover{border-color:rgba(231,200,121,.55);box-shadow:0 22px 40px -28px #000;}
+.ff-dark .ff-night{box-shadow:inset 0 0 0 1px rgba(231,200,121,.5),0 0 0 4px rgba(231,200,121,.06),0 24px 44px -28px #000;}
 `;

@@ -265,10 +265,13 @@ test("every story genre is continuable — the seven new categories, drama, horr
   assert.equal(continuable("{oops"), false);
 });
 
-test("found footage: the hook is named, says no today, and is asked by the same rule", () => {
+test("found footage: the hook says yes for a piece that names its camera (S10c — tests/footage-next-night.test.ts), and is asked by the same rule", () => {
   const take = { kind: "take", template: "foundfootage", aspect: "9:16" };
-  assert.equal(footageContinues(take), false);
+  assert.equal(footageContinues(take), false, "a take that names no camera");
   assert.equal(continuable(take), false);
+  const filmed = { ...take, take: { camera: "phone" } };
+  assert.equal(footageContinues(filmed), true);
+  assert.equal(continuable(filmed), true);
   const lib = read("app", "lib", "film-series.ts");
   assert.ok(lib.includes("return !!storyHeroOf(m) || footageContinues(m);"), "the day it says yes, every surface offers it");
 });
@@ -361,7 +364,8 @@ test("the loader: every piece's mark, from this page's films — and a search or
   assert.ok(loader.includes("} catch { /* the page's own films decide, as they do with no search */ }"));
   assert.ok(loader.indexOf("const nextOf = ") < loader.indexOf("const mapAsset = "));
   // what the page is given: the mark, and — only for an older one — its series' HASHED key (never an id in an address)
-  assert.ok(loader.includes('return m ? { state: m.state, next: m.next, from: m.from, episode: m.episode, of: m.of, key: m.state === "older" ? seriesKey("film", seriesKeyOf(a)) : null } : null;'));
+  // (…and for found footage, that it is, and the night a tap films — S10c, tests/footage-next-night.test.ts)
+  assert.ok(loader.includes('return m ? { state: m.state, next: m.next, from: m.from, episode: m.episode, of: m.of, key: m.state === "older" ? seriesKey("film", seriesKeyOf(a)) : null, ...(m.footage ? { footage: true as const, night: m.night || m.next } : {}) } : null;'));
   assert.ok(!loader.includes("canContinue"), "one rule, one field");
 });
 
@@ -369,8 +373,12 @@ test("a card's mark: its wording for each state, at the end of its last line, on
   const fn = page.slice(page.indexOf("const nextMarkOf = (n: PieceNext) => {"), page.indexOf("const markHere = "));
   assert.ok(fn.length > 200 && fn.length < 1800);
   // "Make it a series" / "Episode N →" — to the Movie Maker, continued from the series' latest (`from`)
-  assert.ok(fn.includes('href={`/web/film?episode=${n.from}`} title={t("Continue this story — the next episode, with the same cast")}'));
-  assert.ok(fn.includes('{n.state === "start" ? t("Make it a series") : <>{t("Episode {n}", { n: n.next })}<Ico n="arrow" size={11} /></>}'));
+  // (…found footage's "Night N →" to its own builder — S10c: nextHref / nextTitle / nextNum, held below)
+  assert.ok(fn.includes("href={nextHref(n)} title={nextTitle(n)}"));
+  assert.ok(fn.includes('{n.state === "start" ? t("Make it a series") : <>{nextNum(n)}<Ico n="arrow" size={11} /></>}'));
+  assert.ok(page.includes('const nextHref = (n: Pick<PieceNext, "from" | "footage">) => (n.footage ? `/web/found-footage?next=${n.from}` : `/web/film?episode=${n.from}`);'));
+  assert.ok(page.includes('const nextTitle = (n: Pick<PieceNext, "footage">) => (n.footage ? t("Continue this footage — the next night, on the same camera") : t("Continue this story — the next episode, with the same cast"));'));
+  assert.ok(page.includes('const nextNum = (n: Pick<PieceNext, "footage" | "night" | "next">) => (n.footage ? t("Night {n}", { n: n.night || n.next }) : t("Episode {n}", { n: n.next }));'));
   // "Episode 3 of 4" on an older one — to its whole series, never to the Movie Maker (an older one never forks)
   const older = fn.slice(fn.indexOf('if (n.state === "older") {'), fn.indexOf("return (\n"));
   assert.ok(older.includes('<Link className={cls} to={seriesWholeHref(n.key || "")} preventScrollReset'));
@@ -398,20 +406,22 @@ test("a series' card carries its latest's mark — a link beside the card, never
   assert.ok(page.includes("const seriesNextOf = (s: SeriesItem): PieceNext | null => s.episodes.map((id) => pieceById.get(id)?.next).find((m): m is PieceNext => !!m) || null;"));
   // THE NEXT EPISODE'S TILE: only in an open series that can go on, after its episodes, one tap to its latest
   const tile = page.slice(page.indexOf("{openSeries && openNext && ("), page.indexOf("{/* OLDER PIECES, ASKED FOR WHERE THEY ARE WANTED"));
-  assert.ok(tile.includes('<a id="wa-nextep" className={`wb-asset wa-nexttile${selecting ? " off" : ""}`} href={`/web/film?episode=${openNext.from}`}'));
+  // (a series of found footage's tile: its next NIGHT, to its own builder — S10c)
+  assert.ok(tile.includes('<a id="wa-nextep" className={`wb-asset wa-nexttile${selecting ? " off" : ""}`} href={nextHref(openNext)}'));
   assert.ok(tile.includes('aria-disabled={selecting || undefined} tabIndex={selecting ? -1 : undefined} onClick={(e) => { if (selecting) e.preventDefault(); }}'));
-  assert.ok(tile.includes('<span className="wa-title">{t("Episode {n} — what happens next?", { n: openNext.next })}</span>'));
+  assert.ok(tile.includes('<span className="wa-title">{openNext.footage ? t("Night {n} — what happens next?", { n: openNext.night || openNext.next }) : t("Episode {n} — what happens next?", { n: openNext.next })}</span>'));
   assert.ok(tile.includes('<span className="s">{t("Picks up where it left off")}</span>'));
-  assert.ok(tile.includes('<span className="wa-nexttile-num"><Ico n="filmreel" size={16} /> {t("Episode {n}", { n: openNext.next })}</span>'));
+  assert.ok(tile.includes('<span className="wa-nexttile-num"><Ico n={openNext.footage ? "camera" : "filmreel"} size={16} /> {nextNum(openNext)}</span>'));
   assert.ok(page.indexOf("{shelfCards.map((c, k) => {") < page.indexOf("{openSeries && openNext && ("), "it ends the shelf");
   assert.ok(page.includes("const openNext = openSeries ? seriesNextOf(openSeries) : null;"));
 });
 
 test("the viewer: its FIRST button, a primary, worded as the card is — before Post", () => {
   const viewer = page.slice(page.indexOf("{viewer && mounted ? createPortal("), page.indexOf("{/* Delete / retry confirmation toast."));
-  const at = viewer.indexOf('<a className="wa-vbtn full wa-vnext" href={`/web/film?episode=${viewer.next.from}`}');
+  const at = viewer.indexOf('<a className="wa-vbtn full wa-vnext" href={nextHref(viewer.next)}');
   assert.ok(at > 0 && at < viewer.indexOf("onClick={() => startPost(viewer.id)}"), "first in its row");
-  assert.ok(viewer.includes('{viewer.next.state === "start" ? t("Make it a series") : t("Make episode {n}", { n: viewer.next.next })}<span className="c">{t("Picks up where it left off")}</span>'));
+  // (found footage: "Film night N" — S10c)
+  assert.ok(viewer.includes('{viewer.next.state === "start" ? t("Make it a series") : viewer.next.footage ? t("Film night {n}", { n: viewer.next.night || viewer.next.next }) : t("Make episode {n}", { n: viewer.next.next })}<span className="c">{t("Picks up where it left off")}</span>'));
   assert.ok(!viewer.includes('{t("Next episode")}'), "the quiet ghost button is gone");
 });
 
