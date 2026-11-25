@@ -275,9 +275,10 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   assert.ok(eng.includes("img = (await clothedOrDropped(drawn, PORTRAIT_ASPECT)) || \"\";"), "looked at for an unclothed figure");
   assert.ok(eng.includes("if (!kept) await ckpt({ ckThreat: JSON.stringify(threat) });"), "kept: a restarted film does not draw it twice");
   assert.ok(eng.includes("k.from === \"story\" && k.entry === own.entry && onDisk(k.img)"), "…and a kept one is only taken for the same thing, still on disk");
-  // the clothed look: edited once, or dropped — never a film lost to it
-  assert.ok(eng.includes("prompt: clothedEdit(seen.who), refs: [abs(rel) || rel], aspect: ar"));
-  assert.ok(eng.includes("catch { return { unclothed: false, who: \"\" }; }"), "a look that cannot be made keeps the picture");
+  // the clothed look: edited once, or dropped — never a film lost to it (since 2026-11-25 the ONE look every film picture
+  // has — clothed.server.ts → keepClothed, whose look keeps a picture it cannot read: tests/clothed.test.ts)
+  assert.ok(eng.includes("const kept = await keepClothed({ url: rel, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, ar), still: \"drop\", log: (l) => console.log(`[testmovie] ${l}`) });"));
+  assert.ok(read("app", "lib", "clothed.server.ts").includes("} catch { return NOBODY; }"), "a look that cannot be made keeps the picture");
   // what the worker does not hand over is read from the job's own row
   assert.ok(eng.includes("ckThreat?: string; ckSightings?: string };"));
   assert.ok(eng.includes("const r = JSON.parse(resume.ckSightings ?? (await keptOnJob(\"ckSightings\")) ?? \"null\");"));

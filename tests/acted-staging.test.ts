@@ -919,7 +919,8 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   assert.ok(eng.includes("const ref = thingRef();") && eng.includes("const thingFace = ref?.url;") && eng.includes("const creatureRef = ref?.kind === \"creature\";"));
   assert.ok(!eng.includes("(scene.visual || \"\").toLowerCase().includes(c.name.trim().toLowerCase())"), "never only when the last scene names it");
   assert.ok(eng.includes("const ask = ref ? revealPicture({ moment: eventAt(i), mood: tmpl.faceMood, sides: revealSides, creature: creatureRef, seen, outdoors, ref: ref.kind, name: threat?.name, away }) : askOne;"));
-  assert.ok(eng.includes("try { seedAbs = abs(await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\"))); }"));
+  // (…and LOOKED at before it is used, as every film picture is: clothed, or dropped for the next editor — 2026-11-25, S8)
+  assert.ok(eng.includes("try { const drawn = await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\")); seedAbs = drawn ? abs(await clothedOrDropped(drawn, aspect)) : undefined; }"));
   assert.ok(eng.includes("const implied = lastHorror && !revealed && !approvedFrames[i];"));
   assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, sighted: !!sighted, sight: sighted?.who });"));
   assert.ok(eng.includes("others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, sighted: !!sighted, sight: sighted?.who });"));
