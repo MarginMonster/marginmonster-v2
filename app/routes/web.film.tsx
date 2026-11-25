@@ -2600,7 +2600,13 @@ export default function FilmStudio() {
   // page (the writer is sent the length the page holds), so from an effect.
   const [lenRedo, setLenRedo] = useState<{ draw: boolean } | null>(null);
   const rewriteAtLen = () => {
-    if (lenPending === null) return;
+    // (not while the pictures are still being drawn: makeStoryboard refuses then, and the script would be thrown away
+    //  with nothing drawn or written after it)
+    if (lenPending === null || writing || seedBusy) return;
+    // (an EMPTY idea box asks for an idea first, and the script stays: thrown away, and then nothing written in its
+    //  place because the writer is never called without an idea, the member would be left with less than they had —
+    //  review of 2026-11-25. The length stays pending, its line still asking.)
+    if (noIdeaYet()) return;
     const n = lenPending;
     orArm("len:", true, () => { setLenDraft(null); setStoryLen(n); setLenRedo({ draw: narrated && !!seeds }); });
   };
@@ -4645,7 +4651,7 @@ export default function FilmStudio() {
                   <p className="mm-note mm-shape-warn mm-lenwipe" role="status">
                     <span>{t("This rewrites your script")}</span>
                     <span className="mm-lenwipe-do">
-                      <button type="button" className="mm-lenwipe-go" onClick={rewriteAtLen} disabled={writing}>{t("Rewrite")}</button>
+                      <button type="button" className="mm-lenwipe-go" onClick={rewriteAtLen} disabled={writing || seedBusy}>{t("Rewrite")}</button>
                       <button type="button" className="mm-lenwipe-keep" onClick={keepLen}>{t("Keep")}</button>
                     </span>
                   </p>

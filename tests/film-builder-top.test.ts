@@ -403,12 +403,17 @@ test("A SLIDER CANNOT ASK FIRST PER VALUE: under a written script a new length w
   // Rewrite: orArm's second tap — the length, and the script written again at it (a told story with pictures drawn again)
   const redo = between(ui, "const rewriteAtLen = () => {", "\n  };\n");
   assert.ok(redo.includes("orArm(\"len:\", true, () => { setLenDraft(null); setStoryLen(n); setLenRedo({ draw: narrated && !!seeds }); });"));
+  // (review, 2026-11-25: Rewrite never throws a script away to then write or draw NOTHING — not while the pictures
+  //  are still being drawn (makeStoryboard refuses then), and not with an empty idea box (the writer is never called
+  //  without one): the box asks first, and the script and the pending length both stay)
+  assert.ok(redo.includes("if (lenPending === null || writing || seedBusy) return;"));
+  assert.ok(redo.indexOf("if (noIdeaYet()) return;") > -1 && redo.indexOf("if (noIdeaYet()) return;") < redo.indexOf("orArm(\"len:\", true,"), "the box asks BEFORE anything is wiped");
   assert.ok(ui.includes("if (!lenRedo) return;\n    setLenRedo(null);\n    if (lenRedo.draw) makeStoryboard(); else writeTreatment();\n  }, [lenRedo]);"));
   // the line, under the slider, in the panel
   const panel = lengthPanel();
   assert.ok(panel.indexOf("{lenPending !== null && (") > panel.indexOf("<LengthSlider "));
   assert.ok(panel.includes("<p className=\"mm-note mm-shape-warn mm-lenwipe\" role=\"status\">\n                    <span>{t(\"This rewrites your script\")}</span>"));
-  assert.ok(panel.includes("<button type=\"button\" className=\"mm-lenwipe-go\" onClick={rewriteAtLen} disabled={writing}>{t(\"Rewrite\")}</button>"));
+  assert.ok(panel.includes("<button type=\"button\" className=\"mm-lenwipe-go\" onClick={rewriteAtLen} disabled={writing || seedBusy}>{t(\"Rewrite\")}</button>"));
   assert.ok(panel.includes("<button type=\"button\" className=\"mm-lenwipe-keep\" onClick={keepLen}>{t(\"Keep\")}</button>"));
   // each answer a finger's size to tap, the look kept small
   const css = sheetOf("FS_STYLE");
