@@ -37,7 +37,12 @@ const newName = (suffix: string) => `tm-edit-${Date.now()}-${crypto.randomBytes(
 /** One shot of a finished film. `seed` + `prompt` + `dur` are what it was rendered from (a re-roll
  *  renders from them again); `chained` = it continues the previous shot (seeded from its last frame);
  *  `voice` = the cast voice that was put on it ("Lock these voices"), so a re-roll gets it too. */
-export type Shot = { url: string; caption?: string; seed?: string; prompt?: string; dur?: number; chained?: boolean; voice?: string; /** a cut to another place, or to the reveal: joined STRAIGHT (film-dialogue.server.ts → assembleTestMovie) */ cut?: "hard" };
+export type Shot = { url: string; caption?: string; seed?: string; prompt?: string; dur?: number; chained?: boolean; voice?: string; /** a cut to another place, or to the reveal: joined STRAIGHT (film-dialogue.server.ts → assembleTestMovie) */ cut?: "hard";
+  /** THE PICTURE THIS SHOT ENDS ON (2026-11-25, place-state.ts): a shot that shuts or blocks something in its place
+   *  ("Mireille claws the zipper pull down hard, sealing the gap") was made ending on that place with it done — the
+   *  tent door zipped shut. A re-roll ends on it again, or the re-rolled take could leave the door open while every
+   *  shot after it has it shut. An absolute address (the video engine fetches it). */
+  end?: string };
 export type ShotOp = "trim" | "speed" | "volume" | "delete";
 type Aspect = "9:16" | "16:9" | "1:1";
 type CutResult = { ok: boolean; videoUrl?: string; shots?: Shot[]; error?: string };
@@ -231,7 +236,8 @@ export async function regenerateFilmShot(opts: { assetId: string; shopId: string
   try {
     // a shot that continues the previous one keeps its opening frames, exactly as in the first render,
     // and the film's last shot keeps its beat of quiet after the line
-    newClip = await renderDialogueClipTo(engine, shot.seed, shot.prompt, dur, film.aspect, `regen-${i}`, !!shot.chained, undefined, { last: i === film.shots.length - 1 });
+    // (…and a shot made to END on its place with something done to it ends there again: Shot.end)
+    newClip = await renderDialogueClipTo(engine, shot.seed, shot.prompt, dur, film.aspect, `regen-${i}`, !!shot.chained, undefined, { last: i === film.shots.length - 1, endImage: shot.end || undefined });
   } catch (e) {
     return { ok: false, error: `Shot re-render failed: ${e instanceof Error ? e.message.slice(0, 80) : "unknown"}` };
   }
@@ -272,7 +278,7 @@ export async function engineTestFilmShot(opts: { assetId: string; shopId: string
   const t0 = Date.now();
   let clip: string;
   try {
-    clip = await renderDialogueClipTo("kling3", shot.seed, shot.prompt, dur, film.aspect, `enginetest-${i}`, !!shot.chained, opts.host);
+    clip = await renderDialogueClipTo("kling3", shot.seed, shot.prompt, dur, film.aspect, `enginetest-${i}`, !!shot.chained, opts.host, { endImage: shot.end || undefined });
   } catch (e) {
     return { ok: false, error: `Engine test render failed: ${e instanceof Error ? e.message.slice(0, 120) : "unknown"}` };
   }
@@ -319,7 +325,7 @@ export async function engineTestFilm(opts: { assetId: string; shopId: string; ho
     const seed = shot.chained && prevLast ? prevLast : (shot.seed as string);
     let clip: string;
     try {
-      clip = await renderDialogueClipTo("kling3", seed, shot.prompt as string, dur, film.aspect, `enginefilm-${i}`, !!shot.chained, opts.host, { last: i === film.shots.length - 1 });
+      clip = await renderDialogueClipTo("kling3", seed, shot.prompt as string, dur, film.aspect, `enginefilm-${i}`, !!shot.chained, opts.host, { last: i === film.shots.length - 1, endImage: shot.end || undefined });
     } catch (e) {
       return { ok: false, error: `Shot ${i + 1} did not render: ${e instanceof Error ? e.message.slice(0, 120) : "unknown"}` };
     }

@@ -59,6 +59,11 @@ test("the shot ENDS on it: the end frame threads to both Kling hosts, is kept wi
   assert.ok(eng.includes("end: shotEnds[i] || undefined,"), "on the piece's shots");
   const regen = eng.slice(eng.indexOf("export async function renderDialogueClipTo("), eng.indexOf("async function heardWords("));
   assert.ok(regen.includes("opts: { last?: boolean; endImage?: string } = {}") && regen.includes("await dialogueClip(engine, seedAbs, prompt, stage, durSec, aspect, host, undefined, opts.endImage);"));
+  // …and the shot editor hands it back: a re-roll, the one-shot engine test and the whole-film engine test all end the
+  // shot where it was made to end (film-edit.server.ts → Shot.end) — a re-rolled zip shot never leaves the door open
+  const edit = read("app/lib/film-edit.server.ts");
+  assert.ok(edit.includes("  end?: string };"), "the shot editor's Shot keeps it");
+  assert.equal(edit.split("endImage: shot.end || undefined }").length - 1, 3, "every path that renders a shot again passes it");
   // its tail — where the change is done — is kept, by the first take and by a re-roll alike (read off its prompt)
   assert.equal(eng.split("keepTail: clipEndsOnChange(prompt)").length - 1, 2);
   assert.ok(eng.includes("if (opts.keepTail) return t.path;"));

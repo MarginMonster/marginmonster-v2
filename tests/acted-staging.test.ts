@@ -576,7 +576,8 @@ test("a shot nobody speaks in has a fixed length, is kept whole, has no voice an
   assert.ok(eng.includes("shotDurs.push(clipSecs);"), "the length it was made at is what a re-roll asks for");
   const edit = read("app", "lib", "film-edit.server.ts");
   assert.ok(edit.includes("const dur = typeof shot.dur === \"number\" && shot.dur > 0 ? shot.dur : 8;"));
-  assert.ok(edit.includes("newClip = await renderDialogueClipTo(engine, shot.seed, shot.prompt, dur, film.aspect, `regen-${i}`, !!shot.chained, undefined, { last: i === film.shots.length - 1 });"));
+  // (…and, since S12, a shot made to END on a change of its place — the tent door zipped shut — ends there again)
+  assert.ok(edit.includes("newClip = await renderDialogueClipTo(engine, shot.seed, shot.prompt, dur, film.aspect, `regen-${i}`, !!shot.chained, undefined, { last: i === film.shots.length - 1, endImage: shot.end || undefined });"));
   // a re-cut captions each shot from what it records: a wordless shot records no caption
   assert.ok(edit.includes("let cap = s.caption || \"\";"));
 });
