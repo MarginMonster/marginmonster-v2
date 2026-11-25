@@ -124,11 +124,12 @@ export async function footageNextFor(shopId: string, askedId: unknown): Promise<
 /** ANOTHER TAKE ON THIS MOMENT — a free preview for the page: moment `index` of the outline the member is editing,
  *  written again (`note`: what they asked for). The outline is cleaned first, like anything the page sends. Throws in
  *  words the page can show. */
-export async function rewriteFootageMoment(o: { outline: FootageOutline; index: number; note?: string }): Promise<FootageMoment> {
+export async function rewriteFootageMoment(o: { outline: FootageOutline; index: number; note?: string; night?: FootageSeries | null }): Promise<FootageMoment> {
   const outline = cleanFootageOutline(o.outline);
   const i = Math.floor(Number(o.index));
   if (!outline || !(i >= 0 && i < outline.moments.length)) throw new Error(FOOTAGE_OUTLINE_UNREADABLE);
-  const brief = footageMomentBrief(outline, i, o.note);
+  // (a next night's: read by the action off the piece it goes on from — its first moment goes on from there, S10c)
+  const brief = footageMomentBrief(outline, i, o.note, o.night);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const m = parseFootageMoment(await anthropicText(brief, { model: WRITER, maxTokens: 500, jsonSchema: footageMomentSchema(outline.camera === "house") }), outline.camera, i, outline.moments[i]);

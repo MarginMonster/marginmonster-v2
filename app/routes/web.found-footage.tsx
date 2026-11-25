@@ -136,7 +136,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const outline = cleanFootageOutline(form.get("outline"));
     const index = Number(form.get("index"));
     if (!outline || !Number.isInteger(index) || index < 0 || index >= outline.moments.length) return json({ error: tr(lang, FOOTAGE_OUTLINE_UNREADABLE) }, { status: 400 });
-    try { return json({ ok: true as const, index, moment: await writer.rewriteFootageMoment({ outline, index, note: String(form.get("note") || "").slice(0, 300) }) }); }
+    try { return json({ ok: true as const, index, moment: await writer.rewriteFootageMoment({ outline, index, note: String(form.get("note") || "").slice(0, 300), night: await nightOf() }) }); }
     catch (e) { return json({ error: said(e) }); }
   }
 
@@ -515,7 +515,9 @@ export default function FoundFootage() {
     const posted = { ...outlineOf(r, pick.camera, aspect), moments: list.map(({ key: k, ...m }) => (k === key && !filmable(m.line) ? { ...m, line: NEW_MOMENT } : m)) };
     setRetakeKey(key);
     setRetakeErr(null);
-    retake.submit({ intent: "rewrite", outline: JSON.stringify(posted), index: String(index) }, { method: "post" });
+    // (a next night's: only the piece's id — the server reads the night off it, so "another take" on its first moment
+    //  still goes on from where the last night stopped: S10c review)
+    retake.submit({ intent: "rewrite", outline: JSON.stringify(posted), index: String(index), ...(next ? { next: next.from } : {}) }, { method: "post" });
   };
   const took = useRef<unknown>(null);
   useEffect(() => {

@@ -277,7 +277,8 @@ test("FOUR INTENTS: one take, exactly as it was; the moments written (free); one
   // "rewrite": the outline the page sent is cleaned before the writer sees it, and the index must be one of its moments
   assert.ok(action.includes('const outline = cleanFootageOutline(form.get("outline"));'));
   assert.ok(action.includes("if (!outline || !Number.isInteger(index) || index < 0 || index >= outline.moments.length) return json({ error: tr(lang, FOOTAGE_OUTLINE_UNREADABLE) }, { status: 400 });"));
-  assert.ok(action.includes('moment: await writer.rewriteFootageMoment({ outline, index, note: String(form.get("note") || "").slice(0, 300) })'));
+  // (…and, on a next night, "another take" is told the night too — read off the piece, as the outline's writer is: S10c review)
+  assert.ok(action.includes('moment: await writer.rewriteFootageMoment({ outline, index, note: String(form.get("note") || "").slice(0, 300), night: await nightOf() })'));
   // the writer's refusals reach the member only as words the page can show; anything else it throws is "try again"
   assert.ok(action.includes("return tr(lang, [writer.FOOTAGE_WRITER_BUSY, writer.FOOTAGE_NEEDS_IDEA, FOOTAGE_OUTLINE_UNREADABLE].includes(m) ? m : writer.FOOTAGE_WRITER_BUSY);"));
   // "film": the reel the member approved, cleaned again on the server (footageFilmJob) — then queued like one take
@@ -397,7 +398,8 @@ test("THE WRITER, ASKED BY THE PAGE: the moments from what one press would film;
   // index would point at the wrong one)
   assert.ok(ui.includes("const list = r.moments.filter((m) => m.key === key || filmable(m.line));"));
   assert.ok(ui.includes("moments: list.map(({ key: k, ...m }) => (k === key && !filmable(m.line) ? { ...m, line: NEW_MOMENT } : m))"));
-  assert.ok(ui.includes('retake.submit({ intent: "rewrite", outline: JSON.stringify(posted), index: String(index) }, { method: "post" });'));
+  // (…with a next night's piece id when there is one — S10c review)
+  assert.ok(ui.includes('retake.submit({ intent: "rewrite", outline: JSON.stringify(posted), index: String(index), ...(next ? { next: next.from } : {}) }, { method: "post" });'));
   const NEW_MOMENT = /const NEW_MOMENT = ("[^"]+");/.exec(ui)?.[1];
   assert.ok(NEW_MOMENT);
   const posted = { v: 1, title: "TEST", camera: "phone", aspect: "9:16", kind: "scare", place: "A made-up hallway, long and dark.", thing: "", moments: [
