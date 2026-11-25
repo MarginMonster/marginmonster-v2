@@ -54,6 +54,37 @@ export function lastCheckpoint(payload: Record<string, unknown>): string | null 
   return keys.length ? keys[keys.length - 1] : null;
 }
 
+/** A DEPLOY IS NOT A STALL (2026-11-25, the R1 reviewer's risk). A long told story's cut parts write only `ckBeat`, so
+ *  three deploys in a row landing inside the same cut read as two stalls in a row and failed a HEALTHY job. A restart
+ *  can say why it happened after all — when it was asked to: on SIGTERM (Render stops the old process that way, on a
+ *  deploy; an out-of-memory kill runs no handler and writes nothing) the worker writes `__stoppedBy` (who: "deploy")
+ *  and `__stoppedAt` (when) onto every job it is running (job-beat.ts → markStopped). The reaper's hand-back of a job
+ *  carrying the mark is not counted as a stall — progress still resets the count, a stall before it still stands —
+ *  and the mark comes off as it is handed back. A new run's claim takes a mark left from an older run off as well
+ *  (job-queue.server.ts → the start stamp), so only the run that was stopped is ever let off. */
+export const STOPPED_BY = "__stoppedBy";
+export const STOPPED_AT = "__stoppedAt";
+export const STOP_MARKS = [STOPPED_BY, STOPPED_AT] as const;
+
+/** Who stopped this job's run ("deploy"), or null when nobody said. */
+export function stoppedBy(payload: Record<string, unknown>): string | null {
+  const v = (payload || {})[STOPPED_BY];
+  return typeof v === "string" && v ? v : null;
+}
+
+/** The payload with the stop mark on it (the time as written), or null when there is nothing to write: it already says
+ *  so, or it is not a JSON object (left exactly as it is). Pure — the caller writes it, conditionally on `raw`. */
+export function withStopMark(raw: string, by: string, at: string): string | null {
+  try {
+    const p = JSON.parse(raw);
+    if (!p || typeof p !== "object" || Array.isArray(p)) return null;
+    if (p[STOPPED_BY] === by) return null;
+    return JSON.stringify({ ...p, [STOPPED_BY]: by, [STOPPED_AT]: at });
+  } catch {
+    return null;
+  }
+}
+
 export type ReclaimStall = {
   /** the fingerprint of its checkpoints now — written back as `__ckSig` */
   sig: string;
@@ -63,24 +94,28 @@ export type ReclaimStall = {
   stuck: boolean;
   /** the checkpoint it was stuck after (null: before its first) — for the operator's log */
   after: string | null;
+  /** who stopped the run being handed back ("deploy"), when its process said so — then this hand-back is no stall */
+  stopped: string | null;
 };
 
 /** THE RULE, for a job the reaper is about to hand back: has it made any progress since it was last handed back?
  *  `payload` = the job's payload as the reaper read it. A job handed back for the first time has nothing to be
- *  compared with, and is never a stall. */
+ *  compared with, and is never a stall. A job whose own process said it was stopped by a deploy is not stalled by
+ *  that deploy: its count stays where it was (a stall before it still counts; progress still starts it again). */
 export function reclaimStall(payload: Record<string, unknown>): ReclaimStall {
   const p = payload || {};
   const sig = checkpointSig(p);
   const before = typeof p.__ckSig === "string" ? p.__ckSig : null;
   const had = typeof p.__stalls === "number" && Number.isFinite(p.__stalls) && p.__stalls > 0 ? Math.floor(p.__stalls) : 0;
-  const stalls = before === sig ? had + 1 : 0;
-  return { sig, stalls, stuck: stalls >= STALLS_TO_FAIL, after: lastCheckpoint(p) };
+  const stopped = stoppedBy(p);
+  const stalls = before === sig ? (stopped ? had : had + 1) : 0;
+  return { sig, stalls, stuck: !stopped && stalls >= STALLS_TO_FAIL, after: lastCheckpoint(p), stopped };
 }
 
 /** WHAT THE REAPER WRITES when it hands a job back: the payload with its restart counted (`__reclaims`, as it always
- *  was) and this rule's two marks (`__ckSig`, `__stalls`); how many restarts it had before this one; and the rule's
- *  answer. A payload that is not a JSON object is left exactly as it is (no count, no answer).
- *  (Pure: it writes nothing. The reaper writes what it returns, conditionally on the row it read —
+ *  was) and this rule's two marks (`__ckSig`, `__stalls`), a deploy's stop mark taken off; how many restarts it had
+ *  before this one; and the rule's answer. A payload that is not a JSON object is left exactly as it is (no count, no
+ *  answer). (Pure: it writes nothing. The reaper writes what it returns, conditionally on the row it read —
  *  tests/no-blind-writes.) */
 export function onReclaim(raw: string): { payload: string; reclaims: number; stall: ReclaimStall | null } {
   try {
@@ -91,6 +126,8 @@ export function onReclaim(raw: string): { payload: string; reclaims: number; sta
     const stall = reclaimStall(p);
     p.__ckSig = stall.sig;
     p.__stalls = stall.stalls;
+    // (the stop said why THIS restart happened; the next one must say so again for itself)
+    for (const k of STOP_MARKS) delete p[k];
     const next = JSON.stringify(p);
     return { payload: next, reclaims, stall };
   } catch {
@@ -104,13 +141,15 @@ export function onReclaim(raw: string): { payload: string; reclaims: number; sta
  *  ended were compared with the NEW run's at its first hand-back: one deploy before the new run's first checkpoint
  *  (the same empty set of checkpoints the old run looped on) or before its first new one (the same checkpoints, kept)
  *  read as the second stall in a row, and a member's paid retry was failed by a single restart — found in review,
- *  2026-11-25. A new run starts its count afresh. (Not JSON, or not an object: left exactly as it is.) */
+ *  2026-11-25. A new run starts its count afresh. (Not JSON, or not an object: left exactly as it is.)
+ *  A deploy's stop mark goes with them: it spoke for the run that ended. */
 export function withoutStallMarks(raw: string): string {
   try {
     const p = JSON.parse(raw);
-    if (!p || typeof p !== "object" || Array.isArray(p) || !("__ckSig" in p || "__stalls" in p)) return raw;
+    if (!p || typeof p !== "object" || Array.isArray(p) || !["__ckSig", "__stalls", ...STOP_MARKS].some((k) => k in p)) return raw;
     delete p.__ckSig;
     delete p.__stalls;
+    for (const k of STOP_MARKS) delete p[k];
     return JSON.stringify(p);
   } catch {
     return raw;

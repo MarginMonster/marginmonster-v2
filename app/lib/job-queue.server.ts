@@ -1,12 +1,13 @@
 // DB-backed job queue. Worker calls processNextJob() in a loop.
 // Jobs are claimed with status=IN_PROGRESS to prevent double-processing.
 
-import type { BrandProfile, Prisma } from "@prisma/client";
+import type { BrandProfile, Job, Prisma } from "@prisma/client";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { db } from "../db.server";
 import { LANES, LANE_LOOKAHEAD, aheadInLine, claimNext, laneOf, laneWhere, storyKindOf, type Lane } from "./job-lanes";
 import { asJob } from "./ffmpeg-turn";
-import { STALLED_REASON, onReclaim, stalledLog, withoutStallMarks } from "./job-stall";
+import { STALLED_REASON, STOP_MARKS, onReclaim, stalledLog, withoutStallMarks } from "./job-stall";
+import { STOP_MARK_DEADLINE_MS, jobsHere, markStopped, runBeating, settleWithin, splitOwn, stopSwitch } from "./job-beat";
 import { generateBrandProfile } from "./brand-voice.server";
 import { generateBlogPost } from "./blog-generation.server";
 import { generateImageAd, editImage, isEditOp, createImage, tagAssetSection } from "./image-generation.server";
@@ -249,7 +250,7 @@ async function refundPrepaidOnce(job: { id: string; shopId: string; type: string
     // CLAIM THE REFUND — reading the flag is not holding it.
     //
     // TWO paths reach here for the same job. reclaimOrphanJobs refunds a row it
-    // finds stuck past the 25-minute ceiling with its retries spent, and
+    // finds stuck past its ceiling with its retries spent, and
     // processNextJob's catch refunds when a run terminally fails — and both can
     // fire for one job, because "stuck past the ceiling" and "still genuinely
     // rendering" are the same state from outside. The prePaid flag was the
@@ -335,13 +336,20 @@ async function maybeTickQuestline(payload: Record<string, unknown>, shopId: stri
 /** Jobs claimed by a process that died (deploy/restart) stay IN_PROGRESS
  *  forever and look "stuck rendering" to the merchant. Reclaim them: back to
  *  PENDING if they have attempts left, else FAILED with a clear reason.
- *  Called at worker boot (nothing can genuinely be running then) and each tick
- *  for anything stuck past the hard ceiling. */
+ *  Called at worker boot (with a short grace) and every minute for anything
+ *  stuck past the ceiling (worker.server.ts → STUCK_MS: five minutes, now that
+ *  every running job's row is written once a minute — job-beat.ts). */
 export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
   const cutoff = new Date(Date.now() - olderThanMs);
-  const stuck = await db.job.findMany({
+  const scanned = await db.job.findMany({
     where: { status: "IN_PROGRESS", updatedAt: { lt: cutoff } },
   });
+  // A PROCESS NEVER REAPS ITS OWN LIVE JOB (job-beat.ts → jobsHere). Its row can only look this old if its beats
+  // are not landing — the database is struggling — and bouncing a render this very process is paying for back to
+  // the line would render it a second time beside itself. Said in the log: a beat that keeps failing is worth
+  // seeing. (A job past its lane's ceiling — wedged — is no longer on the list: the reaper may have it.)
+  const { orphans: stuck, ours } = splitOwn(scanned);
+  for (const j of ours) console.warn(`[worker] job ${j.id} (${j.type}) has not been written for ${Math.round((Date.now() - j.updatedAt.getTime()) / 60_000)} min, but this process is running it — its beat is not landing; left alone`);
   let reclaimed = 0;
   for (const j of stuck) {
     // Count restart-reclaims in the payload, SEPARATELY from attempts. A deploy
@@ -379,6 +387,8 @@ export async function reclaimOrphanJobs(olderThanMs = 0): Promise<void> {
     reclaimed++;
     // (the operator's log says which job looped, what kind, and the step it could not get past)
     if (looped && stall) console.error(stalledLog({ id: j.id, type: j.type, after: stall.after, reclaims: reclaims + 1 }));
+    // (…and which were handed back after their process said a deploy stopped them — job-stall.ts → A DEPLOY IS NOT A STALL)
+    if (stall?.stopped && !dead) console.log(`[worker] job ${j.id} (${j.type}) handed back after a ${stall.stopped} stopped it — not counted as a stall (restart ${reclaims + 1})`);
     // Terminal death via orphan-reclaim refunds exactly like a terminal
     // failure inside processNextJob — the merchant never pays for a
     // restart-killed render (companion forges included).
@@ -447,7 +457,34 @@ async function withLane(type: string, payload: Record<string, unknown>): Promise
 }
 
 
+/** A PROCESS TOLD TO STOP STARTS NOTHING NEW (2026-11-25). Called by the worker on SIGTERM — Render stops the old
+ *  process that way on a deploy, then ends it 30 seconds later. From here on no job is claimed in this process (a
+ *  paid step started now would be cut off mid-way and paid for again by the next process). The jobs it is running are
+ *  let be — one may still finish in the time left — and each gets the stop mark (job-stall.ts → A DEPLOY IS NOT A
+ *  STALL), written conditionally, its status untouched, given `deadlineMs` at most: it never holds the end up. */
+export async function stopTakingJobs(by = "deploy", deadlineMs = STOP_MARK_DEADLINE_MS): Promise<{ running: string[]; marked: string[] | null }> {
+  stopSwitch.stop(by);
+  const running = jobsHere.ids();
+  if (!running.length) return { running, marked: [] };
+  const marked = await settleWithin(
+    markStopped(
+      running,
+      {
+        read: (id) => db.job.findUnique({ where: { id }, select: { status: true, payload: true } }),
+        // conditional on the row as read: still IN_PROGRESS, its payload unchanged since — the status is never written
+        write: async (id, before, next) => (await db.job.updateMany({ where: { id, status: "IN_PROGRESS", payload: before }, data: { payload: next } })).count,
+      },
+      by,
+      new Date(),
+    ),
+    deadlineMs,
+  ).catch(() => null);
+  return { running, marked };
+}
+
 export async function processNextJob(lane: Lane): Promise<boolean> {
+  // (a process told to stop claims nothing: stopTakingJobs, above)
+  if (stopSwitch.stopped()) return false;
   // ONE job at a time IN THIS LANE, PROCESS-WIDE — and for the render lane that
   // is the original rule: the tick deadline can start a second tick while a
   // render is still going; without this guard that tick claimed the NEXT queued
@@ -464,7 +501,8 @@ export async function processNextJob(lane: Lane): Promise<boolean> {
   try {
     // (a job that legitimately runs longer than the ceiling holds the slot for as long as it may take — and only
     //  while this reservation is still the slot's own: claimAndRunOneJob → A LONG FILM HOLDS ITS LANE)
-    return await claimAndRunOneJob(lane, (ms) => { if (slot.token === myToken) slot.until = Math.max(slot.until, Date.now() + ms); });
+    // (…and the job beats, and is kept from the reaper, for exactly as long as the slot is its own: job-beat.ts)
+    return await claimAndRunOneJob(lane, (ms) => { if (slot.token === myToken) slot.until = Math.max(slot.until, Date.now() + ms); }, () => slot.token === myToken && Date.now() < slot.until);
   } finally {
     // Release only if we still own the slot — a newer tick may have taken it
     // after ours expired, and clearing it then would let a third job overlap.
@@ -472,7 +510,7 @@ export async function processNextJob(lane: Lane): Promise<boolean> {
   }
 }
 
-async function claimAndRunOneJob(lane: Lane, hold: (ms: number) => void = () => undefined): Promise<boolean> {
+async function claimAndRunOneJob(lane: Lane, hold: (ms: number) => void = () => undefined, held: () => boolean = () => true): Promise<boolean> {
   // Candidates only — the read is NOT the claim. Two overlapping worker ticks
   // (or two instances mid-deploy) both selected the same PENDING row here and
   // both ran it: the same paid video rendered TWICE and created two assets.
@@ -506,6 +544,34 @@ async function claimAndRunOneJob(lane: Lane, hold: (ms: number) => void = () => 
   );
   if (!job) return false; // nothing waiting, or everything visible was taken by someone else
 
+  // Claimed in the very moment the process was told to stop (the claim was in flight): handed straight back,
+  // untouched, its try returned — the next process starts it.
+  if (stopSwitch.stopped()) {
+    await db.job.updateMany({ where: { id: job.id, status: "IN_PROGRESS", attempts: job.attempts + 1 }, data: { status: "PENDING", attempts: { decrement: 1 } } }).catch(() => undefined);
+    return false;
+  }
+
+  // EVERY RUNNING JOB BEATS (job-beat.ts — 2026-11-25: a member's piece sat 25 minutes "in progress" with nothing
+  // running after a crash, because a live job could go that long without writing its row). From the claim to the
+  // last write about it, the worker writes this row's updatedAt once a minute — nothing else, and only while it is
+  // IN_PROGRESS — so the reaper's ceiling can be five minutes; and this process keeps the job from its own reaper.
+  // Both for as long as the lane's slot is this job's (`held`): past it the job counts as wedged, and is let go.
+  // Ended in runBeating's finally on EVERY way out: done, failed, paused, handed to another lane.
+  const claimed = job;
+  const jobId = claimed.id;
+  return await runBeating(jobId, () => runClaimedJob(lane, claimed, hold), {
+    touch: () => db.job.updateMany({ where: { id: jobId, status: "IN_PROGRESS" }, data: { updatedAt: new Date() } }),
+    alive: held,
+    onFail: (e, inARow) => {
+      if (inARow === 1 || inARow % 6 === 0) console.error(`[worker] job ${jobId}: its beat did not land (${inARow} in a row) — trying again every 10 s:`, e instanceof Error ? e.message.slice(0, 200) : e);
+    },
+  });
+}
+
+/** Everything after the claim: the job this process now owns, run to its end (claimAndRunOneJob beats meanwhile). */
+async function runClaimedJob(lane: Lane, claimed: Job, hold: (ms: number) => void): Promise<boolean> {
+  let job = claimed;
+
   // A LONG FILM HOLDS ITS LANE (2026-11-25, films up to five minutes — film-length.ts → laneMinutes). The slot is
   // given back after RENDER_SLOT_MS in case a render never settles, and the next tick then starts the next film
   // BESIDE it: two renders at once, the memory spike the slot exists to prevent. An acted film of 52 shots is two to
@@ -538,6 +604,10 @@ async function claimAndRunOneJob(lane: Lane, hold: (ms: number) => void = () => 
     const fresh = await db.job.findUnique({ where: { id: job.id }, select: { payload: true } });
     const p = JSON.parse(fresh?.payload ?? job.payload);
     p.__startedAt = new Date().toISOString();
+    // A NEW RUN IS NOT LET OFF FOR AN OLD RUN'S DEPLOY: a stop mark still on the payload belongs to a run that ended
+    // some other way after it was written (failed in the time it had left, paused, handed to another lane) — left on,
+    // the reaper would forgive THIS run's first crash as a deploy (job-stall.ts → A DEPLOY IS NOT A STALL).
+    for (const k of STOP_MARKS) delete p[k];
     const stamped = JSON.stringify(p);
     await db.job.update({ where: { id: job.id }, data: { payload: stamped } });
     job = { ...job, payload: stamped };
@@ -589,7 +659,9 @@ async function claimAndRunOneJob(lane: Lane, hold: (ms: number) => void = () => 
 
     // EVERYTHING THIS JOB DOES IS A JOB'S WORK (ffmpeg-turn.ts → asJob): its encodes wait their turn with
     // the other lanes'. While one of them waits or runs, the row is touched once a minute — a job standing
-    // in line to encode is alive, and the reaper (25 minutes untouched = abandoned) must leave it alone.
+    // in line to encode is alive, and the reaper (5 minutes untouched = abandoned) must leave it alone.
+    // (The job's own beat — claimAndRunOneJob → startBeat — says the same for the whole of the job; this one is
+    //  kept beside it, a second voice for the stretch that was once the longest silence.)
     const { id: jobId, type: jobType, shopId: jobShop } = job;
     await asJob(
       () => runJob(jobType, jobShop, payload),
@@ -597,12 +669,14 @@ async function claimAndRunOneJob(lane: Lane, hold: (ms: number) => void = () => 
     );
 
     // Terminal write, guarded: while we were rendering, orphan-reclaim may have
-    // decided this row was a corpse (it can only do that past the 25-min
-    // ceiling) and already refunded it. Don't silently un-refund a job it
+    // decided this row was a corpse (it can only do that past its ceiling, and
+    // — since every running job beats and a process never reaps its own,
+    // job-beat.ts — only from another process, or once this job had overrun its
+    // lane's slot) and already refunded it. Don't silently un-refund a job it
     // marked FAILED — but DO force a row it bounced back to PENDING to
     // COMPLETED, otherwise the finished, fully-paid render gets bought again.
     // ATTEMPT-SCOPED, not status-only. A claim increments attempts, so this
-    // run's row carries attempts = job.attempts + 1. Past the 25-min reaper
+    // run's row carries attempts = job.attempts + 1. Past the reaper's
     // ceiling a SECOND run can re-claim the row (incrementing again), and a
     // status-only guard let this stale run write over that newer attempt's
     // live row — the cascade that left a PENDING row at attempts = MAX, which
@@ -640,8 +714,9 @@ async function claimAndRunOneJob(lane: Lane, hold: (ms: number) => void = () => 
     // STILL OURS? The success path ten lines above uses updateMany with a
     // status guard for exactly this hazard, and this branch was a bare
     // update. Once reclaimOrphanJobs has bounced a long render back to
-    // PENDING — which it does on a 25-minute ceiling that a slow video can
-    // genuinely cross — a second run picks the row up while the first is
+    // PENDING — which it did on a 25-minute ceiling that a slow video could
+    // genuinely cross, and can still do from another process, or to a job
+    // that overran its lane's slot — a second run picks the row up while the first is
     // still in flight. The first one then throws, walks in here, and marks
     // FAILED over the live attempt: the questline slot is stamped failed,
     // the merchant is refunded, and the render that is still going finishes

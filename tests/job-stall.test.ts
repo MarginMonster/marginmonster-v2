@@ -184,6 +184,87 @@ test("A RETRY STARTS ITS COUNT AFRESH: a job the rule ended, tried again from th
   for (const bad of ["not json", "null", "42", "[1,2]"]) assert.equal(withoutStallMarks(bad), bad);
 });
 
+test("A DEPLOY IS NOT A STALL (the R1 reviewer's risk, replayed): three deploys inside one long cut never fail a healthy job — the same three crashes still do", async () => {
+  const { STOP_MARKS, stoppedBy, withStopMark } = await import("../app/lib/job-stall.ts");
+  // the told story's cut parts write only ckBeat: between two hand-backs its checkpoints do not change
+  const beat = (payload: string, at: number) => JSON.stringify({ ...JSON.parse(payload), ckBeat: at, __startedAt: new Date(at).toISOString() });
+  // a deploy: on SIGTERM the process wrote the stop mark (job-beat.ts → markStopped writes exactly this)
+  const deploy = (payload: string, at: number) => withStopMark(payload, "deploy", new Date(at).toISOString())!;
+  let payload = JSON.stringify(told());
+  for (let k = 1; k <= 3; k++) {
+    payload = deploy(beat(payload, 1764090000000 + k * 60_000), 1764090000000 + k * 61_000);
+    const r = reap(payload);
+    assert.equal(r.failed, false, `deploy ${k}: a healthy job is not failed`);
+    assert.equal(r.stall?.stalls, 0, `deploy ${k}: not counted`);
+    assert.equal(r.stall?.stopped, "deploy");
+    assert.equal(r.reclaims, k - 1, "each restart still counted apart from tries (MAX_RECLAIMS stays the backstop)");
+    const out = JSON.parse(r.payload);
+    for (const m of STOP_MARKS) assert.ok(!(m in out), `deploy ${k}: ${m} comes off as it is handed back`);
+    payload = r.payload;
+  }
+  assert.equal(JSON.parse(payload).__reclaims, 3);
+  // THE STALL GUARD STILL FIRES: the same checkpoints and newer beats, with nobody saying why (an out-of-memory kill
+  // runs no handler) — a stall; two in a row, failed
+  let crash = JSON.stringify(told());
+  crash = reap(beat(crash, 1)).payload;
+  const one = reap(beat(crash, 2));
+  assert.deepEqual([one.stall?.stalls, one.failed, one.stall?.stopped], [1, false, null]);
+  const two = reap(beat(one.payload, 3));
+  assert.deepEqual([two.stall?.stalls, two.failed], [2, true]);
+});
+
+test("a deploy between two crashes is neutral: the stall before it stands, progress during it starts the count again", async () => {
+  const { withStopMark } = await import("../app/lib/job-stall.ts");
+  const deploy = (payload: string) => withStopMark(payload, "deploy", "2026-11-25T19:04:00.000Z")!;
+  // crash, crash (one stall), a DEPLOY at the same step (still one), crash: two stalls — the loop is caught
+  let p = reap(JSON.stringify(told())).payload;
+  p = reap(p).payload;
+  assert.equal(JSON.parse(p).__stalls, 1);
+  const d = reap(deploy(p));
+  assert.deepEqual([d.stall?.stalls, d.failed], [1, false], "the deploy does not add a stall, nor take one away");
+  assert.equal(reap(d.payload).failed, true, "the next crash at the same step ends it");
+  // a deploy that lands after the job made something new: progress, the count starts again
+  let q = reap(JSON.stringify(told())).payload;
+  q = reap(q).payload;
+  const moved = reap(deploy(JSON.stringify({ ...JSON.parse(q), ckCut: "/renders/test-cut.mp4" })));
+  assert.deepEqual([moved.stall?.stalls, moved.failed], [0, false]);
+  // a deploy is never "stuck", whatever count it finds (a count of two is never kept — but if it were)
+  const odd = JSON.stringify({ ...told(), __ckSig: checkpointSig(told()), __stalls: 2 });
+  assert.equal(reap(deploy(odd)).failed, false);
+});
+
+test("the stop mark: who and when, written only onto a JSON object that does not already say so; the fingerprint never sees it; a run that ends takes it off", async () => {
+  const { STOPPED_BY, STOPPED_AT, STOP_MARKS, stoppedBy, withStopMark } = await import("../app/lib/job-stall.ts");
+  assert.deepEqual([STOPPED_BY, STOPPED_AT], ["__stoppedBy", "__stoppedAt"]);
+  assert.deepEqual([...STOP_MARKS], ["__stoppedBy", "__stoppedAt"]);
+  const raw = JSON.stringify(told());
+  const marked = withStopMark(raw, "deploy", "2026-11-25T19:04:00.000Z");
+  assert.ok(marked);
+  const p = JSON.parse(marked);
+  assert.equal(p.__stoppedBy, "deploy");
+  assert.equal(p.__stoppedAt, "2026-11-25T19:04:00.000Z");
+  for (const [k, v] of Object.entries(told())) assert.deepEqual(p[k], v, k);
+  assert.equal(stoppedBy(p), "deploy");
+  assert.equal(stoppedBy(told()), null);
+  assert.equal(stoppedBy({ __stoppedBy: "" }), null);
+  assert.equal(stoppedBy({ __stoppedBy: 1 }), null);
+  // nothing to write: already says so; not JSON; not an object
+  assert.equal(withStopMark(marked, "deploy", "later"), null);
+  for (const bad of ["not json", "null", "42", "[1,2]"]) assert.equal(withStopMark(bad, "deploy", "x"), null, bad);
+  // not progress, not a checkpoint
+  assert.equal(checkpointSig(p), checkpointSig(told()));
+  assert.equal(reclaimStall(p).stopped, "deploy");
+  // a row the reaper ENDS (or the Archive retries) leaves without it, as without the stall marks
+  assert.deepEqual(JSON.parse(withoutStallMarks(marked)), told());
+  const all = JSON.stringify({ ...told(), __reclaims: 6, __ckSig: "abc", __stalls: 1, __stoppedBy: "deploy", __stoppedAt: "t" });
+  assert.deepEqual(JSON.parse(withoutStallMarks(all)), { ...told(), __reclaims: 6 });
+  // the reaper's own log line for a deploy's hand-back, written only for a row it handed back (not one it ended)
+  const q = read("app", "lib", "job-queue.server.ts");
+  const reaper = q.slice(q.indexOf("export async function reclaimOrphanJobs("), q.indexOf("export async function enqueueJob("));
+  assert.ok(reaper.includes("if (stall?.stopped && !dead) console.log(`[worker] job ${j.id} (${j.type}) handed back after a ${stall.stopped} stopped it — not counted as a stall (restart ${reclaims + 1})`);"));
+  assert.ok(reaper.indexOf("if (claimed.count !== 1) continue;") < reaper.indexOf("if (stall?.stopped && !dead)"));
+});
+
 test("what the member reads and what the operator's log says", () => {
   assert.equal(STALLED_REASON, "It stopped twice at the same step and was not tried a third time — hit ROLL CAMERA to try again.");
   assert.equal(
@@ -196,7 +277,8 @@ test("what the member reads and what the operator's log says", () => {
 test("THE REAPER IS WIRED TO IT: the rule's answer fails the row, with its reason, refunded the way a job out of restarts is — and the write is still conditional", () => {
   const q = read("app", "lib", "job-queue.server.ts");
   const reaper = q.slice(q.indexOf("export async function reclaimOrphanJobs("), q.indexOf("export async function enqueueJob("));
-  assert.ok(q.includes('import { STALLED_REASON, onReclaim, stalledLog, withoutStallMarks } from "./job-stall";'));
+  // (STOP_MARKS, 2026-11-25: a new run's claim takes an old run's stop mark off — A DEPLOY IS NOT A STALL, below)
+  assert.ok(q.includes('import { STALLED_REASON, STOP_MARKS, onReclaim, stalledLog, withoutStallMarks } from "./job-stall";'));
   assert.ok(reaper.includes("const { payload: bumpedPayload, reclaims, stall } = onReclaim(j.payload);"));
   assert.ok(reaper.includes("const looped = !!stall?.stuck;\n    const dead = j.attempts >= MAX_ATTEMPTS || reclaims >= MAX_RECLAIMS || looped;"));
   assert.ok(reaper.includes('const why = looped ? STALLED_REASON : "Interrupted by a server restart — hit ROLL CAMERA to try again.";'));

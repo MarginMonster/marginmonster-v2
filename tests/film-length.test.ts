@@ -399,8 +399,9 @@ test("THE RESUME: a film picked up after a restart never pays for a finished sho
 });
 
 test("THE HEARTBEAT: a film that works for two hours is never taken for dead — and one that is dead still is", () => {
-  // what the reaper reads: a job IN_PROGRESS whose row nobody has written for 25 minutes
-  assert.ok(read("app", "worker.server.ts").includes("const STUCK_MS = 25 * 60_000;"));
+  // what the reaper reads: a job IN_PROGRESS whose row nobody has written for 5 minutes (25 until 2026-11-25: the worker
+  // now writes every running job's row once a minute — job-beat.ts; tests/job-beat.test.ts)
+  assert.ok(read("app", "worker.server.ts").includes("const STUCK_MS = 5 * 60_000;"));
   assert.ok(read("app", "worker.server.ts").includes("await reclaimOrphanJobs(STUCK_MS);"));
   assert.ok(read("app", "lib", "job-queue.server.ts").includes("where: { status: \"IN_PROGRESS\", updatedAt: { lt: cutoff } },"));
   // …and every checkpoint is a write of the row (the row's updatedAt is set by every write)
@@ -478,7 +479,8 @@ test("A LONG FILM HOLDS ITS LANE: the worker does not start the next film beside
   // the slot is still reserved before the first await, and released only by its owner (tests/job-lanes.test.ts)…
   assert.ok(q.includes("const slot = slots[lane];\n  if (Date.now() < slot.until) return false;\n  const myToken = ++slot.token;\n  slot.until = Date.now() + RENDER_SLOT_MS;"));
   // …and the reservation that runs an acted film is lengthened to the film's own ceiling, never shortened
-  assert.ok(q.includes("return await claimAndRunOneJob(lane, (ms) => { if (slot.token === myToken) slot.until = Math.max(slot.until, Date.now() + ms); });"));
+  // (the third argument, 2026-11-25: the job beats, and is kept from the reaper, while the slot is its own — job-beat.ts)
+  assert.ok(q.includes("return await claimAndRunOneJob(lane, (ms) => { if (slot.token === myToken) slot.until = Math.max(slot.until, Date.now() + ms); }, () => slot.token === myToken && Date.now() < slot.until);"));
   assert.ok(q.includes("if (t.dialogue && !t.sung && !t.lipSyncSinger) hold(laneMinutes(\"acted\", p.filmScenes) * 60_000);"));
   assert.ok(q.includes("if (job.type === \"GENERATE_VIDEO_AD\" && p.contentType === \"film\" && p.filmMode !== \"narrated\" && typeof p.filmScenes === \"number\") {"));
 });

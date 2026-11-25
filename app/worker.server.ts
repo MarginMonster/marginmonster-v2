@@ -2,7 +2,8 @@
 // the web server boots — avoids needing a separate Render worker service for
 // a low-volume app. Guarded by a global so hot-reload doesn't spawn duplicates.
 
-import { processNextJob, reclaimOrphanJobs } from "./lib/job-queue.server";
+import { processNextJob, reclaimOrphanJobs, stopTakingJobs } from "./lib/job-queue.server";
+import { stopSwitch } from "./lib/job-beat";
 import { LANES } from "./lib/job-lanes";
 import { startMemoryWatch } from "./lib/memwatch.server";
 import { postDueSlots } from "./lib/social-post.server";
@@ -19,12 +20,31 @@ declare global {
 }
 
 const POLL_MS = 8000;
-// video pipelines legitimately run 10-15 min; anything past this is a corpse
-const STUCK_MS = 25 * 60_000;
+// A row IN_PROGRESS that nobody has written for this long is a job nobody is running: a corpse.
+//
+// FIVE MINUTES, NOT TWENTY-FIVE (2026-11-25). Twenty-five was there because a live job could go that long without
+// writing its row — a ten-minute provider poll, a long encode: only its checkpoints and the encode turn's beat wrote
+// it — and any shorter ceiling took live renders for dead and rendered them twice. It cost every member whose render
+// was under a crash or a deploy twenty-five minutes of "in progress" with nothing running (live: last touched ≈19:04
+// UTC, the server back at 19:06:25, the job left until ≈19:30 — after the tester had already waited an hour).
+// It is safe now because:
+//  - EVERY RUNNING JOB BEATS: the worker writes its row once a minute, whatever the job is doing, and a beat that
+//    fails is tried again every ten seconds (lib/job-beat.ts) — five minutes is five beats and some twenty-five
+//    retries missed, which a live process does not do;
+//  - A PROCESS NEVER REAPS ITS OWN LIVE JOB: should its beats be held up anyway (a struggling database), this
+//    process's reaper still leaves the jobs it is running alone — only another process could take one, and Render
+//    never runs two of ours side by side for long (below);
+//  - a job is still only taken if its row has not moved since the scan (reclaimOrphanJobs: the conditional write).
+// A job that never settles is still bounded: its beat ends when its lane gives its slot back (RENDER_SLOT_MS, or a long
+// film's own hold), and then this ceiling takes it, as before.
+const STUCK_MS = 5 * 60_000;
 // Boot reclaim grace. Renders overlap deploys: the new instance boots while the
 // OLD process is still paying for a live render, so reclaiming with 0 flipped a
 // genuinely-running job back to PENDING and rendered it a second time. Anything
 // still IN_PROGRESS this long after its last touch is from the dead process.
+// (2026-11-25: Render's docs say a service with a disk — ours has one — is stopped BEFORE its new instance starts, so
+//  that overlap should no longer happen; the grace stays, as cheap insurance against the day it does. With every
+//  running job beating once a minute, two minutes untouched means its process is gone.)
 const BOOT_GRACE_MS = 2 * 60_000;
 
 let lastTileKick = 0;
@@ -136,6 +156,8 @@ const drains = LANES.map((lane) =>
       processed = await processNextJob(lane);
       guard++;
     }
+    // (a process told to stop draws nothing more: see SIGTERM, below)
+    if (stopSwitch.stopped()) return;
     // Re-making pictures whose files went missing draws pictures HERE, so it takes its turn with the
     // picture jobs — as it always did, when everything took turns. AFTER the members' own pictures:
     // it can take a few minutes, and nobody is waiting for it.
@@ -144,6 +166,9 @@ const drains = LANES.map((lane) =>
 );
 
 function tick() {
+  // A PROCESS TOLD TO STOP STARTS NOTHING NEW — no job, no chore (the chores draw the app's own art and send posts;
+  // one started in a process's last seconds is cut off half-done): see SIGTERM, below.
+  if (stopSwitch.stopped()) return;
   void chores();
   for (const drain of drains) void drain();
 }
@@ -182,7 +207,30 @@ if (!global.__mm_worker_started__ && process.env.NODE_ENV === "production") {
   // The posting queue, ALSO on its own timer. The tick above awaits whole renders (up to an hour), and
   // the page promises "Post now" goes out within a minute. tickPostQueue has its own in-process guard
   // and claims every row before sending, so the two callers can never send the same row twice.
-  setInterval(() => { tickPostQueue().catch((e) => console.error("[worker] post queue timer (non-fatal):", e)); }, 30_000);
+  setInterval(() => { if (!stopSwitch.stopped()) tickPostQueue().catch((e) => console.error("[worker] post queue timer (non-fatal):", e)); }, 30_000);
+  // A DEPLOY IS NOT A STALL, AND THE OLD PROCESS STARTS NOTHING NEW (2026-11-25).
+  // How Render ends a process (its docs, read that day): SIGTERM to the app's process, then SIGKILL if it has not
+  // exited after the shutdown delay — 30 seconds, which a service with a disk (ours) cannot change — and such a
+  // service is stopped BEFORE its new instance starts. An out-of-memory kill runs no handler at all. What this relies
+  // on: the SIGTERM reaching this node process — the Dockerfile ends in `npx remix-serve`, the last command of `sh -c`
+  // (exec'd by dash), and npx passes SIGTERM on to the server it started (npm's signal-manager). The line below is
+  // logged when it does; a deploy whose log lacks it ran no handler, and its jobs are handed back as any restart's are.
+  // On SIGTERM: no job is claimed and no chore started from here on (tick, processNextJob); each job this process is
+  // running gets the stop mark (lib/job-stall.ts → A DEPLOY IS NOT A STALL), conditionally, status untouched, within
+  // five seconds at most; and the running jobs are let be — one may finish in the time left. Nothing here exits the
+  // process or makes it wait: remix-serve closes its server on the same signal, and Render ends the rest.
+  // (A listener here takes away Node's own "exit on SIGTERM" — remix-serve's own listener already had.)
+  process.once("SIGTERM", () => {
+    console.log("[worker] SIGTERM — this process takes no new job and starts no chore from now on; marking the jobs it is running as stopped by a deploy");
+    stopTakingJobs("deploy")
+      .then(({ running, marked }) =>
+        console.log(
+          `[worker] stop marks: ${running.length} job(s) running here` +
+            (running.length ? `, ${marked === null ? "marks not all written in time" : `${marked.length} marked (${marked.join(", ") || "none"})`}` : ""),
+        ),
+      )
+      .catch((e) => console.error("[worker] stop marks (non-fatal):", e));
+  });
   // Kick one immediately so freshly-installed shops don't wait.
   tick();
   // Self-build the cartoon style-picker tiles (real flux renders of the first
