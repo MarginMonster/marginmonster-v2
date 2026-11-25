@@ -10,6 +10,7 @@ import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
   "Start over with different stars": "Empezar de nuevo con otras estrellas",
+  "tap to give them faces (optional)": "toca para darles un rostro (opcional)",
   "Write what happens, pick what it was shot on — we film it.": "Escribe qué pasa, elige con qué se grabó — nosotros lo filmamos.",
   "Write it your way — or tap a scare below to start from it": "Escríbelo a tu manera — o toca un susto de abajo para empezar desde él",
   "Your version of “{name}”": "Tu versión de «{name}»",
@@ -3241,6 +3242,7 @@ const es: Record<string, string> = {
 
 const fr: Record<string, string> = {
   "Start over with different stars": "Recommencer avec d'autres vedettes",
+  "tap to give them faces (optional)": "touche pour leur donner un visage (facultatif)",
   "Write what happens, pick what it was shot on — we film it.": "Écris ce qui se passe, choisis avec quoi c'est filmé — on s'occupe du tournage.",
   "Write it your way — or tap a scare below to start from it": "Écris-le à ta façon — ou touche une frayeur ci-dessous pour partir d'elle",
   "Your version of “{name}”": "Ta version de « {name} »",
@@ -6452,6 +6454,7 @@ const fr: Record<string, string> = {
 
 const de: Record<string, string> = {
   "Start over with different stars": "Mit anderen Stars neu anfangen",
+  "tap to give them faces (optional)": "tippe, um ihnen Gesichter zu geben (optional)",
   "Write what happens, pick what it was shot on — we film it.": "Schreib, was passiert, wähle, womit es gefilmt wurde — wir drehen es.",
   "Write it your way — or tap a scare below to start from it": "Schreib es auf deine Art — oder tippe unten auf einen Schocker und fang damit an",
   "Your version of “{name}”": "Deine Version von „{name}“",
@@ -9672,6 +9675,7 @@ const de: Record<string, string> = {
 
 const zh: Record<string, string> = {
   "Start over with different stars": "换一批主演，重新开始",
+  "tap to give them faces (optional)": "点一下，给他们选张脸（可选）",
   "Write what happens, pick what it was shot on — we film it.": "写下发生什么，选好用什么拍——剩下的交给我们。",
   "Write it your way — or tap a scare below to start from it": "按你的想法写——或点下面任意一个吓人场景，从它开始",
   "Your version of “{name}”": "你版本的“{name}”",
@@ -12946,6 +12950,7 @@ const zh: Record<string, string> = {
 
 const ur: Record<string, string> = {
   "Start over with different stars": "دوسرے اسٹارز کے ساتھ نئے سرے سے شروع کریں",
+  "tap to give them faces (optional)": "انہیں چہرے دینے کے لیے ٹیپ کریں (اختیاری)",
   "Write what happens, pick what it was shot on — we film it.": "لکھیں کہ کیا ہوتا ہے، چنیں کہ کس کیمرے سے فلمایا گیا — ہم اسے فلما دیں گے۔",
   "Write it your way — or tap a scare below to start from it": "اپنے انداز میں لکھیں — یا نیچے کسی ڈراؤنے منظر پر ٹیپ کریں اور وہیں سے شروع کریں",
   "Your version of “{name}”": "“{name}” کا آپ کا ورژن",

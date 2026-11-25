@@ -2115,6 +2115,24 @@ export default function FilmStudio() {
   // again with the script it replaced.
   const [castOver, setCastOver] = useState(false);
   useEffect(() => { if (!scripted) setCastOver(false); }, [scripted]);
+  // THE CARD ASKS ONCE. A script that has just arrived pulses the Cast card once and puts one quiet line on
+  // it — "tap to give them faces (optional)" — until the step HAS been opened once since (`castSeen`).
+  // Nothing opens by itself and nothing waits on it: Generate invents a face for anyone left without one,
+  // as it always did.
+  const [castSeen, setCastSeen] = useState(false);
+  useEffect(() => { if (!scripted) setCastSeen(false); else if (storyCard === "cast") setCastSeen(true); }, [scripted, storyCard]);
+  // …and the pulse is kept for when the card can be SEEN (`castLit`): on a phone the script is written from
+  // the card BELOW the steps, with this one scrolled off the top — a pulse nobody is looking at is no pulse.
+  const castCardRef = useRef<HTMLButtonElement | null>(null);
+  const [castLit, setCastLit] = useState(false);
+  useEffect(() => {
+    if (!scripted || castSeen) { setCastLit(false); return; }
+    const el = castCardRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") { setCastLit(true); return; }
+    const io = new IntersectionObserver((seen) => { if (seen.some((e) => e.isIntersecting)) { setCastLit(true); io.disconnect(); } }, { threshold: 0.6 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [scripted, castSeen]);
   // THE LANGUAGE A STORY IS TOLD IN (content-lang.ts) — written, spoken and captioned. It is the account's
   // content language (the Studio's "Writing in" is the same setting), picked here for the story formats and
   // sent with every write and with the render (the action → askedLang). A story already written in another
@@ -4123,6 +4141,8 @@ export default function FilmStudio() {
         const capName = t(CAPTION_STYLES.find((c) => c.key === captions)?.label || "Off");
         // ONE PLACE TO CAST: what the Cast card and its panel say of a written script's characters
         const castSum = castCardSummary(cast);
+        // …and whether the card still asks to be opened: a script has arrived, the step has not been opened since, and somebody has no face
+        const castNudge = scripted && !castSeen && !castSum.all;
         const voiceTile = (id: string, label: string, blurb: string) => (
           <div className={`mm-vo${narratorId === id ? " on" : ""}`} key={id}>
             <button type="button" className="mm-vo-pick" aria-pressed={narratorId === id} onClick={() => setNarrPick(id)}><b>{label}</b><small>{blurb}</small></button>
@@ -4135,7 +4155,9 @@ export default function FilmStudio() {
             {/* 1 · Cast — the ONE place a film is cast. Before a script: who stars, or "we invent them". Once an
                 acted film has its script the card is about the SCRIPT'S characters: their faces (a lettered
                 disc for anyone not cast yet), their names, and how many have a face. */}
-            <button type="button" style={{ order: 1 }} className={`mm-card${storyCard === "cast" ? " on" : ""}${storyDone.cast ? " done" : ""}`} onClick={() => tapStory("cast")}>
+            {/* (…and until the step has been opened once it ASKS — one pulse when it is on screen, one line under
+                the faces. It asks; it never opens itself, and Generate never waits on it.) */}
+            <button type="button" ref={castCardRef} style={{ order: 1 }} className={`mm-card${storyCard === "cast" ? " on" : ""}${storyDone.cast ? " done" : ""}${castNudge && castLit ? " is-new" : ""}`} onClick={() => tapStory("cast")}>
               <span className="mm-step" aria-hidden="true">{storyDone.cast ? <Ico n="check" size={13} /> : 1}</span>
               {scripted ? (<>
                 <span className="mm-card-top">
@@ -4154,6 +4176,7 @@ export default function FilmStudio() {
                   </span>
                   <span className={`mm-cast-count${castSum.all ? " done" : ""}`}>{castSum.all ? <><Ico n="check" size={12} /> {t("Cast")}</> : t("{done}/{total} cast", { done: castSum.done, total: castSum.total })}</span>
                 </span>
+                {castNudge && <span className="mm-cast-nudge">{t("tap to give them faces (optional)")}</span>}
               </>) : (<>
               <span className="mm-card-top">
                 {/* (the next episode of a told story: the characters it invented come BACK, with the faces they
@@ -5449,6 +5472,16 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-cast-count.done{color:#fff;background:var(--green,#0C7A46);border-color:var(--green,#0C7A46);}
 .mm-cast-count svg{stroke:currentColor;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 @media(min-width:960px){.mm-cast-line{margin-top:11px;}.mm-cast-line .mm-card-castface{width:32px;height:32px;font-size:12.5px;}.mm-cast-count{font-size:12px;padding:6px 11px;}}
+/* THE CARD ASKS ONCE: a script that has just arrived gives the card a green edge and ONE soft pulse, its discs
+   walk on one after another, and a line under them asks to be opened — all of it gone the first time the
+   step is. (The pulse waits until the card is on screen — the page adds .is-new only then.) */
+.mm-cast-nudge{display:block;margin-top:8px;font-size:11.5px;font-weight:700;line-height:1.3;color:var(--green,#0C7A46);}
+.mm-card.is-new{border-color:var(--green2,#1EA85C);animation:mmCastNew 1.7s ease-out .15s 1;}
+.mm-card.is-new .mm-card-castface{animation:mmCastOn .46s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 110ms + .2s);}
+@keyframes mmCastNew{0%{box-shadow:0 0 0 0 rgba(31,164,99,.5);}65%{box-shadow:0 0 0 13px rgba(31,164,99,0);}100%{box-shadow:0 0 0 0 rgba(31,164,99,0);}}
+@keyframes mmCastOn{from{opacity:0;transform:translateY(7px) scale(.7);}to{opacity:1;transform:none;}}
+@media(prefers-reduced-motion:reduce){.mm-card.is-new,.mm-card.is-new .mm-card-castface{animation:none;}}
+@media(min-width:960px){.mm-cast-nudge{font-size:12.5px;}}
 .mm-muted{color:var(--ink3,#9AA39B);}
 .mm-vchips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;}
 .mm-chip{font-size:11.5px;font-weight:800;color:var(--green-d,#0A5E37);background:var(--mint,#EAF6EF);border:1px solid #D4EBDD;border-radius:999px;padding:4px 10px;}

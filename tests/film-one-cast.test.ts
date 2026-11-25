@@ -14,7 +14,7 @@
  *     section had — and the picker of before sits behind one quiet line, "Start over with different stars"
  *     (a pick there rewrites the script, so it still asks twice);
  *   - the step's CARD says what is true at a glance: the characters' faces (lettered discs for those not
- *     cast), their names, "1/2 cast";
+ *     cast), their names, "1/2 cast" — and, until it has been opened once, asks to be;
  *   - nothing opens by itself and Generate waits on none of it; what is set still reaches the form.
  *
  * The page cannot run here (no local database): the card's summary is RUN below from the route's own source,
@@ -222,9 +222,36 @@ test("the step's CARD says what is true: before a script as it was; after, the s
   assert.ok(ui.includes(".mm-cast-line{display:flex;align-items:center;justify-content:space-between;gap:6px 8px;flex-wrap:wrap;margin-top:9px;}"), "the count drops under the discs when they do not fit beside it");
 });
 
+test("a script that has just arrived makes the card ASK, once — nothing opens by itself", () => {
+  // it asks while: there is a script, the step has not been opened since it came, and somebody has no face
+  assert.ok(ui.includes("        const castNudge = scripted && !castSeen && !castSum.all;"));
+  assert.ok(card.includes('{castNudge && <span className="mm-cast-nudge">{t("tap to give them faces (optional)")}</span>}'));
+  // "opened once": the step open with a script on the page — and a script that is gone starts it again
+  assert.ok(ui.includes("const [castSeen, setCastSeen] = useState(false);\n  useEffect(() => { if (!scripted) setCastSeen(false); else if (storyCard === \"cast\") setCastSeen(true); }, [scripted, storyCard]);"));
+  // ONE soft pulse, kept for when the card is on screen (the script is written from the card below the steps)
+  assert.ok(card.includes('<button type="button" ref={castCardRef} style={{ order: 1 }} className={`mm-card${storyCard === "cast" ? " on" : ""}${storyDone.cast ? " done" : ""}${castNudge && castLit ? " is-new" : ""}`} onClick={() => tapStory("cast")}>'));
+  const lit = between(ui, "  const castCardRef = useRef<HTMLButtonElement | null>(null);", "  // THE LANGUAGE A STORY IS TOLD IN");
+  assert.ok(lit.includes("if (!scripted || castSeen) { setCastLit(false); return; }"));
+  assert.ok(lit.includes('if (!el || typeof IntersectionObserver === "undefined") { setCastLit(true); return; }'), "a browser without it pulses at once, as if seen");
+  assert.ok(lit.includes("const io = new IntersectionObserver((seen) => { if (seen.some((e) => e.isIntersecting)) { setCastLit(true); io.disconnect(); } }, { threshold: 0.6 });"));
+  assert.ok(lit.includes("return () => io.disconnect();"));
+  assert.ok(ui.includes(".mm-card.is-new{border-color:var(--green2,#1EA85C);animation:mmCastNew 1.7s ease-out .15s 1;}"), "once — and no fill, so the card's own shadow comes back");
+  assert.ok(ui.includes("@keyframes mmCastNew{0%{box-shadow:0 0 0 0 rgba(31,164,99,.5);}65%{box-shadow:0 0 0 13px rgba(31,164,99,0);}100%{box-shadow:0 0 0 0 rgba(31,164,99,0);}}"));
+  // the discs walk on, one after another; none of it for someone who asked for less motion
+  assert.ok(ui.includes(".mm-card.is-new .mm-card-castface{animation:mmCastOn .46s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 110ms + .2s);}"));
+  assert.ok(ui.includes("@media(prefers-reduced-motion:reduce){.mm-card.is-new,.mm-card.is-new .mm-card-castface{animation:none;}}"));
+  // NOTHING OPENS BY ITSELF: a script arriving does not open the step, and none of the step's own effects do —
+  // it is opened by a tap (its card: `tapStory`)
+  const arrives = between(ui, "  // When a fresh treatment arrives, adopt it (and lock the scene count to it) + cast.", "  // Store each actor's portrait as it's cast; clear the busy flag.");
+  assert.ok(arrives.includes("setCast((prev) => keepCasting(castFromSeries(castFromPicked(deriveCast(tr2))), prev));") && !arrives.includes("setStoryCard"));
+  const own = between(ui, "  const scripted = !!treatment && isStoryboard && !narrated && cast.length > 0;", "  // THE LANGUAGE A STORY IS TOLD IN");
+  assert.ok(!own.includes("setStoryCard") && !own.includes("tapStory"));
+  assert.ok(ui.includes("const tapStory = (key: StoryCard) => { setStoryCard((cur) => (cur === key ? null : key));"));
+});
+
 test("every new line is translated", () => {
   const dict = read("app", "lib", "ui-i18n-dict.ts");
-  for (const k of ["Start over with different stars"]) {
+  for (const k of ["Start over with different stars", "tap to give them faces (optional)"]) {
     assert.equal(count(ui, `t(${JSON.stringify(k)})`), 1, k);
     assert.equal(count(dict, `\n  ${JSON.stringify(k)}:`), 5, k);
   }
