@@ -196,6 +196,60 @@ test("the film's thing: the script's own threat is found by what it IS — never
   assert.ok(portrait.includes("She is fully clothed: a long pale nightgown, soaked and clinging") && portrait.includes(DRESSED) && portrait.endsWith(NOTHING_GLOWS));
 });
 
+test("the engine: the thing's one picture before the first shot, the sighting's seed and cut, its clip, its checkpoint, the reveal from the picture", () => {
+  const eng = read("app", "lib", "film-dialogue.server.ts");
+  const loop = eng.indexOf("for (let i = clips.length; i < treatment.scenes.length; i++) {");
+  // THE THING, found or drawn ONCE, before the first shot — the maker's cast threat first; a horror film's chosen creature
+  // no longer needs the last scene to name it; else the script's own, whose portrait is drawn, looked at and kept
+  const thingAt = eng.indexOf("const sightOn = staged && horror && !cartoon && isTwoHander;");
+  assert.ok(thingAt > 0 && thingAt < loop, "before the shots");
+  assert.ok(eng.includes("const named = castThreat(castActors) || castActors.find((c) => !!c.faceUrl && isCreature(c) && ![spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name)));"));
+  assert.ok(eng.includes("const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual });"));
+  assert.ok(eng.includes("for (const model of kept ? [] : STORY_LADDER) {") && eng.includes("storyPictureInput(model, { prompt: threatPortrait(own.entry, tmpl.sceneHint), refs: [], aspect: PORTRAIT_ASPECT })"), "the told stories' portrait recipe and ladder");
+  assert.ok(eng.includes("img = (await clothedOrDropped(drawn, PORTRAIT_ASPECT)) || \"\";"), "looked at for an unclothed figure");
+  assert.ok(eng.includes("if (!kept) await ckpt({ ckThreat: JSON.stringify(threat) });"), "kept: a restarted film does not draw it twice");
+  assert.ok(eng.includes("k.from === \"story\" && k.entry === own.entry && onDisk(k.img)"), "…and a kept one is only taken for the same thing, still on disk");
+  // the clothed look: edited once, or dropped — never a film lost to it
+  assert.ok(eng.includes("prompt: clothedEdit(seen.who), refs: [abs(rel) || rel], aspect: ar"));
+  assert.ok(eng.includes("catch { return { unclothed: false, who: \"\" }; }"), "a look that cannot be made keeps the picture");
+  // what the worker does not hand over is read from the job's own row
+  assert.ok(eng.includes("ckThreat?: string; ckSightings?: string };"));
+  assert.ok(eng.includes("const r = JSON.parse(resume.ckSightings ?? (await keptOnJob(\"ckSightings\")) ?? \"null\");"));
+  // THE SIGHTING: after the reveal (which owns the last shot), before the seed branches; on the reveal's editor ladder,
+  // from the place AS IT NOW IS, the thing's own picture second where it is the film's thing
+  const reveal = eng.indexOf("if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {", loop);
+  const sight = eng.indexOf("if (!seedAbs && sightOn && !lastHorror && master?.url && stagingOf(master)) {", loop);
+  const branches = eng.indexOf("if (!seedAbs && master?.url) {", loop);
+  assert.ok(reveal > loop && sight > reveal && branches > sight);
+  assert.ok(eng.includes("const s = sightingOf({ moment: eventAt(i), startedFrom: startedFrom(i, tr), speakers: [spkA, spkB], cast: thingCast, names: castActors.map((c) => c.name), last: lastHorror, cartoon, approved: !!approvedFrames[i] });"));
+  assert.ok(eng.includes("const base = abs(shownAt(i) || master.url);"));
+  const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],", sight);
+  const kontext = eng.indexOf("[\"black-forest-labs/flux-kontext-pro\", { prompt: askOne, input_image: base, aspect_ratio: aspect, output_format: \"jpg\", output_quality: 92 }],", sight);
+  const seedream = eng.indexOf("[\"bytedance/seedream-4.5\", { prompt: ask, image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, size: \"2K\", max_images: 1 }],", sight);
+  assert.ok(pro > sight && kontext > pro && seedream > kontext && seedream < branches, "nano-banana-pro, then flux-kontext-pro (never told of a second picture), then Seedream 4.5");
+  assert.ok(eng.includes("const drawn = await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\"));") && eng.includes("pic = drawn ? (await clothedOrDropped(drawn, aspect)) || \"\" : \"\";"), "letterbox off, clothed or dropped");
+  // its picture is checkpointed the moment it is drawn, and a restarted film takes it back
+  assert.ok(eng.includes("let pic = sightings[i]?.url && sightings[i].words === s.words ? sightings[i].url : \"\";"));
+  assert.ok(eng.includes("sightings[i] = { url: pic, words: s.words, who: s.who, entry: s.entry };\n            await ckpt({ ckSightings: JSON.stringify(sightings) });"));
+  assert.ok(eng.includes("seedAbs = abs(pic); sighted = s; sinceAnchor = 0;"));
+  // the cut into it is a straight one; its staging is the place's; it is never also a sound shot; its clip is told so
+  assert.ok(eng.includes("if (i > 0 && !chained && (tr === \"location\" || revealed || !!sighted)) hardSeams.add(i);"));
+  assert.ok(eng.includes("(tr === \"angle\" && !sighted) ? null : stagingOf(master);"));
+  assert.ok(eng.includes("&& !implied && !revealed && !sighted ? heardIn("));
+  assert.equal(eng.split("sighted: !!sighted, sight: sighted?.who });").length - 1, 2, "said to a talking shot and to one nobody speaks in");
+  // what was seen stays seen: a new angle or a re-anchor in that place grows out of the place AS IT NOW IS
+  assert.equal(eng.split("abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)]").length - 1, 2);
+  // a place whose first scene has the thing in view is drawn with its picture; the first picture that showed it is kept
+  assert.ok(eng.includes("const thingHere = !masters[locKeyAt(i)]?.url && thingInMaster(i, lastHorror);"));
+  assert.ok(eng.includes("if (thingHere && master?.url && !firstShown) firstShown = { url: master.url, words: scene.visual || \"\" };"));
+  assert.ok(eng.includes("if (!firstShown && isTheThing(s.entry)) firstShown = { url: pic, words: s.words };"));
+  // THE REVEAL from the thing's picture: its portrait, else the picture that first showed it
+  assert.ok(eng.includes("const thingRef = (): { url: string; kind: ThingRef } | null => (threat ? { url: abs(threat.img) || threat.img, kind: threat.creature ? \"creature\" : \"figure\" } : firstShown ? { url: abs(firstShown.url) || firstShown.url, kind: \"scene\" } : null);"));
+  assert.ok(eng.includes("revealSeen = !!seen || (!!ref && !creatureRef);"));
+  // ON THE PIECE: who the monster was
+  assert.ok(eng.includes("...(threat ? { threat: { name: threat.name, img: threat.img, from: threat.from } } : {}),"));
+});
+
 test("a place whose first scene has the thing in view is drawn with its picture, bound by name like a cast member's photo", () => {
   const note = thingBound({ name: "the woman in the lake", refNo: 4, look: "a pale woman in a soaked white dress" });
   assert.equal(note, " THE ONE THEY FEAR: reference image 4 is the woman in the lake and ONLY the woman in the lake (a pale woman in a soaked white dress). Where this moment has the woman in the lake, the woman in the lake is drawn EXACTLY as in that picture — the same face, hair and clothes — and only as much of the woman in the lake as the moment shows; nothing else of that picture comes into this one, and the woman in the lake is never one of the two.");
