@@ -37,6 +37,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
+import { ffmpegArgsFor } from "./ffmpeg-threads.ts";
 import { db } from "../db.server";
 import { anthropicText } from "./anthropic.server";
 import { composeResolution } from "./feature-flags.server";
@@ -86,8 +87,9 @@ const FFMPEG_TIMEOUT_MS = 10 * 60_000;
 
 function runFfmpeg(bin: string, args: string[]): Promise<void> {
   // one encode at a time, across every job (ffmpeg-turn.ts); the kill timer starts with the turn
+  // capped like every ffmpeg run (ffmpeg-threads.ts: one decoding thread an input, two for the encoder)
   return ffmpegTurn(() => new Promise<void>((resolve, reject) => {
-    const p = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
+    const p = spawn(bin, ffmpegArgsFor(bin, args), { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
     let timedOut = false;
     const timer = setTimeout(() => {

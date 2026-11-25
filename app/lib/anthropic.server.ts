@@ -4,6 +4,7 @@
 // so we call the HTTP API directly. This also surfaces real status codes.
 
 import { fetchRetry } from "./http-retry.server";
+import { withThreadCap } from "./ffmpeg-threads.ts";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
@@ -486,7 +487,8 @@ async function toSupportedImage(b64: string, claimed: string): Promise<{ media: 
       const src = path.join(dir, "in.bin");
       const dst = path.join(dir, "out.jpg");
       fs.writeFileSync(src, Buffer.from(b64, "base64"));
-      const r = spawnSync(bin, ["-y", "-i", src, "-frames:v", "1", "-q:v", "3", dst], { timeout: 30_000 });
+      // capped like every ffmpeg run (ffmpeg-threads.ts: one decoding thread an input, two for the encoder; ffprobe untouched)
+      const r = spawnSync(bin, withThreadCap(["-y", "-i", src, "-frames:v", "1", "-q:v", "3", dst]), { timeout: 30_000 });
       if (r.status === 0 && fs.existsSync(dst)) {
         const out = fs.readFileSync(dst);
         if (out.length > 1_000) return { media: "image/jpeg", data: out.toString("base64") };

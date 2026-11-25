@@ -43,7 +43,7 @@ test("a percent sign is kept; what breaks a filter is still removed", () => {
 
 test("every drawtext the image composites run is literal — or a kept % would blank the whole string", () => {
   assert.ok(src.includes("const literal = args.map((a) => (a.includes(\"drawtext=\") ? a.split(\"drawtext=\").join(\"drawtext=expansion=none:\") : a));"));
-  assert.ok(src.includes("const p = spawn(bin, literal, {"));
+  assert.ok(src.includes("const p = spawn(bin, ffmpegArgsFor(bin, literal), {")); // (threads capped since 2026-11-25: ffmpeg-threads.ts)
   // that helper is the ONLY place this file starts ffmpeg with a filter that can draw text
   assert.equal(src.split("spawn(").length - 1, 1, "one spawn, inside runFfmpegStill");
   assert.ok(src.split("runFfmpegStill(").length - 1 > 20, "the composites all go through it");

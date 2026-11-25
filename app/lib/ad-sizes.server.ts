@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import { ffmpegArgsFor } from "./ffmpeg-threads.ts";
 import ffmpegPath from "ffmpeg-static";
 import { AD_SIZES, sameShape, sizeGraph, type AdSize } from "./ad-sizes.ts";
 
@@ -23,7 +24,8 @@ function run(bin: string, args: string[], timeoutMs: number): Promise<{ ok: bool
   return new Promise((resolve) => {
     let err = "";
     let done = false;
-    const p = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
+    // capped like every ffmpeg run (ffmpeg-threads.ts: one decoding thread an input, two for the encoder; ffprobe untouched)
+    const p = spawn(bin, ffmpegArgsFor(bin, args), { stdio: ["ignore", "ignore", "pipe"] });
     const timer = setTimeout(() => { if (!done) { done = true; try { p.kill("SIGKILL"); } catch { /* */ } resolve({ ok: false, err: "timed out" }); } }, timeoutMs);
     p.stderr.on("data", (c) => { if (err.length < 20000) err += String(c); });
     p.on("error", (e) => { if (!done) { done = true; clearTimeout(timer); resolve({ ok: false, err: e.message }); } });

@@ -500,8 +500,9 @@ test("every encode a job starts takes its turn — the three runners", () => {
   const ugc = read("app", "lib", "ugc-ad-pipeline.server.ts");
   const com = read("app", "lib", "commercial-ad-pipeline.server.ts");
   const img = read("app", "lib", "image-generation.server.ts");
-  assert.ok(ugc.includes("return ffmpegTurn(() => new Promise<{ status: number; stderr: string }>((resolve, reject) => {\n    const p = spawn(ffmpegBin(), args,"));
-  assert.ok(com.includes("return ffmpegTurn(() => new Promise<void>((resolve, reject) => {\n    const p = spawn(bin, args,"));
+  // (each with its threads capped since 2026-11-25 — ffmpeg-threads.ts; the spawn is still the turn's first act)
+  assert.ok(ugc.includes("return ffmpegTurn(() => new Promise<{ status: number; stderr: string }>((resolve, reject) => {\n    const p = spawn(ffmpegBin(), withThreadCap(args),"));
+  assert.ok(com.includes("return ffmpegTurn(() => new Promise<void>((resolve, reject) => {\n    const p = spawn(bin, ffmpegArgsFor(bin, args),"));
   assert.ok(img.includes("return ffmpegTurn(() => new Promise<{ ok: boolean; stdout: string; stderr: string }>((resolve) => {"));
   // the kill timers are set INSIDE the turn: time spent waiting is not time spent encoding
   for (const [name, src] of [["ugc", ugc], ["commercial", com], ["still", img]] as const) {
