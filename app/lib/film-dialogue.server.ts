@@ -41,6 +41,7 @@ import { clampKlingPrompt, clipRules, fitClipPrompt } from "./clip-prompt";
 import { interiorCutFromWords, isNoopTrim, parseSilences, planClipTrim, planFromWords, planShift, SILENCE_FILTER, type TimedWord } from "./clip-trim";
 import { createWhisperx, wordsFromWhisperx } from "./faceless-video.server";
 import { letterboxCrop, parseCropdetect } from "./letterbox";
+import { coveredIfBanded } from "./full-frame.server";
 import { mirrorRender } from "./object-storage.server";
 import { filmShots, filmTemplate, ownCheckpoint, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 import { episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
@@ -325,7 +326,9 @@ async function removeLetterbox(relUrl: string | null): Promise<string | null> {
     const probe = await runFfmpeg(["-loop", "1", "-i", local, "-frames:v", "3", "-vf", "cropdetect=limit=24:round=2:reset=0", "-f", "null", "-"]);
     const found = parseCropdetect(probe.stderr || "");
     const crop = found ? letterboxCrop(found.frame, found.crop) : null;
-    if (!found || !crop) return relUrl;
+    // (…and a band of ANY colour, or a doubled strip, that cutting off leaves a right picture: cut to its content and
+    //  covered — full-frame.ts, 2026-11-26, the told story's bakery on an empty cream band)
+    if (!found || !crop) return (await coveredIfBanded(relUrl)) || relUrl;
     const { w: W, h: H } = found.frame;
     const name = `img-${Date.now()}-${crypto.randomBytes(9).toString("hex")}.jpg`;
     const out = path.join(RENDERS(), name);

@@ -66,3 +66,10 @@ test("wired: every told picture is measured, a band is a fault and its sheet is 
   assert.ok(srv.includes("`crop=${c.w}:${c.h}:${c.x}:${c.y},scale=${W}:${H}:flags=lanczos,setsar=1`"));
   assert.ok(srv.includes("if (!band || !bandCuttable(band)) return null;"));
 });
+
+test("the acted film's masters and edits: cut and covered where that leaves a right picture — one line", () => {
+  const dlg = read("app", "lib", "film-dialogue.server.ts");
+  assert.ok(dlg.includes("import { coveredIfBanded } from \"./full-frame.server\";"));
+  const fn = dlg.slice(dlg.indexOf("async function removeLetterbox("), dlg.indexOf("/** Grab the ACTUAL last frame"));
+  assert.ok(fn.includes("if (!found || !crop) return (await coveredIfBanded(relUrl)) || relUrl;"), "a black letterbox is cropped as it was; any other band is covered");
+});
