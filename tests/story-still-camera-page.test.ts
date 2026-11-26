@@ -71,6 +71,8 @@ test("a storyboard picture: a chip on it says its camera; a tap opens the row un
   // the row: the same CameraPick, on THIS picture, the story's camera first; a pick closes it
   assert.ok(sb.includes("{narrated && lenStill && !!seeds && camPick === i && ("));
   assert.ok(sb.includes('<CameraPick value={stillCameraOf(sc?.camera)} story={stillCamera} pic={u || posterPicOf(heroById(heroId)?.media || "shortstory")} onPick={(k) => { setSceneCamera(i, k); setCamPick(null); }} t={t} />'));
+  // the row closes when a scene is added or taken away (its index would be another picture's)
+  assert.ok(film.includes("useEffect(() => { setCamPick(null); }, [seeds?.treatment.scenes.length]);"));
   // kept on the scene (so it goes where the scene goes, and rides the approved story); the story's = no key at all
   assert.ok(film.includes("const as = (s: Scene): Scene => { if (cam) return { ...s, camera: cam }; const { camera: _drop, ...rest } = s; return rest; };"));
   assert.ok(film.includes("type Scene = { visual: string; caption?: string; where?: string; shot?: string; tone?: string; kind?: \"perform\" | \"broll\"; singer?: string; /** a told story's still picture's OWN camera (CameraPick on the storyboard) */ camera?: StillCamera };"));

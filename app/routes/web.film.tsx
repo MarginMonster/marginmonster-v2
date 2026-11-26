@@ -3182,6 +3182,8 @@ export default function FilmStudio() {
     const el = typeof document !== "undefined" ? document.querySelector(".mm-cam-drawer") : null;
     if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [camPick]);
+  // (…and it closes when a scene is added or taken away: the row is a picture's, and the pictures have moved)
+  useEffect(() => { setCamPick(null); }, [seeds?.treatment.scenes.length]);
   // Each scene is a PERFORMANCE shot (the artist sings, lip-synced) or a CUT SCENE / b-roll (cars,
   // props, dancing — no lip-sync). The default is the director's cadence the pipeline films by — ONE
   // function for both (mv-pace.ts defaultRole): a short video leads with the performance, a longer one
