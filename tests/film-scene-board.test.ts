@@ -256,7 +256,8 @@ test("review of 2026-11-25: Generate waits for a note being written, and the boa
   // (declared before the JSX reads it — a `const` read before its line throws when the page renders)
   assert.ok(ui.indexOf("const [notingPlace, setNotingPlace] = useState<number | null>(null);") < ui.indexOf("disabled={!canGo || storySent || notingPlace !== null}"));
   // a sketch or a note moves nothing the loader reads: its answer does not re-run the loader; everything else does
-  assert.ok(page.includes("const BOARD_INTENTS = new Set([\"sketchFilmScenes\", \"rewriteFilmScene\"]);"));
+  // (…and the guide box's reading of an idea too — tests/idea-route.test.ts)
+  assert.ok(page.includes("const BOARD_INTENTS = new Set([\"sketchFilmScenes\", \"rewriteFilmScene\", \"readIdea\"]);"));
   assert.ok(page.includes("export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultShouldRevalidate }) =>\n  BOARD_INTENTS.has(String(formData?.get(\"intent\") || \"\")) ? false : defaultShouldRevalidate;"));
   // RUN the rule with a few intents
   const BOARD = new Set(["sketchFilmScenes", "rewriteFilmScene"]);
