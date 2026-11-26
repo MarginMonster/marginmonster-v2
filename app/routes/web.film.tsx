@@ -53,6 +53,8 @@ import { castEntry } from "../lib/story-picture";
 import { heroShelves } from "../lib/film-heroes";
 // (2026-11-26) …and the told heroes again on a shelf of their still rung: a poster's key says which shelf it stands on
 import { posterKey } from "../lib/film-heroes";
+// (2026-11-26) …and the ANIME styles on a shelf of their own: a style's template is told only, and draws its own cast
+import { animeStyleOf } from "../lib/anime-styles";
 // (2026-11-24) THE LYRIC VIDEO: a member's own song, its words on screen — a poster on the sung shelf, its own builder
 import { LYRIC_HERO } from "../lib/film-heroes";
 // (2026-11-24) FOUND FOOTAGE has its own builder (web.found-footage.tsx): a door to it on the Films shelf, operators only
@@ -118,10 +120,17 @@ export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultSh
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop, account } = await requireWebIdentity(request);
-  const { LIVE_FILM_TEMPLATES, GENRES, PROPS, NARRATED_MIN_SCENES, NARRATED_MAX_SCENES, NARRATED_DEFAULT_SCENES } = await import("../lib/film-engine.server");
-  const templates = LIVE_FILM_TEMPLATES.map((t) => ({
-    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger, cartoon: !!t.cartoon, sung: !!t.sung,
+  const { LIVE_FILM_TEMPLATES, FILM_TEMPLATES, NARRATABLE_KEYS, GENRES, PROPS, NARRATED_MIN_SCENES, NARRATED_MAX_SCENES, NARRATED_DEFAULT_SCENES } = await import("../lib/film-engine.server");
+  // THE ANIME STYLES ARE AN OPERATOR'S (anime-styles.ts → a `drawn` template; the Anime shelf, film-heroes.ts). Films are
+  // free while they are being finished (plan-config.ts → FILM_BASE), so every anime story is the house's cost — and the
+  // owner has neither priced anime nor looked at a live one yet: operators only until he has (the Lyric Video's and Found
+  // Footage's pattern). A page that is not offered a drawn template has no anime hero (heroesFor needs the template), so
+  // no Anime shelf, no anime Next episode and no anime story to edit; the action refuses one besides.
+  const offered = (t: { drawn?: boolean } | undefined) => !t?.drawn || isAdminEmail(account.email);
+  const templates = LIVE_FILM_TEMPLATES.filter(offered).map((t) => ({
+    key: t.key, name: t.name, brief: t.brief, defaultScenes: t.defaultScenes, minScenes: t.minScenes, maxScenes: t.maxScenes, needsProduct: !!t.needsProduct, dialogue: !!t.dialogue, lipSyncSinger: !!t.lipSyncSinger, cartoon: !!t.cartoon, sung: !!t.sung, drawn: !!t.drawn,
   }));
+  const narratable = NARRATABLE_KEYS.filter((k) => offered(FILM_TEMPLATES[k]));
   const genres = Object.entries(GENRES).map(([key, g]) => ({ key, label: g.label }));
   // name = the label with its leading emoji stripped ("🐯 Tiger" -> "Tiger"); the picker shows a real
   // generated photo (/propimg/:key) + this clean name instead of an emoji.
@@ -282,7 +291,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // NARRATED stories: which formats can be told by a narrator, and how long one may be — the engine's own limits
     // (3 to 32 scenes, five minutes: film-length.ts; it was 12 until 2026-11-25), so a next episode or a story
     // opened to edit keeps the length it has
-    narratable: (await import("../lib/film-engine.server")).NARRATABLE_KEYS,
+    // (…of those this account is offered: an anime style is an operator's — `offered`, above)
+    narratable,
     narratedScenes: { min: NARRATED_MIN_SCENES, max: NARRATED_MAX_SCENES, def: NARRATED_DEFAULT_SCENES },
     // a story's pictures move (story-motion.ts) — the estimate beside Generate says what that takes
     storyMotion: storyMotionOn(),
@@ -514,7 +524,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   //  ending "…built around the roots of a big tr": IDEA_MAX, premise-rules.ts)
   const topic = ((form.get("filmTopic") as string) || "").trim().slice(0, IDEA_MAX);
   // NARRATED: a storyteller's voice over pictures instead of the cast acting it (story formats only).
-  const narrated = ((form.get("filmMode") as string) || "").trim() === "narrated" && canNarrate(tmpl.key);
+  // (…and an ANIME style is ALWAYS told, whatever the request says — the guard above refuses an acted script or film for
+  //  one; every other intent that takes a template — the scenes, a re-roll, a recast, the render — is told here, so a
+  //  drawn template never reaches the acted engine, whose look is photorealistic or a 3D cartoon: SPEC-S15 → S15d)
+  const narrated = (!!tmpl.drawn || ((form.get("filmMode") as string) || "").trim() === "narrated") && canNarrate(tmpl.key);
   // MUSIC VIDEO: the length is picked in seconds and the pace decides how long a scene is — 5 or 10
   // seconds (mv-pace.ts). Anything else, and every older form, is 10.
   const filmSceneSeconds = tmpl.lipSyncSinger ? sceneSecondsOf(((form.get("filmSceneSeconds") as string) || "").trim()) : 10;
@@ -526,7 +539,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const storyLength = !!tmpl.dialogue && !tmpl.lipSyncSinger && !tmpl.sung;
   const clampScenes = (n: number) => (storyLength ? filmShots(tmpl.key, narrated, n) : Math.max(tmpl.minScenes, Math.min(maxScenes, Math.round(n || tmpl.defaultScenes))));
   // The cast the maker picked before the script was written (story formats).
-  const storyCast = tmpl.lipSyncSinger ? [] : parseStoryCast(form.get("filmCast") as string);
+  // (…never for an ANIME story, 2026-11-26: in v1 it draws its own cast, each a portrait in its style. A picked presenter
+  //  is a PHOTO — drawn from in a drawn scene it is pasted in photoreal, or the cast check fails it three times a scene;
+  //  "your cast, drawn in the style" is a later stream, S15c. The page sends none for one; a hand-made request's is dropped.)
+  const storyCast = tmpl.lipSyncSinger || tmpl.drawn ? [] : parseStoryCast(form.get("filmCast") as string);
   // THE LANGUAGE IT IS TOLD IN — the story formats' "Told in" (the account's content language, set from the
   // page as it is picked): sent with every write and with the render, so a story is never written in one
   // language and voiced in another while that setting is still on its way. Unknown or absent: the shop's.
@@ -1371,8 +1387,9 @@ const LOOP_KEYS = ["musicvideo", "testmovie", "shortstory", "kidstv", "moralstor
 /** Formats whose cover has its own 4:5 picture for phones (the rest are one picture cropped both ways).
  *  (2026-11-25: the genres added that day each have one — a told Story's poster is a strip of three upright
  *  pictures, and a centre crop of it on a phone card was the middle panel alone. The sign-in lobby keeps the
- *  very same list: tests/auth-lobby.test.ts holds the two together.) */
-const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo", "testmovie", "moral", "horrorstory", "shortstory", "moralstory", "comedy", "comedystory", "thriller", "thrillerstory", "action", "romance", "romancestory", "scifi", "scifistory", "fantasy", "fantasystory", "mystery", "mysterystory"]);
+ *  very same list: tests/auth-lobby.test.ts holds the two together.) (2026-11-26: and the six anime styles' — the
+ *  Anime shelf's posters, and the pictures its camera tiles preview on: posterPicOf.) */
+const TALL_STILLS = new Set(["kidstv", "kidsmusicvideo", "testmovie", "moral", "horrorstory", "shortstory", "moralstory", "comedy", "comedystory", "thriller", "thrillerstory", "action", "romance", "romancestory", "scifi", "scifistory", "fantasy", "fantasystory", "mystery", "mysterystory", "animedream", "animeretro", "animeneon", "animesky", "animeink", "animepastel"]);
 const stillOf = (key: string) => `/landing/film-still-${key}.jpg?v=${STILL_V}`;
 const stillFallback = (e: React.SyntheticEvent<HTMLImageElement>) => {
   const el = e.currentTarget;
@@ -2339,7 +2356,11 @@ export default function FilmStudio() {
   const monsterOn = isStoryboard && template === "horror";
   const [storyMonster, setStoryMonster] = useState<string | null>(null);
   const pickedMonster = monsterOn && storyMonster ? d.roster.find((r) => r.id === storyMonster && r.kind === "monster") || null : null;
-  const pickedStars = storyPick.map((id) => d.roster.find((r) => r.id === id)).filter((r): r is (typeof d.roster)[number] => !!r);
+  // AN ANIME STORY DRAWS ITS OWN CAST (2026-11-26): nobody is picked for one — a picked presenter is a photo, and a
+  // photo in a drawn scene is pasted in photoreal (S15c will draw the maker's cast in the style first). So its picks
+  // are none, whatever was picked before, and no `filmCast` is sent for it; the Cast step says so in one line.
+  const castDrawn = !!tmpl?.drawn;
+  const pickedStars = castDrawn ? [] : storyPick.map((id) => d.roster.find((r) => r.id === id)).filter((r): r is (typeof d.roster)[number] => !!r);
   const pickedCast = pickedMonster ? [...pickedStars, pickedMonster] : pickedStars;
   const filmCastJson = JSON.stringify(pickedCast.map((r) => (r === pickedMonster
     ? { name: r.name, faceUrl: r.img, kind: r.kind, look: r.look, voiceId: null, role: "threat" }
@@ -4068,6 +4089,8 @@ export default function FilmStudio() {
   //  say those things".)
   const heroTitle = hero?.name || tmpl?.name || "Film";
   const fmtIcon = (key: string, told = false) => {
+    // (an anime style's badge is a spark — drawn, where a Story's is the told book: anime-styles.ts, 2026-11-26)
+    if (animeStyleOf(key)) return <svg viewBox="0 0 24 24"><path d="M11.5 3.4c.6 3.9 1.7 5 5.6 5.6-3.9.6-5 1.7-5.6 5.6-.6-3.9-1.7-5-5.6-5.6 3.9-.6 5-1.7 5.6-5.6z" /><path d="M18.2 14c.3 1.8.8 2.3 2.6 2.6-1.8.3-2.3.8-2.6 2.6-.3-1.8-.8-2.3-2.6-2.6 1.8-.3 2.3-.8 2.6-2.6z" /></svg>;
     if (told) return <svg viewBox="0 0 24 24"><path d="M2 5.5A2.5 2.5 0 0 1 4.5 3H10a2 2 0 0 1 2 2v15a2 2 0 0 0-2-2H2z" /><path d="M22 5.5A2.5 2.5 0 0 0 19.5 3H14a2 2 0 0 0-2 2v15a2 2 0 0 1 2-2h8z" /></svg>;
     if (key === "musicvideo" || key === "kidsmusicvideo") return <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>;
     if (key === "moral") return <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>;
@@ -4178,14 +4201,15 @@ export default function FilmStudio() {
                 and what is SUNG each stand under their own heading, which says in a line what every poster
                 on that shelf has in common — nobody has to open one to find out. (2026-11-26: and the told
                 heroes again, on the STILL shelf — the cheapest rung as "more options", the owner's words — where
-                pictures can move at all; elsewhere every story is told over stills already.) */}
+                pictures can move at all; elsewhere every story is told over stills already. And the ANIME styles on a
+                shelf of their own — "an Anime maker with different styles" — for an operator, until the owner prices them.) */}
             {heroShelves(heroes, { still: d.storyMotion }).map((sh) => (
             <section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>
               {/* the card's ENGRAVING (THE TICKET, in the stylesheet): a layer that covers the card and cuts
                   itself to the card's shape, so the card itself clips nothing — a picture only */}
               <span className="fs-shelf-wm" aria-hidden="true" />
               <header className="fs-shelf-h">
-                <span className="fs-shelf-ico" aria-hidden="true"><Ico n={sh.key === "told" ? "book" : sh.key === "still" ? "image" : sh.key === "acted" ? "film" : "music"} size={18} /></span>
+                <span className="fs-shelf-ico" aria-hidden="true"><Ico n={sh.key === "told" ? "book" : sh.key === "still" ? "image" : sh.key === "anime" ? "sparkle" : sh.key === "acted" ? "film" : "music"} size={18} /></span>
                 <span className="fs-shelf-txt">
                   <h2 className="fs-shelf-name" id={`fs-shelf-${sh.key}`}>{t(sh.name)}</h2>
                   <span>{t(sh.line)}</span>
@@ -4868,7 +4892,7 @@ export default function FilmStudio() {
               {/* (the STARS — in Horror its monster is not one of them: it is named on its own line, after them) */}
               <span className="mm-val">{pickedStars.length ? <><Ico n="check" size={12} /> {pickedStars.map((r) => r.name).join(" + ")}</>
                 : seriesOwn.length ? <><Ico n="check" size={12} /> {t("Back: {names}", { names: seriesOwn.map((r) => r.name).join(" + ") })}</>
-                : t("We invent them · or pick your own")}</span>
+                : castDrawn ? t("Anime stories draw their own cast, in the style.") : t("We invent them · or pick your own")}</span>
               {pickedStars.length > 1 && (
                 <span className="mm-card-cast" aria-hidden="true">
                   {pickedStars.map((r, k) => <span key={r.id} className={`mm-card-castface${k === 0 ? " lead" : ""}`} style={{ backgroundImage: `url(${r.img})` }} title={r.name} />)}
@@ -5064,9 +5088,12 @@ export default function FilmStudio() {
                   </button>
                 </>)}
                 {(!scripted || castOver) && (<>
-                <div className="mm-opts-sub">{narrated
+                {/* (AN ANIME STORY DRAWS ITS OWN CAST, in its style — no faces to pick, one line that says so: `castDrawn`.
+                    Its narrator is picked on the Narrator step, as every told story's is.) */}
+                <div className="mm-opts-sub">{castDrawn ? t("Anime stories draw their own cast, in the style.") : narrated
                   ? t("Pick up to 3 from your cast and the story is written for them — each one drawn from their own picture in every scene they are in. Pick nobody and we invent the characters.")
                   : t("Pick up to 2 from your cast and the story is written for them — their own face in every shot, and their own voice if they have one. Pick nobody and we invent the characters.")}</div>
+                {!castDrawn && (<>
                 <div className="mm-artistpick">
                   <button type="button" className={`fs-rface mm-autoface${storyPick.length === 0 ? " on" : ""}${wipeArm === "cast:" ? " is-arm" : ""}`} onClick={() => orArm("cast:", storyPick.length > 0, () => setStoryPick([]))} title={t("We invent the characters")}>
                     <span className="fs-rface-img mm-autoface-img" aria-hidden="true"><Ico n="wand" size={20} /></span>
@@ -5112,6 +5139,7 @@ export default function FilmStudio() {
                 {peekHint}
                 {wipeNote("cast:")}
                 <a className="mm-pace-auto" href="/web/presenters?forge=1"><Ico n="wand" size={12} /> {t("Create a new character")}</a>
+                </>)}
                 </>)}
               </div>
             )}
@@ -5643,6 +5671,11 @@ ${CAST_ID_CSS}
 .fs-shelf.is-still{--shelf:#3E6A8E;--shelf-soft:rgba(62,106,142,.09);}
 .fs-shelf.is-acted{--shelf:#0C7A46;--shelf-soft:rgba(12,122,70,.09);}
 .fs-shelf.is-sung{--shelf:#6B4BC8;--shelf-soft:rgba(107,75,200,.09);}
+/* (the ANIME shelf, 2026-11-26: a warm cherry pink — the drawn shelf's own, apart from the storybook gold, the still
+   blue, the stage's green and the music video's violet. Held to the same sums as the others: its tag 4.5:1 on its
+   plate, its icon 5.1:1, a shelf's name 11.6:1 and its line 4.7:1 where the engraving runs under them — the plate's
+   tint at .08, not .09, is what lets a red that saturated keep the line at 4.7) */
+.fs-shelf.is-anime{--shelf:#CA3254;--shelf-soft:rgba(202,50,84,.08);}
 .fs-shelf::before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:4px;border-radius:0 4px 4px 0;background:var(--shelf);opacity:.85;}
 .fs-shelf-h{display:flex;align-items:center;gap:11px;margin:0 2px 12px 6px;transition:opacity .25s ease;}
 .fs-shelf-ico{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:#fff;background:var(--shelf);box-shadow:0 10px 18px -10px var(--shelf);}

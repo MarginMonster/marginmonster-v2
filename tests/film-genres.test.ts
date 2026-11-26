@@ -331,7 +331,9 @@ test("a genre is a promise about what happens and how it ends — and a look tha
 });
 
 test("every genre is on the shelves under its word: acted — and, but for Action, told", () => {
-  const story = FILM_HEROES.filter((h) => h.told !== null);
+  // (…a hero on a shelf of its own is not a genre's: an ANIME style's card is its style — "Dream" — and its genre its
+  //  kin's, 2026-11-26: tests/anime-shelf.test.ts)
+  const story = FILM_HEROES.filter((h) => h.told !== null && !h.shelf);
   // a story hero's card is its genre's word; a sung one's is its own name
   for (const h of story) assert.equal(h.card, categoryOf(h.tmpl), h.id);
   for (const h of FILM_HEROES.filter((x) => x.told === null)) assert.equal(h.card, h.name, h.id);
@@ -435,7 +437,8 @@ test("every word a member reads is in all five languages", () => {
     for (const n of g.notes) said.add(n.label);
     for (const s of g.starters) said.add(s);
   }
-  assert.equal(said.size, 250);
+  // (268 since 2026-11-26: the six anime styles' cards, names and kicks — their "narrated in minutes" was said already)
+  assert.equal(said.size, 268);
   for (const k of said) assert.equal(count(dict, `\n  ${JSON.stringify(k)}: `), 5, k);
   // (a place's `where` and a note's `ask` are for the writer and the pictures — never shown, never translated)
   // a translated starter is still an idea: about as long as the English one, and a sentence
