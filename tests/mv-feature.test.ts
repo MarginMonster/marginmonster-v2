@@ -358,7 +358,8 @@ test("the co-star's verse is dealt before the song is written, said scene by sce
   const fn = engine.slice(engine.indexOf("export async function previewFilmTreatment"), engine.indexOf("// ---- Assembly"));
   // a scene can carry who sings it
   assert.match(engine, /singer\?: string;/);
-  assert.match(engine, /tone: \{ type: "string" \}, singer: \{ type: "string" \} \},/);
+  // (…and, since 2026-11-26, a told story's scene the character's MOVE it shows, after it — SPEC-S16, tests/character-mark.test.ts)
+  assert.match(engine, /tone: \{ type: "string" \}, singer: \{ type: "string" \}, move: \{ type: "string" \} \},/);
   // only a picked co-star, only in a video long enough to share
   assert.match(fn, /const featured = tmpl\.lipSyncSinger && videoSecs >= FEATURE_MIN_SECONDS/);
   assert.match(fn, /castList\.filter\(\(n\) => \(opts\.featureNames \|\| \[\]\)\.some\(/);
