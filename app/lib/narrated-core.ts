@@ -1307,6 +1307,10 @@ export const frameWords = (aspect: string): string =>
  *    23.4, mean |Laplacian| over small print at the push's closest frame — the zoompan over twice the frame kept a
  *    little more, 28.1, and shivered);
  *  · the window always inside the picture: no black edge, ever.
+ * NO DISSOLVE between two stills (considered the same day, and left): a dissolve needs both scenes' MOVED pictures at
+ * once — a move a scene again, which is the 735 MB above — and a long story's parts are put together by stream copy
+ * (story-join.ts), so the scene that opens a part could never dissolve from the one before it: every sixth cut would
+ * be hard, and a story would change its look mid-way. The moving rung cuts straight too.
  * Free — our own ffmpeg, nothing drawn. */
 export type StillMove = "in" | "right" | "out" | "left";
 export const STILL_MOVES: ReadonlyArray<StillMove> = ["in", "right", "out", "left"];
